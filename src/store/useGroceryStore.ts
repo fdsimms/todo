@@ -562,8 +562,13 @@ interface GroceryStore extends UndoHistoryActions {
   addFromPlan: (rows: readonly PlannedRow[]) => PlanAddResult;
 
   toggleChecked: (id: string) => void;
-  /** toggleChecked's invariant (checked implies onList), applied to a whole selection at once. */
-  setCheckedMany: (ids: string[], checked: boolean) => void;
+  /**
+   * toggleChecked's invariant (checked implies onList), applied to a whole
+   * selection at once. On the trolley being shown unless `opts.listId` names
+   * one — `null` for the list at home, which is what the Reminders mirror
+   * means whatever list is on screen.
+   */
+  setCheckedMany: (ids: string[], checked: boolean, opts?: { listId?: string | null }) => void;
   setQuantity: (id: string, quantity: string | null) => void;
   setAisle: (id: string, aisle: string) => void;
   setAisleMany: (assignments: Record<string, string>) => void;
@@ -1064,8 +1069,8 @@ interface GroceryStore extends UndoHistoryActions {
   clearChoice: (id: string) => void;
 
   removeFromList: (id: string) => void;
-  /** removeFromList over a whole selection at once. */
-  removeFromListMany: (ids: string[]) => void;
+  /** removeFromList over a whole selection at once. `opts.listId` as setCheckedMany's. */
+  removeFromListMany: (ids: string[], opts?: { listId?: string | null }) => void;
   /**
    * Builds the undo for a batch of adds, and is the only correct way to revert
    * one. **Call it immediately after the adds land**, because it snapshots the
@@ -2185,10 +2190,10 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     if (checked && entry.choiceGroup) get().resolveChoice(id);
   },
 
-  setCheckedMany(ids, checked) {
+  setCheckedMany(ids, checked, opts) {
     if (ids.length === 0) return;
     const wanted = new Set(ids);
-    const listId = get().activeListId;
+    const listId = opts && 'listId' in opts ? opts.listId ?? null : get().activeListId;
     // Same invariant as toggleChecked, and the same scope: the ticks belong to
     // the trolley being shown.
     const updates = get().listEntries.filter(
@@ -3303,11 +3308,15 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       : { ...item, frozenAt: null, expiresAt: expiresAtForPurchase(item, now) };
     dbUpdateGroceryItem(updated);
     set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
-    // Both directions reconcile, and they do opposite things: freezing drops a
-    // use-up task that's now about food under ice, thawing spawns the one the
-    // fresh date earns. Neither is a special case in reconcileUseUpTask — it
-    // reads liveExpiresAt and gets the right answer both ways.
-    reconcileUseUpTask(updated);
+    // Opposite things in the two directions: freezing drops a use-up task
+    // that's now about food under ice, thawing spawns the one the fresh date
+    // earns. Freezing *drops* rather than reconciles, though. A reconcile that
+    // finds its source no longer wanted deletes through `deleteTask`, which
+    // stamps the item's own "never" (`useUpTask: false`) as if the person had
+    // swiped the task away, so an item frozen once with a live task never got
+    // one again after it thawed.
+    if (frozen) dropUseUpTask(id);
+    else reconcileUseUpTask(updated);
   },
 
   setOpened(id, opened) {
@@ -3696,10 +3705,10 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     writeMembership({ remove: [{ itemId: id, listId }] });
   },
 
-  removeFromListMany(ids) {
+  removeFromListMany(ids, opts) {
     if (ids.length === 0) return;
     const wanted = new Set(ids);
-    const listId = get().activeListId;
+    const listId = opts && 'listId' in opts ? opts.listId ?? null : get().activeListId;
     const leaving = get().listEntries.filter(e => e.listId === listId && wanted.has(e.itemId));
     if (leaving.length === 0) return;
     // Parks every row, same as removeFromList: the entry goes, the catalog row

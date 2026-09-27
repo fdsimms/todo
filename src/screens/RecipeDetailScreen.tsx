@@ -68,7 +68,7 @@ import { useStepTimers } from '../hooks/useStepTimers';
 import { RecipeTimerRow } from '../components/RecipeTimerRow';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from '../components/NumberPadAccessory';
 import { CookModeSheet } from '../components/CookModeSheet';
-import { cookSteps } from '../utils/cookMode';
+import { cookSteps, stepsFromNotes } from '../utils/cookMode';
 import { MAX_STEP_TIMER_SECONDS, formatStepDuration, parseStepDurations, stepDurationOffers } from '../utils/stepTimers';
 import { featureHidden, featureShown } from '../utils/simpleMode';
 import { useColors } from '../theme/ThemeContext';
@@ -832,8 +832,17 @@ export function RecipeDetailScreen() {
       setNoteDraft('');
       haptics.tap();
     } else {
-      const added = addStep(recipe.id, stepDraft);
-      if (added) haptics.tap();
+      // A pasted method becomes one step per line (or per paragraph), the way
+      // the ingredient field already splits a pasted list: in one step it was
+      // a single wall of text that cook mode then showed as one screen. Same
+      // splitter cook mode uses for a recipe's notes, so its two rules (blank
+      // lines win, and no line break means one step) hold here too. Editing
+      // an existing step never splits: that is a correction to one step.
+      const parts = stepsFromNotes(stepDraft);
+      const added = parts.length > 1
+        ? parts.filter(part => addStep(recipe.id, part)).length
+        : (addStep(recipe.id, stepDraft) ? 1 : 0);
+      if (added > 0) haptics.tap();
       else haptics.warning();
     }
     setStepDraft('');
@@ -1297,7 +1306,12 @@ export function RecipeDetailScreen() {
             // Same-route navigate, exactly as TemplateDetailScreen opens a nested
             // template: it swaps this screen's params rather than stacking a
             // second copy, so Back still means "back to the library".
-            (navigation as any).navigate('RecipeDetail', { recipeId: target.id });
+            //
+            // At the scale this page is showing, since a component scales with
+            // the dish around it everywhere else (the list, the cost, the
+            // nutrition): opened at 1× from a doubled dish, its amounts were
+            // half of what the cooking in front of the person needed.
+            (navigation as any).navigate('RecipeDetail', { recipeId: target.id, scale });
           }}
           // Long press is free on these rows (unlike an ingredient's, which
           // drags) and is where making this an either/or lives.

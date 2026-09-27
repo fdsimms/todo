@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
@@ -20,7 +20,7 @@ import {
 import {
   describeRecipeNutritionEstimate, type RecipeNutritionEstimate,
 } from '../utils/recipeNutritionEstimate';
-import { estimateRecipeNutrition, recipeNutritionEstimateAvailable } from '../services/aiSuggestions';
+import { describeAIError, estimateRecipeNutrition, recipeNutritionEstimateAvailable } from '../services/aiSuggestions';
 import { EditorSheet } from './EditorSheet';
 import { GroceryItemSheet } from './GroceryItemSheet';
 import { InlineAction } from './InlineAction';
@@ -172,6 +172,25 @@ export function RecipeNutritionSheet({ visible, reading, recipeName, servings, o
 
   const { nutrition, gaps, excluded } = reading;
 
+  // A guess about the recipe as it stood when it was asked for, so it goes
+  // when the recipe changes: a line filled in, a scale or a servings count
+  // moved. Kept, it went on quoting a dish that no longer exists, and the
+  // header comment above promised a reset nothing performed. Keyed on the
+  // lines' text rather than on the array, which is rebuilt on every render
+  // of the screen underneath.
+  const estimateKey = useMemo(
+    () => [
+      recipeName,
+      servings ?? '',
+      ...reading.lines.map(line => `${line.quantity}|${line.name}|${line.prep ?? ''}`),
+    ].join('\n'),
+    [recipeName, servings, reading.lines]
+  );
+  useEffect(() => {
+    setEstimate(null);
+    setEstimateError(null);
+  }, [estimateKey]);
+
   const runEstimate = async () => {
     haptics.tap();
     setEstimating(true);
@@ -182,8 +201,10 @@ export function RecipeNutritionSheet({ visible, reading, recipeName, servings, o
       const next = await estimateRecipeNutrition(recipeName, servings, lines);
       setEstimate(next);
       haptics.success();
-    } catch {
-      setEstimateError("Couldn't estimate this recipe. Try again in a moment.");
+    } catch (e) {
+      // The reason, not a blanket "try again": no key, demo mode and a
+      // reply with nothing usable in it are not fixed by waiting.
+      setEstimateError(describeAIError(e));
       haptics.error();
     } finally {
       setEstimating(false);
@@ -384,6 +405,11 @@ export function RecipeNutritionSheet({ visible, reading, recipeName, servings, o
             <View style={styles.estimateBlock}>
               {estimate ? (
                 <>
+                  {/* Said outright because the real panel above this reads
+                      per serving whenever the recipe says how many it makes,
+                      and the model is asked for the whole dish: unlabeled,
+                      a four-serving stew's estimate read as one bowl. */}
+                  <Text style={styles.estimateLabel}>WHOLE RECIPE, ESTIMATED</Text>
                   {NUTRIENT_KEYS.filter(key => estimate.amounts[key] !== undefined).map(key => (
                     <View key={key} style={styles.nutrientRow}>
                       <Text style={styles.nutrientLabel}>{NUTRIENT_LABEL[key].label}</Text>
@@ -400,6 +426,7 @@ export function RecipeNutritionSheet({ visible, reading, recipeName, servings, o
                       onPress={runEstimate}
                       disabled={estimating}
                     />
+                    {estimating && <ActivityIndicator color={colors.textSecondary} />}
                   </View>
                 </>
               ) : (
@@ -695,6 +722,14 @@ function makeStyles(colors: Colors) {
     nutrientAmount: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
     emptyTotal: { fontSize: font.sm, color: colors.textSecondary, lineHeight: 18 },
     estimateBlock: { marginTop: spacing.md },
+    // `groupLabel`'s treatment, without the side inset it takes outside a card.
+    estimateLabel: {
+      fontSize: font.xs,
+      fontWeight: fontWeight.semibold,
+      letterSpacing: 0.8,
+      color: colors.textSecondary,
+      marginBottom: spacing.xs,
+    },
     countedRow: { paddingVertical: spacing.xs },
     countedHeader: {
       flexDirection: 'row',

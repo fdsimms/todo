@@ -8,6 +8,7 @@ import {
   remapIngredientKeyIn,
   describeRecipe,
   cleanRecipeName,
+  recipeNameKey,
   rankRecipes,
   parsePrepTasks,
   normalizePrepTask,
@@ -1089,6 +1090,25 @@ describe('recipeSectionKey', () => {
   it('is the mealType itself, or "untagged" for the null section', () => {
     expect(recipeSectionKey('breakfast')).toBe('breakfast');
     expect(recipeSectionKey(null)).toBe('untagged');
+  });
+});
+
+describe('recipeNameKey', () => {
+  it('treats spellings the box can only hold one of as one name', () => {
+    // A bare lowercase (what the AI sheets used to compare with) kept these
+    // apart, so an idea the box then refused looked new, and the lookup that
+    // followed the refusal couldn't find the recipe it was refused for.
+    expect(recipeNameKey('Crème brûlée')).toBe(recipeNameKey('creme brulee'));
+    expect(recipeNameKey('Chicken & Rice')).toBe(recipeNameKey('chicken rice'));
+    expect(recipeNameKey("  Mom's   Chili ")).toBe(recipeNameKey("mom's chili"));
+  });
+
+  it('keeps genuinely different names apart', () => {
+    expect(recipeNameKey('Chicken tacos')).not.toBe(recipeNameKey('Fish tacos'));
+  });
+
+  it('is empty only for a name that is not one', () => {
+    expect(recipeNameKey('   ')).toBe('');
   });
 });
 

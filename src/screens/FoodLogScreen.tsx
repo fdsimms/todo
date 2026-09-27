@@ -19,19 +19,21 @@ import {
   type SlotCoverage,
 } from '../utils/mealLogCoverage';
 import { useSavedMealsStore } from '../store/useSavedMealsStore';
-import { dayKeyOf, dayKeyToDate, getCurrentDayStart } from '../utils/dateUtils';
+import { dayKeyOf, dayKeyToDate, getCurrentDayStart, getLogicalDayKey, getLogicalToday } from '../utils/dateUtils';
 import { slotForHour } from '../utils/mealLog';
 import {
   describeFoodLogEntry,
   foodLogEntryEdit,
   foodLogSections,
   foodLogTotals,
+  logInstantFor,
   resolveFoodLogDrop,
   type FoodLogListItem,
 } from '../utils/foodLog';
 import {
   describeWater,
   describeWaterDay,
+  isWaterEntry,
   waterEntryOf,
   waterHelping,
   waterInUnit,
@@ -125,6 +127,11 @@ function atTimeOf(entry: FoodLogEntry, day: Date): Date {
   const source = new Date(entry.atISO);
   const at = new Date(day);
   at.setHours(source.getHours(), source.getMinutes(), source.getSeconds(), source.getMilliseconds());
+  // A time before the day reset (a 12:40 AM snack under a 3 AM reset) sits in
+  // the small hours at the *end* of the chosen day, so it rolls onto the next
+  // calendar date — the rule `onLogicalDay` applies to every HH:MM. Set on the
+  // chosen date itself, it keyed under the day before the one picked.
+  if (getLogicalDayKey(at) !== dayKeyOf(day)) at.setDate(at.getDate() + 1);
   return at;
 }
 
@@ -171,9 +178,15 @@ export function FoodLogScreen() {
   const waterUnit = useSettingsStore(s => s.waterUnit);
   const setWaterUnit = useSettingsStore(s => s.setWaterUnit);
   const waterExerciseBoost = useSettingsStore(useShallow(s => s.waterExerciseBoost));
-  const exerciseMinutesToday = useHealthStore(s => s.today?.exerciseMinutes ?? null);
+  // Only a reading for the logical today counts. `today` is a snapshot that
+  // outlives the day reset until the next refresh, so read raw, the first
+  // minutes of a new day boosted its targets from yesterday's workout — the
+  // day-key check HealthSettings and Today already make.
+  const exerciseMinutesToday = useHealthStore(s =>
+    (s.today?.dayKey === dayKeyOf(getCurrentDayStart()) ? s.today.exerciseMinutes ?? null : null));
   const activeEnergyBoost = useSettingsStore(useShallow(s => s.activeEnergyBoost));
-  const activeEnergyToday = useHealthStore(s => s.today?.activeEnergyKcal ?? null);
+  const activeEnergyToday = useHealthStore(s =>
+    (s.today?.dayKey === dayKeyOf(getCurrentDayStart()) ? s.today.activeEnergyKcal ?? null : null));
   // Only for the catalog picker below; the scan flow keeps its own reads.
   const items = useGroceryStore(useShallow(s => s.items));
   const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
@@ -248,14 +261,11 @@ export function FoodLogScreen() {
   const isToday = dayKey === todayKey;
   const dayDate = dayKeyToDate(dayKey);
   // The instant a new entry is stamped with. Today logs at the real moment;
-  // another day logs at midday, which is inside that logical day whichever way
-  // the reset time falls. Same reasoning `getLogicalToday` uses for noon.
-  const loggingAt = useMemo(() => {
-    if (isToday) return new Date();
-    const noon = new Date(dayDate);
-    noon.setHours(12, 0, 0, 0);
-    return noon;
-  }, [isToday, dayDate]);
+  // another day logs at midday — see `logInstantFor`, which the after-meal
+  // prompt and the planned meal's search sheet share. Worked out every render
+  // rather than memoized on the day: the screen stays mounted for hours, and a
+  // memo would stamp this evening's dinner with the moment the day was opened.
+  const loggingAt = logInstantFor(dayKey, todayKey);
 
   // Which meal to open the entry sheet on when nothing else picked one for it
   // (the FAB, the empty state, Meal plan's "Log food"). A guess rather than a
@@ -735,7 +745,7 @@ export function FoodLogScreen() {
       const planned = coverage.planned[0];
       if (!planned) return;
       haptics.tap();
-      offerMealLog(planned);
+      offerMealLog(planned, { asked: true });
     },
     [offerMealLog],
   );
@@ -777,6 +787,89 @@ export function FoodLogScreen() {
     </View>
   );
 
+  /**
+   * Water is its own card because it is the one figure on this
+   * screen you add to rather than read. It had a unit, a target
+   * range, a targets-sheet row and a parser arm and no way at all
+   * to log a glass, so the bar sat at zero all day (#2515).
+   *
+   * A stepper rather than a row of glass-size pills, which is
+   * `CountStepper`'s own argument: pills have to pick a size and a
+   * ceiling for everyone, and half a bottle is then unsayable. −
+   * at the floor clears the day, which is the undo.
+   *
+   * Rendered in both branches below, like `plannedCard`: a day with nothing
+   * logged yet is exactly the day somebody opens this to add a first glass,
+   * and the list (whose header this used to live in) isn't drawn on it.
+   */
+  const waterCard = (
+    <View style={styles.waterCard}>
+      <View style={styles.waterRow}>
+        <Ionicons name="water-outline" size={iconSize.sm} color={colors.textSecondary} />
+        <Text style={styles.waterLabel}>Water</Text>
+        {/* Two pills rather than a `SegmentedControl`: a unit beside
+            a stepper is one of the cases that component's own doc
+            comment lists as deliberately staying pills. */}
+        {(['ml', 'flOz'] as const).map(u => (
+          <TouchableOpacity
+            key={u}
+            style={[styles.waterUnit, waterUnit === u && styles.waterUnitOn]}
+            activeOpacity={interaction.activeOpacity}
+            onPress={() => { haptics.tap(); commitWater(); setWaterUnit(u); }}
+            accessibilityRole="button"
+            accessibilityState={{ selected: waterUnit === u }}
+            accessibilityLabel={u === 'ml' ? 'Show water in milliliters' : 'Show water in fluid ounces'}
+          >
+            <Text style={[styles.waterUnitText, waterUnit === u && styles.waterUnitTextOn]}>
+              {u === 'ml' ? 'ml' : 'fl oz'}
+            </Text>
+          </TouchableOpacity>
+        ))}
+        <CountStepper
+          value={waterInUnit(shownWaterMl, waterUnit)}
+          onChange={handleWaterChange}
+          min={waterBounds.min}
+          max={waterBounds.max}
+          step={waterBounds.step}
+          allowNull
+          emptyLabel="None"
+          format={n => describeWater(waterToMl(n, waterUnit), waterUnit)}
+          label="Water"
+          describeValue={n => (n === null
+            ? 'No water logged'
+            : describeWater(waterToMl(n, waterUnit), waterUnit))}
+        />
+      </View>
+      {/* Written by `describeWaterDay` rather than
+          `describeAgainstTarget`, so both halves come out in the same
+          shape the stepper above uses — see its note. It withholds on
+          a day with no water, and when the stepper has already said
+          the figure. */}
+      {waterLine !== null && <Text style={styles.waterTarget}>{waterLine}</Text>}
+      {appliedWaterBoostMl !== null && (
+        <Text style={styles.waterTarget}>
+          +{describeWater(appliedWaterBoostMl, waterUnit)} for {exerciseMinutesToday} min of exercise today
+        </Text>
+      )}
+      {effectiveWaterTarget !== undefined && shownDayWaterMl > 0 && (
+        <View style={styles.targetTrack}>
+          <View
+            style={[
+              styles.targetFill,
+              {
+                width: `${targetProgress('waterMl', shownDayWaterMl, waterTargets) * 100}%`,
+                backgroundColor: targetStatusColor(
+                  targetStatus('waterMl', shownDayWaterMl, waterTargets),
+                  colors,
+                ),
+              },
+            ]}
+          />
+        </View>
+      )}
+    </View>
+  );
+
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
       <ScreenHeader
@@ -800,12 +893,12 @@ export function FoodLogScreen() {
           // present from and silently do nothing.
           ...(estimateRoute !== 'unavailable' ? [{
             icon: 'sparkles-outline',
-            onPress: () => { haptics.tap(); setAddingSlot(null); setEstimateSeed(''); setAddOpen(true); setEstimateOpen(true); },
+            onPress: () => { haptics.tap(); setAddingSlot(guessedSlot); setEstimateSeed(''); setAddOpen(true); setEstimateOpen(true); },
             accessibilityLabel: 'Estimate a meal from a description',
           } satisfies ScreenHeaderAction] : []),
           {
             icon: 'barcode-outline',
-            onPress: () => { haptics.tap(); setAddingSlot(null); setAddOpen(true); setScanOpen(true); },
+            onPress: () => { haptics.tap(); setAddingSlot(guessedSlot); setAddOpen(true); setScanOpen(true); },
             accessibilityLabel: 'Scan a barcode to log',
           },
           {
@@ -869,7 +962,10 @@ export function FoodLogScreen() {
 
       {dayEntries.length === 0 ? (
         <>
-        {!!plannedCard && <View style={styles.plannedAlone}>{plannedCard}</View>}
+        <View style={styles.plannedAlone}>
+          {plannedCard}
+          {waterCard}
+        </View>
         <EmptyState
           icon="restaurant-outline"
           title={isToday ? 'Nothing logged today' : 'Nothing logged that day'}
@@ -896,16 +992,21 @@ export function FoodLogScreen() {
             ListHeaderComponent={
               <>
               {plannedCard}
-              {shownKeys.length === 0 ? (
-                // shownKeys is empty whenever every one of today's entries
+              {statedKeys.length === 0 ? (
+                // statedKeys is empty whenever every one of the day's entries
                 // was logged with no nutrition — a card with nothing in it
-                // read as a rendering glitch rather than a state.
+                // read as a rendering glitch rather than a state. Keyed on
+                // what the day *stated* rather than on what's pinned, so a day
+                // whose figures just aren't pinned still gets the card and its
+                // "Show every nutrient" toggle; and a day holding only the
+                // water row says nothing, since the water card is its total.
+                dayEntries.every(isWaterEntry) ? null : (
                 <View style={styles.totalsEmptyNote}>
                   <EmptyNote icon="stats-chart-outline">
-                    None of today's entries have nutrition on them yet. Link one to a food with
-                    nutrition to see totals here.
+                    {`None of ${isToday ? "today's" : "this day's"} entries have nutrition on them yet. Link one to a food with nutrition to see totals here.`}
                   </EmptyNote>
                 </View>
+                )
               ) : (
               <View style={styles.totalsCard}>
                 {shownKeys.map(key => (
@@ -989,80 +1090,7 @@ export function FoodLogScreen() {
               </View>
               )}
 
-              {/* Water is its own card because it is the one figure on this
-                  screen you add to rather than read. It had a unit, a target
-                  range, a targets-sheet row and a parser arm and no way at all
-                  to log a glass, so the bar sat at zero all day (#2515).
-
-                  A stepper rather than a row of glass-size pills, which is
-                  `CountStepper`'s own argument: pills have to pick a size and a
-                  ceiling for everyone, and half a bottle is then unsayable. −
-                  at the floor clears the day, which is the undo. */}
-              <View style={styles.waterCard}>
-                <View style={styles.waterRow}>
-                  <Ionicons name="water-outline" size={iconSize.sm} color={colors.textSecondary} />
-                  <Text style={styles.waterLabel}>Water</Text>
-                  {/* Two pills rather than a `SegmentedControl`: a unit beside
-                      a stepper is one of the cases that component's own doc
-                      comment lists as deliberately staying pills. */}
-                  {(['ml', 'flOz'] as const).map(u => (
-                    <TouchableOpacity
-                      key={u}
-                      style={[styles.waterUnit, waterUnit === u && styles.waterUnitOn]}
-                      activeOpacity={interaction.activeOpacity}
-                      onPress={() => { haptics.tap(); commitWater(); setWaterUnit(u); }}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: waterUnit === u }}
-                      accessibilityLabel={u === 'ml' ? 'Show water in milliliters' : 'Show water in fluid ounces'}
-                    >
-                      <Text style={[styles.waterUnitText, waterUnit === u && styles.waterUnitTextOn]}>
-                        {u === 'ml' ? 'ml' : 'fl oz'}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                  <CountStepper
-                    value={waterInUnit(shownWaterMl, waterUnit)}
-                    onChange={handleWaterChange}
-                    min={waterBounds.min}
-                    max={waterBounds.max}
-                    step={waterBounds.step}
-                    allowNull
-                    emptyLabel="None"
-                    format={n => describeWater(waterToMl(n, waterUnit), waterUnit)}
-                    label="Water"
-                    describeValue={n => (n === null
-                      ? 'No water logged'
-                      : describeWater(waterToMl(n, waterUnit), waterUnit))}
-                  />
-                </View>
-                {/* Written by `describeWaterDay` rather than
-                    `describeAgainstTarget`, so both halves come out in the same
-                    shape the stepper above uses — see its note. It withholds on
-                    a day with no water, and when the stepper has already said
-                    the figure. */}
-                {waterLine !== null && <Text style={styles.waterTarget}>{waterLine}</Text>}
-                {appliedWaterBoostMl !== null && (
-                  <Text style={styles.waterTarget}>
-                    +{describeWater(appliedWaterBoostMl, waterUnit)} today — {exerciseMinutesToday} min of exercise logged
-                  </Text>
-                )}
-                {effectiveWaterTarget !== undefined && shownDayWaterMl > 0 && (
-                  <View style={styles.targetTrack}>
-                    <View
-                      style={[
-                        styles.targetFill,
-                        {
-                          width: `${targetProgress('waterMl', shownDayWaterMl, waterTargets) * 100}%`,
-                          backgroundColor: targetStatusColor(
-                            targetStatus('waterMl', shownDayWaterMl, waterTargets),
-                            colors,
-                          ),
-                        },
-                      ]}
-                    />
-                  </View>
-                )}
-              </View>
+              {waterCard}
               </>
             }
             ListFooterComponent={
@@ -1287,7 +1315,7 @@ export function FoodLogScreen() {
       />
       <WhenPicker
         visible={duplicatingEntry !== null}
-        value={new Date()}
+        value={getLogicalToday()}
         title="Duplicate to"
         showTimeOfDay={false}
         showSuggest={false}

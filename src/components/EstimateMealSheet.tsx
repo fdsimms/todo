@@ -172,6 +172,9 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
   const addEntry = useFoodLogStore(s => s.addEntry);
   const recentEntries = useFoodLogStore(s => s.recentEntries);
   const recipes = useRecipeStore(s => s.recipes);
+  // Every recipe, so a composed dish counts its components — see the same
+  // map in FoodLogEntrySheet.
+  const recipesById = useMemo(() => new Map(recipes.map(r => [r.id, r])), [recipes]);
   const items = useGroceryStore(s => s.items);
   const itemProducts = useGroceryStore(s => s.itemProducts);
   const addRecipe = useRecipeStore(s => s.addRecipe);
@@ -338,7 +341,7 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
       if (helping) out.push({ label: food.label, quantity: food.choice.label, amounts: helping.amounts });
     }
     for (const recipe of matches) {
-      const serving = perServing(recipeNutrition(recipe, items, itemProducts));
+      const serving = perServing(recipeNutrition(recipe, items, itemProducts, recipesById));
       if (serving) out.push({ label: recipe.name, quantity: '1 serving', amounts: serving });
     }
     return out.slice(0, MAX_CONTEXT_FOODS);
@@ -346,7 +349,8 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
   }, [recalled, catalogMatches, matches, items, itemProducts, at]);
 
   // ==== estimate: asking, refining, logging ====
-  const run = async (text: string, fresh: boolean) => {
+  /** Resolves to whether the request came back with an estimate. */
+  const run = async (text: string, fresh: boolean): Promise<boolean> => {
     setLoading(true);
     setError(null);
     setSavedRecipeId(null);
@@ -354,9 +358,15 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
       const result = await estimateMealNutrition(text, context);
       setEstimate(result);
       if (fresh) setQuestions(result.questions);
+      return true;
     } catch (e) {
-      setEstimate(null);
+      // A failed first ask has nothing to keep. A failed refinement does: the
+      // estimate it was refining is still a real answer, with its Log button
+      // and its questions, so it stays and the error is added under it rather
+      // than the whole card going blank over one bad request.
+      if (fresh) setEstimate(null);
       setError(describeAIError(e));
+      return false;
     } finally {
       setLoading(false);
     }
@@ -384,15 +394,20 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
   const handleAnswer = (prompt: string, option: string) => {
     if (estimatedFor == null || loading) return;
     haptics.tap();
+    const previous = answers;
     const next = { ...answers, [prompt]: answers[prompt] === option ? '' : option };
     setAnswers(next);
     const anyAnswered = questions.some(q => next[q.prompt]);
-    run(
+    void run(
       anyAnswered
         ? refineDescription(estimatedFor, questions.map(q => ({ prompt: q.prompt, answer: next[q.prompt] ?? '' })))
         : estimatedFor,
       false,
-    );
+    ).then(ok => {
+      // The kept estimate still answers the old choices, so the chips go back
+      // to them rather than showing an answer the figures don't reflect.
+      if (!ok) setAnswers(previous);
+    });
   };
 
   const handleLog = () => {
@@ -706,7 +721,7 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
                     doesn't ask, so its row opens the picker rather than
                     logging, and a chevron says so where the others have +. */}
                 {matches.map((recipe, index) => {
-                  const serving = perServing(recipeNutrition(recipe, items, itemProducts));
+                  const serving = perServing(recipeNutrition(recipe, items, itemProducts, recipesById));
                   return (
                     <TouchableOpacity
                       key={recipe.id}

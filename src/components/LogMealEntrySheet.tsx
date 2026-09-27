@@ -3,17 +3,19 @@ import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useAiRoute } from '../hooks/useOnDeviceAi';
-import { dayKeyOf, dayKeyToDate, getLogicalToday } from '../utils/dateUtils';
+import { dayKeyOf, getCurrentDayStart, getLogicalToday } from '../utils/dateUtils';
+import { logInstantFor } from '../utils/foodLog';
 import { EstimateMealSheet } from './EstimateMealSheet';
 import { FoodLogEntrySheet } from './FoodLogEntrySheet';
 import { ScanToLogFlow } from './ScanToLogFlow';
 import type { MealSlot } from '../types';
 
-/** Noon on the meal's own day — see the note at the call site. */
-function dayKeyAtNoon(dayKey: string): Date {
-  const at = dayKeyToDate(dayKey);
-  at.setHours(12, 0, 0, 0);
-  return at;
+/**
+ * When the meal is logged as having been eaten: now for today's, noon for
+ * another day's. See `logInstantFor`.
+ */
+function mealInstant(dayKey: string): Date {
+  return logInstantFor(dayKey, dayKeyOf(getCurrentDayStart()));
 }
 
 /**
@@ -130,7 +132,7 @@ export function LogMealEntrySheet() {
     <FoodLogEntrySheet
         visible={!!pending && !pendingFinishLeftoverId}
         slot={pending?.slot ?? null}
-        at={pending ? dayKeyAtNoon(pending.dayKey) : new Date()}
+        at={pending ? mealInstant(pending.dayKey) : new Date()}
         seedRecipeId={seedRecipeId}
         initialQuery={pending?.label ?? ''}
         mealPlanEntryId={mealPlanEntryId}
@@ -150,7 +152,7 @@ export function LogMealEntrySheet() {
             <ScanToLogFlow
               visible={!!scan}
               slot={scan?.slot ?? null}
-              at={scan ? dayKeyAtNoon(scan.dayKey) : new Date()}
+              at={scan ? mealInstant(scan.dayKey) : new Date()}
               mealPlanEntryId={scan?.mealPlanEntryId ?? null}
               onClose={() => setScan(null)}
               onLogged={() => setPending(null)}
@@ -158,7 +160,7 @@ export function LogMealEntrySheet() {
             <EstimateMealSheet
               visible={!!estimate}
               slot={estimate?.slot ?? null}
-              at={estimate ? dayKeyAtNoon(estimate.dayKey) : new Date()}
+              at={estimate ? mealInstant(estimate.dayKey) : new Date()}
               mealPlanEntryId={estimate?.mealPlanEntryId ?? null}
               initialDescription={estimate?.description}
               onClose={() => setEstimate(null)}

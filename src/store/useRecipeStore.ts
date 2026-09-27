@@ -26,6 +26,7 @@ import {
   ingredientsFromText,
   makeIngredient,
   mergeIngredients,
+  recipeNameKey,
   remapIngredientKeyIn,
 } from '../utils/recipeUtils';
 import { cookTimerElapsed, prepTimerElapsed } from '../utils/recipeTimer';
@@ -481,7 +482,7 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
   addRecipe(name) {
     const clean = cleanRecipeName(name);
     if (!clean) return null;
-    const key = groceryNameKey(clean) || clean.toLowerCase();
+    const key = recipeNameKey(clean);
     if (get().recipes.some(r => r.nameKey === key)) return null;
 
     const maxOrder = get().recipes.reduce((m, r) => Math.max(m, r.sortOrder), 0);
@@ -543,7 +544,7 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     if (!recipe) return false;
     const clean = cleanRecipeName(name);
     if (!clean) return false;
-    const key = groceryNameKey(clean) || clean.toLowerCase();
+    const key = recipeNameKey(clean);
     // A rename that only changes capitalisation keeps the same key, so compare
     // against *other* recipes rather than refusing to touch this one.
     if (key !== recipe.nameKey && get().recipes.some(r => r.nameKey === key)) return false;

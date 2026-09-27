@@ -125,6 +125,12 @@ export function useUpRecipes(
   }
 
   const byId = recipeMap(recipes);
+  // An either/or line resolves to whichever option is going off, rather than
+  // to its first-listed one: "jalapeño or serrano" with the serranos going
+  // soft is exactly the recipe to suggest, and read as written it never was.
+  // `onHand` only changes which option an open group picks and never adds a
+  // second, so nothing is counted twice.
+  const going = { onHand: new Set(dying.keys()) };
   const out: UseUpRecipe[] = [];
   for (const recipe of recipes) {
     // A Map keyed by the entry id rather than a filter over `dying`, because a
@@ -133,7 +139,7 @@ export function useUpRecipes(
     // component naming it as well collapses the same way, which is also what
     // keeps a recipe used twice in one tree from counting twice.
     const uses = new Map<string, KitchenEntry>();
-    for (const { ingredient } of flattenRecipeIngredients(recipe, byId)) {
+    for (const { ingredient } of flattenRecipeIngredients(recipe, byId, going)) {
       if (!ingredient.nameKey) continue;
       // Its own plural counts, the same way it does everywhere the catalog
       // resolves a name (`groceryPlural.ts`) — a line reading "serrano pepper"

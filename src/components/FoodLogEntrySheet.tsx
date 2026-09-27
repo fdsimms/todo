@@ -343,6 +343,12 @@ export function FoodLogEntrySheet({
   const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
   const nonFoodAisles = useGroceryStore(useShallow(s => s.nonFoodAisles));
   const recipes = useRecipeStore(useShallow(s => s.recipes));
+  // Every recipe, not just the one being logged: a composed dish measures its
+  // components through this map, and `recipeNutrition`'s default (a map of the
+  // outer recipe alone) silently dropped everything they contribute. The same
+  // map `LogMealPrompt` passes, so the figures a recipe logs with and the ones
+  // an edit re-measures it against come off one rollup.
+  const recipesById = useMemo(() => new Map(recipes.map(r => [r.id, r])), [recipes]);
   const addEntry = useFoodLogStore(s => s.addEntry);
   const reviseEntry = useFoodLogStore(s => s.reviseEntry);
   const setItemNutrition = useGroceryStore(s => s.setItemNutrition);
@@ -468,7 +474,7 @@ export function FoodLogEntrySheet({
       });
     }
     for (const recipe of recipes) {
-      const dish = recipeNutrition(recipe, items, itemProducts);
+      const dish = recipeNutrition(recipe, items, itemProducts, recipesById);
       if (!dish) continue;
       const serving = recipeHelpingNutrition(perServing(dish), 1);
       // Scale 1: this sheet logs the recipe as written rather than one night's
@@ -668,7 +674,7 @@ export function FoodLogEntrySheet({
       // into a crash rather than a Save that quietly stays disabled.
       const recipe = recipes.find(r => r.id === picked.recipeId);
       if (!recipe) return null;
-      const dish = recipeNutrition(recipe, items, itemProducts);
+      const dish = recipeNutrition(recipe, items, itemProducts, recipesById);
       if (!dish) return null;
       const figures = {
         total: dish.total,
@@ -1213,7 +1219,7 @@ export function FoodLogEntrySheet({
                   />
                 </View>
                 <Text style={styles.weighHint}>
-                  Weigh it and enter the total weight — remembered so this amount resolves on its own next time.
+                  Weigh it and enter the total weight. The app remembers it for next time.
                 </Text>
               </View>
             )}

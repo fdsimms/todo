@@ -500,6 +500,16 @@ describe('describeAIError', () => {
     expect(describeAIError(new Error('Response was truncated'))).toContain('cut off');
   });
 
+  it('says demo mode rather than blaming the connection', () => {
+    expect(describeAIError(new Error('AI features are off in demo mode.'))).toBe('AI features are off in demo mode.');
+  });
+
+  it('says a reply held nothing usable rather than blaming the connection', () => {
+    for (const e of [new Error('No suggestions returned'), new Error('No answer returned'), new SyntaxError('Unexpected token')]) {
+      expect(describeAIError(e)).toBe('Nothing usable came back. Try again.');
+    }
+  });
+
   it('falls back to a network message for an unrecognized error', () => {
     expect(describeAIError(new Error('Network request failed'))).toContain('connection');
   });
@@ -832,6 +842,17 @@ describe('extractRecipe', () => {
       steps: [],
       prepTasks: [],
     });
+  });
+
+  it('reads a list field that came back as something other than a list as empty', async () => {
+    // A string or an object here used to throw a TypeError in the parse loop,
+    // which the sheets reported as "Network request failed".
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', { name: 'Weeknight Chili', items: 'ground beef, beans' })
+    );
+    const result = await extractRecipe('some recipe', AISLES);
+    expect(result.name).toBe('Weeknight Chili');
+    expect(result.ingredients).toEqual([]);
   });
 
   it('reads a non-serving yield alongside servings', async () => {
@@ -2071,6 +2092,15 @@ describe('extractReceipt', () => {
         date: '2026-08-30',
         lines: [{ label: 'GV MLK 2% GAL', name: 'milk', quantity: '1', priceMinor: 348 }],
       });
+    });
+
+    it('refuses a date that does not exist rather than rolling it over', async () => {
+      // new Date('2026-02-30') is March 2, not an error, so the shape and NaN
+      // checks alone filed the trip two days late.
+      mockFetchOnce(toolUseResponse('extract_receipt', { storeName: '', lines: [], date: '2026-02-30' }));
+      expect((await extractReceipt(OCR_TEXT)).date).toBeNull();
+      mockFetchOnce(toolUseResponse('extract_receipt', { storeName: '', lines: [], date: '2028-02-29' }));
+      expect((await extractReceipt(OCR_TEXT)).date).toBe('2028-02-29');
     });
 
     it('makes no request at all for an empty reading', async () => {

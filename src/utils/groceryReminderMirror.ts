@@ -365,7 +365,11 @@ export function planGroceryReminderSync(
     // write anywhere comes from having taken custody of an open reminder.
     if (reminder.completed) continue;
 
-    const key = itemKeyFor(title);
+    // Keyed on the name the add field would file it under, quantity split
+    // off, the same reading addByName gives an import. Keyed on the raw title,
+    // "2 lb chicken" never matched the Chicken row it is, so the row was
+    // imported onto itself and pass 3 then wrote it a second reminder.
+    const key = itemKeyFor(normalizeMirrorTitle(title)?.name ?? title);
     if (!key || claimedKeys.has(key)) continue;
 
     const match = itemsByKey.get(key);

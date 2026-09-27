@@ -720,6 +720,38 @@ describe('classifyPlanned', () => {
     expect(rows[0].sources).toHaveLength(2);
   });
 
+  it('merges a singular and a plural line the catalog has never seen', () => {
+    // "onion" in one recipe and "onions" in another are one thing to buy
+    // whether or not the catalog has met it yet; they used to be two rows.
+    const planned = [
+      { name: 'onion', nameKey: 'onion', quantity: '1', aisle: null, source: 'Tue Chili' },
+      { name: 'onions', nameKey: 'onions', quantity: '2', aisle: null, source: 'Thu Soup' },
+    ];
+    const rows = classifyPlanned(planned, [], now);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].sources).toEqual(expect.arrayContaining(['Tue Chili', 'Thu Soup']));
+  });
+
+  it('keeps an item wanted outright out of an either/or that also names it', () => {
+    // Dinner needs jalapeños outright; lunch offers "jalapeño or serrano".
+    // Joined to the choice, picking serrano at the shelf took off the
+    // jalapeños dinner needed.
+    const planned = [
+      { name: 'jalapeño', nameKey: 'jalapeno', quantity: '2', aisle: null, source: 'Tue Tacos', choiceGroup: 'r-lunch:Pepper' },
+      { name: 'jalapeño', nameKey: 'jalapeno', quantity: '1', aisle: null, source: 'Wed Chili', choiceGroup: null },
+    ];
+    const rows = classifyPlanned(planned, [], now);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].choiceGroup).toBeNull();
+  });
+
+  it('keeps the choice when every contributor offers the item as an option', () => {
+    const planned = [
+      { name: 'jalapeño', nameKey: 'jalapeno', quantity: '2', aisle: null, source: 'Tue Tacos', choiceGroup: 'r-lunch:Pepper' },
+    ];
+    expect(classifyPlanned(planned, [], now)[0].choiceGroup).toBe('r-lunch:Pepper');
+  });
+
   it('leaves a line alone when the catalog has nothing a plural apart', () => {
     const planned = [
       { name: 'serrano pepper', nameKey: 'serrano pepper', quantity: '2', aisle: null, source: 'Tue Stir-fry' },

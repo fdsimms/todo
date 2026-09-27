@@ -162,6 +162,13 @@ const UNIT_PLURALS: Record<string, string> = {
   link: 'links',
   pouch: 'pouches',
   package: 'packages',
+  // Container words `CONTAINER_UNITS` knows that groceryParse's whitelist
+  // doesn't — British recipes size a "400 g tin" the way American ones size a
+  // "14 oz can" — so a count added to one inflects like a can's does.
+  tin: 'tins',
+  packet: 'packets',
+  carton: 'cartons',
+  tub: 'tubs',
   deciliter: 'deciliters',
   sprig: 'sprigs',
   stalk: 'stalks',
@@ -242,6 +249,10 @@ export const SIZE_UNITS = new Set([
 export const CONTAINER_UNITS = new Set([
   'can', 'cans', 'jar', 'jars', 'box', 'boxes', 'bag', 'bags',
   'bottle', 'bottles', 'package', 'packages', 'pkg', 'pouch', 'pouches',
+  // The British words for the same shapes. Without them a "400 g tin
+  // tomatoes" read as 400 g of something, so scaling it by 1.5 asked for a
+  // 600 g tin nobody sells and converting it to US units restated the tin.
+  'tin', 'tins', 'packet', 'packets', 'carton', 'cartons', 'tub', 'tubs',
 ]);
 
 /** Whether `size`/`container` name a real container shape — "oz"/"can", not "cup"/"flour". */

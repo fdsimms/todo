@@ -99,6 +99,29 @@ describe('useUpRecipes', () => {
     expect(suggestions[0].uses).toHaveLength(1);
   });
 
+  it('suggests a recipe through the option of an either/or that is going off', () => {
+    // "jalapeño or serrano": read as written the first option wins, so the
+    // serranos going soft never suggested the tacos.
+    const serranos = entry('Serrano', 'due');
+    const tacos = recipe('Tacos', ['jalapeno', 'serrano', 'tortilla']);
+    tacos.ingredients[0].choiceGroup = 'Chile';
+    tacos.ingredients[1].choiceGroup = 'Chile';
+
+    const suggestions = useUpRecipes([serranos], [tacos]);
+    expect(suggestions.map(s => s.recipe.name)).toEqual(['Tacos']);
+    expect(suggestions[0].uses.map(e => e.title)).toEqual(['Serrano']);
+  });
+
+  it('never counts both options of an either/or when both are going off', () => {
+    const jalapenos = entry('Jalapeno', 'due');
+    const serranos = entry('Serrano', 'due');
+    const tacos = recipe('Tacos', ['jalapeno', 'serrano']);
+    tacos.ingredients[0].choiceGroup = 'Chile';
+    tacos.ingredients[1].choiceGroup = 'Chile';
+
+    expect(useUpRecipes([jalapenos, serranos], [tacos])[0].uses).toHaveLength(1);
+  });
+
   it('leaves out a recipe that uses none of what is dying', () => {
     expect(useUpRecipes([entry('Spinach', 'due')], [recipe('Pancakes', ['flour', 'eggs'])]))
       .toEqual([]);

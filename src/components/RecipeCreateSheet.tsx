@@ -748,16 +748,21 @@ export function RecipeCreateSheet({
     if (ingredients.length === 0 && !extracted.name) {
       return (
         <View style={styles.centered}>
+          {/* A search icon, not a check: nothing succeeded here. And every
+              kind of input gets a way back to it, the one the error branch
+              above already offers, rather than only the photo path: a link or
+              a paste that found nothing left the sheet with no button at all
+              and Cancel as the only way out, losing what was typed. */}
           <EmptyState
-            icon="checkmark-circle-outline"
+            icon="search-outline"
             title="Nothing found"
             subtitle={input.usingPhoto
               ? `Nothing readable turned up in ${input.photos.length > 1 ? 'those photos' : 'that photo'}. Try again in better light, or paste the text instead.`
               : input.usingLink
               ? 'No recipe turned up on that page. Copy the recipe from it and paste it instead.'
               : 'No recipe turned up in that text.'}
-            actionLabel={input.usingPhoto ? 'Try another photo' : undefined}
-            onAction={input.usingPhoto ? () => { setExtracted(null); input.clearPhoto(); } : undefined}
+            actionLabel={input.usingPhoto ? 'Try another photo' : backLabel}
+            onAction={input.usingPhoto ? () => { setExtracted(null); input.clearPhoto(); } : goBack}
           />
         </View>
       );

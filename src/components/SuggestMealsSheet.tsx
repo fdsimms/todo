@@ -20,7 +20,7 @@ import { RECIPE_MEAL_TYPES, RECIPE_MEAL_TYPE_LABELS } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, interaction, type Colors } from '../theme';
 import { dayKeyOf } from '../utils/dateUtils';
-import { describeCookHistory, describePantryCoverage, describeRecipe, type PantryCoverage } from '../utils/recipeUtils';
+import { describeCookHistory, describePantryCoverage, describeRecipe, recipeNameKey, type PantryCoverage } from '../utils/recipeUtils';
 import { flattenRecipeIngredients, recipeMap, type FlatIngredient } from '../utils/recipeComponents';
 import { ingredientHeadings } from '../utils/recipeSections';
 import { describeStandingSwap, standingSwapMap } from '../utils/standingSwaps';
@@ -28,7 +28,7 @@ import { onHandNameKeys } from '../utils/grocerySuggest';
 import { describeLeftover, isPlannedPastKeepUntil, liveFreshnessOf } from '../utils/leftovers';
 import { convertQuantity } from '../utils/unitConvert';
 import {
-  mergeMealSuggestions, mealIdeaRecipeDraft, mealTitleKey,
+  mergeMealSuggestions, mealIdeaRecipeDraft,
   type MealIdea, type MealSuggestion,
 } from '../utils/mealIdeas';
 import { suggestMealIdeas, draftMealRecipe, describeAIError } from '../services/aiSuggestions';
@@ -348,6 +348,11 @@ export function SuggestMealsSheet({
   const generate = useCallback(async () => {
     setGenerating(true);
     setGenerateError(null);
+    // Ideas already picked stay, whatever the new batch holds. A pick names
+    // its idea by id (`selected`), so swapping the list out wholesale left a
+    // pick pointing at an idea that no longer existed: Save counted it,
+    // "Save (1)", and then planned nothing.
+    const keepPicked = (prev: MealIdea[]) => prev.filter(i => selected.has(`idea:${i.id}`));
     try {
       const result = await suggestMealIdeas(
         [...(plannedTitles ?? [])],
@@ -359,16 +364,23 @@ export function SuggestMealsSheet({
       // The service dedupes against the context it was given; the recipe box
       // is the other half of "new". A dish the user already owns isn't an
       // idea — if it fits this week the offline ranking above should be the
-      // one offering it, with its real ingredients behind it.
-      const owned = new Set(allRecipes.map(r => mealTitleKey(r.name)));
-      setIdeas(result.filter(i => !owned.has(mealTitleKey(i.title))));
+      // one offering it, with its real ingredients behind it. Keyed the way
+      // the box itself is (`recipeNameKey`), so a near-spelling of a saved
+      // recipe is held back rather than offered and then refused at Save.
+      const owned = new Set(allRecipes.map(r => r.nameKey));
+      const fresh = result.filter(i => !owned.has(recipeNameKey(i.title)));
+      setIdeas(prev => {
+        const kept = keepPicked(prev);
+        const keptKeys = new Set(kept.map(i => recipeNameKey(i.title)));
+        return [...kept, ...fresh.filter(i => !keptKeys.has(recipeNameKey(i.title)))];
+      });
     } catch (e) {
-      setIdeas([]);
+      setIdeas(keepPicked);
       setGenerateError(describeAIError(e));
     } finally {
       setGenerating(false);
     }
-  }, [plannedTitles, recentTitles, expiringItemHints, allRecipes, slotsToFill, openDays.length, hints]);
+  }, [plannedTitles, recentTitles, expiringItemHints, allRecipes, slotsToFill, openDays.length, hints, selected]);
 
   const dismissIdea = (idea: MealIdea) => {
     haptics.tap();
@@ -394,15 +406,23 @@ export function SuggestMealsSheet({
    * leaves a planned entry pointing at nothing.
    */
   const saveIdeaAsRecipe = useCallback(async (idea: MealIdea): Promise<Recipe> => {
+    // Already in the box: plan that one rather than paying for a draft the
+    // box will refuse.
+    const owned = allRecipes.find(r => r.nameKey === recipeNameKey(idea.title));
+    if (owned) return owned;
     const drafted = await draftMealRecipe(idea.title, [...aisleOrder], null);
     const draft = mealIdeaRecipeDraft(idea, drafted.ingredients, drafted);
     if (!draft.name) throw new Error('IDEA_NAME_EMPTY');
     // addRecipe refuses a name already in the box (nameKey is UNIQUE); land
-    // on the existing recipe rather than telling the user no.
-    const recipe = addRecipe(draft.name)
-      ?? allRecipes.find(r => r.name.trim().toLowerCase() === draft.name.trim().toLowerCase())
-      ?? null;
-    if (!recipe) throw new Error('IDEA_SAVE_FAILED');
+    // on the existing recipe rather than telling the user no, as it is: the
+    // draft is for a new recipe, and appending its ingredients, steps and
+    // notes onto the one already saved would rewrite it.
+    const recipe = addRecipe(draft.name);
+    if (!recipe) {
+      const existing = allRecipes.find(r => r.nameKey === recipeNameKey(draft.name));
+      if (!existing) throw new Error('IDEA_SAVE_FAILED');
+      return existing;
+    }
     if (draft.ingredients.length > 0) addStructuredIngredients(recipe.id, draft.ingredients);
     if (draft.notes) setNotes(recipe.id, draft.notes);
     setSource(recipe.id, draft.source);
@@ -469,7 +489,9 @@ export function SuggestMealsSheet({
     setSaving(false);
     if (newlyLanded.size > 0) setLandedOn(prev => new Map([...prev, ...newlyLanded]));
     if (errors.size > 0) {
-      haptics.success();
+      // Something didn't save and the sheet is staying open to say so, which
+      // is a failure however many of the others landed.
+      haptics.error();
       setSaveErrors(errors);
       setSelected(new Set(errors.keys()));
     } else {
@@ -814,6 +836,9 @@ export function SuggestMealsSheet({
   // Picks, a typed hint, and a generated batch of ideas are all local until
   // Save — a swipe-down would otherwise drop any of them with no dialog.
   const handleCancel = () => {
+    // Mid-save the Cancel button is disabled, but a swipe down reaches this
+    // too, and closing then left the loop above planning into a closed sheet.
+    if (saving) return;
     const dirty = selected.size > 0 || hints.trim() !== '' || ideas.length > 0;
     if (!dirty) { Keyboard.dismiss(); onClose(); return; }
     Alert.alert(

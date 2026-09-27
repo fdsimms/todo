@@ -790,6 +790,27 @@ export function matchMealPlanEntry(
 }
 
 /**
+ * The instant an entry logged against `dayKey` is stamped with.
+ *
+ * The logical today logs at the real moment; any other day logs at midday,
+ * which is inside that logical day whichever way the reset time falls (the
+ * reasoning `getLogicalToday` uses for noon). One rule for every path that
+ * logs against a day rather than a clock: the food log's own picker, the
+ * after-meal prompt and the search sheet a planned meal opens. The last two
+ * used to stamp noon unconditionally, so tonight's dinner reached Apple
+ * Health as lunch, and a breakfast logged at 8 AM as four hours from now.
+ *
+ * `todayKey` is passed in rather than read here, so this module stays free of
+ * the settings store `dateUtils` reaches for.
+ */
+export function logInstantFor(dayKey: string, todayKey: string, now: Date = new Date()): Date {
+  if (dayKey === todayKey) return new Date(now);
+  const noon = new Date(`${dayKey}T00:00:00`);
+  noon.setHours(12, 0, 0, 0);
+  return noon;
+}
+
+/**
  * How each provenance reads on a row.
  *
  * All four are named, not just `estimated`. The doc above says the row is the

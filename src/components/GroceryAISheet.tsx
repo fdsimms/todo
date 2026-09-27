@@ -97,6 +97,10 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
   // a mistyped address fails identically however many times you ask.
   const [canRetry, setCanRetry] = useState(true);
   const [tidyRows, setTidyRows] = useState<TidyRow[]>([]);
+  // Whether a tidy has come back since the sheet opened. Until one has, an
+  // empty `tidyRows` means "not asked yet" rather than "nothing to move", and
+  // the body shows the spinner for the frame before the request starts.
+  const [tidyAnswered, setTidyAnswered] = useState(false);
   const [recipeRows, setRecipeRows] = useState<RecipeGroceryItem[]>([]);
   const [accepted, setAccepted] = useState<Set<number>>(new Set());
   const recipeInput = useRecipeImportSource('paste', undefined, MAX_RECIPE_PHOTOS);
@@ -114,6 +118,7 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
     setLoading(false);
     setError(null);
     setTidyRows([]);
+    setTidyAnswered(false);
     setRecipeRows([]);
     setAccepted(new Set());
     resetRecipeInput();
@@ -140,6 +145,7 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
     } catch (e) {
       setError(describeAIError(e));
     } finally {
+      setTidyAnswered(true);
       setLoading(false);
     }
   }, [unsorted, aisleOrder]);
@@ -168,10 +174,13 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
   }, [resolveRecipeSource, aisleOrder]);
 
   // Tidy has everything it needs the moment it opens; recipe needs text first.
+  // Also keyed on there being anything to sort, so the spinner the body shows
+  // before a first answer (`tidyAnswered`) always has a request behind it.
+  const hasUnsorted = unsorted.length > 0;
   useEffect(() => {
-    if (visible && mode === 'tidy' && unsorted.length > 0) void runTidy();
+    if (visible && mode === 'tidy' && hasUnsorted && !tidyAnswered) void runTidy();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible, mode]);
+  }, [visible, mode, hasUnsorted]);
 
   const toggle = (index: number) => {
     haptics.tap();
@@ -265,7 +274,7 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
   const goBack = () => { setError(null); setRecipeRows([]); };
 
   const renderBody = () => {
-    if (loading) {
+    if (loading || (mode === 'tidy' && unsorted.length > 0 && !tidyAnswered && !error)) {
       return (
         <View style={styles.centered}>
           <ActivityIndicator color={colors.purple} />
@@ -321,6 +330,26 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
             <Text style={styles.photoError}>{recipeInput.photoError}</Text>
           )}
         </ScrollView>
+      );
+    }
+
+    // Items were waiting in Other and the model moved none of them, which is
+    // every on-device failure as well as a genuine shrug. Saying "everything is
+    // already in an aisle" over a list that plainly isn't sorted read as the
+    // feature being broken; saying so, with a retry, reads as what happened.
+    if (rowCount === 0 && mode === 'tidy' && unsorted.length > 0) {
+      return (
+        <View style={styles.centered}>
+          <EmptyState
+            icon="help-circle-outline"
+            title="Couldn't place these"
+            subtitle={unsorted.length === 1
+              ? 'No aisle came back for this item, so it stays in Other.'
+              : `No aisle came back for these ${unsorted.length} items, so they stay in Other.`}
+            actionLabel="Try again"
+            onAction={() => { void runTidy(); }}
+          />
+        </View>
       );
     }
 

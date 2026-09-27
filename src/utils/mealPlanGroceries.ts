@@ -437,10 +437,11 @@ export interface ClassifiedIngredient {
    * question — whose words the row's *name* is — and a swapped row can want
    * both at once.
    *
-   * The first non-null among the group's contributors, the same rule
-   * `choiceGroup` follows: two lines swapped into one item ("milk" and "whole
-   * milk" both to oat milk) merge into one row, and naming one origin is what
-   * the row has space to say.
+   * The first non-null among the group's contributors: two lines swapped into
+   * one item ("milk" and "whole milk" both to oat milk) merge into one row, and
+   * naming one origin is what the row has space to say. (`choiceGroup` used to
+   * be described as following this rule; it doesn't, since one outright
+   * contributor takes the row out of the choice.)
    */
   swappedFrom: string | null;
   /**
@@ -543,9 +544,17 @@ export function classifyPlanned(
   // `swappedFrom`: this is the same thing spelled the other way, not a swap,
   // and "instead of serrano pepper" would be a caption about nothing. Ordered
   // ahead of the variety pass so a re-filed key gets that pass too.
+  //
+  // And with no catalog row to resolve against, two lines one plural apart
+  // resolve to each other: "onion" in one recipe and "onions" in another are
+  // one thing to buy whether or not the catalog has met it yet, and the week
+  // review used to list them as two rows with two quantities. The key itself
+  // is left out of what it's resolved against, since `resolvePluralKey`
+  // refuses outright when the key is in the set it is given.
   for (const [key, group] of [...groups]) {
-    if (byKey.has(key)) continue;
-    const resolved = resolvePluralKey(key, byKey.keys());
+    if (byKey.has(key) || !groups.has(key)) continue;
+    const resolved = resolvePluralKey(key, byKey.keys())
+      ?? resolvePluralKey(key, [...groups.keys()].filter(k => k !== key && !byKey.has(k)));
     if (!resolved) continue;
     groups.delete(key);
     const target = groups.get(resolved);
@@ -620,11 +629,13 @@ export function classifyPlanned(
       }
     }
 
-    // The first group any contributor names, not the last: a line wanted both
-    // as an option and outright is wanted outright, and letting the second
-    // occurrence overwrite a null would put a row on the list as half a choice
-    // that something else needs unconditionally.
-    const choiceGroup = group.find(g => g.choiceGroup)?.choiceGroup ?? null;
+    // A line wanted both as an option and outright is wanted outright, so any
+    // contributor with no group keeps the row out of every choice. Taking the
+    // first group anybody named (which is what this used to do, despite the
+    // note it carried saying otherwise) put the row on the list as half an
+    // either/or, and choosing the other option at the shelf took off an item
+    // another meal needed unconditionally.
+    const choiceGroup = group.some(g => !g.choiceGroup) ? null : (group[0]?.choiceGroup ?? null);
     const swappedFrom = group.find(g => g.swappedFrom)?.swappedFrom ?? null;
     // Every contributor has to agree it's optional — see ClassifiedIngredient.optional.
     const optional = group.every(g => g.optional);

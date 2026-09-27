@@ -792,7 +792,7 @@ function writeGeneratedOptOut(task: Task, value: false | null): void {
  * check the same per-meal "no" first, because both are the same offer with
  * two different ways of answering "how much".
  */
-function offerMealLog(loggable: MealPlanEntry): void {
+function offerMealLog(loggable: MealPlanEntry, asked = false): void {
   if (!wantsMealLogPrompt(loggable, useSettingsStore.getState().mealLogPrompt)) return;
   // Already logged, so there is nothing to offer. The meal's own square is not
   // the only way food gets into that slot (`mealLogCoverage.ts` says why the
@@ -801,7 +801,7 @@ function offerMealLog(loggable: MealPlanEntry): void {
   // task used to ask the next morning — just sooner.
   const logged = dbGetFoodLogEntries(loggable.date, loggable.date);
   if (isMealLogged(loggable, mealLogRecord(logged))) return;
-  useFoodLogStore.getState().offerMealLog(loggable);
+  useFoodLogStore.getState().offerMealLog(loggable, { asked });
 }
 
 /**
@@ -842,7 +842,17 @@ function mealSlotEntryId(task: Task): string | null {
  * whole span — the meals already planned in it are what decide each task's
  * steps (see mealSlotChain).
  */
-function writeMealSlotTasks(fromKey: string, toKey: string, slots: readonly MealSlot[]): void {
+function writeMealSlotTasks(
+  fromKey: string,
+  toKey: string,
+  slots: readonly MealSlot[],
+  /**
+   * Whether each row written goes in the unattended ledger: true from the
+   * daily pass, false from the Settings backfill, which is a person turning a
+   * switch on and watching the rows arrive.
+   */
+  record: boolean,
+): void {
   const entries = dbGetMealPlanEntries(fromKey, toKey);
   // Ensured here as well as at startup for checkProjectReviewTasks' reason:
   // this generator ships on, so nobody flips the switch that would otherwise
@@ -875,7 +885,7 @@ function writeMealSlotTasks(fromKey: string, toKey: string, slots: readonly Meal
       // nothing to ask.
       if (entry?.cookedAt) continue;
       const recipe = entry?.recipeId ? recipes.find(r => r.id === entry.recipeId) : undefined;
-      useTaskStore.getState().addTask(
+      const created = useTaskStore.getState().addTask(
         mealSlotTaskDraft(
           dayKey, slot, entry, category, recipe ? totalMinutes(recipe) : null,
           useSettingsStore.getState().mealSlotStepEstimates
@@ -883,6 +893,10 @@ function writeMealSlotTasks(fromKey: string, toKey: string, slots: readonly Meal
         derivedId(spawnSeed.generated('mealSlot', sourceId, generatedTaskCountOf(tasks, 'mealSlot', sourceId))),
         { skipCategoryDefault: true, skipTitleRules: true },
       );
+      // Written straight through addTask rather than reconcileGeneratedTask,
+      // so the ledger entry that path records has to be made here — see the
+      // note on the one in generatedTaskSync.ts.
+      if (record) useUnattendedStore.getState().recordGenerated('created', created);
     }
   }
 }
@@ -3535,7 +3549,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       const loggableEntryId = cookedEntryId ?? logNudgeEntryId;
       const loggable = loggableEntryId ? dbGetMealPlanEntry(loggableEntryId) : null;
       if (loggable) {
-        offerMealLog(loggable);
+        // A "Log dinner" nudge ticked is a request to log it, so a recipe with
+        // no figures goes on to the search sheet rather than completing with
+        // nothing opened (see PendingMealLog.asked). The Eat step is the app
+        // volunteering, and stays quiet for one.
+        offerMealLog(loggable, !cookedEntryId);
       } else if (task.logMealSlot) {
         // An arbitrary task ("Log breakfast", "Pack lunch") opted into the
         // same offer, but names no recipe and no meal-plan entry — so it
@@ -4939,7 +4957,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         'mealPlanNudge',
         day.dayKey,
         generatedTaskCountOf(get().tasks, 'mealPlanNudge', day.dayKey)
-      )), { skipTitleRules: true });
+        // skipCategoryDefault too, for the reason generatedTaskSync passes
+        // it: a "File them under: None" here meant none, and without the flag
+        // addTask filed the rows under the new-task default category instead.
+      )), { skipTitleRules: true, skipCategoryDefault: true });
+      // An unattended create like any other generator's, so it belongs in the
+      // ledger; this path doesn't go through reconcileGeneratedTask, which is
+      // where the others are recorded.
+      useUnattendedStore.getState().recordGenerated('created', task);
       // The stack's own 1..K order, which is a separate number space from the
       // list order addTask just stamped (see reorderGroupChildren). Set the way
       // groupTasks sets it, so the rows read down the week.
@@ -5421,7 +5446,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const from = mark && mark >= today ? shiftDayKey(mark, 1) : today;
     if (from > horizonEnd) return;
 
-    writeMealSlotTasks(from, horizonEnd, settings.mealSlotsEnabled);
+    writeMealSlotTasks(from, horizonEnd, settings.mealSlotsEnabled, true);
     settings.setMealSlotTasksWrittenThroughDayKey(horizonEnd);
     // No setLastAction, same reasoning as checkMealPlanNudge above.
   },
@@ -5453,7 +5478,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Nothing written yet, or nothing still ahead of us: the ordinary pass has
     // the whole window to do and will pick these up with everything else.
     if (!mark || mark < today) return;
-    writeMealSlotTasks(today, mark, slots);
+    writeMealSlotTasks(today, mark, slots, false);
   },
 
   checkPantryCheckTasks() {

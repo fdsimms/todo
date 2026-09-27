@@ -1,0 +1,4 @@
+{
+  "message": "Scaling a recipe leaves amounts like \"2 cups plus 2 tbsp\" or \"200 g/7 oz\" as written instead of scaling only half of them, and British tins, packets, cartons and tubs scale by count the way cans do.",
+  "date": "2026-09-27"
+}

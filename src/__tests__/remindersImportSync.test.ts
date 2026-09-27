@@ -1082,7 +1082,9 @@ describe('importReminders — the two-way grocery mirror', () => {
 
     await freshSync().importReminders();
 
-    expect(mockGrocery.setCheckedMany).toHaveBeenCalledWith(['i1'], true);
+    // On the list at home whatever list is on screen: the mirror only reads
+    // home, so a tick landing on the trolley being shown was undone next pass.
+    expect(mockGrocery.setCheckedMany).toHaveBeenCalledWith(['i1'], true, { listId: null });
     expect(mockCalendar.updateReminderAsync).not.toHaveBeenCalled();
   });
 
@@ -1124,7 +1126,7 @@ describe('importReminders — the two-way grocery mirror', () => {
 
     await freshSync().importReminders();
 
-    expect(mockGrocery.removeFromListMany).toHaveBeenCalledWith(['i1']);
+    expect(mockGrocery.removeFromListMany).toHaveBeenCalledWith(['i1'], { listId: null });
     expect(mockCalendar.createReminderAsync).not.toHaveBeenCalled();
   });
 
@@ -1158,6 +1160,9 @@ describe('importReminders — the two-way grocery mirror', () => {
 
     expect(mockGrocery.setQuantity).not.toHaveBeenCalled();
     expect(links()[MIRROR_LIST.id][0].name).toBe('milk');
+    // And the reminder goes back to the row's name, or the two apps show
+    // different names for ever: neither side ever reads as changed again.
+    expect(mockCalendar.updateReminderAsync).toHaveBeenCalledWith('r1', { title: 'milk', completed: false });
   });
 
   it('never runs the one-way drain against a mirrored list', async () => {

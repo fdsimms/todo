@@ -10,6 +10,7 @@ import {
   foodLogTotals,
   foodUnitOptionsFor,
   isBeverageName,
+  logInstantFor,
   matchMealPlanEntry,
   nutrientContributions,
   helpingNutrition,
@@ -827,3 +828,31 @@ describe('composeFoodAmount / parseFoodAmount', () => {
 
 const _keyCheck: NutrientKey = 'calorieKcal';
 void _keyCheck;
+
+describe('logInstantFor', () => {
+  const now = new Date(2026, 8, 27, 19, 42);
+
+  it('stamps the logical today with the real moment', () => {
+    // A dinner logged from the after-meal prompt used to reach Health as noon.
+    expect(logInstantFor('2026-09-27', '2026-09-27', now).getTime()).toBe(now.getTime());
+  });
+
+  it('keeps the real moment in the grace window, when the calendar date has moved on', () => {
+    // 1:30 AM on the 28th under a 3 AM reset is still the logical 27th; the
+    // entry keeps its real instant and addEntry keys it back onto the 27th.
+    const small = new Date(2026, 8, 28, 1, 30);
+    expect(logInstantFor('2026-09-27', '2026-09-27', small).getTime()).toBe(small.getTime());
+  });
+
+  it('stamps any other day at noon on that day', () => {
+    const at = logInstantFor('2026-09-25', '2026-09-27', now);
+    expect([at.getFullYear(), at.getMonth(), at.getDate(), at.getHours(), at.getMinutes()])
+      .toEqual([2026, 8, 25, 12, 0]);
+  });
+
+  it('hands back a copy, never the clock it was given', () => {
+    const at = logInstantFor('2026-09-27', '2026-09-27', now);
+    at.setHours(0);
+    expect(now.getHours()).toBe(19);
+  });
+});

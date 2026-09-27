@@ -1813,9 +1813,16 @@ export function GroceryItemSheet({
               <View style={styles.actionBody}>
                 <Text style={styles.actionLabel}>Use-up task</Text>
                 <Text style={styles.actionHint}>
+                  {/* Two different "no"s, and they need different words: an
+                      item turned off here stays off whatever the setting
+                      says, while an item nobody chose for just follows the
+                      setting, which is off. Told the first when it was the
+                      second, somebody reads it as already opted out. */}
                   {hasUseUpTask
                     ? 'A task to use this up appears before the use-by date.'
-                    : 'No task for this item, whatever the setting says.'}
+                    : item.useUpTask === false
+                      ? 'No task for this item, whatever the setting says.'
+                      : 'Use-up tasks are off in Settings. Tap to get one for this item anyway.'}
                 </Text>
               </View>
             </TouchableOpacity>

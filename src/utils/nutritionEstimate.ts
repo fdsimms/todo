@@ -54,6 +54,14 @@ const FIELD_MAX_LENGTH = 80;
 /** One or two questions, never an interrogation. */
 export const MAX_ESTIMATE_QUESTIONS = 2;
 const MAX_QUESTION_OPTIONS = 4;
+/**
+ * The longest text a request carries: a description plus one answered line
+ * per question (`refineDescription`). The description cap alone is not it:
+ * applied to the refined text, it cut the answers off the end of any
+ * description near its limit, so tapping an answer re-asked the same meal.
+ */
+export const ESTIMATE_REQUEST_MAX_LENGTH =
+  ESTIMATE_DESCRIPTION_MAX_LENGTH + MAX_ESTIMATE_QUESTIONS * (FIELD_MAX_LENGTH * 2 + 2);
 /** More than this and it stops being a meal, it's a shopping list. */
 const MAX_BREAKDOWN_ITEMS = 12;
 
