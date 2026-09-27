@@ -58,6 +58,16 @@ interface Props {
    * set".
    */
   onRemoveFromProject?: () => void;
+  /**
+   * Files the selection under another project. Passed by ProjectDetailScreen
+   * alongside onRemoveFromProject, with the projects it may go to (the one on
+   * screen left out). The list is a panel in the bar rather than a sheet of its
+   * own, the way Priority is, so there's no second modal to stack over the bar.
+   */
+  moveToProject?: {
+    projects: ReadonlyArray<{ id: string; title: string; isList: boolean }>;
+    onMove: (projectId: string) => void;
+  };
   /** True when every selected task is already pinned — the action then reads "Unpin". */
   allPinned?: boolean;
   onSelectAll: () => void;
@@ -72,7 +82,7 @@ interface Props {
 // Category is absent on purpose: it opens `CategoryPickerSheet` rather than a
 // panel in the bar, which had the same problem the quick-add pill grid did —
 // four rows of chips over a floating bar is no room to find anything in.
-type Panel = 'actions' | 'more' | 'priority' | 'tags' | 'group';
+type Panel = 'actions' | 'more' | 'priority' | 'tags' | 'group' | 'project';
 
 export function BulkActionBar({
   selectedCount,
@@ -88,6 +98,7 @@ export function BulkActionBar({
   onMarkMissed,
   onGroup,
   onRemoveFromProject,
+  moveToProject,
   onTogglePin,
   allPinned = false,
   onSelectAll,
@@ -263,6 +274,18 @@ export function BulkActionBar({
             {/* Same immediate shape, and deliberately not destructive-tinted:
                 the tasks keep everything else and stay in the list, they just
                 stop being filed here. */}
+            {moveToProject && (
+              <TouchableOpacity
+                style={styles.moreRow}
+                onPress={() => setPanel('project')}
+                accessibilityRole="button"
+                accessibilityLabel="Move to another project"
+              >
+                <Ionicons name="arrow-forward-circle-outline" size={18} color={colors.textSecondary} />
+                <Text style={styles.moreRowText}>Move to project</Text>
+                <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+              </TouchableOpacity>
+            )}
             {onRemoveFromProject && (
               <TouchableOpacity
                 style={styles.moreRow}
@@ -273,6 +296,40 @@ export function BulkActionBar({
                 <Ionicons name="briefcase-outline" size={18} color={colors.textSecondary} />
                 <Text style={styles.moreRowText}>Remove from project</Text>
               </TouchableOpacity>
+            )}
+          </View>
+        )}
+
+        {panel === 'project' && moveToProject && (
+          <View style={styles.subPanel}>
+            <View style={styles.subHeader}>
+              <TouchableOpacity onPress={goBack} hitSlop={8} accessibilityRole="button" accessibilityLabel="Back to bulk actions">
+                <Ionicons name="chevron-back" size={20} color={colors.textSecondary} />
+              </TouchableOpacity>
+              <Text style={styles.subTitle}>Move to project</Text>
+              <View style={{ width: 28 }} />
+            </View>
+            {moveToProject.projects.length === 0 ? (
+              <Text style={styles.panelNote}>There are no other active projects to move these to.</Text>
+            ) : (
+              <ScrollView style={styles.projectList} contentContainerStyle={styles.projectListContent}>
+                {moveToProject.projects.map(p => (
+                  <TouchableOpacity
+                    key={p.id}
+                    style={styles.moreRow}
+                    onPress={() => { haptics.success(); moveToProject.onMove(p.id); }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Move to ${p.title}`}
+                  >
+                    <Ionicons
+                      name={p.isList ? 'checkbox-outline' : 'briefcase-outline'}
+                      size={18}
+                      color={colors.textSecondary}
+                    />
+                    <Text style={styles.moreRowText} numberOfLines={1}>{p.title}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
             )}
           </View>
         )}
@@ -505,6 +562,16 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.sm,
     backgroundColor: colors.bgTertiary,
     borderRadius: radius.md,
+  },
+  // Tall enough for five rows before it scrolls, so a long list of projects
+  // doesn't push the bar up over the tasks being moved.
+  projectList: { maxHeight: 260 },
+  projectListContent: { gap: spacing.xs },
+  panelNote: {
+    color: colors.textSecondary,
+    fontSize: font.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
   },
   moreRowText: {
     flex: 1,

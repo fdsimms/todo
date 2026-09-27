@@ -11,6 +11,8 @@ import {
 } from 'react-native';
 import { SheetModal } from '../components/SheetModal';
 import { ReorderableList } from '../components/ReorderableList';
+import { SortableList } from '../components/SortableList';
+import { ProgressBar } from '../components/ProgressBar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -18,7 +20,8 @@ import { useShallow } from 'zustand/react/shallow';
 import { useAnswerFirstCompletion } from '../hooks/useAnswerFirstCompletion';
 import { DeliverablePromptQueue } from '../components/DeliverablePromptQueue';
 import { useTaskStore } from '../store/useTaskStore';
-import { useProjectStore, projectDecisions, projectProgress } from '../store/useProjectStore';
+import { useProjectStore, projectDecisions, projectProgress, isProjectPastWindow } from '../store/useProjectStore';
+import { projectCardCaption, projectProgressNote } from '../utils/projectList';
 import { OfferBanner } from '../components/OfferBanner';
 import { useTaskSelection } from '../hooks/useTaskSelection';
 import { PaintSelectionProvider } from '../components/PaintSelection';
@@ -90,6 +93,10 @@ type RootStackParamList = {
 const NO_SUBTASKS: Task[] = [];
 const NO_GROUP_CHILDREN: Task[] = [];
 
+// How many tasks "Add existing task" lists before it asks for a search. It used
+// to cut off here without saying so.
+const EXISTING_PICKER_LIMIT = 30;
+
 // Matches the list's own keyExtractor — shared so the add button's drop
 // zones and the placement pass that follows a drop agree on what a row is
 // called.
@@ -103,7 +110,7 @@ function projectListItemKey(item: ProjectListItem): string {
 // Bottom-up: "New task" ends up closest to the button.
 const ADD_MENU_ITEMS: FabMenuItem[] = [
   { key: 'existing', label: 'Add existing task', icon: 'albums-outline' },
-  { key: 'stack', label: 'Section', icon: 'layers' },
+  { key: 'stack', label: 'New section', icon: 'layers' },
   { key: 'template', label: 'Template', icon: 'copy' },
   { key: 'new', label: 'New task', icon: 'checkbox' },
 ];
@@ -113,13 +120,13 @@ const ADD_MENU_ITEMS: FabMenuItem[] = [
 // offers it, alongside the two things the field can't: pulling in a task
 // that already exists elsewhere, and starting a section (a Stack homed on
 // this project). Template doesn't fit a line-per-item list the way it does
-// a scheduled project, so it's left out. Same "Section" label as the full
+// a scheduled project, so it's left out. Same "New section" label as the full
 // menu above — it's the same TaskGroup mechanism either way, and having it
 // read as two different features depending on Project.kind is exactly the
 // confusion this label avoids.
 const LIST_ADD_MENU_ITEMS: FabMenuItem[] = [
   { key: 'existing', label: 'Add existing task', icon: 'albums-outline' },
-  { key: 'stack', label: 'Section', icon: 'layers' },
+  { key: 'stack', label: 'New section', icon: 'layers' },
   { key: 'new', label: 'New task', icon: 'checkbox' },
 ];
 
@@ -160,6 +167,12 @@ export function ProjectDetailScreen() {
   const addExistingToProject = useTaskStore(s => s.addExistingToProject);
   const addTask = useTaskStore(s => s.addTask);
   const bulkRemoveFromProject = useTaskStore(s => s.bulkRemoveFromProject);
+  const bulkMoveToProject = useTaskStore(s => s.bulkMoveToProject);
+  const uncompleteProject = useTaskStore(s => s.uncompleteProject);
+  const unarchiveProject = useTaskStore(s => s.unarchiveProject);
+  const reorderGroupChildren = useTaskStore(s => s.reorderGroupChildren);
+  const removeFromGroup = useTaskStore(s => s.removeFromGroup);
+  const dayResetTime = useSettingsStore(s => s.dayResetTime);
   const reorderProjectItems = useTaskStore(s => s.reorderProjectItems);
   const bulkCompleteTasks = useTaskStore(s => s.bulkCompleteTasks);
   const bulkMarkMissed = useTaskStore(s => s.bulkMarkMissed);
@@ -213,6 +226,12 @@ export function ProjectDetailScreen() {
   // True while a subtask inside the expanded row is mid-drag; the list has to
   // stop scrolling for the duration (see TaskItem.onSubtaskDragStateChange).
   const [draggingSubtask, setDraggingSubtask] = useState(false);
+  // The section whose tasks are mid-drag, for the same reason one level up: a
+  // section's rows are a nested SortableList whose responder sits inside this
+  // screen's list, so the list has to stop scrolling or the drag is cancelled
+  // on the first finger move. By id rather than a bool so only that section's
+  // tray is lifted over its neighbours (see rowElevated), exactly as Today does.
+  const [draggingSectionId, setDraggingSectionId] = useState<string | null>(null);
   const [quickAddVisible, setQuickAddVisible] = useState(false);
   const [listDraft, setListDraft] = useState('');
   const listInputRef = useRef<TextInput>(null);
@@ -291,7 +310,12 @@ export function ProjectDetailScreen() {
     () =>
       project
         ? allTasks
-            .filter(t => t.projectId === project.id && t.parentId === null)
+            // Archived rows are left out, as every other reader of a project
+            // leaves them out (projectProgress, projectDecisions,
+            // liveProjectSteps): archiving means "out of every list". Listed
+            // here they read as open, and "Complete project, archive the rest"
+            // left them all still on screen.
+            .filter(t => t.projectId === project.id && t.parentId === null && !t.archived)
             .sort((a, b) => a.sortOrder - b.sortOrder)
         : [],
     [allTasks, project],
@@ -380,7 +404,10 @@ export function ProjectDetailScreen() {
   // everything: the rows actually on screen. Completed tasks are collapsed
   // behind a toggle, and counting hidden rows would leave the bar stuck
   // offering "Select all" after the user already had.
-  const selectableTasks = showCompleted ? projectTasks : incompleteProjectTasks;
+  //
+  // A collapsed section's tasks are off screen too, so they're left out the
+  // same way. Declared as a function of projectListItems below, which is where
+  // the sections are known.
   // What this project has already decided — one row per member, most recent
   // answer first. It does its own filtering (members, unarchived, collapsed by
   // identity), so it takes the whole task list rather than projectTasks.
@@ -394,6 +421,19 @@ export function ProjectDetailScreen() {
     if (selectionMode) exitSelection();
     navigation.goBack();
   };
+
+  // Deleting the project from its own editor used to leave this screen open
+  // on nothing: a blank title, "No tasks yet", and an add button that made
+  // orphan tasks and sections for a project that no longer existed. Only
+  // once it has been seen, so a project still loading isn't mistaken for one
+  // that was deleted.
+  // Waits for the editor to have closed, so the sheet the delete came from
+  // isn't pulled out from under itself mid-dismissal.
+  const seenProjectRef = useRef(false);
+  useEffect(() => {
+    if (project) { seenProjectRef.current = true; return; }
+    if (seenProjectRef.current && editingProject === null) navigation.goBack();
+  }, [project, editingProject, navigation]);
 
   const openEditor = (task: Task) => {
     setEditingTask(task);
@@ -451,6 +491,16 @@ export function ProjectDetailScreen() {
     () => buildProjectListItems(incompleteProjectTasks, taskGroups, projectId),
     [incompleteProjectTasks, taskGroups, projectId],
   );
+  const selectableTasks = useMemo(() => {
+    const onScreen: Task[] = [];
+    for (const item of projectListItems) {
+      if (item.type === 'task') onScreen.push(item.task);
+      else if (!item.group.collapsed) onScreen.push(...item.children);
+    }
+    return showCompleted ? [...onScreen, ...completedProjectTasks] : onScreen;
+    // completedProjectTasks is rebuilt each render; projectTasks is its source.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectListItems, showCompleted, projectTasks]);
 
   // ——— Dragging the add button into the list ———————————————————————————
   //
@@ -527,20 +577,66 @@ export function ProjectDetailScreen() {
 
   // Same id-bound shape as the row handlers above, and the same four actions
   // TodayScreen's own stack headers get — see groupHeaderProps there.
+  //
+  // Both are scoped to this project's own members. A section's roster can hold
+  // tasks filed under other projects (see buildProjectListItems), and a swipe
+  // here selected those too, off screen, where "Remove from project" then
+  // unfiled them from projects nobody was looking at.
   const handleGroupSwipeSelect = useCallback((groupId: string) => {
-    const ids = groupRosterOf(groupId).filter(t => !t.completed).map(t => t.id);
+    const ids = groupRosterOf(groupId)
+      .filter(t => !t.completed && !t.archived && t.projectId === projectId)
+      .map(t => t.id);
     if (ids.length === 0) return;
     setExpandedTaskId(null);
     enterSelectionMode(ids);
-  }, [groupRosterOf, enterSelectionMode]);
+  }, [groupRosterOf, enterSelectionMode, projectId]);
 
   const handleGroupComplete = useCallback((groupId: string) => {
     const roster = useTaskStore.getState().groupRosterOf(groupId);
+    const open = roster.filter(t => !t.completed);
+    const here = open.filter(t => t.projectId === projectId);
+    // completeGroup finishes the whole roster, so the members filed elsewhere
+    // go in its skip list alongside whatever the answer prompt skips.
+    const elsewhere = open.filter(t => t.projectId !== projectId).map(t => t.id);
     requestComplete({
-      ids: roster.filter(t => !t.completed).map(t => t.id),
-      complete: skipIds => completeGroup(groupId, { skipIds }),
+      ids: here.map(t => t.id),
+      complete: skipIds => completeGroup(groupId, { skipIds: [...skipIds, ...elsewhere] }),
     });
-  }, [completeGroup, requestComplete]);
+  }, [completeGroup, requestComplete, projectId]);
+
+  // Stable, and a no-op on an empty section. An empty one always draws open
+  // (it has no rows to hide, and collapsed it would hide its own Add task),
+  // but the tap still stored `collapsed`, so the first task added to it
+  // arrived in a section that snapped shut over it.
+  const handleGroupToggleCollapse = useCallback((groupId: string) => {
+    if (expandedTaskId !== null) { setExpandedTaskId(null); return; }
+    const group = useTaskGroupStore.getState().getGroupById(groupId);
+    if (!group) return;
+    const hasRows = useTaskStore.getState().tasks.some(
+      t => t.groupId === groupId && t.projectId === projectId && t.parentId === null && !t.completed && !t.archived,
+    );
+    if (!hasRows) return;
+    haptics.tap();
+    setDraggingGroupId(null);
+    setGroupCollapsed(groupId, !group.collapsed);
+  }, [expandedTaskId, setGroupCollapsed, projectId]);
+
+  // Dragged out of a section, a task lands just below it rather than wherever
+  // its within-section order happens to fall in the project's number space.
+  const handleDragOutOfSection = (groupId: string, task: Task) => {
+    removeFromGroup(task.id);
+    const ids: string[] = [];
+    for (const item of projectListItems) {
+      if (item.type === 'group') {
+        ids.push(item.group.id);
+        if (item.group.id === groupId) ids.push(task.id);
+      } else if (item.task.id !== task.id) {
+        ids.push(item.task.id);
+      }
+    }
+    reorderProjectItems(projectId, ids);
+    haptics.success();
+  };
   const handleGroupDefer = useCallback((groupId: string, date: Date) => deferGroup(groupId, date), [deferGroup]);
   const handleGroupPin = useCallback((groupId: string) => pinGroup(groupId), [pinGroup]);
   const handleGroupPressEdit = useCallback((groupId: string) => {
@@ -575,6 +671,7 @@ export function ProjectDetailScreen() {
   );
 
   const handleAddMenuSelect = (key: string) => {
+    if (!project) return;
     if (key === 'new') {
       setQuickAddVisible(true);
       return;
@@ -592,7 +689,14 @@ export function ProjectDetailScreen() {
       // share one number space (TaskGroup.sortOrder), so it has to be anchored
       // into this list or it lands at the top of it. Same re-anchor groupTasks
       // does, from the other end: a new stack goes after the rows already here.
-      const lastSlot = incompleteProjectTasks.reduce((m, t) => Math.max(m, t.sortOrder), 0);
+      // Read off the list as drawn: a stacked task's sortOrder is its place
+      // within its section, and a section's own slot is on the group, so the
+      // raw tasks alone could put the new one above sections already at the
+      // bottom.
+      const lastSlot = projectListItems.reduce(
+        (m, item) => Math.max(m, item.type === 'group' ? item.group.sortOrder : item.task.sortOrder),
+        0,
+      );
       updateTaskGroup(group.id, { sortOrder: lastSlot + 1 });
       newStackIdRef.current = group.id;
       setEditingGroup(group);
@@ -762,13 +866,44 @@ export function ProjectDetailScreen() {
   const eligibleForAdd = useMemo(() => {
     if (!project) return [];
     const q = existingSearch.trim().toLowerCase();
-    return allTasks.filter(t =>
-      !t.parentId &&
-      !t.projectId &&
-      !t.completed &&
-      (q === '' || t.title.toLowerCase().includes(q))
-    ).slice(0, 30);
+    // Newest first, so the task just written somewhere else is at the top
+    // rather than wherever it fell in store order.
+    return allTasks
+      .filter(t =>
+        !t.parentId &&
+        !t.projectId &&
+        !t.completed &&
+        !t.archived &&
+        (q === '' || t.title.toLowerCase().includes(q))
+      )
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }, [allTasks, existingSearch, project]);
+  const shownForAdd = useMemo(() => eligibleForAdd.slice(0, EXISTING_PICKER_LIMIT), [eligibleForAdd]);
+
+  // Where the bulk bar can move a selection: every other active project.
+  const moveTargets = useMemo(
+    () => projects
+      .filter(p => p.id !== projectId && !p.archived && !p.completed)
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .map(p => ({ id: p.id, title: p.title, isList: p.kind === 'list' })),
+    [projects, projectId],
+  );
+
+  // The line under the header: how far along the project is and its deadline,
+  // or, once it's finished or filed away, that, with the way back.
+  const pastWindow = project ? isProjectPastWindow(project, progress) : false;
+  const summaryCaption = project
+    ? projectCardCaption(
+        project,
+        pastWindow,
+        project.archived ? 'archived' : project.completed ? 'completed' : 'active',
+        dayResetTime,
+      )
+    : null;
+  const summaryProgress = project && progress.total > 0
+    ? projectProgressNote(project, progress) ?? `${progress.done} of ${progress.total} done`
+    : null;
+  const showSummary = !!project && (summaryProgress !== null || summaryCaption !== null);
 
   return (
     <SpotlightProvider progress={spotlightProgress}>
@@ -790,7 +925,10 @@ export function ProjectDetailScreen() {
                   hitSlop={8}
                   accessibilityRole="switch"
                   accessibilityState={{ checked: isList }}
-                  accessibilityLabel={isList ? 'Keep as a list, without dates' : 'Show as a project, with dates'}
+                  // A fixed name with the state beside it, as a switch reads:
+                  // the label used to change with the state, so VoiceOver said
+                  // "Keep as a list, switch, on" and the reverse when off.
+                  accessibilityLabel="Show as a list, without dates"
                 >
                   <Ionicons name="list-outline" size={20} color={isList ? colors.accent : colors.textSecondary} />
                 </TouchableOpacity>
@@ -830,7 +968,7 @@ export function ProjectDetailScreen() {
           <OfferBanner
             lead="Every task in this project"
             rest="is complete."
-            actionLabel="Mark Complete"
+            actionLabel="Mark complete"
             onAction={handleMarkComplete}
             onDismiss={() => setCompleteOfferDismissed(true)}
             accessibilityLabel="Every task in this project is complete"
@@ -872,7 +1010,7 @@ export function ProjectDetailScreen() {
             // The user can't scroll during an add-button drag (the button's
             // responder has the touch); the drag scrolls it instead, through
             // scrollControl below.
-            scrollEnabled={!painting && !draggingSubtask && !fabDragging}
+            scrollEnabled={!painting && !draggingSubtask && !fabDragging && draggingSectionId === null}
             scrollControlRef={scrollControl}
             data={projectListItems}
             keyExtractor={projectListItemKey}
@@ -880,7 +1018,10 @@ export function ProjectDetailScreen() {
             // whose card shadow falls across the row below it, and a task
             // group's tray, for the same reason — see ReorderableList's own
             // note on why this can't live on the card.
-            rowElevated={item => item.type === 'task' && item.task.id === expandedTaskId}
+            rowElevated={item =>
+              (item.type === 'task' && item.task.id === expandedTaskId) ||
+              (item.type === 'group' && item.group.id === draggingSectionId)
+            }
             // paddingTop only applies once there's a first row to clear — with
             // none, it's top-only padding inside the flexGrow:1 box the empty
             // state centers in, which pushes that centering down off true
@@ -967,6 +1108,39 @@ export function ProjectDetailScreen() {
             // mid-selection would be the odd one out.
             ListHeaderComponent={
               <>
+                {showSummary && (
+                  <View style={styles.summaryCard}>
+                    <Text style={styles.summaryText}>
+                      {summaryProgress}
+                      {summaryProgress && summaryCaption ? ' · ' : ''}
+                      {summaryCaption && (
+                        <Text style={summaryCaption.overdue && pastWindow ? styles.summaryOverdue : undefined}>
+                          {summaryCaption.text}
+                        </Text>
+                      )}
+                    </Text>
+                    {summaryProgress !== null && !projectProgressNote(project!, progress) && (
+                      <ProgressBar progress={progress.done / progress.total} />
+                    )}
+                    {/* Its own row, under the text, so the line above never
+                        gives up width to a button. */}
+                    {!selectionMode && (project!.archived || project!.completed) && (
+                      <View style={styles.summaryActions}>
+                        <InlineAction
+                          icon={project!.archived ? 'arrow-undo' : 'refresh'}
+                          label={project!.archived ? 'Unarchive' : 'Reopen'}
+                          variant="neutral"
+                          onPress={() => {
+                            haptics.tap();
+                            if (project!.archived) unarchiveProject(project!.id);
+                            else uncompleteProject(project!.id);
+                          }}
+                          accessibilityLabel={project!.archived ? 'Unarchive this project' : 'Reopen this project'}
+                        />
+                      </View>
+                    )}
+                  </View>
+                )}
                 {forecastLine && (
                   <View style={styles.forecastRow}>
                     <Ionicons name="partly-sunny-outline" size={16} color={colors.textSecondary} />
@@ -1033,12 +1207,7 @@ export function ProjectDetailScreen() {
                       // transient the floating card owns, and a chevron
                       // flipping under the finger mid-drag is noise.
                       expanded={stackExpanded}
-                      onToggleCollapse={() => {
-                        if (expandedTaskId !== null) { setExpandedTaskId(null); return; }
-                        haptics.tap();
-                        setDraggingGroupId(null);
-                        setGroupCollapsed(group.id, !group.collapsed);
-                      }}
+                      onToggleCollapse={handleGroupToggleCollapse}
                       onComplete={handleGroupComplete}
                       onDefer={handleGroupDefer}
                       onSwipeSelect={handleGroupSwipeSelect}
@@ -1051,6 +1220,9 @@ export function ProjectDetailScreen() {
                       // header alone like every other stack's.
                       expanded={stackExpanded && draggingGroupId !== group.id}
                       hasChildren
+                      // Lets a task dragged out of the section cross the
+                      // tray's edge instead of being clipped at it.
+                      dragging={draggingSectionId === group.id}
                     >
                       {empty ? (
                         <View style={styles.emptyStackRow}>
@@ -1063,14 +1235,33 @@ export function ProjectDetailScreen() {
                               setQuickAddSeedLabel(group.title.trim() || 'Section');
                               setQuickAddVisible(true);
                             }}
-                            accessibilityLabel={`Add a task to the ${group.title} section`}
+                            accessibilityLabel={group.title.trim() ? `Add a task to the ${group.title.trim()} section` : 'Add a task to this section'}
                           />
                         </View>
-                      ) : children.map(child => (
-                        <React.Fragment key={child.id}>
-                          {renderProjectTaskItem(child, { indented: true })}
-                        </React.Fragment>
-                      ))}
+                      ) : (
+                        // The same nested list Today gives a stack's rows:
+                        // drag to reorder within the section, or past its edge
+                        // to take a task out of it. These were drawn static,
+                        // so a section's order could only be changed from
+                        // Today, and a task could only leave one through its
+                        // editor.
+                        <SortableList
+                          data={children}
+                          onReorder={reordered => reorderGroupChildren(group.id, reordered.map(t => t.id))}
+                          onDragOut={task => handleDragOutOfSection(group.id, task)}
+                          onDragStateChange={dragging => setDraggingSectionId(dragging ? group.id : null)}
+                          placeholderStyle={styles.sectionDropSlot}
+                          renderItem={(child, _displayIndex, childDrag, childIsActive) => (
+                            <React.Fragment key={child.id}>
+                              {renderProjectTaskItem(child, {
+                                indented: true,
+                                isActive: childIsActive,
+                                drag: childDrag,
+                              })}
+                            </React.Fragment>
+                          )}
+                        />
+                      )}
                     </TaskGroupBody>
                   </TaskGroupTray>
                   </GroupDropTarget>
@@ -1133,7 +1324,11 @@ export function ProjectDetailScreen() {
                           selected={selectedIds.has(task.id)}
                           onSelect={toggleSelection}
                           onSwipeSelect={handleRowSwipeSelect}
-                          showCategory
+                          // The same two a live row gets, so a list's
+                          // finished lines don't grow the chips its open ones
+                          // leave out.
+                          showCategory={!isList}
+                          showDate={!isList}
                           showGroup
                           showPin={false}
                         />
@@ -1188,6 +1383,14 @@ export function ProjectDetailScreen() {
               bulkRemoveFromProject(Array.from(selectedIds));
               exitSelection();
             }}
+            moveToProject={{
+              projects: moveTargets,
+              onMove: targetId => {
+                animateLayout();
+                bulkMoveToProject(Array.from(selectedIds), targetId);
+                exitSelection();
+              },
+            }}
             onSelectAll={() => selectAll(selectableTasks.map(t => t.id))}
             onDeselectAll={deselectAll}
             onCancel={exitSelection}
@@ -1214,15 +1417,16 @@ export function ProjectDetailScreen() {
             <SheetHeader
               title="Add existing task"
               size="lg"
+              // Done, not Cancel: every tap below adds its task straight away,
+              // so there is nothing for Cancel to take back.
               left={
                 <SheetHeaderButton
-                  label="Cancel"
-                  role="cancel"
+                  label="Done"
                   onPress={() => { Keyboard.dismiss(); setShowExistingPicker(false); }}
-                  accessibilityLabel="Close"
+                  accessibilityLabel="Done adding tasks"
                 />
               }
-              // Balances Cancel so the title stays optically centered.
+              // Balances Done so the title stays optically centered.
               right={<View style={styles.headerSpacer} />}
             />
             <SearchField
@@ -1232,9 +1436,16 @@ export function ProjectDetailScreen() {
               accessibilityLabel="Search tasks to add"
             />
             <FlatList
-              data={eligibleForAdd}
+              data={shownForAdd}
               keyExtractor={t => t.id}
-              contentContainerStyle={eligibleForAdd.length === 0 ? styles.emptyContainer : undefined}
+              contentContainerStyle={shownForAdd.length === 0 ? styles.emptyContainer : undefined}
+              ListFooterComponent={
+                eligibleForAdd.length > shownForAdd.length ? (
+                  <Text style={styles.pickerMore}>
+                    Showing the newest {shownForAdd.length} of {eligibleForAdd.length}. Search to find the rest.
+                  </Text>
+                ) : null
+              }
               renderItem={({ item }) => (
                 <TouchableOpacity
                   style={styles.pickerRow}
@@ -1243,6 +1454,8 @@ export function ProjectDetailScreen() {
                     haptics.tap();
                   }}
                   activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Add ${item.title} to this project`}
                 >
                   <Text style={styles.pickerRowText} numberOfLines={1}>{item.title}</Text>
                   <Ionicons name="add-circle-outline" size={18} color={colors.accent} />
@@ -1263,7 +1476,7 @@ export function ProjectDetailScreen() {
             bottom={insets.bottom + spacing.xl}
             accessibilityLabel="Add task to project"
             drag={fabDrag}
-            dragHint="Drag onto the list to add a task there, or into a section to join it, or back to the button to cancel"
+            dragHint="Drag onto the list to add a task at that spot. Drop it on a section to add it there, or back on the button to cancel."
           />
         )}
 
@@ -1387,6 +1600,34 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   forecastContent: { flex: 1 },
+  // Same card and gutters as the forecast row under it.
+  summaryCard: {
+    backgroundColor: colors.bgSecondary,
+    marginHorizontal: spacing.md,
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.smd,
+    gap: spacing.sm,
+  },
+  summaryText: { color: colors.textSecondary, fontSize: font.sm },
+  summaryOverdue: { color: colors.orange },
+  summaryActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  // The same drop slot Today leaves in a stack.
+  sectionDropSlot: {
+    marginVertical: spacing.xxs,
+    borderRadius: radius.md,
+    backgroundColor: colors.bgSecondary,
+    opacity: 0.55,
+  },
+  pickerMore: {
+    color: colors.textSecondary,
+    fontSize: font.sm,
+    textAlign: 'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+  },
   forecastLine: { color: colors.text, fontSize: font.sm },
   forecastGap: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.xxs },
   listAddRow: {

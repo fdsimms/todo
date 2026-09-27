@@ -1845,6 +1845,8 @@ interface TaskStore extends UndoHistoryActions {
   removeFromProject: (taskId: string) => void;
   /** Unfiles a selection from whatever project each is in, as one undo entry. */
   bulkRemoveFromProject: (taskIds: string[]) => void;
+  /** Files the selection under another project, as one undo entry. */
+  bulkMoveToProject: (taskIds: string[], projectId: string) => void;
   deleteProject: (projectId: string, opts: { cascade: boolean }) => void;
   // Archive/restore a project through here rather than through useProjectStore
   // directly — these are the ones that register an undo entry.
@@ -7772,6 +7774,24 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     });
     get().setLastAction({
       label: `${previous.length} task${previous.length === 1 ? '' : 's'} removed from project`,
+      undo: () => previous.forEach(p => get().updateTask(p.id, { projectId: p.projectId })),
+    });
+  },
+
+  // The same shape as bulkRemoveFromProject, pointed at another project rather
+  // than at none: each task's own previous project is what undo restores.
+  bulkMoveToProject(taskIds, projectId) {
+    const idSet = new Set(taskIds);
+    const previous = get().tasks
+      .filter(t => idSet.has(t.id) && t.projectId !== projectId)
+      .map(t => ({ id: t.id, projectId: t.projectId }));
+    if (previous.length === 0) return;
+    dbTransaction(() => {
+      previous.forEach(p => get().updateTask(p.id, { projectId }));
+    });
+    const title = useProjectStore.getState().getProjectById(projectId)?.title;
+    get().setLastAction({
+      label: `${previous.length} task${previous.length === 1 ? '' : 's'} moved${title ? ` to ${title}` : ''}`,
       undo: () => previous.forEach(p => get().updateTask(p.id, { projectId: p.projectId })),
     });
   },

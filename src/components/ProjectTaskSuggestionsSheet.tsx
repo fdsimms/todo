@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Alert,
   View,
@@ -47,20 +47,28 @@ export function ProjectTaskSuggestionsSheet({ visible, projectId, projectTitle, 
   const [suggestions, setSuggestions] = useState<ProjectTaskSuggestion[]>([]);
   // Indices of accepted suggestions; everything starts accepted.
   const [accepted, setAccepted] = useState<Set<number>>(new Set());
+  // Bumped by every request and by closing the sheet, so only the newest
+  // request's answer is kept. Regenerate tapped twice, or the sheet closed and
+  // reopened mid-request, otherwise let an older batch land over a newer one,
+  // or fill a sheet that had already been closed.
+  const requestIdRef = useRef(0);
 
   const load = useCallback(async () => {
+    const requestId = ++requestIdRef.current;
     setLoading(true);
     setError(null);
     try {
       const result = await suggestProjectTasks(projectTitle, projectNotes, existingTitles);
+      if (requestId !== requestIdRef.current) return;
       setSuggestions(result);
       setAccepted(new Set(result.map((_, i) => i)));
     } catch (e) {
+      if (requestId !== requestIdRef.current) return;
       setSuggestions([]);
       setAccepted(new Set());
       setError(describeAIError(e));
     } finally {
-      setLoading(false);
+      if (requestId === requestIdRef.current) setLoading(false);
     }
     // projectTitle/projectNotes/existingTitles are read at call time; the
     // sheet only fires this when it opens or on an explicit regenerate, so
@@ -71,6 +79,8 @@ export function ProjectTaskSuggestionsSheet({ visible, projectId, projectTitle, 
   // Generate fresh suggestions each time the sheet opens; clear on close.
   useEffect(() => {
     if (!visible) {
+      requestIdRef.current++;
+      setLoading(false);
       setSuggestions([]);
       setAccepted(new Set());
       setError(null);
@@ -174,6 +184,9 @@ export function ProjectTaskSuggestionsSheet({ visible, projectId, projectTitle, 
                   style={[styles.row, !isAccepted && styles.rowRejected]}
                   onPress={() => toggle(i)}
                   activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: isAccepted }}
+                  accessibilityLabel={s.title}
                 >
                   <Ionicons
                     name={isAccepted ? 'checkmark-circle' : 'ellipse-outline'}

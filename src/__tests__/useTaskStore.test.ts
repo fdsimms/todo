@@ -15460,6 +15460,36 @@ describe('deleteProjectCategory', () => {
   });
 });
 
+// ─── bulkMoveToProject ──────────────────────────────────────────────────────
+
+describe('bulkMoveToProject', () => {
+  it('files every selected task under the new project and leaves the rest', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', projectId: 'p1' }),
+        makeTask({ id: 'b', projectId: null }),
+        makeTask({ id: 'c', projectId: 'p1' }),
+      ],
+    });
+    useTaskStore.getState().bulkMoveToProject(['a', 'b'], 'p2');
+    const byId = (id: string) => useTaskStore.getState().tasks.find(t => t.id === id);
+    expect(byId('a')?.projectId).toBe('p2');
+    expect(byId('b')?.projectId).toBe('p2');
+    expect(byId('c')?.projectId).toBe('p1');
+  });
+
+  it('returns each task to wherever it was on one undo', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', projectId: 'p1' }), makeTask({ id: 'b', projectId: null })],
+    });
+    useTaskStore.getState().bulkMoveToProject(['a', 'b'], 'p2');
+    useTaskStore.getState().undoLastAction();
+    const byId = (id: string) => useTaskStore.getState().tasks.find(t => t.id === id);
+    expect(byId('a')?.projectId).toBe('p1');
+    expect(byId('b')?.projectId).toBeNull();
+  });
+});
+
 // ─── bulkRemoveFromProject ──────────────────────────────────────────────────
 
 describe('bulkRemoveFromProject', () => {
