@@ -23,7 +23,7 @@ import {
   checkboxRadius,
   type Colors,
 } from '../theme';
-import { itemsOnList } from '../utils/groceryLists';
+import { entryFor, itemsOnList } from '../utils/groceryLists';
 import { useGroceryStore } from '../store/useGroceryStore';
 import {
   suggestGroceryAisles,
@@ -206,7 +206,10 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
         // row already on the list reads as one this apply added — and undo
         // would then take it off. Same lookup addManyFromText makes.
         const before = catalogItemForKey(key, useGroceryStore.getState().items) ?? undefined;
-        const wasOnList = before?.onList === true;
+        // On the list being added to, not on any list — same as addManyFromText.
+        // Read fresh: earlier rows in this loop have already been added.
+        const { listEntries: entriesNow, activeListId: listNow } = useGroceryStore.getState();
+        const wasOnList = !!before && entryFor(entriesNow, before.id, listNow) !== null;
         // addByName so an item already in the catalog is re-listed rather than
         // duplicated; the aisle and quantity are then applied on top of
         // whatever the lexicon guessed. An aisle the user has filed this item

@@ -91,7 +91,7 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { KNOWN_LINK_APPS } from '../constants/linkApps';
 import type { GroceryItem, ItemProduct, Recipe, Shop } from '../types';
 import { preferredProductOf } from '../utils/groceryProduct';
-import { itemsOnList, listNameFor, isAwayList, HOME_LIST_NAME } from '../utils/groceryLists';
+import { entryFor, itemsOnList, listNameFor, isAwayList, HOME_LIST_NAME } from '../utils/groceryLists';
 
 // The same scheme a recurring "Grocery run" task already carries in its
 // linkUrl — looked up by name rather than duplicated as a literal, so the two
@@ -748,7 +748,15 @@ export function GroceryScreen() {
       // `rows` is this render's list, from before the add — which is exactly
       // what placeNewGroceryItems wants, since it splices the new rows in
       // itself (and drops them from their old spot if they were already there).
-      const placements = placeNewGroceryItems(rows, drop.anchorKey, drop.before, created);
+      // Projected onto this list's entries, read fresh because this render's
+      // are from before the add: a row's slot is its entry's sortOrder, and
+      // the item's own is only the home list's mirror.
+      const { listEntries: entriesNow, activeListId: listNow } = useGroceryStore.getState();
+      const projected = created.map(item => {
+        const entry = entryFor(entriesNow, item.id, listNow);
+        return entry ? { ...item, sortOrder: entry.sortOrder } : item;
+      });
+      const placements = placeNewGroceryItems(rows, drop.anchorKey, drop.before, projected);
       if (placements) applyDrop(placements);
       const last = created[created.length - 1];
       pendingDropRef.current = { ...drop, anchorKey: last.id, before: false };

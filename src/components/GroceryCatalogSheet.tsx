@@ -107,12 +107,18 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
 
   const now = useMemo(() => new Date(), [visible]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const shopCounts = useMemo(() => itemCountsByShop(items, itemShops), [items, itemShops]);
+  // Counted over the rows this sheet can show, which leaves out whatever is
+  // already in the active trolley: counting those made "Costco 70" filter to 60.
+  const shopCounts = useMemo(
+    () => itemCountsByShop(items, itemShops, inTrolley),
+    [items, itemShops, inTrolley]
+  );
   // Only stores with something in them: a chip reading "Aldi (0)" is a filter
-  // whose only outcome is an empty list.
+  // whose only outcome is an empty list. The active one stays, so adding its
+  // last row can't take away the chip that turns the filter off.
   const filterShops = useMemo(
-    () => shops.filter(s => (shopCounts.get(s.id) ?? 0) > 0),
-    [shops, shopCounts]
+    () => shops.filter(s => (shopCounts.get(s.id) ?? 0) > 0 || s.id === shopFilter),
+    [shops, shopCounts, shopFilter]
   );
 
   // Wrapping pills, not a horizontal scroll row — the same call
@@ -157,17 +163,20 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
     return items.filter(i => ids.has(i.id));
   }, [items, itemShops, shopFilter]);
 
+  // No cap under a store filter: that set is already bounded, and its chip
+  // said how many rows it holds. Capping it hid everything past 40 behind a
+  // search nobody was told to make.
   const rows = useMemo(() => {
     if (query.trim()) {
-      return rankGrocerySuggestions(query, scoped, now, 50, inTrolley)
+      return rankGrocerySuggestions(query, scoped, now, shopFilter ? Infinity : 50, inTrolley)
         .filter(s => !s.onList)
         .map(s => s.item);
     }
     // Scoped to the active list, not to "on any list": a staple already on the
     // list at home is exactly what Buy again should offer while you're
     // stocking a rental kitchen.
-    return rankedCatalogItems(scoped, now, 40, inTrolley);
-  }, [query, scoped, now, inTrolley]);
+    return rankedCatalogItems(scoped, now, shopFilter ? Infinity : 40, inTrolley);
+  }, [query, scoped, now, inTrolley, shopFilter]);
 
   // Deliberately over `items` and not `scoped`: the prune offer is about the
   // whole catalog, and scoping it to a store would offer to forget a subset

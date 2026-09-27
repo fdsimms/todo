@@ -251,6 +251,23 @@ describe('planGroceryAdd', () => {
       expect(plan.entry).toMatchObject({ itemId: 'm1', listId: 'away' });
     });
 
+    // "Already on the list" is about the list this add joins, not any list.
+    it('reports a row on another list only as not already on this one', () => {
+      const plan = planGroceryAdd(
+        'milk',
+        context({ items: [milk], listEntries: [entry('m1')], listId: 'away' }),
+      );
+      expect(plan.wasOnList).toBe(false);
+    });
+
+    it('reports a row already in this trolley as already on the list', () => {
+      const plan = planGroceryAdd(
+        'milk',
+        context({ items: [milk], listEntries: [entry('m1', { listId: 'away' })], listId: 'away' }),
+      );
+      expect(plan.wasOnList).toBe(true);
+    });
+
     it('writes a named either/or onto an entry that already exists', () => {
       const plan = planGroceryAdd(
         'milk',

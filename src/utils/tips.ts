@@ -473,6 +473,16 @@ export const TIPS: Tip[] = [
     keywords: ['bulk add', 'parse', 'quantity', 'autocomplete'],
   },
   {
+    id: 'grocery-drag-to-fab',
+    area: 'groceries',
+    screen: 'groceries',
+    icon: 'move-outline',
+    title: 'Drag the add button onto an aisle',
+    body: 'Holding the + button and dragging it over the list lets you drop it on an aisle or between two items, so what you add next is filed there.',
+    when: s => s.groceryItemCount >= 5,
+    keywords: ['fab', 'plus', 'drop', 'aisle', 'place', 'gesture'],
+  },
+  {
     id: 'grocery-shops',
     area: 'groceries',
     screen: 'groceries',

@@ -1994,7 +1994,10 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       // The same resolution addByName is about to make, or this loop counts a
       // line it merged into an existing row as a freshly minted one.
       const before = catalogItemForKey(key, get().items) ?? undefined;
-      const wasOnList = before?.onList === true;
+      // On the list being pasted into, not on any list: milk on the home list
+      // is a fresh add to the Airbnb one, and its undo has to take it off.
+      const wasOnList = !!before
+        && entryFor(get().listEntries, before.id, get().activeListId) !== null;
       const item = get().addByName(line, undefined, undefined, { registerUndo: false });
       if (wasOnList) alreadyOnList.push(item);
       else added.push(item);
@@ -4972,6 +4975,13 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       e => e.listId === listId && (e.itemId === item.id || e.itemId === sub.id)
     );
 
+    // A substitute already on this list (margarine for another recipe, maybe
+    // already in the cart) keeps its own entry, its checked state and its own
+    // quantity: the swap only takes the original off. Overwriting it would
+    // un-tick something already in the cart and replace "1 tub" with the
+    // converted amount of the row it stands in for.
+    const subEntry = entryFor(get().listEntries, sub.id, listId);
+
     const link = get().itemSubs.find(l => l.itemId === itemId && l.subItemId === subItemId);
     let quantity = item.quantity;
     if (item.quantity && link?.ratioFrom && link?.ratioTo) {
@@ -4979,13 +4989,15 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       if (converted.converted) quantity = converted.text;
     }
 
-    const updatedSub: GroceryItem = {
-      ...sub,
-      quantity: quantity ?? sub.quantity,
-      quantityFromRecipe: quantity ? item.quantityFromRecipe : sub.quantityFromRecipe,
-      lastAddedAt: new Date().toISOString(),
-    };
-    dbUpdateGroceryItem(updatedSub);
+    const updatedSub: GroceryItem = subEntry
+      ? sub
+      : {
+          ...sub,
+          quantity: quantity ?? sub.quantity,
+          quantityFromRecipe: quantity ? item.quantityFromRecipe : sub.quantityFromRecipe,
+          lastAddedAt: new Date().toISOString(),
+        };
+    if (!subEntry) dbUpdateGroceryItem(updatedSub);
 
     // The row being swapped out just comes off the list — it used to be deleted
     // when provisional, which is the case this refactor is most obviously about:
@@ -5012,7 +5024,9 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // rather than being appended to the bottom of a list you are walking. The
     // row it stands in for leaves this trolley and no other.
     writeMembership({
-      upsert: [{ ...swappedEntry, itemId: sub.id, checked: false, addedAt: new Date().toISOString() }],
+      upsert: subEntry
+        ? []
+        : [{ ...swappedEntry, itemId: sub.id, checked: false, addedAt: new Date().toISOString() }],
       remove: [{ itemId: item.id, listId }],
     });
 

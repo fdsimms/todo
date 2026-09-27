@@ -6346,6 +6346,27 @@ describe('swapForSubstitute', () => {
     expect(items.find(i => i.id === margarine.id)).toEqual(margarine);
   });
 
+  it('keeps a substitute that is already on the list as it was: checked, with its own quantity', () => {
+    const butter = makeItem({ name: 'Butter', onList: true, quantity: '2 sticks' });
+    const margarine = makeItem({ name: 'Margarine', onList: true, checked: true, quantity: '1 tub' });
+    seed([butter, margarine], {
+      itemSubs: [
+        { itemId: butter.id, subItemId: margarine.id, note: null, createdAt: '2020-01-01T00:00:00.000Z', ratioFrom: null, ratioTo: null, standing: false },
+      ],
+    });
+
+    useGroceryStore.getState().swapForSubstitute(butter.id, margarine.id);
+
+    const items = useGroceryStore.getState().items;
+    expect(items.find(i => i.id === margarine.id)).toMatchObject({ onList: true, checked: true, quantity: '1 tub' });
+    expect(items.find(i => i.id === butter.id)!.onList).toBe(false);
+
+    useGroceryStore.getState().lastAction!.undo();
+    const restored = useGroceryStore.getState().items;
+    expect(restored.find(i => i.id === butter.id)).toEqual(butter);
+    expect(restored.find(i => i.id === margarine.id)).toEqual(margarine);
+  });
+
   // It used to delete a never-bought original outright. That was the worst
   // instance of the old rule: the row being swapped away from is the one
   // holding the link that says what to swap it for.
@@ -6833,6 +6854,36 @@ describe('separate shopping lists', () => {
 
       expect(entryOf(milk.id, null)).not.toBeNull();
       expect(entryOf(milk.id, AIRBNB.id)).not.toBeNull();
+    });
+
+    it('counts a paste line on the home list only as added to the away list, and undo takes it back off', () => {
+      // "Already on the list" is about the list being pasted into. Milk on the
+      // home list is a fresh add to Airbnb, so the paste reports it as added
+      // and its undo removes it from Airbnb (and only from Airbnb).
+      const milk = makeItem({ name: 'Milk', onList: true });
+      seed([milk], { lists: [AIRBNB], activeListId: AIRBNB.id });
+
+      const { added, alreadyOnList } = useGroceryStore.getState().addManyFromText('milk\neggs');
+
+      expect(added.map(i => i.name)).toEqual(['milk', 'eggs']);
+      expect(alreadyOnList).toHaveLength(0);
+      expect(useGroceryStore.getState().lastAction!.label).toBe('2 items added');
+
+      useGroceryStore.getState().lastAction!.undo();
+      expect(entryOf(milk.id, AIRBNB.id)).toBeNull();
+      expect(entryOf(milk.id, null)).not.toBeNull();
+    });
+
+    it('registers an undo for a typed add that is new to the away list', () => {
+      const milk = makeItem({ name: 'Milk', onList: true });
+      seed([milk], { lists: [AIRBNB], activeListId: AIRBNB.id });
+
+      useGroceryStore.getState().addByName('milk');
+
+      expect(useGroceryStore.getState().lastAction?.label).toBe('Added "milk"');
+      useGroceryStore.getState().lastAction!.undo();
+      expect(entryOf(milk.id, AIRBNB.id)).toBeNull();
+      expect(entryOf(milk.id, null)).not.toBeNull();
     });
 
     it('leaves the tick on the list it is already in', () => {
