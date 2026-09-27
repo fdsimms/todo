@@ -172,7 +172,7 @@ import {
 } from '../utils/supply';
 import { getNextDueDate, getCurrentDayStart, getLogicalDayKey, getLogicalToday, getLogicalTomorrow, getTaskDayStart, getEffectiveTaskDate, dayKeyOf, dayKeyToDate, getDeadlineFromOffset, getDeadlineFromMonthDay, getReminderOffsetDate, getStreakOutcome, getNextSeriesDates, recurrenceAnchorDayFor, captureReminderOffset, reanchorReminderToWallClock } from '../utils/dateUtils';
 import { entriesForSlot, shiftDayKey } from '../utils/mealPlan';
-import { MEAL_SLOT_TASK_DAYS, completesMealSlot, mealSlotSourceId, mealSlotStepTimeSegments, mealSlotTaskDraft, parseMealSlotSource } from '../utils/mealSlotTasks';
+import { MEAL_SLOT_TASK_DAYS, completesMealSlot, mealSlotSourceId, mealSlotStepTimeSegments, mealSlotTaskDraft, parseMealSlotSource, slotEntryForTask } from '../utils/mealSlotTasks';
 import { wantsMealLogPrompt } from '../utils/mealLog';
 import { quotaRunSpan, quotaTargetForInterval, quotaDueTimesAfter, isQuotaRunOver, quotaWeekStart } from '../utils/quotaSchedule';
 import { isRotationTask, rotationCoversNew, rotationPick, rotationUnpick } from '../utils/rotation';
@@ -860,7 +860,7 @@ function writeMealSlotTasks(
   // above every section.
   ensureGeneratedTaskCategory('mealSlot');
   const category = useSettingsStore.getState().mealCookTaskCategory;
-  const recipes = useRecipeStore.getState().recipes;
+  const library = useRecipeStore.getState();
 
   for (let dayKey = fromKey; dayKey <= toKey; dayKey = shiftDayKey(dayKey, 1)) {
     for (const slot of slots) {
@@ -884,10 +884,13 @@ function writeMealSlotTasks(
       // Already cooked before the pass ran — there is nothing left to do and
       // nothing to ask.
       if (entry?.cookedAt) continue;
-      const recipe = entry?.recipeId ? recipes.find(r => r.id === entry.recipeId) : undefined;
+      // A meal whose recipe was deleted is written as the typed meal it now
+      // reads as, rather than "Make X" linking to a recipe that's gone.
+      const planned = slotEntryForTask(entry, library);
+      const recipe = planned?.recipeId ? library.recipes.find(r => r.id === planned.recipeId) : undefined;
       const created = useTaskStore.getState().addTask(
         mealSlotTaskDraft(
-          dayKey, slot, entry, category, recipe ? totalMinutes(recipe) : null,
+          dayKey, slot, planned, category, recipe ? totalMinutes(recipe) : null,
           useSettingsStore.getState().mealSlotStepEstimates
         ),
         derivedId(spawnSeed.generated('mealSlot', sourceId, generatedTaskCountOf(tasks, 'mealSlot', sourceId))),

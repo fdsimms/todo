@@ -6510,6 +6510,7 @@ describe('checkMealSlotTasks', () => {
   });
 
   it('skips the choosing for a slot that is already answered', () => {
+    useRecipeStore.setState({ recipes: [recipe('r1')] });
     (dbGetMealPlanEntries as jest.Mock).mockReturnValue([
       mealEntry('2026-08-25', 'dinner', { recipeId: 'r1', title: 'Chili' }),
     ]);
@@ -6523,6 +6524,25 @@ describe('checkMealSlotTasks', () => {
     expect(friday.title).toBe('Chili');
     // And the nights around it are still the choosing question.
     expect(slotRows().find(t => t.generatedSourceId === '2026-08-24#dinner')!.title).toBe('Dinner');
+  });
+
+  it('writes a meal whose recipe was deleted as the typed meal it now reads as', () => {
+    // The entry keeps pointing at the recipe on purpose, so a night planned
+    // before the delete and first reached by the pass after it would
+    // otherwise say "Make Chili" and link to "This recipe is gone".
+    useRecipeStore.setState({ recipes: [], initialized: true });
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([
+      mealEntry('2026-08-25', 'dinner', { recipeId: 'r-gone', title: 'Chili' }),
+    ]);
+    useSettingsStore.getState.mockReturnValue(settings({ mealSlotsEnabled: ['dinner'] }));
+    useTaskStore.setState({ tasks: [] });
+
+    useTaskStore.getState().checkMealSlotTasks();
+
+    const friday = slotRows().find(t => t.generatedSourceId === '2026-08-25#dinner')!;
+    expect(friday.title).toBe('Eat Chili');
+    expect(friday.chainEnabled).toBe(false);
+    expect(friday.linkUrl).toBe('dundundun://mealplan?date=2026-08-25');
   });
 
   it('carries the recipe\'s prep + cook time onto the Cook step', () => {

@@ -37,8 +37,9 @@ import { mealTitleOffPlan } from './mealPlan';
  *
  * Built off `entry.title` and not the live recipe name, the same call
  * `cookTaskTitle` makes and for the same reason: the entry keeps its own
- * title in step (captured at plan time, rewritten by `bulkReplaceItem`), so
- * this needs no recipe lookup and stays free of the recipe store. A leftover
+ * title in step (captured at plan time, rewritten by `bulkReplaceItem`, and by
+ * `retitleRecipeEntries` when the recipe itself is renamed), so this needs no
+ * recipe lookup and stays free of the recipe store. A leftover
  * says so (`mealTitleOffPlan`), since the snowflake that marks one on the plan
  * row doesn't travel to a calendar.
  */

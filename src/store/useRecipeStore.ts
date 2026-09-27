@@ -72,7 +72,11 @@ interface RecipeStore {
 
   /** Null when the name is empty or already taken — the caller shows why. */
   addRecipe: (name: string) => Recipe | null;
-  /** False on an empty name or a collision with another recipe. */
+  /**
+   * False on an empty name or a collision with another recipe. A rename that
+   * lands also retitles the meals planned from it (see
+   * useMealPlanStore.retitleRecipeEntries).
+   */
   renameRecipe: (id: string, name: string) => boolean;
   setNotes: (id: string, notes: string) => void;
   setSourceUrl: (id: string, url: string | null) => void;
@@ -215,6 +219,10 @@ interface RecipeStore {
    * couldn't put them back; a link that stops resolving renders as a row saying
    * so, which they can remove or replace. The editor's confirm names those
    * parents first (see RecipeEditor.handleDelete).
+   *
+   * Planned meals keep their pointer the same way (MealPlanEntry.recipeId),
+   * but their tasks on Today are reconciled so they stop asking to make a
+   * recipe that's gone (see useMealPlanStore.reconcileRecipeSlots).
    */
   deleteRecipe: (id: string) => void;
   /** Deletes every named recipe. No undo — same as deleteRecipe's own confirm-only flow. */
@@ -549,6 +557,9 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     // against *other* recipes rather than refusing to touch this one.
     if (key !== recipe.nameKey && get().recipes.some(r => r.nameKey === key)) return false;
     save(set, { ...recipe, name: clean, nameKey: key });
+    // The plan shows the live name already, but the calendar event and the
+    // "Make X" task are built off each entry's captured title.
+    mealPlan().retitleRecipeEntries(id, clean);
     return true;
   },
 
@@ -783,6 +794,9 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     dbDeleteRecipe(id);
     set(s => ({ recipes: s.recipes.filter(r => r.id !== id) }));
     if (recipe) deleteRecipeImage(recipe.imagePath);
+    // After the recipe has left the list, which is what the reconcile reads to
+    // turn "Make Chili" on Today back into a typed meal.
+    if (recipe) mealPlan().reconcileRecipeSlots([id]);
   },
 
   bulkDeleteRecipes(ids) {
@@ -794,6 +808,8 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     // Their photo files too, the same cleanup deleteRecipe does: without it
     // every recipe deleted from the bulk bar left its image on disk for good.
     toDelete.forEach(r => deleteRecipeImage(r.imagePath));
+    // And their planned meals' tasks, the same reconcile deleteRecipe runs.
+    mealPlan().reconcileRecipeSlots(toDelete.map(r => r.id));
   },
 
   bulkSetVote(ids, vote) {
@@ -1393,6 +1409,19 @@ function save(set: SetRecipes, recipe: Recipe): void {
   };
   dbUpdateRecipe(next);
   set(s => ({ recipes: s.recipes.map(r => (r.id === next.id ? next : r)) }));
+}
+
+/**
+ * The meal plan store, required lazily: it imports this one back (a planned
+ * meal resolves its recipe here), and loading it eagerly would pull the task
+ * store and the calendar bridge into everything that reads a recipe. Only a
+ * rename or a delete reaches it, and those owe the plan a write: its entries
+ * point at recipes by id, and what's built off them (a meal's task, its
+ * calendar event) doesn't follow a recipe on its own.
+ */
+function mealPlan() {
+  const { useMealPlanStore } = require('./useMealPlanStore') as typeof import('./useMealPlanStore');
+  return useMealPlanStore.getState();
 }
 
 // Same shape as useTaskStore's nextPinnedOrder: one past the shelf's current

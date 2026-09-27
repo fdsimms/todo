@@ -1650,9 +1650,12 @@ export function MealPlanScreen() {
   // Empty for a week with nothing planned, which is what the header action's
   // disabled state gates on — see buildWeekPlanShareText.
   const weekShareText = useMemo(
-    () => buildWeekPlanShareText(days, entries, recipesById),
-    [days, entries, recipesById]
+    () => buildWeekPlanShareText(days, entries, recipesById, { thisWeek: onThisWeek }),
+    [days, entries, recipesById, onThisWeek]
   );
+  // What the copy and share buttons say they act on, in the same words the
+  // text itself opens with: "this week" only while it is this week.
+  const weekMealsLabel = onThisWeek ? 'this week’s meals' : `the meals for ${describeWeekRange(days)}`;
   // Copied as it is shared, day headings and all: unlike a list of
   // ingredients or groceries, nothing is waiting to parse this — it goes in a
   // note or a message, where the headings are what make it readable.
@@ -1684,13 +1687,13 @@ export function MealPlanScreen() {
         icon: copiedWeek ? 'checkmark' : 'copy-outline',
         onPress: () => copyWeekText(weekShareText),
         disabled: !weekShareText,
-        accessibilityLabel: 'Copy this week’s meals as plain text',
+        accessibilityLabel: `Copy ${weekMealsLabel} as plain text`,
       },
       {
         icon: 'share-outline',
         onPress: handleShareWeek,
         disabled: !weekShareText,
-        accessibilityLabel: 'Share this week’s meals',
+        accessibilityLabel: `Share ${weekMealsLabel}`,
       },
     ];
     // Only offered once there's somewhere to come back from, so the header
@@ -1710,7 +1713,7 @@ export function MealPlanScreen() {
       });
     }
     return actions;
-  }, [onThisWeek, selectionMode, page, exitSelection, weekStartsOn, handleShareWeek, weekShareText, copiedWeek, copyWeekText, navigation]);
+  }, [onThisWeek, selectionMode, page, exitSelection, weekStartsOn, handleShareWeek, weekShareText, weekMealsLabel, copiedWeek, copyWeekText, navigation]);
 
   /**
    * The week a "copy" would take from, and only while this one is empty.
@@ -2115,7 +2118,10 @@ export function MealPlanScreen() {
           setSelectedId(null);
         }}
         onRename={
-          selected && !selected.recipeId && !selected.leftoverId
+          // A meal whose recipe was deleted reads as its typed title and gets
+          // the free-text pencil on its row, so it renames like one too (the
+          // store clears the dead pointer as it does).
+          selected && !selected.leftoverId && !(selected.recipeId && recipesById.has(selected.recipeId))
             ? newTitle => renameEntry(selected.id, newTitle)
             : undefined
         }
