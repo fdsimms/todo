@@ -681,6 +681,10 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
           style={styles.body}
           contentContainerStyle={styles.bodyContent}
           keyboardShouldPersistTaps="handled"
+          // The results sit under the field, so the keyboard left up after
+          // editing the description covers them; a drag down the page puts it
+          // away, the way NutritionPanelSheet's form does.
+          keyboardDismissMode="interactive"
           {...keyboardScroll.props}
         >
           <TextInput
@@ -800,7 +804,9 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
               <TouchableOpacity
                 style={styles.disclosure}
                 activeOpacity={interaction.activeOpacity}
-                onPress={() => { haptics.tap(); setDetailsOpen(o => !o); }}
+                // Opening the list is asking to read it, and with the field
+                // still focused the keyboard would sit over everything it adds.
+                onPress={() => { haptics.tap(); if (!detailsOpen) Keyboard.dismiss(); setDetailsOpen(o => !o); }}
                 accessibilityRole="button"
                 accessibilityState={{ expanded: detailsOpen }}
                 accessibilityLabel="All nutrients and ingredients"
