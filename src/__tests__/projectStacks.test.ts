@@ -1,4 +1,4 @@
-import { buildProjectListItems, projectCopyText, projectPageOrder, alphabeticalPageOrder } from '../utils/projectStacks';
+import { buildProjectListItems, projectCopyText, projectPageOrder, alphabeticalPageOrder, orderWithInserted, filterProjectListItems } from '../utils/projectStacks';
 import type { Task, TaskGroup } from '../types';
 
 const group = (id: string, overrides: Partial<TaskGroup> = {}): TaskGroup => ({
@@ -219,5 +219,52 @@ describe('alphabeticalPageOrder', () => {
     const order = alphabeticalPageOrder(items);
     expect(order.top).toEqual(['m', 'g', 'z']);
     expect(order.sections).toEqual([{ groupId: 'g', ids: ['ch2', 'ch10'] }]);
+  });
+});
+
+describe('orderWithInserted', () => {
+  const titled = (id: string, groupId: string | null = null, sortOrder = 0): Task =>
+    ({ id, title: id, groupId, sortOrder } as Task);
+
+  it('puts a new loose line right after the one it follows', () => {
+    const items = buildProjectListItems([titled('a', null, 1), titled('b', null, 2)], [], 'p1');
+    expect(orderWithInserted(items, 'a', 'new')).toEqual({ groupId: null, ids: ['a', 'new', 'b'] });
+  });
+
+  it('puts it inside the section when the line it follows is in one', () => {
+    const items = buildProjectListItems(
+      [titled('x', null, 1), titled('s1', 'g', 1), titled('s2', 'g', 2)],
+      [group('g', { sortOrder: 5 })],
+      'p1',
+    );
+    expect(orderWithInserted(items, 's1', 'new')).toEqual({ groupId: 'g', ids: ['s1', 'new', 's2'] });
+  });
+
+  it('is null for a line that is not on the page', () => {
+    expect(orderWithInserted([], 'gone', 'new')).toBeNull();
+  });
+});
+
+describe('filterProjectListItems', () => {
+  const titled = (id: string, title: string, groupId: string | null = null, sortOrder = 0): Task =>
+    ({ id, title, groupId, sortOrder } as Task);
+  const items = () => buildProjectListItems(
+    [titled('a', 'Crème fraîche', null, 1), titled('b', 'Bread', null, 2), titled('c', 'Cream cheese', 'g', 1), titled('d', 'Eggs', 'g', 2)],
+    [group('g', { title: 'Dairy', sortOrder: 5 })],
+    'p1',
+  );
+
+  it('keeps matching lines, ignoring case and accents, and trims a section to its matches', () => {
+    const out = filterProjectListItems(items(), 'creme');
+    expect(titles(out)).toEqual(['a']);
+    const cream = filterProjectListItems(items(), 'CREAM');
+    expect(titles(cream)).toEqual(['[g]']);
+    expect(cream[0].type === 'group' && cream[0].children.map(t => t.id)).toEqual(['c']);
+  });
+
+  it('keeps a whole section whose title matches, and everything for an empty query', () => {
+    const dairy = filterProjectListItems(items(), 'dairy');
+    expect(dairy[0].type === 'group' && dairy[0].children).toHaveLength(2);
+    expect(filterProjectListItems(items(), '  ')).toHaveLength(items().length);
   });
 });

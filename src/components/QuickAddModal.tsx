@@ -37,6 +37,7 @@ import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { categoryLabel } from '../utils/categoryLabel';
 import { CategoryPickerSheet } from './CategoryPicker';
+import { ProjectPickerSheet } from './ProjectPickerSheet';
 import { useShallow } from 'zustand/react/shallow';
 import type { Priority, Effort, TimeOfDay, RecurrenceType, Task, ChainItem } from '../types';
 import { PRIORITY_COLORS, EFFORT_LABELS, TITLE_MAX_LENGTH } from '../types';
@@ -228,8 +229,7 @@ export function QuickAddModal({
   // already names them, the same call TaskEditor makes.
   const people = usePersonStore(useShallow(s => s.people.filter(p => !p.archived)));
   const groups = usePersonGroupStore(useShallow(s => s.groups));
-  // Read only to name a project a title rule files into — quick add has no
-  // project picker; see the projectId state below.
+  // To name the project on the Project chip and in a title rule's caption.
   const projects = useProjectStore(useShallow(s => s.projects));
   // Read at reset time, so a default changed in the editor is picked up by
   // the next task rather than frozen at mount.
@@ -382,9 +382,9 @@ export function QuickAddModal({
   // text — see applyAmbiguousCandidate and applyMentionOverrides.
   const [personOverrides, setPersonOverrides] = useState<Record<string, string>>({});
   const [category, setCategory] = useState<string | null>(null);
-  // Quick add has no project picker of its own — this is only ever written by
-  // a title rule, which is the point: filing into a project as you type is
-  // something you could otherwise only do by opening the full editor after.
+  // Written by the Project chip (ProjectPickerSheet) or by a title rule. The
+  // rule effect only moves it while it still holds what the rule last wrote,
+  // so a project picked by hand isn't taken back by the next keystroke.
   const [projectId, setProjectId] = useState<string | null>(null);
   // "Not on this task" for whatever a rule filled in. Sheet-lifetime, like
   // showAllChips: the next task starts from the rules again rather than
@@ -447,6 +447,7 @@ export function QuickAddModal({
   const [dismissedMatchSignature, setDismissedMatchSignature] = useState<string | null>(null);
   const [whenPickerVisible, setWhenPickerVisible] = useState(false);
   const [categoryPickerVisible, setCategoryPickerVisible] = useState(false);
+  const [projectPickerVisible, setProjectPickerVisible] = useState(false);
   // Whether the drop's placement still applies — the chip can shake it off.
   const [seedActive, setSeedActive] = useState(false);
   // Read only when the sheet opens: a seed that changes identity mid-edit must
@@ -521,6 +522,7 @@ export function QuickAddModal({
     setDismissedMatchSignature(null);
     setWhenPickerVisible(false);
     setCategoryPickerVisible(false);
+    setProjectPickerVisible(false);
     setPostCreateTask(null);
   };
 
@@ -1444,6 +1446,9 @@ export function QuickAddModal({
       tags: resolveTags(),
       personIds,
       category: resolveCategory(),
+      // The project picked here (or the one the sheet was opened in) rides
+      // into the full editor too, rather than being dropped on the way.
+      projectId: intoProjectId ?? projectId,
       linkUrl: resolveLinkUrl(),
       phoneNumber: resolvePhoneNumber(),
       emailAddress: resolveEmailAddress(),
@@ -1639,6 +1644,16 @@ export function QuickAddModal({
       // there's nothing left attached to lose track of.
       onPress: () => { haptics.tap(); Keyboard.dismiss(); setCategoryPickerVisible(true); },
     },
+    // Which project it goes into, a list's included, so a line can be added to
+    // a list from anywhere. Not offered when the sheet was opened inside a
+    // project, whose own id wins (intoProjectId). Keyboard dismissed first for
+    // the reason the category chip gives.
+    ...(intoProjectId ? [] : [{
+      key: 'project' as const, icon: 'briefcase-outline' as const,
+      value: projectId !== null ? projects.find(p => p.id === projectId)?.title ?? null : null,
+      truncate: true,
+      onPress: () => { haptics.tap(); Keyboard.dismiss(); setProjectPickerVisible(true); },
+    }]),
     {
       key: 'effort', icon: 'barbell', panel: 'effort',
       value: effort > 0
@@ -2817,6 +2832,12 @@ export function QuickAddModal({
         value={category}
         onSelect={setCategory}
         onClose={() => setCategoryPickerVisible(false)}
+      />
+      <ProjectPickerSheet
+        visible={projectPickerVisible}
+        value={projectId}
+        onSelect={setProjectId}
+        onClose={() => setProjectPickerVisible(false)}
       />
       <NumberPadAccessory />
       <TitleTokenAccessory

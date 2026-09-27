@@ -100,6 +100,55 @@ export function buildProjectListItems(
 }
 
 /**
+ * Where a line goes when it's added right after another one: the order to
+ * write, either the page's top-level order (`reorderProjectItems`) or, when
+ * the line it follows sits in a section, that section's own order
+ * (`reorderGroupChildren`). Null when `afterId` isn't on the page.
+ */
+export function orderWithInserted(
+  items: readonly ProjectListItem[],
+  afterId: string,
+  newId: string,
+): { groupId: null; ids: string[] } | { groupId: string; ids: string[] } | null {
+  const top = items.map(item => (item.type === 'group' ? item.group.id : item.task.id));
+  const at = items.findIndex(item => item.type === 'task' && item.task.id === afterId);
+  if (at >= 0) return { groupId: null, ids: [...top.slice(0, at + 1), newId, ...top.slice(at + 1)] };
+  for (const item of items) {
+    if (item.type !== 'group') continue;
+    const ids = [...item.children].sort((a, b) => a.sortOrder - b.sortOrder).map(t => t.id);
+    const i = ids.indexOf(afterId);
+    if (i >= 0) return { groupId: item.group.id, ids: [...ids.slice(0, i + 1), newId, ...ids.slice(i + 1)] };
+  }
+  return null;
+}
+
+/**
+ * A list narrowed to the lines whose text holds `query` (case and accents
+ * ignored). A section stays when its title matches, with all its lines, or
+ * when any of its lines do, with just those. An empty query changes nothing.
+ */
+export function filterProjectListItems(items: readonly ProjectListItem[], query: string): ProjectListItem[] {
+  const q = fold(query.trim());
+  if (!q) return [...items];
+  const hit = (text: string) => fold(text).includes(q);
+  const out: ProjectListItem[] = [];
+  for (const item of items) {
+    if (item.type === 'task') {
+      if (hit(item.task.title)) out.push(item);
+      continue;
+    }
+    if (hit(item.group.title)) { out.push(item); continue; }
+    const children = item.children.filter(t => hit(t.title));
+    if (children.length > 0) out.push({ ...item, children });
+  }
+  return out;
+}
+
+function fold(text: string): string {
+  return text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
+/**
  * The same page sorted A to Z, for a list: the loose lines by title among the
  * slots loose lines hold (a section stays where it is), and each section's own
  * lines by title within it. Case and accents ignored, numbers read as numbers

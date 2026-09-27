@@ -200,6 +200,7 @@ Where each component can appear.
 - `src/components/ProjectCategoriesSheet.tsx` — on ProjectsScreen
 - `src/components/ProjectDecisions.tsx` — on ProjectDetailScreen
 - `src/components/ProjectEditor.tsx` — on ProjectDetailScreen, ProjectsScreen
+- `src/components/ProjectPickerSheet.tsx` — on CalendarScreen, CategoryDetailScreen, ProjectDetailScreen, SearchScreen, StacksScreen, TodayScreen
 - `src/components/ProjectPullSheet.tsx` — on ProjectDetailScreen, TodayScreen
 - `src/components/ProjectTaskSuggestionsSheet.tsx` — on ProjectDetailScreen
 - `src/components/ProjectsOptionsMenu.tsx` — on ProjectsScreen

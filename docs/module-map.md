@@ -218,7 +218,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/projectPause.ts` — isPausedOn, registerPausedProjectSource, isProjectPaused
 - `src/utils/projectPull.ts` — MAX_PULLED_PROJECTS, MAX_CANDIDATES_PER_PROJECT, PULL_TODAY_BUDGET_MINUTES, StallMode, ProjectStall, PullDate, ProjectPullProposal, PullEmptyReason, PullEmptyState, ProjectPullPlan, +12 more
 - `src/utils/projectReviewTasks.ts` — MAX_PROJECT_REVIEW_TASKS, PROJECT_REVIEW_LINK_URL, projectReviewLinkUrl, projectReviewProjectId, projectReviewTitle, projectQuietDays, describeProjectQuiet, declinedToday, projectsReviewedToday, ProjectReviewWant, +2 more
-- `src/utils/projectStacks.ts` — ProjectListItem, buildProjectListItems, alphabeticalPageOrder, projectPageOrder, projectCopyText
+- `src/utils/projectStacks.ts` — ProjectListItem, buildProjectListItems, orderWithInserted, filterProjectListItems, alphabeticalPageOrder, projectPageOrder, projectCopyText
 - `src/utils/projectStats.ts` — RECENT_FINISHED_LIMIT, FinishedProject, ProjectStatsSummary, projectStats
 - `src/utils/projectTemplate.ts` — BlueprintEntry, ProjectBlueprint, projectBlueprint, ProjectTemplateDraft, templateFromProject
 - `src/utils/quantity.ts` — Rational, rational, multiplyRational, rationalToNumber, rationalFromNumber, formatRational, formatQuantityAmount, unitKey, inflectUnit, SIZE_UNITS, +7 more

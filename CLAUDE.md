@@ -466,7 +466,7 @@ file: the two maps are indexes, not write-ups.
 | reading free/busy out of the system calendar | `src/utils/calendarBusy.ts` + `src/store/useCalendarStore.ts` |
 | a running list of things with no date (doctor questions, a wish list) | `Project.kind` in `src/types/index.ts` — a project drawn as a list; the members are ordinary undated tasks |
 | pulling tasks out of a project | `src/utils/projectPull.ts` |
-| what a task is waiting on, and what it blocks | `src/utils/blocking.ts` + `src/utils/blockerRegistry.ts` |
+| what a task is waiting on, and what it blocks | `src/utils/blocking.ts` + `src/utils/blockerRegistry.ts`. A task can wait on several and waits for all of them, so **read its blockers only through `blockerIdsOf` / `liveBlockersOf` / `isBlocked`, and write them only through `blockerFields`**. `blockedById` alone is just the first of the set (`blockedByIds` holds the rest), and a blocker that is done or archived holds nothing: reading the raw pointer is how a row kept saying "After X" with X long finished |
 | how loaded a day is, and lightening an overloaded one | `src/utils/dayLoad.ts` + `src/utils/deloadPlan.ts` |
 | what lands before a date, and whether it fits | `src/utils/lookAhead.ts` (+ `src/utils/taskMoves.ts`, shared with `deloadPlan`) |
 | a recurring habit and whether it's on track | `src/utils/rhythms.ts` (+ `rhythmsSettings.ts`) |

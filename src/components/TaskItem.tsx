@@ -238,6 +238,12 @@ interface Props {
    * Delete. No reschedule swipe, since a list line has no date to move.
    */
   listRow?: boolean;
+  /**
+   * A list line's Return: the edit is saved and the host opens a new line
+   * right under this one, the way Notes and Reminders do. Keep it stable (a
+   * useCallback), or the memo on this row stops holding.
+   */
+  onSubmitLine?: (taskId: string) => void;
   /** Plays the same checkbox-tap complete animation as a real tap, then completes the task — used for a completion that happened in the Today widget so the user can watch it happen here too. */
   autoComplete?: boolean;
   /**
@@ -299,6 +305,7 @@ export const TaskItem = React.memo(function TaskItem({
   indented = false,
   highlighted = false,
   listRow = false,
+  onSubmitLine,
   autoComplete = false,
   hidesWhenOnPace = false,
   onApplyImport,
@@ -2436,8 +2443,11 @@ export const TaskItem = React.memo(function TaskItem({
             value={titleEdit}
             onChangeText={setTitleEdit}
             onBlur={saveTitle}
-            onSubmitEditing={saveTitle}
-            returnKeyType="done"
+            onSubmitEditing={() => {
+              saveTitle();
+              if (listRow) onSubmitLine?.(task.id);
+            }}
+            returnKeyType={listRow && onSubmitLine ? 'next' : 'done'}
             maxLength={TITLE_MAX_LENGTH}
             blurOnSubmit
             autoFocus

@@ -47,7 +47,7 @@ import { TaskGroupTray } from '../components/TaskGroupTray';
 import { GroupDropTarget } from '../components/GroupDropTarget';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { confirmBulkSetWhen } from '../utils/scheduleMovePrompt';
-import { alphabeticalPageOrder, buildProjectListItems, projectCopyText, type ProjectListItem } from '../utils/projectStacks';
+import { alphabeticalPageOrder, buildProjectListItems, filterProjectListItems, orderWithInserted, projectCopyText, type ProjectListItem } from '../utils/projectStacks';
 import { ProjectEditor } from '../components/ProjectEditor';
 import { BulkActionBar } from '../components/BulkActionBar';
 import { QuickAddModal } from '../components/QuickAddModal';
@@ -116,6 +116,9 @@ const EXISTING_PICKER_LIMIT = 30;
 // Matches the list's own keyExtractor — shared so the add button's drop
 // zones and the placement pass that follows a drop agree on what a row is
 // called.
+/** A list this long gets a "Find a line" field. */
+const LIST_FILTER_MIN_LINES = 15;
+
 function projectListItemKey(item: ProjectListItem): string {
   return item.type === 'group' ? `g-${item.group.id}` : item.task.id;
 }
@@ -170,6 +173,47 @@ function AddProjectTaskFabWithDropLabel({
     }
   });
   return <FabMenu {...props} dragLabel={label} />;
+}
+
+/**
+ * The blank line Return opens under a list line (see TaskItem's
+ * onSubmitLine). Return adds what's typed and moves the field under the new
+ * line; Return or leaving it with nothing typed closes it. Its own component
+ * so each placement starts empty and focused.
+ */
+function NewLineField({
+  onAdd,
+  onDone,
+  styles,
+  placeholderColor,
+}: {
+  onAdd: (text: string) => void;
+  onDone: () => void;
+  styles: { newLineRow: object; newLineInput: object };
+  placeholderColor: string;
+}) {
+  const [text, setText] = useState('');
+  return (
+    <View style={styles.newLineRow}>
+      <TextInput
+        style={styles.newLineInput}
+        value={text}
+        onChangeText={setText}
+        autoFocus
+        placeholder="New line"
+        placeholderTextColor={placeholderColor}
+        maxLength={TITLE_MAX_LENGTH}
+        returnKeyType="next"
+        blurOnSubmit={false}
+        onSubmitEditing={() => {
+          if (text.trim()) onAdd(text.trim());
+          else onDone();
+        }}
+        onBlur={() => { if (!text.trim()) onDone(); }}
+        accessibilityLabel="New line"
+      />
+    </View>
+  );
 }
 
 export function ProjectDetailScreen() {
@@ -249,6 +293,13 @@ export function ProjectDetailScreen() {
   // tell which row is in flight.
   const activeDragIndexRef = React.useRef<number | null>(null);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
+  // The line a blank "New line" field is open under, after Return in a list
+  // line's text. See NewLineField.
+  const [insertAfterId, setInsertAfterId] = useState<string | null>(null);
+  const handleSubmitLine = useCallback((taskId: string) => {
+    setExpandedTaskId(null);
+    setInsertAfterId(taskId);
+  }, []);
   // True while a subtask inside the expanded row is mid-drag; the list has to
   // stop scrolling for the duration (see TaskItem.onSubtaskDragStateChange).
   const [draggingSubtask, setDraggingSubtask] = useState(false);
@@ -525,6 +576,17 @@ export function ProjectDetailScreen() {
   const projectListItems: ProjectListItem[] = useMemo(
     () => buildProjectListItems(incompleteProjectTasks, taskGroups, projectId),
     [incompleteProjectTasks, taskGroups, projectId],
+  );
+  const lineCount = projectListItems.reduce((n, item) => n + (item.type === 'task' ? 1 : item.children.length), 0);
+  // A long list gets a field that narrows it to the lines holding what's
+  // typed. Drag is off while it's narrowed, since a drop among the lines
+  // left showing can't say where it lands among the hidden ones.
+  const lineFilter = useFilterField();
+  const lineFilterShown = isList && lineCount >= LIST_FILTER_MIN_LINES;
+  const filteringLines = lineFilterShown && lineFilter.query.trim().length > 0;
+  const shownListItems = useMemo(
+    () => (filteringLines ? filterProjectListItems(projectListItems, lineFilter.query) : projectListItems),
+    [filteringLines, projectListItems, lineFilter.query],
   );
   // Each section's roster in this project, done and undone, for its header's
   // tally. Built once, so the memoized headers get the same array until a task
@@ -939,7 +1001,7 @@ export function ProjectDetailScreen() {
     opts: { drag?: () => void; isActive?: boolean; indented?: boolean } = {},
   ) => {
     const subs = subtasksOf(task.id);
-    return (
+    const row = (
       <TaskItem
         task={task}
         drag={selectionMode ? undefined : opts.drag}
@@ -969,8 +1031,48 @@ export function ProjectDetailScreen() {
         showPin={false}
         highlighted={task.id === flashTaskId}
         listRow={isList || checklistSectionIds.has(task.groupId ?? '')}
+        onSubmitLine={isList || checklistSectionIds.has(task.groupId ?? '') ? handleSubmitLine : undefined}
       />
     );
+    if (insertAfterId !== task.id) return row;
+    return (
+      <>
+        {row}
+        <NewLineField
+          key={task.id}
+          onAdd={text => setInsertAfterId(addLineAfter(task, text))}
+          onDone={() => setInsertAfterId(null)}
+          styles={styles}
+          placeholderColor={colors.textTertiary}
+        />
+      </>
+    );
+  };
+
+  /**
+   * A new line right after `after`, in its section if it's in one, from what
+   * was typed in the field Return opened. Same reading as the top field: a
+   * link in the text becomes the line's link. Answers the new line's id, so
+   * the field can move under it for the next.
+   */
+  const addLineAfter = (after: Task, text: string): string => {
+    const link = parseLabelledLink(text);
+    const title = link ? (link.label || linkHost(link.url)) : text;
+    const task = addTask(
+      {
+        title: title.slice(0, TITLE_MAX_LENGTH),
+        projectId,
+        groupId: after.groupId ?? null,
+        ...(link ? { linkUrl: link.url } : {}),
+      },
+      undefined,
+      { skipTitleRules: true },
+    );
+    const order = orderWithInserted(projectListItems, after.id, task.id);
+    if (order?.groupId) reorderGroupChildren(order.groupId, order.ids);
+    else if (order) reorderProjectItems(projectId, order.ids);
+    haptics.tap();
+    return task.id;
   };
 
   const eligibleForAdd = useMemo(() => {
@@ -1083,7 +1185,6 @@ export function ProjectDetailScreen() {
   // The trailing "New task" / "Add a line" under the list. Only once there's a
   // list to be under: the empty state already has its own button.
   const showInlineNewTask = !!project && !selectionMode && projectListItems.length > 0;
-  const lineCount = projectListItems.reduce((n, item) => n + (item.type === 'task' ? 1 : item.children.length), 0);
 
   /**
    * A list, A to Z: loose lines among their own slots and each section's
@@ -1251,7 +1352,7 @@ export function ProjectDetailScreen() {
             scrollEnabled={!painting && !draggingSubtask && !fabDragging && draggingSectionId === null}
             scrollControlRef={scrollControl}
             rowScrollerRef={listScroller}
-            data={projectListItems}
+            data={shownListItems}
             keyExtractor={projectListItemKey}
             // Two rows need lifting over their neighbours: an expanded row,
             // whose card shadow falls across the row below it, and a task
@@ -1278,6 +1379,7 @@ export function ProjectDetailScreen() {
             // members' sortOrders are their within-stack order, which a drag
             // out here has no business rewriting.
             onReorder={reordered => {
+              if (filteringLines) return;
               // A task just handed to a group (see onDragEnd) has already been
               // absorbed there — drop it from the normal placement pass so it
               // doesn't also get a sortOrder of its own from this reorder.
@@ -1508,6 +1610,14 @@ export function ProjectDetailScreen() {
                     />
                   </View>
                 )}
+                {lineFilterShown && !selectionMode && (
+                  <SearchField
+                    style={styles.lineFilter}
+                    field={lineFilter}
+                    placeholder="Find a line"
+                    accessibilityLabel="Find a line in this list"
+                  />
+                )}
                 <ProjectDecisions
                   label={isList ? 'Answers' : 'Decisions'}
                   decisions={decisions}
@@ -1521,7 +1631,8 @@ export function ProjectDetailScreen() {
             // and the dragged row's floating copy registers nothing (a null
             // zone) rather than claiming the real row's slot under the same
             // key.
-            renderItem={({ item, drag, isActive }) => {
+            renderItem={({ item, drag: rawDrag, isActive }) => {
+              const drag = filteringLines ? undefined : rawDrag;
               const zone = isActive ? null : zoneByKey.get(projectListItemKey(item)) ?? null;
               if (item.type === 'group') {
                 const { group, children } = item;
@@ -1635,7 +1746,9 @@ export function ProjectDetailScreen() {
               );
             }}
             ListEmptyComponent={
-              completedProjectTasks.length === 0 ? (
+              filteringLines ? (
+                <Text style={styles.noLinesMatch}>No lines match.</Text>
+              ) : completedProjectTasks.length === 0 ? (
                 <EmptyState
                   icon={isList ? 'list-outline' : 'briefcase-outline'}
                   title={isList ? 'Nothing on this list yet' : 'No tasks yet'}
@@ -2059,6 +2172,24 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: spacing.sm,
   },
   summaryText: { color: colors.textSecondary, fontSize: font.sm },
+  // Sits where the next line will, so it reads as that line being typed.
+  lineFilter: { marginHorizontal: spacing.md, marginBottom: spacing.sm },
+  noLinesMatch: {
+    color: colors.textSecondary,
+    fontSize: font.sm,
+    textAlign: 'center',
+    marginTop: spacing.lg,
+  },
+  newLineRow: {
+    marginHorizontal: spacing.md,
+    marginVertical: spacing.xxs,
+    borderRadius: radius.md,
+    backgroundColor: colors.bgSecondary,
+    paddingLeft: spacing.md + 22 + spacing.sm,
+    paddingRight: spacing.md,
+  },
+  // Height rather than lineHeight, per the TextInput note in CLAUDE.md.
+  newLineInput: { color: colors.text, fontSize: font.md, height: 44 },
   infoCard: {
     backgroundColor: colors.bgSecondary,
     marginHorizontal: spacing.md,
