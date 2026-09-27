@@ -167,6 +167,48 @@ interface Props<T> {
    * dragged, dropped onto, or displaced.
    */
   ListHeaderComponent?: React.ReactNode;
+  /**
+   * Keep the rows still when `ListHeaderComponent` changes height while it is
+   * scrolled out of view above them: Today's Pinned Tasks block gaining a row
+   * because a task far down the list was pinned. Without it every row on
+   * screen is shoved down by the new pinned copy's height, which reads as the
+   * list jumping for no visible reason. A header that is on screen, even
+   * partly, still grows in place and pushes the rows down, since there the
+   * change is something the user can see happening.
+   *
+   * iOS's `maintainVisibleContentPosition` does the work, in the same native
+   * mount as the layout change, so nothing moves for even a frame (a JS
+   * `scrollTo` from the header's onLayout would land a frame or two late). It
+   * anchors on the first subview whose bottom is below the top of the
+   * viewport, and which view that is was the whole design question:
+   *
+   * - Never a row. A drop reorders the rows, so the top visible one lands
+   *   somewhere else and the scroll view follows it there — the list would
+   *   scroll by however far that row was dragged. (RN's own source carries a
+   *   "TODO: detect and handle/ignore re-ordering" at exactly this spot.)
+   *   Rows also recycle their native views when the data changes wholesale,
+   *   so an anchor row could come back as a different row at a different y.
+   * - So it's the header itself while any of it is visible (its origin is 0
+   *   and never moves: no correction, the header grows in place), and
+   *   otherwise `anchorSentinel` below it: a tall, empty, untouchable view
+   *   that nets zero height, so it is "visible" at any scroll depth and its
+   *   origin moves only when the header's height does. That is what makes
+   *   header resizes the one and only thing this ever corrects for.
+   *
+   * The header's wrapper stays mounted (at zero height) even while there is
+   * no header, so the anchor is never a view being torn down: Fabric recycles
+   * a deleted view, and one reused in the same mount would report some other
+   * row's y as the anchor's new position.
+   *
+   * The correction can't push the offset negative: it only fires with the
+   * header wholly above the viewport, so the offset is at least the header's
+   * old height, which is more than it can shrink by. The one case that rule
+   * gets wrong is a header appearing from nothing with the list at the very
+   * top — nothing was "above the viewport", yet it would be pushed there —
+   * which `autoscrollToTopThreshold: 0` answers by gliding back to the top,
+   * so the new block slides into view rather than landing hidden.
+   */
+  holdRowsOnHeaderResize?: boolean;
   ListFooterComponent?: React.ReactNode;
   onScrollBeginDrag?: () => void;
   /**
@@ -244,6 +286,7 @@ export function ReorderableList<T>({
   refreshControl,
   ListEmptyComponent,
   ListHeaderComponent,
+  holdRowsOnHeaderResize = false,
   ListFooterComponent,
   onScrollBeginDrag,
   onScrollSettle,
@@ -1010,6 +1053,10 @@ export function ReorderableList<T>({
         scrollEnabled={scrollEnabled && !isDragging}
         onScroll={handleScroll}
         scrollEventThrottle={16}
+        // See holdRowsOnHeaderResize. Index 0 is the header's wrapper and 1 the
+        // sentinel, and the sentinel is always visible, so the anchor is
+        // always one of the two and never a row.
+        maintainVisibleContentPosition={holdRowsOnHeaderResize ? HOLD_ROWS_POSITION : undefined}
         onLayout={(e: LayoutChangeEvent) => { viewportHeightRef.current = e.nativeEvent.layout.height; }}
         onContentSizeChange={(_w, h) => {
           contentHeightRef.current = h;
@@ -1090,12 +1137,28 @@ export function ReorderableList<T>({
           onScrollSettle?.();
         }}
       >
-        {ListHeaderComponent != null && (
+        {(ListHeaderComponent != null || holdRowsOnHeaderResize) && (
           // Measured purely so a drag can hit-test against it (overHeaderNow);
           // an unstyled wrapper adds nothing to the flex layout it sits in.
-          <View onLayout={e => { headerHeightRef.current = e.nativeEvent.layout.height; }}>
+          // collapsable={false} for holdRowsOnHeaderResize, whose anchor this
+          // may be even while it's empty.
+          <View
+            collapsable={!holdRowsOnHeaderResize}
+            onLayout={e => { headerHeightRef.current = e.nativeEvent.layout.height; }}
+          >
             {ListHeaderComponent}
           </View>
+        )}
+        {holdRowsOnHeaderResize && (
+          // collapsable={false}: an empty View is otherwise flattened out of
+          // the native tree, and the anchor has to be a real subview.
+          <View
+            style={styles.anchorSentinel}
+            collapsable={false}
+            pointerEvents="none"
+            accessible={false}
+            importantForAccessibility="no-hide-descendants"
+          />
         )}
         {renderData.length === 0 && ListEmptyComponent}
         {renderData.map(item => {
@@ -1173,7 +1236,19 @@ export function ReorderableList<T>({
   );
 }
 
+const HOLD_ROWS_POSITION = { minIndexForVisible: 0, autoscrollToTopThreshold: 0 };
+
+/**
+ * Tall enough to reach past the end of any list, so the sentinel stays the
+ * "first visible subview" at every scroll depth; the matching negative margin
+ * takes it back out of the flow, so the content height and every row's y are
+ * exactly what they'd be without it. It draws nothing, so its size costs
+ * nothing.
+ */
+const ANCHOR_SENTINEL_HEIGHT = 1_000_000;
+
 const styles = StyleSheet.create({
+  anchorSentinel: { height: ANCHOR_SENTINEL_HEIGHT, marginBottom: -ANCHOR_SENTINEL_HEIGHT },
   container: { flex: 1 },
   scroll: { flex: 1 },
   placeholder: { opacity: 0 },

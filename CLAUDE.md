@@ -771,6 +771,12 @@ math. As rows it couldn't work: `resolveDrop` derives a dropped row's category f
 header above it, so a pinned row dragged down would inherit a category and a task dragged up into
 the block would inherit none.
 
+- **The block growing mustn't move the rows either, and that's `holdRowsOnHeaderResize`**
+  (`ReorderableList`). Pinning a task far down Today grows a header that's scrolled out of view,
+  which shoved every visible row down by a row's height. iOS's `maintainVisibleContentPosition`
+  corrects it natively, anchored on the header or a zero-net-height sentinel below it and **never on
+  a row**: a row anchor makes a drag's drop scroll the list by however far the top row moved. Read
+  the prop's doc comment before changing the anchor.
 - **`pinnedOrder` is its own number space** (`Task.pinnedOrder`, `reorderPinnedTasks`), because the
   section is hand-orderable and dragging a pin must not also move the original in Work. Default `0`
   = never ranked, with `sortOrder` breaking ties, so an install that upgrades into the column reads
@@ -780,7 +786,10 @@ the block would inherit none.
   by task id, and two rows claiming one id means whichever unmounts first evicts a row still on
   screen. Same opt-out the drag overlay's floating copy already used.
 - **Expansion is keyed on the row, not the task** (`renderTaskRow`'s `rowKey`, `pin-<id>` for the
-  copy), so tapping one row doesn't also expand its twin halfway down the list.
+  copy), so tapping one row doesn't also expand its twin halfway down the list. **A pinned stack's
+  tray follows the same rule** (`pinnedGroupOpen`, session-only): it used to share
+  `group.collapsed` with the stack's own tray, so opening either opened both, and the copy growing
+  above the screen pushed every row in view down, which read as the page scrolling as a stack opened.
 - **`pinnedTasks()` ignores the *clock* gates on purpose** — a pinned task shows in the block whether
   or not it's due today. So the copy passes `hidesWhenOnPace: false`, and a pinned task that isn't
   visible today has only the one row rather than two. It does **not** ignore the hides that aren't a
