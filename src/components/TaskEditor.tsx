@@ -3777,6 +3777,13 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   accessibilityLabel="Options to pick from, separated by commas"
                 />
               )}
+              {/* Fewer than two options and completing asks nothing
+                  (deliverableOptionsFor), so say so where they're typed. */}
+              {deliverableKind === 'choice' && parseDeliverableOptions(deliverableOptionsText).length < 2 && (
+                <Text style={styles.choiceOptionsHint}>
+                  Add at least two options, separated by commas. With fewer, completing the task asks nothing.
+                </Text>
+              )}
               {deliverableKind === 'date' && project !== null && (
                 <TouchableOpacity
                   style={styles.optionRow}
@@ -6326,6 +6333,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   pillActiveNeutral: { backgroundColor: colors.bgQuaternary },
   kindBlock: { paddingHorizontal: spacing.md, paddingVertical: spacing.md },
+  choiceOptionsHint: { color: colors.textSecondary, fontSize: font.xs, marginHorizontal: spacing.md, marginTop: spacing.xs, marginBottom: spacing.sm },
   kindHint: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.sm, lineHeight: 16 },
   pillText: { color: colors.text, fontSize: font.sm, fontWeight: '500' },
   pillTextActive: { color: colors.text, fontWeight: '600' },

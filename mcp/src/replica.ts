@@ -156,6 +156,8 @@ export interface Replica {
   displayTitle(task: Task): string;
   estimatedMinutes(task: Task): number | null;
   deliverableKind(task: Task): DeliverableKind | null;
+  /** The answers a Yes/No or Pick one question offers, or [] for any other. */
+  deliverableOptions(task: Task): string[];
 
   /**
    * The logical day, as a `YYYY-MM-DD` key. Goes through `getLogicalToday` so a
@@ -388,6 +390,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   const { useMedicationStore } = require('../../src/store/useMedicationStore') as typeof import('../../src/store/useMedicationStore');
   const { registerTaskSource } = require('../../src/utils/blockerRegistry') as typeof import('../../src/utils/blockerRegistry');
   const { registerPersonSource } = require('../../src/utils/peopleRegistry') as typeof import('../../src/utils/peopleRegistry');
+  const { registerPausedProjectSource } = require('../../src/utils/projectPause') as typeof import('../../src/utils/projectPause');
   const { useSettingsStore } = require('../../src/store/useSettingsStore') as typeof import('../../src/store/useSettingsStore');
   const { useCategoryStore } = require('../../src/store/useCategoryStore') as typeof import('../../src/store/useCategoryStore');
   const { projectProgress } = require('../../src/store/useProjectStore') as typeof import('../../src/store/useProjectStore');
@@ -421,6 +424,10 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
 
   registerTaskSource(tasks);
   registerPersonSource(people);
+  // After the project store's own module has registered its (never loaded,
+  // so empty) list: without this every paused project's tasks read as on
+  // Today here while the app hides them.
+  registerPausedProjectSource(projects);
 
   return {
     path,
@@ -443,6 +450,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     displayTitle: (task: Task) => visibility.displayTitleFor(task),
     estimatedMinutes: (task: Task) => effort.estimatedMinutesFor(task),
     deliverableKind: (task: Task) => deliverables.deliverableKindFor(task),
+    deliverableOptions: (task: Task) => deliverables.deliverableOptionsFor(task),
 
     todayKey: () => dates.dayKeyOf(dates.getLogicalToday()),
     shiftDayKey: (key: string, days: number) =>
@@ -567,6 +575,19 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         deliverables.chainStepDatedByAnswer(task)?.title ?? null,
       );
       if (unanswered) throw new Error(unanswered);
+
+      // A question with a fixed set of answers takes one of them, stored in
+      // the option's own spelling so the project's tally counts it. Anything
+      // else would be recorded and then counted as "no answer".
+      const offered = deliverables.deliverableOptionsFor(task);
+      const given = options?.deliverableValue;
+      if (offered.length > 0 && typeof given === 'string') {
+        const match = offered.find(o => o.toLowerCase() === given.trim().toLowerCase());
+        if (!match) {
+          throw new Error(`That task's answer is one of: ${offered.join(', ')}. Pass one of those as deliverableValue, or null to complete it without an answer.`);
+        }
+        options = { ...options, deliverableValue: match };
+      }
 
       const settings = useSettingsStore.getState();
       const built = completion.buildCompletion(task, options, {

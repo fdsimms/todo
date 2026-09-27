@@ -3489,6 +3489,10 @@ export interface TemplateItemGroup {
   id: string;
   title: string;
   sortOrder: number;
+  // Applied into a project, the section is a checklist (TaskGroup.checklist):
+  // a packing list saved from a trip comes back as one. Optional so templates
+  // saved before it read as ordinary sections.
+  checklist?: boolean;
 }
 
 // Where one apply of a template puts the tasks it creates. Item titles are

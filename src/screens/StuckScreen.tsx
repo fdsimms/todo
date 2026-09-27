@@ -25,7 +25,8 @@ import { spacing, font, lineHeight, fontWeight, iconSize, radius, border, checkb
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { displayTitleFor, isTaskBlocked } from '../utils/visibilityUtils';
-import { blockerOf } from '../utils/blocking';
+import { blockerOf, isWaitingOnPerson, liveBlockersOf } from '../utils/blocking';
+import { resolveBlocker } from '../utils/blockerRegistry';
 import { describeBlockerWait } from '../utils/blockerStatus';
 import { asksOnCompletion } from '../utils/deliverables';
 import { formatTaskDate, getCurrentDayStart, getDayStart } from '../utils/dateUtils';
@@ -189,7 +190,7 @@ export function StuckScreen() {
       // wait that isn't the one actually holding it.
       // Filed under the first blocker still open: with several, that's the
       // one it's waiting on right now. None open, and it's here for a person.
-      const blocker = task.blockedById ? blockerOf(task, id => byId.get(id)) : undefined;
+      const blocker = blockerOf(task, id => byId.get(id));
       if (blocker) {
         const key = blocker.id;
         if (!byTask.has(key)) byTask.set(key, { kind: 'task', key, blocker, data: [] });
@@ -382,6 +383,8 @@ export function StuckScreen() {
     // header still lines up with the ones that do offer the box.
     const blockedItself = isTaskBlocked(section.blocker);
     const wait = describeBlockerWait(section.blocker, { blockedItself, dayResetTime });
+    const releasing = section.data.filter(t =>
+      liveBlockersOf(t, resolveBlocker).length === 1 && !isWaitingOnPerson(t, resolvePerson)).length;
     return (
       <TaskGroupTray>
         <View style={styles.blockerHeader}>
@@ -397,7 +400,9 @@ export function StuckScreen() {
               activeOpacity={interaction.activeOpacity}
               accessibilityRole="checkbox"
               accessibilityState={{ checked: false }}
-              accessibilityLabel={`Complete ${blockerTitle}, releasing ${section.data.length} ${section.data.length === 1 ? 'task' : 'tasks'}`}
+              // Only the ones this is the last hold on: a task also waiting
+              // on another task or on a person just moves on to that.
+              accessibilityLabel={`Complete ${blockerTitle}, releasing ${releasing} ${releasing === 1 ? 'task' : 'tasks'}`}
             />
           )}
           <TouchableOpacity

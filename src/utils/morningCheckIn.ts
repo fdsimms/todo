@@ -1,6 +1,6 @@
 import type { Task } from '../types';
 import { getDayStart, getTaskDayStart } from './dateUtils';
-import { isHeldBack } from './visibilityUtils';
+import { isHeldBack, isInPausedProject } from './visibilityUtils';
 import { isNegativeTask } from './negativeHabits';
 
 /**
@@ -35,6 +35,8 @@ export function isMorningCheckInCandidate(task: Task, dayResetTime?: string): bo
   if (task.vacationPause) return false;
   if (isNegativeTask(task)) return false;
   if (isHeldBack(task)) return false;
+  // Paused: nobody could have done it, so asking would record a miss.
+  if (isInPausedProject(task)) return false;
   if (!task.deadline) return false;
   if (!task.dueDate) return false;
   return getTaskDayStart(new Date(task.dueDate), dayResetTime) < getDayStart(new Date(), dayResetTime);

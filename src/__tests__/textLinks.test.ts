@@ -54,3 +54,18 @@ describe('linkHost', () => {
     expect(linkHost('http://docs.example.com')).toBe('docs.example.com');
   });
 });
+
+describe('parseLabelledLink, words that only look like domains', () => {
+  it('leaves a dotted word that isn\'t a site alone', () => {
+    expect(parseLabelledLink('Node.js')).toBeNull();
+    expect(parseLabelledLink('v1.2')).toBeNull();
+    expect(parseLabelledLink('3.14')).toBeNull();
+    expect(parseLabelledLink('example.co.uk/menu')).toEqual({ label: '', url: 'https://example.co.uk/menu' });
+  });
+
+  it('keeps a second link out of the first one\'s name', () => {
+    expect(parseLabelledLink('Flat https://a.example.com and https://b.example.com')).toEqual({
+      label: 'Flat and', url: 'https://a.example.com',
+    });
+  });
+});

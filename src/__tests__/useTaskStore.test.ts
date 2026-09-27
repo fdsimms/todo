@@ -1,4 +1,5 @@
 import { isStreakAtRecord } from '../utils/streakRecord';
+import { registerPausedProjectSource } from '../utils/projectPause';
 import { dayKeyOf, getCurrentDayStart } from '../utils/dateUtils';
 import { logTaskHealthValue, unlogTaskWaterFromFoodLog } from '../utils/healthCompletionSync';
 import { useTaskStore } from '../store/useTaskStore';
@@ -2734,6 +2735,19 @@ describe('completeTask', () => {
 
       jest.advanceTimersByTime(1200);
       expect(useTaskStore.getState().pinnedTasks()).toHaveLength(0);
+    });
+  });
+
+  describe('a paused project', () => {
+    it('keeps its pinned task out of the Pinned block until the pause lifts', () => {
+      registerPausedProjectSource(() => [{ id: 'garden', pausedUntil: '2999-01-01', archived: false, completed: false }]);
+      try {
+        useTaskStore.setState({ tasks: [makeTask({ id: 't1', pinned: true, projectId: 'garden' }), makeTask({ id: 't2', pinned: true })] });
+        expect(useTaskStore.getState().pinnedTasks().map(t => t.id)).toEqual(['t2']);
+      } finally {
+        // Back to what the project store registered at load.
+        registerPausedProjectSource(() => useProjectStore.getState().projects);
+      }
     });
   });
 

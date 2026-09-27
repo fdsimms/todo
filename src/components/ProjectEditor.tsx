@@ -366,7 +366,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
     return null;
   };
 
-  const saveAndClose = () => {
+  const saveAndClose = (skipLinkCheck = false) => {
     // A new project can't be saved without a name. It used to close anyway,
     // and the host then deleted the unnamed row along with the deadline,
     // notes and settings entered for it, without a word.
@@ -377,6 +377,19 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
         [
           { text: 'Keep editing', style: 'cancel' },
           { text: 'Discard project', style: 'destructive', onPress: () => onClose('discarded') },
+        ],
+      );
+      return;
+    }
+    // A link left in the field is saved with the rest, so one that can't be
+    // read was dropped without a word. Say so instead.
+    if (!skipLinkCheck && linkDraft.trim() && !parseLabelledLink(linkDraft)) {
+      Alert.alert(
+        "That link can't be read",
+        'A link starts with https://, or is a site name like example.com.',
+        [
+          { text: 'Keep editing', style: 'cancel' },
+          { text: 'Save without it', onPress: () => saveAndClose(true) },
         ],
       );
       return;
@@ -426,7 +439,12 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
       (nudgeMode === 'scheduled' && autoSchedule) !== project.autoSchedule ||
       ongoing !== project.ongoing ||
       weekendSource !== project.weekendSource ||
-      (pausedUntil ? dayKeyOf(pausedUntil) : null) !== project.pausedUntil
+      (pausedUntil ? dayKeyOf(pausedUntil) : null) !== project.pausedUntil ||
+      personIds.join() !== (project.personIds ?? []).join() ||
+      JSON.stringify(links) !== JSON.stringify(project.links ?? []) ||
+      linkDraft.trim() !== '' ||
+      inOrder !== (project.inOrder ?? false) ||
+      showChecked !== (project.showChecked ?? false)
     );
   };
 
@@ -589,7 +607,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
   return (
     <EditorSheet
       visible={visible}
-      onRequestClose={saveAndClose}
+      onRequestClose={() => saveAndClose()}
       rootStyle={styles.root}
       headerStyle={styles.header}
       scrollStyle={styles.scroll}
@@ -602,7 +620,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
           bare
           title={isNew ? 'New project' : 'Edit project'}
           left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} />}
-          right={<SheetHeaderButton label="Done" onPress={saveAndClose} />}
+          right={<SheetHeaderButton label="Done" onPress={() => saveAndClose()} />}
         />
       }
       footer={
@@ -1157,7 +1175,9 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
             <Text style={styles.optionHint}>
               {!weekendNudgeOn
                 ? 'Takes effect once "Nudge for an empty weekend" is on in Settings, under Automatic tasks'
-                : weekendSource
+                : nudgeMode === 'never'
+                  ? 'Takes effect once "Bring this up" is set to When I ask or Every…'
+                  : weekendSource
                   ? 'The weekend task names this project when a weekend has nothing on it'
                   : 'The weekend task does not name this project'}
             </Text>

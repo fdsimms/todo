@@ -1406,7 +1406,6 @@ export const TaskItem = React.memo(function TaskItem({
   // change, but returns a primitive, so an unchanged count doesn't re-render.
   const waitingCount = useTaskStore(() => waitingCountFor(task.id));
   const blockerTitle = useTaskStore(() => {
-    if (!task.blockedById) return undefined;
     // Only blockers still open: one that's done or filed away no longer holds
     // this task, so naming it would dim a row that's free. With several, the
     // first still open is named and the rest are counted.

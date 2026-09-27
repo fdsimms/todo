@@ -595,7 +595,13 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
         const category = expanded.find(
           e => e.sourceTemplateId === sourceTemplateId && e.item.groupId === groupId
         )?.item.category ?? null;
-        groupTasks(taskIds, group.title, category);
+        const section = groupTasks(taskIds, group.title, category);
+        // Applied into a project, a group is one of its sections: homed on its
+        // page (so it stays there once its tasks are done) and a checklist if
+        // it was saved as one. See TaskGroup.projectId and .checklist.
+        if (projectId) {
+          useTaskGroupStore.getState().updateGroup(section.id, { projectId, checklist: group.checklist ?? false });
+        }
       });
     });
 

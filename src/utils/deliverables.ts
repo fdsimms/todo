@@ -74,9 +74,18 @@ export const RSVP_OPTIONS = ['Yes', 'No', 'Maybe'];
  * or new lines, trimmed, blanks and repeats (ignoring case) dropped, capped.
  */
 export function parseDeliverableOptions(raw: string): string[] {
+  return cleanDeliverableOptions(raw.split(/[,\n]/));
+}
+
+/**
+ * A stored options list, tidied without splitting: trimmed, blanks and
+ * repeats (ignoring case) dropped, capped. What the reads use, since an option
+ * is allowed a comma ("Yes, definitely") once it's stored; only typing splits.
+ */
+export function cleanDeliverableOptions(options: readonly string[]): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
-  for (const part of raw.split(/[,\n]/)) {
+  for (const part of options) {
     const option = part.trim().slice(0, DELIVERABLE_TEXT_MAX_LENGTH);
     if (!option || seen.has(option.toLowerCase())) continue;
     seen.add(option.toLowerCase());
@@ -95,7 +104,7 @@ export function deliverableOptionsFor(task: DeliverableSource & Pick<Task, 'deli
   const kind = deliverableKindFor(task);
   if (kind === 'yesno') return [...YES_NO_OPTIONS];
   if (kind !== 'choice') return [];
-  const options = parseDeliverableOptions((task.deliverableOptions ?? []).join('\n'));
+  const options = cleanDeliverableOptions(task.deliverableOptions ?? []);
   return options.length >= 2 ? options : [];
 }
 

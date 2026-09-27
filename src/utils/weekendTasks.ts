@@ -1,4 +1,5 @@
 import type { Project, Task, TimeOfDay } from '../types';
+import { isPausedOn } from './projectPause';
 // From types rather than declared here, so useSettingsStore can read them
 // without importing this module: that would close a cycle through dateUtils,
 // which is exactly why the grocery lead-days trio lives there too.
@@ -315,12 +316,16 @@ export interface WeekendSuggestion {
  */
 export function weekendSourceProjects(
   projects: readonly Project[],
+  todayKey?: string,
 ): Project[] {
   return projects
     // Completed ones too, for the same reason: a finished project has
     // nothing left to suggest, and one still nominated from when it was open
     // was being quoted anyway.
     .filter(project => project.weekendSource && !project.archived && !project.completed)
+    // Paused, or set to never come up: the pull sheet the row links to refuses
+    // both, so naming one sent the person to a sheet that said no.
+    .filter(project => project.nudgeOptIn && !(todayKey && isPausedOn(project, todayKey)))
     // The hand drag on the Projects screen, for the reason `reachOut` breaks its
     // tie on the People screen's: it is the only ranking of these the user made
     // on purpose, and inventing a second one here would be this feature deciding

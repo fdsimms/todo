@@ -1596,6 +1596,13 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             accessibilityLabel="Options to pick from, separated by commas"
           />
         )}
+        {/* Fewer than two options and completing asks nothing
+            (deliverableOptionsFor), so say so where they're typed. */}
+        {deliverableKind === 'choice' && parseDeliverableOptions(deliverableOptionsText).length < 2 && (
+          <Text style={styles.choiceOptionsHint}>
+            Add at least two options, separated by commas. With fewer, completing the task asks nothing.
+          </Text>
+        )}
         {/* Only on a trip template: "Pick dates" answered with the 14th is
             the trip leaving on the 14th, so the project it lands in can
             learn its Leaving date from the answer. */}
@@ -2123,5 +2130,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   /** Sits between the medication's name and its unit row. */
   medicationAmountInput: { marginTop: spacing.sm, marginBottom: spacing.sm },
+  choiceOptionsHint: { color: colors.textSecondary, fontSize: font.xs, marginHorizontal: spacing.md, marginTop: spacing.xs, marginBottom: spacing.sm },
   deliverableOptionsInput: { marginHorizontal: spacing.md, marginVertical: spacing.sm, height: 40 },
 });

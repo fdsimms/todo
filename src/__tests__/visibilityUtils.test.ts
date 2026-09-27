@@ -5,6 +5,7 @@ import {
   isTaskExpired,
   isTaskSweepable,
   getVisibleAt,
+  isWithheld,
   isHiddenForVacation,
   isVisibleApartFromVacation,
   isRecurrenceNotYetDue,
@@ -249,6 +250,25 @@ describe('isTaskVisible', () => {
     registerPausedProjectSource(() => [{ id: 'garden', pausedUntil: pausedUntil(0), archived: false, completed: false }]);
     expect(isTaskVisible(due)).toBe(true);
     registerPausedProjectSource(null);
+  });
+
+  it('keeps a paused project\'s task and negative habit off Today, not expired, and back on the resume day', () => {
+    const inDays = (days: number) => {
+      const d = new Date(NOW); d.setDate(d.getDate() + days);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    };
+    registerPausedProjectSource(() => [{ id: 'garden', pausedUntil: inDays(3), archived: false, completed: false }]);
+    try {
+      const due = { ...baseTask, projectId: 'garden', dueDate: NOW.toISOString() };
+      expect(isWithheld(due)).toBe(true);
+      expect(isTaskVisible({ ...due, polarity: 'negative' as const })).toBe(false);
+      expect(isTaskExpired({ ...due, windowEnd: '00:01' })).toBe(false);
+      const back = getVisibleAt(due);
+      expect(back.getDate()).toBe(new Date(NOW.getFullYear(), NOW.getMonth(), NOW.getDate() + 3).getDate());
+      expect(back > NOW).toBe(true);
+    } finally {
+      registerPausedProjectSource(null);
+    }
   });
 
   it('hides an uncompleted task with no date signal (it belongs in Inbox/Unscheduled, not Today)', () => {

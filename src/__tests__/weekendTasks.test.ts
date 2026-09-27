@@ -69,7 +69,7 @@ const load = (key: string, over: Partial<DayLoad> = {}): DayLoad =>
      busyKnown: false, busyMinutes: 0, rankedMinutes: 0, away: false, ...over });
 
 const project = (id: string, over: Partial<Project> = {}): Project =>
-  ({ id, title: id, sortOrder: 0, archived: false, weekendSource: true, ...over } as Project);
+  ({ id, title: id, sortOrder: 0, archived: false, weekendSource: true, nudgeOptIn: true, pausedUntil: null, ...over } as Project);
 
 const generated = (kind: string, sourceId: string, over = {}) =>
   ({ generatedKind: kind, generatedSourceId: sourceId, completed: false, archived: false, ...over }) as
@@ -290,6 +290,14 @@ describe('the project it points at', () => {
       project('not-nominated', { sortOrder: 0, weekendSource: false }),
     ];
     expect(weekendSourceProjects(projects).map(p => p.id)).toEqual(['first', 'second']);
+  });
+
+  // The pull sheet the row links to refuses both, so naming one sent the
+  // person to a sheet that said no.
+  it('drops a project set to never come up, and one paused today', () => {
+    expect(weekendSourceProjects([project('a', { nudgeOptIn: false })])).toEqual([]);
+    expect(weekendSourceProjects([project('a', { pausedUntil: '2026-03-01' })], '2026-02-10')).toEqual([]);
+    expect(weekendSourceProjects([project('a', { pausedUntil: '2026-03-01' })], '2026-03-01')).toHaveLength(1);
   });
 
   it('drops an archived project', () => {
