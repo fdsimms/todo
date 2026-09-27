@@ -20,6 +20,7 @@ import {
   moodBarFraction,
   CONTRAST_BAR_MIN_PERCENT,
   metricAverage,
+  finishedDaysAverage,
   healthInsight,
   nutrientFindings,
   nutrientInsight,
@@ -780,6 +781,33 @@ describe('the food axis', () => {
 
   it('averages a nutrient over the days that carried it', () => {
     expect(metricAverage(rows([1000, 3000, null]), 'calorieKcal')).toBe(2000);
+  });
+
+  describe('finishedDaysAverage', () => {
+    // rows() numbers its days from Aug 1, so the tenth row is Aug 10.
+    const ten = [1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000];
+
+    it('says nothing off a first afternoon of logging', () => {
+      // One day, today, breakfast and lunch in: an average of it is a partial
+      // day read as a whole one.
+      expect(finishedDaysAverage(rows([900]), 'calorieKcal', '2026-08-01')).toBeNull();
+    });
+
+    it('leaves today out of the average, as Stats does', () => {
+      const days = rows([...ten, 300]);
+      expect(finishedDaysAverage(days, 'calorieKcal', '2026-08-11')).toBe(1000);
+    });
+
+    it('says nothing below the paired-day floor', () => {
+      const days = rows(ten.slice(0, MIN_PAIRED_DAYS - 1));
+      expect(finishedDaysAverage(days, 'calorieKcal', '2026-09-01')).toBeNull();
+      expect(finishedDaysAverage(rows(ten), 'calorieKcal', '2026-09-01')).toBe(1000);
+    });
+
+    it('counts only the days that carried the nutrient toward the floor', () => {
+      const days = rows([...ten.slice(0, MIN_PAIRED_DAYS - 1), null, null]);
+      expect(finishedDaysAverage(days, 'calorieKcal', '2026-09-01')).toBeNull();
+    });
   });
 
   it('keeps the nutrient vocabulary short, because the width is the risk', () => {
