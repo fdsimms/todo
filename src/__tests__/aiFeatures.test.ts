@@ -20,7 +20,7 @@ describe('aiFeaturesFor', () => {
     expect(aiFeaturesFor(false).map(f => f.id))
       .toEqual([
         'taskBreakdown', 'templateSuggestions', 'projectTaskSuggestions', 'backfillSuggestions',
-        'calendarImport', 'nutritionLabelPhoto', 'cookbookChecklist',
+        'calendarImport', 'nutritionLabelPhoto',
       ]);
   });
 
@@ -42,7 +42,7 @@ describe('aiFeaturesFor', () => {
     expect(aiFeaturesFor(false, true).map(f => f.id))
       .toEqual([
         'taskBreakdown', 'templateSuggestions', 'projectTaskSuggestions', 'backfillSuggestions',
-        'nutritionLabelPhoto', 'cookbookChecklist',
+        'nutritionLabelPhoto',
       ]);
   });
 

@@ -1741,6 +1741,10 @@ export function initDatabase(): void {
     // Empty on every existing recipe: a method heading declared ahead of any
     // step is new. See Recipe.emptyStepSections.
     "ALTER TABLE recipes ADD COLUMN empty_step_sections TEXT NOT NULL DEFAULT '[]'",
+    // Null on every existing row: no follow-up task written before this
+    // carried a pointer back to its parent's live occurrence, only the title
+    // snapshot in extra_task_source_title. See Task.followUpTaskSourceId.
+    'ALTER TABLE tasks ADD COLUMN extra_task_source_id TEXT',
   ];
   // Asking SQLite for a table's columns once is cheaper than handing it every
   // ALTER for that table and catching the duplicate-column error, and by the
@@ -3125,6 +3129,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     followUpTaskTally: (row.extra_task_tally as number) ?? 0,
     previousFollowUpTaskTally: (row.previous_extra_task_tally as number) ?? 0,
     followUpTaskSourceTitle: (row.extra_task_source_title as string | null) ?? null,
+    followUpTaskSourceId: (row.extra_task_source_id as string | null) ?? null,
     vacationPause: Boolean(row.vacation_pause),
     excludeFromSuggestions: Boolean(row.exclude_from_suggestions),
     timerStartedAt: (row.timer_started_at as string | null) ?? null,
@@ -3252,8 +3257,8 @@ export function dbInsertTask(task: Task): void {
       medication_name, medication_amount, medication_unit, log_meal_slot,
       estimate_before_timing, waiting_on_person_since, waiting_follow_up_declined_at,
       reminder_tracks_visibility, recurrence_month,
-      blocked_by_ids, deliverable_options, deliverable_sets_away, follow_up_on
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      blocked_by_ids, deliverable_options, deliverable_sets_away, follow_up_on, extra_task_source_id
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -3361,6 +3366,7 @@ export function dbInsertTask(task: Task): void {
       JSON.stringify(task.deliverableOptions ?? []),
       task.deliverableSetsAway ? 1 : 0,
       task.followUpOn ?? null,
+      task.followUpTaskSourceId ?? null,
     ]
   );
 }
@@ -3395,7 +3401,7 @@ export function dbUpdateTask(task: Task): void {
       medication_name=?, medication_amount=?, medication_unit=?, log_meal_slot=?,
       estimate_before_timing=?, waiting_on_person_since=?, waiting_follow_up_declined_at=?,
       reminder_tracks_visibility=?, recurrence_month=?,
-      blocked_by_ids=?, deliverable_options=?, deliverable_sets_away=?, follow_up_on=?
+      blocked_by_ids=?, deliverable_options=?, deliverable_sets_away=?, follow_up_on=?, extra_task_source_id=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -3504,6 +3510,7 @@ export function dbUpdateTask(task: Task): void {
       JSON.stringify(task.deliverableOptions ?? []),
       task.deliverableSetsAway ? 1 : 0,
       task.followUpOn ?? null,
+      task.followUpTaskSourceId ?? null,
       task.id,
     ]
   );
