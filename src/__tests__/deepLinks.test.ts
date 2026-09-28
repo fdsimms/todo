@@ -86,6 +86,8 @@ import {
   handleIncomingUrl,
   isGroceriesUrl,
   groceriesUrlFinish,
+  groceriesLinkUrl,
+  groceriesUrlShop,
   isMealPlanUrl,
   mealPlanUrlDayKey,
   isKitchenUrl,
@@ -244,6 +246,56 @@ describe('groceriesUrlFinish', () => {
   it('is false for a URL that isn\'t a groceries link at all', () => {
     expect(groceriesUrlFinish('dundundun://recipes?finish=1')).toBe(false);
     expect(groceriesUrlFinish('')).toBe(false);
+  });
+});
+
+// One stop of a planned trip — see createGroceryTasks in GroceryScreen (#2938).
+describe('groceriesLinkUrl / groceriesUrlShop', () => {
+  it('is the bare link with no store, the one every older task carries', () => {
+    expect(groceriesLinkUrl()).toBe('dundundun://groceries');
+    expect(groceriesLinkUrl(null)).toBe('dundundun://groceries');
+  });
+
+  it('is still the Groceries link chip\'s own scheme, so the editor names it', () => {
+    // The chip is matched by exact string, so the bare link must stay it.
+    expect(groceriesLinkUrl()).toBe('dundundun://groceries');
+    expect(isGroceriesUrl(groceriesLinkUrl('shop-1'))).toBe(true);
+  });
+
+  it('round-trips a store id', () => {
+    const url = groceriesLinkUrl('shop-trader-joe-s');
+    expect(url).toBe('dundundun://groceries?shop=shop-trader-joe-s');
+    expect(groceriesUrlShop(url)).toBe('shop-trader-joe-s');
+  });
+
+  it('round-trips an id that needs escaping', () => {
+    const id = 'a&b=c d';
+    expect(groceriesUrlShop(groceriesLinkUrl(id))).toBe(id);
+  });
+
+  it('reads no store off the bare link or the finish link', () => {
+    expect(groceriesUrlShop('dundundun://groceries')).toBeNull();
+    expect(groceriesUrlShop('dundundun://groceries/')).toBeNull();
+    expect(groceriesUrlShop('dundundun://groceries?finish=1')).toBeNull();
+  });
+
+  it('reads no store off an empty value', () => {
+    expect(groceriesUrlShop('dundundun://groceries?shop=')).toBeNull();
+    expect(groceriesUrlShop('dundundun://groceries?shop=%20')).toBeNull();
+  });
+
+  it('tolerates the same spellings the finish flag does', () => {
+    expect(groceriesUrlShop('DUNDUNDUN://Groceries/?shop=s1')).toBe('s1');
+    expect(groceriesUrlShop('  dundundun://groceries?shop=s1  ')).toBe('s1');
+  });
+
+  it('is null for a URL that isn\'t a groceries link at all', () => {
+    expect(groceriesUrlShop('dundundun://kitchen?shop=s1')).toBeNull();
+    expect(groceriesUrlShop('')).toBeNull();
+  });
+
+  it('never reads the store as a finish request', () => {
+    expect(groceriesUrlFinish(groceriesLinkUrl('s1'))).toBe(false);
   });
 });
 
@@ -592,13 +644,20 @@ describe('openInAppUrl', () => {
 
   it('opens the grocery list for the bare link, without asking for the sheet', () => {
     expect(openInAppUrl('dundundun://groceries')).toBe(true);
-    expect(mockResetToGroceries).toHaveBeenCalledWith(false);
+    expect(mockResetToGroceries).toHaveBeenCalledWith(false, null);
   });
 
   // The trip Live Activity's Finish button — see TripLiveActivity.swift.
   it('asks the grocery list to open the finish sheet', () => {
     expect(openInAppUrl('dundundun://groceries?finish=1')).toBe(true);
-    expect(mockResetToGroceries).toHaveBeenCalledWith(true);
+    expect(mockResetToGroceries).toHaveBeenCalledWith(true, null);
+  });
+
+  // One stop of a planned trip (#2938). Only ever a place to scroll to: the
+  // link has no way to start a trip, so there is nothing else to assert.
+  it('hands a stop\'s store to the grocery list, without the finish sheet', () => {
+    expect(openInAppUrl('dundundun://groceries?shop=shop-costco')).toBe(true);
+    expect(mockResetToGroceries).toHaveBeenCalledWith(false, 'shop-costco');
   });
 
   // A task's timer Live Activity Done button — see TimerLiveActivity.swift.

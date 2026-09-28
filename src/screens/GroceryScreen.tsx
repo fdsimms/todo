@@ -90,17 +90,12 @@ import { haptics } from '../utils/haptics';
 import { generateId } from '../utils/id';
 import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
-import { KNOWN_LINK_APPS } from '../constants/linkApps';
+import { groceriesLinkUrl } from '../utils/deepLinks';
 import type { GroceryItem, ItemProduct, Recipe, Shop } from '../types';
 import { describeProduct, preferredProductOf } from '../utils/groceryProduct';
 import { entryFor, itemsOnList, listNameFor, isAwayList, HOME_LIST_NAME } from '../utils/groceryLists';
 
-// The same scheme a recurring "Grocery run" task already carries in its
-// linkUrl — looked up by name rather than duplicated as a literal, so the two
-// stay in sync if the app's own entry ever moves.
-const GROCERIES_LINK_URL = KNOWN_LINK_APPS.find(app => app.name === 'Groceries')!.scheme;
-
-/** The collapse key of one store's section in the store lens. */
+/** The collapse and scroll key of one store's section in the store lens. */
 const storeSectionKey = (shopId: string | null) => `store:${shopId ?? 'none'}`;
 
 /**
@@ -127,7 +122,7 @@ const storeSectionKey = (shopId: string | null) => `store:${shopId ?? 'none'}`;
  * `storeHeader` is the third lens (#2938), and takes both of those rules for
  * the same reason: which store a row is usually bought at is a fact the record
  * holds, not something dropping a row under a heading could assign. Its key is
- * `storeSectionKey`.
+ * `storeSectionKey`, which is also what a stop's own task link scrolls to.
  *
  * `aisle`, `recipeHeader` and `storeHeader` are collapsible, same mechanism as `cartHeader`
  * below: collapsing one is just not pushing its item rows (and any `unavailableHeader`
@@ -784,6 +779,48 @@ export function GroceryScreen() {
   // gesture, not autoscroll.
   const rowScroller = useRef<RowScroller | null>(null);
   useScrollToTopOnTabPress(rowScroller);
+
+  /**
+   * One stop of a planned trip, opened from its own task
+   * (`dundundun://groceries?shop=<id>`, #2938): grouped by store, land with
+   * that store's section open and scrolled into view.
+   *
+   * Grouped any other way the link just opens the list, and the lens is left
+   * as it is: which grouping the list uses is the user's setting, and a task
+   * tap is not a request to change it. A store with nothing on the list, or one
+   * deleted since the task was written, is the same shrug. **It never starts a
+   * trip**, since tapping a task named for a store is planning to go there,
+   * and nothing infers a trip (docs/arch/groceries.md).
+   *
+   * Stamped like `openFinish` above, so the same stop tapped twice still
+   * scrolls twice. The header's own position doesn't move when its section
+   * opens (only rows below it are added), so the scroll can go in the same
+   * pass as the expand; a header not laid out yet is waited for by
+   * `scrollToKey` itself.
+   */
+  const focusShopId: string | undefined = route.params?.focusShop;
+  const focusShopStamp: number | undefined = route.params?.focusShopStamp;
+  const [handledShopStamp, setHandledShopStamp] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    if (focusShopStamp === undefined || focusShopStamp === handledShopStamp) return;
+    setHandledShopStamp(focusShopStamp);
+    if (grouped.kind !== 'store' || !focusShopId) return;
+    if (!grouped.sections.some(section => section.shopId === focusShopId)) return;
+    const key = storeSectionKey(focusShopId);
+    if (collapsedGroups.has(key)) {
+      setStoredCollapsedGroups(storedCollapsedGroups.filter(k => k !== key));
+    }
+    rowScroller.current?.scrollToKey(key);
+  }, [
+    focusShopStamp,
+    handledShopStamp,
+    focusShopId,
+    grouped,
+    collapsedGroups,
+    storedCollapsedGroups,
+    setStoredCollapsedGroups,
+  ]);
+
   // What the drag is aimed at goes through a channel rather than state: it
   // changes as the finger crosses each row, and re-rendering this screen
   // re-runs every row's renderItem. Only the button's label reads it.
@@ -1253,14 +1290,16 @@ export function GroceryScreen() {
   // show up on Today, with linkUrl set to the same dundundun://groceries
   // scheme a recurring "Grocery run" task already uses. One task per store:
   // two stops are two errands, separately schedulable and separately
-  // completable, which one title can't be.
+  // completable, which one title can't be. Each stop's link names its store
+  // (#2938), so grouped by store the task opens on that stop's own section;
+  // the plain "Get groceries" names none and opens the list as it always has.
   const createGroceryTasks = useCallback(
     (chosen: Shop[]) => {
       if (chosen.length === 0) {
-        addTask({ title: 'Get groceries', linkUrl: GROCERIES_LINK_URL });
+        addTask({ title: 'Get groceries', linkUrl: groceriesLinkUrl() });
       } else {
         for (const shop of chosen) {
-          addTask({ title: `Get groceries at ${shop.name}`, linkUrl: GROCERIES_LINK_URL });
+          addTask({ title: `Get groceries at ${shop.name}`, linkUrl: groceriesLinkUrl(shop.id) });
         }
       }
       haptics.success();

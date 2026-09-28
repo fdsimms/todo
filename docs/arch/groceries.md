@@ -586,11 +586,11 @@ items from, and this is a person stating what a shop sells. Same side of the lin
   filter can't produce. For the same reason `shopsForItem` needs no change at all — every link it
   returns is a positive one, and a positive link already outranks the range.
 
-### Grouping the list by store (#2938)
+### Grouping the list by store, and a link per stop (#2938)
 
 A two-stop plan ("Trader Joe's, then the pharmacy") used to be two tasks opening the same long
 list. The list now has a third lens beside aisle and recipe (`groceryGroupBy: 'store'`,
-`buildGroceryStoreSections` in `groceryShops.ts`).
+`buildGroceryStoreSections` in `groceryShops.ts`), and each stop's task names its store.
 
 - **A row files under habit, then assertion, then nothing.** `storeSectionShopFor` is
   `primaryShopFor` (where you have actually bought it most) falling back to `exclusiveShopFor`
@@ -616,6 +616,13 @@ list. The list now has a third lens beside aisle and recipe (`groceryGroupBy: 's
   in. There is deliberately no "cheaper at X" caption: `tripMarkerFor` allows three captions, each
   backed by something the user recorded, and a price comparison would be a fourth kind of claim.
   It stays in the item sheet.
+- **Each stop's task carries `dundundun://groceries?shop=<id>`** (`groceriesLinkUrl`, read back by
+  `groceriesUrlShop`). Grouped by store it opens with that section expanded and scrolled into view;
+  grouped any other way it opens the list and leaves the lens alone, since a task tap is not a
+  request to change a setting. **It never starts a trip**: tapping a task named for a store is
+  planning to go there, and nothing infers a trip. The id rather than the name, so a rename between
+  planning and tapping still lands. The bare link every older task carries opens the list exactly
+  as it did.
 - **Not built: a per-store aisle order.** `aisleOrder` is still one walk. A `Shop.aisleOrder`
   applied during a trip would be the fifth place an aisle name lives, so `renameAisle` and
   `deleteAisle` would have to keep it too.
@@ -641,7 +648,8 @@ which rows you don't usually get here.
   its header confirm plans a trip (a task, possibly for tomorrow), "Start shopping at X" says
   you're there now. Overloading the one button would set the mode at exactly the wrong moment.
   Offered for a single selection only: you can only stand in one store, and a two-stop plan is
-  still a plan. Nothing anywhere infers a trip.
+  still a plan. Nothing anywhere infers a trip, including a stop's own task link, which names its
+  store only to scroll the store lens to it (see "Grouping the list by store" above).
 - **Three terminators, and they're in three different places for a reason.** The banner's Stop
   button and `clearList` end it in the store; finishing ends it in `GroceryScreen.handleFinished`
   rather than inside `finishShopping`, because that early-returns on an empty trolley and finishing

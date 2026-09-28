@@ -46,9 +46,30 @@ export function linkAppsFor(kitchenEnabled: boolean): LinkApp[] {
   return kitchenEnabled ? KNOWN_LINK_APPS : KNOWN_LINK_APPS.filter(a => !a.kitchen);
 }
 
+/**
+ * The known app a stored link belongs to, or null for a custom URL.
+ *
+ * An exact match, plus one allowance: this app's own link carrying a query,
+ * which is how one stop of a planned trip names its store
+ * (`dundundun://groceries?shop=<id>`, #2938). That task still opens the
+ * Groceries screen, so the editor's Link row should still say "Groceries"
+ * rather than print the URL. A third-party scheme gets no such allowance:
+ * `spotify://?x` is somebody's custom link, not the chip.
+ */
+export function knownLinkAppFor(url: string | null | undefined): LinkApp | null {
+  if (!url) return null;
+  return (
+    KNOWN_LINK_APPS.find(
+      app =>
+        app.scheme === url ||
+        (app.scheme.startsWith('dundundun://') && url.startsWith(`${app.scheme}?`))
+    ) ?? null
+  );
+}
+
 /** Known app name for a link scheme, else the raw URL — what a settings row or a caption names it. */
 export function linkAppLabel(url: string): string {
-  return KNOWN_LINK_APPS.find(app => app.scheme === url)?.name ?? url;
+  return knownLinkAppFor(url)?.name ?? url;
 }
 
 /** What the link reads need: the task's own link, plus its chain position. */

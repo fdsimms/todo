@@ -132,8 +132,9 @@ export function isOpenAppUrl(url: string): boolean {
   return typeof url === 'string' && OPEN_APP_RE.test(url.trim());
 }
 
-// `dundundun://groceries[?finish=1]` — what a recurring "Grocery run" task
-// carries in its linkUrl, so the reminder to go opens the list to shop from.
+// `dundundun://groceries[?finish=1|?shop=<id>]` — what a recurring "Grocery
+// run" task carries in its linkUrl, so the reminder to go opens the list to
+// shop from. `shop` is one stop of a planned trip (see groceriesLinkUrl).
 const GROCERIES_RE = new RegExp(`^${SCHEME}:\\/\\/\\/?groceries\\/?(?:\\?(.*))?$`, 'i');
 
 export function isGroceriesUrl(url: string): boolean {
@@ -163,6 +164,44 @@ export function groceriesUrlFinish(url: string): boolean {
   const match = GROCERIES_RE.exec(url.trim());
   if (!match) return false;
   return (parseQuery(match[1] ?? '').finish ?? '').trim() === '1';
+}
+
+// The bare groceries link, looked up by name rather than written out, so a
+// "Grocery run" task picked from the link chips and the one the trip planner
+// writes can't come to disagree.
+const GROCERIES_LINK_URL = KNOWN_LINK_APPS.find(app => app.name === 'Groceries')!.scheme;
+
+/**
+ * The link a "Get groceries at X" task carries (#2938): the bare groceries
+ * link, plus `?shop=<id>` when the task is one stop of a planned trip. The
+ * reader is `groceriesUrlShop` below; GroceryScreen opens with that store's
+ * section expanded and in view when the list is grouped by store.
+ *
+ * The id rather than the name, the way `kitchenLinkUrl` carries an entry id: a
+ * store can be renamed between planning the trip and tapping the task, and an
+ * id survives that where a name wouldn't.
+ */
+export function groceriesLinkUrl(shopId?: string | null): string {
+  return shopId ? `${GROCERIES_LINK_URL}?shop=${encodeURIComponent(shopId)}` : GROCERIES_LINK_URL;
+}
+
+/**
+ * Which store a groceries link names, or null (#2938).
+ *
+ * Opaque, like `kitchenUrlItemId`: GroceryScreen matches it against the store
+ * sections it is showing and shrugs when there's no match (the store was
+ * deleted, nothing on the list files under it, or the list isn't grouped by
+ * store). **It never starts a trip.** Tapping a task named for a store is
+ * planning to go there, not saying you're standing in it, and nothing infers
+ * a trip (docs/arch/groceries.md). The bare link every older task carries
+ * reads as null and opens the list exactly as it always has.
+ */
+export function groceriesUrlShop(url: string): string | null {
+  if (typeof url !== 'string') return null;
+  const match = GROCERIES_RE.exec(url.trim());
+  if (!match) return null;
+  const id = (parseQuery(match[1] ?? '').shop ?? '').trim();
+  return id || null;
 }
 
 // `dundundun://recipes` — the peer of the groceries link, so a "plan meals"
@@ -600,7 +639,7 @@ export function openInAppUrl(url: string | null | undefined): boolean {
     return true;
   }
   if (isGroceriesUrl(url)) {
-    resetToGroceries(groceriesUrlFinish(url));
+    resetToGroceries(groceriesUrlFinish(url), groceriesUrlShop(url));
     return true;
   }
   if (isRecipesUrl(url)) {
