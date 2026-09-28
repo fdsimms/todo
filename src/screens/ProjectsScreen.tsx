@@ -873,19 +873,19 @@ const ProjectRow = React.memo(function ProjectRow({
                     onPress={() => onQuickComplete(project)}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     accessibilityRole="button"
-                    accessibilityLabel={`Mark ${project.title} complete: ${project.kind === 'list' ? 'every line is checked' : 'every task is done'}`}
+                    accessibilityLabel={`Mark ${project.title} complete: ${project.kind === 'list' ? 'every item is checked' : 'every task is done'}`}
                   >
                     <Ionicons name="checkmark-circle" size={16} color={colors.green} />
                   </TouchableOpacity>
                 )}
                 {/* Add to a list without hunting for its field: opens the
-                    list with the add field focused. */}
+                    list with the add field open. */}
                 {project.kind === 'list' && projectFilter === 'active' && (
                   <TouchableOpacity
                     onPress={() => onAddLine(project)}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     accessibilityRole="button"
-                    accessibilityLabel={`Add a line to ${project.title}`}
+                    accessibilityLabel={`Add an item to ${project.title}`}
                   >
                     <Ionicons name="add-circle-outline" size={16} color={colors.textTertiary} />
                   </TouchableOpacity>
