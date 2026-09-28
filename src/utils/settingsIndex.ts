@@ -698,6 +698,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['birthday', 'days before', 'lead', 'early', 'notice', 'warning'] },
   { id: 'weekendNudgeLeadDays', groupId: 'generated', label: 'Show the task', section: 'Nudge for an empty weekend',
     keywords: ['weekend', 'thursday', 'friday', 'days before', 'lead', 'early', 'notice', 'warning'] },
+  { id: 'weekendNudgePlanThreshold', groupId: 'generated', label: 'How much counts as open', section: 'Nudge for an empty weekend',
+    keywords: ['weekend', 'threshold', 'bare', 'already planned', 'movie'] },
   { id: 'weighInEveryDays', groupId: 'generated', label: 'Ask after', section: 'Ask for a weigh-in',
     keywords: ['weight', 'weigh', 'scale', 'days', 'how often', 'cadence', 'gap', 'interval'] },
   { id: 'birthdayGiftLeadDays', groupId: 'generated', label: 'Show the task', section: 'Birthday gift reminders',

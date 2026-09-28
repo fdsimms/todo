@@ -27,6 +27,9 @@ import {
   WEEKEND_NUDGE_LEAD_DAYS_DEFAULT,
   WEEKEND_NUDGE_LEAD_DAYS_MAX,
   WEEKEND_NUDGE_LEAD_DAYS_MIN,
+  WEEKEND_NUDGE_PLAN_THRESHOLD_DEFAULT,
+  WEEKEND_NUDGE_PLAN_THRESHOLD_MAX,
+  WEEKEND_NUDGE_PLAN_THRESHOLD_MIN,
   type TimeOfDay,
 } from '../../types';
 import {
@@ -45,7 +48,7 @@ import {
   DEFAULT_BIRTHDAY_GIFT_LEAD_DAYS,
   MAX_BIRTHDAY_LEAD_DAYS,
 } from '../../utils/birthdayTasks';
-import { describeWeekendNudgeLead } from '../../utils/weekendTasks';
+import { describeWeekendNudgeLead, describeWeekendNudgePlanThreshold } from '../../utils/weekendTasks';
 import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
 import { SettingsSegments } from './SettingsSegments';
@@ -587,6 +590,25 @@ export function GeneratedTasksSection() {
               format={n => `${n}d`}
               label="Days before Saturday"
               describeValue={n => describeWeekendNudgeLead(n ?? WEEKEND_NUDGE_LEAD_DAYS_DEFAULT)}
+            />
+          </View>
+          <View style={styles.sep} />
+          <SettingsRow
+            entryId="weekendNudgePlanThreshold"
+            icon="checkmark-done-outline"
+            label="How much counts as open"
+            hint="How many things can already be on Friday evening, Saturday or Sunday and the weekend still counts as open."
+            value={describeWeekendNudgePlanThreshold(s.weekendNudgePlanThreshold)}
+            tight
+          />
+          <View style={styles.cadenceRow}>
+            <CountStepper
+              value={s.weekendNudgePlanThreshold}
+              onChange={next => s.setWeekendNudgePlanThreshold(next ?? WEEKEND_NUDGE_PLAN_THRESHOLD_DEFAULT)}
+              min={WEEKEND_NUDGE_PLAN_THRESHOLD_MIN}
+              max={WEEKEND_NUDGE_PLAN_THRESHOLD_MAX}
+              label="Things already planned"
+              describeValue={n => describeWeekendNudgePlanThreshold(n ?? WEEKEND_NUDGE_PLAN_THRESHOLD_DEFAULT)}
             />
           </View>
         </>

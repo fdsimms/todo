@@ -126,7 +126,7 @@ import {
   weekendNudgeLinkUrl,
   weekendNudgeNotes,
   weekendNudgeWeekendKey,
-  weekendPlanCount,
+  weekendPlanTitles,
   weekendSourceProjects,
 } from '../utils/weekendTasks';
 import { buildDayBuckets } from '../utils/calendarMonth';
@@ -6777,7 +6777,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         assumedTaskMinutes: assumedMinutesFor(tasks),
       },
     );
-    const bare = isWeekendBare(window, loads, weekendPlanCount(window, buckets, taskById));
+    const planTitles = weekendPlanTitles(window, buckets, taskById);
+    const bare = isWeekendBare(window, loads, planTitles.length, settings.weekendNudgePlanThreshold);
 
     // dropGeneratedTask rather than deleteGeneratedTaskQuietly, like
     // projectReview's clear: this is the app tidying up after itself, and
@@ -6835,7 +6836,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       drift: () => null,
       draft: () => ({
         title: WEEKEND_NUDGE_TITLE,
-        notes: weekendNudgeNotes(suggestion),
+        notes: weekendNudgeNotes(planTitles, suggestion),
         dueDate: dueDate.toISOString(),
         category: settings.weekendNudgeTaskCategory,
         linkUrl: weekendNudgeLinkUrl(suggestion?.projectId ?? null, window.saturdayKey),

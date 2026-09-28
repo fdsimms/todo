@@ -4734,6 +4734,17 @@ export const WEEKEND_NUDGE_LEAD_DAYS_DEFAULT = 2;
 export const WEEKEND_NUDGE_LEAD_DAYS_MIN = 1;
 export const WEEKEND_NUDGE_LEAD_DAYS_MAX = 5;
 
+// How many one-off tasks or events may already be on the weekend and it still
+// counts as under-planned enough to nudge about. Default 1, so a single thing
+// (one movie, one dinner) doesn't read as a fully planned weekend — the offer
+// is about whether there's still room, not about literal emptiness. The floor
+// is 0 (only a truly bare weekend counts) and the ceiling is 4 (a weekend
+// naming four things is planned by any reading, so a fifth mustn't buy a way
+// past that). See src/utils/weekendTasks.ts.
+export const WEEKEND_NUDGE_PLAN_THRESHOLD_DEFAULT = 1;
+export const WEEKEND_NUDGE_PLAN_THRESHOLD_MIN = 0;
+export const WEEKEND_NUDGE_PLAN_THRESHOLD_MAX = 4;
+
 export const GROCERY_USE_UP_LEAD_DAYS_DEFAULT = 1;
 export const GROCERY_USE_UP_LEAD_DAYS_MIN = 0;
 export const GROCERY_USE_UP_LEAD_DAYS_MAX = 14;

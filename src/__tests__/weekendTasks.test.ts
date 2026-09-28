@@ -5,11 +5,16 @@ import {
   WEEKEND_NUDGE_LEAD_DAYS_DEFAULT,
   WEEKEND_NUDGE_LEAD_DAYS_MAX,
   WEEKEND_NUDGE_LEAD_DAYS_MIN,
+  WEEKEND_NUDGE_PLAN_THRESHOLD_DEFAULT,
+  WEEKEND_NUDGE_PLAN_THRESHOLD_MAX,
+  WEEKEND_NUDGE_PLAN_THRESHOLD_MIN,
 } from '../types';
 import {
   WEEKEND_NUDGE_TITLE,
   clampWeekendNudgeLeadDays,
+  clampWeekendNudgePlanThreshold,
   describeWeekendNudgeLead,
+  describeWeekendNudgePlanThreshold,
   isWeekendBare,
   isWeekendEvening,
   isWeekendNudgeLeadDay,
@@ -20,6 +25,7 @@ import {
   weekendNudgeNotes,
   weekendNudgeWeekendKey,
   weekendPlanCount,
+  weekendPlanTitles,
   weekendSourceProjects,
 } from '../utils/weekendTasks';
 
@@ -189,9 +195,16 @@ describe('counting what is already on the weekend', () => {
     expect(weekendPlanCount(WINDOW, buckets, byId)).toBe(1);
   });
 
-  it('counts a projected occurrence, which is why a chore-filled Saturday is not bare', () => {
+  it('does not count a recurring occurrence, so a chore-filled Saturday is still bare', () => {
     const buckets = bucketsOf({ [SATURDAY]: [mark('r', { projected: true })] });
-    expect(weekendPlanCount(WINDOW, buckets, new Map([['r', task('r')]]))).toBe(1);
+    const recurring = { ...task('r'), recurrenceType: 'daily' } as Task;
+    expect(weekendPlanCount(WINDOW, buckets, new Map([['r', recurring]]))).toBe(0);
+  });
+
+  it('still counts a one-off task placed on the weekend', () => {
+    const buckets = bucketsOf({ [SATURDAY]: [mark('a')] });
+    const oneOff = { ...task('a'), recurrenceType: 'none' } as Task;
+    expect(weekendPlanCount(WINDOW, buckets, new Map([['a', oneOff]]))).toBe(1);
   });
 
   it('does not count a Friday occurrence whose row it cannot read', () => {
@@ -202,16 +215,69 @@ describe('counting what is already on the weekend', () => {
   });
 });
 
+describe('naming what is already on the weekend', () => {
+  it('names each plan off the mark, in Friday/Saturday/Sunday order', () => {
+    const buckets = bucketsOf({
+      [FRIDAY]: [mark('a', { title: 'Dinner with Sam' })],
+      [SATURDAY]: [mark('b', { title: 'Farmers market' })],
+    });
+    const byId = new Map([
+      ['a', task('a', ['evening'])],
+      ['b', task('b')],
+    ]);
+    expect(weekendPlanTitles(WINDOW, buckets, byId)).toEqual(['Dinner with Sam', 'Farmers market']);
+  });
+
+  it('names a projected occurrence off the mark, with no second task lookup', () => {
+    // The mark already carries its own caption for exactly this reason — see
+    // DayMark.title's own doc comment.
+    const buckets = bucketsOf({ [SATURDAY]: [mark('r', { projected: true, title: 'Standing tennis match' })] });
+    const oneOff = { ...task('r'), recurrenceType: 'none' } as Task;
+    expect(weekendPlanTitles(WINDOW, buckets, new Map([['r', oneOff]]))).toEqual(['Standing tennis match']);
+  });
+
+  it('leaves out a recurring occurrence\'s title along with its count', () => {
+    const buckets = bucketsOf({ [SATURDAY]: [mark('r', { projected: true, title: 'Weekly grocery run' })] });
+    const recurring = { ...task('r'), recurrenceType: 'weekly' } as Task;
+    expect(weekendPlanTitles(WINDOW, buckets, new Map([['r', recurring]]))).toEqual([]);
+  });
+});
+
 describe('whether the weekend is bare', () => {
   it('is bare with nothing on it at all', () => {
     expect(isWeekendBare(WINDOW, new Map(), 0)).toBe(true);
   });
 
-  it('is not bare once anything is counted', () => {
-    expect(isWeekendBare(WINDOW, new Map(), 1)).toBe(false);
+  it('tolerates up to the default threshold of one thing already planned', () => {
+    expect(isWeekendBare(WINDOW, new Map(), 1)).toBe(true);
   });
 
-  it('is not bare when Saturday or Sunday carries known meeting time', () => {
+  it('is not bare once the count exceeds the default threshold', () => {
+    expect(isWeekendBare(WINDOW, new Map(), 2)).toBe(false);
+  });
+
+  it('honors a threshold passed explicitly', () => {
+    // Rule 8: a single movie or dinner shouldn't derail the offer, but the
+    // amount that's tolerable is the person's own call.
+    expect(isWeekendBare(WINDOW, new Map(), 0, 0)).toBe(true);
+    expect(isWeekendBare(WINDOW, new Map(), 1, 0)).toBe(false);
+    expect(isWeekendBare(WINDOW, new Map(), 3, 3)).toBe(true);
+    expect(isWeekendBare(WINDOW, new Map(), 4, 3)).toBe(false);
+  });
+
+  it('clamps a stored threshold to a usable range', () => {
+    expect(clampWeekendNudgePlanThreshold(-2)).toBe(WEEKEND_NUDGE_PLAN_THRESHOLD_MIN);
+    expect(clampWeekendNudgePlanThreshold(99)).toBe(WEEKEND_NUDGE_PLAN_THRESHOLD_MAX);
+    expect(clampWeekendNudgePlanThreshold(NaN)).toBe(WEEKEND_NUDGE_PLAN_THRESHOLD_DEFAULT);
+  });
+
+  it('names the threshold in Settings', () => {
+    expect(describeWeekendNudgePlanThreshold(0)).toBe('Only a fully open weekend');
+    expect(describeWeekendNudgePlanThreshold(1)).toBe('Up to 1 thing already planned');
+    expect(describeWeekendNudgePlanThreshold(3)).toBe('Up to 3 things already planned');
+  });
+
+  it('a known busy window still blocks outright, regardless of the threshold', () => {
     const sat = new Map([[SATURDAY, load(SATURDAY, { busyKnown: true, busyMinutes: 90 })]]);
     expect(isWeekendBare(WINDOW, sat, 0)).toBe(false);
     const sun = new Map([[SUNDAY, load(SUNDAY, { busyKnown: true, busyMinutes: 90 })]]);
@@ -323,28 +389,43 @@ describe('the project it points at', () => {
 
 describe('the copy', () => {
   it('says what is on the weekend and claims nothing about what that means', () => {
-    const copy = `${WEEKEND_NUDGE_TITLE} ${weekendNudgeNotes(null)}`.toLowerCase();
+    const copy = `${WEEKEND_NUDGE_TITLE} ${weekendNudgeNotes([], null)}`.toLowerCase();
     for (const word of ['lonely', 'boring', 'sad', 'should', 'deserve', 'treat yourself']) {
       expect(copy).not.toContain(word);
     }
-    expect(weekendNudgeNotes(null)).toBe(
+    expect(weekendNudgeNotes([], null)).toBe(
       'Nothing is on your list for Friday evening, Saturday or Sunday.'
     );
   });
 
+  it('names the one plan already there rather than claiming the weekend is empty', () => {
+    // A weekend nudged about with its one allowed plan already on it must not
+    // be told it has none.
+    expect(weekendNudgeNotes(['Dinner with Sam'], null)).toBe(
+      "Dinner with Sam is on your list for Friday evening, Saturday or Sunday. There's still room to plan more."
+    );
+  });
+
+  it('joins several plans and uses "are" for them', () => {
+    expect(weekendNudgeNotes(['Dinner with Sam', 'Farmers market'], null)).toBe(
+      "Dinner with Sam and Farmers market are on your list for Friday evening, Saturday or Sunday. There's still room to plan more."
+    );
+    expect(weekendNudgeNotes(['A', 'B', 'C'], null)).toContain('A, B, and C are on your list');
+  });
+
   it('names the nominated project and its next task when there is one', () => {
-    expect(weekendNudgeNotes({ projectId: 'p1', projectTitle: 'Day trips', candidateTitle: 'Drive to the coast' }))
+    expect(weekendNudgeNotes([], { projectId: 'p1', projectTitle: 'Day trips', candidateTitle: 'Drive to the coast' }))
       .toContain('Next in Day trips: Drive to the coast.');
   });
 
   it('names the project alone when it has nothing left in it', () => {
-    const notes = weekendNudgeNotes({ projectId: 'p1', projectTitle: 'Day trips', candidateTitle: null });
+    const notes = weekendNudgeNotes([], { projectId: 'p1', projectTitle: 'Day trips', candidateTitle: null });
     expect(notes).toContain('Day trips');
     expect(notes).not.toContain('Next in');
   });
 
   it('uses no em dashes anywhere', () => {
-    const copy = `${WEEKEND_NUDGE_TITLE} ${weekendNudgeNotes(null)} ${weekendNudgeNotes({
+    const copy = `${WEEKEND_NUDGE_TITLE} ${weekendNudgeNotes([], null)} ${weekendNudgeNotes(['Dinner with Sam'], {
       projectId: 'p', projectTitle: 'P', candidateTitle: 'c',
     })}`;
     expect(copy).not.toContain('—');
