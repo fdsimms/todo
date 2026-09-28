@@ -686,6 +686,29 @@ amount, and answering that in the unit they already had answers nothing.
   on purpose — "2.4 cups" stays in cups, since spreading it as "2 cups + 6 2/5 tbsp" is a mixed-unit
   feature this doesn't attempt.
 
+## A line's weight beside its measure (`lineWeight.ts`)
+
+A recipe line written in cups, spoons or pieces shows a weight under its quantity pill on
+`RecipeDetailScreen` and in both of `CookModeSheet`'s ingredient lists ("4 tbsp" over "≈57 g")
+whenever the ingredient's catalog food can say what that measure weighs. The shared recipe and the
+copied ingredients carry it too, in parentheses after the name ("4 tbsp butter (≈57 g),
+softened"), so what's sent matches the page; `shareText.ts` takes the lookups as an option
+(`weights`) rather than reading a store. Every surface calls `ingredientWeightText` with the scaled
+amount *before* unit conversion, since weighing an already-rounded figure compounds the rounding.
+
+- **Only from the food's own portion table**, through `gramsForLine`, the same function the
+  nutrition rollup uses. No global density, and every refusal it makes (a chopped cup vs a sliced
+  cup with no prep to pick, a bare count against small/medium/large) is a missing caption here. A
+  portion the user weighed themselves (`FoodPortion.custom`, the "weigh it" remedy) counts the same
+  as a stated one, so weighing a spoonful once puts a weight on every recipe using that food.
+- **No caption for a line already written as a weight, or for a range.** `gramsForLine` takes a
+  range's low end, which is right for a calorie count and wrong for a caption that reads as the
+  whole line's weight.
+- **Whole grams, not `roundMetric`'s steps** (`formatScaleWeight`). The steps are for restating a
+  recipe's measure the way a chart prints it; this is a number somebody pours to, and a cup they
+  weighed at 125 g must not read back as "≈130 g". A `us` reader gets ounces and pounds.
+- **Display only.** Nothing is written to the recipe, same posture as unit conversion above.
+
 ## Cook mode (`cookMode.ts`) — the method one step at a time
 
 Every other kitchen surface here is built for *preparing* to cook. This is the twenty minutes of

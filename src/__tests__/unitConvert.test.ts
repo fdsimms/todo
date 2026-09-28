@@ -1,4 +1,4 @@
-import { convertQuantity, describeUnitFamily, measureQuantity, unitFactor } from '../utils/unitConvert';
+import { convertQuantity, describeUnitFamily, formatScaleWeight, measureQuantity, unitFactor } from '../utils/unitConvert';
 
 const metric = (q: string) => convertQuantity(q, 'metric').text;
 const us = (q: string) => convertQuantity(q, 'us').text;
@@ -281,5 +281,26 @@ describe('a compound amount ("1 lb 8 oz")', () => {
 
   it('does not rewrite a compound already in the target system', () => {
     expect(convertQuantity('1 cup 2 tbsp', 'us')).toEqual({ text: '1 cup 2 tbsp', converted: false });
+  });
+});
+
+describe('formatScaleWeight', () => {
+  it('writes whole grams, for a scale, in metric and as-written alike', () => {
+    expect(formatScaleWeight(125, 'metric')).toBe('≈125 g');
+    expect(formatScaleWeight(7.8, 'asWritten')).toBe('≈8 g');
+  });
+
+  it('moves to kilograms at a thousand grams', () => {
+    expect(formatScaleWeight(1250, 'metric')).toBe('≈1.25 kg');
+    expect(formatScaleWeight(999.6, 'metric')).toBe('≈1 kg');
+  });
+
+  it('answers a US reader in ounces and pounds', () => {
+    expect(formatScaleWeight(453.6, 'us')).toBe('≈1 lb');
+  });
+
+  it('is null for nothing', () => {
+    expect(formatScaleWeight(0, 'metric')).toBeNull();
+    expect(formatScaleWeight(0.2, 'metric')).toBeNull();
   });
 });

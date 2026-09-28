@@ -84,6 +84,7 @@ import { allSectionsOf, sectionsFromMergedOrder, type SectionListEntry } from '.
 import { PillGroup } from '../components/PillGroup';
 import { describeUnscaled, formatScale, normalizeScale, scaleQuantity } from '../utils/recipeScale';
 import { convertQuantity } from '../utils/unitConvert';
+import { ingredientWeightText, weightLookups as buildWeightLookups } from '../utils/lineWeight';
 import { RecipeScaleChips } from '../components/RecipeScaleChips';
 import { RecipeChoiceChips } from '../components/RecipeChoiceChips';
 import { tagColor } from '../utils/tagColor';
@@ -198,9 +199,16 @@ export function RecipeDetailScreen() {
     () => (recipe ? resolveComponents(recipe, recipesById) : []),
     [recipe, recipesById]
   );
+  // ==== the resolved recipe: components, counts, cost, the scaled lines ====
+  // The two lookups each row's weight caption and the shared text read
+  // (lineWeight.ts), built once per catalog change rather than once per row.
+  const weightLookups = useMemo(
+    () => buildWeightLookups(groceryItems, itemProducts),
+    [groceryItems, itemProducts],
+  );
+
   // What the grocery add is actually going to offer — the recipe's own lines
   // plus every component's, which is the number the footer button gates on.
-  // ==== the resolved recipe: components, counts, cost, the scaled lines ====
   const shoppableCount = useMemo(
     () => (recipe ? flattenRecipeIngredients(recipe, recipesById).length : 0),
     [recipe, recipesById]
@@ -468,8 +476,8 @@ export function RecipeDetailScreen() {
   // — built here rather than at press time so the copy and share actions can
   // both gate themselves on it being non-empty (see shareText.ts).
   const ingredientsText = useMemo(
-    () => (recipe ? buildIngredientsText(recipe, recipesById, { scale, unitSystem }) : ''),
-    [recipe, recipesById, scale, unitSystem]
+    () => (recipe ? buildIngredientsText(recipe, recipesById, { scale, unitSystem, weights: weightLookups }) : ''),
+    [recipe, recipesById, scale, unitSystem, weightLookups]
   );
 
   const { copied: copiedIngredients, copy: copyIngredients } = useCopyToClipboard();
@@ -835,7 +843,7 @@ export function RecipeDetailScreen() {
   // share sheet) is not an error and needs no handling.
   const handleShare = () => {
     haptics.tap();
-    const message = buildRecipeShareText(recipe, recipesById, { scale, unitSystem });
+    const message = buildRecipeShareText(recipe, recipesById, { scale, unitSystem, weights: weightLookups });
     Share.share({ message }).catch(() => {});
   };
 
@@ -1057,6 +1065,11 @@ export function RecipeDetailScreen() {
     const scaledResult = scaleQuantity(line.quantity, scale);
     const convertedResult = convertQuantity(scaledResult.text, unitSystem);
     const scaledQuantity = convertedResult.text;
+    // What the line weighs, when its food's own portion table can say — for
+    // cooking by the scale. Read off the scaled line before conversion, since
+    // a converted amount is already rounded, and off the swapped line's name,
+    // since that's the food actually going in.
+    const weightText = ingredientWeightText(line, scaledResult.text, weightLookups, unitSystem);
     const scaledHere = scaledResult.scaled
       || convertedResult.converted
       // A ratio'd swap is the app's number too — the same tint, for the same
@@ -1144,7 +1157,8 @@ export function RecipeDetailScreen() {
           accessibilityRole={selectionMode ? 'checkbox' : 'button'}
           accessibilityState={selectionMode ? { checked: selected } : undefined}
           accessibilityLabel={
-            [ingredient.section, line.name, swapNote, scaledQuantity, ingredient.prep,
+            [ingredient.section, line.name, swapNote, scaledQuantity,
+             weightText && `about ${weightText.slice(1)}`, ingredient.prep,
              ingredient.purpose && `for ${ingredient.purpose}`,
              ingredient.optional && 'optional',
              choiceGroup && (isChoiceDefault ? `usual choice for ${choiceGroup}` : `alternative for ${choiceGroup}`)]
@@ -1248,13 +1262,22 @@ export function RecipeDetailScreen() {
             )}
           </View>
           {!!scaledQuantity && (
-            <View style={[styles.qtyPill, scaledHere && styles.qtyPillScaled]}>
-              <Text
-                style={[styles.qtyText, scaledHere && styles.qtyTextScaled]}
-                numberOfLines={1}
-              >
-                {scaledQuantity}
-              </Text>
+            <View style={styles.qtyColumn}>
+              <View style={[styles.qtyPill, scaledHere && styles.qtyPillScaled]}>
+                <Text
+                  style={[styles.qtyText, scaledHere && styles.qtyTextScaled]}
+                  numberOfLines={1}
+                >
+                  {scaledQuantity}
+                </Text>
+              </View>
+              {/* Under the pill rather than inside it: the pill is the
+                  recipe's amount (or the app's conversion of it), and this is
+                  a second measurement of the same thing. Only present when
+                  the food's own portion table can say it. */}
+              {!!weightText && (
+                <Text style={styles.qtyWeight} numberOfLines={1}>{weightText}</Text>
+              )}
             </View>
           )}
           {!selectionMode && (
@@ -3088,6 +3111,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.xs,
   },
   qtyTextScaled: { color: colors.accent, fontWeight: fontWeight.medium },
+  qtyColumn: { alignItems: 'flex-end' },
+  qtyWeight: {
+    color: colors.textSecondary,
+    fontSize: font.xxs,
+    marginTop: spacing.xxs,
+    paddingHorizontal: spacing.sm,
+  },
   scaleRow: { marginTop: spacing.xs, marginBottom: spacing.sm },
   choiceRow: { gap: spacing.sm, marginBottom: spacing.sm },
   scaleNote: {

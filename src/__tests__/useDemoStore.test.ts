@@ -158,6 +158,7 @@ import {
   recipeNutritionLines,
 } from '../utils/recipeNutrition';
 import { weighableLine } from '../utils/ingredientGrams';
+import { lineWeightText, panelForLine } from '../utils/lineWeight';
 import { asksOnCompletion, chainStepDatedByAnswer, formatTaskDeliverable } from '../utils/deliverables';
 import { tripMarkerFor, describeTripMarker } from '../utils/activeTrip';
 import { buildDayBuckets, canProject } from '../utils/calendarMonth';
@@ -3133,6 +3134,24 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(bread.state).toBe('unmeasured');
     expect(bread.quantity).toBe('');
     expect(weighableLine(bread.quantity, bread.prep, bread.nutrition!, bread.item!.name)).toBeNull();
+  });
+
+  it('seeds recipe lines that get a weight beside their cups and spoons', () => {
+    // The recipe page puts "≈14 g" under a "1 tbsp" line whenever the food's
+    // own portion table can say so (lineWeight.ts). Without a seeded line in
+    // that state the caption never appears in the demo.
+    const { items, itemProducts } = useGroceryStore.getState();
+    const byKey = new Map(items.map(i => [i.nameKey, i]));
+    const productsById = new Map(itemProducts.map(p => [p.id, p]));
+    const weighed = useRecipeStore.getState().recipes.flatMap(r => r.ingredients.map(ing => ({
+      recipe: r.name,
+      name: ing.name,
+      quantity: ing.quantity,
+      weight: lineWeightText(ing.quantity, ing.prep, panelForLine(ing.nameKey, byKey, productsById), 'metric'),
+    }))).filter(l => l.weight !== null);
+    expect(weighed).toContainEqual(
+      { recipe: 'Mashed potatoes', name: 'butter', quantity: '4 tbsp', weight: '≈57 g' },
+    );
   });
 
   it('seeds a self-weighed portion beside a stated one, marked custom', () => {

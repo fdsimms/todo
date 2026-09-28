@@ -6,6 +6,7 @@ import { describeAttribution, formatServingsRange, totalMinutes } from './recipe
 import { formatDuration } from './effort';
 import { scaleQuantity, scaleServings } from './recipeScale';
 import { convertQuantity, type UnitSystem } from './unitConvert';
+import { ingredientWeightText, type WeightLookups } from './lineWeight';
 import { dayKeyOf } from './dateUtils';
 import { describeWeekRange, entriesForDay, mealTitleOffPlan, slotLabel, titleForEntry } from './mealPlan';
 
@@ -25,15 +26,22 @@ import { describeWeekRange, entriesForDay, mealTitleOffPlan, slotLabel, titleFor
  * that doesn't compound. `prep`/`purpose` reattach the way `splitPrep`/
  * `splitPurpose` originally split them off, so a shared line reads the way
  * it would have been typed.
+ *
+ * With `weights`, a line the recipe page shows a weight under carries it in
+ * parentheses after the name ("4 tbsp butter (≈57 g), softened"), so the
+ * text sent matches the page. Weighed off the scaled line before conversion,
+ * the same order the page uses (see `ingredientWeightText`).
  */
 function formatShareIngredientLine(
   ingredient: RecipeIngredient,
   scale: number,
   unitSystem: UnitSystem,
+  weights: WeightLookups | null,
 ): string {
   const scaled = scaleQuantity(ingredient.quantity, scale).text;
   const quantity = convertQuantity(scaled, unitSystem).text;
-  const line = [quantity, ingredient.name].filter(Boolean).join(' ').trim();
+  const weight = weights ? ingredientWeightText(ingredient, scaled, weights, unitSystem) : null;
+  const line = [quantity, ingredient.name, weight && `(${weight})`].filter(Boolean).join(' ').trim();
   const trailing = [ingredient.prep, ingredient.purpose ? `for ${ingredient.purpose}` : null]
     .filter(Boolean)
     .join(', ');
@@ -48,7 +56,9 @@ function formatShareIngredientLine(
  *
  * `scale`/`unitSystem` default to as-written/asWritten so a caller with
  * nothing to say about either still gets a sensible share; pass the screen's
- * own live values to match what's on screen.
+ * own live values to match what's on screen. `weights` (the catalog lookups
+ * from `lineWeight.ts`) adds each line's weight where the page shows one, and
+ * is omitted for no weights.
  *
  * Resolves every choice group to its default rather than accepting a
  * `ChoiceResolution` — sharing "the recipe" means the version anyone opening
@@ -64,10 +74,11 @@ function formatShareIngredientLine(
 export function buildRecipeShareText(
   recipe: Recipe,
   recipesById: ReadonlyMap<string, Recipe>,
-  options: { scale?: number; unitSystem?: UnitSystem } = {},
+  options: { scale?: number; unitSystem?: UnitSystem; weights?: WeightLookups | null } = {},
 ): string {
   const scale = options.scale ?? 1;
   const unitSystem = options.unitSystem ?? 'asWritten';
+  const weights = options.weights ?? null;
   const lines: string[] = [recipe.name];
 
   const subtitle: string[] = [];
@@ -99,7 +110,7 @@ export function buildRecipeShareText(
       if (headings[index].dish) lines.push(`For the ${line.recipe.name}:`);
       const section = headings[index].section;
       if (section) lines.push(`${section}:`);
-      lines.push(`- ${formatShareIngredientLine(line.ingredient, scale, unitSystem)}`);
+      lines.push(`- ${formatShareIngredientLine(line.ingredient, scale, unitSystem, weights)}`);
     });
   }
 
@@ -144,14 +155,15 @@ export function buildRecipeShareText(
 export function buildIngredientsText(
   recipe: Recipe,
   recipesById: ReadonlyMap<string, Recipe>,
-  options: { scale?: number; unitSystem?: UnitSystem } = {},
+  options: { scale?: number; unitSystem?: UnitSystem; weights?: WeightLookups | null } = {},
 ): string {
   const scale = options.scale ?? 1;
   const unitSystem = options.unitSystem ?? 'asWritten';
+  const weights = options.weights ?? null;
   const flat = flattenRecipeIngredients(recipe, recipesById);
   if (flat.length === 0) return '';
   return flat
-    .map(line => formatShareIngredientLine(line.ingredient, scale, unitSystem))
+    .map(line => formatShareIngredientLine(line.ingredient, scale, unitSystem, weights))
     .join('\n');
 }
 
