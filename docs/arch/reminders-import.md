@@ -139,7 +139,10 @@ Six things that are the way they are for a reason:
   (`CalendarModule.swift`), so a partial update blanks the title of the row it meant to leave
   alone, and `getReminder(from:)` does the same to `notes`. Before the note was mirrored (#2933),
   that meant every tick from this side wiped whatever a partner had typed into the reminder's
-  notes. Same for `location`, which the mirror still doesn't carry.
+  notes. `location` is assigned the same way, and the mirror doesn't own it, so an update sends it
+  back as the pass's own fetch read it rather than mirroring it: the row has nowhere to keep a
+  location, and before this every tick from this side cleared one set in the Reminders app. Any
+  field a future update leaves out needs the same check against that function first.
 - **The note is diffed on the title's rule, with one difference in the shadow it starts from.**
   A link from before notes were mirrored, and an adopted pair, both start from an empty note
   rather than from either side's, because empty is the one starting point that reads a note on

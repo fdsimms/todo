@@ -551,6 +551,14 @@ async function mirrorOnce(): Promise<MirrorOutcome | null> {
     const raw = await calendar().getRemindersAsync([listId], null, null, null);
     const present = new Set<string>();
     const reminders: MirrorReminder[] = [];
+    // What each reminder's location says, to send back with any update below.
+    // The mirror doesn't carry a location, but `getReminder(from:)` in
+    // expo-calendar's `CalendarModule.swift` assigns `reminder.location =
+    // details.location` on every save, and EventKit's `location` is a
+    // settable `String?`, so an update without one cleared it. This fetch is
+    // the read the carry comes from: every reminder an update names is one it
+    // just returned.
+    const locations = new Map<string, string>();
     for (const reminder of sortRemindersByCreation(raw)) {
       if (!reminder.id) continue;
       present.add(reminder.id);
@@ -560,6 +568,9 @@ async function mirrorOnce(): Promise<MirrorOutcome | null> {
         completed: reminder.completed === true,
         notes: mirrorNote(reminder.notes),
       });
+      if (typeof reminder.location === 'string' && reminder.location) {
+        locations.set(reminder.id, reminder.location);
+      }
     }
 
     // Again, now the reads are done: demo can start during the awaits above,
@@ -675,11 +686,15 @@ async function mirrorOnce(): Promise<MirrorOutcome | null> {
           // was meant to leave alone. The notes likewise (`reminder.notes =
           // details.notes`, in `getReminder(from:)`): before the mirror carried
           // them, every tick from this side wiped whatever note had been typed
-          // into the reminder (#2933).
+          // into the reminder (#2933). And the location, which is assigned the
+          // same way and which the mirror doesn't own: it goes back as the
+          // fetch above read it, so a tick from this side no longer clears it.
+          const location = locations.get(update.reminderId);
           await calendar().updateReminderAsync(update.reminderId, {
             title: update.title,
             completed: update.completed,
             notes: update.notes,
+            ...(location ? { location } : {}),
           });
         } catch {
           // Isolated, like the drain's deletes: one reminder in a strange state

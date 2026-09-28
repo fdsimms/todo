@@ -53,9 +53,10 @@ export function mealEventTitle(entry: MealPlanEntry): string {
  * The two things the meal owns on the device event, and the complete list —
  * a meal edit rewrites the title and the day (and, since #2949, which of the
  * user's calendars it sits in, the one they picked) and nothing else. Whoever
- * they invited survives every reconcile. A location, a note or an alert added
- * by hand does not, though that is expo-calendar's save path rather than
- * anything decided here: see `moveAllDayEvent`.
+ * they invited, and a location, a note or an alert added by hand, survive
+ * every reconcile. The last three only because the rewrite reads them back
+ * first and sends them with it: expo-calendar's save resets them otherwise
+ * (see `rewriteEvent` in `calendarSync.ts`).
  *
  * **All-day, not a timed event, and that's the one new decision here.**
  * `MEAL_SLOT_SEGMENTS` maps a slot to a time-of-day *visibility* segment —
