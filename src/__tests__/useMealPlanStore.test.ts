@@ -1314,6 +1314,105 @@ describe('copyWeek', () => {
   });
 });
 
+describe('copySlotFromWeek', () => {
+  /** Answers each week's read from its own rows, keyed by the week's start. */
+  const weeks = (byStart: Record<string, MealPlanEntry[]>) =>
+    (dbGetMealPlanEntries as jest.Mock).mockImplementation((start: string) => byStart[start] ?? []);
+
+  it("copies last week's lunches into a week whose dinners are planned (#2913)", () => {
+    const tacos = entry('2026-08-03', 'dinner', { title: 'Tacos' });
+    loadWeek([tacos]);
+    weeks({
+      '2026-07-27': [
+        entry('2026-07-27', 'lunch', { title: 'Pasta salad', recipeId: 'r1', recipeScale: 2 }),
+        entry('2026-07-28', 'lunch', { title: 'Wraps' }),
+        entry('2026-07-27', 'dinner', { title: 'Ragù' }),
+      ],
+      '2026-08-03': [tacos],
+    });
+
+    const n = useMealPlanStore.getState().copySlotFromWeek('2026-07-27', '2026-08-03', 'lunch');
+
+    expect(n).toBe(2);
+    expect(getEntries().map(e => [e.date, e.slot, e.title, e.recipeScale])).toEqual([
+      ['2026-08-03', 'lunch', 'Pasta salad', 2],
+      ['2026-08-03', 'dinner', 'Tacos', 1],
+      ['2026-08-04', 'lunch', 'Wraps', 1],
+    ]);
+    expect(useMealPlanStore.getState().lastAction?.label).toBe('Copied 2 lunches');
+  });
+
+  it("leaves last week's leftover nights behind, as a week copy does", () => {
+    loadWeek([entry('2026-08-03', 'dinner')]);
+    weeks({
+      '2026-07-27': [
+        entry('2026-07-27', 'lunch', { title: 'Soup' }),
+        entry('2026-07-28', 'lunch', { title: 'Leftover chili', leftoverId: 'lo-1' }),
+      ],
+    });
+
+    expect(useMealPlanStore.getState().copySlotFromWeek('2026-07-27', '2026-08-03', 'lunch')).toBe(1);
+    const written = (dbInsertMealPlanEntry as jest.Mock).mock.calls.map(c => c[0].title);
+    expect(written).toEqual(['Soup']);
+  });
+
+  // The offer's rule, held here too: a week with any lunch in it is one the
+  // user is already planning lunches in, and a copy would have to merge.
+  it('writes nothing once the week has anything in that slot', () => {
+    const soup = entry('2026-08-05', 'lunch', { title: 'Soup' });
+    loadWeek([soup]);
+    weeks({
+      '2026-07-27': [entry('2026-07-27', 'lunch', { title: 'Wraps' })],
+      '2026-08-03': [soup],
+    });
+
+    expect(useMealPlanStore.getState().copySlotFromWeek('2026-07-27', '2026-08-03', 'lunch')).toBe(0);
+    expect(dbInsertMealPlanEntry).not.toHaveBeenCalled();
+    expect(useMealPlanStore.getState().lastAction).toBeNull();
+  });
+
+  it('undoes the whole slot in one go', () => {
+    loadWeek([entry('2026-08-03', 'dinner')]);
+    weeks({
+      '2026-07-27': [
+        entry('2026-07-27', 'lunch'),
+        entry('2026-07-28', 'lunch'),
+        entry('2026-07-29', 'lunch'),
+      ],
+    });
+    useMealPlanStore.getState().copySlotFromWeek('2026-07-27', '2026-08-03', 'lunch');
+    expect(getEntries()).toHaveLength(4);
+
+    useMealPlanStore.getState().undoLastAction();
+
+    expect(getEntries().map(e => e.slot)).toEqual(['dinner']);
+    expect(dbDeleteMealPlanEntry).toHaveBeenCalledTimes(3);
+  });
+
+  it('names one meal in the singular', () => {
+    loadWeek([entry('2026-08-03', 'dinner')]);
+    weeks({ '2026-07-27': [entry('2026-07-27', 'breakfast')] });
+
+    useMealPlanStore.getState().copySlotFromWeek('2026-07-27', '2026-08-03', 'breakfast');
+
+    expect(useMealPlanStore.getState().lastAction?.label).toBe('Copied 1 breakfast');
+  });
+});
+
+describe('slotsToCopyFrom', () => {
+  it('reads both weeks and answers which slots the target could take (#2913)', () => {
+    (dbGetMealPlanEntries as jest.Mock).mockImplementation((start: string) => (
+      start === '2026-07-27'
+        ? [entry('2026-07-27', 'lunch'), entry('2026-07-27', 'dinner'), entry('2026-07-28', 'snack')]
+        : [entry('2026-08-03', 'dinner')]
+    ));
+
+    expect(useMealPlanStore.getState().slotsToCopyFrom('2026-07-27', '2026-08-03')).toEqual(['lunch', 'snack']);
+    expect(dbGetMealPlanEntries).toHaveBeenCalledWith('2026-07-27', '2026-08-02');
+    expect(dbGetMealPlanEntries).toHaveBeenCalledWith('2026-08-03', '2026-08-09');
+  });
+});
+
 describe('findPlannedWeekBefore', () => {
   it('finds the most recent week that has anything in it', () => {
     (dbGetMealPlanEntries as jest.Mock)

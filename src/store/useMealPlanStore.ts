@@ -56,9 +56,14 @@ import {
   recipeNamedLike,
   resolveBulkMoveTargets,
   shiftDayKey,
+  slotCopyDrafts,
+  slotLabel,
+  slotPlural,
+  slotsToCopy,
   sortMealEntries,
   titleForEntry,
   weekCopyDrafts,
+  type MealCopyDraft,
 } from '../utils/mealPlan';
 import { countPlannedSlots } from '../utils/mealPlanNudge';
 import { mealSlotDrift, mealSlotSourceId, mealSlotTaskDraft, slotEntryForTask } from '../utils/mealSlotTasks';
@@ -647,6 +652,31 @@ interface MealPlanStore extends UndoHistoryActions {
    * undone seven times would be worse than no undo at all.
    */
   copyWeek: (fromStartKey: string, toStartKey: string) => number;
+
+  /**
+   * The slots `copySlotFromWeek` would take from one week into another, in day
+   * order (#2913): each one empty for the whole target week, with something
+   * copyable in the source. `slotsToCopy` is the rule, and says why it differs
+   * from the whole-week offer's. Both weeks are read out of SQLite, for
+   * `copyWeek`'s reason: the source is never the loaded window.
+   */
+  slotsToCopyFrom: (fromStartKey: string, toStartKey: string) => MealSlot[];
+
+  /**
+   * Copies one slot of a week onto another (#2913): last week's lunches into a
+   * week whose dinners are already planned, which the whole-week copy can't do
+   * because it's only offered into an empty week. Carries what a week copy
+   * carries (`slotCopyDrafts`), leftover nights excluded. Returns how many rows
+   * were written.
+   *
+   * **Writes nothing unless the slot is still empty for the whole target
+   * week**, checked here rather than trusted to the offer, since that emptiness
+   * is the only thing standing between this and the merge question the offer
+   * exists to avoid (see `slotsToCopy`).
+   *
+   * One `lastAction` for the whole copy, `copyWeek`'s "one action, one undo".
+   */
+  copySlotFromWeek: (fromStartKey: string, toStartKey: string, slot: MealSlot) => number;
 
   /**
    * Puts one planned meal on other days too, in the same slot (#2913): the
@@ -1398,30 +1428,27 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     const drafts = weekCopyDrafts(source, shift);
     if (drafts.length === 0) return 0;
 
-    const created: MealPlanEntry[] = drafts.map(draft => ({
-      ...draft,
-      id: generateId(),
-      createdAt: new Date().toISOString(),
-      // Its own event, never the source week's — see MealCopyDraft.
-      calendarEventId: null,
-    }));
-    created.forEach(dbInsertMealPlanEntry);
-    created.forEach(entry => patchInRange(set, get, entry));
-    created.forEach(e => reconcileMealSlot(get, e));
-    created.forEach(reconcileMealEvent);
+    const created = drafts.map(copyRow);
+    return writeCopies(set, get, created, `Copied ${created.length} meal${created.length === 1 ? '' : 's'}`);
+  },
 
-    const ids = new Set(created.map(e => e.id));
-    get().setLastAction({
-      label: `Copied ${created.length} meal${created.length === 1 ? '' : 's'}`,
-      undo: () => {
-        created.forEach(e => dropCookTask(e.id));
-        created.forEach(e => dropMealEvent(e.id));
-        created.forEach(e => dbDeleteMealPlanEntry(e.id));
-        set(s => ({ entries: s.entries.filter(e => !ids.has(e.id)) }));
-        created.forEach(e => reconcileMealSlot(get, e));
-      },
-    });
-    return created.length;
+  slotsToCopyFrom(fromStartKey, toStartKey) {
+    return slotsToCopy(
+      dbGetMealPlanEntries(fromStartKey, shiftDayKey(fromStartKey, 6)),
+      dbGetMealPlanEntries(toStartKey, shiftDayKey(toStartKey, 6)),
+    );
+  },
+
+  copySlotFromWeek(fromStartKey, toStartKey, slot) {
+    const source = dbGetMealPlanEntries(fromStartKey, shiftDayKey(fromStartKey, 6));
+    const target = dbGetMealPlanEntries(toStartKey, shiftDayKey(toStartKey, 6));
+    if (!slotsToCopy(source, target).includes(slot)) return 0;
+    const shift = differenceInCalendarDays(dayKeyToDate(toStartKey), dayKeyToDate(fromStartKey));
+    // The source's sortOrder carries, as in a week copy: the slot is empty
+    // all week on this side, so there's nothing for it to land among.
+    const created = slotCopyDrafts(source, slot, shift).map(copyRow);
+    const n = created.length;
+    return writeCopies(set, get, created, `Copied ${n} ${n === 1 ? slotLabel(slot).toLowerCase() : slotPlural(slot)}`);
   },
 
   copyEntryTo(id, dates) {
@@ -1436,33 +1463,16 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     });
     if (drafts.length === 0) return 0;
 
-    const created: MealPlanEntry[] = drafts.map(draft => ({
+    const created = drafts.map(draft => copyRow({
       ...draft,
-      id: generateId(),
-      createdAt: new Date().toISOString(),
       // At the end of what that day's slot already has, as planMeal places a
       // meal; the source's own position means nothing on another day.
       sortOrder: nextSortOrder(dbGetMealPlanEntries(draft.date, draft.date), draft.date, draft.slot),
-      // Its own event, never the source's. See MealCopyDraft.
-      calendarEventId: null,
     }));
-    created.forEach(dbInsertMealPlanEntry);
-    created.forEach(entry => patchInRange(set, get, entry));
-    created.forEach(e => reconcileMealSlot(get, e));
-    created.forEach(reconcileMealEvent);
-
-    const ids = new Set(created.map(e => e.id));
-    get().setLastAction({
-      label: `Copied "${source.title}" to ${created.length} day${created.length === 1 ? '' : 's'}`,
-      undo: () => {
-        created.forEach(e => dropCookTask(e.id));
-        created.forEach(e => dropMealEvent(e.id));
-        created.forEach(e => dbDeleteMealPlanEntry(e.id));
-        set(s => ({ entries: s.entries.filter(e => !ids.has(e.id)) }));
-        created.forEach(e => reconcileMealSlot(get, e));
-      },
-    });
-    return created.length;
+    return writeCopies(
+      set, get, created,
+      `Copied "${source.title}" to ${created.length} day${created.length === 1 ? '' : 's'}`,
+    );
   },
 
   listRowsLeftBy(gone) {
@@ -1530,6 +1540,49 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
 const STILL_PLANNED_HORIZON_DAYS = 366;
 
 type SetState = (fn: (s: { entries: MealPlanEntry[] }) => { entries: MealPlanEntry[] }) => void;
+
+/** A copy's draft made into a row: its own id and stamp, and its own event. */
+function copyRow(draft: MealCopyDraft): MealPlanEntry {
+  return {
+    ...draft,
+    id: generateId(),
+    createdAt: new Date().toISOString(),
+    // Its own event, never the source's. See MealCopyDraft.
+    calendarEventId: null,
+  };
+}
+
+/**
+ * The shared tail of the three copies (`copyWeek`, `copySlotFromWeek`,
+ * `copyEntryTo`): writes the rows, brings each night's task and event in
+ * line, and registers the one undo that takes every row back off. Returns how
+ * many were written.
+ */
+function writeCopies(
+  set: SetState,
+  get: () => MealPlanStore,
+  created: MealPlanEntry[],
+  label: string
+): number {
+  if (created.length === 0) return 0;
+  created.forEach(dbInsertMealPlanEntry);
+  created.forEach(entry => patchInRange(set, get, entry));
+  created.forEach(e => reconcileMealSlot(get, e));
+  created.forEach(reconcileMealEvent);
+
+  const ids = new Set(created.map(e => e.id));
+  get().setLastAction({
+    label,
+    undo: () => {
+      created.forEach(e => dropCookTask(e.id));
+      created.forEach(e => dropMealEvent(e.id));
+      created.forEach(e => dbDeleteMealPlanEntry(e.id));
+      set(s => ({ entries: s.entries.filter(e => !ids.has(e.id)) }));
+      created.forEach(e => reconcileMealSlot(get, e));
+    },
+  });
+  return created.length;
+}
 
 /**
  * Adds a written row to `entries` only when its day falls inside the loaded

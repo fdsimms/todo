@@ -21,8 +21,11 @@ import {
   recipeNamedLike,
   resolveBulkMoveTargets,
   selectTodayMealEntries,
+  slotCopyDrafts,
   slotLabel,
+  slotPlural,
   slotRank,
+  slotsToCopy,
   sortMealEntries,
   shiftDayKey,
   titleForEntry,
@@ -451,6 +454,70 @@ describe('daysWithMeal', () => {
     const night = entry('2026-08-03', 'dinner', { leftoverId: 'lo-1', title: 'Chili' });
     const entries = [night, entry('2026-08-04', 'dinner', { leftoverId: 'lo-1', title: 'Chili' })];
     expect([...daysWithMeal(entries, night)]).toEqual(['2026-08-03']);
+  });
+});
+
+describe('slotsToCopy', () => {
+  // Last week: lunches and dinners, and a breakfast that was only a leftover.
+  const lastWeek = [
+    entry('2026-08-03', 'lunch', { title: 'Pasta salad' }),
+    entry('2026-08-04', 'lunch', { title: 'Wraps' }),
+    entry('2026-08-03', 'dinner', { title: 'Ragù' }),
+    entry('2026-08-05', 'breakfast', { title: 'Leftover frittata', leftoverId: 'lo-1' }),
+  ];
+
+  it('offers a slot this week has nothing in, even with other meals planned (#2913)', () => {
+    const thisWeek = [entry('2026-08-10', 'dinner', { title: 'Tacos' })];
+    expect(slotsToCopy(lastWeek, thisWeek)).toEqual(['lunch']);
+  });
+
+  it('offers nothing for a slot the week already has anything in, one meal included', () => {
+    const thisWeek = [
+      entry('2026-08-10', 'dinner', { title: 'Tacos' }),
+      entry('2026-08-12', 'lunch', { title: 'Soup' }),
+    ];
+    expect(slotsToCopy(lastWeek, thisWeek)).toEqual([]);
+  });
+
+  it('counts a leftover night as filling the slot on this side', () => {
+    const thisWeek = [entry('2026-08-11', 'lunch', { title: 'Chili', leftoverId: 'lo-2' })];
+    expect(slotsToCopy(lastWeek, thisWeek)).toEqual(['dinner']);
+  });
+
+  it("doesn't offer a slot whose only meals were leftover nights, which a copy drops", () => {
+    expect(slotsToCopy(lastWeek, [entry('2026-08-10', 'snack')])).not.toContain('breakfast');
+  });
+
+  it('lists the slots in the order a day is read', () => {
+    const source = [
+      entry('2026-08-03', 'snack'),
+      entry('2026-08-03', 'lunch'),
+      entry('2026-08-03', 'breakfast'),
+    ];
+    expect(slotsToCopy(source, [entry('2026-08-10', 'dinner')])).toEqual(['breakfast', 'lunch', 'snack']);
+  });
+});
+
+describe('slotCopyDrafts', () => {
+  it("shifts only that slot's meals, carrying what a week copy carries (#2913)", () => {
+    const drafts = slotCopyDrafts([
+      entry('2026-08-03', 'lunch', { title: 'Pasta salad', recipeId: 'r1', recipeScale: 2, sortOrder: 2 }),
+      entry('2026-08-03', 'dinner', { title: 'Ragù' }),
+      entry('2026-08-04', 'lunch', { title: 'Leftover chili', leftoverId: 'lo-1' }),
+      entry('2026-08-05', 'lunch', { title: 'Wraps', cookedAt: '2026-08-05T12:00:00.000Z' }),
+    ], 'lunch', 7);
+
+    expect(drafts.map(d => [d.date, d.slot, d.title, d.recipeScale, d.sortOrder, d.cookedAt])).toEqual([
+      ['2026-08-10', 'lunch', 'Pasta salad', 2, 2, null],
+      ['2026-08-12', 'lunch', 'Wraps', 1, 1, null],
+    ]);
+  });
+});
+
+describe('slotPlural', () => {
+  it('counts each slot the way a person would say it', () => {
+    expect(['breakfast', 'lunch', 'dinner', 'snack'].map(s => slotPlural(s as MealSlot)))
+      .toEqual(['breakfasts', 'lunches', 'dinners', 'snacks']);
   });
 });
 

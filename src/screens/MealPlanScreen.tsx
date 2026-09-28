@@ -113,6 +113,7 @@ import {
   recipeIndex,
   recipeNamedLike,
   slotLabel,
+  slotPlural,
   titleForEntry,
 } from '../utils/mealPlan';
 import { liveGeneratedTask } from '../utils/generatedTasks';
@@ -377,6 +378,8 @@ export function MealPlanScreen() {
   const saveEntryAsRecipe = useMealPlanStore(s => s.saveEntryAsRecipe);
   const bulkSetCooked = useMealPlanStore(s => s.bulkSetCooked);
   const copyWeek = useMealPlanStore(s => s.copyWeek);
+  const slotsToCopyFrom = useMealPlanStore(s => s.slotsToCopyFrom);
+  const copySlotFromWeek = useMealPlanStore(s => s.copySlotFromWeek);
   const copyEntryTo = useMealPlanStore(s => s.copyEntryTo);
   const listRowsLeftBy = useMealPlanStore(s => s.listRowsLeftBy);
   const takeOffLists = useGroceryStore(s => s.takeOffLists);
@@ -1822,32 +1825,73 @@ export function MealPlanScreen() {
     return actions;
   }, [onThisWeek, selectionMode, page, exitSelection, weekStartsOn, handleShareWeek, weekShareText, weekMealsLabel, copiedWeek, copyWeekText, navigation, simpleMode, foodLogCount]);
 
+  // A week that has already ended is a record rather than a plan, so the
+  // partly-planned offer below isn't made into one. Paging back through
+  // history would otherwise find it on nearly every week.
+  const weekIsOver = !!range && range.endKey < todayKey;
+
   /**
-   * The week a "copy" would take from, and only while this one is empty.
-   *
-   * **Offered into an empty week and no other**, which is what keeps the whole
-   * feature free of a merge question: no "does it replace or add alongside",
-   * no double-booked Tuesday, no confirm dialog explaining which. A week with
-   * anything in it is a week the user is already working on.
+   * The week either copy offer takes from: the most recent one before this
+   * with anything planned in it. Looked for while this week is empty (the
+   * whole-week offer) or still running (the slot offer, below).
    *
    * Searched rather than assumed — a fortnightly cook, or anyone back from a
    * holiday, has an empty week directly behind them and nothing to copy from
    * it (see findPlannedWeekBefore).
    */
-  const copySourceKey = useMemo(
-    () => (range && entries.length === 0 ? findPlannedWeekBefore(range.startKey, COPY_LOOKBACK_WEEKS) : null),
-    [range?.startKey, entries.length, findPlannedWeekBefore]
+  const copyFromKey = useMemo(
+    () => (range && (entries.length === 0 || !weekIsOver)
+      ? findPlannedWeekBefore(range.startKey, COPY_LOOKBACK_WEEKS)
+      : null),
+    [range?.startKey, entries.length, weekIsOver, findPlannedWeekBefore]
+  );
+
+  /**
+   * The week a whole-week copy would take from, and only while this one is
+   * empty.
+   *
+   * **Offered into an empty week and no other**, which is what keeps the whole
+   * feature free of a merge question: no "does it replace or add alongside",
+   * no double-booked Tuesday, no confirm dialog explaining which. A week with
+   * anything in it is a week the user is already working on, and gets the
+   * narrower slot offer instead (`slotCopyOffers`).
+   */
+  const copySourceKey = entries.length === 0 ? copyFromKey : null;
+
+  /**
+   * The slots of `copyFromKey` a partly planned week could take one at a time
+   * (#2913): "Copy lunches from Jul 27 – Aug 2" for a household that planned
+   * dinners first and lunches second, which the whole-week offer never reaches
+   * because the week stopped being empty with the first dinner.
+   *
+   * Only ever made to a week that has something in it, so the two offers are
+   * never on one week together, and only into a slot this week has nothing in
+   * at all: `slotsToCopy` is the rule, and says why that keeps the merge
+   * question away just as the whole-week offer's empty week does.
+   */
+  const slotCopyOffers = useMemo(
+    () => (range && copyFromKey && entries.length > 0 && !weekIsOver
+      ? slotsToCopyFrom(copyFromKey, range.startKey)
+      : []),
+    [range?.startKey, copyFromKey, entries, weekIsOver, slotsToCopyFrom]
   );
 
   const copySourceLabel = useMemo(
-    () => copySourceKey ? describeWeekRange(buildWeekDays(dayKeyToDate(copySourceKey), weekStartsOn)) : '',
-    [copySourceKey, weekStartsOn]
+    () => copyFromKey ? describeWeekRange(buildWeekDays(dayKeyToDate(copyFromKey), weekStartsOn)) : '',
+    [copyFromKey, weekStartsOn]
   );
 
   const handleCopyWeek = () => {
     if (!copySourceKey || !range) return;
     animateLayout();
     const n = copyWeek(copySourceKey, range.startKey);
+    if (n > 0) haptics.success();
+  };
+
+  const handleCopySlot = (slot: MealSlot) => {
+    if (!copyFromKey || !range) return;
+    animateLayout();
+    const n = copySlotFromWeek(copyFromKey, range.startKey, slot);
     if (n > 0) haptics.success();
   };
 
@@ -2014,6 +2058,26 @@ export function MealPlanScreen() {
                       onPress={handleCopyWeek}
                       accessibilityLabel={`Copy the meals from ${copySourceLabel} onto this week`}
                     />
+                  </View>
+                )}
+                {/* The same place and pill as the whole-week copy, which is
+                    never on screen with it (see slotCopyOffers), but quieter:
+                    in a week already being planned it's a shortcut rather
+                    than the obvious next step. One pill per slot, so taking
+                    the lunches never takes the breakfasts too. */}
+                {slotCopyOffers.length > 0 && (
+                  <View style={styles.weekActions}>
+                    {slotCopyOffers.map(slot => (
+                      <InlineAction
+                        key={slot}
+                        label={`Copy ${slotPlural(slot)} from ${copySourceLabel}`}
+                        icon="copy-outline"
+                        variant="neutral"
+                        surface="page"
+                        onPress={() => handleCopySlot(slot)}
+                        accessibilityLabel={`Copy the ${slotPlural(slot)} from ${copySourceLabel} onto this week`}
+                      />
+                    ))}
                   </View>
                 )}
                 {(hasPlannableEntries || canSuggestMeals) && (
