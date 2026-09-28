@@ -1,0 +1,4 @@
+{
+  "message": "A recipe link shared into the app when there's no Anthropic API key now shows a banner saying a key is needed to import it, with a button to add one.",
+  "date": "2026-09-27"
+}

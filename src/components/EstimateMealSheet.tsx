@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -42,6 +42,7 @@ import {
 import { creditedKeys, foodLogRecency, rankByRecency } from '../utils/foodLogRecents';
 import { scalePanelToAmount } from '../utils/foodLog';
 import { perServing, recipeNutrition } from '../utils/recipeNutrition';
+import { standingSwapMap } from '../utils/standingSwaps';
 import { packageHelping } from '../utils/scanPortion';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { NUTRIENT_LABEL } from '../utils/foodNutrition';
@@ -177,6 +178,10 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
   const recipesById = useMemo(() => new Map(recipes.map(r => [r.id, r])), [recipes]);
   const items = useGroceryStore(s => s.items);
   const itemProducts = useGroceryStore(s => s.itemProducts);
+  // Standing swaps ("always use oat milk for milk"), so a recipe's figures here
+  // are the ones its page shows and the ones it logs with. See standingSwaps.ts.
+  const itemSubs = useGroceryStore(s => s.itemSubs);
+  const swaps = useMemo(() => standingSwapMap(itemSubs, items), [itemSubs, items]);
   const addRecipe = useRecipeStore(s => s.addRecipe);
   const addIngredientsFromText = useRecipeStore(s => s.addIngredientsFromText);
 
@@ -341,25 +346,42 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
       if (helping) out.push({ label: food.label, quantity: food.choice.label, amounts: helping.amounts });
     }
     for (const recipe of matches) {
-      const serving = perServing(recipeNutrition(recipe, items, itemProducts, recipesById));
+      const serving = perServing(recipeNutrition(recipe, items, itemProducts, recipesById, undefined, 1, swaps));
       if (serving) out.push({ label: recipe.name, quantity: '1 serving', amounts: serving });
     }
     return out.slice(0, MAX_CONTEXT_FOODS);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recalled, catalogMatches, matches, items, itemProducts, at]);
+  }, [recalled, catalogMatches, matches, items, itemProducts, at, swaps]);
 
   // ==== estimate: asking, refining, logging ====
-  /** Resolves to whether the request came back with an estimate. */
-  const run = async (text: string, fresh: boolean): Promise<boolean> => {
+  /**
+   * Which request is the current one. Bumped on every open and close, and by
+   * each new ask, so an answer is kept only if nothing has happened since it
+   * was sent. A token rather than the `visibleRef` the recipe sheets keep,
+   * because this sheet resets on open rather than on close: a request sent
+   * just before a cancel, answered just after a quick reopen, would otherwise
+   * fill the new session with the old meal's estimate.
+   */
+  const runTokenRef = useRef(0);
+  useEffect(() => { runTokenRef.current += 1; }, [visible]);
+
+  /**
+   * Resolves to whether the request came back with an estimate, or null when
+   * its answer was dropped because the session it belonged to has ended.
+   */
+  const run = async (text: string, fresh: boolean): Promise<boolean | null> => {
+    const token = ++runTokenRef.current;
     setLoading(true);
     setError(null);
     setSavedRecipeId(null);
     try {
       const result = await estimateMealNutrition(text, context);
+      if (token !== runTokenRef.current) return null;
       setEstimate(result);
       if (fresh) setQuestions(result.questions);
       return true;
     } catch (e) {
+      if (token !== runTokenRef.current) return null;
       // A failed first ask has nothing to keep. A failed refinement does: the
       // estimate it was refining is still a real answer, with its Log button
       // and its questions, so it stays and the error is added under it rather
@@ -368,7 +390,7 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
       setError(describeAIError(e));
       return false;
     } finally {
-      setLoading(false);
+      if (token === runTokenRef.current) setLoading(false);
     }
   };
 
@@ -405,8 +427,9 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
       false,
     ).then(ok => {
       // The kept estimate still answers the old choices, so the chips go back
-      // to them rather than showing an answer the figures don't reflect.
-      if (!ok) setAnswers(previous);
+      // to them rather than showing an answer the figures don't reflect. Not
+      // for a dropped answer (null): that session's chips are already gone.
+      if (ok === false) setAnswers(previous);
     });
   };
 
@@ -725,7 +748,7 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
                     doesn't ask, so its row opens the picker rather than
                     logging, and a chevron says so where the others have +. */}
                 {matches.map((recipe, index) => {
-                  const serving = perServing(recipeNutrition(recipe, items, itemProducts, recipesById));
+                  const serving = perServing(recipeNutrition(recipe, items, itemProducts, recipesById, undefined, 1, swaps));
                   return (
                     <TouchableOpacity
                       key={recipe.id}

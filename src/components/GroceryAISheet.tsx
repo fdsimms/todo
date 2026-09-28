@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   Alert,
   View,
@@ -23,7 +23,7 @@ import {
   checkboxRadius,
   type Colors,
 } from '../theme';
-import { itemsOnList } from '../utils/groceryLists';
+import { entryFor, itemsOnList } from '../utils/groceryLists';
 import { useGroceryStore } from '../store/useGroceryStore';
 import {
   suggestGroceryAisles,
@@ -68,8 +68,8 @@ interface TidyRow {
  * Nothing here is load-bearing: the offline lexicon files the common shop
  * without a key or a network, and unrecognised items already land in "Other".
  * Both modes are gated at the call site, so a user who can't run them never
- * sees the entry points at all — `recipe` on `!!anthropicApiKey`, and `tidy`
- * on `useAiRoute('groceryAisles')`, since aisle sorting can also be answered by
+ * sees the entry points at all — `recipe` on `useAiRoute('recipeExtraction')`,
+ * and `tidy` on `useAiRoute('groceryAisles')`, since aisle sorting can also be answered by
  * the on-device model with no key at all (see `src/utils/aiRouting.ts`).
  *
  * Which engine answered is deliberately not shown here. The rows are the same
@@ -128,11 +128,22 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
     if (!visible) reset();
   }, [visible, reset]);
 
+  // Both runs below await a request that easily outlives a cancel — the sheet
+  // stays mounted (only its Modal hides), so nothing stops that promise once
+  // the user discards. Read inside the continuation, never as a dependency, so
+  // a cancel mid-request is seen without re-running either. Same guard
+  // RecipeExtractSheet and RecipeCreateSheet keep: without it the answer lands
+  // on the hidden sheet after the reset above, and the next open starts on a
+  // pre-ticked review of the input that was discarded.
+  const visibleRef = useRef(visible);
+  useEffect(() => { visibleRef.current = visible; }, [visible]);
+
   const runTidy = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const map = await suggestGroceryAisles(unsorted.map(i => i.name), [...aisleOrder]);
+      if (!visibleRef.current) return;
       const rows: TidyRow[] = [];
       for (const item of unsorted) {
         const aisle = map[item.name];
@@ -143,9 +154,11 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
       setTidyRows(rows);
       setAccepted(new Set(rows.map((_, i) => i)));
     } catch (e) {
-      setError(describeAIError(e));
+      if (visibleRef.current) setError(describeAIError(e));
     } finally {
-      setTidyAnswered(true);
+      // Guarded too: an answer stamped on a closed sheet would stop the next
+      // open from asking at all.
+      if (visibleRef.current) setTidyAnswered(true);
       setLoading(false);
     }
   }, [unsorted, aisleOrder]);
@@ -163,11 +176,14 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
       // it's dropped here rather than offered as something to buy.
       const rows = (await suggestRecipeGroceries(resolved.source, [...aisleOrder]))
         .filter(r => !r.excludeFromShoppingList);
+      if (!visibleRef.current) return;
       setRecipeRows(rows);
       setAccepted(new Set(rows.map((_, i) => i)));
     } catch (e) {
-      setError(describeImportError(e));
-      setCanRetry(isRetryableImportError(e));
+      if (visibleRef.current) {
+        setError(describeImportError(e));
+        setCanRetry(isRetryableImportError(e));
+      }
     } finally {
       setLoading(false);
     }
@@ -215,7 +231,10 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
         // row already on the list reads as one this apply added — and undo
         // would then take it off. Same lookup addManyFromText makes.
         const before = catalogItemForKey(key, useGroceryStore.getState().items) ?? undefined;
-        const wasOnList = before?.onList === true;
+        // On the list being added to, not on any list — same as addManyFromText.
+        // Read fresh: earlier rows in this loop have already been added.
+        const { listEntries: entriesNow, activeListId: listNow } = useGroceryStore.getState();
+        const wasOnList = !!before && entryFor(entriesNow, before.id, listNow) !== null;
         // addByName so an item already in the catalog is re-listed rather than
         // duplicated; the aisle and quantity are then applied on top of
         // whatever the lexicon guessed. An aisle the user has filed this item

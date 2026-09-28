@@ -2,6 +2,7 @@ import { dbGetGtinLookup, dbSetGtinLookup } from '../db/database';
 import { isCacheEntryFresh, normalizeGtin } from '../utils/gtin';
 import { readFdcNutrition, readOffNutrition } from '../utils/nutritionParse';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { isDemoModeActive } from '../utils/demoState';
 import { GROCERY_NAME_MAX_LENGTH, GROCERY_QUANTITY_MAX_LENGTH } from '../types';
 import type { FoodNutrition } from '../types';
 
@@ -94,6 +95,15 @@ export interface ProductRecord {
 export class ProductLookupError extends Error {}
 
 /**
+ * The refusal every lookup in this module and `foodSearch.ts` makes in demo
+ * mode, for the reason `callAnthropic` gives for its own: the owner's real keys
+ * are still in memory while a friend is holding the phone, and Go-UPC is paid
+ * per call. What would come back would only be cached into the throwaway demo
+ * database anyway.
+ */
+export const DEMO_LOOKUP_REFUSAL = 'Lookups are off in demo mode';
+
+/**
  * Maps a lookup failure to copy safe to show a user, mirroring
  * `describeAIError`. Every branch ends in the same advice because there is only
  * one thing to do about any of them, and it always works: type the name.
@@ -102,6 +112,7 @@ export function describeLookupError(error: unknown): string {
   const message = error instanceof Error ? error.message : '';
   if (message === 'Request timed out') return 'The lookup took too long. Type the name instead.';
   if (message === 'Lookups are off') return 'Barcode lookups are off. Turn them on in Settings, or type the name.';
+  if (message === DEMO_LOOKUP_REFUSAL) return 'Barcode lookups are off in demo mode. Type the name instead.';
   if (message.startsWith('Lookup failed')) return 'Couldn\'t reach the barcode database. Type the name instead.';
   return 'Couldn\'t look that barcode up. Type the name instead.';
 }
@@ -348,6 +359,9 @@ export async function lookupGtin(gtin: string, now: Date = new Date()): Promise<
     };
   }
 
+  // After the cache, which is the demo database's own and costs nothing, and
+  // before anything reaches the network. See DEMO_LOOKUP_REFUSAL.
+  if (isDemoModeActive()) throw new ProductLookupError(DEMO_LOOKUP_REFUSAL);
   const { productLookupEnabled, fdcApiKey, goUpcApiKey } = useSettingsStore.getState();
   if (!productLookupEnabled) throw new ProductLookupError('Lookups are off');
 

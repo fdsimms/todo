@@ -48,6 +48,7 @@ import {
 } from '../utils/foodLog';
 import { cookedDishGrams, mealHelping, servingGrams, weighedHelping } from '../utils/mealLog';
 import { perServing, recipeNutrition, recipeNutritionLines, type NutritionLine } from '../utils/recipeNutrition';
+import { standingSwapMap } from '../utils/standingSwaps';
 import { describeProduct } from '../utils/groceryProduct';
 import { isNonFoodAisle } from '../utils/groceryAisles';
 import { groceryNameKey } from '../utils/groceryParse';
@@ -349,6 +350,10 @@ export function FoodLogEntrySheet({
   // map `LogMealPrompt` passes, so the figures a recipe logs with and the ones
   // an edit re-measures it against come off one rollup.
   const recipesById = useMemo(() => new Map(recipes.map(r => [r.id, r])), [recipes]);
+  // "Always use oat milk for milk", so a dish logs as the recipe page's
+  // nutrition row reads it rather than as written. See standingSwaps.ts.
+  const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
+  const swaps = useMemo(() => standingSwapMap(itemSubs, items), [itemSubs, items]);
   const addEntry = useFoodLogStore(s => s.addEntry);
   const reviseEntry = useFoodLogStore(s => s.reviseEntry);
   const setItemNutrition = useGroceryStore(s => s.setItemNutrition);
@@ -356,6 +361,11 @@ export function FoodLogEntrySheet({
   const ensureCatalogItem = useGroceryStore(s => s.ensureCatalogItem);
   const recentEntries = useFoodLogStore(s => s.recentEntries);
   const keepOpenAfterFoodLog = useSettingsStore(s => s.keepOpenAfterFoodLog);
+  // Searching a food database by name needs a FoodData Central key, and the
+  // empty list below is where a newcomer with no foods reaches for that search
+  // first. Said there rather than after a search fails.
+  const productLookupEnabled = useSettingsStore(s => s.productLookupEnabled);
+  const hasFdcKey = useSettingsStore(s => !!s.fdcApiKey);
   const setKeepOpenAfterFoodLog = useSettingsStore(s => s.setKeepOpenAfterFoodLog);
 
   // Whether this save should stay open for another food instead of closing —
@@ -474,7 +484,7 @@ export function FoodLogEntrySheet({
       });
     }
     for (const recipe of recipes) {
-      const dish = recipeNutrition(recipe, items, itemProducts, recipesById);
+      const dish = recipeNutrition(recipe, items, itemProducts, recipesById, undefined, 1, swaps);
       if (!dish) continue;
       const serving = recipeHelpingNutrition(perServing(dish), 1);
       // Scale 1: this sheet logs the recipe as written rather than one night's
@@ -506,7 +516,7 @@ export function FoodLogEntrySheet({
       });
     }
     return out;
-  }, [items, itemProducts, recipes, nonFoodAisles]);
+  }, [items, itemProducts, recipes, nonFoodAisles, swaps]);
 
   // After the reset above, and off `candidates` rather than the recipe store,
   // so a dish that has no figures is left unpicked rather than opening onto a
@@ -644,11 +654,13 @@ export function FoodLogEntrySheet({
     if (!picked || picked.kind !== 'dish') return [];
     const recipe = recipes.find(r => r.id === picked.recipeId);
     if (!recipe) return [];
-    return recipeNutritionLines(recipe, items, itemProducts).filter(line => {
+    // The same map and swaps the dish's own rollup below measures with, so the
+    // lines asked about here are lines of the dish being logged.
+    return recipeNutritionLines(recipe, items, itemProducts, recipesById, undefined, 1, swaps).filter(line => {
       if (line.state !== 'unmeasured' || !line.nutrition || !line.item) return false;
       return weighableLine(line.quantity, line.prep, line.nutrition, line.item.name) === null;
     });
-  }, [picked, recipes, items, itemProducts]);
+  }, [picked, recipes, recipesById, items, itemProducts, swaps]);
 
   const varyingResolved = useMemo(
     () => varyingLines.map(line => {
@@ -674,7 +686,7 @@ export function FoodLogEntrySheet({
       // into a crash rather than a Save that quietly stays disabled.
       const recipe = recipes.find(r => r.id === picked.recipeId);
       if (!recipe) return null;
-      const dish = recipeNutrition(recipe, items, itemProducts, recipesById);
+      const dish = recipeNutrition(recipe, items, itemProducts, recipesById, undefined, 1, swaps);
       if (!dish) return null;
       const figures = {
         total: dish.total,
@@ -702,7 +714,7 @@ export function FoodLogEntrySheet({
     }
     if (!picked.panel) return null;
     return scalePanelToAmount(picked.panel, amount, null, undefined, picked.label);
-  }, [picked, amount, dishMeasure, recipes, items, itemProducts, varyingResolved]);
+  }, [picked, amount, dishMeasure, recipes, items, itemProducts, varyingResolved, swaps]);
 
   // What's actually offered to weigh, which `weighableLine` decides rather
   // than the shape of the typed amount alone.
@@ -1426,12 +1438,26 @@ export function FoodLogEntrySheet({
                   icon="nutrition-outline"
                   title={candidates.length === 0 ? 'Nothing has figures yet' : 'No matching food'}
                   subtitle={
-                    candidates.length === 0
-                      ? 'A food can be logged once it has nutrition on it. Search a food database below, or open a grocery item to attach nutrition to it there.'
-                      : 'Only foods and recipes with nutrition on them can be logged. Search a food database instead, or open a grocery item to attach nutrition to it there.'
+                    (candidates.length === 0
+                      ? 'A food can be logged once it has nutrition on it.'
+                      : 'Only foods and recipes with nutrition on them can be logged.')
+                    + (hasFdcKey
+                      ? (candidates.length === 0
+                        ? ' Search a food database below, or open a grocery item to attach nutrition to it there.'
+                        : ' Search a food database instead, or open a grocery item to attach nutrition to it there.')
+                      // Without a key the search can only fail, so the next
+                      // step is the key, not the search.
+                      : ' Searching a food database by name needs a free FoodData Central key, which you can add in Settings. You can also open a grocery item to add its nutrition there.')
                   }
-                  actionLabel="Search a food database"
-                  onAction={() => { haptics.tap(); setDbSearchOpen(true); }}
+                  actionLabel={hasFdcKey ? 'Search a food database' : 'Add a food database key'}
+                  onAction={() => {
+                    haptics.tap();
+                    if (hasFdcKey) { setDbSearchOpen(true); return; }
+                    // The key row is shown only while lookups are on, so with
+                    // them off this lands on the switch that brings it back.
+                    const entryId = productLookupEnabled ? 'fdcApiKey' : 'productLookupEnabled';
+                    requestClose(() => { onClose(); navigateToFoodSearchSettings(navigation, entryId); });
+                  }}
                 />
               }
             />

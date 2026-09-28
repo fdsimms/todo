@@ -70,6 +70,16 @@ const IMAGE_REQUEST_TIMEOUT_MS = 40_000;
  * prefill the base already covers happens once for the whole request.
  */
 const ADDITIONAL_IMAGE_TIMEOUT_MS = 15_000;
+/**
+ * For a text request whose *reply* is long: a whole recipe written back out,
+ * with its shopping list, method and prep tasks. The image budget above treats
+ * the upload as the slow part, but for these the output dominates, and a
+ * reply of a couple of thousand tokens routinely outlasts the ordinary 15s on
+ * the larger models. Same figure as the image budget, which already allows for
+ * a reply of this size. "Try again" re-sends the identical request, so a
+ * window that is too short fails the same way every time.
+ */
+const LONG_REPLY_TIMEOUT_MS = 40_000;
 
 interface AnthropicResponse {
   stop_reason?: string;
@@ -1364,7 +1374,10 @@ export async function extractRecipe(
     }],
     tool_choice: { type: 'tool', name: 'extract_recipe' },
     messages: [{ role: 'user', content }],
-  }, apiKey, model, images ? IMAGE_REQUEST_TIMEOUT_MS + (images.length - 1) * ADDITIONAL_IMAGE_TIMEOUT_MS : undefined);
+  }, apiKey, model, images
+    ? IMAGE_REQUEST_TIMEOUT_MS + (images.length - 1) * ADDITIONAL_IMAGE_TIMEOUT_MS
+    // A pasted or fetched recipe is text, but the reply is the whole recipe.
+    : LONG_REPLY_TIMEOUT_MS);
 
   const toolUse = data.content?.find(c => c.type === 'tool_use');
   const input = toolUse?.input as {
@@ -1678,7 +1691,7 @@ export async function draftMealRecipe(
         'If the name is too vague to cook at all, return an empty ingredient list and an empty method rather than guessing at a dish.',
       ].join('\n\n'),
     }],
-  }, apiKey, model);
+  }, apiKey, model, LONG_REPLY_TIMEOUT_MS);
 
   const toolUse = data.content?.find(c => c.type === 'tool_use');
   const input = toolUse?.input as {

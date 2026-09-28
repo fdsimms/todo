@@ -8,6 +8,7 @@ import {
   clampWeighInEveryDays,
   wantsWeighIn,
   weighInDayKey,
+  weighInDeclineHolds,
   weighInNotes,
 } from '../utils/weightTasks';
 import type { WeightPoint } from '../utils/weightLog';
@@ -89,6 +90,41 @@ describe('weighInDayKey', () => {
 
   it('is null for a task the user wrote', () => {
     expect(weighInDayKey(generated(null, null))).toBeNull();
+  });
+});
+
+describe('weighInDeclineHolds', () => {
+  it('holds for the whole window from the day the request was deleted', () => {
+    // Asked every seven days, declined on the 8th: quiet through the 14th, the
+    // same length of silence a recorded weight would have bought.
+    expect(weighInDeclineHolds('2026-09-08', '2026-09-08', 7)).toBe(true);
+    expect(weighInDeclineHolds('2026-09-08', '2026-09-09', 7)).toBe(true);
+    expect(weighInDeclineHolds('2026-09-08', '2026-09-14', 7)).toBe(true);
+    expect(weighInDeclineHolds('2026-09-08', '2026-09-15', 7)).toBe(false);
+  });
+
+  it('holds only for the day itself when asked daily', () => {
+    expect(weighInDeclineHolds('2026-09-08', '2026-09-08', 1)).toBe(true);
+    expect(weighInDeclineHolds('2026-09-08', '2026-09-09', 1)).toBe(false);
+  });
+
+  it('never holds without a decline', () => {
+    expect(weighInDeclineHolds(null, '2026-09-08', 7)).toBe(false);
+  });
+
+  it('counts calendar days across a month end and a clock change', () => {
+    expect(weighInDeclineHolds('2026-10-28', '2026-11-03', 7)).toBe(true);
+    expect(weighInDeclineHolds('2026-10-28', '2026-11-04', 7)).toBe(false);
+  });
+
+  it('clamps the window the way the setting does', () => {
+    expect(weighInDeclineHolds('2026-09-01', '2026-09-30', 90)).toBe(true);
+    expect(weighInDeclineHolds('2026-09-01', '2026-10-01', 90)).toBe(false);
+  });
+
+  it('lets a stamp dated after today hold no more than a window, so a wrong clock cannot silence it for good', () => {
+    expect(weighInDeclineHolds('2026-09-10', '2026-09-08', 7)).toBe(true);
+    expect(weighInDeclineHolds('2027-09-10', '2026-09-08', 7)).toBe(false);
   });
 });
 

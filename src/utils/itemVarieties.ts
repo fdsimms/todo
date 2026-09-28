@@ -1,4 +1,4 @@
-import type { GroceryItem } from '../types';
+import type { GroceryItem, ItemProduct } from '../types';
 import { probablyHaveReason } from './grocerySuggest';
 
 /**
@@ -72,11 +72,16 @@ export const NO_VARIETIES: ReadonlyMap<string, GroceryItem[]> = new Map();
  * would answer a generic line while you plan for a rental, and the sheet would
  * leave it unticked. Null falls back to the row's own `onList`/`checked`, the
  * home list, which is what every reader that isn't adding to a list means.
+ *
+ * `products` are the boxes, handed on to `probablyHaveReason` so a variety whose
+ * only claim is a frozen or "Got it" packet answers here as it does in the
+ * Pantry. Empty by default, which is the item-only read every caller had first.
  */
 export function coveringVariety(
   candidates: readonly GroceryItem[] | undefined,
   now: Date,
-  inTrolley: ReadonlyMap<string, boolean> | null = null
+  inTrolley: ReadonlyMap<string, boolean> | null = null,
+  products: readonly ItemProduct[] = []
 ): GroceryItem | null {
   if (!candidates || candidates.length === 0) return null;
   let staple: GroceryItem | null = null;
@@ -91,7 +96,7 @@ export function coveringVariety(
       continue;
     }
     if (item.isStaple) { staple = staple ?? item; continue; }
-    if (!onHand && probablyHaveReason(item, now)) onHand = item;
+    if (!onHand && probablyHaveReason(item, now, products)) onHand = item;
   }
   return inCart ?? staple ?? onHand;
 }

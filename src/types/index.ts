@@ -1888,7 +1888,7 @@ export type GeneratedKind =
   // src/utils/weightTasks.ts. Its source id is the day key the request was
   // raised on, the same "square on the calendar, not a row" position moodLog
   // is in, and what stops a swiped-away one coming straight back is
-  // weighInLastDayKey.
+  // weighInLastDayKey, then weighInDeclinedDayKey for the rest of the window.
   //
   // Deliberately not part of 'health' despite reading the same store: that
   // kind fires *because* a reading crossed a rule the user wrote, and this one
@@ -4555,6 +4555,10 @@ export interface GroceryItem {
    * which inherits every refusal `parseQuantityAmount` makes ("a bunch" has no
    * per-unit price) — so the string is shown next to the price and the reader
    * does the comparing.
+   *
+   * Null rather than `quantity` when a recipe wrote that quantity
+   * (`quantityFromRecipe`): "3 cups" is what the week's cooking needed, not
+   * the pack the price was paid for, and `recipeCost` divides by this string.
    */
   lastPriceQuantity: string | null;
   /**

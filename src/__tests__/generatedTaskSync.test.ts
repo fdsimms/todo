@@ -336,10 +336,10 @@ describe('reconcileGeneratedTask — removing', () => {
 
     reconcileGeneratedTask(opts({ wanted: false }));
 
-    // No skipGeneratedOptOut: this delete is reached only when the source has
-    // already said no, so writing that "no" back onto it is a no-op the store's
-    // own equality guard drops — and the path stays the one that *would* write.
-    expect(mockTaskState.deleteTask).toHaveBeenCalledWith('existing', { skipGeneratedOptOut: undefined });
+    // skipGeneratedOptOut: the app deciding a source doesn't want a task right
+    // now is not the user saying never. Freezing an item reached this branch
+    // and the opt-out it wrote kept the use-up task from ever coming back.
+    expect(mockTaskState.deleteTask).toHaveBeenCalledWith('existing', { skipGeneratedOptOut: true });
     expect(mockTaskState.tasks).toHaveLength(0);
   });
 

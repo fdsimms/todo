@@ -245,6 +245,9 @@ export interface WeightGoalPace {
 /**
  * The chosen pace against what actually happened, as of `today`.
  *
+ * `today` is the day `currentKg` was measured on, which for a weigh-in is the
+ * reading's own day rather than the calendar's (see `weightSinceGoalStart`).
+ *
  * Null before the goal's own start day, which is the case a clock change or a
  * restored backup can produce: a pace line running backwards from day zero
  * would describe a plan that had not begun.
@@ -277,6 +280,12 @@ export function daysToTarget(goal: WeightGoal, currentKg: number): number | null
   return Math.ceil(Math.abs(remaining / rate) * 7);
 }
 
+/** A weigh-in the goal is read against, and the logical day it was taken on. */
+export interface GoalReading {
+  kilograms: number;
+  dayKey: string;
+}
+
 /**
  * The most recent reading at or after the goal's start day, or null.
  *
@@ -285,13 +294,21 @@ export function daysToTarget(goal: WeightGoal, currentKg: number): number | null
  * weights would otherwise read its progress from a number recorded before it
  * existed. A goal with no weigh-in since it was set has no progress to report,
  * which the caller renders as "nothing recorded yet" rather than as zero.
+ *
+ * **It carries its own day, and the pace and the forecast are measured from
+ * that day rather than from today.** A reading three weeks old sat on the pace
+ * line on the day it was taken; measured against today's pace instead it read
+ * as three weeks behind, and "at this rate" landed three weeks late, for a
+ * weight that was exactly on plan. `goalPace` and the forecast's base both take
+ * `dayKeyToDate(reading.dayKey)`, and the screen says which day the weight is
+ * from once that isn't today.
  */
-export function weightSinceGoalStart(goal: WeightGoal, points: WeightPoint[]): number | null {
-  let latest: number | null = null;
+export function weightSinceGoalStart(goal: WeightGoal, points: WeightPoint[]): GoalReading | null {
+  let latest: GoalReading | null = null;
   for (const point of points) {
     if (point.kilograms === null) continue;
     if (point.dayKey < goal.startDayKey) continue;
-    latest = point.kilograms;
+    latest = { kilograms: point.kilograms, dayKey: point.dayKey };
   }
   return latest;
 }

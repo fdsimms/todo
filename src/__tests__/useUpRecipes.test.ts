@@ -184,6 +184,41 @@ describe('useUpRecipes', () => {
     expect(useUpRecipes([chilli], [recipe('Chilli bake', ['chilli'])])).toEqual([]);
   });
 
+  // A box is the same catalog row tracked apart, keyed by that row's nameKey:
+  // a thawed packet due tomorrow is chicken going off, however it's filed.
+  it('counts a box going off as the item it belongs to', () => {
+    const box = entry('Chicken breast', 'due', {
+      kind: 'product',
+      id: kitchenEntryId('product', 'p-1'),
+      sourceId: 'p-1',
+      itemId: 'gi-chicken',
+      productName: 'Brand A',
+      matchKey: 'chicken breast',
+    });
+
+    const suggestions = useUpRecipes([box], [recipe('Chicken tacos', ['chicken breast', 'tortillas'])]);
+
+    expect(suggestions).toHaveLength(1);
+    expect(suggestions[0].uses).toEqual([box]);
+  });
+
+  it('lets the most urgent of an item and its boxes answer for their shared key', () => {
+    const item = entry('Chicken breast', 'soon', { matchKey: 'chicken breast' });
+    const box = entry('Chicken breast', 'over', {
+      kind: 'product',
+      id: kitchenEntryId('product', 'p-2'),
+      sourceId: 'p-2',
+      matchKey: 'chicken breast',
+    });
+
+    // Either order in, the box past its day wins: one line of chicken is one
+    // thing being used up, and it's the one going off first.
+    for (const entries of [[item, box], [box, item]]) {
+      const suggestions = useUpRecipes(entries, [recipe('Chicken tacos', ['chicken breast'])]);
+      expect(suggestions[0].uses).toEqual([box]);
+    }
+  });
+
   // A name with no letters or digits normalises to '', and an ingredient that
   // did the same would otherwise match every blank-keyed entry at once.
   it('never matches on a blank key', () => {

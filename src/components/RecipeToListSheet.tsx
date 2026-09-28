@@ -18,7 +18,7 @@ import {
   type Colors,
 } from '../theme';
 import { trolleyStateFor } from '../utils/groceryLists';
-import { useGroceryStore, type PlannedRow } from '../store/useGroceryStore';
+import { describePlanAdd, useGroceryStore, type PlannedRow } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import {
   classifyPlanned,
@@ -33,6 +33,7 @@ import { onHandNameKeys } from '../utils/grocerySuggest';
 import { describeSubstitutes, substitutesFor, type Substitute } from '../utils/itemSubs';
 import { alternativeCaptions, applyChoice, choiceGroupKey, recipeChoiceGroups } from '../utils/recipeComponents';
 import { normalizeScale } from '../utils/recipeScale';
+import { featureShown } from '../utils/simpleMode';
 import { convertQuantity } from '../utils/unitConvert';
 import { RecipeScaleChips } from './RecipeScaleChips';
 import { RecipeChoiceChips } from './RecipeChoiceChips';
@@ -167,6 +168,7 @@ export function RecipeToListSheet({
   const insets = useSafeAreaInsets();
 
   const unitSystem = useSettingsStore(s => s.unitSystem);
+  const simpleMode = useSettingsStore(s => s.simpleMode);
 
   const items = useGroceryStore(useShallow(s => s.items));
   const listEntries = useGroceryStore(useShallow(s => s.listEntries));
@@ -229,9 +231,12 @@ export function RecipeToListSheet({
       new Date(),
       itemSubs,
       // Against the list being added to, not "any list" — see classifyPlanned.
-      inTrolley
+      inTrolley,
+      // The same boxes `onHand` above reads, so the either/or default and the
+      // row under it can't disagree about a frozen or "Got it" packet.
+      itemProducts
     );
-  }, [recipe, recipesById, items, itemSubs, swaps, choiceKey, scale, inTrolley, onHand]);
+  }, [recipe, recipesById, items, itemSubs, swaps, choiceKey, scale, inTrolley, onHand, itemProducts]);
 
   // "or jalapeño" on each option of a group left open, so a row in Need to buy
   // reads as one of a pair rather than as a second thing to buy. Keyed on
@@ -472,14 +477,11 @@ export function RecipeToListSheet({
     const result = addFromPlan(rows);
     haptics.success();
 
-    const parts = [`Added ${result.added.length}`];
-    if (result.alreadyOnList.length > 0) parts.push(`${result.alreadyOnList.length} already on your list`);
-    if (result.skippedInCart.length > 0) parts.push(`${result.skippedInCart.length} already in your cart`);
-    const added = result.added.length > 0;
+    const summary = describePlanAdd(result);
     Alert.alert(
-      added ? 'On the list' : 'Nothing to add',
-      parts.join(' · '),
-      added && onAdded ? [{ text: 'OK', onPress: () => onAdded(scale) }] : undefined
+      summary.title,
+      summary.message,
+      summary.changed && onAdded ? [{ text: 'OK', onPress: () => onAdded(scale) }] : undefined
     );
     onClose();
   };
@@ -505,7 +507,11 @@ export function RecipeToListSheet({
 
         {/* Above the choice chips: how much you're making applies to the whole
             shop, while a choice applies to one group within it. */}
-        {!nothingToShow && (
+        {/* Simplified mode drops it unless this shop is already scaled (a
+            meal planned for four opens at 2x), the rule RecipeDetail's own
+            chips follow. */}
+        {!nothingToShow
+          && featureShown('recipeScaling', simpleMode, scale !== 1 || normalizeScale(initialScale) !== 1) && (
           <View style={styles.scaleRow}>
             <Text style={styles.sectionLabel}>Batch</Text>
             <RecipeScaleChips

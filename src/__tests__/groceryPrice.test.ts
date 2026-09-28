@@ -377,6 +377,22 @@ describe('cheapestShopFor', () => {
     expect(cheapestShopFor('i1', links, SHOPS)?.shop.name).toBe('Costco');
   });
 
+  it('reads a dozen as twelve of a bare count', () => {
+    // A dozen is the one count word with a fixed size, so "18" against
+    // "1 dozen" is a comparison rather than two ways of counting.
+    const links = [
+      link({ itemId: 'i1', shopId: costco.id, lastPriceMinor: 540, lastPriceQuantity: '18' }),
+      link({ itemId: 'i1', shopId: safeway.id, lastPriceMinor: 429, lastPriceQuantity: '1 dozen' }),
+    ];
+    // 30c an egg against about 36c.
+    expect(cheapestShopFor('i1', links, SHOPS)?.shop.name).toBe('Costco');
+    expect(unitPricesFor(shopPricesFor('i1', links, SHOPS))).toEqual([
+      // Listed by the price on the tag, which is Safeway's.
+      expect.objectContaining({ minorPerUnit: 36, unit: '' }),
+      expect.objectContaining({ minorPerUnit: 30, unit: '' }),
+    ]);
+  });
+
   it('compares counts sharing a unit word', () => {
     const links = [
       link({ itemId: 'i1', shopId: costco.id, lastPriceMinor: 900, lastPriceQuantity: '3 cans' }),

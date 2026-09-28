@@ -50,6 +50,7 @@ import {
   extractRecipe, type ExtractedRecipe, type RecipeGroceryItem, type ExtractedPrepTask,
 } from '../services/aiSuggestions';
 import { describeImportError, isRetryableImportError } from '../services/recipePage';
+import { normalizeRecipeUrl, recipeImportedFrom } from '../utils/recipeUrl';
 import {
   normalizeIngredient, cleanRecipeName, formatServingsRange, parseServingsRange,
 } from '../utils/recipeUtils';
@@ -223,6 +224,14 @@ export function RecipeCreateSheet({
   // below). A photo or paste import has nothing to prefill this with; it's
   // blank until the user types one in.
   const [sourceUrlText, setSourceUrlText] = useState('');
+  /**
+   * The address the user said to import again although a recipe already came
+   * from it, or null. Set only by the "Import anyway" answer in `run`, and it
+   * lifts the "You already imported this link" block (`urlDuplicate`) for that one
+   * address: asking before the fetch and then refusing to save after it would
+   * spend a page fetch and a paid extraction on a recipe that can't be kept.
+   */
+  const [repeatLinkOk, setRepeatLinkOk] = useState<string | null>(null);
   // What the source *is* — inferred, not picked. A link is a website by
   // construction; a photo is whatever the page looked like to the model.
   const [importedSourceType, setImportedSourceType] = useState<RecipeSourceType | null>(null);
@@ -293,6 +302,7 @@ export function RecipeCreateSheet({
     setSiteName('');
     setSourceAuthor('');
     setSourceUrlText('');
+    setRepeatLinkOk(null);
     resetInput();
     resetComponents();
   }, [resetInput, resetComponents]);
@@ -325,7 +335,7 @@ export function RecipeCreateSheet({
   }, [visible, initialMode, initialUrl, setMode, setUrl]);
 
   // ==== running the extraction ====
-  const run = useCallback(async () => {
+  const extract = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -377,6 +387,43 @@ export function RecipeCreateSheet({
       setLoading(false);
     }
   }, [resolveSource, aisleOrder]);
+
+  // A link already in the recipe box is recognised from the address alone,
+  // before anything is fetched: `sourceUrl` is `normalizeRecipeUrl` of the
+  // typed text, so the page fetch and the paid extraction aren't needed to
+  // know. A re-shared page from Safari is the usual way here.
+  const run = useCallback(() => {
+    const existing = input.usingLink ? recipeImportedFrom(recipes, input.url) : null;
+    const address = normalizeRecipeUrl(input.url);
+    if (!existing || !address || address === repeatLinkOk) {
+      void extract();
+      return;
+    }
+    Alert.alert(
+      'You already have this recipe',
+      `You imported this link as “${existing.name}”.`,
+      [
+        {
+          text: 'Open it',
+          // Same way out as the card below: the shared page counts as dealt
+          // with, so the address goes back to the caller to drop from its queue.
+          onPress: () => {
+            Keyboard.dismiss();
+            onClose();
+            onCreated(existing.id, address);
+          },
+        },
+        {
+          text: 'Import anyway',
+          onPress: () => {
+            setRepeatLinkOk(address);
+            void extract();
+          },
+        },
+        { text: 'Cancel', style: 'cancel' },
+      ],
+    );
+  }, [input.usingLink, input.url, recipes, repeatLinkOk, extract, onClose, onCreated]);
 
   // ==== ingredient review: toggling, editing, marking already-have ====
   const toggle = (index: number) => {
@@ -430,12 +477,14 @@ export function RecipeCreateSheet({
   }, [cleaned, recipes]);
 
   // A link already imported once is the same "already have this" case as a
-  // repeated name, just keyed on sourceUrl instead of nameKey.
+  // repeated name, just keyed on sourceUrl instead of nameKey. Answered by the
+  // same function `run` asks before the fetch, and waived for an address the
+  // user already chose to import again there (`repeatLinkOk`).
   const urlDuplicate = useMemo(() => {
     const url = input.page?.url;
-    if (!url) return null;
-    return recipes.find(r => r.sourceUrl === url) ?? null;
-  }, [input.page, recipes]);
+    if (!url || url === repeatLinkOk) return null;
+    return recipeImportedFrom(recipes, url);
+  }, [input.page, recipes, repeatLinkOk]);
 
   // ==== steps and prep-task review ====
   const toggleIn = (

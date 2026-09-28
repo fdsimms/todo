@@ -1,4 +1,4 @@
-import type { GroceryItem, MealPlanEntry, Recipe, RecipeIngredient, Task } from '../types';
+import type { GroceryItem, ItemProduct, MealPlanEntry, Recipe, RecipeIngredient, Task } from '../types';
 import { groceryNameKey } from '../utils/groceryParse';
 import { NO_STANDING_SWAPS } from '../utils/standingSwaps';
 import {
@@ -168,6 +168,16 @@ function task(overrides: Partial<Task> & { generatedSourceId: string | null }): 
   } as Pick<Task, 'generatedKind' | 'generatedSourceId' | 'completed' | 'archived'>;
 }
 
+/** A box of an item, in the freezer: the one claim keeping the item in the Pantry. */
+function frozenBox(itemId: string): ItemProduct {
+  return {
+    id: `p-${++seq}`, itemId, brand: 'Store brand', variant: null, productKey: 'store brand|',
+    rating: null, nutrition: null, note: '', purchaseCount: 0, lastPurchasedAt: null,
+    gtin: null, onHandUntil: null, expiresAt: null, frozenAt: '2026-07-28T12:00:00.000Z', openedAt: null,
+    createdAt: '2026-01-01T00:00:00.000Z',
+  };
+}
+
 /** A recipe wanting one thing, and the meal that plans it — the common fixture. */
 function ragu() {
   return recipe('Ragù', [ing('Onions', { quantity: '2' })]);
@@ -321,6 +331,17 @@ describe('mealShortfallRows', () => {
     const result = call(entry(TODAY, r.id), rows(r), [item({ name: 'Extra firm tofu', isStaple: true })]);
     expect(result).toEqual([]);
   });
+
+  // The Pantry lists an item whose one claim is a frozen box, so a task asking
+  // to shop for it would contradict the screen it links to.
+  it('counts a box in the freezer as having it', () => {
+    const r = ragu();
+    const onions = item({ name: 'Onions' });
+    const e = entry(TODAY, r.id);
+
+    expect(mealShortfallRows(e, rows(r), [onions], [], NO_STANDING_SWAPS, NOW, [frozenBox(onions.id)])).toEqual([]);
+    expect(call(e, rows(r), [onions])?.map(x => x.name)).toEqual(['Onions']);
+  });
 });
 
 describe('wantedMealShortfalls', () => {
@@ -401,6 +422,23 @@ describe('wantedMealShortfalls', () => {
     const r = ragu();
     const e = entry(TODAY, r.id);
     expect(shortfalls([e], rows(r))).toHaveLength(1);
+  });
+});
+
+describe('boxes in the two sweep passes', () => {
+  it('wants no shop, and clears an old one, for a meal whose one line is a frozen box', () => {
+    const r = ragu();
+    const onions = item({ name: 'Onions' });
+    const e = entry(TODAY, r.id);
+    const live = task({ generatedSourceId: e.id });
+    const boxes = [frozenBox(onions.id)];
+
+    expect(wantedMealShortfalls(
+      [e], rows(r), [onions], [], NO_STANDING_SWAPS, TODAY, NOW, 2, MAX_MEAL_SHORTFALL_TASKS, boxes
+    )).toEqual([]);
+    expect(staleMealShortfallTasks(
+      [live], [e], rows(r), [onions], [], NO_STANDING_SWAPS, TODAY, NOW, 2, boxes
+    )).toEqual([live]);
   });
 });
 

@@ -822,6 +822,33 @@ describe('suggestRecipeGroceries', () => {
 });
 
 describe('extractRecipe', () => {
+  // The reply is the whole recipe written back out (shopping list, method and
+  // prep tasks), which outlasts the ordinary 15s window even though nothing
+  // but text was sent.
+  it('gives a pasted recipe longer than the ordinary 15s before aborting', async () => {
+    jest.useFakeTimers();
+    jest.spyOn(global, 'fetch').mockImplementation((_url, init) => {
+      return new Promise((_resolve, reject) => {
+        (init as RequestInit).signal?.addEventListener('abort', () => {
+          const err = new Error('Aborted');
+          err.name = 'AbortError';
+          reject(err);
+        });
+      });
+    });
+
+    const promise = extractRecipe('some long recipe with its method', AISLES);
+    const assertion = expect(promise).rejects.toThrow('Request timed out');
+
+    let settled = false;
+    void promise.catch(() => { settled = true; });
+    await jest.advanceTimersByTimeAsync(15_000);
+    expect(settled).toBe(false);
+
+    await jest.advanceTimersByTimeAsync(25_000);
+    await assertion;
+  });
+
   it('returns the name, servings, prep time, and shopping list', async () => {
     mockFetchOnce(
       toolUseResponse('extract_recipe', {
@@ -1803,6 +1830,32 @@ describe('draftMealRecipe', () => {
     const spy = jest.spyOn(global, 'fetch');
     await expect(draftMealRecipe('   ', AISLES, 4)).resolves.toEqual(EMPTY_DRAFT);
     expect(spy).not.toHaveBeenCalled();
+  });
+
+  // A whole recipe comes back from one line of text, so the reply is what
+  // takes the time, not the request.
+  it('allows longer than the ordinary 15s before aborting', async () => {
+    jest.useFakeTimers();
+    jest.spyOn(global, 'fetch').mockImplementation((_url, init) => {
+      return new Promise((_resolve, reject) => {
+        (init as RequestInit).signal?.addEventListener('abort', () => {
+          const err = new Error('Aborted');
+          err.name = 'AbortError';
+          reject(err);
+        });
+      });
+    });
+
+    const promise = draftMealRecipe('Lemon chicken', AISLES, 4);
+    const assertion = expect(promise).rejects.toThrow('Request timed out');
+
+    let settled = false;
+    void promise.catch(() => { settled = true; });
+    await jest.advanceTimersByTimeAsync(15_000);
+    expect(settled).toBe(false);
+
+    await jest.advanceTimersByTimeAsync(25_000);
+    await assertion;
   });
 
   it('returns the drafted shopping list', async () => {

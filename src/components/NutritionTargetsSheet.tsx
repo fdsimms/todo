@@ -26,6 +26,7 @@ import {
 import { useHealthStore } from '../store/useHealthStore';
 import { openHealthApp } from '../utils/healthBridge';
 import { dayKeyOf, getCurrentDayStart } from '../utils/dateUtils';
+import { isProfileComplete } from '../utils/energyBudget';
 import { haptics } from '../utils/haptics';
 import { navigateToSettingsEntry } from '../utils/settingsIndex';
 import { CountStepper } from './CountStepper';
@@ -80,6 +81,10 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
   const pinnedNutrients = useSettingsStore(useShallow(s => s.foodLogPinnedNutrients));
   const setFoodLogPinnedNutrients = useSettingsStore(s => s.setFoodLogPinnedNutrients);
   const waterUnit = useSettingsStore(s => s.waterUnit);
+  // Whether the weight goal keeps the calorie target in step
+  // (autoCalorieTargetKcal): a goal and a complete profile. The row says so,
+  // since a figure typed here is replaced the next time Weight refreshes.
+  const calorieFollowsGoal = useSettingsStore(s => s.weightGoal !== null && isProfileComplete(s.bodyProfile));
   const healthReadEnabled = useSettingsStore(s => s.healthReadEnabled);
   const waterExerciseBoost = useSettingsStore(useShallow(s => s.waterExerciseBoost));
   const setWaterExerciseBoost = useSettingsStore(s => s.setWaterExerciseBoost);
@@ -280,6 +285,12 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
                       : `${n} ${unit === 'cal' ? 'calories' : unit}`
                   }
                 />
+                {key === 'calorieKcal' && calorieFollowsGoal && (
+                  <Text style={styles.boostHint}>
+                    This follows your weight goal. It is worked out again each time the
+                    Weight screen reads your weight, which replaces a number set here.
+                  </Text>
+                )}
               </View>
             );
           })}

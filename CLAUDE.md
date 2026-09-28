@@ -490,10 +490,11 @@ are over 1,000 lines, and the ten biggest source files by name. It is generated 
 and checked in CI, so it is the one place those numbers are worth reading. They used to sit in
 this file as a marked block; see the note on `.gitattributes` above for why they moved.
 
-**The fifteen single-component files carry their own map.** `TaskEditor.tsx`, `TodayScreen.tsx`,
+**The sixteen single-component files carry their own map.** `TaskEditor.tsx`, `TodayScreen.tsx`,
 `TaskItem.tsx`, `QuickAddModal.tsx`, `MealPlanScreen.tsx`, `RecipeDetailScreen.tsx`,
 `RecipeCreateSheet.tsx`, `GroceryItemSheet.tsx`, `TemplateItemEditor.tsx`, `LogbookScreen.tsx`,
-`GroceryScreen.tsx`, `SuggestMealsSheet.tsx`, `FoodLogEntrySheet.tsx`, `CookModeSheet.tsx` and `EstimateMealSheet.tsx` are
+`GroceryScreen.tsx`, `SuggestMealsSheet.tsx`, `FoodLogEntrySheet.tsx`, `CookModeSheet.tsx`, `EstimateMealSheet.tsx` and
+`ReceiptImportSheet.tsx` are
 each one component holding most of the file, so there are almost no top-level symbols to grep
 for — `TaskEditor.tsx` has six in 4,200 lines and `RecipeDetailScreen.tsx` has two in 1,900.
 Each opens with a short header comment saying what's where, and its logic half is divided by
@@ -1397,14 +1398,14 @@ inset is what just went away) — that asymmetry is the whole design, don't coll
   require, and five of them forgot this. Cloud sync gates on the database handle itself
   (`isSyncableDatabase`), which is stronger still. **A new integration needs its own gate and a test
   for it**, in the same PR.
-- **A generated task the app removes on its own goes through `dropGeneratedTask`, never a
-  reconcile.** `reconcileGeneratedTask` deletes through `deleteTask`, which stamps the source's
-  opt-out as though the person had swiped the task away. That is harmless only when `wanted` is
-  false because the source already means "no" (the setting is off, the leftover was eaten). A
-  reason that reverses by itself is not that: freezing an item or a leftover reconciled its
-  use-up task away and wrote a permanent "never", so it never came back after thawing
-  (`setFrozen` in `useGroceryStore` and `useLeftoverStore` now drop on the way in). Only a delete
-  the user performs records a decision.
+- **A generated task the app removes on its own never writes the user's "never".**
+  `deleteTask` stamps the source's opt-out as though the person had swiped the task away, so every
+  app-side delete of a generated row passes `skipOptOut` (`reconcileGeneratedTask` and
+  `dropGeneratedTask` both do). The reconcile used to rely on the source already meaning "no",
+  and a reason that reverses by itself broke that: freezing an item or a leftover reconciled its
+  use-up task away and wrote a permanent "never", so it never came back after thawing. A new
+  path that deletes a generated task goes through one of those two, not a bare `deleteTask`.
+  Only a delete the user performs records a decision.
 - **After an `await`, check the result still belongs where it's about to be written.** A sheet
   can close, a cook can move to the next step, and a row can be edited or deleted while a model
   or Health call is in flight, and five fixes in one audit were this one bug: `InventRecipeSheet`

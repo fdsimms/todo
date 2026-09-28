@@ -59,6 +59,8 @@ import { GroceryItemSheet, type CollapsibleFieldKey } from '../components/Grocer
 import { navigateToFoodSearchSettings } from '../components/NutritionSearchSheet';
 import { ItemDisposalOffer } from '../components/ItemDisposalOffer';
 import { LeftoverSheet } from '../components/LeftoverSheet';
+import { FridgeHistorySheet } from '../components/FridgeHistorySheet';
+import { useSheetMount } from '../hooks/useSheetMount';
 import { PantryReviewSheet } from '../components/PantryReviewSheet';
 import { BarcodeScanSheet, type ScanProductDraft } from '../components/BarcodeScanSheet';
 import { featureHidden } from '../utils/simpleMode';
@@ -114,7 +116,9 @@ import { useFilterField } from '../hooks/useFilterField';
  * The two things this screen writes by itself are `addToPantry`, off the
  * field at the top, and `addManyToPantry`, off the two scan actions in the
  * header — the same one-bit assertion the item sheet's "Got it" pill writes,
- * one name or a whole session at a time. They exist because that correction
+ * one name or a whole session at a time (a scan also says the packet is new,
+ * which clears the old one's freezer, opened and running-low claims — see
+ * `addManyToPantry`'s `acquired`). They exist because that correction
  * was unreachable for anything with no row yet: you can only open an item's
  * sheet from the list or from the catalog, so "I have flour" was unsayable until
  * flour had been bought through the app at least once. All of them add to the
@@ -198,6 +202,15 @@ export function KitchenScreen() {
   const [scanOpen, setScanOpen] = useState(false);
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
+  // What happened to past containers, the same sheet the meal plan's fridge
+  // card opens. Offered on the same condition that card offers it: something
+  // has been closed out, since an empty history is a sheet with nothing in it.
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const hasFridgeHistory = useMemo(() => leftovers.some(l => !!l.finishedAt), [leftovers]);
+  // Lazily, then kept: most pantries never open it, and a sheet that has been
+  // opened has to stay mounted for its ordered close (see useSheetMount).
+  const mountHistory = useSheetMount(historyOpen);
+  const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
 
   // This screen never unmounts once visited (the drawer's tabs stay mounted
   // under `enableScreens(false)`), so a use-by day computed once at mount
@@ -543,7 +556,11 @@ export function KitchenScreen() {
     }
     setScanOpen(false);
     if (names.length === 0) return;
-    if (addManyToPantry(names, frozenNames, productNames) > 0) haptics.success();
+    // `acquired`: a scanned bag is a new packet, so the old one's freezer,
+    // opened and running-low claims go (see addManyToPantry).
+    if (addManyToPantry(names, frozenNames, productNames, undefined, { acquired: true }) > 0) {
+      haptics.success();
+    }
   };
 
   /**
@@ -559,6 +576,8 @@ export function KitchenScreen() {
    * `purchasedAt` is dropped, and the sheet doesn't ask for it here: nothing
    * in the pantry writes a purchase date. `addToPantry` stamps on-hand from
    * now, and a use-by day comes from `finishShopping`, which this isn't one of.
+   * What it does say is that these are new packets (`acquired`), so the old
+   * one's freezer, opened and running-low claims don't carry over to them.
    *
    * The prices ride the same name-keyed map the freezer flag and the box do,
    * for the reason `addManyToPantry` gives — a row this batch mints has no id
@@ -589,7 +608,9 @@ export function KitchenScreen() {
     setReceiptOpen(false);
     if (names.length === 0) return;
     if (
-      addManyToPantry(names, undefined, undefined, { byName: priceByName, shopId }) > 0
+      addManyToPantry(
+        names, undefined, undefined, { byName: priceByName, shopId }, { acquired: true }
+      ) > 0
     ) haptics.success();
   };
 
@@ -743,6 +764,13 @@ export function KitchenScreen() {
             onPress: () => setReviewOpen(true),
             accessibilityLabel: 'Go through the pantry one thing at a time',
           },
+          ...(hasFridgeHistory
+            ? [{
+                icon: 'time-outline' as const,
+                onPress: () => { haptics.tap(); setHistoryOpen(true); },
+                accessibilityLabel: 'What happened to past leftovers',
+              }]
+            : []),
         ]}
       />
       <HubPills hub="kitchen" active="Kitchen" />
@@ -874,6 +902,18 @@ export function KitchenScreen() {
       />
 
       <PantryReviewSheet visible={reviewOpen} onClose={() => setReviewOpen(false)} />
+
+      {mountHistory && (
+        <FridgeHistorySheet
+          visible={historyOpen}
+          leftovers={leftovers}
+          weekStartsOn={weekStartsOn}
+          // The history closes itself before this runs, so the container's
+          // sheet below opens in its place rather than on top of it.
+          onOpen={l => setOpenLeftoverId(l.id)}
+          onClose={() => setHistoryOpen(false)}
+        />
+      )}
 
       <LeftoverSheet
         visible={openLeftover !== null}

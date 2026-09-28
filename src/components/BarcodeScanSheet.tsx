@@ -202,9 +202,14 @@ const CONTEXT_COPY: Record<ScanContext, {
   offList: (name: string) => string;
 }> = {
   shopping: {
+    // The confirm is named for what it does: the scanned rows go in the cart
+    // and the finish sheet opens, which records them as bought. "Add" (and the
+    // menu's old "Scan barcodes", among the add verbs) read as a way to put
+    // something on the list. The title stays short so the header's longer
+    // confirm doesn't crowd it.
     title: 'Scan groceries',
-    emptySubtitle: 'Point the camera at a barcode as you unpack. Anything without one, type below.',
-    confirmLabel: 'Add',
+    emptySubtitle: 'Point the camera at a barcode as you unpack, then mark it all as bought. Anything without one, type below.',
+    confirmLabel: 'Mark as bought',
     freezer: true,
     matched: name => `On your list as ${name}`,
     picked: name => `Filed as ${name} on your list`,

@@ -330,6 +330,26 @@ export function titleForEntry(
 }
 
 /**
+ * Whether this entry names a recipe that has since been deleted — the state in
+ * which `titleForEntry` above falls back to the captured `title`, and in which
+ * the meal behaves as the typed meal that title already is.
+ *
+ * `library` is the recipe store's own state, and **a list that hasn't loaded
+ * says nothing about any recipe**: read as "every recipe is gone", one failed
+ * load would turn every "Make X" on Today into "Eat X" and let a rename clear
+ * pointers to recipes that are still there. So it answers false until
+ * `initialized`, and a reader acts on a missing recipe only once it's sure.
+ */
+export function recipeIsGone(
+  entry: Pick<MealPlanEntry, 'recipeId'>,
+  library: { initialized: boolean; recipes: readonly Pick<Recipe, 'id'>[] }
+): boolean {
+  if (!entry.recipeId || !library.initialized) return false;
+  const { recipeId } = entry;
+  return !library.recipes.some(r => r.id === recipeId);
+}
+
+/**
  * An entry's title as read somewhere the snowflake on its plan row can't be
  * seen — the shared calendar event, the week pasted into Messages.
  *

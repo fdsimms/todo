@@ -171,7 +171,7 @@ interface Props {
  *   ahead of every idea and drops an idea whose name collides with one, so an
  *   invention can't displace, reorder or hide a recipe the user actually owns.
  *   That's the settled call from #1041, restated in #1063.
- * - Generation is behind `aiIdeasEnabled` (`!!anthropicApiKey` at the call
+ * - Generation is behind `aiIdeasEnabled` (`useAiRoute('mealIdeas')` at the call
  *   site) *and* behind an explicit tap. Opening this sheet never spends a
  *   request; the offline list is what it opens with.
  * - An idea is visibly not a recipe: dashed border, a sparkles glyph, an "AI

@@ -1,0 +1,4 @@
+{
+  "message": "Replacing a planned meal with a different recipe now keeps the number of servings you planned. Before, it kept the multiplier, so a doubled pasta that serves 2 became a doubled soup that serves 4",
+  "date": "2026-09-27"
+}

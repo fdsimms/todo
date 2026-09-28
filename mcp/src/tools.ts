@@ -17,7 +17,7 @@
  * deferred task, a time-of-day segment that has not opened, a task held by a
  * blocker, a `dayResetTime` that is not midnight.
  */
-import type { FoodLogEntry, GroceryItem, MedicationLog, MoodLog, Project, Task } from '../../src/types';
+import type { FoodLogEntry, GroceryItem, GroceryListEntry, MedicationLog, MoodLog, Project, Task } from '../../src/types';
 import type { Replica } from './replica';
 import type { TemplatePlan } from './templatePlan';
 import type { TaskDraft } from '../../src/types';
@@ -198,8 +198,9 @@ export interface SerializedGroceryItem {
   name: string;
   quantity?: string;
   aisle?: string;
-  /** On the list right now, as opposed to sitting in the catalog. */
+  /** On the home list right now, as opposed to sitting in the catalog. */
   onList: boolean;
+  /** Checked off on the home list. */
   checked?: boolean;
 }
 
@@ -207,25 +208,44 @@ export interface SerializedGroceryItem {
  * One row's projection, shared by the list and by every write that reports what
  * it did. Separate so a write cannot describe an item differently from the way
  * a read does a moment later.
+ *
+ * **Membership and the tick are the home list's, read off its entry.** Every
+ * grocery write here acts on the list at home, so that is the list a read has
+ * to describe. `GroceryItem.onList` is the broader "in any trolley" flag, so a
+ * row only on a trip's list read as on the list and then couldn't be checked
+ * off; `GroceryItem.checked` is only a mirror of the home entry.
  */
-export function serializeGroceryItem(i: GroceryItem): SerializedGroceryItem {
+export function serializeGroceryItem(i: GroceryItem, home: GroceryListEntry | undefined): SerializedGroceryItem {
   return {
     id: i.id,
     name: i.name,
     quantity: i.quantity || undefined,
     aisle: i.aisle || undefined,
-    onList: i.onList,
-    checked: i.checked ? true : undefined,
+    onList: home !== undefined,
+    checked: home?.checked ? true : undefined,
   };
 }
 
+/** The home list's entries, by item id. */
+function homeEntries(replica: Replica): Map<string, GroceryListEntry> {
+  const out = new Map<string, GroceryListEntry>();
+  for (const e of replica.groceryListEntries()) if (e.listId === null) out.set(e.itemId, e);
+  return out;
+}
+
+function serializeWithHome(replica: Replica, item: GroceryItem): SerializedGroceryItem {
+  return serializeGroceryItem(item, homeEntries(replica).get(item.id));
+}
+
+/** The home list, or with `onListOnly: false` the whole catalog. */
 export function listGroceryItems(
   replica: Replica,
   input: { onListOnly?: boolean } = {}
 ): SerializedGroceryItem[] {
+  const home = homeEntries(replica);
   const items = replica.groceryItems();
-  const wanted = input.onListOnly === false ? items : items.filter((i: GroceryItem) => i.onList);
-  return wanted.map(serializeGroceryItem);
+  const wanted = input.onListOnly === false ? items : items.filter((i: GroceryItem) => home.has(i.id));
+  return wanted.map(i => serializeGroceryItem(i, home.get(i.id)));
 }
 
 // ---------------------------------------------------------------------------
@@ -535,13 +555,13 @@ export function addGroceryItem(
     : wasOnList
       ? `"${item.name}" was already on the list, so nothing moved. Its tick and its place in the aisle order are untouched.`
       : `"${item.name}" was already in the catalog, so it went back on the list with the aisle and history it already had.`;
-  return { item: serializeGroceryItem(item), outcome };
+  return { item: serializeWithHome(replica, item), outcome };
 }
 
 export function setGroceryChecked(replica: Replica, id: string, checked: boolean): GroceryWriteResult {
   const item = replica.setGroceryChecked(id, checked);
   return {
-    item: serializeGroceryItem(item),
+    item: serializeWithHome(replica, item),
     outcome: checked ? `Checked "${item.name}" off.` : `Un-checked "${item.name}".`,
   };
 }
@@ -549,7 +569,7 @@ export function setGroceryChecked(replica: Replica, id: string, checked: boolean
 export function removeFromGroceryList(replica: Replica, id: string): GroceryWriteResult {
   const item = replica.removeFromGroceryList(id);
   return {
-    item: serializeGroceryItem(item),
+    item: serializeWithHome(replica, item),
     // Worth saying, because "remove" reads as a delete and this is not one.
     outcome: `Took "${item.name}" off the list. It stays in the catalog with everything recorded on it, so adding it again brings its aisle and history back.`,
   };

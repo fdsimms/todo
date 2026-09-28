@@ -60,8 +60,10 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { editorSearchTerms, matchesEditorQuery, filterEditorRows, type EditorSearchable } from '../utils/editorSearch';
 import { describeShops, shopsForItem, unavailableShopsFor } from '../utils/groceryShops';
 import { describeSubstituteLink, describeSubstitutes, substitutesFor } from '../utils/itemSubs';
+import { describeForgetLoss } from '../utils/groceryFacts';
 import { genericNameSuggestions } from '../utils/itemVarieties';
 import { groceryNameKey } from '../utils/groceryParse';
+import { entryFor } from '../utils/groceryLists';
 import { SubstituteSheet } from './SubstituteSheet';
 import { featureHidden, groceryRowShown } from '../utils/simpleMode';
 import { ProductSheet } from './ProductSheet';
@@ -160,6 +162,12 @@ export function GroceryItemSheet({
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
 
   const item = useGroceryStore(s => (itemId ? s.items.find(i => i.id === itemId) ?? null : null));
+  // On the list being viewed, which is the one "Remove from list" acts on.
+  // `item.onList` is "in any trolley", so milk on the home list offered a
+  // Remove on the Airbnb list that closed the sheet and changed nothing.
+  const onViewedList = useGroceryStore(s => (
+    itemId ? entryFor(s.listEntries, itemId, s.activeListId) !== null : false
+  ));
   const clearChoice = useGroceryStore(s => s.clearChoice);
   const setItemNutrition = useGroceryStore(s => s.setItemNutrition);
   // Named siblings, live ones only — the same read GroceryScreen does for the
@@ -673,9 +681,18 @@ export function GroceryItemSheet({
   };
 
   const handleForgetItem = () => {
+    // What else goes with the row, named from the data: a standing swap here
+    // changes how every recipe shops, and a supply stocked from it stops
+    // putting it on the list. See describeForgetLoss.
+    const loss = describeForgetLoss(
+      [item.id],
+      { products: itemProducts, subs: itemSubs, aliases: useGroceryStore.getState().storeAliases },
+      items,
+      stockedFor.map(t => t.title),
+    );
     confirmDelete({
       title: `Forget ${item.name}?`,
-      message: 'This removes it from your catalog along with its history, and can’t be undone. To just take it off this week’s list, use "Remove from list".',
+      message: `This removes it from your catalog along with its history, and can’t be undone.${loss ? `\n\n${loss}` : ''}\n\nTo just take it off this week’s list, use "Remove from list".`,
       confirmLabel: 'Forget',
       onConfirm: () => {
         deleteItem(item.id);
@@ -924,7 +941,7 @@ export function GroceryItemSheet({
   // over a suspended mechanism is worse than no control.
   const useUpTaskVisible = liveExpiresAt(item) !== null && (!searching
     || matchesEditorQuery({ key: 'useUpTask', label: 'Use-up task', keywords: ['reminder', 'notification', 'task'] }, searchTerms));
-  const removeFromListVisible = item.onList && (!searching
+  const removeFromListVisible = onViewedList && (!searching
     || matchesEditorQuery({ key: 'removeFromList', label: 'Remove from list', keywords: ['take off', 'delete'] }, searchTerms));
   const mergeVisible = !searching
     || matchesEditorQuery({ key: 'merge', label: 'Merge with another item', keywords: ['duplicate', 'combine', 'same thing'] }, searchTerms);

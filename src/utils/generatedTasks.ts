@@ -93,7 +93,6 @@ export type { GeneratedKind };
  * they drain within a day or two of ordinary use.
  */
 export const GENERATED_KINDS: readonly GeneratedKind[] = [
-  'mealSlot',
   'groceryUseUp',
   // Beside the other generator that reads the grocery catalog, rather than
   // appended after the project one — the two are a pair from the list's side
@@ -109,6 +108,13 @@ export const GENERATED_KINDS: readonly GeneratedKind[] = [
   // one on without ever meeting the other.
   'pantryReview',
   'leftoverUseUp',
+  // With the other three meal-plan generators rather than first in the list,
+  // where it sat four grocery and pantry rows away from them. All four file
+  // under one category and ask about the same meals, and the weekly nudge
+  // carries its own set of meal switches (mealPlanNudgeSlots, deliberately a
+  // separate setting): somebody turning breakfast off here should meet that
+  // second set in the next row rather than never find it.
+  'mealSlot',
   'mealPlanNudge',
   // Beside the nudge rather than appended at the end, for the reason
   // pantryCheck sits beside groceryUseUp: the two are a pair from the list's
@@ -272,9 +278,13 @@ export interface GeneratedKindSpec {
    * its Settings row has to keep rendering, or it writes tasks nobody can turn
    * off (that was `birthday`, `reachOut`, `supplyReorder`, `projectReview` and
    * `calendarReview`, all five stranded behind Settings' own kitchen gate).
-   * `true` means the pass itself must refuse to run without the area, or it is
-   * the mirror failure: a hidden feature still writing rows onto Today, which
-   * `checkMealSlotTasks` did with three meal tasks a day.
+   * `true` means the pass itself must refuse to create anything without the
+   * area, or it is the mirror failure: a hidden feature still writing rows onto
+   * Today, which `checkMealSlotTasks` did with three meal tasks a day. Refuse
+   * to *create*, not to run: the clock-driven kitchen passes still clear rows
+   * whose reason has gone with the area (or their own switch) off, since
+   * returning above the clear left a row about a deleted meal on Today until
+   * somebody removed it by hand.
    *
    * Settings reads this flag directly (both the group gate and the row filter),
    * and `settingsIndex.test.ts` checks the search index against it — so the
@@ -872,9 +882,10 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     icon: 'scale-outline',
     // Its source id is the day key the request was raised on — a square on the
     // calendar rather than a row anything could be written back to, the same
-    // position moodLog is in, and the reason writeGeneratedOptOut has nothing
-    // to write for it. What stops a swiped-away one coming straight back is
-    // weighInLastDayKey.
+    // position moodLog is in. What stops a swiped-away one coming straight back
+    // is weighInLastDayKey for the rest of that day, and the settings stamp
+    // writeGeneratedOptOut writes for it (weighInDeclinedDayKey) for the rest
+    // of the window after.
     sourced: false,
     // Not a notice, for moodLog's reason: recording the weight is the work
     // rather than something the app is telling you, and moving the request to
@@ -1095,16 +1106,30 @@ export function generatedSourceOf(
 }
 
 /**
- * The two fields that mark a task as generated, for a draft.
+ * The fields that mark a task as generated, for a draft.
  *
  * Spread into a draft rather than set field by field so a generator can't
  * accidentally stamp a kind without a source, or the reverse.
+ *
+ * **A kind that pauses on vacation also stamps `vacationPause: true`**, for
+ * the same reason: every generator's draft goes through here, so none can
+ * forget it. The pass-level gate only stops *new* rows, and several of these
+ * write days ahead (a week of meal rows), so without the stamp a row written
+ * before a trip sat on Today for the whole of it. With it the row hides while
+ * vacation mode is on and comes back when it ends, the way any task set to
+ * pause on vacation does, and the user can still switch it off on one row. A
+ * kind that keeps running on vacation gets no key at all rather than `false`,
+ * so a draft's own default is left alone. `mealPlanNudge` overrides it after
+ * the spread when `mealPlanNudgeIgnoresVacation` is on, since those rows are
+ * written during a trip on purpose.
  */
 export function generatedBy(
   kind: GeneratedKind,
   sourceId: string | null = null
-): { generatedKind: GeneratedKind; generatedSourceId: string | null } {
-  return { generatedKind: kind, generatedSourceId: sourceId };
+): { generatedKind: GeneratedKind; generatedSourceId: string | null; vacationPause?: true } {
+  return GENERATED_KIND_SPECS[kind].pausedOnVacation
+    ? { generatedKind: kind, generatedSourceId: sourceId, vacationPause: true }
+    : { generatedKind: kind, generatedSourceId: sourceId };
 }
 
 /**

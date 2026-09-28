@@ -187,6 +187,23 @@ export function waterToMl(value: number | null, unit: WaterUnit): number {
 }
 
 /**
+ * The amount a food log row shows for `entry`: the day's water entry in the
+ * picked unit, anything else in its own stored words.
+ *
+ * The water entry's `quantity` is written once in millilitres (`waterHelping`),
+ * so read raw it said "1.89 L" on the row while the card above it, stepped in
+ * ounces, said "64 fl oz" about the same water. Read from the stated volume
+ * rather than by rewriting the stored words, since `waterUnit` is display only.
+ * A bottle logged as a catalog food keeps its own words: it is not the water
+ * entry (`isWaterEntry`), and its quantity is what was picked.
+ */
+export function waterEntryQuantity(entry: FoodLogEntry, unit: WaterUnit): string {
+  if (!isWaterEntry(entry)) return entry.quantity;
+  const ml = entry.nutrition.amounts.waterMl;
+  return typeof ml === 'number' && Number.isFinite(ml) ? describeWater(ml, unit) : entry.quantity;
+}
+
+/**
  * The line under the day's stepper: how the day reads against a target, or what
  * else was drunk, or nothing.
  *

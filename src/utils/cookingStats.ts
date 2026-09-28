@@ -48,7 +48,8 @@ export interface MealCookCounts {
   daysCooked: number;
   /**
    * Meals planned in the window on days that have already passed — the
-   * denominator of "planned meals cooked".
+   * denominator of "planned meals cooked". A meal eaten from leftovers is not
+   * one of them (see `mealCookCounts`).
    */
   planned: number;
   /** How many of `planned` were marked cooked. */
@@ -105,6 +106,15 @@ export function cookingWindow(today: Date, days: number): CookingWindow {
  * the days still to come would make the fraction worse the further ahead
  * someone plans, which is exactly backwards. `daysCooked` has no such problem —
  * it's a straight count of days that happened — so it does include today.
+ *
+ * **A meal eaten from leftovers is not a meal cooked, and is left out of all
+ * three counts.** It is planned from the fridge card (`leftoverId`) and ticked
+ * like any other row, and that tick means it was eaten: counted here, a week of
+ * reheated chili read as "Days you cooked 3" and "Planned meals cooked 3 of 3"
+ * with nothing cooked. It is out of the denominator too, since it was never a
+ * meal to cook, and leaving it in would report every leftover night as one not
+ * cooked. A free-text row ("Takeout") is kept: whether it was cooked is not
+ * something its fields say.
  */
 export function mealCookCounts(
   entries: readonly MealPlanEntry[],
@@ -118,6 +128,7 @@ export function mealCookCounts(
     // Day keys are zero-padded, so the range test is a lexical compare — the
     // same property that lets the SQLite read be a plain `date >= ? AND <= ?`.
     if (entry.date < window.startKey || entry.date > window.endKey) continue;
+    if (entry.leftoverId) continue;
     if (entry.cookedAt) cookedDays.add(entry.date);
     if (entry.date >= window.todayKey) continue;
     planned += 1;
