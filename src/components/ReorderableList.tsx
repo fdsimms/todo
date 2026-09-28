@@ -245,6 +245,29 @@ interface Props<T> {
    * — offsets in, offsets out — and knows nothing about rows.
    */
   rowScrollerRef?: React.Ref<RowScroller>;
+  /**
+   * Filled with a handle that does what `dropDisabled` + `dropIntoIndex` /
+   * `dropIntoHeader` do, without the caller re-rendering to say so.
+   * `capture(index)` freezes the list and absorbs the drop into that row,
+   * `capture('header')` into `ListHeaderComponent`, and `capture(null)` lets
+   * it go.
+   *
+   * It exists because a caller aiming a drag at a row (a task onto a
+   * section) otherwise has to hold the target in its own state, and on a
+   * screen that renders this list inline, every crossing re-rendered the
+   * whole screen: every row's renderItem and every sheet mounted beside the
+   * list. That was the stutter dragging a line into a section on a project's
+   * page. The highlight on the target row is the caller's to drive the same
+   * way (a channel its row wrapper subscribes to), so nothing else renders.
+   *
+   * ORed with the props rather than replacing them, and cleared at the start
+   * of every drag, so a caller that never touches it sees no change.
+   */
+  dropCaptureRef?: React.Ref<DropCapture>;
+}
+
+export interface DropCapture {
+  capture: (into: number | 'header' | null) => void;
 }
 
 const DEFAULT_ROW_HEIGHT = 52;
@@ -295,6 +318,7 @@ export function ReorderableList<T>({
   scrollEnabled = true,
   scrollControlRef,
   rowScrollerRef,
+  dropCaptureRef,
 }: Props<T>) {
   const { shadows } = useTheme();
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
@@ -359,6 +383,11 @@ export function ReorderableList<T>({
   const dropDisabledRef = useRef(dropDisabled);
   const dropIntoIndexRef = useRef(dropIntoIndex);
   dropIntoIndexRef.current = dropIntoIndex;
+  // The dropCaptureRef half of the same values. Kept apart from the
+  // prop-backed refs here, which are reassigned on every render and would
+  // otherwise wipe a capture the moment anything re-rendered mid-drag.
+  const capturedRef = useRef(false);
+  const capturedIntoRef = useRef<number | 'header' | null>(null);
   const dropIntoHeaderRef = useRef(dropIntoHeader);
   dropIntoHeaderRef.current = dropIntoHeader;
   // Measured height of ListHeaderComponent, so a drop target over it can be
@@ -731,7 +760,7 @@ export function ReorderableList<T>({
     const ai = activeIndexRef.current;
     // Frozen: leave hoverIndex wherever the caller's capture left it (its own
     // slot, per the effect below) so nothing shifts under the card.
-    if (dropDisabledRef.current) return;
+    if (dropDisabledRef.current || capturedRef.current) return;
     if (ai === null) return;
     // Measured from the card against the row's live resting slot, NOT from the
     // finger's own travel: the list can re-lay out mid-drag (a category drag
@@ -759,11 +788,10 @@ export function ReorderableList<T>({
   // Entering the frozen state closes any gap that was open (rows animate back
   // to rest and the drop slot returns to the dragged row's own position);
   // leaving it re-targets from wherever the finger currently is.
-  useEffect(() => {
-    dropDisabledRef.current = dropDisabled;
+  const applyFrozen = (frozen: boolean) => {
     const ai = activeIndexRef.current;
     if (ai === null) return;
-    if (dropDisabled) {
+    if (frozen) {
       if (hoverIndexRef.current !== ai) {
         hoverIndexRef.current = ai;
         animateRowsForHover(ai);
@@ -771,8 +799,22 @@ export function ReorderableList<T>({
     } else {
       updateHover();
     }
+  };
+  useEffect(() => {
+    dropDisabledRef.current = dropDisabled;
+    applyFrozen(dropDisabled || capturedRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dropDisabled]);
+
+  useImperativeHandle(dropCaptureRef, () => ({
+    capture: (into: number | 'header' | null) => {
+      const next = into !== null;
+      capturedIntoRef.current = into;
+      if (next === capturedRef.current) return;
+      capturedRef.current = next;
+      applyFrozen(next || dropDisabledRef.current);
+    },
+  }));
 
   const maybeAutoscroll = () => {
     const ai = activeIndexRef.current;
@@ -820,8 +862,9 @@ export function ReorderableList<T>({
     // if the caller claimed the drop, otherwise into the open gap (the same
     // content position the displaced rows opened up). Committing only after
     // the card covers the destination masks the overlay→row swap.
-    const into = dropIntoIndexRef.current;
-    const intoHeader = dropIntoHeaderRef.current;
+    const captured = capturedIntoRef.current;
+    const into = typeof captured === 'number' ? captured : dropIntoIndexRef.current;
+    const intoHeader = captured === 'header' || dropIntoHeaderRef.current;
     const intoItem = into !== null && into >= 0 && into !== ai ? dataRef.current[into] : undefined;
     const absorbed = intoItem !== undefined || intoHeader;
     const slotContentY = intoHeader
@@ -943,6 +986,8 @@ export function ReorderableList<T>({
 
   const startDrag = (index: number, key: string) => {
     if (activeIndexRef.current !== null) return;
+    capturedRef.current = false;
+    capturedIntoRef.current = null;
     const rowTop = layoutYRef.current.get(key) ?? 0;
     // Clear any leftover transform from the previous drag before these values
     // become live again (rows only apply them while isDragging is true).
