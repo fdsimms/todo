@@ -170,6 +170,7 @@ import {
   staleSupplyReorderTasks,
   suppliesWantingList,
   supplyReorderSourceId,
+  supplyRestockReleasesItem,
   wantedSupplyReorders,
 } from '../utils/supply';
 import { getNextDueDate, getCurrentDayStart, getLogicalDayKey, getLogicalToday, getLogicalTomorrow, getTaskDayStart, getEffectiveTaskDate, dayKeyOf, dayKeyToDate, getDeadlineFromOffset, getDeadlineFromMonthDay, getReminderOffsetDate, getStreakOutcome, getNextSeriesDates, recurrenceAnchorDayFor, captureReminderOffset, reanchorReminderToWallClock } from '../utils/dateUtils';
@@ -3099,6 +3100,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Only CONTENT_FIELDS: dueDate and the series' own fields are per-row or
     // per-set and would flatten the whole schedule onto one day.
     const edited = get().tasks.find(t => t.id === id);
+    // A restock that satisfies a linked supply takes back the "running low" the
+    // supply put on its grocery item, so the next time it runs down it asks
+    // again rather than reading as already handled (#2935). See
+    // supplyRestockReleasesItem. registerUndo: false because it adds nothing
+    // to a list: clearing the flag leaves the row wherever it is, and nobody
+    // tapped the grocery item.
+    const releasedItemId = current && edited ? supplyRestockReleasesItem(current, edited, dayResetTime) : null;
+    if (releasedItemId) useGroceryStore.getState().setRunningLow(releasedItemId, false, { registerUndo: false });
     if (scope === 'series' && edited?.seriesId) {
       const fanOut: Partial<Task> = {};
       for (const key of CONTENT_FIELDS) {

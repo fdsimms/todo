@@ -4323,6 +4323,53 @@ describe('supplies', () => {
         }
       });
 
+      it('asks again after a row taken off the list is restocked in the editor', () => {
+        // #2935: the flag the supply wrote outlived the row, so it read as
+        // already handled for good and the supply never asked again.
+        useSettingsStore.getState.mockReturnValue(settings({ kitchenEnabled: true }));
+        seedGrocery([catalogRow('g-filter')]);
+        const task = addSupplyTask({ supplyCount: 1, supplyGroceryItemId: 'g-filter' });
+        // Flagged low by the sweep, then swiped off the list: the flag stands,
+        // the row is on no list.
+        useGroceryStore.setState(s => ({
+          items: s.items.map(i => ({ ...i, runningLowAt: noon(-2) })),
+        }));
+        const realSetRunningLow = useGroceryStore.getState().setRunningLow;
+        const flagLow = jest.fn();
+        try {
+          // The refusal holds while the supply is still low.
+          useGroceryStore.setState({ setRunningLow: flagLow });
+          useTaskStore.getState().checkSupplyReorderTasks();
+          expect(flagLow).not.toHaveBeenCalled();
+
+          // Topped up in the editor: the restock refutes the flag.
+          useGroceryStore.setState({ setRunningLow: realSetRunningLow });
+          useTaskStore.getState().updateTask(task.id, { supplyCount: 6 });
+          expect(useGroceryStore.getState().items[0].runningLowAt).toBeNull();
+
+          // Runs low again later, and this time it asks.
+          useTaskStore.getState().updateTask(task.id, { supplyCount: 1 });
+          useGroceryStore.setState({ setRunningLow: flagLow });
+          useTaskStore.getState().checkSupplyReorderTasks();
+          expect(flagLow).toHaveBeenCalledWith('g-filter', true, { registerUndo: false, listId: null });
+        } finally {
+          useGroceryStore.setState({ setRunningLow: realSetRunningLow });
+        }
+      });
+
+      it('keeps the flag through a top-up that leaves the supply still low', () => {
+        useSettingsStore.getState.mockReturnValue(settings({ kitchenEnabled: true }));
+        seedGrocery([catalogRow('g-filter')]);
+        const task = addSupplyTask({ supplyCount: 0, supplyReorderAt: 2, supplyGroceryItemId: 'g-filter' });
+        useGroceryStore.setState(s => ({
+          items: s.items.map(i => ({ ...i, runningLowAt: noon(-2) })),
+        }));
+
+        useTaskStore.getState().updateTask(task.id, { supplyCount: 1 });
+
+        expect(useGroceryStore.getState().items[0].runningLowAt).toBe(noon(-2));
+      });
+
       it('writes an order when the linked item has been deleted from the catalog', () => {
         // Otherwise the supply asks nowhere: the list half skips a dead item.
         useSettingsStore.getState.mockReturnValue(settings({ kitchenEnabled: true }));

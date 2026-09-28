@@ -247,6 +247,19 @@ the stamp on a save that only changed the lead time.
   catalog mid-launch is not every item having been deleted. Deleting a catalog
   row still rewrites no tasks; the editor's "Stocked from" row says "Item was
   deleted" for a link that no longer resolves.
+- **The flag a linked supply writes is spent by a restock, not by the row
+  leaving the list.** `suppliesWantingList` skips an item already flagged low,
+  which is what lets a user take the row off the list (they ordered online)
+  without the next sweep putting it straight back. But nothing used to take the
+  flag back except a home trip buying the item, so a count topped up in the
+  editor left it standing for good: the next time the supply ran low it read as
+  already handled and asked nowhere (#2935). `updateTask` now clears it when the
+  count rises far enough for the supply to stop wanting more
+  (`supplyRestockReleasesItem`), the same place and the same "rising" key the
+  decline stamp uses. A top-up that still leaves the supply low keeps the flag,
+  or the sweep would re-add the row the user just removed. Clearing it in
+  `removeFromList` instead was rejected: removal is per list, and taking the
+  row off an away list would have cleared a flag that belongs to the home one.
 - **The list half writes to the home list**, whichever list is being shown
   (`setRunningLow`'s `listId: null`). A supply is restocked from a home trip:
   flagged low onto an away list, it is never restocked there (an away trip
