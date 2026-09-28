@@ -18,6 +18,8 @@ import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { GROCERY_NAME_MAX_LENGTH, type GroceryItem, type ItemProduct } from '../types';
 import { SwipeableRow } from './SwipeableRow';
+import { SelectionDot } from './SelectionDot';
+import { usePaintSelectionRow } from './PaintSelection';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { convertQuantity } from '../utils/unitConvert';
 import { describeProduct, RATING_LABELS } from '../utils/groceryProduct';
@@ -182,6 +184,11 @@ export const GroceryRow = React.memo(function GroceryRow({
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const renameItem = useGroceryStore(s => s.renameItem);
+  // Registers the card with the screen's PaintSelectionProvider, so a drag
+  // down the column of selection dots picks up this row (#2944). Not the
+  // floating drag copy, which would claim this row's id and evict it on
+  // unmount. A no-op on a screen with no provider.
+  const paintRowRef = usePaintSelectionRow(isActive ? null : item.id);
   const unitSystem = useSettingsStore(s => s.unitSystem);
   const currencySymbol = useSettingsStore(s => s.currencySymbol);
 
@@ -336,13 +343,15 @@ export const GroceryRow = React.memo(function GroceryRow({
             : drag ? 'Long press to move to another aisle' : 'Long press to edit'
         }
       >
-        <View
-          style={[
-            styles.checkbox,
-            selectionMode ? selected && styles.checkboxSelected : item.checked && styles.checkboxChecked,
-          ]}
-        >
-          {(selectionMode ? selected : item.checked) && (
+        {/* Cart state, always, selecting or not. This used to fill accent
+            with a tick for a *selected* row, which read as checked off (and
+            hid the green of the rows really in the cart for as long as
+            selection lasted). Selection is the SelectionDot at the other end
+            of the row, the same split every other selectable list makes
+            (#2944). The touch target still selects while selecting, and its
+            accessibility state follows: the dot is not its own element. */}
+        <View style={[styles.checkbox, item.checked && styles.checkboxChecked]}>
+          {item.checked && (
             <Ionicons name="checkmark" size={iconSize.sm} color={colors.onAccent} />
           )}
         </View>
@@ -598,11 +607,19 @@ export const GroceryRow = React.memo(function GroceryRow({
           <Ionicons name="ellipsis-horizontal" size={iconSize.sm} color={colors.textTertiary} />
         </TouchableOpacity>
       )}
+
+      {/* In the slot the swap and ellipsis icons give up while selecting, so
+          nothing moves aside for it. On every row, picked or not: the empty
+          rings are what say selection is on before anything is picked. */}
+      {selectionMode && (
+        <SelectionDot selected={selected} onPress={() => onSelect?.(item.id)} />
+      )}
     </View>
   );
 
   return (
     <View
+      ref={paintRowRef}
       style={[
         styles.itemWrapper,
         item.checked && styles.itemWrapperChecked,
@@ -754,10 +771,6 @@ function makeStyles(colors: Colors) {
       backgroundColor: colors.green,
       borderColor: colors.green,
       opacity: 0.7,
-    },
-    checkboxSelected: {
-      backgroundColor: colors.accentFill,
-      borderColor: colors.accent,
     },
     tapZone: {
       flex: 1,

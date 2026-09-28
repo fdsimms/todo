@@ -65,6 +65,7 @@ import { ListBulkBar } from '../components/ListBulkBar';
 import { ReorderableList, type RowScroller } from '../components/ReorderableList';
 import { useScrollToTopOnTabPress } from '../hooks/useScrollToTopOnTabPress';
 import { useRowSelection } from '../hooks/useRowSelection';
+import { PaintSelectionProvider } from '../components/PaintSelection';
 import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
 import { GroceryAISheet, type GroceryAIMode } from '../components/GroceryAISheet';
 import { RecipeSourceSheet } from '../components/RecipeSourceSheet';
@@ -369,6 +370,8 @@ export function GroceryScreen() {
     exitSelection,
     selectAll,
     deselectAll,
+    painting,
+    paintProps,
   } = useRowSelection();
 
   // Every AI affordance is gated on its route, so a user who can't run it
@@ -1484,6 +1487,10 @@ export function GroceryScreen() {
           mounted changes, on the tick that gives it something to do. */}
       {checkedCount > 0 && startCard}
 
+      {/* A drag down the column of selection dots picks up a run of rows
+          (#2944), as on every other selectable list. Outside the drop zones,
+          the way ProjectsScreen nests the same two. */}
+      <PaintSelectionProvider {...paintProps}>
       <FabDropZoneProvider
         ref={dropZonesRef}
         onIntentChange={fabIntentChannel.publish}
@@ -1495,8 +1502,9 @@ export function GroceryScreen() {
         renderItem={renderRow}
         // The user can't scroll during an add-button drag (the button's
         // responder has the touch); the drag scrolls it instead, through the
-        // control below.
-        scrollEnabled={!fabDragging}
+        // control below. Same while a paint gesture owns the touch: iOS has
+        // to be told directly (see PaintSelectionProvider).
+        scrollEnabled={!fabDragging && !painting}
         scrollControlRef={scrollControl}
         rowScrollerRef={rowScroller}
         // dragTick, not tap: a fast drag crosses several rows between frames
@@ -1597,6 +1605,7 @@ export function GroceryScreen() {
         }
       />
       </FabDropZoneProvider>
+      </PaintSelectionProvider>
 
       {/* The bulk bar sits where the button does, and adding an item isn't
           something you're doing mid-selection anyway. */}
