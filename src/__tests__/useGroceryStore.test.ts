@@ -1457,6 +1457,57 @@ describe('list membership', () => {
     expect(after.sourceRecipeTitle).toBeNull();
   });
 
+  describe('takeOffLists', () => {
+    // The meal plan's "take its ingredients off the list?" offer (#2912).
+    it('takes each row off the trolley it names, parked as removeFromListMany parks', () => {
+      const tortillas = makeItem({
+        name: 'Tortillas', onList: true, quantity: '8', quantityFromRecipe: true,
+        sourceRecipeId: 'r-tacos', sourceRecipeTitle: 'Tacos',
+      });
+      const milk = makeItem({ name: 'Milk', onList: true });
+      seed([tortillas, milk]);
+
+      const n = useGroceryStore.getState().takeOffLists([{ itemId: tortillas.id, listId: null }], 'Took off 1');
+
+      expect(n).toBe(1);
+      const after = useGroceryStore.getState().itemById(tortillas.id)!;
+      expect(after).toMatchObject({ onList: false, quantity: null, sourceRecipeId: null });
+      expect(useGroceryStore.getState().itemById(milk.id)!.onList).toBe(true);
+    });
+
+    it('puts every row back as it stood on undo, credit and amount included', () => {
+      const tortillas = makeItem({
+        name: 'Tortillas', onList: true, quantity: '8', quantityFromRecipe: true,
+        sourceRecipeId: 'r-tacos', sourceRecipeTitle: 'Tacos',
+      });
+      const away: GroceryList = { id: 'away', name: 'Airbnb', sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z' };
+      seed([tortillas], {
+        lists: [away],
+        listEntries: [{ itemId: tortillas.id, listId: away.id, checked: false, sortOrder: 7, choiceGroup: null, addedAt: tortillas.createdAt }],
+      });
+      const entriesBefore = useGroceryStore.getState().listEntries;
+
+      useGroceryStore.getState().takeOffLists([{ itemId: tortillas.id, listId: away.id }], 'Took off 1');
+      expect(useGroceryStore.getState().listEntries).toEqual([]);
+      expect(useGroceryStore.getState().lastAction?.destructive).toBe(true);
+      useGroceryStore.getState().undoLastAction();
+
+      expect(useGroceryStore.getState().listEntries).toEqual(entriesBefore);
+      expect(useGroceryStore.getState().itemById(tortillas.id)).toMatchObject({
+        quantity: '8', quantityFromRecipe: true, sourceRecipeId: 'r-tacos', sourceRecipeTitle: 'Tacos',
+      });
+    });
+
+    it('does nothing, and arms no undo, for a row not in the trolley named', () => {
+      const milk = makeItem({ name: 'Milk', onList: true });
+      seed([milk]);
+
+      expect(useGroceryStore.getState().takeOffLists([{ itemId: milk.id, listId: 'elsewhere' }], 'x')).toBe(0);
+      expect(useGroceryStore.getState().itemById(milk.id)!.onList).toBe(true);
+      expect(useGroceryStore.getState().lastAction).toBeNull();
+    });
+  });
+
   it('removeFromListMany only touches ids that are on the list', () => {
     const milk = makeItem({ name: 'Milk', onList: false });
     seed([milk]);

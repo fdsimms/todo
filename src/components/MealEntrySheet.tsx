@@ -46,6 +46,42 @@ interface Props {
    * since two modals can't be up at once.
    */
   onMoveFurther?: () => void;
+  /**
+   * Plans this meal on another day of the week too, in the same slot (#2913):
+   * the same lunch Monday to Friday is four taps here rather than four picker
+   * sessions. Applies on the tap and leaves the sheet open, like the Move to
+   * chips. Absent for a leftover night, which one container can't supply twice.
+   */
+  onCopyTo?: (date: string) => void;
+  /**
+   * The days already holding this meal in this slot (`daysWithMeal`), its own
+   * included. Their chips read as done and don't take a tap, so a second tap
+   * can't plan the same lunch twice on one day.
+   */
+  copiedDays?: ReadonlySet<string>;
+  /**
+   * Swaps what this night is having for another recipe or a typed name, in
+   * place (#2911). The caller dismisses this sheet first and hosts
+   * MealReplaceItemSheet itself, for `onMoveFurther`'s reason: two modals
+   * can't be up at once.
+   */
+  onReplace?: () => void;
+  /**
+   * A typed meal's version of `onReplace` (#2929): the same sheet, asked as
+   * "which recipe is this?", since a meal with no recipe behind it has
+   * nothing to replace and a new name is the title's own pencil. Passed
+   * instead of `onReplace`, never with it.
+   */
+  onChooseRecipe?: () => void;
+  /**
+   * Makes a typed meal a recipe (#2929). Present only for a typed meal.
+   * `matchingRecipeName` is the recipe already called what the meal is
+   * called, when the box has one: the row then offers that recipe instead of
+   * a new one, which is all "Save as" could have done, since two recipes
+   * can't share a name.
+   */
+  onSaveAsRecipe?: () => void;
+  matchingRecipeName?: string | null;
   onRemove: () => void;
   /**
    * Present only for a free-text entry (no recipeId, or one whose recipe has
@@ -163,7 +199,8 @@ interface Props {
 const TOP_INSET = 72;
 
 export function MealEntrySheet({
-  visible, entry, title, weekDays, onMove, onMoveFurther, onRemove, onRename, choiceGroups = [], onChoose,
+  visible, entry, title, weekDays, onMove, onMoveFurther, onCopyTo, copiedDays, onReplace, onChooseRecipe, onSaveAsRecipe, matchingRecipeName,
+  onRemove, onRename, choiceGroups = [], onChoose,
   onScale, baseServings, baseServingsMax, onSetCooked, onViewFoodLogEntry, onLogMeal, onOpenRecipe, onAddToList, onAddPrepTasks,
   onLogLeftovers,
   onFinishLeftover, onSetCookTask, hasCookTask = false, onClose,
@@ -388,13 +425,58 @@ export function MealEntrySheet({
           )}
 
           <Text style={styles.label}>Meal</Text>
-          <View style={styles.chipsLast}>
+          <View style={onCopyTo ? styles.segmentRow : styles.chipsLast}>
             <SegmentedControl
               options={MEAL_SLOTS.map(slot => ({ value: slot, label: slotLabel(slot) }))}
               value={entry?.slot ?? null}
               onChange={slot => { if (slot) onMove({ slot }); }}
             />
           </View>
+
+          {/*
+            Below the slot rather than beside "Move to", because the copies
+            land in whichever meal this is and the control that says which is
+            right above (#2913). The same seven days as the Move to row, so a
+            day reads straight down the two. A filled chip is a day this meal
+            is already on, the same meaning the Move to row's filled chip has,
+            and it takes no tap: taking a copy off again is that copy's own
+            sheet, the way removing any meal is.
+          */}
+          {!!onCopyTo && (
+            <>
+              <Text style={styles.label}>Also on</Text>
+              <View style={styles.chips}>
+                {weekDays.map(day => {
+                  const key = dayKeyOf(day);
+                  const has = copiedDays?.has(key) ?? entry?.date === key;
+                  return (
+                    <TouchableOpacity
+                      key={key}
+                      style={[styles.dayChip, has && styles.chipOn]}
+                      disabled={has}
+                      onPress={() => { haptics.tap(); onCopyTo(key); }}
+                      activeOpacity={interaction.activeOpacity}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: has, disabled: has }}
+                      accessibilityLabel={has
+                        ? `Already on ${format(day, 'EEEE, MMMM d')}`
+                        : `Also plan on ${format(day, 'EEEE, MMMM d')}`}
+                    >
+                      <Text style={[styles.dayChipTop, has && styles.chipTextOn]}>
+                        {format(day, 'EEEEE')}
+                      </Text>
+                      <Text style={[styles.dayChipNum, has && styles.chipTextOn]}>
+                        {format(day, 'd')}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              <Text style={styles.copyHint}>
+                Tap a day to plan this {slotLabel(entry?.slot ?? 'dinner').toLowerCase()} there too.
+              </Text>
+            </>
+          )}
 
           {!!onSetCooked && (
             <>
@@ -468,6 +550,62 @@ export function MealEntrySheet({
                 label="Add ingredients to list"
                 onPress={() => { haptics.tap(); dismiss(onAddToList); }}
                 accessibilityLabel="Add this meal's ingredients to the grocery list"
+              />
+            </>
+          )}
+
+          {/*
+            The swap (#2911), with the recipe rows because it changes which
+            recipe is behind the night, where "Remove from plan" at the bottom
+            takes the night away. Removing and re-planning was the only way to
+            do this outside the bulk bar, and it lost the slot's meal task
+            answer and the batch size; the replace keeps both (see
+            bulkReplaceItem).
+          */}
+          {!!onReplace && (
+            <>
+              <View style={styles.sep} />
+              <SheetActionRow
+                icon="swap-horizontal-outline"
+                color={colors.accent}
+                label="Replace meal"
+                onPress={() => { haptics.tap(); dismiss(onReplace); }}
+                accessibilityLabel="Replace this meal with a different recipe or name"
+              />
+            </>
+          )}
+
+          {/*
+            A typed meal's two ways to a recipe (#2929), where a recipe-backed
+            meal has "Open recipe" and the swap above. Somebody with no recipes
+            yet plans by typing, and these are how that meal catches up once
+            the recipe exists; before, the only route was the bulk bar's
+            Replace, which a newcomer has no reason to find.
+          */}
+          {!!onChooseRecipe && (
+            <>
+              <View style={styles.sep} />
+              <SheetActionRow
+                icon="book-outline"
+                color={colors.accent}
+                label="Choose a recipe"
+                onPress={() => { haptics.tap(); dismiss(onChooseRecipe); }}
+                accessibilityLabel="Choose a recipe for this meal"
+              />
+            </>
+          )}
+
+          {!!onSaveAsRecipe && (
+            <>
+              <View style={styles.sep} />
+              <SheetActionRow
+                icon={matchingRecipeName ? 'link-outline' : 'add-circle-outline'}
+                color={colors.accent}
+                label={matchingRecipeName ? `Use your ${matchingRecipeName} recipe` : 'Save as a new recipe'}
+                onPress={() => { haptics.tap(); dismiss(onSaveAsRecipe); }}
+                accessibilityLabel={matchingRecipeName
+                  ? `Plan your ${matchingRecipeName} recipe for this meal`
+                  : 'Save this meal as a new recipe and open it'}
               />
             </>
           )}
@@ -661,6 +799,19 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   chipsLast: {
     paddingHorizontal: spacing.md,
     marginBottom: spacing.md,
+  },
+  // The slot control when "Also on" follows it: that block's own label brings
+  // the gap, so this one mustn't add a second.
+  segmentRow: {
+    paddingHorizontal: spacing.md,
+  },
+  // Ends the "Also on" block with chipsLast's gap above the first action row.
+  copyHint: {
+    color: colors.textSecondary,
+    fontSize: font.xs,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.md,
   },
   furtherRow: {
     flexDirection: 'row',

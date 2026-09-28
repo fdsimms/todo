@@ -3,6 +3,7 @@ import {
   describeUnscaled,
   factorForServings,
   formatScale,
+  householdScale,
   isUnscaled,
   normalizeScale,
   rescaleForRecipe,
@@ -320,6 +321,37 @@ describe('rescaleForRecipe', () => {
   it('normalizes a nonsense stored factor before anything else', () => {
     expect(rescaleForRecipe(0, 2, 4)).toBe(1);
     expect(rescaleForRecipe(-3, 2, 4)).toBe(1);
+  });
+});
+
+describe('householdScale', () => {
+  it('scales a recipe to the household when it serves a different number (#2910)', () => {
+    expect(householdScale(4, 2)).toBe(2);
+    expect(householdScale(3, 6)).toBe(0.5);
+    expect(householdScale(5, 4)).toBe(5 / 4);
+  });
+
+  it('leaves a recipe as written when it already serves the household', () => {
+    expect(householdScale(4, 4)).toBe(1);
+    // Inside a stated range is covered too: 1.25x of "serves 4-6" for five
+    // people would be buying for a household that isn't there.
+    expect(householdScale(5, 4, 6)).toBe(1);
+    expect(householdScale(6, 4, 6)).toBe(1);
+  });
+
+  it('measures from the low end of a range the household falls outside', () => {
+    // The number the servings stepper edits, so the default reads back as 8.
+    expect(householdScale(8, 4, 6)).toBe(2);
+    expect(householdScale(2, 4, 6)).toBe(0.5);
+  });
+
+  it('is as written with no household size, or a recipe that states no servings', () => {
+    expect(householdScale(0, 2)).toBe(1);
+    expect(householdScale(null, 2)).toBe(1);
+    expect(householdScale(undefined, 2)).toBe(1);
+    expect(householdScale(4, null)).toBe(1);
+    expect(householdScale(4, 0)).toBe(1);
+    expect(householdScale(NaN, 2)).toBe(1);
   });
 });
 

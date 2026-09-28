@@ -1151,6 +1151,20 @@ interface GroceryStore extends UndoHistoryActions {
     opts?: { listId?: string | null; registerUndo?: boolean }
   ) => void;
   /**
+   * Takes each row off the trolley it names, and registers one undo that puts
+   * every one of them back as it stood: the tick, the place in the walk order,
+   * the recipe's amount and its credit (#2912). Returns how many came off.
+   *
+   * For a caller that isn't somebody looking at the list, which is why every
+   * row names its own list rather than defaulting to the active one: the meal
+   * plan's "take its ingredients off the list?" offer is the first. It parks
+   * exactly as `removeFromListMany` does, which it calls once per list.
+   *
+   * Destructive in the undo bar's sense, unlike a hand removal from the list,
+   * because the rows go from a screen that isn't showing them.
+   */
+  takeOffLists: (refs: ReadonlyArray<{ itemId: string; listId: string | null }>, label: string) => number;
+  /**
    * Builds the undo for a batch of adds, and is the only correct way to revert
    * one. **Call it immediately after the adds land**, because it snapshots the
    * rows as they then stand; the closure it returns is what goes on
@@ -4014,6 +4028,35 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         },
       });
     }
+  },
+
+  takeOffLists(refs, label) {
+    const wanted = new Set(refs.map(r => entryKey(r.itemId, r.listId)));
+    const beforeEntries = get().listEntries.filter(e => wanted.has(entryKey(e.itemId, e.listId)));
+    if (beforeEntries.length === 0) return 0;
+    const touched = new Set(beforeEntries.map(e => e.itemId));
+    // Snapshotted before the park clears the amount and the credit, which the
+    // undo has to put back for the row to be what the recipe added.
+    const beforeItems = get().items.filter(i => touched.has(i.id));
+
+    const byList = new Map<string | null, string[]>();
+    for (const e of beforeEntries) byList.set(e.listId, [...(byList.get(e.listId) ?? []), e.itemId]);
+    for (const [listId, ids] of byList) get().removeFromListMany(ids, { listId });
+
+    get().setLastAction({
+      label,
+      destructive: true,
+      redo: () => get().takeOffLists(refs, label),
+      // The clearList undo's order: the rows first, then the membership that
+      // points at them, which also recomputes each row's home-list mirror.
+      undo: () => {
+        beforeItems.forEach(dbUpdateGroceryItem);
+        const byId = new Map(beforeItems.map(i => [i.id, i]));
+        set(s => ({ items: s.items.map(i => byId.get(i.id) ?? i) }));
+        writeMembership({ upsert: beforeEntries });
+      },
+    });
+    return beforeEntries.length;
   },
 
   /**

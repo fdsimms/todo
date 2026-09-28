@@ -4629,4 +4629,10 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
   // ingredients and an unrated recipe are all here.
   useMealPlanStore.getState().clearCookRecap();
 
+  // "Usually cooking for" (#2910), set only once every night above is planned:
+  // it decides where a meal planned from here on starts and moves nothing
+  // already on the plan, so setting it first would have quietly rescaled the
+  // seed. Planning the salmon (serves 2) from the demo shows it as 2x.
+  useSettingsStore.getState().setHouseholdServings(4);
+
 }

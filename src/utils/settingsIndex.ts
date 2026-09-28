@@ -770,6 +770,11 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['food log', 'calories', 'nutrition', 'diary', 'eaten', 'leftovers', 'prompt'] },
   { id: 'nutritionTargets', groupId: 'kitchen', label: 'Daily targets', section: 'Meals on Today',
     keywords: ['calories', 'protein', 'goal', 'nutrition', 'food log', 'macros', 'aim'] },
+  // Simplified mode takes scaling away, and this row with it unless one is set.
+  { id: 'householdServings', groupId: 'kitchen', label: 'Usually cooking for', section: 'Meal plan',
+    keywords: ['household', 'family', 'people', 'servings', 'serves', 'portions', 'scale', 'batch',
+      'double', 'how many', 'default'],
+    simple: true },
   { id: 'tripLiveActivity', iosOnly: true, groupId: 'kitchen', label: 'Live Activity while shopping', section: 'Shopping trip',
     keywords: ['lock screen', 'dynamic island', 'store', 'trip', 'grocery', 'elapsed', 'timer'],
     simple: true },

@@ -108,7 +108,9 @@ import {
   describeWeekRange,
   earliestUnplannedSlot,
   entriesForDay,
+  daysWithMeal,
   recipeIndex,
+  recipeNamedLike,
   slotLabel,
   titleForEntry,
 } from '../utils/mealPlan';
@@ -117,6 +119,7 @@ import { buildWeekPlanShareText } from '../utils/shareText';
 import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
 import {
   collectPlannedIngredients,
+  describeLeftBehind,
   hasShoppableMeals,
 } from '../utils/mealPlanGroceries';
 import {
@@ -370,8 +373,12 @@ export function MealPlanScreen() {
   const bulkDeleteEntries = useMealPlanStore(s => s.bulkDeleteEntries);
   const bulkMoveEntries = useMealPlanStore(s => s.bulkMoveEntries);
   const bulkReplaceItem = useMealPlanStore(s => s.bulkReplaceItem);
+  const saveEntryAsRecipe = useMealPlanStore(s => s.saveEntryAsRecipe);
   const bulkSetCooked = useMealPlanStore(s => s.bulkSetCooked);
   const copyWeek = useMealPlanStore(s => s.copyWeek);
+  const copyEntryTo = useMealPlanStore(s => s.copyEntryTo);
+  const listRowsLeftBy = useMealPlanStore(s => s.listRowsLeftBy);
+  const takeOffLists = useGroceryStore(s => s.takeOffLists);
   const findPlannedWeekBefore = useMealPlanStore(s => s.findPlannedWeekBefore);
 
   const recipes = useRecipeStore(useShallow(s => s.recipes));
@@ -598,6 +605,10 @@ export function MealPlanScreen() {
   // id, since MealEntrySheet has closed by the time the calendar is up.
   const [movingFurtherId, setMovingFurtherId] = useState<string | null>(null);
   const [bulkReplaceVisible, setBulkReplaceVisible] = useState(false);
+  // The one entry being swapped from its own sheet (#2911), held by id for
+  // movingFurtherId's reason. Shares MealReplaceItemSheet with the bulk bar's
+  // Replace; this being set is what makes it a replace of one.
+  const [replacingId, setReplacingId] = useState<string | null>(null);
 
   const toggleDayCollapse = (key: string) => {
     haptics.tap();
@@ -1078,6 +1089,45 @@ export function MealPlanScreen() {
     // gets it via FinishLeftoverPrompt without asking twice.
   };
 
+  /**
+   * "Take its ingredients off the list?" after meals are removed or given a
+   * different recipe (#2912). `gone` is the meals as they were before the
+   * change, and this runs after it, so a recipe the change left planned
+   * somewhere still counts as wanted.
+   *
+   * **An offer, never a silent removal.** The rows are the person's list, and
+   * a meal coming off the plan says nothing certain about whether they still
+   * want tortillas; what the app does know is that nothing planned needs them,
+   * which is what the message says. Which rows qualify is narrow on purpose
+   * (see `rowsLeftBehind`), so this stays quiet unless the list really holds
+   * a gone meal's shopping. Taking them off has its own undo, in the undo bar.
+   *
+   * Not raised by the picker's unplan, which is a pick being corrected inside
+   * the sheet it was made in, moments after the list could have heard of it.
+   */
+  const offerListCleanup = (gone: MealPlanEntry[]) => {
+    const rows = listRowsLeftBy(gone);
+    if (rows.length === 0) return;
+    const count = rows.length;
+    const items = count === 1 ? 'item' : 'items';
+    const what = gone.length === 1 ? titleForEntry(gone[0], recipesById) : 'those meals';
+    Alert.alert(
+      `Take ${count} ${items} off the list?`,
+      `${describeLeftBehind(rows)} ${count === 1 ? 'was' : 'were'} added for ${what}, and nothing else on the plan needs ${count === 1 ? 'it' : 'them'}.`,
+      [
+        { text: 'Keep', style: 'cancel' },
+        {
+          text: 'Take off',
+          style: 'destructive',
+          onPress: () => {
+            takeOffLists(rows, `Took ${count} ${items} off the list`);
+            haptics.success();
+          },
+        },
+      ],
+    );
+  };
+
   // ——— Bulk selection actions (#1110) ——————————————————————————————————
 
   const selectedIdList = useMemo(() => Array.from(selectedIds), [selectedIds]);
@@ -1121,10 +1171,48 @@ export function MealPlanScreen() {
   };
 
   const handleBulkReplace = (replacement: MealReplacement) => {
+    const before = entries.filter(e => selectedIds.has(e.id));
     bulkReplaceItem(selectedIdList, replacement);
     setBulkReplaceVisible(false);
     haptics.success();
     exitSelection();
+    offerListCleanup(before);
+  };
+
+  /**
+   * One meal's own swap (#2911): the bulk replace with a list of one, so it
+   * keeps what the bulk one keeps (the slot, the per-meal answers, the
+   * servings) and registers the same undo. Takes the id rather than reading
+   * `replacingId`, which the sheet has cleared by the time it calls back.
+   */
+  const replaceOne = (id: string, replacement: MealReplacement) => {
+    const before = entries.find(e => e.id === id);
+    bulkReplaceItem([id], replacement);
+    haptics.success();
+    if (before) offerListCleanup([before]);
+  };
+  const replacing = replacingId ? entries.find(e => e.id === replacingId) ?? null : null;
+
+  /**
+   * Typed text rather than a recipe or a container: the meals whose sheet
+   * offers the title's pencil, "Choose a recipe" and "Save as a new recipe"
+   * (#2929). A meal whose recipe was deleted reads as its typed title and
+   * counts, the way it renames like one.
+   */
+  const isTypedEntry = (entry: MealPlanEntry) =>
+    !entry.leftoverId && !(entry.recipeId && recipesById.has(entry.recipeId));
+
+  /**
+   * "Save as a new recipe" (#2929). A recipe made here has only a name, so it
+   * opens on its page to be filled in, the way the Recipes screen's own "New
+   * recipe" does. One that was already there ("Use your Tacos recipe") is
+   * what the meal meant, so the plan stays on screen.
+   */
+  const saveAsRecipe = (id: string) => {
+    const result = saveEntryAsRecipe(id);
+    if (!result) return;
+    haptics.success();
+    if (result.created) navigation.navigate('RecipeDetail', { recipeId: result.recipe.id });
   };
 
   const handleBulkDelete = () => {
@@ -1136,9 +1224,11 @@ export function MealPlanScreen() {
       message: `You're about to take ${count} ${plural} off the plan. This can't be undone.`,
       confirmLabel: 'Remove',
       onConfirm: () => {
+        const before = entries.filter(e => selectedIds.has(e.id));
         animateLayout();
         bulkDeleteEntries(selectedIdList);
         exitSelection();
+        offerListCleanup(before);
       },
     });
   };
@@ -2077,11 +2167,28 @@ export function MealPlanScreen() {
         onCancel={() => setBulkMoveVisible(false)}
       />
 
+      {/*
+        Two callers, never both at once: the bulk bar only exists in selection
+        mode, and a meal's own sheet only opens outside it. `replacingId` is
+        what makes this a replace of one.
+      */}
       <MealReplaceItemSheet
-        visible={bulkReplaceVisible}
-        count={selectedIds.size}
-        onReplace={handleBulkReplace}
-        onClose={() => setBulkReplaceVisible(false)}
+        visible={bulkReplaceVisible || replacingId !== null}
+        count={replacingId ? 1 : selectedIds.size}
+        title={replacing ? (isTypedEntry(replacing) ? 'Choose a recipe' : 'Replace meal') : undefined}
+        hint={replacing
+          ? isTypedEntry(replacing)
+            ? `Pick the recipe for ${replacing.title}, or type a new name.`
+            : `Pick a recipe, or type a new name, to have instead of ${titleForEntry(replacing, recipesById)}.`
+          : undefined}
+        onReplace={replacement => {
+          if (replacingId) replaceOne(replacingId, replacement);
+          else handleBulkReplace(replacement);
+        }}
+        onClose={() => {
+          setBulkReplaceVisible(false);
+          setReplacingId(null);
+        }}
       />
 
       <RecipePickerSheet
@@ -2131,17 +2238,26 @@ export function MealPlanScreen() {
         weekDays={days}
         onMove={to => selected && moveEntry(selected.id, to)}
         onMoveFurther={selected ? () => setMovingFurtherId(selected.id) : undefined}
+        onCopyTo={selected && !selected.leftoverId ? date => copyEntryTo(selected.id, [date]) : undefined}
+        copiedDays={selected ? daysWithMeal(entries, selected) : undefined}
+        onReplace={selected && !isTypedEntry(selected) ? () => setReplacingId(selected.id) : undefined}
+        onChooseRecipe={selected && isTypedEntry(selected) ? () => setReplacingId(selected.id) : undefined}
+        onSaveAsRecipe={selected && isTypedEntry(selected) ? () => saveAsRecipe(selected.id) : undefined}
+        matchingRecipeName={selected && isTypedEntry(selected)
+          ? recipeNamedLike(selected.title, recipes)?.name ?? null
+          : null}
         onRemove={() => {
           if (!selected) return;
           animateLayout();
           removeEntry(selected.id);
           setSelectedId(null);
+          offerListCleanup([selected]);
         }}
         onRename={
           // A meal whose recipe was deleted reads as its typed title and gets
           // the free-text pencil on its row, so it renames like one too (the
           // store clears the dead pointer as it does).
-          selected && !selected.leftoverId && !(selected.recipeId && recipesById.has(selected.recipeId))
+          selected && isTypedEntry(selected)
             ? newTitle => renameEntry(selected.id, newTitle)
             : undefined
         }

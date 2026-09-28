@@ -3,6 +3,7 @@ import {
   cleanMealTitle,
   cookEntryForRecipe,
   dayKeyRange,
+  daysWithMeal,
   daysWithoutMeal,
   describeAddedToList,
   describeWeekPlan,
@@ -11,11 +12,13 @@ import {
   entriesForDay,
   entriesForSlot,
   isKeyInRange,
+  mealCopyDraft,
   mealPlanPurgeCutoffKey,
   mealTitleOffPlan,
   nextSortOrder,
   recipeIndex,
   recipeIsGone,
+  recipeNamedLike,
   resolveBulkMoveTargets,
   selectTodayMealEntries,
   slotLabel,
@@ -26,6 +29,7 @@ import {
   upcomingDays,
   weekCopyDrafts,
 } from '../utils/mealPlan';
+import { recipeNameKey } from '../utils/recipeUtils';
 
 // mealPlan reaches dateUtils for dayKeyOf, which reaches the settings store for
 // dayResetTime — which nothing here needs, since a day key is a calendar day
@@ -402,6 +406,54 @@ describe('weekCopyDrafts', () => {
   });
 });
 
+describe('mealCopyDraft', () => {
+  it('puts one meal on another day carrying what a week copy carries (#2913)', () => {
+    const lunch = entry('2026-08-03', 'lunch', {
+      recipeId: 'r1', title: 'Pasta salad', recipeChoices: ['c1'], recipeScale: 2,
+      cookTask: false, shopTask: false, logMeal: true, cookedAt: '2026-08-03T12:00:00.000Z',
+    });
+
+    expect(mealCopyDraft(lunch, '2026-08-05')).toEqual({
+      date: '2026-08-05', slot: 'lunch', recipeId: 'r1', title: 'Pasta salad',
+      sortOrder: lunch.sortOrder, cookedAt: null, leftoverId: null,
+      recipeChoices: ['c1'], recipeScale: 2, cookTask: false, shopTask: false, logMeal: true,
+    });
+  });
+
+  it('refuses a leftover night, which one container cannot supply twice', () => {
+    expect(mealCopyDraft(entry('2026-08-03', 'dinner', { leftoverId: 'lo-1' }), '2026-08-04')).toBeNull();
+  });
+});
+
+describe('daysWithMeal', () => {
+  it("is the meal's own day plus every day holding the same recipe in the same slot (#2913)", () => {
+    const monday = entry('2026-08-03', 'lunch', { recipeId: 'r1' });
+    const entries = [
+      monday,
+      entry('2026-08-04', 'lunch', { recipeId: 'r1' }),
+      entry('2026-08-05', 'dinner', { recipeId: 'r1' }), // another slot
+      entry('2026-08-06', 'lunch', { recipeId: 'r2' }), // another recipe
+    ];
+    expect([...daysWithMeal(entries, monday)].sort()).toEqual(['2026-08-03', '2026-08-04']);
+  });
+
+  it('matches a typed meal by its title, ignoring case and spacing', () => {
+    const monday = entry('2026-08-03', 'lunch', { title: 'Kids lunch' });
+    const entries = [
+      monday,
+      entry('2026-08-04', 'lunch', { title: '  kids   LUNCH ' }),
+      entry('2026-08-05', 'lunch', { title: 'Kids lunch', recipeId: 'r1' }), // a recipe, not the typed meal
+    ];
+    expect([...daysWithMeal(entries, monday)].sort()).toEqual(['2026-08-03', '2026-08-04']);
+  });
+
+  it('is only its own day for a leftover night', () => {
+    const night = entry('2026-08-03', 'dinner', { leftoverId: 'lo-1', title: 'Chili' });
+    const entries = [night, entry('2026-08-04', 'dinner', { leftoverId: 'lo-1', title: 'Chili' })];
+    expect([...daysWithMeal(entries, night)]).toEqual(['2026-08-03']);
+  });
+});
+
 describe('daysWithoutMeal', () => {
   // Local dates, not UTC parses — dayKeyOf reads the local calendar day.
   const week = [
@@ -549,6 +601,29 @@ describe('recipeIsGone', () => {
     // recipe, and every reader of this acts on a "yes".
     const unloaded = { initialized: false, recipes: [] };
     expect(recipeIsGone(entry('2026-08-05', 'dinner', { recipeId: 'r1' }), unloaded)).toBe(false);
+  });
+});
+
+describe('recipeNamedLike', () => {
+  // The nameKey addRecipe stores, so the helper is checked against the same
+  // key the store would refuse a second recipe on.
+  const named = (id: string, name: string) => ({ id, name, nameKey: recipeNameKey(name) });
+
+  it('finds the recipe a typed meal is named after, whatever the case and spacing (#2929)', () => {
+    const tacos = named('r-tacos', 'Tacos');
+    expect(recipeNamedLike('  tacos ', [named('r-soup', 'Soup'), tacos])).toBe(tacos);
+  });
+
+  it('agrees with the store about names that differ only by accents and punctuation', () => {
+    // addRecipe refuses "pho ga" once "Phở gà!" exists, so the sheet must
+    // offer that recipe rather than a new one the store won't make.
+    const pho = named('r-pho', 'Phở gà!');
+    expect(recipeNamedLike('pho ga', [pho])).toBe(pho);
+  });
+
+  it('is null when nothing is called that, or the title is blank', () => {
+    expect(recipeNamedLike('Pho', [named('r-tacos', 'Tacos')])).toBeNull();
+    expect(recipeNamedLike('   ', [named('r-tacos', 'Tacos')])).toBeNull();
   });
 });
 

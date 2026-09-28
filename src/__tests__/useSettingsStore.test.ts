@@ -1100,6 +1100,40 @@ describe('unitSystem', () => {
   });
 });
 
+describe('householdServings', () => {
+  it('defaults to not set, so a planned meal keeps starting as written (#2910)', () => {
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().householdServings).toBe(0);
+  });
+
+  it('round-trips through the settings table', () => {
+    useSettingsStore.getState().setHouseholdServings(4);
+    expect(dbSetSetting).toHaveBeenCalledWith('householdServings', '4');
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'householdServings' ? '4' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().householdServings).toBe(4);
+  });
+
+  it('stores clearing it as 0, and holds a count to the stepper cap', () => {
+    useSettingsStore.getState().setHouseholdServings(0);
+    expect(useSettingsStore.getState().householdServings).toBe(0);
+    useSettingsStore.getState().setHouseholdServings(-2);
+    expect(useSettingsStore.getState().householdServings).toBe(0);
+    useSettingsStore.getState().setHouseholdServings(500);
+    expect(useSettingsStore.getState().householdServings).toBe(99);
+  });
+
+  it('reads a missing or unparseable row as not set', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'householdServings' ? 'lots' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().householdServings).toBe(0);
+  });
+});
+
 describe('currencySymbol', () => {
   it('defaults to $', () => {
     useSettingsStore.getState().initialize();
