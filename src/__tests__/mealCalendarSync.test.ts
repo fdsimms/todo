@@ -6,11 +6,11 @@ jest.mock('../store/useSettingsStore', () => ({
 }));
 
 const mockCreate = jest.fn();
-const mockUpdate = jest.fn();
+const mockMove = jest.fn();
 const mockDelete = jest.fn();
 jest.mock('../utils/calendarSync', () => ({
   createAllDayEvent: (...args: unknown[]) => mockCreate(...args),
-  updateAllDayEvent: (...args: unknown[]) => mockUpdate(...args),
+  moveAllDayEvent: (...args: unknown[]) => mockMove(...args),
   deleteCalendarEvent: (...args: unknown[]) => mockDelete(...args),
 }));
 
@@ -45,7 +45,8 @@ beforeEach(() => {
   mockSettings = { mealCalendarId: 'cal-1' };
   mockDemoActive = false;
   mockCreate.mockReset().mockResolvedValue('evt-new');
-  mockUpdate.mockReset().mockResolvedValue(true);
+  // EventKit reports the same id back for an event rewritten in place.
+  mockMove.mockReset().mockImplementation((id: string) => Promise.resolve(id));
   mockDelete.mockReset().mockResolvedValue(undefined);
 });
 
@@ -94,16 +95,37 @@ describe('syncMealEvent', () => {
 
   it('updates in place and keeps the same id', async () => {
     expect(await syncMealEvent(entry({ calendarEventId: 'evt-1' }))).toBe('evt-1');
-    expect(mockUpdate).toHaveBeenCalledWith('evt-1', expect.objectContaining({
+    expect(mockMove).toHaveBeenCalledWith('evt-1', 'cal-1', expect.objectContaining({
+      title: 'Dinner: Weeknight chicken stir-fry',
+    }));
+    expect(mockCreate).not.toHaveBeenCalled();
+    expect(mockDelete).not.toHaveBeenCalled();
+  });
+
+  // #2949: switching "Write meals to" from a shared calendar to a private one
+  // kept rewriting every existing meal in the shared one, because the rewrite
+  // never said which calendar.
+  it('moves an existing event into the calendar picked now, and links the id it comes back with', async () => {
+    mockSettings = { mealCalendarId: 'cal-home' };
+    mockMove.mockResolvedValue('evt-moved');
+    expect(await syncMealEvent(entry({ calendarEventId: 'evt-family' }))).toBe('evt-moved');
+    expect(mockMove).toHaveBeenCalledWith('evt-family', 'cal-home', expect.objectContaining({
       title: 'Dinner: Weeknight chicken stir-fry',
     }));
     expect(mockCreate).not.toHaveBeenCalled();
   });
 
   it('writes a fresh event when the stored id no longer resolves', async () => {
-    mockUpdate.mockResolvedValue(false);
+    mockMove.mockResolvedValue(null);
     expect(await syncMealEvent(entry({ calendarEventId: 'stale' }))).toBe('evt-new');
-    expect(mockCreate).toHaveBeenCalled();
+    expect(mockCreate).toHaveBeenCalledWith('cal-1', expect.anything());
+  });
+
+  it('clears the old event before writing a fresh one, so a refused move leaves no copy behind', async () => {
+    mockMove.mockResolvedValue(null);
+    await syncMealEvent(entry({ calendarEventId: 'evt-family' }));
+    expect(mockDelete).toHaveBeenCalledWith('evt-family');
+    expect(mockDelete.mock.invocationCallOrder[0]).toBeLessThan(mockCreate.mock.invocationCallOrder[0]);
   });
 
   it('deletes the event and unlinks when no calendar is picked', async () => {
@@ -154,7 +176,7 @@ describe('syncMealEvent', () => {
     mockDemoActive = true;
     expect(await syncMealEvent(entry({ calendarEventId: 'evt-1' }))).toBeNull();
     expect(mockCreate).not.toHaveBeenCalled();
-    expect(mockUpdate).not.toHaveBeenCalled();
+    expect(mockMove).not.toHaveBeenCalled();
     expect(mockDelete).not.toHaveBeenCalled();
   });
 });

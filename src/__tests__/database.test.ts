@@ -118,6 +118,7 @@ import {
   SYNC_TRACKED_TABLES,
   SYNC_EXCLUDED_TABLES,
   SYNC_DELETIONS_TABLE,
+  SYNC_DEVICE_LOCAL_COLUMNS,
   TOMBSTONE_RETENTION_DAYS,
 } from '../db/syncTracking';
 import { buildBackup, serializeBackup, parseBackup } from '../utils/backup';
@@ -3456,6 +3457,7 @@ describe('meal plan entries', () => {
       cookTask: null,
       shopTask: null,
       logMeal: null,
+      thawTask: null,
       calendarEventId: null,
       cookedAt: null,
       leftoverId: null,
@@ -3816,6 +3818,21 @@ describe('sync change tracking', () => {
     expect(row?.title).toBe('After');
   });
 
+  // #2950: the event this device wrote for a meal is its own.
+  it('sends a planned meal without the id of this device\'s calendar event', () => {
+    dbInsertMealPlanEntry({
+      id: 'meal-sync', date: '2026-08-13', slot: 'dinner', recipeId: null, title: 'Chili',
+      sortOrder: 1, createdAt: '2026-08-01T00:00:00.000Z', cookedAt: null, leftoverId: null,
+      recipeChoices: [], recipeScale: 1, cookTask: null, shopTask: null, logMeal: null,
+      calendarEventId: 'evt-this-phone',
+    });
+
+    const row = dbSyncChangesSince(null).tables.meal_plan_entries.find(r => r.id === 'meal-sync');
+
+    expect(row?.title).toBe('Chili');
+    expect(row).not.toHaveProperty('calendar_event_id');
+  });
+
   it('reports a deletion as a tombstone, not a missing row', () => {
     dbInsertTask(makeTask({ id: 'sync-1' }));
     const first = dbSyncChangesSince(null);
@@ -3976,6 +3993,53 @@ describe('dbApplySyncChanges', () => {
 
     expect(report.skipped).toBe(1);
     expect(rowOf('p1')?.title).toBe('Local wins');
+  });
+
+  // #2950. A peer without the meal calendar set used to "delete" this phone's
+  // event id, write null, and sync the null back, so this phone lost its link
+  // and wrote a duplicate event on its next edit.
+  describe('a meal\'s calendar event id', () => {
+    beforeEach(() => {
+      mockRawDb.prepare("DELETE FROM meal_plan_entries WHERE id = 'meal-p'").run();
+      mockRawDb.exec('DELETE FROM sync_deletions');
+    });
+    const localMeal = () => dbInsertMealPlanEntry({
+      id: 'meal-p', date: '2026-08-13', slot: 'dinner', recipeId: null, title: 'Chili',
+      sortOrder: 1, createdAt: '2026-08-01T00:00:00.000Z', cookedAt: null, leftoverId: null,
+      recipeChoices: [], recipeScale: 1, cookTask: null, shopTask: null, logMeal: null,
+      calendarEventId: 'evt-this-phone',
+    });
+    const peerMealRow = (over: Record<string, unknown>) => {
+      const row = mockRawDb.prepare('SELECT * FROM meal_plan_entries WHERE id = ?').get('meal-p') as Record<string, unknown>;
+      return { ...row, updated_at: '2030-01-01T00:00:00.000Z', ...over };
+    };
+    const stored = () =>
+      mockRawDb.prepare('SELECT date, calendar_event_id FROM meal_plan_entries WHERE id = ?').get('meal-p') as
+        { date: string; calendar_event_id: string | null };
+
+    it('survives a peer\'s edit to the rest of the row, even one that sends its own', () => {
+      localMeal();
+      mockRawDb.prepare("UPDATE meal_plan_entries SET updated_at = '2026-01-01T00:00:00.000Z' WHERE id = 'meal-p'").run();
+
+      // An older build still sends the column: null here, the way the bug wrote it.
+      const report = dbApplySyncChanges(payload({
+        tables: { meal_plan_entries: [peerMealRow({ date: '2026-08-14', calendar_event_id: null })] },
+      }));
+
+      expect(report.updated).toBe(1);
+      expect(stored()).toEqual({ date: '2026-08-14', calendar_event_id: 'evt-this-phone' });
+    });
+
+    it('arrives empty on a meal this device has never seen', () => {
+      localMeal();
+      const row = peerMealRow({ calendar_event_id: 'evt-other-phone' });
+      mockRawDb.prepare('DELETE FROM meal_plan_entries WHERE id = ?').run('meal-p');
+      mockRawDb.exec('DELETE FROM sync_deletions');
+
+      dbApplySyncChanges(payload({ tables: { meal_plan_entries: [row] } }));
+
+      expect(stored().calendar_event_id).toBeNull();
+    });
   });
 
   it('is idempotent — applying the same payload twice changes nothing', () => {
@@ -4513,6 +4577,13 @@ describe('schema completeness', () => {
     const real = new Set(realTableNames());
     const stale = SYNC_TRACKED_TABLES.map(t => t.name).filter(name => !real.has(name));
     expect(stale).toEqual([]);
+  });
+
+  it('keeps only real columns of real tables on the device', () => {
+    for (const [table, columns] of Object.entries(SYNC_DEVICE_LOCAL_COLUMNS)) {
+      const real = (mockRawDb.prepare(`PRAGMA table_info("${table}")`).all() as Array<{ name: string }>).map(c => c.name);
+      expect(columns.filter(c => !real.includes(c))).toEqual([]);
+    }
   });
 
   it('excludes the tombstone table from sync tracking by its real name, not a stale copy', () => {

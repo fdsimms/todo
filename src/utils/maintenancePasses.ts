@@ -128,6 +128,11 @@ export function catchUpPasses(): MaintenanceStep[] {
     // already loaded, and it fires on a meal coming into range, which is time
     // passing rather than a source mutation.
     ['check meal shortfall tasks', () => tasks().checkMealShortfallTasks()],
+    // Its sibling on the same meals (off by default): anything planned for
+    // today or tomorrow that's only in the freezer. Same trigger, a meal
+    // coming into range, and after the shortfall pass for no reason but that
+    // they read as a pair.
+    ['check meal thaw tasks', () => tasks().checkMealThawTasks()],
     // And anything planned a few days *behind* rather than ahead, that never
     // got logged (off by default) — the reverse-window sibling of the pass
     // above, reading the same meal plan and firing on the same trigger.

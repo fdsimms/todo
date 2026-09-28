@@ -152,6 +152,50 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
 ];
 
 /**
+ * Columns of a synced table that belong to this device rather than to the
+ * row: never sent, and never taken from a peer.
+ *
+ * The columns SYNCED_SETTING_KEYS keeps a *setting* off the wire for (an
+ * EventKit id "names a record on one phone", docs/arch/people.md), held inside
+ * a row that otherwise travels whole. `meal_plan_entries.calendar_event_id` is
+ * the id of the event this device wrote for the meal into the calendar picked
+ * on this device (`mealCalendarId`, itself device-local). Sent across, it
+ * named nothing on the other phone, and that phone's reconcile then undid this
+ * one's: with no calendar picked it "deleted" the foreign id, wrote null, and
+ * synced the null back, so the device that owned the event lost its link and
+ * wrote a duplicate on its next edit, leaving the first on the calendar for
+ * good (#2950).
+ *
+ * Both directions, and both are needed. Stripped on the way out
+ * (`dbSyncChangesSince`), so a peer never sees the id; left out of the columns
+ * an apply writes (`dbApplySyncChanges`), so a peer on an older build that
+ * still sends one can't overwrite the local link. An apply updates an existing
+ * row column by column, which is what lets the local value survive a peer's
+ * edit to the rest of the row; a row that arrives new gets the column's
+ * default, null, which is the truth here (no event on this device yet).
+ *
+ * A backup keeps the column: restoring onto the phone that wrote the events is
+ * the common case, and there the ids still resolve.
+ */
+export const SYNC_DEVICE_LOCAL_COLUMNS: Readonly<Record<string, readonly string[]>> = {
+  meal_plan_entries: ['calendar_event_id'],
+};
+
+/** Whether `column` of `table` stays on this device — see SYNC_DEVICE_LOCAL_COLUMNS. */
+export function isDeviceLocalColumn(table: string, column: string): boolean {
+  return SYNC_DEVICE_LOCAL_COLUMNS[table]?.includes(column) ?? false;
+}
+
+/** A row as it may leave this device: its device-local columns dropped. */
+export function withoutDeviceLocalColumns<R extends Record<string, unknown>>(table: string, row: R): R {
+  const local = SYNC_DEVICE_LOCAL_COLUMNS[table];
+  if (!local) return row;
+  const out = { ...row };
+  for (const column of local) delete out[column];
+  return out;
+}
+
+/**
  * Real tables deliberately outside SYNC_TRACKED_TABLES, with the reason
  * attached — an exception has to be argued for here, not just missing from
  * the list above, or nothing would distinguish a deliberate omission from a

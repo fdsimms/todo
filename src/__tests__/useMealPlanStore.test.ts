@@ -72,11 +72,13 @@ jest.mock('../store/useSettingsStore', () => ({
 // same reason useTaskStore.test.ts and useDemoStore.test.ts mock it.
 const mockDeleteCalendarEvent = jest.fn().mockResolvedValue(undefined);
 const mockCreateAllDayEvent = jest.fn().mockResolvedValue('evt-new');
-const mockUpdateAllDayEvent = jest.fn().mockResolvedValue(true);
+// Hands back the id it was given, which is what EventKit reports for an event
+// rewritten in place (and moved, #2949, when the calendar changed).
+const mockMoveAllDayEvent = jest.fn((id: string) => Promise.resolve(id));
 jest.mock('../utils/calendarSync', () => ({
   deleteCalendarEvent: (...args: unknown[]) => mockDeleteCalendarEvent(...args),
   createAllDayEvent: (...args: unknown[]) => mockCreateAllDayEvent(...args),
-  updateAllDayEvent: (...args: unknown[]) => mockUpdateAllDayEvent(...args),
+  moveAllDayEvent: (...args: unknown[]) => mockMoveAllDayEvent(...(args as [string])),
 }));
 
 // useGroceryStore (real, below) imports these unconditionally for
@@ -139,6 +141,15 @@ jest.mock('../store/useRecipeStore', () => ({
   useRecipeStore: { getState: () => mockRecipeState },
 }));
 
+// The leftover store decides whether a planned leftover still wants its use-up
+// task (its own suite covers that); this suite is about which leftovers a slot
+// change asks it about (#2932). Mocked too because the real one reaches the
+// Health bridge at import.
+const mockReconcileLeftoverUseUpTask = jest.fn();
+jest.mock('../store/useLeftoverStore', () => ({
+  useLeftoverStore: { getState: () => ({ reconcileLeftoverUseUpTask: mockReconcileLeftoverUseUpTask }) },
+}));
+
 /** The live cook task for an entry, as the store's own helpers find it. */
 const cookTaskFor = (entryId: string) =>
   mockTaskState.tasks.find(t => t.generatedSourceId === entryId && !t.completed);
@@ -186,7 +197,7 @@ beforeEach(() => {
   mockMealCalendarId = null;
   mockMealPlanNudgeSlots = ['breakfast', 'lunch', 'dinner'];
   mockCreateAllDayEvent.mockResolvedValue('evt-new');
-  mockUpdateAllDayEvent.mockResolvedValue(true);
+  mockMoveAllDayEvent.mockImplementation((id: string) => Promise.resolve(id));
   mockTaskState.tasks = [];
   (dbGetMealPlanEntries as jest.Mock).mockReturnValue([]);
   (dbGetMealPlanEntry as jest.Mock).mockReturnValue(null);
@@ -592,6 +603,37 @@ describe('planMeal', () => {
 
     expect(planned.leftoverId).toBe('lo-1');
     expect(planned.recipeId).toBeNull();
+  });
+
+  // #2932: a leftover planned into a meal whose row says "Eat Chilli" has no
+  // "Use up Chilli" beside it, so every change to that plan asks again.
+  it('asks the leftover about its use-up task when it is planned, moved, removed or replaced', () => {
+    loadWeek();
+    const planned = useMealPlanStore.getState().planMeal({
+      date: '2026-08-05', slot: 'dinner', leftoverId: 'lo-1', title: 'Chilli (2 days old)',
+    })!;
+    expect(mockReconcileLeftoverUseUpTask).toHaveBeenCalledWith('lo-1');
+
+    mockReconcileLeftoverUseUpTask.mockClear();
+    useMealPlanStore.getState().moveEntry(planned.id, { date: '2026-08-06' });
+    expect(mockReconcileLeftoverUseUpTask).toHaveBeenCalledWith('lo-1');
+
+    mockReconcileLeftoverUseUpTask.mockClear();
+    useMealPlanStore.getState().bulkReplaceItem([planned.id], { recipeId: null, title: 'Takeout' });
+    // The replacement names no leftover, so the one it displaced is asked from
+    // the original entry.
+    expect(mockReconcileLeftoverUseUpTask).toHaveBeenCalledWith('lo-1');
+
+    useMealPlanStore.getState().lastAction!.undo();
+    mockReconcileLeftoverUseUpTask.mockClear();
+    useMealPlanStore.getState().removeEntry(planned.id);
+    expect(mockReconcileLeftoverUseUpTask).toHaveBeenCalledWith('lo-1');
+  });
+
+  it('asks no leftover about an ordinary plan', () => {
+    loadWeek();
+    useMealPlanStore.getState().planMeal({ date: '2026-08-05', slot: 'dinner', recipeId: 'r1', title: 'Ragù' });
+    expect(mockReconcileLeftoverUseUpTask).not.toHaveBeenCalled();
   });
 
   it('leaves leftoverId null for an ordinary plan', () => {
@@ -1862,8 +1904,10 @@ describe('meal tasks', () => {
     expect(task.chainItems.map(c => c.title))
       .toEqual(['Make Frijoles de la olla', 'Eat Frijoles de la olla']);
     expect(task.title).toBe('Frijoles de la olla');
-    // Answered with a recipe, so the link opens that instead of the day.
-    expect(task.linkUrl).toBe('dundundun://recipe?id=r1');
+    // Answered with a recipe, so the link opens that instead of the day, and
+    // names the meal so its scale and picks travel with it (#2931).
+    const planned = useMealPlanStore.getState().entries.find(e => e.date === '2026-08-05' && e.slot === 'dinner')!;
+    expect(task.linkUrl).toBe(`dundundun://recipe?id=r1&entry=${planned.id}`);
     expect(mockTaskState.addTask).not.toHaveBeenCalled();
   });
 
@@ -2101,7 +2145,7 @@ describe('meal tasks', () => {
     loadWeek([thursday]);
     plantSlotTask('2026-08-06', 'dinner', thursday);
     plantSlotTask('2026-08-10', 'dinner', monday);
-    expect(slotTaskFor('2026-08-06', 'dinner')!.linkUrl).toBe('dundundun://recipe?id=r-Chili');
+    expect(slotTaskFor('2026-08-06', 'dinner')!.linkUrl).toBe(`dundundun://recipe?id=r-Chili&entry=${thursday.id}`);
 
     // What useRecipeStore.deleteRecipe does: the recipe leaves the list, then
     // the plan is told.
@@ -2169,10 +2213,10 @@ describe('retitleRecipeEntries', () => {
     );
     expect(slotTaskFor('2026-08-06', 'dinner')!.chainItems.map(c => c.title))
       .toEqual(['Make Lemon garlic chicken', 'Eat Lemon garlic chicken']);
-    expect(mockUpdateAllDayEvent).toHaveBeenCalledWith('evt-1', expect.objectContaining({
+    expect(mockMoveAllDayEvent).toHaveBeenCalledWith('evt-1', 'cal-1', expect.objectContaining({
       title: 'Dinner: Lemon garlic chicken',
     }));
-    expect(mockUpdateAllDayEvent).toHaveBeenCalledWith('evt-0', expect.objectContaining({
+    expect(mockMoveAllDayEvent).toHaveBeenCalledWith('evt-0', 'cal-1', expect.objectContaining({
       title: 'Dinner: Lemon garlic chicken',
     }));
   });
@@ -2270,7 +2314,7 @@ describe('calendar events (#1494)', () => {
     useMealPlanStore.getState().moveEntry('m-a', { date: '2026-08-07' });
     await settle();
 
-    expect(mockUpdateAllDayEvent).toHaveBeenCalledWith('evt-1', expect.objectContaining({
+    expect(mockMoveAllDayEvent).toHaveBeenCalledWith('evt-1', 'cal-1', expect.objectContaining({
       title: 'Dinner: Ragu',
     }));
     expect(mockCreateAllDayEvent).not.toHaveBeenCalled();
@@ -2283,7 +2327,7 @@ describe('calendar events (#1494)', () => {
     useMealPlanStore.getState().renameEntry('m-a', 'Lasagne');
     await settle();
 
-    expect(mockUpdateAllDayEvent).toHaveBeenCalledWith('evt-1', expect.objectContaining({
+    expect(mockMoveAllDayEvent).toHaveBeenCalledWith('evt-1', 'cal-1', expect.objectContaining({
       title: 'Dinner: Lasagne',
     }));
   });
@@ -2338,7 +2382,7 @@ describe('calendar events (#1494)', () => {
 
     // Two rows pointing at one device event means whichever reconciles last
     // rewrites the other's night.
-    expect(mockUpdateAllDayEvent).not.toHaveBeenCalledWith('evt-1', expect.anything());
+    expect(mockMoveAllDayEvent).not.toHaveBeenCalledWith('evt-1', expect.anything(), expect.anything());
     expect(mockCreateAllDayEvent).toHaveBeenCalledWith('cal-1', expect.objectContaining({
       title: 'Dinner: Ragu',
     }));

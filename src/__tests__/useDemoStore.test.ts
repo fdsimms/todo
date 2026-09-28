@@ -125,6 +125,7 @@ import { buildPantryReviewDeck } from '../utils/pantryReview';
 import { MIN_PANTRY_REVIEW_CARDS, stalePantryReviewTasks } from '../utils/pantryReviewTasks';
 import { mealShortfallRows, staleMealShortfallTasks } from '../utils/mealShortfallTasks';
 import { staleMealLogNudgeTasks } from '../utils/mealLogNudgeTasks';
+import { staleMealThawTasks } from '../utils/mealThawTasks';
 import {
   describePlannedSlot,
   describeSlotLog,
@@ -3527,7 +3528,7 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(dinner.chainItems.map(c => c.estimatedMinutes)).toEqual([35, null]);
     // Answered with a recipe, so its link opens that rather than the day.
     const stirFry = useRecipeStore.getState().recipes.find(r => r.name === 'Weeknight chicken stir-fry')!;
-    expect(dinner.linkUrl).toBe('dundundun://recipe?id=' + stirFry.id);
+    expect(dinner.linkUrl).toMatch(new RegExp('^dundundun://recipe\\?id=' + stirFry.id + '&entry='));
 
     // The per-meal opt-out is invisible unless something uses it — today's
     // lunch is the meal that says no, and so has no task and renders as a
@@ -3672,6 +3673,31 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
       staleMealShortfallTasks(
         tasks, entries, recipesById, items, itemSubs, standingSwapMap(itemSubs, items),
         todayKey, new Date()
+      )
+    ).toEqual([]);
+  });
+
+  // #2926: tomorrow's lunch is the chili that's in the freezer.
+  it('seeds a meal that needs something from the freezer, and the task that says so', () => {
+    const { tasks } = useTaskStore.getState();
+    const { items, itemSubs, itemProducts } = useGroceryStore.getState();
+    const recipesById = new Map(useRecipeStore.getState().recipes.map(r => [r.id, r]));
+    const entries = useMealPlanStore.getState().entries;
+    const todayKey = dayKeyOf(getCurrentDayStart());
+
+    const thaw = tasks.find(t => t.generatedKind === 'mealThaw');
+    expect(thaw).toBeDefined();
+    expect(thaw!.title).toMatch(/^Take Beef chili out of the freezer \(\w+ Lunch\)$/);
+    expect(thaw!.category).toBe('Meal Plan');
+    const lunch = entries.find(e => e.id === thaw!.generatedSourceId);
+    expect(lunch!.date).toBe(dayKeyOf(addDays(getCurrentDayStart(), 1)));
+    expect(useLeftoverStore.getState().leftovers.find(l => l.id === lunch!.leftoverId)!.frozenAt).toBeTruthy();
+
+    // And the real rule agrees, so the first foreground sweep leaves it alone.
+    expect(
+      staleMealThawTasks(
+        tasks, entries, recipesById, useLeftoverStore.getState().leftovers, items, itemSubs,
+        standingSwapMap(itemSubs, items), todayKey, new Date(), itemProducts
       )
     ).toEqual([]);
   });

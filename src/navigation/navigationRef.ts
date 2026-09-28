@@ -98,12 +98,22 @@ export function resetToFoodLog(): void {
 // handoff resetToGroceries's openFinish uses, and for the same reason — the
 // sheet compares against the last value it handled, so tapping the bar twice
 // in a row (open cook mode, back out to Today, tap it again) still fires.
-export function resetToRecipeDetail(recipeId: string, openCookMode = false): void {
+//
+// `choices`/`scale` are the planned meal the link was written for, when it
+// names one: the same params MealPlanScreen's "Open recipe" passes, so a
+// doubled chili opened from Today reads doubled (#2931).
+export function resetToRecipeDetail(
+  recipeId: string,
+  opts: { openCookMode?: boolean; choices?: string[]; scale?: number } = {}
+): void {
+  const { openCookMode = false, ...planned } = opts;
   runWhenReady(() => {
     navigationRef.navigate('Recipes');
     navigationRef.navigate({
       name: 'RecipeDetail',
-      params: openCookMode ? { recipeId, openCookMode: Date.now() } : { recipeId },
+      params: openCookMode
+        ? { recipeId, ...planned, openCookMode: Date.now() }
+        : { recipeId, ...planned },
     });
   });
 }

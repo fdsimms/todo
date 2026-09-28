@@ -892,7 +892,10 @@ chicken too.
   add it to the list. The precedence is exact and each step earns its place — an explicit **"Out of
   it" outranks the freezer** (that bit is what the Pantry row's ✕ writes, so the button would read
   as dead on a frozen row otherwise, and "I'm out of it" is the later statement anyway), the
-  freezer outranks the purchase reading, and a live "Got it" is read last.
+  freezer outranks the purchase reading, and a live "Got it" is read last. The meal plan reads that
+  same rung the other way round (`mealThawTasks`, #2926): a meal planned for today or tomorrow that
+  is covered only by the freezer gets a task to take it out, since on hand and frozen is on hand a
+  day later than it looks.
 - **A purchase clears `frozenAt`**, alongside the `onHandUntil` it already cleared, in
   `finishShopping` and its `dbFinishGroceryShopping` mirror. The claim was about the bag you had,
   and the same statement stamps a fresh `expiresAt` — leaving it would suspend that new day the

@@ -220,6 +220,15 @@ interface MealPlanStore extends UndoHistoryActions {
   entriesForDayLive: (dayKey: string) => MealPlanEntry[];
 
   /**
+   * One entry by id, read through the loaded window and SQLite when it isn't
+   * there — `resolveEntry` (internal, below), exposed for the one caller
+   * outside this store with the same cross-screen shape: a meal task's recipe
+   * link (`deepLinks`, #2931), tapped on Today with no week loaded, which
+   * opens the recipe on the meal's own scale and picks.
+   */
+  entryById: (id: string) => MealPlanEntry | null;
+
+  /**
    * How many of each day's three meals are planned, keyed by day key — what the
    * weekly nudge's per-day tasks show as "2/3 planned" (#1585). A day with no
    * key here is one nothing has asked about, and its row shows no counter at
@@ -409,6 +418,13 @@ interface MealPlanStore extends UndoHistoryActions {
    * answered by the next sweep, which is seconds away on any foreground.
    */
   setShopTask: (id: string, value: boolean | null) => void;
+  /**
+   * Says whether this meal gets a "Take X out of the freezer" task, or hands
+   * the decision back to the `mealThawTasks` setting with `null` (#2926).
+   * `setShopTask`'s twin, for the same caller and with the same "write the flag
+   * and stop" reasoning: `checkMealThawTasks` owns creating one.
+   */
+  setThawTask: (id: string, value: boolean | null) => void;
   /**
    * Says whether finishing this meal offers to log what was eaten, or hands
    * the decision back to the `mealLogPrompt` setting with `null`.
@@ -684,6 +700,10 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
       ? entries
       : dbGetMealPlanEntries(dayKey, dayKey);
     return entriesForDay(source, dayKey);
+  },
+
+  entryById(id) {
+    return resolveEntry(get, id);
   },
 
   refreshPlannedSlotCounts(dayKeys) {
@@ -997,6 +1017,15 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     // already taken the row away by the time this runs.
   },
 
+  setThawTask(id, value) {
+    const entry = resolveEntry(get, id);
+    if (!entry || (entry.thawTask ?? null) === value) return;
+    const next: MealPlanEntry = { ...entry, thawTask: value };
+    dbUpdateMealPlanEntry(next);
+    set(s => ({ entries: s.entries.map(e => e.id === id ? next : e) }));
+    // No reconcile and no create, for setShopTask's reason.
+  },
+
   setLogMeal(id, value) {
     const entry = resolveEntry(get, id);
     if (!entry || entry.logMeal === value) return;
@@ -1171,6 +1200,10 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     // the servings surviving a swap for the same reason), so an explicit
     // per-meal answer isn't quietly undone by changing what's cooked.
     updated.forEach(e => reconcileMealSlot(get, e));
+    // The replacement names no leftover, so the one each meal used to eat has
+    // to be asked about from the original: it isn't planned any more, and its
+    // use-up task may need to come back (#2932).
+    toUpdate.forEach(e => reconcileSlotLeftovers(get, e));
     updated.forEach(reconcileMealEvent);
 
     get().setLastAction({
@@ -1333,8 +1366,8 @@ function patchInRange(
  * isn't.
  *
  * Every other read in this store is deliberately window-scoped, and stays that
- * way. This exists for the cook-task link alone, which is inherently
- * cross-screen: a task ticked off on Today knows its entry's id and nothing
+ * way. This exists for the cook-task link (and its public face `entryById`,
+ * the recipe link on a meal task) alone, which is inherently cross-screen: a task ticked off on Today knows its entry's id and nothing
  * about which week Meal plan has open — usually none at all, since the store
  * only loads a range once that screen has been visited.
  */
@@ -1570,8 +1603,55 @@ function createMealSlotTask(get: () => MealPlanStore, entry: MealPlanEntry): voi
  *
  * **A cooked meal is left alone**, the same gate the cook task had: the night
  * has happened, and re-titling the task at that point edits history.
+ *
+ * Then the use-up tasks of any leftover the change concerns — see
+ * `reconcileSlotLeftovers`. The task half is `reconcileMealSlotTask`.
  */
-function reconcileMealSlot(get: () => MealPlanStore, entry: Pick<MealPlanEntry, 'date' | 'slot'>): void {
+function reconcileMealSlot(
+  get: () => MealPlanStore,
+  entry: Pick<MealPlanEntry, 'date' | 'slot'> & Partial<Pick<MealPlanEntry, 'leftoverId'>>
+): void {
+  reconcileMealSlotTask(get, entry);
+  reconcileSlotLeftovers(get, entry);
+}
+
+/**
+ * The leftovers a slot change concerns, their use-up tasks brought into line
+ * (#2932): a leftover planned into a meal whose task already says "Eat Chili"
+ * has no "Use up Chili" beside it, and moving or clearing that meal gives it
+ * back. The rule is `leftoverTasks.plannedMealRowFor`; this is only which
+ * leftovers to ask it about.
+ *
+ * Both halves of a change, the same reason `moveEntry` reconciles both slots:
+ * the entry handed in (planned, moved, or just removed, so no longer in the
+ * slot) and whatever the slot holds now. Every caller hands in a whole entry,
+ * which is where `leftoverId` comes from; the type only says what's read.
+ *
+ * Runs after the slot's own task, whose presence is half of the rule.
+ * Cooking isn't a caller: `setCooked` doesn't reconcile the slot, and a
+ * container with some left after the meal is picked up by the next sweep
+ * (`reconcileAllLeftoverTasks`, on every foreground) rather than asked about
+ * while the "was that the last of it?" prompt is still open.
+ */
+function reconcileSlotLeftovers(
+  get: () => MealPlanStore,
+  entry: Pick<MealPlanEntry, 'date' | 'slot'> & Partial<Pick<MealPlanEntry, 'leftoverId'>>
+): void {
+  const ids = new Set<string>();
+  if (entry.leftoverId) ids.add(entry.leftoverId);
+  for (const e of entriesForSlot(get().entriesForDayLive(entry.date), entry.date, entry.slot)) {
+    if (e.leftoverId) ids.add(e.leftoverId);
+  }
+  if (ids.size === 0) return;
+  // Required lazily, the way useRecipeStore reaches this store: the leftover
+  // store reaches the food log and through it the Health bridge at import, and
+  // only a slot holding a leftover needs it.
+  const { useLeftoverStore } = require('./useLeftoverStore') as typeof import('./useLeftoverStore');
+  const { reconcileLeftoverUseUpTask } = useLeftoverStore.getState();
+  ids.forEach(id => reconcileLeftoverUseUpTask(id));
+}
+
+function reconcileMealSlotTask(get: () => MealPlanStore, entry: Pick<MealPlanEntry, 'date' | 'slot'>): void {
   const { date: dayKey, slot } = entry;
   const live = liveMealSlotTask(dayKey, slot);
   if (!live) return;

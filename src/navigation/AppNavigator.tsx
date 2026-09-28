@@ -242,7 +242,7 @@ const MainTabs = React.memo(function MainTabs({
             e.preventDefault();
             haptics.tap();
             if (cookingRecipeId) {
-              resetToRecipeDetail(cookingRecipeId, true);
+              resetToRecipeDetail(cookingRecipeId, { openCookMode: true });
             } else {
               onOpenMenu();
             }

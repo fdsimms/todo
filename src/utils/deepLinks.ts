@@ -26,7 +26,7 @@ import {
   openQuickAddFromShortcut,
   openQuickAddEventFromShortcut,
 } from '../navigation/navigationRef';
-import { MEAL_SLOTS, type MealSlot } from '../types';
+import { MEAL_SLOTS, type MealPlanEntry, type MealSlot } from '../types';
 import { KNOWN_LINK_APPS } from '../constants/linkApps';
 
 export interface AddTaskLink {
@@ -189,6 +189,44 @@ export function recipeUrlId(url: string): string | null {
   if (!match) return null;
   const id = (parseQuery(match[1] ?? '').id ?? '').trim();
   return id || null;
+}
+
+/**
+ * The planned meal a recipe link was written for (`&entry=…`, see
+ * `mealSlotTasks.recipeLinkUrl`), or null when it names none.
+ *
+ * Opaque like `mealPlanUrlShopEntryId`: the entry may have gone by the time
+ * the row is tapped, and `plannedRecipeParams` shrugs when it has.
+ */
+export function recipeUrlEntryId(url: string): string | null {
+  if (typeof url !== 'string') return null;
+  const match = RECIPE_RE.exec(url.trim());
+  if (!match) return null;
+  const id = (parseQuery(match[1] ?? '').entry ?? '').trim();
+  return id || null;
+}
+
+/**
+ * What a recipe link naming a planned meal opens RecipeDetail with: the meal's
+ * own picks and scale, the same `choices`/`scale` params the Meal Plan screen's
+ * "Open recipe" passes.
+ *
+ * Resolve-or-shrug, like every other cross-row pointer: an entry that has gone
+ * (removed, or the week re-planned since the task was written) or that now
+ * holds a *different* recipe gives nothing, and the recipe opens on its own
+ * defaults exactly as a link without an entry does. The recipe check matters
+ * because one recipe's picks are meaningless ids on another's.
+ *
+ * Here rather than beside `recipeLinkUrl` in `mealSlotTasks` because this file
+ * is loaded by the app shell and that one reaches the database through
+ * `dateUtils`.
+ */
+export function plannedRecipeParams(
+  entry: Pick<MealPlanEntry, 'recipeId' | 'recipeChoices' | 'recipeScale'> | null | undefined,
+  recipeId: string
+): { choices?: string[]; scale?: number } {
+  if (!entry || entry.recipeId !== recipeId) return {};
+  return { choices: entry.recipeChoices, scale: entry.recipeScale };
 }
 
 // `dundundun://mealplan[?date=YYYY-MM-DD]` — the third kitchen link, so a
@@ -571,8 +609,17 @@ export function openInAppUrl(url: string | null | undefined): boolean {
   }
   if (isRecipeUrl(url)) {
     const id = recipeUrlId(url);
-    if (id) resetToRecipeDetail(id);
-    else resetToRecipes();
+    if (!id) {
+      resetToRecipes();
+      return true;
+    }
+    // A meal task's link names its planned meal, so the recipe opens on that
+    // night's scale and picks, the way the Meal Plan screen's "Open recipe"
+    // does. Read when tapped, so a scale changed since the task was written
+    // is the one that opens.
+    const entryId = recipeUrlEntryId(url);
+    const entry = entryId ? useMealPlanStore.getState().entryById(entryId) : null;
+    resetToRecipeDetail(id, plannedRecipeParams(entry, id));
     return true;
   }
   if (isMealPlanUrl(url)) {

@@ -317,6 +317,8 @@ function generatedCategorySetting(kind: GeneratedKind): {
       return { key: 'pantryReviewTaskCategory', current: s.pantryReviewTaskCategory, assign: s.setPantryReviewTaskCategory };
     case 'mealShortfall':
       return { key: 'mealShortfallTaskCategory', current: s.mealShortfallTaskCategory, assign: s.setMealShortfallTaskCategory };
+    case 'mealThaw':
+      return { key: 'mealThawTaskCategory', current: s.mealThawTaskCategory, assign: s.setMealThawTaskCategory };
     case 'mealLogNudge':
       return { key: 'mealLogNudgeTaskCategory', current: s.mealLogNudgeTaskCategory, assign: s.setMealLogNudgeTaskCategory };
     case 'supplyReorder':

@@ -1269,6 +1269,14 @@ interface SettingsStore {
   // Which category a log-nudge task files itself under, by name, or null for
   // none — same setting as the other generators' for the same reason.
   mealLogNudgeTaskCategory: string | null;
+  // Whether a meal planned for today or tomorrow that uses something only on
+  // hand frozen gets a "Take X out of the freezer" task (see
+  // src/utils/mealThawTasks.ts, #2926). Defaults OFF, for mealShortfallTasks'
+  // own reason: it adds a surface rather than replacing one.
+  mealThawTasks: boolean;
+  // Which category a freezer task files itself under, by name, or null for
+  // none — same setting as the other generators' for the same reason.
+  mealThawTaskCategory: string | null;
   // Whether a recurring task running low on its supply gets an "Order more X"
   // task (see src/utils/supply.ts). Defaults ON, unlike pantryCheckTasks above,
   // and the difference is who asked: a pantry check is projected from a catalog
@@ -1719,6 +1727,8 @@ interface SettingsStore {
   setMealShortfallTaskCategory: (category: string | null) => void;
   setMealLogNudgeTasks: (on: boolean) => void;
   setMealLogNudgeTaskCategory: (category: string | null) => void;
+  setMealThawTasks: (on: boolean) => void;
+  setMealThawTaskCategory: (category: string | null) => void;
   setSupplyReorderTasks: (on: boolean) => void;
   setSupplyReorderTaskCategory: (category: string | null) => void;
   setCalendarReviewTasks: (on: boolean) => void;
@@ -1850,6 +1860,8 @@ const DEFAULT_SETTINGS = {
   mealShortfallTaskCategory: null,
   mealLogNudgeTasks: false,
   mealLogNudgeTaskCategory: null,
+  mealThawTasks: false,
+  mealThawTaskCategory: null,
   leftoverUseUpTasks: true,
   leftoverUseUpTaskCategory: null,
   useUpTaskCap: null,
@@ -2269,6 +2281,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   mealShortfallTaskCategory: null,
   mealLogNudgeTasks: false,
   mealLogNudgeTaskCategory: null,
+  mealThawTasks: false,
+  mealThawTaskCategory: null,
   leftoverUseUpTasks: true,
   leftoverUseUpTaskCategory: null,
   useUpTaskCap: null,
@@ -2679,6 +2693,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     // than replacing one.
     const mealLogNudgeTasks = dbGetSetting('mealLogNudgeTasks') === 'true';
     const mealLogNudgeTaskCategory = dbGetSetting('mealLogNudgeTaskCategory') || null;
+    // `=== 'true'` for the same reason again.
+    const mealThawTasks = dbGetSetting('mealThawTasks') === 'true';
+    const mealThawTaskCategory = dbGetSetting('mealThawTaskCategory') || null;
     // The missing row is checked before the number, exactly as
     // groceryUseUpLeadDays is and for the same reason: zero is a real answer
     // here ("tell me on the day"), and both Number(null) and Number('') are 0,
@@ -2985,6 +3002,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       mealSlotStepEstimates,
       mealSlotTasksWrittenThroughDayKey,
       mealsOnToday,
+      mealThawTaskCategory,
+      mealThawTasks,
       moodLogLastDayKey,
       moodLogTaskCategory,
       moodLogTasks,
@@ -3504,6 +3523,16 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setMealLogNudgeTaskCategory(category: string | null) {
     dbSetSetting('mealLogNudgeTaskCategory', category ?? '');
     set({ mealLogNudgeTaskCategory: category });
+  },
+
+  setMealThawTasks(on: boolean) {
+    dbSetSetting('mealThawTasks', on ? 'true' : 'false');
+    set({ mealThawTasks: on });
+  },
+
+  setMealThawTaskCategory(category: string | null) {
+    dbSetSetting('mealThawTaskCategory', category ?? '');
+    set({ mealThawTaskCategory: category });
   },
 
   setSupplyReorderTasks(on: boolean) {
@@ -4291,6 +4320,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   // was already written — there is no sweep over the plan, and a shared
   // calendar silently losing a fortnight of dinners because someone changed
   // a setting is worse than a few stale ones they can delete.
+  //
+  // Switching from one calendar to another is the same call: nothing moves
+  // here. A meal already written moves into the new calendar the next time it
+  // is reconciled (syncMealEvent writes the calendar along with the title and
+  // day, #2949), rather than being rewritten in the old one for good.
   setMealCalendarId(id: string | null) {
     dbSetSetting('mealCalendarId', id ?? '');
     set({ mealCalendarId: id });

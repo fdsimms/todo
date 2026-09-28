@@ -1154,6 +1154,9 @@ export function TodayScreen() {
       // the sweep off the one place the stale row would actually be seen beats
       // asking every grocery and meal-plan write to remember it.
       useTaskStore.getState().checkMealShortfallTasks();
+      // And its freezer sibling, for the same reason: taking the chicken out
+      // happens in the Pantry, which is where its row's link goes.
+      useTaskStore.getState().checkMealThawTasks();
       // Same reasoning one row over: a supply crosses its lead time purely by
       // time passing (the run-out day stops being far enough away), and it
       // stops wanting anything the moment the user restocks it — including
@@ -1269,6 +1272,9 @@ export function TodayScreen() {
           // still missed one" the stacks note warns about. This pass re-runs the
           // predicate instead. After checkMealSlotTasks, which can plan a meal.
           useTaskStore.getState().checkMealShortfallTasks();
+          // The freezer sibling, on the same trigger: tomorrow's dinner comes
+          // into range purely by the day turning over.
+          useTaskStore.getState().checkMealThawTasks();
           // The reverse-window sibling of the pass above, same trigger and the
           // same missing-cold-start problem: a planned meal a few days behind
           // that never got logged should ask about it without waiting for a

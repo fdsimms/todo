@@ -14,7 +14,10 @@ import {
   SYNC_DELETIONS_TABLE,
   SYNC_TRACKED_TABLES,
   SYNCED_SETTING_KEYS,
+  SYNC_DEVICE_LOCAL_COLUMNS,
   isSyncedSettingKey,
+  isDeviceLocalColumn,
+  withoutDeviceLocalColumns,
   TOMBSTONE_RETENTION_DAYS,
   backfillStatements,
   changeTrackingStatements,
@@ -341,6 +344,29 @@ describe('backfill', () => {
     for (const sql of statements) {
       expect(sql).toContain('WHERE updated_at IS NULL');
     }
+  });
+});
+
+// #2950: a meal's calendar event id names a record on one phone.
+describe('device-local columns', () => {
+  it('keeps a meal\'s calendar event id on the device and nothing else of its row', () => {
+    expect(isDeviceLocalColumn('meal_plan_entries', 'calendar_event_id')).toBe(true);
+    expect(isDeviceLocalColumn('meal_plan_entries', 'title')).toBe(false);
+    expect(isDeviceLocalColumn('tasks', 'calendar_event_id')).toBe(false);
+  });
+
+  it('drops them from a row on the way out, and leaves other tables\' rows alone', () => {
+    const row = { id: 'm1', title: 'Chili', calendar_event_id: 'evt-local' };
+    expect(withoutDeviceLocalColumns('meal_plan_entries', row)).toEqual({ id: 'm1', title: 'Chili' });
+    // A copy: the row read out of SQLite isn't mutated under its reader.
+    expect(row.calendar_event_id).toBe('evt-local');
+    const task = { id: 't1', calendar_event_id: 'evt' };
+    expect(withoutDeviceLocalColumns('tasks', task)).toBe(task);
+  });
+
+  it('names only tracked tables', () => {
+    const tracked = new Set(SYNC_TRACKED_TABLES.map(t => t.name));
+    expect(Object.keys(SYNC_DEVICE_LOCAL_COLUMNS).filter(t => !tracked.has(t))).toEqual([]);
   });
 });
 

@@ -84,6 +84,8 @@ import {
   KEY_SEPARATOR,
   NOW_EXPR,
   isSyncedSettingKey,
+  isDeviceLocalColumn,
+  withoutDeviceLocalColumns,
   backfillStatements,
   installStatements,
   updatedAtMigrations,
@@ -1741,6 +1743,10 @@ export function initDatabase(): void {
     // Empty on every existing recipe: a method heading declared ahead of any
     // step is new. See Recipe.emptyStepSections.
     "ALTER TABLE recipes ADD COLUMN empty_step_sections TEXT NOT NULL DEFAULT '[]'",
+    // Nullable with no default, for log_meal's reason: NULL is "the setting
+    // decides", and a DEFAULT 0 would record every meal ever planned as having
+    // declined a freezer reminder. See MealPlanEntry.thawTask.
+    'ALTER TABLE meal_plan_entries ADD COLUMN thaw_task INTEGER',
   ];
   // Asking SQLite for a table's columns once is cheaper than handing it every
   // ALTER for that table and catching the duplicate-column error, and by the
@@ -2380,9 +2386,10 @@ export function dbSyncChangesSince(since: string | null, transport?: string): Sy
       // Only some settings rows travel; every other table sends all of them.
       // Filtered here rather than in the trigger so the policy lives in one
       // readable list — see SYNCED_SETTING_KEYS.
+      // And only some *columns* of some tables — see SYNC_DEVICE_LOCAL_COLUMNS.
       tables[name] = name === 'settings'
         ? rows.filter(r => typeof r.key === 'string' && isSyncedSettingKey(r.key))
-        : rows;
+        : rows.map(r => withoutDeviceLocalColumns(name, r));
     }
 
     // A first read needs no deletions: a peer that has never heard of a row
@@ -2812,7 +2819,10 @@ export function dbApplySyncChanges(payload: SyncPayload, transport?: string): Ap
     for (const [name, rows] of Object.entries(payload.tables)) {
       const table = trackedTable(name);
       if (!table) continue;
-      const allowed = dbTableColumns(name);
+      // Never a device-local column, even from a peer that sends one (an older
+      // build): the local value is this device's own and must survive the
+      // apply. See SYNC_DEVICE_LOCAL_COLUMNS.
+      const allowed = dbTableColumns(name).filter(c => !isDeviceLocalColumn(name, c));
 
       for (const received of rows) {
         // Pointed at the survivors of any fold first, since that can move the
@@ -5737,6 +5747,10 @@ function rowToMealPlanEntry(row: Record<string, unknown>): MealPlanEntry {
     logMeal: row.log_meal === null || row.log_meal === undefined
       ? null
       : Boolean(row.log_meal),
+    // And a fourth time — see MealPlanEntry.thawTask.
+    thawTask: row.thaw_task === null || row.thaw_task === undefined
+      ? null
+      : Boolean(row.thaw_task),
     calendarEventId: (row.calendar_event_id as string | null) ?? null,
   };
 }
@@ -6324,10 +6338,27 @@ export function dbGetMealPlanEntriesForRecipe(recipeId: string): MealPlanEntry[]
   return rows.map(rowToMealPlanEntry);
 }
 
+/**
+ * Every entry planned from one leftover, whatever its date.
+ *
+ * Not range-scoped, for `dbGetMealPlanEntriesForRecipe`'s reason: what reads it
+ * is the leftover's own use-up task (`plannedMealRowFor`, #2932), which asks
+ * whether any meal is going to eat the container, and that meal is rarely in
+ * the week the Meal Plan screen has loaded.
+ */
+export function dbGetMealPlanEntriesForLeftover(leftoverId: string): MealPlanEntry[] {
+  const rows = db.getAllSync<Record<string, unknown>>(
+    `SELECT * FROM meal_plan_entries WHERE leftover_id = ?
+     ORDER BY date ASC, sort_order ASC, created_at ASC`,
+    [leftoverId]
+  );
+  return rows.map(rowToMealPlanEntry);
+}
+
 export function dbInsertMealPlanEntry(entry: MealPlanEntry): void {
   db.runSync(
-    `INSERT INTO meal_plan_entries (id, date, slot, recipe_id, title, sort_order, created_at, cooked_at, leftover_id, recipe_choices, recipe_scale, cook_task, shop_task, log_meal, calendar_event_id)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    `INSERT INTO meal_plan_entries (id, date, slot, recipe_id, title, sort_order, created_at, cooked_at, leftover_id, recipe_choices, recipe_scale, cook_task, shop_task, log_meal, calendar_event_id, thaw_task)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       entry.id, entry.date, entry.slot, entry.recipeId ?? null,
       entry.title, entry.sortOrder, entry.createdAt, entry.cookedAt ?? null,
@@ -6337,13 +6368,14 @@ export function dbInsertMealPlanEntry(entry: MealPlanEntry): void {
       entry.shopTask === null || entry.shopTask === undefined ? null : (entry.shopTask ? 1 : 0),
       entry.logMeal === null || entry.logMeal === undefined ? null : (entry.logMeal ? 1 : 0),
       entry.calendarEventId ?? null,
+      entry.thawTask === null || entry.thawTask === undefined ? null : (entry.thawTask ? 1 : 0),
     ]
   );
 }
 
 export function dbUpdateMealPlanEntry(entry: MealPlanEntry): void {
   db.runSync(
-    `UPDATE meal_plan_entries SET date=?, slot=?, recipe_id=?, title=?, sort_order=?, cooked_at=?, leftover_id=?, recipe_choices=?, recipe_scale=?, cook_task=?, shop_task=?, log_meal=?, calendar_event_id=? WHERE id=?`,
+    `UPDATE meal_plan_entries SET date=?, slot=?, recipe_id=?, title=?, sort_order=?, cooked_at=?, leftover_id=?, recipe_choices=?, recipe_scale=?, cook_task=?, shop_task=?, log_meal=?, calendar_event_id=?, thaw_task=? WHERE id=?`,
     [
       entry.date, entry.slot, entry.recipeId ?? null, entry.title, entry.sortOrder,
       entry.cookedAt ?? null, entry.leftoverId ?? null,
@@ -6352,6 +6384,7 @@ export function dbUpdateMealPlanEntry(entry: MealPlanEntry): void {
       entry.shopTask === null || entry.shopTask === undefined ? null : (entry.shopTask ? 1 : 0),
       entry.logMeal === null || entry.logMeal === undefined ? null : (entry.logMeal ? 1 : 0),
       entry.calendarEventId ?? null,
+      entry.thawTask === null || entry.thawTask === undefined ? null : (entry.thawTask ? 1 : 0),
       entry.id,
     ]
   );

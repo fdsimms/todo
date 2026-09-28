@@ -7417,6 +7417,140 @@ describe('checkMealShortfallTasks', () => {
   });
 });
 
+// #2926: a meal planned for tomorrow whose chicken is only in the freezer.
+describe('checkMealThawTasks', () => {
+  const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as {
+    useSettingsStore: { getState: jest.Mock };
+  };
+
+  const settings = (overrides: Record<string, unknown> = {}) => ({
+    dayResetTime: '00:00',
+    vacationMode: false,
+    kitchenEnabled: true,
+    mealThawTasks: true,
+    mealThawTaskCategory: 'Meal Plan',
+    newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
+    titleRules: [],
+    collapsedCategories: [],
+    ...overrides,
+  });
+
+  const stirFry: Recipe = {
+    backfillDismissedFields: [],
+    id: 'r1', name: 'Stir-fry', nameKey: 'stir-fry', notes: '', sourceUrl: null, sourceName: null,
+    author: null, source: null, servings: null, servingsMax: null, recipeYield: null, cookedWeightG: null,
+    leftoverKeepDays: null, imagePath: null, mealType: null, tags: [],
+    ingredients: [{
+      id: 'r1-i0', name: 'Chicken', nameKey: 'chicken', quantity: '', aisle: null,
+      prep: null, purpose: null, section: null, choiceGroup: null,
+    }],
+    emptySections: [], components: [], prepTasks: [], steps: [], emptyStepSections: [], sortOrder: 1,
+    createdAt: '2026-01-01T00:00:00.000Z', cookCount: 0, lastCookedAt: null, vote: null,
+    upNext: false, upNextOrder: 0,
+    estimatedMinutes: null, timerStartedAt: null, timerElapsedSeconds: 0, lastCookMinutes: null,
+    cookTimeCount: 0, totalCookMinutes: 0, sourceType: null, sourcePage: null, cookbookId: null, prepMinutes: null,
+    prepTimerStartedAt: null, prepTimerElapsedSeconds: 0, lastPrepMinutes: null, prepTimeCount: 0,
+    totalPrepMinutes: 0,
+  };
+
+  const chicken = (frozenAt: string | null) => ({
+    nameFromScan: false,
+    id: 'g-chicken', name: 'Chicken', nameKey: 'chicken', preferredProductId: null, productStrict: false,
+    aisle: 'Meat', quantity: null, quantityFromRecipe: false, note: '',
+    onList: false, checked: false, sortOrder: 1,
+    purchaseCount: 0, lastAddedAt: null, lastPurchasedAt: null, createdAt: '2026-01-01T00:00:00.000Z',
+    onHandUntil: null, sourceRecipeId: null, sourceRecipeTitle: null, choiceGroup: null,
+    isStaple: false, expiresAt: null, frozenAt, openedAt: null, runningLowAt: null,
+    shelfLifeDays: null, useUpTask: null, pantryCheckDeclinedAt: null, pantryReviewedAt: null,
+    usedUpCount: 0, spoiledCount: 0, lastSpoiledAt: null, varietyOfKey: null, nutrition: null, backfillDismissedFields: [],
+    lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [],
+  });
+
+  const tomorrowDinner: MealPlanEntry = {
+    id: 'm-sun', date: '2026-08-23', slot: 'dinner', recipeId: 'r1', title: 'Stir-fry',
+    sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z', cookedAt: null, leftoverId: null,
+    recipeChoices: [], recipeScale: 1, cookTask: null, shopTask: null, logMeal: null, calendarEventId: null,
+  };
+
+  const thawRows = () =>
+    useTaskStore.getState().tasks.filter(t => t.generatedKind === 'mealThaw' && !t.completed && !t.archived);
+
+  const groceries = (frozenAt: string | null) => useGroceryStore.setState({
+    items: [chicken(frozenAt)], aisleOrder: [], hiddenAisles: [], aisleOverrides: {},
+    shops: [], itemShops: [], lastShopId: null, cartHoldIds: [],
+    pendingUseUpItemId: null, initialized: true,
+  });
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2026, 7, 22, 9, 0, 0));
+    useSettingsStore.getState.mockReturnValue(settings());
+    useTaskStore.setState({ tasks: [] });
+    useMealPlanStore.setState({ entries: [{ ...tomorrowDinner }], rangeStart: null, rangeEnd: null });
+    useRecipeStore.setState({ recipes: [stirFry] });
+    useLeftoverStore.setState({ leftovers: [] });
+    groceries('2026-08-01T09:00:00.000Z');
+    // Read through to the store, for checkMealShortfallTasks' tests' reason:
+    // setThawTask writes there, and the sweep must see it.
+    (dbGetMealPlanEntries as jest.Mock).mockImplementation(() => useMealPlanStore.getState().entries);
+  });
+
+  afterEach(() => { jest.useRealTimers(); });
+
+  it('asks to take the chicken out for tomorrow\'s dinner, linked to its Pantry row', () => {
+    useTaskStore.getState().checkMealThawTasks();
+
+    const [row] = thawRows();
+    expect(row.title).toBe('Take chicken out of the freezer (Sunday Dinner)');
+    expect(row.generatedSourceId).toBe('m-sun');
+    expect(row.linkUrl).toBe('dundundun://kitchen?item=grocery-g-chicken');
+    expect(row.category).toBe('Meal Plan');
+    expect(dbGetMealPlanEntries).toHaveBeenCalledWith('2026-08-21', '2026-08-24');
+  });
+
+  it('writes nothing while off, or for chicken that is not frozen', () => {
+    useSettingsStore.getState.mockReturnValue(settings({ mealThawTasks: false }));
+    useTaskStore.getState().checkMealThawTasks();
+    expect(thawRows()).toHaveLength(0);
+
+    useSettingsStore.getState.mockReturnValue(settings());
+    groceries(null);
+    useTaskStore.getState().checkMealThawTasks();
+    expect(thawRows()).toHaveLength(0);
+  });
+
+  it('clears its row once the chicken is out of the freezer, without declining the meal', () => {
+    useTaskStore.getState().checkMealThawTasks();
+    expect(thawRows()).toHaveLength(1);
+
+    groceries(null);
+    useTaskStore.getState().checkMealThawTasks();
+
+    expect(thawRows()).toHaveLength(0);
+    expect(useMealPlanStore.getState().entries[0].thawTask ?? null).toBeNull();
+  });
+
+  it('takes a deleted row as a refusal for that meal, and does not hand it back', () => {
+    useTaskStore.getState().checkMealThawTasks();
+
+    useTaskStore.getState().deleteTask(thawRows()[0].id);
+    expect(useMealPlanStore.getState().entries[0].thawTask).toBe(false);
+
+    useTaskStore.getState().checkMealThawTasks();
+    expect(thawRows()).toHaveLength(0);
+  });
+
+  it('does not pile up a second row, or hand back one already ticked off', () => {
+    useTaskStore.getState().checkMealThawTasks();
+    useTaskStore.getState().checkMealThawTasks();
+    expect(thawRows()).toHaveLength(1);
+
+    useTaskStore.getState().completeTask(thawRows()[0].id);
+    useTaskStore.getState().checkMealThawTasks();
+    expect(thawRows()).toHaveLength(0);
+  });
+});
+
 describe('checkMealLogNudgeTasks', () => {
   const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as {
     useSettingsStore: { getState: jest.Mock };

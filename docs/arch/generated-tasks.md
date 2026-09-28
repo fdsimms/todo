@@ -594,6 +594,30 @@ one. Those three rules and the reasoning behind them are in
     people keep loosely, and a half-filled week answered with shopping rows is the fastest way to
     have the whole thing switched off.
 
+- **`mealThaw` is `mealShortfall` asking the other question about the same rows** (#2926,
+  `src/utils/mealThawTasks.ts`). `probablyHaveReason` reads a live `frozenAt` as on hand, which is
+  what keeps the shortfall quiet about chicken in the freezer, and correctly; but being quiet was
+  all anything did, and "frozen and planned" is the moment somebody avoiding waste needs telling,
+  because a fridge thaw takes a day. So a meal planned for today or tomorrow whose ingredients are
+  on hand only frozen gets "Take chicken out of the freezer (Thursday Dinner)".
+  - **Everything but the question is borrowed**: the same source row, the same `classifyPlanned`
+    over the entry's own picks, scale and standing swaps, the same clear-then-create pass re-running
+    the create predicate, the same cap of three, `blocksOnFinished`, and a permanent per-meal `false`
+    (`MealPlanEntry.thawTask`, beside `shopTask`) that only ever subtracts. What it asks about is a
+    `probablyHave` row whose reason is `FROZEN_REASON`, the freezer's own rung on that ladder, so an
+    "Out of it" or "running low" outranks it exactly as it does in the Pantry, and a frozen item also
+    on the shopping list reads as being bought fresh.
+  - **The window is today and tomorrow, and there is no lead-time setting.** Tomorrow is the day a
+    fridge thaw is for; today still has the quick methods. Further out is premature, since food
+    moved to the fridge early loses that many days off its clock.
+  - **One row per meal, naming everything frozen in it**, and a planned leftover counts: a frozen
+    container is still live and plannable (see "A frozen container is still live" in
+    `groceries.md`), and a frozen portion planned for tomorrow is the commonest case of all.
+  - **Ticking it thaws nothing.** Whether the food actually came out is said in the Pantry, which is
+    where the row's link goes (the one frozen row, or the Pantry itself when there are several).
+    The stale pass then clears any row whose food is no longer frozen.
+  - **It ships off**, for `mealShortfall`'s reason: it adds a surface rather than replacing one.
+
 ## Vacation mode: which of them stand down
 
 `GeneratedKindSpec.pausedOnVacation` is every generator's answer, required the way `kitchen` is
@@ -606,7 +630,8 @@ nowhere to record it.
 The rule is the one coined for `weather` below and reused for `screenTime` and `health`:
 **sunscreen, not work.** A generator that invents something to *do* is exactly what vacation mode
 was switched on to stop, so it pauses: `mealSlot`, `groceryUseUp`, `leftoverUseUp`, `pantryCheck`,
-`pantryReview`, `projectReview`, `supplyReorder`, `mealShortfall`, `mealPlanNudge`, `weekendNudge`.
+`pantryReview`, `projectReview`, `supplyReorder`, `mealShortfall`, `mealThaw`, `mealPlanNudge`,
+`weekendNudge`.
 A generator about your body, your mood, the weather, your own phone use, the people you care about,
 or what is on tomorrow is not work and keeps running: `weather`, `screenTime`, `health`, `moodLog`,
 `moodNudge`, `birthday`, `birthdayGift`, `reachOut`, `calendarReview`. A birthday missed because you
@@ -633,7 +658,7 @@ Three things enforce it, and they are not redundant:
   on purpose, so the pass writes them unpaused.
 
 **A kitchen pass's own switch and the kitchen gate stop creating, not clearing.** `mealSlot`,
-`pantryCheck`, `pantryReview`, `mealShortfall` and `mealLogNudge` check them *below* their stale
+`pantryCheck`, `pantryReview`, `mealShortfall`, `mealThaw` and `mealLogNudge` check them *below* their stale
 pass, not at the top, and short-circuit only when there is nothing live of their kind to clear.
 Returning above the clear froze every row already written: "Shop for Ragu" stayed on Today, overdue,
 naming a meal dropped from the plan after the switch went off, until somebody deleted it by hand.
@@ -721,6 +746,23 @@ re-deriving:
   honest half — a meal you *had* planned had something to say ahead of time, exactly as a cook task
   did, and no row to say it on.
 
+**A leftover planned into a meal that has its own task gets no "Use up X" beside it** (#2932).
+Planning last night's chili for dinner put "Eat Chili" and "Use up Chili" on Today together: two
+rows, two sections, one container. The meal row is the more specific of the two (it says when), so
+`leftoverTasks.plannedMealRowFor` stands the use-up task down while an uneaten entry names the
+leftover, dated from the logical today through its `keepUntil`, **and a live `mealSlot` task exists
+for that day and slot**. That last condition is the premise itself: with the meal-task generator
+off, that meal not one the user gets a task for, or the row swiped away, the use-up task is the only
+reminder left, so it stays. A dinner planned after the container goes bad doesn't use it in time,
+and a meal already eaten may have left some behind, so neither counts. It narrows `qualifies`
+rather than overriding the per-leftover answer, so a leftover the user switched its task on for
+keeps it. The meal plan asks from `reconcileMealSlot` (both halves of a change: the entry handed in
+and whatever the slot now holds, plus the original of a `bulkReplaceItem`, which names no leftover
+afterwards), and runs after the slot's own task since that task's presence is half the rule.
+Cooking is deliberately not a trigger: the "was that the last of it?" prompt is still open at that
+moment, and the next foreground sweep brings the task back if some is left. The drop goes through
+`reconcileGeneratedTask`'s unwanted branch, which writes no opt-out.
+
 `MealPlanEntry.cookTask` survives the fold unchanged — it is still the per-meal "no", read by both
 the pass and the reconcile, and the one thing a meal task inherits from the cook task it replaces.
 The settings keys survive too (`mealCookTasks`, `mealCookTaskCategory`): renaming them would be a
@@ -769,6 +811,15 @@ carried unchanged into "Eat X" (`mealSlotDrift` writes `linkUrl` unconditionally
 `chainIndex === 0`): it's the same dish either way, and there's no second field to hold two
 destinations for one row. The picker link for an unanswered slot, and the meal-plan link for a
 leftover/takeout/typed answer, are unchanged.
+
+**The recipe link names the planned meal too (`&entry=…`), and resolves it when tapped.** The Meal
+Plan screen's own "Open recipe" seeds RecipeDetail with the meal's `recipeChoices` and
+`recipeScale`; a link carrying only the recipe id opened a doubled chili at 1× with the default
+side, so cook mode read out half the quantities and "Log to food log" logged half the helping
+(#2931). The entry's id travels rather than its numbers because `mealSlotDrift` rewrites `linkUrl`
+on every reconcile: a scale in the URL would make every scale change a task write, while the id is
+stable and `plannedRecipeParams` reads the entry as it stands at the tap. An entry that has gone, or
+that now holds a different recipe, gives nothing and the recipe opens on its own defaults.
 
 **A recipe that has since been deleted is not a recipe to cook.** `MealPlanEntry.recipeId` outlives
 the recipe on purpose, so every path that builds a slot task from an entry (the daily pass, the

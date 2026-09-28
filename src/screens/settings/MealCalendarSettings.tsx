@@ -114,7 +114,7 @@ export function MealCalendarSettings() {
   return (
     <SettingsSection
       label="Meals on your calendar"
-      footer="Adds an all-day event for each planned meal to the calendar you pick here, named for its slot, e.g. “Dinner: Lemon garlic salmon”. Meals planned from now on, not the ones already in the plan. The meal plan is always the one that's right; moving or deleting the event on the device doesn't change it."
+      footer="Adds an all-day event for each planned meal to the calendar you pick here, named for its slot, e.g. “Dinner: Lemon garlic salmon”. Meals planned from now on, not the ones already in the plan. If you pick a different calendar, a meal's event moves to it the next time that meal changes. The meal plan is always the one that's right; moving or deleting the event on the device doesn't change it."
     >
       <SettingsRow
         entryId="mealCalendar"
