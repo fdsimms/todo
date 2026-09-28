@@ -553,9 +553,25 @@ here, so "how do the days I take it compare" needs no second vocabulary. A food
 you ate is already a food log entry here, for the same reason and with the same
 payoff: this is the elimination-diet question, and every symptom tracker that
 asks it makes you keep a whole separate food diary next to the log you were
-already keeping. Grouped by the entry's own label, which is `mostLoggedFoods`'
-choice and made for its reason — `itemId` and `recipeId` are null for anything
-typed in.
+already keeping. Grouped by what each entry *is* (`foodKeyResolver` in
+`nutritionStats.ts`): a linked entry by its catalog row or recipe, and only an
+unlinked one by its label.
+
+That used to be the label for everything, for a reason that still holds where
+it applies: `itemId` and `recipeId` are null for anything typed in or estimated,
+and keying on them alone would drop every hand-entered food. It stopped holding
+where the link is there (#2947). The entry picker offers an item and each of its
+boxes as separate rows ("Bread" and "Bread, Dave's Killer 21 grain"), so a
+person testing bread against headaches logged whichever was on top, and the
+branded days landed in plain bread's "didn't" group: bread days compared
+against bread days, in the one read somebody might change their diet over. So a
+box counts as its item (eating a pot of yogurt is eating yogurt, the same call
+`foodLogRecents.ts` makes), a dish is its recipe across a rename, and an
+unlinked label joins the row a linked entry was logged under by that same name,
+so "bread" typed by hand still counts as Bread. A label that linked entries
+carry for two different rows stays a label rather than guessing between them.
+The screens name a key through `foodKeyNames`, by the row's or recipe's current
+name, and `mostLoggedFoods` on Stats groups the same way.
 
 Its second gate is the one that makes the answer mean anything: it runs over
 `foodPairedDays`, not `pairedDays`, so "the days you didn't eat it" is days the

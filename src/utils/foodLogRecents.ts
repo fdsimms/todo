@@ -11,11 +11,11 @@ import { foodLogEntryEdit, type FoodLogEntryEdit } from './foodLog';
  * of the list's contents and false of anywhere you'd find it. Linking an entry
  * to a row now buys something: the row comes back up.
  *
- * **It counts ids, never labels.** `topFoods` in `nutritionStats.ts` groups by
- * `label` on purpose and is right to: it reports what a person ate, and
- * dropping every hand-typed food would misreport that. This asks a different
- * question — which of the rows *on this list* to put in front — and a row is an
- * id. The difference shows exactly where this feature lives: a food found in a
+ * **It counts ids, never labels.** `mostLoggedFoods` in `nutritionStats.ts`
+ * falls back to the label for an entry linked to nothing, and is right to: it
+ * reports what a person ate, and dropping every hand-typed food would misreport
+ * that. This asks a different question — which of the rows *on this list* to
+ * put in front — and a row is an id. The difference shows exactly where this feature lives: a food found in a
  * database and filed onto the Milk row logs under its own database description
  * one week and under "Milk" the next, which is two labels and one row.
  *

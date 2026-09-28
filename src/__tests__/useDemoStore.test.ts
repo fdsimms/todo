@@ -40,7 +40,7 @@ import { useSavedMealsStore } from '../store/useSavedMealsStore';
 import { describeFoodLogEntry, foodLogTotals, recallAmount, scalePanelToAmount } from '../utils/foodLog';
 import { foodLastAmounts } from '../utils/foodLogRecents';
 import { isWaterEntry } from '../utils/waterLog';
-import { foodDayInputs, hasNutritionData, nutrientAverages, nutritionCounts, sourceMix } from '../utils/nutritionStats';
+import { foodDayInputs, foodKeyNames, hasNutritionData, nutrientAverages, nutritionCounts, sourceMix } from '../utils/nutritionStats';
 import { packageHelping } from '../utils/scanPortion';
 import { targetedNutrients } from '../utils/nutritionTargets';
 import { NUTRIENT_KEYS } from '../types';
@@ -2188,7 +2188,12 @@ describe('demo seed — people', () => {
       foodDayInputs(useFoodLogStore.getState().insightEntries),
     );
     const rows = symptomFoodContrasts(days, 'headache');
-    const coffee = rows.find(r => r.label === 'coffee');
+    // Rows are keyed by what a food is (the seeded coffee is the Coffee
+    // catalog row), so they are named the way the symptom page names them.
+    const names = foodKeyNames(useFoodLogStore.getState().insightEntries, {
+      items: new Map(useGroceryStore.getState().items.map(i => [i.id, i.name])),
+    });
+    const coffee = rows.find(r => names.get(r.label) === 'Coffee');
     expect(coffee).toBeDefined();
     // Present on both sides, so neither group is the empty one.
     expect(coffee!.withHits).toBeGreaterThan(0);

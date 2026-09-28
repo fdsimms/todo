@@ -27,7 +27,9 @@ import {
   symptomVocabulary,
 } from '../utils/moodLog';
 import { symptomStats } from '../utils/moodHistory';
-import { foodDayInputs } from '../utils/nutritionStats';
+import { foodDayInputs, foodKeyNames } from '../utils/nutritionStats';
+import { useGroceryStore } from '../store/useGroceryStore';
+import { useRecipeStore } from '../store/useRecipeStore';
 import { retentionCutoff, retentionLabel } from '../utils/retention';
 import {
   buildMoodDays,
@@ -255,21 +257,23 @@ export function MoodScreen() {
     [days, kitchenEnabled, todayKey],
   );
 
-  // A contrast is keyed on the lowercased label, which is not what the user
-  // typed — same resolution the symptom rows make, and the same reason: showing
-  // "porridge" to somebody who has been writing "Porridge" all month reads as
-  // the app having rewritten their entry.
-  const foodNames = useMemo(() => {
-    const names = new Map<string, string>();
-    for (const entry of foodEntries) {
-      const label = entry.label.trim();
-      if (label) names.set(label.toLowerCase(), label);
-    }
-    return names;
-  }, [foodEntries]);
+  // A contrast is keyed on what a food is (a catalog row, a recipe, or a
+  // lowercased label for anything unlinked), none of which is what the user
+  // reads. `foodKeyNames` names a row or recipe as it is called now and an
+  // unlinked food as it was typed: showing "porridge" to somebody who has been
+  // writing "Porridge" all month reads as the app having rewritten their entry.
+  const groceryItems = useGroceryStore(s => s.items);
+  const recipes = useRecipeStore(s => s.recipes);
+  const foodNames = useMemo(() => foodKeyNames(foodEntries, {
+    items: new Map(groceryItems.map(item => [item.id, item.name])),
+    recipes: new Map(recipes.map(recipe => [recipe.id, recipe.name])),
+  }), [foodEntries, groceryItems, recipes]);
   const foodRows = useMemo(
     () => (kitchenEnabled ? foodMoodContrasts(days).slice(0, 4).map(row => ({
       ...row,
+      // The match key kept for the row's React key: two foods can share a
+      // name (a Chili recipe and a chili catalog row) but never a key.
+      key: row.label,
       label: foodNames.get(row.label) ?? row.label,
     })) : []),
     [days, foodNames, kitchenEnabled],
@@ -645,7 +649,7 @@ export function MoodScreen() {
               <View style={styles.card}>
                 {foodRows.map((row, i) => (
                   <ContrastBars
-                    key={row.label}
+                    key={row.key}
                     first={i === 0}
                     label={row.label}
                     withLabel="Had it"

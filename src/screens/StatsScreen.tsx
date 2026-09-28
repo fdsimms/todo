@@ -56,6 +56,7 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { haptics } from '../utils/haptics';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useRecipeStore } from '../store/useRecipeStore';
+import { useGroceryStore } from '../store/useGroceryStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { describeFridgeHistory, outcomeCounts } from '../utils/leftovers';
 import { getLogicalToday } from '../utils/dateUtils';
@@ -389,6 +390,7 @@ export function StatsScreen() {
   // a blurred tab stays mounted for the life of the session, so a window
   // computed at mount would still end on the day the app was opened.
   const foodEntries = useFoodLogStore(s => s.windowEntries);
+  const groceryItems = useGroceryStore(s => s.items);
   const loadFoodWindow = useFoodLogStore(s => s.loadWindow);
   useFocusEffect(
     useCallback(() => {
@@ -431,9 +433,14 @@ export function StatsScreen() {
       counts: nutritionCounts(foodEntries, span),
       averages: nutrientAverages(foodEntries, span),
       mix: sourceMix(foodEntries, span),
-      foods: mostLoggedFoods(foodEntries, span, MOST_LOGGED_LIMIT),
+      // A food is named by the catalog row or recipe it is, as it is called
+      // now, rather than by whichever box of it was logged last.
+      foods: mostLoggedFoods(foodEntries, span, MOST_LOGGED_LIMIT, {
+        items: new Map(groceryItems.map(item => [item.id, item.name])),
+        recipes: new Map(recipes.map(recipe => [recipe.id, recipe.name])),
+      }),
     };
-  }, [kitchenEnabled, foodEntries, cookWindow, eatingDays]);
+  }, [kitchenEnabled, foodEntries, cookWindow, eatingDays, groceryItems, recipes]);
   // Asked of the whole month whichever span is showing, so a week with nothing
   // logged in it keeps the section, and with it the control that switches back.
   const hasEating = useMemo(
@@ -1024,7 +1031,7 @@ export function StatsScreen() {
               <Text style={styles.sectionTitle}>MOST LOGGED (LAST {eatingDays} DAYS)</Text>
               <View style={styles.card}>
                 {eating.foods.map((food, i) => (
-                  <View key={food.label} style={[styles.row, styles.rowBorder]}>
+                  <View key={food.key} style={[styles.row, styles.rowBorder]}>
                     <Text style={styles.rank}>#{i + 1}</Text>
                     <View style={styles.instanceMain}>
                       <Text style={styles.instanceTitle} numberOfLines={1}>{food.label}</Text>

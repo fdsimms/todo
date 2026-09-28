@@ -30,9 +30,9 @@ import { packageChoices, type PackageChoice } from './scanPortion';
  * answers (which row of a list to float). It cannot answer this one: a meal
  * logged from an estimate carries none of those three, so an id-keyed map is
  * blind to precisely the history worth recalling here. `mostLoggedFoods`
- * already made this call for the leaderboard and gives the reason — dropping
- * every hand-entered food would misreport what somebody eats. Same reason,
- * same grouping.
+ * falls back to the label for the same reason (dropping every hand-entered
+ * food would misreport what somebody eats), and this is made of nothing but
+ * the entries that fallback exists for.
  *
  * **It offers and never applies**, which is what lets it skip the refusals its
  * neighbours need. `unambiguousFood` and `uniqueSimilarItem` both decline to
