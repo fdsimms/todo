@@ -1,0 +1,4 @@
+{
+  "message": "A recipe can now list the same ingredient under two sections, or with a different prep, and keep both lines when you import, paste or type it. If a line you add is already in the recipe, the add field now says which line and keeps what you typed.",
+  "date": "2026-09-28"
+}

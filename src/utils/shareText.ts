@@ -1,6 +1,6 @@
 import { format } from 'date-fns/format';
 import type { GroceryItem, MealPlanEntry, Recipe, RecipeIngredient } from '../types';
-import { flattenRecipeIngredients } from './recipeComponents';
+import { flattenRecipeIngredients, type FlatIngredient } from './recipeComponents';
 import { ingredientHeadings } from './recipeSections';
 import { describeAttribution, formatServingsRange, totalMinutes } from './recipeUtils';
 import { formatDuration } from './effort';
@@ -48,6 +48,82 @@ function formatShareIngredientLine(
   return trailing ? `${line}, ${trailing}` : line;
 }
 
+/** One ingredient slot of a shared recipe: a plain line, or every option of an either/or. */
+interface ShareIngredientRow {
+  /** Where the slot sits: the line the default flatten yields for it. */
+  line: FlatIngredient;
+  /** The ingredient options, in list order — just `line`'s own for an ungrouped row. */
+  options: RecipeIngredient[];
+  /**
+   * The names of component recipes sharing the slot's group ("or Tortillas de
+   * Maíz"). They are named rather than listed: a component is a dish, and its
+   * own lines would read as more things to buy for this one.
+   */
+  componentAlternatives: string[];
+}
+
+/**
+ * A recipe's ingredients as the two share builders send them: one row per
+ * slot, with an either/or kept as a choice rather than resolved (#2948).
+ *
+ * They used to take each group's default, on the reasoning that a share is
+ * "the version anyone opening it fresh would see". But someone opening the
+ * recipe fresh sees every option, captioned "or jalapeño", so the share sent
+ * less than the page shows: "1 serrano" with the jalapeño gone. So a group's
+ * slot now lists every ingredient option, on the line where its default
+ * sits and with each option's own amount, "1 serrano or 2 jalapeños". The
+ * sender's own picks still stay out, which was the concern: nothing here takes
+ * a `ChoiceResolution`.
+ *
+ * **One slot, one line**, the way `countChoiceAware` counts "serrano or
+ * jalapeño" as one pepper and `groceryShareLines` sends "4 apples or 4 pears".
+ * Two lines would read as buying both.
+ *
+ * **A group of components stays resolved to its default**, the same line
+ * `ChoiceResolution.undecided` draws: "mash or roast potatoes" in full would
+ * put two dishes' lines under two headings. A group an ingredient shares with
+ * a component ("corn tortillas" or the Tortillas de Maíz recipe) defaults to
+ * the ingredient, and the component is named on that line instead.
+ */
+function shareIngredientRows(
+  recipe: Recipe,
+  recipesById: ReadonlyMap<string, Recipe>,
+): ShareIngredientRow[] {
+  const rows: ShareIngredientRow[] = [];
+  // The default flatten yields one option per group (its first, since nothing
+  // is chosen and a component never wins a mixed group by default), so each
+  // grouped line is where its whole slot goes.
+  for (const line of flattenRecipeIngredients(recipe, recipesById)) {
+    const label = line.ingredient.choiceGroup;
+    if (!label) {
+      rows.push({ line, options: [line.ingredient], componentAlternatives: [] });
+      continue;
+    }
+    rows.push({
+      line,
+      options: line.recipe.ingredients.filter(i => i.choiceGroup === label),
+      componentAlternatives: line.recipe.components
+        .filter(c => c.choiceGroup === label)
+        .map(c => (recipesById.get(c.recipeId)?.name ?? c.name).trim())
+        .filter(Boolean),
+    });
+  }
+  return rows;
+}
+
+/** One slot as a line of text — every option joined by "or", each scaled and converted. */
+function formatShareIngredientRow(
+  row: ShareIngredientRow,
+  scale: number,
+  unitSystem: UnitSystem,
+  weights: WeightLookups | null,
+): string {
+  return [
+    ...row.options.map(option => formatShareIngredientLine(option, scale, unitSystem, weights)),
+    ...row.componentAlternatives,
+  ].join(' or ');
+}
+
 /**
  * A recipe as text — name, servings/time, every ingredient (a composed
  * recipe's components included, each under its own heading — see
@@ -60,10 +136,11 @@ function formatShareIngredientLine(
  * from `lineWeight.ts`) adds each line's weight where the page shows one, and
  * is omitted for no weights.
  *
- * Resolves every choice group to its default rather than accepting a
- * `ChoiceResolution` — sharing "the recipe" means the version anyone opening
- * it fresh would see, not the sender's mid-cook picks for tonight, which is
- * exactly what `MealPlanEntry.recipeChoices` exists to hold separately.
+ * An either/or is sent as the choice, one line holding every option (see
+ * `shareIngredientRows`), rather than accepting a `ChoiceResolution` —
+ * sharing "the recipe" means the version anyone opening it fresh would see,
+ * not the sender's mid-cook picks for tonight, which is exactly what
+ * `MealPlanEntry.recipeChoices` exists to hold separately.
  *
  * The source link, when there is one, is appended rather than sent alone.
  * Sending only the link would be truer to "the app's `sourceUrl` is the
@@ -98,19 +175,21 @@ export function buildRecipeShareText(
   // No standing swaps, deliberately (#1571): a swap is a fact about this
   // kitchen, and the person being sent the recipe has their own. What travels
   // is the recipe's own words.
-  const flat = flattenRecipeIngredients(recipe, recipesById);
-  if (flat.length > 0) {
+  const rows = shareIngredientRows(recipe, recipesById);
+  if (rows.length > 0) {
     lines.push('', 'Ingredients:');
     // Component names and the recipe's own section headings, both inferred
     // from the flat list by the one walk every surface that flattens shares
     // (ingredientHeadings). A section reads as its own line rather than as a
     // "For the …" — the recipe wrote that label, so it travels as written.
-    const headings = ingredientHeadings(flat);
-    flat.forEach((line, index) => {
-      if (headings[index].dish) lines.push(`For the ${line.recipe.name}:`);
+    // Read off the slots rather than every option, so an option filed under
+    // another heading can't open one for a line that isn't there.
+    const headings = ingredientHeadings(rows.map(row => row.line));
+    rows.forEach((row, index) => {
+      if (headings[index].dish) lines.push(`For the ${row.line.recipe.name}:`);
       const section = headings[index].section;
       if (section) lines.push(`${section}:`);
-      lines.push(`- ${formatShareIngredientLine(line.ingredient, scale, unitSystem, weights)}`);
+      lines.push(`- ${formatShareIngredientRow(row, scale, unitSystem, weights)}`);
     });
   }
 
@@ -144,10 +223,13 @@ export function buildRecipeShareText(
  * N ingredients, so a parser reading line by line gets N ingredients.
  *
  * Everything else matches the recipe share: components are flattened in (in
- * order, just without their headings), choice groups resolve to their
- * defaults, standing swaps stay out, and each line is scaled then converted
- * through the caller's own `scale`/`unitSystem` so a doubled list pastes
- * doubled.
+ * order, just without their headings), an either/or is one line holding every
+ * option ("1 serrano or 2 jalapeños", see `shareIngredientRows`), standing
+ * swaps stay out, and each line is scaled then converted through the caller's
+ * own `scale`/`unitSystem` so a doubled list pastes doubled. The either/or is
+ * still one line for one ingredient: pasting only the default dropped the
+ * other option with nothing to say it had been there (#2948), and two lines
+ * would paste as two things to buy.
  *
  * Empty string for a recipe with nothing to list, same gating convention as
  * the two builders below.
@@ -160,10 +242,10 @@ export function buildIngredientsText(
   const scale = options.scale ?? 1;
   const unitSystem = options.unitSystem ?? 'asWritten';
   const weights = options.weights ?? null;
-  const flat = flattenRecipeIngredients(recipe, recipesById);
-  if (flat.length === 0) return '';
-  return flat
-    .map(line => formatShareIngredientLine(line.ingredient, scale, unitSystem, weights))
+  const rows = shareIngredientRows(recipe, recipesById);
+  if (rows.length === 0) return '';
+  return rows
+    .map(row => formatShareIngredientRow(row, scale, unitSystem, weights))
     .join('\n');
 }
 

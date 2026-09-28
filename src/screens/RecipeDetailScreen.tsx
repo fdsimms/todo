@@ -78,7 +78,14 @@ import { spacing, font, fontWeight, lineHeight, radius, iconSize, interaction, f
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { pickRecipeImage, resolveRecipeImagePath, type RecipePhotoSource } from '../utils/recipePhoto';
-import { describeRecipe, totalMinutes } from '../utils/recipeUtils';
+import {
+  blockedIngredientNote,
+  describeRecipe,
+  duplicateIngredientIn,
+  ingredientsFromText,
+  makeIngredient,
+  totalMinutes,
+} from '../utils/recipeUtils';
 import { buildIngredientsText, buildRecipeShareText } from '../utils/shareText';
 import { allSectionsOf, sectionsFromMergedOrder, type SectionListEntry } from '../utils/recipeSections';
 import { PillGroup } from '../components/PillGroup';
@@ -355,6 +362,9 @@ export function RecipeDetailScreen() {
 
   // ==== local state (drafts, the sheets this screen opens) ====
   const [draft, setDraft] = useState('');
+  // What the add field says when a line it was given is already in the recipe
+  // (blockedIngredientNote), until the draft is next edited or submitted.
+  const [addNote, setAddNote] = useState<string | null>(null);
   // What new ingredients are filed under, until changed or cleared — the add
   // field's own equivalent of RecipeIngredientSheet's Section field, and its
   // picker works the same way (same PillGroup, same onCreate): it used to be
@@ -709,10 +719,23 @@ export function RecipeDetailScreen() {
     // handles both — splitGroceryLines tells them apart.
     const isPaste = splitGroceryLines(text).length > 1;
     const before = new Set(recipe.ingredients.map(i => i.id));
+    // The rows that will refuse a line, read before the write with the same
+    // test the store's merge applies (ingredientDedupeKey), so the field can
+    // name them. A refused add used to empty the field and buzz, which read
+    // as the line having gone in somewhere (#2917).
+    const candidates = isPaste
+      ? ingredientsFromText(text, section)
+      : [makeIngredient(text, section)].filter((i): i is NonNullable<typeof i> => i !== null);
+    const blocked = candidates
+      .map(candidate => duplicateIngredientIn(recipe.ingredients, candidate))
+      .filter((row): row is NonNullable<typeof row> => row !== null);
     const added = isPaste
       ? addIngredientsFromText(recipe.id, text, section)
       : (addIngredient(recipe.id, text, section) ? 1 : 0);
-    setDraft('');
+    // Nothing went in: keep what was typed, so a second heading or a changed
+    // prep is one edit away rather than a retype.
+    if (added > 0) setDraft('');
+    setAddNote(blockedIngredientNote(blocked, added));
     if (added > 0) haptics.tap();
     else haptics.warning();
     // Only a paste gets the banner. Adding one line at a time already shows
@@ -2144,7 +2167,7 @@ export function RecipeDetailScreen() {
             ref={draftInputRef}
             style={styles.addInput}
             value={draft}
-            onChangeText={setDraft}
+            onChangeText={text => { setDraft(text); if (addNote) setAddNote(null); }}
             onSubmitEditing={submitDraft}
             placeholder="Add an ingredient"
             placeholderTextColor={colors.textTertiary}
@@ -2161,6 +2184,9 @@ export function RecipeDetailScreen() {
             disabled={!draft.trim()}
           />
         </View>
+        {!!addNote && (
+          <Text style={styles.addNote} accessibilityLiveRegion="polite">{addNote}</Text>
+        )}
         <Text style={styles.inputHint}>
           Quantity and unit go first, e.g. “2 cups flour”. Add a comma for prep, e.g.
           “garlic, minced”
@@ -3138,6 +3164,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   inputHint: {
     color: colors.textTertiary,
+    fontSize: font.xs,
+    marginTop: spacing.xs,
+  },
+  // textSecondary rather than the hint's grey: it says why the line didn't go
+  // in and what to do instead, which is information rather than an aside.
+  addNote: {
+    color: colors.textSecondary,
     fontSize: font.xs,
     marginTop: spacing.xs,
   },

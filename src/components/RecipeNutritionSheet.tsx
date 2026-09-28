@@ -57,11 +57,13 @@ import { SheetHeader } from './SheetHeader';
  * already offers for exactly this, in the same words: find the food in a
  * database, or copy the label off the packet. Figures that can't be measured
  * against the amount asked for get a scale, and only when `weighableLine` has
- * confirmed that weighing would actually settle it. **The two refusals
- * `unfixableQuantityReason` names — no amount at all ("several cloves"), or a
- * counted container ("2 14 oz cans")** — get neither "Edit these figures" nor
- * a scale: nothing on the food's side could ever relate either one to a
- * weight, and the actual fix is rewriting the recipe's own line. That fix
+ * confirmed that weighing would actually settle it. **The refusal
+ * `unfixableQuantityReason` names — no amount at all ("several cloves")** —
+ * gets neither "Edit these figures" nor a scale: nothing on the food's side
+ * could ever relate it to a weight, and the actual fix is rewriting the
+ * recipe's own line. (A counted container, "2 14 oz cans", used to be the
+ * second such refusal and asked how much one tin holds; it is measured now,
+ * #2918.) That fix
  * gets its own button, "Edit recipe", which opens `RecipeIngredientSheet` for
  * this line nested inside this one (rather than closing this sheet first) —
  * it has nothing typed to lose underneath, so there's no reason to make the
@@ -231,7 +233,7 @@ export function RecipeNutritionSheet({ visible, reading, recipeName, servings, o
           ? weighableLine(line.quantity, line.prep, line.nutrition, line.item.name)
           : null,
       // Null whenever a food's figures (or a scale) could still answer the
-      // line — set only for the two refusals that are never about the food,
+      // line — set only for the refusal that is never about the food,
       // where nothing offered below can help and the fix is rewriting the
       // recipe's own line instead. See `unfixableQuantityReason`.
       unfixable: line.state === 'unmeasured' ? unfixableQuantityReason(line.quantity) : null,
@@ -520,9 +522,7 @@ export function RecipeNutritionSheet({ visible, reading, recipeName, servings, o
                       ? `No weight recorded for ${weighing.text}.`
                       : unfixable === 'noAmount'
                         ? "This amount doesn't have a number in it, so there's nothing to relate to a weight. Edit the ingredient in the recipe to give it one, like \"3 cloves\" instead of \"several\"."
-                        : unfixable === 'countedContainer'
-                          ? "This is a count of containers, not how much is in one, so there's no figure that answers it. Edit the ingredient in the recipe to say how much one holds."
-                          : "This amount can't be matched to its figures. Check the serving size on them."}
+                        : "This amount can't be matched to its figures. Check the serving size on them."}
                 </Text>
 
                 {weighingId === line.id && weighing ? (

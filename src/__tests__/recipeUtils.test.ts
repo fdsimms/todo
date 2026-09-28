@@ -5,6 +5,8 @@ import {
   splitPrep,
   ingredientsFromText,
   mergeIngredients,
+  duplicateIngredientIn,
+  blockedIngredientNote,
   remapIngredientKeyIn,
   describeRecipe,
   cleanRecipeName,
@@ -521,6 +523,17 @@ describe('ingredientsFromText', () => {
   it('skips blank lines', () => {
     expect(ingredientsFromText('Milk\n\n\nEggs')).toHaveLength(2);
   });
+
+  it('keeps a second use of an ingredient that says what it is for (#2917)', () => {
+    // "flour for dusting" is a second use, not the dough's flour typed again.
+    const result = ingredientsFromText('2 cups flour\nflour for dusting\n3 cloves garlic, minced\n2 cloves garlic, sliced');
+    expect(result.map(i => [i.name, i.quantity, i.prep, i.purpose])).toEqual([
+      ['flour', '2 cups', null, null],
+      ['flour', '', null, 'dusting'],
+      ['garlic', '3 cloves', 'minced', null],
+      ['garlic', '2 cloves', 'sliced', null],
+    ]);
+  });
 });
 
 describe('mergeIngredients', () => {
@@ -543,6 +556,67 @@ describe('mergeIngredients', () => {
   it('dedupes within the incoming batch too', () => {
     const result = mergeIngredients([], [ing('Salt'), ing('salt')]);
     expect(result).toHaveLength(1);
+  });
+
+  it('keeps the same ingredient under two headings as two rows (#2917)', () => {
+    // Carnitas: garlic in the marinade and again in the sauce. Keyed on the
+    // name alone, the sauce's garlic vanished and the shop bought 3 cloves.
+    const marinade = ing('garlic', { quantity: '3 cloves', section: 'For the marinade' });
+    const sauce = ing('garlic', { quantity: '2 cloves', section: 'For the sauce' });
+
+    const imported = mergeIngredients([], [marinade, sauce]);
+    expect(imported.map(i => [i.section, i.quantity])).toEqual([
+      ['For the marinade', '3 cloves'],
+      ['For the sauce', '2 cloves'],
+    ]);
+    // And typed by hand onto a recipe that already has the marinade's.
+    expect(mergeIngredients([marinade], [sauce])).toHaveLength(2);
+  });
+
+  it('keeps the same ingredient with a different prep or purpose as two rows', () => {
+    const minced = ing('garlic', { prep: 'minced' });
+    expect(mergeIngredients([minced], [ing('garlic', { prep: 'sliced' })])).toHaveLength(2);
+    expect(mergeIngredients([ing('flour')], [ing('flour', { purpose: 'for dusting' })])).toHaveLength(2);
+    // Prep and purpose are notes, so case alone doesn't make a second use.
+    expect(mergeIngredients([minced], [ing('Garlic', { nameKey: 'garlic', prep: 'Minced ' })])).toHaveLength(1);
+  });
+
+  it('still treats one heading, one prep and a new amount as the same line', () => {
+    // A correction is as likely as a second use, and the existing row's amount
+    // may have been set by hand. The add field names the blocking row instead.
+    const existing = ing('garlic', { quantity: '3 cloves', section: 'For the sauce' });
+    const again = ing('garlic', { quantity: '2 cloves', section: 'For the sauce' });
+    expect(mergeIngredients([existing], [again])).toHaveLength(1);
+  });
+});
+
+describe('duplicateIngredientIn', () => {
+  it('names the row that would block an add, and nothing when it would go in', () => {
+    const marinade = ing('garlic', { quantity: '3 cloves', section: 'For the marinade' });
+    const onion = ing('onion');
+
+    expect(duplicateIngredientIn([onion, marinade], ing('garlic', { section: 'For the marinade' }))).toBe(marinade);
+    expect(duplicateIngredientIn([onion, marinade], ing('garlic', { section: 'For the sauce' }))).toBeNull();
+  });
+});
+
+describe('blockedIngredientNote', () => {
+  it('names the one row a refused line collided with, and where it sits', () => {
+    const marinade = ing('garlic', { quantity: '3 cloves', section: 'For the marinade' });
+    expect(blockedIngredientNote([marinade], 0))
+      .toBe('Already in this recipe under For the marinade: 3 cloves garlic. Edit that line to change it.');
+    expect(blockedIngredientNote([ing('salt')], 0))
+      .toBe('Already in this recipe: salt. Edit that line to change it.');
+  });
+
+  it('lists what a paste skipped', () => {
+    const rows = [ing('garlic', { quantity: '3 cloves' }), ing('olive oil')];
+    expect(blockedIngredientNote(rows, 4)).toBe('Skipped 2 lines already in this recipe: 3 cloves garlic, olive oil.');
+    expect(blockedIngredientNote([rows[1]], 4)).toBe('Skipped 1 line already in this recipe: olive oil.');
+  });
+
+  it('says nothing when nothing was blocked', () => {
+    expect(blockedIngredientNote([], 0)).toBeNull();
   });
 });
 

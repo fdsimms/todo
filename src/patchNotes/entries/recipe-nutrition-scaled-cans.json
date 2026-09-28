@@ -1,0 +1,4 @@
+{
+  "message": "Recipe nutrition now counts a canned ingredient correctly when you scale the recipe. A line like \"14 oz can\" used to count as one can at 1.5x and drop out entirely at 2x. Lines like \"2 14 oz cans\" now count too.",
+  "date": "2026-09-28"
+}
