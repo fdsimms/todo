@@ -24,8 +24,10 @@ import {
 import type { DragScroller } from '../utils/fabDrop';
 import { useTheme } from '../theme/ThemeContext';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
+import { useScrollToTopVisibility } from '../hooks/useScrollToTopVisibility';
 import { strandedScrollOffset } from '../utils/scrollClamp';
 import { haptics } from '../utils/haptics';
+import { ScrollToTopButton } from './ScrollToTopButton';
 
 const ROW_SHIFT_DURATION = 180;
 
@@ -245,6 +247,17 @@ interface Props<T> {
    * — offsets in, offsets out — and knows nothing about rows.
    */
   rowScrollerRef?: React.Ref<RowScroller>;
+  /**
+   * Adds a floating "back to top" button (see ScrollToTopButton) that fades
+   * in once the list has been scrolled down past a threshold, for pages with
+   * enough content that finding your way back up means a long swipe. `bottom`
+   * should match whatever inset the screen's own Fab already clears
+   * (`insets.bottom + tab bar height`, etc.) — the button sits in the corner
+   * opposite the Fab's own (`fabHand`), so the two line up without
+   * overlapping. Omit on a list short enough, or hosted somewhere small
+   * enough (a sheet), that scrolling back to the top is never a chore.
+   */
+  scrollToTop?: { bottom: number };
 }
 
 const DEFAULT_ROW_HEIGHT = 52;
@@ -295,8 +308,10 @@ export function ReorderableList<T>({
   scrollEnabled = true,
   scrollControlRef,
   rowScrollerRef,
+  scrollToTop,
 }: Props<T>) {
   const { shadows } = useTheme();
+  const scrollToTopVisibility = useScrollToTopVisibility();
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   // The committed order, rendered locally the instant a drop lands. This is
   // set in the SAME state batch as the drag reset, so the first frame after
@@ -507,6 +522,18 @@ export function ReorderableList<T>({
     scrollRef.current?.scrollTo({ y: Math.max(0, y - ROW_SCROLL_MARGIN), animated: true });
   }, [scrollRef]);
 
+  // A pending scrollToKey would fight this the moment its row laid out, so
+  // going to the top cancels it. scrollOffsetRef is left to the scroll
+  // events this animation emits rather than being zeroed here — unlike the
+  // instant scrollToOffset above, an animated scroll isn't where it was
+  // asked to go yet, and an interrupted one never gets there at all. Shared
+  // by the imperative handle below and the floating button, so the two can't
+  // drift apart.
+  const doScrollToTop = useCallback(() => {
+    clearPendingScroll();
+    scrollRef.current?.scrollTo({ y: 0, animated: true });
+  }, [scrollRef]);
+
   useImperativeHandle(rowScrollerRef, () => ({
     scrollToKey: (key: string) => {
       clearPendingScroll();
@@ -518,16 +545,8 @@ export function ReorderableList<T>({
       pendingScrollKeyRef.current = key;
       pendingScrollTimerRef.current = setTimeout(clearPendingScroll, PENDING_SCROLL_TTL);
     },
-    // A pending scrollToKey would fight this the moment its row laid out, so
-    // going to the top cancels it. scrollOffsetRef is left to the scroll
-    // events this animation emits rather than being zeroed here — unlike the
-    // instant scrollToOffset above, an animated scroll isn't where it was
-    // asked to go yet, and an interrupted one never gets there at all.
-    scrollToTop: () => {
-      clearPendingScroll();
-      scrollRef.current?.scrollTo({ y: 0, animated: true });
-    },
-  }), [scrollRowIntoView, scrollRef]);
+    scrollToTop: doScrollToTop,
+  }), [scrollRowIntoView, doScrollToTop]);
 
   const stopAutoscroll = () => {
     if (autoscrollTimerRef.current !== null) {
@@ -1029,6 +1048,7 @@ export function ReorderableList<T>({
 
   const handleScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     scrollOffsetRef.current = e.nativeEvent.contentOffset.y;
+    if (scrollToTop) scrollToTopVisibility.onScroll(e);
     if (!onEndReachedRef.current) return;
     const distanceFromEnd = contentHeightRef.current - viewportHeightRef.current - scrollOffsetRef.current;
     if (distanceFromEnd < onEndReachedThresholdRef.current) {
@@ -1231,6 +1251,14 @@ export function ReorderableList<T>({
         >
           {renderItem({ item: activeItem, drag: () => {}, isActive: true })}
         </Animated.View>
+      )}
+
+      {scrollToTop && (
+        <ScrollToTopButton
+          visible={scrollToTopVisibility.visible}
+          bottom={scrollToTop.bottom}
+          onPress={doScrollToTop}
+        />
       )}
     </View>
   );

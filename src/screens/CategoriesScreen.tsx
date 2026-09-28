@@ -72,6 +72,7 @@ export function CategoriesScreen() {
         <ReorderableList
           data={allCategories}
           keyExtractor={c => c}
+          scrollToTop={{ bottom: insets.bottom + tabBarHeight + spacing.md }}
           contentContainerStyle={styles.list}
           ListFooterComponent={<View style={{ height: tabBarHeight + FAB_SIZE + spacing.xl }} />}
           placeholderStyle={styles.dropSlot}

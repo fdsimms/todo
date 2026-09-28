@@ -1547,6 +1547,7 @@ export function ProjectDetailScreen() {
             scrollEnabled={!painting && !draggingSubtask && !fabDragging && draggingSectionId === null}
             scrollControlRef={scrollControl}
             rowScrollerRef={listScroller}
+            scrollToTop={{ bottom: insets.bottom + spacing.xl }}
             data={shownListItems}
             keyExtractor={projectListItemKey}
             // Two rows need lifting over their neighbours: an expanded row,

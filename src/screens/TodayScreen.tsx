@@ -77,6 +77,7 @@ import { useWidgetCompletionStore } from '../store/useWidgetCompletionStore';
 import { useTaskSelection } from '../hooks/useTaskSelection';
 import { featureHidden, featureShown, visibleLenses } from '../utils/simpleMode';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
+import { useScrollToTopVisibility } from '../hooks/useScrollToTopVisibility';
 import { useElevatedCellRenderer } from '../hooks/useElevatedCellRenderer';
 import { useMealPlanNudgeProgress } from '../hooks/useMealPlanNudgeProgress';
 import { useCategoryStore } from '../store/useCategoryStore';
@@ -93,6 +94,7 @@ import { TaskGroupBody } from '../components/TaskGroupBody';
 import { TaskGroupTray } from '../components/TaskGroupTray';
 import { TaskGroupEditor } from '../components/TaskGroupEditor';
 import { ReorderableList, type RowScroller } from '../components/ReorderableList';
+import { ScrollToTopButton } from '../components/ScrollToTopButton';
 import { PaintSelectionProvider } from '../components/PaintSelection';
 import { GroupDropTarget } from '../components/GroupDropTarget';
 import {
@@ -706,6 +708,8 @@ export function TodayScreen() {
   // each needs its own ref and its own record of where it last settled.
   const unscheduledScroll = useKeyboardInsetScroll<FlatList>();
   const inboxScroll = useKeyboardInsetScroll<FlatList>();
+  const unscheduledScrollTop = useScrollToTopVisibility();
+  const inboxScrollTop = useScrollToTopVisibility();
   // Lifts the expanded row's cell above the row below it — Unscheduled and
   // Inbox are genuine FlatLists, unlike Today/Later's own ReorderableList
   // (see useElevatedCellRenderer for why that one needs no equivalent).
@@ -3987,6 +3991,7 @@ export function TodayScreen() {
           <ReorderableList
             scrollEnabled={!painting && !draggingSubtask}
             rowScrollerRef={laterRowScroller}
+            scrollToTop={{ bottom: insets.bottom + 64 }}
             data={laterDraggableData}
             keyExtractor={item => item.key}
             // See the Today list's own note: an expanded row's card shadow
@@ -4114,6 +4119,7 @@ export function TodayScreen() {
             scrollEnabled={!painting && !fabDragging && !draggingStackChildGroupId && !draggingSubtask && !draggingPin}
             scrollControlRef={todayScrollControl}
             rowScrollerRef={todayRowScroller}
+            scrollToTop={{ bottom: insets.bottom + 64 }}
             data={draggableData}
             keyExtractor={listItemKey}
             renderItem={renderItem}
@@ -4340,6 +4346,8 @@ export function TodayScreen() {
                 unscheduledScroll.ref.current?.scrollToIndex({ index: info.index, animated: true, viewPosition: 0.3 });
               }, 100);
             }}
+            onScroll={unscheduledScrollTop.onScroll}
+            scrollEventThrottle={16}
             {...unscheduledScroll.props}
             renderItem={({ item }) => {
               const subs = subtasksByParent.get(item.id) ?? NO_SUBTASKS;
@@ -4434,6 +4442,8 @@ export function TodayScreen() {
                 inboxScroll.ref.current?.scrollToIndex({ index: info.index, animated: true, viewPosition: 0.3 });
               }, 100);
             }}
+            onScroll={inboxScrollTop.onScroll}
+            scrollEventThrottle={16}
             {...inboxScroll.props}
             renderItem={({ item }) => {
               const content =
@@ -4493,6 +4503,24 @@ export function TodayScreen() {
         </FabDropZoneProvider>
         </PaintSelectionProvider>
         </View>
+
+        {/* Today and Later get their own scroll-to-top button from
+            ReorderableList's scrollToTop prop; Unscheduled and Inbox are
+            plain FlatLists, so they need one wired by hand. */}
+        {viewMode === 'unscheduled' && (
+          <ScrollToTopButton
+            visible={unscheduledScrollTop.visible}
+            bottom={insets.bottom + 64}
+            onPress={() => unscheduledScroll.ref.current?.scrollToOffset({ offset: 0, animated: true })}
+          />
+        )}
+        {viewMode === 'inbox' && (
+          <ScrollToTopButton
+            visible={inboxScrollTop.visible}
+            bottom={insets.bottom + 64}
+            onPress={() => inboxScroll.ref.current?.scrollToOffset({ offset: 0, animated: true })}
+          />
+        )}
 
         {!selectionMode && (
           <AddTaskFabWithDropLabel

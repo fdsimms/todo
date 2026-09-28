@@ -621,6 +621,7 @@ export function ProjectsScreen() {
         <ReorderableList
           data={projectListItems}
           keyExtractor={item => item.key}
+          scrollToTop={{ bottom: insets.bottom + tabBarHeight + spacing.md }}
           // The user can't scroll during an add-button drag (the button's
           // responder has the touch); the drag scrolls it instead, through the
           // control below. Same while a paint gesture owns the touch — see

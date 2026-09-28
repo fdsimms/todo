@@ -97,6 +97,7 @@ export function SavedViewsScreen() {
         data={views}
         keyExtractor={v => v.id}
         onReorder={handleReorder}
+        scrollToTop={{ bottom: insets.bottom + spacing.lg }}
         contentContainerStyle={[styles.listContent, views.length === 0 && styles.emptyContent]}
         renderItem={({ item, drag, isActive }) => {
           const count = counts.get(item.id) ?? 0;

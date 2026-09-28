@@ -1469,6 +1469,7 @@ export function GroceryScreen() {
         scrollEnabled={!fabDragging}
         scrollControlRef={scrollControl}
         rowScrollerRef={rowScroller}
+        scrollToTop={{ bottom: insets.bottom + tabBarHeight + spacing.md }}
         // dragTick, not tap: a fast drag crosses several rows between frames
         // and unthrottled ticks run together into one long buzz. The lift
         // itself is fired by ReorderableList.
