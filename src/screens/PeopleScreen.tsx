@@ -232,6 +232,7 @@ export function PeopleScreen() {
           <ReorderableList
             data={visiblePeople}
             keyExtractor={p => p.id}
+            scrollToTop={{ bottom: insets.bottom + tabBarHeight + spacing.md }}
             contentContainerStyle={styles.list}
             // A paint gesture owns the touch for its duration — see the note in
             // PaintSelectionProvider on why the list can't be allowed to scroll

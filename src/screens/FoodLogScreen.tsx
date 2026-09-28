@@ -1017,6 +1017,7 @@ export function FoodLogScreen() {
             keyExtractor={item =>
               item.type === 'entry' ? `entry-${item.entry.id}` : `${item.type}-${item.slot ?? 'none'}`
             }
+            scrollToTop={{ bottom: tabBarHeight + spacing.md }}
             // A paint gesture owns the touch for its duration, same reason
             // every other selectable list turns scrolling off for one.
             scrollEnabled={!painting}

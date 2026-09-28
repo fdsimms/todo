@@ -286,6 +286,7 @@ export function TemplatesScreen() {
         // to be told directly (see PaintSelectionProvider).
         scrollEnabled={!fabDragging && !painting}
         scrollControlRef={scrollControl}
+        scrollToTop={{ bottom: insets.bottom + tabBarHeight + spacing.md }}
         onReorder={data => {
           const { templateIds, categoryUpdates } = resolveTemplateDrop(data, templateCategoryOrder);
           reorderTemplatesWithCategoryUpdates(templateIds, categoryUpdates);

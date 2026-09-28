@@ -323,6 +323,7 @@ export function TemplateDetailScreen() {
           if (!templateId) return;
           reorderItems(templateId, data.map(i => i.id));
         }}
+        scrollToTop={{ bottom: insets.bottom + spacing.xl }}
         contentContainerStyle={
           (template?.items.length ?? 0) === 0
             ? styles.emptyContainer

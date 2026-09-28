@@ -24,8 +24,10 @@ import {
 import type { DragScroller } from '../utils/fabDrop';
 import { useTheme } from '../theme/ThemeContext';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
+import { useScrollToTopVisibility } from '../hooks/useScrollToTopVisibility';
 import { strandedScrollOffset } from '../utils/scrollClamp';
 import { haptics } from '../utils/haptics';
+import { ScrollToTopButton } from './ScrollToTopButton';
 
 const ROW_SHIFT_DURATION = 180;
 
@@ -245,6 +247,40 @@ interface Props<T> {
    * — offsets in, offsets out — and knows nothing about rows.
    */
   rowScrollerRef?: React.Ref<RowScroller>;
+  /**
+   * Adds a floating "back to top" button (see ScrollToTopButton) that fades
+   * in once the list has been scrolled down past a threshold, for pages with
+   * enough content that finding your way back up means a long swipe. `bottom`
+   * should match whatever inset the screen's own Fab already clears
+   * (`insets.bottom + tab bar height`, etc.) — the button sits in the corner
+   * opposite the Fab's own (`fabHand`), so the two line up without
+   * overlapping. Omit on a list short enough, or hosted somewhere small
+   * enough (a sheet), that scrolling back to the top is never a chore.
+   */
+  scrollToTop?: { bottom: number };
+  /**
+   * Filled with a handle that does what `dropDisabled` + `dropIntoIndex` /
+   * `dropIntoHeader` do, without the caller re-rendering to say so.
+   * `capture(index)` freezes the list and absorbs the drop into that row,
+   * `capture('header')` into `ListHeaderComponent`, and `capture(null)` lets
+   * it go.
+   *
+   * It exists because a caller aiming a drag at a row (a task onto a
+   * section) otherwise has to hold the target in its own state, and on a
+   * screen that renders this list inline, every crossing re-rendered the
+   * whole screen: every row's renderItem and every sheet mounted beside the
+   * list. That was the stutter dragging a line into a section on a project's
+   * page. The highlight on the target row is the caller's to drive the same
+   * way (a channel its row wrapper subscribes to), so nothing else renders.
+   *
+   * ORed with the props rather than replacing them, and cleared at the start
+   * of every drag, so a caller that never touches it sees no change.
+   */
+  dropCaptureRef?: React.Ref<DropCapture>;
+}
+
+export interface DropCapture {
+  capture: (into: number | 'header' | null) => void;
 }
 
 const DEFAULT_ROW_HEIGHT = 52;
@@ -295,8 +331,11 @@ export function ReorderableList<T>({
   scrollEnabled = true,
   scrollControlRef,
   rowScrollerRef,
+  scrollToTop,
+  dropCaptureRef,
 }: Props<T>) {
   const { shadows } = useTheme();
+  const scrollToTopVisibility = useScrollToTopVisibility();
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   // The committed order, rendered locally the instant a drop lands. This is
   // set in the SAME state batch as the drag reset, so the first frame after
@@ -359,6 +398,11 @@ export function ReorderableList<T>({
   const dropDisabledRef = useRef(dropDisabled);
   const dropIntoIndexRef = useRef(dropIntoIndex);
   dropIntoIndexRef.current = dropIntoIndex;
+  // The dropCaptureRef half of the same values. Kept apart from the
+  // prop-backed refs here, which are reassigned on every render and would
+  // otherwise wipe a capture the moment anything re-rendered mid-drag.
+  const capturedRef = useRef(false);
+  const capturedIntoRef = useRef<number | 'header' | null>(null);
   const dropIntoHeaderRef = useRef(dropIntoHeader);
   dropIntoHeaderRef.current = dropIntoHeader;
   // Measured height of ListHeaderComponent, so a drop target over it can be
@@ -507,6 +551,18 @@ export function ReorderableList<T>({
     scrollRef.current?.scrollTo({ y: Math.max(0, y - ROW_SCROLL_MARGIN), animated: true });
   }, [scrollRef]);
 
+  // A pending scrollToKey would fight this the moment its row laid out, so
+  // going to the top cancels it. scrollOffsetRef is left to the scroll
+  // events this animation emits rather than being zeroed here — unlike the
+  // instant scrollToOffset above, an animated scroll isn't where it was
+  // asked to go yet, and an interrupted one never gets there at all. Shared
+  // by the imperative handle below and the floating button, so the two can't
+  // drift apart.
+  const doScrollToTop = useCallback(() => {
+    clearPendingScroll();
+    scrollRef.current?.scrollTo({ y: 0, animated: true });
+  }, [scrollRef]);
+
   useImperativeHandle(rowScrollerRef, () => ({
     scrollToKey: (key: string) => {
       clearPendingScroll();
@@ -518,16 +574,8 @@ export function ReorderableList<T>({
       pendingScrollKeyRef.current = key;
       pendingScrollTimerRef.current = setTimeout(clearPendingScroll, PENDING_SCROLL_TTL);
     },
-    // A pending scrollToKey would fight this the moment its row laid out, so
-    // going to the top cancels it. scrollOffsetRef is left to the scroll
-    // events this animation emits rather than being zeroed here — unlike the
-    // instant scrollToOffset above, an animated scroll isn't where it was
-    // asked to go yet, and an interrupted one never gets there at all.
-    scrollToTop: () => {
-      clearPendingScroll();
-      scrollRef.current?.scrollTo({ y: 0, animated: true });
-    },
-  }), [scrollRowIntoView, scrollRef]);
+    scrollToTop: doScrollToTop,
+  }), [scrollRowIntoView, doScrollToTop]);
 
   const stopAutoscroll = () => {
     if (autoscrollTimerRef.current !== null) {
@@ -731,7 +779,7 @@ export function ReorderableList<T>({
     const ai = activeIndexRef.current;
     // Frozen: leave hoverIndex wherever the caller's capture left it (its own
     // slot, per the effect below) so nothing shifts under the card.
-    if (dropDisabledRef.current) return;
+    if (dropDisabledRef.current || capturedRef.current) return;
     if (ai === null) return;
     // Measured from the card against the row's live resting slot, NOT from the
     // finger's own travel: the list can re-lay out mid-drag (a category drag
@@ -759,11 +807,10 @@ export function ReorderableList<T>({
   // Entering the frozen state closes any gap that was open (rows animate back
   // to rest and the drop slot returns to the dragged row's own position);
   // leaving it re-targets from wherever the finger currently is.
-  useEffect(() => {
-    dropDisabledRef.current = dropDisabled;
+  const applyFrozen = (frozen: boolean) => {
     const ai = activeIndexRef.current;
     if (ai === null) return;
-    if (dropDisabled) {
+    if (frozen) {
       if (hoverIndexRef.current !== ai) {
         hoverIndexRef.current = ai;
         animateRowsForHover(ai);
@@ -771,8 +818,22 @@ export function ReorderableList<T>({
     } else {
       updateHover();
     }
+  };
+  useEffect(() => {
+    dropDisabledRef.current = dropDisabled;
+    applyFrozen(dropDisabled || capturedRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dropDisabled]);
+
+  useImperativeHandle(dropCaptureRef, () => ({
+    capture: (into: number | 'header' | null) => {
+      const next = into !== null;
+      capturedIntoRef.current = into;
+      if (next === capturedRef.current) return;
+      capturedRef.current = next;
+      applyFrozen(next || dropDisabledRef.current);
+    },
+  }));
 
   const maybeAutoscroll = () => {
     const ai = activeIndexRef.current;
@@ -820,8 +881,9 @@ export function ReorderableList<T>({
     // if the caller claimed the drop, otherwise into the open gap (the same
     // content position the displaced rows opened up). Committing only after
     // the card covers the destination masks the overlay→row swap.
-    const into = dropIntoIndexRef.current;
-    const intoHeader = dropIntoHeaderRef.current;
+    const captured = capturedIntoRef.current;
+    const into = typeof captured === 'number' ? captured : dropIntoIndexRef.current;
+    const intoHeader = captured === 'header' || dropIntoHeaderRef.current;
     const intoItem = into !== null && into >= 0 && into !== ai ? dataRef.current[into] : undefined;
     const absorbed = intoItem !== undefined || intoHeader;
     const slotContentY = intoHeader
@@ -943,6 +1005,8 @@ export function ReorderableList<T>({
 
   const startDrag = (index: number, key: string) => {
     if (activeIndexRef.current !== null) return;
+    capturedRef.current = false;
+    capturedIntoRef.current = null;
     const rowTop = layoutYRef.current.get(key) ?? 0;
     // Clear any leftover transform from the previous drag before these values
     // become live again (rows only apply them while isDragging is true).
@@ -1029,6 +1093,7 @@ export function ReorderableList<T>({
 
   const handleScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     scrollOffsetRef.current = e.nativeEvent.contentOffset.y;
+    if (scrollToTop) scrollToTopVisibility.onScroll(e);
     if (!onEndReachedRef.current) return;
     const distanceFromEnd = contentHeightRef.current - viewportHeightRef.current - scrollOffsetRef.current;
     if (distanceFromEnd < onEndReachedThresholdRef.current) {
@@ -1231,6 +1296,14 @@ export function ReorderableList<T>({
         >
           {renderItem({ item: activeItem, drag: () => {}, isActive: true })}
         </Animated.View>
+      )}
+
+      {scrollToTop && (
+        <ScrollToTopButton
+          visible={scrollToTopVisibility.visible}
+          bottom={scrollToTop.bottom}
+          onPress={doScrollToTop}
+        />
       )}
     </View>
   );

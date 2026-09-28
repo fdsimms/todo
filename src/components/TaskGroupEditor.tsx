@@ -28,6 +28,8 @@ import { EditorSheet } from './EditorSheet';
 import { InlineAction } from './InlineAction';
 import { PinIcon } from './PinIcon';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { useSheetMount } from '../hooks/useSheetMount';
+import { useSheetSubject } from '../hooks/useSheetSubject';
 import { SheetHeader } from './SheetHeader';
 import { TaskEditor, type TaskDraft } from './TaskEditor';
 import { QuickAddModal } from './QuickAddModal';
@@ -78,7 +80,14 @@ interface Props {
   projectId?: string | null;
 }
 
-export function TaskGroupEditor({ visible, group, isNew, onClose, projectId }: Props) {
+export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, projectId }: Props) {
+  // Every caller clears `group` in the same commit it lowers `visible`, and
+  // this component used to return null the moment it did: the open sheet was
+  // torn out of the tree rather than closed, which skips SheetModal's ordered
+  // close (see useSheetMount) and left the screen unresponsive for seconds
+  // after Done. It also meant every open mounted the whole sheet from scratch.
+  // Holding the last group keeps it mounted from its first open onward.
+  const group = useSheetSubject(liveGroup);
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -135,9 +144,18 @@ export function TaskGroupEditor({ visible, group, isNew, onClose, projectId }: P
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [editingDraft, setEditingDraft] = useState<Partial<TaskDraft> | null>(null);
   const titleInputRef = useRef<TextInput>(null);
+  // The task editor and quick add are nested here for the presentation reason
+  // noted at the footer, and each is a large component that runs all of its
+  // hooks even while hidden. Mounted on first use rather than on every open
+  // of this sheet, which is most of what made opening it slow.
+  const mountTaskEditor = useSheetMount(!!editingTask || !!editingDraft);
+  const mountQuickAdd = useSheetMount(quickAddVisible);
 
+  // Seeded on each open as well as on a new group: the sheet stays mounted
+  // between opens (see useSheetSubject above), so reopening the same stack
+  // must not hand back the fields and pickers it was last closed with.
   useEffect(() => {
-    if (!group) return;
+    if (!group || !visible) return;
     setTitle(group.title);
     setNotes(group.notes);
     setTags(group.tags);
@@ -147,7 +165,7 @@ export function TaskGroupEditor({ visible, group, isNew, onClose, projectId }: P
     setShowExistingPicker(false);
     clearExistingSearch();
     setOpenFields({});
-  }, [group]);
+  }, [group, visible]);
 
   const fieldOpen = (key: FieldKey) => openFields[key] ?? false;
   const toggleField = (key: FieldKey) => setOpenFields(prev => ({ ...prev, [key]: !prev[key] }));
@@ -335,19 +353,19 @@ export function TaskGroupEditor({ visible, group, isNew, onClose, projectId }: P
       */
       footer={
         <>
-          <TaskEditor
+          {mountTaskEditor && <TaskEditor
             visible={!!editingTask || !!editingDraft}
             task={editingTask}
             initialDraft={editingDraft}
             onClose={() => { setEditingTask(null); setEditingDraft(null); }}
-          />
+          />}
           {/*
             Also inside this sheet's own Modal, for the same reason as
             TaskEditor above — raised by the "New task" InlineAction rather
             than a bare inline field, so a long roster's add field doesn't
             sit right where the keyboard covers it.
           */}
-          <QuickAddModal
+          {mountQuickAdd && <QuickAddModal
             visible={quickAddVisible}
             onClose={() => setQuickAddVisible(false)}
             context="unscheduled"
@@ -364,7 +382,7 @@ export function TaskGroupEditor({ visible, group, isNew, onClose, projectId }: P
               setEditingTask(null);
               setEditingDraft(draft);
             }}
-          />
+          />}
         </>
       }
       header={

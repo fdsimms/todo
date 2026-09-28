@@ -10,7 +10,7 @@ import {
   type GestureResponderEvent,
 } from 'react-native';
 import { SheetModal } from '../components/SheetModal';
-import { ReorderableList, type RowScroller } from '../components/ReorderableList';
+import { ReorderableList, type RowScroller, type DropCapture } from '../components/ReorderableList';
 import { SortableList } from '../components/SortableList';
 import { ProgressBar } from '../components/ProgressBar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -45,6 +45,7 @@ import { TaskGroupHeader } from '../components/TaskGroupHeader';
 import { TaskGroupBody } from '../components/TaskGroupBody';
 import { TaskGroupTray } from '../components/TaskGroupTray';
 import { GroupDropTarget } from '../components/GroupDropTarget';
+import { useDropTargetAimed, useDropTargetChannel, type DropTargetChannel } from '../components/DropTargetChannel';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { confirmBulkSetWhen } from '../utils/scheduleMovePrompt';
 import { alphabeticalPageOrder, buildProjectListItems, filterProjectListItems, orderWithInserted, projectCopyText, type ProjectListItem } from '../utils/projectStacks';
@@ -176,25 +177,26 @@ function AddProjectTaskFabWithDropLabel({
 }
 
 // A section row, lit by either drag that can land in it: an existing task
-// dragged onto it (`active`), or the add button aimed at it — the same
+// dragged onto it (`dragTarget`), or the add button aimed at it — the same
 // wrapper Today's own GroupDropTargetRow gives a stack, so a section here
 // gets the same border the add button lights up a stack with there.
 function GroupDropTargetRow({
   channel,
   groupId,
-  active,
+  dragTarget,
   children,
 }: {
   channel: FabIntentChannel;
   groupId: string;
-  active: boolean;
+  dragTarget: DropTargetChannel;
   children: React.ReactNode;
 }) {
   const aimed = useFabIntentSelector(
     channel,
     intent => intent?.kind === 'joinGroup' && intent.groupId === groupId,
   );
-  return <GroupDropTarget active={active || aimed}>{children}</GroupDropTarget>;
+  const dragAimed = useDropTargetAimed(dragTarget, groupId);
+  return <GroupDropTarget active={dragAimed || aimed}>{children}</GroupDropTarget>;
 }
 
 /** A pasted list's lines, without the bullets it often carries. */
@@ -342,8 +344,14 @@ export function ProjectDetailScreen() {
   // is being dragged — same mechanism as TodayScreen's joinGroupIntentRef.
   // Set from onDragMove whenever the dragged card sits over a group, read
   // once at drop time in onDragEnd.
+  // Not screen state: every crossing re-rendered this whole screen, every
+  // row and every sheet beside the list, which is what made dragging a line
+  // into a section stutter. The section's highlight reads joinTargetChannel
+  // and the list's freeze goes through dropCapture, so a crossing repaints
+  // the one section it lit (see DropTargetChannel).
   const joinGroupIntentRef = React.useRef<string | null>(null);
-  const [joinGroupIntentId, setJoinGroupIntentId] = useState<string | null>(null);
+  const joinTargetChannel = useDropTargetChannel();
+  const dropCapture = React.useRef<DropCapture>(null);
   // Task the drop just handed to a group (set in onDragEnd, which runs before
   // onReorder), so the placement pass below leaves it alone — it belongs to
   // the group now, not to whatever slot it was let go over.
@@ -1557,6 +1565,7 @@ export function ProjectDetailScreen() {
             scrollEnabled={!painting && !draggingSubtask && !fabDragging && draggingSectionId === null}
             scrollControlRef={scrollControl}
             rowScrollerRef={listScroller}
+            scrollToTop={{ bottom: insets.bottom + spacing.xl }}
             data={shownListItems}
             keyExtractor={projectListItemKey}
             // Two rows need lifting over their neighbours: an expanded row,
@@ -1605,7 +1614,8 @@ export function ProjectDetailScreen() {
             onDragEnd={({ committed }) => {
               const joinGroupId = joinGroupIntentRef.current;
               joinGroupIntentRef.current = null;
-              setJoinGroupIntentId(null);
+              joinTargetChannel.publish(null);
+              dropCapture.current?.capture(null);
               // The join lands here rather than in onReorder: a drop onto a
               // group leaves the list order untouched (dropDisabled stops it
               // opening a gap), and onReorder stays silent when nothing moved.
@@ -1628,19 +1638,16 @@ export function ProjectDetailScreen() {
               const nextId = target ? target.id : null;
               if (nextId !== joinGroupIntentRef.current) {
                 joinGroupIntentRef.current = nextId;
-                setJoinGroupIntentId(nextId);
+                joinTargetChannel.publish(nextId);
+                // Aiming at a group takes the drag over: the list stops
+                // opening a reorder gap, so the target stays put under the
+                // card instead of sliding away from the finger chasing it,
+                // and a drop settles into it.
+                dropCapture.current?.capture(nextId === null ? null : overIndex);
                 if (nextId) haptics.impactLight();
               }
             }}
-            // Aiming at a group takes the drag over: the list stops opening a
-            // reorder gap, so the target stays put under the card instead of
-            // sliding away from the finger chasing it.
-            dropDisabled={joinGroupIntentId !== null}
-            dropIntoIndex={
-              joinGroupIntentId === null
-                ? null
-                : projectListItems.findIndex(i => i.type === 'group' && i.group.id === joinGroupIntentId)
-            }
+            dropCaptureRef={dropCapture}
             // Only here to record which row is in flight (onDragMove reads
             // it); every draggable row on this list may go anywhere in it.
             dragRange={(rangeData, activeIndex) => {
@@ -1888,7 +1895,7 @@ export function ProjectDetailScreen() {
                 const stackExpanded = empty || !group.collapsed;
                 return (
                   <FabDropZone zone={zone}>
-                  <GroupDropTargetRow channel={fabIntentChannel} groupId={group.id} active={joinGroupIntentId === group.id}>
+                  <GroupDropTargetRow channel={fabIntentChannel} groupId={group.id} dragTarget={joinTargetChannel}>
                   <TaskGroupTray>
                     <TaskGroupHeader
                       selectionMode={selectionMode}
