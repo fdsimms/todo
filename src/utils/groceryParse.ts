@@ -252,8 +252,9 @@ export function parseGroceryInput(raw: string): { name: string; quantity: string
 const PREP_SPLIT = /^(.*?),\s*(.+)$/;
 
 // A small, deliberately curated whitelist of leading prep words safe enough
-// to split unconditionally — unlike the general leading-word case above,
-// these essentially never have a standalone-product reading. Explicitly
+// to split — unlike the general leading-word case above, these rarely have a
+// standalone-product reading, and the few that do are listed just below
+// (LEADING_PREP_PRODUCTS) and left whole. Explicitly
 // excludes "sliced" and "ground" (per the issue this whitelist came from):
 // "sliced almonds" and "ground beef" are real shelf items, so guessing on
 // those costs the first word of the name, the exact failure this file is
@@ -264,6 +265,30 @@ const LEADING_PREP_SPLIT = new RegExp(
   `^(${LEADING_PREP_WORDS.join('|')})\\s+(.+)$`,
   'i',
 );
+
+// The few names where one of those words *is* part of the shelf product, so
+// the leading split leaves them whole (#2927). "diced tomatoes" and "crushed
+// tomatoes" are cans on the Canned & Jarred shelf and "crushed red pepper" is
+// a spice, but split they became "tomatoes" and "red pepper": filed under
+// Produce, keyed onto the fresh row, and bought as the wrong thing. The
+// whitelist's own claim above ("essentially never a standalone product") was
+// wrong for exactly these, and the aisle lexicon already knew it.
+//
+// **A closed list, and every entry is also an exact AISLE_LEXICON key**
+// (groceryParse.test.ts checks both directions). It lives here rather than
+// being read off the lexicon because groceryAisles imports this module, and a
+// require cycle is what reading it would cost. Matched on the catalog key as a
+// whole name or as the start of one ("diced tomatoes with green chiles"), so a
+// comma clause still splits as before: "tomatoes, diced" is fresh tomatoes.
+export const LEADING_PREP_PRODUCTS: readonly string[] = [
+  'crushed pineapple', 'crushed red pepper', 'crushed tomatoes', 'diced tomatoes',
+];
+
+/** Whether `name` opens with a product whose name starts with a prep word. */
+function namesPrepProduct(name: string): boolean {
+  const key = groceryNameKey(name);
+  return LEADING_PREP_PRODUCTS.some(product => key === product || key.startsWith(`${product} `));
+}
 
 export function splitPrep(name: string): { name: string; prep: string | null } {
   const trimmed = name.trim();
@@ -286,7 +311,7 @@ export function splitPrep(name: string): { name: string; prep: string | null } {
     }
   }
 
-  const leading = LEADING_PREP_SPLIT.exec(trimmed);
+  const leading = namesPrepProduct(trimmed) ? null : LEADING_PREP_SPLIT.exec(trimmed);
   if (leading) {
     const [, prepWord, rest] = leading;
     if (rest.trim()) {
