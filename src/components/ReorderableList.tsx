@@ -50,6 +50,8 @@ export interface RowScroller {
   scrollToKey: (key: string) => void;
   /** Scroll back to the very top of the list, header included. */
   scrollToTop: () => void;
+  /** Scroll to the very bottom of the list, footer included. */
+  scrollToEnd: () => void;
 }
 
 export interface ReorderableRenderInfo<T> {
@@ -575,7 +577,13 @@ export function ReorderableList<T>({
       pendingScrollTimerRef.current = setTimeout(clearPendingScroll, PENDING_SCROLL_TTL);
     },
     scrollToTop: doScrollToTop,
-  }), [scrollRowIntoView, doScrollToTop]);
+    // Same reasoning as doScrollToTop: a pending scrollToKey would pull the
+    // list straight back up once its row laid out.
+    scrollToEnd: () => {
+      clearPendingScroll();
+      scrollRef.current?.scrollToEnd({ animated: true });
+    },
+  }), [scrollRowIntoView, doScrollToTop, scrollRef]);
 
   const stopAutoscroll = () => {
     if (autoscrollTimerRef.current !== null) {
