@@ -746,6 +746,23 @@ export function seedDemoData(): void {
     effort: 2,
   });
   updateTask(violin.id, { followUpTaskTally: 2 });
+  // One follow-up task already added by an earlier cycle of the rule above,
+  // pointing back at the live "Practice the violin" row — what TaskEditor's
+  // "Follow-up frequency" row (Task.followUpTaskSourceId) resolves against,
+  // so the demo shows the rule editable from the task it added and not just
+  // from the task that owns it.
+  addTask({
+    title: 'Rosin the bow',
+    category: 'Home',
+    tags: ['upkeep'],
+    priority: 1,
+    effort: 1,
+    estimatedMinutes: 5,
+    timeSegments: ['evening'],
+    dueDate: today.toISOString(),
+    followUpTaskSourceTitle: 'Practice the violin',
+    followUpTaskSourceId: violin.id,
+  });
 
   // A decision task — one that completes by recording an answer rather than
   // just being ticked. Seeded live so its checkbox shows the "?" that says it
