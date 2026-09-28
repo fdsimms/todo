@@ -1089,6 +1089,16 @@ describe('classifyPlanned', () => {
       expect(row.swappedFrom).toBeNull();
     });
 
+    it('re-files a line spelled the other way from the declared generic (#2941)', () => {
+      // "White onions" can only offer "onions" as its generic, and "1 large
+      // onion" is the same ask.
+      const whites = item({ name: 'White onions', varietyOfKey: 'onions', onHandUntil: onHandDate });
+      const row = classifyPlanned(plannedOnion, [whites], now)[0];
+      expect(row.nameKey).toBe('white onions');
+      expect(row.category).toBe('probablyHave');
+      expect(row.swappedFrom).toBe('onion');
+    });
+
     it('leaves the ask an honest needToBuy when no variety answers', () => {
       // Declared, but the app has no reason to believe you have it — and a
       // generic "onion" is also the right thing to put in the trolley.

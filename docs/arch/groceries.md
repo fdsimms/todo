@@ -1468,6 +1468,17 @@ read side.
   family: on the list, then staple, then the pantry guess). A declared variety nobody has
   changes nothing, and the ask stays an honest needToBuy under the generic name, which is also
   the right thing to put in the trolley.
+- **A declared generic answers either spelling** (#2941). `varietyIndex` files each declaration
+  under its other spelling as well, so "White onions counts as onions" covers a line saying "1
+  onion", which matters because the Variety of field can only suggest the item's own trailing
+  words and a plural-named item could otherwise only ever declare a plural generic. It is the
+  plural rule above, applied to keys that may have no row: two spellings pair only when each is
+  the other's *only* plural among the keys in play (every row and every declared generic), never
+  when both are rows the user kept apart, and when both are declared the family is the union.
+  Doing it in the index rather than at each reader is what keeps `classifyPlanned`,
+  `matchIngredientToCatalog` and `catalogCoverage` from disagreeing about it. `familyOnHand`
+  finds the parent row spelled the other way too, and `varietyOfferFor` accepts a catalog name
+  ending in the line's other spelling ("onion" turning up White onions).
 - **Single hop, never a chain.** Readers ask "which items declare themselves varieties of this
   key" and stop, so a mis-filed pointer can't loop and "vegetable" can't transitively claim
   every onion. A chain just means the middle name answers for the outer one and nothing else.
