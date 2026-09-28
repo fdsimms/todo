@@ -64,7 +64,8 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/contactsImport.ts` — MIN_CONTACT_QUERY_LENGTH, MAX_CONTACT_RESULTS, ContactCandidate, ContactPersonDraft, contactBirthday, normalizePhone, alreadyAdded, canSearchContacts, rankContacts, browsableContacts, +3 more
 - `src/utils/cookMode.ts` — CookStep, stepsFromNotes, cookSteps, clampStepIndex, describeStepPosition
 - `src/utils/cookQuestions.ts` — COOK_QUESTION_MAX_LENGTH, COOK_ANSWER_MAX_LINES, COOK_ANSWER_MAX_CHARS, CookContextIngredient, CookQuestionContext, cookQuestionContext, suggestedCookQuestions, clampCookAnswer
-- `src/utils/cookingStats.ts` — CookingWindow, MealCookCounts, CookedRecipe, EMPTY_MEAL_COOK_COUNTS, cookingWindow, mealCookCounts, leftoversFinishedIn, leftoverHistoryIn, mostCookedRecipes, hasCookingData
+- `src/utils/cookbookRecipes.ts` — CookbookPageKey, cookbookPageKey, compareCookbookRecipes, recipesInCookbook, CookbookLinkEffect, cookbookLinkEffect, CookbookLinkCandidate, COOKBOOK_LINK_LIMIT, cookbookLinkCandidates, cookbookLinkPrompt
+- `src/utils/cookingStats.ts` — CookingWindow, MealCookCounts, CookedRecipe, EMPTY_MEAL_COOK_COUNTS, cookingWindow, lastDaysOf, mealCookCounts, leftoversFinishedIn, leftoverHistoryIn, mostCookedRecipes, +1 more
 - `src/utils/createdTaskPlacement.ts` — CreatedTaskDestination, describeCreatedTaskPlacement, describeMovedTaskPlacement
 - `src/utils/dailyAgenda.ts` — AgendaCounts, agendaCounts, agendaBody, agendaSpokenBody, nextAgendaTime
 - `src/utils/dailyAgendaSync.ts` — useDailyAgendaSync
@@ -103,8 +104,8 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/focusSuggest.ts` — MAX_SUGGESTED_FOCUS, FOCUS_BUDGET_MINUTES, FocusContext, buildFocusContext, fitsWindow, scoreFocusTask, nextFocusSuggestion, suggestFocusTasks, focusQueueFromPinned, focusReason
 - `src/utils/focusWindow.ts` — FOCUS_CALENDAR_HORIZON_MINUTES, CalendarWindow, calendarWindow
 - `src/utils/followUpTask.ts` — MIN_FOLLOW_UP_TASK_EVERY_N, MAX_FOLLOW_UP_TASK_EVERY_N, canHoldFollowUpTask, FollowUpTaskRule, followUpTaskRule, advanceFollowUpTaskTally, FollowUpTaskSuppression, followUpTaskSuppressedBy, completionsUntilFollowUpTask, followUpTaskSummary, +5 more
-- `src/utils/foodLog.ts` — FoodLogTotals, FoodLogSection, isBeverageName, scalePanelToAmount, portionExamples, amountHint, amountExample, FoodUnitOption, VOLUME_UNIT_OPTIONS, foodUnitOptionsFor, +19 more
-- `src/utils/foodLogRecents.ts` — FoodRecency, creditedKeys, foodLogRecency, rankByRecency
+- `src/utils/foodLog.ts` — FoodLogTotals, FoodLogSection, isBeverageName, scalePanelToAmount, portionExamples, amountHint, amountExample, FoodUnitOption, VOLUME_UNIT_OPTIONS, foodUnitOptionsFor, +22 more
+- `src/utils/foodLogRecents.ts` — FoodRecency, creditedKeys, foodLogRecency, foodLastAmounts, rankByRecency
 - `src/utils/foodNutrition.ts` — parseFoodNutrition, serializeFoodNutrition, addCustomPortion, nutritionFor, CatalogPanelWrite, catalogPanelWrite, describeFoodPanel, NUTRIENT_LABEL, ML_PER_FL_OZ, mlToFlOz, +2 more
 - `src/utils/foodRecall.ts` — RECALL_MIN_QUERY, RECALL_LIMIT, RecalledFood, describedGrams, recallWeight, recallFoods, RecallCandidate, rankRecallCandidates, RecalledCatalogFood, RecallableItem, +4 more
 - `src/utils/foodSearchMatch.ts` — FoodCandidate, FoodMatchTier, RankedFood, rankFoodCandidates, unambiguousFood
@@ -159,8 +160,8 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/mealLog.ts` — DishFigures, MealHelping, wantsMealLogPrompt, defaultHelpings, mealHelping, servingGrams, weighedHelping, cookedDishGrams, describeCookedWeight, COOKED_WEIGHT_MIN_G, +5 more
 - `src/utils/mealLogCoverage.ts` — SlotCoverage, countsAsMealLog, loggedMealSlotKeys, mealDayCoverage, describeSlotLog, describeDayCoverage, unloggedPlannedSlots, describePlannedSlot
 - `src/utils/mealLogNudgeTasks.ts` — MEAL_LOG_NUDGE_LOOKBACK_DAYS, mealLogNudgeTitle, mealLogNudgeEntryId, mealLogNudgeLinkUrl, isWithinLogNudgeWindow, MealLogRecord, isMealLogged, MealLogNudgeWant, wantedMealLogNudges, staleMealLogNudgeTasks
-- `src/utils/mealPlan.ts` — slotRank, slotLabel, mealSlotKey, sortMealEntries, entriesForDay, cookEntryForRecipe, earliestUnplannedSlot, entriesForSlot, nextSortOrder, upcomingDays, +19 more
-- `src/utils/mealPlanGroceries.ts` — PlannedIngredient, collectPlannedIngredients, hasShoppableMeals, plannedIngredientsForRecipe, parseQuantityAmount, mergeQuantities, describeQuantities, PlanCategory, ClassifiedIngredient, classifyPlanned, +4 more
+- `src/utils/mealPlan.ts` — slotRank, slotLabel, mealSlotKey, sortMealEntries, entriesForDay, cookEntryForRecipe, earliestUnplannedSlot, entriesForSlot, nextSortOrder, upcomingDays, +22 more
+- `src/utils/mealPlanGroceries.ts` — PlannedIngredient, collectPlannedIngredients, hasShoppableMeals, plannedIngredientsForRecipe, parseQuantityAmount, mergeQuantities, describeQuantities, PlanCategory, ClassifiedIngredient, classifyPlanned, +8 more
 - `src/utils/mealPlanNudge.ts` — DEFAULT_MEAL_PLAN_NUDGE_WEEKDAY, DEFAULT_MEAL_PLAN_NUDGE_TIME, MEAL_PLAN_NUDGE_LINK_URL, mealPlanNudgeLinkUrl, MEAL_PLAN_NUDGE_SLOTS, MEAL_PLAN_NUDGE_SLOT_COUNT, countPlannedSlots, mealPlanNudgeDayKey, MealPlanNudgeDue, MealPlanNudgeDay, +3 more
 - `src/utils/mealShortfallTasks.ts` — MAX_MEAL_SHORTFALL_TASKS, mealShortfallTitle, mealShortfallEntryId, mealShortfallLinkUrl, isWithinShopWindow, mealShortfallRows, MealShortfallWant, wantedMealShortfalls, staleMealShortfallTasks
 - `src/utils/mealSlotTasks.ts` — MEAL_SLOT_SEGMENTS, mealSlotStepTimeSegments, MEAL_SLOT_TASK_DAYS, DEFAULT_MEAL_SLOTS_ENABLED, mealSlotSourceId, parseMealSlotSource, mealSlotOf, RECIPE_LINK_URL, recipeLinkUrl, mealSlotLinkUrl, +9 more
@@ -185,7 +186,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/nutritionEstimate.ts` — ESTIMATE_DESCRIPTION_MAX_LENGTH, MAX_ESTIMATE_QUESTIONS, ESTIMATE_REQUEST_MAX_LENGTH, EstimateBasis, EstimateContextFood, MAX_CONTEXT_FOODS, EstimateConfidence, EstimateQuestion, EstimateIngredient, NutritionEstimate, +5 more
 - `src/utils/nutritionPanelForm.ts` — PanelForm, PanelFieldKey, emptyPanelForm, panelFormFrom, readPanelNumber, invalidPanelFields, ServingWeightUnit, servingWeightToGrams, gramsToServingWeight, panelFormDirty, +7 more
 - `src/utils/nutritionParse.ts` — NutrientSourceUnit, NUTRIENT_STORED_UNIT, SALT_TO_SODIUM, readSourceUnit, readSourceNumber, convertNutrientAmount, readOffNutrition, readFdcNutrition, readFdcPortions
-- `src/utils/nutritionStats.ts` — NutritionCounts, NutrientAverage, LoggedFood, SourceMix, EMPTY_NUTRITION_COUNTS, EMPTY_SOURCE_MIX, nutritionCounts, nutrientAverages, mostLoggedFoods, sourceMix, +2 more
+- `src/utils/nutritionStats.ts` — NutritionCounts, NutrientAverage, LoggedFood, SourceMix, EMPTY_NUTRITION_COUNTS, EMPTY_SOURCE_MIX, nutritionCounts, nutrientAverages, FoodNameLookup, foodKeyResolver, +5 more
 - `src/utils/nutritionTargets.ts` — NUTRITION_TARGET_RANGES, NutritionTargets, parseNutritionTargets, serializeNutritionTargets, targetedNutrients, describeAgainstTarget, targetProgress, TargetStatus, TARGET_MET_TOLERANCE, targetStatus, +6 more
 - `src/utils/ordinal.ts` — ordinal
 - `src/utils/paintSelect.ts` — PaintRowRect, PAINT_GUTTER_WIDTH, ROW_HIT_SLOP, isInPaintGutter, rowIdAtY, rowIdsBetween
@@ -243,9 +244,10 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/recipeNutrition.ts` — RecipeNutrition, NutritionLineState, recipeNutrition, RecipeNutritionReading, readRecipeNutrition, NutritionLine, recipeNutritionLines, ExcludedNutritionLine, excludedNutritionLines, lineContribution, +7 more
 - `src/utils/recipeNutritionEstimate.ts` — RecipeEstimateConfidence, RecipeNutritionEstimate, RawRecipeNutritionEstimate, readRecipeNutritionEstimate, describeRecipeNutritionEstimate
 - `src/utils/recipeOverlap.ts` — SharedIngredient, OverlapSeed, OverlapMatch, overlapSeedFromPlanned, overlapSeedFromRecipes, rankOverlapRecipes, describeOverlap
+- `src/utils/recipePageOffline.ts` — OfflineRecipeItem, servingsFromYield, recipeFromPageOffline
 - `src/utils/recipePhoto.ts` — MAX_PHOTO_EDGE, MAX_RECIPE_PHOTOS, RecipePhotoSource, RecipePhoto, RecipePhotoResult, photoTargetSize, CameraPermission, PhotoLibraryPermission, getCameraPermission, requestCameraPermission, +12 more
 - `src/utils/recipeProvenance.ts` — ExtractedSource, FetchedSourcePage, SourceFields, sourceFieldsFor, CookbookEditIntent, cookbookEditIntent, SourcePlan, sourcePlanFor
-- `src/utils/recipeScale.ts` — ScaledQuantity, scaleQuantity, RECIPE_SCALE_FACTORS, isUnscaled, normalizeScale, formatScale, scaleServings, factorForServings, targetServingsFor, rescaleForRecipe, +1 more
+- `src/utils/recipeScale.ts` — ScaledQuantity, scaleQuantity, RECIPE_SCALE_FACTORS, isUnscaled, normalizeScale, formatScale, scaleServings, factorForServings, MAX_HOUSEHOLD_SERVINGS, householdScale, +3 more
 - `src/utils/recipeSections.ts` — parseEmptySections, SectionedRow, SectionListEntry, sectionsFromMergedOrder, sectionsOf, allSectionsOf, FlatSectionRow, IngredientHeading, ingredientHeadings
 - `src/utils/recipeTags.ts` — cleanRecipeTag, normalizeRecipeTags, parseRecipeTags, allRecipeTags, recipeTagCounts, filterRecipesByTags, formatTagList, toggleRecipeTag
 - `src/utils/recipeTimer.ts` — CookTimerState, PrepTimerState, hasCookTimer, isCookTimerRunning, cookTimerElapsed, cookTimerRemaining, cookTimerProgress, isCookTimerReady, hasPrepTimer, isPrepTimerRunning, +5 more
@@ -294,7 +296,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/startup.ts` — runStartupStep, runStartupSequence
 - `src/utils/stats.ts` — OnTimeSummary, onTimeSummary
 - `src/utils/stepIngredients.ts` — AnnotatableStep, StepIngredientLine, StepSegment, stepIngredientLines, annotateSteps, stepNamesIngredient
-- `src/utils/stepTimers.ts` — StepDuration, MIN_STEP_TIMER_SECONDS, MAX_STEP_TIMER_SECONDS, parseStepDurations, formatStepDuration, describeStepDuration, stepTimerElapsed, stepTimerRemaining, stepTimerProgress, isStepTimerRunning, +9 more
+- `src/utils/stepTimers.ts` — StepDuration, MIN_STEP_TIMER_SECONDS, MAX_STEP_TIMER_SECONDS, parseStepDurations, formatStepDuration, describeStepDuration, stepTimerElapsed, stepTimerRemaining, stepTimerProgress, isStepTimerRunning, +12 more
 - `src/utils/stepper.ts` — StepRange, clampCount, stepCount, canStep, holdRepeatDelay
 - `src/utils/storeAliases.ts` — aliasKeyFor, gtinAliasText, aliasItemIdFor, AliasDraft, aliasDraftsFrom
 - `src/utils/streakRecord.ts` — nextStreakRecord, bestStreakOf, isStreakAtRecord, streakHint
