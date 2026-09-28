@@ -6432,6 +6432,9 @@ export interface MealPlanEntry {
    * record on one phone, so the column is kept off the wire in both directions
    * (`SYNC_DEVICE_LOCAL_COLUMNS` in db/syncTracking.ts). Each device holds the
    * id of the event *it* wrote, and a peer's edit to the meal leaves it alone.
+   * The event itself still follows that edit: the reload after a sync rewrites
+   * it, or deletes it when the peer removed the meal (`reconcileSyncedEvents`,
+   * with the rules in `mealEventsAfterSync`).
    */
   calendarEventId: string | null;
 }

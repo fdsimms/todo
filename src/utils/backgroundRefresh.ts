@@ -82,6 +82,7 @@ import * as BackgroundTask from 'expo-background-task';
 import * as TaskManager from 'expo-task-manager';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useMealPlanStore } from '../store/useMealPlanStore';
 import { registerSyncReload, useSyncStore } from '../store/useSyncStore';
 import type { SyncSummary } from './syncEngine';
 import { isDemoModeActive } from './demoState';
@@ -204,10 +205,15 @@ export async function runBackgroundSync(): Promise<SyncSummary | null> {
 // meet: App.tsx imports it at startup for the foreground, and a cold
 // background launch enters through the task below. Same order as AppGate and
 // exitDemoMode: tasks (which fans out to every data store), then settings,
-// since some settings sync too.
-registerSyncReload(() => {
+// since some settings sync too. Then the meal calendar events a peer's changes
+// left stale (#2950), last, so the reconcile reads the rows as the sync left
+// them and writes any new event link over the reloaded state rather than under
+// it. Its device writes are fire-and-forget, like every meal event reconcile:
+// one cut short by a background run ending waits for that meal's next change.
+registerSyncReload(applied => {
   useTaskStore.getState().initialize();
   useSettingsStore.getState().initialize();
+  useMealPlanStore.getState().reconcileSyncedEvents(applied);
 });
 
 TaskManager.defineTask(BACKGROUND_REFRESH_TASK, async () => {

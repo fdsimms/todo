@@ -2891,6 +2891,12 @@ export function dbApplySyncChanges(payload: SyncPayload, transport?: string): Ap
           report.updated++;
           continue;
         }
+        // Every path from here writes this row. Which meals changed is what the
+        // calendar reconcile after the sync reads (#2950); it decides for itself
+        // which of them hold an event of this device's.
+        if (name === 'meal_plan_entries' && typeof placed.row.id === 'string') {
+          report.mealEntryIds.push(placed.row.id);
+        }
         if (placed.folded) {
           if (local) updateRowStampNow(name, where, placed.row);
           else insertRowStampNow(name, placed.row);
@@ -2956,6 +2962,17 @@ export function dbApplySyncChanges(payload: SyncPayload, transport?: string): Ap
           where.values
         );
         if (entry) groceryItemIds.add(entry.item_id);
+      }
+      // The meal's event id is device-local, so this row is the only place it
+      // lives: read it now or the event outlives the meal (#2950).
+      if (deletion.table === 'meal_plan_entries') {
+        const meal = db.getFirstSync<{ calendar_event_id: string | null; date: string }>(
+          `SELECT calendar_event_id, date FROM meal_plan_entries WHERE ${where.sql}`,
+          where.values
+        );
+        if (meal?.calendar_event_id) {
+          report.removedMealEvents.push({ eventId: meal.calendar_event_id, date: meal.date });
+        }
       }
       db.runSync(`DELETE FROM "${deletion.table}" WHERE ${where.sql}`, where.values);
       // The tombstone trigger just stamped this deletion with local now. Put

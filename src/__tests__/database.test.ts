@@ -4046,6 +4046,82 @@ describe('dbApplySyncChanges', () => {
 
       expect(stored().calendar_event_id).toBeNull();
     });
+
+    // The rest of #2950: the event only this device can move or delete.
+    describe('reported for the calendar reconcile after the sync', () => {
+      it('names every meal it wrote, and no other row', () => {
+        localMeal();
+        mockRawDb.prepare("UPDATE meal_plan_entries SET updated_at = '2026-01-01T00:00:00.000Z' WHERE id = 'meal-p'").run();
+
+        const report = dbApplySyncChanges(payload({
+          tables: {
+            meal_plan_entries: [peerMealRow({ date: '2026-08-14' })],
+            tasks: [peerTaskRow('p1', 'From peer', '2026-01-01T00:00:00.000Z')],
+          },
+        }));
+
+        expect(report.mealEntryIds).toEqual(['meal-p']);
+        expect(report.removedMealEvents).toEqual([]);
+      });
+
+      it('names a meal that arrived new too, leaving the reconcile to skip it', () => {
+        localMeal();
+        const row = peerMealRow({});
+        mockRawDb.prepare('DELETE FROM meal_plan_entries WHERE id = ?').run('meal-p');
+        mockRawDb.exec('DELETE FROM sync_deletions');
+
+        const report = dbApplySyncChanges(payload({ tables: { meal_plan_entries: [row] } }));
+
+        expect(report.inserted).toBe(1);
+        expect(report.mealEntryIds).toEqual(['meal-p']);
+      });
+
+      it('leaves out a meal whose local copy is newer', () => {
+        localMeal();
+        mockRawDb.prepare("UPDATE meal_plan_entries SET updated_at = '2031-01-01T00:00:00.000Z' WHERE id = 'meal-p'").run();
+
+        const report = dbApplySyncChanges(payload({
+          tables: { meal_plan_entries: [peerMealRow({ date: '2026-08-14' })] },
+        }));
+
+        expect(report.skipped).toBe(1);
+        expect(report.mealEntryIds).toEqual([]);
+      });
+
+      it('hands back the event of a meal it deleted, read before the row went', () => {
+        localMeal();
+        mockRawDb.prepare("UPDATE meal_plan_entries SET updated_at = '2026-01-01T00:00:00.000Z' WHERE id = 'meal-p'").run();
+
+        const report = dbApplySyncChanges(payload({
+          deletions: [{ table: 'meal_plan_entries', rowKey: 'meal-p', deletedAt: '2026-06-01T00:00:00.000Z' }],
+        }));
+
+        expect(report.deleted).toBe(1);
+        expect(stored()).toBeUndefined();
+        expect(report.removedMealEvents).toEqual([{ eventId: 'evt-this-phone', date: '2026-08-13' }]);
+      });
+
+      it('hands back nothing for a deleted meal with no event here, or a deletion it refused', () => {
+        localMeal();
+        mockRawDb.prepare(
+          "UPDATE meal_plan_entries SET calendar_event_id = NULL, updated_at = '2026-01-01T00:00:00.000Z' WHERE id = 'meal-p'"
+        ).run();
+        const unlinked = dbApplySyncChanges(payload({
+          deletions: [{ table: 'meal_plan_entries', rowKey: 'meal-p', deletedAt: '2026-06-01T00:00:00.000Z' }],
+        }));
+        expect(unlinked.deleted).toBe(1);
+        expect(unlinked.removedMealEvents).toEqual([]);
+
+        localMeal();
+        mockRawDb.prepare("UPDATE meal_plan_entries SET updated_at = '2026-09-01T00:00:00.000Z' WHERE id = 'meal-p'").run();
+        const refused = dbApplySyncChanges(payload({
+          deletions: [{ table: 'meal_plan_entries', rowKey: 'meal-p', deletedAt: '2026-06-01T00:00:00.000Z' }],
+        }));
+        expect(refused.deletionsRefused).toBe(1);
+        expect(refused.removedMealEvents).toEqual([]);
+        expect(stored().calendar_event_id).toBe('evt-this-phone');
+      });
+    });
   });
 
   // #2950, the same shape on tasks: a peer without "Write deadlines to" set

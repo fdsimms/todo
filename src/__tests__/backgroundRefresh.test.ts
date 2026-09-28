@@ -78,8 +78,17 @@ jest.mock('../store/useSettingsStore', () => ({
 jest.mock('../store/useTemplateStore', () => ({
   useTemplateStore: { getState: () => ({ checkScheduledTemplates: mockRecord('checkScheduledTemplates') }) },
 }));
+let mockReconciledWith: unknown = null;
 jest.mock('../store/useMealPlanStore', () => ({
-  useMealPlanStore: { getState: () => ({ purgeOldEntries: mockRecord('purgeOldMealPlanEntries') }) },
+  useMealPlanStore: {
+    getState: () => ({
+      purgeOldEntries: mockRecord('purgeOldMealPlanEntries'),
+      reconcileSyncedEvents: (applied: unknown) => {
+        mockCalls.push('reconcileSyncedEvents');
+        mockReconciledWith = applied;
+      },
+    }),
+  },
 }));
 jest.mock('../store/useLeftoverStore', () => ({
   useLeftoverStore: {
@@ -108,10 +117,18 @@ jest.mock('../store/useUnattendedStore', () => ({
     getState: () => ({ purgeOldEntries: mockRecord('purgeOldEntries') }),
   },
 }));
-jest.mock('../store/useSyncStore', () => ({
-  useSyncStore: { getState: () => mockSyncState },
-  registerSyncReload: () => {},
-}));
+// Captured rather than dropped: this module is where the reload is registered,
+// and what it runs after a sync is part of what it owns. Held inside the mock
+// because the registration runs at import, ahead of this file's own `let`s.
+type SyncReload = (applied: unknown) => void;
+jest.mock('../store/useSyncStore', () => {
+  const registered: { reload: SyncReload | null } = { reload: null };
+  return {
+    useSyncStore: { getState: () => mockSyncState },
+    registerSyncReload: (reload: SyncReload) => { registered.reload = reload; },
+    mockRegistered: registered,
+  };
+});
 jest.mock('../utils/notifications', () => ({
   rescheduleAllReminders: () => { mockCalls.push('rescheduleAllReminders'); },
 }));
@@ -302,6 +319,21 @@ describe('the background task executor', () => {
     setDemoModeActive(true);
     await executor()();
     expect(mockCalls).toEqual([]);
+  });
+});
+
+describe('the reload after a sync', () => {
+  // #2950: a meal's calendar event is this device's, so the reload is also
+  // where a peer's move or removal reaches it. After the stores re-read, so the
+  // reconcile sees the synced rows and writes any new link over fresh state.
+  it('re-reads the stores, then reconciles meal events with what was applied', () => {
+    const applied = { mealEntryIds: ['m1'], removedMealEvents: [] };
+
+    const { mockRegistered } = jest.requireMock<{ mockRegistered: { reload: SyncReload } }>('../store/useSyncStore');
+    mockRegistered.reload(applied);
+
+    expect(mockCalls).toEqual(['initialize', 'initializeSettings', 'reconcileSyncedEvents']);
+    expect(mockReconciledWith).toBe(applied);
   });
 });
 

@@ -19,7 +19,7 @@ import { httpSyncTransport, isHttpSyncConfigured } from '../utils/httpSyncTransp
 import { loadSecureKey, saveSecureKey, SYNC_TOKEN_SECURE_KEY } from '../utils/secureApiKey';
 import { databaseSyncLocal } from '../utils/syncLocal';
 import { runSyncAll, summarizeRuns, type SyncSummary, type SyncTransport } from '../utils/syncEngine';
-import { describeApply } from '../utils/syncMerge';
+import { describeApply, type ApplyReport } from '../utils/syncMerge';
 
 const ENABLED_KEY = 'syncEnabled';
 const LAST_SYNCED_KEY = 'syncLastSyncedAt';
@@ -88,9 +88,13 @@ let syncInFlight = false;
  * which then won on every device. Injected rather than imported because the
  * task store fans out to every other store and this one has to stay importable
  * without them (see App.tsx and backgroundRefresh.ts for the registration).
+ *
+ * Handed what the sync applied, for the work a reload alone can't do: a meal's
+ * calendar event lives on this device and only this device can move or delete
+ * it (#2950, `reconcileSyncedEvents` in useMealPlanStore).
  */
-let reloadAfterSync: () => void = () => {};
-export function registerSyncReload(reload: () => void): void {
+let reloadAfterSync: (applied: ApplyReport) => void = () => {};
+export function registerSyncReload(reload: (applied: ApplyReport) => void): void {
   reloadAfterSync = reload;
 }
 
@@ -196,7 +200,7 @@ async function syncOnce(enabled: boolean, serverUrl: string): Promise<SyncSummar
     // on a run where the other transport then failed: the rows are in the
     // database either way. Skipped when nothing came in, which is most runs.
     const a = summary.applied;
-    if (a.inserted + a.updated + a.deleted > 0) reloadAfterSync();
+    if (a.inserted + a.updated + a.deleted > 0) reloadAfterSync(a);
 
     if (summary.ok) {
       const now = new Date().toISOString();

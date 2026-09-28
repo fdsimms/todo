@@ -1,10 +1,11 @@
 import type { MealPlanEntry } from '../types';
-import { MEAL_SLOT_LABELS } from '../types';
+import { MEAL_SLOT_LABELS, MEAL_PLAN_RETENTION_DAYS } from '../types';
 import { dayKeyToDate } from './dateUtils';
 import { createAllDayEvent, moveAllDayEvent, deleteCalendarEvent } from './calendarSync';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { isDemoModeActive } from './demoState';
-import { mealTitleOffPlan } from './mealPlan';
+import { mealPlanPurgeCutoffKey, mealTitleOffPlan } from './mealPlan';
+import type { ApplyReport } from './syncMerge';
 
 /**
  * What a planned meal should look like on the device calendar right now, and
@@ -140,4 +141,75 @@ export async function syncMealEvent(entry: MealPlanEntry): Promise<string | null
   }
 
   return createAllDayEvent(mealCalendarId, fields);
+}
+
+/**
+ * How many days inside the purge horizon a removal from another device is
+ * still read as that device's purge rather than as somebody removing the meal.
+ * The purge anchors to the calendar date (`mealPlanPurgeCutoffKey`), so a peer
+ * whose date is ahead of this one's purges meals this one still counts as
+ * inside the horizon. Two, because two time zones are at most 26 hours apart
+ * (UTC-12 against UTC+14), which is at most two calendar dates.
+ */
+const SYNC_PURGE_MARGIN_DAYS = 2;
+
+/** What a sync apply asks of this device's meal events. */
+export interface MealEventSyncPlan {
+  /** Meals holding an event this device wrote, to bring in line through `syncMealEvent`. */
+  reconcile: MealPlanEntry[];
+  /** Events whose meal another device removed, to delete. */
+  remove: string[];
+}
+
+/**
+ * Which of this device's meal events a sync apply has left stale, and what to
+ * do about each (#2950).
+ *
+ * A meal's event belongs to the device that wrote it: its id is kept off the
+ * wire (`SYNC_DEVICE_LOCAL_COLUMNS`), and nothing but this device can rewrite
+ * or delete it. Before this, a meal moved or renamed on another device kept
+ * its old day and title on the calendar until this device next edited it, and
+ * one removed there stayed on the calendar for good. So a sync is treated
+ * exactly like the local edit it stands in for, and goes through the same path.
+ *
+ * - **A meal the apply changed is reconciled only when it already holds an
+ *   event of this device's.** A meal with none is left alone, including every
+ *   meal that arrived new (a synced row never carries the id). Writing one here
+ *   would put a second event for the same dinner on a household calendar the
+ *   device that planned it may already have written to, and turning "Write
+ *   meals to" on has never swept the plan either. With no calendar picked the
+ *   reconcile deletes the event, the same as a local edit does.
+ * - **A meal the apply deleted takes its event with it**, as removing it here
+ *   would (`dropMealEvent`), with one exception: the 180-day purge. Every
+ *   device runs it, and it deliberately leaves events on the calendar as the
+ *   household's record of what was eaten; its deletions sync like any other.
+ *   So a removed meal older than the horizon (less the margin above) is read as
+ *   the purge, and its event stays.
+ * - **Nothing at all in demo mode.** A sync never runs there, and this carries
+ *   its own gate rather than trusting that, per the rule for anything that
+ *   writes outside the database.
+ *
+ * A meal changed twice across a sync's transports is reconciled once, and one
+ * the same sync then deleted is not reconciled (it no longer resolves), only
+ * its event deleted.
+ */
+export function mealEventsAfterSync(
+  applied: Pick<ApplyReport, 'mealEntryIds' | 'removedMealEvents'>,
+  resolve: (id: string) => MealPlanEntry | null,
+  now: Date = new Date()
+): MealEventSyncPlan {
+  if (isDemoModeActive()) return { reconcile: [], remove: [] };
+
+  const reconcile: MealPlanEntry[] = [];
+  for (const id of new Set(applied.mealEntryIds)) {
+    const entry = resolve(id);
+    if (entry?.calendarEventId) reconcile.push(entry);
+  }
+
+  const purgedBefore = mealPlanPurgeCutoffKey(now, MEAL_PLAN_RETENTION_DAYS - SYNC_PURGE_MARGIN_DAYS);
+  const remove = [...new Set(
+    applied.removedMealEvents.filter(m => m.date >= purgedBefore).map(m => m.eventId)
+  )];
+
+  return { reconcile, remove };
 }

@@ -19,7 +19,10 @@ jest.mock('../utils/demoState', () => ({
   isDemoModeActive: () => mockDemoActive,
 }));
 
-import { mealEventTitle, mealEventFields, syncMealEvent } from '../utils/mealCalendarSync';
+import { mealEventTitle, mealEventFields, mealEventsAfterSync, syncMealEvent } from '../utils/mealCalendarSync';
+import { emptyApplyReport, type ApplyReport } from '../utils/syncMerge';
+import { dayKeyOf } from '../utils/dateUtils';
+import { subDays } from 'date-fns/subDays';
 
 const BASE: MealPlanEntry = {
   id: 'meal-1',
@@ -178,5 +181,86 @@ describe('syncMealEvent', () => {
     expect(mockCreate).not.toHaveBeenCalled();
     expect(mockMove).not.toHaveBeenCalled();
     expect(mockDelete).not.toHaveBeenCalled();
+  });
+});
+
+// #2950. A meal's event belongs to the device that wrote it, so a peer's move,
+// rename or removal reaches it only through this.
+describe('mealEventsAfterSync', () => {
+  const NOW = new Date(2026, 7, 20, 12);
+  const daysAgo = (n: number) => dayKeyOf(subDays(NOW, n));
+  const applied = (over: Partial<ApplyReport>) => ({ ...emptyApplyReport(), ...over });
+  const lookup = (...rows: MealPlanEntry[]) => (id: string) => rows.find(r => r.id === id) ?? null;
+
+  it('reconciles a changed meal that holds an event of this device\'s', () => {
+    const moved = entry({ id: 'm1', date: '2026-08-14', calendarEventId: 'evt-1' });
+
+    const plan = mealEventsAfterSync(applied({ mealEntryIds: ['m1'] }), lookup(moved), NOW);
+
+    expect(plan.reconcile).toEqual([moved]);
+    expect(plan.remove).toEqual([]);
+  });
+
+  it('leaves a changed meal with no event here alone, rather than writing a second one', () => {
+    // Every meal that arrives new is this shape: the id never syncs. The device
+    // that planned it may already have written it to a shared calendar.
+    const plan = mealEventsAfterSync(
+      applied({ mealEntryIds: ['m1'] }),
+      lookup(entry({ id: 'm1', calendarEventId: null })),
+      NOW,
+    );
+
+    expect(plan.reconcile).toEqual([]);
+  });
+
+  it('skips a meal that no longer resolves, and reconciles one changed twice only once', () => {
+    const kept = entry({ id: 'm1', calendarEventId: 'evt-1' });
+
+    const plan = mealEventsAfterSync(applied({ mealEntryIds: ['m1', 'gone', 'm1'] }), lookup(kept), NOW);
+
+    expect(plan.reconcile).toEqual([kept]);
+  });
+
+  it('deletes the event of a meal another device removed', () => {
+    const plan = mealEventsAfterSync(
+      applied({ removedMealEvents: [{ eventId: 'evt-9', date: daysAgo(3) }] }),
+      lookup(),
+      NOW,
+    );
+
+    expect(plan.remove).toEqual(['evt-9']);
+  });
+
+  it('keeps the event of a meal the 180-day purge took, with a margin for a peer a day or two ahead', () => {
+    // The purge leaves events on the calendar as the household's record, and
+    // runs on every device, so its deletions arrive here too.
+    const plan = mealEventsAfterSync(
+      applied({
+        removedMealEvents: [
+          { eventId: 'evt-purged', date: daysAgo(200) },
+          { eventId: 'evt-peer-ahead', date: daysAgo(179) },
+          { eventId: 'evt-removed', date: daysAgo(177) },
+        ],
+      }),
+      lookup(),
+      NOW,
+    );
+
+    expect(plan.remove).toEqual(['evt-removed']);
+  });
+
+  it('asks for nothing at all in demo mode', () => {
+    mockDemoActive = true;
+
+    const plan = mealEventsAfterSync(
+      applied({
+        mealEntryIds: ['m1'],
+        removedMealEvents: [{ eventId: 'evt-9', date: daysAgo(3) }],
+      }),
+      lookup(entry({ id: 'm1', calendarEventId: 'evt-1' })),
+      NOW,
+    );
+
+    expect(plan).toEqual({ reconcile: [], remove: [] });
   });
 });

@@ -425,7 +425,7 @@ describe('summarizeRuns', () => {
     result: {
       status: 'ok' as const,
       pushed: false,
-      applied: { inserted: 0, updated: 0, skipped: 0, deleted: 0, deletionsRefused: 0 },
+      applied: emptyApplyReport(),
       unreadable: 0,
       ...over,
     },
@@ -433,13 +433,33 @@ describe('summarizeRuns', () => {
 
   it('adds up what every store applied', () => {
     const summary = summarizeRuns([
-      run('fake', { applied: { inserted: 2, updated: 1, skipped: 0, deleted: 0, deletionsRefused: 0 } }),
-      run('server', { applied: { inserted: 1, updated: 0, skipped: 0, deleted: 3, deletionsRefused: 0 } }),
+      run('fake', { applied: { ...emptyApplyReport(), inserted: 2, updated: 1 } }),
+      run('server', { applied: { ...emptyApplyReport(), inserted: 1, deleted: 3 } }),
     ]);
 
     expect(summary.applied).toMatchObject({ inserted: 3, updated: 1, deleted: 3 });
     expect(summary.ok).toBe(true);
     expect(summary.problem).toBeNull();
+  });
+
+  // #2950: the meal calendar reconcile after a sync reads these, and a meal
+  // moved on one store and removed on the other has to reach it from both.
+  it('keeps every store\'s changed meals and removed meal events', () => {
+    const summary = summarizeRuns([
+      run('fake', { applied: { ...emptyApplyReport(), updated: 1, mealEntryIds: ['m1'] } }),
+      run('server', {
+        applied: {
+          ...emptyApplyReport(),
+          updated: 1,
+          deleted: 1,
+          mealEntryIds: ['m2'],
+          removedMealEvents: [{ eventId: 'evt-3', date: '2026-08-13' }],
+        },
+      }),
+    ]);
+
+    expect(summary.applied.mealEntryIds).toEqual(['m1', 'm2']);
+    expect(summary.applied.removedMealEvents).toEqual([{ eventId: 'evt-3', date: '2026-08-13' }]);
   });
 
   it('names the transport in a failure, because "Sync failed" is unactionable with two', () => {

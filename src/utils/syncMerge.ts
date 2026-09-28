@@ -163,6 +163,16 @@ export function remoteDeletionWins(localUpdatedAt: string | null, deletedAt: str
   return localUpdatedAt <= deletedAt;
 }
 
+/**
+ * A planned meal an apply deleted that held a calendar event on this device,
+ * read off the row before the delete.
+ */
+export interface RemovedMealEvent {
+  eventId: string;
+  /** The meal's day key, which is how the reconcile tells a removal from the horizon purge. */
+  date: string;
+}
+
 /** What an apply did, for the sync log and for tests. */
 export interface ApplyReport {
   inserted: number;
@@ -171,10 +181,31 @@ export interface ApplyReport {
   deleted: number;
   /** Deletions ignored because the local row had a later edit. */
   deletionsRefused: number;
+  /**
+   * Every planned meal the apply wrote (inserted or updated), by id, for the
+   * meal calendar reconcile that runs after a sync (#2950). A meal's event
+   * belongs to the device that wrote it (`SYNC_DEVICE_LOCAL_COLUMNS`), so a
+   * peer's move or rename reaches that event only through this.
+   */
+  mealEntryIds: string[];
+  /**
+   * The events of the planned meals the apply deleted. The event id is a
+   * device-local column, so once the row is gone nothing else holds it: read
+   * here, before the delete, or the event stays on the calendar for good.
+   */
+  removedMealEvents: RemovedMealEvent[];
 }
 
 export function emptyApplyReport(): ApplyReport {
-  return { inserted: 0, updated: 0, skipped: 0, deleted: 0, deletionsRefused: 0 };
+  return {
+    inserted: 0,
+    updated: 0,
+    skipped: 0,
+    deleted: 0,
+    deletionsRefused: 0,
+    mealEntryIds: [],
+    removedMealEvents: [],
+  };
 }
 
 /** One line for the sync log: "12 added, 3 updated, 1 removed". */

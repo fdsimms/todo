@@ -177,6 +177,25 @@ describe('syncNow', () => {
     expect(reload).toHaveBeenCalledTimes(1);
   });
 
+  // #2950: the meal calendar reconcile hangs off the reload and needs to know
+  // which meals changed, across every transport that ran.
+  it('hands the reload what the sync applied', async () => {
+    const reload = jest.fn();
+    registerSyncReload(reload);
+    useSyncStore.setState({ enabled: true });
+
+    (runSyncAll as jest.Mock).mockResolvedValue(runs(
+      okResult({ updated: 1, mealEntryIds: ['m1'] }),
+      okResult({ deleted: 1, removedMealEvents: [{ eventId: 'evt-2', date: '2026-08-13' }] }),
+    ));
+    await useSyncStore.getState().syncNow();
+
+    expect(reload).toHaveBeenCalledWith(expect.objectContaining({
+      mealEntryIds: ['m1'],
+      removedMealEvents: [{ eventId: 'evt-2', date: '2026-08-13' }],
+    }));
+  });
+
   it('records the summary and clears any problem on a clean result', async () => {
     (runSyncAll as jest.Mock).mockResolvedValue(runs(okResult({ inserted: 3, updated: 1 })));
     useSyncStore.setState({ enabled: true, problem: 'Sync failed.' });

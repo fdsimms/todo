@@ -14,7 +14,7 @@ import type { GroceryItem, MealPlanEntry, MealSlot, Recipe, Task } from '../type
 import { useGroceryStore } from '../store/useGroceryStore';
 import { groceryNameKey } from '../utils/groceryParse';
 import { mealSlotSourceId, mealSlotTaskDraft } from '../utils/mealSlotTasks';
-import { dayKeyOf } from '../utils/dateUtils';
+import { dayKeyOf, dayKeyToDate } from '../utils/dateUtils';
 
 /** A local wall-clock time as the ISO instant the app stores, so the suite reads the same in any zone. */
 const localIso = (local: string) => new Date(local).toISOString();
@@ -2660,6 +2660,91 @@ describe('calendar events (#1494)', () => {
     await settle();
 
     expect(mockDeleteCalendarEvent).not.toHaveBeenCalled();
+  });
+
+  // #2950: the event is this device's, so a change made on another device
+  // reaches it only through the reconcile the sync reload runs.
+  describe('after a sync', () => {
+    const synced = (over: { mealEntryIds?: string[]; removedMealEvents?: { eventId: string; date: string }[] }) => ({
+      mealEntryIds: [], removedMealEvents: [], ...over,
+    });
+
+    it('moves this device\'s event when another device moved the meal', async () => {
+      mockMealCalendarId = 'cal-1';
+      // The row as the reload re-read it: Wednesday's dinner, now on Friday.
+      loadWeek([entry('2026-08-07', 'dinner', { id: 'm-a', title: 'Ragu', calendarEventId: 'evt-1' })]);
+
+      useMealPlanStore.getState().reconcileSyncedEvents(synced({ mealEntryIds: ['m-a'] }));
+      await settle();
+
+      expect(mockMoveAllDayEvent).toHaveBeenCalledWith('evt-1', 'cal-1', {
+        title: 'Dinner: Ragu',
+        date: dayKeyToDate('2026-08-07'),
+      });
+      expect(mockCreateAllDayEvent).not.toHaveBeenCalled();
+    });
+
+    it('reads a meal outside the loaded week from SQLite', async () => {
+      mockMealCalendarId = 'cal-1';
+      loadWeek();
+      (dbGetMealPlanEntry as jest.Mock).mockImplementation((id: string) =>
+        id === 'm-far' ? entry('2026-09-18', 'lunch', { id: 'm-far', title: 'Soup', calendarEventId: 'evt-far' }) : null
+      );
+
+      useMealPlanStore.getState().reconcileSyncedEvents(synced({ mealEntryIds: ['m-far'] }));
+      await settle();
+
+      expect(mockMoveAllDayEvent).toHaveBeenCalledWith('evt-far', 'cal-1', expect.objectContaining({
+        title: 'Lunch: Soup',
+      }));
+    });
+
+    it('writes no event for a synced meal this device never wrote one for', async () => {
+      mockMealCalendarId = 'cal-1';
+      loadWeek([entry('2026-08-07', 'dinner', { id: 'm-a', calendarEventId: null })]);
+
+      useMealPlanStore.getState().reconcileSyncedEvents(synced({ mealEntryIds: ['m-a'] }));
+      await settle();
+
+      expect(mockCreateAllDayEvent).not.toHaveBeenCalled();
+      expect(mockMoveAllDayEvent).not.toHaveBeenCalled();
+      expect(dbUpdateMealPlanEntry).not.toHaveBeenCalled();
+    });
+
+    it('links the fresh event when the old one had gone, same as a local edit', async () => {
+      mockMealCalendarId = 'cal-1';
+      mockMoveAllDayEvent.mockImplementation(() => Promise.resolve(null as unknown as string));
+      loadWeek([entry('2026-08-07', 'dinner', { id: 'm-a', title: 'Ragu', calendarEventId: 'evt-1' })]);
+
+      useMealPlanStore.getState().reconcileSyncedEvents(synced({ mealEntryIds: ['m-a'] }));
+      await settle();
+
+      expect(mockCreateAllDayEvent).toHaveBeenCalledWith('cal-1', expect.objectContaining({ title: 'Dinner: Ragu' }));
+      expect(dbUpdateMealPlanEntry).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'm-a', calendarEventId: 'evt-new' })
+      );
+    });
+
+    it('deletes this device\'s event when no calendar is picked any more, same as a local edit', async () => {
+      loadWeek([entry('2026-08-07', 'dinner', { id: 'm-a', calendarEventId: 'evt-1' })]);
+
+      useMealPlanStore.getState().reconcileSyncedEvents(synced({ mealEntryIds: ['m-a'] }));
+      await settle();
+
+      expect(mockDeleteCalendarEvent).toHaveBeenCalledWith('evt-1');
+      expect(getEntries()[0].calendarEventId).toBeNull();
+    });
+
+    it('deletes the event of a meal another device removed', () => {
+      mockMealCalendarId = 'cal-1';
+      loadWeek();
+
+      useMealPlanStore.getState().reconcileSyncedEvents(synced({
+        removedMealEvents: [{ eventId: 'evt-9', date: dayKeyOf(new Date()) }],
+      }));
+
+      expect(mockDeleteCalendarEvent).toHaveBeenCalledWith('evt-9');
+    });
   });
 });
 

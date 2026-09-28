@@ -190,6 +190,14 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
  *
  * A backup keeps the columns: restoring onto the phone that wrote the events is
  * the common case, and there the ids still resolve.
+ *
+ * Keeping the id local also means only this device can act on the event, so a
+ * peer's edit reaches it through the apply's report rather than the row: an
+ * apply names the meals it wrote and, for a meal it deletes, the event id read
+ * off the row first (`ApplyReport.mealEntryIds`/`removedMealEvents`), and the
+ * reload after the sync reconciles them. A column added here that names
+ * something outside the database needs the same, or a peer's delete strands
+ * whatever it pointed at.
  */
 export const SYNC_DEVICE_LOCAL_COLUMNS: Readonly<Record<string, readonly string[]>> = {
   meal_plan_entries: ['calendar_event_id'],

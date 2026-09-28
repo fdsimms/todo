@@ -24,7 +24,8 @@ import { generatedTaskCountOf, hasAnyGeneratedTask, liveGeneratedTask } from '..
 import { derivedId, spawnSeed } from '../utils/syncIds';
 import { ensureGeneratedTaskCategory } from './useCategoryStore';
 import { deleteGeneratedTaskQuietly, dropGeneratedTask } from './generatedTaskSync';
-import { syncMealEvent } from '../utils/mealCalendarSync';
+import { mealEventsAfterSync, syncMealEvent } from '../utils/mealCalendarSync';
+import type { ApplyReport } from '../utils/syncMerge';
 import { deleteCalendarEvent } from '../utils/calendarSync';
 import {
   classifyPlanned,
@@ -697,6 +698,20 @@ interface MealPlanStore extends UndoHistoryActions {
 
   /** Enforces the 180-day horizon. Returns how many rows went. */
   purgeOldEntries: () => number;
+
+  /**
+   * Brings this device's meal calendar events in line with what a sync just
+   * applied (#2950): the event of each changed meal that holds one is
+   * rewritten through the same reconcile a local edit runs, and the event of
+   * each meal another device removed is deleted. Which meals, and why a meal
+   * with no event of this device's is left alone, is `mealEventsAfterSync`'s
+   * call; this does the device writes, fire-and-forget like every other meal
+   * event reconcile.
+   *
+   * Called after the stores reload from the sync (`registerSyncReload`), so
+   * the rows it reads and any link it writes back are the synced ones.
+   */
+  reconcileSyncedEvents: (applied: Pick<ApplyReport, 'mealEntryIds' | 'removedMealEvents'>) => void;
 }
 
 export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
@@ -1498,6 +1513,12 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     }
 
     return removed;
+  },
+
+  reconcileSyncedEvents(applied) {
+    const plan = mealEventsAfterSync(applied, id => resolveEntry(get, id));
+    plan.reconcile.forEach(reconcileMealEvent);
+    for (const eventId of plan.remove) void deleteCalendarEvent(eventId);
   },
 }));
 
