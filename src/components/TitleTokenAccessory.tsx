@@ -55,12 +55,7 @@ interface TitleTokenAccessoryProps {
  * tooltip is showing below the field — the tooltip itself is easy to miss
  * while looking at the keyboard rather than the field above it, and this
  * sits right where the thumb already is. It only renders when the caller
- * passes both `onConfirm` and `confirmVisible`. It's tinted rather than a
- * solid accent fill on purpose: quick add's own Add button is the one
- * filled, high-emphasis control for "create this task", and a second
- * filled pill right next to the keyboard read as a competing way to do the
- * same thing rather than as what it actually does — apply the one
- * highlighted suggestion.
+ * passes both `onConfirm` and `confirmVisible`.
  *
  * The clipboard button is the same insert as a token, just with the
  * clipboard's text standing in for a fixed character — `onInsert` already
@@ -180,7 +175,7 @@ export function TitleTokenAccessory({ nativeID, onInsert, onConfirm, confirmVisi
           onPress={onConfirm}
           accessibilityLabel="Confirm suggestion"
         >
-          <Ionicons name="checkmark" size={20} color={colors.accent} />
+          <Ionicons name="checkmark" size={20} color={colors.onAccent} />
         </PressableScale>
       )}
     </View>
@@ -253,6 +248,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
     borderRadius: radius.md,
-    backgroundColor: colors.accentSubtle,
+    backgroundColor: colors.accentFill,
   },
 });

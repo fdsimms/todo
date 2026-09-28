@@ -1,4 +1,4 @@
 {
-  "message": "Quick add's keyboard toolbar no longer shows a second \"add task\" arrow next to the checkmark that accepts a schedule/tag/link suggestion — there's one add button now, and the checkmark reads as its own, quieter action.",
+  "message": "Quick add's keyboard toolbar no longer shows a second \"add task\" arrow — there's one add button now, next to the title field.",
   "date": "2026-09-28"
 }
