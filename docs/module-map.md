@@ -150,7 +150,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/layoutAnimation.ts` — animateLayout
 - `src/utils/leftoverTasks.ts` — wantsUseUpTask, useUpTaskTitle, useUpTaskFields, useUpTaskDraft, useUpTaskDrift
 - `src/utils/leftovers.ts` — cleanLeftoverTitle, LeftoverPart, WHOLE_PART_KEY, LeftoverDestination, LeftoverPick, leftoverContainersFor, leftoverPartsFor, clampKeepDays, leftoverKeepDaysFor, describeKeepDays, +25 more
-- `src/utils/lineWeight.ts` — lineWeightGrams, lineWeightText, panelForLine
+- `src/utils/lineWeight.ts` — lineWeightGrams, lineWeightText, panelForLine, WeightLookups, weightLookups, ingredientWeightText
 - `src/utils/liveActivity.ts` — TimerRunKind, TimerRun, buildTimerRuns, useTimerLiveActivitySync
 - `src/utils/lookAhead.ts` — LookAheadWindow, LookAheadDay, AwayEntry, TightDeadline, LookAheadTotals, LookAhead, BuildLookAheadOptions, buildLookAhead, carriedOverTasks, awayEntries, +8 more
 - `src/utils/maintenancePasses.ts` — MaintenanceStep, expiryPasses, catchUpPasses, retentionPasses, rebuildNotificationQueue

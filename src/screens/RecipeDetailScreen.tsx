@@ -82,7 +82,7 @@ import { allSectionsOf, sectionsFromMergedOrder, type SectionListEntry } from '.
 import { PillGroup } from '../components/PillGroup';
 import { describeUnscaled, formatScale, normalizeScale, scaleQuantity } from '../utils/recipeScale';
 import { convertQuantity } from '../utils/unitConvert';
-import { lineWeightText, panelForLine } from '../utils/lineWeight';
+import { ingredientWeightText, weightLookups as buildWeightLookups } from '../utils/lineWeight';
 import { RecipeScaleChips } from '../components/RecipeScaleChips';
 import { RecipeChoiceChips } from '../components/RecipeChoiceChips';
 import { tagColor } from '../utils/tagColor';
@@ -187,9 +187,16 @@ export function RecipeDetailScreen() {
     () => (recipe ? resolveComponents(recipe, recipesById) : []),
     [recipe, recipesById]
   );
+  // ==== the resolved recipe: components, counts, cost, the scaled lines ====
+  // The two lookups each row's weight caption and the shared text read
+  // (lineWeight.ts), built once per catalog change rather than once per row.
+  const weightLookups = useMemo(
+    () => buildWeightLookups(groceryItems, itemProducts),
+    [groceryItems, itemProducts],
+  );
+
   // What the grocery add is actually going to offer — the recipe's own lines
   // plus every component's, which is the number the footer button gates on.
-  // ==== the resolved recipe: components, counts, cost, the scaled lines ====
   const shoppableCount = useMemo(
     () => (recipe ? flattenRecipeIngredients(recipe, recipesById).length : 0),
     [recipe, recipesById]
@@ -438,8 +445,8 @@ export function RecipeDetailScreen() {
   // — built here rather than at press time so the copy and share actions can
   // both gate themselves on it being non-empty (see shareText.ts).
   const ingredientsText = useMemo(
-    () => (recipe ? buildIngredientsText(recipe, recipesById, { scale, unitSystem }) : ''),
-    [recipe, recipesById, scale, unitSystem]
+    () => (recipe ? buildIngredientsText(recipe, recipesById, { scale, unitSystem, weights: weightLookups }) : ''),
+    [recipe, recipesById, scale, unitSystem, weightLookups]
   );
 
   const { copied: copiedIngredients, copy: copyIngredients } = useCopyToClipboard();
@@ -610,16 +617,6 @@ export function RecipeDetailScreen() {
     [catalogMatches],
   );
 
-  // The two lookups each row's weight caption reads (lineWeight.ts), built once
-  // per catalog change rather than once per row.
-  const weightLookups = useMemo(
-    () => ({
-      byKey: new Map(groceryItems.map(i => [i.nameKey, i])),
-      productsById: new Map(itemProducts.map(p => [p.id, p])),
-    }),
-    [groceryItems, itemProducts],
-  );
-
 
   // The row can be gone while the screen is still mounted (deleted from the
   // editor), so this renders rather than crashing on the next read.
@@ -781,7 +778,7 @@ export function RecipeDetailScreen() {
   // share sheet) is not an error and needs no handling.
   const handleShare = () => {
     haptics.tap();
-    const message = buildRecipeShareText(recipe, recipesById, { scale, unitSystem });
+    const message = buildRecipeShareText(recipe, recipesById, { scale, unitSystem, weights: weightLookups });
     Share.share({ message }).catch(() => {});
   };
 
@@ -989,12 +986,7 @@ export function RecipeDetailScreen() {
     // cooking by the scale. Read off the scaled line before conversion, since
     // a converted amount is already rounded, and off the swapped line's name,
     // since that's the food actually going in.
-    const weightText = lineWeightText(
-      scaledResult.text,
-      line.prep,
-      panelForLine(line.nameKey, weightLookups.byKey, weightLookups.productsById),
-      unitSystem,
-    );
+    const weightText = ingredientWeightText(line, scaledResult.text, weightLookups, unitSystem);
     const scaledHere = scaledResult.scaled
       || convertedResult.converted
       // A ratio'd swap is the app's number too — the same tint, for the same

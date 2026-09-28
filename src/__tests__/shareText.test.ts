@@ -3,6 +3,7 @@ import {
   buildGroceryListShareText, buildGroceryListText, buildIngredientsText, buildRecipeShareText,
   buildWeekPlanShareText,
 } from '../utils/shareText';
+import { weightLookups } from '../utils/lineWeight';
 
 // shareText reaches recipeUtils.ts (for describeAttribution/formatServingsRange)
 // and mealPlan.ts directly, both of which reach dateUtils.ts → the settings
@@ -364,5 +365,39 @@ describe('buildWeekPlanShareText', () => {
   it('is empty for a week with nothing planned', () => {
     const days = [new Date(2026, 7, 10), new Date(2026, 7, 11)];
     expect(buildWeekPlanShareText(days, [], new Map())).toBe('');
+  });
+});
+
+describe('weights in shared text', () => {
+  const butter = item('Butter', {
+    nutrition: {
+      basis: 'per100g', servingGrams: null, servingText: null, amounts: { calorieKcal: 717 },
+      portions: [{ amount: 1, label: 'tbsp', grams: 14.2 }],
+      source: 'fdc', sourceId: null, recordedAt: '2026-01-01T00:00:00.000Z',
+    },
+  });
+  const weights = weightLookups([butter], []);
+
+  it('puts the weight after the name, ahead of the prep, where the catalog can say it', () => {
+    const r = recipe('r1', 'Mash', {
+      ingredients: [
+        ing('Butter', { quantity: '4 tbsp', prep: 'softened' }),
+        ing('Potatoes', { quantity: '2 lb' }),
+      ],
+    });
+    expect(buildIngredientsText(r, recipeMap([r]), { weights }))
+      .toBe('4 tbsp Butter (≈57 g), softened\n2 lb Potatoes');
+    expect(buildRecipeShareText(r, recipeMap([r]), { weights })).toContain('- 4 tbsp Butter (≈57 g), softened');
+  });
+
+  it('weighs the scaled line and writes it in the reader\'s units', () => {
+    const r = recipe('r1', 'Mash', { ingredients: [ing('Butter', { quantity: '4 tbsp' })] });
+    expect(buildIngredientsText(r, recipeMap([r]), { scale: 2, unitSystem: 'metric', weights }))
+      .toBe('≈120 ml Butter (≈114 g)');
+  });
+
+  it('adds nothing without the lookups', () => {
+    const r = recipe('r1', 'Mash', { ingredients: [ing('Butter', { quantity: '4 tbsp' })] });
+    expect(buildIngredientsText(r, recipeMap([r]))).toBe('4 tbsp Butter');
   });
 });

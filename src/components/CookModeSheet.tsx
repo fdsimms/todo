@@ -61,6 +61,7 @@ import { describeStandingSwap, standingSwapMap } from '../utils/standingSwaps';
 import { onHandNameKeys } from '../utils/grocerySuggest';
 import { formatScale, isUnscaled, scaleQuantity } from '../utils/recipeScale';
 import { convertQuantity } from '../utils/unitConvert';
+import { ingredientWeightText, weightLookups as buildWeightLookups } from '../utils/lineWeight';
 
 interface Props {
   visible: boolean;
@@ -147,6 +148,13 @@ export function CookModeSheet({
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
   const unitSystem = useSettingsStore(s => s.unitSystem);
   const groceryItems = useGroceryStore(useShallow(s => s.items));
+  const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
+  // What each line weighs, where its food's portion table can say
+  // (lineWeight.ts) — the same caption the recipe page puts under a pill.
+  const weightLookups = useMemo(
+    () => buildWeightLookups(groceryItems, itemProducts),
+    [groceryItems, itemProducts],
+  );
   const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
 
   // Only while this is actually up: the sheet stays mounted behind the recipe
@@ -430,6 +438,7 @@ export function CookModeSheet({
                 const scaled = scaleQuantity(flat.ingredient.quantity, scale);
                 const converted = convertQuantity(scaled.text, unitSystem);
                 const marked = scaled.scaled || converted.converted || !!flat.swappedFrom;
+                const weight = ingredientWeightText(flat.ingredient, scaled.text, weightLookups, unitSystem);
                 // The same headings the mid-step panel draws (`headings`,
                 // from `ingredientHeadings`): a component's name where one
                 // starts and the recipe's own section label where one does.
@@ -455,13 +464,18 @@ export function CookModeSheet({
                         )}
                       </View>
                       {!!converted.text && (
-                        <View style={[styles.miseQtyPill, marked && styles.miseQtyPillMarked]}>
-                          <Text
-                            style={[styles.miseQtyText, marked && styles.miseQtyTextMarked]}
-                            numberOfLines={1}
-                          >
-                            {converted.text}
-                          </Text>
+                        <View style={styles.qtyColumn}>
+                          <View style={[styles.miseQtyPill, marked && styles.miseQtyPillMarked]}>
+                            <Text
+                              style={[styles.miseQtyText, marked && styles.miseQtyTextMarked]}
+                              numberOfLines={1}
+                            >
+                              {converted.text}
+                            </Text>
+                          </View>
+                          {!!weight && (
+                            <Text style={styles.miseWeight} numberOfLines={1}>{weight}</Text>
+                          )}
                         </View>
                       )}
                     </View>
@@ -679,6 +693,7 @@ export function CookModeSheet({
                     const scaled = scaleQuantity(flat.ingredient.quantity, scale);
                     const converted = convertQuantity(scaled.text, unitSystem);
                     const marked = scaled.scaled || converted.converted || !!flat.swappedFrom;
+                    const weight = ingredientWeightText(flat.ingredient, scaled.text, weightLookups, unitSystem);
                     const heading = headings[position];
                     // A hairline above a section the way the recipe screen
                     // draws one, except at the top of the list and except
@@ -707,10 +722,15 @@ export function CookModeSheet({
                             )}
                           </View>
                           {!!converted.text && (
-                            <View style={[styles.qtyPill, marked && styles.qtyPillMarked]}>
-                              <Text style={[styles.qtyText, marked && styles.qtyTextMarked]} numberOfLines={1}>
-                                {converted.text}
-                              </Text>
+                            <View style={styles.qtyColumn}>
+                              <View style={[styles.qtyPill, marked && styles.qtyPillMarked]}>
+                                <Text style={[styles.qtyText, marked && styles.qtyTextMarked]} numberOfLines={1}>
+                                  {converted.text}
+                                </Text>
+                              </View>
+                              {!!weight && (
+                                <Text style={styles.qtyWeight} numberOfLines={1}>{weight}</Text>
+                              )}
                             </View>
                           )}
                         </View>
@@ -1056,6 +1076,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.sm,
   },
   qtyTextMarked: { color: colors.accent, fontWeight: fontWeight.medium },
+  // The line's weight under its pill (lineWeight.ts), same treatment as the
+  // recipe page's.
+  qtyColumn: { alignItems: 'flex-end' },
+  qtyWeight: {
+    color: colors.textSecondary,
+    fontSize: font.xs,
+    marginTop: spacing.xxs,
+    paddingHorizontal: spacing.sm,
+  },
   // The mise en place screen: the same ingredient list the tray's collapsed
   // panel shows mid-step, but this is the one place it's the main event —
   // bigger type, one row per line with a divider, meant to be read from
@@ -1136,6 +1165,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontWeight: fontWeight.medium,
   },
   miseQtyTextMarked: { color: colors.accent },
+  miseWeight: {
+    color: colors.textSecondary,
+    fontSize: font.sm,
+    marginTop: spacing.xxs,
+    paddingHorizontal: spacing.sm,
+  },
   timerCard: {
     backgroundColor: colors.bgSecondary,
     borderRadius: radius.md,

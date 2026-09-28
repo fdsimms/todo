@@ -78,3 +78,36 @@ export function panelForLine(
   const product = item.preferredProductId ? productsById.get(item.preferredProductId) ?? null : null;
   return nutritionFor(item, product);
 }
+
+/** The two lookups `panelForLine` reads, built once per catalog change rather than once per line. */
+export interface WeightLookups {
+  byKey: ReadonlyMap<string, GroceryItem>;
+  productsById: ReadonlyMap<string, ItemProduct>;
+}
+
+export function weightLookups(
+  items: readonly GroceryItem[],
+  products: readonly ItemProduct[],
+): WeightLookups {
+  return {
+    byKey: new Map(items.map(i => [i.nameKey, i])),
+    productsById: new Map(products.map(p => [p.id, p])),
+  };
+}
+
+/**
+ * The weight caption for one recipe line, looked up and written in one call:
+ * what every surface showing an ingredient list wants.
+ *
+ * `quantity` is the scaled amount, **before** unit conversion: a converted
+ * amount is already rounded, and weighing a rounded figure compounds it.
+ */
+export function ingredientWeightText(
+  line: { nameKey: string; prep: string | null },
+  quantity: string,
+  lookups: WeightLookups,
+  system: UnitSystem,
+): string | null {
+  const panel = panelForLine(line.nameKey, lookups.byKey, lookups.productsById);
+  return lineWeightText(quantity, line.prep, panel, system);
+}

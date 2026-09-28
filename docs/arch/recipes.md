@@ -655,8 +655,12 @@ amount, and answering that in the unit they already had answers nothing.
 ## A line's weight beside its measure (`lineWeight.ts`)
 
 A recipe line written in cups, spoons or pieces shows a weight under its quantity pill on
-`RecipeDetailScreen` ("4 tbsp" over "≈57 g") whenever the ingredient's catalog food can say what
-that measure weighs.
+`RecipeDetailScreen` and in both of `CookModeSheet`'s ingredient lists ("4 tbsp" over "≈57 g")
+whenever the ingredient's catalog food can say what that measure weighs. The shared recipe and the
+copied ingredients carry it too, in parentheses after the name ("4 tbsp butter (≈57 g),
+softened"), so what's sent matches the page; `shareText.ts` takes the lookups as an option
+(`weights`) rather than reading a store. Every surface calls `ingredientWeightText` with the scaled
+amount *before* unit conversion, since weighing an already-rounded figure compounds the rounding.
 
 - **Only from the food's own portion table**, through `gramsForLine`, the same function the
   nutrition rollup uses. No global density, and every refusal it makes (a chopped cup vs a sliced

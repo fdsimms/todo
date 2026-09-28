@@ -1,5 +1,5 @@
 import type { FoodNutrition, GroceryItem, ItemProduct } from '../types';
-import { lineWeightGrams, lineWeightText, panelForLine } from '../utils/lineWeight';
+import { ingredientWeightText, lineWeightGrams, lineWeightText, panelForLine, weightLookups } from '../utils/lineWeight';
 
 function panel(portions: FoodNutrition['portions']): FoodNutrition {
   return {
@@ -103,5 +103,16 @@ describe('panelForLine', () => {
     const byKey = new Map([['flour', item({ nameKey: 'flour', nutrition: flour, preferredProductId: 'p1' })]]);
     const products = new Map([['p1', { id: 'p1', nutrition: boxPanel } as ItemProduct]]);
     expect(panelForLine('flour', byKey, products)).toBe(boxPanel);
+  });
+});
+
+describe('ingredientWeightText', () => {
+  it('looks the line up through the built lookups and writes its weight', () => {
+    const lookups = weightLookups(
+      [{ id: 'i1', name: 'Onion', nameKey: 'onion', nutrition: onion, preferredProductId: null } as GroceryItem],
+      [],
+    );
+    expect(ingredientWeightText({ nameKey: 'onions', prep: 'chopped' }, '1 cup', lookups, 'metric')).toBe('≈160 g');
+    expect(ingredientWeightText({ nameKey: 'garlic', prep: null }, '1 cup', lookups, 'metric')).toBeNull();
   });
 });
