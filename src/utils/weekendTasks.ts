@@ -95,7 +95,7 @@ import { projectReviewLinkUrl } from './projectReviewTasks';
  *    either one is a choice made about this particular Saturday.
  * 8. **"Bare" tolerates a small, user-set number of one-off plans, not only
  *    zero.** `weekendNudgePlanThreshold` (default
- *    `WEEKEND_NUDGE_PLAN_THRESHOLD_DEFAULT`) is how many `weekendPlanCount`
+ *    `WEEKEND_NUDGE_PLAN_THRESHOLD_DEFAULT`) is how many `weekendPlanTitles`
  *    may return and the weekend still counts — a single movie or dinner
  *    booked for an otherwise open Saturday and Sunday is not a *planned*
  *    weekend, and treating it as one would have this offer go quiet the
@@ -103,6 +103,14 @@ import { projectReviewLinkUrl } from './projectReviewTasks';
  *    the threshold is read; a known calendar busy window still blocks
  *    outright rather than counting toward it, since a block of somebody
  *    else's time isn't comparable to one more task.
+ * 9. **The row names what's already there instead of only grading the
+ *    weekend empty or not.** The point of the offer is "here's what you have,
+ *    want to fill in the rest", not a pass/fail on how bare it is —
+ *    `weekendNudgeNotes` takes the titles `weekendPlanTitles` found and says
+ *    them, rather than collapsing straight to a count the person then has to
+ *    go find on their own calendar. A title comes off the `DayMark` itself
+ *    (see that function's own note), so this needs no second task lookup and
+ *    reads correctly for a projected occurrence too.
  */
 
 /** The row's title. Never varies. */
@@ -224,7 +232,8 @@ export function isWeekendEvening(task: Pick<Task, 'timeSegments'>): boolean {
 }
 
 /**
- * How many things are already on the weekend.
+ * The titles already on the weekend — one entry per plan, in Friday/Saturday/
+ * Sunday order.
  *
  * Walks `buildDayBuckets`' own output rather than the task list, which is the
  * point: "what lands on this day" has one answer in this app, projected
@@ -243,13 +252,22 @@ export function isWeekendEvening(task: Pick<Task, 'timeSegments'>): boolean {
  * whether or not anything else is happening, so its presence says nothing
  * about the weekend being free. A one-off task or a real calendar event is
  * a choice made about this particular Saturday, and still counts.
+ *
+ * The title comes off the mark itself, not a second lookup through
+ * `taskById` — `DayMark.title` is captured precisely because a projected
+ * occurrence has no row of its own to name itself from (see that field's own
+ * doc comment), so it is already the right caption for a real row too, with
+ * no `displayTitleFor` needed here: this module stays pure logic with no
+ * store or chain-step handling to pull in, and the row the nudge itself
+ * writes leans on `displayTitleFor` only for the nominated project's own
+ * suggestion, which is a different, single task with its own lookup.
  */
-export function weekendPlanCount(
+export function weekendPlanTitles(
   window: WeekendWindow,
   buckets: ReadonlyMap<string, DayBucket>,
   taskById: ReadonlyMap<string, Task>,
-): number {
-  let count = 0;
+): string[] {
+  const titles: string[] = [];
 
   for (const key of [window.fridayKey, window.saturdayKey, window.sundayKey]) {
     const counted = new Set<string>();
@@ -278,11 +296,20 @@ export function weekendPlanCount(
       if (task?.recurrenceType && task.recurrenceType !== 'none') continue;
 
       counted.add(mark.taskId);
-      count += 1;
+      titles.push(mark.title);
     }
   }
 
-  return count;
+  return titles;
+}
+
+/** How many things are already on the weekend. */
+export function weekendPlanCount(
+  window: WeekendWindow,
+  buckets: ReadonlyMap<string, DayBucket>,
+  taskById: ReadonlyMap<string, Task>,
+): number {
+  return weekendPlanTitles(window, buckets, taskById).length;
 }
 
 /**
@@ -415,21 +442,35 @@ export function weekendNudgeLinkUrl(projectId: string | null, saturdayKey?: stri
 }
 
 /**
+ * Titles joined into one clause: "A", "A and B", "A, B, and C" — the reading
+ * every other list-of-names sentence in the app already uses (a stack's
+ * roster, a project's members), so this doesn't invent a fourth way to join
+ * three things.
+ */
+function joinTitles(titles: readonly string[]): string {
+  if (titles.length === 1) return titles[0];
+  if (titles.length === 2) return `${titles[0]} and ${titles[1]}`;
+  return `${titles.slice(0, -1).join(', ')}, and ${titles[titles.length - 1]}`;
+}
+
+/**
  * The row's notes — why this task is on the list.
  *
- * States what is on the weekend (nothing, or not much) and, when there is
- * one, what the nominated project would have you do next. `planCount` above
- * zero is only possible with a plan threshold raised past its default, since
- * this row is dropped once plans get made either way (`staleWeekendNudgeTasks`)
- * — but the copy still has to be honest for the whole range `isWeekendBare`
- * now accepts, or a weekend carrying its one allowed plan gets told it has
- * none. No claim about what any of it means, and no encouragement: the app
- * knows what's on those three days, and that is the whole of what it knows.
+ * Names what's already on the weekend rather than only reporting a count —
+ * the point of the row is to show the person what they have and offer to
+ * fill in the rest, not to grade the weekend as empty or not. A non-empty
+ * `planTitles` is only possible with the plan threshold raised past its
+ * default, since this row is dropped once any plan gets made either way
+ * (`staleWeekendNudgeTasks`) — but the copy still has to be honest for the
+ * whole range `isWeekendBare` accepts, or a weekend carrying its one allowed
+ * plan gets told it has none. No claim beyond what it names, and no
+ * encouragement: the app knows these titles and that is the whole of what it
+ * knows.
  */
-export function weekendNudgeNotes(planCount: number, suggestion: WeekendSuggestion | null): string {
-  const bare = planCount > 0
-    ? 'Only a little is on your list for Friday evening, Saturday or Sunday.'
-    : 'Nothing is on your list for Friday evening, Saturday or Sunday.';
+export function weekendNudgeNotes(planTitles: readonly string[], suggestion: WeekendSuggestion | null): string {
+  const bare = planTitles.length === 0
+    ? 'Nothing is on your list for Friday evening, Saturday or Sunday.'
+    : `${joinTitles(planTitles)} ${planTitles.length === 1 ? 'is' : 'are'} on your list for Friday evening, Saturday or Sunday. There's still room to plan more.`;
   if (!suggestion) return bare;
   if (!suggestion.candidateTitle) {
     return `${bare} You marked ${suggestion.projectTitle} as somewhere to look for weekend plans.`;

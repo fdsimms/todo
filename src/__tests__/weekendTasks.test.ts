@@ -25,6 +25,7 @@ import {
   weekendNudgeNotes,
   weekendNudgeWeekendKey,
   weekendPlanCount,
+  weekendPlanTitles,
   weekendSourceProjects,
 } from '../utils/weekendTasks';
 
@@ -214,6 +215,34 @@ describe('counting what is already on the weekend', () => {
   });
 });
 
+describe('naming what is already on the weekend', () => {
+  it('names each plan off the mark, in Friday/Saturday/Sunday order', () => {
+    const buckets = bucketsOf({
+      [FRIDAY]: [mark('a', { title: 'Dinner with Sam' })],
+      [SATURDAY]: [mark('b', { title: 'Farmers market' })],
+    });
+    const byId = new Map([
+      ['a', task('a', ['evening'])],
+      ['b', task('b')],
+    ]);
+    expect(weekendPlanTitles(WINDOW, buckets, byId)).toEqual(['Dinner with Sam', 'Farmers market']);
+  });
+
+  it('names a projected occurrence off the mark, with no second task lookup', () => {
+    // The mark already carries its own caption for exactly this reason — see
+    // DayMark.title's own doc comment.
+    const buckets = bucketsOf({ [SATURDAY]: [mark('r', { projected: true, title: 'Standing tennis match' })] });
+    const oneOff = { ...task('r'), recurrenceType: 'none' } as Task;
+    expect(weekendPlanTitles(WINDOW, buckets, new Map([['r', oneOff]]))).toEqual(['Standing tennis match']);
+  });
+
+  it('leaves out a recurring occurrence\'s title along with its count', () => {
+    const buckets = bucketsOf({ [SATURDAY]: [mark('r', { projected: true, title: 'Weekly grocery run' })] });
+    const recurring = { ...task('r'), recurrenceType: 'weekly' } as Task;
+    expect(weekendPlanTitles(WINDOW, buckets, new Map([['r', recurring]]))).toEqual([]);
+  });
+});
+
 describe('whether the weekend is bare', () => {
   it('is bare with nothing on it at all', () => {
     expect(isWeekendBare(WINDOW, new Map(), 0)).toBe(true);
@@ -360,36 +389,43 @@ describe('the project it points at', () => {
 
 describe('the copy', () => {
   it('says what is on the weekend and claims nothing about what that means', () => {
-    const copy = `${WEEKEND_NUDGE_TITLE} ${weekendNudgeNotes(0, null)}`.toLowerCase();
+    const copy = `${WEEKEND_NUDGE_TITLE} ${weekendNudgeNotes([], null)}`.toLowerCase();
     for (const word of ['lonely', 'boring', 'sad', 'should', 'deserve', 'treat yourself']) {
       expect(copy).not.toContain(word);
     }
-    expect(weekendNudgeNotes(0, null)).toBe(
+    expect(weekendNudgeNotes([], null)).toBe(
       'Nothing is on your list for Friday evening, Saturday or Sunday.'
     );
   });
 
-  it('does not claim the weekend is empty once the tolerated threshold let something through', () => {
+  it('names the one plan already there rather than claiming the weekend is empty', () => {
     // A weekend nudged about with its one allowed plan already on it must not
     // be told it has none.
-    expect(weekendNudgeNotes(1, null)).toBe(
-      'Only a little is on your list for Friday evening, Saturday or Sunday.'
+    expect(weekendNudgeNotes(['Dinner with Sam'], null)).toBe(
+      "Dinner with Sam is on your list for Friday evening, Saturday or Sunday. There's still room to plan more."
     );
   });
 
+  it('joins several plans and uses "are" for them', () => {
+    expect(weekendNudgeNotes(['Dinner with Sam', 'Farmers market'], null)).toBe(
+      "Dinner with Sam and Farmers market are on your list for Friday evening, Saturday or Sunday. There's still room to plan more."
+    );
+    expect(weekendNudgeNotes(['A', 'B', 'C'], null)).toContain('A, B, and C are on your list');
+  });
+
   it('names the nominated project and its next task when there is one', () => {
-    expect(weekendNudgeNotes(0, { projectId: 'p1', projectTitle: 'Day trips', candidateTitle: 'Drive to the coast' }))
+    expect(weekendNudgeNotes([], { projectId: 'p1', projectTitle: 'Day trips', candidateTitle: 'Drive to the coast' }))
       .toContain('Next in Day trips: Drive to the coast.');
   });
 
   it('names the project alone when it has nothing left in it', () => {
-    const notes = weekendNudgeNotes(0, { projectId: 'p1', projectTitle: 'Day trips', candidateTitle: null });
+    const notes = weekendNudgeNotes([], { projectId: 'p1', projectTitle: 'Day trips', candidateTitle: null });
     expect(notes).toContain('Day trips');
     expect(notes).not.toContain('Next in');
   });
 
   it('uses no em dashes anywhere', () => {
-    const copy = `${WEEKEND_NUDGE_TITLE} ${weekendNudgeNotes(0, null)} ${weekendNudgeNotes(1, {
+    const copy = `${WEEKEND_NUDGE_TITLE} ${weekendNudgeNotes([], null)} ${weekendNudgeNotes(['Dinner with Sam'], {
       projectId: 'p', projectTitle: 'P', candidateTitle: 'c',
     })}`;
     expect(copy).not.toContain('—');
