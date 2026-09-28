@@ -49,6 +49,7 @@ import {
   type FabDropZonesHandle,
   type FabIntentChannel,
 } from '../components/FabDropZones';
+import { PaintSelectionProvider } from '../components/PaintSelection';
 import { type DragScroller, type DropZone, type FabDropIntent } from '../utils/fabDrop';
 import { useDragToDay, type DayDragHandlers } from '../hooks/useDragToDay';
 import { useMealPlanStore } from '../store/useMealPlanStore';
@@ -583,13 +584,15 @@ export function MealPlanScreen() {
   // Plain useRowSelection, the same as RecipesScreen/TemplatesScreen use for
   // their non-task rows — no recurrence-aware delete flow to borrow from
   // useTaskSelection (a meal plan entry never repeats; recurrence lives on
-  // Task, not MealPlanEntry), and no PaintSelectionProvider: painting exists
-  // to save taps down one long column of checkboxes, and this list is the
-  // opposite shape — a handful of entries a piece, broken into seven
-  // collapsible day sections rather than one flat scroll. A drag through a
-  // collapsed day's header, or across the gap between two day cards, has no
-  // obvious answer for what it should paint, so the tap-per-row toggle every
-  // other non-task list already settled on is the one used here too.
+  // Task, not MealPlanEntry).
+  //
+  // Painting is on here too (#2944's treatment, carried to the meal rows): a
+  // drag down the column of selection dots picks up a run of meals. The day
+  // headers and the gaps between day cards are answered the way the grocery
+  // list's aisle headers already are: a drag passing over one paints nothing
+  // there and carries on into the next day's meals (rowIdsBetween fills in
+  // every row between two it lands on). A collapsed day renders no rows, so
+  // it has nothing to paint and nothing registered.
   const {
     selectionMode,
     selectedIds,
@@ -598,6 +601,8 @@ export function MealPlanScreen() {
     exitSelection,
     selectAll,
     deselectAll,
+    painting,
+    paintProps,
   } = useRowSelection();
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
   const [bulkMoveVisible, setBulkMoveVisible] = useState(false);
@@ -1899,6 +1904,8 @@ export function MealPlanScreen() {
         />
       )}
 
+      {/* Outside the drop zones, the way ProjectsScreen nests the same two. */}
+      <PaintSelectionProvider {...paintProps}>
       <FabDropZoneProvider
         ref={dropZonesRef}
         onIntentChange={fabIntentChannel.publish}
@@ -1915,7 +1922,9 @@ export function MealPlanScreen() {
           // wired up above — that responder is a *descendant* of this list,
           // so the native scroll would otherwise take the touch on the first
           // finger move (same reason SortableList's callers switch it off).
-          scrollEnabled={!dragging}
+          // Same while a paint gesture owns the touch: iOS has to be told
+          // directly (see PaintSelectionProvider).
+          scrollEnabled={!dragging && !painting}
           onScroll={e => { scrollOffsetRef.current = e.nativeEvent.contentOffset.y; }}
           scrollEventThrottle={16}
           onLayout={e => { viewportHeightRef.current = e.nativeEvent.layout.height; }}
@@ -2068,6 +2077,7 @@ export function MealPlanScreen() {
           }
         />
       </FabDropZoneProvider>
+      </PaintSelectionProvider>
 
       {/*
         The container in flight, over everything else on the screen. Always
