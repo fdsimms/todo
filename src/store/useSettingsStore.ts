@@ -4291,6 +4291,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   // was already written — there is no sweep over the plan, and a shared
   // calendar silently losing a fortnight of dinners because someone changed
   // a setting is worse than a few stale ones they can delete.
+  //
+  // Switching from one calendar to another is the same call: nothing moves
+  // here. A meal already written moves into the new calendar the next time it
+  // is reconciled (syncMealEvent writes the calendar along with the title and
+  // day, #2949), rather than being rewritten in the old one for good.
   setMealCalendarId(id: string | null) {
     dbSetSetting('mealCalendarId', id ?? '');
     set({ mealCalendarId: id });

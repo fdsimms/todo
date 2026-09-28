@@ -321,6 +321,50 @@ export async function updateAllDayEvent(
 }
 
 /**
+ * `updateAllDayEvent` that also puts the event in `calendarId`, and returns the
+ * id EventKit reports for it afterwards (null on any failure).
+ *
+ * For a mirror whose target calendar is a setting the user can change: without
+ * the calendar in the write, the event stayed wherever it was first created, so
+ * switching "Write meals to" from a shared calendar to a private one kept
+ * rewriting the old meals in the shared one (#2949). `EKCalendarItem.calendar`
+ * is settable, and expo-calendar's save path assigns it when the details carry
+ * a `calendarId` (`initializeEvent` in its `CalendarModule.swift`), so this is a
+ * move of the same event rather than a delete and a fresh write. When the event
+ * is already in that calendar it's the same write `updateAllDayEvent` makes.
+ *
+ * **The id is read back rather than assumed.** The save returns
+ * `calendarItemIdentifier`, and nothing in Apple's documentation promises it
+ * survives a move to a calendar on another account; the caller links whatever
+ * this returns.
+ *
+ * **What a rewrite keeps is narrower than it looks**, here and in
+ * `updateAllDayEvent`: expo-calendar's `Event` record defaults `location` and
+ * `notes` to "" and `alarms` to [] and assigns all three on every save, so a
+ * location, a note or an alert added to the event by hand is reset by the next
+ * rewrite. Invitees, the URL and a repeat rule are left alone.
+ */
+export async function moveAllDayEvent(
+  eventId: string,
+  calendarId: string,
+  fields: AllDayEventFields
+): Promise<string | null> {
+  if (Platform.OS !== 'ios') return null;
+  try {
+    const id = await calendar().updateEventAsync(eventId, {
+      calendarId,
+      title: fields.title,
+      startDate: fields.date,
+      endDate: addDays(fields.date, 1),
+      allDay: true,
+    });
+    return id || eventId;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Deletes a deadline event. Never throws — a missing id, an already-deleted
  * event and a revoked permission all mean the same thing from here: there's
  * nothing left to delete.
