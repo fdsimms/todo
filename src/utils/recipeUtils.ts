@@ -22,7 +22,7 @@ import { substitutesOnHand } from './itemSubs';
 import { varietyIndex } from './itemVarieties';
 import { onHandNameKeys } from './grocerySuggest';
 import { resolvePluralKey } from './groceryPlural';
-import { standingSwapMap } from './standingSwaps';
+import { standingSwapMap, type StandingSwapMap } from './standingSwaps';
 import { formatDuration } from './effort';
 import {
   countChoiceAware,
@@ -655,9 +655,79 @@ export function countLikelyInPantry(
   recipesById?: ReadonlyMap<string, Recipe>,
   itemSubs: readonly ItemSubLink[] = [],
 ): LikelyInPantryCount | null {
-  const coverage = pantryCoverageForRecipe(recipe, items, now, recipesById, itemSubs);
+  return likelyCountOf(pantryCoverageForRecipe(recipe, items, now, recipesById, itemSubs));
+}
+
+/**
+ * `countLikelyInPantry` for a whole box at once, as `recipe.id → count` with
+ * the null answers left out (#2922). Same answer per recipe, by construction:
+ * both run `coverageWithLookups` over the same `pantryLookups`, and the only
+ * difference is that this builds those lookups once for every recipe rather
+ * than once per recipe.
+ *
+ * That is most of the cost. The lookups are catalog-wide (every item's pantry
+ * reason, every standing swap), so the per-recipe form repeats the same pass
+ * over the catalog for each row of the recipe box, and a box of a few hundred
+ * recipes against a few hundred items spent most of its time there.
+ */
+export function countLikelyInPantryByRecipe(
+  recipes: readonly Recipe[],
+  items: readonly GroceryItem[],
+  now: Date,
+  recipesById?: ReadonlyMap<string, Recipe>,
+  itemSubs: readonly ItemSubLink[] = [],
+): Map<string, LikelyInPantryCount> {
+  const lookups = pantryLookups(items, now, itemSubs);
+  const counts = new Map<string, LikelyInPantryCount>();
+  for (const recipe of recipes) {
+    const count = likelyCountOf(coverageWithLookups(recipe, items, now, recipesById, itemSubs, lookups));
+    if (count !== null) counts.set(recipe.id, count);
+  }
+  return counts;
+}
+
+/** The two counts a coverage reduces to, or null when both are zero — see `countLikelyInPantry`. */
+function likelyCountOf(coverage: PantryCoverage): LikelyInPantryCount | null {
   if (coverage.probablyHave === 0 && coverage.viaSubstitute === 0) return null;
   return { probablyHave: coverage.probablyHave, viaSubstitute: coverage.viaSubstitute };
+}
+
+/**
+ * Whether two versions of the grocery catalog would give every recipe the
+ * same `countLikelyInPantry`, judged without running it: true when they
+ * differ in nothing but rows' `checked` (#2922).
+ *
+ * Checking a row off is the commonest write to the catalog by far, and it
+ * cannot move a count. A row on the list is `alreadyOnList` or `inCart` in
+ * `classifyPlanned` whether or not it's checked, and neither is counted; a
+ * variety covering a generic line is picked from the listed rows first either
+ * way (`coveringVariety`), so a check changes at most *which* listed row
+ * answers, never whether one does; and nothing else under the count
+ * (`probablyHaveReason`, `onHandNameKeys`, `standingSwapMap`,
+ * `substitutesOnHand`) reads the field at all. So the recipe box keeps its
+ * counts through a check rather than recounting every recipe.
+ *
+ * Everything else is compared exactly, by identity per row and then per
+ * field, so any other change (a purchase, a new row, a reorder, a field
+ * this function has never heard of) reads as different and recounts. That is
+ * the safe direction to be wrong in: a recount that turns out to change
+ * nothing costs time, while a missed one leaves a row saying the wrong thing.
+ */
+export function samePantryCatalog(a: readonly GroceryItem[], b: readonly GroceryItem[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i];
+    const y = b[i];
+    if (x === y) continue;
+    const xKeys = Object.keys(x) as (keyof GroceryItem)[];
+    if (xKeys.length !== Object.keys(y).length) return false;
+    for (const key of xKeys) {
+      if (key === 'checked') continue;
+      if (!Object.prototype.hasOwnProperty.call(y, key) || !Object.is(x[key], y[key])) return false;
+    }
+  }
+  return true;
 }
 
 /**
@@ -725,24 +795,54 @@ export function pantryCoverageForRecipe(
   recipesById?: ReadonlyMap<string, Recipe>,
   itemSubs: readonly ItemSubLink[] = [],
 ): PantryCoverage {
-  // Swapped, from the same links this already takes: a cook who never buys
-  // dairy milk is not missing an ingredient, and a coverage number that says
-  // they are is the exact complaint #1571 exists to answer. Built here rather
-  // than passed in so every caller of this — and of
-  // `countLikelyInPantry` above it — gets the same answer without a new
-  // argument each.
-  // Live, not persisted — an unresolved choice group counts toward coverage
-  // via whichever alternative is already on hand (see recipeComponents.ts's
-  // ChoiceResolution.onHand), the same rule the shopping read uses.
-  const planned = plannedIngredientsForRecipe(
-    recipe, recipesById, { onHand: onHandNameKeys(items, now) }, 1, standingSwapMap(itemSubs, items)
-  );
+  return coverageWithLookups(recipe, items, now, recipesById, itemSubs, pantryLookups(items, now, itemSubs));
+}
+
+/**
+ * What `pantryCoverageForRecipe` reads off the catalog as a whole rather than
+ * off one recipe, split out so `countLikelyInPantryByRecipe` can build it
+ * once for a whole box (#2922). Nothing in it depends on the recipe.
+ */
+interface PantryLookups {
+  /** The catalog's on-hand keys, for choosing between a choice group's options. */
+  onHand: ReadonlySet<string>;
+  /** The standing swaps, applied before anything is classified. */
+  swaps: StandingSwapMap;
+  /** Every catalog key, for `catalogMatches`. */
+  itemKeys: ReadonlySet<string>;
+}
+
+function pantryLookups(items: readonly GroceryItem[], now: Date, itemSubs: readonly ItemSubLink[]): PantryLookups {
+  return {
+    // Live, not persisted — an unresolved choice group counts toward coverage
+    // via whichever alternative is already on hand (see recipeComponents.ts's
+    // ChoiceResolution.onHand), the same rule the shopping read uses.
+    onHand: onHandNameKeys(items, now),
+    // Swapped, from the same links this already takes: a cook who never buys
+    // dairy milk is not missing an ingredient, and a coverage number that says
+    // they are is the exact complaint #1571 exists to answer. Built here rather
+    // than passed in so every caller of `pantryCoverageForRecipe` — and of
+    // `countLikelyInPantry` above it — gets the same answer without a new
+    // argument each.
+    swaps: standingSwapMap(itemSubs, items),
+    itemKeys: new Set(items.map(i => i.nameKey)),
+  };
+}
+
+function coverageWithLookups(
+  recipe: Recipe,
+  items: readonly GroceryItem[],
+  now: Date,
+  recipesById: ReadonlyMap<string, Recipe> | undefined,
+  itemSubs: readonly ItemSubLink[],
+  lookups: PantryLookups,
+): PantryCoverage {
+  const planned = plannedIngredientsForRecipe(recipe, recipesById, { onHand: lookups.onHand }, 1, lookups.swaps);
   if (planned.length === 0) return { total: 0, catalogMatches: 0, probablyHave: 0, viaSubstitute: 0, percent: null };
 
   const classified = classifyPlanned(planned, items, now, itemSubs);
   const total = classified.length;
-  const itemKeys = new Set(items.map(i => i.nameKey));
-  const catalogMatches = classified.filter(row => itemKeys.has(row.nameKey)).length;
+  const catalogMatches = classified.filter(row => lookups.itemKeys.has(row.nameKey)).length;
   const probablyHave = classified.filter(row => row.category === 'probablyHave' || row.category === 'staple').length;
   const viaSubstitute = classified.filter(row => row.category === 'needToBuy' && row.reason !== null).length;
   const percent = catalogMatches > 0 ? Math.round((probablyHave / total) * 100) : null;

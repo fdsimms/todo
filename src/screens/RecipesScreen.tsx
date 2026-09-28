@@ -14,7 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
-import type { Recipe, RecipeMealType } from '../types';
+import type { GroceryItem, Recipe, RecipeMealType } from '../types';
 import { RECIPE_MEAL_TYPES, RECIPE_MEAL_TYPE_LABELS } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useGroceryStore } from '../store/useGroceryStore';
@@ -62,8 +62,7 @@ import { resolveActiveTrip } from '../utils/activeTrip';
 import { resetToGroceries } from '../navigation/navigationRef';
 import {
   cleanRecipeName,
-  countLikelyInPantry,
-  type LikelyInPantryCount,
+  countLikelyInPantryByRecipe,
   describeCookHistory,
   describeRecipe,
   flattenRecipeMealTypeSections,
@@ -72,6 +71,7 @@ import {
   recipeListItemKey,
   recipeSectionKey,
   resolveRecipeMealTypeDrop,
+  samePantryCatalog,
   sortRecipesBy,
   type RecipeListItem,
 } from '../utils/recipeUtils';
@@ -164,6 +164,23 @@ function AddRecipeFabMenuWithDropLabel({
   return <FabMenu {...props} dragLabel={label} />;
 }
 
+/**
+ * A grocery store selector for the catalog that keeps handing back the
+ * previous array while `samePantryCatalog` says nothing a pantry count reads
+ * has changed. zustand's own `useShallow` with that comparison in place of a
+ * shallow one, and the same shape: the ref is the selector's memory between
+ * renders.
+ */
+function usePantryCatalog() {
+  const prev = useRef<GroceryItem[] | null>(null);
+  return (state: { items: GroceryItem[] }): GroceryItem[] => {
+    const next = state.items;
+    if (prev.current !== null && samePantryCatalog(prev.current, next)) return prev.current;
+    prev.current = next;
+    return next;
+  };
+}
+
 export function RecipesScreen() {
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
@@ -224,7 +241,10 @@ export function RecipesScreen() {
       return next;
     });
   }, [setCollapsedSections]);
-  const groceryItems = useGroceryStore(useShallow(s => s.items));
+  // The catalog as far as the pantry counts below can tell: it holds its last
+  // value through a change that can't move a count (a check-off), so their
+  // memo holds too. See samePantryCatalog.
+  const pantryCatalog = useGroceryStore(usePantryCatalog());
   const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
   const shops = useGroceryStore(useShallow(s => s.shops));
   const tripShopId = useGroceryStore(s => s.tripShopId);
@@ -498,19 +518,16 @@ export function RecipesScreen() {
     },
   };
 
-  // Computed once for the visible list rather than per row render — same
+  // Computed once for the whole box rather than per row render — same
   // classifyPlanned pass RecipeToListSheet/AddWeekToListSheet already run,
-  // just reduced to a count per recipe.
-  const pantryCounts = useMemo(() => {
-    const now = new Date();
-    const byId = recipeMap(recipes);
-    const map = new Map<string, LikelyInPantryCount>();
-    for (const recipe of visible) {
-      const count = countLikelyInPantry(recipe, groceryItems, now, byId, itemSubs);
-      if (count !== null) map.set(recipe.id, count);
-    }
-    return map;
-  }, [visible, recipes, groceryItems, itemSubs]);
+  // just reduced to a count per recipe. Keyed on what a count reads and
+  // nothing else (#2922): the box rather than `visible`, so typing a search,
+  // sorting or filtering never recounts, and `pantryCatalog` rather than the
+  // raw items, so neither does checking a grocery item off.
+  const pantryCounts = useMemo(
+    () => countLikelyInPantryByRecipe(recipes, pantryCatalog, new Date(), recipeMap(recipes), itemSubs),
+    [recipes, pantryCatalog, itemSubs]
+  );
 
   // "Love"/"Unlove" flips direction based on the selection itself, the
   // same way the grocery bulk bar's Check/Uncheck does — a selection that's

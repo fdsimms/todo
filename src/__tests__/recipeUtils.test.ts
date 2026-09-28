@@ -42,6 +42,8 @@ import {
   scoreRecipeAgainstCatalog,
   suggestRecipesForEmptyNight,
   countLikelyInPantry,
+  countLikelyInPantryByRecipe,
+  samePantryCatalog,
   pantryCoverageForRecipe,
   describePantryCoverage,
   formatServingsRange,
@@ -1974,6 +1976,156 @@ describe('countLikelyInPantry', () => {
       expect(countLikelyInPantry(r, [butter, margarine], now, undefined, [sub(butter.id, margarine.id)]))
         .toEqual({ probablyHave: 1, viaSubstitute: 0 });
     });
+  });
+});
+
+// #2922 — the recipe box counts every recipe at once, building the
+// catalog-wide lookups a single time. The answer per recipe must be exactly
+// the one-recipe form's, which is what these pin.
+describe('countLikelyInPantryByRecipe', () => {
+  const now = new Date(localIso('2026-08-11T12:00'));
+  function daysAgo(n: number): string {
+    return new Date(now.getTime() - n * 86_400_000).toISOString();
+  }
+  const recent = { purchaseCount: 3, createdAt: daysAgo(90), lastPurchasedAt: daysAgo(10) };
+
+  /** A box exercising every branch the count has: direct, staple, substitute, standing swap, variety, component, choice, nothing, empty. */
+  function box() {
+    const milk = item('Milk', { nameKey: 'milk', ...recent });
+    const oatMilk = item('Oat milk', { nameKey: 'oat milk', ...recent });
+    const salt = item('Salt', { nameKey: 'salt', isStaple: true });
+    const butter = item('Butter', { nameKey: 'butter' });
+    const margarine = item('Margarine', { nameKey: 'margarine', ...recent });
+    const whiteOnion = item('White onion', { nameKey: 'white onion', varietyOfKey: 'onion', ...recent });
+    const onList = item('Eggs', { nameKey: 'eggs', onList: true, ...recent });
+    const saffron = item('Saffron', { nameKey: 'saffron' });
+    const items = [milk, oatMilk, salt, butter, margarine, whiteOnion, onList, saffron];
+    const subs = [
+      sub(butter.id, margarine.id),
+      { ...sub(milk.id, oatMilk.id), standing: true },
+    ];
+
+    const mash = recipe('Mash', { ingredients: [ing('Milk', { nameKey: 'milk' }), ing('Butter', { nameKey: 'butter' })] });
+    const recipes = [
+      recipe('Cake', { ingredients: [ing('Butter', { nameKey: 'butter' }), ing('Salt', { nameKey: 'salt' }), ing('Eggs', { nameKey: 'eggs' })] }),
+      recipe('Soup', { ingredients: [ing('Onion', { nameKey: 'onion' }), ing('Saffron', { nameKey: 'saffron' })] }),
+      recipe('Latte', { ingredients: [ing('Milk', { nameKey: 'milk' })] }),
+      mash,
+      recipe('Steak dinner', { ingredients: [ing('Steak', { nameKey: 'steak' })], components: [component(mash.id, 'Mash')] }),
+      recipe('Either', {
+        ingredients: [
+          ing('Saffron', { nameKey: 'saffron', choiceGroup: 'spice' }),
+          ing('Salt', { nameKey: 'salt', choiceGroup: 'spice' }),
+        ],
+      }),
+      recipe('Paella', { ingredients: [ing('Saffron', { nameKey: 'saffron' })] }),
+      recipe('Toast', { ingredients: [] }),
+    ];
+    return { items, subs, recipes, recipesById: new Map(recipes.map(r => [r.id, r])) };
+  }
+
+  it('gives every recipe exactly the count countLikelyInPantry gives it alone', () => {
+    const { items, subs, recipes, recipesById } = box();
+    const expected = new Map<string, unknown>();
+    for (const r of recipes) {
+      const count = countLikelyInPantry(r, items, now, recipesById, subs);
+      if (count !== null) expected.set(r.id, count);
+    }
+    const counts = countLikelyInPantryByRecipe(recipes, items, now, recipesById, subs);
+    expect(counts).toEqual(expected);
+    // The fixture has to reach the branches it claims to, or the comparison
+    // above would pass on a box of nulls.
+    expect(counts.size).toBeGreaterThanOrEqual(5);
+    expect([...counts.values()].some(c => c.viaSubstitute > 0)).toBe(true);
+  });
+
+  it('leaves a recipe with nothing to say out rather than holding a zero for it', () => {
+    const { items, subs, recipes, recipesById } = box();
+    const counts = countLikelyInPantryByRecipe(recipes, items, now, recipesById, subs);
+    const paella = recipes.find(r => r.name === 'Paella')!;
+    const toast = recipes.find(r => r.name === 'Toast')!;
+    expect(counts.has(paella.id)).toBe(false);
+    expect(counts.has(toast.id)).toBe(false);
+  });
+
+  it('works without the library or the links, as the one-recipe form does', () => {
+    const { items, recipes } = box();
+    const expected = new Map<string, unknown>();
+    for (const r of recipes) {
+      const count = countLikelyInPantry(r, items, now);
+      if (count !== null) expected.set(r.id, count);
+    }
+    expect(countLikelyInPantryByRecipe(recipes, items, now)).toEqual(expected);
+  });
+
+  it('is empty for an empty box', () => {
+    expect(countLikelyInPantryByRecipe([], [item('Milk', { nameKey: 'milk', ...recent })], now).size).toBe(0);
+  });
+});
+
+// #2922 — the recipe box keeps its pantry counts through a check-off rather
+// than recounting every recipe, on the strength of this comparison.
+describe('samePantryCatalog', () => {
+  const now = new Date(localIso('2026-08-11T12:00'));
+  const lastWeek = new Date(now.getTime() - 7 * 86_400_000).toISOString();
+
+  it('is true for the same array', () => {
+    const items = [item('Milk')];
+    expect(samePantryCatalog(items, items)).toBe(true);
+  });
+
+  it('is true when rows differ only in checked, as a check-off leaves them', () => {
+    const milk = item('Milk', { onList: true, checked: false });
+    const eggs = item('Eggs');
+    expect(samePantryCatalog([milk, eggs], [{ ...milk, checked: true }, eggs])).toBe(true);
+  });
+
+  it('is false for any other change to a row', () => {
+    const milk = item('Milk', { onList: true });
+    const before = [milk];
+    expect(samePantryCatalog(before, [{ ...milk, onList: false }])).toBe(false);
+    expect(samePantryCatalog(before, [{ ...milk, purchaseCount: 1, lastPurchasedAt: lastWeek }])).toBe(false);
+    expect(samePantryCatalog(before, [{ ...milk, isStaple: true }])).toBe(false);
+    expect(samePantryCatalog(before, [{ ...milk, checked: true, frozenAt: lastWeek }])).toBe(false);
+  });
+
+  it('is false when a field appears or disappears, even one it has never heard of', () => {
+    const milk = item('Milk');
+    expect(samePantryCatalog([milk], [{ ...milk, somethingNew: 1 } as GroceryItem])).toBe(false);
+    const { aisle: _aisle, ...withoutAisle } = milk;
+    expect(samePantryCatalog([milk], [withoutAisle as GroceryItem])).toBe(false);
+  });
+
+  it('is false for a row added, removed or moved', () => {
+    const milk = item('Milk');
+    const eggs = item('Eggs');
+    expect(samePantryCatalog([milk], [milk, eggs])).toBe(false);
+    expect(samePantryCatalog([milk, eggs], [milk])).toBe(false);
+    expect(samePantryCatalog([milk, eggs], [eggs, milk])).toBe(false);
+  });
+
+  it('only says true where the counts really are unchanged', () => {
+    // The premise the comparison rests on: checking a listed row off moves no
+    // count, including a listed variety answering a generic line.
+    const recent = { purchaseCount: 3, createdAt: '2026-05-01T00:00:00.000Z', lastPurchasedAt: lastWeek };
+    const milk = item('Milk', { nameKey: 'milk', ...recent });
+    const eggs = item('Eggs', { nameKey: 'eggs', onList: true, ...recent });
+    const white = item('White onion', { nameKey: 'white onion', varietyOfKey: 'onion', onList: true, ...recent });
+    const red = item('Red onion', { nameKey: 'red onion', varietyOfKey: 'onion', ...recent });
+    const butter = item('Butter', { nameKey: 'butter' });
+    const margarine = item('Margarine', { nameKey: 'margarine', onList: true, ...recent });
+    const subs = [sub(butter.id, margarine.id)];
+    const recipes = [
+      recipe('Soup', { ingredients: [ing('Onion', { nameKey: 'onion' }), ing('Milk', { nameKey: 'milk' })] }),
+      recipe('Cake', { ingredients: [ing('Butter', { nameKey: 'butter' }), ing('Eggs', { nameKey: 'eggs' }), ing('Milk', { nameKey: 'milk' })] }),
+    ];
+    const before = [milk, eggs, white, red, butter, margarine];
+    const after = before.map(i => (i.onList ? { ...i, checked: true } : i));
+    expect(samePantryCatalog(before, after)).toBe(true);
+    const counts = countLikelyInPantryByRecipe(recipes, before, now, undefined, subs);
+    // Something to lose, or the equality below proves nothing.
+    expect(counts.size).toBe(2);
+    expect(countLikelyInPantryByRecipe(recipes, after, now, undefined, subs)).toEqual(counts);
   });
 });
 

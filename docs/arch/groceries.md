@@ -1370,6 +1370,15 @@ plumbing through the recipes JSON blob.
   neutral 0.5 wash on its own, and a linked substitute genuinely on hand lifts that (capped
   below a fresh direct purchase, so **the fully-stocked recipe still wins**) rather than
   leaving a coverable line reading as no better than an unstocked one.
+- **Checking an item off moves no pantry count, and the recipe box relies on it** (#2922). The
+  box counts every recipe in one pass (`countLikelyInPantryByRecipe`, which builds the
+  catalog-wide lookups once rather than once per recipe) and keeps those counts through any
+  catalog change `samePantryCatalog` calls a check-off, rather than recounting a few hundred
+  recipes on every tick in the trolley. That holds because a listed row is `alreadyOnList` or
+  `inCart` either way and neither is counted. **A change that lets `checked` matter to a count**
+  (counting `inCart` as on hand, say) has to change `samePantryCatalog` in the same edit, or the
+  box shows the count from before the check until something else changes; its last test pins
+  the premise and fails first.
 
 ## Standing swaps (`ItemSubLink.standing`) — "always use oat milk for milk"
 
