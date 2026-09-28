@@ -41,6 +41,7 @@ import { TaskItem } from '../components/TaskItem';
 import { SpotlightProvider, useSpotlightProgress } from '../components/SpotlightOverlay';
 import { TaskEditor, type TaskDraft } from '../components/TaskEditor';
 import { TaskGroupEditor } from '../components/TaskGroupEditor';
+import { InlineNameField } from '../components/InlineNameField';
 import { TaskGroupHeader } from '../components/TaskGroupHeader';
 import { TaskGroupBody } from '../components/TaskGroupBody';
 import { TaskGroupTray } from '../components/TaskGroupTray';
@@ -291,7 +292,6 @@ export function ProjectDetailScreen() {
   const completeProject = useTaskStore(s => s.completeProject);
   const createTaskGroup = useTaskGroupStore(s => s.createGroup);
   const updateTaskGroup = useTaskGroupStore(s => s.updateGroup);
-  const removeGroupRow = useTaskGroupStore(s => s.removeGroupRow);
   const taskGroups = useTaskGroupStore(useShallow(s => s.groups));
   const setGroupCollapsed = useTaskGroupStore(s => s.setGroupCollapsed);
   const groupRosterOf = useTaskStore(s => s.groupRosterOf);
@@ -304,10 +304,6 @@ export function ProjectDetailScreen() {
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [editingGroup, setEditingGroup] = useState<TaskGroup | null>(null);
   const [groupEditorVisible, setGroupEditorVisible] = useState(false);
-  // Set while editingGroup is a stack freshly created from the add menu —
-  // an untitled one is garbage-collected on close rather than left behind
-  // as a nameless stack (see TodayScreen's own newStackIdRef).
-  const newStackIdRef = React.useRef<string | null>(null);
   // Set while a group header's drag() is in flight, so its body can collapse
   // for the duration rather than dragging a tall floating tray — see the same
   // state in TodayScreen. pendingGroupDragRef is read from onDragBegin, which
@@ -341,6 +337,8 @@ export function ProjectDetailScreen() {
   // a checklist section: the same field Return opens under a line. `n` moves
   // on with each line added, so the field remounts empty and focused.
   const [sectionLine, setSectionLine] = useState<{ groupId: string; n: number } | null>(null);
+  // The add menu's "New section" field, open at the foot of the list.
+  const [namingSection, setNamingSection] = useState(false);
   const handleSubmitLine = useCallback((taskId: string) => {
     setExpandedTaskId(null);
     setInsertAfterId(taskId);
@@ -869,30 +867,46 @@ export function ProjectDetailScreen() {
       return;
     }
     if (key === 'stack') {
-      // Homed here, so it stays on this page while the user fills it in —
-      // there are no members yet to scope it by. See TaskGroup.projectId.
-      const group = createTaskGroup('', null, projectId);
-      // createGroup ranks a new stack against other stacks only, which says
-      // nothing about where it falls among this project's tasks — the two
-      // share one number space (TaskGroup.sortOrder), so it has to be anchored
-      // into this list or it lands at the top of it. Same re-anchor groupTasks
-      // does, from the other end: a new stack goes after the rows already here.
-      // Read off the list as drawn: a stacked task's sortOrder is its place
-      // within its section, and a section's own slot is on the group, so the
-      // raw tasks alone could put the new one above sections already at the
-      // bottom.
-      const lastSlot = projectListItems.reduce(
-        (m, item) => Math.max(m, item.type === 'group' ? item.group.sortOrder : item.task.sortOrder),
-        0,
-      );
-      updateTaskGroup(group.id, { sortOrder: lastSlot + 1 });
-      newStackIdRef.current = group.id;
-      setEditingGroup(group);
-      setGroupEditorVisible(true);
+      // Named in place at the foot of the list rather than in the editor
+      // sheet: a name is all most sections need, and tapping the finished
+      // header opens the sheet for the rest. createNamedSection does the work.
+      setNamingSection(true);
+      listScroller.current?.scrollToEnd();
       return;
     }
     searchFilter.clear();
     setShowExistingPicker(true);
+  };
+
+  /** A section named from the foot of the list, placed after what's there. */
+  const createNamedSection = (name: string) => {
+    setNamingSection(false);
+    animateLayout();
+    haptics.tap();
+    // Homed here, so it stays on this page while the user fills it in —
+    // there are no members yet to scope it by. See TaskGroup.projectId.
+    const group = createTaskGroup(name, null, projectId);
+    // createGroup ranks a new stack against other stacks only, which says
+    // nothing about where it falls among this project's tasks — the two
+    // share one number space (TaskGroup.sortOrder), so it has to be anchored
+    // into this list or it lands at the top of it. Same re-anchor groupTasks
+    // does, from the other end: a new stack goes after the rows already here.
+    // Read off the list as drawn: a stacked task's sortOrder is its place
+    // within its section, and a section's own slot is on the group, so the
+    // raw tasks alone could put the new one above sections already at the
+    // bottom.
+    const lastSlot = projectListItems.reduce(
+      (m, item) => Math.max(m, item.type === 'group' ? item.group.sortOrder : item.task.sortOrder),
+      0,
+    );
+    updateTaskGroup(group.id, { sortOrder: lastSlot + 1 });
+    // createGroup makes it collapsed. Empty, it draws open regardless, but the
+    // stored value would snap it shut over its first task (see
+    // handleGroupToggleCollapse).
+    setGroupCollapsed(group.id, false);
+    // On a list the next thing is its first line, so the section's own line
+    // field opens straight under it, same field its "Add a line" button opens.
+    if (isList) setSectionLine({ groupId: group.id, n: 0 });
   };
 
   // Quick add doesn't know about projects, so the task lands here right after
@@ -2028,8 +2042,18 @@ export function ProjectDetailScreen() {
             // completed the footer is bare padding — and that padding comes off
             // the box the empty state centres in.
             ListFooterComponent={
-              completedProjectTasks.length === 0 && !showInlineNewTask ? null : (
+              completedProjectTasks.length === 0 && !showInlineNewTask && !namingSection ? null : (
               <View style={[styles.detailFooter, { paddingBottom: insets.bottom + FAB_SIZE + spacing.lg }]}>
+                {/* Where the new section will land: after everything else. */}
+                {namingSection && (
+                  <InlineNameField
+                    placeholder="Section name"
+                    onSubmit={createNamedSection}
+                    onCancel={() => setNamingSection(false)}
+                    accessibilityLabel="New section name"
+                    style={styles.newSectionField}
+                  />
+                )}
                 {/* One tap to a new task from wherever the list ends. The add
                     button's menu is two, and a list's own field has scrolled
                     away by the bottom of a long one. */}
@@ -2283,16 +2307,9 @@ export function ProjectDetailScreen() {
         <TaskGroupEditor
           visible={groupEditorVisible}
           group={editingGroup}
-          isNew={newStackIdRef.current !== null}
           projectId={project?.id}
           onClose={() => {
             setGroupEditorVisible(false);
-            if (newStackIdRef.current) {
-              const id = newStackIdRef.current;
-              newStackIdRef.current = null;
-              const current = useTaskGroupStore.getState().getGroupById(id);
-              if (current && current.title.trim() === '') removeGroupRow(id);
-            }
             setEditingGroup(null);
           }}
         />
@@ -2502,6 +2519,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingTop: spacing.xs,
     paddingBottom: spacing.xxs,
   },
+  newSectionField: { marginTop: spacing.sm },
   inlineNewTask: {
     flexDirection: 'row',
     flexWrap: 'wrap',

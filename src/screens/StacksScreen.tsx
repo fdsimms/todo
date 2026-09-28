@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState, useCallback } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -19,6 +19,8 @@ import { ScreenHeader } from '../components/ScreenHeader';
 import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
 import { TaskGroupEditor } from '../components/TaskGroupEditor';
+import { InlineNameField } from '../components/InlineNameField';
+import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { Fab, FAB_SIZE } from '../components/Fab';
 import { SwipeableRow } from '../components/SwipeableRow';
 import { PaintSelectionProvider, usePaintSelectionRow } from '../components/PaintSelection';
@@ -51,7 +53,6 @@ export function StacksScreen() {
 
   const groups = useTaskGroupStore(s => s.groups);
   const createGroup = useTaskGroupStore(s => s.createGroup);
-  const removeGroupRow = useTaskGroupStore(s => s.removeGroupRow);
   const allTasks = useTaskStore(s => s.tasks);
   const bulkDeleteGroups = useTaskStore(s => s.bulkDeleteGroups);
   const bulkSetGroupCategory = useTaskStore(s => s.bulkSetGroupCategory);
@@ -59,9 +60,10 @@ export function StacksScreen() {
 
   const [editingGroup, setEditingGroup] = useState<TaskGroup | null>(null);
   const [editorVisible, setEditorVisible] = useState(false);
-  // Set while the editor is showing a stack this screen just created, so an
-  // abandoned one can be cleaned up on close — same as TodayScreen's add menu.
-  const newStackIdRef = useRef<string | null>(null);
+  // The "New stack" name field, open at the end of the list.
+  const [naming, setNaming] = useState(false);
+  const keyboardScroll = useKeyboardInsetScroll<FlatList>();
+  const listRef = keyboardScroll.ref;
 
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
   const [categoryPickerVisible, setCategoryPickerVisible] = useState(false);
@@ -112,23 +114,23 @@ export function StacksScreen() {
     openEditor(group);
   }, [openEditor]);
 
-  const createStack = () => {
+  // A new stack is named in place, in a field at the end of the list where
+  // its row will land. The rest (category, members) is on the row's editor,
+  // one tap away once it exists.
+  const startNaming = () => {
+    setNaming(true);
+    listRef.current?.scrollToEnd({ animated: true });
+  };
+
+  const createStack = (name: string) => {
+    setNaming(false);
     animateLayout();
-    const group = createGroup('', null);
-    newStackIdRef.current = group.id;
-    openEditor(group);
+    haptics.tap();
+    createGroup(name, null);
   };
 
   const closeEditor = () => {
     setEditorVisible(false);
-    // An untitled brand-new stack is one the user backed out of — drop it
-    // rather than leaving a nameless row here forever.
-    if (newStackIdRef.current) {
-      const id = newStackIdRef.current;
-      newStackIdRef.current = null;
-      const current = useTaskGroupStore.getState().getGroupById(id);
-      if (current && current.title.trim() === '') removeGroupRow(id);
-    }
     setEditingGroup(null);
   };
 
@@ -203,18 +205,20 @@ export function StacksScreen() {
       />
       <HubPills hub="organize" active="Stacks" />
 
-      {groups.length === 0 ? (
+      {groups.length === 0 && !naming ? (
         <EmptyState
           icon="layers-outline"
           title="No stacks yet"
           subtitle="Group tasks that belong together, like a morning routine or a trip to pack for. Each one keeps its own schedule, but they show up together on Today."
           actionLabel="New stack"
-          onAction={createStack}
+          onAction={startNaming}
           bottomOffset={tabBarHeight}
         />
       ) : (
         <PaintSelectionProvider {...paintProps}>
           <FlatList
+            ref={keyboardScroll.ref}
+            {...keyboardScroll.props}
             data={groups}
             keyExtractor={g => g.id}
             // A paint gesture owns the touch for its duration — see the note
@@ -230,7 +234,18 @@ export function StacksScreen() {
             ListFooterComponent={
               selectionMode
                 ? null
-                : <View style={{ height: tabBarHeight + FAB_SIZE + spacing.xl }} />
+                : (
+                  <View style={{ paddingBottom: tabBarHeight + FAB_SIZE + spacing.xl }}>
+                    {naming && (
+                      <InlineNameField
+                        placeholder="Stack name"
+                        onSubmit={createStack}
+                        onCancel={() => setNaming(false)}
+                        accessibilityLabel="New stack name"
+                      />
+                    )}
+                  </View>
+                )
             }
           />
         </PaintSelectionProvider>
@@ -238,7 +253,7 @@ export function StacksScreen() {
 
       {!selectionMode && (
         <Fab
-          onPress={createStack}
+          onPress={startNaming}
           accessibilityLabel="Add stack"
           bottom={insets.bottom + tabBarHeight + spacing.md}
         />
@@ -273,7 +288,6 @@ export function StacksScreen() {
       <TaskGroupEditor
         visible={editorVisible}
         group={editingGroup}
-        isNew={newStackIdRef.current !== null}
         onClose={closeEditor}
       />
     </View>
