@@ -571,7 +571,16 @@ interface GroceryStore extends UndoHistoryActions {
   setCheckedMany: (ids: string[], checked: boolean, opts?: { listId?: string | null }) => void;
   setQuantity: (id: string, quantity: string | null) => void;
   setAisle: (id: string, aisle: string) => void;
-  setAisleMany: (assignments: Record<string, string>) => void;
+  /**
+   * Files each row under its aisle, and remembers each filing for the next
+   * time the name is typed.
+   *
+   * `opts.registerUndo` files one undo for the batch, putting back both the
+   * rows' aisles and the remembered filings this overwrote. Only the bulk
+   * bar's Move to Aisle passes it: the item sheet's picker is one row you can
+   * see and re-pick, and the AI tidy is reviewed before it is applied.
+   */
+  setAisleMany: (assignments: Record<string, string>, opts?: { registerUndo?: boolean }) => void;
   /** False when the new name collides with another catalog row. */
   renameItem: (id: string, name: string) => boolean;
   /**
@@ -1090,8 +1099,18 @@ interface GroceryStore extends UndoHistoryActions {
   clearChoice: (id: string) => void;
 
   removeFromList: (id: string) => void;
-  /** removeFromList over a whole selection at once. `opts.listId` as setCheckedMany's. */
-  removeFromListMany: (ids: string[], opts?: { listId?: string | null }) => void;
+  /**
+   * removeFromList over a whole selection at once. `opts.listId` as setCheckedMany's.
+   *
+   * `opts.registerUndo` files one undo for the batch, and only the bulk bar
+   * passes it. Every other caller is either an undo itself (`undoForAdds`) or
+   * something the app did unattended (the Reminders mirror), and neither is a
+   * step the user took and might want back.
+   */
+  removeFromListMany: (
+    ids: string[],
+    opts?: { listId?: string | null; registerUndo?: boolean }
+  ) => void;
   /**
    * Builds the undo for a batch of adds, and is the only correct way to revert
    * one. **Call it immediately after the adds land**, because it snapshots the
@@ -2291,20 +2310,24 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     get().setAisleMany({ [id]: aisle });
   },
 
-  setAisleMany(assignments) {
+  setAisleMany(assignments, opts) {
     const updates: GroceryItem[] = [];
+    // Each moved row's aisle before the move, for the undo.
+    const previousAisle = new Map<string, string>();
     for (const item of get().items) {
       const aisle = assignments[item.id];
       if (!aisle || aisle === item.aisle) continue;
       updates.push({ ...item, aisle });
+      previousAisle.set(item.id, item.aisle);
     }
     if (updates.length === 0) return;
 
+    const overridesBefore = get().aisleOverrides;
     dbTransaction(() => { for (const u of updates) dbUpdateGroceryItem(u); });
     // Every call here is a deliberate filing — the item sheet's picker, or a
     // reviewed-and-accepted AI tidy — so it's what gets remembered for the
     // next time this name is typed.
-    const remembered = rememberAisles(get().aisleOverrides, updates);
+    const remembered = rememberAisles(overridesBefore, updates);
     if (remembered) dbSetGroceryAisleOverrides(remembered);
 
     const byId = new Map(updates.map(u => [u.id, u]));
@@ -2315,6 +2338,46 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       aisleOrder: normalizeAisleOrder(s.aisleOrder, updates.map(u => u.aisle), s.hiddenAisles),
       aisleOverrides: remembered ?? s.aisleOverrides,
     }));
+
+    // Moving twenty rows into Frozen by mistake used to be twenty trips
+    // through the item sheet to put right, and the mistake stayed remembered
+    // for every future add of those names (#2942). The undo puts back both:
+    // each row's aisle, and each remembered filing this overwrote (or forgets
+    // it, where there was none before). Only the keys this move wrote are
+    // touched, so a filing made since for some other name survives. Not marked
+    // destructive: a re-filing is the grocery twin of a reschedule, which the
+    // undo bar leaves to the shake.
+    if (opts?.registerUndo) {
+      const movedKeys = [...new Set(updates.map(u => u.nameKey.trim()).filter(Boolean))];
+      const count = updates.length;
+      const aisle = new Set(updates.map(u => u.aisle)).size === 1 ? updates[0].aisle : null;
+      get().setLastAction({
+        label: aisle
+          ? `Moved ${count} ${count === 1 ? 'item' : 'items'} to ${aisle}`
+          : `Moved ${count} ${count === 1 ? 'item' : 'items'}`,
+        redo: () => get().setAisleMany(assignments, { registerUndo: true }),
+        undo: () => {
+          const restored = get().items
+            .filter(i => previousAisle.has(i.id))
+            .map(i => ({ ...i, aisle: previousAisle.get(i.id)! }));
+          dbTransaction(() => { for (const r of restored) dbUpdateGroceryItem(r); });
+          const overrides = { ...get().aisleOverrides };
+          for (const key of movedKeys) {
+            if (key in overridesBefore) overrides[key] = overridesBefore[key];
+            else delete overrides[key];
+          }
+          dbSetGroceryAisleOverrides(overrides);
+          const restoredById = new Map(restored.map(r => [r.id, r]));
+          set(s => ({
+            items: s.items.map(i => restoredById.get(i.id) ?? i),
+            // The aisles coming back may have been deleted since; the order has
+            // to hold them or they'd render unplaced, same as the move above.
+            aisleOrder: normalizeAisleOrder(s.aisleOrder, restored.map(r => r.aisle), s.hiddenAisles),
+            aisleOverrides: overrides,
+          }));
+        },
+      });
+    }
   },
 
   /**
@@ -3831,16 +3894,25 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // Parks every row, same as removeFromList: the entry goes, the catalog row
     // stays, and a recipe-owned quantity and its credit end with the shop they
     // were for.
-    const toUpdate = leaving
+    const parking = leaving
       .map(e => get().items.find(i => i.id === e.itemId))
-      .filter((i): i is GroceryItem => !!i)
-      .map(i => ({
-        ...i,
-        quantity: i.quantityFromRecipe ? null : i.quantity,
-        quantityFromRecipe: false,
-        sourceRecipeId: null,
-        sourceRecipeTitle: null,
-      }));
+      .filter((i): i is GroceryItem => !!i);
+    const toUpdate = parking.map(i => ({
+      ...i,
+      quantity: i.quantityFromRecipe ? null : i.quantity,
+      quantityFromRecipe: false,
+      sourceRecipeId: null,
+      sourceRecipeTitle: null,
+    }));
+    // What the park is about to null, for the undo below. Only these four
+    // columns: the rest of the row isn't touched here, and restoring a whole
+    // snapshot would also roll back anything recorded on it since.
+    const shopFields = new Map(parking.map(i => [i.id, {
+      quantity: i.quantity,
+      quantityFromRecipe: i.quantityFromRecipe,
+      sourceRecipeId: i.sourceRecipeId,
+      sourceRecipeTitle: i.sourceRecipeTitle,
+    }]));
 
     for (const u of toUpdate) dbUpdateGroceryItem(u);
     const byId = new Map(toUpdate.map(u => [u.id, u]));
@@ -3849,6 +3921,36 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       cartHoldIds: s.cartHoldIds.filter(x => !byId.has(x)),
     }));
     writeMembership({ remove: leaving.map(e => ({ itemId: e.itemId, listId })) });
+
+    // The bulk bar's Remove used to be the one way to take twenty rows off the
+    // list with no way back, one chip along from Check (#2942). Clear the list
+    // has always had this, and this is Clear on a selection, so it undoes the
+    // same way: the entries come back as they were (tick, walk-order slot and
+    // either/or included, since all three live on the entry), and so does the
+    // recipe's claim on each row's quantity. Marked destructive for the same
+    // reason Clear is, so the undo bar offers it rather than only the shake.
+    if (opts?.registerUndo) {
+      const count = leaving.length;
+      get().setLastAction({
+        label: `Removed ${count} ${count === 1 ? 'item' : 'items'} from the list`,
+        destructive: true,
+        redo: () => get().removeFromListMany(ids, { listId, registerUndo: true }),
+        undo: () => {
+          // A row deleted since has nothing to come back to, and an entry
+          // pointing at it would be counted in the list for the session.
+          const alive = new Set(get().items.map(i => i.id));
+          const restored = get().items
+            .filter(i => shopFields.has(i.id))
+            .map(i => ({ ...i, ...shopFields.get(i.id)! }));
+          for (const r of restored) dbUpdateGroceryItem(r);
+          const restoredById = new Map(restored.map(r => [r.id, r]));
+          set(s => ({ items: s.items.map(i => restoredById.get(i.id) ?? i) }));
+          // After the rows, like clearList's undo, and as upserts: whatever
+          // re-listed one of them since keeps the list to a single entry.
+          writeMembership({ upsert: leaving.filter(e => alive.has(e.itemId)) });
+        },
+      });
+    }
   },
 
   /**

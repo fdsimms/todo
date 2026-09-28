@@ -874,15 +874,19 @@ export function GroceryScreen() {
       if (!aisle) return;
       animateLayout();
       const ids = Array.from(selectedIds);
-      setAisleMany(Object.fromEntries(ids.map(id => [id, aisle])));
+      // With an undo, as Remove has: see setAisleMany's registerUndo (#2942).
+      setAisleMany(Object.fromEntries(ids.map(id => [id, aisle])), { registerUndo: true });
       exitSelection();
     },
     [selectedIds, setAisleMany, exitSelection]
   );
 
+  // No confirm, unlike Clear the list: Remove parks rows rather than deleting
+  // any, and one undo puts the whole batch back (#2942). Clear confirms
+  // because it can delete a row outright.
   const handleBulkRemove = useCallback(() => {
     animateLayout();
-    removeFromListMany(Array.from(selectedIds));
+    removeFromListMany(Array.from(selectedIds), { registerUndo: true });
     exitSelection();
   }, [selectedIds, removeFromListMany, exitSelection]);
 
