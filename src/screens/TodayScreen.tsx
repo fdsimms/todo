@@ -72,6 +72,7 @@ import { asksOnCompletion } from '../utils/deliverables';
 import { DeliverablePromptQueue } from '../components/DeliverablePromptQueue';
 import { useTaskStore } from '../store/useTaskStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
+import { useGroceryStore } from '../store/useGroceryStore';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { useWidgetCompletionStore } from '../store/useWidgetCompletionStore';
 import { useTaskSelection } from '../hooks/useTaskSelection';
@@ -1318,8 +1319,10 @@ export function TodayScreen() {
           // A leftover can age from "fresh" into "soon" purely by time
           // passing, with no store mutation to trigger a reconcile — same
           // reason the other checks above run here rather than waiting for
-          // the next cold start.
-          useLeftoverStore.getState().reconcileAllLeftoverTasks();
+          // the next cold start. Grocery use-up tasks share the sweep, so an
+          // item the use-up cap turned away gets its task once a slot frees
+          // up, soonest use-by day first across both kinds (#2924).
+          useGroceryStore.getState().reconcileAllUseUpTasks();
           // A completion timer's countdown ends purely by time passing too,
           // and this is the case that matters most for it: the whole point of
           // one is a short reminder a few minutes to a few hours after

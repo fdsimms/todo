@@ -83,7 +83,6 @@ jest.mock('../store/useMealPlanStore', () => ({
 jest.mock('../store/useLeftoverStore', () => ({
   useLeftoverStore: {
     getState: () => ({
-      reconcileAllLeftoverTasks: mockRecord('reconcileAllLeftoverTasks'),
       purgeOldLeftovers: mockRecord('purgeOldLeftovers'),
     }),
   },
@@ -93,6 +92,7 @@ jest.mock('../store/useGroceryStore', () => ({
     getState: () => ({
       tripShopId: null, tripStartedAt: null, shops: [],
       checkAwayGroceryList: mockRecord('checkAwayGroceryList'),
+      reconcileAllUseUpTasks: mockRecord('reconcileAllUseUpTasks'),
     }),
   },
 }));
@@ -165,7 +165,7 @@ describe('runBackgroundRefresh', () => {
       'checkMoodTasks', 'checkWeekendNudgeTasks', 'checkWeighInTasks',
       'checkBirthdayTasks', 'checkBirthdayGiftTasks', 'checkReachOutTasks',
       'checkWaitingFollowUpTasks',
-      'reconcileAllLeftoverTasks', 'checkScheduledTemplates',
+      'reconcileAllUseUpTasks', 'checkScheduledTemplates',
       'sweepExpiredCompletionTimers',
       'sweepTaskPenalties',
     ];

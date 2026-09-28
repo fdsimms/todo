@@ -896,6 +896,22 @@ describe('use-up tasks', () => {
     expect(mockTaskState.tasks.some(t => t.generatedSourceId === 'closed')).toBe(false);
   });
 
+  it('reconcileUseUpTaskFor reconciles one live leftover and leaves a finished one alone', () => {
+    // The step the merged use-up sweep (useGroceryStore.reconcileAllUseUpTasks,
+    // #2924) takes for each leftover in its queue.
+    seed([
+      makeLeftover({ id: 'urgent', keepUntil: '2026-08-10' }),
+      makeLeftover({ id: 'closed', keepUntil: '2026-08-10', finishedAt: localIso('2026-08-09T00:00'), outcome: 'eaten' }),
+    ]);
+
+    useLeftoverStore.getState().reconcileUseUpTaskFor('closed');
+    useLeftoverStore.getState().reconcileUseUpTaskFor('missing');
+    expect(mockTaskState.tasks).toHaveLength(0);
+
+    useLeftoverStore.getState().reconcileUseUpTaskFor('urgent');
+    expect(mockTaskState.tasks.some(t => t.generatedSourceId === 'urgent')).toBe(true);
+  });
+
   // #1953. The sweep above runs on startup and on every app foreground, because
   // needsAttention is a function of the wall clock. It used to rewrite dueDate
   // to *today* each time, so a use-up task deferred to tomorrow was pulled back

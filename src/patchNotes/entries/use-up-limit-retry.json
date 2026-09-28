@@ -1,0 +1,4 @@
+{
+  "message": "With a limit on use-up tasks, a grocery item that didn't get a task because the limit was reached now gets one once a slot frees up, and open slots go to whatever is closest to its use-by date, groceries and leftovers alike",
+  "date": "2026-09-28"
+}

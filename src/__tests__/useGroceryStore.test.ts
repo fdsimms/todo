@@ -155,6 +155,7 @@ jest.mock('../store/useTaskStore', () => ({
 // user would.
 let mockUseUpTasks = false;
 let mockUseUpLeadDays = 1;
+let mockUseUpCap: number | null = null;
 let mockUseUpCategory: string | null = null;
 let mockActiveListDrivenBy: string | null = null;
 let mockProjects: any[] = [];
@@ -166,6 +167,7 @@ jest.mock('../store/useSettingsStore', () => ({
       get groceryUseUpTasks() { return mockUseUpTasks; },
       get groceryUseUpLeadDays() { return mockUseUpLeadDays; },
       get groceryUseUpTaskCategory() { return mockUseUpCategory; },
+      get useUpTaskCap() { return mockUseUpCap; },
       dayResetTime: '00:00',
       get activeListDrivenBy() { return mockActiveListDrivenBy; },
       setActiveListDrivenBy: (id: string | null) => { mockActiveListDrivenBy = id; },
@@ -179,6 +181,21 @@ jest.mock('../store/useSettingsStore', () => ({
       anthropicApiKey: null,
       onDeviceAiEnabled: false,
       aiFeatureConfig: { groceryAisles: { enabled: true, model: 'claude-haiku-4-5-20251001' } },
+    }),
+  },
+}));
+
+// The use-up sweep reads the leftovers and hands each one back to the
+// leftover store to reconcile, in date order with the grocery items (#2924).
+// Mocked so the order is observable, and because the real store reaches the
+// Health bridge through the food log at import.
+let mockLeftovers: any[] = [];
+const mockLeftoverReconciles: string[] = [];
+jest.mock('../store/useLeftoverStore', () => ({
+  useLeftoverStore: {
+    getState: () => ({
+      leftovers: mockLeftovers,
+      reconcileUseUpTaskFor: (id: string) => { mockLeftoverReconciles.push(id); },
     }),
   },
 }));
@@ -367,7 +384,10 @@ beforeEach(() => {
   mockTaskState.tasks = [];
   mockUseUpTasks = false;
   mockUseUpLeadDays = 1;
+  mockUseUpCap = null;
   mockUseUpCategory = null;
+  mockLeftovers = [];
+  mockLeftoverReconciles.length = 0;
   mockCollapsedGroceryGroups = [];
   seed([]);
   // Every test starts with an empty history. Undo used to null a single slot,
@@ -5651,6 +5671,73 @@ describe('either/or items (choiceGroup)', () => {
 });
 
 // ─── Use-up tasks (#1106) ───────────────────────────────────────────────────
+
+describe('reconcileAllUseUpTasks (#2924)', () => {
+  it('gives an item the cap turned away its task once a slot frees up', () => {
+    mockUseUpTasks = true;
+    mockUseUpCap = 1;
+    const spinach = makeItem({ name: 'Spinach' });
+    const chicken = makeItem({ name: 'Chicken' });
+    seed([spinach, chicken]);
+    useGroceryStore.getState().setExpiresAt(spinach.id, '2026-08-17');
+    useGroceryStore.getState().setExpiresAt(chicken.id, '2026-08-18');
+    // The cap is full, so chicken is declined.
+    expect(useUpTaskFor(chicken.id)).toBeUndefined();
+
+    // Spinach's task is done; nothing touches chicken's row.
+    const done = useUpTaskFor(spinach.id)!;
+    mockTaskState.tasks = mockTaskState.tasks.map(t => (t.id === done.id ? { ...t, completed: true } : t));
+
+    useGroceryStore.getState().reconcileAllUseUpTasks();
+
+    expect(useUpTaskFor(chicken.id)).toBeDefined();
+    // And the spinach task ticked off for this same use-by day isn't handed
+    // straight back.
+    expect(useUpTaskFor(spinach.id)).toBeUndefined();
+  });
+
+  it('spends an open slot on the soonest use-by day, not the first item reconciled', () => {
+    mockUseUpTasks = true;
+    mockUseUpCap = 1;
+    const later = makeItem({ name: 'Yogurt', expiresAt: '2026-08-25' });
+    const sooner = makeItem({ name: 'Spinach', expiresAt: '2026-08-16' });
+    seed([later, sooner]);
+
+    useGroceryStore.getState().reconcileAllUseUpTasks();
+
+    expect(useUpTaskFor(sooner.id)).toBeDefined();
+    expect(useUpTaskFor(later.id)).toBeUndefined();
+  });
+
+  it('visits the leftovers in the same queue, by date', () => {
+    mockUseUpTasks = true;
+    const spinach = makeItem({ name: 'Spinach', expiresAt: '2026-08-16' });
+    seed([spinach]);
+    mockLeftovers = [
+      { id: 'l-late', keepUntil: '2026-08-20', frozenAt: null, finishedAt: null },
+      { id: 'l-soon', keepUntil: '2026-08-15', frozenAt: null, finishedAt: null },
+    ];
+    // One sequence for both kinds, so the interleave itself is what's pinned.
+    mockTaskState.addTask.mockImplementationOnce((draft: Partial<Task>) => {
+      mockLeftoverReconciles.push('spinach');
+      const task = { id: 't-x', completed: false, archived: false, ...draft } as Task;
+      mockTaskState.tasks.push(task);
+      return task;
+    });
+
+    useGroceryStore.getState().reconcileAllUseUpTasks();
+
+    expect(mockLeftoverReconciles).toEqual(['l-soon', 'spinach', 'l-late']);
+    expect(useUpTaskFor(spinach.id)).toBeDefined();
+  });
+
+  it('creates nothing for an item with the setting off', () => {
+    const spinach = makeItem({ name: 'Spinach', expiresAt: '2026-08-16' });
+    seed([spinach]);
+    useGroceryStore.getState().reconcileAllUseUpTasks();
+    expect(useUpTaskFor(spinach.id)).toBeUndefined();
+  });
+});
 
 describe('use-up tasks', () => {
   const NAME = 'Spinach';

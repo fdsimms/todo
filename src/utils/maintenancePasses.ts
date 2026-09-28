@@ -208,7 +208,13 @@ export function catchUpPasses(): MaintenanceStep[] {
     // true cold launch — so a leftover that crossed the threshold while the
     // app was closed sat with no use-up task until the app was backgrounded
     // and reopened at least once.
-    ['reconcile leftover use-up tasks', () => useLeftoverStore.getState().reconcileAllLeftoverTasks()],
+    //
+    // Grocery use-up tasks ride the same sweep, in one queue with the
+    // leftovers, soonest use-by day first (#2924). A grocery item declined a
+    // slot under the use-up cap used to wait for its own row to be edited,
+    // since every other grocery reconcile runs off a mutation, and this is
+    // what gives it the slot once one frees up.
+    ['reconcile use-up tasks', () => useGroceryStore.getState().reconcileAllUseUpTasks()],
     // Apply any template whose schedule came due while the app was closed
     // (#1781). After initSettings, since "due" is measured in logical days
     // and gated on vacationMode; after dripStalledProjects for the same

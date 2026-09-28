@@ -86,6 +86,7 @@ import type { PantryReviewAnswer } from '../utils/pantryReview';
 import { wantsShelfLifePrompt, type DisposalOutcome } from '../utils/itemDisposal';
 import { expiresAtForOpening, expiresAtForPurchase, liveExpiresAt } from '../utils/groceryShelfLife';
 import { useUpTaskDraft, useUpTaskDrift, wantsUseUpTask } from '../utils/groceryExpiry';
+import { useUpSweepOrder } from '../utils/useUpSweep';
 import { dropGeneratedTask, reconcileGeneratedTask } from './generatedTaskSync';
 import {
   aisleForName,
@@ -449,6 +450,20 @@ interface GroceryStore extends UndoHistoryActions {
    */
   pendingUseUpItemId: string | null;
   setPendingUseUpItem: (id: string | null) => void;
+  /**
+   * The catch-up sweep over every use-up task, grocery and leftover together,
+   * soonest use-by day first (`useUpSweepOrder`, #2924). Run by the catch-up
+   * passes and on foreground, in place of the leftover-only sweep those used
+   * to run.
+   *
+   * It exists for the shared cap. A grocery item declined a slot had no second
+   * chance before: every grocery reconcile runs off a mutation of that item, so
+   * once the first tasks were done the rest waited for an edit that might never
+   * come. Walking both kinds in one queue by date is also what makes the
+   * setting's "closest date first" hold across them, rather than leftovers
+   * always claiming open slots ahead of groceries because their sweep ran first.
+   */
+  reconcileAllUseUpTasks: () => void;
   /**
    * The row a "how did this go" question is currently outstanding for, and
    * which of the two questions it is.
@@ -1967,6 +1982,30 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
 
   setPendingUseUpItem(id) {
     set({ pendingUseUpItemId: id });
+  },
+
+  reconcileAllUseUpTasks() {
+    // Required lazily, as `reloadOtherStores` below does for the food log: the
+    // leftover store reaches it at import, and so the Health bridge, which
+    // nothing else loading this store needs.
+    const { useLeftoverStore } = require('./useLeftoverStore') as typeof import('./useLeftoverStore');
+    const leftoverStore = useLeftoverStore.getState();
+    const order = useUpSweepOrder(
+      get().items,
+      leftoverStore.leftovers,
+      useTaskStore.getState().tasks,
+      useSettingsStore.getState().groceryUseUpTasks
+    );
+    for (const source of order) {
+      if (source.kind === 'leftoverUseUp') {
+        leftoverStore.reconcileUseUpTaskFor(source.id);
+        continue;
+      }
+      // Re-read per step rather than off one snapshot: a reconcile writes only
+      // tasks, but reading the row as it stands costs nothing and can't go stale.
+      const item = get().items.find(i => i.id === source.id);
+      if (item) reconcileUseUpTask(item);
+    }
   },
 
   dismissDisposalOffer() {
