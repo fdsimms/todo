@@ -62,6 +62,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   followUpTaskEveryN: null, followUpTaskTitle: null, followUpTaskDraft: null,
   followUpTaskOneAtATime: false, followUpTaskTally: 0, previousFollowUpTaskTally: 0,
   followUpTaskSourceTitle: null,
+  followUpTaskSourceId: null,
   archived: false, archivedAt: null, timerStartedAt: null, actualMinutes: null,
   timedMinutes: null, timerElapsedSeconds: 0,
   healthMetric: null,

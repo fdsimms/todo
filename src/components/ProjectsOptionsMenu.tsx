@@ -31,8 +31,6 @@ interface Props {
   categoryCount: number;
   sort: ProjectSortOption;
   onSortChange: (sort: ProjectSortOption) => void;
-  /** Opens `CookbookChecklistSheet` — a photo of a table of contents in, a list-kind project out. */
-  onScanCookbook: () => void;
 }
 
 /**
@@ -48,7 +46,7 @@ interface Props {
  */
 export function ProjectsOptionsMenu({
   visible, onClose, filter, onFilterChange, completedCount, archivedCount,
-  onManageCategories, categoryCount, onScanCookbook, sort, onSortChange,
+  onManageCategories, categoryCount, sort, onSortChange,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -165,9 +163,16 @@ export function ProjectsOptionsMenu({
         {/* Its own card for the same reason the categories row below is: this
             is a second question (in what order), with its own tick. The order
             is applied inside each category section, and only "Your order" can
-            be changed by dragging, so the others say that a drag is off. */}
-        <Text style={styles.cardLabel}>Sort by</Text>
+            be changed by dragging, so the others say that a drag is off.
+            The label lives inside the card (not floating above it like a
+            Settings section header) because this sheet sits over the
+            translucent backdrop dim rather than an opaque screen — an
+            unbacked label there let whatever's dimmed behind it (a project
+            category header, most often) read straight through and collide
+            with it. */}
         <View style={styles.optionsCard}>
+          <Text style={styles.cardLabel}>Sort by</Text>
+          <View style={styles.optionSep} />
           {PROJECT_SORT_OPTIONS.map((option, i) => (
             <React.Fragment key={option}>
               {i > 0 && <View style={styles.optionSep} />}
@@ -212,24 +217,6 @@ export function ProjectsOptionsMenu({
                   ? `Rename, reorder or delete the ${categoryCount === 1 ? 'one you have' : `${categoryCount} you have`}`
                   : 'Group projects under headings of your own'}
               </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
-          </TouchableOpacity>
-          <View style={styles.optionSep} />
-          <TouchableOpacity
-            style={styles.optionRow}
-            onPress={() => {
-              haptics.tap();
-              dismissThen(onScanCookbook);
-            }}
-            activeOpacity={interaction.activeOpacity}
-            accessibilityRole="button"
-            accessibilityLabel="Scan a cookbook"
-          >
-            <Ionicons name="camera-outline" size={18} color={colors.textSecondary} />
-            <View style={styles.optionContent}>
-              <Text style={styles.optionLabel}>Scan a cookbook</Text>
-              <Text style={styles.optionHint}>Photograph its table of contents to build a checklist</Text>
             </View>
             <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
           </TouchableOpacity>
@@ -279,7 +266,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   cardLabel: {
     color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.semibold,
     textTransform: 'uppercase', letterSpacing: 0.8,
-    marginHorizontal: spacing.md, marginTop: spacing.xs, marginBottom: spacing.xs,
+    paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.xs,
   },
   optionSep: {
     height: border.hairline,

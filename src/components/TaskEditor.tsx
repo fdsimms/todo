@@ -571,6 +571,14 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [followUpTaskOneAtATime, setFollowUpTaskOneAtATime] = useState(false);
   const [showFollowUpTaskSheet, setShowFollowUpTaskSheet] = useState(false);
   const [showFollowUpTask, setShowFollowUpTask] = useState(false);
+  const [showFollowUpSource, setShowFollowUpSource] = useState(false);
+  // The live task the rule that added this one is still running on, if it can
+  // still be found — see the field note on Task.followUpTaskSourceId for why
+  // the pointer can go stale. Null on every task that isn't a follow-up task,
+  // and null again once its parent has completed its own next cycle.
+  const followUpSourceParent = useTaskStore(s =>
+    task?.followUpTaskSourceId ? s.tasks.find(t => t.id === task.followUpTaskSourceId) ?? null : null
+  );
   // Just the blocker's title, for the row's value. Selecting the one task
   // rather than the whole list keeps unrelated task changes from re-rendering
   // the editor.
@@ -5338,6 +5346,63 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   </View>
                 )}
               </>
+            )}
+              </>
+            ),
+          }] : []),
+          // The other direction from the rule above: this task *is* one of
+          // those follow-up tasks, and its parent — the row actually holding
+          // followUpTaskEveryN — can still be found. Shown only then, since a
+          // stale pointer (see Task.followUpTaskSourceId) has nothing to edit.
+          ...(followUpSourceParent ? [{
+            key: 'followUpSource', label: 'Follow-up frequency', set: true,
+            keywords: ['every', 'nth', 'frequency', 'follow-up', 'parent', 'source', 'rosin'],
+            node: (
+              <>
+            <EditorRow
+              icon="sparkles-outline"
+              label="Follow-up frequency"
+              hint={`How often "${displayTitleFor(followUpSourceParent)}" adds a task like this one.`}
+              value={followUpTaskSummary(followUpSourceParent.followUpTaskEveryN)}
+              expanded={showFollowUpSource}
+              onPress={() => { animateLayout(); setShowFollowUpSource(v => !v); }}
+            />
+            {showFollowUpSource && (
+              // Writes straight to the parent row rather than staging local
+              // state — this isn't a field of the task being edited, it's a
+              // shortcut onto a different one, so there's nothing for Save or
+              // Cancel to do with it and nothing to guard on close.
+              <View style={styles.targetStepperRow}>
+                {followUpSourceParent.followUpTaskEveryN !== null && (
+                  <Text
+                    style={styles.stepperSentence}
+                    accessibilityElementsHidden
+                    importantForAccessibility="no"
+                  >
+                    Every
+                  </Text>
+                )}
+                <CountStepper
+                  value={followUpSourceParent.followUpTaskEveryN}
+                  onChange={n => useTaskStore.getState().updateTask(followUpSourceParent.id, { followUpTaskEveryN: n })}
+                  min={MIN_FOLLOW_UP_TASK_EVERY_N}
+                  max={MAX_FOLLOW_UP_TASK_EVERY_N}
+                  allowNull
+                  emptyLabel="Off"
+                  format={n => ordinal(n)}
+                  label="Follow-up task frequency"
+                  describeValue={n => (n === null ? 'off' : `every ${ordinal(n)} completion`)}
+                />
+                {followUpSourceParent.followUpTaskEveryN !== null && (
+                  <Text
+                    style={styles.stepperSentence}
+                    accessibilityElementsHidden
+                    importantForAccessibility="no"
+                  >
+                    completion
+                  </Text>
+                )}
+              </View>
             )}
               </>
             ),
