@@ -1,0 +1,4 @@
+{
+  "message": "The empty-weekend nudge no longer treats a recurring task (a weekly grocery run, a standing chore) as a plan, tolerates a small, adjustable number of one-off plans (default 1) before it stops considering the weekend open, and now names what's already there instead of just saying the weekend is empty. Settings > Nudge for an empty weekend > How much counts as open",
+  "date": "2026-09-28"
+}

@@ -719,17 +719,21 @@ export function FoodLogScreen() {
   // bar — same arithmetic every other bulk-selecting list uses.
   const selectionListPadding = tabBarHeight + spacing.sm + bulkBarHeight + spacing.sm;
 
-  // Every nutrient the day actually stated, and the ones the card leads with —
-  // foodLogPinnedNutrients, chosen in the Nutrition sheet (defaults to
-  // calories and protein). Absent stays absent in both — see foodLogTotals.
+  // Every nutrient the day actually stated, plus any the person set a target
+  // for — a target is something to aim at for the whole day, so it belongs
+  // on the card before anything is logged against it, not only after.
+  // shownKeys is what the card leads with: foodLogPinnedNutrients, chosen in
+  // the Nutrition sheet (defaults to calories and protein).
   //
   // Water is dropped here because the card below it says the same figure
   // against the same target and can be pressed. Left in, it read twice on
   // every day anybody drank anything, once as a row nothing could act on.
-  const statedKeys = NUTRIENT_KEYS.filter(k => k !== 'waterMl' && totals.total[k] !== undefined);
+  const availableKeys = NUTRIENT_KEYS.filter(
+    k => k !== 'waterMl' && (totals.total[k] !== undefined || effectiveTargets[k] !== undefined),
+  );
   const shownKeys = allNutrients
-    ? statedKeys
-    : statedKeys.filter(k => foodLogPinnedNutrients.includes(k));
+    ? availableKeys
+    : availableKeys.filter(k => foodLogPinnedNutrients.includes(k));
 
   /**
    * The day's planned meals with nothing logged against them, and a tap that
@@ -904,6 +908,103 @@ export function FoodLogScreen() {
       : `${emptyWaysIn.slice(0, -1).join(', ')} or ${emptyWaysIn[emptyWaysIn.length - 1]}`)
     + '.';
 
+  // Shown whenever there's something to say — a stated nutrient or a target
+  // for one — regardless of whether the day has any entries yet. Withheld
+  // (in favor of the note or nothing below) only when there's neither, same
+  // as it always was for a day of unlinked entries.
+  const totalsCard = availableKeys.length === 0 ? (
+    dayEntries.length > 0 && !dayEntries.every(isWaterEntry) ? (
+      // availableKeys is empty whenever every one of the day's entries was
+      // logged with no nutrition and no target is set — a card with nothing
+      // in it read as a rendering glitch rather than a state. A day holding
+      // only the water row says nothing here, since the water card is its
+      // total.
+      <View style={styles.totalsEmptyNote}>
+        <EmptyNote icon="stats-chart-outline">
+          {`None of ${isToday ? "today's" : "this day's"} entries have nutrition on them yet. Link one to a food with nutrition to see totals here.`}
+        </EmptyNote>
+      </View>
+    ) : null
+  ) : (
+    <View style={styles.totalsCard}>
+      {shownKeys.map(key => (
+        <View key={key} style={styles.totalBlock}>
+        <TouchableOpacity
+          style={styles.totalRow}
+          activeOpacity={interaction.activeOpacity}
+          onPress={() => { haptics.tap(); setContributorsKey(key); }}
+          accessibilityRole="button"
+          accessibilityLabel={`See which entries contributed to ${NUTRIENT_LABEL[key].label.toLowerCase()}`}
+        >
+          <Text style={styles.totalLabel}>{NUTRIENT_LABEL[key].label}</Text>
+          <View style={styles.totalRight}>
+            {/* The target, when there is one, and nothing suggested
+                when there isn't — see nutritionTargets.ts. Reported
+                flat beside the figure rather than as a percentage or
+                a verdict: counts, never a score.
+
+                `describeAgainstTarget` writes both halves rather than
+                this file writing one and that module the other: the
+                hand-rolled pair here rounded the total with
+                `Math.round` and the target with `toLocaleString`, so
+                a heavy day read "1840 of 2,000 cal" — two number
+                formats on one line. */}
+            <Text style={styles.totalValue}>{totalText(key)}</Text>
+          </View>
+        </TouchableOpacity>
+        {/* Colored by distance from the target, never by direction:
+            whether being over a target is good or bad is not knowable
+            (somebody tracking protein wants to reach it, somebody
+            tracking sodium wants to stay under it), so `under` and
+            `over` get different but equally neutral colors and only
+            `met` — landing on the number chosen — gets green. See
+            `targetStatus`. */}
+        {effectiveTargets[key] !== undefined && (
+          <View style={styles.targetTrack}>
+            <View
+              style={[
+                styles.targetFill,
+                {
+                  width: `${targetProgress(key, totals.total[key], effectiveTargets) * 100}%`,
+                  backgroundColor: targetStatusColor(
+                    targetStatus(key, totals.total[key], effectiveTargets),
+                    colors,
+                  ),
+                },
+              ]}
+            />
+          </View>
+        )}
+        {/* Said out loud rather than folded silently into the figure
+            above: a target that moved is one the person should be
+            able to account for, which is the same reason
+            `WeightGoalSheet` prints its arithmetic beside its answer.
+            The reading is quoted too, so a figure that looks wrong
+            can be traced to the number it came from rather than to
+            this app. */}
+        {key === 'calorieKcal' && appliedActiveEnergyKcal > 0 && (
+          <Text style={styles.boostNote}>
+            +{appliedActiveEnergyKcal.toLocaleString()} cal from{' '}
+            {Math.round(activeEnergyToday as number).toLocaleString()} active calories in
+            Apple Health
+          </Text>
+        )}
+        </View>
+      ))}
+      {/* Withheld when expanding would add nothing. The list is
+          filtered to nutrients the day actually stated or has a target
+          for, so on a day of calories-and-protein-only entries the
+          toggle used to sit there doing visibly nothing when tapped. */}
+      {(allNutrients || availableKeys.length > shownKeys.length) && (
+        <InlineAction
+          label={allNutrients ? 'Show less' : 'Show every nutrient'}
+          variant="neutral"
+          onPress={() => { haptics.tap(); animateLayout(); setAllNutrients(v => !v); }}
+        />
+      )}
+    </View>
+  );
+
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
       <ScreenHeader
@@ -999,6 +1100,7 @@ export function FoodLogScreen() {
         <>
         <View style={styles.plannedAlone}>
           {plannedCard}
+          {totalsCard}
           {waterCard}
         </View>
         <EmptyState
@@ -1028,101 +1130,7 @@ export function FoodLogScreen() {
             ListHeaderComponent={
               <>
               {plannedCard}
-              {statedKeys.length === 0 ? (
-                // statedKeys is empty whenever every one of the day's entries
-                // was logged with no nutrition — a card with nothing in it
-                // read as a rendering glitch rather than a state. Keyed on
-                // what the day *stated* rather than on what's pinned, so a day
-                // whose figures just aren't pinned still gets the card and its
-                // "Show every nutrient" toggle; and a day holding only the
-                // water row says nothing, since the water card is its total.
-                dayEntries.every(isWaterEntry) ? null : (
-                <View style={styles.totalsEmptyNote}>
-                  <EmptyNote icon="stats-chart-outline">
-                    {`None of ${isToday ? "today's" : "this day's"} entries have nutrition on them yet. Link one to a food with nutrition to see totals here.`}
-                  </EmptyNote>
-                </View>
-                )
-              ) : (
-              <View style={styles.totalsCard}>
-                {shownKeys.map(key => (
-                  <View key={key} style={styles.totalBlock}>
-                  <TouchableOpacity
-                    style={styles.totalRow}
-                    activeOpacity={interaction.activeOpacity}
-                    onPress={() => { haptics.tap(); setContributorsKey(key); }}
-                    accessibilityRole="button"
-                    accessibilityLabel={`See which entries contributed to ${NUTRIENT_LABEL[key].label.toLowerCase()}`}
-                  >
-                    <Text style={styles.totalLabel}>{NUTRIENT_LABEL[key].label}</Text>
-                    <View style={styles.totalRight}>
-                      {/* The target, when there is one, and nothing suggested
-                          when there isn't — see nutritionTargets.ts. Reported
-                          flat beside the figure rather than as a percentage or
-                          a verdict: counts, never a score.
-
-                          `describeAgainstTarget` writes both halves rather than
-                          this file writing one and that module the other: the
-                          hand-rolled pair here rounded the total with
-                          `Math.round` and the target with `toLocaleString`, so
-                          a heavy day read "1840 of 2,000 cal" — two number
-                          formats on one line. */}
-                      <Text style={styles.totalValue}>{totalText(key)}</Text>
-                    </View>
-                  </TouchableOpacity>
-                  {/* Colored by distance from the target, never by direction:
-                      whether being over a target is good or bad is not knowable
-                      (somebody tracking protein wants to reach it, somebody
-                      tracking sodium wants to stay under it), so `under` and
-                      `over` get different but equally neutral colors and only
-                      `met` — landing on the number chosen — gets green. See
-                      `targetStatus`. */}
-                  {effectiveTargets[key] !== undefined && (
-                    <View style={styles.targetTrack}>
-                      <View
-                        style={[
-                          styles.targetFill,
-                          {
-                            width: `${targetProgress(key, totals.total[key], effectiveTargets) * 100}%`,
-                            backgroundColor: targetStatusColor(
-                              targetStatus(key, totals.total[key], effectiveTargets),
-                              colors,
-                            ),
-                          },
-                        ]}
-                      />
-                    </View>
-                  )}
-                  {/* Said out loud rather than folded silently into the figure
-                      above: a target that moved is one the person should be
-                      able to account for, which is the same reason
-                      `WeightGoalSheet` prints its arithmetic beside its answer.
-                      The reading is quoted too, so a figure that looks wrong
-                      can be traced to the number it came from rather than to
-                      this app. */}
-                  {key === 'calorieKcal' && appliedActiveEnergyKcal > 0 && (
-                    <Text style={styles.boostNote}>
-                      +{appliedActiveEnergyKcal.toLocaleString()} cal from{' '}
-                      {Math.round(activeEnergyToday as number).toLocaleString()} active calories in
-                      Apple Health
-                    </Text>
-                  )}
-                  </View>
-                ))}
-                {/* Withheld when expanding would add nothing. The list is
-                    filtered to nutrients the day actually stated, so on a day
-                    of calories-and-protein-only entries the toggle used to sit
-                    there doing visibly nothing when tapped. */}
-                {(allNutrients || statedKeys.length > shownKeys.length) && (
-                  <InlineAction
-                    label={allNutrients ? 'Show less' : 'Show every nutrient'}
-                    variant="neutral"
-                    onPress={() => { haptics.tap(); animateLayout(); setAllNutrients(v => !v); }}
-                  />
-                )}
-              </View>
-              )}
-
+              {totalsCard}
               {waterCard}
               </>
             }

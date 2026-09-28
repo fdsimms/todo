@@ -48,6 +48,9 @@ import {
   WEEKEND_NUDGE_LEAD_DAYS_DEFAULT,
   WEEKEND_NUDGE_LEAD_DAYS_MAX,
   WEEKEND_NUDGE_LEAD_DAYS_MIN,
+  WEEKEND_NUDGE_PLAN_THRESHOLD_DEFAULT,
+  WEEKEND_NUDGE_PLAN_THRESHOLD_MAX,
+  WEEKEND_NUDGE_PLAN_THRESHOLD_MIN,
   GROCERY_USE_UP_LEAD_DAYS_MAX,
   GROCERY_USE_UP_LEAD_DAYS_MIN,
   MEAL_SHORTFALL_LEAD_DAYS_DEFAULT,
@@ -1430,6 +1433,12 @@ interface SettingsStore {
   // how much warning you want about a bare weekend is a thing only the person
   // planning it can answer. See DEFAULT_WEEKEND_NUDGE_LEAD_DAYS.
   weekendNudgeLeadDays: number;
+  // How many one-off tasks or known events may already be on the weekend and
+  // it still counts as under-planned enough to nudge about. Its own setting
+  // rather than a constant for weekendNudgeLeadDays' own reason: how much
+  // already has to be there before a weekend stops reading as open is a thing
+  // only the person planning it can answer. See WEEKEND_NUDGE_PLAN_THRESHOLD_DEFAULT.
+  weekendNudgePlanThreshold: number;
   // The Saturday day key of the last weekend an offer was raised for. The whole
   // of the "once per weekend" promise, and — like calendarReviewLastDayKey —
   // written before the weekend is judged rather than after, since there is no
@@ -1766,6 +1775,7 @@ interface SettingsStore {
   setWeekendNudgeTasks: (on: boolean) => void;
   setWeekendNudgeTaskCategory: (category: string | null) => void;
   setWeekendNudgeLeadDays: (days: number) => void;
+  setWeekendNudgePlanThreshold: (count: number) => void;
   setWeekendNudgeLastWeekendKey: (weekendKey: string | null) => void;
   setWeighInTasks: (on: boolean) => void;
   setWeighInTaskCategory: (category: string | null) => void;
@@ -2376,6 +2386,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   weekendNudgeTasks: false,
   weekendNudgeTaskCategory: null,
   weekendNudgeLeadDays: WEEKEND_NUDGE_LEAD_DAYS_DEFAULT,
+  weekendNudgePlanThreshold: WEEKEND_NUDGE_PLAN_THRESHOLD_DEFAULT,
   weekendNudgeLastWeekendKey: null,
   weighInTasks: false,
   weighInTaskCategory: null,
@@ -2791,6 +2802,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const weekendNudgeLeadDays = Number.isFinite(storedWeekendLead)
       ? Math.max(WEEKEND_NUDGE_LEAD_DAYS_MIN, Math.min(WEEKEND_NUDGE_LEAD_DAYS_MAX, storedWeekendLead))
       : WEEKEND_NUDGE_LEAD_DAYS_DEFAULT;
+    // Clamped on read too, for the same reason the lead days above are.
+    const storedWeekendPlanThreshold = parseInt(dbGetSetting('weekendNudgePlanThreshold') ?? '', 10);
+    const weekendNudgePlanThreshold = Number.isFinite(storedWeekendPlanThreshold)
+      ? Math.max(WEEKEND_NUDGE_PLAN_THRESHOLD_MIN, Math.min(WEEKEND_NUDGE_PLAN_THRESHOLD_MAX, storedWeekendPlanThreshold))
+      : WEEKEND_NUDGE_PLAN_THRESHOLD_DEFAULT;
     const weekendNudgeLastWeekendKey = dbGetSetting('weekendNudgeLastWeekendKey') || null;
     const weighInTasks = dbGetSetting('weighInTasks') === 'true';
     const weighInTaskCategory = dbGetSetting('weighInTaskCategory') || null;
@@ -3100,6 +3116,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       weatherTasks,
       weekendNudgeLastWeekendKey,
       weekendNudgeLeadDays,
+      weekendNudgePlanThreshold,
       weekendNudgeTaskCategory,
       weekendNudgeTasks,
       weekStartsOn,
@@ -3714,6 +3731,15 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     );
     dbSetSetting('weekendNudgeLeadDays', String(clamped));
     set({ weekendNudgeLeadDays: clamped });
+  },
+
+  setWeekendNudgePlanThreshold(count: number) {
+    const clamped = Math.max(
+      WEEKEND_NUDGE_PLAN_THRESHOLD_MIN,
+      Math.min(WEEKEND_NUDGE_PLAN_THRESHOLD_MAX, Math.round(count)),
+    );
+    dbSetSetting('weekendNudgePlanThreshold', String(clamped));
+    set({ weekendNudgePlanThreshold: clamped });
   },
 
   setWeekendNudgeLastWeekendKey(weekendKey: string | null) {

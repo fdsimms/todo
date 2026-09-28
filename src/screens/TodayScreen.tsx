@@ -78,6 +78,8 @@ import { useWidgetCompletionStore } from '../store/useWidgetCompletionStore';
 import { useTaskSelection } from '../hooks/useTaskSelection';
 import { featureHidden, featureShown, visibleLenses } from '../utils/simpleMode';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
+import { useKeyboardLift } from '../hooks/useKeyboardLift';
+import { InlineNameField } from '../components/InlineNameField';
 import { useScrollToTopVisibility } from '../hooks/useScrollToTopVisibility';
 import { useElevatedCellRenderer } from '../hooks/useElevatedCellRenderer';
 import { useMealPlanNudgeProgress } from '../hooks/useMealPlanNudgeProgress';
@@ -185,7 +187,7 @@ import { useFocusStore } from '../store/useFocusStore';
 import { PressableScale } from '../components/PressableScale';
 import { AddTaskFab, type AddTaskType } from '../components/AddTaskFab';
 import { type FabDragHandlers, FAB_SIZE } from '../components/Fab';
-import { useColors } from '../theme/ThemeContext';
+import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
@@ -601,6 +603,7 @@ export function TodayScreen() {
   const addExistingToGroup = useTaskStore(s => s.addExistingToGroup);
   const removeFromGroup = useTaskStore(s => s.removeFromGroup);
   const colors = useColors();
+  const { shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const segmentColors: Record<string, string> = useMemo(
     () => ({
@@ -780,9 +783,15 @@ export function TodayScreen() {
   );
   const [editingGroup, setEditingGroup] = useState<TaskGroup | null>(null);
   const [groupEditorVisible, setGroupEditorVisible] = useState(false);
-  // Set while editingGroup is a stack freshly created from the add menu —
-  // discarded on close if it was never given a title.
-  const newStackIdRef = useRef<string | null>(null);
+  // The add menu's "Stack" name field, floating over the keyboard. See
+  // createNamedStack.
+  const [namingStack, setNamingStack] = useState(false);
+  const stackNameKeyboard = useKeyboardLift(namingStack);
+  // A stack just named there, while the quick add it opened is still up. An
+  // empty stack never draws on Today, so one left with no tasks when that
+  // sheet closes is dropped again (closeQuickAdd) rather than kept where
+  // only the Stacks screen would show it.
+  const namedStackIdRef = useRef<string | null>(null);
   // Two-step "add from a template" flow off the add menu: pick a template,
   // then the apply sheet takes over for anchors and the item checklist.
   const [templatePickerVisible, setTemplatePickerVisible] = useState(false);
@@ -1729,10 +1738,29 @@ export function TodayScreen() {
     // The draft carries everything the sheet had, including the seeded
     // category; only the placement is let go of, and the editor has no notion
     // of one anyway.
+    // A stack just named for this sheet stays: the draft is filed into it,
+    // and the editor hasn't saved it yet.
+    namedStackIdRef.current = null;
     closeQuickAdd();
     setEditingTask(null);
     setEditorInitialDraft(draft);
     setEditorVisible(true);
+  };
+
+  /**
+   * A stack named from the add menu's field. It has no tasks yet, and an empty
+   * stack doesn't draw on Today, so the quick add opens straight away filing
+   * into it (its "Add another" keeps the stack for each task after the first).
+   * The editor is still one tap away on the stack's header once it's there.
+   */
+  const createNamedStack = (name: string) => {
+    setNamingStack(false);
+    const group = createTaskGroup(name, null);
+    namedStackIdRef.current = group.id;
+    setQuickAddType('task');
+    setQuickAddSeed({ groupId: group.id });
+    setQuickAddSeedLabel(name);
+    setQuickAddVisible(true);
   };
 
   const handleAddMenuSelect = (type: AddTaskType) => {
@@ -1744,13 +1772,11 @@ export function TodayScreen() {
       case 'template':
         setTemplatePickerVisible(true);
         break;
-      case 'stack': {
-        const group = createTaskGroup('', null);
-        newStackIdRef.current = group.id;
-        setEditingGroup(group);
-        setGroupEditorVisible(true);
+      // Named in a field over the keyboard rather than in the editor sheet;
+      // see createNamedStack for what happens next.
+      case 'stack':
+        setNamingStack(true);
         break;
-      }
       case 'import':
         setEventImportVisible(true);
         break;
@@ -2518,6 +2544,13 @@ export function TodayScreen() {
    * ago that landed somewhere else entirely.
    */
   const closeQuickAdd = () => {
+    // A task created from the sheet is already in the store by now (onClose
+    // runs after addTask), so an empty stack here is one nothing went into.
+    const namedStackId = namedStackIdRef.current;
+    namedStackIdRef.current = null;
+    if (namedStackId && !useTaskStore.getState().tasks.some(t => t.groupId === namedStackId)) {
+      removeGroupRow(namedStackId);
+    }
     setQuickAddVisible(false);
     setQuickAddSeed(undefined);
     setQuickAddSeedLabel(null);
@@ -4539,7 +4572,7 @@ export function TodayScreen() {
           />
         )}
 
-        {!selectionMode && (
+        {!selectionMode && !namingStack && (
           <AddTaskFabWithDropLabel
             channel={fabIntentChannel}
             categories={categories}
@@ -4549,6 +4582,26 @@ export function TodayScreen() {
             onSelect={handleAddMenuSelect}
             drag={fabDrag}
           />
+        )}
+
+        {/* Over the keyboard, since a new stack has no row on any of the four
+            lists to sit under until it has a task. Before the keyboard is up
+            it waits above the tab bar, where the add button is. */}
+        {namingStack && (
+          <View
+            style={[
+              styles.stackNameBar,
+              { bottom: stackNameKeyboard.height > 0 ? stackNameKeyboard.height + spacing.sm : insets.bottom + 64 },
+            ]}
+          >
+            <InlineNameField
+              placeholder="Stack name"
+              onSubmit={createNamedStack}
+              onCancel={() => setNamingStack(false)}
+              accessibilityLabel="New stack name"
+              style={shadows.card}
+            />
+          </View>
         )}
 
         {createdToast && (
@@ -4774,15 +4827,8 @@ export function TodayScreen() {
         <TaskGroupEditor
           visible={groupEditorVisible}
           group={editingGroup}
-          isNew={newStackIdRef.current !== null}
           onClose={() => {
             setGroupEditorVisible(false);
-            if (newStackIdRef.current) {
-              const id = newStackIdRef.current;
-              newStackIdRef.current = null;
-              const current = useTaskGroupStore.getState().getGroupById(id);
-              if (current && current.title.trim() === '') removeGroupRow(id);
-            }
             setEditingGroup(null);
           }}
         />
@@ -4980,6 +5026,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // The footer stretches to fill any space left below the last task so a tap
   // anywhere under the list dismisses the expanded-task spotlight.
   listFooterCell: { flexGrow: 1 },
+  stackNameBar: { position: 'absolute', left: 0, right: 0 },
   listFooter: { flexGrow: 1, minHeight: 120 },
   // On an empty list there is no expanded row to dismiss and nothing below to
   // reach for, so the tap catcher collapses entirely: any height it kept would
