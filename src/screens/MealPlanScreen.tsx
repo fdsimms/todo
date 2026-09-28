@@ -108,6 +108,7 @@ import {
   describeWeekRange,
   earliestUnplannedSlot,
   entriesForDay,
+  daysWithMeal,
   recipeIndex,
   recipeNamedLike,
   slotLabel,
@@ -374,6 +375,7 @@ export function MealPlanScreen() {
   const saveEntryAsRecipe = useMealPlanStore(s => s.saveEntryAsRecipe);
   const bulkSetCooked = useMealPlanStore(s => s.bulkSetCooked);
   const copyWeek = useMealPlanStore(s => s.copyWeek);
+  const copyEntryTo = useMealPlanStore(s => s.copyEntryTo);
   const findPlannedWeekBefore = useMealPlanStore(s => s.findPlannedWeekBefore);
 
   const recipes = useRecipeStore(useShallow(s => s.recipes));
@@ -2188,6 +2190,8 @@ export function MealPlanScreen() {
         weekDays={days}
         onMove={to => selected && moveEntry(selected.id, to)}
         onMoveFurther={selected ? () => setMovingFurtherId(selected.id) : undefined}
+        onCopyTo={selected && !selected.leftoverId ? date => copyEntryTo(selected.id, [date]) : undefined}
+        copiedDays={selected ? daysWithMeal(entries, selected) : undefined}
         onReplace={selected && !isTypedEntry(selected) ? () => setReplacingId(selected.id) : undefined}
         onChooseRecipe={selected && isTypedEntry(selected) ? () => setReplacingId(selected.id) : undefined}
         onSaveAsRecipe={selected && isTypedEntry(selected) ? () => saveAsRecipe(selected.id) : undefined}

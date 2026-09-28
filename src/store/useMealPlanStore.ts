@@ -44,6 +44,7 @@ import {
   entriesForDay,
   entriesForSlot,
   isKeyInRange,
+  mealCopyDraft,
   mealPlanPurgeCutoffKey,
   nextSortOrder,
   recipeIndex,
@@ -626,6 +627,24 @@ interface MealPlanStore extends UndoHistoryActions {
    * undone seven times would be worse than no undo at all.
    */
   copyWeek: (fromStartKey: string, toStartKey: string) => number;
+
+  /**
+   * Puts one planned meal on other days too, in the same slot (#2913): the
+   * same lunch Monday to Friday without a picker session per day. Each copy
+   * carries what a week copy carries (`mealCopyDraft`) and lands at the end of
+   * whatever that day's slot already holds, alongside it rather than instead
+   * of it, which is what planning it there by hand would do too. Returns how
+   * many were written.
+   *
+   * Skips the meal's own day, and a leftover night altogether: one container
+   * can't supply several dinners, the reason a week copy drops it. Which days
+   * already have the meal is the caller's to show (`daysWithMeal`); this adds
+   * where it's told.
+   *
+   * One `lastAction` for the whole call, removing every row it wrote, the
+   * "one action, one undo" `copyWeek` keeps.
+   */
+  copyEntryTo: (id: string, dates: string[]) => number;
 
   /**
    * The start of the most recent week at or before `beforeStartKey` that has
@@ -1327,6 +1346,47 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     const ids = new Set(created.map(e => e.id));
     get().setLastAction({
       label: `Copied ${created.length} meal${created.length === 1 ? '' : 's'}`,
+      undo: () => {
+        created.forEach(e => dropCookTask(e.id));
+        created.forEach(e => dropMealEvent(e.id));
+        created.forEach(e => dbDeleteMealPlanEntry(e.id));
+        set(s => ({ entries: s.entries.filter(e => !ids.has(e.id)) }));
+        created.forEach(e => reconcileMealSlot(get, e));
+      },
+    });
+    return created.length;
+  },
+
+  copyEntryTo(id, dates) {
+    // Window-scoped like every read here but the cook-task link's (see
+    // resolveEntry): the meal being copied is one somebody has open.
+    const source = get().entries.find(e => e.id === id);
+    if (!source) return 0;
+    const targets = [...new Set(dates)].filter(date => date !== source.date);
+    const drafts = targets.flatMap(date => {
+      const draft = mealCopyDraft(source, date);
+      return draft ? [draft] : [];
+    });
+    if (drafts.length === 0) return 0;
+
+    const created: MealPlanEntry[] = drafts.map(draft => ({
+      ...draft,
+      id: generateId(),
+      createdAt: new Date().toISOString(),
+      // At the end of what that day's slot already has, as planMeal places a
+      // meal; the source's own position means nothing on another day.
+      sortOrder: nextSortOrder(dbGetMealPlanEntries(draft.date, draft.date), draft.date, draft.slot),
+      // Its own event, never the source's. See MealCopyDraft.
+      calendarEventId: null,
+    }));
+    created.forEach(dbInsertMealPlanEntry);
+    created.forEach(entry => patchInRange(set, get, entry));
+    created.forEach(e => reconcileMealSlot(get, e));
+    created.forEach(reconcileMealEvent);
+
+    const ids = new Set(created.map(e => e.id));
+    get().setLastAction({
+      label: `Copied "${source.title}" to ${created.length} day${created.length === 1 ? '' : 's'}`,
       undo: () => {
         created.forEach(e => dropCookTask(e.id));
         created.forEach(e => dropMealEvent(e.id));

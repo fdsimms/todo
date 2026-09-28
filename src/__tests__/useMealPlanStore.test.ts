@@ -1081,6 +1081,59 @@ describe('setCooked', () => {
   });
 });
 
+describe('copyEntryTo', () => {
+  it('puts one meal on the other days named, in its own slot (#2913)', () => {
+    const monday = entry('2026-08-03', 'lunch', {
+      recipeId: 'r1', title: 'Pasta salad', recipeScale: 2, cookTask: false,
+    });
+    loadWeek([monday]);
+
+    const n = useMealPlanStore.getState().copyEntryTo(monday.id, ['2026-08-04', '2026-08-05']);
+
+    expect(n).toBe(2);
+    const copies = getEntries().filter(e => e.id !== monday.id);
+    expect(copies.map(e => [e.date, e.slot, e.recipeId, e.recipeScale, e.cookTask])).toEqual([
+      ['2026-08-04', 'lunch', 'r1', 2, false],
+      ['2026-08-05', 'lunch', 'r1', 2, false],
+    ]);
+    expect(new Set(copies.map(e => e.id)).size).toBe(2);
+    expect(copies.every(e => e.cookedAt === null && e.calendarEventId === null)).toBe(true);
+  });
+
+  it("lands after what that day's slot already holds rather than replacing it", () => {
+    const monday = entry('2026-08-03', 'lunch', { title: 'Soup' });
+    const tuesday = entry('2026-08-04', 'lunch', { title: 'Sandwich', sortOrder: 1 });
+    loadWeek([monday, tuesday]);
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([tuesday]);
+
+    useMealPlanStore.getState().copyEntryTo(monday.id, ['2026-08-04']);
+
+    const lunches = getEntries().filter(e => e.date === '2026-08-04');
+    expect(lunches.map(e => [e.title, e.sortOrder])).toEqual([['Sandwich', 1], ['Soup', 2]]);
+  });
+
+  it("skips the meal's own day, and copies nothing from a leftover night", () => {
+    const monday = entry('2026-08-03', 'lunch', { title: 'Soup' });
+    const chili = entry('2026-08-03', 'dinner', { title: 'Chili', leftoverId: 'lo-1' });
+    loadWeek([monday, chili]);
+
+    expect(useMealPlanStore.getState().copyEntryTo(monday.id, ['2026-08-03'])).toBe(0);
+    expect(useMealPlanStore.getState().copyEntryTo(chili.id, ['2026-08-04'])).toBe(0);
+    expect(dbInsertMealPlanEntry).not.toHaveBeenCalled();
+  });
+
+  it('undoes every copy it wrote in one step', () => {
+    const monday = entry('2026-08-03', 'lunch', { title: 'Soup' });
+    loadWeek([monday]);
+
+    useMealPlanStore.getState().copyEntryTo(monday.id, ['2026-08-04', '2026-08-05']);
+    useMealPlanStore.getState().undoLastAction();
+
+    expect(getEntries()).toEqual([monday]);
+    expect(dbDeleteMealPlanEntry).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe('copyWeek', () => {
   it('writes the source week onto the target, shifted', () => {
     loadWeek();

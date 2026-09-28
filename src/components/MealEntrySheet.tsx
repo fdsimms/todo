@@ -47,6 +47,19 @@ interface Props {
    */
   onMoveFurther?: () => void;
   /**
+   * Plans this meal on another day of the week too, in the same slot (#2913):
+   * the same lunch Monday to Friday is four taps here rather than four picker
+   * sessions. Applies on the tap and leaves the sheet open, like the Move to
+   * chips. Absent for a leftover night, which one container can't supply twice.
+   */
+  onCopyTo?: (date: string) => void;
+  /**
+   * The days already holding this meal in this slot (`daysWithMeal`), its own
+   * included. Their chips read as done and don't take a tap, so a second tap
+   * can't plan the same lunch twice on one day.
+   */
+  copiedDays?: ReadonlySet<string>;
+  /**
    * Swaps what this night is having for another recipe or a typed name, in
    * place (#2911). The caller dismisses this sheet first and hosts
    * MealReplaceItemSheet itself, for `onMoveFurther`'s reason: two modals
@@ -186,7 +199,7 @@ interface Props {
 const TOP_INSET = 72;
 
 export function MealEntrySheet({
-  visible, entry, title, weekDays, onMove, onMoveFurther, onReplace, onChooseRecipe, onSaveAsRecipe, matchingRecipeName,
+  visible, entry, title, weekDays, onMove, onMoveFurther, onCopyTo, copiedDays, onReplace, onChooseRecipe, onSaveAsRecipe, matchingRecipeName,
   onRemove, onRename, choiceGroups = [], onChoose,
   onScale, baseServings, baseServingsMax, onSetCooked, onViewFoodLogEntry, onLogMeal, onOpenRecipe, onAddToList, onAddPrepTasks,
   onLogLeftovers,
@@ -412,13 +425,58 @@ export function MealEntrySheet({
           )}
 
           <Text style={styles.label}>Meal</Text>
-          <View style={styles.chipsLast}>
+          <View style={onCopyTo ? styles.segmentRow : styles.chipsLast}>
             <SegmentedControl
               options={MEAL_SLOTS.map(slot => ({ value: slot, label: slotLabel(slot) }))}
               value={entry?.slot ?? null}
               onChange={slot => { if (slot) onMove({ slot }); }}
             />
           </View>
+
+          {/*
+            Below the slot rather than beside "Move to", because the copies
+            land in whichever meal this is and the control that says which is
+            right above (#2913). The same seven days as the Move to row, so a
+            day reads straight down the two. A filled chip is a day this meal
+            is already on, the same meaning the Move to row's filled chip has,
+            and it takes no tap: taking a copy off again is that copy's own
+            sheet, the way removing any meal is.
+          */}
+          {!!onCopyTo && (
+            <>
+              <Text style={styles.label}>Also on</Text>
+              <View style={styles.chips}>
+                {weekDays.map(day => {
+                  const key = dayKeyOf(day);
+                  const has = copiedDays?.has(key) ?? entry?.date === key;
+                  return (
+                    <TouchableOpacity
+                      key={key}
+                      style={[styles.dayChip, has && styles.chipOn]}
+                      disabled={has}
+                      onPress={() => { haptics.tap(); onCopyTo(key); }}
+                      activeOpacity={interaction.activeOpacity}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: has, disabled: has }}
+                      accessibilityLabel={has
+                        ? `Already on ${format(day, 'EEEE, MMMM d')}`
+                        : `Also plan on ${format(day, 'EEEE, MMMM d')}`}
+                    >
+                      <Text style={[styles.dayChipTop, has && styles.chipTextOn]}>
+                        {format(day, 'EEEEE')}
+                      </Text>
+                      <Text style={[styles.dayChipNum, has && styles.chipTextOn]}>
+                        {format(day, 'd')}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              <Text style={styles.copyHint}>
+                Tap a day to plan this {slotLabel(entry?.slot ?? 'dinner').toLowerCase()} there too.
+              </Text>
+            </>
+          )}
 
           {!!onSetCooked && (
             <>
@@ -741,6 +799,19 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   chipsLast: {
     paddingHorizontal: spacing.md,
     marginBottom: spacing.md,
+  },
+  // The slot control when "Also on" follows it: that block's own label brings
+  // the gap, so this one mustn't add a second.
+  segmentRow: {
+    paddingHorizontal: spacing.md,
+  },
+  // Ends the "Also on" block with chipsLast's gap above the first action row.
+  copyHint: {
+    color: colors.textSecondary,
+    fontSize: font.xs,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.md,
   },
   furtherRow: {
     flexDirection: 'row',
