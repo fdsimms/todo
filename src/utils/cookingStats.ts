@@ -92,6 +92,27 @@ export function cookingWindow(today: Date, days: number): CookingWindow {
 }
 
 /**
+ * The last `days` of a window, ending where it ends.
+ *
+ * For a read that narrows a window already loaded rather than loading a second
+ * one: Stats reads a month of the food log and shows either the month or its
+ * last week (#2916). Narrowing the rows in hand keeps the section's own
+ * "is there anything here at all" answer on the month, so switching to a week
+ * with nothing logged in it can't take away the control that switches back.
+ *
+ * Never wider than the window it is given, and never shorter than a day.
+ */
+export function lastDaysOf(window: CookingWindow, days: number): CookingWindow {
+  const span = Math.max(1, Math.round(days));
+  const start = dayKeyOf(subDays(dayKeyToDate(window.endKey), span - 1));
+  return {
+    startKey: start > window.startKey ? start : window.startKey,
+    endKey: window.endKey,
+    todayKey: window.todayKey,
+  };
+}
+
+/**
  * What the meal plan says about the window.
  *
  * Two rules that aren't obvious from the fields:

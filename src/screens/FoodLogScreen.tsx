@@ -883,6 +883,12 @@ export function FoodLogScreen() {
     </View>
   );
 
+  // A nutrient's day total as its totals row words it, target included, so the
+  // contributors sheet can head its list with the same figure it was opened on.
+  const totalText = (key: NutrientKey): string =>
+    describeAgainstTarget(key, totals.total[key], effectiveTargets)
+      ?? `${Math.round(totals.total[key] as number).toLocaleString()}${NUTRIENT_LABEL[key].unit === 'cal' ? '' : NUTRIENT_LABEL[key].unit}`;
+
   // What the log is, then the ways in this install actually has (#2928). Only
   // the ones that would work are named: a search with no key or a scan
   // simplified mode took away is a way in that isn't there.
@@ -1060,10 +1066,7 @@ export function FoodLogScreen() {
                           `Math.round` and the target with `toLocaleString`, so
                           a heavy day read "1840 of 2,000 cal" — two number
                           formats on one line. */}
-                      <Text style={styles.totalValue}>
-                        {describeAgainstTarget(key, totals.total[key], effectiveTargets)
-                          ?? `${Math.round(totals.total[key] as number).toLocaleString()}${NUTRIENT_LABEL[key].unit === 'cal' ? '' : NUTRIENT_LABEL[key].unit}`}
-                      </Text>
+                      <Text style={styles.totalValue}>{totalText(key)}</Text>
                     </View>
                   </TouchableOpacity>
                   {/* Colored by distance from the target, never by direction:
@@ -1298,6 +1301,10 @@ export function FoodLogScreen() {
         visible={contributorsKey !== null}
         nutrientKey={contributorsKey}
         entries={dayEntries}
+        total={contributorsKey && totals.total[contributorsKey] !== undefined ? totalText(contributorsKey) : null}
+        // Closes this sheet and opens the editor in one commit. They are
+        // siblings, and `SheetModal` holds the open until the close has landed.
+        onEdit={entry => { setContributorsKey(null); setEditingEntry(entry); }}
         onClose={() => setContributorsKey(null)}
       />
       <NutritionTargetsSheet

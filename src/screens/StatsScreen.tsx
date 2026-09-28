@@ -20,6 +20,7 @@ import { useTaskStore } from '../store/useTaskStore';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
+import { SegmentedControl, type SegmentOption } from '../components/SegmentedControl';
 import { bestStreakOf, isStreakAtRecord } from '../utils/streakRecord';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, animation, type Colors } from '../theme';
@@ -66,6 +67,7 @@ import {
 import {
   cookingWindow,
   hasCookingData,
+  lastDaysOf,
   leftoversFinishedIn,
   mostCookedRecipes,
   type CookingWindow,
@@ -101,7 +103,17 @@ const MOST_COOKED_LIMIT = 5;
 // The eating read shares the cooking window rather than picking its own. They
 // are the same question asked from two sides, and two headings a month apart on
 // one screen would read as a disagreement about what "lately" means.
+//
+// Unless somebody asks for the week (#2916): a person checking their eating
+// week by week has no use for a month, and a heading they just chose to change
+// is not the two sections disagreeing. So the month stays the default and the
+// week is one tap away on the Eating card, narrowing the month already loaded
+// (`lastDaysOf`) rather than reading a second window.
 const MOST_LOGGED_LIMIT = 5;
+const EATING_RANGES: SegmentOption<number>[] = [
+  { value: 7, label: '7 days', accessibilityLabel: 'Show the last 7 days' },
+  { value: COOKING_DAYS, label: `${COOKING_DAYS} days`, accessibilityLabel: `Show the last ${COOKING_DAYS} days` },
+];
 
 // Sections cascade in on mount: each fades and rises with a small delay.
 function StaggerIn({ index, children }: { index: number; children: React.ReactNode }) {
@@ -411,16 +423,23 @@ export function StatsScreen() {
   // behind the kitchen switch, so somebody who has put the kitchen away
   // shouldn't be shown what they ate, and turning it back on restores this
   // exactly as it was.
+  const [eatingDays, setEatingDays] = useState(COOKING_DAYS);
   const eating = useMemo(() => {
     if (!kitchenEnabled || !cookWindow) return null;
+    const span = lastDaysOf(cookWindow, eatingDays);
     return {
-      counts: nutritionCounts(foodEntries, cookWindow),
-      averages: nutrientAverages(foodEntries, cookWindow),
-      mix: sourceMix(foodEntries, cookWindow),
-      foods: mostLoggedFoods(foodEntries, cookWindow, MOST_LOGGED_LIMIT),
+      counts: nutritionCounts(foodEntries, span),
+      averages: nutrientAverages(foodEntries, span),
+      mix: sourceMix(foodEntries, span),
+      foods: mostLoggedFoods(foodEntries, span, MOST_LOGGED_LIMIT),
     };
-  }, [kitchenEnabled, foodEntries, cookWindow]);
-  const hasEating = hasNutritionData(eating?.counts ?? null);
+  }, [kitchenEnabled, foodEntries, cookWindow, eatingDays]);
+  // Asked of the whole month whichever span is showing, so a week with nothing
+  // logged in it keeps the section, and with it the control that switches back.
+  const hasEating = useMemo(
+    () => hasNutritionData(kitchenEnabled && cookWindow ? nutritionCounts(foodEntries, cookWindow) : null),
+    [kitchenEnabled, foodEntries, cookWindow],
+  );
 
   // The screen used to be gated on completions alone, so someone whose history
   // is in the kitchen rather than the task list was told there was no data.
@@ -932,7 +951,17 @@ export function StatsScreen() {
           {hasEating && eating !== null && (
             <StaggerIn index={cookingStagger + 2}>
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>EATING (LAST {COOKING_DAYS} DAYS)</Text>
+              <Text style={styles.sectionTitle}>EATING (LAST {eatingDays} DAYS)</Text>
+              {/* Governs this card and MOST LOGGED below, which read the same
+                  entries. See EATING_RANGES. */}
+              <View style={styles.rangeRow}>
+                <SegmentedControl
+                  options={EATING_RANGES}
+                  value={eatingDays}
+                  onChange={next => { haptics.tap(); setEatingDays(next); }}
+                  label="Eating range"
+                />
+              </View>
               <View style={styles.card}>
                 <View
                   style={[
@@ -992,7 +1021,7 @@ export function StatsScreen() {
           {hasEating && eating !== null && eating.foods.length > 0 && (
             <StaggerIn index={cookingStagger + 3}>
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>MOST LOGGED (LAST {COOKING_DAYS} DAYS)</Text>
+              <Text style={styles.sectionTitle}>MOST LOGGED (LAST {eatingDays} DAYS)</Text>
               <View style={styles.card}>
                 {eating.foods.map((food, i) => (
                   <View key={food.label} style={[styles.row, styles.rowBorder]}>
@@ -1139,6 +1168,7 @@ const makeStyles = (colors: Colors) =>
       textAlign: 'center',
     },
     section: { marginBottom: spacing.lg },
+    rangeRow: { marginBottom: spacing.sm },
     sectionTitle: {
       color: colors.textSecondary,
       fontSize: font.xs,

@@ -1,5 +1,5 @@
 import type { FoodLogEntry, FoodNutritionSource, NutrientKey } from '../types';
-import { cookingWindow } from '../utils/cookingStats';
+import { cookingWindow, lastDaysOf } from '../utils/cookingStats';
 import {
   EMPTY_NUTRITION_COUNTS,
   foodDayInputs,
@@ -81,6 +81,17 @@ function fullDay(dayKey: string, over: Parameters<typeof entry>[1] = {}): FoodLo
 }
 
 describe('nutritionCounts', () => {
+  it('reads the last week out of a month of rows without reloading them', () => {
+    // Stats keeps a month loaded and narrows it (#2916). A day outside the
+    // week has to drop out of every figure, not just the day count.
+    const week = lastDaysOf(WINDOW, 7);
+    const rows = [...fullDay('2026-08-20'), ...fullDay('2026-09-08')];
+    expect(nutritionCounts(rows, week)).toMatchObject({ days: 7, daysLogged: 1, entries: 2 });
+    expect(nutritionCounts(rows, WINDOW)).toMatchObject({ days: 30, daysLogged: 2, entries: 4 });
+    expect(nutrientAverages(rows, week).find(r => r.key === 'calorieKcal')?.days).toBe(1);
+    expect(mostLoggedFoods(rows, week, 5)[0]?.count).toBe(2);
+  });
+
   it('counts the window, the days logged and the entries', () => {
     const counts = nutritionCounts(
       [...fullDay('2026-09-08'), ...fullDay('2026-09-09')],
