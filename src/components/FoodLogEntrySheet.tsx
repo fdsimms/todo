@@ -43,6 +43,7 @@ import {
   helpingNutrition,
   matchMealPlanEntry,
   parseFoodAmount,
+  recallAmount,
   recipeHelpingNutrition,
   scalePanelToAmount,
 } from '../utils/foodLog';
@@ -55,7 +56,7 @@ import { groceryNameKey } from '../utils/groceryParse';
 import { dayKeyOf, getCurrentDayStart, getLogicalDayKey } from '../utils/dateUtils';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { foodLogRecency, rankByRecency } from '../utils/foodLogRecents';
+import { foodLastAmounts, foodLogRecency, rankByRecency } from '../utils/foodLogRecents';
 import { haptics } from '../utils/haptics';
 import { weighableLine } from '../utils/ingredientGrams';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
@@ -384,6 +385,11 @@ export function FoodLogEntrySheet({
   // (see its own doc comment) doesn't lose what was actually typed or saved.
   const [amountUnit, setAmountUnit] = useState<string | null>(null);
   const [amountNumber, setAmountNumber] = useState('');
+  // The amount `choose` filled in from the last time this food was logged, or
+  // null when it opened on the ordinary default. Compared against `amount`
+  // rather than cleared on edit, so the hint that says where the number came
+  // from goes the moment it stops being that number.
+  const [recalledAmount, setRecalledAmount] = useState<string | null>(null);
   // Which question the amount field is asking of a dish. Set from the picked
   // dish rather than remembered across picks — see `pickDish`.
   const [dishMeasure, setDishMeasure] = useState<DishMeasure>('servings');
@@ -407,6 +413,7 @@ export function FoodLogEntrySheet({
     setAmount('');
     setAmountUnit(null);
     setAmountNumber('');
+    setRecalledAmount(null);
     setChosenSlot(slot);
     setDbSearchOpen(false);
     setCatalogPickOpen(false);
@@ -541,13 +548,35 @@ export function FoodLogEntrySheet({
    * for a dish that has been weighed, servings for one that hasn't. The weight
    * field opens empty because there is nothing sensible to pre-fill — a plate
    * has to be weighed — while a servings count opens at one.
+   *
+   * **Unless it has been logged before**, and then it opens on the amount it
+   * was last logged in (`foodLastAmounts`), re-measured against the panel it
+   * has now by `recallAmount`. The same yogurt at the same 250 g every morning
+   * was a food found in one tap and an amount retyped every time. The number
+   * is still only a starting point: Save measures it like anything typed, and
+   * an old amount the food can no longer measure opens on the default above
+   * rather than on a refusal.
    */
   const choose = (candidate: Candidate) => {
     setPicked(candidate);
     const weigh = candidate.kind === 'dish' && candidate.cookedGrams !== null;
+    const options = candidate.kind === 'food' && candidate.panel ? foodUnitOptionsFor(candidate.panel) : [];
+    const recalled = recallAmount(
+      lastAmounts.get(candidate.key),
+      candidate.kind === 'food' && candidate.panel
+        ? { kind: 'food', panel: candidate.panel, name: candidate.label }
+        : { kind: 'dish', weighed: weigh, served: !!candidate.servingPanel },
+    );
+    setRecalledAmount(recalled?.amount ?? null);
+    if (recalled) {
+      setDishMeasure(recalled.dishMeasure ?? (weigh ? 'weight' : 'servings'));
+      setAmount(recalled.amount);
+      setAmountUnit(recalled.unitKey);
+      setAmountNumber(recalled.number);
+      return;
+    }
     setDishMeasure(weigh ? 'weight' : 'servings');
     setAmount(candidate.kind === 'dish' && !weigh ? '1' : '');
-    const options = candidate.kind === 'food' && candidate.panel ? foodUnitOptionsFor(candidate.panel) : [];
     setAmountUnit(options[0]?.key ?? null);
     setAmountNumber('');
   };
@@ -566,9 +595,13 @@ export function FoodLogEntrySheet({
    * anything weekly.
    */
   const [recency, setRecency] = useState(() => foodLogRecency([]));
+  // Read off the same snapshot, for the amount `choose` opens a food on.
+  const [lastAmounts, setLastAmounts] = useState(() => foodLastAmounts([]));
   const refreshRecency = () => {
     const today = getCurrentDayStart();
-    setRecency(foodLogRecency(recentEntries(dayKeyOf(subDays(today, 90)), dayKeyOf(today))));
+    const entries = recentEntries(dayKeyOf(subDays(today, 90)), dayKeyOf(today));
+    setRecency(foodLogRecency(entries));
+    setLastAmounts(foodLastAmounts(entries));
   };
   useEffect(() => {
     if (!visible) return;
@@ -620,6 +653,7 @@ export function FoodLogEntrySheet({
     }
     setPicked(candidate);
     setAmount(plan.amount);
+    setRecalledAmount(null);
     if (plan.dishMeasure) setDishMeasure(plan.dishMeasure);
     const options = candidate.kind === 'food' && candidate.panel ? foodUnitOptionsFor(candidate.panel) : [];
     const parsed = options.length > 0 ? parseFoodAmount(plan.amount, options) : null;
@@ -954,6 +988,7 @@ export function FoodLogEntrySheet({
       setAmount('');
       setAmountUnit(null);
       setAmountNumber('');
+      setRecalledAmount(null);
       setDbSearchOpen(false);
       refreshRecency();
       pendingBurstFocus.current = true;
@@ -983,6 +1018,7 @@ export function FoodLogEntrySheet({
       dishServings: null,
     });
     setAmount('');
+    setRecalledAmount(null);
     const options = foodUnitOptionsFor(nutrition);
     setAmountUnit(options[0]?.key ?? null);
     setAmountNumber('');
@@ -1112,6 +1148,10 @@ export function FoodLogEntrySheet({
                     }
                     placeholderTextColor={colors.textTertiary}
                     autoFocus
+                    // An amount filled in from last time is selected on
+                    // arrival, so typing a different one replaces it rather
+                    // than appending to it ("250" becoming "250200").
+                    selectTextOnFocus={recalledAmount !== null && amount === recalledAmount}
                     keyboardType={
                       picked.kind === 'dish' || usingFoodUnitPills
                         ? 'decimal-pad' : 'default'
@@ -1184,6 +1224,9 @@ export function FoodLogEntrySheet({
               </View>
             )}
             <Text style={styles.hint}>
+              {/* Says where a number nobody typed came from, and only while
+                  the field still holds it. */}
+              {recalledAmount !== null && amount === recalledAmount ? 'Filled in from the last time you logged this. ' : ''}
               {picked.kind === 'dish'
                 ? dishWeightHint
                 : foodUnitOptions.length > 0 && amountUnit !== 'other'

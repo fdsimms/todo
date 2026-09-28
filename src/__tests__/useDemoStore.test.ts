@@ -37,7 +37,8 @@ import { OTHER_AISLE } from '../utils/groceryAisles';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useSavedMealsStore } from '../store/useSavedMealsStore';
-import { describeFoodLogEntry, foodLogTotals, scalePanelToAmount } from '../utils/foodLog';
+import { describeFoodLogEntry, foodLogTotals, recallAmount, scalePanelToAmount } from '../utils/foodLog';
+import { foodLastAmounts } from '../utils/foodLogRecents';
 import { isWaterEntry } from '../utils/waterLog';
 import { foodDayInputs, hasNutritionData, nutrientAverages, nutritionCounts, sourceMix } from '../utils/nutritionStats';
 import { packageHelping } from '../utils/scanPortion';
@@ -2105,6 +2106,20 @@ describe('demo seed — people', () => {
     useFoodLogStore.getState().loadWindow(window.startKey, window.endKey);
     const filed = useFoodLogStore.getState().windowEntries.filter(e => e.itemId === item?.id);
     expect(filed.length).toBeGreaterThan(0);
+  });
+
+  it('seeds a food eaten before, so picking it again opens on the amount it was logged in', () => {
+    // The picker fills in a food's last amount (#2915). Greek yogurt is logged
+    // against its own row, so its amount has to read back and still measure
+    // against the panel it has now, or the demo shows an empty field.
+    const item = useGroceryStore.getState().items.find(i => i.name === 'Greek yogurt');
+    const panel = item ? nutritionFor(item) : null;
+    expect(panel).not.toBeNull();
+    const window = cookingWindow(getLogicalToday(), 90);
+    useFoodLogStore.getState().loadWindow(window.startKey, window.endKey);
+    const last = foodLastAmounts(useFoodLogStore.getState().windowEntries).get(`i:${item!.id}`);
+    expect(last).toBeTruthy();
+    expect(recallAmount(last, { kind: 'food', panel: panel!, name: item!.name })).not.toBeNull();
   });
 
   it('seeds the three minerals, fully on one food and partly on another', () => {
