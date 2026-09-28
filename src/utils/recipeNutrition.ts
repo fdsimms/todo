@@ -50,9 +50,16 @@ import { measureQuantity } from './unitConvert';
  * an ingredient the total had already used. Same call `calendarMonth.ts` makes
  * about there being one projection walk.
  *
- * **Scale then convert, in that order**, matching `unitConvert`'s own note: the
- * multiplication is exact and the gram resolution rounds, so rounding last is
- * the only order that doesn't compound.
+ * **The line is measured as written and the scale multiplies what it came
+ * to**, rather than the scaled text being measured (#2918). The scaled text is
+ * a shopping notation: it refuses shapes it has no way to write (1.5 of a
+ * "14 oz can") and rewrites others into shapes that read differently ("14 oz
+ * can" doubled is "2 14 oz cans"), so measuring it undercounted a can by a
+ * third at 1.5x. The amount itself scales linearly on every basis
+ * `panelMultiplier` reads, and nothing on the way to grams rounds (rounding is
+ * `unitConvert`'s display step), so multiplying after is the same number
+ * wherever scaling succeeds and the right one where it doesn't. The scaled
+ * text is still what a line *shows*, so the list reads like the recipe.
  */
 
 export interface RecipeNutrition {
@@ -157,10 +164,13 @@ interface LineResolution {
  */
 const STAPLE_BULK_THRESHOLD_G = 100;
 
-/** Whether a staple's own line names a weight too large to treat as negligible. */
-function isBulkStapleQuantity(quantity: string): boolean {
+/**
+ * Whether a staple's own line names a weight too large to treat as negligible,
+ * at `factor` times the amount written (see the header on scaling).
+ */
+function isBulkStapleQuantity(quantity: string, factor: number): boolean {
   const measured = measureQuantity(quantity);
-  return measured !== null && measured.dimension === 'mass' && measured.base >= STAPLE_BULK_THRESHOLD_G;
+  return measured !== null && measured.dimension === 'mass' && measured.base * factor >= STAPLE_BULK_THRESHOLD_G;
 }
 
 /**
@@ -188,17 +198,19 @@ function isBulkStapleQuantity(quantity: string): boolean {
  */
 function resolveLine(
   nameKey: string,
+  /** As written, unscaled: `factor` multiplies what it measures to. */
   quantity: string,
   prep: string | null,
   byKey: ReadonlyMap<string, GroceryItem>,
   productFor: (item: GroceryItem) => ItemProduct | null,
+  factor = 1,
 ): LineResolution | null {
   // Plural-tolerant like every other catalog read (`groceryPlural.ts`), or a
   // line one letter off its own row counts against coverage while the panel it
   // needs sits right there.
   const resolved = byKey.has(nameKey) ? nameKey : resolvePluralKey(nameKey, byKey.keys());
   const item = resolved ? byKey.get(resolved) : undefined;
-  if (item?.isStaple && !isBulkStapleQuantity(quantity)) return null;
+  if (item?.isStaple && !isBulkStapleQuantity(quantity, factor)) return null;
   if (!item) return { state: 'unmatched', item: null, product: null, nutrition: null, multiplier: null };
 
   const product = productFor(item);
@@ -208,7 +220,7 @@ function resolveLine(
   const multiplier = panelMultiplier(quantity, prep, nutrition);
   if (multiplier === null) return { state: 'unmeasured', item, product, nutrition, multiplier: null };
 
-  return { state: 'covered', item, product, nutrition, multiplier };
+  return { state: 'covered', item, product, nutrition, multiplier: multiplier * factor };
 }
 
 interface Accumulator {
@@ -379,7 +391,11 @@ export interface NutritionLine extends LineResolution {
   recipeId: string;
   /** As the recipe writes it, so a row here reads like the row on the page. */
   name: string;
-  /** Scaled, matching what the ingredient list shows and what was measured. */
+  /**
+   * Scaled, matching what the ingredient list shows. Display only: the figures
+   * are the as-written line measured and then multiplied by the scale (see the
+   * header), so a line whose scaled text reads differently still counts.
+   */
   quantity: string;
   prep: string | null;
 }
@@ -426,7 +442,10 @@ export function recipeNutritionLines(
     // not a line at all.
     if (line.ingredient.excludeFromNutrition) continue;
     const quantity = scaleQuantity(line.ingredient.quantity, factor).text;
-    const resolved = resolveLine(line.ingredient.nameKey, quantity, line.ingredient.prep, byKey, productFor);
+    // Measured as written, then scaled: see the header for why not `quantity`.
+    const resolved = resolveLine(
+      line.ingredient.nameKey, line.ingredient.quantity, line.ingredient.prep, byKey, productFor, factor,
+    );
     if (!resolved) continue;
     out.push({
       ...resolved,

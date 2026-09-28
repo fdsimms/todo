@@ -8,7 +8,7 @@ import {
   unitKey,
   type Quantity,
 } from './quantity';
-import { measureParsedQuantity, unitBase } from './unitConvert';
+import { measureParsedQuantity, unitBase, type MeasuredQuantity } from './unitConvert';
 
 /**
  * How much a recipe line actually weighs, or nothing at all.
@@ -171,6 +171,36 @@ function gramsFromVolume(
 }
 
 /**
+ * How much a line calls for, `measureParsedQuantity` plus the one shape it
+ * refuses that still states an amount: a counted sized container.
+ *
+ * "2 14 oz cans" says both how many tins and how much is in one, so it is
+ * twenty-eight ounces. `measureParsedQuantity` refuses it for a reason that
+ * holds where it lives: its leading number is the count, and measuring that as
+ * the size would read two tins as two ounces. Multiplying the size by the
+ * count is not that mistake, and refusing it here cost more than the line: a
+ * recipe's own "14 oz can" doubled *becomes* "2 14 oz cans", so a can that
+ * counted at 1x dropped out of a dish's figures at 2x, and the sheet then asked
+ * for "how much one holds" off a line that says so (#2918).
+ *
+ * Deliberately local rather than a change to `measureParsedQuantity`: that
+ * one also prices a line per unit (`groceryPrice.ts`), where a recorded price
+ * against a counted container is its own question.
+ */
+function measureLineAmount(quantity: Quantity): MeasuredQuantity | null {
+  const container = quantity.container;
+  if (!container?.count) return measureParsedQuantity(quantity);
+  const count = rationalToNumber(container.count);
+  if (!(count > 0)) return null;
+  const one = measureParsedQuantity({
+    ...quantity,
+    amount: container.size,
+    container: { ...container, count: null },
+  });
+  return one ? { ...one, base: one.base * count } : null;
+}
+
+/**
  * What one recipe line weighs in grams, or null when it can't be said honestly.
  *
  * `quantity` is already parsed rather than raw text, deliberately: this is not
@@ -185,12 +215,13 @@ function gramsFromVolume(
  *    refusing the line outright. The low end matches what `stepTimers` decided
  *    for durations and is the conservative direction for a calorie count.
  * 2. **Mass is free**, and needs no portion table: a line already written in
- *    grams or pounds is a weight.
+ *    grams or pounds is a weight, and so is a counted sized container ("2 14
+ *    oz cans" is two tins' worth, see `measureLineAmount`).
  * 3. **Volume needs a portion naming a volume**, and refuses without one.
  * 4. **A count needs a portion naming that same word**, size included, and
  *    refuses without one.
  * 5. **Everything else refuses** — a bare count with no size word among sized
- *    portions, a counted container, an unparseable amount.
+ *    portions, a container whose size didn't settle it, an unparseable amount.
  */
 export function gramsForLine(
   quantity: Quantity,
@@ -206,14 +237,14 @@ export function gramsForLine(
   // and this is choosing which end to believe.
   const single: Quantity = quantity.rangeMax ? { ...quantity, rangeMax: null } : quantity;
 
-  const measured = measureParsedQuantity(single);
+  const measured = measureLineAmount(single);
   if (measured?.dimension === 'mass') return measured.base;
   if (portions.length === 0) return null;
   if (measured?.dimension === 'volume') return gramsFromVolume(measured.base, portions, prep);
 
-  // A counted container ("2 14 oz cans") names how many tins, not how much is
-  // in one, and its words would otherwise be hunted for in the portion table.
-  // A *bare* sized container is a real weight and was measured above.
+  // A sized container, bare or counted, is answered by its size above or not
+  // at all: "oz cans" is not a portion label, and hunting for it in the table
+  // would weigh the line as some other row.
   if (single.container) return null;
 
   // Neither a mass nor a volume, so the line is a count and the word beside
@@ -296,7 +327,7 @@ export function panelMultiplier(
 
   if (nutrition.basis === 'per100ml') {
     const single = parsed.rangeMax ? { ...parsed, rangeMax: null } : parsed;
-    const measured = measureParsedQuantity(single);
+    const measured = measureLineAmount(single);
     if (!measured || measured.dimension !== 'volume') return null;
     return measured.base / 100;
   }
@@ -315,26 +346,25 @@ export function panelMultiplier(
  * Every *other* reason it says no — a missing portion, a per-100ml panel
  * with no density, a per-serving panel with no serving weight — is answered
  * by the food's own side: "Edit these figures" fixes the panel, and
- * `weighableLine` offers a scale for the portion table. These two aren't
+ * `weighableLine` offers a scale for the portion table. This one isn't
  * that. The line itself is what needs rewriting, on the recipe, not on the
  * food:
  *
  * - `'noAmount'` — no number at all, the same refusal `parseQuantity` makes
  *   for "several cloves" or "to taste". With nothing to multiply, no figure
  *   the food could carry would relate the line to a weight.
- * - `'countedContainer'` — "2 14 oz cans" names how many tins, not how much
- *   is in one, and `gramsForLine`/`panelMultiplier` refuse it on every basis
- *   for exactly that reason (see the comment above the `container` check in
- *   `gramsForLine`). What's missing is how much *one* tin holds, which the
- *   line doesn't say and no per-100g/ml/serving figure can stand in for.
+ *
+ * There used to be a second, `'countedContainer'`, for "2 14 oz cans", on the
+ * reading that it names how many tins but not how much is in one. It names
+ * both, and it is measured now (`measureLineAmount`), so the sheet no longer
+ * asks for "how much one holds" off a line that already says (#2918).
  */
-export type UnfixableQuantity = 'noAmount' | 'countedContainer';
+export type UnfixableQuantity = 'noAmount';
 
-/** Which of the two food-independent refusals `quantity` hits, or null if neither does. */
+/** The food-independent refusal `quantity` hits, or null if it doesn't. */
 export function unfixableQuantityReason(quantity: string): UnfixableQuantity | null {
   const parsed = parseQuantity(quantity);
   if (parsed.amount === null) return 'noAmount';
-  if (parsed.container && parsed.container.count !== null) return 'countedContainer';
   return null;
 }
 
@@ -430,8 +460,8 @@ export function weighableLine(
 
   const amount = rationalToNumber(parsed.amount);
   if (amount <= 0) return null;
-  // A counted container names how many tins, not how much is in one — the same
-  // line `gramsForLine` draws, and weighing "2 cans" would record the tin.
+  // A sized container is answered by its size or not at all — the same line
+  // `gramsForLine` draws, and weighing "2 cans" would record the tin.
   if (parsed.container) return null;
 
   const label = (parsed.unit ?? foodName).trim();
