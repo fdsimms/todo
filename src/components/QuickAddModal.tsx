@@ -3186,7 +3186,10 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     borderBottomWidth: 6,
     borderLeftColor: 'transparent',
     borderRightColor: 'transparent',
-    borderBottomColor: colors.accent,
+    // Matches the bubble's own fill (accentFill), not the plain `accent`
+    // token — the two are different shades, so the caret was visibly a
+    // different blue than the bubble it's supposed to be pointing out of.
+    borderBottomColor: colors.accentFill,
     // Overlap the bubble by a hair so independent sub-pixel rounding of this
     // 0-height triangle and the bubble below it can never leave a seam.
     marginBottom: -1,
@@ -3205,6 +3208,12 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     flexDirection: 'row',
     alignItems: 'center',
     alignSelf: 'flex-start',
+    // Backs the 1px divider between the bubble and the ✕: the row itself
+    // has no fill, only its two children do, so the divider's translucent
+    // (opacity-based) color sat over the transparent gap between them and
+    // showed the screen behind it instead of a subtle line on the pill.
+    backgroundColor: colors.accentFill,
+    borderRadius: radius.md,
   },
   // Overrides for the tooltip's own apply button, joined to the ✕ on its
   // right: square that side off and let the text give way to it instead of
