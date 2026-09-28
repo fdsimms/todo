@@ -518,6 +518,34 @@ describe('parseTaskInput — recurrence', () => {
     expect(r.schedule.recurrenceFromCompletion).toBe(true);
   });
 
+  it('maps the "ac" shorthand to recurrenceFromCompletion, same as "after completion"', () => {
+    const r = parseTaskInput('stretch every week ac', NOW)!;
+    expect(r.cleanTitle).toBe('stretch');
+    expect(r.schedule.recurrenceType).toBe('weekly');
+    expect(r.schedule.recurrenceFromCompletion).toBe(true);
+  });
+
+  it('defaults a bare daily/every-N-days phrase to recurrenceFromCompletion', () => {
+    const r = parseTaskInput('drink water daily', NOW)!;
+    expect(r.schedule.recurrenceType).toBe('daily');
+    expect(r.schedule.recurrenceFromCompletion).toBe(true);
+
+    const r2 = parseTaskInput('water plants every 3 days', NOW)!;
+    expect(r2.schedule.recurrenceFromCompletion).toBe(true);
+  });
+
+  it('keeps a fixed schedule for a daily phrase with an explicit clock time', () => {
+    const r = parseTaskInput('take pill every day at 9am', NOW)!;
+    expect(r.schedule.recurrenceType).toBe('daily');
+    expect(r.schedule.recurrenceFromCompletion).toBeFalsy();
+  });
+
+  it('does not default recurrenceFromCompletion for non-daily bare recurrences', () => {
+    const r = parseTaskInput('gym weekly', NOW)!;
+    expect(r.schedule.recurrenceType).toBe('weekly');
+    expect(r.schedule.recurrenceFromCompletion).toBeFalsy();
+  });
+
   it('maps an "until <date>" clause to recurrenceEndDate', () => {
     const r = parseTaskInput('gym every monday until december', NOW)!;
     expect(r.schedule.recurrenceType).toBe('weekly');

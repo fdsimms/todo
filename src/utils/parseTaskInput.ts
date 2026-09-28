@@ -389,7 +389,9 @@ function extractStartingClause(text: string, now: Date): { date: Date; rest: str
 
 /**
  * Peels a trailing "after completion" (or "on completion") clause, mapping to
- * recurrenceFromCompletion.
+ * recurrenceFromCompletion. "ac" is the same clause spelled as a shorthand
+ * ("every week ac") — its own alternative rather than folded into the
+ * "after"/"on" branch, since it has no leading word of its own to match.
  *
  * Case-insensitive so it can be run against original-cased input as well as the
  * lowercased suffix the parser normally hands it — see
@@ -397,7 +399,7 @@ function extractStartingClause(text: string, now: Date): { date: Date; rest: str
  * of `rest` and would mis-slice if this only matched lowercase.
  */
 function extractFromCompletionClause(text: string): { rest: string } | null {
-  const m = text.match(/^(.*?)\s+(?:after|on)\s+(?:completion|completing|finishing|finished|it'?s?\s+done|i\s+(?:complete|finish)\s+it|done)$/i);
+  const m = text.match(/^(.*?)\s+(?:(?:after|on)\s+(?:completion|completing|finishing|finished|it'?s?\s+done|i\s+(?:complete|finish)\s+it|done)|ac)$/i);
   return m ? { rest: m[1] } : null;
 }
 
@@ -515,7 +517,17 @@ function parseRecurrenceSuffix(text: string, now: Date): ParsedSchedule | null {
   if (!schedule) return null;
 
   if (starting) schedule = { ...schedule, dueDate: dueAt(starting.date) };
-  if (fromCompletion) schedule = { ...schedule, recurrenceFromCompletion: true };
+  if (fromCompletion) {
+    schedule = { ...schedule, recurrenceFromCompletion: true };
+  } else if (schedule.recurrenceType === 'daily' && schedule.timeSegments.length === 0) {
+    // A bare daily/every-N-days phrase with no clock time or day part
+    // defaults to after completion, same as RecurrencePicker.tsx defaults
+    // when a person picks Daily by hand — most daily tasks are habits where
+    // what matters is a day passing since the last one, not a calendar
+    // grid. "every day at 9am" (a real clock time) keeps its fixed
+    // schedule; only the ambiguous bare form gets the default.
+    schedule = { ...schedule, recurrenceFromCompletion: true };
+  }
   if (endMatch) {
     const { end } = endMatch;
     if (end.endDate) {
