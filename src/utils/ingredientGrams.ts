@@ -183,11 +183,14 @@ function gramsFromVolume(
  * counted at 1x dropped out of a dish's figures at 2x, and the sheet then asked
  * for "how much one holds" off a line that says so (#2918).
  *
- * Deliberately local rather than a change to `measureParsedQuantity`: that
- * one also prices a line per unit (`groceryPrice.ts`), where a recorded price
- * against a counted container is its own question.
+ * Deliberately not a change to `measureParsedQuantity`: that one also prices
+ * a line per unit (`groceryPrice.ts`), where a recorded price against a counted
+ * container is its own question. Exported for the one other reader that
+ * relates a line's whole amount rather than ranking a price per unit:
+ * `recipeCost.ts`, which relates a recipe's "2 14 oz cans" to a price recorded
+ * by the pound for the same reason this relates it to a panel per 100 g.
  */
-function measureLineAmount(quantity: Quantity): MeasuredQuantity | null {
+export function measureLineAmount(quantity: Quantity): MeasuredQuantity | null {
   const container = quantity.container;
   if (!container?.count) return measureParsedQuantity(quantity);
   const count = rationalToNumber(container.count);

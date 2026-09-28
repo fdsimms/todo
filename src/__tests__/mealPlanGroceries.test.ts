@@ -247,6 +247,23 @@ describe('collectPlannedIngredients', () => {
     ]);
   });
 
+  it('carries the line as written and its scale on a scaled entry only', () => {
+    // The scaled text is shopping notation, which cost and nutrition can't
+    // multiply out of: a "14 oz can" at 1.5x stays one can.
+    const chili = recipe('Chili', [ing('Black beans', { quantity: '14 oz can' })]);
+    const recipesById = new Map([[chili.id, chili]]);
+    const entries = [
+      entry('2026-08-11', chili.id, { recipeScale: 1.5 }),
+      entry('2026-08-13', chili.id),
+    ];
+
+    const [scaled, plain] = collectPlannedIngredients(entries, recipesById, RANGE);
+
+    expect(scaled.quantity).toBe('14 oz can');
+    expect(scaled.unscaled).toEqual({ quantity: '14 oz can', factor: 1.5 });
+    expect('unscaled' in plain).toBe(false);
+  });
+
   it('skips a free-text meal — it has no ingredient list', () => {
     const entries = [entry('2026-08-11', null, { title: 'Takeout' })];
     expect(collectPlannedIngredients(entries, new Map(), RANGE)).toEqual([]);

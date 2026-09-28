@@ -580,6 +580,14 @@ The four rules that make it safe, all enforced in `scaleQuantity`:
   what you buy. Halving it refuses outright, having no expression in that notation. Both container
   shapes are recognised by `parseQuantity` (`Quantity.container`) rather than by each reader, so the
   parser and the scaler can't come to disagree about what a container line is.
+- **A scaled string is for reading and shopping; anything summing it measures the line as written and
+  multiplies by the factor** (#2918). The notation above is lossy by design: a `14 oz can` at 1.5x is
+  left as one can, `1 lb 2 oz` isn't scaled at all, and doubled cans read as a count rather than a
+  weight. Cost and nutrition, for one recipe and for a planned week alike, relate the unscaled line
+  and multiply after, which is exact wherever scaling works and right where it refuses. A planned
+  row carries what they need as `PlannedIngredient.unscaled`, since its own `quantity` is the list's
+  text. A counted sized container ("2 14 oz cans") is read as count times size by both
+  (`measureLineAmount`), so a recipe written that way relates to a price or a panel by weight.
 - **Plural is `> 1`, not `!= 1`** — "1/2 cup", "1 1/2 cups". A unit that isn't in `UNIT_PLURALS`
   passes through uninflected ("2 bulb"), which is the same trade `groceryParse`'s unit whitelist
   makes: slightly wrong grammar in the user's own word beats "2 pinchs".

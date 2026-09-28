@@ -101,6 +101,19 @@ export interface PlannedIngredient {
    * for the same reason.
    */
   excludeFromNutrition?: boolean;
+  /**
+   * The line as the recipe wrote it and the entry's scale, present only when
+   * that scale isn't 1 (at 1, `quantity` already is the line as written).
+   *
+   * `quantity` is shopping notation, which is right for a list and lossy for
+   * arithmetic: a "14 oz can" can't be written at 1.5x so it stays one can, and
+   * "1 lb 2 oz" isn't scaled at all. `estimateWeekCost` and `weekNutrition`
+   * measure this and multiply by `factor` instead, the order a single recipe's
+   * cost and nutrition already use (#2918). Written only when scaled so the
+   * common row stays the shape every literal fixture of it already is, the
+   * same convention as `optional`.
+   */
+  unscaled?: { quantity: string; factor: number };
 }
 
 /**
@@ -175,6 +188,7 @@ export function collectPlannedIngredients(
         swappedFrom: flat.swappedFrom ?? null,
         ...(flat.ingredient.optional ? { optional: true } : {}),
         ...(flat.ingredient.excludeFromNutrition ? { excludeFromNutrition: true } : {}),
+        ...(scale !== 1 ? { unscaled: { quantity: flat.ingredient.quantity, factor: scale } } : {}),
       });
     }
   }

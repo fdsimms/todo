@@ -541,7 +541,16 @@ export function weekNutrition(
   const resolved: LineResolution[] = [];
   for (const line of planned) {
     if (line.excludeFromNutrition) continue;
-    const one = resolveLine(line.nameKey, line.quantity, null, byKey, productFor);
+    // Measured as written, then scaled, like a single recipe's lines: the
+    // planned row's own `quantity` is the scaled shopping text (see the header).
+    const one = resolveLine(
+      line.nameKey,
+      line.unscaled?.quantity ?? line.quantity,
+      null,
+      byKey,
+      productFor,
+      line.unscaled?.factor ?? 1,
+    );
     if (one) resolved.push(one);
   }
   return fold(resolved, null);
