@@ -424,3 +424,37 @@ export function planGroceryAdd(
     wasOnList: false,
   };
 }
+
+/**
+ * What the add field says about a name typed while it is already in the
+ * trolley it was added to. Null when the add put the row there, which is the
+ * ordinary case and needs no words.
+ *
+ * Such an add is silent on purpose where the row is concerned: `planGroceryAdd`
+ * leaves the entry alone so the tick and the walk-order slot survive. It was
+ * silent to the person too, which was the bug (#2945). The sheet counted it as
+ * "Added 1 item" and nothing on screen changed, while a paste of the same name
+ * always said "1 already on the list". This is that line for a single name.
+ *
+ * `priorEntry` is the entry as it stood *before* the add, read by the caller
+ * off a snapshot, since afterwards there is an entry either way. `inCart` is
+ * that entry's own tick, so the field can offer to take it back out: typing
+ * milk you have already picked up usually means you want another one.
+ *
+ * A typed quantity still replaces the row's (the re-add rule above), and the
+ * notice says so, since that is the one visible thing the add changed.
+ */
+export function reAddNotice(
+  priorEntry: GroceryListEntry | null,
+  previousQuantity: string | null,
+  item: GroceryItem,
+): { text: string; inCart: boolean } | null {
+  if (!priorEntry) return null;
+  const where = priorEntry.checked ? 'in your cart' : 'on the list';
+  const quantityChanged = !!item.quantity && item.quantity !== previousQuantity;
+  return {
+    text: `“${item.name}” is already ${where}`
+      + (quantityChanged ? `. Quantity changed to ${item.quantity}.` : ''),
+    inCart: priorEntry.checked,
+  };
+}
