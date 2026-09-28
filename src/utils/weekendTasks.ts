@@ -7,6 +7,9 @@ import {
   WEEKEND_NUDGE_LEAD_DAYS_DEFAULT,
   WEEKEND_NUDGE_LEAD_DAYS_MAX,
   WEEKEND_NUDGE_LEAD_DAYS_MIN,
+  WEEKEND_NUDGE_PLAN_THRESHOLD_DEFAULT,
+  WEEKEND_NUDGE_PLAN_THRESHOLD_MAX,
+  WEEKEND_NUDGE_PLAN_THRESHOLD_MIN,
 } from '../types';
 import type { DayBucket } from './calendarMonth';
 import type { DayLoad } from './dayLoad';
@@ -90,6 +93,16 @@ import { projectReviewLinkUrl } from './projectReviewTasks';
  *    feature about whether there's a *plan*. `weekendPlanCount` is where this
  *    lives; a one-off task or a real calendar event still counts, since
  *    either one is a choice made about this particular Saturday.
+ * 8. **"Bare" tolerates a small, user-set number of one-off plans, not only
+ *    zero.** `weekendNudgePlanThreshold` (default
+ *    `WEEKEND_NUDGE_PLAN_THRESHOLD_DEFAULT`) is how many `weekendPlanCount`
+ *    may return and the weekend still counts — a single movie or dinner
+ *    booked for an otherwise open Saturday and Sunday is not a *planned*
+ *    weekend, and treating it as one would have this offer go quiet the
+ *    moment anybody puts one thing on the calendar. `isWeekendBare` is where
+ *    the threshold is read; a known calendar busy window still blocks
+ *    outright rather than counting toward it, since a block of somebody
+ *    else's time isn't comparable to one more task.
  */
 
 /** The row's title. Never varies. */
@@ -273,12 +286,45 @@ export function weekendPlanCount(
 }
 
 /**
- * Whether the weekend has nothing on it.
+ * A stored plan-threshold setting read back as a usable one, for the reason
+ * `clampWeekendNudgeLeadDays` is its own function rather than a clamp at the
+ * setter alone: a value can reach this module from a stored string or a peer
+ * on a different build.
+ */
+export function clampWeekendNudgePlanThreshold(count: number): number {
+  if (!Number.isFinite(count)) return WEEKEND_NUDGE_PLAN_THRESHOLD_DEFAULT;
+  return Math.max(
+    WEEKEND_NUDGE_PLAN_THRESHOLD_MIN,
+    Math.min(WEEKEND_NUDGE_PLAN_THRESHOLD_MAX, Math.round(count)),
+  );
+}
+
+/** How the plan threshold reads in Settings, and in the stepper's own caption. */
+export function describeWeekendNudgePlanThreshold(count: number): string {
+  const clamped = clampWeekendNudgePlanThreshold(count);
+  if (clamped === 0) return 'Only a fully open weekend';
+  return `Up to ${clamped} ${clamped === 1 ? 'thing' : 'things'} already planned`;
+}
+
+/**
+ * Whether the weekend is under-planned enough to nudge about.
  *
- * Calendar events count for Saturday and Sunday only. Friday's are not read at
- * all: the whole-day busy figure `DayLoad` carries cannot be narrowed to the
- * evening the way the task count can, and a Friday of meetings would otherwise
- * silence the offer for everybody who has a job.
+ * Not "has nothing on it" — `threshold` (default
+ * `WEEKEND_NUDGE_PLAN_THRESHOLD_DEFAULT`) is how many one-off things may
+ * already be there and the weekend still counts. A single movie or dinner on
+ * an otherwise open Saturday and Sunday is not a *planned* weekend by any
+ * reading that also calls a bare one worth nudging about, so this used to
+ * demand literal zero and don't anymore: `planCount` crossing the threshold is
+ * what a weekend actually filling up looks like, one thing at a time is not.
+ *
+ * Calendar events count for Saturday and Sunday only, and any known busy time
+ * blocks outright rather than adding to `planCount` — the two aren't
+ * comparable (a task is a single plan, a busy window is however long the
+ * calendar says), and a half-day commitment is reason enough on its own
+ * regardless of how much of the day-count threshold is left. Friday's events
+ * are not read at all: the whole-day busy figure `DayLoad` carries cannot be
+ * narrowed to the evening the way the task count can, and a Friday of
+ * meetings would otherwise silence the offer for everybody who has a job.
  *
  * `busyKnown: false` does not block — see rule 4 in this module's header, which
  * is the one place this deliberately departs from `dayLoad`'s own reading.
@@ -287,8 +333,9 @@ export function isWeekendBare(
   window: WeekendWindow,
   loads: ReadonlyMap<string, DayLoad>,
   planCount: number,
+  threshold: number = WEEKEND_NUDGE_PLAN_THRESHOLD_DEFAULT,
 ): boolean {
-  if (planCount > 0) return false;
+  if (planCount > clampWeekendNudgePlanThreshold(threshold)) return false;
   for (const key of [window.saturdayKey, window.sundayKey]) {
     const load = loads.get(key);
     if (load?.busyKnown && load.busyMinutes > 0) return false;
@@ -370,13 +417,19 @@ export function weekendNudgeLinkUrl(projectId: string | null, saturdayKey?: stri
 /**
  * The row's notes — why this task is on the list.
  *
- * States what is on the weekend (nothing) and, when there is one, what the
- * nominated project would have you do next. No claim about what a bare weekend
- * means, and no encouragement: the app knows three days have no rows on them,
- * and that is the whole of what it knows.
+ * States what is on the weekend (nothing, or not much) and, when there is
+ * one, what the nominated project would have you do next. `planCount` above
+ * zero is only possible with a plan threshold raised past its default, since
+ * this row is dropped once plans get made either way (`staleWeekendNudgeTasks`)
+ * — but the copy still has to be honest for the whole range `isWeekendBare`
+ * now accepts, or a weekend carrying its one allowed plan gets told it has
+ * none. No claim about what any of it means, and no encouragement: the app
+ * knows what's on those three days, and that is the whole of what it knows.
  */
-export function weekendNudgeNotes(suggestion: WeekendSuggestion | null): string {
-  const bare = 'Nothing is on your list for Friday evening, Saturday or Sunday.';
+export function weekendNudgeNotes(planCount: number, suggestion: WeekendSuggestion | null): string {
+  const bare = planCount > 0
+    ? 'Only a little is on your list for Friday evening, Saturday or Sunday.'
+    : 'Nothing is on your list for Friday evening, Saturday or Sunday.';
   if (!suggestion) return bare;
   if (!suggestion.candidateTitle) {
     return `${bare} You marked ${suggestion.projectTitle} as somewhere to look for weekend plans.`;

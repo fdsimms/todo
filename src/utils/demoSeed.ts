@@ -1289,7 +1289,7 @@ export function seedDemoData(): void {
   const weekend = upcomingWeekend(today);
   addTask({
     title: WEEKEND_NUDGE_TITLE,
-    notes: weekendNudgeNotes({
+    notes: weekendNudgeNotes(0, {
       projectId: dayTrips.id,
       projectTitle: 'Day trips',
       candidateTitle: 'Drive out to the coast',
