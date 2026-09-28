@@ -95,6 +95,22 @@ weeks later. Seven places remembering a rule is six chances to forget it.
   provisional; it is ordinary now, so the prune offer uses `hasUserFacts` too.
 - **The `in_catalog` column is still in SQLite**, written `1` and never read, the same treatment
   `task_groups.completed_at` gets. Dropping a column isn't this schema's migration style.
+- **A meal coming off the plan offers to take its shopping off the list, and only offers** (#2912,
+  `rowsLeftBehind` in `mealPlanGroceries.ts`, `listRowsLeftBy` in `useMealPlanStore`,
+  `takeOffLists` here). Removing or replacing a meal whose ingredients went on the list used to
+  leave them there with nothing said, and they got bought on Saturday. The meal plan screen now asks
+  after a remove, a replace or a bulk delete, never removes silently: a meal leaving the plan is not
+  evidence about whether the person still wants the tortillas, and the list is theirs. What the app
+  *does* know is narrow, and the offer is held to it. A row qualifies only if its recipe credit
+  (`sourceRecipeId`) is one of the gone meal's recipes, component recipes included, and no uncooked
+  night from today on still plans that recipe; it sits in exactly one trolley, unticked (the credit
+  is the item's, so a row since added to a second list by hand can't say which one the recipe was
+  for); and the recipe still owns its amount (`quantityFromRecipe`, or none), since an amount typed
+  by hand is the person taking the row over. A row two recipes wanted already has no credit
+  (`mergeOnListRecipeNeed`), so a merged quantity is never offered. Taking the rows off parks them
+  like any removal, and `takeOffLists` gives it an undo in the undo bar because the rows leave from a
+  screen that isn't showing them. Unplanning a pick inside the recipe picker doesn't ask: that is a
+  pick being corrected in the sheet it was made in.
 
 ---
 
@@ -648,12 +664,26 @@ which rows you don't usually get here.
   and can only be answered inside the app. The deep link *is* that question asked from the Lock
   Screen. It carries no count, because the attributes are fixed when the trip starts and nothing
   is ever pushed an update; `GroceryScreen` decides on arrival whether there's anything to finish,
-  and lands on the list without a sheet when there isn't.
+  and lands on the list without a sheet when there isn't. **Its stale date is the trip's expiry**
+  (`TripRun.staleAtMs`, `TRIP_MAX_MS` after the start): only the app's own sync ends the activity,
+  and that doesn't run while the app is closed, so without one an abandoned trip went on claiming
+  "Shopping at X" with a clock past six hours until the next launch (#2937). Past it, the activity
+  says the trip ended and keeps its Finish button, since a cart can be finished without a trip.
 - **The row caption is its own third text treatment**, borrowing `note`'s colour and
   `alternatives`' weight. A row can carry all three at once (a noted either/or item on record
   elsewhere); at identical styling they run together into a block you can't read while walking.
   It outranks the recipe caption and only that — provenance is the least useful thing at a shelf,
   while a user's note ("the blue cap one") is exactly what you're there for.
+- **A price typed on a row during a trip is the trip store's price, and Finish files it there.**
+  The row's price tag writes through `setItemPrice`, which deliberately never mints a store link
+  (a price is not a claim that the store stocks it), so at a store with no link yet the number
+  landed on the item alone. The finish sheet then showed an empty field, and skipping it minted
+  the store's link with no price (#2936). So the finish sheet seeds each field with the price
+  typed at the shelf this trip (`pricesRecordedSince`), and finishing is what records it against
+  the store, with its observation in the run, the same as a price typed at the checkout. The tag
+  itself opens holding only the trip store's own price or one typed this trip (`tripPriceFor`),
+  never another store's: `lastPriceFor`'s fallback to the item's price is right for a placeholder
+  and wrong for a value nobody labelled.
 - **The `usually` case can't be seeded into demo mode.** It needs an item bought at two stores
   while you stand in a third, and the demo has two stores anyone would shop at. The seeded trip
   is at Trader Joe's and shows the other two.
@@ -878,7 +908,10 @@ chicken too.
   add it to the list. The precedence is exact and each step earns its place — an explicit **"Out of
   it" outranks the freezer** (that bit is what the Pantry row's ✕ writes, so the button would read
   as dead on a frozen row otherwise, and "I'm out of it" is the later statement anyway), the
-  freezer outranks the purchase reading, and a live "Got it" is read last.
+  freezer outranks the purchase reading, and a live "Got it" is read last. The meal plan reads that
+  same rung the other way round (`mealThawTasks`, #2926): a meal planned for today or tomorrow that
+  is covered only by the freezer gets a task to take it out, since on hand and frozen is on hand a
+  day later than it looks.
 - **A purchase clears `frozenAt`**, alongside the `onHandUntil` it already cleared, in
   `finishShopping` and its `dbFinishGroceryShopping` mirror. The claim was about the bag you had,
   and the same statement stamps a fresh `expiresAt` — leaving it would suspend that new day the
@@ -1429,7 +1462,12 @@ nothing to backfill.
   `swappedFrom`, since this is the same thing spelled the other way rather than a swap —
   `recipeReadiness` counts it as covered, `recipeCost` prices it, `useUpRecipes` offers the recipe
   for the dying row, and the import review's own link icon (`ExtractedIngredientRow`) reports what
-  the store will actually do on save. Plural tolerance in
+  the store will actually do on save. A standing swap agrees too (#2940): `standingSwapMap` indexes
+  each rule under its row's plural variants as well as its own key, so "1 egg" shops flax eggs
+  when "2 eggs" does. It has to happen there rather than after `classifyPlanned`'s re-file, because
+  the swap is resolved first, in `flattenRecipeIngredients`; and it claims a variant only where
+  `resolvePluralKey` would resolve it to that row, so a catalog holding both "Egg" and "Eggs"
+  keeps the rule on Eggs alone. Plural tolerance in
   `matchWeight` is untouched and still does its own job: that one is autocomplete, where a wrong
   guess costs a keystroke.
 
@@ -1463,6 +1501,17 @@ read side.
   family: on the list, then staple, then the pantry guess). A declared variety nobody has
   changes nothing, and the ask stays an honest needToBuy under the generic name, which is also
   the right thing to put in the trolley.
+- **A declared generic answers either spelling** (#2941). `varietyIndex` files each declaration
+  under its other spelling as well, so "White onions counts as onions" covers a line saying "1
+  onion", which matters because the Variety of field can only suggest the item's own trailing
+  words and a plural-named item could otherwise only ever declare a plural generic. It is the
+  plural rule above, applied to keys that may have no row: two spellings pair only when each is
+  the other's *only* plural among the keys in play (every row and every declared generic), never
+  when both are rows the user kept apart, and when both are declared the family is the union.
+  Doing it in the index rather than at each reader is what keeps `classifyPlanned`,
+  `matchIngredientToCatalog` and `catalogCoverage` from disagreeing about it. `familyOnHand`
+  finds the parent row spelled the other way too, and `varietyOfferFor` accepts a catalog name
+  ending in the line's other spelling ("onion" turning up White onions).
 - **Single hop, never a chain.** Readers ask "which items declare themselves varieties of this
   key" and stop, so a mis-filed pointer can't loop and "vegetable" can't transitively claim
   every onion. A chain just means the middle name answers for the outer one and nothing else.
@@ -1517,8 +1566,10 @@ read side.
   (suggestions are the item's own trailing words plus generics already in use —
   `genericNameSuggestions`). Same discipline as substitutes, and a declaration is a user fact
   (`hasUserFacts`), so it protects its row from the clearList sweep.
-- **Standing swaps stay exact-key.** A swap is a rewrite mandate; firing a generic's mandate on
-  a line that named a specific variety would override a specificity the user wrote down.
+- **Standing swaps stay exact-key across varieties.** A swap is a rewrite mandate; firing a
+  generic's mandate on a line that named a specific variety would override a specificity the user
+  wrote down. Spelling is not specificity, so the singular or plural of the rule's own row does
+  reach it (see "Singular and plural are one row" above).
 
 ## Deciding at the shelf — an ingredient choice that survives onto the list
 

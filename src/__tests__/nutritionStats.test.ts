@@ -1,8 +1,10 @@
 import type { FoodLogEntry, FoodNutritionSource, NutrientKey } from '../types';
-import { cookingWindow } from '../utils/cookingStats';
+import { cookingWindow, lastDaysOf } from '../utils/cookingStats';
 import {
   EMPTY_NUTRITION_COUNTS,
   foodDayInputs,
+  foodKeyNames,
+  foodKeyResolver,
   hasNutritionData,
   mostLoggedFoods,
   nutrientAverages,
@@ -34,6 +36,8 @@ function entry(
     amounts?: Partial<Record<NutrientKey, number>>;
     source?: FoodNutritionSource;
     recipeId?: string | null;
+    itemId?: string | null;
+    productId?: string | null;
     hour?: number;
   } = {},
 ): FoodLogEntry {
@@ -46,8 +50,8 @@ function entry(
     slot: over.slot ?? 'breakfast',
     label: over.label ?? 'Porridge',
     recipeId: over.recipeId ?? null,
-    itemId: null,
-    productId: null,
+    itemId: over.itemId ?? null,
+    productId: over.productId ?? null,
     mealPlanEntryId: null,
     quantity: '1 bowl',
     grams: 200,
@@ -81,6 +85,17 @@ function fullDay(dayKey: string, over: Parameters<typeof entry>[1] = {}): FoodLo
 }
 
 describe('nutritionCounts', () => {
+  it('reads the last week out of a month of rows without reloading them', () => {
+    // Stats keeps a month loaded and narrows it (#2916). A day outside the
+    // week has to drop out of every figure, not just the day count.
+    const week = lastDaysOf(WINDOW, 7);
+    const rows = [...fullDay('2026-08-20'), ...fullDay('2026-09-08')];
+    expect(nutritionCounts(rows, week)).toMatchObject({ days: 7, daysLogged: 1, entries: 2 });
+    expect(nutritionCounts(rows, WINDOW)).toMatchObject({ days: 30, daysLogged: 2, entries: 4 });
+    expect(nutrientAverages(rows, week).find(r => r.key === 'calorieKcal')?.days).toBe(1);
+    expect(mostLoggedFoods(rows, week, 5)[0]?.count).toBe(2);
+  });
+
   it('counts the window, the days logged and the entries', () => {
     const counts = nutritionCounts(
       [...fullDay('2026-09-08'), ...fullDay('2026-09-09')],
@@ -473,5 +488,101 @@ describe('foodDayInputs', () => {
       ...fullDay('2026-09-09'),
       ...fullDay('2026-09-07'),
     ]).map(r => r.dayKey)).toEqual(['2026-09-07', '2026-09-09']);
+  });
+});
+
+describe('foodKeyResolver', () => {
+  it('keys a linked entry by the row it points at, and a box by its item', () => {
+    // The picker offers "Bread" and "Bread, Dave's Killer 21 grain" as two
+    // rows. Both are bread, and a symptom page that split them compared bread
+    // days against bread days (#2947).
+    const plain = entry('2026-09-01', { label: 'Bread', itemId: 'bread' });
+    const branded = entry('2026-09-02', { label: "Bread, Dave's Killer 21 grain", itemId: 'bread', productId: 'dk' });
+    const keyOf = foodKeyResolver([plain, branded]);
+    expect(keyOf(plain)).toBe('item:bread');
+    expect(keyOf(branded)).toBe('item:bread');
+  });
+
+  it('keys a dish by its recipe, so renaming it does not split it', () => {
+    const before = entry('2026-09-01', { label: 'Chili', recipeId: 'r1' });
+    const after = entry('2026-09-08', { label: 'Weeknight chili', recipeId: 'r1' });
+    const keyOf = foodKeyResolver([before, after]);
+    expect(keyOf(before)).toBe(keyOf(after));
+  });
+
+  it('keys an unlinked entry by its lowercased label, as it always did', () => {
+    const typed = entry('2026-09-01', { label: '  Porridge ' });
+    expect(foodKeyResolver([typed])(typed)).toBe('porridge');
+  });
+
+  it('counts a hand-typed label as the row a linked entry was logged under by that name', () => {
+    // Keying linked entries by id must not split "bread" typed by hand from
+    // the Bread row it was always counted with when everything keyed by label.
+    const linked = entry('2026-09-01', { label: 'Bread', itemId: 'bread' });
+    const typed = entry('2026-09-02', { label: 'bread' });
+    expect(foodKeyResolver([linked, typed])(typed)).toBe('item:bread');
+  });
+
+  it('leaves a label alone when linked entries use it for two different rows', () => {
+    const recipe = entry('2026-09-01', { label: 'Chili', recipeId: 'r1' });
+    const item = entry('2026-09-02', { label: 'Chili', itemId: 'chili-flakes' });
+    const typed = entry('2026-09-03', { label: 'chili' });
+    expect(foodKeyResolver([recipe, item, typed])(typed)).toBe('chili');
+  });
+});
+
+describe('foodKeyNames', () => {
+  it('names a row or recipe by its current name, and anything else as it was typed', () => {
+    const rows = [
+      entry('2026-09-01', { label: "Bread, Dave's Killer 21 grain", itemId: 'bread', productId: 'dk', hour: 9 }),
+      entry('2026-09-02', { label: 'Old name', recipeId: 'r1' }),
+      entry('2026-09-03', { label: 'Porridge' }),
+    ];
+    const names = foodKeyNames(rows, {
+      items: new Map([['bread', 'Bread']]),
+      recipes: new Map([['r1', 'Weeknight chili']]),
+    });
+    expect(names.get('item:bread')).toBe('Bread');
+    expect(names.get('recipe:r1')).toBe('Weeknight chili');
+    expect(names.get('porridge')).toBe('Porridge');
+  });
+
+  it('falls back to the label most recently logged for a row that has since gone', () => {
+    const rows = [
+      entry('2026-09-01', { label: 'Sourdough', itemId: 'gone' }),
+      entry('2026-09-05', { label: 'Sourdough loaf', itemId: 'gone' }),
+    ];
+    expect(foodKeyNames(rows).get('item:gone')).toBe('Sourdough loaf');
+  });
+});
+
+describe('foodDayInputs food keys', () => {
+  it('puts a branded day in the food\'s own group, not its "without" group', () => {
+    // The issue's own case: fifteen bread days, ten logged as the item and
+    // five as a box of it. Every one of them has to say bread.
+    const rows: FoodLogEntry[] = [];
+    for (let d = 1; d <= 15; d += 1) {
+      const dayKey = `2026-08-${String(d + 10).padStart(2, '0')}`;
+      const bread = d <= 10
+        ? entry(dayKey, { label: 'Bread', itemId: 'bread', slot: 'breakfast' })
+        : entry(dayKey, { label: "Bread, Dave's Killer 21 grain", itemId: 'bread', productId: 'dk', slot: 'breakfast' });
+      rows.push(bread, entry(dayKey, { label: 'Soup', slot: 'dinner', hour: 19 }));
+    }
+    const days = foodDayInputs(rows);
+    expect(days).toHaveLength(15);
+    expect(days.every(day => day.labels.includes('item:bread'))).toBe(true);
+  });
+});
+
+describe('mostLoggedFoods by food', () => {
+  it('counts an item and its boxes as one food, named by the item', () => {
+    const rows = [
+      entry('2026-09-01', { label: 'Bread', itemId: 'bread' }),
+      entry('2026-09-02', { label: "Bread, Dave's Killer 21 grain", itemId: 'bread', productId: 'dk' }),
+      entry('2026-09-03', { label: 'Porridge' }),
+    ];
+    const top = mostLoggedFoods(rows, WINDOW, 5, { items: new Map([['bread', 'Bread']]) });
+    expect(top[0]).toMatchObject({ key: 'item:bread', label: 'Bread', count: 2 });
+    expect(top[1]).toMatchObject({ key: 'porridge', label: 'Porridge', count: 1 });
   });
 });

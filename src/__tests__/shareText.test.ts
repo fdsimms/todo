@@ -192,6 +192,90 @@ describe('buildRecipeShareText', () => {
     ]);
   });
 
+  it('sends an either/or as the choice, every option with its own amount (#2948)', () => {
+    // The recipe screen shows both peppers, captioned "or jalapeño". Sending
+    // the default alone told the reader there was no choice.
+    const tacos = recipe('r1', 'Tacos', {
+      ingredients: [
+        ing('serrano', { quantity: '1', choiceGroup: 'Pepper' }),
+        ing('jalapenos', { quantity: '2', choiceGroup: 'Pepper' }),
+        ing('onion', { quantity: '1' }),
+      ],
+    });
+    const lines = buildRecipeShareText(tacos, recipeMap([tacos]), { scale: 2 }).split('\n');
+    const at = lines.indexOf('Ingredients:');
+    expect(lines.slice(at + 1, at + 3)).toEqual(['- 2 serrano or 4 jalapenos', '- 2 onion']);
+  });
+
+  it('names a component that shares an ingredient\'s group, without listing its lines', () => {
+    const homemade = recipe('r2', 'Tortillas de Maiz', { ingredients: [ing('masa harina')] });
+    const tacos = recipe('r1', 'Tacos', {
+      ingredients: [
+        ing('corn tortillas', { quantity: '8', choiceGroup: 'Tortillas' }),
+        ing('flour tortillas', { quantity: '8', choiceGroup: 'Tortillas' }),
+      ],
+      components: [{ ...link('r2', 'Tortillas de Maiz'), choiceGroup: 'Tortillas' }],
+    });
+    const text = buildRecipeShareText(tacos, recipeMap([tacos, homemade]));
+    expect(text).toContain('- 8 corn tortillas or 8 flour tortillas or Tortillas de Maiz');
+    expect(text).not.toContain('masa harina');
+  });
+
+  it('keeps a choice between two components at its default dish', () => {
+    // Both dishes in full would be two headings of lines to buy.
+    const mash = recipe('r2', 'Mash', { ingredients: [ing('Potatoes')] });
+    const rice = recipe('r3', 'Rice', { ingredients: [ing('Rice')] });
+    const steak = recipe('r1', 'Steak', {
+      ingredients: [ing('Steak')],
+      components: [{ ...link('r2', 'Mash'), choiceGroup: 'Side' }, { ...link('r3', 'Rice'), choiceGroup: 'Side' }],
+    });
+    const text = buildRecipeShareText(steak, recipeMap([steak, mash, rice]));
+    expect(text).toContain('- Potatoes');
+    expect(text).not.toContain('- Rice');
+  });
+
+  it('names the other dishes of a component choice in the default dish\'s heading', () => {
+    // Sending only the mash told the reader the side was mash.
+    const mash = recipe('r2', 'Mash', { ingredients: [ing('Potatoes')] });
+    const rice = recipe('r3', 'Rice', { ingredients: [ing('Rice')] });
+    const salad = recipe('r4', 'Salad', { ingredients: [ing('Lettuce')] });
+    const gravy = recipe('r5', 'Gravy', { ingredients: [ing('Stock')] });
+    const steak = recipe('r1', 'Steak', {
+      ingredients: [ing('Steak')],
+      components: [
+        { ...link('r2', 'Mash'), choiceGroup: 'Side' },
+        { ...link('r3', 'Rice'), choiceGroup: 'Side' },
+        { ...link('gone', 'Polenta'), choiceGroup: 'Side' },
+        link('r5', 'Gravy'),
+        { ...link('r4', 'Salad'), choiceGroup: 'Starter' },
+      ],
+    });
+    const lines = buildRecipeShareText(steak, recipeMap([steak, mash, rice, salad, gravy])).split('\n');
+    // A deleted alternative is still named by the name it was linked under,
+    // the way an ingredient slot names one.
+    expect(lines).toContain('For the Mash (or Rice or Polenta):');
+    expect(lines).toContain('- Potatoes');
+    // Not on a choice: the plain heading.
+    expect(lines).toContain('For the Gravy:');
+    // A choice of one has no other dish to name.
+    expect(lines).toContain('For the Salad:');
+    expect(lines.join('\n')).not.toContain('- Rice');
+  });
+
+  it('names the alternatives of a choice nested inside a component', () => {
+    const buttery = recipe('r3', 'Buttery mash', { ingredients: [ing('Butter')] });
+    const olive = recipe('r4', 'Olive oil mash', { ingredients: [ing('Olive oil')] });
+    const side = recipe('r2', 'Side', {
+      components: [
+        { ...link('r3', 'Buttery mash'), choiceGroup: 'Style' },
+        { ...link('r4', 'Olive oil mash'), choiceGroup: 'Style' },
+      ],
+    });
+    const steak = recipe('r1', 'Steak', { ingredients: [ing('Steak')], components: [link('r2', 'Side')] });
+    const lines = buildRecipeShareText(steak, recipeMap([steak, side, buttery, olive])).split('\n');
+    expect(lines).toContain('For the Buttery mash (or Olive oil mash):');
+  });
+
   it('numbers steps when the recipe has them', () => {
     const r = recipe('r1', 'Toast', {
       steps: [{ id: 's1', text: 'Toast the bread.' }, { id: 's2', text: 'Butter it.' }],
@@ -274,6 +358,29 @@ describe('buildIngredientsText', () => {
   it('is empty for a recipe with nothing to list, so a caller can gate on it', () => {
     const r = recipe('r1', 'Idea', { steps: [{ id: 's1', text: 'Think about it.' }] });
     expect(buildIngredientsText(r, recipeMap([r]))).toBe('');
+  });
+
+  it('pastes a component choice as the default dish\'s lines alone, with no heading to name the others in', () => {
+    const mash = recipe('r2', 'Mash', { ingredients: [ing('Potatoes', { quantity: '2 lb' })] });
+    const rice = recipe('r3', 'Rice', { ingredients: [ing('Rice', { quantity: '1 cup' })] });
+    const steak = recipe('r1', 'Steak', {
+      ingredients: [ing('Steak', { quantity: '1 lb' })],
+      components: [{ ...link('r2', 'Mash'), choiceGroup: 'Side' }, { ...link('r3', 'Rice'), choiceGroup: 'Side' }],
+    });
+    expect(buildIngredientsText(steak, recipeMap([steak, mash, rice]))).toBe('1 lb Steak\n2 lb Potatoes');
+  });
+
+  it('pastes an either/or as one line holding both options (#2948)', () => {
+    // One line per ingredient still: the pepper is one ingredient, and two
+    // lines would paste as two things to buy.
+    const tacos = recipe('r1', 'Tacos', {
+      ingredients: [
+        ing('serrano', { quantity: '1', choiceGroup: 'Pepper' }),
+        ing('jalapenos', { quantity: '2', choiceGroup: 'Pepper' }),
+        ing('onion', { quantity: '1' }),
+      ],
+    });
+    expect(buildIngredientsText(tacos, recipeMap([tacos]))).toBe('1 serrano or 2 jalapenos\n1 onion');
   });
 });
 

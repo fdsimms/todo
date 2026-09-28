@@ -52,6 +52,7 @@ const mockAddByName = jest.fn();
 const mockGrocery = {
   renameItem: jest.fn(() => true),
   setQuantity: jest.fn(),
+  setNote: jest.fn(),
   setCheckedMany: jest.fn(),
   removeFromListMany: jest.fn(),
 };
@@ -62,6 +63,7 @@ interface MockGroceryItem {
   name?: string;
   quantity?: string | null;
   checked?: boolean;
+  note?: string;
   /** null is the list at home, which is the only list the mirror reads. */
   listId?: string | null;
 }
@@ -1023,7 +1025,7 @@ describe('importReminders — the two-way grocery mirror', () => {
     expect(outcome.mirrored).toBe(1);
     expect(outcome.reason).toBe('ok');
     expect(links()[MIRROR_LIST.id]).toEqual([
-      { reminderId: 'created-1', itemId: 'i1', name: 'milk', checked: false, seen: false },
+      { reminderId: 'created-1', itemId: 'i1', name: 'milk', checked: false, note: '', seen: false },
     ]);
   });
 
@@ -1051,13 +1053,13 @@ describe('importReminders — the two-way grocery mirror', () => {
     expect(mockCalendar.createReminderAsync).not.toHaveBeenCalled();
     expect(outcome).toMatchObject({ imported: 0, mirrored: 0, reason: 'ok' });
     expect(links()[MIRROR_LIST.id]).toEqual([
-      { reminderId: 'r1', itemId: 'i1', name: 'milk', checked: false, seen: true },
+      { reminderId: 'r1', itemId: 'i1', name: 'milk', checked: false, note: '', seen: true },
     ]);
   });
 
   it('completes the reminder when the row is checked off here', async () => {
     mockSettingsRows.groceryImportLinks = JSON.stringify({
-      [MIRROR_LIST.id]: [{ reminderId: 'r1', itemId: 'i1', name: 'milk', checked: false, seen: true }],
+      [MIRROR_LIST.id]: [{ reminderId: 'r1', itemId: 'i1', name: 'milk', checked: false, note: '', seen: true }],
     });
     mockGroceryItems = [row({ id: 'i1', name: 'milk', checked: true })];
     mockCalendar.getRemindersAsync.mockResolvedValue([reminder('r1', { title: 'milk' })]);
@@ -1065,15 +1067,17 @@ describe('importReminders — the two-way grocery mirror', () => {
     await freshSync().importReminders();
 
     // The whole title, not just the flag — a partial update blanks it natively.
+    // And the whole note: `notes` is assigned unconditionally too (#2933).
     expect(mockCalendar.updateReminderAsync).toHaveBeenCalledWith('r1', {
       title: 'milk',
       completed: true,
+      notes: '',
     });
   });
 
   it('checks the row off when the reminder is completed there', async () => {
     mockSettingsRows.groceryImportLinks = JSON.stringify({
-      [MIRROR_LIST.id]: [{ reminderId: 'r1', itemId: 'i1', name: 'milk', checked: false, seen: true }],
+      [MIRROR_LIST.id]: [{ reminderId: 'r1', itemId: 'i1', name: 'milk', checked: false, note: '', seen: true }],
     });
     mockGroceryItems = [row({ id: 'i1', name: 'milk' })];
     mockCalendar.getRemindersAsync.mockResolvedValue([
@@ -1090,7 +1094,7 @@ describe('importReminders — the two-way grocery mirror', () => {
 
   it('deletes the reminder when the row leaves the list', async () => {
     mockSettingsRows.groceryImportLinks = JSON.stringify({
-      [MIRROR_LIST.id]: [{ reminderId: 'r1', itemId: 'i1', name: 'milk', checked: false, seen: true }],
+      [MIRROR_LIST.id]: [{ reminderId: 'r1', itemId: 'i1', name: 'milk', checked: false, note: '', seen: true }],
     });
     mockGroceryItems = [row({ id: 'i1', name: 'milk', onList: false })];
     mockCalendar.getRemindersAsync.mockResolvedValue([reminder('r1', { title: 'milk' })]);
@@ -1104,7 +1108,7 @@ describe('importReminders — the two-way grocery mirror', () => {
   // A dropped link is how a re-add happens: the surviving reminder reads as new
   // next pass and puts the row back. So a failed delete keeps its link.
   it('keeps the link when the delete fails', async () => {
-    const link = { reminderId: 'r1', itemId: 'i1', name: 'milk', checked: false, seen: true };
+    const link = { reminderId: 'r1', itemId: 'i1', name: 'milk', checked: false, note: '', seen: true };
     mockSettingsRows.groceryImportLinks = JSON.stringify({ [MIRROR_LIST.id]: [link] });
     mockGroceryItems = [row({ id: 'i1', name: 'milk', onList: false })];
     mockCalendar.getRemindersAsync.mockResolvedValue([reminder('r1', { title: 'milk' })]);
@@ -1119,7 +1123,7 @@ describe('importReminders — the two-way grocery mirror', () => {
 
   it('takes the row off the list when the reminder is deleted there', async () => {
     mockSettingsRows.groceryImportLinks = JSON.stringify({
-      [MIRROR_LIST.id]: [{ reminderId: 'r1', itemId: 'i1', name: 'milk', checked: false, seen: true }],
+      [MIRROR_LIST.id]: [{ reminderId: 'r1', itemId: 'i1', name: 'milk', checked: false, note: '', seen: true }],
     });
     mockGroceryItems = [row({ id: 'i1', name: 'milk' })];
     mockCalendar.getRemindersAsync.mockResolvedValue([]);
@@ -1132,7 +1136,7 @@ describe('importReminders — the two-way grocery mirror', () => {
 
   it('renames the row when the reminder is renamed there', async () => {
     mockSettingsRows.groceryImportLinks = JSON.stringify({
-      [MIRROR_LIST.id]: [{ reminderId: 'r1', itemId: 'i1', name: 'milk', checked: false, seen: true }],
+      [MIRROR_LIST.id]: [{ reminderId: 'r1', itemId: 'i1', name: 'milk', checked: false, note: '', seen: true }],
     });
     mockGroceryItems = [row({ id: 'i1', name: 'milk' })];
     mockCalendar.getRemindersAsync.mockResolvedValue([
@@ -1150,7 +1154,7 @@ describe('importReminders — the two-way grocery mirror', () => {
   // the reminder as changed again and retries for ever.
   it('corrects the shadow when a rename collides', async () => {
     mockSettingsRows.groceryImportLinks = JSON.stringify({
-      [MIRROR_LIST.id]: [{ reminderId: 'r1', itemId: 'i1', name: 'milk', checked: false, seen: true }],
+      [MIRROR_LIST.id]: [{ reminderId: 'r1', itemId: 'i1', name: 'milk', checked: false, note: '', seen: true }],
     });
     mockGroceryItems = [row({ id: 'i1', name: 'milk' })];
     mockCalendar.getRemindersAsync.mockResolvedValue([reminder('r1', { title: 'eggs' })]);
@@ -1162,7 +1166,141 @@ describe('importReminders — the two-way grocery mirror', () => {
     expect(links()[MIRROR_LIST.id][0].name).toBe('milk');
     // And the reminder goes back to the row's name, or the two apps show
     // different names for ever: neither side ever reads as changed again.
-    expect(mockCalendar.updateReminderAsync).toHaveBeenCalledWith('r1', { title: 'milk', completed: false });
+    expect(mockCalendar.updateReminderAsync).toHaveBeenCalledWith('r1', { title: 'milk', completed: false, notes: '' });
+  });
+
+  describe('notes (#2933)', () => {
+    it('carries a note typed into the reminder onto the row', async () => {
+      mockSettingsRows.groceryImportLinks = JSON.stringify({
+        [MIRROR_LIST.id]: [{ reminderId: 'r1', itemId: 'i1', name: 'eggs', checked: false, note: '', seen: true }],
+      });
+      mockGroceryItems = [row({ id: 'i1', name: 'eggs', note: '' })];
+      mockCalendar.getRemindersAsync.mockResolvedValue([
+        reminder('r1', { title: 'eggs', notes: 'free range, the blue carton\n' }),
+      ]);
+
+      await freshSync().importReminders();
+
+      expect(mockGrocery.setNote).toHaveBeenCalledWith('i1', 'free range, the blue carton');
+      expect(mockCalendar.updateReminderAsync).not.toHaveBeenCalled();
+      expect(links()[MIRROR_LIST.id][0].note).toBe('free range, the blue carton');
+    });
+
+    it('writes a note edited here out to the reminder, with the whole title', async () => {
+      mockSettingsRows.groceryImportLinks = JSON.stringify({
+        [MIRROR_LIST.id]: [{ reminderId: 'r1', itemId: 'i1', name: 'milk', checked: false, note: '', seen: true }],
+      });
+      mockGroceryItems = [row({ id: 'i1', name: 'milk', note: 'lactose free' })];
+      mockCalendar.getRemindersAsync.mockResolvedValue([reminder('r1', { title: 'milk' })]);
+
+      await freshSync().importReminders();
+
+      expect(mockCalendar.updateReminderAsync).toHaveBeenCalledWith('r1', {
+        title: 'milk',
+        completed: false,
+        notes: 'lactose free',
+      });
+      expect(mockGrocery.setNote).not.toHaveBeenCalled();
+    });
+
+    // The bug the note half fixes on its own: saveReminderAsync assigns
+    // `notes` unconditionally, so a tick from this side used to wipe a note
+    // typed into the reminder.
+    it('keeps the reminder’s note when only the tick changed here', async () => {
+      mockSettingsRows.groceryImportLinks = JSON.stringify({
+        [MIRROR_LIST.id]: [{ reminderId: 'r1', itemId: 'i1', name: 'eggs', checked: false, note: 'free range', seen: true }],
+      });
+      mockGroceryItems = [row({ id: 'i1', name: 'eggs', checked: true, note: 'free range' })];
+      mockCalendar.getRemindersAsync.mockResolvedValue([reminder('r1', { title: 'eggs', notes: 'free range' })]);
+
+      await freshSync().importReminders();
+
+      expect(mockCalendar.updateReminderAsync).toHaveBeenCalledWith('r1', {
+        title: 'eggs',
+        completed: true,
+        notes: 'free range',
+      });
+    });
+
+    it('writes a new reminder with the row’s note', async () => {
+      mockGroceryItems = [row({ id: 'i1', name: 'milk', note: 'lactose free' })];
+
+      await freshSync().importReminders();
+
+      expect(mockCalendar.createReminderAsync).toHaveBeenCalledWith(MIRROR_LIST.id, {
+        title: 'milk',
+        notes: 'lactose free',
+      });
+      expect(links()[MIRROR_LIST.id][0].note).toBe('lactose free');
+    });
+
+    it('gives a row imported from a reminder the reminder’s notes', async () => {
+      mockCalendar.getRemindersAsync.mockResolvedValue([
+        reminder('r1', { title: 'eggs', notes: 'free range, the blue carton' }),
+      ]);
+
+      await freshSync().importReminders();
+
+      expect(mockGrocery.setNote).toHaveBeenCalledWith('i-eggs', 'free range, the blue carton');
+      expect(links()[MIRROR_LIST.id][0].note).toBe('free range, the blue carton');
+    });
+  });
+
+  // `getReminder(from:)` assigns `reminder.location = details.location` on
+  // every save, so an update that left it out cleared a location someone had
+  // put on the reminder in the Reminders app. The mirror doesn't own it, so it
+  // goes back exactly as the pass's own fetch read it.
+  describe('the reminder’s location, which the mirror sends back rather than owns', () => {
+    it('keeps it when only the tick changed here', async () => {
+      mockSettingsRows.groceryImportLinks = JSON.stringify({
+        [MIRROR_LIST.id]: [{ reminderId: 'r1', itemId: 'i1', name: 'milk', checked: false, note: '', seen: true }],
+      });
+      mockGroceryItems = [row({ id: 'i1', name: 'milk', checked: true })];
+      mockCalendar.getRemindersAsync.mockResolvedValue([
+        reminder('r1', { title: 'milk', location: 'Corner shop' }),
+      ]);
+
+      await freshSync().importReminders();
+
+      expect(mockCalendar.updateReminderAsync).toHaveBeenCalledWith('r1', {
+        title: 'milk',
+        completed: true,
+        notes: '',
+        location: 'Corner shop',
+      });
+    });
+
+    it('keeps it when the app puts a colliding rename back', async () => {
+      mockSettingsRows.groceryImportLinks = JSON.stringify({
+        [MIRROR_LIST.id]: [{ reminderId: 'r1', itemId: 'i1', name: 'milk', checked: false, note: '', seen: true }],
+      });
+      mockGroceryItems = [row({ id: 'i1', name: 'milk' })];
+      mockCalendar.getRemindersAsync.mockResolvedValue([
+        reminder('r1', { title: 'eggs', location: 'Corner shop' }),
+      ]);
+      mockGrocery.renameItem.mockReturnValue(false);
+
+      await freshSync().importReminders();
+
+      expect(mockCalendar.updateReminderAsync).toHaveBeenCalledWith('r1', {
+        title: 'milk',
+        completed: false,
+        notes: '',
+        location: 'Corner shop',
+      });
+    });
+
+    it('sends none for a reminder that has none', async () => {
+      mockSettingsRows.groceryImportLinks = JSON.stringify({
+        [MIRROR_LIST.id]: [{ reminderId: 'r1', itemId: 'i1', name: 'milk', checked: false, note: '', seen: true }],
+      });
+      mockGroceryItems = [row({ id: 'i1', name: 'milk', checked: true })];
+      mockCalendar.getRemindersAsync.mockResolvedValue([reminder('r1', { title: 'milk', location: '' })]);
+
+      await freshSync().importReminders();
+
+      expect(mockCalendar.updateReminderAsync.mock.calls[0][1]).not.toHaveProperty('location');
+    });
   });
 
   it('never runs the one-way drain against a mirrored list', async () => {
@@ -1179,7 +1317,7 @@ describe('importReminders — the two-way grocery mirror', () => {
 
   it('forgets its links when the mirror is switched off', async () => {
     mockSettingsRows.groceryImportLinks = JSON.stringify({
-      [MIRROR_LIST.id]: [{ reminderId: 'r1', itemId: 'i1', name: 'milk', checked: false, seen: true }],
+      [MIRROR_LIST.id]: [{ reminderId: 'r1', itemId: 'i1', name: 'milk', checked: false, note: '', seen: true }],
     });
     mockSettings.groceryImportTwoWay = false;
 
@@ -1276,7 +1414,7 @@ describe('importReminders — demo mode', () => {
   it('leaves the real links alone when two-way is switched off during demo', async () => {
     mockDemoMode = true;
     const real = JSON.stringify({
-      [LIST.id]: [{ reminderId: 'r1', itemId: 'i1', name: 'milk', checked: false, seen: true }],
+      [LIST.id]: [{ reminderId: 'r1', itemId: 'i1', name: 'milk', checked: false, note: '', seen: true }],
     });
     mockSettingsRows.groceryImportLinks = real;
     mockSettings.remindersImportEnabled = false;

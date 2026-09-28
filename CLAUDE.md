@@ -344,7 +344,7 @@ file: the two maps are indexes, not write-ups.
 | a task row — swipes, checkbox, expansion | `src/components/TaskItem.tsx` |
 | quick-add text parsing (`"pay rent tmrw 5p #home"`) | `src/utils/parseTaskInput.ts`, `parseNaturalDate.ts` |
 | what a template asks before it creates anything | `src/utils/templateQuestions.ts` — see `docs/arch/template-questions.md` |
-| a task the app writes unasked, and the quiet-project offer | `src/utils/generatedTasks.ts` + `src/utils/projectReviewTasks.ts` — see `docs/arch/generated-tasks.md` (twenty generators now: `weighIn` is the newest and the only one that fires on *missing* data, `moodNudge` the only one whose trigger is a trend in the user's own answers rather than a date, a row or a one-off threshold, and `weekendNudge` the only one that asks about a span of days rather than a single one) |
+| a task the app writes unasked, and the quiet-project offer | `src/utils/generatedTasks.ts` + `src/utils/projectReviewTasks.ts` — see `docs/arch/generated-tasks.md` (twenty-one generators now: `mealThaw` is the newest, `weighIn` the only one that fires on *missing* data, `moodNudge` the only one whose trigger is a trend in the user's own answers rather than a date, a row or a one-off threshold, and `weekendNudge` the only one that asks about a span of days rather than a single one) |
 | a bare weekend, and the project it offers to fill it from | `src/utils/weekendTasks.ts` + `Project.weekendSource` — see `docs/arch/generated-tasks.md` |
 | a calendar event's title turning into a task, by rule or by tap | `src/utils/eventTasks.ts` (the rules) + `taskFieldsFromEvent` in `src/utils/calendarEventImport.ts` (the fields either path writes) — see `docs/arch/generated-tasks.md`. The second reader of an event title after `calendarHistory.ts`, and it deliberately parses nothing: the user supplies the word and the task, which is what keeps it clear of "a guess is never written down" |
 | adding a calendar event, and who an event is with | `src/utils/eventPeople.ts` + `src/store/useEventPeopleStore.ts` + `presentEventCreate` in `src/utils/calendarSync.ts` — see `docs/arch/people.md`. The event goes through Apple's sheet into whatever calendar the user picks (Google included); the people link is app-only metadata keyed by occurrence, never an attendee, and syncs in `event_people_links`, naming the event by the calendar server's id (`todo-eventkit-bridge`) so it matches on the other phone. Tasks planned around an event (its "+" and "Plan from a template") are the sibling record, `src/utils/eventTaskLinks.ts`, which only ever *offers* to move them when the event moves |
@@ -359,6 +359,7 @@ file: the two maps are indexes, not write-ups.
 | the task asking you to weigh in | `src/utils/weightTasks.ts` — see `docs/arch/generated-tasks.md`. The only generator that fires on *missing* data, and deliberately not part of `health`: that one reacts to a reading, this one asks for one |
 | a meal of the day as a task, and choosing one from Today | `src/utils/mealSlotTasks.ts` — see `docs/arch/generated-tasks.md` |
 | a planned meal you haven't got the ingredients for | `src/utils/mealShortfallTasks.ts` — see `docs/arch/generated-tasks.md` |
+| a planned meal whose food is only in the freezer | `src/utils/mealThawTasks.ts` — see `docs/arch/generated-tasks.md`. `mealShortfallTasks.ts` asking about the `FROZEN_REASON` rows instead of the missing ones |
 | date math, recurrence | `src/utils/dateUtils.ts` |
 | a timed task's countdown, and splitting it across subtasks | `src/utils/timer.ts` + `src/utils/timerSegments.ts` — see `docs/arch/timed-tasks.md` |
 | a stock of something that runs down as a task repeats, and ordering more | `src/utils/supply.ts` — see `docs/arch/supplies.md` |
@@ -490,11 +491,11 @@ are over 1,000 lines, and the ten biggest source files by name. It is generated 
 and checked in CI, so it is the one place those numbers are worth reading. They used to sit in
 this file as a marked block; see the note on `.gitattributes` above for why they moved.
 
-**The sixteen single-component files carry their own map.** `TaskEditor.tsx`, `TodayScreen.tsx`,
+**The eighteen single-component files carry their own map.** `TaskEditor.tsx`, `TodayScreen.tsx`,
 `TaskItem.tsx`, `QuickAddModal.tsx`, `MealPlanScreen.tsx`, `RecipeDetailScreen.tsx`,
 `RecipeCreateSheet.tsx`, `GroceryItemSheet.tsx`, `TemplateItemEditor.tsx`, `LogbookScreen.tsx`,
-`GroceryScreen.tsx`, `SuggestMealsSheet.tsx`, `FoodLogEntrySheet.tsx`, `CookModeSheet.tsx`, `EstimateMealSheet.tsx` and
-`ReceiptImportSheet.tsx` are
+`GroceryScreen.tsx`, `SuggestMealsSheet.tsx`, `FoodLogEntrySheet.tsx`, `CookModeSheet.tsx`, `EstimateMealSheet.tsx`,
+`ReceiptImportSheet.tsx`, `GroceryAddField.tsx` and `GeneratedTasksSection.tsx` are
 each one component holding most of the file, so there are almost no top-level symbols to grep
 for — `TaskEditor.tsx` has six in 4,200 lines and `RecipeDetailScreen.tsx` has two in 1,900.
 Each opens with a short header comment saying what's where, and its logic half is divided by
@@ -670,10 +671,13 @@ piece of user data lives in a local SQLite file on device. Three things reach th
 not equivalent: `src/services/aiSuggestions.ts` posts task titles/notes straight to `api.anthropic.com`
 using a user-supplied API key, and every feature it powers is inert until the user pastes one into
 Settings; `src/services/recipePage.ts` fetches a recipe page the user pasted a link to;
-`src/services/productLookup.ts` asks up to three product databases what a scanned barcode is. **That third one is the
-only one that needs no key**, so "no key, no traffic" stopped being the whole privacy answer when it
+`src/services/productLookup.ts` asks up to three product databases what a scanned barcode is. **That third one
+needs no key**, so "no key, no traffic" stopped being the whole privacy answer when it
 shipped — it carries its own switch (`productLookupEnabled`) instead. Anything else added on those terms
-needs one too.
+needs one too. The recipe page fetch joined it (#2930): a link from a site publishing `schema.org/Recipe`
+now imports with no key (`src/utils/recipePageOffline.ts`), and the switch it answers to is Recipe
+import's own (`aiFeatureConfig.recipeExtraction.enabled`), since turning that off is asking for no recipe
+import at all. It is still only ever a page the user pasted or shared, fetched on their tap.
 
 A fourth thing runs a model and reaches nothing: `src/services/onDeviceModel.ts` puts a prompt
 through Apple's on-device `SystemLanguageModel` (iOS 26+), in-process, with no key and no
@@ -1177,9 +1181,12 @@ exception, because its Modal is a small centered card rather than a full scrolla
   It's a *circle* where completion checkboxes are rounded squares (`checkboxRadius`), it sits at the
   opposite end from the checkbox, and it takes the slot the row's own action buttons vacate on
   entering selection mode, so nothing has to move aside for it. It is not its own accessibility
-  element — the row already exposes a checkbox with the same state. Two rows use it (`TaskItem`,
-  `LogbookScreen`'s row); a third selectable row type should use it too rather than tinting its
-  checkbox.
+  element — the row already exposes a checkbox with the same state. Every selectable list's rows
+  use it now (tasks, groceries, recipes, templates, meals, a recipe's ingredients and the rest); a
+  new one should too, rather than tinting its checkbox or swapping a check into its leading tile,
+  and registers for painting with `usePaintSelectionRow` (or `PaintSelectionRow` where the row is
+  drawn by a render function rather than a component). A second copy of a row on the same screen
+  (a pinned task, the Recipes Up Next shelf) passes a null id, or its unmount evicts the real row.
 - `PaintSelectionProvider` (`src/components/PaintSelection.tsx`) — wraps a task list so that, while bulk selecting, a drag down the column of `SelectionDot`s "paints" a run of rows instead of needing a tap each. Screens get it by spreading `paintProps` from `useTaskSelection` and passing `scrollEnabled={!painting}` to the list; rows register themselves from inside `TaskItem`, so nothing else has to change. The touch is claimed **on touch-down in the capture phase** within `PAINT_GUTTER_WIDTH` of the **trailing** edge — a native scroll can't be taken back once it starts dragging, so deciding later would let the list scroll out from under the paint. That's why a drag started right on the dots can't scroll (the deliberate trade), and why every other pixel of the row scrolls exactly as before. The gutter follows the dots: it ran along the leading edge while the checkbox was the selection control, and a gesture that isn't over the thing it changes is the bug that pairing them avoids. Hit-testing math and its tests live in `src/utils/paintSelect.ts` / `paintSelect.test.ts`.
 - `src/utils/haptics.ts` — semantic haptics (`tap`, `success`, `warning`, `error`, `impactLight/Medium/Heavy`). Never import `expo-haptics` directly; pick by meaning so intensities stay consistent.
 - `src/utils/layoutAnimation.ts` — `animateLayout()` immediately before a state change that inserts/removes list rows (complete, delete, add, selection-mode toggle). **Never call it on a drag-reorder commit path** (`ReorderableList.onReorder`, `DraggableFlatList.onDragEnd`) — those drive their own row animations.
@@ -1427,4 +1434,15 @@ inset is what just went away) — that asymmetry is the whole design, don't coll
   which is right for a tap and wrong for the Reminders mirror, sync, the MCP replica or any
   background pass. The mirror read the home list and then ticked and removed items on whichever
   list happened to be open. Read from a list and write to that same list, by name.
+- **Every expo-calendar event update goes through `rewriteEvent`, and a reminder update sends
+  back what its pass read.** expo-calendar's native save assigns every field it knows on each
+  update, so a field the call leaves out is reset rather than left alone. A moved meal or deadline
+  event lost its location, notes and alerts, a retitled time block lost the alert set on it in the
+  sheet, and the Reminders mirror erased a reminder's location each time it ticked one off (#2933).
+  That was one cause found three times. `rewriteEvent` (`calendarSync.ts`) reads the event first
+  and sends back what `carriedEventFields` says the save would clear, with the fields the app owns
+  written over the top. Reminders have no such helper, so `mirrorOnce` (`remindersImportSync.ts`)
+  keeps the location it read and passes it along. A new `updateEventAsync` goes through
+  `rewriteEvent`, and a new `updateReminderAsync` sends back every field the native save assigns,
+  not only the one it means to change.
 - **Patch notes**: when a change in this PR is user-facing, add a new fragment file to `src/patchNotes/entries/` before opening the PR — one JSON file per entry, `{ "message": "...", "date": "YYYY-MM-DD" }`, named after the change (e.g. `icon-action-buttons.json`). Keep the message short and written for someone who isn't reading the diff. Don't edit `src/utils/patchNotes.ts` or `src/utils/patchNotesData.ts` directly (generated, gitignored). Skip it for internal-only changes (refactors, tests, CI, tooling).

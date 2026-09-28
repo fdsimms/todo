@@ -60,6 +60,8 @@ interface StepTimerState {
     recipeName: string;
     stepId: string;
     stepLabel: string;
+    /** `stepTimerExcerpt` of the step, when there is one to read. */
+    stepExcerpt?: string;
     durationSeconds: number;
   }) => StepTimer | null;
   pause: (id: string) => void;
@@ -133,7 +135,7 @@ export const useStepTimerStore = create<StepTimerState>((set, get) => ({
     set({ timers, hydrated: true });
   },
 
-  start: ({ recipeId, recipeName, stepId, stepLabel, durationSeconds }) => {
+  start: ({ recipeId, recipeName, stepId, stepLabel, stepExcerpt, durationSeconds }) => {
     const seconds = Math.round(durationSeconds);
     if (!Number.isFinite(seconds)) return null;
     if (seconds < MIN_STEP_TIMER_SECONDS || seconds > MAX_STEP_TIMER_SECONDS) return null;
@@ -144,6 +146,7 @@ export const useStepTimerStore = create<StepTimerState>((set, get) => ({
       recipeName,
       stepId,
       stepLabel,
+      ...(stepExcerpt ? { stepExcerpt } : {}),
       durationSeconds: seconds,
       startedAt: now,
       elapsedSeconds: 0,

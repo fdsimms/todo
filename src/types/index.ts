@@ -1815,6 +1815,13 @@ export type GeneratedKind =
   // and often, which is why its whole staleness rule is the creation predicate
   // re-run — see src/utils/mealShortfallTasks.ts.
   | 'mealShortfall'
+  // A meal planned for today or tomorrow whose ingredients (or leftover
+  // container) are only on hand frozen becomes "Take chicken out of the
+  // freezer". mealShortfall's sibling on the same source row, asking about the
+  // rows the kitchen has frozen rather than the ones it lacks, and its opt-out
+  // is its own tri-state beside shopTask (`MealPlanEntry.thawTask`). See
+  // src/utils/mealThawTasks.ts.
+  | 'mealThaw'
   // A planned meal a few days in the past with nothing logged against it
   // becomes "Log X" — the missed half of the offer `mealLog.ts` makes at
   // completion time. Its source row is the same `MealPlanEntry` mealShortfall's
@@ -6126,6 +6133,12 @@ export interface StepTimer {
   recipeName: string;
   /** "Step 2 of 3" as it read when the timer started. */
   stepLabel: string;
+  /**
+   * A few words of the step's own text ("Simmer the rice, covered…"), from
+   * `stepTimerExcerpt`, so two rows in the stack say which pan is which.
+   * Absent on a timer started before it existed, which falls back to the label.
+   */
+  stepExcerpt?: string;
   /** What the countdown runs for. Fixed at start; "+1 min" adds to it. */
   durationSeconds: number;
   /** ISO instant the current run segment began; null while paused. */
@@ -6375,6 +6388,24 @@ export interface MealPlanEntry {
    */
   logMeal: boolean | null;
   /**
+   * Whether this meal gets a "Take chicken out of the freezer" task the day
+   * before (#2926): `false` once the user has swiped one away for this meal,
+   * `null` (or absent) when the `mealThawTasks` setting decides. See
+   * utils/mealThawTasks.ts.
+   *
+   * `shopTask`'s tri-state a fourth time, for its tombstone reason above:
+   * every other way a thaw task goes is the app noticing the plan or the
+   * freezer changed, so without a per-meal `false` a deleted row would come
+   * back on the next sweep. Only `false` is ever read, the same subtract-only
+   * reading `shopTask` gets.
+   *
+   * **Optional in the type**, unlike the three above: `rowToMealPlanEntry`
+   * always fills it, and an entry built anywhere else (a copied week, a saved
+   * meal, a test fixture) reads its absence as `null`, which is what it would
+   * have been.
+   */
+  thawTask?: boolean | null;
+  /**
    * The device calendar event mirroring this meal, or null when there isn't
    * one (#1494) — the household's shared answer to "what's for dinner
    * Thursday", which a local task can't give.
@@ -6392,6 +6423,11 @@ export interface MealPlanEntry {
    * Not in `MealPlanDraft` — nothing may create an entry pre-pointed at an
    * event. Written only by `reconcileMealEvent` in useMealPlanStore, from
    * whatever the device write returned.
+   *
+   * **This device's, and it doesn't sync** (#2950): an EventKit id names a
+   * record on one phone, so the column is kept off the wire in both directions
+   * (`SYNC_DEVICE_LOCAL_COLUMNS` in db/syncTracking.ts). Each device holds the
+   * id of the event *it* wrote, and a peer's edit to the meal leaves it alone.
    */
   calendarEventId: string | null;
 }

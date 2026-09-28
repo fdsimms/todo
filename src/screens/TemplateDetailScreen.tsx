@@ -23,6 +23,9 @@ import { ApplyTemplateSheet } from '../components/ApplyTemplateSheet';
 import { TemplateAppliedToast } from '../components/TemplateAppliedToast';
 import { NestedTemplatePicker } from '../components/NestedTemplatePicker';
 import { SwipeableRow } from '../components/SwipeableRow';
+import { SelectionDot } from '../components/SelectionDot';
+import { PaintSelectionProvider, usePaintSelectionRow } from '../components/PaintSelection';
+import { useRowSelection } from '../hooks/useRowSelection';
 import { DetailHeader } from '../components/DetailHeader';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
@@ -91,8 +94,17 @@ export function TemplateDetailScreen() {
   const [itemEditorDraft, setItemEditorDraft] = useState<Partial<TemplateItem> | null>(null);
   const [suggestVisible, setSuggestVisible] = useState(false);
   const [quickAddVisible, setQuickAddVisible] = useState(false);
-  const [selectionMode, setSelectionMode] = useState(false);
-  const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
+  // The shared hook rather than a hand-rolled pair of states, so the rows get
+  // the paint gesture (#2944) and stable toggle/enter handlers for their memo.
+  const {
+    selectionMode,
+    selectedIds: selectedItemIds,
+    enterSelectionMode,
+    toggleSelection: toggleItemSelection,
+    exitSelection: exitSelectionMode,
+    painting,
+    paintProps,
+  } = useRowSelection();
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   // Nested-template picker: null = closed; a string itemId means "replace
   // that item's reference"; the sentinel below means "add a new ref item".
@@ -169,27 +181,6 @@ export function TemplateDetailScreen() {
     setEditingItem(item);
     setItemEditorDraft(draft ?? null);
     setItemEditorVisible(true);
-  };
-
-  const enterSelectionMode = (itemId: string) => {
-    animateLayout();
-    setSelectionMode(true);
-    setSelectedItemIds(new Set([itemId]));
-  };
-
-  const toggleItemSelection = (itemId: string) => {
-    haptics.tap();
-    setSelectedItemIds(prev => {
-      const next = new Set(prev);
-      if (next.has(itemId)) next.delete(itemId); else next.add(itemId);
-      return next;
-    });
-  };
-
-  const exitSelectionMode = () => {
-    animateLayout();
-    setSelectionMode(false);
-    setSelectedItemIds(new Set());
   };
 
   const handleBulkDelete = () => {
@@ -316,9 +307,15 @@ export function TemplateDetailScreen() {
         }
       />
 
+      {/* A drag down the column of selection dots picks up a run of items
+          (#2944), as on every other selectable list. */}
+      <PaintSelectionProvider {...paintProps}>
       <ReorderableList
         data={template?.items ?? []}
         keyExtractor={i => i.id}
+        // iOS has to be told directly while a paint gesture owns the touch
+        // (see PaintSelectionProvider).
+        scrollEnabled={!painting}
         onReorder={data => {
           if (!templateId) return;
           reorderItems(templateId, data.map(i => i.id));
@@ -394,6 +391,7 @@ export function TemplateDetailScreen() {
           />
         }
       />
+      </PaintSelectionProvider>
 
       {!selectionMode && (
         <Fab
@@ -536,6 +534,11 @@ const TemplateItemRow = React.memo(function TemplateItemRow({
     onOpenItem(item);
   };
 
+  // Registers the card with the screen's PaintSelectionProvider, so a drag
+  // down the column of selection dots picks up this row (#2944). Not the
+  // floating drag copy, which would claim this row's id and evict it on
+  // unmount.
+  const paintRef = usePaintSelectionRow(isActive ? null : item.id);
   const isRef = resolvedRefTemplate !== null || broken;
   const refTitle = resolvedRefTemplate ? resolvedRefTemplate.name : item.refTemplateName || 'Nested template';
   const refCount = resolvedRefTemplate?.items.length ?? 0;
@@ -547,7 +550,10 @@ const TemplateItemRow = React.memo(function TemplateItemRow({
       onLongPress={selectionMode ? undefined : drag}
       delayLongPress={interaction.delayLongPress}
       activeOpacity={interaction.activeOpacity}
-      accessibilityRole="button"
+      // A checkbox while selecting, since the SelectionDot isn't its own
+      // accessibility element and this row is what carries its state.
+      accessibilityRole={selectionMode ? 'checkbox' : 'button'}
+      accessibilityState={selectionMode ? { checked: selected } : undefined}
       accessibilityLabel={
         broken
           ? `${refTitle} was deleted, remove or replace this`
@@ -557,16 +563,12 @@ const TemplateItemRow = React.memo(function TemplateItemRow({
             // overrides its children, so it has to be spelled out here too.
             : `${item.title}${item.optional ? ', optional' : ''}${missingRefsLabel ? `, ${missingRefsLabel}` : ''}`
       }
-      accessibilityHint={broken ? undefined : isRef ? 'Double tap to open the nested template' : 'Double tap to edit item'}
+      accessibilityHint={selectionMode ? 'Double tap to select item' : broken ? undefined : isRef ? 'Double tap to open the nested template' : 'Double tap to edit item'}
     >
-      {selectionMode && (
-        <Ionicons
-          name={selected ? 'checkmark-circle' : 'ellipse-outline'}
-          size={20}
-          color={selected ? colors.accent : colors.textTertiary}
-        />
-      )}
-      {!selectionMode && isRef && (
+      {/* The nesting glyph stays put while selecting. Selection is the
+          SelectionDot at the other end of the row, the split every other
+          selectable list makes (#2944). */}
+      {isRef && (
         <Ionicons
           name={broken ? 'alert-circle' : 'git-branch-outline'}
           size={20}
@@ -661,6 +663,7 @@ const TemplateItemRow = React.memo(function TemplateItemRow({
         </TouchableOpacity>
       )}
       {!selectionMode && !broken && <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />}
+      {selectionMode && <SelectionDot selected={selected} onPress={handlePress} />}
     </TouchableOpacity>
   );
 
@@ -677,14 +680,17 @@ const TemplateItemRow = React.memo(function TemplateItemRow({
   // what read as the swipe panel freezing instead of sliding shut. `enabled`
   // turns the gesture off without disturbing the mount, same as every other
   // list's row.
+  //
+  // The card is a plain View around it, the one the paint registry measures.
   return (
-    <SwipeableRow
-      style={styles.itemCard}
-      enabled={!selectionMode}
-      selectAction={{ onSelect: () => onSwipeSelect(item.id), accessibilityLabel: `Select ${item.title}` }}
-    >
-      {rowBody}
-    </SwipeableRow>
+    <View ref={paintRef} style={styles.itemCard}>
+      <SwipeableRow
+        enabled={!selectionMode}
+        selectAction={{ onSelect: () => onSwipeSelect(item.id), accessibilityLabel: `Select ${item.title}` }}
+      >
+        {rowBody}
+      </SwipeableRow>
+    </View>
   );
 });
 

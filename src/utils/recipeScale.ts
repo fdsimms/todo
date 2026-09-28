@@ -271,6 +271,40 @@ export function factorForServings(target: number, baseServings: number): number 
   return target / baseServings;
 }
 
+/** The most people "Usually cooking for" takes — the cap Recipe.servings has too. */
+export const MAX_HOUSEHOLD_SERVINGS = 99;
+
+/**
+ * The factor a newly planned recipe starts at when the person has said how many
+ * they usually cook for (`householdServings`, #2910) — so a household of four
+ * planning five recipes that serve two gets five 2× nights rather than five
+ * trips into the meal's sheet to fix each one.
+ *
+ * As written (1) whenever there is no head count to go on, which is the same
+ * refusal `rescaleForRecipe` makes:
+ * - **No household size** (0, the default). A plan is allowed not to have
+ *   answered how much you're making, and that stays the default.
+ * - **The recipe states no servings.** Nothing to divide by, and a guess is the
+ *   thing this module never makes.
+ * - **The recipe already covers it.** "Serves 4-6" for a household of five is
+ *   the recipe as written, not 1¼× of it.
+ *
+ * Otherwise it is `factorForServings` against the recipe's own count (the low
+ * end of a range), which is the number the servings stepper on the meal's
+ * sheet then shows and edits, so the default is one tap from changing.
+ */
+export function householdScale(
+  householdServings: number | null | undefined,
+  servings: number | null | undefined,
+  servingsMax?: number | null,
+): number {
+  if (householdServings == null || !Number.isFinite(householdServings) || householdServings <= 0) return 1;
+  if (servings == null || !(servings > 0)) return 1;
+  const top = servingsMax != null && servingsMax > servings ? servingsMax : servings;
+  if (householdServings >= servings && householdServings <= top) return 1;
+  return factorForServings(householdServings, servings);
+}
+
 /**
  * The servings a live factor currently implies, for seeding the stepper —
  * after a chip tap as much as after typing a number. Delegates to

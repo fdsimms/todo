@@ -100,13 +100,18 @@ export interface ReconcileGeneratedOptions {
    *
    * A source declined a slot here isn't suppressed the way `wanted: false`
    * is — it still qualifies, and the next reconcile that finds room (the
-   * source's own next mutation, or the leftover foreground sweep) creates it.
+   * source's own next mutation, or the use-up sweep) creates it. The sweep is
+   * `useGroceryStore.reconcileAllUseUpTasks`, run by the catch-up passes and on
+   * foreground, and it covers grocery items as well as leftovers: before it,
+   * a grocery item's only reconcile was an edit to its own row, so one turned
+   * away here could wait for ever (#2924).
    * This deliberately never evicts an existing task to free a slot for a more
    * urgent one: once a task is showing, it stays showing, so the cap only
    * ever decides who claims a slot that's genuinely open. A caller that wants
    * its most urgent sources to win a scarce slot has to reconcile them in
-   * urgency order itself (see `reconcileAllLeftoverTasks`, which already
-   * iterates leftovers soonest-`keepUntil`-first).
+   * urgency order itself (see `useUpSweepOrder`, which queues both kinds
+   * soonest use-by day first, and `finishShopping`, which does the same for
+   * the items one trip re-dates).
    */
   useUpCap?: number | null;
 }

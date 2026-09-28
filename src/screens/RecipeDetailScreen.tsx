@@ -45,6 +45,8 @@ import { CountStepper } from '../components/CountStepper';
 import { PressableScale } from '../components/PressableScale';
 import { SortableList, type SortableRenderItem } from '../components/SortableList';
 import { SwipeableRow } from '../components/SwipeableRow';
+import { SelectionDot } from '../components/SelectionDot';
+import { PaintSelectionProvider, PaintSelectionRow } from '../components/PaintSelection';
 import { IngredientCatalogMatchSheet } from '../components/IngredientCatalogMatchSheet';
 import { RecipeNutritionSheet } from '../components/RecipeNutritionSheet';
 import {
@@ -78,7 +80,14 @@ import { spacing, font, fontWeight, lineHeight, radius, iconSize, interaction, f
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { pickRecipeImage, resolveRecipeImagePath, type RecipePhotoSource } from '../utils/recipePhoto';
-import { describeRecipe, totalMinutes } from '../utils/recipeUtils';
+import {
+  blockedIngredientNote,
+  describeRecipe,
+  duplicateIngredientIn,
+  ingredientsFromText,
+  makeIngredient,
+  totalMinutes,
+} from '../utils/recipeUtils';
 import { buildIngredientsText, buildRecipeShareText } from '../utils/shareText';
 import { allSectionsOf, sectionsFromMergedOrder, type SectionListEntry } from '../utils/recipeSections';
 import { PillGroup } from '../components/PillGroup';
@@ -355,6 +364,9 @@ export function RecipeDetailScreen() {
 
   // ==== local state (drafts, the sheets this screen opens) ====
   const [draft, setDraft] = useState('');
+  // What the add field says when a line it was given is already in the recipe
+  // (blockedIngredientNote), until the draft is next edited or submitted.
+  const [addNote, setAddNote] = useState<string | null>(null);
   // What new ingredients are filed under, until changed or cleared — the add
   // field's own equivalent of RecipeIngredientSheet's Section field, and its
   // picker works the same way (same PillGroup, same onCreate): it used to be
@@ -443,6 +455,8 @@ export function RecipeDetailScreen() {
   // point Grocery and the task lists use (#1378) — the row's own long press is
   // still free for reorder, since SortableList's responder stays inert until
   // `drag()` is actually called and doesn't compete with the swipe gesture.
+  // A drag down the column of selection dots paints a run of lines (#2944's
+  // treatment), through the PaintSelectionProvider around the scroll view.
   const {
     selectionMode,
     selectedIds,
@@ -451,6 +465,8 @@ export function RecipeDetailScreen() {
     exitSelection,
     selectAll,
     deselectAll,
+    painting,
+    paintProps,
   } = useRowSelection();
 
   // Both timers, wired up — the clock, the derivation and the store calls all
@@ -709,10 +725,23 @@ export function RecipeDetailScreen() {
     // handles both — splitGroceryLines tells them apart.
     const isPaste = splitGroceryLines(text).length > 1;
     const before = new Set(recipe.ingredients.map(i => i.id));
+    // The rows that will refuse a line, read before the write with the same
+    // test the store's merge applies (ingredientDedupeKey), so the field can
+    // name them. A refused add used to empty the field and buzz, which read
+    // as the line having gone in somewhere (#2917).
+    const candidates = isPaste
+      ? ingredientsFromText(text, section)
+      : [makeIngredient(text, section)].filter((i): i is NonNullable<typeof i> => i !== null);
+    const blocked = candidates
+      .map(candidate => duplicateIngredientIn(recipe.ingredients, candidate))
+      .filter((row): row is NonNullable<typeof row> => row !== null);
     const added = isPaste
       ? addIngredientsFromText(recipe.id, text, section)
       : (addIngredient(recipe.id, text, section) ? 1 : 0);
-    setDraft('');
+    // Nothing went in: keep what was typed, so a second heading or a changed
+    // prep is one edit away rather than a retype.
+    if (added > 0) setDraft('');
+    setAddNote(blockedIngredientNote(blocked, added));
     if (added > 0) haptics.tap();
     else haptics.warning();
     // Only a paste gets the banner. Adding one line at a time already shows
@@ -854,6 +883,31 @@ export function RecipeDetailScreen() {
   // free. There's no meal-plan entry behind this, so mealPlanEntryId is
   // null: nothing here is "cooked" or "missed", it's just a dish someone
   // wants logged from the page they're looking at.
+  // "Made it" in the header. Log as cooked is the cooking half: rating,
+  // leftovers, pantry ticks and restock, the same post-cook sheet a planned
+  // meal's "Mark cooked" raises (CookRecap, mounted globally), and it needs no
+  // nutrition figures. Add to food log is gated on nutrition actually being
+  // computable (the read showNutritionRow uses): without it LogMealPrompt
+  // would open only to clear itself with nothing to show. Always a menu, even
+  // with one option, because the menu is where each verb says what it will
+  // ask, and Log as cooked moves `lastCookedAt`, which steers suggestions for
+  // weeks: a stray tap on the header shouldn't be enough.
+  const handleMadeIt = () => {
+    haptics.tap();
+    const canLogFood = !!nutritionReading?.nutrition;
+    Alert.alert(
+      `Log ${recipe.name}`,
+      canLogFood
+        ? 'Log as cooked asks for a rating, any leftovers and the ingredients you used up. Add to food log records what you ate.'
+        : 'Log as cooked asks for a rating, any leftovers and the ingredients you used up.',
+      [
+        { text: 'Log as cooked', onPress: () => cookRecipeNow(recipe) },
+        ...(canLogFood ? [{ text: 'Add to food log', onPress: handleLogToFoodLog }] : []),
+        { text: 'Cancel', style: 'cancel' as const },
+      ],
+    );
+  };
+
   const handleLogToFoodLog = () => {
     haptics.tap();
     const dayKey = dayKeyOf(getCurrentDayStart());
@@ -1136,6 +1190,11 @@ export function RecipeDetailScreen() {
             accessibilityLabel: `Select ${ingredient.name}`,
           }}
         >
+        {/* Registered with the screen's PaintSelectionProvider so a drag down
+            the column of dots picks up this line. Not SortableList's floating
+            copy (`isDragging`), which would claim this line's id and evict it
+            on unmount. */}
+        <PaintSelectionRow rowId={isDragging ? null : ingredient.id}>
         <TouchableOpacity
           style={[
             styles.ingredient,
@@ -1166,15 +1225,10 @@ export function RecipeDetailScreen() {
           }
           accessibilityHint={selectionMode ? 'Double tap to select' : 'Double tap to edit. Long press to reorder.'}
         >
-          {selectionMode && (
-            <View style={styles.ingredientSelect}>
-              <Ionicons
-                name={selected ? 'checkmark-circle' : 'ellipse-outline'}
-                size={22}
-                color={selected ? colors.accent : colors.textTertiary}
-              />
-            </View>
-          )}
+          {/* Selection is the SelectionDot at the row's other end, where the
+              remove × was, the split every other selectable list makes
+              (#2944). A check leading the line read as an ingredient ticked
+              off, and pushed every name sideways. */}
           <View style={styles.ingredientText}>
             <Text style={styles.ingredientName}>{line.name}</Text>
             {/* Directly under the name it replaced, in the same tint the
@@ -1290,7 +1344,14 @@ export function RecipeDetailScreen() {
               <Ionicons name="close" size={iconSize.sm} color={colors.textTertiary} />
             </TouchableOpacity>
           )}
+          {/* In the slot the × gives up while selecting, so nothing moves
+              aside for it. On every line, picked or not: the empty rings are
+              what say selection is on. */}
+          {selectionMode && (
+            <SelectionDot selected={selected} onPress={() => toggleSelection(ingredient.id)} />
+          )}
         </TouchableOpacity>
+        </PaintSelectionRow>
         </SwipeableRow>
         {/* A component sharing this ingredient's choice group folds in right
             here, after the group's last ingredient option — not in its own
@@ -1672,34 +1733,16 @@ export function RecipeDetailScreen() {
                 />
               </TouchableOpacity>
             )}
-            {/* The cooking half of "log this recipe" — rating, leftovers,
-                pantry ticks and restock, the same post-cook sheet a planned
-                meal's "Mark cooked" raises (CookRecap, mounted globally).
-                Always shown: unlike the food-log icon below it needs no
-                nutrition figures, only a recipe to have cooked. */}
+            {/* Both ways of recording a cooking, behind one labelled control
+                (see handleMadeIt). They were a flame and a plate glyph in a
+                row of seven, with nothing on screen to say which was which. */}
             {!selectionMode && (
-              <TouchableOpacity
-                onPress={() => { haptics.tap(); cookRecipeNow(recipe); }}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel={`Log ${recipe.name} as cooked`}
-              >
-                <Ionicons name="flame-outline" size={iconSize.md} color={colors.textSecondary} />
-              </TouchableOpacity>
-            )}
-            {/* Gated on nutrition actually being computable (same read
-                showNutritionRow above uses) rather than always shown: without
-                it, tapping this would raise LogMealPrompt only for the prompt
-                to immediately clear itself with nothing to show. */}
-            {!selectionMode && !!nutritionReading?.nutrition && (
-              <TouchableOpacity
-                onPress={handleLogToFoodLog}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel={`Log ${recipe.name} to the food log`}
-              >
-                <Ionicons name="restaurant-outline" size={iconSize.md} color={colors.textSecondary} />
-              </TouchableOpacity>
+              <InlineAction
+                icon="flame-outline"
+                label="Made it"
+                accessibilityLabel={`Log ${recipe.name} as cooked or to the food log`}
+                onPress={handleMadeIt}
+              />
             )}
             {!selectionMode && (
               <TouchableOpacity
@@ -1735,9 +1778,15 @@ export function RecipeDetailScreen() {
         }
       />
 
+      {/* Around the whole scroll view, since the ingredient card is one block
+          inside it: while selecting, a drag started on the trailing edge
+          paints rather than scrolls, the trade every selectable list makes. */}
+      <PaintSelectionProvider {...paintProps}>
       <ScrollView
         ref={keyboardScroll.ref}
-        scrollEnabled={!dragging}
+        // Same while a paint gesture owns the touch: iOS has to be told
+        // directly (see PaintSelectionProvider).
+        scrollEnabled={!dragging && !painting}
         contentContainerStyle={styles.scroll}
         keyboardShouldPersistTaps="handled"
         {...keyboardScroll.props}
@@ -2144,7 +2193,7 @@ export function RecipeDetailScreen() {
             ref={draftInputRef}
             style={styles.addInput}
             value={draft}
-            onChangeText={setDraft}
+            onChangeText={text => { setDraft(text); if (addNote) setAddNote(null); }}
             onSubmitEditing={submitDraft}
             placeholder="Add an ingredient"
             placeholderTextColor={colors.textTertiary}
@@ -2161,6 +2210,9 @@ export function RecipeDetailScreen() {
             disabled={!draft.trim()}
           />
         </View>
+        {!!addNote && (
+          <Text style={styles.addNote} accessibilityLiveRegion="polite">{addNote}</Text>
+        )}
         <Text style={styles.inputHint}>
           Quantity and unit go first, e.g. “2 cups flour”. Add a comma for prep, e.g.
           “garlic, minced”
@@ -2407,6 +2459,7 @@ export function RecipeDetailScreen() {
           <View style={{ height: insets.bottom + spacing.sm + bulkBarHeight + spacing.sm }} />
         )}
       </ScrollView>
+      </PaintSelectionProvider>
 
       {/* Hidden while selecting: the bulk bar floats where it does, and adding
           to the list isn't something you're doing mid-selection anyway. */}
@@ -2581,6 +2634,8 @@ export function RecipeDetailScreen() {
         choices={choices}
         onChoicesChange={setChoices}
         onClose={() => setCookModeVisible(false)}
+        onLogCooked={() => cookRecipeNow(recipe)}
+        onLogFood={nutritionReading?.nutrition ? handleLogToFoodLog : undefined}
       />
 
       <ComponentChoiceSheet
@@ -2895,10 +2950,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   // Sits at the row's top edge rather than centered, matching the row's own
   // flex-start alignment — see the note on `ingredient` above.
-  ingredientSelect: {
-    width: 22,
-    height: 22,
-  },
   ingredientText: {
     flex: 1,
     gap: 1,
@@ -3080,8 +3131,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // The badge that marks a component row where it's embedded in the
   // Ingredients card — same restaurant-outline glyph RecipeComponentPicker
   // uses for "this represents a recipe", shrunk to sit inline in a row this
-  // dense. Sits at the row's top edge like ingredientSelect, for the same
-  // flex-start reason.
+  // dense. Sits at the row's top edge like the ingredient row's own controls,
+  // for the same flex-start reason.
   componentMarker: {
     width: 20,
     height: 20,
@@ -3138,6 +3189,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   inputHint: {
     color: colors.textTertiary,
+    fontSize: font.xs,
+    marginTop: spacing.xs,
+  },
+  // textSecondary rather than the hint's grey: it says why the line didn't go
+  // in and what to do instead, which is information rather than an aside.
+  addNote: {
+    color: colors.textSecondary,
     fontSize: font.xs,
     marginTop: spacing.xs,
   },

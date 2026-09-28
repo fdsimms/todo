@@ -359,6 +359,10 @@ describe('parseRecipePage', () => {
     expect(parsed.author).toBe('Alison Roman');
     expect(parsed.steps).toEqual(['Soften the onion.', 'Add everything else and simmer.']);
     expect(parsed.text).toContain('3 cloves garlic, minced');
+    // What a keyless import builds the recipe from, with no model in between.
+    expect(parsed.ingredients).toEqual(RECIPE_LD.recipeIngredient);
+    expect(parsed.recipeYield).toBe('4 servings');
+    expect(parsed.totalMinutes).toBe(75);
   });
 
   it('prefers og:site_name over the JSON-LD publisher', () => {
@@ -378,6 +382,7 @@ describe('parseRecipePage', () => {
     expect(parsed.structured).toBe(false);
     // A method guessed out of stripped page text is how a sidebar becomes step 3.
     expect(parsed.steps).toEqual([]);
+    expect(parsed.ingredients).toEqual([]);
     expect(parsed.text).toContain('2 cans beans');
     expect(parsed.title).toBe('Chilli | A Food Blog');
   });

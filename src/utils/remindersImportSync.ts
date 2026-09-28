@@ -9,6 +9,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { getLogicalNow } from './dateUtils';
 import { isDemoModeActive } from './demoState';
 import {
+  mirrorNote,
   mirrorTitleFor,
   parseGroceryLinks,
   planGroceryReminderSync,
@@ -461,6 +462,7 @@ function mirrorItems(): MirrorItem[] {
     quantity: item.quantity,
     onList: home.has(item.id),
     checked: home.get(item.id) ?? false,
+    note: item.note,
   }));
 }
 
@@ -480,7 +482,9 @@ export function groceryMirrorSignature(): string {
     // Separated on every side, because concatenating free text straight onto
     // an id lets two different lists spell the same signature, and a collision
     // here is a change that never syncs.
-    parts.push([item.id, home.get(item.id) ? 1 : 0, item.name, item.quantity ?? ''].join('\u0000'));
+    // The note too, since the mirror carries it (#2933): editing one is a
+    // change the reminder has to hear about.
+    parts.push([item.id, home.get(item.id) ? 1 : 0, item.name, item.quantity ?? '', item.note].join('\u0000'));
   }
   return parts.join('\u0001');
 }
@@ -547,6 +551,14 @@ async function mirrorOnce(): Promise<MirrorOutcome | null> {
     const raw = await calendar().getRemindersAsync([listId], null, null, null);
     const present = new Set<string>();
     const reminders: MirrorReminder[] = [];
+    // What each reminder's location says, to send back with any update below.
+    // The mirror doesn't carry a location, but `getReminder(from:)` in
+    // expo-calendar's `CalendarModule.swift` assigns `reminder.location =
+    // details.location` on every save, and EventKit's `location` is a
+    // settable `String?`, so an update without one cleared it. This fetch is
+    // the read the carry comes from: every reminder an update names is one it
+    // just returned.
+    const locations = new Map<string, string>();
     for (const reminder of sortRemindersByCreation(raw)) {
       if (!reminder.id) continue;
       present.add(reminder.id);
@@ -554,7 +566,11 @@ async function mirrorOnce(): Promise<MirrorOutcome | null> {
         id: reminder.id,
         title: reminder.title?.trim() ?? '',
         completed: reminder.completed === true,
+        notes: mirrorNote(reminder.notes),
       });
+      if (typeof reminder.location === 'string' && reminder.location) {
+        locations.set(reminder.id, reminder.location);
+      }
     }
 
     // Again, now the reads are done: demo can start during the awaits above,
@@ -583,11 +599,17 @@ async function mirrorOnce(): Promise<MirrorOutcome | null> {
         // reminder it came from down with it.
         const item = store.addByName(add.title, undefined, undefined, { registerUndo: false, listId: null });
         if (!item) continue;
+        // The reminder's notes become the row's note (#2933), unless the row
+        // is a catalog item re-listed with a note of its own. Then the app
+        // keeps its note, as it keeps anything both sides disagree on, and the
+        // shadow below is what makes the next pass write it to the reminder.
+        if (add.notes && !item.note) store.setNote(item.id, add.notes);
         nextLinks.push({
           reminderId: add.reminderId,
           itemId: item.id,
           name: mirrorTitleFor(item),
           checked: item.checked,
+          note: add.notes,
           seen: true,
         });
         imported += 1;
@@ -616,9 +638,12 @@ async function mirrorOnce(): Promise<MirrorOutcome | null> {
             itemId: item.id,
             title: mirrorTitleFor(item),
             completed: link.checked,
+            notes: link.note,
           });
         }
       }
+
+      for (const edit of plan.setNotes) store.setNote(edit.itemId, edit.note);
 
       // On the list at home, for addByName's reason above: the mirror only
       // ever reads home. Left on the list on screen, a tick made in Reminders
@@ -635,13 +660,17 @@ async function mirrorOnce(): Promise<MirrorOutcome | null> {
       }
 
       for (const create of plan.createReminders) {
-        const id = await calendar().createReminderAsync(listId, { title: create.title });
+        const id = await calendar().createReminderAsync(
+          listId,
+          create.notes ? { title: create.title, notes: create.notes } : { title: create.title }
+        );
         if (!id) continue;
         nextLinks.push({
           reminderId: id,
           itemId: create.itemId,
           name: create.title,
           checked: false,
+          note: create.notes,
           // Nothing has fetched it yet, so its absence next pass would mean
           // nothing. See GroceryReminderLink.seen.
           seen: false,
@@ -654,10 +683,18 @@ async function mirrorOnce(): Promise<MirrorOutcome | null> {
           // The whole title every time, even when only the tick changed:
           // saveReminderAsync assigns `reminder.title = details.title`
           // unconditionally, so a partial update blanks the title of the row it
-          // was meant to leave alone.
+          // was meant to leave alone. The notes likewise (`reminder.notes =
+          // details.notes`, in `getReminder(from:)`): before the mirror carried
+          // them, every tick from this side wiped whatever note had been typed
+          // into the reminder (#2933). And the location, which is assigned the
+          // same way and which the mirror doesn't own: it goes back as the
+          // fetch above read it, so a tick from this side no longer clears it.
+          const location = locations.get(update.reminderId);
           await calendar().updateReminderAsync(update.reminderId, {
             title: update.title,
             completed: update.completed,
+            notes: update.notes,
+            ...(location ? { location } : {}),
           });
         } catch {
           // Isolated, like the drain's deletes: one reminder in a strange state

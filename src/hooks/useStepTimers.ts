@@ -16,6 +16,7 @@ export interface StepTimersBinding {
     recipeName: string;
     stepId: string;
     stepLabel: string;
+    stepExcerpt?: string;
     durationSeconds: number;
   }) => void;
   toggle: (timer: StepTimer) => void;

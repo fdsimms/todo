@@ -74,12 +74,62 @@ describe('varietyIndex', () => {
 
     const index = varietyIndex([white, milk, red]);
     expect(index.get('onion')).toEqual([white, red]);
-    expect(index.size).toBe(1);
+    // The generic and its other spelling (#2941), and nothing for Milk.
+    expect([...index.keys()]).toEqual(['onion', 'onions']);
   });
 
   it('skips a declaration pointing at the item’s own key', () => {
     const weird = makeItem({ name: 'Onion', varietyOfKey: 'onion' });
     expect(varietyIndex([weird]).size).toBe(0);
+  });
+
+  describe('the other spelling of a declared generic (#2941)', () => {
+    it('answers a singular line for a plural declaration, and the reverse', () => {
+      // "White onions" can only suggest "onions" from its own name, and a
+      // recipe saying "1 onion" is the same ask.
+      const white = makeItem({ name: 'White onions', varietyOfKey: 'onions' });
+      expect(varietyIndex([white]).get('onion')).toEqual([white]);
+      expect(varietyIndex([white]).get('onions')).toEqual([white]);
+
+      const red = makeItem({ name: 'Red onion', varietyOfKey: 'onion' });
+      expect(varietyIndex([red]).get('onions')).toEqual([red]);
+    });
+
+    it('gives both spellings the whole family when both are declared, in catalog order', () => {
+      const white = makeItem({ name: 'White onions', varietyOfKey: 'onions' });
+      const milk = makeItem({ name: 'Milk' });
+      const red = makeItem({ name: 'Red onion', varietyOfKey: 'onion' });
+      const index = varietyIndex([white, milk, red]);
+      expect(index.get('onion')).toEqual([white, red]);
+      expect(index.get('onions')).toEqual([white, red]);
+    });
+
+    it('reaches the generic’s own row spelled the other way', () => {
+      // The catalog already resolves "onions" to the Onion row, so a
+      // declaration of "onions" is about that row.
+      const onion = makeItem({ name: 'Onion' });
+      const white = makeItem({ name: 'White onions', varietyOfKey: 'onions' });
+      expect(varietyIndex([onion, white]).get('onion')).toEqual([white]);
+    });
+
+    it('leaves two rows one plural apart as two things', () => {
+      // "Pepper" and "Peppers" both in the catalog were kept apart on purpose,
+      // so a declaration about one says nothing about the other.
+      const pepper = makeItem({ name: 'Pepper' });
+      const peppers = makeItem({ name: 'Peppers' });
+      const bell = makeItem({ name: 'Bell peppers', varietyOfKey: 'peppers' });
+      const index = varietyIndex([pepper, peppers, bell]);
+      expect(index.get('peppers')).toEqual([bell]);
+      expect(index.get('pepper')).toBeUndefined();
+    });
+
+    it('refuses a spelling that is a plural of two keys at once', () => {
+      // "leaves" could be "leaf" or "leave", and picking one is a coin flip.
+      const bay = makeItem({ name: 'Bay leaf', varietyOfKey: 'leaf' });
+      const leave = makeItem({ name: 'Leave' });
+      expect(varietyIndex([bay, leave]).get('leaves')).toBeUndefined();
+      expect(varietyIndex([bay]).get('leaves')).toEqual([bay]);
+    });
   });
 });
 
@@ -163,6 +213,14 @@ describe('familyOnHand', () => {
     expect(familyOnHand(onion, byKeyOf(items), varietyIndex(items), NOW)).toEqual([]);
     expect(familyOnHand(white, byKeyOf(items), varietyIndex(items), NOW)).toEqual([onion]);
   });
+
+  it('finds the parent row and siblings spelled the other way (#2941)', () => {
+    const onion = makeItem({ name: 'Onion', onHandUntil: future(7) });
+    const white = makeItem({ name: 'White onions', varietyOfKey: 'onions', onHandUntil: future(7) });
+    const red = makeItem({ name: 'Red onion', varietyOfKey: 'onion' });
+    const items = [onion, white, red];
+    expect(familyOnHand(red, byKeyOf(items), varietyIndex(items), NOW)).toEqual([onion, white]);
+  });
 });
 
 // ─── describeFamilyOnHand ────────────────────────────────────────────────────
@@ -186,6 +244,13 @@ describe('varietyOfferFor', () => {
   it('offers when the catalog name ends with the line’s whole key', () => {
     const white = makeItem({ name: 'White onion' });
     expect(varietyOfferFor('onion', white)).toBe(white);
+  });
+
+  it('offers when the catalog name ends with the line’s key spelled the other way', () => {
+    const whites = makeItem({ name: 'White onions' });
+    expect(varietyOfferFor('onion', whites)).toBe(whites);
+    const white = makeItem({ name: 'White onion' });
+    expect(varietyOfferFor('onions', white)).toBe(white);
   });
 
   it('refuses a boundary that falls mid-word', () => {

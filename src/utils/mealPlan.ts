@@ -5,7 +5,7 @@ import { isSameDay } from 'date-fns/isSameDay';
 import { isSameWeek } from 'date-fns/isSameWeek';
 import type { MealPlanEntry, MealSlot, Recipe } from '../types';
 import { MEAL_SLOTS, MEAL_SLOT_LABELS, MEAL_PLAN_RETENTION_DAYS } from '../types';
-import { cleanRecipeName } from './recipeUtils';
+import { cleanRecipeName, recipeNameKey } from './recipeUtils';
 import { dayKeyOf, dayKeyToDate } from './dateUtils';
 import type { WeekStart } from '../store/useSettingsStore';
 
@@ -239,22 +239,67 @@ export function weekCopyDrafts(
   entries: readonly MealPlanEntry[],
   days: number
 ): MealCopyDraft[] {
-  return entries
-    .filter(e => !e.leftoverId)
-    .map(e => ({
-      date: shiftDayKey(e.date, days),
-      slot: e.slot,
-      recipeId: e.recipeId,
-      title: e.title,
-      sortOrder: e.sortOrder,
-      cookedAt: null,
-      leftoverId: null,
-      recipeChoices: [...e.recipeChoices],
-      recipeScale: e.recipeScale,
-      cookTask: e.cookTask,
-      shopTask: e.shopTask,
-      logMeal: e.logMeal,
-    }));
+  return entries.flatMap(e => {
+    const draft = mealCopyDraft(e, shiftDayKey(e.date, days));
+    return draft ? [draft] : [];
+  });
+}
+
+/**
+ * One entry copied onto `date`, carrying exactly what `weekCopyDrafts` carries
+ * (that doc comment is the rule; this is the one place it's written), or null
+ * for a meal eating a tracked leftover, for the reason given there.
+ *
+ * Shared with the one-meal copy (#2913), `copyEntryTo`, so "the same lunch
+ * Monday to Friday" and "last week again" can't come to disagree about
+ * whether a copy keeps the double batch or the meal task answer.
+ * `sortOrder` is the source's: a week copy keeps two dinners in their order,
+ * and a one-meal copy has its own renumbered by the store where it lands.
+ */
+export function mealCopyDraft(entry: MealPlanEntry, date: string): MealCopyDraft | null {
+  if (entry.leftoverId) return null;
+  return {
+    date,
+    slot: entry.slot,
+    recipeId: entry.recipeId,
+    title: entry.title,
+    sortOrder: entry.sortOrder,
+    cookedAt: null,
+    leftoverId: null,
+    recipeChoices: [...entry.recipeChoices],
+    recipeScale: entry.recipeScale,
+    cookTask: entry.cookTask,
+    shopTask: entry.shopTask,
+    logMeal: entry.logMeal,
+  };
+}
+
+/**
+ * The days in `entries` that already have `entry`'s meal in its slot: the
+ * entry's own day, and any day holding a copy of it (#2913). What the meal
+ * sheet's "Also on" chips show as done, so a second tap on Wednesday can't
+ * put two of the same lunch there.
+ *
+ * "The same meal" is the same recipe, or for a typed meal the same title under
+ * `recipeNameKey` (a typed meal has nothing else to be the same by). A leftover
+ * night is only ever its own day: a container isn't copied (see
+ * `weekCopyDrafts`), so no other night can be holding it this way.
+ */
+export function daysWithMeal(
+  entries: readonly MealPlanEntry[],
+  entry: MealPlanEntry
+): Set<string> {
+  const days = new Set<string>([entry.date]);
+  if (entry.leftoverId) return days;
+  const key = entry.recipeId ? null : recipeNameKey(entry.title);
+  for (const other of entries) {
+    if (other.slot !== entry.slot || other.leftoverId) continue;
+    const same = entry.recipeId
+      ? other.recipeId === entry.recipeId
+      : !other.recipeId && recipeNameKey(other.title) === key;
+    if (same) days.add(other.date);
+  }
+  return days;
 }
 
 /** Where one entry lands in a bulk move — see resolveBulkMoveTargets. */
@@ -327,6 +372,24 @@ export function titleForEntry(
     if (recipe) return recipe.name;
   }
   return entry.title;
+}
+
+/**
+ * The recipe a typed meal is already named after, or null (#2929).
+ *
+ * Keyed by `recipeNameKey`, the key `addRecipe` refuses a second recipe on, so
+ * "is there one called this?" can't answer differently from "could one be made
+ * called this?": "Tacos" typed on the plan and a "tacos" recipe added later are
+ * one name to both. That is what lets a typed meal's sheet offer the recipe
+ * that now exists rather than a "Save as a new recipe" the store would refuse.
+ */
+export function recipeNamedLike<R extends Pick<Recipe, 'nameKey'>>(
+  title: string,
+  recipes: readonly R[]
+): R | null {
+  const key = recipeNameKey(title);
+  if (!key) return null;
+  return recipes.find(r => r.nameKey === key) ?? null;
 }
 
 /**

@@ -34,6 +34,8 @@ import {
 } from '../utils/fabDrop';
 import { ReorderableList } from '../components/ReorderableList';
 import { SwipeableRow } from '../components/SwipeableRow';
+import { SelectionDot } from '../components/SelectionDot';
+import { PaintSelectionProvider, usePaintSelectionRow } from '../components/PaintSelection';
 import { ApplyTemplateSheet } from '../components/ApplyTemplateSheet';
 import { TemplateEditor } from '../components/TemplateEditor';
 import { TemplateAppliedToast } from '../components/TemplateAppliedToast';
@@ -103,6 +105,8 @@ export function TemplatesScreen() {
     exitSelection,
     selectAll,
     deselectAll,
+    painting,
+    paintProps,
   } = useRowSelection();
 
   const applyTemplateObj = templates.find(t => t.id === applyTemplateId) ?? null;
@@ -264,6 +268,10 @@ export function TemplatesScreen() {
       <ScreenHeader title="Templates" />
       <HubPills hub="organize" active="Templates" />
 
+      {/* A drag down the column of selection dots picks up a run of templates
+          (#2944), as on every other selectable list. Outside the drop zones,
+          the way ProjectsScreen nests the same two. */}
+      <PaintSelectionProvider {...paintProps}>
       <FabDropZoneProvider
         ref={dropZonesRef}
         onIntentChange={fabIntentChannel.publish}
@@ -274,8 +282,9 @@ export function TemplatesScreen() {
         keyExtractor={item => item.key}
         // The user can't scroll during an add-button drag (the button's
         // responder has the touch); the drag scrolls it instead, through the
-        // control below.
-        scrollEnabled={!fabDragging}
+        // control below. Same while a paint gesture owns the touch: iOS has
+        // to be told directly (see PaintSelectionProvider).
+        scrollEnabled={!fabDragging && !painting}
         scrollControlRef={scrollControl}
         scrollToTop={{ bottom: insets.bottom + tabBarHeight + spacing.md }}
         onReorder={data => {
@@ -331,6 +340,7 @@ export function TemplatesScreen() {
                 // Reordering is off while selecting: the long press that would
                 // start a drag is how a mis-tapped row gets picked up instead.
                 drag={selectionMode ? undefined : drag}
+                isActive={isActive}
                 selectionMode={selectionMode}
                 selected={selectedIds.has(tpl.id)}
                 onPress={handleRowPress}
@@ -343,6 +353,7 @@ export function TemplatesScreen() {
         }}
       />
       </FabDropZoneProvider>
+      </PaintSelectionProvider>
 
       {/* The bulk bar sits where the button does, and adding a template isn't
           something you're doing mid-selection anyway. */}
@@ -424,7 +435,7 @@ export function TemplatesScreen() {
  * TemplateEditor behind the ⋯ button, or in the bulk bar.
  */
 const TemplateRow = React.memo(function TemplateRow({
-  template, broken, missingRefs, colors, styles, drag, selectionMode, selected, onPress, onEdit, onApply, onSwipeSelect,
+  template, broken, missingRefs, colors, styles, drag, isActive, selectionMode, selected, onPress, onEdit, onApply, onSwipeSelect,
 }: {
   template: TaskTemplate;
   /** True if a template this one nests (at any depth) was deleted or is itself broken. */
@@ -435,6 +446,8 @@ const TemplateRow = React.memo(function TemplateRow({
   styles: ReturnType<typeof makeStyles>;
   /** Omitted while selecting, which is what turns reordering off. */
   drag?: () => void;
+  /** The drag overlay's floating copy, which stays out of the paint registry. */
+  isActive?: boolean;
   selectionMode: boolean;
   selected: boolean;
   // Each takes the template it acts on rather than the screen closing over it
@@ -444,6 +457,11 @@ const TemplateRow = React.memo(function TemplateRow({
   onApply: (template: TaskTemplate) => void;
   onSwipeSelect: (templateId: string) => void;
 }) {
+  // Registers the card with the screen's PaintSelectionProvider, so a drag
+  // down the column of selection dots picks up this row (#2944). Not the
+  // floating drag copy, which would claim this row's id and evict it on
+  // unmount.
+  const paintRef = usePaintSelectionRow(isActive ? null : template.id);
   const rowBody = (
     <TouchableOpacity
       style={[styles.tplRow, selectionMode && selected && styles.tplRowSelected]}
@@ -456,21 +474,12 @@ const TemplateRow = React.memo(function TemplateRow({
       accessibilityLabel={`${template.name}, ${template.items.length === 0 ? 'no items' : `${template.items.length} item${template.items.length === 1 ? '' : 's'}`}${broken ? ', a nested template is missing' : missingRefs ? ', uses a category or tag that no longer exists' : ''}`}
       accessibilityHint={selectionMode ? 'Double tap to select template' : 'Double tap to edit template'}
     >
-      {selectionMode ? (
-        // Takes the icon tile's place rather than sitting beside it: every row
-        // shifts by the same amount, so the names stay in one column.
-        <View style={styles.tplSelect}>
-          <Ionicons
-            name={selected ? 'checkmark-circle' : 'ellipse-outline'}
-            size={24}
-            color={selected ? colors.accent : colors.textTertiary}
-          />
-        </View>
-      ) : (
-        <View style={[styles.tplIcon, { backgroundColor: colors.accentSubtle }]}>
-          <Ionicons name="copy" size={18} color={colors.accent} />
-        </View>
-      )}
+      {/* The tile stays put while selecting. Selection is the SelectionDot at
+          the other end of the row, the split every other selectable list
+          makes (#2944). */}
+      <View style={[styles.tplIcon, { backgroundColor: colors.accentSubtle }]}>
+        <Ionicons name="copy" size={18} color={colors.accent} />
+      </View>
       <View style={styles.tplInfo}>
         <View style={styles.tplNameRow}>
           <Text style={styles.tplName}>{template.name}</Text>
@@ -525,10 +534,16 @@ const TemplateRow = React.memo(function TemplateRow({
           <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
         </>
       )}
+      {/* In the slot the row's buttons give up while selecting, so nothing
+          moves aside for it. On every row, picked or not: the empty rings are
+          what say selection is on. */}
+      {selectionMode && (
+        <SelectionDot selected={selected} onPress={() => onPress(template)} />
+      )}
     </TouchableOpacity>
   );
   return (
-    <View style={styles.tplItemWrapper}>
+    <View ref={paintRef} style={styles.tplItemWrapper}>
       {/* SwipeableRow stays mounted through the selectionMode toggle rather
           than swapping for a bare rowBody — swapping it unmounts the panel
           mid-close-animation (the very moment its own select action just
@@ -606,14 +621,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: radius.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  // Same footprint as the icon tile it replaces, so entering selection mode
-  // doesn't move the row's text.
-  tplSelect: {
-    width: 36,
-    height: 36,
     alignItems: 'center',
     justifyContent: 'center',
   },

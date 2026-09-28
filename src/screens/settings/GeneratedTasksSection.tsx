@@ -61,6 +61,15 @@ import { PillGroup, type PillGroupOption } from '../../components/PillGroup';
 import { type SegmentOption } from '../../components/SegmentedControl';
 import { makeSettingsStyles } from './settingsStyles';
 
+// Map of this file (one component holding most of it; `grep -n '// ===='` is
+// the table of contents):
+//   state          settings, categories, and the shared category pill grid
+//   listing        which generators show, and the rule counts their rows quote
+//   rows           each row's switch, what blocks it, its category and its hint
+//   extras         the controls only one generator has (extrasFor)
+//   render         the section: one row per listed generator, extras under it
+// Above the component: the weekday and time-of-day choices. Below it: styles.
+
 /**
  * Every task the app writes without being asked, in one section.
  *
@@ -118,6 +127,7 @@ function weekdayOptions(weekStartsOn: WeekStart): SegmentOption<number>[] {
 }
 
 export function GeneratedTasksSection() {
+  // ==== state ====
   const colors = useColors();
   const styles = useMemo(() => makeSettingsStyles(colors), [colors]);
   const sectionStyles = useMemo(() => makeStyles(colors), [colors]);
@@ -148,6 +158,7 @@ export function GeneratedTasksSection() {
     onPress: () => { haptics.tap(); onSelect(o.value); },
   }));
 
+  // ==== listing ====
   // The kitchen's generators go with the area, the way every other kitchen row
   // does — but the other six stay, which is the whole point of the flag living
   // on the registry. This section used to sit inside Tasks & projects' own
@@ -180,6 +191,7 @@ export function GeneratedTasksSection() {
 
   const weekdaySegmentOptions = useMemo(() => weekdayOptions(s.weekStartsOn), [s.weekStartsOn]);
 
+  // ==== rows ====
   // Each generator's on/off answer and its category still live under their own
   // settings keys. Renaming them to a generic pair would be a migration over
   // preferences people have already set, for no gain a person can see — the
@@ -243,6 +255,7 @@ export function GeneratedTasksSection() {
       case 'pantryCheck': s.setPantryCheckTasks(next); break;
       case 'pantryReview': s.setPantryReviewTasks(next); break;
       case 'mealShortfall': s.setMealShortfallTasks(next); break;
+      case 'mealThaw': s.setMealThawTasks(next); break;
       case 'mealLogNudge': s.setMealLogNudgeTasks(next); break;
       case 'supplyReorder': s.setSupplyReorderTasks(next); break;
       case 'calendarReview': s.setCalendarReviewTasks(next); break;
@@ -278,6 +291,7 @@ export function GeneratedTasksSection() {
       case 'pantryCheck': return s.pantryCheckTaskCategory;
       case 'pantryReview': return s.pantryReviewTaskCategory;
       case 'mealShortfall': return s.mealShortfallTaskCategory;
+      case 'mealThaw': return s.mealThawTaskCategory;
       case 'mealLogNudge': return s.mealLogNudgeTaskCategory;
       case 'calendarReview': return s.calendarReviewTaskCategory;
       case 'birthday': return s.birthdayTaskCategory;
@@ -309,6 +323,7 @@ export function GeneratedTasksSection() {
       case 'pantryCheck': s.setPantryCheckTaskCategory(category); break;
       case 'pantryReview': s.setPantryReviewTaskCategory(category); break;
       case 'mealShortfall': s.setMealShortfallTaskCategory(category); break;
+      case 'mealThaw': s.setMealThawTaskCategory(category); break;
       case 'mealLogNudge': s.setMealLogNudgeTaskCategory(category); break;
       case 'birthday': s.setBirthdayTaskCategory(category); break;
       case 'birthdayGift': s.setBirthdayGiftTaskCategory(category); break;
@@ -381,6 +396,7 @@ export function GeneratedTasksSection() {
    * header states: `extrasFor` is JSX precisely so the knobs one generator has
    * don't have to be expressible in config.
    */
+  // ==== extras ====
   const timeSegmentExtra = (
     entryId: string,
     value: TimeOfDay | null,
@@ -902,6 +918,7 @@ export function GeneratedTasksSection() {
     return null;
   };
 
+  // ==== render ====
   return (
     <>
     <SettingsSection

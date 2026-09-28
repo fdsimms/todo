@@ -89,7 +89,13 @@ export interface NutrientAverage {
 
 /** One row of the most-logged leaderboard. */
 export interface LoggedFood {
-  /** The label the entries share, which is also the grouping key. */
+  /** Which food this is, as `foodKeyResolver` keys it. Stable across renames. */
+  key: string;
+  /**
+   * What to call it: the catalog row's or recipe's current name when the
+   * caller supplied one, and otherwise the label it was most recently logged
+   * under.
+   */
   label: string;
   count: number;
   /** The most recent instant it was logged at, for a stable tie-break. */
@@ -292,13 +298,112 @@ export function nutrientAverages(
   return out;
 }
 
+/** The current names of catalog rows and recipes, for naming a food key. */
+export interface FoodNameLookup {
+  items?: ReadonlyMap<string, string>;
+  recipes?: ReadonlyMap<string, string>;
+}
+
+const ITEM_KEY = 'item:';
+const RECIPE_KEY = 'recipe:';
+
+/** The identity a linked entry carries, or null for one linked to nothing. */
+function linkedFoodKey(entry: FoodLogEntry): string | null {
+  if (entry.recipeId) return `${RECIPE_KEY}${entry.recipeId}`;
+  if (entry.itemId) return `${ITEM_KEY}${entry.itemId}`;
+  return null;
+}
+
+/**
+ * Which food an entry is, for every read that groups the log by food: the
+ * most-logged board, and the mood and symptom contrasts through
+ * `foodDayInputs`.
+ *
+ * **A linked entry is its catalog row or its recipe** (`item:<id>`,
+ * `recipe:<id>`), and only an unlinked one is its lowercased label (#2947).
+ * Keying everything by label used to be the rule, and its reason still holds
+ * for the entries it was about: `itemId` and `recipeId` are null for anything
+ * typed in or estimated, and dropping those would misreport what somebody ate.
+ * It does not hold where the link is there. The entry picker offers an item
+ * and each of its boxes as separate rows ("Bread" and "Bread, Dave's Killer 21
+ * grain"), so a person testing whether bread gives them headaches logged
+ * whichever was on top, and the branded days landed in plain bread's
+ * "didn't" group. The one read in the app somebody might change their diet
+ * over was comparing bread days against bread days. A box counts as its item
+ * for the same reason `foodLogRecents.ts` credits one: eating a pot of yogurt
+ * is eating yogurt.
+ *
+ * **An unlinked label joins the food a linked entry was logged under by that
+ * same label**, so "bread" typed by hand still counts as the Bread row the way
+ * it did when everything keyed by label. Only when the label is unambiguous:
+ * one that linked entries carry for two different rows stays a label, since
+ * guessing between them would put the day in a group it may not belong to.
+ *
+ * Built over the whole run of entries being read, because the aliases are:
+ * a resolver built over a narrower run can key the same entry differently.
+ */
+export function foodKeyResolver(entries: readonly FoodLogEntry[]): (entry: FoodLogEntry) => string | null {
+  const aliases = new Map<string, string | null>();
+  for (const entry of entries) {
+    const linked = linkedFoodKey(entry);
+    const label = entry.label.trim().toLowerCase();
+    if (!linked || !label) continue;
+    const seen = aliases.get(label);
+    if (seen === undefined) aliases.set(label, linked);
+    else if (seen !== linked) aliases.set(label, null);
+  }
+  return entry => {
+    const linked = linkedFoodKey(entry);
+    if (linked) return linked;
+    // Lowercased for matching, the same call `symptomKey` makes and for the
+    // same reason: "Coffee" and "coffee" are one food, and two groups built
+    // from one habit halve the days on each side of every contrast.
+    const label = entry.label.trim().toLowerCase();
+    if (!label) return null;
+    return aliases.get(label) ?? label;
+  };
+}
+
+/**
+ * What to call each food key `foodKeyResolver` produces over these entries.
+ *
+ * A catalog row or recipe is called by its current name when `lookup` has it,
+ * so a food is named by the item it is rather than by whichever box happened
+ * to be logged last; one since deleted falls back to the label it was most
+ * recently logged under, and so does every unlinked food, as it was typed.
+ */
+export function foodKeyNames(
+  entries: readonly FoodLogEntry[],
+  lookup: FoodNameLookup = {},
+): Map<string, string> {
+  const keyOf = foodKeyResolver(entries);
+  const latest = new Map<string, { label: string; atISO: string }>();
+  for (const entry of entries) {
+    const key = keyOf(entry);
+    const label = entry.label.trim();
+    if (!key || !label) continue;
+    const seen = latest.get(key);
+    if (!seen || entry.atISO >= seen.atISO) latest.set(key, { label, atISO: entry.atISO });
+  }
+  const out = new Map<string, string>();
+  for (const [key, { label }] of latest) out.set(key, nameForFoodKey(key, lookup) ?? label);
+  return out;
+}
+
+function nameForFoodKey(key: string, lookup: FoodNameLookup): string | null {
+  if (key.startsWith(ITEM_KEY)) return lookup.items?.get(key.slice(ITEM_KEY.length)) ?? null;
+  if (key.startsWith(RECIPE_KEY)) return lookup.recipes?.get(key.slice(RECIPE_KEY.length)) ?? null;
+  return null;
+}
+
 /**
  * The most-logged foods in the window, highest first.
  *
- * Grouped by the entry's own `label` rather than by `itemId` or `recipeId`,
- * because those are null for anything typed in and a leaderboard that silently
- * dropped every hand-entered food would misreport what somebody eats. The label
- * is what the row says and what the reader recognises.
+ * Grouped by `foodKeyResolver`: a linked entry by the row or recipe it points
+ * at, and an unlinked one by its label, so a hand-typed food is still on the
+ * board and an item logged as two different boxes is still one food. Named
+ * through `lookup` when the caller has the catalog's names, and otherwise by
+ * the label most recently logged.
  *
  * Ties break on the most recent, then on the label, so the order is stable
  * rather than however the rows came back.
@@ -307,18 +412,18 @@ export function mostLoggedFoods(
   entries: readonly FoodLogEntry[],
   window: CookingWindow,
   limit = 5,
+  lookup: FoodNameLookup = {},
 ): LoggedFood[] {
-  const byLabel = new Map<string, LoggedFood>();
+  const keyOf = foodKeyResolver(entries);
+  const byKey = new Map<string, LoggedFood>();
   for (const entry of inWindow(entries, window)) {
     // The day's water is a running total, not a food, and logged daily it
     // topped this list for anybody who drank anything.
     if (isWaterEntry(entry)) continue;
     const label = entry.label.trim();
-    if (!label) continue;
-    // Keyed without case, as the mood contrasts already key a food, so
-    // "Coffee" and "coffee" are one food. The row reads as it was last typed.
-    const key = label.toLowerCase();
-    const row = byLabel.get(key);
+    const key = keyOf(entry);
+    if (!label || !key) continue;
+    const row = byKey.get(key);
     if (row) {
       row.count += 1;
       if (entry.atISO > row.lastAtISO) {
@@ -326,10 +431,11 @@ export function mostLoggedFoods(
         row.label = label;
       }
     } else {
-      byLabel.set(key, { label, count: 1, lastAtISO: entry.atISO });
+      byKey.set(key, { key, label, count: 1, lastAtISO: entry.atISO });
     }
   }
-  return [...byLabel.values()]
+  for (const row of byKey.values()) row.label = nameForFoodKey(row.key, lookup) ?? row.label;
+  return [...byKey.values()]
     .sort((a, b) => {
       if (b.count !== a.count) return b.count - a.count;
       if (b.lastAtISO !== a.lastAtISO) return b.lastAtISO.localeCompare(a.lastAtISO);
@@ -399,6 +505,7 @@ export function sourceMix(
  * than-approximate posture `scalePanelToAmount` takes one file over.
  */
 export function foodDayInputs(entries: readonly FoodLogEntry[]): FoodDayInput[] {
+  const keyOf = foodKeyResolver(entries);
   const byDay = new Map<string, FoodLogEntry[]>();
   for (const entry of entries) {
     // The day's water is not a food: counted as one it completed a breakfast-
@@ -431,13 +538,12 @@ export function foodDayInputs(entries: readonly FoodLogEntry[]): FoodDayInput[] 
       if (stated === dayEntries.length) nutrients[key] = round(total);
     }
 
+    // Which foods, keyed by what each entry is rather than by what it was
+    // called: see `foodKeyResolver` for why a box and its item are one food.
     const labels = new Set<string>();
     for (const entry of dayEntries) {
-      // Lowercased for matching, the same call `symptomKey` makes and for the
-      // same reason: "Coffee" and "coffee" are one food, and two groups built
-      // from one habit halve the days on each side of every contrast.
-      const label = entry.label.trim().toLowerCase();
-      if (label) labels.add(label);
+      const key = keyOf(entry);
+      if (key) labels.add(key);
     }
 
     out.push({ dayKey, nutrients, labels: [...labels].sort() });

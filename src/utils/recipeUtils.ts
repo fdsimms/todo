@@ -215,8 +215,119 @@ export function makeIngredient(line: string, section: string | null = null): Rec
 }
 
 /**
- * A pasted ingredient list into ingredients, deduped on the catalog's own key
- * so a recipe listing salt twice doesn't carry it twice.
+ * What makes two ingredient lines "the same line" to the add paths below: the
+ * catalog key, and the three fields that say which *use* of the ingredient a
+ * line is — the heading it sits under, its prep and its purpose.
+ *
+ * **Not the catalog key alone.** That was the rule, and it dropped every
+ * second use of an ingredient: carnitas that want garlic under "For the
+ * marinade" and again under "For the sauce" imported with the marinade's
+ * garlic only, the sauce section lost a line nobody deleted, and the shop
+ * bought 3 cloves instead of 5 (#2917). The review list had shown both rows
+ * ticked. Two rows sharing a key is a shape every reader already handles,
+ * because a composed recipe has always produced it (the root's garlic and a
+ * component's garlic): classifyPlanned sums them into one shopping row, cost
+ * and nutrition are per line, and stepIngredients refuses an amount for a
+ * name two lines share rather than picking one.
+ *
+ * **The quantity is deliberately not part of it.** "Garlic" and then "3
+ * cloves garlic" under one heading is as likely a correction as a second use,
+ * and a freshly parsed line replacing an amount the user set by hand is the
+ * quiet overwrite addByName refuses to do; the detail screen says which row
+ * blocked the add (duplicateIngredientIn) instead of guessing.
+ *
+ * The section is compared as written, since two spellings of a heading render
+ * as two headings; prep and purpose are notes, so they compare case-blind.
+ */
+export function ingredientDedupeKey(ingredient: RecipeIngredient): string {
+  const note = (text: string | null | undefined) => (text ?? '').trim().toLowerCase();
+  return [
+    ingredient.nameKey || ingredient.name.toLowerCase(),
+    (ingredient.section ?? '').trim(),
+    note(ingredient.prep),
+    note(ingredient.purpose),
+  ].join('\u0000');
+}
+
+/**
+ * The row in `existing` that would stop `candidate` being added — the same
+ * test mergeIngredients applies — or null when it would go in. Lets an add
+ * field name the line that blocked it rather than just refusing.
+ */
+export function duplicateIngredientIn(
+  existing: readonly RecipeIngredient[],
+  candidate: RecipeIngredient,
+): RecipeIngredient | null {
+  const key = ingredientDedupeKey(candidate);
+  return existing.find(i => ingredientDedupeKey(i) === key) ?? null;
+}
+
+/**
+ * What the recipe screen's add field says when some or all of what was typed
+ * was already there (the rows duplicateIngredientIn found), or null when
+ * nothing was. It names the rows, so the next move (edit that line, or file
+ * this one under another section) is on screen rather than a buzz and an
+ * emptied field, which is all a refused add used to leave.
+ */
+export function blockedIngredientNote(
+  blocked: readonly RecipeIngredient[],
+  added: number,
+): string | null {
+  if (blocked.length === 0) return null;
+  if (blocked.length === 1 && added === 0) return alreadyInRecipeNote(blocked[0]);
+  const count = blocked.length === 1 ? '1 line' : `${blocked.length} lines`;
+  return `Skipped ${count} already in this recipe: ${blocked.map(blockedRowLabel).join(', ')}.`;
+}
+
+/** "3 cloves garlic": how a blocking row is named, amount first as the recipe shows it. */
+function blockedRowLabel(row: RecipeIngredient): string {
+  return [row.quantity.trim(), row.name].filter(Boolean).join(' ');
+}
+
+/**
+ * What a line says about the one row that blocks it: `blockedIngredientNote`'s
+ * single-row wording, shared with the import review, which names each blocked
+ * row where it sits rather than summing up an add (`blockedReviewRows`).
+ */
+export function alreadyInRecipeNote(blocker: RecipeIngredient): string {
+  const where = blocker.section ? ` under ${blocker.section}` : '';
+  return `Already in this recipe${where}: ${blockedRowLabel(blocker)}. Edit that line to change it.`;
+}
+
+/**
+ * Which rows of an import review won't be added, each mapped to the row that
+ * blocks it: an earlier row of the same review, or one the recipe already has
+ * (`existing`, empty for a recipe the review is creating).
+ *
+ * `rows` is the review's lines normalized, with null for any line that isn't
+ * going in (unticked, or covered by a component), which neither blocks nor is
+ * blocked. Walked in order through `duplicateIngredientIn`, which is exactly
+ * how `mergeIngredients` keeps the first of each line on Create, so a row
+ * named here is one the store drops. Without it the review showed "3 tbsp olive
+ * oil" and "2 tbsp olive oil" under one heading both ticked, and the second
+ * never arrived, with nothing said (#2917's remainder). The detail screen's
+ * add field already said so; this is the review saying the same thing before
+ * the tap rather than after it.
+ */
+export function blockedReviewRows(
+  rows: readonly (RecipeIngredient | null)[],
+  existing: readonly RecipeIngredient[] = [],
+): Map<number, RecipeIngredient> {
+  const kept = [...existing];
+  const out = new Map<number, RecipeIngredient>();
+  rows.forEach((row, i) => {
+    if (!row) return;
+    const blocker = duplicateIngredientIn(kept, row);
+    if (blocker) out.set(i, blocker);
+    else kept.push(row);
+  });
+  return out;
+}
+
+/**
+ * A pasted ingredient list into ingredients, deduped the way mergeIngredients
+ * is (ingredientDedupeKey) so a paste listing salt twice doesn't carry it
+ * twice, while "flour" and "flour for dusting" stay two lines.
  *
  * splitGroceryLines already strips bullets and caps the paste; this adds only
  * the parse and the empty-name guard. `section` is passed through to every
@@ -228,7 +339,7 @@ export function ingredientsFromText(raw: string, section: string | null = null):
   for (const line of splitGroceryLines(raw)) {
     const ingredient = makeIngredient(line, section);
     if (!ingredient) continue;
-    const key = ingredient.nameKey || ingredient.name.toLowerCase();
+    const key = ingredientDedupeKey(ingredient);
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(ingredient);
@@ -238,8 +349,10 @@ export function ingredientsFromText(raw: string, section: string | null = null):
 
 /**
  * Merges new ingredients into an existing list, keeping the first occurrence of
- * each key. Used by both paste-into-an-existing-recipe and the editor's add
- * field, so "garlic" typed twice edits rather than duplicates.
+ * each line (ingredientDedupeKey). Used by both paste-into-an-existing-recipe
+ * and the editor's add field, so "garlic" typed twice under one heading adds
+ * one row, while garlic under a second heading, or with a different prep,
+ * is a second use and gets its own.
  *
  * The *existing* row wins on a collision: it may carry a quantity or an aisle
  * the user set by hand, and silently replacing that with a freshly-parsed line
@@ -250,9 +363,9 @@ export function mergeIngredients(
   incoming: readonly RecipeIngredient[],
 ): RecipeIngredient[] {
   const out = [...existing];
-  const seen = new Set(existing.map(i => i.nameKey || i.name.toLowerCase()));
+  const seen = new Set(existing.map(ingredientDedupeKey));
   for (const ingredient of incoming) {
-    const key = ingredient.nameKey || ingredient.name.toLowerCase();
+    const key = ingredientDedupeKey(ingredient);
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(ingredient);

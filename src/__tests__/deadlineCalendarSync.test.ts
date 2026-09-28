@@ -10,11 +10,11 @@ jest.mock('../store/useCategoryStore', () => ({
 }));
 
 const mockCreateDeadlineEvent = jest.fn();
-const mockUpdateDeadlineEvent = jest.fn();
+const mockMoveDeadlineEvent = jest.fn();
 const mockDeleteDeadlineEvent = jest.fn();
 jest.mock('../utils/calendarSync', () => ({
   createAllDayEvent: (...args: unknown[]) => mockCreateDeadlineEvent(...args),
-  updateAllDayEvent: (...args: unknown[]) => mockUpdateDeadlineEvent(...args),
+  moveAllDayEvent: (...args: unknown[]) => mockMoveDeadlineEvent(...args),
   deleteCalendarEvent: (...args: unknown[]) => mockDeleteDeadlineEvent(...args),
 }));
 
@@ -161,6 +161,9 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockSettings = { deadlineCalendarId: 'cal-1' };
   mockDemoActive = false;
+  // EventKit reports the same id back for an event rewritten in place.
+  mockMoveDeadlineEvent.mockReset().mockImplementation((id: string) => Promise.resolve(id));
+  mockDeleteDeadlineEvent.mockReset().mockResolvedValue(undefined);
 });
 
 describe('syncDeadlineEvent', () => {
@@ -169,7 +172,7 @@ describe('syncDeadlineEvent', () => {
     const result = await syncDeadlineEvent(makeTask({ deadlineOnCalendar: true, deadline: '2026-08-20T00:00:00Z' }));
     expect(result).toBeNull();
     expect(mockCreateDeadlineEvent).not.toHaveBeenCalled();
-    expect(mockUpdateDeadlineEvent).not.toHaveBeenCalled();
+    expect(mockMoveDeadlineEvent).not.toHaveBeenCalled();
     expect(mockDeleteDeadlineEvent).not.toHaveBeenCalled();
   });
 
@@ -232,33 +235,60 @@ describe('syncDeadlineEvent', () => {
       title: 'Renew passport',
       date: new Date('2026-08-20T00:00:00Z'),
     });
-    expect(mockUpdateDeadlineEvent).not.toHaveBeenCalled();
+    expect(mockMoveDeadlineEvent).not.toHaveBeenCalled();
   });
 
   it('updates the existing event in place and keeps its id', async () => {
-    mockUpdateDeadlineEvent.mockResolvedValue(true);
     const task = makeTask({
       deadlineOnCalendar: true, deadline: '2026-08-20T00:00:00Z', calendarEventId: 'evt-1', title: 'Renew passport',
     });
     const result = await syncDeadlineEvent(task);
     expect(result).toBe('evt-1');
-    expect(mockUpdateDeadlineEvent).toHaveBeenCalledWith('evt-1', {
+    expect(mockMoveDeadlineEvent).toHaveBeenCalledWith('evt-1', 'cal-1', {
       title: 'Renew passport',
       date: new Date('2026-08-20T00:00:00Z'),
     });
     expect(mockCreateDeadlineEvent).not.toHaveBeenCalled();
+    expect(mockDeleteDeadlineEvent).not.toHaveBeenCalled();
   });
 
-  it('falls back to creating a fresh event when the update fails (a stale id)', async () => {
-    mockUpdateDeadlineEvent.mockResolvedValue(false);
+  // #2949's sibling: switching "Write deadlines to" from a shared calendar to
+  // a private one kept rewriting every existing deadline in the shared one,
+  // because the rewrite never said which calendar.
+  it('moves an existing event into the calendar picked now, and links the id it comes back with', async () => {
+    mockSettings = { deadlineCalendarId: 'cal-home' };
+    mockMoveDeadlineEvent.mockResolvedValue('evt-moved');
+    const task = makeTask({
+      deadlineOnCalendar: true, deadline: '2026-08-20T00:00:00Z', calendarEventId: 'evt-work', title: 'Renew passport',
+    });
+    expect(await syncDeadlineEvent(task)).toBe('evt-moved');
+    expect(mockMoveDeadlineEvent).toHaveBeenCalledWith('evt-work', 'cal-home', expect.objectContaining({
+      title: 'Renew passport',
+    }));
+    expect(mockCreateDeadlineEvent).not.toHaveBeenCalled();
+  });
+
+  it('falls back to creating a fresh event when the move fails (a stale id)', async () => {
+    mockMoveDeadlineEvent.mockResolvedValue(null);
     mockCreateDeadlineEvent.mockResolvedValue('fresh-evt');
     const task = makeTask({
       deadlineOnCalendar: true, deadline: '2026-08-20T00:00:00Z', calendarEventId: 'stale-evt',
     });
     const result = await syncDeadlineEvent(task);
     expect(result).toBe('fresh-evt');
-    expect(mockUpdateDeadlineEvent).toHaveBeenCalledWith('stale-evt', expect.anything());
+    expect(mockMoveDeadlineEvent).toHaveBeenCalledWith('stale-evt', 'cal-1', expect.anything());
     expect(mockCreateDeadlineEvent).toHaveBeenCalledWith('cal-1', expect.anything());
+  });
+
+  it('clears the old event before writing a fresh one, so a refused move leaves no copy behind', async () => {
+    mockMoveDeadlineEvent.mockResolvedValue(null);
+    mockCreateDeadlineEvent.mockResolvedValue('fresh-evt');
+    await syncDeadlineEvent(makeTask({
+      deadlineOnCalendar: true, deadline: '2026-08-20T00:00:00Z', calendarEventId: 'evt-work',
+    }));
+    expect(mockDeleteDeadlineEvent).toHaveBeenCalledWith('evt-work');
+    expect(mockDeleteDeadlineEvent.mock.invocationCallOrder[0])
+      .toBeLessThan(mockCreateDeadlineEvent.mock.invocationCallOrder[0]);
   });
 
   it('falls back to the task title "Deadline" when displayTitleFor has nothing to show', async () => {
@@ -278,7 +308,7 @@ describe('syncDeadlineEvent', () => {
     });
     expect(await syncDeadlineEvent(task)).toBeNull();
     expect(mockCreateDeadlineEvent).not.toHaveBeenCalled();
-    expect(mockUpdateDeadlineEvent).not.toHaveBeenCalled();
+    expect(mockMoveDeadlineEvent).not.toHaveBeenCalled();
     expect(mockDeleteDeadlineEvent).not.toHaveBeenCalled();
   });
 });

@@ -1,0 +1,4 @@
+{
+  "message": "When an item counts as a kind of something, recipes now match it in the singular or plural, so \"White onions counts as onions\" also covers a recipe that asks for 1 onion",
+  "date": "2026-09-28"
+}

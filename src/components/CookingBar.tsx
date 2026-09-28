@@ -70,7 +70,7 @@ export function CookingBar() {
       <TouchableOpacity
         style={[styles.bar, shadows.fab]}
         activeOpacity={interaction.activeOpacity}
-        onPress={() => { haptics.tap(); resetToRecipeDetail(recipe.id, true); }}
+        onPress={() => { haptics.tap(); resetToRecipeDetail(recipe.id, { openCookMode: true }); }}
         accessibilityRole="button"
         accessibilityLabel={`Cooking ${recipe.name}, ${elapsed} elapsed. Return to cook mode`}
       >

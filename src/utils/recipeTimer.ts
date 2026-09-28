@@ -1,4 +1,5 @@
 import type { Recipe } from '../types';
+import { formatStopwatch } from './effort';
 
 /**
  * Countdown math for a recipe's cook and prep timers — the same banked-segment
@@ -115,4 +116,58 @@ export function isPrepTimerReady(recipe: PrepTimerState, now: number = Date.now(
  */
 export function hasRunningRecipeTimer(recipe: CookTimerState & PrepTimerState): boolean {
   return isCookTimerRunning(recipe) || isPrepTimerRunning(recipe);
+}
+
+// ==== what the row says ====
+
+/** The live half of a recipe timer that `RecipeTimerRow` draws: `useRecipeTimer`'s binding, narrowed. */
+export interface RecipeTimerReading {
+  /** A target duration is set, so the clock counts down rather than up. */
+  hasTarget: boolean;
+  running: boolean;
+  paused: boolean;
+  ready: boolean;
+  elapsedSeconds: number;
+  remainingSeconds: number;
+}
+
+/**
+ * The countdown as the row draws it: the number big, the state small after it
+ * ("12:30 left", "12:30 paused", "0:45 over", "3:12 elapsed"), the split
+ * `StepTimerRow` made in #2920 and this row now shares. Null for a timer that
+ * hasn't started, which the row labels in words instead ("Cook for 45m").
+ *
+ * A timer past its target reads "over" whether or not it's paused, as a step
+ * timer's does: the orange says it's rung, and the primary button's glyph says
+ * whether it's still counting.
+ */
+export function recipeTimerClock(t: RecipeTimerReading): { clock: string; state: string } | null {
+  if (!t.running && !t.paused) return null;
+  if (t.hasTarget) {
+    if (t.ready) return { clock: formatStopwatch(-t.remainingSeconds), state: 'over' };
+    return { clock: formatStopwatch(Math.max(0, t.remainingSeconds)), state: t.running ? 'left' : 'paused' };
+  }
+  return { clock: formatStopwatch(t.elapsedSeconds), state: t.running ? 'elapsed' : 'paused' };
+}
+
+/**
+ * The confirm before Reset throws a timed cook or prep away, or null when
+ * there is nothing on it to lose. Reset sits on the same row as Pause, reached
+ * for mid-cook, and unlike a step timer's cancel it loses a measurement: the
+ * time was about to be logged against the recipe (see `stepTimerCancelPrompt`,
+ * the sibling this copies). It asks past the target too, since an overrun is
+ * still a time worth logging.
+ */
+export function recipeTimerResetPrompt(
+  verb: 'Cook' | 'Prep',
+  t: Pick<RecipeTimerReading, 'running' | 'elapsedSeconds'>,
+): { title: string; message: string } | null {
+  if (!(t.elapsedSeconds >= 1)) return null;
+  const clock = formatStopwatch(t.elapsedSeconds);
+  return {
+    title: `Reset the ${verb.toLowerCase()} timer?`,
+    message: t.running
+      ? `${clock} timed so far, not logged yet.`
+      : `Paused at ${clock}, not logged yet.`,
+  };
 }

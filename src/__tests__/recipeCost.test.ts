@@ -277,6 +277,47 @@ describe('estimateRecipeCost', () => {
     expect(doubled!.totalMinor).toBe(200);
   });
 
+  it('costs a canned line at the scale it is cooked at, whatever its scaled text reads (#2918)', () => {
+    // "14 oz can" can't be written at 1.5x, so its scaled text stays "14 oz
+    // can", and at 2x it becomes "2 14 oz cans". Costing those strings priced
+    // a can and a half as one can, and two cans against a per-tin price as
+    // nothing at all.
+    const chili = recipe('Chili', [ing('Black beans', { quantity: '14 oz can' })]);
+    const catalog = [item({ name: 'Black beans', lastPriceMinor: 120, lastPriceQuantity: '14 oz can' })];
+    const at = (scale: number) => estimateRecipeCost(chili, catalog, undefined, undefined, scale)!;
+    expect(at(1).totalMinor).toBe(120);
+    expect(at(1.5).totalMinor).toBe(180);
+    expect(at(2).totalMinor).toBe(240);
+    expect(at(0.5).totalMinor).toBe(60);
+  });
+
+  it('costs a line scaling can\'t rewrite at the scale it is cooked at', () => {
+    // A second measure ("1 lb 2 oz") is passed through unscaled as text.
+    const dish = recipe('Stew', [ing('Beef', { quantity: '1 lb 2 oz' })]);
+    const catalog = [item({ name: 'Beef', lastPriceMinor: 900, lastPriceQuantity: '18 oz' })];
+    expect(estimateRecipeCost(dish, catalog, undefined, undefined, 2)!.totalMinor).toBe(1800);
+  });
+
+  it('relates a counted sized container to a price by weight, both ways round', () => {
+    // "2 14 oz cans" is twenty-eight ounces, the reading nutrition gives it.
+    const chili = recipe('Chili', [ing('Black beans', { quantity: '2 14 oz cans' })]);
+    const perTin = [item({ name: 'Black beans', lastPriceMinor: 120, lastPriceQuantity: '14 oz can' })];
+    expect(estimateRecipeCost(chili, perTin)!.totalMinor).toBe(240);
+    const perPound = [item({ name: 'Black beans', lastPriceMinor: 160, lastPriceQuantity: '1 lb' })];
+    expect(estimateRecipeCost(chili, perPound)!.totalMinor).toBe(280); // 160 * 28/16
+
+    // And a single tin against a price recorded for a four-pack.
+    const one = recipe('Chili', [ing('Black beans', { quantity: '14 oz can' })]);
+    const pack = [item({ name: 'Black beans', lastPriceMinor: 400, lastPriceQuantity: '4 14 oz cans' })];
+    expect(estimateRecipeCost(one, pack)!.totalMinor).toBe(100);
+  });
+
+  it('still refuses a counted container against a price in a different dimension', () => {
+    const chili = recipe('Chili', [ing('Stock', { quantity: '2 14 oz cans' })]);
+    const catalog = [item({ name: 'Stock', lastPriceMinor: 300, lastPriceQuantity: '1 qt' })];
+    expect(estimateRecipeCost(chili, catalog)).toBeNull();
+  });
+
   it('carries the oldest contributing price forward', () => {
     const dish = recipe('Dinner', [
       ing('Flour', { quantity: '1 lb' }),
@@ -365,6 +406,16 @@ describe('estimateWeekCost', () => {
     const catalog = [item({ name: 'Stock', lastPriceMinor: 400, lastPriceQuantity: '2 lb' })];
     const estimate = estimateWeekCost(entries, recipesById, catalog, RANGE);
     expect(estimate!.totalMinor).toBe(400); // "2 lb" is the full purchase amount
+  });
+
+  it('costs a scaled entry\'s canned line at its scale, not its shopping text (#2918)', () => {
+    const chili = recipe('Chili', [ing('Black beans', { quantity: '14 oz can' })]);
+    const recipesById = new Map([[chili.id, chili]]);
+    const catalog = [item({ name: 'Black beans', lastPriceMinor: 120, lastPriceQuantity: '14 oz can' })];
+    const at = (recipeScale: number) =>
+      estimateWeekCost([entry('2026-08-10', chili.id, { recipeScale })], recipesById, catalog, RANGE)!;
+    expect(at(1.5).totalMinor).toBe(180);
+    expect(at(2).totalMinor).toBe(240);
   });
 
   it('excludes a cooked entry, same as collectPlannedIngredients', () => {

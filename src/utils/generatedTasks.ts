@@ -122,6 +122,11 @@ export const GENERATED_KINDS: readonly GeneratedKind[] = [
   // be cooked, they file under one category, and reading them together is how a
   // person meets the meal plan in Settings.
   'mealShortfall',
+  // Directly after mealShortfall, for the reason pantryCheck sits beside
+  // groceryUseUp: the two read one meal's ingredients against the kitchen and
+  // differ only in which answer they speak up about (lacking it, or having it
+  // only frozen), so they're one subject from the list's side.
+  'mealThaw',
   // Beside mealShortfall rather than appended at the end, for its own reason
   // restated: the two file under one category with mealSlot and mealPlanNudge,
   // and this is the fourth meal-plan generator a person meets there. It reads
@@ -229,6 +234,7 @@ export type GeneratedEnabledKey =
   | 'leftoverUseUpTasks'
   | 'mealPlanNudgeEnabled'
   | 'mealShortfallTasks'
+  | 'mealThawTasks'
   | 'mealLogNudgeTasks'
   | 'projectReviewTasks'
   | 'supplyReorderTasks'
@@ -629,6 +635,24 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     // planning the week, cooking what you planned and shopping for it are one
     // job to the person reading Today, and a third section would be a
     // distinction only the code makes.
+    defaultCategory: 'Meal Plan',
+  },
+  mealThaw: {
+    kind: 'mealThaw',
+    pausedOnVacation: true,
+    enabledKey: 'mealThawTasks',
+    label: 'Freezer reminders for planned meals',
+    onHint: 'A meal today or tomorrow that uses something frozen adds a task to take it out of the freezer',
+    offHint: 'A meal that uses something frozen adds no task',
+    icon: 'snow-outline',
+    // Its source is a MealPlanEntry, and the opt-out it writes there
+    // (MealPlanEntry.thawTask) is mealShortfall's shopTask shape, for the same
+    // tombstone reason: every other way the row goes is the app noticing.
+    sourced: true,
+    notice: false,
+    kitchen: true,
+    categorized: true,
+    // With the other meal-plan generators, for mealShortfall's reason.
     defaultCategory: 'Meal Plan',
   },
   mealLogNudge: {

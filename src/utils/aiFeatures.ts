@@ -79,7 +79,9 @@ export const AI_FEATURES: AiFeatureMeta[] = [
   {
     id: 'recipeExtraction',
     label: 'Recipe import',
-    hint: 'Pulls a name, servings, and shopping list out of pasted recipe text or a photo',
+    // A link from most recipe sites imports without a key (recipePageOffline.ts),
+    // so this switch also governs that keyless path and the hint says so.
+    hint: 'Pulls a name, servings, and shopping list out of a recipe link, pasted text, or a photo. Links from most recipe sites work without an API key',
     kitchen: true,
   },
   {

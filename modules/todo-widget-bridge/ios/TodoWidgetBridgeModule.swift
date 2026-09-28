@@ -56,9 +56,13 @@ private struct TimerRunPayload: Codable {
 }
 
 // Mirrors the TripRun shape written by src/utils/tripLiveActivity.ts.
+// `staleAtMs` is optional so a payload without it (an older JS bundle) still
+// decodes and starts an activity, just one that never goes stale — the
+// synthesized decoder reads an Optional with decodeIfPresent.
 private struct TripRunPayload: Codable {
   let shopName: String
   let startedAtMs: Double
+  let staleAtMs: Double?
 }
 
 // Mirrors the FocusRun shape written by src/utils/focusLiveActivity.ts.
@@ -427,7 +431,18 @@ public class TodoWidgetBridgeModule: Module {
           Task { await activity.end(nil, dismissalPolicy: .immediate) }
         }
         let attributes = TripActivityAttributes(shopName: run.shopName, startedAt: startedAt)
-        let content = ActivityContent(state: TripActivityAttributes.ContentState(), staleDate: nil)
+        // The moment the app stops counting the trip as live (TRIP_MAX_MS
+        // after it started), so the Lock Screen stops claiming it with nobody
+        // having opened the app (#2937): `context.isStale` flips then, and
+        // TripLiveActivity.swift draws the ended state off it. A second out at
+        // the least, same as the focus activity's, so the flip is one
+        // ActivityKit is still going to make rather than one it may have
+        // missed. ActivityContent(state:staleDate:relevanceScore:) is iOS
+        // 16.2+, inside the 17.0 gate above.
+        let staleDate: Date? = run.staleAtMs.map {
+          max(Date(timeIntervalSince1970: $0 / 1000), Date().addingTimeInterval(1))
+        }
+        let content = ActivityContent(state: TripActivityAttributes.ContentState(), staleDate: staleDate)
         _ = try? Activity.request(attributes: attributes, content: content, pushType: nil)
 
         succeeded = true

@@ -1,0 +1,4 @@
+{
+  "message": "Moving a recipe to a different cookbook now clears its page number, since a page in the old book isn't the same page in the new one. The confirmation says so before you move it.",
+  "date": "2026-09-28"
+}

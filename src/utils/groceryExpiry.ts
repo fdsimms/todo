@@ -182,9 +182,11 @@ export function useUpTaskDraft(
  * The one thing `deadline` can't see is the *lead* changing, since the row
  * records the expiry it was derived from and not the offset. That costs
  * nothing today: `setGroceryUseUpLeadDays` writes the setting and reconciles
- * nothing, so existing tasks have never re-dated on a lead change. A future
- * caller that wants them to has to sweep the items itself, the way
- * `reconcileAllLeftoverTasks` does.
+ * nothing, so existing tasks have never re-dated on a lead change. The use-up
+ * sweep (`useGroceryStore.reconcileAllUseUpTasks`, #2924) does now reconcile
+ * every item that wants a task on each foreground, but it reconciles through
+ * this function, so a lead change still moves nothing: a caller that wants it
+ * to would have to compare the lead as well as the deadline.
  */
 export function useUpTaskDrift(
   task: Pick<Task, 'title' | 'deadline' | 'linkUrl'>,

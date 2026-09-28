@@ -39,6 +39,7 @@ const mockTaskState = {
   checkPantryReviewTasks: mockRecord('checkPantryReviewTasks'),
   checkPantryCheckTasks: mockRecord('checkPantryCheckTasks'),
   checkMealShortfallTasks: mockRecord('checkMealShortfallTasks'),
+  checkMealThawTasks: mockRecord('checkMealThawTasks'),
   checkMealLogNudgeTasks: mockRecord('checkMealLogNudgeTasks'),
   checkCalendarReviewTasks: mockRecord('checkCalendarReviewTasks'),
   checkWeatherTasks: mockRecord('checkWeatherTasks'),
@@ -83,7 +84,6 @@ jest.mock('../store/useMealPlanStore', () => ({
 jest.mock('../store/useLeftoverStore', () => ({
   useLeftoverStore: {
     getState: () => ({
-      reconcileAllLeftoverTasks: mockRecord('reconcileAllLeftoverTasks'),
       purgeOldLeftovers: mockRecord('purgeOldLeftovers'),
     }),
   },
@@ -93,6 +93,7 @@ jest.mock('../store/useGroceryStore', () => ({
     getState: () => ({
       tripShopId: null, tripStartedAt: null, shops: [],
       checkAwayGroceryList: mockRecord('checkAwayGroceryList'),
+      reconcileAllUseUpTasks: mockRecord('reconcileAllUseUpTasks'),
     }),
   },
 }));
@@ -159,13 +160,13 @@ describe('runBackgroundRefresh', () => {
       'dripStalledProjects',
       'checkMealPlanNudge', 'checkProjectReviewTasks', 'checkMealSlotTasks',
       'checkPantryReviewTasks', 'checkPantryCheckTasks', 'checkMealShortfallTasks',
-      'checkMealLogNudgeTasks',
+      'checkMealThawTasks', 'checkMealLogNudgeTasks',
       'checkCalendarReviewTasks', 'checkWeatherTasks', 'checkEventTasks',
       'checkScreenTimeTasks', 'checkHealthTasks',
       'checkMoodTasks', 'checkWeekendNudgeTasks', 'checkWeighInTasks',
       'checkBirthdayTasks', 'checkBirthdayGiftTasks', 'checkReachOutTasks',
       'checkWaitingFollowUpTasks',
-      'reconcileAllLeftoverTasks', 'checkScheduledTemplates',
+      'reconcileAllUseUpTasks', 'checkScheduledTemplates',
       'sweepExpiredCompletionTimers',
       'sweepTaskPenalties',
     ];

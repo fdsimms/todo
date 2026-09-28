@@ -19,7 +19,9 @@ import {
 import {
   MIN_PAIRED_DAYS, buildMoodDays, symptomFoodContrasts, symptomMoodContrasts,
 } from '../utils/moodInsights';
-import { foodDayInputs } from '../utils/nutritionStats';
+import { foodDayInputs, foodKeyNames } from '../utils/nutritionStats';
+import { useGroceryStore } from '../store/useGroceryStore';
+import { useRecipeStore } from '../store/useRecipeStore';
 import { useFoodLogStore, FOOD_INSIGHT_DAYS } from '../store/useFoodLogStore';
 import { DetailHeader } from '../components/DetailHeader';
 import { EmptyState } from '../components/EmptyState';
@@ -137,15 +139,14 @@ export function SymptomDetailScreen() {
     () => (kitchenEnabled ? symptomFoodContrasts(days, key).slice(0, 4) : []),
     [days, key, kitchenEnabled],
   );
-  // The label as it was typed, not the lowercased match key.
-  const foodNames = useMemo(() => {
-    const names = new Map<string, string>();
-    for (const entry of foodEntries) {
-      const label = entry.label.trim();
-      if (label) names.set(label.toLowerCase(), label);
-    }
-    return names;
-  }, [foodEntries]);
+  // What to call each row: the catalog row or recipe by its current name, and
+  // an unlinked food as it was typed, never the match key. See `foodKeyNames`.
+  const groceryItems = useGroceryStore(s => s.items);
+  const recipes = useRecipeStore(s => s.recipes);
+  const foodNames = useMemo(() => foodKeyNames(foodEntries, {
+    items: new Map(groceryItems.map(item => [item.id, item.name])),
+    recipes: new Map(recipes.map(recipe => [recipe.id, recipe.name])),
+  }), [foodEntries, groceryItems, recipes]);
 
   const confirmDelete = (log: MoodLog) => {
     Alert.alert(

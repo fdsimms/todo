@@ -17,6 +17,7 @@ import {
   parseFoodAmount,
   plannedEntryForRecipe,
   portionExamples,
+  recallAmount,
   recipeHelpingNutrition,
   resolveFoodLogDrop,
   savedMealCalories,
@@ -867,6 +868,64 @@ describe('composeFoodAmount / parseFoodAmount', () => {
   it('refuses an amount shaped nothing like what these sheets write', () => {
     expect(parseFoodAmount('a splash', options)).toBeNull();
     expect(parseFoodAmount('1 lemon', options)).toBeNull();
+  });
+});
+
+describe('recallAmount', () => {
+  const yogurt = panel({ portions: [{ amount: 1, label: 'cup', grams: 245 }] });
+
+  it('opens a food on its last amount, split into the unit pill and the number', () => {
+    expect(recallAmount({ amount: '250g', dishMeasure: null }, { kind: 'food', panel: yogurt, name: 'Greek yogurt' }))
+      .toEqual({ amount: '250g', unitKey: 'g', number: '250', dishMeasure: null });
+    expect(recallAmount({ amount: '1.5 cup', dishMeasure: null }, { kind: 'food', panel: yogurt, name: 'Greek yogurt' }))
+      .toEqual({ amount: '1.5 cup', unitKey: 'cup', number: '1.5', dishMeasure: null });
+  });
+
+  it('recalls nothing for a food that was never logged', () => {
+    expect(recallAmount(undefined, { kind: 'food', panel: yogurt, name: 'Greek yogurt' })).toBeNull();
+    expect(recallAmount(null, { kind: 'food', panel: yogurt, name: 'Greek yogurt' })).toBeNull();
+  });
+
+  it('falls back to the default when the unit it was logged in is gone from the panel', () => {
+    // Logged as "2 cup" against a panel that has since been replaced by one
+    // stating no cup. A pre-filled amount Save then refuses is worse than an
+    // empty field.
+    const noCup = panel({ portions: [] });
+    expect(recallAmount({ amount: '2 cup', dishMeasure: null }, { kind: 'food', panel: noCup, name: 'Greek yogurt' }))
+      .toBeNull();
+  });
+
+  it('opens an amount that resolves but is not one of the pills on "Something else", text intact', () => {
+    const bread = panel({ portions: [{ amount: 1, label: 'slice', grams: 30 }] });
+    const recalled = recallAmount({ amount: '1/2 slice', dishMeasure: null }, { kind: 'food', panel: bread, name: 'Bread' });
+    expect(recalled).toEqual({ amount: '1/2 slice', unitKey: 'other', number: '', dishMeasure: null });
+    expect(scalePanelToAmount(bread, '1/2 slice', null, NOW)).not.toBeNull();
+  });
+
+  it('puts a whole-package scan back on the serving pill it re-measures by', () => {
+    // `foodLogEntryEdit` reads "The whole package (2 servings)" as "2 servings".
+    const stated = panel({ basis: 'perServing', servingGrams: null, portions: [] });
+    expect(recallAmount({ amount: '2 servings', dishMeasure: null }, { kind: 'food', panel: stated, name: null }))
+      .toEqual({ amount: '2 serving', unitKey: 'serving', number: '2', dishMeasure: null });
+  });
+
+  it('refuses a dish amount for a food, and a food amount for a dish', () => {
+    expect(recallAmount({ amount: '2', dishMeasure: 'servings' }, { kind: 'food', panel: yogurt, name: null })).toBeNull();
+    expect(recallAmount({ amount: '1 cup', dishMeasure: null }, { kind: 'dish', weighed: true, served: true })).toBeNull();
+  });
+
+  it('opens a dish on the measure and number it was last logged in', () => {
+    expect(recallAmount({ amount: '320', dishMeasure: 'weight' }, { kind: 'dish', weighed: true, served: true }))
+      .toEqual({ amount: '320', unitKey: null, number: '', dishMeasure: 'weight' });
+    expect(recallAmount({ amount: '0.5', dishMeasure: 'servings' }, { kind: 'dish', weighed: false, served: true }))
+      .toEqual({ amount: '0.5', unitKey: null, number: '', dishMeasure: 'servings' });
+  });
+
+  it('falls back when the dish can no longer answer the measure it was logged in', () => {
+    // A plate weighed against a dish nobody has weighed since, or servings of
+    // one that no longer says how many it makes.
+    expect(recallAmount({ amount: '320', dishMeasure: 'weight' }, { kind: 'dish', weighed: false, served: true })).toBeNull();
+    expect(recallAmount({ amount: '2', dishMeasure: 'servings' }, { kind: 'dish', weighed: true, served: false })).toBeNull();
   });
 });
 

@@ -39,20 +39,24 @@ import { featureHidden, type SimpleFeatureId } from './simpleMode';
  * under on `TipsScreen`, so these track the way the drawer already splits the
  * app rather than being a second taxonomy over it.
  */
-export type TipArea = 'today' | 'organize' | 'groceries' | 'kitchen' | 'recipes' | 'mealPlan' | 'app';
+export type TipArea = 'today' | 'organize' | 'groceries' | 'kitchen' | 'recipes' | 'mealPlan' | 'foodLog' | 'app';
 
 /**
- * A hub screen that hosts the tip banner. Only these six render a `TipHost`:
+ * A hub screen that hosts the tip banner. Only these seven render a `TipHost`:
  * they're the screens someone lands on rather than navigates to for one
  * errand, and a tip on top of a screen you opened to do one specific thing is
  * an interruption rather than an aside.
+ *
+ * The food log joined the other four kitchen hub screens late (#2928), and it
+ * was the one that needed tips most: what can be logged, and the four ways in,
+ * are rules nothing on the screen states.
  *
  * A tip with no `screen` is browse-only. That's not a lesser tip. Plenty of
  * what's worth knowing (the widget, the app lock, backups) has no screen it
  * would naturally interrupt, and popping it onto Today because Today is where
  * people are is how a tip system turns into an ad.
  */
-export type TipScreen = 'today' | 'projects' | 'groceries' | 'recipes' | 'mealPlan' | 'kitchen';
+export type TipScreen = 'today' | 'projects' | 'groceries' | 'recipes' | 'mealPlan' | 'kitchen' | 'foodLog';
 
 /**
  * The state a tip's `when` gets to look at.
@@ -93,6 +97,12 @@ export interface TipSignals {
   purchasedItemCount: number;
   /** Meals planned onto any day, past or future. */
   plannedMealCount: number;
+  /**
+   * Food log entries of any day, from `useFoodLogStore.totalCount` rather than
+   * the loaded window, so a day with nothing logged yet doesn't read as a log
+   * with no history.
+   */
+  foodLogEntryCount: number;
   kitchenEnabled: boolean;
   /** Whether an Anthropic API key is set, which is what gates every AI feature. */
   hasApiKey: boolean;
@@ -154,6 +164,7 @@ export const TIP_AREAS: TipAreaInfo[] = [
   { id: 'kitchen', title: 'The kitchen', icon: 'snow-outline' },
   { id: 'recipes', title: 'Recipes', icon: 'restaurant-outline' },
   { id: 'mealPlan', title: 'Meal planning', icon: 'calendar-outline' },
+  { id: 'foodLog', title: 'The food log', icon: 'nutrition-outline' },
   { id: 'app', title: 'Around the app', icon: 'settings-outline' },
 ];
 
@@ -763,6 +774,75 @@ export const TIPS: Tip[] = [
     body: 'Once there are meals on the plan, the app can tell you which of their ingredients are not on the list and not in the kitchen, and add just those.',
     when: s => s.plannedMealCount >= 2,
     keywords: ['restock', 'missing', 'shopping', 'ingredients', 'gap'],
+  },
+
+  // ==== The food log ====
+  // Tagged `foodLogScreen` because simplified mode takes the screen away
+  // until something has been logged, same as the stacks and templates tips.
+  // The first three are how a food gets in at all, so they carry no trigger.
+  {
+    id: 'food-log-nutrition',
+    feature: 'foodLogScreen',
+    area: 'foodLog',
+    screen: 'foodLog',
+    icon: 'nutrition-outline',
+    title: 'Only foods with nutrition on them can be logged',
+    body: 'The list offers grocery items, packages and recipes that have nutrition figures, so every total comes from the food itself rather than a guess. Open a grocery item and fill in its Nutrition field to add one.',
+    keywords: ['calories', 'macros', 'add food', 'missing', 'empty', 'figures'],
+  },
+  {
+    id: 'food-log-scan',
+    feature: 'barcodeScanning',
+    area: 'foodLog',
+    screen: 'foodLog',
+    icon: 'barcode-outline',
+    title: 'Scan a package to log it',
+    body: 'The barcode button at the top looks the package up and logs a serving, or the whole package, from its own label. It needs no API key.',
+    keywords: ['barcode', 'scan', 'label', 'packet', 'camera'],
+  },
+  {
+    id: 'food-log-search',
+    feature: 'foodLogScreen',
+    area: 'foodLog',
+    screen: 'foodLog',
+    icon: 'search-outline',
+    title: 'Search a food database by name',
+    body: 'Searching for a plain food like onion or rice uses USDA FoodData Central, which needs a free API key added in Settings. A food you find can be added to your grocery catalog so it is in the list next time.',
+    link: { label: 'Open Settings', screen: 'Settings' },
+    keywords: ['usda', 'fdc', 'fooddata central', 'lookup', 'database', 'api key'],
+  },
+  {
+    id: 'food-log-contributors',
+    feature: 'foodLogScreen',
+    area: 'foodLog',
+    screen: 'foodLog',
+    icon: 'list-outline',
+    title: 'See which foods a total came from',
+    body: 'Tap a nutrient in the day\'s totals to list the entries that added up to it, largest first.',
+    when: s => s.foodLogEntryCount >= 3,
+    keywords: ['protein', 'breakdown', 'contributors', 'where from', 'totals'],
+  },
+  {
+    id: 'food-log-targets',
+    feature: 'foodLogScreen',
+    area: 'foodLog',
+    screen: 'foodLog',
+    icon: 'flag-outline',
+    title: 'Set a daily target for each nutrient',
+    body: 'The flag button at the top chooses which nutrients the day\'s totals show and sets a target for each one, so the totals read against what you are aiming for.',
+    when: s => s.foodLogEntryCount >= 3,
+    keywords: ['goal', 'calories', 'protein', 'macros', 'daily value'],
+  },
+  {
+    id: 'food-log-saved-meals',
+    feature: 'foodLogScreen',
+    area: 'foodLog',
+    screen: 'foodLog',
+    icon: 'bookmark-outline',
+    title: 'Save a meal you eat often',
+    body: 'Swipe left on an entry to start selecting, pick the rest of the meal, and choose Save as meal. Next time, Log a saved meal in the add sheet logs all of it at once.',
+    when: s => s.foodLogEntryCount >= 8,
+    keywords: ['saved meal', 'usual', 'repeat', 'again', 'breakfast'],
   },
 
   // ==== Around the app ====

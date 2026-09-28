@@ -87,8 +87,8 @@ the record.
 ## Two-way sync for the grocery list
 
 `groceryImportTwoWay` turns the grocery leg from a drain into a mirror: rows added here are
-written back as reminders, checking off either side completes the other, and removing an item
-deletes its reminder. `src/utils/groceryReminderMirror.ts` holds every rule, `mirrorOnce` in
+written back as reminders, checking off either side completes the other, an item's note and the
+reminder's notes field follow each other, and removing an item deletes its reminder. `src/utils/groceryReminderMirror.ts` holds every rule, `mirrorOnce` in
 `remindersImportSync.ts` executes them. The task leg is untouched and has no such mode.
 
 **It replaces the one-way drain for that list rather than running beside it** (`drainTargets`
@@ -102,7 +102,7 @@ written straight back out on the next pass.
 re-import. That trade doesn't survive here: a name can't tell "the user deleted this reminder"
 from "we never pushed it", and getting it wrong either resurrects a row they just deleted or
 deletes one they just added. So each mirrored pair is a `GroceryReminderLink` — the two ids plus
-a **shadow** of the title and completion the pair last agreed on. Every pass is then a three-way
+a **shadow** of the title, completion and note the pair last agreed on. Every pass is then a three-way
 diff: a side that differs from the shadow is the side that changed and wins, both changed is the
 only real conflict, and the app wins that because the rest of the row (its aisle, its price, its
 stores) lives here. Names still matter in exactly one place, and it's load-bearing: an unlinked
@@ -120,7 +120,7 @@ on `rerunRequested`, which is safe only because a second pass over a settled pai
 `groceryReminderMirror.test.ts` pins that with the convergence cases, and a plan that kept finding
 work would be a loop writing to both apps for ever.
 
-Five things that are the way they are for a reason:
+Six things that are the way they are for a reason:
 
 - **The link record is device-local**, in the settings table under `groceryImportLinks`, not a
   column on `grocery_items`. That table syncs (`SYNC_TRACKED_TABLES`) and an EventKit id names a
@@ -134,10 +134,22 @@ Five things that are the way they are for a reason:
   is visible and recoverable, groceries quietly vanishing before a shop is neither.
 - **A failed delete keeps its link.** Dropping it would leave a reminder the next pass reads as
   new and adds the row straight back for, which is the one thing this design exists to prevent.
-- **Every `updateReminderAsync` carries the whole title**, even when only the tick changed.
-  `saveReminderAsync` assigns `reminder.title = details.title` unconditionally
+- **Every `updateReminderAsync` carries the whole title and the whole note**, even when only the
+  tick changed. `saveReminderAsync` assigns `reminder.title = details.title` unconditionally
   (`CalendarModule.swift`), so a partial update blanks the title of the row it meant to leave
-  alone. Same for `location`.
+  alone, and `getReminder(from:)` does the same to `notes`. Before the note was mirrored (#2933),
+  that meant every tick from this side wiped whatever a partner had typed into the reminder's
+  notes. `location` is assigned the same way, and the mirror doesn't own it, so an update sends it
+  back as the pass's own fetch read it rather than mirroring it: the row has nowhere to keep a
+  location, and before this every tick from this side cleared one set in the Reminders app. Any
+  field a future update leaves out needs the same check against that function first.
+- **The note is diffed on the title's rule, with one difference in the shadow it starts from.**
+  A link from before notes were mirrored, and an adopted pair, both start from an empty note
+  rather than from either side's, because empty is the one starting point that reads a note on
+  only one side as that side having written it; any other would read the empty side as having
+  cleared it and push the clearing. Both sides holding different notes is a conflict like any
+  other, and the app wins it. An imported reminder's notes become the row's note unless the row
+  is a catalog item re-listed with a note of its own.
 - **A mirrored pass marks the whole list handled** (`rememberHandled(listId, present, present)`),
   so switching two-way back off hands the one-way drain a clean slate rather than a list it reads
   as one big backlog — including the reminders the mirror itself wrote.

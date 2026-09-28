@@ -476,12 +476,20 @@ export function KitchenScreen() {
   // box, a barcode is worth carrying for a row that has no brand or variant at
   // all — an unfound code the user just named is the one most worth
   // remembering, so `noteScanned` writes an entry either way.
+  //
+  // The shelf price read beside a barcode rides the same name-keyed map
+  // handleReceiptApply below builds, and for the same reason (#2934): it was
+  // shown on the scan row and then dropped here. Matched rows carry it in
+  // `priceById`, drafts on `priceMinor`. It is filed against the store a
+  // running trip names, or none: a scan doesn't say where the shelf was, and
+  // `setItemPrice` records an item-level price when there is no store.
   const handleScanApply = (
     itemIds: string[],
     toAdd: ReceiptAddDraft[],
     frozenItemIds: ReadonlySet<string>,
     products: ScanProductDraft[],
-    gtinLinks: ScannedGtinLink[]
+    gtinLinks: ScannedGtinLink[],
+    priceById: Readonly<Record<string, number>>
   ) => {
     const names = [
       ...itemIds
@@ -554,11 +562,23 @@ export function KitchenScreen() {
         draft.existingItemId ? undefined : draft.nameFromScan
       );
     }
+    const priceByName = new Map<string, number>();
+    for (const id of itemIds) {
+      const name = items.find(i => i.id === id)?.name;
+      const minor = priceById[id];
+      if (name && minor !== undefined) priceByName.set(name, minor);
+    }
+    for (const draft of toAdd) {
+      if (draft.priceMinor !== null) priceByName.set(draft.name, draft.priceMinor);
+    }
     setScanOpen(false);
     if (names.length === 0) return;
     // `acquired`: a scanned bag is a new packet, so the old one's freezer,
     // opened and running-low claims go (see addManyToPantry).
-    if (addManyToPantry(names, frozenNames, productNames, undefined, { acquired: true }) > 0) {
+    const prices = priceByName.size > 0
+      ? { byName: priceByName, shopId: useGroceryStore.getState().activeShop()?.id ?? null }
+      : undefined;
+    if (addManyToPantry(names, frozenNames, productNames, prices, { acquired: true }) > 0) {
       haptics.success();
     }
   };

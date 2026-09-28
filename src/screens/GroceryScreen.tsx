@@ -65,6 +65,7 @@ import { ListBulkBar } from '../components/ListBulkBar';
 import { ReorderableList, type RowScroller } from '../components/ReorderableList';
 import { useScrollToTopOnTabPress } from '../hooks/useScrollToTopOnTabPress';
 import { useRowSelection } from '../hooks/useRowSelection';
+import { PaintSelectionProvider } from '../components/PaintSelection';
 import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
 import { GroceryAISheet, type GroceryAIMode } from '../components/GroceryAISheet';
 import { RecipeSourceSheet } from '../components/RecipeSourceSheet';
@@ -73,9 +74,9 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useAiRoute } from '../hooks/useOnDeviceAi';
 import { useSheetSubject } from '../hooks/useSheetSubject';
 import { OTHER_AISLE } from '../utils/groceryAisles';
-import { describeListEstimate, estimateListTotal, lastPriceFor, pricedSince, priceToInput } from '../utils/groceryPrice';
+import { describeListEstimate, estimateListTotal, priceToInput, tripPriceFor } from '../utils/groceryPrice';
 import { buildGroceryListShareText, buildGroceryListText } from '../utils/shareText';
-import { useGroceryStore } from '../store/useGroceryStore';
+import { subscribeCartHoldRelease, useGroceryStore } from '../store/useGroceryStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { describeSupplyStockCaption, suppliesStockedFrom } from '../utils/supply';
 import { useRecipeStore } from '../store/useRecipeStore';
@@ -293,12 +294,14 @@ export function GroceryScreen() {
   // What a scanned receipt read, held between the two sheets. Undefined rather
   // than null when there's no receipt in play: the finish sheet tells the two
   // apart, since a receipt naming no store is a real answer and not an absent
-  // one.
+  // one. A barcode session seeds prices only (the shelf labels it read), so it
+  // leaves `shopId` and `purchasedAt` undefined and the finish sheet defaults
+  // both exactly as it does for a hand-finished trip.
   const [receiptSeed, setReceiptSeed] = useState<
     {
-      shopId: string | null;
+      shopId?: string | null;
       priceText: Record<string, string>;
-      purchasedAt: string;
+      purchasedAt?: string;
       /**
        * Distinguishes one reading from the next, for the finish sheet's sake —
        * see its `seedStamp` prop. A receipt read while that sheet is open has
@@ -369,6 +372,8 @@ export function GroceryScreen() {
     exitSelection,
     selectAll,
     deselectAll,
+    painting,
+    paintProps,
   } = useRowSelection();
 
   // Every AI affordance is gated on its route, so a user who can't run it
@@ -487,10 +492,9 @@ export function GroceryScreen() {
     const out = new Map<string, { minor: number | null; recorded: boolean }>();
     if (!activeTripShop || !tripStartedAt) return out;
     for (const item of listRows) {
-      out.set(item.id, {
-        minor: lastPriceFor(item, activeTripShop.id, itemShops),
-        recorded: pricedSince(item, activeTripShop.id, itemShops, tripStartedAt),
-      });
+      // The trip store's own price, or one typed this trip, and never another
+      // store's: see tripPriceFor (#2936).
+      out.set(item.id, tripPriceFor(item, activeTripShop.id, itemShops, tripStartedAt));
     }
     return out;
   }, [activeTripShop, tripStartedAt, listRows, itemShops]);
@@ -698,6 +702,32 @@ export function GroceryScreen() {
 
   const dropZonesRef = useRef<FabDropZonesHandle>(null);
   const [fabDragging, setFabDragging] = useState(false);
+
+  // ——— The cart hold letting go ————————————————————————————————————
+  //
+  // Checked rows hold their slot for a moment and then sink into "In cart"
+  // together (armCartHold). That move lands on a timer, a second after the
+  // last tap, with no handler of ours around it to animate it, so the list
+  // jumped under a thumb already reaching for the next row (#2943). The store
+  // says when it is about to let go, and this animates that one commit, the
+  // way handleToggle animates the tap itself.
+  //
+  // Not during a drag of either kind. A row drag drives its own animations and
+  // a LayoutAnimation in the same commit fights them (see layoutAnimation.ts);
+  // the add button's drop zones are measured off rows that mustn't be moving.
+  // The rows still sink then, just without the animation.
+  const rowDraggingRef = useRef(false);
+  const fabDraggingRef = useRef(fabDragging);
+  fabDraggingRef.current = fabDragging;
+  const markRowDragging = useCallback(() => { rowDraggingRef.current = true; }, []);
+  const clearRowDragging = useCallback(() => { rowDraggingRef.current = false; }, []);
+  useEffect(
+    () => subscribeCartHoldRelease(() => {
+      if (rowDraggingRef.current || fabDraggingRef.current) return;
+      animateLayout();
+    }),
+    []
+  );
   // Lets the drag scroll the list once it reaches either end of the screen.
   const scrollControl = useRef<DragScroller | null>(null);
   // Separate from the drag scroller above: this one backs the tab-press
@@ -874,15 +904,19 @@ export function GroceryScreen() {
       if (!aisle) return;
       animateLayout();
       const ids = Array.from(selectedIds);
-      setAisleMany(Object.fromEntries(ids.map(id => [id, aisle])));
+      // With an undo, as Remove has: see setAisleMany's registerUndo (#2942).
+      setAisleMany(Object.fromEntries(ids.map(id => [id, aisle])), { registerUndo: true });
       exitSelection();
     },
     [selectedIds, setAisleMany, exitSelection]
   );
 
+  // No confirm, unlike Clear the list: Remove parks rows rather than deleting
+  // any, and one undo puts the whole batch back (#2942). Clear confirms
+  // because it can delete a row outright.
   const handleBulkRemove = useCallback(() => {
     animateLayout();
-    removeFromListMany(Array.from(selectedIds));
+    removeFromListMany(Array.from(selectedIds), { registerUndo: true });
     exitSelection();
   }, [selectedIds, removeFromListMany, exitSelection]);
 
@@ -1014,11 +1048,15 @@ export function GroceryScreen() {
    * A scan session, confirmed. Same two writes the receipt path makes, minus
    * everything a barcode can't know.
    *
-   * A receipt names a store, a date and a price per line; a barcode names none
-   * of the three, so this seeds nothing and lets the finish sheet default as it
-   * always does. Clearing `receiptSeed` is the load-bearing half of that: a
-   * receipt read earlier in the session would otherwise attach its store and
-   * its prices to a trip these scans are what's actually finishing.
+   * A receipt names a store, a date and a price per line; a barcode names
+   * neither of the first two, so the finish sheet defaults both as it always
+   * does. What a scan can carry is the shelf price printed beside the code
+   * (`ScanRow.priceMinor`), and that seeds the price field for its row, the
+   * way a receipt's line does (#2934): it used to be shown on the scan row and
+   * then dropped here. Replacing `receiptSeed` rather than merging into it is
+   * the load-bearing half: a receipt read earlier in the session would
+   * otherwise attach its store and its prices to a trip these scans are what's
+   * actually finishing.
    *
    * It still routes through the finish sheet rather than calling
    * `finishShopping` — see the sheet's own doc comment. Unpacking is the end of
@@ -1051,10 +1089,12 @@ export function GroceryScreen() {
       toAdd: ReceiptAddDraft[],
       frozenItemIds: ReadonlySet<string>,
       products: ScanProductDraft[],
-      gtinLinks: ScannedGtinLink[]
+      gtinLinks: ScannedGtinLink[],
+      priceById: Readonly<Record<string, number>>
     ) => {
       animateLayout();
       const allIds = [...itemIds];
+      const allPriceById: Record<string, number> = { ...priceById };
       const frozenIds = new Set(itemIds.filter(id => frozenItemIds.has(id)));
       // A row this loop mints, with the barcode it came from. The sheet linked
       // everything whose id it already knew; these are the ones that had no id
@@ -1085,6 +1125,7 @@ export function GroceryScreen() {
         }
         allIds.push(id);
         if (draft.frozen) frozenIds.add(id);
+        if (draft.priceMinor !== null) allPriceById[id] = draft.priceMinor;
       }
       // After the loop, so a row this session minted is already there to hang a
       // box off. Default opts: addProduct only promotes when the item has no
@@ -1103,7 +1144,20 @@ export function GroceryScreen() {
       if (frozenIds.size > 0) {
         setScanFrozenIds(prev => new Set([...prev, ...frozenIds]));
       }
-      setReceiptSeed(null);
+      // Prices only: no store and no date, so the finish sheet defaults both
+      // (see receiptSeed). Null when no row read a price, which is the old
+      // "seed nothing" exactly.
+      const pricedIds = Object.keys(allPriceById);
+      setReceiptSeed(
+        pricedIds.length > 0
+          ? {
+              priceText: Object.fromEntries(
+                pricedIds.map(id => [id, priceToInput(allPriceById[id])])
+              ),
+              stamp: generateId(),
+            }
+          : null
+      );
       setScanOpen(false);
       setFinishOpen(true);
     },
@@ -1454,6 +1508,10 @@ export function GroceryScreen() {
           mounted changes, on the tick that gives it something to do. */}
       {checkedCount > 0 && startCard}
 
+      {/* A drag down the column of selection dots picks up a run of rows
+          (#2944), as on every other selectable list. Outside the drop zones,
+          the way ProjectsScreen nests the same two. */}
+      <PaintSelectionProvider {...paintProps}>
       <FabDropZoneProvider
         ref={dropZonesRef}
         onIntentChange={fabIntentChannel.publish}
@@ -1465,8 +1523,9 @@ export function GroceryScreen() {
         renderItem={renderRow}
         // The user can't scroll during an add-button drag (the button's
         // responder has the touch); the drag scrolls it instead, through the
-        // control below.
-        scrollEnabled={!fabDragging}
+        // control below. Same while a paint gesture owns the touch: iOS has
+        // to be told directly (see PaintSelectionProvider).
+        scrollEnabled={!fabDragging && !painting}
         scrollControlRef={scrollControl}
         rowScrollerRef={rowScroller}
         scrollToTop={{ bottom: insets.bottom + tabBarHeight + spacing.md }}
@@ -1474,6 +1533,8 @@ export function GroceryScreen() {
         // and unthrottled ticks run together into one long buzz. The lift
         // itself is fired by ReorderableList.
         onHoverChange={haptics.dragTick}
+        onDragBegin={markRowDragging}
+        onDragEnd={clearRowDragging}
         dragRange={groceryDragRange}
         placeholderStyle={styles.dropSlot}
         onReorder={reordered => applyDrop(resolveGroceryDrop(reordered))}
@@ -1566,6 +1627,7 @@ export function GroceryScreen() {
         }
       />
       </FabDropZoneProvider>
+      </PaintSelectionProvider>
 
       {/* The bulk bar sits where the button does, and adding an item isn't
           something you're doing mid-selection anyway. */}

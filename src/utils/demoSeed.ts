@@ -19,6 +19,7 @@ import { useSavedViewStore } from '../store/useSavedViewStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useStepTimerStore } from '../store/useStepTimerStore';
+import { stepDurationOffers, stepTimerExcerpt } from './stepTimers';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useSettingsStore, type WeekStart } from '../store/useSettingsStore';
@@ -55,6 +56,8 @@ import { birthdayGiftTitle, personLinkUrl } from './birthdayTasks';
 import { waitingFollowUpTitle } from './waitingFollowUpTasks';
 import { giftIdeasText } from './personNotes';
 import { mealShortfallLinkUrl, mealShortfallTitle } from './mealShortfallTasks';
+import { frozenForMeal, mealThawLinkUrl, mealThawTitle } from './mealThawTasks';
+import { standingSwapMap } from './standingSwaps';
 import { mealLogNudgeLinkUrl, mealLogNudgeTitle } from './mealLogNudgeTasks';
 import { CALENDAR_REVIEW_TITLE } from './calendarReviewTasks';
 import {
@@ -2984,6 +2987,8 @@ function seedRecipes(): DemoRecipes {
       recipeName: stirFry.name,
       stepId: stirFryStep.id,
       stepLabel: 'Step 3 of 4',
+      // The words the footer row goes by, read the way cook mode reads them.
+      stepExcerpt: stepTimerExcerpt(stirFryStep.text, stepDurationOffers(stirFryStep)[0]?.start ?? 0),
       durationSeconds: 2 * 60,
     });
   }
@@ -4468,10 +4473,18 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
   plan(0, 'dinner', { title: 'Weeknight chicken stir-fry', recipeId: recipes.stirFry });
   plan(0, 'snack', { title: 'Hummus snack plate', recipeId: recipes.snacks, cookTask: false });
 
-  plan(1, 'breakfast', { title: 'Overnight oats', recipeId: recipes.oats });
   // Captured for the shopping task seeded at the end of this function — it's
   // the night the kitchen can't currently make.
   const salmonNight = plan(1, 'dinner', { title: 'Lemon garlic salmon', recipeId: recipes.salmon });
+  // The frozen chili, planned for tomorrow's lunch: a frozen container is
+  // still live and plannable, which is most of what anyone freezes one for.
+  // Captured for the freezer task seeded at the end of this function. It took
+  // the place of a second morning of oats, which kept tomorrow at two meals
+  // of three: the nudge's counter wants exactly one day planned end to end
+  // (today), with the rest of the week spread either side of it.
+  const chiliLunch = frozenChilli
+    ? plan(1, 'lunch', { title: 'Beef chili', leftoverId: frozenChilli.id })
+    : null;
 
   // Freeform — planning doesn't require a recipe, and a night that just says
   // "eating out" holds its place and counts like any other.
@@ -4565,6 +4578,38 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
     });
   }
 
+  // --- Something tonight's dinner needs out of the freezer ------------------
+  // The freezer generator (#2926, off by default, so written by hand for the
+  // shortfall task's reason). Tomorrow's lunch is the chili frozen with the
+  // leftovers above, which is the honest instance. (Tonight's stir-fry isn't:
+  // its chicken breast is frozen too, but it's also on the list, so the rule
+  // reads it as being bought fresh.) Worked out with the real rule rather than
+  // typed, so the first foreground sweep can't disagree with it and clear the
+  // row.
+  if (chiliLunch) {
+    const grocery = useGroceryStore.getState();
+    const frozen = frozenForMeal(
+      chiliLunch,
+      new Map(useRecipeStore.getState().recipes.map(r => [r.id, r])),
+      useLeftoverStore.getState().leftovers,
+      grocery.items,
+      grocery.itemSubs,
+      standingSwapMap(grocery.itemSubs, grocery.items),
+      new Date(),
+      grocery.itemProducts
+    );
+    if (frozen && frozen.names.length > 0) {
+      useSettingsStore.getState().setMealThawTaskCategory('Meal Plan');
+      useTaskStore.getState().addTask({
+        title: mealThawTitle(chiliLunch.date, chiliLunch.slot, frozen.names),
+        dueDate: today.toISOString(),
+        linkUrl: mealThawLinkUrl(frozen),
+        category: 'Meal Plan',
+        ...generatedBy('mealThaw', chiliLunch.id),
+      });
+    }
+  }
+
   // --- A planned meal with nothing logged -----------------------------------
   // The reverse-window generator (off by default, same reasoning as the
   // shortfall task above): yesterday's stir-fry was cooked but never logged
@@ -4595,5 +4640,11 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
   // cooked, which the demo is fully set up for: tonight's stir-fry, its
   // ingredients and an unrated recipe are all here.
   useMealPlanStore.getState().clearCookRecap();
+
+  // "Usually cooking for" (#2910), set only once every night above is planned:
+  // it decides where a meal planned from here on starts and moves nothing
+  // already on the plan, so setting it first would have quietly rescaled the
+  // seed. Planning the salmon (serves 2) from the demo shows it as 2x.
+  useSettingsStore.getState().setHouseholdServings(4);
 
 }

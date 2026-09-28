@@ -181,17 +181,32 @@ export function mealSlotOf(task: Pick<Task, 'generatedKind' | 'generatedSourceId
 }
 
 /**
- * `dundundun://recipe?id=…` — a meal-slot task's own link once the slot holds
- * a recipe, so "Make X" opens the recipe itself (ingredients, steps, Cook
- * Mode) rather than the meal plan day it's cooked from. Parsed back out in
- * `deepLinks.ts` (`isRecipeUrl`/`recipeUrlId`), which is what routes it to
- * `resetToRecipeDetail`.
+ * `dundundun://recipe?id=…[&entry=…]` — a meal-slot task's own link once the
+ * slot holds a recipe, so "Make X" opens the recipe itself (ingredients,
+ * steps, Cook Mode) rather than the meal plan day it's cooked from. Parsed
+ * back out in `deepLinks.ts` (`isRecipeUrl`/`recipeUrlId`/`recipeUrlEntryId`),
+ * which is what routes it to `resetToRecipeDetail`.
  */
 export const RECIPE_LINK_URL = 'dundundun://recipe';
 
-/** The recipe-scoped counterpart of `kitchenLinkUrl`/`personLinkUrl` — same `?id=` shape. */
-export function recipeLinkUrl(recipeId: string): string {
-  return `${RECIPE_LINK_URL}?id=${encodeURIComponent(recipeId)}`;
+/**
+ * The recipe-scoped counterpart of `kitchenLinkUrl`/`personLinkUrl` — same
+ * `?id=` shape, plus the planned meal it was opened for when there is one.
+ *
+ * **The entry's id travels, not its scale and picks.** The Meal Plan screen's
+ * own "Open recipe" hands RecipeDetail the meal's `recipeChoices` and
+ * `recipeScale` (see `docs/arch/recipes.md`), and a link that carried only the
+ * recipe opened a doubled chili at 1× with the default side: cook mode read
+ * out half the quantities, and "Log to food log" logged half the helping
+ * (#2931). Writing the numbers into the URL instead would put them on a field
+ * `mealSlotDrift` rewrites on every reconcile, so changing a meal's scale would
+ * have to rewrite its task; the id doesn't change when the scale does, and the
+ * link resolves the entry as it stands when it's tapped
+ * (`deepLinks.plannedRecipeParams`).
+ */
+export function recipeLinkUrl(recipeId: string, entryId?: string | null): string {
+  const base = `${RECIPE_LINK_URL}?id=${encodeURIComponent(recipeId)}`;
+  return entryId ? `${base}&entry=${encodeURIComponent(entryId)}` : base;
 }
 
 /**
@@ -218,7 +233,7 @@ export function recipeLinkUrl(recipeId: string): string {
  * unconditionally on every reconcile, not just while the chain is at index 0).
  */
 export function mealSlotLinkUrl(dayKey: string, slot: MealSlot, entry: MealPlanEntry | null): string {
-  if (entry?.recipeId && !entry.leftoverId) return recipeLinkUrl(entry.recipeId);
+  if (entry?.recipeId && !entry.leftoverId) return recipeLinkUrl(entry.recipeId, entry.id);
   const base = mealPlanNudgeLinkUrl(dayKey);
   return entry ? base : `${base}&pick=${slot}`;
 }

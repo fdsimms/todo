@@ -1,9 +1,10 @@
 import React, { useMemo, useState } from 'react';
-import { Platform, View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
+import { Alert, Platform, View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors } from '../theme';
-import { formatDuration, formatStopwatch } from '../utils/effort';
+import { formatDuration } from '../utils/effort';
+import { recipeTimerClock, recipeTimerResetPrompt } from '../utils/recipeTimer';
 import { animateLayout } from '../utils/layoutAnimation';
 import { haptics } from '../utils/haptics';
 import { ProgressBar } from './ProgressBar';
@@ -48,6 +49,18 @@ interface Props {
  * needs with their hands full — the start/pause button, and while a timer is
  * running the tick that logs it. Typing a time in from the stove clock is the
  * one that can afford a tap first.
+ *
+ * **Sized for a knuckle, the same as `StepTimerRow`** (#2920's treatment,
+ * carried over): these sit in the same card and the same cook mode footer as
+ * the step timers, reached for the same way. Every control is 44pt with no
+ * `hitSlop` reaching into a neighbour's; the countdown is `font.lg` with its
+ * state after it ("12:30 left", `recipeTimerClock`); Pause and Resume are
+ * glyphs, as there. Reset is the one that loses something, a time about to be
+ * logged, so it sits furthest from the primary button behind a wider gap and
+ * asks first (`recipeTimerResetPrompt`). The primary stays at the trailing
+ * edge in every state, so Start becomes Pause under the same finger; the step
+ * row's own order would put it a slot in once a cook is running, moving it out
+ * from under the tap that started it.
  */
 export function RecipeTimerRow({
   verb, targetMinutes, running, paused, inProgress, ready,
@@ -68,21 +81,24 @@ export function RecipeTimerRow({
     setExpanded(false);
   };
 
-  const headerText = hasTarget
-    ? ready
-      ? running
-        ? `${formatStopwatch(-remainingSeconds)} over`
-        : `Paused · ${formatStopwatch(-remainingSeconds)} over`
-      : running
-        ? `${formatStopwatch(Math.max(0, remainingSeconds))} left`
-        : paused
-          ? `Paused · ${formatStopwatch(Math.max(0, remainingSeconds))} left`
-          : `${verb} for ${formatDuration(targetMinutes!)}`
-    : running
-      ? `${formatStopwatch(elapsedSeconds)} elapsed`
-      : paused
-        ? `Paused · ${formatStopwatch(elapsedSeconds)}`
-        : idleText;
+  // The number big, the state small after it, once there's a clock to show;
+  // before that, what starting it would do.
+  const reading = recipeTimerClock({ hasTarget, running, paused, ready, elapsedSeconds, remainingSeconds });
+  const idleLabel = hasTarget ? `${verb} for ${formatDuration(targetMinutes!)}` : idleText;
+  const spoken = !reading
+    ? idleLabel
+    : ready ? `Time's up, ${reading.clock} over` : `${reading.clock} ${reading.state}`;
+  const noun = verb.toLowerCase();
+
+  // Asks while there's time on it to lose, which is always once it's shown.
+  const handleReset = () => {
+    const prompt = recipeTimerResetPrompt(verb, { running, elapsedSeconds });
+    if (!prompt) { onReset(); return; }
+    Alert.alert(prompt.title, prompt.message, [
+      { text: 'Keep it', style: 'cancel' },
+      { text: 'Reset timer', style: 'destructive', onPress: onReset },
+    ]);
+  };
 
   return (
     <View style={styles.timerRow}>
@@ -93,54 +109,64 @@ export function RecipeTimerRow({
           onPress={() => { haptics.tap(); animateLayout(); setExpanded(v => !v); }}
           accessibilityRole="button"
           accessibilityState={{ expanded }}
-          accessibilityLabel={`${verb} timer, ${headerText}`}
+          accessibilityLabel={`${verb} timer, ${spoken}`}
           accessibilityHint="Double tap for the time it usually takes, and to log one by hand"
         >
           <Ionicons
-            name={ready ? 'alarm-outline' : 'timer-outline'}
-            size={16}
+            name={ready ? 'alarm' : 'timer-outline'}
+            size={18}
             color={ready ? colors.orange : colors.accent}
           />
-          <Text style={styles.timerHeaderText} numberOfLines={1}>{headerText}</Text>
+          {reading ? (
+            <Text style={styles.labels} numberOfLines={1}>
+              <Text style={[styles.clock, ready && styles.clockReady]}>{reading.clock}</Text>
+              <Text style={[styles.clockState, ready && styles.clockStateReady]}> {reading.state}</Text>
+            </Text>
+          ) : (
+            <Text style={[styles.labels, styles.idleLabel]} numberOfLines={1}>{idleLabel}</Text>
+          )}
           <Ionicons
             name={expanded ? 'chevron-up' : 'chevron-down'}
-            size={12}
+            size={iconSize.xs}
             color={colors.textTertiary}
           />
         </TouchableOpacity>
+        {/* Furthest from the primary button and a wider gap from its
+            neighbour (`resetBtn`), with no hitSlop anywhere on the row: the
+            three used to sit 8pt apart with overlapping hit areas, Reset right
+            beside Pause. */}
         {inProgress && (
           <TouchableOpacity
-            onPress={onLog}
-            hitSlop={8}
-            style={styles.timerSecondaryBtn}
+            onPress={handleReset}
+            style={[styles.secondaryBtn, styles.resetBtn]}
+            activeOpacity={interaction.activeOpacity}
             accessibilityRole="button"
-            accessibilityLabel={`Done, log this ${verb.toLowerCase()} time`}
-          >
-            <Ionicons name="checkmark" size={iconSize.sm} color={colors.textSecondary} />
-          </TouchableOpacity>
-        )}
-        {inProgress && (
-          <TouchableOpacity
-            onPress={onReset}
-            hitSlop={8}
-            style={styles.timerSecondaryBtn}
-            accessibilityRole="button"
-            accessibilityLabel={`Reset ${verb.toLowerCase()} timer`}
+            accessibilityLabel={`Reset ${noun} timer`}
           >
             <Ionicons name="refresh" size={iconSize.sm} color={colors.textTertiary} />
           </TouchableOpacity>
         )}
+        {inProgress && (
+          <TouchableOpacity
+            onPress={onLog}
+            style={styles.secondaryBtn}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="button"
+            accessibilityLabel={`Done, log this ${noun} time`}
+          >
+            <Ionicons name="checkmark" size={iconSize.sm} color={colors.textSecondary} />
+          </TouchableOpacity>
+        )}
         <TouchableOpacity
-          style={[styles.timerBtn, running && styles.timerBtnRunning]}
+          style={[styles.primaryBtn, running && styles.primaryBtnRunning]}
           activeOpacity={interaction.activeOpacity}
           onPress={onToggle}
           accessibilityRole="button"
           accessibilityLabel={
-            running ? `Pause ${verb.toLowerCase()} timer` : paused ? `Resume ${verb.toLowerCase()} timer` : `Start ${verb.toLowerCase()} timer`
+            running ? `Pause ${noun} timer` : paused ? `Resume ${noun} timer` : `Start ${noun} timer`
           }
         >
-          <Ionicons name={running ? 'pause' : 'play'} size={12} color={colors.onAccent} />
-          <Text style={styles.timerBtnText}>{running ? 'Pause' : paused ? 'Resume' : 'Start'}</Text>
+          <Ionicons name={running ? 'pause' : 'play'} size={iconSize.sm} color={colors.onAccent} />
         </TouchableOpacity>
       </View>
       {/* Only while something is actually counting: an untouched bar at 0% on
@@ -168,8 +194,8 @@ export function RecipeTimerRow({
               <TouchableOpacity
                 onPress={submitManual}
                 disabled={!manualMinutes}
-                hitSlop={8}
-                style={[styles.timerSecondaryBtn, !manualMinutes && styles.manualLogBtnDisabled]}
+                style={[styles.secondaryBtn, !manualMinutes && styles.manualLogBtnDisabled]}
+                activeOpacity={interaction.activeOpacity}
                 accessibilityRole="button"
                 accessibilityLabel={`Log this ${verb.toLowerCase()} time`}
               >
@@ -183,6 +209,9 @@ export function RecipeTimerRow({
   );
 }
 
+/** Every control on the row is at least this tall and wide: the 44pt touch target. */
+const TOUCH = 44;
+
 const makeStyles = (colors: Colors) => StyleSheet.create({
   timerRow: {
     paddingVertical: spacing.sm,
@@ -194,44 +223,66 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: spacing.sm,
   },
   // The whole label is the disclosure target, so the tap has a row-width
-  // surface rather than a chevron a cook has to aim at.
+  // surface rather than a chevron a cook has to aim at. As tall as the
+  // controls beside it, so it's a 44pt target too.
   headerTap: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
+    minHeight: TOUCH,
   },
-  timerHeaderText: {
+  labels: {
     flex: 1,
+  },
+  // StepTimerRow's clock face, so the rows in one card read as one set.
+  clock: {
     color: colors.text,
-    fontSize: font.sm,
-    fontWeight: fontWeight.medium,
+    fontSize: font.lg,
+    fontWeight: fontWeight.semibold,
     fontVariant: ['tabular-nums'],
   },
-  timerBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xsm,
-    backgroundColor: colors.accentFill,
-    borderRadius: radius.sm,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xsm,
+  clockReady: {
+    color: colors.orange,
   },
-  timerBtnRunning: {
+  clockState: {
+    color: colors.textSecondary,
+    fontSize: font.sm,
+    fontWeight: fontWeight.medium,
+  },
+  clockStateReady: {
+    color: colors.orange,
+  },
+  // "Cook for 45m", "Time prep": a line of words rather than a clock, so a
+  // step under the clock's size. Most recipes are never timed, and two idle
+  // rows at clock size would shout on every one of them.
+  idleLabel: {
+    color: colors.text,
+    fontSize: font.md,
+    fontWeight: fontWeight.medium,
+  },
+  primaryBtn: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.accentFill,
+    borderRadius: radius.md,
+    width: TOUCH,
+    height: TOUCH,
+  },
+  primaryBtnRunning: {
     backgroundColor: colors.orange,
   },
-  timerBtnText: {
-    color: colors.onAccent,
-    fontSize: font.xs,
-    fontWeight: fontWeight.semibold,
-  },
-  timerSecondaryBtn: {
-    width: 28,
-    height: 28,
+  secondaryBtn: {
+    width: TOUCH,
+    height: TOUCH,
     borderRadius: radius.full,
     backgroundColor: colors.bgTertiary,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  // With the row's own gap, 16pt clear of the button beside it.
+  resetBtn: {
+    marginRight: spacing.sm,
   },
   details: {
     gap: spacing.xs,
@@ -239,28 +290,28 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   manualRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
+    gap: spacing.sm,
   },
   manualLabel: {
-    color: colors.textTertiary,
-    fontSize: font.xs,
+    color: colors.textSecondary,
+    fontSize: font.sm,
     flex: 1,
   },
   manualInput: {
-    minWidth: 44,
-    height: 28,
-    paddingHorizontal: spacing.xs,
+    minWidth: 64,
+    height: TOUCH,
+    paddingHorizontal: spacing.sm,
     borderRadius: radius.sm,
     backgroundColor: colors.bgTertiary,
     color: colors.text,
-    fontSize: font.sm,
+    fontSize: font.md,
     textAlign: 'right',
   },
   manualLogBtnDisabled: {
     opacity: 0.5,
   },
   timerSummary: {
-    color: colors.textTertiary,
-    fontSize: font.xs,
+    color: colors.textSecondary,
+    fontSize: font.sm,
   },
 });

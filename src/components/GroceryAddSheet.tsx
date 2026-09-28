@@ -159,8 +159,10 @@ export function GroceryAddSheet({ visible, onClose, seedAisle, onAdded }: Props)
 
           <GroceryAddField
             ref={fieldRef}
-            onAdded={items => {
-              setAddedCount(c => c + items.length);
+            onAdded={(items, newCount) => {
+              // Only what this put on the list: a name already there is still
+              // handed on to be placed, but isn't counted (#2945).
+              setAddedCount(c => c + newCount);
               onAdded?.(items);
             }}
           />

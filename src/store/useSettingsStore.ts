@@ -93,6 +93,7 @@ import {
   serializeOptionalCount,
 } from '../utils/focusSettings';
 import { UNIT_SYSTEMS, type UnitSystem } from '../utils/unitConvert';
+import { MAX_HOUSEHOLD_SERVINGS } from '../utils/recipeScale';
 import { parseTitleRules } from '../utils/titleRules';
 import { parseWeatherRules, defaultWeatherRules } from '../utils/weatherTasks';
 import {
@@ -597,6 +598,13 @@ interface SettingsStore {
   // what's stored. Defaults to 'asWritten', so an install upgrading into this
   // reads exactly as it did.
   unitSystem: UnitSystem;
+  // How many people a planned recipe usually feeds (#2910), which planMeal
+  // turns into the new meal's starting scale through the recipe's own servings
+  // (see householdScale in src/utils/recipeScale.ts). 0 means not set, and is
+  // the default, so a meal keeps starting as written until somebody says
+  // otherwise. A starting point only: every meal's own servings stepper still
+  // changes it, and nothing already planned is touched when this changes.
+  householdServings: number;
   // The symbol grocery prices are shown with. Cosmetic and nothing else: every
   // price is stored as minor units of whatever the user shops in, and there is
   // no second currency and no conversion — see src/utils/groceryPrice.ts. A
@@ -1272,6 +1280,14 @@ interface SettingsStore {
   // Which category a log-nudge task files itself under, by name, or null for
   // none — same setting as the other generators' for the same reason.
   mealLogNudgeTaskCategory: string | null;
+  // Whether a meal planned for today or tomorrow that uses something only on
+  // hand frozen gets a "Take X out of the freezer" task (see
+  // src/utils/mealThawTasks.ts, #2926). Defaults OFF, for mealShortfallTasks'
+  // own reason: it adds a surface rather than replacing one.
+  mealThawTasks: boolean;
+  // Which category a freezer task files itself under, by name, or null for
+  // none — same setting as the other generators' for the same reason.
+  mealThawTaskCategory: string | null;
   // Whether a recurring task running low on its supply gets an "Order more X"
   // task (see src/utils/supply.ts). Defaults ON, unlike pantryCheckTasks above,
   // and the difference is who asked: a pantry check is projected from a catalog
@@ -1581,6 +1597,7 @@ interface SettingsStore {
   setConfirmBeforeDeleting: (on: boolean) => void;
   setMealsOnToday: (mode: MealsOnToday) => void;
   setUnitSystem: (system: UnitSystem) => void;
+  setHouseholdServings: (servings: number) => void;
   setCurrencySymbol: (symbol: string) => void;
   setMealCookTasks: (on: boolean) => void;
   setMealCookTaskCategory: (category: string | null) => void;
@@ -1728,6 +1745,8 @@ interface SettingsStore {
   setMealShortfallTaskCategory: (category: string | null) => void;
   setMealLogNudgeTasks: (on: boolean) => void;
   setMealLogNudgeTaskCategory: (category: string | null) => void;
+  setMealThawTasks: (on: boolean) => void;
+  setMealThawTaskCategory: (category: string | null) => void;
   setSupplyReorderTasks: (on: boolean) => void;
   setSupplyReorderTaskCategory: (category: string | null) => void;
   setCalendarReviewTasks: (on: boolean) => void;
@@ -1841,6 +1860,7 @@ const DEFAULT_SETTINGS = {
   collapsedGroceryGroups: [] as string[],
   mealsOnToday: 'inline' as MealsOnToday,
   unitSystem: 'asWritten' as UnitSystem,
+  householdServings: 0,
   currencySymbol: DEFAULT_CURRENCY_SYMBOL,
   mealCookTasks: true,
   mealCookTaskCategory: null,
@@ -1860,6 +1880,8 @@ const DEFAULT_SETTINGS = {
   mealShortfallTaskCategory: null,
   mealLogNudgeTasks: false,
   mealLogNudgeTaskCategory: null,
+  mealThawTasks: false,
+  mealThawTaskCategory: null,
   leftoverUseUpTasks: true,
   leftoverUseUpTaskCategory: null,
   useUpTaskCap: null,
@@ -2256,6 +2278,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   kitchenEnabled: true,
   mealsOnToday: 'inline',
   unitSystem: 'asWritten',
+  householdServings: 0,
   currencySymbol: DEFAULT_CURRENCY_SYMBOL,
   mealCookTasks: true,
   mealCookTaskCategory: null,
@@ -2279,6 +2302,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   mealShortfallTaskCategory: null,
   mealLogNudgeTasks: false,
   mealLogNudgeTaskCategory: null,
+  mealThawTasks: false,
+  mealThawTaskCategory: null,
   leftoverUseUpTasks: true,
   leftoverUseUpTaskCategory: null,
   useUpTaskCap: null,
@@ -2512,6 +2537,13 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const unitSystem: UnitSystem =
       storedUnitSystem && UNIT_SYSTEMS.includes(storedUnitSystem) ? storedUnitSystem : 'asWritten';
     const currencySymbol = parseCurrencySymbol(dbGetSetting('currencySymbol'));
+    // Same TEXT-column parse as defaultProjectNudgeCadenceDays: missing or
+    // unparseable reads as 0, not set, and a stored count is held to the cap
+    // the Settings stepper has.
+    const storedHousehold = Math.round(Number(dbGetSetting('householdServings')));
+    const householdServings = Number.isFinite(storedHousehold) && storedHousehold > 0
+      ? Math.min(storedHousehold, MAX_HOUSEHOLD_SERVINGS)
+      : 0;
     // Defaults on, like hapticsEnabled — but unlike it, "on" here is a change
     // for an existing install rather than a preservation of what it had. It's
     // safe to default on anyway because nothing is backfilled: no cook task
@@ -2690,6 +2722,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     // than replacing one.
     const mealLogNudgeTasks = dbGetSetting('mealLogNudgeTasks') === 'true';
     const mealLogNudgeTaskCategory = dbGetSetting('mealLogNudgeTaskCategory') || null;
+    // `=== 'true'` for the same reason again.
+    const mealThawTasks = dbGetSetting('mealThawTasks') === 'true';
+    const mealThawTaskCategory = dbGetSetting('mealThawTaskCategory') || null;
     // The missing row is checked before the number, exactly as
     // groceryUseUpLeadDays is and for the same reason: zero is a real answer
     // here ("tell me on the day"), and both Number(null) and Number('') are 0,
@@ -2973,6 +3008,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       healthWriteNutrients,
       hideCategories,
       hideHelpText,
+      householdServings,
       keepOpenAfterFoodLog,
       kitchenEnabled,
       lastDeloadAppliedDayKey,
@@ -3001,6 +3037,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       mealSlotStepEstimates,
       mealSlotTasksWrittenThroughDayKey,
       mealsOnToday,
+      mealThawTaskCategory,
+      mealThawTasks,
       moodLogLastDayKey,
       moodLogTaskCategory,
       moodLogTasks,
@@ -3523,6 +3561,16 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     set({ mealLogNudgeTaskCategory: category });
   },
 
+  setMealThawTasks(on: boolean) {
+    dbSetSetting('mealThawTasks', on ? 'true' : 'false');
+    set({ mealThawTasks: on });
+  },
+
+  setMealThawTaskCategory(category: string | null) {
+    dbSetSetting('mealThawTaskCategory', category ?? '');
+    set({ mealThawTaskCategory: category });
+  },
+
   setSupplyReorderTasks(on: boolean) {
     dbSetSetting('supplyReorderTasks', on ? 'true' : 'false');
     set({ supplyReorderTasks: on });
@@ -3942,6 +3990,14 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     set({ unitSystem: system });
   },
 
+  setHouseholdServings(servings: number) {
+    const next = Number.isFinite(servings) && servings > 0
+      ? Math.min(Math.round(servings), MAX_HOUSEHOLD_SERVINGS)
+      : 0;
+    dbSetSetting('householdServings', String(next));
+    set({ householdServings: next });
+  },
+
   setCurrencySymbol(symbol: string) {
     // Validated rather than clamped to a known list (#1476) — the UI already
     // rejects a bad value with a message and keeps the field open, so this is
@@ -4301,6 +4357,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     set({ calendarPeopleHistory: on });
   },
 
+  // Switching from one calendar to another moves nothing here, the same call
+  // setMealCalendarId makes below. A deadline already written moves into the
+  // new calendar the next time its task is reconciled (syncDeadlineEvent
+  // writes the calendar along with the title and day, as syncMealEvent does
+  // since #2949), rather than being rewritten in the old one for good.
   setDeadlineCalendarId(id: string | null) {
     dbSetSetting('deadlineCalendarId', id ?? '');
     set({ deadlineCalendarId: id });
@@ -4317,6 +4378,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   // was already written — there is no sweep over the plan, and a shared
   // calendar silently losing a fortnight of dinners because someone changed
   // a setting is worse than a few stale ones they can delete.
+  //
+  // Switching from one calendar to another is the same call: nothing moves
+  // here. A meal already written moves into the new calendar the next time it
+  // is reconciled (syncMealEvent writes the calendar along with the title and
+  // day, #2949), rather than being rewritten in the old one for good.
   setMealCalendarId(id: string | null) {
     dbSetSetting('mealCalendarId', id ?? '');
     set({ mealCalendarId: id });

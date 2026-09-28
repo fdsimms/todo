@@ -654,3 +654,38 @@ export function isPlausibleReceiptDate(dateKey: string, now: Date): boolean {
   const days = differenceInCalendarDays(now, parsed);
   return days >= 0 && days <= RECEIPT_DATE_STALE_DAYS;
 }
+
+/** What a checked "Left alone" line goes in as. See `unclaimedAddTarget`. */
+export interface UnclaimedAddTarget {
+  /** The catalog row it lands on, or null when it mints a new one. */
+  existingItemId: string | null;
+  /** The name it goes in under. */
+  name: string;
+}
+
+/**
+ * Which row a checked "Left alone" line lands on, and under what name (#1805,
+ * #2923).
+ *
+ * Three answers, strongest first:
+ *
+ * - **A row the user matched by hand**, under that row's own name. The pantry
+ *   applies a receipt by name (`addManyToPantry`), so the line's shorthand here
+ *   would resolve to nothing and mint "ORG BNLS CHKN BRST" as a second row
+ *   beside the Chicken breast the user just pointed at. A hand match outranks
+ *   the reader's own off-list guess because it is the user saying so, the
+ *   same order `remembered` sits in over every read of a name.
+ * - **The reader's off-list match**, under the line's name, as it always was:
+ *   the shopping path promotes that row by id and never reads the name.
+ * - **A new row**, under whatever the user typed over the line, or the line's
+ *   own name when that was left blank. Blank is not a name to mint a row with.
+ */
+export function unclaimedAddTarget(
+  match: ReceiptMatch,
+  handPick: Pick<GroceryItem, 'id' | 'name'> | null,
+  typedName?: string
+): UnclaimedAddTarget {
+  if (handPick) return { existingItemId: handPick.id, name: handPick.name };
+  if (match.offListMatchId) return { existingItemId: match.offListMatchId, name: match.line.name };
+  return { existingItemId: null, name: typedName?.trim() || match.line.name };
+}

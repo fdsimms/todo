@@ -37,9 +37,10 @@ import { OTHER_AISLE } from '../utils/groceryAisles';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useSavedMealsStore } from '../store/useSavedMealsStore';
-import { describeFoodLogEntry, foodLogTotals, scalePanelToAmount } from '../utils/foodLog';
+import { describeFoodLogEntry, foodLogTotals, recallAmount, scalePanelToAmount } from '../utils/foodLog';
+import { foodLastAmounts } from '../utils/foodLogRecents';
 import { isWaterEntry } from '../utils/waterLog';
-import { foodDayInputs, hasNutritionData, nutrientAverages, nutritionCounts, sourceMix } from '../utils/nutritionStats';
+import { foodDayInputs, foodKeyNames, hasNutritionData, nutrientAverages, nutritionCounts, sourceMix } from '../utils/nutritionStats';
 import { packageHelping } from '../utils/scanPortion';
 import { targetedNutrients } from '../utils/nutritionTargets';
 import { NUTRIENT_KEYS } from '../types';
@@ -125,6 +126,7 @@ import { buildPantryReviewDeck } from '../utils/pantryReview';
 import { MIN_PANTRY_REVIEW_CARDS, stalePantryReviewTasks } from '../utils/pantryReviewTasks';
 import { mealShortfallRows, staleMealShortfallTasks } from '../utils/mealShortfallTasks';
 import { staleMealLogNudgeTasks } from '../utils/mealLogNudgeTasks';
+import { staleMealThawTasks } from '../utils/mealThawTasks';
 import {
   describePlannedSlot,
   describeSlotLog,
@@ -2105,6 +2107,20 @@ describe('demo seed — people', () => {
     expect(filed.length).toBeGreaterThan(0);
   });
 
+  it('seeds a food eaten before, so picking it again opens on the amount it was logged in', () => {
+    // The picker fills in a food's last amount (#2915). Greek yogurt is logged
+    // against its own row, so its amount has to read back and still measure
+    // against the panel it has now, or the demo shows an empty field.
+    const item = useGroceryStore.getState().items.find(i => i.name === 'Greek yogurt');
+    const panel = item ? nutritionFor(item) : null;
+    expect(panel).not.toBeNull();
+    const window = cookingWindow(getLogicalToday(), 90);
+    useFoodLogStore.getState().loadWindow(window.startKey, window.endKey);
+    const last = foodLastAmounts(useFoodLogStore.getState().windowEntries).get(`i:${item!.id}`);
+    expect(last).toBeTruthy();
+    expect(recallAmount(last, { kind: 'food', panel: panel!, name: item!.name })).not.toBeNull();
+  });
+
   it('seeds the three minerals, fully on one food and partly on another', () => {
     // A capability with no seeded row reads as one the app hasn't got, and
     // these are exactly the fields that are invisible until something fills
@@ -2171,7 +2187,12 @@ describe('demo seed — people', () => {
       foodDayInputs(useFoodLogStore.getState().insightEntries),
     );
     const rows = symptomFoodContrasts(days, 'headache');
-    const coffee = rows.find(r => r.label === 'coffee');
+    // Rows are keyed by what a food is (the seeded coffee is the Coffee
+    // catalog row), so they are named the way the symptom page names them.
+    const names = foodKeyNames(useFoodLogStore.getState().insightEntries, {
+      items: new Map(useGroceryStore.getState().items.map(i => [i.id, i.name])),
+    });
+    const coffee = rows.find(r => names.get(r.label) === 'Coffee');
     expect(coffee).toBeDefined();
     // Present on both sides, so neither group is the empty one.
     expect(coffee!.withHits).toBeGreaterThan(0);
@@ -2638,6 +2659,10 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(recipe?.steps.some(step => step.id === timer.stepId)).toBe(true);
     expect(timer.recipeName).toBe(recipe?.name);
     expect(timer.stepLabel).toMatch(/^Step \d+ of \d+$/);
+    // And by a few of the step's own words, which is what tells two rows apart.
+    const step = recipe?.steps.find(s => s.id === timer.stepId);
+    expect(timer.stepExcerpt).toBeTruthy();
+    expect(step?.text.replace(/\s+/g, ' ')).toContain(timer.stepExcerpt!.replace(/…$/, ''));
   });
 
   it('seeds a step whose timer length was set by hand, and steps that read theirs from the text', () => {
@@ -3452,6 +3477,44 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect([...ahead].some(date => !dinners.has(date))).toBe(true);
   });
 
+  it('sets a household size that starts a newly planned recipe scaled, and moved nothing seeded (#2910)', () => {
+    expect(useSettingsStore.getState().householdServings).toBe(4);
+    // Set after the plan was seeded, so the one scaled night is still the
+    // steak dinner someone scaled by hand.
+    const { entries } = useMealPlanStore.getState();
+    expect(entries.filter(e => e.recipeScale !== 1)).toHaveLength(1);
+
+    const forTwo = useRecipeStore.getState().recipes.find(r => r.servings === 2 && r.servingsMax == null)!;
+    // A month out, beyond the loaded fortnight, so no seeded night moves.
+    const planned = useMealPlanStore.getState().planMeal({
+      date: dayKeyOf(addDays(new Date(), 30)), slot: 'dinner', recipeId: forTwo.id, title: forTwo.name,
+    })!;
+    expect(planned.recipeScale).toBe(2);
+    useMealPlanStore.getState().removeEntry(planned.id);
+  });
+
+  describe('taking a removed meal\'s shopping off the list', () => {
+    afterEach(freshDemo);
+
+    it('offers the stir-fry rows once tonight\'s stir-fry comes off the plan (#2912)', () => {
+      // The seed shops the stir-fry through addFromPlan, so its rows carry the
+      // recipe's credit, and tonight is the one night still wanting them.
+      const store = useMealPlanStore.getState();
+      const todayKey = dayKeyOf(getLogicalToday());
+      const tonight = store.entries.find(e =>
+        e.date === todayKey && e.slot === 'dinner' && e.recipeId && !e.cookedAt
+        && useGroceryStore.getState().items.some(i => i.sourceRecipeId === e.recipeId))!;
+      expect(tonight).toBeDefined();
+      // Still planned, so nothing is offered.
+      expect(store.listRowsLeftBy([tonight])).toEqual([]);
+
+      store.removeEntry(tonight.id);
+      const rows = useMealPlanStore.getState().listRowsLeftBy([tonight]);
+
+      expect(rows.map(r => r.name)).toEqual(expect.arrayContaining(['Chicken breast', 'Soy sauce']));
+    });
+  });
+
   // And again: marking tonight cooked is a real write, and the rest of the
   // block reads the meal plan.
   describe('the recap tonight\'s dinner raises when it is cooked', () => {
@@ -3526,7 +3589,7 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(dinner.chainItems.map(c => c.estimatedMinutes)).toEqual([35, null]);
     // Answered with a recipe, so its link opens that rather than the day.
     const stirFry = useRecipeStore.getState().recipes.find(r => r.name === 'Weeknight chicken stir-fry')!;
-    expect(dinner.linkUrl).toBe('dundundun://recipe?id=' + stirFry.id);
+    expect(dinner.linkUrl).toMatch(new RegExp('^dundundun://recipe\\?id=' + stirFry.id + '&entry='));
 
     // The per-meal opt-out is invisible unless something uses it — today's
     // lunch is the meal that says no, and so has no task and renders as a
@@ -3671,6 +3734,31 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
       staleMealShortfallTasks(
         tasks, entries, recipesById, items, itemSubs, standingSwapMap(itemSubs, items),
         todayKey, new Date()
+      )
+    ).toEqual([]);
+  });
+
+  // #2926: tomorrow's lunch is the chili that's in the freezer.
+  it('seeds a meal that needs something from the freezer, and the task that says so', () => {
+    const { tasks } = useTaskStore.getState();
+    const { items, itemSubs, itemProducts } = useGroceryStore.getState();
+    const recipesById = new Map(useRecipeStore.getState().recipes.map(r => [r.id, r]));
+    const entries = useMealPlanStore.getState().entries;
+    const todayKey = dayKeyOf(getCurrentDayStart());
+
+    const thaw = tasks.find(t => t.generatedKind === 'mealThaw');
+    expect(thaw).toBeDefined();
+    expect(thaw!.title).toMatch(/^Take Beef chili out of the freezer \(\w+ Lunch\)$/);
+    expect(thaw!.category).toBe('Meal Plan');
+    const lunch = entries.find(e => e.id === thaw!.generatedSourceId);
+    expect(lunch!.date).toBe(dayKeyOf(addDays(getCurrentDayStart(), 1)));
+    expect(useLeftoverStore.getState().leftovers.find(l => l.id === lunch!.leftoverId)!.frozenAt).toBeTruthy();
+
+    // And the real rule agrees, so the first foreground sweep leaves it alone.
+    expect(
+      staleMealThawTasks(
+        tasks, entries, recipesById, useLeftoverStore.getState().leftovers, items, itemSubs,
+        standingSwapMap(itemSubs, items), todayKey, new Date(), itemProducts
       )
     ).toEqual([]);
   });

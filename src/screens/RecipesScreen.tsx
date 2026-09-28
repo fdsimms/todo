@@ -48,6 +48,8 @@ import { ListBulkBar } from '../components/ListBulkBar';
 import { ReorderableList } from '../components/ReorderableList';
 import { SortableList } from '../components/SortableList';
 import { SwipeableRow } from '../components/SwipeableRow';
+import { SelectionDot } from '../components/SelectionDot';
+import { PaintSelectionProvider, PaintSelectionRow } from '../components/PaintSelection';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { PlanMealSheet } from '../components/PlanMealSheet';
 import { usePlanMeal } from '../hooks/usePlanMeal';
@@ -147,8 +149,9 @@ function recipeDropLabel(intent: FabDropIntent | null): string | null {
 
 // The add button, naming what a release right now would do — mirrors
 // AddProjectFabWithDropLabel (ProjectsScreen.tsx). Always a FabMenu: with no
-// Anthropic key the import options drop out of `addMenuItems` below, leaving
-// "New recipe" alone, and FabMenu performs a lone item on the tap rather than
+// Anthropic key the paste and photo imports drop out of `addMenuItems` below
+// (and with Recipe import off, the link one too, leaving "New recipe" alone),
+// and FabMenu performs a lone item on the tap rather than
 // accordioning out to offer it — so there's no separate plain-Fab variant to
 // keep matching this one's bottom/drag/dragHint/accessibilityLabel by hand.
 function AddRecipeFabMenuWithDropLabel({
@@ -181,9 +184,16 @@ export function RecipesScreen() {
   // below has to stand down while the shelf itself is being dragged, or the
   // drag never starts at all.
   const [upNextDragging, setUpNextDragging] = useState(false);
-  const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
   const recipeImportEnabled = useSettingsStore(s => s.aiFeatureConfig.recipeExtraction.enabled);
   const canImport = useAiRoute('recipeExtraction') !== 'unavailable';
+  // No key, with Recipe import left on (recipe extraction has no on-device
+  // engine, so that is the only way its route is unavailable while the switch
+  // is on). A link still imports then: a page publishing schema.org/Recipe is
+  // read from its own data with no model (recipePageOffline.ts). Paste and
+  // photo have no such floor and stay behind the key. Recipe import's switch
+  // still governs it, since that is the user asking for no recipe import at
+  // all, and it is also the switch the page fetch answers to.
+  const keylessLinkImport = !canImport && recipeImportEnabled;
   const canInvent = useAiRoute('mealIdeas') !== 'unavailable';
   const recipeSort = useSettingsStore(s => s.recipeSortOption);
   const setRecipeSort = useSettingsStore(s => s.setRecipeSortOption);
@@ -261,6 +271,8 @@ export function RecipesScreen() {
     exitSelection,
     selectAll,
     deselectAll,
+    painting,
+    paintProps,
   } = useRowSelection();
 
   // Bottom-up: "New recipe" ends up closest to the button, so the plain add is
@@ -288,10 +300,12 @@ export function RecipesScreen() {
         { key: 'link', label: 'From a link', icon: 'link-outline' },
         { key: 'import', label: 'From a photo', icon: 'camera-outline' },
       );
+    } else if (keylessLinkImport) {
+      list.push({ key: 'link', label: 'From a link', icon: 'link-outline' });
     }
     list.push({ key: 'name', label: 'New recipe', icon: 'add-circle-outline' });
     return list;
-  }, [canInvent, canImport]);
+  }, [canInvent, canImport, keylessLinkImport]);
 
   const handleAddMenuSelect = useCallback((key: string) => {
     // All three import items open the one sheet, on their own tab — see
@@ -323,11 +337,6 @@ export function RecipesScreen() {
   const handleDismissShared = useCallback(() => {
     if (sharedUrl) dismissSharedLink(sharedUrl);
   }, [sharedUrl, dismissSharedLink]);
-
-  // The no-key banner's one action: the Settings row the key goes in.
-  const handleAddKey = useCallback(() => {
-    navigation.navigate('SettingsGroup', { groupId: 'privacyAi', entryId: 'apiKey' });
-  }, [navigation]);
 
   // Drop the queued page once a recipe has actually been made from it. Keyed on
   // the source url the sheet reports rather than on whatever it opened with:
@@ -648,7 +657,14 @@ export function RecipesScreen() {
     </TouchableOpacity>
   );
 
-  const renderRecipe = ({ item: recipe, drag, isActive }: { item: Recipe; drag?: () => void; isActive?: boolean }) => {
+  // `duplicateRow` is the Up Next shelf's copy of a recipe that also has its
+  // ordinary row in the box below. It stays out of the paint registry, which
+  // is keyed by recipe id: the shelf unmounts as selection starts, and its
+  // copy leaving would evict the real row, the reason TaskItem's pinned copy
+  // passes the same flag.
+  const renderRecipe = ({ item: recipe, drag, isActive, duplicateRow }: {
+    item: Recipe; drag?: () => void; isActive?: boolean; duplicateRow?: boolean;
+  }) => {
     const selected = selectedIds.has(recipe.id);
     const rowBody = (
       <TouchableOpacity
@@ -661,17 +677,11 @@ export function RecipesScreen() {
         accessibilityLabel={`${recipe.name}. ${describeRecipe(recipe, pantryCounts.get(recipe.id))}`}
         accessibilityHint={selectionMode ? 'Double tap to select recipe' : 'Double tap to open this recipe.'}
       >
-        {selectionMode ? (
-          // Takes the icon tile's place rather than sitting beside it, so every
-          // row shifts by the same amount and the names stay in one column.
-          <View style={styles.select}>
-            <Ionicons
-              name={selected ? 'checkmark-circle' : 'ellipse-outline'}
-              size={24}
-              color={selected ? colors.accent : colors.textTertiary}
-            />
-          </View>
-        ) : recipe.imagePath ? (
+        {/* The photo or tile stays put while selecting. Selection is the
+            SelectionDot at the other end of the row, the split every other
+            selectable list makes (#2944): a check filling the tile's place
+            read as a recipe marked done rather than one picked. */}
+        {recipe.imagePath ? (
           <Image source={{ uri: resolveRecipeImagePath(recipe.imagePath) ?? undefined }} style={styles.thumb} />
         ) : (
           <View style={[styles.icon, { backgroundColor: colors.accentSubtle }]}>
@@ -693,10 +703,22 @@ export function RecipesScreen() {
         {!selectionMode && (
           <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
         )}
+        {/* In the slot the three buttons and the chevron give up while
+            selecting, so nothing moves aside for it. On every row, picked or
+            not: the empty rings are what say selection is on. */}
+        {selectionMode && (
+          <SelectionDot selected={selected} onPress={() => toggleSelection(recipe.id)} />
+        )}
       </TouchableOpacity>
     );
     return (
-      <View style={[styles.itemWrapper, isActive && styles.itemWrapperActive]}>
+      // Registered with the screen's PaintSelectionProvider so a drag down the
+      // column of dots picks up this row. Not the drag overlay's copy, which
+      // would claim this row's id and evict it on unmount.
+      <PaintSelectionRow
+        rowId={isActive || duplicateRow ? null : recipe.id}
+        style={[styles.itemWrapper, isActive && styles.itemWrapperActive]}
+      >
         {/* SwipeableRow stays mounted through the selectionMode toggle rather
             than swapping for a bare rowBody — swapping it unmounts the panel
             mid-close-animation (the very moment its own select action just
@@ -712,7 +734,7 @@ export function RecipesScreen() {
         >
           {rowBody}
         </SwipeableRow>
-      </View>
+      </PaintSelectionRow>
     );
   };
 
@@ -739,7 +761,7 @@ export function RecipesScreen() {
         onDragStateChange={setUpNextDragging}
         placeholderStyle={styles.dropSlot}
         renderItem={(recipe, _displayIndex, drag, isActive) =>
-          renderRecipe({ item: recipe, drag, isActive })}
+          renderRecipe({ item: recipe, drag, isActive, duplicateRow: true })}
       />
     </View>
   );
@@ -799,23 +821,19 @@ export function RecipesScreen() {
           onClear={handleClearTrip}
         />
       )}
-      {/* Gated on Recipe import's route for the same reason the add button's
-          import menu is: without it there is no import to offer, and Import
-          would open a sheet that can only end at "No API key" or "turned off
-          in Settings". With no key (and the feature left on) it stays, as the
-          variant that says a key is what's missing and opens that row: the
-          share extension already told the user to open the app to import,
-          and a banner that simply wasn't there left the page queued with no
-          sign of it. Turned off with a key, it goes, since the user asked for
-          no recipe import. The queue is persisted either way, so a page
-          shared before a key is added turns up importable once there is one. */}
-      {!selectionMode && !!sharedUrl && (canImport || (!anthropicApiKey && recipeImportEnabled)) && (
+      {/* Gated the way the add button's link import is: with a key, or
+          without one while Recipe import is left on, since a page publishing
+          schema.org/Recipe imports with no key (the sheet reads it keyless,
+          and says a key is needed only for a page that doesn't). Turned off,
+          it goes, since the user asked for no recipe import. The queue is
+          persisted either way, so a page shared while it's off turns up
+          importable once it's back on. */}
+      {!selectionMode && !!sharedUrl && (canImport || keylessLinkImport) && (
         <SharedLinkBanner
           url={sharedUrl}
           remaining={sharedUrls.length - 1}
           onImport={handleImportShared}
           onDismiss={handleDismissShared}
-          onAddKey={canImport ? undefined : handleAddKey}
         />
       )}
 
@@ -917,6 +935,9 @@ export function RecipesScreen() {
               bottomOffset={tabBarHeight}
             />
           ) : grouped ? (
+            // A drag down the column of selection dots picks up a run of
+            // recipes (#2944), as on every other selectable list.
+            <PaintSelectionProvider {...paintProps}>
             <FabDropZoneProvider
               ref={dropZonesRef}
               onIntentChange={fabIntentChannel.publish}
@@ -930,8 +951,9 @@ export function RecipesScreen() {
                 // button's responder has the touch); the drag scrolls it
                 // instead, through scrollControl above. Same reasoning for a
                 // shelf drag — see onDragStateChange on the SortableList in
-                // upNextBlock.
-                scrollEnabled={!fabDragging && !upNextDragging}
+                // upNextBlock. Same while a paint gesture owns the touch: iOS
+                // has to be told directly (see PaintSelectionProvider).
+                scrollEnabled={!fabDragging && !upNextDragging && !painting}
                 scrollControlRef={scrollControl}
                 ListHeaderComponent={upNextBlock}
                 renderItem={({ item, drag, isActive }) => {
@@ -987,19 +1009,22 @@ export function RecipesScreen() {
                 }
               />
             </FabDropZoneProvider>
+            </PaintSelectionProvider>
           ) : (
+            <PaintSelectionProvider {...paintProps}>
             <FlatList
               data={visible}
               keyExtractor={r => r.id}
               renderItem={renderRecipe}
               keyboardShouldPersistTaps="handled"
-              scrollEnabled={!upNextDragging}
+              scrollEnabled={!upNextDragging && !painting}
               ListHeaderComponent={upNextBlock}
               contentContainerStyle={styles.list}
               ListFooterComponent={
                 <View style={{ height: selectionMode ? selectionListPadding : tabBarHeight + FAB_SIZE + spacing.xl }} />
               }
             />
+            </PaintSelectionProvider>
           )}
         </>
       )}
@@ -1060,6 +1085,7 @@ export function RecipesScreen() {
         initialUrl={importUrl}
         onClose={() => setImportVisible(false)}
         onCreated={handleCreated}
+        keyless={!canImport}
       />
 
       <InventRecipeSheet
@@ -1308,14 +1334,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: radius.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  // Same footprint as the icon tile it replaces, so entering selection mode
-  // doesn't move the row's text.
-  select: {
-    width: 36,
-    height: 36,
     alignItems: 'center',
     justifyContent: 'center',
   },

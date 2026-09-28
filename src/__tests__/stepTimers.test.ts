@@ -5,9 +5,12 @@ import {
   isStepTimerReady,
   isStepTimerRunning,
   parseStepDurations,
+  parseStepTimerQueue,
   sortStepTimers,
   stepDurationOffers,
+  stepTimerCancelPrompt,
   stepTimerElapsed,
+  stepTimerExcerpt,
   stepTimerEndsAt,
   stepTimerProgress,
   stepTimerRemaining,
@@ -232,5 +235,70 @@ describe('sortStepTimers', () => {
     const first = make('a', '2026-08-25T12:00:00.000Z', 60);
     const second = make('b', '2026-08-25T12:01:00.000Z', 60);
     expect(sortStepTimers([first, second], at(10)).map(t => t.id)).toEqual(['b', 'a']);
+  });
+});
+
+describe('stepTimerExcerpt', () => {
+  const excerptAt = (text: string) => {
+    const [offer] = parseStepDurations(text);
+    return stepTimerExcerpt(text, offer.start);
+  };
+
+  it('names the clause the duration is in, not the step\'s opening words', () => {
+    expect(excerptAt('Bring a large pot of salted water to a boil. Add the pasta and cook 9 minutes.'))
+      .toBe('Add the pasta and cook 9 minutes');
+  });
+
+  it('keeps a short step whole, without its closing full stop', () => {
+    expect(excerptAt('Simmer the rice, 20 minutes.')).toBe('Simmer the rice, 20 minutes');
+  });
+
+  it('cuts a long clause at a word and says so', () => {
+    const text = 'Cook the onions, stirring now and then so they color evenly, 12 minutes.';
+    const excerpt = excerptAt(text);
+    expect(excerpt).toBe('Cook the onions, stirring now…');
+    expect(excerpt.length).toBeLessThanOrEqual(33);
+  });
+
+  it('does not split on a decimal point', () => {
+    expect(stepTimerExcerpt('Add 1.5 cups stock and simmer 10 minutes.', 30))
+      .toBe('Add 1.5 cups stock and simmer 10…');
+  });
+
+  it('takes the first clause for a timer set on the step rather than read from it', () => {
+    // stepDurationOffers' override offer starts at 0.
+    expect(stepTimerExcerpt('Rest the dough. Then shape it.', 0)).toBe('Rest the dough');
+  });
+
+  it('drops a list number typed into the method', () => {
+    expect(stepTimerExcerpt('3. Bake 25 minutes.', 5)).toBe('Bake 25 minutes');
+  });
+});
+
+describe('stepTimerCancelPrompt', () => {
+  it('asks while there is time left, naming the step', () => {
+    const prompt = stepTimerCancelPrompt({ ...TIMER, stepExcerpt: 'Simmer the rice' }, at(2));
+    expect(prompt).toEqual({
+      title: 'Cancel this timer?',
+      message: 'Simmer the rice\nStep 2 of 3\n5:00 left',
+    });
+  });
+
+  it('says a paused timer is paused', () => {
+    const paused = { ...TIMER, startedAt: null, elapsedSeconds: 60 };
+    expect(stepTimerCancelPrompt(paused, at(30))?.message).toBe('Step 2 of 3\nPaused, 6:00 left');
+  });
+
+  it('does not ask before dismissing a timer that has already rung', () => {
+    expect(stepTimerCancelPrompt(TIMER, at(8))).toBeNull();
+  });
+});
+
+describe('parseStepTimerQueue', () => {
+  it('keeps a stored excerpt, and reads a timer from before it existed without one', () => {
+    const raw = JSON.stringify([{ ...TIMER, stepExcerpt: 'Simmer the rice' }, { ...TIMER, id: 't2' }]);
+    const [withExcerpt, without] = parseStepTimerQueue(raw);
+    expect(withExcerpt.stepExcerpt).toBe('Simmer the rice');
+    expect(without.stepExcerpt).toBeUndefined();
   });
 });

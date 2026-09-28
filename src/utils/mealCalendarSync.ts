@@ -1,7 +1,7 @@
 import type { MealPlanEntry } from '../types';
 import { MEAL_SLOT_LABELS } from '../types';
 import { dayKeyToDate } from './dateUtils';
-import { createAllDayEvent, updateAllDayEvent, deleteCalendarEvent } from './calendarSync';
+import { createAllDayEvent, moveAllDayEvent, deleteCalendarEvent } from './calendarSync';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { isDemoModeActive } from './demoState';
 import { mealTitleOffPlan } from './mealPlan';
@@ -51,9 +51,12 @@ export function mealEventTitle(entry: MealPlanEntry): string {
 
 /**
  * The two things the meal owns on the device event, and the complete list —
- * a meal edit rewrites the title and the day, and touches nothing else, for
- * ever. Anything the user adds to the event by hand (a location, an alert,
- * whoever they invited) survives every reconcile.
+ * a meal edit rewrites the title and the day (and, since #2949, which of the
+ * user's calendars it sits in, the one they picked) and nothing else. Whoever
+ * they invited, and a location, a note or an alert added by hand, survive
+ * every reconcile. The last three only because the rewrite reads them back
+ * first and sends them with it: expo-calendar's save resets them otherwise
+ * (see `rewriteEvent` in `calendarSync.ts`).
  *
  * **All-day, not a timed event, and that's the one new decision here.**
  * `MEAL_SLOT_SEGMENTS` maps a slot to a time-of-day *visibility* segment —
@@ -119,10 +122,21 @@ export async function syncMealEvent(entry: MealPlanEntry): Promise<string | null
   const fields = mealEventFields(entry);
 
   if (entry.calendarEventId) {
-    if (await updateAllDayEvent(entry.calendarEventId, fields)) return entry.calendarEventId;
-    // The id didn't resolve to a live event — deleted by hand, or the calendar
-    // itself is gone. Resolve-or-shrug: fall through and write a fresh one
-    // rather than leaving the entry pointing at nothing.
+    // Into the calendar picked *now*, not the one it was first written to: a
+    // meal written before "Write meals to" was switched moves across the next
+    // time it's reconciled, rather than going on being rewritten in the old
+    // calendar while new meals land in the new one (#2949). Still no sweep,
+    // for setMealCalendarId's reason: a meal nobody touches keeps its event
+    // where it is.
+    const moved = await moveAllDayEvent(entry.calendarEventId, mealCalendarId, fields);
+    if (moved) return moved;
+    // The id didn't resolve to a live event (deleted by hand, or the calendar
+    // itself is gone), or EventKit refused the move. Delete whatever is left
+    // under the old id first, so a refused move can't leave the meal on both
+    // calendars once the fresh one is written; for an event that is already
+    // gone this does nothing. Then resolve-or-shrug: write a fresh one rather
+    // than leaving the entry pointing at nothing.
+    await deleteCalendarEvent(entry.calendarEventId);
   }
 
   return createAllDayEvent(mealCalendarId, fields);

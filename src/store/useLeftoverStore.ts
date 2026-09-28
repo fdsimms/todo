@@ -8,6 +8,7 @@ import {
   dbDeleteLeftover,
   dbPurgeOldLeftovers,
   dbGetMealPlanEntry,
+  dbGetMealPlanEntriesForLeftover,
 } from '../db/database';
 import { generateId } from '../utils/id';
 import { dayKeyOf, getLogicalToday } from '../utils/dateUtils';
@@ -19,7 +20,9 @@ import {
   leftoverPurgeCutoff,
   sortLeftovers,
 } from '../utils/leftovers';
-import { useUpTaskDraft, useUpTaskDrift, wantsUseUpTask } from '../utils/leftoverTasks';
+import { plannedMealRowFor, useUpTaskDraft, useUpTaskDrift, wantsUseUpTask } from '../utils/leftoverTasks';
+import { liveGeneratedTask } from '../utils/generatedTasks';
+import { mealSlotSourceId } from '../utils/mealSlotTasks';
 import { clampCookedWeight } from '../utils/mealLog';
 import { dropGeneratedTask, reconcileGeneratedTask } from './generatedTaskSync';
 import { useTaskStore } from './useTaskStore';
@@ -208,8 +211,23 @@ interface LeftoverStore extends UndoHistoryActions {
    * tasks have loaded) and again on app foreground, since `needsAttention` is
    * a function of the wall clock: a leftover can age from "fresh" into "soon"
    * purely by time passing, with no leftover mutation to trigger a reconcile.
+   *
+   * The launch-time call in `initTasks` is this one. The catch-up and
+   * foreground sweeps go through `useGroceryStore.reconcileAllUseUpTasks`
+   * instead, which visits these same leftovers interleaved with the grocery
+   * items by use-by day, so the shared cap goes to the soonest of both (#2924).
    */
   reconcileAllLeftoverTasks: () => void;
+
+  /**
+   * One live leftover's use-up task, brought into line. For the meal plan
+   * (#2932): planning a leftover into a meal whose task already says to eat
+   * it stands the use-up task down, and clearing or moving that meal brings it
+   * back, with no leftover mutation to trigger either. Also the step
+   * `useGroceryStore.reconcileAllUseUpTasks` takes for each leftover in its
+   * merged queue (#2924). A finished or unknown id is a no-op.
+   */
+  reconcileLeftoverUseUpTask: (id: string) => void;
 
   leftoverById: (id: string) => Leftover | undefined;
 }
@@ -237,11 +255,26 @@ function reconcileLeftoverTask(leftover: Leftover): void {
   reconcileGeneratedTask({
     kind: 'leftoverUseUp',
     sourceId: leftover.id,
-    wanted: wantsUseUpTask(leftover, leftoverUseUpTasks),
+    wanted: wantsUseUpTask(leftover, leftoverUseUpTasks, eatenAsPlanned(leftover)),
     drift: existing => useUpTaskDrift(existing, leftover),
     draft: () => useUpTaskDraft(leftover, leftoverUseUpTaskCategory),
     useUpCap: useUpTaskCap,
   });
+}
+
+/**
+ * Whether a planned meal's own task already says to eat this leftover — see
+ * `plannedMealRowFor`. Read from SQLite rather than the meal plan store, whose
+ * `entries` is only the week that screen has loaded.
+ */
+function eatenAsPlanned(leftover: Leftover): boolean {
+  const { tasks } = useTaskStore.getState();
+  return plannedMealRowFor(
+    leftover,
+    dbGetMealPlanEntriesForLeftover(leftover.id),
+    dayKeyOf(getLogicalToday()),
+    (dayKey, slot) => !!liveGeneratedTask(tasks, 'mealSlot', mealSlotSourceId(dayKey, slot)),
+  ) !== null;
 }
 
 /**
@@ -521,6 +554,11 @@ export const useLeftoverStore = create<LeftoverStore>((set, get) => ({
     const updated = { ...leftover, useUpTask: value };
     save(set, updated);
     if (options?.reconcile !== false) reconcileLeftoverTask(updated);
+  },
+
+  reconcileLeftoverUseUpTask(id) {
+    const leftover = get().leftovers.find(l => l.id === id);
+    if (leftover && !leftover.finishedAt) reconcileLeftoverTask(leftover);
   },
 
   reconcileAllLeftoverTasks() {

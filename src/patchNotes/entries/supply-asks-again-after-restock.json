@@ -1,0 +1,4 @@
+{
+  "message": "A supply linked to a grocery item now puts it back on the list the next time it runs low, even if you took the row off the list last time and topped up the count in the task editor",
+  "date": "2026-09-28"
+}

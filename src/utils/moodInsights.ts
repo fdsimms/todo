@@ -115,9 +115,9 @@ export interface MoodDay {
    */
   nutrients: Partial<Record<NutrientKey, number>> | null;
   /**
-   * The foods logged that day, lowercased for matching. Empty whenever
-   * `nutrients` is null, for the reason `FoodDayInput.labels` gives: an
-   * absence only means something on a day that was fully logged.
+   * The foods logged that day, keyed as `FoodDayInput.labels` keys them. Empty
+   * whenever `nutrients` is null, for the reason that field gives: an absence
+   * only means something on a day that was fully logged.
    */
   foodKeys: string[];
 }
@@ -186,7 +186,9 @@ export interface FoodDayInput {
   /** The day's totals. Only nutrients every entry that day stated. */
   nutrients: Partial<Record<NutrientKey, number>>;
   /**
-   * What was eaten, lowercased for matching.
+   * What was eaten, as `foodKeyResolver` keys it: `item:<id>` or
+   * `recipe:<id>` for a linked entry, the lowercased label for anything else.
+   * A caller names them for display through `foodKeyNames`.
    *
    * Present only on a day that earned a row, which is what makes "the days you
    * didn't eat it" a real group: on a thinly logged day an absent food may
@@ -1067,10 +1069,11 @@ export function nutrientFindings(days: readonly MoodDay[]): { key: string; text:
  * every symptom tracker that asks it makes you keep a whole separate food diary
  * to answer it, next to the log you were already keeping.
  *
- * Grouped by the entry's own label, which is `mostLoggedFoods`' choice and made
- * for its reason: `itemId` and `recipeId` are null for anything typed in, so
- * keying on them would silently drop every hand-entered food and misreport what
- * somebody eats.
+ * Grouped by what each entry is (`foodKeyResolver` in `nutritionStats.ts`): a
+ * linked entry by its catalog row or recipe, so a box of bread and plain bread
+ * are one food, and an unlinked one by its label, since `itemId` and
+ * `recipeId` are null for anything typed in and keying only on them would
+ * silently drop every hand-entered food.
  *
  * Two gates, and the second is the one that makes the answer mean anything:
  *

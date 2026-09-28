@@ -62,6 +62,7 @@ import { useAiRoute } from '../hooks/useOnDeviceAi';
 import { EmptyState } from '../components/EmptyState';
 import { EmptyNote } from '../components/EmptyNote';
 import { HubPills } from '../components/HubPills';
+import { TipHost } from '../components/TipHost';
 import { InlineAction } from '../components/InlineAction';
 import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeader';
 import { FoodLogEntrySheet } from '../components/FoodLogEntrySheet';
@@ -202,6 +203,10 @@ export function FoodLogScreen() {
   // rule `aiRouting.ts` states. This feature has no on-device engine, so the
   // route is 'claude' or 'unavailable' and nothing renders for the second.
   const estimateRoute = useAiRoute('nutritionEstimate');
+  // Searching a food database by name needs lookups on and a FoodData Central
+  // key, the same pair the entry sheet's own search checks. Read here only to
+  // decide whether the empty state may name the search as a way in.
+  const canSearchFoods = useSettingsStore(s => s.productLookupEnabled && !!s.fdcApiKey);
   const entriesForDayLive = useMealPlanStore(s => s.entriesForDayLive);
   const offerMealLog = useFoodLogStore(s => s.offerMealLog);
   // A count rather than the array, so planning a meal re-reads the day without
@@ -882,6 +887,27 @@ export function FoodLogScreen() {
     </View>
   );
 
+  // A nutrient's day total as its totals row words it, target included, so the
+  // contributors sheet can head its list with the same figure it was opened on.
+  const totalText = (key: NutrientKey): string =>
+    describeAgainstTarget(key, totals.total[key], effectiveTargets)
+      ?? `${Math.round(totals.total[key] as number).toLocaleString()}${NUTRIENT_LABEL[key].unit === 'cal' ? '' : NUTRIENT_LABEL[key].unit}`;
+
+  // What the log is, then the ways in this install actually has (#2928). Only
+  // the ones that would work are named: a search with no key or a scan
+  // simplified mode took away is a way in that isn't there.
+  const emptyWaysIn = [
+    'pick a food that has nutrition on it',
+    ...(scanShown ? ['scan a package'] : []),
+    ...(canSearchFoods ? ['search a food database'] : []),
+    ...(estimateRoute !== 'unavailable' ? ['describe a meal'] : []),
+  ];
+  const emptySubtitle = "Write down what you ate and see the day's totals. You can "
+    + (emptyWaysIn.length === 1
+      ? emptyWaysIn[0]
+      : `${emptyWaysIn.slice(0, -1).join(', ')} or ${emptyWaysIn[emptyWaysIn.length - 1]}`)
+    + '.';
+
   // Shown whenever there's something to say — a stated nutrient or a target
   // for one — regardless of whether the day has any entries yet. Withheld
   // (in favor of the note or nothing below) only when there's neither, same
@@ -923,10 +949,7 @@ export function FoodLogScreen() {
                 `Math.round` and the target with `toLocaleString`, so
                 a heavy day read "1840 of 2,000 cal" — two number
                 formats on one line. */}
-            <Text style={styles.totalValue}>
-              {describeAgainstTarget(key, totals.total[key], effectiveTargets)
-                ?? `${Math.round(totals.total[key] as number).toLocaleString()}${NUTRIENT_LABEL[key].unit === 'cal' ? '' : NUTRIENT_LABEL[key].unit}`}
-            </Text>
+            <Text style={styles.totalValue}>{totalText(key)}</Text>
           </View>
         </TouchableOpacity>
         {/* Colored by distance from the target, never by direction:
@@ -1023,6 +1046,7 @@ export function FoodLogScreen() {
         ]}
       />
       <HubPills hub="kitchen" active="FoodLog" />
+      <TipHost screen="foodLog" />
 
       <View style={styles.dayNav}>
         <TouchableOpacity
@@ -1082,7 +1106,7 @@ export function FoodLogScreen() {
         <EmptyState
           icon="restaurant-outline"
           title={isToday ? 'Nothing logged today' : 'Nothing logged that day'}
-          subtitle="Foods and meals you log show up here, with the day's totals."
+          subtitle={emptySubtitle}
           actionLabel="Log something"
           onAction={() => { haptics.tap(); setAddingSlot(guessedSlot); setAddOpen(true); }}
           bottomOffset={tabBarHeight}
@@ -1286,6 +1310,10 @@ export function FoodLogScreen() {
         visible={contributorsKey !== null}
         nutrientKey={contributorsKey}
         entries={dayEntries}
+        total={contributorsKey && totals.total[contributorsKey] !== undefined ? totalText(contributorsKey) : null}
+        // Closes this sheet and opens the editor in one commit. They are
+        // siblings, and `SheetModal` holds the open until the close has landed.
+        onEdit={entry => { setContributorsKey(null); setEditingEntry(entry); }}
         onClose={() => setContributorsKey(null)}
       />
       <NutritionTargetsSheet

@@ -46,8 +46,16 @@ describe('a line already written as a mass', () => {
   });
 
   it('measures a bare sized container, which is a real weight', () => {
-    // "14 oz can" is fourteen ounces. A *counted* one is refused below.
+    // "14 oz can" is fourteen ounces.
     expect(grams('14 oz can', null, [])).toBeCloseTo(396.9, 1);
+  });
+
+  it('measures a counted container as the count times the size (#2918)', () => {
+    // "2 14 oz cans" states how many tins and how much is in one. It is also
+    // what a recipe's own "14 oz can" becomes at 2x, so refusing it dropped a
+    // can that counted fine at 1x.
+    expect(grams('2 14 oz cans', null, [])).toBeCloseTo(793.8, 1);
+    expect(grams('3 400 g tins', null, [])).toBe(1200);
   });
 });
 
@@ -164,8 +172,10 @@ describe('the refusals', () => {
     expect(grams('x2')).toBeNull();
   });
 
-  it('refuses a counted container, since two tins is not fourteen ounces', () => {
-    expect(grams('2 14 oz cans', null, [])).toBeNull();
+  it('never reads a counted container as its leading number', () => {
+    // Two tins is not two ounces, and not fourteen either.
+    expect(grams('2 14 oz cans', null, [])).not.toBeCloseTo(56.7, 0);
+    expect(grams('2 14 oz cans', null, [])).not.toBeCloseTo(396.9, 0);
   });
 
   it('refuses a count when the food has no portions to match against', () => {
@@ -233,7 +243,7 @@ describe('weighableLine', () => {
     expect(weighableLine('2', null, panel({ portions: ONION }), 'Onion')).toBeNull();
   });
 
-  it('refuses a counted container, since weighing it would record the tin', () => {
+  it('has nothing to weigh for a counted container, which measures by its size', () => {
     expect(weighableLine('2 14 oz cans', null, panel(), 'Tomatoes')).toBeNull();
   });
 
@@ -308,8 +318,10 @@ describe('unfixableQuantityReason', () => {
     expect(unfixableQuantityReason('')).toBe('noAmount');
   });
 
-  it('names a counted container', () => {
-    expect(unfixableQuantityReason('2 14 oz cans')).toBe('countedContainer');
+  it('is null for a counted container, which states how much one holds (#2918)', () => {
+    // It used to be refused, and the sheet asked for "how much one holds"
+    // off a line that says so.
+    expect(unfixableQuantityReason('2 14 oz cans')).toBeNull();
   });
 
   it('is null for a bare container, which is a real weight', () => {
@@ -370,6 +382,10 @@ describe('panelMultiplier and servings', () => {
     // the label's own basis.
     expect(panelMultiplier('12 fl oz', null, panel({ basis: 'per100ml' })))
       .toBeCloseTo(3.5488235475, 6);
+  });
+
+  it('measures a counted container of a liquid against a per-100ml panel', () => {
+    expect(panelMultiplier('2 330 ml cans', null, panel({ basis: 'per100ml' }))).toBeCloseTo(6.6, 6);
   });
 
   it('still refuses a bare weight against a per-100ml panel', () => {

@@ -4,6 +4,7 @@ import {
   StyleSheet,
   View,
   type StyleProp,
+  type ViewProps,
   type ViewStyle,
 } from 'react-native';
 import {
@@ -71,6 +72,17 @@ export function usePaintSelectionRow(id: string | null) {
     // callback is too — React won't churn it with null/node on every render.
     [ctx, id],
   );
+}
+
+/**
+ * A plain `View` registered as one paintable row, for a list whose rows are
+ * drawn by a render function rather than a component of their own, so there
+ * is nowhere to call usePaintSelectionRow. Takes a View's props; `rowId`
+ * follows the hook's rule (null for a drag overlay's copy of a row).
+ */
+export function PaintSelectionRow({ rowId, ...viewProps }: ViewProps & { rowId: string | null }) {
+  const ref = usePaintSelectionRow(rowId);
+  return <View ref={ref} {...viewProps} />;
 }
 
 interface Props {

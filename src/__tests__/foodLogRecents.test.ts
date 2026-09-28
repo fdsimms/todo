@@ -1,4 +1,4 @@
-import { creditedKeys, foodLogRecency, rankByRecency } from '../utils/foodLogRecents';
+import { creditedKeys, foodLastAmounts, foodLogRecency, rankByRecency } from '../utils/foodLogRecents';
 import type { FoodLogEntry } from '../types';
 
 let seq = 0;
@@ -104,5 +104,54 @@ describe('rankByRecency', () => {
   it('changes nothing when nothing has been logged', () => {
     expect(rankByRecency(candidates, foodLogRecency([])).map(c => c.key))
       .toEqual(['i:a', 'i:b', 'i:c', 'i:d']);
+  });
+});
+
+describe('foodLastAmounts', () => {
+  function logged(amount: string, overrides: Partial<FoodLogEntry> = {}): FoodLogEntry {
+    const base = entry(overrides);
+    return { ...base, quantity: amount, nutrition: { ...base.nutrition, servingText: amount } };
+  }
+
+  it('keeps the most recent amount each row was logged in', () => {
+    // Marcus has 250 g of Greek yogurt every morning. The yogurt already
+    // floats to the top; this is what saves him typing 250 again.
+    const amounts = foodLastAmounts([
+      logged('200g', { itemId: 'yogurt', atISO: '2026-04-01T08:00:00.000Z' }),
+      logged('250g', { itemId: 'yogurt', atISO: '2026-04-03T08:00:00.000Z' }),
+      logged('150g', { itemId: 'yogurt', atISO: '2026-04-02T08:00:00.000Z' }),
+    ]);
+    expect(amounts.get('i:yogurt')).toEqual({ amount: '250g', dishMeasure: null });
+  });
+
+  it('credits a box its own amount and leaves the item behind it alone', () => {
+    // "1 container" is a portion of the pot's panel and may mean nothing to
+    // the generic row's, unlike the ranking, which credits both.
+    const amounts = foodLastAmounts([
+      logged('1 container', { itemId: 'yogurt', productId: 'fage', atISO: '2026-04-03T08:00:00.000Z' }),
+      logged('250g', { itemId: 'yogurt', atISO: '2026-04-01T08:00:00.000Z' }),
+    ]);
+    expect(amounts.get('p:fage')).toEqual({ amount: '1 container', dishMeasure: null });
+    expect(amounts.get('i:yogurt')).toEqual({ amount: '250g', dishMeasure: null });
+  });
+
+  it('reads a dish back as a number and the measure it was asked in', () => {
+    const amounts = foodLastAmounts([logged('320 g', { recipeId: 'lasagne' })]);
+    expect(amounts.get('r:lasagne')).toEqual({ amount: '320', dishMeasure: 'weight' });
+  });
+
+  it('recalls nothing when the latest entry cannot be read back, rather than reaching past it', () => {
+    // Reaching back to an older entry would offer an amount that is not the
+    // last one this dish was logged in.
+    const amounts = foodLastAmounts([
+      logged('2 servings', { recipeId: 'soup', atISO: '2026-04-01T08:00:00.000Z' }),
+      logged('1 serving, plus baguette', { recipeId: 'soup', atISO: '2026-04-02T08:00:00.000Z' }),
+    ]);
+    expect(amounts.has('r:soup')).toBe(true);
+    expect(amounts.get('r:soup')).toBeNull();
+  });
+
+  it('remembers nothing for a food logged against no row', () => {
+    expect(foodLastAmounts([logged('a bowl of ramen')]).size).toBe(0);
   });
 });
