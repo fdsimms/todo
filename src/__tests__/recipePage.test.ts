@@ -99,6 +99,22 @@ describe('fetchRecipePage', () => {
     expect(impl).not.toHaveBeenCalled();
   });
 
+  // Nothing in demo mode reaches past the demo database, and the extraction
+  // after this would refuse anyway, so fetching the page is all cost.
+  it('fetches nothing in demo mode', async () => {
+    const { setDemoModeActive } = jest.requireActual('../utils/demoState') as typeof import('../utils/demoState');
+    const impl = stubFetch({ body: ldPage(RECIPE_LD) });
+    setDemoModeActive(true);
+    try {
+      expect(await codeOf('https://example.com/chili')).toBe('demoMode');
+      expect(impl).not.toHaveBeenCalled();
+    } finally {
+      setDemoModeActive(false);
+    }
+    expect(describeImportError(recipePageError('demoMode'))).toContain('demo mode');
+    expect(isRetryableImportError(recipePageError('demoMode'))).toBe(false);
+  });
+
   it('maps the statuses a site declines with', async () => {
     for (const [status, code] of [[403, 'blocked'], [401, 'blocked'], [429, 'blocked'],
       [404, 'notFound'], [410, 'notFound'], [500, 'serverError'], [503, 'serverError']] as const) {
@@ -162,7 +178,7 @@ describe('fetchRecipePage', () => {
 describe('describeImportError', () => {
   it('has copy for every page failure, and says what to do instead', () => {
     const codes: RecipePageErrorCode[] = ['badUrl', 'timeout', 'offline', 'blocked',
-      'notFound', 'serverError', 'notHtml', 'tooLarge', 'noRecipe'];
+      'notFound', 'serverError', 'notHtml', 'tooLarge', 'noRecipe', 'demoMode'];
     for (const code of codes) {
       const message = describeImportError(recipePageError(code));
       expect(message).toBeTruthy();
@@ -225,7 +241,7 @@ describe('isRetryableImportError', () => {
   it('covers every code the union declares', () => {
     // Guards the set against a code added later and silently left retryable.
     const codes: RecipePageErrorCode[] = ['badUrl', 'timeout', 'offline', 'blocked',
-      'notFound', 'serverError', 'notHtml', 'tooLarge', 'noRecipe'];
+      'notFound', 'serverError', 'notHtml', 'tooLarge', 'noRecipe', 'demoMode'];
     const retryable = codes.filter(c => isRetryableImportError(recipePageError(c)));
     expect(retryable.sort()).toEqual(['offline', 'serverError', 'timeout']);
   });

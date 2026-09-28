@@ -2,9 +2,11 @@ import React, { useState } from 'react';
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useMealPlanStore } from '../store/useMealPlanStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { useAiRoute } from '../hooks/useOnDeviceAi';
 import { dayKeyOf, getCurrentDayStart, getLogicalToday } from '../utils/dateUtils';
 import { logInstantFor } from '../utils/foodLog';
+import { featureHidden } from '../utils/simpleMode';
 import { EstimateMealSheet } from './EstimateMealSheet';
 import { FoodLogEntrySheet } from './FoodLogEntrySheet';
 import { ScanToLogFlow } from './ScanToLogFlow';
@@ -92,6 +94,8 @@ export function LogMealEntrySheet() {
   const pendingFinishLeftoverId = useLeftoverStore(s => s.pendingFinishLeftoverId);
   const setLogMeal = useMealPlanStore(s => s.setLogMeal);
   const estimateRoute = useAiRoute('nutritionEstimate');
+  // No Scan button in simplified mode, same gate as the food log's own.
+  const simpleMode = useSettingsStore(s => s.simpleMode);
 
   const mealPlanEntryId = pending?.mealPlanEntryId ?? null;
 
@@ -137,7 +141,7 @@ export function LogMealEntrySheet() {
         initialQuery={pending?.label ?? ''}
         mealPlanEntryId={mealPlanEntryId}
         onClose={() => { setPending(null); setSeedRecipeId(null); }}
-        onScan={() => {
+        onScan={featureHidden('barcodeScanning', simpleMode) ? undefined : () => {
           setScan({ slot: pending?.slot ?? null, dayKey: pending?.dayKey ?? dayKeyOf(getLogicalToday()), mealPlanEntryId });
         }}
         onEstimate={estimateRoute !== 'unavailable' ? query => {

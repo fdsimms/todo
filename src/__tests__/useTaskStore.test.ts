@@ -28,6 +28,8 @@ import { useTemplateStore } from '../store/useTemplateStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useFoodLogStore } from '../store/useFoodLogStore';
+import { useUnattendedStore } from '../store/useUnattendedStore';
+import { useHealthStore } from '../store/useHealthStore';
 import { usePersonStore } from '../store/usePersonStore';
 import { normalizeTemplateItem } from '../utils/templateUtils';
 import {
@@ -4278,6 +4280,81 @@ describe('supplies', () => {
       expect(liveOrders()).toHaveLength(0);
     });
 
+    describe('with a grocery link', () => {
+      const catalogRow = (id: string): GroceryItem => ({
+        nameFromScan: false,
+        id, name: 'CPAP filters', nameKey: 'cpap filters', preferredProductId: null, productStrict: false,
+        aisle: 'Other', quantity: null, quantityFromRecipe: false, note: '',
+        onList: false, checked: false, sortOrder: 1,
+        purchaseCount: 0, lastAddedAt: null, lastPurchasedAt: null, createdAt: noon(-30),
+        onHandUntil: null, sourceRecipeId: null, sourceRecipeTitle: null, choiceGroup: null,
+        isStaple: false, expiresAt: null, frozenAt: null, openedAt: null, runningLowAt: null,
+        shelfLifeDays: null, useUpTask: null, pantryCheckDeclinedAt: null, pantryReviewedAt: null,
+        usedUpCount: 0, spoiledCount: 0, lastSpoiledAt: null, varietyOfKey: null, nutrition: null, backfillDismissedFields: [],
+        lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [],
+      });
+      const AWAY = { id: 'l-cabin', name: 'Cabin', sortOrder: 1, createdAt: noon(-30) };
+      const seedGrocery = (items: GroceryItem[], initialized = true) => {
+        useGroceryStore.setState({
+          items, aisleOrder: [], hiddenAisles: [], aisleOverrides: {},
+          shops: [], itemShops: [], lastShopId: null, cartHoldIds: [],
+          pendingUseUpItemId: null, initialized,
+          lists: [AWAY], listEntries: [], activeListId: AWAY.id,
+        });
+      };
+
+      it('puts a live linked item on the home list rather than the away one, and writes no order', () => {
+        useSettingsStore.getState.mockReturnValue(settings({ kitchenEnabled: true }));
+        seedGrocery([catalogRow('g-filter')]);
+        // The list write itself is covered in useGroceryStore.test.ts; this
+        // pins which list the sweep names.
+        const realSetRunningLow = useGroceryStore.getState().setRunningLow;
+        const setRunningLow = jest.fn();
+        useGroceryStore.setState({ setRunningLow });
+        try {
+          addSupplyTask({ supplyCount: 1, supplyGroceryItemId: 'g-filter' });
+
+          useTaskStore.getState().checkSupplyReorderTasks();
+
+          expect(setRunningLow).toHaveBeenCalledWith('g-filter', true, { registerUndo: false, listId: null });
+          expect(liveOrders()).toHaveLength(0);
+        } finally {
+          useGroceryStore.setState({ setRunningLow: realSetRunningLow });
+        }
+      });
+
+      it('writes an order when the linked item has been deleted from the catalog', () => {
+        // Otherwise the supply asks nowhere: the list half skips a dead item.
+        useSettingsStore.getState.mockReturnValue(settings({ kitchenEnabled: true }));
+        seedGrocery([]);
+        const task = addSupplyTask({ supplyCount: 1, supplyGroceryItemId: 'g-gone' });
+
+        useTaskStore.getState().checkSupplyReorderTasks();
+
+        expect(liveOrders().map(o => o.generatedSourceId)).toEqual([task.id]);
+      });
+
+      it('writes an order when the kitchen is off', () => {
+        useSettingsStore.getState.mockReturnValue(settings({ kitchenEnabled: false }));
+        seedGrocery([catalogRow('g-filter')]);
+        addSupplyTask({ supplyCount: 1, supplyGroceryItemId: 'g-filter' });
+
+        useTaskStore.getState().checkSupplyReorderTasks();
+
+        expect(liveOrders()).toHaveLength(1);
+      });
+
+      it('trusts the link until the catalog has loaded', () => {
+        useSettingsStore.getState.mockReturnValue(settings({ kitchenEnabled: true }));
+        seedGrocery([], false);
+        addSupplyTask({ supplyCount: 1, supplyGroceryItemId: 'g-filter' });
+
+        useTaskStore.getState().checkSupplyReorderTasks();
+
+        expect(liveOrders()).toHaveLength(0);
+      });
+    });
+
     it('asks as soon as the supply is spent, without waiting for a sweep', () => {
       // Ticking the task off and being told nothing is the whole reason
       // completeTask runs the pass itself.
@@ -4474,6 +4551,27 @@ describe('checkPantryCheckTasks', () => {
     useTaskStore.getState().checkPantryCheckTasks();
 
     expect(checkTasks()).toHaveLength(0);
+  });
+
+  // Off stops the asking, not the tidying up. Returning above the clear left
+  // a row about an item bought again (or deleted) on Today until somebody
+  // removed it by hand.
+  it.each([
+    ['the setting', { pantryCheckTasks: false }],
+    ['the whole grocery area', { kitchenEnabled: false }],
+  ])('still clears a row whose reason has gone with %s off', (_, off) => {
+    seedItems(lapsedItem({ id: 'g-1' }), lapsedItem({ id: 'g-2', name: 'Rice', nameKey: 'rice' }));
+    useTaskStore.getState().checkPantryCheckTasks();
+    expect(checkTasks()).toHaveLength(2);
+
+    // Flour bought again; rice still lapsed.
+    seedItems(lapsedItem({ id: 'g-1', lastPurchasedAt: daysAgo(1) }), lapsedItem({ id: 'g-2', name: 'Rice', nameKey: 'rice' }));
+    useSettingsStore.getState.mockReturnValue(settings(off));
+    useTaskStore.getState().checkPantryCheckTasks();
+
+    // Only the row whose reason has gone: the rice row is still a true
+    // question, and switching the generator off is not a decline of it.
+    expect(checkTasks().map(t => t.generatedSourceId)).toEqual(['g-2']);
   });
 
   it('does not pile up a second task on the next sweep', () => {
@@ -4716,6 +4814,24 @@ describe('checkPantryReviewTasks', () => {
     useTaskStore.getState().checkPantryReviewTasks();
 
     expect(reviewTasks()).toHaveLength(0);
+  });
+
+  it.each([
+    ['the setting', { pantryReviewTasks: false }],
+    ['the whole grocery area', { kitchenEnabled: false }],
+  ])('still clears its row once the deck empties with %s off', (_, off) => {
+    doubtfulCupboard();
+    useTaskStore.getState().checkPantryReviewTasks();
+    expect(reviewTasks()).toHaveLength(1);
+    setPantryReviewLastDayKey.mockClear();
+
+    seedItems(...Array.from({ length: 6 }, (_, i) => guessedItem(i, { onHandUntil: OUT_OF_IT_UNTIL })));
+    useSettingsStore.getState.mockReturnValue(settings(off));
+    useTaskStore.getState().checkPantryReviewTasks();
+
+    expect(reviewTasks()).toHaveLength(0);
+    // And no day is spent on an offer that could not have been made.
+    expect(setPantryReviewLastDayKey).not.toHaveBeenCalled();
   });
 
   // Recorded the moment a day is considered, whatever the outcome — with no
@@ -5929,6 +6045,108 @@ describe('checkMoodTasks', () => {
 });
 
 
+describe('checkWeighInTasks', () => {
+  const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as {
+    useSettingsStore: { getState: jest.Mock };
+  };
+
+  // The two marks the pass and the delete write, held here so a test can run
+  // the pass on several days and see each run act on what the last wrote.
+  let lastDayKey: string | null = null;
+  let declinedDayKey: string | null = null;
+  const settings = () => ({
+    dayResetTime: '00:00',
+    vacationMode: false,
+    weighInTasks: true,
+    weighInTaskCategory: 'Health',
+    weighInEveryDays: 7,
+    healthReadEnabled: true,
+    healthWriteEnabled: true,
+    get weighInLastDayKey() { return lastDayKey; },
+    setWeighInLastDayKey: (key: string | null) => { lastDayKey = key; },
+    get weighInDeclinedDayKey() { return declinedDayKey; },
+    setWeighInDeclinedDayKey: (key: string | null) => { declinedDayKey = key; },
+    newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
+    titleRules: [],
+    collapsedCategories: [],
+  });
+
+  const requests = () =>
+    useTaskStore.getState().tasks.filter(t => t.generatedKind === 'weighIn' && !t.completed && !t.archived);
+  const on = async (day: number) => {
+    jest.setSystemTime(new Date(2026, 8, day, 9, 0, 0));
+    await useTaskStore.getState().checkWeighInTasks();
+  };
+
+  const realRead = useHealthStore.getState().readRecentWeights;
+  beforeEach(() => {
+    jest.useFakeTimers();
+    lastDayKey = null;
+    declinedDayKey = null;
+    useSettingsStore.getState.mockReturnValue(settings());
+    useTaskStore.setState({ tasks: [] });
+    // Health asked and had nothing: the one answer that writes a request.
+    useHealthStore.setState({ readRecentWeights: jest.fn().mockResolvedValue([]) });
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    useHealthStore.setState({ readRecentWeights: realRead });
+  });
+
+  it('asks when the window has no weight in it', async () => {
+    await on(8);
+    expect(requests().map(t => t.generatedSourceId)).toEqual(['2026-09-08']);
+  });
+
+  it('holds a deleted request for the whole window rather than asking again tomorrow', async () => {
+    // Lee deletes the request on the 8th: it used to be back on the 9th, the
+    // 10th and the 11th, since the window still had no reading in it.
+    await on(8);
+    useTaskStore.getState().deleteTask(requests()[0].id);
+    expect(declinedDayKey).toBe('2026-09-08');
+
+    for (const day of [9, 10, 14]) {
+      await on(day);
+      expect(requests()).toHaveLength(0);
+    }
+
+    // A week on from the decline, with still nothing recorded, it asks again.
+    await on(15);
+    expect(requests().map(t => t.generatedSourceId)).toEqual(['2026-09-15']);
+  });
+
+  it('takes the decline back with the delete, on undo', async () => {
+    await on(8);
+    useTaskStore.getState().deleteTask(requests()[0].id);
+    useTaskStore.getState().lastAction!.undo();
+
+    expect(declinedDayKey).toBeNull();
+    expect(requests()).toHaveLength(1);
+  });
+
+  it('does not count a request nobody answered as a decline', async () => {
+    // Clearing yesterday's request is the pass tidying up. Stamped as a
+    // decline, an ignored request would go quiet for a week on its own.
+    await on(8);
+    await on(9);
+
+    expect(declinedDayKey).toBeNull();
+    expect(requests().map(t => t.generatedSourceId)).toEqual(['2026-09-09']);
+  });
+
+  it('skips the Health read while a decline holds', async () => {
+    await on(8);
+    useTaskStore.getState().deleteTask(requests()[0].id);
+    const read = useHealthStore.getState().readRecentWeights as jest.Mock;
+    read.mockClear();
+
+    await on(9);
+
+    expect(read).not.toHaveBeenCalled();
+  });
+});
+
 describe('checkMealPlanNudge', () => {
   const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as {
     useSettingsStore: { getState: jest.Mock };
@@ -6034,6 +6252,20 @@ describe('checkMealPlanNudge', () => {
     useTaskStore.getState().checkMealPlanNudge();
 
     expect(useTaskStore.getState().tasks).toHaveLength(7);
+    // Written during the trip on purpose, so not paused by it either: the
+    // vacation stamp every paused kind's draft carries would hide them again.
+    expect(useTaskStore.getState().tasks.every(t => !t.vacationPause)).toBe(true);
+  });
+
+  it('pauses its rows on vacation otherwise, like every kind that stands down for it', () => {
+    jest.setSystemTime(new Date(2025, 7, 3, 9, 0, 0));
+    useSettingsStore.getState.mockReturnValue(settings());
+    useTaskStore.setState({ tasks: [] });
+
+    useTaskStore.getState().checkMealPlanNudge();
+
+    expect(useTaskStore.getState().tasks).toHaveLength(7);
+    expect(useTaskStore.getState().tasks.every(t => t.vacationPause)).toBe(true);
   });
 
   it('does nothing before the configured day/time arrives', () => {
@@ -6510,6 +6742,7 @@ describe('checkMealSlotTasks', () => {
   });
 
   it('skips the choosing for a slot that is already answered', () => {
+    useRecipeStore.setState({ recipes: [recipe('r1')] });
     (dbGetMealPlanEntries as jest.Mock).mockReturnValue([
       mealEntry('2026-08-25', 'dinner', { recipeId: 'r1', title: 'Chili' }),
     ]);
@@ -6523,6 +6756,25 @@ describe('checkMealSlotTasks', () => {
     expect(friday.title).toBe('Chili');
     // And the nights around it are still the choosing question.
     expect(slotRows().find(t => t.generatedSourceId === '2026-08-24#dinner')!.title).toBe('Dinner');
+  });
+
+  it('writes a meal whose recipe was deleted as the typed meal it now reads as', () => {
+    // The entry keeps pointing at the recipe on purpose, so a night planned
+    // before the delete and first reached by the pass after it would
+    // otherwise say "Make Chili" and link to "This recipe is gone".
+    useRecipeStore.setState({ recipes: [], initialized: true });
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([
+      mealEntry('2026-08-25', 'dinner', { recipeId: 'r-gone', title: 'Chili' }),
+    ]);
+    useSettingsStore.getState.mockReturnValue(settings({ mealSlotsEnabled: ['dinner'] }));
+    useTaskStore.setState({ tasks: [] });
+
+    useTaskStore.getState().checkMealSlotTasks();
+
+    const friday = slotRows().find(t => t.generatedSourceId === '2026-08-25#dinner')!;
+    expect(friday.title).toBe('Eat Chili');
+    expect(friday.chainEnabled).toBe(false);
+    expect(friday.linkUrl).toBe('dundundun://mealplan?date=2026-08-25');
   });
 
   it('carries the recipe\'s prep + cook time onto the Cook step', () => {
@@ -6576,10 +6828,119 @@ describe('checkMealSlotTasks', () => {
     expect(slotRows()).toHaveLength(7);
 
     // Tomorrow: one new day comes into range, and only that one is written.
+    // Yesterday's row, never started, goes as the new one arrives, so the
+    // window stays a week long rather than growing by a day each morning.
     jest.setSystemTime(new Date(2026, 7, 23, 9, 0, 0));
     useTaskStore.getState().checkMealSlotTasks();
-    expect(slotRows()).toHaveLength(8);
+    expect(slotRows()).toHaveLength(7);
     expect(sourceIds()).toContain('2026-08-29#lunch');
+    expect(sourceIds()).not.toContain('2026-08-22#lunch');
+  });
+
+  describe('a day that has gone by', () => {
+    const liveRows = () => slotRows().filter(t => !t.completed && !t.archived);
+    const liveSourceIds = () => liveRows().map(t => t.generatedSourceId);
+
+    it('drops the rows nobody started, a weekend away included', () => {
+      // Written on the Saturday, then the app isn't opened again until
+      // Tuesday: every meal from Saturday to Monday used to sit on Today as
+      // overdue for ever, since nothing but a person ever removed one.
+      useSettingsStore.getState.mockReturnValue(settings());
+      useTaskStore.setState({ tasks: [] });
+      useTaskStore.getState().checkMealSlotTasks();
+      const clearedSoFar = () => useUnattendedStore.getState().entries
+        .filter(e => e.action === 'cleared' && e.kind === 'mealSlot').length;
+      const before = clearedSoFar();
+
+      jest.setSystemTime(new Date(2026, 7, 25, 9, 0, 0));
+      useTaskStore.getState().checkMealSlotTasks();
+
+      expect(liveSourceIds().filter(id => id!.slice(0, 10) < '2026-08-25')).toEqual([]);
+      expect(liveSourceIds()).toContain('2026-08-25#breakfast');
+      // Three days of three meals, and the ledger says the app took them back.
+      expect(clearedSoFar() - before).toBe(9);
+    });
+
+    it('keeps a chain somebody started, and a row somebody moved', () => {
+      useSettingsStore.getState.mockReturnValue(settings({ mealSlotsEnabled: ['lunch', 'dinner'] }));
+      useTaskStore.setState({ tasks: [] });
+      useTaskStore.getState().checkMealSlotTasks();
+      // Chose lunch: the chain moved on to "Prepare lunch", which is the
+      // user's now, the same line mealSlotDrift draws.
+      const lunch = slotRows().find(t => t.generatedSourceId === '2026-08-22#lunch')!;
+      useTaskStore.getState().completeTask(lunch.id);
+      // Dinner pushed to Monday by hand.
+      const dinner = slotRows().find(t => t.generatedSourceId === '2026-08-22#dinner')!;
+      useTaskStore.getState().updateTask(dinner.id, { deferUntil: new Date(2026, 7, 24, 12).toISOString() });
+
+      jest.setSystemTime(new Date(2026, 7, 23, 9, 0, 0));
+      useTaskStore.getState().checkMealSlotTasks();
+
+      expect(liveSourceIds()).toContain('2026-08-22#lunch');
+      expect(liveSourceIds()).toContain('2026-08-22#dinner');
+    });
+
+    it('never writes a dropped day back', () => {
+      // The high-water mark is still the opt-out: the day is behind it, so
+      // clearing its row is not an invitation to write another.
+      useSettingsStore.getState.mockReturnValue(settings({ mealSlotsEnabled: ['lunch'] }));
+      useTaskStore.setState({ tasks: [] });
+      useTaskStore.getState().checkMealSlotTasks();
+      jest.setSystemTime(new Date(2026, 7, 23, 9, 0, 0));
+      useTaskStore.getState().checkMealSlotTasks();
+      useTaskStore.getState().checkMealSlotTasks();
+
+      expect(sourceIds()).not.toContain('2026-08-22#lunch');
+    });
+
+    it('still clears with the generator switched off, or the area hidden', () => {
+      // Off stops the pass writing. A row about a meal that has gone by is no
+      // more use because the switch changed, and returning above the clear
+      // left it overdue on Today with no row left in Settings to explain it.
+      useSettingsStore.getState.mockReturnValue(settings({ mealSlotsEnabled: ['lunch'] }));
+      useTaskStore.setState({ tasks: [] });
+      useTaskStore.getState().checkMealSlotTasks();
+
+      jest.setSystemTime(new Date(2026, 7, 23, 9, 0, 0));
+      useSettingsStore.getState.mockReturnValue(settings({ mealCookTasks: false }));
+      useTaskStore.getState().checkMealSlotTasks();
+      expect(liveSourceIds()).not.toContain('2026-08-22#lunch');
+
+      jest.setSystemTime(new Date(2026, 7, 24, 9, 0, 0));
+      useSettingsStore.getState.mockReturnValue(settings({ kitchenEnabled: false }));
+      useTaskStore.getState().checkMealSlotTasks();
+      expect(liveSourceIds()).not.toContain('2026-08-23#lunch');
+    });
+
+    it('leaves everything alone on vacation, when the rows are hidden anyway', () => {
+      useSettingsStore.getState.mockReturnValue(settings({ mealSlotsEnabled: ['lunch'] }));
+      useTaskStore.setState({ tasks: [] });
+      useTaskStore.getState().checkMealSlotTasks();
+
+      jest.setSystemTime(new Date(2026, 7, 23, 9, 0, 0));
+      useSettingsStore.getState.mockReturnValue(settings({ mealSlotsEnabled: ['lunch'], vacationMode: true }));
+      useTaskStore.getState().checkMealSlotTasks();
+
+      expect(liveSourceIds()).toContain('2026-08-22#lunch');
+    });
+  });
+
+  it('pauses its rows on vacation, so a week written before a trip hides during it', () => {
+    // The pass stops writing while vacation is on, but it writes a week ahead,
+    // so the rows written the day before leaving used to sit on Today for the
+    // first six days away.
+    useSettingsStore.getState.mockReturnValue(settings({ mealSlotsEnabled: ['lunch'] }));
+    useTaskStore.setState({ tasks: [] });
+    useTaskStore.getState().checkMealSlotTasks();
+    expect(slotRows().every(t => t.vacationPause)).toBe(true);
+
+    // And the step a chain moves on to keeps it.
+    const today = slotRows().find(t => t.generatedSourceId === '2026-08-22#lunch')!;
+    useTaskStore.getState().completeTask(today.id);
+    const next = useTaskStore.getState().tasks.find(
+      t => !t.completed && t.generatedSourceId === '2026-08-22#lunch'
+    )!;
+    expect(next.vacationPause).toBe(true);
   });
 
   it('never revisits a day it has written, so a deleted row stays deleted', () => {
@@ -6872,6 +7233,41 @@ describe('checkMealShortfallTasks', () => {
     expect(shopRows()).toHaveLength(0);
   });
 
+  // Marco drops the ragu from the plan and turns the generator off: "Shop for
+  // Ragu" used to stay on Today, overdue, naming a meal that no longer existed.
+  it.each([
+    ['the setting', { mealShortfallTasks: false }],
+    ['the whole grocery area', { kitchenEnabled: false }],
+  ])('still clears a row whose meal is gone with %s off', (_, off) => {
+    useTaskStore.getState().checkMealShortfallTasks();
+    expect(shopRows()).toHaveLength(1);
+
+    replan();
+    useSettingsStore.getState.mockReturnValue(settings(off));
+    useTaskStore.getState().checkMealShortfallTasks();
+
+    expect(shopRows()).toHaveLength(0);
+  });
+
+  it('leaves a row whose meal still needs shopping for while off', () => {
+    // Off is not a decline of the meals already asked about, only an end to
+    // asking about new ones.
+    useTaskStore.getState().checkMealShortfallTasks();
+    useSettingsStore.getState.mockReturnValue(settings({ mealShortfallTasks: false }));
+    useTaskStore.getState().checkMealShortfallTasks();
+
+    expect(shopRows()).toHaveLength(1);
+  });
+
+  it('reads nothing while off with no row to clear', () => {
+    useSettingsStore.getState.mockReturnValue(settings({ mealShortfallTasks: false }));
+    (dbGetMealPlanEntries as jest.Mock).mockClear();
+
+    useTaskStore.getState().checkMealShortfallTasks();
+
+    expect(dbGetMealPlanEntries).not.toHaveBeenCalled();
+  });
+
   it('does not pile up a second task on the next sweep', () => {
     useTaskStore.getState().checkMealShortfallTasks();
     useTaskStore.getState().checkMealShortfallTasks();
@@ -6971,6 +7367,76 @@ describe('checkMealShortfallTasks', () => {
     useTaskStore.getState().checkMealShortfallTasks();
 
     expect(shopRows()).toHaveLength(MAX_MEAL_SHORTFALL_TASKS);
+  });
+});
+
+describe('checkMealLogNudgeTasks', () => {
+  const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as {
+    useSettingsStore: { getState: jest.Mock };
+  };
+
+  const settings = (overrides: Record<string, unknown> = {}) => ({
+    dayResetTime: '00:00',
+    vacationMode: false,
+    kitchenEnabled: true,
+    mealLogNudgeTasks: true,
+    mealLogNudgeTaskCategory: 'Meal Plan',
+    newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
+    titleRules: [],
+    collapsedCategories: [],
+    ...overrides,
+  });
+
+  const yesterdaysDinner: MealPlanEntry = {
+    id: 'm-dinner', date: '2026-08-21', slot: 'dinner', recipeId: null, title: 'Ragu',
+    sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z', cookedAt: null, leftoverId: null,
+    recipeChoices: [], recipeScale: 1, cookTask: null, shopTask: null, logMeal: null, calendarEventId: null,
+  };
+  let planned: MealPlanEntry[] = [];
+
+  const nudgeRows = () =>
+    useTaskStore.getState().tasks.filter(t => t.generatedKind === 'mealLogNudge' && !t.completed && !t.archived);
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2026, 7, 22, 9, 0, 0));
+    planned = [yesterdaysDinner];
+    (dbGetMealPlanEntries as jest.Mock).mockImplementation(() => planned);
+    (dbGetFoodLogEntries as jest.Mock).mockReturnValue([]);
+    useSettingsStore.getState.mockReturnValue(settings());
+    useTaskStore.setState({ tasks: [] });
+  });
+
+  afterEach(() => { jest.useRealTimers(); });
+
+  it('asks about a meal from yesterday with nothing logged against it', () => {
+    useTaskStore.getState().checkMealLogNudgeTasks();
+
+    expect(nudgeRows().map(t => t.generatedSourceId)).toEqual(['m-dinner']);
+  });
+
+  it('writes nothing while off', () => {
+    useSettingsStore.getState.mockReturnValue(settings({ mealLogNudgeTasks: false }));
+
+    useTaskStore.getState().checkMealLogNudgeTasks();
+
+    expect(nudgeRows()).toHaveLength(0);
+  });
+
+  // Off stops the asking, not the tidying up: a row for a meal since deleted
+  // used to stay on Today until somebody removed it by hand.
+  it.each([
+    ['the setting', { mealLogNudgeTasks: false }],
+    ['the whole grocery area', { kitchenEnabled: false }],
+  ])('still clears a row whose meal is gone with %s off', (_, off) => {
+    useTaskStore.getState().checkMealLogNudgeTasks();
+    expect(nudgeRows()).toHaveLength(1);
+
+    planned = [];
+    useSettingsStore.getState.mockReturnValue(settings(off));
+    useTaskStore.getState().checkMealLogNudgeTasks();
+
+    expect(nudgeRows()).toHaveLength(0);
   });
 });
 

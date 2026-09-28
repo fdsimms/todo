@@ -59,6 +59,26 @@ export function normalizeRecipeUrl(input: string): string | null {
   return `${protocol}://${host.toLowerCase()}${port}${path}`;
 }
 
+/**
+ * The recipe already imported from this address, or null.
+ *
+ * Keyed on `normalizeRecipeUrl` on both sides because that is what an import
+ * saves as `sourceUrl`, and it is a pure function of the typed address — so the
+ * question can be answered before anything is fetched, which is the point.
+ * `RecipeCreateSheet` asks it twice (before the page fetch, and again once the
+ * page is in hand) and must get the same answer both times, hence one function.
+ * Normalising the stored side too catches a source typed by hand without its
+ * scheme.
+ */
+export function recipeImportedFrom<T extends { sourceUrl?: string | null }>(
+  recipes: readonly T[],
+  address: string,
+): T | null {
+  const key = normalizeRecipeUrl(address);
+  if (!key) return null;
+  return recipes.find(r => !!r.sourceUrl && normalizeRecipeUrl(r.sourceUrl) === key) ?? null;
+}
+
 // ——— Entities and tags ————————————————————————————————————————————————
 
 /**

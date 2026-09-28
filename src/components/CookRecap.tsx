@@ -103,8 +103,11 @@ export function CookRecap() {
    */
   const askCookedWeight = useMemo(() => {
     if (!recipe || recipe.cookedWeightG !== null) return false;
-    return recipeNutrition(recipe, items, itemProducts, recipesById, { chosen: shownRecap?.choices ?? [] }) !== null;
-  }, [recipe, items, itemProducts, recipesById, shownRecap]);
+    // With the standing swaps, the same read the after-meal prompt measures
+    // the weight against: a dish whose figures exist only once "oat milk for
+    // milk" is applied still has something for a weight to divide.
+    return recipeNutrition(recipe, items, itemProducts, recipesById, { chosen: shownRecap?.choices ?? [] }, 1, swaps) !== null;
+  }, [recipe, items, itemProducts, recipesById, shownRecap, swaps]);
 
   const restockList = useMemo(
     () => (restockOfferEnabled ? restockRows(classified) : []),

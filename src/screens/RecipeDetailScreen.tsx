@@ -34,6 +34,7 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useFoodLogStore } from '../store/useFoodLogStore';
+import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useRowSelection } from '../hooks/useRowSelection';
 import { DetailHeader } from '../components/DetailHeader';
 import { EmptyState } from '../components/EmptyState';
@@ -65,6 +66,7 @@ import { ComponentChoiceSheet } from '../components/ComponentChoiceSheet';
 import { usePlanMeal } from '../hooks/usePlanMeal';
 import { useRecipeTimer } from '../hooks/useRecipeTimer';
 import { useStepTimers } from '../hooks/useStepTimers';
+import { useAiRoute } from '../hooks/useOnDeviceAi';
 import { RecipeTimerRow } from '../components/RecipeTimerRow';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from '../components/NumberPadAccessory';
 import { CookModeSheet } from '../components/CookModeSheet';
@@ -100,6 +102,7 @@ import { applyStandingSwap, describeStandingSwap, standingSwapMap } from '../uti
 import { annotateSteps, stepIngredientLines, type StepSegment } from '../utils/stepIngredients';
 import { describeRecipeCost, estimateRecipeCost } from '../utils/recipeCost';
 import { describeCookedWeight } from '../utils/mealLog';
+import { plannedEntryForRecipe } from '../utils/foodLog';
 import {
   describeNutritionCoverage,
   describeRecipeNutrition,
@@ -117,7 +120,7 @@ type RootStackParamList = {
    * same for MealPlanEntry.recipeScale. Seed only: nothing picked here is
    * written back to the entry.
    */
-  RecipeDetail: { recipeId: string; choices?: string[]; scale?: number };
+  RecipeDetail: { recipeId: string; choices?: string[]; scale?: number; openCookMode?: number };
 };
 
 /** One row of the merged list the ingredients SortableList drags over — see mergedIngredientRows. */
@@ -165,7 +168,9 @@ export function RecipeDetailScreen() {
   const setImage = useRecipeStore(s => s.setImage);
   const addComponent = useRecipeStore(s => s.addComponent);
   const removeComponent = useRecipeStore(s => s.removeComponent);
-  const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
+  // The route rather than the bare key, so turning Recipe import off in
+  // Settings takes the sparkle away instead of leaving it to apologise.
+  const recipeImportRoute = useAiRoute('recipeExtraction');
   const unitSystem = useSettingsStore(s => s.unitSystem);
   const currencySymbol = useSettingsStore(s => s.currencySymbol);
   const simpleMode = useSettingsStore(s => s.simpleMode);
@@ -381,6 +386,22 @@ export function RecipeDetailScreen() {
   const { overlap, openOverlap, closeOverlap, handOffOverlap } = useOverlapPicker();
   const [extractVisible, setExtractVisible] = useState(false);
   const [cookModeVisible, setCookModeVisible] = useState(false);
+  /**
+   * `openCookMode` (route.params) is CookingBar's and the More tab's
+   * cook-timer dot's way back in — resetToRecipeDetail's second param, the
+   * same stamped-and-compare handoff resetToGroceries's openFinish uses. A
+   * request that arrives before `cookableCount`/`simpleMode` are known to
+   * allow the button at all is answered the same way the button itself
+   * would be: nothing opens, and the stamp is still marked handled so it
+   * doesn't fire again on the next render once those are known.
+   */
+  const openCookModeStamp = route.params.openCookMode;
+  const [handledCookModeStamp, setHandledCookModeStamp] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    if (openCookModeStamp === undefined || openCookModeStamp === handledCookModeStamp) return;
+    setHandledCookModeStamp(openCookModeStamp);
+    if (cookableCount > 0 && !featureHidden('cookMode', simpleMode)) setCookModeVisible(true);
+  }, [openCookModeStamp, handledCookModeStamp, cookableCount, simpleMode]);
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
   const [componentPickerVisible, setComponentPickerVisible] = useState(false);
   const [choiceComponent, setChoiceComponent] = useState<ResolvedComponent | null>(null);
@@ -827,15 +848,27 @@ export function RecipeDetailScreen() {
   // wants logged from the page they're looking at.
   const handleLogToFoodLog = () => {
     haptics.tap();
+    const dayKey = dayKeyOf(getCurrentDayStart());
+    // Today's planned entry for this dish, when there is exactly one nobody
+    // has logged yet: its meal and its link, so the plan reads as logged and
+    // the Eat step doesn't offer it again. Read when tapped rather than
+    // subscribed to, since it only matters at this moment.
+    const planned = plannedEntryForRecipe(
+      useMealPlanStore.getState().entriesForDayLive(dayKey),
+      useFoodLogStore.getState().recentEntries(dayKey, dayKey),
+      recipe.id,
+    );
     setPendingMealLog({
       label: recipe.name,
-      slot: null,
-      dayKey: dayKeyOf(getCurrentDayStart()),
+      slot: planned?.slot ?? null,
+      dayKey,
       recipeId: recipe.id,
-      mealPlanEntryId: null,
+      mealPlanEntryId: planned?.id ?? null,
       scale,
       choices,
       grams: null,
+      // Somebody tapped to log this, rather than the app offering it.
+      asked: true,
     });
   };
 
@@ -1114,7 +1147,6 @@ export function RecipeDetailScreen() {
             [ingredient.section, line.name, swapNote, scaledQuantity, ingredient.prep,
              ingredient.purpose && `for ${ingredient.purpose}`,
              ingredient.optional && 'optional',
-             ingredient.excludeFromShoppingList && 'not on your shopping list',
              choiceGroup && (isChoiceDefault ? `usual choice for ${choiceGroup}` : `alternative for ${choiceGroup}`)]
               .filter(Boolean).join(', ')
           }
@@ -1138,11 +1170,9 @@ export function RecipeDetailScreen() {
             {!!swapNote && (
               <Text style={styles.swapNote} numberOfLines={1}>{swapNote}</Text>
             )}
-            {(!!ingredient.prep || !!ingredient.purpose || !!ingredient.optional
-              || !!ingredient.excludeFromShoppingList) && (
+            {(!!ingredient.prep || !!ingredient.purpose || !!ingredient.optional) && (
               <Text style={styles.ingredientPrep}>
-                {[ingredient.prep, ingredient.purpose && `for ${ingredient.purpose}`, ingredient.optional && 'optional',
-                  ingredient.excludeFromShoppingList && 'not on your list']
+                {[ingredient.prep, ingredient.purpose && `for ${ingredient.purpose}`, ingredient.optional && 'optional']
                   .filter(Boolean).join(' · ')}
               </Text>
             )}
@@ -1592,7 +1622,7 @@ export function RecipeDetailScreen() {
         onBack={() => navigation.goBack()}
         actions={
           <View style={styles.headerActions}>
-            {!selectionMode && !!anthropicApiKey && (
+            {!selectionMode && recipeImportRoute !== 'unavailable' && (
               <TouchableOpacity
                 onPress={() => { haptics.tap(); setExtractVisible(true); }}
                 hitSlop={8}

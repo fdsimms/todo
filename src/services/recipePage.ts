@@ -1,5 +1,6 @@
 import { MAX_RECIPE_CHARS, describeAIError } from './aiSuggestions';
 import { normalizeRecipeUrl, parseRecipePage, type ParsedRecipePage } from '../utils/recipeUrl';
+import { isDemoModeActive } from '../utils/demoState';
 
 /**
  * Fetching a recipe page. The **second** place this app talks to the network,
@@ -48,7 +49,8 @@ export type RecipePageErrorCode =
   | 'serverError'
   | 'notHtml'
   | 'tooLarge'
-  | 'noRecipe';
+  | 'noRecipe'
+  | 'demoMode';
 
 /**
  * Tagged with a plain property rather than an `instanceof` check on an Error
@@ -84,6 +86,7 @@ const MESSAGES: Record<RecipePageErrorCode, string> = {
   notHtml: 'That link isn’t a web page. Paste the recipe text instead.',
   tooLarge: 'That page is too big to read. Paste the recipe text instead.',
   noRecipe: 'Nothing readable came back from that page. Some sites build the recipe in the browser, so open it, copy the recipe, and paste it instead.',
+  demoMode: 'Importing from a link is off in demo mode.',
 };
 
 /**
@@ -145,6 +148,11 @@ const HTML_TYPE = /^(text\/html|application\/xhtml\+xml|text\/plain)/i;
  * field anyway.
  */
 export async function fetchRecipePage(input: string): Promise<FetchedRecipePage> {
+  // Nothing in demo mode reaches past the demo database, the rule the geocoder
+  // and the weather lookup beside this keep. The extraction after it would
+  // refuse anyway (`callAnthropic`), so without this the page was fetched for
+  // nothing. Not retryable: asking again is refused the same way.
+  if (isDemoModeActive()) throw recipePageError('demoMode');
   const url = normalizeRecipeUrl(input);
   if (!url) throw recipePageError('badUrl');
 

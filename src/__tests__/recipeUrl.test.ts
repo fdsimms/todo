@@ -1,5 +1,6 @@
 import {
   normalizeRecipeUrl,
+  recipeImportedFrom,
   decodeEntities,
   htmlToText,
   metaContent,
@@ -77,6 +78,29 @@ describe('normalizeRecipeUrl', () => {
     expect(normalizeRecipeUrl('example..com/x')).toBeNull();
     expect(normalizeRecipeUrl('.example.com/x')).toBeNull();
     expect(normalizeRecipeUrl('example.com:80x/x')).toBeNull();
+  });
+});
+
+describe('recipeImportedFrom', () => {
+  const recipes = [
+    { id: 'a', sourceUrl: null },
+    { id: 'b', sourceUrl: 'https://cooking.nytimes.com/recipes/1-chili' },
+    { id: 'c', sourceUrl: 'example.com/soup' },
+  ];
+
+  it('finds the recipe saved from the address as typed, before anything is fetched', () => {
+    expect(recipeImportedFrom(recipes, '  cooking.nytimes.com/recipes/1-chili ')?.id).toBe('b');
+    expect(recipeImportedFrom(recipes, 'HTTPS://Cooking.NYTimes.com/recipes/1-chili')?.id).toBe('b');
+  });
+
+  it('normalises the stored side too, so a hand-typed source without a scheme still matches', () => {
+    expect(recipeImportedFrom(recipes, 'https://example.com/soup')?.id).toBe('c');
+  });
+
+  it('answers null for a new address, and for something that is not an address', () => {
+    expect(recipeImportedFrom(recipes, 'https://cooking.nytimes.com/recipes/2-stew')).toBeNull();
+    expect(recipeImportedFrom(recipes, 'not a link')).toBeNull();
+    expect(recipeImportedFrom(recipes, '')).toBeNull();
   });
 });
 

@@ -168,6 +168,7 @@ import {
   describeLookAheadLoad,
 } from '../utils/lookAhead';
 import { buildCalendarGrid } from '../utils/calendarGrid';
+import { aliasItemIdFor } from '../utils/storeAliases';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mockDbs: Map<string, any>;
@@ -2949,6 +2950,9 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(scoped!.aisles!.length).toBeGreaterThan(0);
     // And it's a shop with a record, not a bare name.
     expect(itemShops.some(l => l.shopId === scoped!.id && l.purchaseCount > 0)).toBe(true);
+    // A store whose receipt isn't worth photographing, so the receipt sheet's
+    // refusal has somewhere to show itself.
+    expect(shops.some(s => s.receiptStyle === 'none')).toBe(true);
     // All three link kinds: observed on a trip, asserted by hand, and the
     // negative claim — "they don't stock it", which is invisible in the app
     // until something carries it.
@@ -2988,6 +2992,18 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
       .filter(id => !alreadyAtHead.has(id))
       .map(id => nameOf.get(id) ?? 'an item');
     expect(adds.sort()).toEqual(['Cottage cheese', 'Peanut butter', 'Tortillas'].sort());
+  });
+
+  // A store's own receipt shorthand, remembered: the "remembered" tier of the
+  // receipt matcher has nothing to show without one. Store-specific, which is
+  // what separates it from the store-less barcode aliases the scans leave.
+  it('seeds a remembered receipt line at a store', () => {
+    const { storeAliases, shops, items } = useGroceryStore.getState();
+    const traderJoes = shops.find(s => s.name === "Trader Joe's")!;
+    const spinach = items.find(i => i.name === 'Spinach')!;
+
+    expect(storeAliases.some(a => a.shopId === traderJoes.id)).toBe(true);
+    expect(aliasItemIdFor(storeAliases, traderJoes.id, 'ORG BABY SPINACH')).toBe(spinach.id);
   });
 
   it('seeds prices, including one item priced at two stores', () => {

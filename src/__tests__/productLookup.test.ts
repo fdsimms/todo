@@ -125,6 +125,40 @@ describe('the cache', () => {
     await expect(lookupGtin(GTIN, NOW)).rejects.toThrow('Lookups are off');
     expect(fetchSpy).not.toHaveBeenCalled();
   });
+
+  // The owner's keys are still in memory in demo mode, and Go-UPC is paid per
+  // call, so the gate sits in front of the whole chain.
+  it('refuses to reach the network in demo mode, keys and all', async () => {
+    const { setDemoModeActive } = jest.requireActual('../utils/demoState') as typeof import('../utils/demoState');
+    settings.fdcApiKey = 'fdc-key';
+    settings.goUpcApiKey = 'go-upc-key';
+    setDemoModeActive(true);
+    try {
+      const error = await lookupGtin(GTIN, NOW).catch(e => e);
+      expect(error).toBeInstanceOf(Error);
+      expect(describeLookupError(error)).toBe('Barcode lookups are off in demo mode. Type the name instead.');
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(dbSetGtinLookup).not.toHaveBeenCalled();
+    } finally {
+      setDemoModeActive(false);
+    }
+  });
+
+  it('still answers from the cache in demo mode, which costs nothing', async () => {
+    const { setDemoModeActive } = jest.requireActual('../utils/demoState') as typeof import('../utils/demoState');
+    (dbGetGtinLookup as jest.Mock).mockReturnValue({
+      gtin: GTIN, found: true, name: 'Milk', brand: null,
+      quantity: null, category: null, nutrition: null,
+      source: 'openfoodfacts', fetchedAt: '2026-08-01T00:00:00Z',
+    });
+    setDemoModeActive(true);
+    try {
+      await expect(lookupGtin(GTIN, NOW)).resolves.toMatchObject({ name: 'Milk' });
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      setDemoModeActive(false);
+    }
+  });
 });
 
 describe('the source chain', () => {

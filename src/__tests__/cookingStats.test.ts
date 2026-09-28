@@ -194,6 +194,29 @@ describe('mealCookCounts', () => {
     expect(counts.planned).toBe(2);
   });
 
+  it('does not count a meal eaten from leftovers as cooking', () => {
+    // Chili from the fridge card on Wednesday, ticked because it was eaten.
+    // It is not a day cooked, and not a planned meal that was or wasn't cooked.
+    const counts = mealCookCounts(
+      [
+        cooked('2026-08-10', { leftoverId: 'lo-1', title: 'Chili (leftovers)' }),
+        entry('2026-08-11', { leftoverId: 'lo-2' }),
+        cooked('2026-08-12', { recipeId: 'r-1' }),
+      ],
+      WINDOW
+    );
+    expect(counts.daysCooked).toBe(1);
+    expect(counts.planned).toBe(1);
+    expect(counts.plannedCooked).toBe(1);
+  });
+
+  it('keeps a free-text meal, since its fields do not say whether it was cooked', () => {
+    const counts = mealCookCounts([cooked('2026-08-12', { title: 'Takeout' })], WINDOW);
+    expect(counts.daysCooked).toBe(1);
+    expect(counts.planned).toBe(1);
+    expect(counts.plannedCooked).toBe(1);
+  });
+
   it('buckets by the plan day, not by when it was actually cooked', () => {
     // Sunday's dinner, actually made on Monday. It stays Sunday's meal, so the
     // numerator can never escape the denominator's window.

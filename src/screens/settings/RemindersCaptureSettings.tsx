@@ -579,8 +579,8 @@ export function RemindersCaptureSettings() {
             iconColor={groceryImportTwoWay ? colors.accent : undefined}
             label="Two-way sync"
             hint={groceryImportTwoWay
-              ? `Your grocery list and “${selectedGroceryList.title}” are kept the same in both directions`
-              : 'Reminders only come in. Nothing on your grocery list is written back.'}
+              ? `Your grocery list and “${selectedGroceryList.title}” are kept the same in both directions. Share “${selectedGroceryList.title}” in the Reminders app to keep one grocery list with someone else.`
+              : 'Reminders only come in. Nothing on your grocery list is written back. Turn this on and share the list in the Reminders app to keep one grocery list with someone else.'}
             toggle={groceryImportTwoWay}
             onPress={onToggleTwoWay}
             accessibilityLabel="Keep the grocery list and this Reminders list the same in both directions"

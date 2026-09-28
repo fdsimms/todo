@@ -1445,6 +1445,14 @@ interface SettingsStore {
   // since there is no source row to stamp a decline onto and without it a
   // swiped-away row would come straight back on the next foreground.
   weighInLastDayKey: string | null;
+  // The logical day a weigh-in request was last deleted on. A decline holds for
+  // weighInEveryDays from that day (weighInDeclineHolds), so deleting the
+  // request means "not this time" rather than "ask again tomorrow". The mark
+  // above is one day wide, and the only reason it was the whole opt-out is that
+  // there is no source row to stamp a decline on; this is that stamp, kept in
+  // settings for the same reason. Written by writeGeneratedOptOut's weighIn
+  // case, never by the pass clearing an unanswered request.
+  weighInDeclinedDayKey: string | null;
   // The opt-in "plan meals for the week" nudge (#1121) — a real Task,
   // auto-created once a week, off by default so an existing install sees no
   // new task until this is turned on. See src/utils/mealPlanNudge.ts for the
@@ -1744,6 +1752,7 @@ interface SettingsStore {
   setWeighInTaskCategory: (category: string | null) => void;
   setWeighInEveryDays: (days: number) => void;
   setWeighInLastDayKey: (dayKey: string | null) => void;
+  setWeighInDeclinedDayKey: (dayKey: string | null) => void;
   setDefaultProjectNudgeCadenceDays: (days: number) => void;
   setMealPlanNudgeEnabled: (on: boolean) => void;
   setMealPlanNudgeIgnoresVacation: (on: boolean) => void;
@@ -2347,6 +2356,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   weighInTaskCategory: null,
   weighInEveryDays: DEFAULT_WEIGH_IN_EVERY_DAYS,
   weighInLastDayKey: null,
+  weighInDeclinedDayKey: null,
   patchNotesQaStatus: {},
   defaultProjectNudgeCadenceDays: 0,
   mealPlanNudgeEnabled: false,
@@ -2757,6 +2767,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       ? clampWeighInEveryDays(storedWeighInEveryDays)
       : DEFAULT_WEIGH_IN_EVERY_DAYS;
     const weighInLastDayKey = dbGetSetting('weighInLastDayKey') || null;
+    const weighInDeclinedDayKey = dbGetSetting('weighInDeclinedDayKey') || null;
     const screenTimeTasks = dbGetSetting('screenTimeTasks') === 'true';
     const screenTimeTaskCategory = dbGetSetting('screenTimeTaskCategory') || null;
     const storedScreenTimeRules = dbGetSetting('screenTimeRules');
@@ -3054,6 +3065,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       weekendNudgeTaskCategory,
       weekendNudgeTasks,
       weekStartsOn,
+      weighInDeclinedDayKey,
       weighInEveryDays,
       weighInLastDayKey,
       weighInTaskCategory,
@@ -3680,6 +3692,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setWeighInLastDayKey(dayKey: string | null) {
     dbSetSetting('weighInLastDayKey', dayKey ?? '');
     set({ weighInLastDayKey: dayKey });
+  },
+
+  setWeighInDeclinedDayKey(dayKey: string | null) {
+    dbSetSetting('weighInDeclinedDayKey', dayKey ?? '');
+    set({ weighInDeclinedDayKey: dayKey });
   },
 
   setAutoRemoveExpiredTasks(days: ExpiredTaskGraceDays) {

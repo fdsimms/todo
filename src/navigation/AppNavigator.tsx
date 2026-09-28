@@ -1,7 +1,7 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { PanResponder, StyleSheet, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
-import { navigationRef, flushPendingNavigation } from './navigationRef';
+import { navigationRef, resetToRecipeDetail, flushPendingNavigation } from './navigationRef';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -56,13 +56,14 @@ import { LogMealPrompt } from '../components/LogMealPrompt';
 import { HealthWriteRefusedNotice } from '../components/HealthWriteRefusedNotice';
 import { LogMealEntrySheet } from '../components/LogMealEntrySheet';
 import { CookRecap } from '../components/CookRecap';
+import { CookingBar } from '../components/CookingBar';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
 import { border } from '../theme';
 import { haptics } from '../utils/haptics';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { hasRunningRecipeTimer } from '../utils/recipeTimer';
+import { hasRunningRecipeTimer, isCookTimerRunning } from '../utils/recipeTimer';
 import { screenShown } from '../utils/simpleMode';
 import { NAV_HUBS, NAV_MENU_ROWS } from '../utils/navHubs';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
@@ -193,6 +194,13 @@ const MainTabs = React.memo(function MainTabs({
   const kitchenEnabled = useSettingsStore(state => state.kitchenEnabled);
   const anyTimerRunning = useRecipeStore(state => state.recipes.some(hasRunningRecipeTimer));
   const timerRunning = kitchenEnabled && anyTimerRunning;
+  // Which recipe the dot means, when it means a *cook* specifically: tapping
+  // More jumps straight into that recipe's Cook Mode instead of opening the
+  // drawer, the same destination CookingBar's own tap goes to. A prep timer
+  // alone still just opens the drawer as before — prep has no cook-mode
+  // screen for a tap to land on, so the dot there is see-only.
+  const runningCookRecipeId = useRecipeStore(state => state.recipes.find(isCookTimerRunning)?.id);
+  const cookingRecipeId = kitchenEnabled ? runningCookRecipeId : undefined;
   return (
     <Tab.Navigator initialRouteName={initialRouteName} screenOptions={screenOptions}>
       <Tab.Screen
@@ -233,11 +241,19 @@ const MainTabs = React.memo(function MainTabs({
           tabPress: (e) => {
             e.preventDefault();
             haptics.tap();
-            onOpenMenu();
+            if (cookingRecipeId) {
+              resetToRecipeDetail(cookingRecipeId, true);
+            } else {
+              onOpenMenu();
+            }
           },
         }}
         options={{
-          tabBarAccessibilityLabel: timerRunning ? 'More, opens menu, a cook timer is running' : 'More, opens menu',
+          tabBarAccessibilityLabel: cookingRecipeId
+            ? 'More, a cook timer is running, opens cook mode'
+            : timerRunning
+              ? 'More, opens menu, a prep timer is running'
+              : 'More, opens menu',
           tabBarIcon: ({ color }) => (
             <View>
               <Ionicons name="menu" size={24} color={menuOpen ? accentColor : color} />
@@ -523,6 +539,11 @@ export default function AppNavigator() {
           so two copies of a *sheet* would each present a Modal for the same
           cooking. Same reason FinishLeftoverPrompt above is mounted once. */}
       <CookRecap />
+      {/* Same "not a screen" placement, and floating rather than a sibling of
+          a list the way ActiveTripBanner is — see CookingBar's own doc
+          comment for why a cook timer needs the app-wide bar that shopping
+          trip deliberately doesn't get. */}
+      <CookingBar />
     </>
   );
 }

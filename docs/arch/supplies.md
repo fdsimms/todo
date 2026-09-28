@@ -235,9 +235,23 @@ the stamp on a save that only changed the lead time.
   then correct. The *Settings* rows for the generator are deliberately not
   flagged, matching every other generator's rows.
 - **A dangling `supplyGroceryItemId` is resolve-or-shrug**, like every other
-  cross-row pointer in this app (`blockedById`, `previousOccurrenceId`).
-  `suppliesWantingList` checks the item is still live and otherwise says nothing;
-  deleting a catalog row rewrites no tasks.
+  cross-row pointer in this app (`blockedById`, `previousOccurrenceId`), and
+  shrugging means reading it as *no link*, not as silence. `supplyLinkActs` is
+  the one test: a link counts only while it names a live catalog row and the
+  kitchen is on. `suppliesWantingList` skips a row that isn't live, and
+  `wantedSupplyReorders`/`staleSupplyReorderTasks` treat the same supply as
+  unlinked, so it asks through a reorder task instead. Before that the reorder
+  half skipped every linked task whether or not the link resolved, and a supply
+  whose item had been deleted (or whose kitchen was off) asked nowhere at all.
+  Until the grocery store has loaded every link is trusted, since an empty
+  catalog mid-launch is not every item having been deleted. Deleting a catalog
+  row still rewrites no tasks; the editor's "Stocked from" row says "Item was
+  deleted" for a link that no longer resolves.
+- **The list half writes to the home list**, whichever list is being shown
+  (`setRunningLow`'s `listId: null`). A supply is restocked from a home trip:
+  flagged low onto an away list, it is never restocked there (an away trip
+  records nothing), and once flagged it is never offered to the home list
+  afterwards.
 
 ## The recurrence's own ending
 

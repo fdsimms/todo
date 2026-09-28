@@ -1,5 +1,5 @@
 import { format } from 'date-fns/format';
-import { MEAL_SHORTFALL_LEAD_DAYS_DEFAULT, type GroceryItem, type ItemSubLink, type MealPlanEntry, type MealSlot, type Recipe, type Task } from '../types';
+import { MEAL_SHORTFALL_LEAD_DAYS_DEFAULT, type GroceryItem, type ItemProduct, type ItemSubLink, type MealPlanEntry, type MealSlot, type Recipe, type Task } from '../types';
 import { dayKeyToDate } from './dateUtils';
 import { generatedSourceOf, liveGeneratedTasksOfKind } from './generatedTasks';
 import { shiftDayKey, slotLabel, slotRank } from './mealPlan';
@@ -147,6 +147,11 @@ export function isWithinShopWindow(dayKey: string, todayKey: string, leadDays: n
  * standing swaps, for the reason `cookedConsumption` applies them — what you
  * need to buy is what you're actually going to cook with, not what the recipe
  * happens to say.
+ *
+ * `products` are the items' boxes, read both for the either/or default and for
+ * the classification, so a packet in the freezer or marked "Got it" is not
+ * something this meal still needs bought: the Pantry lists it, and a task
+ * asking to shop for it would contradict the screen it links to.
  */
 export function mealShortfallRows(
   entry: MealPlanEntry,
@@ -154,7 +159,8 @@ export function mealShortfallRows(
   items: readonly GroceryItem[],
   itemSubs: readonly ItemSubLink[],
   swaps: StandingSwapMap,
-  now: Date
+  now: Date,
+  products: readonly ItemProduct[] = []
 ): ClassifiedIngredient[] | null {
   if (!entry.recipeId) return null;
   if (entry.cookedAt) return null;
@@ -169,13 +175,15 @@ export function mealShortfallRows(
       // whichever alternative is already in the kitchen (see
       // recipeComponents.ts's ChoiceResolution.onHand) rather than always
       // asking to buy the recipe's first-listed option.
-      { chosen: entry.recipeChoices, onHand: onHandNameKeys(items, now) },
+      { chosen: entry.recipeChoices, onHand: onHandNameKeys(items, now, products) },
       entry.recipeScale,
       swaps
     ),
     items,
     now,
-    itemSubs
+    itemSubs,
+    null,
+    products
   );
   return classified.filter(row => row.category === 'needToBuy' && !row.optional);
 }
@@ -235,13 +243,15 @@ export function wantedMealShortfalls(
   todayKey: string,
   now: Date,
   leadDays: number = MEAL_SHORTFALL_LEAD_DAYS_DEFAULT,
-  cap: number = MAX_MEAL_SHORTFALL_TASKS
+  cap: number = MAX_MEAL_SHORTFALL_TASKS,
+  /** The items' boxes — see `mealShortfallRows`. */
+  products: readonly ItemProduct[] = []
 ): MealShortfallWant[] {
   const wants: { entry: MealPlanEntry; title: string; missingCount: number }[] = [];
   for (const entry of entries) {
     if (declinedShop(entry)) continue;
     if (!isWithinShopWindow(entry.date, todayKey, leadDays)) continue;
-    const rows = mealShortfallRows(entry, recipesById, items, itemSubs, swaps, now);
+    const rows = mealShortfallRows(entry, recipesById, items, itemSubs, swaps, now, products);
     if (!rows || rows.length === 0) continue;
     // Non-null by construction: mealShortfallRows returns null without a
     // resolvable recipe, which is the only way this lookup could miss.
@@ -316,7 +326,9 @@ export function staleMealShortfallTasks<
   swaps: StandingSwapMap,
   todayKey: string,
   now: Date,
-  leadDays: number = MEAL_SHORTFALL_LEAD_DAYS_DEFAULT
+  leadDays: number = MEAL_SHORTFALL_LEAD_DAYS_DEFAULT,
+  /** The items' boxes, so both passes read "do I have it" the same way. */
+  products: readonly ItemProduct[] = []
 ): T[] {
   const byId = new Map(entries.map(entry => [entry.id, entry]));
   return liveGeneratedTasksOfKind(tasks, 'mealShortfall').filter(task => {
@@ -327,7 +339,7 @@ export function staleMealShortfallTasks<
     // keep a row the create pass would refuse to write.
     if (declinedShop(entry)) return true;
     if (!isWithinShopWindow(entry.date, todayKey, leadDays)) return true;
-    const rows = mealShortfallRows(entry, recipesById, items, itemSubs, swaps, now);
+    const rows = mealShortfallRows(entry, recipesById, items, itemSubs, swaps, now, products);
     return !rows || rows.length === 0;
   });
 }

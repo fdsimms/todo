@@ -1,0 +1,4 @@
+{
+  "message": "Scanning a receipt or a barcode into the Pantry now treats each item as a new package. It is no longer marked frozen, opened, or running low from the last one, and an item you were running low on comes off your shopping list.",
+  "date": "2026-09-27"
+}

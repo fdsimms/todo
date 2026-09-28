@@ -5,6 +5,7 @@ import type { HealthRequestStatus, HealthWriteStatus } from 'todo-health-bridge'
 import { useShallow } from 'zustand/react/shallow';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { useHealthStore } from '../../store/useHealthStore';
+import { useDemoStore } from '../../store/useDemoStore';
 import { useCategoryStore, ensureHealthCategory } from '../../store/useCategoryStore';
 import { categoryLabel } from '../../utils/categoryLabel';
 import { PillGroup } from '../../components/PillGroup';
@@ -22,6 +23,13 @@ import { SettingsRow } from './SettingsRow';
 import { SettingsSegments } from './SettingsSegments';
 import { makeSettingsStyles } from './settingsStyles';
 import { haptics } from '../../utils/haptics';
+
+/**
+ * What the access rows say in demo mode. `healthBridge()` refuses every read and
+ * write there, so the rows would otherwise sit on "Checking…" for good, or blame
+ * the device, when the refusal is demo mode's own.
+ */
+const DEMO_HINT = 'Not available in demo mode. Demo mode does not read or write Apple Health';
 
 /**
  * Reading Apple Health, and — in a section of its own below — writing the two
@@ -77,6 +85,7 @@ import { haptics } from '../../utils/haptics';
  * toggle would only add a way to be refused twice for the same reason.
  */
 export function HealthSettings() {
+  const demoActive = useDemoStore(s => s.active);
   const healthReadEnabled = useSettingsStore(s => s.healthReadEnabled);
   const setHealthReadEnabled = useSettingsStore(s => s.setHealthReadEnabled);
   const healthWriteEnabled = useSettingsStore(s => s.healthWriteEnabled);
@@ -240,25 +249,27 @@ export function HealthSettings() {
       <>
         <SettingsSection
           label="Apple Health"
-          footer="This device doesn't have Health data, so there is nothing for the app to read."
+          footer={demoActive
+            ? 'Demo mode does not read or write Apple Health.'
+            : "This device doesn't have Health data, so there is nothing for the app to read."}
         >
           <SettingsRow
             entryId="healthRead"
             icon="heart-outline"
             label="Read Apple Health"
-            hint="Not available on this device"
+            hint={demoActive ? 'Not available in demo mode' : 'Not available on this device'}
             disabled
           />
         </SettingsSection>
         <SettingsSection
           label="Log to Health"
-          footer="Not available on this device."
+          footer={demoActive ? 'Demo mode does not read or write Apple Health.' : 'Not available on this device.'}
         >
           <SettingsRow
             entryId="healthWrite"
             icon="create-outline"
             label="Log to Health"
-            hint="Not available on this device"
+            hint={demoActive ? 'Not available in demo mode' : 'Not available on this device'}
             disabled
           />
         </SettingsSection>
@@ -298,7 +309,8 @@ export function HealthSettings() {
             // reports, and the reading row below is where you find out whether
             // anything is actually coming through.
             hint={
-              requestStatus === 'shouldRequest'
+              demoActive ? DEMO_HINT
+              : requestStatus === 'shouldRequest'
                 // The sheet this raises asks about writing too now, not just
                 // reading — see the module note in modules/todo-health-bridge/
                 // index.ts for why. Said here so the extra rows in that sheet
@@ -312,12 +324,14 @@ export function HealthSettings() {
             }
             alwaysShowHint
             value={
-              requestStatus === 'shouldRequest' ? 'Allow'
+              demoActive ? undefined
+              : requestStatus === 'shouldRequest' ? 'Allow'
                 : requestStatus === 'unnecessary' ? 'Open Health'
                   : undefined
             }
             onPress={
-              requestStatus === 'shouldRequest' ? askForAccess
+              demoActive ? undefined
+              : requestStatus === 'shouldRequest' ? askForAccess
                 : requestStatus === 'unnecessary' ? () => { void openHealthApp(); }
                   : undefined
             }
@@ -397,6 +411,7 @@ export function HealthSettings() {
             label="Water-write access"
             deniedHint="Not allowed. To log water, open Health, tap your profile picture, then Privacy, then Apps, then dundundun"
             status={waterWriteStatus}
+            demoActive={demoActive}
             colors={colors}
             onAsk={askForWriteAccess}
           />
@@ -406,6 +421,7 @@ export function HealthSettings() {
             label="Weight-write access"
             deniedHint="Not allowed. To record a weight, open Health, tap your profile picture, then Privacy, then Apps, then dundundun"
             status={weightWriteStatus}
+            demoActive={demoActive}
             colors={colors}
             onAsk={askForWriteAccess}
           />
@@ -415,6 +431,7 @@ export function HealthSettings() {
             label="Nutrition-write access"
             deniedHint="Not allowed. To log what you ate, open Health, tap your profile picture, then Privacy, then Apps, then dundundun"
             status={nutritionWriteStatus}
+            demoActive={demoActive}
             colors={colors}
             onAsk={askForWriteAccess}
           />
@@ -493,6 +510,8 @@ interface WriteAccessRowProps {
   /** What to say, and where to go, when this type was refused. */
   deniedHint: string;
   status: HealthWriteStatus | null;
+  /** Demo mode refuses every write, so the row says so rather than "Checking…". */
+  demoActive: boolean;
   colors: ReturnType<typeof useColors>;
   onAsk: () => void;
 }
@@ -510,7 +529,8 @@ interface WriteAccessRowProps {
  * the same decision for every share type, and a second hand-written copy is
  * how one of them ends up still saying "water" after a third is added.
  */
-function WriteAccessRow({ entryId, label, deniedHint, status, colors, onAsk }: WriteAccessRowProps) {
+function WriteAccessRow({ entryId, label, deniedHint, status: realStatus, demoActive, colors, onAsk }: WriteAccessRowProps) {
+  const status = demoActive ? null : realStatus;
   const allowed = status === 'sharingAuthorized';
   return (
     <SettingsRow
@@ -519,7 +539,8 @@ function WriteAccessRow({ entryId, label, deniedHint, status, colors, onAsk }: W
       iconColor={allowed ? colors.accent : undefined}
       label={label}
       hint={
-        status === 'notDetermined'
+        demoActive ? DEMO_HINT
+        : status === 'notDetermined'
           // Same combined sheet the read access row above raises — see the
           // module note in modules/todo-health-bridge/index.ts.
           ? 'Not asked yet. Allowing this also asks to read Apple Health, in the same sheet'

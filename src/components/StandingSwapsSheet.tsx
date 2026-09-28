@@ -78,24 +78,27 @@ export function StandingSwapsSheet({ visible, onClose }: Props) {
                 <View key={`${swap.link.itemId}|${swap.link.subItemId}`}>
                   {i > 0 && <View style={styles.sep} />}
                   <View style={styles.row}>
-                    <View style={styles.body}>
-                      <Text style={styles.name} numberOfLines={1}>
-                        {swap.from.name} → {swap.to.name}
-                      </Text>
-                      {!!captionFor(swap) && (
-                        <Text style={styles.meta} numberOfLines={1}>{captionFor(swap)}</Text>
-                      )}
+                    {/* The pair gets the full width and wraps: sharing a line
+                        with the chip truncated the substitute's name, the one
+                        thing the row exists to show. */}
+                    <Text style={styles.name}>
+                      {swap.from.name} → {swap.to.name}
+                    </Text>
+                    {!!captionFor(swap) && (
+                      <Text style={styles.meta}>{captionFor(swap)}</Text>
+                    )}
+                    <View style={styles.actions}>
+                      <TouchableOpacity
+                        style={styles.off}
+                        activeOpacity={interaction.activeOpacity}
+                        onPress={() => turnOff(swap)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Stop always using ${swap.to.name} for ${swap.from.name}`}
+                        accessibilityHint="Keeps it as a substitute"
+                      >
+                        <Text style={styles.offText}>Turn off</Text>
+                      </TouchableOpacity>
                     </View>
-                    <TouchableOpacity
-                      style={styles.off}
-                      activeOpacity={interaction.activeOpacity}
-                      onPress={() => turnOff(swap)}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Stop always using ${swap.to.name} for ${swap.from.name}`}
-                      accessibilityHint="Keeps it as a substitute"
-                    >
-                      <Text style={styles.offText}>Turn off</Text>
-                    </TouchableOpacity>
                   </View>
                 </View>
               ))}
@@ -137,15 +140,12 @@ function makeStyles(colors: Colors) {
     card: { backgroundColor: colors.bgSecondary, borderRadius: radius.md },
     sep: { height: border.hairline, backgroundColor: colors.separator, marginLeft: spacing.md },
     row: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.md,
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.md,
     },
-    body: { flex: 1 },
     name: { color: colors.text, fontSize: font.md },
     meta: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.xxs },
+    actions: { flexDirection: 'row', flexWrap: 'wrap', marginTop: spacing.sm },
     off: {
       backgroundColor: colors.bgTertiary,
       borderRadius: radius.sm,

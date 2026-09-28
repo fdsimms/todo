@@ -10,10 +10,11 @@ import { addDays } from 'date-fns/addDays';
 import { useShallow } from 'zustand/react/shallow';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useHealthStore, WEIGHT_HISTORY_DAYS } from '../store/useHealthStore';
+import { useDemoStore } from '../store/useDemoStore';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
-import { dayKeyToDate, getLogicalToday } from '../utils/dateUtils';
+import { dayKeyOf, dayKeyToDate, getCurrentDayStart, getLogicalToday } from '../utils/dateUtils';
 import { navigateToSettingsEntry } from '../utils/settingsIndex';
 import { openHealthApp } from '../utils/healthBridge';
 import {
@@ -102,6 +103,7 @@ export function WeightScreen() {
 
   const unit = useSettingsStore(s => s.weightUnit);
   const healthReadEnabled = useSettingsStore(s => s.healthReadEnabled);
+  const demoActive = useDemoStore(s => s.active);
   const weightSeries = useHealthStore(s => s.weightSeries);
   const loadingWeight = useHealthStore(s => s.loadingWeight);
   const refreshWeight = useHealthStore(s => s.refreshWeight);
@@ -189,18 +191,27 @@ export function WeightScreen() {
   // far along you are when you tapped "1M" would be reporting the control
   // rather than the goal.
   const goal = useSettingsStore(useShallow(s => s.weightGoal));
-  const goalWeightKg = useMemo(
+  const goalReading = useMemo(
     () => (goal === null ? null : weightSinceGoalStart(goal, points)),
     [goal, points],
   );
+  const goalWeightKg = goalReading?.kilograms ?? null;
+  // Pace and the forecast are measured from the day the weight was taken, not
+  // from today: an old reading that sat on the pace line would otherwise read
+  // as behind by however long ago it was (see weightSinceGoalStart).
+  const readingDay = goalReading !== null ? dayKeyToDate(goalReading.dayKey) : null;
+  // Null while the reading is today's, which is when "now" is still true.
+  const readingDateLabel = readingDay === null || goalReading?.dayKey === dayKeyOf(getCurrentDayStart())
+    ? null
+    : format(readingDay, readingDay.getFullYear() === getLogicalToday().getFullYear() ? 'MMM d' : 'MMM d, yyyy');
   const progress = goal !== null && goalWeightKg !== null ? goalProgress(goal, goalWeightKg) : null;
-  const pace = goal !== null && goalWeightKg !== null
-    ? goalPace(goal, goalWeightKg, getLogicalToday())
+  const pace = goal !== null && goalWeightKg !== null && readingDay !== null
+    ? goalPace(goal, goalWeightKg, readingDay)
     : null;
   const remainingDays = goal !== null && goalWeightKg !== null
     ? daysToTarget(goal, goalWeightKg)
     : null;
-  const etaDate = remainingDays !== null ? addDays(getLogicalToday(), remainingDays) : null;
+  const etaDate = remainingDays !== null && readingDay !== null ? addDays(readingDay, remainingDays) : null;
 
   // Against the *visible* slice, since its vertices are indexed into whatever
   // the chart was handed. The goal card above reads the whole series instead,
@@ -233,13 +244,13 @@ export function WeightScreen() {
   // recorded by writing it to Health and a goal has nothing to measure against.
   // So the actions come off rather than sitting there doing nothing when
   // tapped, which is what "Record a weight" did before this. The empty state is
-  // what points at Settings.
+  // what points at Settings. The demo branch drops them for the same reason.
   const header = (
     <>
       <ScreenHeader
         title="Weight"
         subtitle={latest ? formatWeight(latest.kilograms, unit) : undefined}
-        actions={!healthReadEnabled ? [] : [
+        actions={!healthReadEnabled || demoActive ? [] : [
           {
             icon: 'flag-outline' as const,
             onPress: openGoal,
@@ -258,6 +269,25 @@ export function WeightScreen() {
       <HubPills hub="health" active="Weight" />
     </>
   );
+
+  // Demo mode never reads or writes Health (healthBridge() refuses), so the
+  // Health-off copy below would send someone to a switch that cannot take
+  // effect here, and "No weigh-ins yet" would blame Health for our refusal.
+  // Checked first because the read switch can still be flipped on inside the
+  // demo database. No action: there is nothing to turn on.
+  if (demoActive) {
+    return (
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        {header}
+        <EmptyState
+          icon="scale-outline"
+          title="Not available in demo mode"
+          subtitle="Weight comes from Apple Health, which demo mode does not read or write. Leave demo mode to see your own weigh-ins."
+          bottomOffset={tabBarHeight}
+        />
+      </View>
+    );
+  }
 
   // Reading is off, so there is nothing to draw. The switch itself stays in
   // Settings — this screen must not flip it, and a sweep is never allowed to
@@ -390,7 +420,7 @@ export function WeightScreen() {
               ) : (
                 <>
                   <Text style={styles.finding}>
-                    {formatWeight(goalWeightKg!, unit)} now, aiming for{' '}
+                    {formatWeight(goalWeightKg!, unit)} {readingDateLabel === null ? 'now' : `on ${readingDateLabel}`}, aiming for{' '}
                     {formatWeight(goal.targetKg, unit)}.
                   </Text>
 
@@ -432,7 +462,7 @@ export function WeightScreen() {
                             variant="card"
                             value={tile.value}
                             label={tile.label}
-                            accessibilityLabel={`${describePace(pace.aheadKg, unit)} Your pace would have put you at ${formatWeight(pace.paceKg, unit)} by now.`}
+                            accessibilityLabel={`${describePace(pace.aheadKg, unit)} Your pace would have put you at ${formatWeight(pace.paceKg, unit)} by ${readingDateLabel ?? 'now'}.`}
                           />
                         );
                       })()}

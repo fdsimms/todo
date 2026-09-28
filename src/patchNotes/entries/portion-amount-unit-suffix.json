@@ -1,0 +1,4 @@
+{
+  "message": "Logging a food amount by unit (grams, servings, cups) now shows the unit next to the number as you type it, not just as a placeholder that disappears the moment you start typing.",
+  "date": "2026-09-27"
+}

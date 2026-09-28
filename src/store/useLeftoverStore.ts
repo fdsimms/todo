@@ -375,9 +375,9 @@ export const useLeftoverStore = create<LeftoverStore>((set, get) => ({
     save(set, updated);
     // Freezing drops a use-up task that needsAttention no longer wants;
     // thawing spawns one if the restarted window lands inside the threshold.
-    // Dropped rather than reconciled on the way in, for the reason the grocery
-    // store's own setFrozen gives: a reconcile's delete writes the leftover's
-    // "never", so a container frozen with a live task never got one again.
+    // Dropped on the way in, which writes no "never", for the reason the
+    // grocery store's own setFrozen gives: a container frozen with a live task
+    // used to lose use-up tasks for good. See reconcileGeneratedTask.
     if (frozen) dropLeftoverTask(id);
     else reconcileLeftoverTask(updated);
   },
@@ -423,10 +423,20 @@ export const useLeftoverStore = create<LeftoverStore>((set, get) => ({
     // anything else — half a takeaway, a hand-logged container with no
     // recipe — gets the search sheet instead, the same split offerMealLog
     // makes in useTaskStore.ts for a meal-slot completion.
-    if (outcome === 'eaten' && useSettingsStore.getState().mealLogPrompt) {
+    //
+    // Skipped when an offer is already waiting. Ticking a leftover-backed
+    // meal's Eat step raises the plan's own offer (with its slot and its link
+    // to the plan entry) and then asks whether that was the last of it, and
+    // answering "Finished it" landed here: a second offer for the same meal
+    // on top of the first, or a slotless one replacing it that logged the
+    // dinner without covering the plan. One offer per meal, and the plan's
+    // knows which meal it was.
+    const foodLog = useFoodLogStore.getState();
+    const offerWaiting = foodLog.pendingMealLog !== null || foodLog.pendingManualMealLog !== null;
+    if (outcome === 'eaten' && useSettingsStore.getState().mealLogPrompt && !offerWaiting) {
       if (leftover.recipeId) {
         const source = leftover.sourceEntryId ? dbGetMealPlanEntry(leftover.sourceEntryId) : null;
-        useFoodLogStore.getState().setPendingMealLog({
+        foodLog.setPendingMealLog({
           label: leftover.title,
           // A container has no meal of the day: it was eaten whenever it was
           // eaten, and inventing a slot would file it under one it wasn't in.
@@ -455,7 +465,7 @@ export const useLeftoverStore = create<LeftoverStore>((set, get) => ({
           grams: leftover.weightG,
         });
       } else {
-        useFoodLogStore.getState().setPendingManualMealLog({
+        foodLog.setPendingManualMealLog({
           label: leftover.title,
           slot: null,
           dayKey: dayKeyOf(getLogicalToday()),
