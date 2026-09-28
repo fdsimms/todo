@@ -30,7 +30,7 @@ components below.
 - `src/screens/CookbookDetailScreen.tsx` — DetailHeader, EmptyState, InlineAction, SearchField, SheetHeader, SheetHeaderButton, SheetModal
 - `src/screens/CookbooksScreen.tsx` — CookbookEditor, EmptyState, ScreenHeader
 - `src/screens/FoodLogScreen.tsx` — AnimatedCollapsible, CatalogLinkSheet, CountStepper, EmptyNote, EmptyState, EstimateMealSheet, Fab, FoodLogEntrySheet, HubPills, InlineAction, ListBulkBar, NutrientContributorsSheet, +9 more
-- `src/screens/GroceryScreen.tsx` — ActiveTripBanner, BarcodeScanSheet, EmptyState, Fab, FabDropZones, FinishShoppingSheet, GroceryAISheet, GroceryAddSheet, GroceryAislesSheet, GroceryCatalogSheet, GroceryItemSheet, GroceryListSheet, +13 more
+- `src/screens/GroceryScreen.tsx` — ActiveTripBanner, BarcodeScanSheet, EmptyState, Fab, FabDropZones, FinishShoppingSheet, GroceryAISheet, GroceryAddSheet, GroceryAislesSheet, GroceryCatalogSheet, GroceryItemSheet, GroceryListSheet, +14 more
 - `src/screens/KitchenScreen.tsx` — ActiveTripBanner, BarcodeScanSheet, EmptyState, FridgeHistorySheet, GroceryItemSheet, HubPills, InlineAction, ItemDisposalOffer, LeftoverSheet, PantryReviewSheet, PressableScale, ReceiptImportSheet, +3 more
 - `src/screens/LogbookScreen.tsx` — DeliverablePromptSheet, EmptyState, HighlightedText, HubPills, LogbookEntryMenu, LogbookFilterSheet, PaintSelection, RotationWeekSheet, ScreenHeader, SearchField, SegmentedControl, SelectionDot, +2 more
 - `src/screens/MealPlanScreen.tsx` — ActiveTripBanner, AddMealsToListSheet, FabDropZones, FridgeHistorySheet, HubPills, InlineAction, LeftoverSheet, LeftoversCard, ListBulkBar, MealEntrySheet, MealReplaceItemSheet, MealSlotRow, +10 more
@@ -180,7 +180,7 @@ Where each component can appear.
 - `src/components/NutritionTargetsSheet.tsx` — on FoodLogScreen, SettingsGroupScreen
 - `src/components/OfferBanner.tsx` — on GroceryScreen, KitchenScreen, ProjectDetailScreen, RecipeDetailScreen
 - `src/components/OverlapPickerSheet.tsx` — on MealPlanScreen, RecipeDetailScreen, RecipesScreen
-- `src/components/PaintSelection.tsx` — on ArchivedScreen, CategoryDetailScreen, FoodLogScreen, LogbookScreen, PeopleScreen, ProjectDetailScreen, ProjectsScreen, SavedViewDetailScreen, StacksScreen, TagsScreen, TodayScreen
+- `src/components/PaintSelection.tsx` — on ArchivedScreen, CategoryDetailScreen, FoodLogScreen, GroceryScreen, LogbookScreen, PeopleScreen, ProjectDetailScreen, ProjectsScreen, SavedViewDetailScreen, StacksScreen, TagsScreen, TodayScreen
 - `src/components/PantryReviewSheet.tsx` — on KitchenScreen
 - `src/components/PatchNotesModal.tsx` — on SettingsGroupScreen
 - `src/components/PeriodNav.tsx` — on CalendarScreen, MealPlanScreen
@@ -245,7 +245,7 @@ Where each component can appear.
 - `src/components/ScrollEdgeFade.tsx` — on ArchivedScreen, BackfillScreen, CalendarScreen, CategoryDetailScreen, FoodLogScreen, GroceryScreen, KitchenScreen, LogbookScreen, MealPlanScreen, MoodHistoryScreen, ProjectDetailScreen, ProjectsScreen, +12 more
 - `src/components/SearchField.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, CookbookDetailScreen, GroceryScreen, KitchenScreen, LogbookScreen, ProjectDetailScreen, ProjectsScreen, RecipeDetailScreen, RemindersScreen, SavedViewDetailScreen, +8 more
 - `src/components/SegmentedControl.tsx` — on ArchivedScreen, BackfillScreen, CalendarScreen, CategoryDetailScreen, FoodLogScreen, GroceryScreen, KitchenScreen, LogbookScreen, MealPlanScreen, MedicationScreen, MoodHistoryScreen, MoodScreen, +20 more
-- `src/components/SelectionDot.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, FoodLogScreen, LogbookScreen, PeopleScreen, ProjectDetailScreen, ProjectsScreen, SavedViewDetailScreen, StacksScreen, TagsScreen, TodayScreen
+- `src/components/SelectionDot.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, FoodLogScreen, GroceryScreen, LogbookScreen, PeopleScreen, ProjectDetailScreen, ProjectsScreen, SavedViewDetailScreen, StacksScreen, TagsScreen, +1 more
 - `src/components/SharedLinkBanner.tsx` — on RecipesScreen
 - `src/components/SheetActionRow.tsx` — on KitchenScreen, MealPlanScreen, app shell
 - `src/components/SheetHeader.tsx` — on ArchivedScreen, BackfillScreen, CalendarScreen, CategoryDetailScreen, CookbookDetailScreen, FoodLogScreen, GroceryScreen, KitchenScreen, MealPlanScreen, MedicationScreen, MoodHistoryScreen, MoodScreen, +20 more

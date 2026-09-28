@@ -46,7 +46,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/calendarHistory.ts` — PAST_CALENDAR_WINDOW_DAYS, MIN_CALENDAR_NAME_LENGTH, PastCalendarGate, shouldReadPastCalendar, PersonName, HistorySuggestion, HandledHistoryEvents, pastWindowStart, historyEventKey, peopleNamedInTitle, +4 more
 - `src/utils/calendarMonth.ts` — DayMarkKind, MARK_KINDS, DayMark, DotState, DayDot, DayBucket, MAX_PROJECTION_STEPS, canProject, projectOccurrences, nthOccurrence, +7 more
 - `src/utils/calendarReviewTasks.ts` — CALENDAR_REVIEW_TITLE, calendarReviewDayKey, wantsCalendarReview, calendarReviewEventsFor
-- `src/utils/calendarSync.ts` — CalendarPermission, getCalendarPermission, requestCalendarPermission, listEventCalendars, validCalendarIds, CalendarReadStatus, CalendarInfo, FetchEventsResult, fetchEvents, listWritableCalendars, +13 more
+- `src/utils/calendarSync.ts` — CalendarPermission, getCalendarPermission, requestCalendarPermission, listEventCalendars, validCalendarIds, CalendarReadStatus, CalendarInfo, FetchEventsResult, fetchEvents, listWritableCalendars, +14 more
 - `src/utils/capitalize.ts` — capitalize
 - `src/utils/categoryBackfill.ts` — CategoryBackfillFieldId, CategoryBackfillFieldDef, CATEGORY_BACKFILL_FIELDS, isCategoryFieldMissing, isCategoryBackfillDismissed, categoryBackfillCandidates, categoryBackfillFieldCounts, dismissCategoryBackfillField
 - `src/utils/categoryLabel.ts` — categoryLabel
@@ -75,7 +75,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/daySegments.ts` — DAY_SEGMENT_KEYS, DaySegmentKey, DaySegmentTimes, applyDaySegmentTime, daySegmentsInOrder
 - `src/utils/dayTimeline.ts` — MINUTES_IN_DAY, DEFAULT_FIRST_HOUR, DEFAULT_LAST_HOUR, TimelineEntry, DayTimeline, DayTimelineInput, clockToDayMinutes, instantToDayMinutes, buildDayTimeline
 - `src/utils/deadlineCalendarSync.ts` — syncDeadlineEvent
-- `src/utils/deepLinks.ts` — AddTaskLink, parseAddTaskUrl, handleIncomingUrl, isQuickAddUrl, isAddEventUrl, isOpenAppUrl, isGroceriesUrl, groceriesUrlFinish, isRecipesUrl, isRecipeUrl, +29 more
+- `src/utils/deepLinks.ts` — AddTaskLink, parseAddTaskUrl, handleIncomingUrl, isQuickAddUrl, isAddEventUrl, isOpenAppUrl, isGroceriesUrl, groceriesUrlFinish, isRecipesUrl, isRecipeUrl, +31 more
 - `src/utils/deliverables.ts` — DELIVERABLE_TEXT_MAX_LENGTH, DELIVERABLE_META, YES_NO_OPTIONS, DELIVERABLE_OPTIONS_MAX, isTentativeAnswer, RSVP_OPTIONS, parseDeliverableOptions, cleanDeliverableOptions, deliverableOptionsFor, deliverableMeta, +8 more
 - `src/utils/deloadPlan.ts` — DeloadDestination, DeloadProposal, DeloadPlan, buildDeloadPlan
 - `src/utils/demoHold.ts` — runOrHoldForDemo, replayHeldForDemo
@@ -112,16 +112,16 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/freshness.ts` — daysUntilDay, freshnessFor, FRESHNESS_ORDER, freshnessRank, isUseUpSoon, describeUseBy, liveUseBy, describeOpenedOn, describeFrozenSince
 - `src/utils/fuzzySearch.ts` — SearchResult, fuzzySearch, ProjectSearchResult, searchProjects, GroupSearchResult, searchGroups
 - `src/utils/generatedTasks.ts` — GENERATED_KINDS, GeneratedEnabledKey, GeneratedKindSpec, GENERATED_KIND_SPECS, GENERATED_KIND_LIST, listedGeneratedKinds, generatedTaskCounts, GeneratedEnabledFlags, generatorSwitchedOn, generatorPausedForVacation, +10 more
-- `src/utils/groceryAdd.ts` — nextSortOrder, ensureProductFor, newItemRow, GroceryAddOverride, GroceryAddContext, GroceryAddPlan, planGroceryAdd
+- `src/utils/groceryAdd.ts` — nextSortOrder, ensureProductFor, newItemRow, GroceryAddOverride, GroceryAddContext, GroceryAddPlan, planGroceryAdd, reAddNotice
 - `src/utils/groceryAisles.ts` — DEFAULT_AISLES, OTHER_AISLE, isNonFoodAisle, AISLE_LEXICON, aisleForName, rememberAisles, remapRememberedAisle, forgetRememberedAisle, renameRememberedAisle, normalizeAisleOrder, +2 more
 - `src/utils/groceryExpiry.ts` — wantsUseUpTask, useUpTaskTitle, clampUseUpLeadDays, useUpTaskFields, useUpTaskDraft, useUpTaskDrift
 - `src/utils/groceryFacts.ts` — ItemRelations, linkCounts, hasUserFacts, factSignature, describeForgetLoss
 - `src/utils/groceryLists.ts` — HOME_LIST_NAME, isAwayList, listNameFor, entryFor, onListAnywhere, listedAnywhere, itemsOnList, withHomeMembership, trolleyStateFor, listCount, +4 more
-- `src/utils/groceryParse.ts` — groceryNameKey, parseGroceryInput, splitPrep, splitPurpose, splitExample, suggestShorterCatalogName, splitAlternativeNames, looksLikeAlternativeList, resolveGroceryTokens, splitGroceryLines
+- `src/utils/groceryParse.ts` — groceryNameKey, parseGroceryInput, LEADING_PREP_PRODUCTS, splitPrep, splitPurpose, splitExample, suggestShorterCatalogName, splitAlternativeNames, looksLikeAlternativeList, resolveGroceryTokens, +1 more
 - `src/utils/groceryPlural.ts` — pluralKeyVariants, resolvePluralKey, catalogItemForKey
-- `src/utils/groceryPrice.ts` — parsePriceInput, formatPrice, priceToInput, formatPriceInput, describePriceAge, describePriceContext, describeShopPrices, ShopPrice, shopPricesFor, Comparable, +17 more
+- `src/utils/groceryPrice.ts` — parsePriceInput, formatPrice, priceToInput, formatPriceInput, describePriceAge, describePriceContext, describeShopPrices, ShopPrice, shopPricesFor, Comparable, +19 more
 - `src/utils/groceryProduct.ts` — productKeyFor, describeProduct, describeCatalogItem, productsForItem, productForGtin, preferredProductOf, describePreferredProduct, RATING_LABELS, describeProductPurchases, parseUnavailableProductIds, +1 more
-- `src/utils/groceryReminderMirror.ts` — GroceryReminderLink, GroceryLinkIndex, parseGroceryLinks, serializeGroceryLinks, withGroceryLinks, MirrorItem, MirrorReminder, mirrorTitleFor, normalizeMirrorTitle, GroceryReminderPlan, +1 more
+- `src/utils/groceryReminderMirror.ts` — GroceryReminderLink, GroceryLinkIndex, parseGroceryLinks, serializeGroceryLinks, withGroceryLinks, MirrorItem, MirrorReminder, mirrorNote, mirrorTitleFor, normalizeMirrorTitle, +2 more
 - `src/utils/groceryReorder.ts` — GroceryDropRow, GroceryPlacement, resolveGroceryDrop, KeyedGroceryDropRow, placeNewGroceryItems, groceryDragRange
 - `src/utils/groceryShelfLife.ts` — SHELF_LIFE_LEXICON, OPEN_SHELF_LIFE_LEXICON, openShelfLifeDaysFor, shelfLifeDaysFor, clampExpiryDays, expiryKeyFor, defaultExpiresAt, expiresAtForPurchase, expiresAtForOpening, liveExpiresAt, +2 more
 - `src/utils/groceryShops.ts` — isUnavailable, isAsserted, lacksWantedProduct, countsForItem, sellsAisle, isOutOfRange, describeShopAisles, ShopWithCount, shopsForItem, unavailableShopsFor, +7 more
@@ -148,7 +148,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/kitchenReorder.ts` — KitchenRow, kitchenRowKey, KitchenDestination, KitchenMove, buildKitchenRows, resolveKitchenDrop, kitchenDragRange
 - `src/utils/labelOcr.ts` — LabelColumn, LabelReading, readNutritionLabel, amountFromPrintedText, readLabelPhoto
 - `src/utils/layoutAnimation.ts` — animateLayout
-- `src/utils/leftoverTasks.ts` — wantsUseUpTask, useUpTaskTitle, useUpTaskFields, useUpTaskDraft, useUpTaskDrift
+- `src/utils/leftoverTasks.ts` — wantsUseUpTask, plannedMealRowFor, useUpTaskTitle, useUpTaskFields, useUpTaskDraft, useUpTaskDrift
 - `src/utils/leftovers.ts` — cleanLeftoverTitle, LeftoverPart, WHOLE_PART_KEY, LeftoverDestination, LeftoverPick, leftoverContainersFor, leftoverPartsFor, clampKeepDays, leftoverKeepDaysFor, describeKeepDays, +25 more
 - `src/utils/lineWeight.ts` — lineWeightGrams, lineWeightText, panelForLine, WeightLookups, weightLookups, ingredientWeightText
 - `src/utils/liveActivity.ts` — TimerRunKind, TimerRun, buildTimerRuns, useTimerLiveActivitySync
@@ -165,6 +165,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/mealPlanNudge.ts` — DEFAULT_MEAL_PLAN_NUDGE_WEEKDAY, DEFAULT_MEAL_PLAN_NUDGE_TIME, MEAL_PLAN_NUDGE_LINK_URL, mealPlanNudgeLinkUrl, MEAL_PLAN_NUDGE_SLOTS, MEAL_PLAN_NUDGE_SLOT_COUNT, countPlannedSlots, mealPlanNudgeDayKey, MealPlanNudgeDue, MealPlanNudgeDay, +3 more
 - `src/utils/mealShortfallTasks.ts` — MAX_MEAL_SHORTFALL_TASKS, mealShortfallTitle, mealShortfallEntryId, mealShortfallLinkUrl, isWithinShopWindow, mealShortfallRows, MealShortfallWant, wantedMealShortfalls, staleMealShortfallTasks
 - `src/utils/mealSlotTasks.ts` — MEAL_SLOT_SEGMENTS, mealSlotStepTimeSegments, MEAL_SLOT_TASK_DAYS, DEFAULT_MEAL_SLOTS_ENABLED, mealSlotSourceId, parseMealSlotSource, mealSlotOf, RECIPE_LINK_URL, recipeLinkUrl, mealSlotLinkUrl, +9 more
+- `src/utils/mealThawTasks.ts` — MEAL_THAW_LEAD_DAYS, MAX_MEAL_THAW_TASKS, mealThawTitle, mealThawEntryId, isWithinThawWindow, FrozenForMeal, frozenForMeal, mealThawLinkUrl, MealThawWant, wantedMealThaws, +1 more
 - `src/utils/measuredHeight.ts` — HEIGHT_EPSILON, nextMeasuredHeight
 - `src/utils/medicationExport.ts` — MEDICATION_EXPORT_COLUMNS, medicationExportCsv, medicationExportFileName, medicationExportSummary
 - `src/utils/medicationLog.ts` — DOSE_UNITS, MIN_TREND_DOSES, MedicationDose, MedicationSource, medicationFor, medicationKey, medicationVocabulary, logsOnDay, dosesOnDay, hasDoseOnDay, +8 more
@@ -231,7 +232,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/ranges.ts` — mergeRanges, scoreSubstring
 - `src/utils/reachOutIntent.ts` — ReachOutKind, PendingReachOut, REACH_OUT_PROMPT_WINDOW_MS, serializePendingReachOut, parsePendingReachOut, isReachOutPromptLive, isStampFromEarlierLaunch, reachOutHistoryTitle, reachOutPromptMessage
 - `src/utils/reachOutTasks.ts` — MAX_REACH_OUT_TASKS, REACH_OUT_DECLINE_DAYS, declineHoldDays, declinedRecently, offerDeclinedRecently, reachOutPersonId, reachOutTitle, reachOutsHandledRecently, ReachOutWant, ReachOutCandidate, +7 more
-- `src/utils/receiptMatch.ts` — ReceiptMatchConfidence, ReceiptMatch, receiptMatchConfidence, AliasResolver, ReceiptScope, matchReceiptLines, matchReceiptShop, ReceiptCaution, receiptCautionsFor, acceptedByDefault, +1 more
+- `src/utils/receiptMatch.ts` — ReceiptMatchConfidence, ReceiptMatch, receiptMatchConfidence, AliasResolver, ReceiptScope, matchReceiptLines, matchReceiptShop, ReceiptCaution, receiptCautionsFor, acceptedByDefault, +3 more
 - `src/utils/receiptOcr.ts` — OcrReceiptRow, OcrReceipt, groupRecognizedRows, splitRowPrice, reconstructReceipt, shouldUseOcrText, canReadTextOnDevice, readReceipt
 - `src/utils/receiptOffline.ts` — isNonItemRow, findPrintedDate, findPrintedTotal, guessStoreName, extractReceiptOffline
 - `src/utils/recentSearches.ts` — RECENT_SEARCH_LIMIT, addRecentSearch, parseRecentSearches
@@ -250,7 +251,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/recipeTags.ts` — cleanRecipeTag, normalizeRecipeTags, parseRecipeTags, allRecipeTags, recipeTagCounts, filterRecipesByTags, formatTagList, toggleRecipeTag
 - `src/utils/recipeTimer.ts` — CookTimerState, PrepTimerState, hasCookTimer, isCookTimerRunning, cookTimerElapsed, cookTimerRemaining, cookTimerProgress, isCookTimerReady, hasPrepTimer, isPrepTimerRunning, +5 more
 - `src/utils/recipeUrl.ts` — normalizeRecipeUrl, recipeImportedFrom, decodeEntities, htmlToText, metaContent, PageRecipe, parseIsoDuration, parseRecipeJsonLd, focusRecipeText, recipeToPlainText, +2 more
-- `src/utils/recipeUtils.ts` — parseRecipeIngredients, normalizeIngredient, makeIngredient, ingredientsFromText, mergeIngredients, remapIngredientKeyIn, parsePrepTasks, normalizePrepTask, parseSteps, normalizeStep, +47 more
+- `src/utils/recipeUtils.ts` — parseRecipeIngredients, normalizeIngredient, makeIngredient, ingredientDedupeKey, duplicateIngredientIn, blockedIngredientNote, ingredientsFromText, mergeIngredients, remapIngredientKeyIn, parsePrepTasks, +50 more
 - `src/utils/recurrenceLabels.ts` — recurrenceUnitLabel, ORDINAL_OPTIONS, MONTH_NAMES, MONTH_ABBREVIATIONS, RecurrenceRule, describeTaskRecurrence, recurrenceRuleOf, describeRecurrence
 - `src/utils/refreshGuard.ts` — RefreshGuard, createRefreshGuard
 - `src/utils/reminderCaptures.ts` — CAPTURE_TITLE_MAX_LENGTH, MAX_REMINDER_CAPTURES, makeReminderCapture, parseReminderCaptures, serializeReminderCaptures, activeReminderCaptures, drainableReminderCaptures, captureListIds, captureDraftFields, describeReminderCaptureFiling
@@ -299,7 +300,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/storeAliases.ts` — aliasKeyFor, gtinAliasText, aliasItemIdFor, AliasDraft, aliasDraftsFrom
 - `src/utils/streakRecord.ts` — nextStreakRecord, bestStreakOf, isStreakAtRecord, streakHint
 - `src/utils/substituteSuggestions.ts` — MAX_SUGGESTED_SUBSTITUTES, SuggestedSubstitute, RawSuggestedSubstitute, dedupeSuggestedSubstitutes
-- `src/utils/supply.ts` — MAX_SUPPLY_COUNT, DEFAULT_SUPPLY_REORDER_AT, MAX_SUPPLY_REORDER_TASKS, clampSupplyCount, clampSupplyReorderAt, clampSupplyLeadDays, clampSupplyRefillCount, SupplySource, isSupplyTask, canHoldSupply, +19 more
+- `src/utils/supply.ts` — MAX_SUPPLY_COUNT, DEFAULT_SUPPLY_REORDER_AT, MAX_SUPPLY_REORDER_TASKS, clampSupplyCount, clampSupplyReorderAt, clampSupplyLeadDays, clampSupplyRefillCount, SupplySource, isSupplyTask, canHoldSupply, +20 more
 - `src/utils/syncEngine.ts` — SyncTransport, PullResult, SyncLocal, SyncStatus, SyncRunResult, hasChanges, runSync, NamedSyncRun, runSyncAll, SyncSummary, +1 more
 - `src/utils/syncIds.ts` — derivedId, isDerivedId, spawnSeed
 - `src/utils/syncLocal.ts` — databaseSyncLocal
@@ -334,6 +335,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/useShakeToUndo.ts` — useShakeToUndo
 - `src/utils/useSyncOnForeground.ts` — useSyncOnForeground
 - `src/utils/useUpRecipes.ts` — UseUpRecipe, useUpRecipes, describeUseUpRecipe
+- `src/utils/useUpSweep.ts` — UseUpSweepSource, useUpSweepOrder
 - `src/utils/visibilityUtils.ts` — isTaskBlocked, isInPausedProject, isWithheld, isHeldBack, VisibleAtPass, beginVisibleAtPass, isHiddenForVacation, isCategoryScheduledDay, sameTimeSegments, timeSegmentThreshold, +36 more
 - `src/utils/waitingFollowUpTasks.ts` — MAX_WAITING_FOLLOW_UP_TASKS, WAITING_FOLLOW_UP_DECLINE_DAYS, WAITING_FOLLOW_UP_THRESHOLD_DAYS, waitingFollowUpTaskId, waitingFollowUpTitle, waitingFollowUpsHandledRecently, followUpDue, WaitingFollowUpWant, wantedWaitingFollowUps, staleWaitingFollowUpTasks
 - `src/utils/waterExerciseBoost.ts` — WaterExerciseBoost, WATER_EXERCISE_BOOST_MINUTES_RANGE, WATER_EXERCISE_BOOST_ML_RANGE, parseWaterExerciseBoost, serializeWaterExerciseBoost, effectiveWaterTargetMl, waterExerciseBoostApplies
@@ -362,7 +364,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/useEventTaskLinkStore.ts` — EVENT_TASK_LINKS_SETTING_KEY, useEventTaskLinkStore
 - `src/store/useFocusStore.ts` — useFocusStore
 - `src/store/useFoodLogStore.ts` — FOOD_INSIGHT_DAYS, FoodLogDraft, PendingMealLog, PendingManualMealLog, FoodLogPatch, FoodLogPlacement, useFoodLogStore
-- `src/store/useGroceryStore.ts` — PlannedRow, PlanAddResult, describePlanAdd, useGroceryStore
+- `src/store/useGroceryStore.ts` — subscribeCartHoldRelease, PlannedRow, PlanAddResult, describePlanAdd, useGroceryStore
 - `src/store/useHealthStore.ts` — HealthDay, EXERCISE_LIVE_WINDOW_DAYS, HEALTH_HISTORY_DAYS, WEIGHT_HISTORY_DAYS, useHealthStore, useHealthSync
 - `src/store/useHiddenEventsStore.ts` — useHiddenEventsStore
 - `src/store/useLeftoverStore.ts` — LeftoverDraft, useLeftoverStore
@@ -430,8 +432,8 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 
 ## `src/db`
 
-- `src/db/database.ts` — switchToDemoDatabase, switchToRealDatabase, isUsingDemoDatabase, initDatabase, BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, dbTableColumns, dbExportTables, dbReplaceAllData, isSyncableDatabase, +214 more
-- `src/db/syncTracking.ts` — SyncTable, KEY_SEPARATOR, SYNC_TRACKED_TABLES, SYNC_EXCLUDED_TABLES, SYNCED_SETTING_KEYS, isSyncedSettingKey, SYNC_DELETIONS_TABLE, NOW_EXPR, TOMBSTONE_RETENTION_DAYS, SYNC_RECEIVED_TABLE, +7 more
+- `src/db/database.ts` — switchToDemoDatabase, switchToRealDatabase, isUsingDemoDatabase, initDatabase, BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, dbTableColumns, dbExportTables, dbReplaceAllData, isSyncableDatabase, +215 more
+- `src/db/syncTracking.ts` — SyncTable, KEY_SEPARATOR, SYNC_TRACKED_TABLES, SYNC_DEVICE_LOCAL_COLUMNS, isDeviceLocalColumn, withoutDeviceLocalColumns, SYNC_EXCLUDED_TABLES, SYNCED_SETTING_KEYS, isSyncedSettingKey, SYNC_DELETIONS_TABLE, +10 more
 
 ## `src/services`
 

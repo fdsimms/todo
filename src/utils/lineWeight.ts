@@ -28,7 +28,8 @@ import { formatScaleWeight, measureParsedQuantity, type UnitSystem } from './uni
  *
  * Null in three cases beyond `gramsForLine`'s own refusals:
  *
- * - **The line is already a weight.** "200 g" beside "≈200 g" says nothing.
+ * - **The line is already a weight.** "200 g" beside "≈200 g" says nothing,
+ *   and neither does a caption under "2 14 oz cans".
  * - **A range.** `gramsForLine` takes the low end, which is right for a
  *   calorie count and wrong for a caption: "1 to 2 cups" beside one cup's
  *   weight reads as the weight of the whole line. `convertQuantity` refuses
@@ -44,6 +45,10 @@ export function lineWeightGrams(
   const parsed = parseQuantity(quantity);
   if (parsed.amount === null || parsed.rangeMax) return null;
   if (measureParsedQuantity(parsed)?.dimension === 'mass') return null;
+  // A counted sized container ("2 14 oz cans") states its own weight too, one
+  // tin at a time. gramsForLine now weighs it for the nutrition rollup (#2918),
+  // but a caption beside it would repeat what the line already says.
+  if (parsed.container?.count) return null;
   const grams = gramsForLine(parsed, prep, nutrition.portions);
   return grams !== null && grams > 0 ? grams : null;
 }
