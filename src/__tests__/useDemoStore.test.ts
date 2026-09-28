@@ -2638,6 +2638,10 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(recipe?.steps.some(step => step.id === timer.stepId)).toBe(true);
     expect(timer.recipeName).toBe(recipe?.name);
     expect(timer.stepLabel).toMatch(/^Step \d+ of \d+$/);
+    // And by a few of the step's own words, which is what tells two rows apart.
+    const step = recipe?.steps.find(s => s.id === timer.stepId);
+    expect(timer.stepExcerpt).toBeTruthy();
+    expect(step?.text.replace(/\s+/g, ' ')).toContain(timer.stepExcerpt!.replace(/…$/, ''));
   });
 
   it('seeds a step whose timer length was set by hand, and steps that read theirs from the text', () => {

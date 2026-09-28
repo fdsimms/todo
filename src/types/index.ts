@@ -6098,6 +6098,12 @@ export interface StepTimer {
   recipeName: string;
   /** "Step 2 of 3" as it read when the timer started. */
   stepLabel: string;
+  /**
+   * A few words of the step's own text ("Simmer the rice, covered…"), from
+   * `stepTimerExcerpt`, so two rows in the stack say which pan is which.
+   * Absent on a timer started before it existed, which falls back to the label.
+   */
+  stepExcerpt?: string;
   /** What the countdown runs for. Fixed at start; "+1 min" adds to it. */
   durationSeconds: number;
   /** ISO instant the current run segment began; null while paused. */

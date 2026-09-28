@@ -19,6 +19,7 @@ import { useSavedViewStore } from '../store/useSavedViewStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useStepTimerStore } from '../store/useStepTimerStore';
+import { stepDurationOffers, stepTimerExcerpt } from './stepTimers';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useSettingsStore, type WeekStart } from '../store/useSettingsStore';
@@ -2972,6 +2973,8 @@ function seedRecipes(): DemoRecipes {
       recipeName: stirFry.name,
       stepId: stirFryStep.id,
       stepLabel: 'Step 3 of 4',
+      // The words the footer row goes by, read the way cook mode reads them.
+      stepExcerpt: stepTimerExcerpt(stirFryStep.text, stepDurationOffers(stirFryStep)[0]?.start ?? 0),
       durationSeconds: 2 * 60,
     });
   }

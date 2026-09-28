@@ -46,6 +46,12 @@ describe('start', () => {
     expect(mockSchedule).toHaveBeenCalledWith(expect.objectContaining({ id: timer!.id }));
   });
 
+  it('keeps the step excerpt it was started with, so the row can say which pan it is', () => {
+    const timer = useStepTimerStore.getState().start({ ...START, stepExcerpt: 'Simmer the rice' });
+    expect(timer?.stepExcerpt).toBe('Simmer the rice');
+    expect(persisted()[0].stepExcerpt).toBe('Simmer the rice');
+  });
+
   it('refuses a length outside what a step timer can be', () => {
     expect(useStepTimerStore.getState().start({ ...START, durationSeconds: 1 })).toBeNull();
     expect(useStepTimerStore.getState().start({ ...START, durationSeconds: 48 * 3600 })).toBeNull();

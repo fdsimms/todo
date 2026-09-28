@@ -51,7 +51,7 @@ import { spacing, font, fontWeight, lineHeight, radius, iconSize, interaction, t
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { clampStepIndex, cookSteps, describeStepPosition } from '../utils/cookMode';
-import { formatStepDuration, stepDurationOffers } from '../utils/stepTimers';
+import { formatStepDuration, stepDurationOffers, stepTimerExcerpt } from '../utils/stepTimers';
 import {
   applyChoice, choiceGroupKey, flattenRecipeIngredients, recipeChoiceGroups, type ChoiceGroup,
 } from '../utils/recipeComponents';
@@ -607,6 +607,10 @@ export function CookModeSheet({
                         recipeName: recipe.name,
                         stepId: step.id,
                         stepLabel: describeStepPosition(index, steps.length),
+                        // The words the row is known by in the footer, since
+                        // "Step 2 of 12" beside "Step 5 of 12" doesn't say
+                        // which one is the rice.
+                        stepExcerpt: stepTimerExcerpt(step.text, offer.start),
                         durationSeconds: offer.seconds,
                       })}
                     />
@@ -928,10 +932,13 @@ function ScreenAwake() {
 }
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
-  // Three rows of StepTimerRow plus the card's own padding. A fourth is a
-  // scroll rather than more height, so the tray can't grow without bound.
+  // Two rows of StepTimerRow (about 89pt each since its controls went to
+  // 44pt and its step excerpt got a line of its own) and the controls of a
+  // third, so that row is still usable and the stack visibly scrolls. Past
+  // that is a scroll rather than more height, so the tray can't grow without
+  // bound and push the step text off the screen it exists for.
   stepTimerStack: {
-    maxHeight: 210,
+    maxHeight: 236,
     flexGrow: 0,
   },
   offers: {

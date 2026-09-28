@@ -962,6 +962,17 @@ through a locked phone, and outlives the sheet.
   timer belongs to the footer: pressing Next must not take a running countdown off screen, and Pause
   has to be reachable without navigating back to the step that started it. The recipe screen shows
   the same rows on its timer card, since closing cook mode mid-timer is the ordinary thing to do.
+- **A row is sized for a knuckle and named by the step's own words.** Every control on
+  `StepTimerRow` is at least 44pt, with no `hitSlop` reaching into a neighbour, and Cancel sits a
+  wider gap from Pause and asks first while the timer still has time left (`stepTimerCancelPrompt`;
+  dismissing one that has rung stays one tap, since nothing is lost). The countdown is `font.lg`.
+  Two rows labelled "Step 2 of 12" and "Step 5 of 12" made the cook remember which step was the
+  rice, so a timer now stores `stepExcerpt` when it starts: the clause of the step holding the
+  duration, cut at a word (`stepTimerExcerpt`). It is the recipe's own words, never a summary, and
+  it gets a full-width line of its own under the controls, since squeezed beside three 44pt
+  buttons it came out as "Simmer the r…". It is stored rather than derived for the reason
+  `stepLabel` is: the row reads without the recipe and survives an edit to the step. This is where
+  the row parts from `RecipeTimerRow`'s dimensions while keeping its idiom.
 - **A rung timer sinks to the bottom of the stack rather than jumping to the top.** It's the one row
   that wants dealing with, which argues for the top — but the stack is what a thumb aims at with
   hands full, and a row that jumps as it rings moves Pause out from under a finger already on its
