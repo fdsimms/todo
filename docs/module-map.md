@@ -46,7 +46,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/calendarHistory.ts` — PAST_CALENDAR_WINDOW_DAYS, MIN_CALENDAR_NAME_LENGTH, PastCalendarGate, shouldReadPastCalendar, PersonName, HistorySuggestion, HandledHistoryEvents, pastWindowStart, historyEventKey, peopleNamedInTitle, +4 more
 - `src/utils/calendarMonth.ts` — DayMarkKind, MARK_KINDS, DayMark, DotState, DayDot, DayBucket, MAX_PROJECTION_STEPS, canProject, projectOccurrences, nthOccurrence, +7 more
 - `src/utils/calendarReviewTasks.ts` — CALENDAR_REVIEW_TITLE, calendarReviewDayKey, wantsCalendarReview, calendarReviewEventsFor
-- `src/utils/calendarSync.ts` — CalendarPermission, getCalendarPermission, requestCalendarPermission, listEventCalendars, validCalendarIds, CalendarReadStatus, CalendarInfo, FetchEventsResult, fetchEvents, listWritableCalendars, +14 more
+- `src/utils/calendarSync.ts` — CalendarPermission, getCalendarPermission, requestCalendarPermission, listEventCalendars, validCalendarIds, CalendarReadStatus, CalendarInfo, FetchEventsResult, fetchEvents, listWritableCalendars, +15 more
 - `src/utils/capitalize.ts` — capitalize
 - `src/utils/categoryBackfill.ts` — CategoryBackfillFieldId, CategoryBackfillFieldDef, CATEGORY_BACKFILL_FIELDS, isCategoryFieldMissing, isCategoryBackfillDismissed, categoryBackfillCandidates, categoryBackfillFieldCounts, dismissCategoryBackfillField
 - `src/utils/categoryLabel.ts` — categoryLabel
@@ -64,7 +64,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/contactsImport.ts` — MIN_CONTACT_QUERY_LENGTH, MAX_CONTACT_RESULTS, ContactCandidate, ContactPersonDraft, contactBirthday, normalizePhone, alreadyAdded, canSearchContacts, rankContacts, browsableContacts, +3 more
 - `src/utils/cookMode.ts` — CookStep, stepsFromNotes, cookSteps, clampStepIndex, describeStepPosition
 - `src/utils/cookQuestions.ts` — COOK_QUESTION_MAX_LENGTH, COOK_ANSWER_MAX_LINES, COOK_ANSWER_MAX_CHARS, CookContextIngredient, CookQuestionContext, cookQuestionContext, suggestedCookQuestions, clampCookAnswer
-- `src/utils/cookbookRecipes.ts` — CookbookPageKey, cookbookPageKey, compareCookbookRecipes, recipesInCookbook, CookbookLinkEffect, cookbookLinkEffect, CookbookLinkCandidate, COOKBOOK_LINK_LIMIT, cookbookLinkCandidates, cookbookLinkPrompt
+- `src/utils/cookbookRecipes.ts` — CookbookPageKey, cookbookPageKey, compareCookbookRecipes, recipesInCookbook, CookbookLinkEffect, cookbookLinkEffect, pageAfterCookbookLink, CookbookLinkCandidate, COOKBOOK_LINK_LIMIT, cookbookLinkCandidates, +1 more
 - `src/utils/cookingStats.ts` — CookingWindow, MealCookCounts, CookedRecipe, EMPTY_MEAL_COOK_COUNTS, cookingWindow, lastDaysOf, mealCookCounts, leftoversFinishedIn, leftoverHistoryIn, mostCookedRecipes, +1 more
 - `src/utils/createdTaskPlacement.ts` — CreatedTaskDestination, describeCreatedTaskPlacement, describeMovedTaskPlacement
 - `src/utils/dailyAgenda.ts` — AgendaCounts, agendaCounts, agendaBody, agendaSpokenBody, nextAgendaTime
@@ -138,7 +138,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/httpSyncTransport.ts` — HTTP_SYNC_SOURCE, SYNC_REQUEST_TIMEOUT_MS, HttpSyncConfig, isHttpSyncConfigured, httpSyncTransport, readPullBody
 - `src/utils/id.ts` — generateId
 - `src/utils/ingredientCatalogMatch.ts` — IngredientMatchReason, IngredientMatchKind, IngredientCatalogMatch, matchIngredientToCatalog, matchIngredientsToCatalog, CatalogMatchSummary, catalogMatchSummary
-- `src/utils/ingredientGrams.ts` — gramsForLine, panelMultiplier, UnfixableQuantity, unfixableQuantityReason, LineWeighing, weighableLine
+- `src/utils/ingredientGrams.ts` — measureLineAmount, gramsForLine, panelMultiplier, UnfixableQuantity, unfixableQuantityReason, LineWeighing, weighableLine
 - `src/utils/itemBackfill.ts` — ItemBackfillFieldId, ItemBackfillFieldDef, ITEM_BACKFILL_FIELDS, isItemFieldMissing, isItemBackfillDismissed, itemBackfillCandidates, itemBackfillFieldCounts, dismissItemBackfillField
 - `src/utils/itemDisposal.ts` — DisposalOutcome, REPEAT_WASTE_THRESHOLD, disposalAnswerCount, describeDisposalHistory, wantsShelfLifePrompt
 - `src/utils/itemSubs.ts` — Substitute, substitutesFor, substituteForItems, describeSubstituteLink, describeSubstitutes, SubstitutedQuantity, substituteQuantity, substitutesOnHand, describeSubstitutesOnHand, resolveShoppingSubstitutes
@@ -237,7 +237,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/receiptOffline.ts` — isNonItemRow, findPrintedDate, findPrintedTotal, guessStoreName, extractReceiptOffline
 - `src/utils/recentSearches.ts` — RECENT_SEARCH_LIMIT, addRecentSearch, parseRecentSearches
 - `src/utils/recipeBackfill.ts` — RecipeBackfillFieldId, RecipeBackfillFieldDef, RECIPE_BACKFILL_FIELDS, isRecipeFieldMissing, isRecipeBackfillDismissed, recipeBackfillCandidates, recipeBackfillFieldCounts, dismissRecipeBackfillField
-- `src/utils/recipeComponents.ts` — parseRecipeComponents, normalizeComponent, parseRecipeChoices, makeComponent, ChoiceResolution, choiceGroupKey, activeComponents, activeIngredients, recipeMap, ResolvedComponent, +20 more
+- `src/utils/recipeComponents.ts` — parseRecipeComponents, normalizeComponent, parseRecipeChoices, makeComponent, ChoiceResolution, choiceGroupKey, activeComponents, activeIngredients, recipeMap, ResolvedComponent, +21 more
 - `src/utils/recipeCost.ts` — CostEstimate, estimateRecipeCost, estimateWeekCost, describeRecipeCost, describeWeekCost
 - `src/utils/recipeImportComponents.ts` — ReferenceCandidate, referencePageNumber, importableReferences, coveredIngredients
 - `src/utils/recipeImportPreview.ts` — ImportPreviewLine, methodRowMeta, prepTasksRowMeta, methodPreviewLines, prepTaskPreviewLines, previewToggleLabel
@@ -250,9 +250,9 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/recipeScale.ts` — ScaledQuantity, scaleQuantity, RECIPE_SCALE_FACTORS, isUnscaled, normalizeScale, formatScale, scaleServings, factorForServings, MAX_HOUSEHOLD_SERVINGS, householdScale, +3 more
 - `src/utils/recipeSections.ts` — parseEmptySections, SectionedRow, SectionListEntry, sectionsFromMergedOrder, sectionsOf, allSectionsOf, FlatSectionRow, IngredientHeading, ingredientHeadings
 - `src/utils/recipeTags.ts` — cleanRecipeTag, normalizeRecipeTags, parseRecipeTags, allRecipeTags, recipeTagCounts, filterRecipesByTags, formatTagList, toggleRecipeTag
-- `src/utils/recipeTimer.ts` — CookTimerState, PrepTimerState, hasCookTimer, isCookTimerRunning, cookTimerElapsed, cookTimerRemaining, cookTimerProgress, isCookTimerReady, hasPrepTimer, isPrepTimerRunning, +5 more
+- `src/utils/recipeTimer.ts` — CookTimerState, PrepTimerState, hasCookTimer, isCookTimerRunning, cookTimerElapsed, cookTimerRemaining, cookTimerProgress, isCookTimerReady, hasPrepTimer, isPrepTimerRunning, +8 more
 - `src/utils/recipeUrl.ts` — normalizeRecipeUrl, recipeImportedFrom, decodeEntities, htmlToText, metaContent, PageRecipe, parseIsoDuration, parseRecipeJsonLd, focusRecipeText, recipeToPlainText, +2 more
-- `src/utils/recipeUtils.ts` — parseRecipeIngredients, normalizeIngredient, makeIngredient, ingredientDedupeKey, duplicateIngredientIn, blockedIngredientNote, ingredientsFromText, mergeIngredients, remapIngredientKeyIn, parsePrepTasks, +50 more
+- `src/utils/recipeUtils.ts` — parseRecipeIngredients, normalizeIngredient, makeIngredient, ingredientDedupeKey, duplicateIngredientIn, blockedIngredientNote, alreadyInRecipeNote, blockedReviewRows, ingredientsFromText, mergeIngredients, +52 more
 - `src/utils/recurrenceLabels.ts` — recurrenceUnitLabel, ORDINAL_OPTIONS, MONTH_NAMES, MONTH_ABBREVIATIONS, RecurrenceRule, describeTaskRecurrence, recurrenceRuleOf, describeRecurrence
 - `src/utils/refreshGuard.ts` — RefreshGuard, createRefreshGuard
 - `src/utils/reminderCaptures.ts` — CAPTURE_TITLE_MAX_LENGTH, MAX_REMINDER_CAPTURES, makeReminderCapture, parseReminderCaptures, serializeReminderCaptures, activeReminderCaptures, drainableReminderCaptures, captureListIds, captureDraftFields, describeReminderCaptureFiling
