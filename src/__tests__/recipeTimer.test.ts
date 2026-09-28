@@ -12,6 +12,8 @@ import {
   prepTimerProgress,
   isPrepTimerReady,
   hasRunningRecipeTimer,
+  recipeTimerClock,
+  recipeTimerResetPrompt,
   type CookTimerState,
   type PrepTimerState,
 } from '../utils/recipeTimer';
@@ -245,5 +247,59 @@ describe('hasRunningRecipeTimer', () => {
 
   it('is true with no duration set at all — a plain running stopwatch', () => {
     expect(hasRunningRecipeTimer({ ...running(null, 45), ...idlePrep(null) })).toBe(true);
+  });
+});
+
+// ─── recipeTimerClock ───
+
+describe('recipeTimerClock', () => {
+  const base = { hasTarget: true, running: true, paused: false, ready: false, elapsedSeconds: 0, remainingSeconds: 0 };
+
+  it('has no clock for a timer that has not started', () => {
+    expect(recipeTimerClock({ ...base, running: false, remainingSeconds: 45 * 60 })).toBeNull();
+  });
+
+  it('counts down against a target, with the state after the number', () => {
+    expect(recipeTimerClock({ ...base, elapsedSeconds: 60, remainingSeconds: 750 }))
+      .toEqual({ clock: '12:30', state: 'left' });
+    expect(recipeTimerClock({ ...base, running: false, paused: true, remainingSeconds: 750 }))
+      .toEqual({ clock: '12:30', state: 'paused' });
+  });
+
+  it('says a timer past its target is over, paused or not', () => {
+    expect(recipeTimerClock({ ...base, ready: true, remainingSeconds: -45 }))
+      .toEqual({ clock: '0:45', state: 'over' });
+    expect(recipeTimerClock({ ...base, running: false, paused: true, ready: true, remainingSeconds: -45 }))
+      .toEqual({ clock: '0:45', state: 'over' });
+  });
+
+  it('counts up with no target, as a stopwatch', () => {
+    expect(recipeTimerClock({ ...base, hasTarget: false, elapsedSeconds: 192 }))
+      .toEqual({ clock: '3:12', state: 'elapsed' });
+    expect(recipeTimerClock({ ...base, hasTarget: false, running: false, paused: true, elapsedSeconds: 192 }))
+      .toEqual({ clock: '3:12', state: 'paused' });
+  });
+});
+
+// ─── recipeTimerResetPrompt ───
+
+describe('recipeTimerResetPrompt', () => {
+  it('asks before throwing away time that is still counting, naming the timer', () => {
+    expect(recipeTimerResetPrompt('Cook', { running: true, elapsedSeconds: 725 })).toEqual({
+      title: 'Reset the cook timer?',
+      message: '12:05 timed so far, not logged yet.',
+    });
+  });
+
+  it('says a paused timer is paused', () => {
+    expect(recipeTimerResetPrompt('Prep', { running: false, elapsedSeconds: 90 })).toEqual({
+      title: 'Reset the prep timer?',
+      message: 'Paused at 1:30, not logged yet.',
+    });
+  });
+
+  it('does not ask when nothing has been timed', () => {
+    expect(recipeTimerResetPrompt('Cook', { running: true, elapsedSeconds: 0.4 })).toBeNull();
+    expect(recipeTimerResetPrompt('Cook', { running: false, elapsedSeconds: 0 })).toBeNull();
   });
 });

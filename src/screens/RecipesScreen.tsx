@@ -48,6 +48,8 @@ import { ListBulkBar } from '../components/ListBulkBar';
 import { ReorderableList } from '../components/ReorderableList';
 import { SortableList } from '../components/SortableList';
 import { SwipeableRow } from '../components/SwipeableRow';
+import { SelectionDot } from '../components/SelectionDot';
+import { PaintSelectionProvider, PaintSelectionRow } from '../components/PaintSelection';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { PlanMealSheet } from '../components/PlanMealSheet';
 import { usePlanMeal } from '../hooks/usePlanMeal';
@@ -269,6 +271,8 @@ export function RecipesScreen() {
     exitSelection,
     selectAll,
     deselectAll,
+    painting,
+    paintProps,
   } = useRowSelection();
 
   // Bottom-up: "New recipe" ends up closest to the button, so the plain add is
@@ -653,7 +657,14 @@ export function RecipesScreen() {
     </TouchableOpacity>
   );
 
-  const renderRecipe = ({ item: recipe, drag, isActive }: { item: Recipe; drag?: () => void; isActive?: boolean }) => {
+  // `duplicateRow` is the Up Next shelf's copy of a recipe that also has its
+  // ordinary row in the box below. It stays out of the paint registry, which
+  // is keyed by recipe id: the shelf unmounts as selection starts, and its
+  // copy leaving would evict the real row, the reason TaskItem's pinned copy
+  // passes the same flag.
+  const renderRecipe = ({ item: recipe, drag, isActive, duplicateRow }: {
+    item: Recipe; drag?: () => void; isActive?: boolean; duplicateRow?: boolean;
+  }) => {
     const selected = selectedIds.has(recipe.id);
     const rowBody = (
       <TouchableOpacity
@@ -666,17 +677,11 @@ export function RecipesScreen() {
         accessibilityLabel={`${recipe.name}. ${describeRecipe(recipe, pantryCounts.get(recipe.id))}`}
         accessibilityHint={selectionMode ? 'Double tap to select recipe' : 'Double tap to open this recipe.'}
       >
-        {selectionMode ? (
-          // Takes the icon tile's place rather than sitting beside it, so every
-          // row shifts by the same amount and the names stay in one column.
-          <View style={styles.select}>
-            <Ionicons
-              name={selected ? 'checkmark-circle' : 'ellipse-outline'}
-              size={24}
-              color={selected ? colors.accent : colors.textTertiary}
-            />
-          </View>
-        ) : recipe.imagePath ? (
+        {/* The photo or tile stays put while selecting. Selection is the
+            SelectionDot at the other end of the row, the split every other
+            selectable list makes (#2944): a check filling the tile's place
+            read as a recipe marked done rather than one picked. */}
+        {recipe.imagePath ? (
           <Image source={{ uri: resolveRecipeImagePath(recipe.imagePath) ?? undefined }} style={styles.thumb} />
         ) : (
           <View style={[styles.icon, { backgroundColor: colors.accentSubtle }]}>
@@ -698,10 +703,22 @@ export function RecipesScreen() {
         {!selectionMode && (
           <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
         )}
+        {/* In the slot the three buttons and the chevron give up while
+            selecting, so nothing moves aside for it. On every row, picked or
+            not: the empty rings are what say selection is on. */}
+        {selectionMode && (
+          <SelectionDot selected={selected} onPress={() => toggleSelection(recipe.id)} />
+        )}
       </TouchableOpacity>
     );
     return (
-      <View style={[styles.itemWrapper, isActive && styles.itemWrapperActive]}>
+      // Registered with the screen's PaintSelectionProvider so a drag down the
+      // column of dots picks up this row. Not the drag overlay's copy, which
+      // would claim this row's id and evict it on unmount.
+      <PaintSelectionRow
+        rowId={isActive || duplicateRow ? null : recipe.id}
+        style={[styles.itemWrapper, isActive && styles.itemWrapperActive]}
+      >
         {/* SwipeableRow stays mounted through the selectionMode toggle rather
             than swapping for a bare rowBody — swapping it unmounts the panel
             mid-close-animation (the very moment its own select action just
@@ -717,7 +734,7 @@ export function RecipesScreen() {
         >
           {rowBody}
         </SwipeableRow>
-      </View>
+      </PaintSelectionRow>
     );
   };
 
@@ -744,7 +761,7 @@ export function RecipesScreen() {
         onDragStateChange={setUpNextDragging}
         placeholderStyle={styles.dropSlot}
         renderItem={(recipe, _displayIndex, drag, isActive) =>
-          renderRecipe({ item: recipe, drag, isActive })}
+          renderRecipe({ item: recipe, drag, isActive, duplicateRow: true })}
       />
     </View>
   );
@@ -918,6 +935,9 @@ export function RecipesScreen() {
               bottomOffset={tabBarHeight}
             />
           ) : grouped ? (
+            // A drag down the column of selection dots picks up a run of
+            // recipes (#2944), as on every other selectable list.
+            <PaintSelectionProvider {...paintProps}>
             <FabDropZoneProvider
               ref={dropZonesRef}
               onIntentChange={fabIntentChannel.publish}
@@ -930,8 +950,9 @@ export function RecipesScreen() {
                 // button's responder has the touch); the drag scrolls it
                 // instead, through scrollControl above. Same reasoning for a
                 // shelf drag — see onDragStateChange on the SortableList in
-                // upNextBlock.
-                scrollEnabled={!fabDragging && !upNextDragging}
+                // upNextBlock. Same while a paint gesture owns the touch: iOS
+                // has to be told directly (see PaintSelectionProvider).
+                scrollEnabled={!fabDragging && !upNextDragging && !painting}
                 scrollControlRef={scrollControl}
                 ListHeaderComponent={upNextBlock}
                 renderItem={({ item, drag, isActive }) => {
@@ -987,19 +1008,22 @@ export function RecipesScreen() {
                 }
               />
             </FabDropZoneProvider>
+            </PaintSelectionProvider>
           ) : (
+            <PaintSelectionProvider {...paintProps}>
             <FlatList
               data={visible}
               keyExtractor={r => r.id}
               renderItem={renderRecipe}
               keyboardShouldPersistTaps="handled"
-              scrollEnabled={!upNextDragging}
+              scrollEnabled={!upNextDragging && !painting}
               ListHeaderComponent={upNextBlock}
               contentContainerStyle={styles.list}
               ListFooterComponent={
                 <View style={{ height: selectionMode ? selectionListPadding : tabBarHeight + FAB_SIZE + spacing.xl }} />
               }
             />
+            </PaintSelectionProvider>
           )}
         </>
       )}
@@ -1309,14 +1333,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: radius.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  // Same footprint as the icon tile it replaces, so entering selection mode
-  // doesn't move the row's text.
-  select: {
-    width: 36,
-    height: 36,
     alignItems: 'center',
     justifyContent: 'center',
   },

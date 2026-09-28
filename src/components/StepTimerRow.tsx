@@ -51,8 +51,8 @@ interface Props {
  * A rung timer turns orange and says so rather than jumping to the top of the
  * stack: see `sortStepTimers` for why moving it would be the wrong kindness.
  *
- * **Sized for a knuckle, not a fingertip** (#2920), which is where it now parts
- * from `RecipeTimerRow`'s dimensions while keeping its idiom. These rows are
+ * **Sized for a knuckle, not a fingertip** (#2920), and `RecipeTimerRow` has
+ * since taken the same sizes, so the rows in one card still match. These rows are
  * reached for mid-cook with the hands full, often two or three at once, so:
  * every control is at least 44pt with no `hitSlop` reaching into its
  * neighbour's; Cancel sits a wider gap away from Pause and asks first while

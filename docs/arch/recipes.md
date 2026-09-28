@@ -1066,8 +1066,18 @@ through a locked phone, and outlives the sheet.
   duration, cut at a word (`stepTimerExcerpt`). It is the recipe's own words, never a summary, and
   it gets a full-width line of its own under the controls, since squeezed beside three 44pt
   buttons it came out as "Simmer the r…". It is stored rather than derived for the reason
-  `stepLabel` is: the row reads without the recipe and survives an edit to the step. This is where
-  the row parts from `RecipeTimerRow`'s dimensions while keeping its idiom.
+  `stepLabel` is: the row reads without the recipe and survives an edit to the step.
+- **The recipe's own prep and cook rows got the same sizes**, since they share the card and the
+  cook mode footer with the step rows. `RecipeTimerRow`'s controls are 44pt with no `hitSlop`, its
+  clock is `font.lg` with the state after it (`recipeTimerClock`), and Reset asks first while there
+  is time on it (`recipeTimerResetPrompt`), because what it throws away is a time that was about to
+  be logged, overrun included. Two things differ from the step row on purpose. Reset sits furthest
+  from the primary button rather than beyond it, because a recipe timer has an idle state the step
+  row lacks: keeping the primary at the trailing edge in every state is what makes Start become
+  Pause under the same finger, where the step row's order would move it a slot in the moment a
+  cook began. And an idle row says what starting it would do ("Cook for 45m") at `font.md`, a step
+  under the clock, since most recipes are never timed and two idle rows at clock size would shout
+  on every one of them.
 - **A rung timer sinks to the bottom of the stack rather than jumping to the top.** It's the one row
   that wants dealing with, which argues for the top — but the stack is what a thumb aims at with
   hands full, and a row that jumps as it rings moves Pause out from under a finger already on its

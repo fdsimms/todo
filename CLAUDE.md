@@ -1181,9 +1181,12 @@ exception, because its Modal is a small centered card rather than a full scrolla
   It's a *circle* where completion checkboxes are rounded squares (`checkboxRadius`), it sits at the
   opposite end from the checkbox, and it takes the slot the row's own action buttons vacate on
   entering selection mode, so nothing has to move aside for it. It is not its own accessibility
-  element — the row already exposes a checkbox with the same state. Two rows use it (`TaskItem`,
-  `LogbookScreen`'s row); a third selectable row type should use it too rather than tinting its
-  checkbox.
+  element — the row already exposes a checkbox with the same state. Every selectable list's rows
+  use it now (tasks, groceries, recipes, templates, meals, a recipe's ingredients and the rest); a
+  new one should too, rather than tinting its checkbox or swapping a check into its leading tile,
+  and registers for painting with `usePaintSelectionRow` (or `PaintSelectionRow` where the row is
+  drawn by a render function rather than a component). A second copy of a row on the same screen
+  (a pinned task, the Recipes Up Next shelf) passes a null id, or its unmount evicts the real row.
 - `PaintSelectionProvider` (`src/components/PaintSelection.tsx`) — wraps a task list so that, while bulk selecting, a drag down the column of `SelectionDot`s "paints" a run of rows instead of needing a tap each. Screens get it by spreading `paintProps` from `useTaskSelection` and passing `scrollEnabled={!painting}` to the list; rows register themselves from inside `TaskItem`, so nothing else has to change. The touch is claimed **on touch-down in the capture phase** within `PAINT_GUTTER_WIDTH` of the **trailing** edge — a native scroll can't be taken back once it starts dragging, so deciding later would let the list scroll out from under the paint. That's why a drag started right on the dots can't scroll (the deliberate trade), and why every other pixel of the row scrolls exactly as before. The gutter follows the dots: it ran along the leading edge while the checkbox was the selection control, and a gesture that isn't over the thing it changes is the bug that pairing them avoids. Hit-testing math and its tests live in `src/utils/paintSelect.ts` / `paintSelect.test.ts`.
 - `src/utils/haptics.ts` — semantic haptics (`tap`, `success`, `warning`, `error`, `impactLight/Medium/Heavy`). Never import `expo-haptics` directly; pick by meaning so intensities stay consistent.
 - `src/utils/layoutAnimation.ts` — `animateLayout()` immediately before a state change that inserts/removes list rows (complete, delete, add, selection-mode toggle). **Never call it on a drag-reorder commit path** (`ReorderableList.onReorder`, `DraggableFlatList.onDragEnd`) — those drive their own row animations.

@@ -45,6 +45,8 @@ import { CountStepper } from '../components/CountStepper';
 import { PressableScale } from '../components/PressableScale';
 import { SortableList, type SortableRenderItem } from '../components/SortableList';
 import { SwipeableRow } from '../components/SwipeableRow';
+import { SelectionDot } from '../components/SelectionDot';
+import { PaintSelectionProvider, PaintSelectionRow } from '../components/PaintSelection';
 import { IngredientCatalogMatchSheet } from '../components/IngredientCatalogMatchSheet';
 import { RecipeNutritionSheet } from '../components/RecipeNutritionSheet';
 import {
@@ -453,6 +455,8 @@ export function RecipeDetailScreen() {
   // point Grocery and the task lists use (#1378) — the row's own long press is
   // still free for reorder, since SortableList's responder stays inert until
   // `drag()` is actually called and doesn't compete with the swipe gesture.
+  // A drag down the column of selection dots paints a run of lines (#2944's
+  // treatment), through the PaintSelectionProvider around the scroll view.
   const {
     selectionMode,
     selectedIds,
@@ -461,6 +465,8 @@ export function RecipeDetailScreen() {
     exitSelection,
     selectAll,
     deselectAll,
+    painting,
+    paintProps,
   } = useRowSelection();
 
   // Both timers, wired up — the clock, the derivation and the store calls all
@@ -1184,6 +1190,11 @@ export function RecipeDetailScreen() {
             accessibilityLabel: `Select ${ingredient.name}`,
           }}
         >
+        {/* Registered with the screen's PaintSelectionProvider so a drag down
+            the column of dots picks up this line. Not SortableList's floating
+            copy (`isDragging`), which would claim this line's id and evict it
+            on unmount. */}
+        <PaintSelectionRow rowId={isDragging ? null : ingredient.id}>
         <TouchableOpacity
           style={[
             styles.ingredient,
@@ -1214,15 +1225,10 @@ export function RecipeDetailScreen() {
           }
           accessibilityHint={selectionMode ? 'Double tap to select' : 'Double tap to edit. Long press to reorder.'}
         >
-          {selectionMode && (
-            <View style={styles.ingredientSelect}>
-              <Ionicons
-                name={selected ? 'checkmark-circle' : 'ellipse-outline'}
-                size={22}
-                color={selected ? colors.accent : colors.textTertiary}
-              />
-            </View>
-          )}
+          {/* Selection is the SelectionDot at the row's other end, where the
+              remove × was, the split every other selectable list makes
+              (#2944). A check leading the line read as an ingredient ticked
+              off, and pushed every name sideways. */}
           <View style={styles.ingredientText}>
             <Text style={styles.ingredientName}>{line.name}</Text>
             {/* Directly under the name it replaced, in the same tint the
@@ -1338,7 +1344,14 @@ export function RecipeDetailScreen() {
               <Ionicons name="close" size={iconSize.sm} color={colors.textTertiary} />
             </TouchableOpacity>
           )}
+          {/* In the slot the × gives up while selecting, so nothing moves
+              aside for it. On every line, picked or not: the empty rings are
+              what say selection is on. */}
+          {selectionMode && (
+            <SelectionDot selected={selected} onPress={() => toggleSelection(ingredient.id)} />
+          )}
         </TouchableOpacity>
+        </PaintSelectionRow>
         </SwipeableRow>
         {/* A component sharing this ingredient's choice group folds in right
             here, after the group's last ingredient option — not in its own
@@ -1765,9 +1778,15 @@ export function RecipeDetailScreen() {
         }
       />
 
+      {/* Around the whole scroll view, since the ingredient card is one block
+          inside it: while selecting, a drag started on the trailing edge
+          paints rather than scrolls, the trade every selectable list makes. */}
+      <PaintSelectionProvider {...paintProps}>
       <ScrollView
         ref={keyboardScroll.ref}
-        scrollEnabled={!dragging}
+        // Same while a paint gesture owns the touch: iOS has to be told
+        // directly (see PaintSelectionProvider).
+        scrollEnabled={!dragging && !painting}
         contentContainerStyle={styles.scroll}
         keyboardShouldPersistTaps="handled"
         {...keyboardScroll.props}
@@ -2440,6 +2459,7 @@ export function RecipeDetailScreen() {
           <View style={{ height: insets.bottom + spacing.sm + bulkBarHeight + spacing.sm }} />
         )}
       </ScrollView>
+      </PaintSelectionProvider>
 
       {/* Hidden while selecting: the bulk bar floats where it does, and adding
           to the list isn't something you're doing mid-selection anyway. */}
@@ -2930,10 +2950,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   // Sits at the row's top edge rather than centered, matching the row's own
   // flex-start alignment — see the note on `ingredient` above.
-  ingredientSelect: {
-    width: 22,
-    height: 22,
-  },
   ingredientText: {
     flex: 1,
     gap: 1,
@@ -3115,8 +3131,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // The badge that marks a component row where it's embedded in the
   // Ingredients card — same restaurant-outline glyph RecipeComponentPicker
   // uses for "this represents a recipe", shrunk to sit inline in a row this
-  // dense. Sits at the row's top edge like ingredientSelect, for the same
-  // flex-start reason.
+  // dense. Sits at the row's top edge like the ingredient row's own controls,
+  // for the same flex-start reason.
   componentMarker: {
     width: 20,
     height: 20,
