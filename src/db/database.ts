@@ -1752,6 +1752,10 @@ export function initDatabase(): void {
     // carried a pointer back to its parent's live occurrence, only the title
     // snapshot in extra_task_source_title. See Task.followUpTaskSourceId.
     'ALTER TABLE tasks ADD COLUMN extra_task_source_id TEXT',
+    // Null on every existing entry, which is the truth: nothing kept the panel
+    // an unfiled database food was measured against before this, so those
+    // entries stay rename-only. See FoodLogEntry.sourcePanel.
+    'ALTER TABLE food_logs ADD COLUMN source_panel TEXT',
   ];
   // Asking SQLite for a table's columns once is cheaper than handing it every
   // ALTER for that table and catching the duplicate-column error, and by the
@@ -6135,6 +6139,10 @@ function rowToFoodLogEntry(row: Record<string, unknown>): FoodLogEntry | null {
     quantity: (row.quantity as string) ?? '',
     grams: typeof row.grams === 'number' && Number.isFinite(row.grams) ? row.grams : null,
     nutrition,
+    // A blob that won't parse reads as none kept, rather than dropping the row
+    // the way a bad `nutrition` does: the helping is still whole, and all this
+    // costs is the correction, which is where every entry stood before it.
+    sourcePanel: parseFoodNutrition(row.source_panel as string | null),
     healthSampleIds,
     sortOrder: typeof row.sort_order === 'number' ? row.sort_order : 0,
     createdAt: row.created_at as string,
@@ -6180,12 +6188,13 @@ export function dbGetFoodLogEntry(id: string): FoodLogEntry | null {
 export function dbInsertFoodLogEntry(entry: FoodLogEntry): void {
   db.runSync(
     `INSERT INTO food_logs (id, day_key, at_iso, slot, label, recipe_id, item_id, product_id,
-       meal_plan_entry_id, quantity, grams, nutrition, health_sample_ids, sort_order, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       meal_plan_entry_id, quantity, grams, nutrition, source_panel, health_sample_ids, sort_order, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       entry.id, entry.dayKey, entry.atISO, entry.slot, entry.label,
       entry.recipeId, entry.itemId, entry.productId, entry.mealPlanEntryId,
       entry.quantity, entry.grams, serializeFoodNutrition(entry.nutrition),
+      serializeFoodNutrition(entry.sourcePanel ?? null),
       JSON.stringify(entry.healthSampleIds), entry.sortOrder, entry.createdAt,
     ]
   );
@@ -6194,13 +6203,14 @@ export function dbInsertFoodLogEntry(entry: FoodLogEntry): void {
 export function dbUpdateFoodLogEntry(entry: FoodLogEntry): void {
   db.runSync(
     `UPDATE food_logs SET day_key=?, at_iso=?, slot=?, label=?, recipe_id=?, item_id=?,
-       product_id=?, meal_plan_entry_id=?, quantity=?, grams=?, nutrition=?, health_sample_ids=?,
-       sort_order=?
+       product_id=?, meal_plan_entry_id=?, quantity=?, grams=?, nutrition=?, source_panel=?,
+       health_sample_ids=?, sort_order=?
      WHERE id=?`,
     [
       entry.dayKey, entry.atISO, entry.slot, entry.label,
       entry.recipeId, entry.itemId, entry.productId, entry.mealPlanEntryId,
       entry.quantity, entry.grams, serializeFoodNutrition(entry.nutrition),
+      serializeFoodNutrition(entry.sourcePanel ?? null),
       JSON.stringify(entry.healthSampleIds), entry.sortOrder, entry.id,
     ]
   );

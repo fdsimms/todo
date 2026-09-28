@@ -700,8 +700,29 @@ describe('foodLogEntryEdit', () => {
   });
 
   it('refuses an entry with no link, since there is no panel left to measure against', () => {
-    // A described meal the model estimated, or a database food nobody filed.
+    // A described meal the model estimated, or a database food logged before
+    // entries kept their panel.
     expect(foodLogEntryEdit(entry({ quantity: 'a bowl of ramen' }))).toBeNull();
+  });
+
+  it('reopens an unfiled database food on the panel it kept (#2914)', () => {
+    // Logged as 200 g of a database's chicken, never filed. The per-100 g panel
+    // rode onto the entry, so the amount can be re-measured against it.
+    const kept = panel({ amounts: { calorieKcal: 165, proteinG: 31 }, portions: [] });
+    const helping = scalePanelToAmount(kept, '200 g', null, NOW)!;
+    const row = entry({ quantity: '200 g', grams: 200, nutrition: helping.nutrition, sourcePanel: kept });
+    const plan = foodLogEntryEdit(row);
+    expect(plan).toEqual({ amount: '200 g', dishMeasure: null });
+    // And the correction measures against the kept panel exactly as the
+    // original did, rather than multiplying the stored helping.
+    const corrected = scalePanelToAmount(kept, '170 g', null, NOW)!;
+    expect(corrected.nutrition.amounts.calorieKcal).toBe(280.5);
+    expect(corrected.grams).toBe(170);
+  });
+
+  it('still refuses an unlinked entry whose kept panel is absent or null', () => {
+    expect(foodLogEntryEdit(entry({ quantity: '200 g', sourcePanel: null }))).toBeNull();
+    expect(foodLogEntryEdit(entry({ quantity: '200 g', sourcePanel: undefined }))).toBeNull();
   });
 
   it('refuses an entry carrying answered "Anything else?" lines', () => {

@@ -37,7 +37,7 @@ import { OTHER_AISLE } from '../utils/groceryAisles';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useSavedMealsStore } from '../store/useSavedMealsStore';
-import { describeFoodLogEntry, foodLogTotals, recallAmount, scalePanelToAmount } from '../utils/foodLog';
+import { describeFoodLogEntry, foodLogEntryEdit, foodLogTotals, recallAmount, scalePanelToAmount } from '../utils/foodLog';
 import { foodLastAmounts } from '../utils/foodLogRecents';
 import { isWaterEntry } from '../utils/waterLog';
 import { foodDayInputs, foodKeyNames, hasNutritionData, nutrientAverages, nutritionCounts, sourceMix } from '../utils/nutritionStats';
@@ -2107,6 +2107,23 @@ describe('demo seed — people', () => {
     expect(filed.length).toBeGreaterThan(0);
   });
 
+  it('seeds an unfiled database food that can still be corrected (#2914)', () => {
+    // Linked to nothing, so without the panel it kept the row menu would offer
+    // only a rename. With it, Edit reopens on the database's own figures.
+    const window = cookingWindow(getLogicalToday(), 30);
+    useFoodLogStore.getState().loadWindow(window.startKey, window.endKey);
+    const unfiled = useFoodLogStore.getState().windowEntries.find(e => e.sourcePanel);
+    expect(unfiled).toBeDefined();
+    expect(unfiled?.itemId).toBeNull();
+    expect(unfiled?.productId).toBeNull();
+    expect(unfiled?.recipeId).toBeNull();
+    expect(unfiled?.sourcePanel?.basis).toBe('per100g');
+    const plan = foodLogEntryEdit(unfiled!);
+    expect(plan).not.toBeNull();
+    // And the amount it reopens on still measures against what it kept.
+    expect(scalePanelToAmount(unfiled!.sourcePanel!, plan!.amount, null)).not.toBeNull();
+  });
+
   it('seeds a food eaten before, so picking it again opens on the amount it was logged in', () => {
     // The picker fills in a food's last amount (#2915). Greek yogurt is logged
     // against its own row, so its amount has to read back and still measure
@@ -2286,6 +2303,14 @@ describe('demo seed — people', () => {
       // panel, and carries a recipe instead of an item. Its own arithmetic is
       // pinned by the source assertion below.
       if (e.recipeId) continue;
+      // A database food nobody filed is measured against the panel it kept,
+      // which is the same arithmetic against a panel the entry carries itself.
+      if (!e.itemId && e.sourcePanel) {
+        const rebuilt = scalePanelToAmount(e.sourcePanel, e.quantity, null, undefined, e.label)?.nutrition;
+        expect(rebuilt?.amounts).toEqual(e.nutrition.amounts);
+        checked += 1;
+        continue;
+      }
       // An estimate has no source to recompute it from, which is the whole
       // reason it is marked. What is assertable about it is the marker, and
       // the case below does that.
@@ -2313,7 +2338,9 @@ describe('demo seed — people', () => {
     // got. It carries no item and no recipe, which is what an estimate is.
     const window = cookingWindow(getLogicalToday(), 30);
     useFoodLogStore.getState().loadWindow(window.startKey, window.endKey);
-    const eatenOut = seededFood().filter(e => !e.itemId && !e.recipeId);
+    // The unfiled database food is linked to nothing either, and is told
+    // apart by the panel it kept rather than by a marker.
+    const eatenOut = seededFood().filter(e => !e.itemId && !e.recipeId && !e.sourcePanel);
     expect(eatenOut).toHaveLength(1);
     expect(eatenOut[0].nutrition.source).toBe('estimated');
     expect(describeFoodLogEntry(eatenOut[0])).toContain('estimated');

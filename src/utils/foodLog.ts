@@ -752,16 +752,24 @@ export interface FoodLogEntryEdit {
  * always `perServing`, the amounts are what was actually eaten, and `portions`
  * was emptied when the helping was built. So "make it 2 cups instead of 1" has
  * no arithmetic available to it here, and correcting an amount means running
- * `scalePanelToAmount` over the panel again. That panel is reachable only
- * through the entry's own links, which is what decides the refusals below.
+ * `scalePanelToAmount` over the panel again. That panel is reachable through
+ * the entry's own links, or through the one it kept (`sourcePanel`) when no
+ * row holds it, and which of those exists is what decides the refusals below.
+ *
+ * **An unfiled database food keeps its panel on the entry and reopens on it**
+ * (#2914). It is the database's own per-100 g record with its portions, so
+ * re-measuring against it is exactly what re-measuring against a catalog row
+ * is, and weighing out 170 g of chicken logged as 200 g is a correction rather
+ * than a delete and a fresh search. A link wins over it: a linked entry is
+ * re-measured against its row, the same as it always was.
  *
  * Four entries get null, and each is a case where an edit would have to invent
  * something:
  *
- * - **No link at all.** A described meal the model estimated, or a food a
- *   database answered and nobody filed. There is no panel to measure a new
- *   amount against, and offering the figures as fields to retype would put an
- *   unmeasured panel into a health record.
+ * - **No link and no kept panel.** A described meal the model estimated, or a
+ *   database food logged before entries kept their panel. There is nothing to
+ *   measure a new amount against, and offering the figures as fields to
+ *   retype would put an unmeasured panel into a health record.
  * - **Answered "Anything else?" lines.** What was typed against each varying
  *   line of a dish is not stored, only the line's name in `quantity`, so the
  *   sheet would reopen with them blank and a save would silently drop them.
@@ -787,7 +795,7 @@ export function foodLogEntryEdit(entry: FoodLogEntry): FoodLogEntryEdit | null {
     const dish = dishAmountFrom(typed);
     return dish && { amount: dish.amount, dishMeasure: dish.dishMeasure };
   }
-  if (entry.productId || entry.itemId) {
+  if (entry.productId || entry.itemId || entry.sourcePanel) {
     // A scan logged with "The whole package (10 servings)" stores that button
     // label as its helping (`packageChoices` in scanPortion.ts), which has no
     // leading number to re-measure. The count inside it is the amount.

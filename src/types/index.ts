@@ -4145,6 +4145,30 @@ export interface FoodLogEntry {
    */
   nutrition: FoodNutrition;
   /**
+   * The panel `nutrition` was measured against, kept on the entry because no
+   * catalog row holds it. Null (or absent) on everything else.
+   *
+   * **Written for one case: a food a database answered that nobody filed**
+   * (#2914). `nutrition` is one helping with its portion table emptied, so an
+   * entry like that had nothing left to re-measure a corrected amount against,
+   * and "I logged 200 g, it was 170 g" could only be a delete and a fresh
+   * search. This is the database's own panel, per 100 g with its portions,
+   * snapshotted at log time on `nutrition`'s rule: a later lookup of the same
+   * food must not rewrite what was measured. `foodLogEntryEdit` reopens such
+   * an entry on it exactly as it reopens a linked food on its row's panel.
+   *
+   * **Not written for a linked entry**, whose row already holds the panel, and
+   * a correction that re-measures against a row (or picks a different food)
+   * clears it: from then on it would describe how a helping *used* to be
+   * measured. It travels in sync and backups with the row, since it describes
+   * the entry rather than the device.
+   *
+   * Optional on the type rather than required-nullable because absent and
+   * null read identically at every reader, and every entry built in memory
+   * without one (a saved meal re-logged, a test) is the ordinary case.
+   */
+  sourcePanel?: FoodNutrition | null;
+  /**
    * Health sample identifiers this entry wrote, so an edit or a delete can
    * retract them.
    *

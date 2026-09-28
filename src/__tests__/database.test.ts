@@ -109,6 +109,9 @@ import {
   dbPruneSyncDeletions,
   isSyncableDatabase,
   dbApplySyncChanges,
+  dbInsertFoodLogEntry,
+  dbGetFoodLogEntry,
+  dbUpdateFoodLogEntry,
   dbGetDeviceId,
   dbGetSyncCursor,
   dbSetSyncCursor,
@@ -123,7 +126,7 @@ import {
 } from '../db/syncTracking';
 import { buildBackup, serializeBackup, parseBackup } from '../utils/backup';
 import { OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
-import type { Task, TaskTemplate, TemplateItem, Project, Category, TaskGroup, GroceryItem, ItemProduct, ItemShopLink, Shop, Leftover, MealPlanEntry, MealSlot, Recipe } from '../types';
+import type { Task, TaskTemplate, TemplateItem, Project, Category, TaskGroup, GroceryItem, ItemProduct, ItemShopLink, Shop, Leftover, MealPlanEntry, MealSlot, Recipe, FoodLogEntry, FoodNutrition } from '../types';
 
 // ---------------------------------------------------------------------------
 // Mock expo-sqlite with an in-memory better-sqlite3 database.
@@ -4920,5 +4923,115 @@ describe('a store\'s aisle range', () => {
       .run(JSON.stringify(['Produce', 3, '', null]), 'cvs');
 
     expect(rangeOf('cvs')).toEqual(['Produce']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Food log entries: the panel an unfiled database food keeps (#2914)
+// ---------------------------------------------------------------------------
+
+describe('a food log entry\'s kept panel', () => {
+  beforeEach(() => {
+    mockRawDb.exec('DELETE FROM food_logs; DELETE FROM sync_deletions;');
+  });
+
+  const chicken: FoodNutrition = {
+    basis: 'per100g',
+    servingGrams: null,
+    servingText: null,
+    amounts: { calorieKcal: 165, proteinG: 31 },
+    source: 'fdc',
+    sourceId: '171077',
+    portions: [{ amount: 1, label: 'breast', grams: 172 }],
+    recordedAt: '2026-04-02T00:00:00.000Z',
+  };
+
+  const makeEntry = (overrides: Partial<FoodLogEntry> = {}): FoodLogEntry => ({
+    id: 'f1',
+    dayKey: '2026-04-02',
+    atISO: '2026-04-02T12:00:00.000Z',
+    slot: 'lunch',
+    label: 'Chicken, broilers or fryers, breast, meat only, cooked, roasted',
+    recipeId: null,
+    itemId: null,
+    productId: null,
+    mealPlanEntryId: null,
+    quantity: '200 g',
+    grams: 200,
+    nutrition: {
+      ...chicken,
+      basis: 'perServing',
+      servingGrams: 200,
+      servingText: '200 g',
+      amounts: { calorieKcal: 330, proteinG: 62 },
+      portions: [],
+    },
+    sourcePanel: chicken,
+    healthSampleIds: [],
+    sortOrder: 0,
+    createdAt: '2026-04-02T12:00:00.000Z',
+    ...overrides,
+  });
+
+  it('round-trips through insert and read', () => {
+    dbInsertFoodLogEntry(makeEntry());
+    expect(dbGetFoodLogEntry('f1')?.sourcePanel).toEqual(chicken);
+  });
+
+  it('reads as none for an entry that kept nothing', () => {
+    dbInsertFoodLogEntry(makeEntry({ sourcePanel: null }));
+    expect(dbGetFoodLogEntry('f1')?.sourcePanel).toBeNull();
+    dbInsertFoodLogEntry(makeEntry({ id: 'f2', sourcePanel: undefined }));
+    expect(dbGetFoodLogEntry('f2')?.sourcePanel).toBeNull();
+  });
+
+  it('is written and cleared by an update', () => {
+    dbInsertFoodLogEntry(makeEntry({ sourcePanel: null }));
+    dbUpdateFoodLogEntry(makeEntry());
+    expect(dbGetFoodLogEntry('f1')?.sourcePanel).toEqual(chicken);
+    dbUpdateFoodLogEntry(makeEntry({ itemId: 'item-chicken', sourcePanel: null }));
+    expect(dbGetFoodLogEntry('f1')?.sourcePanel).toBeNull();
+  });
+
+  it('reads a blob that will not parse as none kept, and keeps the entry', () => {
+    // Unlike a bad `nutrition`, which drops the row: the helping is still
+    // whole, and all this costs is the correction.
+    dbInsertFoodLogEntry(makeEntry());
+    mockRawDb.prepare('UPDATE food_logs SET source_panel = ? WHERE id = ?').run('{oops', 'f1');
+    const read = dbGetFoodLogEntry('f1');
+    expect(read).not.toBeNull();
+    expect(read?.sourcePanel).toBeNull();
+  });
+
+  it('travels in a sync payload, since it describes the entry rather than the device', () => {
+    dbInsertFoodLogEntry(makeEntry());
+    const out = dbSyncChangesSince(null);
+    const row = out.tables.food_logs.find(r => r.id === 'f1');
+    expect(JSON.parse(String(row?.source_panel))).toEqual(chicken);
+
+    // And a peer's row lands with it.
+    mockRawDb.exec('DELETE FROM food_logs; DELETE FROM sync_deletions;');
+    dbApplySyncChanges({
+      format: SYNC_FORMAT,
+      deviceId: 'peer',
+      since: null,
+      until: '2030-01-01T00:00:00.000Z',
+      tables: { food_logs: [{ ...row!, updated_at: '2026-04-02T12:00:00.000Z' }] },
+      deletions: [],
+    });
+    expect(dbGetFoodLogEntry('f1')?.sourcePanel).toEqual(chicken);
+  });
+
+  it('survives a backup and restore', () => {
+    dbInsertFoodLogEntry(makeEntry());
+    const backup = buildBackup(dbExportTables(), { appVersion: '1.0.0', exportedAt: new Date() });
+    expect(backup.tables.food_logs[0].source_panel).not.toBeNull();
+
+    const parsed = parseBackup(serializeBackup(backup));
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    mockRawDb.exec('DELETE FROM food_logs;');
+    dbReplaceAllData(parsed.backup.tables);
+    expect(dbGetFoodLogEntry('f1')?.sourcePanel).toEqual(chicken);
   });
 });

@@ -92,7 +92,10 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
   // reading it prevents is starker: a day's totals computed off whichever half
   // of the record happens to be on the phone in your hand. An entry is written
   // once and edited rarely, and its nutrition is a snapshot nothing recomputes,
-  // so last-writer-wins is a no-op on almost every row.
+  // so last-writer-wins is a no-op on almost every row. Every column travels,
+  // `source_panel` included (the panel an unfiled database food keeps, #2914):
+  // it describes the entry rather than the device, and a phone without it
+  // would offer only a rename on an entry the other phone can correct.
   { name: 'food_logs', key: ['id'] },
   // Saved meals. Built from food_logs entries and read the same way they are
   // — a phone missing them offers a shorter list of "log again" shortcuts

@@ -144,11 +144,14 @@ interface Props {
    * instead of inserting one. The row keeps its id, so its place in the day
    * and the meal plan square it points back at both survive the correction.
    *
-   * A caller offers this only for an entry `foodLogEntryEdit` accepts. The one
-   * case that still opens unseeded is a food whose catalog row or recipe has
-   * since been deleted: the list has nothing to pick, so the search field
-   * opens on the entry's own name and whatever is chosen replaces it. That is
-   * the honest answer for a food the app no longer has.
+   * A caller offers this only for an entry `foodLogEntryEdit` accepts. A food
+   * a database answered and nobody filed has no row on the list, so it reopens
+   * on the panel it kept (`FoodLogEntry.sourcePanel`), built into a candidate
+   * the way a fresh database pick is. The one case that still opens unseeded
+   * is a food whose catalog row or recipe has since been deleted: the list has
+   * nothing to pick, so the search field opens on the entry's own name and
+   * whatever is chosen replaces it. That is the honest answer for a food the
+   * app no longer has.
    */
   editing?: FoodLogEntry | null;
   /** The logical day being logged, so a backdated entry lands where it is shown. */
@@ -322,6 +325,31 @@ interface Candidate {
   cookedGrams: number | null;
   /** Present for a dish: how many servings its figures are, so a serving's own weight can be worked out. */
   dishServings: number | null;
+}
+
+/**
+ * A food a database answered, as a candidate: its panel and nothing filed.
+ *
+ * One builder for the two ways one arrives, a fresh pick from the database
+ * search and an entry reopened on the panel it kept, so a correction measures
+ * against exactly the candidate the original was logged from.
+ */
+function databaseCandidate(key: string, label: string, panel: FoodNutrition): Candidate {
+  return {
+    key,
+    label,
+    detail: 'From a food database',
+    kind: 'food',
+    panel,
+    recipeId: null,
+    itemId: null,
+    productId: null,
+    panelItemId: null,
+    fromDatabase: true,
+    servingPanel: null,
+    cookedGrams: null,
+    dishServings: null,
+  };
 }
 
 export function FoodLogEntrySheet({
@@ -628,11 +656,19 @@ export function FoodLogEntrySheet({
     // file and `foodLog.ts` need not agree on a string format. Most specific
     // first, the order `foodLogEntryEdit` reads them in; the last arm rules
     // out a box, whose row is the one above it.
-    const candidate = candidates.find(c => (
-      editing.recipeId ? c.recipeId === editing.recipeId
-        : editing.productId ? c.productId === editing.productId
-          : c.itemId === editing.itemId && c.productId === null
-    ));
+    //
+    // An entry linked to nothing has no row to find, and matching its null
+    // links against the list would land on a dish (whose item and product are
+    // null too). A database food that kept its panel is rebuilt from it
+    // instead, which is the candidate it was logged from.
+    const linked = !!(editing.recipeId || editing.productId || editing.itemId);
+    const candidate = !linked
+      ? (editing.sourcePanel ? databaseCandidate(`kept:${editing.id}`, editing.label, editing.sourcePanel) : undefined)
+      : candidates.find(c => (
+        editing.recipeId ? c.recipeId === editing.recipeId
+          : editing.productId ? c.productId === editing.productId
+            : c.itemId === editing.itemId && c.productId === null
+      ));
 
     // Recorded either way, so a food that could not be seeded is attempted
     // once rather than on every catalog write while the sheet sits open.
@@ -957,6 +993,12 @@ export function FoodLogEntrySheet({
       quantity,
       grams: built.grams,
       nutrition: built.nutrition,
+      // The database's own panel, kept on the entry while no catalog row holds
+      // it, so the amount can be corrected later (see FoodLogEntry.sourcePanel).
+      // Null for everything else, which on a correction also clears one that
+      // no longer describes how the helping was measured: it was re-measured
+      // against a row, or it is a different food now.
+      sourcePanel: picked.fromDatabase && picked.itemId === null ? picked.panel : null,
       slot: chosenSlot,
       recipeId: picked.recipeId,
       itemId: picked.itemId,
@@ -1030,21 +1072,7 @@ export function FoodLogEntrySheet({
   // no row to attach the panel to — the candidate carries it directly, same
   // as a picked dish carries `servingPanel` rather than pointing at one.
   const handleDbPick = (nutrition: FoodNutrition, description: string) => {
-    setPicked({
-      key: `db:${description}`,
-      label: description,
-      detail: 'From a food database',
-      kind: 'food',
-      panel: nutrition,
-      recipeId: null,
-      itemId: null,
-      productId: null,
-      panelItemId: null,
-      fromDatabase: true,
-      servingPanel: null,
-      cookedGrams: null,
-      dishServings: null,
-    });
+    setPicked(databaseCandidate(`db:${description}`, description, nutrition));
     setAmount('');
     setRecalledAmount(null);
     const options = foodUnitOptionsFor(nutrition);

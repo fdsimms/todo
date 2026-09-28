@@ -376,6 +376,15 @@ describe('device-local columns', () => {
     })).toEqual({ id: 't1', title: 'Rent' });
   });
 
+  it('sends a food log entry\'s kept panel, which describes the entry and not the device (#2914)', () => {
+    // The per-100 g panel an unfiled database food was measured against. A
+    // phone that never saw it would offer only a rename on an entry the other
+    // phone can correct, so it travels with the rest of the row.
+    expect(isDeviceLocalColumn('food_logs', 'source_panel')).toBe(false);
+    const row = { id: 'f1', label: 'Chicken', source_panel: '{"basis":"per100g"}' };
+    expect(withoutDeviceLocalColumns('food_logs', row)).toBe(row);
+  });
+
   it('names only tracked tables', () => {
     const tracked = new Set(SYNC_TRACKED_TABLES.map(t => t.name));
     expect(Object.keys(SYNC_DEVICE_LOCAL_COLUMNS).filter(t => !tracked.has(t))).toEqual([]);

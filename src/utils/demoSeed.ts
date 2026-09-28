@@ -1974,6 +1974,45 @@ function seedFoodLog(today: Date): void {
   }
 
   /**
+   * A food a database answered that nobody filed, logged by weight.
+   *
+   * **The one entry whose row menu offers Edit with no catalog row behind
+   * it** (#2914). Searching a whole food, weighing it and logging it without
+   * filing is the ordinary macro-tracker path, and the entry keeps the
+   * database's own per-100 g panel (`FoodLogEntry.sourcePanel`) so a wrong
+   * weight is a correction rather than a delete and a fresh search. With no
+   * row like this in the seed, that path reads as rename-only. It keeps the
+   * database's own long description, which is what an unfiled food is called.
+   */
+  {
+    const label = 'Chicken, broilers or fryers, breast, meat only, cooked, roasted';
+    const kept = {
+      basis: 'per100g' as const,
+      servingGrams: null,
+      servingText: null,
+      amounts: { calorieKcal: 165, proteinG: 31, fatG: 3.6, satFatG: 1, carbsG: 0, sodiumMg: 74 },
+      portions: [{ amount: 1, label: 'cup, chopped or diced', grams: 140 }],
+      source: 'fdc' as const,
+      sourceId: '171477',
+      recordedAt: subDays(today, 4).toISOString(),
+    };
+    const built = scalePanelToAmount(kept, '150 g', null, undefined, label);
+    if (built) {
+      const at = subDays(today, 4);
+      at.setHours(12, 30, 0, 0);
+      addEntry({
+        label,
+        quantity: '150 g',
+        grams: built.grams,
+        nutrition: built.nutrition,
+        sourcePanel: kept,
+        slot: 'lunch',
+        at,
+      });
+    }
+  }
+
+  /**
    * Today's water, part-way to its target.
    *
    * **On today rather than back in the run**, because the water card is what

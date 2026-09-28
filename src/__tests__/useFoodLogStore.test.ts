@@ -408,6 +408,17 @@ describe('addEntry', () => {
   it('writes no health samples, since nothing writes to Health yet', () => {
     expect(state().addEntry(draft())?.healthSampleIds).toEqual([]);
   });
+
+  it('keeps the panel an unfiled database food was measured against (#2914)', () => {
+    const kept = panel({ basis: 'per100g', servingGrams: null, source: 'fdc', sourceId: '171077' });
+    const entry = state().addEntry(draft({ sourcePanel: kept }))!;
+    expect(entry.sourcePanel).toEqual(kept);
+    expect((dbInsertFoodLogEntry as jest.Mock).mock.calls[0][0].sourcePanel).toEqual(kept);
+  });
+
+  it('keeps none when the draft carries none, which is every linked food', () => {
+    expect(state().addEntry(draft())!.sourcePanel).toBeNull();
+  });
 });
 
 describe('updateEntry', () => {
@@ -514,6 +525,22 @@ describe('reviseEntry', () => {
     expect(state().entries[0].grams).toBe(500);
     expect(state().entries[0].nutrition.amounts.calorieKcal).toBe(400);
     expect(dbUpdateFoodLogEntry).toHaveBeenCalled();
+  });
+
+  it('clears a kept panel when the correction re-measures against a row', () => {
+    // Filed while it was being corrected: from here on it is measured against
+    // the catalog row, and the kept panel would describe how it used to be.
+    const entry = stored({ itemId: null, sourcePanel: panel({ basis: 'per100g', source: 'fdc' }) });
+    state().reviseEntry(entry.id, { itemId: 'item-chicken', sourcePanel: null });
+    expect(state().entries[0].sourcePanel).toBeNull();
+    expect(state().entries[0].itemId).toBe('item-chicken');
+  });
+
+  it('keeps a kept panel through a correction that does not mention it', () => {
+    const kept = panel({ basis: 'per100g', source: 'fdc' });
+    const entry = stored({ itemId: null, sourcePanel: kept });
+    state().reviseEntry(entry.id, { label: 'Chicken breast' });
+    expect(state().entries[0].sourcePanel).toEqual(kept);
   });
 
   it('leaves the instant and its day key alone, same as updateEntry', () => {
@@ -792,6 +819,14 @@ describe('moveEntry', () => {
     expect(state().entries.find(e => e.id === moved.id)).toBeDefined();
   });
 
+  it('carries a kept panel to the new day, since it is the same food', () => {
+    state().loadRange('2026-04-01', '2026-04-03');
+    const kept = panel({ basis: 'per100g', source: 'fdc' });
+    const original = state().addEntry(draft({ at: new Date(2026, 3, 2, 9, 0), sourcePanel: kept }))!;
+    (dbGetFoodLogEntry as jest.Mock).mockReturnValue(original);
+    expect(state().moveEntry(original.id, new Date(2026, 3, 1, 9, 0))!.sourcePanel).toEqual(kept);
+  });
+
   it('retracts the old Health sample and writes a fresh one at the new instant', async () => {
     state().loadRange('2026-04-01', '2026-04-03');
     const original = state().addEntry(draft({ at: new Date(2026, 3, 2, 9, 0) }))!;
@@ -835,6 +870,14 @@ describe('duplicateEntry', () => {
     expect(dbDeleteFoodLogEntry).not.toHaveBeenCalled();
     expect(state().entries.find(e => e.id === original.id)).toBeDefined();
     expect(state().entries.find(e => e.id === copy.id)).toBeDefined();
+  });
+
+  it('copies a kept panel too, so the copy can be corrected like the original', () => {
+    state().loadRange('2026-04-01', '2026-04-03');
+    const kept = panel({ basis: 'per100g', source: 'fdc' });
+    const original = state().addEntry(draft({ at: new Date(2026, 3, 2, 9, 0), sourcePanel: kept }))!;
+    (dbGetFoodLogEntry as jest.Mock).mockReturnValue(original);
+    expect(state().duplicateEntry(original.id, new Date(2026, 3, 3, 9, 0))!.sourcePanel).toEqual(kept);
   });
 
   it('shrugs at an id that is not stored', () => {

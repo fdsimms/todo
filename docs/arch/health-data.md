@@ -721,17 +721,31 @@ something nobody measured:
   `portions` was emptied when the helping was built. So "make it 2 cups instead
   of 1" has no arithmetic available to it, and correcting an amount means
   running `scalePanelToAmount` over the food's own panel again. That panel is
-  reachable only through the entry's links, which is what `foodLogEntryEdit`
-  decides on.
-- **An entry with no link is not offered the editor, only a rename.** A
-  described meal the model estimated, or a database food nobody filed, has no
-  panel left to measure against. Offering its figures as fields to retype was
-  the obvious alternative and is the one thing this must not do: a hand-typed
-  panel going into a medical record is exactly the unmeasured claim the rest of
-  this document refuses. Renaming is carved out because it claims nothing about
-  how much was eaten — it changes the row's own words and the name its sample
+  reachable through the entry's links, or through the one panel an entry keeps
+  for itself (below), which is what `foodLogEntryEdit` decides on.
+- **An entry with no link is not offered the editor, only a rename, unless it
+  kept its panel.** A described meal the model estimated has no panel to
+  measure against. Offering its figures as fields to retype was the obvious
+  alternative and is the one thing this must not do: a hand-typed panel going
+  into a medical record is exactly the unmeasured claim the rest of this
+  document refuses. Renaming is carved out because it claims nothing about how
+  much was eaten — it changes the row's own words and the name its sample
   carries, which is why it still goes through `reviseEntry` rather than
   `updateEntry`.
+
+  **The exception is a database food nobody filed, which keeps the panel it
+  was measured against** (`FoodLogEntry.sourcePanel`, #2914). Search a whole
+  food, weigh it, log it and skip filing is the ordinary macro-tracker path,
+  and it used to end on an entry whose only correction was a delete and a
+  fresh search (which needs a key and signal). The panel it keeps is the
+  database's own per-100 g record with its portions, snapshotted at log time
+  on the same rule as `nutrition`, so the sheet rebuilds the candidate it was
+  logged from and re-measures a corrected amount exactly as it would for a
+  catalog row. Nothing is typed and nothing is guessed, which is the whole
+  test the refusal above applies. It is written only for an unfiled database
+  food, since a linked entry's row already holds its panel, and a correction
+  that re-measures against a row or picks another food clears it. Entries
+  logged before the column existed kept nothing and stay rename-only.
 - **The rewrite is skipped when nothing Health holds changed.** Moving the meal
   or re-filing the item touches no figure Health ever saw, and rewriting anyway
   would churn somebody's medical record for a field it never got.
