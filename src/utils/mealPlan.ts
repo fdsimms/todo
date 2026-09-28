@@ -5,7 +5,7 @@ import { isSameDay } from 'date-fns/isSameDay';
 import { isSameWeek } from 'date-fns/isSameWeek';
 import type { MealPlanEntry, MealSlot, Recipe } from '../types';
 import { MEAL_SLOTS, MEAL_SLOT_LABELS, MEAL_PLAN_RETENTION_DAYS } from '../types';
-import { cleanRecipeName } from './recipeUtils';
+import { cleanRecipeName, recipeNameKey } from './recipeUtils';
 import { dayKeyOf, dayKeyToDate } from './dateUtils';
 import type { WeekStart } from '../store/useSettingsStore';
 
@@ -327,6 +327,24 @@ export function titleForEntry(
     if (recipe) return recipe.name;
   }
   return entry.title;
+}
+
+/**
+ * The recipe a typed meal is already named after, or null (#2929).
+ *
+ * Keyed by `recipeNameKey`, the key `addRecipe` refuses a second recipe on, so
+ * "is there one called this?" can't answer differently from "could one be made
+ * called this?": "Tacos" typed on the plan and a "tacos" recipe added later are
+ * one name to both. That is what lets a typed meal's sheet offer the recipe
+ * that now exists rather than a "Save as a new recipe" the store would refuse.
+ */
+export function recipeNamedLike<R extends Pick<Recipe, 'nameKey'>>(
+  title: string,
+  recipes: readonly R[]
+): R | null {
+  const key = recipeNameKey(title);
+  if (!key) return null;
+  return recipes.find(r => r.nameKey === key) ?? null;
 }
 
 /**

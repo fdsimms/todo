@@ -16,6 +16,7 @@ import {
   nextSortOrder,
   recipeIndex,
   recipeIsGone,
+  recipeNamedLike,
   resolveBulkMoveTargets,
   selectTodayMealEntries,
   slotLabel,
@@ -26,6 +27,7 @@ import {
   upcomingDays,
   weekCopyDrafts,
 } from '../utils/mealPlan';
+import { recipeNameKey } from '../utils/recipeUtils';
 
 // mealPlan reaches dateUtils for dayKeyOf, which reaches the settings store for
 // dayResetTime — which nothing here needs, since a day key is a calendar day
@@ -549,6 +551,29 @@ describe('recipeIsGone', () => {
     // recipe, and every reader of this acts on a "yes".
     const unloaded = { initialized: false, recipes: [] };
     expect(recipeIsGone(entry('2026-08-05', 'dinner', { recipeId: 'r1' }), unloaded)).toBe(false);
+  });
+});
+
+describe('recipeNamedLike', () => {
+  // The nameKey addRecipe stores, so the helper is checked against the same
+  // key the store would refuse a second recipe on.
+  const named = (id: string, name: string) => ({ id, name, nameKey: recipeNameKey(name) });
+
+  it('finds the recipe a typed meal is named after, whatever the case and spacing (#2929)', () => {
+    const tacos = named('r-tacos', 'Tacos');
+    expect(recipeNamedLike('  tacos ', [named('r-soup', 'Soup'), tacos])).toBe(tacos);
+  });
+
+  it('agrees with the store about names that differ only by accents and punctuation', () => {
+    // addRecipe refuses "pho ga" once "Phở gà!" exists, so the sheet must
+    // offer that recipe rather than a new one the store won't make.
+    const pho = named('r-pho', 'Phở gà!');
+    expect(recipeNamedLike('pho ga', [pho])).toBe(pho);
+  });
+
+  it('is null when nothing is called that, or the title is blank', () => {
+    expect(recipeNamedLike('Pho', [named('r-tacos', 'Tacos')])).toBeNull();
+    expect(recipeNamedLike('   ', [named('r-tacos', 'Tacos')])).toBeNull();
   });
 });
 

@@ -123,6 +123,9 @@ jest.mock('../store/useTaskStore', () => ({
   useTaskStore: { getState: () => mockTaskState },
 }));
 
+const mockRecipeNameKey = (name: string): string =>
+  jest.requireActual('../utils/recipeUtils').recipeNameKey(name);
+
 // Mutable, so the cooked-offer tests below can put a recipe behind an entry —
 // the offer is computed from the cooked recipe's ingredient lines.
 const mockRecipeState = {
@@ -134,6 +137,15 @@ const mockRecipeState = {
   initialized: false,
   markCooked: jest.fn(),
   restoreCookStats: jest.fn(),
+  // A name-only recipe, refused on a taken name the way the real store is, so
+  // saveEntryAsRecipe's two branches are both reachable.
+  addRecipe: jest.fn((name: string): Recipe | null => {
+    const nameKey = mockRecipeNameKey(name);
+    if (!nameKey || mockRecipeState.recipes.some(r => r.nameKey === nameKey)) return null;
+    const created = { id: `r-new-${nameKey}`, name: name.trim(), nameKey, servings: null } as unknown as Recipe;
+    mockRecipeState.recipes.push(created);
+    return created;
+  }),
 };
 jest.mock('../store/useRecipeStore', () => ({
   useRecipeStore: { getState: () => mockRecipeState },
@@ -1507,6 +1519,72 @@ describe('bulkReplaceItem', () => {
     useMealPlanStore.getState().undoLastAction();
 
     expect(getEntries()[0]).toEqual(a);
+  });
+});
+
+describe('saveEntryAsRecipe', () => {
+  it('makes a recipe named after a typed meal and points the meal at it (#2929)', () => {
+    mockRecipeState.initialized = true;
+    const tacos = entry('2026-08-05', 'dinner', { title: 'Tacos', cookTask: false });
+    loadWeek([tacos]);
+
+    const result = useMealPlanStore.getState().saveEntryAsRecipe(tacos.id);
+
+    expect(result?.created).toBe(true);
+    expect(mockRecipeState.addRecipe).toHaveBeenCalledWith('Tacos');
+    const updated = getEntries().find(e => e.id === tacos.id)!;
+    expect(updated).toMatchObject({ recipeId: result!.recipe.id, title: 'Tacos', cookTask: false });
+  });
+
+  it('uses the recipe already called that rather than refusing (#2929)', () => {
+    // Planned as typed text before the recipe existed: this is the one the
+    // meal was always going to mean, and the store won't make a second.
+    mockRecipeState.initialized = true;
+    mockRecipeState.recipes = [{ ...recipeWith('Tacos', []), nameKey: 'tacos' } as Recipe];
+    const tacos = entry('2026-08-05', 'dinner', { title: 'tacos' });
+    loadWeek([tacos]);
+
+    const result = useMealPlanStore.getState().saveEntryAsRecipe(tacos.id);
+
+    expect(result).toEqual({ recipe: mockRecipeState.recipes[0], created: false });
+    expect(mockRecipeState.addRecipe).not.toHaveBeenCalled();
+    expect(getEntries()[0]).toMatchObject({ recipeId: 'r-Tacos', title: 'Tacos' });
+  });
+
+  it('turns a meal whose recipe was deleted into a recipe too, since it reads as typed text', () => {
+    mockRecipeState.initialized = true;
+    const orphan = entry('2026-08-05', 'dinner', { recipeId: 'deleted', title: 'Chili' });
+    loadWeek([orphan]);
+
+    const result = useMealPlanStore.getState().saveEntryAsRecipe(orphan.id);
+
+    expect(result?.created).toBe(true);
+    expect(getEntries()[0].recipeId).toBe(result!.recipe.id);
+  });
+
+  it('leaves a live recipe meal and a leftover night alone', () => {
+    mockRecipeState.initialized = true;
+    mockRecipeState.recipes = [{ ...recipeWith('Soup', []), nameKey: 'soup' } as Recipe];
+    const soup = entry('2026-08-05', 'dinner', { recipeId: 'r-Soup', title: 'Soup' });
+    const leftover = entry('2026-08-06', 'dinner', { title: 'Chili', leftoverId: 'lo-1' });
+    loadWeek([soup, leftover]);
+
+    expect(useMealPlanStore.getState().saveEntryAsRecipe(soup.id)).toBeNull();
+    expect(useMealPlanStore.getState().saveEntryAsRecipe(leftover.id)).toBeNull();
+    expect(mockRecipeState.addRecipe).not.toHaveBeenCalled();
+    expect(dbUpdateMealPlanEntry).not.toHaveBeenCalled();
+  });
+
+  it('undoes to the typed meal and keeps the recipe it made', () => {
+    mockRecipeState.initialized = true;
+    const tacos = entry('2026-08-05', 'dinner', { title: 'Tacos' });
+    loadWeek([tacos]);
+
+    useMealPlanStore.getState().saveEntryAsRecipe(tacos.id);
+    useMealPlanStore.getState().undoLastAction();
+
+    expect(getEntries()[0]).toEqual(tacos);
+    expect(mockRecipeState.recipes.map(r => r.name)).toEqual(['Tacos']);
   });
 });
 

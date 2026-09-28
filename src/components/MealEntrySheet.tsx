@@ -53,6 +53,22 @@ interface Props {
    * can't be up at once.
    */
   onReplace?: () => void;
+  /**
+   * A typed meal's version of `onReplace` (#2929): the same sheet, asked as
+   * "which recipe is this?", since a meal with no recipe behind it has
+   * nothing to replace and a new name is the title's own pencil. Passed
+   * instead of `onReplace`, never with it.
+   */
+  onChooseRecipe?: () => void;
+  /**
+   * Makes a typed meal a recipe (#2929). Present only for a typed meal.
+   * `matchingRecipeName` is the recipe already called what the meal is
+   * called, when the box has one: the row then offers that recipe instead of
+   * a new one, which is all "Save as" could have done, since two recipes
+   * can't share a name.
+   */
+  onSaveAsRecipe?: () => void;
+  matchingRecipeName?: string | null;
   onRemove: () => void;
   /**
    * Present only for a free-text entry (no recipeId, or one whose recipe has
@@ -170,7 +186,8 @@ interface Props {
 const TOP_INSET = 72;
 
 export function MealEntrySheet({
-  visible, entry, title, weekDays, onMove, onMoveFurther, onReplace, onRemove, onRename, choiceGroups = [], onChoose,
+  visible, entry, title, weekDays, onMove, onMoveFurther, onReplace, onChooseRecipe, onSaveAsRecipe, matchingRecipeName,
+  onRemove, onRename, choiceGroups = [], onChoose,
   onScale, baseServings, baseServingsMax, onSetCooked, onViewFoodLogEntry, onLogMeal, onOpenRecipe, onAddToList, onAddPrepTasks,
   onLogLeftovers,
   onFinishLeftover, onSetCookTask, hasCookTask = false, onClose,
@@ -496,6 +513,41 @@ export function MealEntrySheet({
                 label="Replace meal"
                 onPress={() => { haptics.tap(); dismiss(onReplace); }}
                 accessibilityLabel="Replace this meal with a different recipe or name"
+              />
+            </>
+          )}
+
+          {/*
+            A typed meal's two ways to a recipe (#2929), where a recipe-backed
+            meal has "Open recipe" and the swap above. Somebody with no recipes
+            yet plans by typing, and these are how that meal catches up once
+            the recipe exists; before, the only route was the bulk bar's
+            Replace, which a newcomer has no reason to find.
+          */}
+          {!!onChooseRecipe && (
+            <>
+              <View style={styles.sep} />
+              <SheetActionRow
+                icon="book-outline"
+                color={colors.accent}
+                label="Choose a recipe"
+                onPress={() => { haptics.tap(); dismiss(onChooseRecipe); }}
+                accessibilityLabel="Choose a recipe for this meal"
+              />
+            </>
+          )}
+
+          {!!onSaveAsRecipe && (
+            <>
+              <View style={styles.sep} />
+              <SheetActionRow
+                icon={matchingRecipeName ? 'link-outline' : 'add-circle-outline'}
+                color={colors.accent}
+                label={matchingRecipeName ? `Use your ${matchingRecipeName} recipe` : 'Save as a new recipe'}
+                onPress={() => { haptics.tap(); dismiss(onSaveAsRecipe); }}
+                accessibilityLabel={matchingRecipeName
+                  ? `Plan your ${matchingRecipeName} recipe for this meal`
+                  : 'Save this meal as a new recipe and open it'}
               />
             </>
           )}

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { MealPlanEntry, MealSlot, Task } from '../types';
+import type { MealPlanEntry, MealSlot, Recipe, Task } from '../types';
 import {
   dbGetMealPlanEntries,
   dbGetMealPlanEntriesForRecipe,
@@ -48,6 +48,7 @@ import {
   nextSortOrder,
   recipeIndex,
   recipeIsGone,
+  recipeNamedLike,
   resolveBulkMoveTargets,
   shiftDayKey,
   sortMealEntries,
@@ -537,6 +538,25 @@ interface MealPlanStore extends UndoHistoryActions {
    * is no head count to carry and the factor is kept as it was.
    */
   bulkReplaceItem: (ids: string[], replacement: { recipeId: string | null; title: string }) => void;
+
+  /**
+   * Makes a typed meal a recipe (#2929): points it at the recipe named after
+   * it, creating that recipe, name only, when the box has none. Returns the
+   * recipe and whether it was just made, or null when the entry isn't a typed
+   * meal (a live recipe already is one, and a leftover night is the
+   * container's) or the name can't be a recipe.
+   *
+   * A recipe already called that (`recipeNamedLike`, the key `addRecipe`
+   * refuses a second one on) is the answer rather than a refusal: two recipes
+   * can't share a name, so "Tacos" planned before the Tacos recipe existed was
+   * always going to mean that one.
+   *
+   * The pointer is written through `bulkReplaceItem`, so it keeps what that
+   * keeps and registers its undo. **Undo takes the meal back to typed text and
+   * leaves the recipe in the box**: by the time anybody shakes, it may have
+   * ingredients in it, and nothing here created them.
+   */
+  saveEntryAsRecipe: (id: string) => { recipe: Recipe; created: boolean } | null;
 
   /**
    * Bulk-toggles cookedAt across the selection — unlike the single-row
@@ -1183,6 +1203,20 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
         toUpdate.forEach(reconcileMealEvent);
       },
     });
+  },
+
+  saveEntryAsRecipe(id) {
+    const entry = get().entries.find(e => e.id === id);
+    if (!entry || entry.leftoverId) return null;
+    const library = useRecipeStore.getState();
+    // Only a typed meal, which a meal whose recipe was deleted is (see
+    // renameEntry): one whose recipe still resolves has nothing to save.
+    if (entry.recipeId && !recipeIsGone(entry, library)) return null;
+    const existing = recipeNamedLike(entry.title, library.recipes);
+    const recipe = existing ?? library.addRecipe(entry.title);
+    if (!recipe) return null;
+    get().bulkReplaceItem([id], { recipeId: recipe.id, title: recipe.name });
+    return { recipe, created: !existing };
   },
 
   retitleRecipeEntries(recipeId, name) {

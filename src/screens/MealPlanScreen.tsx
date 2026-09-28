@@ -109,6 +109,7 @@ import {
   earliestUnplannedSlot,
   entriesForDay,
   recipeIndex,
+  recipeNamedLike,
   slotLabel,
   titleForEntry,
 } from '../utils/mealPlan';
@@ -370,6 +371,7 @@ export function MealPlanScreen() {
   const bulkDeleteEntries = useMealPlanStore(s => s.bulkDeleteEntries);
   const bulkMoveEntries = useMealPlanStore(s => s.bulkMoveEntries);
   const bulkReplaceItem = useMealPlanStore(s => s.bulkReplaceItem);
+  const saveEntryAsRecipe = useMealPlanStore(s => s.saveEntryAsRecipe);
   const bulkSetCooked = useMealPlanStore(s => s.bulkSetCooked);
   const copyWeek = useMealPlanStore(s => s.copyWeek);
   const findPlannedWeekBefore = useMealPlanStore(s => s.findPlannedWeekBefore);
@@ -1142,6 +1144,28 @@ export function MealPlanScreen() {
     haptics.success();
   };
   const replacing = replacingId ? entries.find(e => e.id === replacingId) ?? null : null;
+
+  /**
+   * Typed text rather than a recipe or a container: the meals whose sheet
+   * offers the title's pencil, "Choose a recipe" and "Save as a new recipe"
+   * (#2929). A meal whose recipe was deleted reads as its typed title and
+   * counts, the way it renames like one.
+   */
+  const isTypedEntry = (entry: MealPlanEntry) =>
+    !entry.leftoverId && !(entry.recipeId && recipesById.has(entry.recipeId));
+
+  /**
+   * "Save as a new recipe" (#2929). A recipe made here has only a name, so it
+   * opens on its page to be filled in, the way the Recipes screen's own "New
+   * recipe" does. One that was already there ("Use your Tacos recipe") is
+   * what the meal meant, so the plan stays on screen.
+   */
+  const saveAsRecipe = (id: string) => {
+    const result = saveEntryAsRecipe(id);
+    if (!result) return;
+    haptics.success();
+    if (result.created) navigation.navigate('RecipeDetail', { recipeId: result.recipe.id });
+  };
 
   const handleBulkDelete = () => {
     const count = selectedIdList.length;
@@ -2101,9 +2125,11 @@ export function MealPlanScreen() {
       <MealReplaceItemSheet
         visible={bulkReplaceVisible || replacingId !== null}
         count={replacingId ? 1 : selectedIds.size}
-        title={replacing ? 'Replace meal' : undefined}
+        title={replacing ? (isTypedEntry(replacing) ? 'Choose a recipe' : 'Replace meal') : undefined}
         hint={replacing
-          ? `Pick a recipe, or type a new name, to have instead of ${titleForEntry(replacing, recipesById)}.`
+          ? isTypedEntry(replacing)
+            ? `Pick the recipe for ${replacing.title}, or type a new name.`
+            : `Pick a recipe, or type a new name, to have instead of ${titleForEntry(replacing, recipesById)}.`
           : undefined}
         onReplace={replacement => {
           if (replacingId) replaceOne(replacingId, replacement);
@@ -2162,7 +2188,12 @@ export function MealPlanScreen() {
         weekDays={days}
         onMove={to => selected && moveEntry(selected.id, to)}
         onMoveFurther={selected ? () => setMovingFurtherId(selected.id) : undefined}
-        onReplace={selected ? () => setReplacingId(selected.id) : undefined}
+        onReplace={selected && !isTypedEntry(selected) ? () => setReplacingId(selected.id) : undefined}
+        onChooseRecipe={selected && isTypedEntry(selected) ? () => setReplacingId(selected.id) : undefined}
+        onSaveAsRecipe={selected && isTypedEntry(selected) ? () => saveAsRecipe(selected.id) : undefined}
+        matchingRecipeName={selected && isTypedEntry(selected)
+          ? recipeNamedLike(selected.title, recipes)?.name ?? null
+          : null}
         onRemove={() => {
           if (!selected) return;
           animateLayout();
@@ -2173,7 +2204,7 @@ export function MealPlanScreen() {
           // A meal whose recipe was deleted reads as its typed title and gets
           // the free-text pencil on its row, so it renames like one too (the
           // store clears the dead pointer as it does).
-          selected && !selected.leftoverId && !(selected.recipeId && recipesById.has(selected.recipeId))
+          selected && isTypedEntry(selected)
             ? newTitle => renameEntry(selected.id, newTitle)
             : undefined
         }
