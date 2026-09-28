@@ -32,7 +32,7 @@ import { chooseTip, tipsFor, unseenTipsForScreen, type Tip, type TipScreen } fro
  * **The split into two components is what keeps this cheap.** The outer half
  * reads three scalars off the settings store and answers "could anything show
  * here at all". Only if the answer is yes does `ActiveTip` mount and start
- * subscribing to eight stores through `useTipSignals`. Once a screen's tips
+ * subscribing to nine stores through `useTipSignals`. Once a screen's tips
  * are all dismissed — which is the steady state after a couple of weeks — this
  * costs one `Set` construction over a list of about sixty ids and nothing else.
  */

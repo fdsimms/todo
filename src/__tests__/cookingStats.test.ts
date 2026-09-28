@@ -1,6 +1,7 @@
 import {
   cookingWindow,
   hasCookingData,
+  lastDaysOf,
   leftoverHistoryIn,
   leftoversFinishedIn,
   mealCookCounts,
@@ -138,6 +139,28 @@ describe('cookingWindow', () => {
 
   it('never builds a backwards window from a nonsense span', () => {
     expect(cookingWindow(TODAY, 0).startKey).toBe('2026-08-13');
+  });
+});
+
+describe('lastDaysOf', () => {
+  it('takes the last week of a month, ending where the month ends', () => {
+    // Stats reads a month of the food log and shows either the month or its
+    // last week (#2916), narrowing the rows it already has.
+    expect(lastDaysOf(WINDOW, 7)).toEqual({
+      startKey: '2026-08-07',
+      endKey: '2026-08-13',
+      todayKey: '2026-08-13',
+    });
+    expect(mealCookCounts([], lastDaysOf(WINDOW, 7)).days).toBe(7);
+  });
+
+  it('is the same window when asked for all of it, and never wider', () => {
+    expect(lastDaysOf(WINDOW, 30)).toEqual(WINDOW);
+    expect(lastDaysOf(WINDOW, 90)).toEqual(WINDOW);
+  });
+
+  it('never narrows below a single day', () => {
+    expect(lastDaysOf(WINDOW, 0).startKey).toBe('2026-08-13');
   });
 });
 

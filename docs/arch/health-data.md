@@ -743,6 +743,17 @@ something nobody measured:
 `atISO` and `dayKey` stay unpatchable on both paths. They were stamped together
 from one instant under one reset time, and re-dating means a new entry.
 
+**Picking a food logged before opens on the amount it was last logged in, and
+that amount is read and measured exactly as a correction's is** (#2915).
+`foodLastAmounts` (`foodLogRecents.ts`) reads each row's latest entry through
+`foodLogEntryEdit`, and `recallAmount` (`foodLog.ts`) runs it through
+`scalePanelToAmount` against the panel the food has *now*. An amount the food
+can no longer measure (a portion row that has gone, a dish nobody has weighed
+since) opens on the sheet's ordinary default rather than on a refusal, and
+Save measures a recalled amount like anything typed. It is the entry's own row
+that remembers, never the item behind a box: "1 container" is a portion of one
+pot's panel and may mean nothing to the generic row's.
+
 ### Water is the food log's, not a third write
 
 Water had a target and no way to fill it (#2515): a full `NutrientKey` with a

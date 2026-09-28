@@ -358,6 +358,80 @@ export function parseFoodAmount(raw: string, options: FoodUnitOption[]): { numbe
   return null;
 }
 
+/** What the entry sheet's amount fields open on when a food was logged before. */
+export interface RecalledAmount {
+  /** The amount text Save would read, exactly as if it had been typed. */
+  amount: string;
+  /**
+   * The unit pill to select: one of the panel's own, `'other'` for the free
+   * text field, or null where there are no pills (a dish, or a panel with no
+   * resolvable units).
+   */
+  unitKey: string | null;
+  /** The number-only field's text beside a selected pill; empty otherwise. */
+  number: string;
+  /** Which question a dish's amount field is asking. Null for a food. */
+  dishMeasure: 'weight' | 'servings' | null;
+}
+
+/** What `recallAmount` measures a remembered amount against: the food or dish as it stands today. */
+export type RecallTarget =
+  | { kind: 'food'; panel: FoodNutrition; name: string | null }
+  | { kind: 'dish'; weighed: boolean; served: boolean };
+
+/**
+ * The amount a food was last logged in, re-measured against the panel it has
+ * now, or null when the old amount no longer means anything to it.
+ *
+ * **Read back the way a correction reads one** (`foodLogEntryEdit`), so the
+ * two routes into the amount field cannot disagree about what an entry's
+ * amount was. That also means an entry a correction refuses (a dish with
+ * "Anything else?" lines answered, an amount that doesn't parse) recalls
+ * nothing, and the field opens as it would for a food never logged.
+ *
+ * **The remembered amount has to resolve against today's panel**, not the one
+ * it was logged against. A food's panel can be re-filed, replaced by a scan,
+ * or lose the portion row the amount named, and a pre-filled "2 slices" that
+ * Save then refuses is worse than an empty field. So a food's amount is run
+ * through `scalePanelToAmount` again, and a dish's measure has to be one the
+ * dish can still answer (grams need a weighed dish, servings a servings
+ * count). Anything that fails opens on the sheet's ordinary default instead:
+ * the first unit pill with no number, or one serving of a dish.
+ *
+ * An amount that resolves but isn't one of the pills (a fraction, a plural
+ * the panel's label doesn't spell) opens on "Something else" with its text
+ * intact, the same fallback a correction makes.
+ */
+export function recallAmount(
+  last: FoodLogEntryEdit | null | undefined,
+  target: RecallTarget,
+): RecalledAmount | null {
+  if (!last) return null;
+  if (target.kind === 'dish') {
+    if (!last.dishMeasure) return null;
+    if (last.dishMeasure === 'weight' && !target.weighed) return null;
+    if (last.dishMeasure === 'servings' && !target.served) return null;
+    const typed = Number(last.amount);
+    if (!Number.isFinite(typed) || typed <= 0) return null;
+    return { amount: last.amount, unitKey: null, number: '', dishMeasure: last.dishMeasure };
+  }
+  if (last.dishMeasure) return null;
+  const options = foodUnitOptionsFor(target.panel);
+  const parsed = options.length > 0 ? parseFoodAmount(last.amount, options) : null;
+  if (parsed) {
+    const amount = composeFoodAmount(parsed.number, options.find(o => o.key === parsed.unitKey));
+    if (!scalePanelToAmount(target.panel, amount, null, undefined, target.name)) return null;
+    return { amount, unitKey: parsed.unitKey, number: parsed.number, dishMeasure: null };
+  }
+  if (!scalePanelToAmount(target.panel, last.amount, null, undefined, target.name)) return null;
+  return {
+    amount: last.amount,
+    unitKey: options.length > 0 ? 'other' : null,
+    number: '',
+    dishMeasure: null,
+  };
+}
+
 /**
  * What some number of helpings of a cooked dish works out to.
  *
