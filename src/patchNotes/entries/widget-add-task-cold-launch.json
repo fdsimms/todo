@@ -1,0 +1,4 @@
+{
+  "message": "Fixed the Today widget's + button (and other widget/quick-action shortcuts) sometimes just opening the app with no reaction, instead of landing on Today and popping open the add-task sheet.",
+  "date": "2026-09-28"
+}
