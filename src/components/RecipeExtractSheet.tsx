@@ -26,7 +26,7 @@ import {
 } from '../services/aiSuggestions';
 import { describeImportError, isRetryableImportError } from '../services/recipePage';
 import {
-  normalizeIngredient, formatServingsRange, parseServingsRange,
+  alreadyInRecipeNote, blockedReviewRows, normalizeIngredient, formatServingsRange, parseServingsRange,
   recipeHasMethod, recipeHasPrepTasks, recipeHasAttribution,
 } from '../utils/recipeUtils';
 import { describeKeepDays } from '../utils/leftovers';
@@ -174,6 +174,18 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   const covered = useMemo(
     () => coveredIngredients(ingredients, candidates, acceptedKeys),
     [ingredients, candidates, acceptedKeys],
+  );
+  // A line Add would drop as a repeat, of one this recipe already has or of an
+  // earlier row here (same heading, prep and purpose), mapped to the row it
+  // repeats, so the review can say so on the row rather than showing it ticked
+  // and never adding it (#2917). The same test the store's merge applies, run
+  // over what's actually going in.
+  const blocked = useMemo(
+    () => blockedReviewRows(
+      ingredients.map((row, i) => (accepted.has(i) && !covered.has(i) ? normalizeIngredient(row) : null)),
+      recipe?.ingredients ?? [],
+    ),
+    [ingredients, accepted, covered, recipe],
   );
 
   // Every heading the Section picker can offer: this recipe's own (including
@@ -848,13 +860,14 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
           const prevSection = i > 0 ? ingredients[i - 1].section : null;
           const sectionHeader = row.section && row.section !== prevSection ? row.section : null;
           const coveredBy = covered.get(i);
+          const blockedBy = blocked.get(i);
           return (
             <ExtractedIngredientRow
               key={`${row.name}-${i}`}
               row={row}
               edits={edits}
               index={i}
-              checked={accepted.has(i) && !coveredBy}
+              checked={accepted.has(i) && !coveredBy && !blockedBy}
               onToggle={() => toggle(i)}
               onEditName={name => editIngredient(i, { name })}
               onEditQuantity={quantity => editIngredient(i, { quantity })}
@@ -863,7 +876,11 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
               existingSections={existingSections}
               catalogItems={groceryItems}
               sectionHeader={sectionHeader}
-              note={coveredBy ? `made from the ${coveredBy} recipe` : null}
+              note={
+                coveredBy ? `made from the ${coveredBy} recipe`
+                  : blockedBy ? alreadyInRecipeNote(blockedBy)
+                  : null
+              }
             />
           );
         })}

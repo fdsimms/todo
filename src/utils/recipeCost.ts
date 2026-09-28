@@ -1,8 +1,10 @@
 import type { GroceryItem, MealPlanEntry, Recipe } from '../types';
 import { comparableQuantity, describePriceAge, formatPrice } from './groceryPrice';
+import { measureLineAmount } from './ingredientGrams';
+import { parseQuantity } from './quantity';
 import { flattenRecipeIngredients, type ChoiceResolution } from './recipeComponents';
 import { collectPlannedIngredients } from './mealPlanGroceries';
-import { normalizeScale, scaleQuantity } from './recipeScale';
+import { normalizeScale } from './recipeScale';
 import { NO_STANDING_SWAPS, type StandingSwapMap } from './standingSwaps';
 import { resolvePluralKey } from './groceryPlural';
 import { onHandNameKeys } from './grocerySuggest';
@@ -47,8 +49,24 @@ import { onHandNameKeys } from './grocerySuggest';
  * flattened ingredients (`flattenRecipeIngredients`, scale applied per line)
  * and a week's planned ingredients (`collectPlannedIngredients`, which already
  * applies each entry's own scale and choices) both reduce to a flat list of
- * `(nameKey, quantity)` lines — costed one line at a time and summed in minor
- * units directly, never through the display-only `mergeQuantities`.
+ * `(nameKey, quantity, factor)` lines — costed one line at a time and summed in
+ * minor units directly, never through the display-only `mergeQuantities`.
+ *
+ * **A line is costed as written and the scale multiplies the cost**, rather
+ * than the scaled text being costed, the same order `recipeNutrition.ts` uses
+ * and for the same reason (#2918). The scaled text is a shopping notation: it
+ * leaves a "14 oz can" alone at 1.5x, since there is no way to write half a
+ * tin, and it rewrites the same can doubled as "2 14 oz cans". Costing that
+ * text priced a can and a half as one can. A cost is linear in the amount on
+ * every key `comparableQuantity` relates, so multiplying after is the same
+ * number wherever scaling succeeds and the right one where it doesn't.
+ *
+ * **A counted sized container is also a weight or a volume.** "2 14 oz cans"
+ * is twenty-eight ounces, and relates to a price recorded by the pound (or by
+ * the single tin) through `measureLineAmount`, the reading nutrition already
+ * gives it. Only when the two quantities have no key in common: tins of one
+ * size against tins of the same size still relate by count, which is the same
+ * answer.
  */
 
 export interface CostEstimate {
@@ -66,17 +84,49 @@ export interface CostEstimate {
 const MIN_COST_COVERAGE = 0.5;
 
 /**
+ * How much of what was bought `quantity` is, as a fraction of the purchase, or
+ * null when the two don't relate.
+ *
+ * `comparableQuantity` first, which is the whole rule for every shape but one.
+ * The exception is a counted sized container on either side, keyed by its tin
+ * size there so tins of different sizes never rank as equals: measured through
+ * `measureLineAmount` here instead, since "2 14 oz cans" against "1 lb" is a
+ * weight against a weight (see the header).
+ */
+function purchaseFraction(quantity: string, purchaseQuantity: string | null): number | null {
+  const line = comparableQuantity(quantity);
+  const purchase = comparableQuantity(purchaseQuantity);
+  if (line && purchase && line.key === purchase.key) {
+    return purchase.amount > 0 ? line.amount / purchase.amount : null;
+  }
+  const lineParsed = parseQuantity(quantity);
+  const purchaseParsed = parseQuantity(purchaseQuantity ?? '');
+  if (!lineParsed.container?.count && !purchaseParsed.container?.count) return null;
+  const lineMeasured = measureLineAmount(lineParsed);
+  const purchaseMeasured = measureLineAmount(purchaseParsed);
+  if (!lineMeasured || !purchaseMeasured) return null;
+  if (lineMeasured.dimension !== purchaseMeasured.dimension || purchaseMeasured.base <= 0) return null;
+  return lineMeasured.base / purchaseMeasured.base;
+}
+
+/**
  * One line's contribution, or null when it can't be honestly costed: no
  * catalog match, no remembered price, or a quantity that doesn't relate to
  * the one the price was recorded for.
+ *
+ * `quantity` is the line as written and `factor` the scale it's cooked at,
+ * multiplied in after relating the two (see the header).
  */
-function costLine(quantity: string, item: GroceryItem): { minor: number; pricedAt: string | null } | null {
+function costLine(
+  quantity: string,
+  item: GroceryItem,
+  factor: number,
+): { minor: number; pricedAt: string | null } | null {
   if (item.lastPriceMinor === null) return null;
-  const line = comparableQuantity(quantity);
-  const purchase = comparableQuantity(item.lastPriceQuantity);
-  if (!line || !purchase || line.key !== purchase.key || purchase.amount <= 0) return null;
+  const fraction = purchaseFraction(quantity, item.lastPriceQuantity);
+  if (fraction === null) return null;
   return {
-    minor: (item.lastPriceMinor / purchase.amount) * line.amount,
+    minor: item.lastPriceMinor * fraction * factor,
     pricedAt: item.lastPricedAt,
   };
 }
@@ -85,7 +135,9 @@ function costLine(quantity: string, item: GroceryItem): { minor: number; pricedA
 function accumulate(
   acc: { totalMinor: number; priced: number; total: number; oldestPricedAt: string | null },
   nameKey: string,
+  /** As written, unscaled: `factor` multiplies what it costs. */
   quantity: string,
+  factor: number,
   byKey: ReadonlyMap<string, GroceryItem>
 ): void {
   // Plural-tolerant like every other catalog read (`groceryPlural.ts`), or a
@@ -96,7 +148,7 @@ function accumulate(
   if (item?.isStaple) return;
   acc.total += 1;
   if (!item) return;
-  const cost = costLine(quantity, item);
+  const cost = costLine(quantity, item, factor);
   if (!cost) return;
   acc.totalMinor += cost.minor;
   acc.priced += 1;
@@ -135,8 +187,8 @@ export function estimateRecipeCost(
   const factor = normalizeScale(scale);
   const acc = { totalMinor: 0, priced: 0, total: 0, oldestPricedAt: null as string | null };
   for (const line of flat) {
-    const quantity = scaleQuantity(line.ingredient.quantity, factor).text;
-    accumulate(acc, line.ingredient.nameKey, quantity, byKey);
+    // Costed as written, then scaled: see the header for why not the scaled text.
+    accumulate(acc, line.ingredient.nameKey, line.ingredient.quantity, factor, byKey);
   }
   return finish(acc);
 }
@@ -165,7 +217,9 @@ export function estimateWeekCost(
   const byKey = new Map(items.map(i => [i.nameKey, i]));
   const acc = { totalMinor: 0, priced: 0, total: 0, oldestPricedAt: null as string | null };
   for (const line of planned) {
-    accumulate(acc, line.nameKey, line.quantity, byKey);
+    // The line as the recipe wrote it and the entry's scale, rather than the
+    // scaled shopping text: see the header.
+    accumulate(acc, line.nameKey, line.unscaled?.quantity ?? line.quantity, line.unscaled?.factor ?? 1, byKey);
   }
   return finish(acc);
 }

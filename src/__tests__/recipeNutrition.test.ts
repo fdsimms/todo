@@ -522,6 +522,19 @@ describe('weekNutrition', () => {
     expect(weekNutrition(entries, recipesById, catalog(), RANGE)!.total.calorieKcal).toBe(800);
   });
 
+  it('counts a scaled entry\'s canned line at its scale, not its shopping text (#2918)', () => {
+    // The planned row's quantity is what the list shows: "14 oz can" at 1.5x
+    // (unwritable, so left alone) would count one can.
+    const chili = recipe('Chili', [ing('Black beans', { quantity: '14 oz can' })]);
+    const recipesById = new Map([[chili.id, chili]]);
+    const beans = [item({ name: 'Black beans', nutrition: panel() })];
+    const at = (recipeScale: number) =>
+      weekNutrition([entry('2026-08-10', chili.id, { recipeScale })], recipesById, beans, RANGE)!;
+    expect(at(1).total.calorieKcal).toBeCloseTo(396.9, 1);
+    expect(at(1.5).total.calorieKcal).toBeCloseTo(595.3, 1);
+    expect(at(2).total.calorieKcal).toBeCloseTo(793.8, 1);
+  });
+
   it('excludes a cooked entry, same as collectPlannedIngredients', () => {
     const roast = recipe('Roast', [ing('Chicken', { quantity: '400 g' })]);
     const recipesById = new Map([[roast.id, roast]]);

@@ -7,6 +7,8 @@ import {
   mergeIngredients,
   duplicateIngredientIn,
   blockedIngredientNote,
+  alreadyInRecipeNote,
+  blockedReviewRows,
   remapIngredientKeyIn,
   describeRecipe,
   cleanRecipeName,
@@ -617,6 +619,54 @@ describe('blockedIngredientNote', () => {
 
   it('says nothing when nothing was blocked', () => {
     expect(blockedIngredientNote([], 0)).toBeNull();
+  });
+});
+
+describe('alreadyInRecipeNote', () => {
+  it('is the single-row wording the add field uses', () => {
+    const marinade = ing('garlic', { quantity: '3 cloves', section: 'For the marinade' });
+    expect(alreadyInRecipeNote(marinade)).toBe(blockedIngredientNote([marinade], 0));
+    expect(alreadyInRecipeNote(ing('salt'))).toBe('Already in this recipe: salt. Edit that line to change it.');
+  });
+});
+
+describe('blockedReviewRows', () => {
+  it('names a second line under the same heading, with the first as its blocker', () => {
+    const first = ing('olive oil', { quantity: '3 tbsp' });
+    const second = ing('olive oil', { quantity: '2 tbsp' });
+    const blocked = blockedReviewRows([first, ing('garlic'), second]);
+    expect([...blocked.keys()]).toEqual([2]);
+    expect(blocked.get(2)).toBe(first);
+    expect(alreadyInRecipeNote(blocked.get(2)!))
+      .toBe('Already in this recipe: 3 tbsp olive oil. Edit that line to change it.');
+  });
+
+  it('names exactly the rows mergeIngredients drops', () => {
+    const rows = [
+      ing('olive oil', { quantity: '3 tbsp' }),
+      ing('olive oil', { quantity: '2 tbsp' }),
+      ing('olive oil', { quantity: '1 tbsp', section: 'For the dressing' }),
+      ing('garlic', { prep: 'minced' }),
+      ing('garlic', { prep: 'sliced' }),
+      ing('Garlic', { prep: 'Minced' }),
+    ];
+    const blocked = blockedReviewRows(rows);
+    const kept = mergeIngredients([], rows);
+    expect(rows.filter((_, i) => !blocked.has(i))).toEqual(kept);
+    expect([...blocked.keys()]).toEqual([1, 5]);
+  });
+
+  it('leaves out a row that isn\'t going in, so unticking the first frees the second', () => {
+    const first = ing('olive oil', { quantity: '3 tbsp' });
+    const second = ing('olive oil', { quantity: '2 tbsp' });
+    expect(blockedReviewRows([first, second]).size).toBe(1);
+    expect(blockedReviewRows([null, second]).size).toBe(0);
+  });
+
+  it('checks against the rows a recipe already has', () => {
+    const had = ing('garlic', { quantity: '3 cloves', section: 'For the marinade' });
+    const blocked = blockedReviewRows([ing('garlic', { section: 'For the marinade' })], [had]);
+    expect(blocked.get(0)).toBe(had);
   });
 });
 

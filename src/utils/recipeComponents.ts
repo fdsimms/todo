@@ -481,6 +481,20 @@ export interface CookedDish {
   recipe: Recipe;
   /** True for the root only: the meal as a whole rather than one of its parts. */
   whole: boolean;
+  /**
+   * The link this dish was reached through and the recipe holding it, for
+   * every dish but the root, which has none (so the key is absent there
+   * rather than null). The link's `choiceGroup` says whether the dish is one
+   * option of an either/or, which the share's heading names (#2948's
+   * remainder, see `buildRecipeShareText`).
+   */
+  via?: ComponentLink;
+}
+
+/** A component link and the recipe it sits on. */
+export interface ComponentLink {
+  parent: Recipe;
+  component: RecipeComponent;
 }
 
 /**
@@ -511,7 +525,7 @@ export function cookedDishes(
 ): CookedDish[] {
   const out: CookedDish[] = [];
   walk(recipe, recipesById, new Set([recipe.id]), 0, resolution, node => {
-    out.push({ recipe: node.recipe, whole: node.depth === 0 });
+    out.push({ recipe: node.recipe, whole: node.depth === 0, ...(node.via ? { via: node.via } : {}) });
   });
   return out;
 }
@@ -531,15 +545,16 @@ function walk(
   visited: Set<string>,
   depth: number,
   resolution: ChoiceResolution | undefined,
-  visit: (node: { recipe: Recipe; depth: number }) => void,
+  visit: (node: { recipe: Recipe; depth: number; via: ComponentLink | null }) => void,
+  via: ComponentLink | null = null,
 ): void {
-  visit({ recipe, depth });
+  visit({ recipe, depth, via });
   for (const component of activeComponents(recipe, resolution)) {
     if (visited.has(component.recipeId)) continue;
     const target = recipesById.get(component.recipeId);
     if (!target) continue;
     visited.add(component.recipeId);
-    walk(target, recipesById, visited, depth + 1, resolution, visit);
+    walk(target, recipesById, visited, depth + 1, resolution, visit, { parent: recipe, component });
   }
 }
 

@@ -2176,6 +2176,66 @@ describe('cookbooks', () => {
     expect(useRecipeStore.getState().recipeById(cake.id)!.cookbookId).toBeNull();
   });
 
+  it('clears the page when a recipe moves to a different book (#2921)', () => {
+    // Page 42 of Plenty is not page 42 of Jerusalem.
+    const salad = makeRecipe('Salad');
+    const hummus = makeRecipe('Hummus');
+    seed([salad, hummus]);
+    useRecipeStore.getState().linkNewCookbook(salad.id, 'Plenty', 'Yotam Ottolenghi');
+    useRecipeStore.getState().setSourcePage(salad.id, '42');
+    const jerusalem = useRecipeStore.getState().linkNewCookbook(hummus.id, 'Jerusalem', 'Yotam Ottolenghi')!;
+
+    useRecipeStore.getState().linkCookbook(salad.id, jerusalem.id);
+
+    const saved = useRecipeStore.getState().recipeById(salad.id)!;
+    expect(saved.cookbookId).toBe(jerusalem.id);
+    expect(saved.sourcePage).toBeNull();
+  });
+
+  it('clears the page when a find-or-create link moves the recipe too', () => {
+    const salad = makeRecipe('Salad');
+    seed([salad]);
+    useRecipeStore.getState().linkNewCookbook(salad.id, 'Plenty', 'Yotam Ottolenghi');
+    useRecipeStore.getState().setSourcePage(salad.id, '42');
+
+    useRecipeStore.getState().linkNewCookbook(salad.id, 'Jerusalem', 'Yotam Ottolenghi');
+
+    expect(useRecipeStore.getState().recipeById(salad.id)!.sourcePage).toBeNull();
+  });
+
+  it('keeps the page on a link that stays in the same book, and through a rename or merge', () => {
+    const salad = makeRecipe('Salad');
+    const soup = makeRecipe('Soup');
+    seed([salad, soup]);
+    const plenty = useRecipeStore.getState().linkNewCookbook(salad.id, 'Plenty', 'Yotam Ottolenghi')!;
+    useRecipeStore.getState().setSourcePage(salad.id, '42');
+    const copy = useRecipeStore.getState().linkNewCookbook(soup.id, 'Plenty', null)!;
+    useRecipeStore.getState().setSourcePage(soup.id, '7');
+
+    // What RecipeEditor does on every save.
+    useRecipeStore.getState().linkNewCookbook(salad.id, 'Plenty', 'Yotam Ottolenghi');
+    useRecipeStore.getState().linkCookbook(salad.id, plenty.id);
+    expect(useRecipeStore.getState().recipeById(salad.id)!.sourcePage).toBe('42');
+
+    useRecipeStore.getState().renameCookbook(plenty.id, 'Plenty More', 'Yotam Ottolenghi');
+    expect(useRecipeStore.getState().recipeById(salad.id)!.sourcePage).toBe('42');
+
+    // "These are the same book", so its pages are still its pages.
+    useRecipeStore.getState().mergeCookbooks(plenty.id, copy.id);
+    expect(useRecipeStore.getState().recipeById(soup.id)!.sourcePage).toBe('7');
+  });
+
+  it('keeps a page read off a photo when the book is named afterwards', () => {
+    const salsa = makeRecipe('Salsa verde');
+    seed([salsa]);
+    useRecipeStore.getState().setSourceType(salsa.id, 'cookbook');
+    useRecipeStore.getState().setSourcePage(salsa.id, '45');
+
+    useRecipeStore.getState().linkNewCookbook(salsa.id, 'Plenty', 'Yotam Ottolenghi');
+
+    expect(useRecipeStore.getState().recipeById(salsa.id)!.sourcePage).toBe('45');
+  });
+
   it('shrugs at a link naming a book that is gone', () => {
     seed([makeRecipe('Carrot cake')]);
     expect(useRecipeStore.getState().cookbookById('missing')).toBeUndefined();

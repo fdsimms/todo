@@ -194,6 +194,14 @@ already allows two things on one dinner, so ad-hoc pairing needs nothing.
   `classifyPlanned` would merge into one doubled quantity. `scoreRecipeAgainstCatalog` and
   `countLikelyInPantry` resolve to the defaults instead, or the coverage denominator inflates with
   lines that will never be bought.
+- **A shared recipe keeps a choice as a choice, and names a whole-dish one in the heading.** The
+  share text and the ingredient paste take no `ChoiceResolution` (the sender's picks are tonight's,
+  not the recipe's), so an ingredient either/or goes out as one line holding every option ("1
+  serrano or 2 jalapeños", #2948). A choice between components still sends only the default
+  dish's lines, since both in full would read as two dishes to shop for, but the share names the
+  others in that dish's heading: "For the Mash (or Rice):". It reads which link brought each dish
+  in off `cookedDishes`' `via`, the same walk the flatten takes, rather than a second walk of its
+  own. The paste has no headings, so it sends the default's lines alone.
 - **The cycle check deliberately ignores choices** (`reachableRecipeIds` walks every option): a loop
   down an unchosen branch is still a loop, and becomes live the moment someone picks that option.
 - **An ad-hoc "Add ingredients to list" holds its picks in sheet state and writes nothing** —
@@ -237,7 +245,15 @@ for a book, a `cookbookId` pointing at a real `Cookbook` row holding the title a
 - **`titleKey` is keyed on title *and* author.** "Dinner" is a Melissa Clark book and also a Meera
   Sodha one; a shelf that can hold only one of them is a worse bug than the near-duplicate a
   compound key lets through.
-- **The page stays on the recipe.** A book has many pages and this recipe is on one of them.
+- **The page stays on the recipe, and goes when the recipe changes books.** A book has many pages
+  and this recipe is on one of them, which is also why a link to a *different* book clears it
+  (`pageAfterCookbookLink`): page 42 of Plenty is not page 42 of Jerusalem, and a moved recipe used
+  to keep it, listed at 42 in its new book and credited "Jerusalem, p. 42". "Different" is the same
+  test the confirm below asks on (`cookbookLinkEffect`, anything but `'none'`), so the store and
+  the confirm can't disagree, and the confirm says the page goes. It lives in the two link actions
+  rather than in `mirrorOf`, because a rename or a merge re-mirrors a recipe onto what is still
+  its own book. A recipe naming no book keeps its page when one is linked: that is a page read off
+  a photo, waiting for its book.
 - **A book's page lists its recipes in page order** (`recipesInCookbook`, `cookbookRecipes.ts`),
   since every row already says "Page N" and that is how a cookbook is browsed. Roman front
   matter comes before the body, a page nobody could read as a number after it, and a recipe with
@@ -439,6 +455,14 @@ choosable before anything's filed under it.
   the row that blocked it instead of guessing. Two rows sharing a key was already a shape every
   reader handles, because a composed recipe produces it: `classifyPlanned` sums them, cost and
   nutrition are per line, and `stepIngredients` gives a name two lines share no amount.
+- **An import review says which rows won't go in, before the tap** (`blockedReviewRows`). With the
+  amount out of the key, "3 tbsp olive oil" and "2 tbsp olive oil" under one heading are still one
+  line, so the second is dropped on Create. The review shows it unticked with the add field's own
+  wording (`alreadyInRecipeNote`) naming the row it repeats, the same way a row a component covers
+  is unticked with a note. It walks the ticked rows through the store's own test in the store's
+  own order, so what it names is exactly what `mergeIngredients` drops, and unticking the first row
+  frees the second. `RecipeExtractSheet` runs it against the recipe's existing rows as well, since
+  a line the recipe already has is dropped by the same merge.
 
 **`RecipeStep.section`/`Recipe.emptyStepSections` are the same model, one field over — "For the
 sauce", "For the tofu" as headings over the method instead of the ingredient list.** Every helper
@@ -580,6 +604,14 @@ The four rules that make it safe, all enforced in `scaleQuantity`:
   what you buy. Halving it refuses outright, having no expression in that notation. Both container
   shapes are recognised by `parseQuantity` (`Quantity.container`) rather than by each reader, so the
   parser and the scaler can't come to disagree about what a container line is.
+- **A scaled string is for reading and shopping; anything summing it measures the line as written and
+  multiplies by the factor** (#2918). The notation above is lossy by design: a `14 oz can` at 1.5x is
+  left as one can, `1 lb 2 oz` isn't scaled at all, and doubled cans read as a count rather than a
+  weight. Cost and nutrition, for one recipe and for a planned week alike, relate the unscaled line
+  and multiply after, which is exact wherever scaling works and right where it refuses. A planned
+  row carries what they need as `PlannedIngredient.unscaled`, since its own `quantity` is the list's
+  text. A counted sized container ("2 14 oz cans") is read as count times size by both
+  (`measureLineAmount`), so a recipe written that way relates to a price or a panel by weight.
 - **Plural is `> 1`, not `!= 1`** — "1/2 cup", "1 1/2 cups". A unit that isn't in `UNIT_PLURALS`
   passes through uninflected ("2 bulb"), which is the same trade `groceryParse`'s unit whitelist
   makes: slightly wrong grammar in the user's own word beats "2 pinchs".

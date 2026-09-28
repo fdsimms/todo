@@ -35,6 +35,7 @@ import { clampCookedWeight } from '../utils/mealLog';
 import { normalizeRecipeTags } from '../utils/recipeTags';
 import { makeComponent, recipeMap, wouldCreateRecipeCycle } from '../utils/recipeComponents';
 import { sectionsOf } from '../utils/recipeSections';
+import { pageAfterCookbookLink } from '../utils/cookbookRecipes';
 
 /**
  * The recipe library.
@@ -110,7 +111,12 @@ interface RecipeStore {
    * working on plain strings. Null only when the title is empty.
    */
   linkNewCookbook: (recipeId: string, title: string, author?: string | null) => Cookbook | null;
-  /** Points a recipe at a book already on the shelf, mirroring it down. Null id unlinks. */
+  /**
+   * Points a recipe at a book already on the shelf, mirroring it down. Null id
+   * unlinks. Both link actions clear `sourcePage` when the recipe named a
+   * different book (see `pageAfterCookbookLink`): a page of one book is not a
+   * page of another.
+   */
   linkCookbook: (recipeId: string, cookbookId: string | null) => void;
   /**
    * Renames the book everywhere at once — the whole point of the entity. False
@@ -651,7 +657,7 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
       dbInsertCookbook(cookbook);
       set(s => ({ cookbooks: [...s.cookbooks, cookbook!] }));
     }
-    save(set, { ...recipe, ...mirrorOf(cookbook) });
+    save(set, linkedTo(recipe, cookbook, get().cookbooks));
     return cookbook;
   },
 
@@ -665,7 +671,7 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     }
     const cookbook = get().cookbooks.find(c => c.id === cookbookId);
     if (!cookbook) return;
-    save(set, { ...recipe, ...mirrorOf(cookbook) });
+    save(set, linkedTo(recipe, cookbook, get().cookbooks));
   },
 
   renameCookbook(id, title, author) {
@@ -1419,6 +1425,18 @@ type SetRecipes = (fn: (s: { recipes: Recipe[] }) => { recipes: Recipe[] }) => v
  * for why the mirror exists at all. The page is untouched: it belongs to the
  * recipe, not the book.
  */
+/**
+ * `recipe` pointed at `cookbook` by one of the two link actions: the mirror,
+ * plus the page number cleared when the link takes the recipe to a different
+ * book than the one it named (`pageAfterCookbookLink`, #2921). Not in
+ * `mirrorOf` itself, because rename and merge re-mirror a recipe onto what is
+ * still its own book, where the page is still right.
+ */
+function linkedTo(recipe: Recipe, cookbook: Cookbook, cookbooks: readonly Cookbook[]): Recipe {
+  const sourcePage = pageAfterCookbookLink(recipe, cookbook, id => cookbooks.find(c => c.id === id));
+  return { ...recipe, ...mirrorOf(cookbook), sourcePage };
+}
+
 function mirrorOf(cookbook: Cookbook): Pick<Recipe, 'cookbookId' | 'source' | 'author' | 'sourceType'> {
   return {
     cookbookId: cookbook.id,
