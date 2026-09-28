@@ -189,9 +189,14 @@ export function RecurrencePicker({
   // check the task off — there's no calendar grid for "every 8 hours" to
   // sit on, so switching to it forces the On schedule/After completion
   // choice below rather than leaving a toggle that would otherwise do
-  // nothing (see RecurrenceType's own doc comment on 'hours').
+  // nothing (see RecurrenceType's own doc comment on 'hours'). Daily gets
+  // the same nudge for a different reason: most daily tasks are habits
+  // ("drink water", "stretch") where what matters is that a day passed
+  // since the last one, not that today's date matches a grid — so picking
+  // Daily defaults to After completion, same as Hours. Either default is
+  // just a starting point; the pills below still let it be switched back.
   const handleTypeChange = (type: RecurrenceType) => {
-    if (type === 'hours' && !recurrenceFromCompletion) onChangeFromCompletion(true);
+    if ((type === 'hours' || type === 'daily') && !recurrenceFromCompletion) onChangeFromCompletion(true);
     onChangeType(type);
   };
 
