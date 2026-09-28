@@ -6324,6 +6324,23 @@ export function dbGetMealPlanEntriesForRecipe(recipeId: string): MealPlanEntry[]
   return rows.map(rowToMealPlanEntry);
 }
 
+/**
+ * Every entry planned from one leftover, whatever its date.
+ *
+ * Not range-scoped, for `dbGetMealPlanEntriesForRecipe`'s reason: what reads it
+ * is the leftover's own use-up task (`plannedMealRowFor`, #2932), which asks
+ * whether any meal is going to eat the container, and that meal is rarely in
+ * the week the Meal Plan screen has loaded.
+ */
+export function dbGetMealPlanEntriesForLeftover(leftoverId: string): MealPlanEntry[] {
+  const rows = db.getAllSync<Record<string, unknown>>(
+    `SELECT * FROM meal_plan_entries WHERE leftover_id = ?
+     ORDER BY date ASC, sort_order ASC, created_at ASC`,
+    [leftoverId]
+  );
+  return rows.map(rowToMealPlanEntry);
+}
+
 export function dbInsertMealPlanEntry(entry: MealPlanEntry): void {
   db.runSync(
     `INSERT INTO meal_plan_entries (id, date, slot, recipe_id, title, sort_order, created_at, cooked_at, leftover_id, recipe_choices, recipe_scale, cook_task, shop_task, log_meal, calendar_event_id)

@@ -7,6 +7,7 @@ import {
   dbDeleteLeftover,
   dbPurgeOldLeftovers,
   dbGetMealPlanEntry,
+  dbGetMealPlanEntriesForLeftover,
 } from '../db/database';
 import type { Leftover, Task } from '../types';
 import { daysInFridge, isLiveLeftover, keepDaysBetween, needsAttention } from '../utils/leftovers';
@@ -24,6 +25,7 @@ jest.mock('../db/database', () => ({
   dbDeleteLeftover: jest.fn(),
   dbPurgeOldLeftovers: jest.fn().mockReturnValue(0),
   dbGetMealPlanEntry: jest.fn().mockReturnValue(null),
+  dbGetMealPlanEntriesForLeftover: jest.fn().mockReturnValue([]),
   dbGetFoodLogEntries: jest.fn().mockReturnValue([]),
   dbGetFoodLogEntry: jest.fn().mockReturnValue(null),
   dbCountFoodLogEntries: jest.fn().mockReturnValue(0),
@@ -116,6 +118,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   (dbGetAllLeftovers as jest.Mock).mockReturnValue([]);
   (dbPurgeOldLeftovers as jest.Mock).mockReturnValue(0);
+  (dbGetMealPlanEntriesForLeftover as jest.Mock).mockReturnValue([]);
   mockLeftoverUseUpTasks = false;
   mockLeftoverUseUpTaskCategory = null;
   mockTaskState.tasks = [];
@@ -932,6 +935,64 @@ describe('use-up tasks', () => {
     const after = mockTaskState.tasks.find(t => t.generatedSourceId === 'chilli')!;
     expect(after.deadline).toBe(useLeftoverStore.getState().leftoverById('chilli')!.keepUntil);
     expect(after.dueDate).toBe(deferred);
+  });
+});
+
+// #2932: planning last night's chili for dinner put "Eat Chili" and "Use up
+// Chili" on Today together, two rows about one container.
+describe('use-up tasks for a leftover planned into a meal', () => {
+  beforeEach(() => {
+    mockLeftoverUseUpTasks = true;
+  });
+
+  const today = () => dayKeyOf(getLogicalToday());
+  const plantMealRow = (dayKey: string, slot: string) =>
+    mockTaskState.addTask({ generatedKind: 'mealSlot', generatedSourceId: `${dayKey}#${slot}`, title: 'Chilli' });
+  const planFor = (leftoverId: string, overrides: Record<string, unknown> = {}) =>
+    (dbGetMealPlanEntriesForLeftover as jest.Mock).mockReturnValue([
+      { id: 'e-1', date: today(), slot: 'dinner', leftoverId, cookedAt: null, ...overrides },
+    ]);
+  const useUpFor = (id: string) =>
+    mockTaskState.tasks.find(t => t.generatedKind === 'leftoverUseUp' && t.generatedSourceId === id);
+
+  it('drops the use-up task while a planned meal\'s own row says to eat it, and brings it back after', () => {
+    seed([makeLeftover({ id: 'chilli', keepUntil: today() })]);
+    useLeftoverStore.getState().reconcileAllLeftoverTasks();
+    expect(useUpFor('chilli')).toBeDefined();
+
+    plantMealRow(today(), 'dinner');
+    planFor('chilli');
+    useLeftoverStore.getState().reconcileLeftoverUseUpTask('chilli');
+    expect(useUpFor('chilli')).toBeUndefined();
+    // The app tidying up, not the user declining: no "never" is written.
+    expect(useLeftoverStore.getState().leftoverById('chilli')!.useUpTask).toBeNull();
+
+    // Unplanned again, so the container has nothing else reminding about it.
+    (dbGetMealPlanEntriesForLeftover as jest.Mock).mockReturnValue([]);
+    useLeftoverStore.getState().reconcileLeftoverUseUpTask('chilli');
+    expect(useUpFor('chilli')).toBeDefined();
+  });
+
+  it('keeps the use-up task when no meal task would say it', () => {
+    seed([makeLeftover({ id: 'chilli', keepUntil: today() })]);
+    planFor('chilli');
+    useLeftoverStore.getState().reconcileAllLeftoverTasks();
+    expect(useUpFor('chilli')).toBeDefined();
+  });
+
+  it('keeps it once that meal has been eaten, since some may be left', () => {
+    seed([makeLeftover({ id: 'chilli', keepUntil: today() })]);
+    plantMealRow(today(), 'dinner');
+    planFor('chilli', { cookedAt: localIso('2026-08-10T19:00') });
+    useLeftoverStore.getState().reconcileAllLeftoverTasks();
+    expect(useUpFor('chilli')).toBeDefined();
+  });
+
+  it('does nothing for a finished or unknown leftover', () => {
+    seed([makeLeftover({ id: 'done', keepUntil: today(), finishedAt: localIso('2026-08-09T00:00'), outcome: 'eaten' })]);
+    useLeftoverStore.getState().reconcileLeftoverUseUpTask('done');
+    useLeftoverStore.getState().reconcileLeftoverUseUpTask('nope');
+    expect(mockTaskState.tasks).toHaveLength(0);
   });
 });
 

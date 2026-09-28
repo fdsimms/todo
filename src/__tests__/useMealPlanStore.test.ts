@@ -139,6 +139,15 @@ jest.mock('../store/useRecipeStore', () => ({
   useRecipeStore: { getState: () => mockRecipeState },
 }));
 
+// The leftover store decides whether a planned leftover still wants its use-up
+// task (its own suite covers that); this suite is about which leftovers a slot
+// change asks it about (#2932). Mocked too because the real one reaches the
+// Health bridge at import.
+const mockReconcileLeftoverUseUpTask = jest.fn();
+jest.mock('../store/useLeftoverStore', () => ({
+  useLeftoverStore: { getState: () => ({ reconcileLeftoverUseUpTask: mockReconcileLeftoverUseUpTask }) },
+}));
+
 /** The live cook task for an entry, as the store's own helpers find it. */
 const cookTaskFor = (entryId: string) =>
   mockTaskState.tasks.find(t => t.generatedSourceId === entryId && !t.completed);
@@ -592,6 +601,37 @@ describe('planMeal', () => {
 
     expect(planned.leftoverId).toBe('lo-1');
     expect(planned.recipeId).toBeNull();
+  });
+
+  // #2932: a leftover planned into a meal whose row says "Eat Chilli" has no
+  // "Use up Chilli" beside it, so every change to that plan asks again.
+  it('asks the leftover about its use-up task when it is planned, moved, removed or replaced', () => {
+    loadWeek();
+    const planned = useMealPlanStore.getState().planMeal({
+      date: '2026-08-05', slot: 'dinner', leftoverId: 'lo-1', title: 'Chilli (2 days old)',
+    })!;
+    expect(mockReconcileLeftoverUseUpTask).toHaveBeenCalledWith('lo-1');
+
+    mockReconcileLeftoverUseUpTask.mockClear();
+    useMealPlanStore.getState().moveEntry(planned.id, { date: '2026-08-06' });
+    expect(mockReconcileLeftoverUseUpTask).toHaveBeenCalledWith('lo-1');
+
+    mockReconcileLeftoverUseUpTask.mockClear();
+    useMealPlanStore.getState().bulkReplaceItem([planned.id], { recipeId: null, title: 'Takeout' });
+    // The replacement names no leftover, so the one it displaced is asked from
+    // the original entry.
+    expect(mockReconcileLeftoverUseUpTask).toHaveBeenCalledWith('lo-1');
+
+    useMealPlanStore.getState().lastAction!.undo();
+    mockReconcileLeftoverUseUpTask.mockClear();
+    useMealPlanStore.getState().removeEntry(planned.id);
+    expect(mockReconcileLeftoverUseUpTask).toHaveBeenCalledWith('lo-1');
+  });
+
+  it('asks no leftover about an ordinary plan', () => {
+    loadWeek();
+    useMealPlanStore.getState().planMeal({ date: '2026-08-05', slot: 'dinner', recipeId: 'r1', title: 'Ragù' });
+    expect(mockReconcileLeftoverUseUpTask).not.toHaveBeenCalled();
   });
 
   it('leaves leftoverId null for an ordinary plan', () => {

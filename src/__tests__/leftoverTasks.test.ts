@@ -1,11 +1,12 @@
 import {
+  plannedMealRowFor,
   useUpTaskDraft,
   useUpTaskDrift,
   useUpTaskFields,
   useUpTaskTitle,
   wantsUseUpTask,
 } from '../utils/leftoverTasks';
-import type { Leftover } from '../types';
+import type { Leftover, MealPlanEntry, MealSlot } from '../types';
 
 /** A local wall-clock time as the ISO instant the app stores, so the suite reads the same in any zone. */
 const localIso = (local: string) => new Date(local).toISOString();
@@ -103,6 +104,55 @@ describe('wantsUseUpTask', () => {
     } finally {
       settingsState.dayResetTime = '00:00';
     }
+  });
+});
+
+describe('a leftover planned into a meal (#2932)', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(now);
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  type Planned = Pick<MealPlanEntry, 'date' | 'slot' | 'leftoverId' | 'cookedAt'>;
+  const planned = (overrides: Partial<Planned> = {}): Planned => ({
+    date: '2026-08-13', slot: 'dinner', leftoverId: 'chili', cookedAt: null, ...overrides,
+  });
+  const chili = leftover({ id: 'chili', keepUntil: '2026-08-14' });
+  const everyRow = () => true;
+
+  it('finds the meal whose own task already says to eat it', () => {
+    expect(plannedMealRowFor(chili, [planned()], '2026-08-13', everyRow)).toEqual(planned());
+    // Tomorrow's dinner, still before it goes bad, counts too.
+    expect(plannedMealRowFor(chili, [planned({ date: '2026-08-14' })], '2026-08-13', everyRow)).not.toBeNull();
+  });
+
+  it('needs that meal to have a task, or the use-up row is the only reminder there is', () => {
+    const rows = new Set(['2026-08-13#lunch']);
+    const hasRow = (day: string, slot: MealSlot) => rows.has(`${day}#${slot}`);
+    expect(plannedMealRowFor(chili, [planned()], '2026-08-13', hasRow)).toBeNull();
+    expect(plannedMealRowFor(chili, [planned({ slot: 'lunch' })], '2026-08-13', hasRow)).not.toBeNull();
+  });
+
+  it('ignores a meal already eaten, one in the past, one after it goes bad, and another container', () => {
+    const cases: Planned[] = [
+      planned({ cookedAt: localIso('2026-08-13T19:00') }),
+      planned({ date: '2026-08-12' }),
+      planned({ date: '2026-08-15' }),
+      planned({ leftoverId: 'soup' }),
+    ];
+    for (const entry of cases) {
+      expect(plannedMealRowFor(chili, [entry], '2026-08-13', everyRow)).toBeNull();
+    }
+  });
+
+  it('stands the use-up task down, unless the leftover itself asked for one', () => {
+    expect(wantsUseUpTask(chili, true, true)).toBe(false);
+    expect(wantsUseUpTask(chili, true, false)).toBe(true);
+    // A per-leftover "yes" is the user's answer, and outranks the default.
+    expect(wantsUseUpTask({ ...chili, useUpTask: true }, true, true)).toBe(true);
   });
 });
 

@@ -721,6 +721,23 @@ re-deriving:
   honest half — a meal you *had* planned had something to say ahead of time, exactly as a cook task
   did, and no row to say it on.
 
+**A leftover planned into a meal that has its own task gets no "Use up X" beside it** (#2932).
+Planning last night's chili for dinner put "Eat Chili" and "Use up Chili" on Today together: two
+rows, two sections, one container. The meal row is the more specific of the two (it says when), so
+`leftoverTasks.plannedMealRowFor` stands the use-up task down while an uneaten entry names the
+leftover, dated from the logical today through its `keepUntil`, **and a live `mealSlot` task exists
+for that day and slot**. That last condition is the premise itself: with the meal-task generator
+off, that meal not one the user gets a task for, or the row swiped away, the use-up task is the only
+reminder left, so it stays. A dinner planned after the container goes bad doesn't use it in time,
+and a meal already eaten may have left some behind, so neither counts. It narrows `qualifies`
+rather than overriding the per-leftover answer, so a leftover the user switched its task on for
+keeps it. The meal plan asks from `reconcileMealSlot` (both halves of a change: the entry handed in
+and whatever the slot now holds, plus the original of a `bulkReplaceItem`, which names no leftover
+afterwards), and runs after the slot's own task since that task's presence is half the rule.
+Cooking is deliberately not a trigger: the "was that the last of it?" prompt is still open at that
+moment, and the next foreground sweep brings the task back if some is left. The drop goes through
+`reconcileGeneratedTask`'s unwanted branch, which writes no opt-out.
+
 `MealPlanEntry.cookTask` survives the fold unchanged — it is still the per-meal "no", read by both
 the pass and the reconcile, and the one thing a meal task inherits from the cook task it replaces.
 The settings keys survive too (`mealCookTasks`, `mealCookTaskCategory`): renaming them would be a
