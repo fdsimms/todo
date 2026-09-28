@@ -648,7 +648,11 @@ which rows you don't usually get here.
   and can only be answered inside the app. The deep link *is* that question asked from the Lock
   Screen. It carries no count, because the attributes are fixed when the trip starts and nothing
   is ever pushed an update; `GroceryScreen` decides on arrival whether there's anything to finish,
-  and lands on the list without a sheet when there isn't.
+  and lands on the list without a sheet when there isn't. **Its stale date is the trip's expiry**
+  (`TripRun.staleAtMs`, `TRIP_MAX_MS` after the start): only the app's own sync ends the activity,
+  and that doesn't run while the app is closed, so without one an abandoned trip went on claiming
+  "Shopping at X" with a clock past six hours until the next launch (#2937). Past it, the activity
+  says the trip ended and keeps its Finish button, since a cart can be finished without a trip.
 - **The row caption is its own third text treatment**, borrowing `note`'s colour and
   `alternatives`' weight. A row can carry all three at once (a noted either/or item on record
   elsewhere); at identical styling they run together into a block you can't read while walking.
