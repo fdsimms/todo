@@ -46,6 +46,13 @@ interface Props {
    * since two modals can't be up at once.
    */
   onMoveFurther?: () => void;
+  /**
+   * Swaps what this night is having for another recipe or a typed name, in
+   * place (#2911). The caller dismisses this sheet first and hosts
+   * MealReplaceItemSheet itself, for `onMoveFurther`'s reason: two modals
+   * can't be up at once.
+   */
+  onReplace?: () => void;
   onRemove: () => void;
   /**
    * Present only for a free-text entry (no recipeId, or one whose recipe has
@@ -163,7 +170,7 @@ interface Props {
 const TOP_INSET = 72;
 
 export function MealEntrySheet({
-  visible, entry, title, weekDays, onMove, onMoveFurther, onRemove, onRename, choiceGroups = [], onChoose,
+  visible, entry, title, weekDays, onMove, onMoveFurther, onReplace, onRemove, onRename, choiceGroups = [], onChoose,
   onScale, baseServings, baseServingsMax, onSetCooked, onViewFoodLogEntry, onLogMeal, onOpenRecipe, onAddToList, onAddPrepTasks,
   onLogLeftovers,
   onFinishLeftover, onSetCookTask, hasCookTask = false, onClose,
@@ -468,6 +475,27 @@ export function MealEntrySheet({
                 label="Add ingredients to list"
                 onPress={() => { haptics.tap(); dismiss(onAddToList); }}
                 accessibilityLabel="Add this meal's ingredients to the grocery list"
+              />
+            </>
+          )}
+
+          {/*
+            The swap (#2911), with the recipe rows because it changes which
+            recipe is behind the night, where "Remove from plan" at the bottom
+            takes the night away. Removing and re-planning was the only way to
+            do this outside the bulk bar, and it lost the slot's meal task
+            answer and the batch size; the replace keeps both (see
+            bulkReplaceItem).
+          */}
+          {!!onReplace && (
+            <>
+              <View style={styles.sep} />
+              <SheetActionRow
+                icon="swap-horizontal-outline"
+                color={colors.accent}
+                label="Replace meal"
+                onPress={() => { haptics.tap(); dismiss(onReplace); }}
+                accessibilityLabel="Replace this meal with a different recipe or name"
               />
             </>
           )}

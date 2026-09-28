@@ -35,6 +35,13 @@ interface Props {
   visible: boolean;
   /** How many entries this replaces — drives the sheet's title and hint. */
   count: number;
+  /**
+   * Overrides the title and hint the count would give. Set when the sheet is
+   * opened on one meal from its own sheet rather than on a selection, where
+   * "every selected meal" names something the user never did (#2911).
+   */
+  title?: string;
+  hint?: string;
   onReplace: (replacement: MealReplacement) => void;
   onClose: () => void;
 }
@@ -49,6 +56,11 @@ const MAX_ROWS = 30;
  * across every occurrence in one pass instead of opening each planned meal
  * to fix it by hand.
  *
+ * It is also the one planned meal's own swap, off MealEntrySheet's "Replace
+ * meal" row (#2911): the same `bulkReplaceItem` with a list of one, so the
+ * night keeps its slot, its per-meal flags and its servings. Removing it and
+ * planning again, which was the only way before, lost all three.
+ *
  * Deliberately not RecipePickerSheet cut down: that sheet answers "what's for
  * dinner", so it carries a slot row and a fridge section neither question
  * this one asks — a bulk replacement doesn't touch which slot an entry sits
@@ -56,7 +68,7 @@ const MAX_ROWS = 30;
  * container is a stranger idea than the issue this shipped for (#1110) asked
  * for. Recipe-or-typed-text only, same search-and-list shape.
  */
-export function MealReplaceItemSheet({ visible, count, onReplace, onClose }: Props) {
+export function MealReplaceItemSheet({ visible, count, title, hint, onReplace, onClose }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -165,9 +177,9 @@ export function MealReplaceItemSheet({ visible, count, onReplace, onClose }: Pro
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.sheetTitle}>Replace {countLabel}</Text>
+          <Text style={styles.sheetTitle} numberOfLines={2}>{title ?? `Replace ${countLabel}`}</Text>
           <Text style={styles.sheetHint}>
-            Pick a recipe, or type a new name. It replaces the item on every selected meal.
+            {hint ?? 'Pick a recipe, or type a new name. It replaces the item on every selected meal.'}
           </Text>
 
           <View style={styles.searchWrap}>

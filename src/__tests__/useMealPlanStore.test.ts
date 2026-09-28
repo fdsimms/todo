@@ -1480,6 +1480,23 @@ describe('bulkReplaceItem', () => {
     expect(scaleOf(sameRecipe.id)).toBe(1.5);
   });
 
+  it("keeps one meal's day, slot and per-meal answers, which removing and re-planning lost (#2911)", () => {
+    // The one-meal Replace on a meal's own sheet is this with a list of one.
+    const a = entry('2026-08-05', 'lunch', {
+      recipeId: 'r-tacos', title: 'Tacos', cookTask: false, shopTask: false, logMeal: true, sortOrder: 3,
+    });
+    loadWeek([a]);
+
+    useMealPlanStore.getState().bulkReplaceItem([a.id], { recipeId: 'r-soup', title: 'Soup' });
+
+    const updated = getEntries().find(e => e.id === a.id)!;
+    expect(updated).toMatchObject({
+      id: a.id, date: '2026-08-05', slot: 'lunch', sortOrder: 3,
+      cookTask: false, shopTask: false, logMeal: true,
+      recipeId: 'r-soup', title: 'Soup',
+    });
+  });
+
   it('registers an undo that restores every entry to its original recipe and title', () => {
     const a = entry('2026-08-05', 'dinner', {
       recipeId: 'old-recipe', title: 'Old ragù', recipeChoices: ['c-roast'], leftoverId: 'lo-1',

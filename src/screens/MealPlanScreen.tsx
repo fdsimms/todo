@@ -598,6 +598,10 @@ export function MealPlanScreen() {
   // id, since MealEntrySheet has closed by the time the calendar is up.
   const [movingFurtherId, setMovingFurtherId] = useState<string | null>(null);
   const [bulkReplaceVisible, setBulkReplaceVisible] = useState(false);
+  // The one entry being swapped from its own sheet (#2911), held by id for
+  // movingFurtherId's reason. Shares MealReplaceItemSheet with the bulk bar's
+  // Replace; this being set is what makes it a replace of one.
+  const [replacingId, setReplacingId] = useState<string | null>(null);
 
   const toggleDayCollapse = (key: string) => {
     haptics.tap();
@@ -1126,6 +1130,18 @@ export function MealPlanScreen() {
     haptics.success();
     exitSelection();
   };
+
+  /**
+   * One meal's own swap (#2911): the bulk replace with a list of one, so it
+   * keeps what the bulk one keeps (the slot, the per-meal answers, the
+   * servings) and registers the same undo. Takes the id rather than reading
+   * `replacingId`, which the sheet has cleared by the time it calls back.
+   */
+  const replaceOne = (id: string, replacement: MealReplacement) => {
+    bulkReplaceItem([id], replacement);
+    haptics.success();
+  };
+  const replacing = replacingId ? entries.find(e => e.id === replacingId) ?? null : null;
 
   const handleBulkDelete = () => {
     const count = selectedIdList.length;
@@ -2077,11 +2093,26 @@ export function MealPlanScreen() {
         onCancel={() => setBulkMoveVisible(false)}
       />
 
+      {/*
+        Two callers, never both at once: the bulk bar only exists in selection
+        mode, and a meal's own sheet only opens outside it. `replacingId` is
+        what makes this a replace of one.
+      */}
       <MealReplaceItemSheet
-        visible={bulkReplaceVisible}
-        count={selectedIds.size}
-        onReplace={handleBulkReplace}
-        onClose={() => setBulkReplaceVisible(false)}
+        visible={bulkReplaceVisible || replacingId !== null}
+        count={replacingId ? 1 : selectedIds.size}
+        title={replacing ? 'Replace meal' : undefined}
+        hint={replacing
+          ? `Pick a recipe, or type a new name, to have instead of ${titleForEntry(replacing, recipesById)}.`
+          : undefined}
+        onReplace={replacement => {
+          if (replacingId) replaceOne(replacingId, replacement);
+          else handleBulkReplace(replacement);
+        }}
+        onClose={() => {
+          setBulkReplaceVisible(false);
+          setReplacingId(null);
+        }}
       />
 
       <RecipePickerSheet
@@ -2131,6 +2162,7 @@ export function MealPlanScreen() {
         weekDays={days}
         onMove={to => selected && moveEntry(selected.id, to)}
         onMoveFurther={selected ? () => setMovingFurtherId(selected.id) : undefined}
+        onReplace={selected ? () => setReplacingId(selected.id) : undefined}
         onRemove={() => {
           if (!selected) return;
           animateLayout();
