@@ -116,7 +116,7 @@ export function DeadlineCalendarSettings() {
   return (
     <SettingsSection
       label="Deadlines on your calendar"
-      footer="Adds an all-day event for a task's deadline to the calendar you pick here, only for tasks with “Add to calendar” turned on in their own editor, never every deadline in the app. The task's own deadline is always the one that's right; moving or deleting the event on the device doesn't change it."
+      footer="Adds an all-day event for a task's deadline to the calendar you pick here, only for tasks with “Add to calendar” turned on in their own editor, never every deadline in the app. If you pick a different calendar, a task's deadline event moves to it the next time you edit that task. The task's own deadline is always the one that's right; moving or deleting the event on the device doesn't change it."
     >
       <SettingsRow
         entryId="deadlineCalendar"

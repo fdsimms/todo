@@ -1,6 +1,6 @@
 import type { Task } from '../types';
 import { displayTitleFor } from './visibilityUtils';
-import { createAllDayEvent, updateAllDayEvent, deleteCalendarEvent } from './calendarSync';
+import { createAllDayEvent, moveAllDayEvent, deleteCalendarEvent } from './calendarSync';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { isDemoModeActive } from './demoState';
 
@@ -37,10 +37,21 @@ export async function syncDeadlineEvent(task: Task): Promise<string | null> {
   const fields = { title: displayTitleFor(task) || 'Deadline', date: new Date(task.deadline) };
 
   if (task.calendarEventId) {
-    if (await updateAllDayEvent(task.calendarEventId, fields)) return task.calendarEventId;
-    // The id didn't resolve to a live event — deleted by hand, or the
-    // calendar itself is gone. Resolve-or-shrug: fall through and write a
-    // fresh one rather than leaving the task pointing at nothing.
+    // Into the calendar picked *now*, not the one it was first written to: a
+    // deadline written before "Write deadlines to" was switched moves across
+    // the next time its task is reconciled, rather than going on being
+    // rewritten in the old calendar while new deadlines land in the new one.
+    // The meal mirror's rule and reasoning (#2949, `syncMealEvent`), including
+    // that nothing sweeps: a task nobody touches keeps its event where it is.
+    const moved = await moveAllDayEvent(task.calendarEventId, deadlineCalendarId, fields);
+    if (moved) return moved;
+    // The id didn't resolve to a live event (deleted by hand, or the calendar
+    // itself is gone), or EventKit refused the move. Delete whatever is left
+    // under the old id first, so a refused move can't leave the deadline on
+    // both calendars once the fresh one is written; for an event that is
+    // already gone this does nothing. Then resolve-or-shrug: write a fresh one
+    // rather than leaving the task pointing at nothing.
+    await deleteCalendarEvent(task.calendarEventId);
   }
 
   return createAllDayEvent(deadlineCalendarId, fields);

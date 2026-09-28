@@ -21,7 +21,6 @@ jest.mock('react-native', () => ({ Platform: { OS: 'ios' } }));
 import {
   carriedEventFields,
   moveAllDayEvent,
-  updateAllDayEvent,
   updateTimeBlockEvent,
 } from '../utils/calendarSync';
 
@@ -153,11 +152,11 @@ describe('carriedEventFields', () => {
   });
 });
 
-describe('updateAllDayEvent', () => {
+describe('moveAllDayEvent', () => {
   const fields = { title: 'Renew passport', date: new Date(2026, 7, 20) };
 
   it('sends back what the event already holds, so a hand-added location, note and alert survive', async () => {
-    expect(await updateAllDayEvent('evt-1', fields)).toBe(true);
+    expect(await moveAllDayEvent('evt-1', 'cal-1', fields)).toBe('evt-1');
     expect(mockCalendar.getEventAsync).toHaveBeenCalledWith('evt-1', undefined);
     expect(mockCalendar.updateEventAsync).toHaveBeenCalledWith('evt-1', {
       location: 'Tax office, 2nd floor',
@@ -165,24 +164,38 @@ describe('updateAllDayEvent', () => {
       alarms: [{ relativeOffset: -1440 }],
       availability: 'free',
       allDay: true,
+      calendarId: 'cal-1',
       title: 'Renew passport',
       startDate: new Date(2026, 7, 20),
       endDate: new Date(2026, 7, 21),
     }, undefined);
   });
 
+  it('carries them into the new calendar, and links the id the event comes back with', async () => {
+    mockCalendar.updateEventAsync.mockResolvedValue('evt-moved');
+    expect(await moveAllDayEvent('evt-1', 'cal-home', fields)).toBe('evt-moved');
+    expect(mockCalendar.updateEventAsync).toHaveBeenCalledWith('evt-1', expect.objectContaining({
+      calendarId: 'cal-home',
+      location: 'Tax office, 2nd floor',
+      notes: 'Bring the blue folder',
+      alarms: [{ relativeOffset: -1440 }],
+    }), undefined);
+  });
+
   it('writes its own fields over whatever the event said', async () => {
-    mockCalendar.getEventAsync.mockResolvedValue(readEvent({ title: 'Old title', allDay: false }));
-    await updateAllDayEvent('evt-1', fields);
+    mockCalendar.getEventAsync.mockResolvedValue(readEvent({ title: 'Old title', allDay: false, calendarId: 'cal-old' }));
+    await moveAllDayEvent('evt-1', 'cal-1', fields);
     const [, details] = mockCalendar.updateEventAsync.mock.calls[0];
     expect(details.title).toBe('Renew passport');
     expect(details.allDay).toBe(true);
+    expect(details.calendarId).toBe('cal-1');
   });
 
-  it('still writes the title and day when the read fails', async () => {
+  it('still writes the title, day and calendar when the read fails', async () => {
     mockCalendar.getEventAsync.mockRejectedValue(new Error('EventKit is unhappy'));
-    expect(await updateAllDayEvent('evt-1', fields)).toBe(true);
+    expect(await moveAllDayEvent('evt-1', 'cal-1', fields)).toBe('evt-1');
     expect(mockCalendar.updateEventAsync).toHaveBeenCalledWith('evt-1', {
+      calendarId: 'cal-1',
       title: 'Renew passport',
       startDate: new Date(2026, 7, 20),
       endDate: new Date(2026, 7, 21),
@@ -193,22 +206,7 @@ describe('updateAllDayEvent', () => {
   it('reports a failed write, for the caller to fall back on', async () => {
     mockCalendar.getEventAsync.mockRejectedValue(new Error('not found'));
     mockCalendar.updateEventAsync.mockRejectedValue(new Error('not found'));
-    expect(await updateAllDayEvent('gone', fields)).toBe(false);
-  });
-});
-
-describe('moveAllDayEvent', () => {
-  it('carries the hand-added details into the new calendar with the event', async () => {
-    mockCalendar.updateEventAsync.mockResolvedValue('evt-moved');
-    const id = await moveAllDayEvent('evt-1', 'cal-home', { title: 'Dinner: Ragu', date: new Date(2026, 7, 20) });
-    expect(id).toBe('evt-moved');
-    expect(mockCalendar.updateEventAsync).toHaveBeenCalledWith('evt-1', expect.objectContaining({
-      calendarId: 'cal-home',
-      title: 'Dinner: Ragu',
-      location: 'Tax office, 2nd floor',
-      notes: 'Bring the blue folder',
-      alarms: [{ relativeOffset: -1440 }],
-    }), undefined);
+    expect(await moveAllDayEvent('gone', 'cal-1', fields)).toBeNull();
   });
 });
 

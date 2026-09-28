@@ -4331,6 +4331,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     set({ calendarPeopleHistory: on });
   },
 
+  // Switching from one calendar to another moves nothing here, the same call
+  // setMealCalendarId makes below. A deadline already written moves into the
+  // new calendar the next time its task is reconciled (syncDeadlineEvent
+  // writes the calendar along with the title and day, as syncMealEvent does
+  // since #2949), rather than being rewritten in the old one for good.
   setDeadlineCalendarId(id: string | null) {
     dbSetSetting('deadlineCalendarId', id ?? '');
     set({ deadlineCalendarId: id });

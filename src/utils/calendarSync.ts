@@ -418,50 +418,28 @@ async function rewriteEvent(
 }
 
 /**
- * Rewrites an existing deadline event's title and date in place. Returns
- * false on any failure, including the event having been deleted out from
- * under the app — the caller falls back to creating a fresh one rather than
- * erroring, the same resolve-or-shrug rule as every other place a device id
- * can go stale. Anything else on the event (a location, a note, an alert,
- * whoever was invited) is kept: see `rewriteEvent`.
- */
-export async function updateAllDayEvent(
-  eventId: string,
-  fields: AllDayEventFields
-): Promise<boolean> {
-  if (Platform.OS !== 'ios') return false;
-  try {
-    await rewriteEvent(eventId, {
-      title: fields.title,
-      startDate: fields.date,
-      endDate: addDays(fields.date, 1),
-      allDay: true,
-    });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * `updateAllDayEvent` that also puts the event in `calendarId`, and returns the
- * id EventKit reports for it afterwards (null on any failure).
+ * Rewrites an existing all-day event's title and day, puts it in `calendarId`,
+ * and returns the id EventKit reports for it afterwards. Null on any failure,
+ * including the event having been deleted out from under the app: the caller
+ * falls back to writing a fresh one rather than erroring, the same
+ * resolve-or-shrug rule as every other place a device id can go stale.
  *
- * For a mirror whose target calendar is a setting the user can change: without
- * the calendar in the write, the event stayed wherever it was first created, so
- * switching "Write meals to" from a shared calendar to a private one kept
- * rewriting the old meals in the shared one (#2949). `EKCalendarItem.calendar`
- * is settable, and expo-calendar's save path assigns it when the details carry
- * a `calendarId` (`initializeEvent` in its `CalendarModule.swift`), so this is a
- * move of the same event rather than a delete and a fresh write. When the event
- * is already in that calendar it's the same write `updateAllDayEvent` makes.
+ * The calendar is in every rewrite because both mirrors write to a calendar
+ * that is a setting the user can change: without it, the event stayed wherever
+ * it was first created, so switching "Write meals to" (#2949) or "Write
+ * deadlines to" from a shared calendar to a private one kept rewriting the old
+ * events in the shared one. `EKCalendarItem.calendar` is settable, and
+ * expo-calendar's save path assigns it when the details carry a `calendarId`
+ * (`initializeEvent` in its `CalendarModule.swift`), so this is a move of the
+ * same event rather than a delete and a fresh write. When the event is already
+ * in that calendar it is a plain rewrite in place.
  *
  * **The id is read back rather than assumed.** The save returns
  * `calendarItemIdentifier`, and nothing in Apple's documentation promises it
  * survives a move to a calendar on another account; the caller links whatever
  * this returns.
  *
- * A location, a note or an alert added to the event by hand moves with it:
+ * A location, a note or an alert added to the event by hand stays with it:
  * expo-calendar's save resets all three unless they're sent back, and
  * `rewriteEvent` sends them back. Invitees, the URL and a repeat rule were
  * never touched.
