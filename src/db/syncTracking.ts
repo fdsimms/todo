@@ -174,11 +174,26 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
  * edit to the rest of the row; a row that arrives new gets the column's
  * default, null, which is the truth here (no event on this device yet).
  *
- * A backup keeps the column: restoring onto the phone that wrote the events is
+ * The three event ids on `tasks` are the same shape and failed the same way.
+ * `calendar_event_id` is the deadline event written into `deadlineCalendarId`
+ * (device-local like `mealCalendarId`): `syncDeadlineEvent` on a phone with no
+ * deadline calendar picked "deleted" the foreign id and wrote null, so the
+ * owner lost its link and duplicated the event on its next edit.
+ * `time_block_event_id` did it on a tap: the other phone's editor read the id
+ * as "On your calendar", `putTaskOnCalendar` couldn't resolve it, took the
+ * event for deleted and cleared the pointer, and the null synced back to the
+ * phone whose block it was. `completion_calendar_event_id` is written by the
+ * completing phone and cleared by an uncomplete, which on another phone
+ * deleted nothing and still nulled the owner's link. Kept local, the other
+ * phone's editor offers "Put on my calendar" for a block it can't open, which
+ * is what it can actually do, rather than breaking the block it can't see.
+ *
+ * A backup keeps the columns: restoring onto the phone that wrote the events is
  * the common case, and there the ids still resolve.
  */
 export const SYNC_DEVICE_LOCAL_COLUMNS: Readonly<Record<string, readonly string[]>> = {
   meal_plan_entries: ['calendar_event_id'],
+  tasks: ['calendar_event_id', 'completion_calendar_event_id', 'time_block_event_id'],
 };
 
 /** Whether `column` of `table` stays on this device — see SYNC_DEVICE_LOCAL_COLUMNS. */

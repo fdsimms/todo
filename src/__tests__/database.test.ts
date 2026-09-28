@@ -4048,6 +4048,46 @@ describe('dbApplySyncChanges', () => {
     });
   });
 
+  // #2950, the same shape on tasks: a peer without "Write deadlines to" set
+  // wrote null over this phone's deadline event id; another phone's editor
+  // cleared a time block it couldn't open; an uncomplete elsewhere dropped
+  // this phone's completion event.
+  describe('a task\'s calendar event ids', () => {
+    const ids = () =>
+      mockRawDb.prepare(
+        'SELECT title, calendar_event_id, completion_calendar_event_id, time_block_event_id FROM tasks WHERE id = ?',
+      ).get('ev1') as Record<string, string | null>;
+
+    it('never leave this device', () => {
+      dbInsertTask(makeTask({
+        id: 'ev1', calendarEventId: 'dl', completionCalendarEventId: 'done', timeBlockEventId: 'block',
+      }));
+      const row = dbSyncChangesSince(null).tables.tasks.find(r => r.id === 'ev1');
+      expect(row?.title).toBeDefined();
+      expect(row).not.toHaveProperty('calendar_event_id');
+      expect(row).not.toHaveProperty('completion_calendar_event_id');
+      expect(row).not.toHaveProperty('time_block_event_id');
+    });
+
+    it('survive a peer\'s edit that sends nulls for them', () => {
+      dbInsertTask(makeTask({
+        id: 'ev1', title: 'Rent', calendarEventId: 'dl', completionCalendarEventId: 'done', timeBlockEventId: 'block',
+      }));
+      stampLocal('ev1', '2026-01-01T00:00:00.000Z');
+      const peer = {
+        ...(mockRawDb.prepare('SELECT * FROM tasks WHERE id = ?').get('ev1') as Record<string, unknown>),
+        title: 'Pay rent', updated_at: '2030-01-01T00:00:00.000Z',
+        calendar_event_id: null, completion_calendar_event_id: null, time_block_event_id: null,
+      };
+
+      dbApplySyncChanges(payload({ tables: { tasks: [peer] } }));
+
+      expect(ids()).toEqual({
+        title: 'Pay rent', calendar_event_id: 'dl', completion_calendar_event_id: 'done', time_block_event_id: 'block',
+      });
+    });
+  });
+
   it('is idempotent — applying the same payload twice changes nothing', () => {
     // What lets dbSyncChangesSince re-send rows at the cursor freely.
     const p = payload({ tables: { tasks: [peerTaskRow('p1', 'From peer', '2026-01-01T00:00:00.000Z')] } });

@@ -2674,6 +2674,10 @@ export interface Task {
   // Resolve-or-shrug like every other cross-row pointer here — the event
   // gone missing (deleted by hand, or the calendar itself removed) leaves
   // this dangling, and the next reconcile just writes a fresh one.
+  //
+  // **This device's, and it doesn't sync, like the two below** (#2950): an
+  // EventKit id names a record on one phone (`SYNC_DEVICE_LOCAL_COLUMNS` in
+  // db/syncTracking.ts says how each of the three went wrong on the wire).
   calendarEventId: string | null;
 
   // The id of the one-shot event logging this task's completion, or null when
