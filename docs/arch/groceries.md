@@ -95,6 +95,22 @@ weeks later. Seven places remembering a rule is six chances to forget it.
   provisional; it is ordinary now, so the prune offer uses `hasUserFacts` too.
 - **The `in_catalog` column is still in SQLite**, written `1` and never read, the same treatment
   `task_groups.completed_at` gets. Dropping a column isn't this schema's migration style.
+- **A meal coming off the plan offers to take its shopping off the list, and only offers** (#2912,
+  `rowsLeftBehind` in `mealPlanGroceries.ts`, `listRowsLeftBy` in `useMealPlanStore`,
+  `takeOffLists` here). Removing or replacing a meal whose ingredients went on the list used to
+  leave them there with nothing said, and they got bought on Saturday. The meal plan screen now asks
+  after a remove, a replace or a bulk delete, never removes silently: a meal leaving the plan is not
+  evidence about whether the person still wants the tortillas, and the list is theirs. What the app
+  *does* know is narrow, and the offer is held to it. A row qualifies only if its recipe credit
+  (`sourceRecipeId`) is one of the gone meal's recipes, component recipes included, and no uncooked
+  night from today on still plans that recipe; it sits in exactly one trolley, unticked (the credit
+  is the item's, so a row since added to a second list by hand can't say which one the recipe was
+  for); and the recipe still owns its amount (`quantityFromRecipe`, or none), since an amount typed
+  by hand is the person taking the row over. A row two recipes wanted already has no credit
+  (`mergeOnListRecipeNeed`), so a merged quantity is never offered. Taking the rows off parks them
+  like any removal, and `takeOffLists` gives it an undo in the undo bar because the rows leave from a
+  screen that isn't showing them. Unplanning a pick inside the recipe picker doesn't ask: that is a
+  pick being corrected in the sheet it was made in.
 
 ---
 

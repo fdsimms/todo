@@ -119,6 +119,7 @@ import { buildWeekPlanShareText } from '../utils/shareText';
 import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
 import {
   collectPlannedIngredients,
+  describeLeftBehind,
   hasShoppableMeals,
 } from '../utils/mealPlanGroceries';
 import {
@@ -376,6 +377,8 @@ export function MealPlanScreen() {
   const bulkSetCooked = useMealPlanStore(s => s.bulkSetCooked);
   const copyWeek = useMealPlanStore(s => s.copyWeek);
   const copyEntryTo = useMealPlanStore(s => s.copyEntryTo);
+  const listRowsLeftBy = useMealPlanStore(s => s.listRowsLeftBy);
+  const takeOffLists = useGroceryStore(s => s.takeOffLists);
   const findPlannedWeekBefore = useMealPlanStore(s => s.findPlannedWeekBefore);
 
   const recipes = useRecipeStore(useShallow(s => s.recipes));
@@ -1086,6 +1089,45 @@ export function MealPlanScreen() {
     // gets it via FinishLeftoverPrompt without asking twice.
   };
 
+  /**
+   * "Take its ingredients off the list?" after meals are removed or given a
+   * different recipe (#2912). `gone` is the meals as they were before the
+   * change, and this runs after it, so a recipe the change left planned
+   * somewhere still counts as wanted.
+   *
+   * **An offer, never a silent removal.** The rows are the person's list, and
+   * a meal coming off the plan says nothing certain about whether they still
+   * want tortillas; what the app does know is that nothing planned needs them,
+   * which is what the message says. Which rows qualify is narrow on purpose
+   * (see `rowsLeftBehind`), so this stays quiet unless the list really holds
+   * a gone meal's shopping. Taking them off has its own undo, in the undo bar.
+   *
+   * Not raised by the picker's unplan, which is a pick being corrected inside
+   * the sheet it was made in, moments after the list could have heard of it.
+   */
+  const offerListCleanup = (gone: MealPlanEntry[]) => {
+    const rows = listRowsLeftBy(gone);
+    if (rows.length === 0) return;
+    const count = rows.length;
+    const items = count === 1 ? 'item' : 'items';
+    const what = gone.length === 1 ? titleForEntry(gone[0], recipesById) : 'those meals';
+    Alert.alert(
+      `Take ${count} ${items} off the list?`,
+      `${describeLeftBehind(rows)} ${count === 1 ? 'was' : 'were'} added for ${what}, and nothing else on the plan needs ${count === 1 ? 'it' : 'them'}.`,
+      [
+        { text: 'Keep', style: 'cancel' },
+        {
+          text: 'Take off',
+          style: 'destructive',
+          onPress: () => {
+            takeOffLists(rows, `Took ${count} ${items} off the list`);
+            haptics.success();
+          },
+        },
+      ],
+    );
+  };
+
   // ——— Bulk selection actions (#1110) ——————————————————————————————————
 
   const selectedIdList = useMemo(() => Array.from(selectedIds), [selectedIds]);
@@ -1129,10 +1171,12 @@ export function MealPlanScreen() {
   };
 
   const handleBulkReplace = (replacement: MealReplacement) => {
+    const before = entries.filter(e => selectedIds.has(e.id));
     bulkReplaceItem(selectedIdList, replacement);
     setBulkReplaceVisible(false);
     haptics.success();
     exitSelection();
+    offerListCleanup(before);
   };
 
   /**
@@ -1142,8 +1186,10 @@ export function MealPlanScreen() {
    * `replacingId`, which the sheet has cleared by the time it calls back.
    */
   const replaceOne = (id: string, replacement: MealReplacement) => {
+    const before = entries.find(e => e.id === id);
     bulkReplaceItem([id], replacement);
     haptics.success();
+    if (before) offerListCleanup([before]);
   };
   const replacing = replacingId ? entries.find(e => e.id === replacingId) ?? null : null;
 
@@ -1178,9 +1224,11 @@ export function MealPlanScreen() {
       message: `You're about to take ${count} ${plural} off the plan. This can't be undone.`,
       confirmLabel: 'Remove',
       onConfirm: () => {
+        const before = entries.filter(e => selectedIds.has(e.id));
         animateLayout();
         bulkDeleteEntries(selectedIdList);
         exitSelection();
+        offerListCleanup(before);
       },
     });
   };
@@ -2203,6 +2251,7 @@ export function MealPlanScreen() {
           animateLayout();
           removeEntry(selected.id);
           setSelectedId(null);
+          offerListCleanup([selected]);
         }}
         onRename={
           // A meal whose recipe was deleted reads as its typed title and gets

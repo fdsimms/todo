@@ -211,7 +211,7 @@ beforeEach(() => {
   mockRecipeState.recipes = [];
   mockRecipeState.initialized = false;
   (dbGetMealPlanEntriesForRecipe as jest.Mock).mockReturnValue([]);
-  useGroceryStore.setState({ items: [] });
+  useGroceryStore.setState({ items: [], listEntries: [] });
   useMealPlanStore.setState({
     entries: [], rangeStart: null, rangeEnd: null, addedToListAt: {}, initialized: false,
     lastAction: null, undoStack: [], redoStack: [],
@@ -1078,6 +1078,67 @@ describe('setCooked', () => {
     loadWeek([]);
     expect(() => useMealPlanStore.getState().setCooked('gone', true)).not.toThrow();
     expect(dbUpdateMealPlanEntry).not.toHaveBeenCalled();
+  });
+});
+
+describe('listRowsLeftBy', () => {
+  /** An unticked row on the home list, credited to `recipeId` by a recipe add. */
+  function creditedRow(name: string, recipeId: string): GroceryItem {
+    return {
+      id: `g-${name}`, name, nameKey: groceryNameKey(name), onList: true, checked: false,
+      quantity: '1', quantityFromRecipe: true, sourceRecipeId: recipeId, sourceRecipeTitle: 'Tacos',
+      createdAt: localIso('2026-01-01T00:00'),
+    } as unknown as GroceryItem;
+  }
+  function onList(...rows: GroceryItem[]) {
+    useGroceryStore.setState({
+      items: rows,
+      listEntries: rows.map(r => ({
+        itemId: r.id, listId: null, checked: false, sortOrder: 0, choiceGroup: null, addedAt: r.createdAt,
+      })),
+    });
+  }
+
+  it('finds the rows only a removed meal put on the list (#2912)', () => {
+    mockRecipeState.recipes = [recipeWith('Tacos', [])];
+    const tortillas = creditedRow('Tortillas', 'r-Tacos');
+    onList(tortillas, creditedRow('Rice', 'r-Paella'));
+    const tacos = entry('2026-08-05', 'dinner', { recipeId: 'r-Tacos', title: 'Tacos' });
+
+    expect(useMealPlanStore.getState().listRowsLeftBy([tacos]))
+      .toEqual([{ itemId: tortillas.id, listId: null, name: 'Tortillas' }]);
+  });
+
+  it('keeps them while the recipe is still planned on another uncooked night', () => {
+    mockRecipeState.recipes = [recipeWith('Tacos', [])];
+    onList(creditedRow('Tortillas', 'r-Tacos'));
+    const tacos = entry('2026-08-05', 'dinner', { recipeId: 'r-Tacos', title: 'Tacos' });
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([
+      entry('2026-08-08', 'dinner', { recipeId: 'r-Tacos', title: 'Tacos' }),
+    ]);
+
+    expect(useMealPlanStore.getState().listRowsLeftBy([tacos])).toEqual([]);
+  });
+
+  it('counts a night that is already cooked as wanting nothing', () => {
+    mockRecipeState.recipes = [recipeWith('Tacos', [])];
+    const tortillas = creditedRow('Tortillas', 'r-Tacos');
+    onList(tortillas);
+    const cookedTacos = entry('2026-08-05', 'dinner', { recipeId: 'r-Tacos', cookedAt: localIso('2026-08-05T19:00') });
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([
+      entry('2026-08-08', 'dinner', { recipeId: 'r-Tacos', cookedAt: localIso('2026-08-08T19:00') }),
+    ]);
+
+    // The removed meal was cooked, so its shopping is done with.
+    expect(useMealPlanStore.getState().listRowsLeftBy([cookedTacos])).toEqual([]);
+    // A cooked night elsewhere doesn't hold the rows of an uncooked one removed.
+    const tacos = entry('2026-08-06', 'dinner', { recipeId: 'r-Tacos' });
+    expect(useMealPlanStore.getState().listRowsLeftBy([tacos]).map(r => r.name)).toEqual(['Tortillas']);
+  });
+
+  it('offers nothing for a typed meal, which put nothing on the list by recipe', () => {
+    onList(creditedRow('Tortillas', 'r-Tacos'));
+    expect(useMealPlanStore.getState().listRowsLeftBy([entry('2026-08-05', 'dinner', { title: 'Tacos' })])).toEqual([]);
   });
 });
 

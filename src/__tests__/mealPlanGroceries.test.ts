@@ -1,6 +1,6 @@
-import type { GroceryItem, ItemProduct, MealPlanEntry, Recipe, RecipeIngredient } from '../types';
+import type { GroceryItem, GroceryListEntry, ItemProduct, MealPlanEntry, Recipe, RecipeIngredient } from '../types';
 import { groceryNameKey } from '../utils/groceryParse';
-import { choiceGroupKey } from '../utils/recipeComponents';
+import { choiceGroupKey, makeComponent } from '../utils/recipeComponents';
 import {
   collectPlannedIngredients,
   hasShoppableMeals,
@@ -12,6 +12,9 @@ import {
   restockRows,
   consumedRows,
   groupBySourceRecipe,
+  mealCreditIds,
+  rowsLeftBehind,
+  describeLeftBehind,
   type ClassifiedIngredient,
 } from '../utils/mealPlanGroceries';
 
@@ -1339,5 +1342,110 @@ describe('consumedRows', () => {
     expect([...consumed, ...restock].sort()).toEqual(
       classified.filter(r => r.known).map(r => r.nameKey).sort()
     );
+  });
+});
+
+describe('mealCreditIds', () => {
+  it("is the meal's recipe and every recipe inside it (#2912)", () => {
+    const salsa = recipe('Salsa', []);
+    const beans = recipe('Beans', []);
+    const tacos = { ...recipe('Tacos', []), components: [makeComponent(salsa), makeComponent(beans, 'Side')] };
+    const byId = new Map([tacos, salsa, beans].map(r => [r.id, r]));
+
+    expect([...mealCreditIds(tacos.id, byId)].sort()).toEqual([beans.id, salsa.id, tacos.id].sort());
+  });
+
+  it('is just the id for a recipe that has since been deleted', () => {
+    expect([...mealCreditIds('gone', new Map())]).toEqual(['gone']);
+  });
+});
+
+describe('rowsLeftBehind', () => {
+  const home = (i: GroceryItem, checked = false): GroceryListEntry => ({
+    itemId: i.id, listId: null, checked, sortOrder: 0, choiceGroup: null, addedAt: i.createdAt,
+  });
+  const credited = (name: string, recipeId: string, overrides: Partial<GroceryItem> = {}) =>
+    item({ name, sourceRecipeId: recipeId, sourceRecipeTitle: 'Tacos', quantity: '8', quantityFromRecipe: true, ...overrides });
+
+  it('offers the unticked rows only the gone recipe put on the list (#2912)', () => {
+    const tortillas = credited('Tortillas', 'r-tacos');
+    const seasoning = credited('Taco seasoning', 'r-tacos', { quantity: null, quantityFromRecipe: false });
+    const milk = item({ name: 'Milk' });
+    const rows = rowsLeftBehind({
+      goneRecipeIds: new Set(['r-tacos']),
+      neededRecipeIds: new Set(),
+      items: [tortillas, seasoning, milk],
+      listEntries: [home(tortillas), home(seasoning), home(milk)],
+    });
+
+    expect(rows).toEqual([
+      { itemId: tortillas.id, listId: null, name: 'Tortillas' },
+      { itemId: seasoning.id, listId: null, name: 'Taco seasoning' },
+    ]);
+  });
+
+  it('keeps a row a recipe still planned is credited with', () => {
+    // The salsa is a component of both the tacos that went and the nachos
+    // still on Friday.
+    const salsa = credited('Tomatoes', 'r-salsa');
+    expect(rowsLeftBehind({
+      goneRecipeIds: new Set(['r-tacos', 'r-salsa']),
+      neededRecipeIds: new Set(['r-nachos', 'r-salsa']),
+      items: [salsa],
+      listEntries: [home(salsa)],
+    })).toEqual([]);
+  });
+
+  it('keeps a row in the cart, in two trolleys, or with an amount typed by hand', () => {
+    const ticked = credited('Tortillas', 'r-tacos');
+    const twoLists = credited('Cheese', 'r-tacos');
+    const typed = credited('Limes', 'r-tacos', { quantity: '6', quantityFromRecipe: false });
+    const rows = rowsLeftBehind({
+      goneRecipeIds: new Set(['r-tacos']),
+      neededRecipeIds: new Set(),
+      items: [ticked, twoLists, typed],
+      listEntries: [
+        home(ticked, true),
+        home(twoLists), { ...home(twoLists), listId: 'airbnb' },
+        home(typed),
+      ],
+    });
+
+    expect(rows).toEqual([]);
+  });
+
+  it('names the trolley a row is in, so the offer takes it off that one', () => {
+    const tortillas = credited('Tortillas', 'r-tacos');
+    const rows = rowsLeftBehind({
+      goneRecipeIds: new Set(['r-tacos']),
+      neededRecipeIds: new Set(),
+      items: [tortillas],
+      listEntries: [{ ...home(tortillas), listId: 'airbnb' }],
+    });
+
+    expect(rows).toEqual([{ itemId: tortillas.id, listId: 'airbnb', name: 'Tortillas' }]);
+  });
+
+  it('offers nothing off the list, or with no credit to match', () => {
+    const parked = credited('Tortillas', 'r-tacos');
+    const uncredited = item({ name: 'Rice' });
+    expect(rowsLeftBehind({
+      goneRecipeIds: new Set(['r-tacos']),
+      neededRecipeIds: new Set(),
+      items: [parked, uncredited],
+      listEntries: [home(uncredited)],
+    })).toEqual([]);
+  });
+});
+
+describe('describeLeftBehind', () => {
+  const row = (name: string) => ({ itemId: name, listId: null, name });
+
+  it('names up to three, and counts the rest', () => {
+    expect(describeLeftBehind([row('Tortillas')])).toBe('Tortillas');
+    expect(describeLeftBehind([row('Tortillas'), row('Salsa')])).toBe('Tortillas and Salsa');
+    expect(describeLeftBehind([row('Tortillas'), row('Salsa'), row('Limes')])).toBe('Tortillas, Salsa and Limes');
+    expect(describeLeftBehind([row('Tortillas'), row('Salsa'), row('Limes'), row('Cheese')]))
+      .toBe('Tortillas, Salsa and 2 more');
   });
 });

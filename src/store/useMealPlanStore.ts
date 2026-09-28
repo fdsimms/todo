@@ -29,8 +29,11 @@ import { deleteCalendarEvent } from '../utils/calendarSync';
 import {
   classifyPlanned,
   consumedRows,
+  mealCreditIds,
   plannedIngredientsForRecipe,
+  rowsLeftBehind,
   type ClassifiedIngredient,
+  type LeftBehindRow,
 } from '../utils/mealPlanGroceries';
 import { standingSwapMap } from '../utils/standingSwaps';
 import { onHandNameKeys } from '../utils/grocerySuggest';
@@ -645,6 +648,22 @@ interface MealPlanStore extends UndoHistoryActions {
    * "one action, one undo" `copyWeek` keeps.
    */
   copyEntryTo: (id: string, dates: string[]) => number;
+
+  /**
+   * The grocery rows only these meals put on the list, asked once they've
+   * been removed or given a different recipe (#2912), for the screen to offer
+   * to take off. Writes nothing in either store: the offer is the screen's,
+   * and taking the rows off is the grocery store's `takeOffLists`.
+   *
+   * `gone` is the meals as they were before the change. One that was already
+   * cooked is past its shopping and adds nothing. **A recipe still planned on
+   * an uncooked night from today on keeps its rows**, the component recipes of
+   * one included (`mealCreditIds`): that is read from SQLite rather than
+   * `entries`, since the other nights wanting the same salsa are rarely all in
+   * the week on screen. The rest of the rule, which rows are only the meal's
+   * shopping, is `rowsLeftBehind`'s.
+   */
+  listRowsLeftBy: (gone: readonly MealPlanEntry[]) => LeftBehindRow[];
 
   /**
    * The start of the most recent week at or before `beforeStartKey` that has
@@ -1398,6 +1417,25 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     return created.length;
   },
 
+  listRowsLeftBy(gone) {
+    const recipesById = recipeIndex(useRecipeStore.getState().recipes);
+    const goneRecipeIds = new Set<string>();
+    for (const e of gone) {
+      if (e.cookedAt || !e.recipeId) continue;
+      for (const id of mealCreditIds(e.recipeId, recipesById)) goneRecipeIds.add(id);
+    }
+    if (goneRecipeIds.size === 0) return [];
+
+    const todayKey = dayKeyOf(getLogicalToday());
+    const neededRecipeIds = new Set<string>();
+    for (const e of dbGetMealPlanEntries(todayKey, shiftDayKey(todayKey, STILL_PLANNED_HORIZON_DAYS))) {
+      if (e.cookedAt || !e.recipeId) continue;
+      for (const id of mealCreditIds(e.recipeId, recipesById)) neededRecipeIds.add(id);
+    }
+    const { items, listEntries } = useGroceryStore.getState();
+    return rowsLeftBehind({ goneRecipeIds, neededRecipeIds, items, listEntries });
+  },
+
   findPlannedWeekBefore(beforeStartKey, maxWeeksBack) {
     for (let back = 1; back <= maxWeeksBack; back += 1) {
       const start = shiftDayKey(beforeStartKey, -7 * back);
@@ -1429,6 +1467,13 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     return removed;
   },
 }));
+
+/**
+ * How far ahead a planned night still counts as wanting its recipe's shopping,
+ * for `listRowsLeftBy`. A year: far enough that no real plan reaches past it,
+ * and a bound rather than an open end because the query takes one.
+ */
+const STILL_PLANNED_HORIZON_DAYS = 366;
 
 type SetState = (fn: (s: { entries: MealPlanEntry[] }) => { entries: MealPlanEntry[] }) => void;
 

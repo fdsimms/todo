@@ -1,12 +1,17 @@
 import { format } from 'date-fns/format';
-import type { GroceryItem, ItemProduct, ItemSubLink, MealPlanEntry, Recipe } from '../types';
+import type { GroceryItem, GroceryListEntry, ItemProduct, ItemSubLink, MealPlanEntry, Recipe } from '../types';
 import { isKeyInRange } from './mealPlan';
 import { dayKeyToDate } from './dateUtils';
 import { probablyHaveReason } from './grocerySuggest';
 import { resolvePluralKey } from './groceryPlural';
 import { describeSubstitutesOnHand, substitutesOnHand } from './itemSubs';
 import { coveringVariety, describeFamilyOnHand, familyOnHand, varietyIndex } from './itemVarieties';
-import { choiceGroupKey, flattenRecipeIngredients, type ChoiceResolution } from './recipeComponents';
+import {
+  choiceGroupKey,
+  flattenRecipeIngredients,
+  reachableRecipeIds,
+  type ChoiceResolution,
+} from './recipeComponents';
 import { NO_STANDING_SWAPS, type StandingSwapMap } from './standingSwaps';
 import {
   formatQuantityAmount,
@@ -754,6 +759,94 @@ export function restockRows(classified: readonly ClassifiedIngredient[]): Classi
  */
 export function consumedRows(classified: readonly ClassifiedIngredient[]): ClassifiedIngredient[] {
   return classified.filter(r => r.category === 'probablyHave');
+}
+
+// ─── What a removed meal left on the list (#2912) ──────────────────────────
+
+/**
+ * Every recipe a meal's shopping can be credited to: the meal's own recipe and
+ * every recipe inside it. A composed recipe's rows are credited to the
+ * component a line is written on (see RecipeToListSheet's `sourceRecipeId`),
+ * so the salsa bought for Tuesday's tacos carries the salsa's id, not the
+ * tacos'. Every alternative is walked, since which side got shopped for isn't
+ * recorded on the row.
+ */
+export function mealCreditIds(
+  recipeId: string,
+  recipesById: ReadonlyMap<string, Recipe>
+): Set<string> {
+  const ids = reachableRecipeIds(recipesById, recipeId);
+  ids.add(recipeId);
+  return ids;
+}
+
+/** One list row a removed or replaced meal left behind: an item, in one trolley. */
+export interface LeftBehindRow {
+  itemId: string;
+  listId: string | null;
+  name: string;
+}
+
+/**
+ * The rows on the grocery list that only a meal no longer planned put there,
+ * and so the ones worth offering to take off when it goes (#2912).
+ *
+ * A row qualifies only when every one of these says the meal's shopping is
+ * still all it is, because the offer is a delete-shaped action on a list the
+ * person may have been working on for days:
+ *
+ * - **It is credited to one of the gone meal's recipes** (`sourceRecipeId`, in
+ *   `goneRecipeIds`), and to none still `neededRecipeIds`. The credit is only
+ *   ever one recipe: a row two recipes wanted was set to null by
+ *   `mergeOnListRecipeNeed`, and a row that was on the list before the recipe
+ *   add keeps whatever it had. Either way it isn't offered, and both are right:
+ *   something else wants it.
+ * - **It is in exactly one trolley, unticked.** The credit is the item's, not
+ *   the entry's, so a row since put on a second list by hand can't say which
+ *   of the two the recipe was for; and a ticked row is already in the cart.
+ * - **The recipe still owns its amount** (`quantityFromRecipe`, or no amount
+ *   at all). An amount typed by hand is the person taking the row over, the
+ *   same ownership rule `addFromPlan` keeps for writing one.
+ *
+ * Pure over the three inputs; which recipes are gone and which are still
+ * needed is the meal plan store's to work out (`listRowsLeftBy`).
+ */
+export function rowsLeftBehind(opts: {
+  goneRecipeIds: ReadonlySet<string>;
+  neededRecipeIds: ReadonlySet<string>;
+  items: readonly GroceryItem[];
+  listEntries: readonly GroceryListEntry[];
+}): LeftBehindRow[] {
+  const { goneRecipeIds, neededRecipeIds, items, listEntries } = opts;
+  if (goneRecipeIds.size === 0) return [];
+  const entriesByItem = new Map<string, GroceryListEntry[]>();
+  for (const entry of listEntries) {
+    const list = entriesByItem.get(entry.itemId);
+    if (list) list.push(entry);
+    else entriesByItem.set(entry.itemId, [entry]);
+  }
+  const rows: LeftBehindRow[] = [];
+  for (const item of items) {
+    const credit = item.sourceRecipeId;
+    if (!credit || !goneRecipeIds.has(credit) || neededRecipeIds.has(credit)) continue;
+    if (item.quantity && !item.quantityFromRecipe) continue;
+    const entries = entriesByItem.get(item.id) ?? [];
+    if (entries.length !== 1 || entries[0]!.checked) continue;
+    rows.push({ itemId: item.id, listId: entries[0]!.listId, name: item.name });
+  }
+  return rows;
+}
+
+/**
+ * "Tortillas, salsa and 3 more", for the offer's message. Names the first two
+ * rather than all of them, since the offer is one sentence and a week's
+ * shopping for one dish can be a dozen lines.
+ */
+export function describeLeftBehind(rows: readonly LeftBehindRow[]): string {
+  const names = rows.map(r => r.name);
+  if (names.length <= 2) return names.join(' and ');
+  if (names.length === 3) return `${names[0]}, ${names[1]} and ${names[2]}`;
+  return `${names[0]}, ${names[1]} and ${names.length - 2} more`;
 }
 
 function shortestName(names: readonly string[]): string {

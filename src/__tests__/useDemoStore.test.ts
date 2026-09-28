@@ -3450,6 +3450,28 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     useMealPlanStore.getState().removeEntry(planned.id);
   });
 
+  describe('taking a removed meal\'s shopping off the list', () => {
+    afterEach(freshDemo);
+
+    it('offers the stir-fry rows once tonight\'s stir-fry comes off the plan (#2912)', () => {
+      // The seed shops the stir-fry through addFromPlan, so its rows carry the
+      // recipe's credit, and tonight is the one night still wanting them.
+      const store = useMealPlanStore.getState();
+      const todayKey = dayKeyOf(getLogicalToday());
+      const tonight = store.entries.find(e =>
+        e.date === todayKey && e.slot === 'dinner' && e.recipeId && !e.cookedAt
+        && useGroceryStore.getState().items.some(i => i.sourceRecipeId === e.recipeId))!;
+      expect(tonight).toBeDefined();
+      // Still planned, so nothing is offered.
+      expect(store.listRowsLeftBy([tonight])).toEqual([]);
+
+      store.removeEntry(tonight.id);
+      const rows = useMealPlanStore.getState().listRowsLeftBy([tonight]);
+
+      expect(rows.map(r => r.name)).toEqual(expect.arrayContaining(['Chicken breast', 'Soy sauce']));
+    });
+  });
+
   // And again: marking tonight cooked is a real write, and the rest of the
   // block reads the meal plan.
   describe('the recap tonight\'s dinner raises when it is cooked', () => {
