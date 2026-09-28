@@ -81,6 +81,15 @@ import { projectReviewLinkUrl } from './projectReviewTasks';
  *    the user's, and the stale pass clears it on its own terms. And like that
  *    pair, the passes are ordered so the suppression lands in the same sweep
  *    rather than one behind it: `checkMoodTasks` runs first at both call sites.
+ * 7. **A recurring task never counts against bareness, however many of them
+ *    there are.** This used to go the other way — a standing Saturday chore
+ *    counted as a "plan" the same as anything else — on the reasoning that a
+ *    Saturday carrying six of them isn't bare either. In practice that made
+ *    the offer silent for anyone whose weekend carries even one routine
+ *    errand, which is most people: a weekly grocery run shouldn't derail a
+ *    feature about whether there's a *plan*. `weekendPlanCount` is where this
+ *    lives; a one-off task or a real calendar event still counts, since
+ *    either one is a choice made about this particular Saturday.
  */
 
 /** The row's title. Never varies. */
@@ -208,15 +217,19 @@ export function isWeekendEvening(task: Pick<Task, 'timeSegments'>): boolean {
  * point: "what lands on this day" has one answer in this app, projected
  * recurrences and all of `canProject`'s refusals included, and a second walk
  * here would be a third copy of it to keep in step (`snoozeEngine` has the
- * other). What this adds on top is the two narrowings the buckets cannot
- * express — Friday's evening rule, and the fact that a deadline is a day to hit
- * rather than a plan for the evening.
+ * other). What this adds on top is the three narrowings the buckets cannot
+ * express — Friday's evening rule, the fact that a deadline is a day to hit
+ * rather than a plan for the evening, and recurrence.
  *
- * A projected occurrence counts. A recurring Saturday chore is not a weekend
- * plan by any generous reading, but a Saturday carrying six of them is not a
- * bare Saturday either, and the cost of the two mistakes is not the same: a
- * missed nudge is silence, and a nudge onto a full day is the app being wrong
- * about the one thing it claimed to know.
+ * A recurring task never counts, chore or not. This used to go the other way
+ * (a projected occurrence counted on the reasoning that a Saturday carrying
+ * six chores isn't bare either), but that made the offer silent for anyone
+ * whose weekend carries even one standing errand — a weekly grocery run is
+ * exactly the kind of thing that shouldn't derail a feature about whether
+ * there's a *plan*. Recurrence is what tells the two apart: it repeats
+ * whether or not anything else is happening, so its presence says nothing
+ * about the weekend being free. A one-off task or a real calendar event is
+ * a choice made about this particular Saturday, and still counts.
  */
 export function weekendPlanCount(
   window: WeekendWindow,
@@ -237,13 +250,19 @@ export function weekendPlanCount(
       if (mark.completed) continue;
       if (counted.has(mark.taskId)) continue;
 
+      // A projected mark's taskId resolves to the row the rule lives on. No
+      // row found means nothing to read either way, so it's read as a one-off
+      // rather than silently dropped.
+      const task = taskById.get(mark.taskId);
+
       if (key === window.fridayKey) {
         // A projected Friday occurrence resolves to the row the rule lives on,
         // which is where the segments are. No row means nothing to read, and an
         // unreadable placement is not evidence of an evening plan.
-        const task = taskById.get(mark.taskId);
         if (!task || !isWeekendEvening(task)) continue;
       }
+
+      if (task?.recurrenceType && task.recurrenceType !== 'none') continue;
 
       counted.add(mark.taskId);
       count += 1;

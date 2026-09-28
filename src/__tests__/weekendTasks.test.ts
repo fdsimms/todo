@@ -189,9 +189,16 @@ describe('counting what is already on the weekend', () => {
     expect(weekendPlanCount(WINDOW, buckets, byId)).toBe(1);
   });
 
-  it('counts a projected occurrence, which is why a chore-filled Saturday is not bare', () => {
+  it('does not count a recurring occurrence, so a chore-filled Saturday is still bare', () => {
     const buckets = bucketsOf({ [SATURDAY]: [mark('r', { projected: true })] });
-    expect(weekendPlanCount(WINDOW, buckets, new Map([['r', task('r')]]))).toBe(1);
+    const recurring = { ...task('r'), recurrenceType: 'daily' } as Task;
+    expect(weekendPlanCount(WINDOW, buckets, new Map([['r', recurring]]))).toBe(0);
+  });
+
+  it('still counts a one-off task placed on the weekend', () => {
+    const buckets = bucketsOf({ [SATURDAY]: [mark('a')] });
+    const oneOff = { ...task('a'), recurrenceType: 'none' } as Task;
+    expect(weekendPlanCount(WINDOW, buckets, new Map([['a', oneOff]]))).toBe(1);
   });
 
   it('does not count a Friday occurrence whose row it cannot read', () => {
