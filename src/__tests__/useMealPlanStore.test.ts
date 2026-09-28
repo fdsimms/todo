@@ -78,7 +78,9 @@ const mockCreateAllDayEvent = jest.fn().mockResolvedValue('evt-new');
 // Hands back the id it was given, which is what EventKit reports for an event
 // rewritten in place (and moved, #2949, when the calendar changed).
 const mockMoveAllDayEvent = jest.fn((id: string) => Promise.resolve(id));
+let mockCalendarPermission = 'granted';
 jest.mock('../utils/calendarSync', () => ({
+  getCalendarPermission: () => Promise.resolve(mockCalendarPermission),
   deleteCalendarEvent: (...args: unknown[]) => mockDeleteCalendarEvent(...args),
   createAllDayEvent: (...args: unknown[]) => mockCreateAllDayEvent(...args),
   moveAllDayEvent: (...args: unknown[]) => mockMoveAllDayEvent(...(args as [string])),
@@ -211,6 +213,7 @@ beforeEach(() => {
   mockMealCookTasks = true;
   mockHouseholdServings = 0;
   mockMealCalendarId = null;
+  mockCalendarPermission = 'granted';
   mockMealPlanNudgeSlots = ['breakfast', 'lunch', 'dinner'];
   mockCreateAllDayEvent.mockResolvedValue('evt-new');
   mockMoveAllDayEvent.mockImplementation((id: string) => Promise.resolve(id));
@@ -2856,15 +2859,35 @@ describe('calendar events (#1494)', () => {
       expect(getEntries()[0].calendarEventId).toBeNull();
     });
 
-    it('deletes the event of a meal another device removed', () => {
+    it('deletes the event of a meal another device removed', async () => {
       mockMealCalendarId = 'cal-1';
       loadWeek();
 
       useMealPlanStore.getState().reconcileSyncedEvents(synced({
         removedMealEvents: [{ eventId: 'evt-9', date: dayKeyOf(new Date()) }],
       }));
+      await settle();
 
       expect(mockDeleteCalendarEvent).toHaveBeenCalledWith('evt-9');
+    });
+
+    // Without access the move fails, the fallback creates nothing, and the
+    // null it returns would have been written over the link.
+    it('touches nothing without calendar access, so no link is lost', async () => {
+      mockCalendarPermission = 'denied';
+      mockMealCalendarId = 'cal-1';
+      loadWeek([entry('2026-08-07', 'dinner', { id: 'm-a', title: 'Ragu', calendarEventId: 'evt-1' })]);
+
+      useMealPlanStore.getState().reconcileSyncedEvents(synced({
+        mealEntryIds: ['m-a'],
+        removedMealEvents: [{ eventId: 'evt-9', date: dayKeyOf(new Date()) }],
+      }));
+      await settle();
+
+      expect(mockMoveAllDayEvent).not.toHaveBeenCalled();
+      expect(mockDeleteCalendarEvent).not.toHaveBeenCalled();
+      expect(dbUpdateMealPlanEntry).not.toHaveBeenCalled();
+      expect(getEntries()[0].calendarEventId).toBe('evt-1');
     });
   });
 });

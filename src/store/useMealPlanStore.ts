@@ -26,7 +26,7 @@ import { ensureGeneratedTaskCategory } from './useCategoryStore';
 import { deleteGeneratedTaskQuietly, dropGeneratedTask } from './generatedTaskSync';
 import { mealEventsAfterSync, syncMealEvent } from '../utils/mealCalendarSync';
 import type { ApplyReport } from '../utils/syncMerge';
-import { deleteCalendarEvent } from '../utils/calendarSync';
+import { deleteCalendarEvent, getCalendarPermission } from '../utils/calendarSync';
 import {
   classifyPlanned,
   consumedRows,
@@ -1529,8 +1529,25 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
 
   reconcileSyncedEvents(applied) {
     const plan = mealEventsAfterSync(applied, id => resolveEntry(get, id));
-    plan.reconcile.forEach(reconcileMealEvent);
-    for (const eventId of plan.remove) void deleteCalendarEvent(eventId);
+    if (plan.reconcile.length === 0 && plan.remove.length === 0) return;
+    // Only with calendar access. Without it (revoked, or EventKit out of
+    // reach) `syncMealEvent`'s fallback deletes nothing, creates nothing and
+    // returns null, and that null written over the link orphans an event this
+    // device can no longer name. A local edit has the same exposure, but this
+    // runs unasked, in the background, over every meal another device touched.
+    // Skipped, the links stay as they are, and the meal's next reconcile once
+    // access is back puts its event right.
+    void getCalendarPermission()
+      .then(permission => {
+        if (permission !== 'granted') return;
+        // Re-read after the await: the row may have moved on, or gone.
+        for (const entry of plan.reconcile) {
+          const current = resolveEntry(get, entry.id);
+          if (current) reconcileMealEvent(current);
+        }
+        for (const eventId of plan.remove) void deleteCalendarEvent(eventId);
+      })
+      .catch(() => {});
   },
 }));
 
