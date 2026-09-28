@@ -148,8 +148,9 @@ function recipeDropLabel(intent: FabDropIntent | null): string | null {
 
 // The add button, naming what a release right now would do — mirrors
 // AddProjectFabWithDropLabel (ProjectsScreen.tsx). Always a FabMenu: with no
-// Anthropic key the import options drop out of `addMenuItems` below, leaving
-// "New recipe" alone, and FabMenu performs a lone item on the tap rather than
+// Anthropic key the paste and photo imports drop out of `addMenuItems` below
+// (and with Recipe import off, the link one too, leaving "New recipe" alone),
+// and FabMenu performs a lone item on the tap rather than
 // accordioning out to offer it — so there's no separate plain-Fab variant to
 // keep matching this one's bottom/drag/dragHint/accessibilityLabel by hand.
 function AddRecipeFabMenuWithDropLabel({
@@ -182,9 +183,16 @@ export function RecipesScreen() {
   // below has to stand down while the shelf itself is being dragged, or the
   // drag never starts at all.
   const [upNextDragging, setUpNextDragging] = useState(false);
-  const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
   const recipeImportEnabled = useSettingsStore(s => s.aiFeatureConfig.recipeExtraction.enabled);
   const canImport = useAiRoute('recipeExtraction') !== 'unavailable';
+  // No key, with Recipe import left on (recipe extraction has no on-device
+  // engine, so that is the only way its route is unavailable while the switch
+  // is on). A link still imports then: a page publishing schema.org/Recipe is
+  // read from its own data with no model (recipePageOffline.ts). Paste and
+  // photo have no such floor and stay behind the key. Recipe import's switch
+  // still governs it, since that is the user asking for no recipe import at
+  // all, and it is also the switch the page fetch answers to.
+  const keylessLinkImport = !canImport && recipeImportEnabled;
   const canInvent = useAiRoute('mealIdeas') !== 'unavailable';
   const recipeSort = useSettingsStore(s => s.recipeSortOption);
   const setRecipeSort = useSettingsStore(s => s.setRecipeSortOption);
@@ -290,10 +298,12 @@ export function RecipesScreen() {
         { key: 'link', label: 'From a link', icon: 'link-outline' },
         { key: 'import', label: 'From a photo', icon: 'camera-outline' },
       );
+    } else if (keylessLinkImport) {
+      list.push({ key: 'link', label: 'From a link', icon: 'link-outline' });
     }
     list.push({ key: 'name', label: 'New recipe', icon: 'add-circle-outline' });
     return list;
-  }, [canInvent, canImport]);
+  }, [canInvent, canImport, keylessLinkImport]);
 
   const handleAddMenuSelect = useCallback((key: string) => {
     // All three import items open the one sheet, on their own tab — see
@@ -325,11 +335,6 @@ export function RecipesScreen() {
   const handleDismissShared = useCallback(() => {
     if (sharedUrl) dismissSharedLink(sharedUrl);
   }, [sharedUrl, dismissSharedLink]);
-
-  // The no-key banner's one action: the Settings row the key goes in.
-  const handleAddKey = useCallback(() => {
-    navigation.navigate('SettingsGroup', { groupId: 'privacyAi', entryId: 'apiKey' });
-  }, [navigation]);
 
   // Drop the queued page once a recipe has actually been made from it. Keyed on
   // the source url the sheet reports rather than on whatever it opened with:
@@ -815,23 +820,19 @@ export function RecipesScreen() {
           onClear={handleClearTrip}
         />
       )}
-      {/* Gated on Recipe import's route for the same reason the add button's
-          import menu is: without it there is no import to offer, and Import
-          would open a sheet that can only end at "No API key" or "turned off
-          in Settings". With no key (and the feature left on) it stays, as the
-          variant that says a key is what's missing and opens that row: the
-          share extension already told the user to open the app to import,
-          and a banner that simply wasn't there left the page queued with no
-          sign of it. Turned off with a key, it goes, since the user asked for
-          no recipe import. The queue is persisted either way, so a page
-          shared before a key is added turns up importable once there is one. */}
-      {!selectionMode && !!sharedUrl && (canImport || (!anthropicApiKey && recipeImportEnabled)) && (
+      {/* Gated the way the add button's link import is: with a key, or
+          without one while Recipe import is left on, since a page publishing
+          schema.org/Recipe imports with no key (the sheet reads it keyless,
+          and says a key is needed only for a page that doesn't). Turned off,
+          it goes, since the user asked for no recipe import. The queue is
+          persisted either way, so a page shared while it's off turns up
+          importable once it's back on. */}
+      {!selectionMode && !!sharedUrl && (canImport || keylessLinkImport) && (
         <SharedLinkBanner
           url={sharedUrl}
           remaining={sharedUrls.length - 1}
           onImport={handleImportShared}
           onDismiss={handleDismissShared}
-          onAddKey={canImport ? undefined : handleAddKey}
         />
       )}
 
@@ -1075,6 +1076,7 @@ export function RecipesScreen() {
         initialUrl={importUrl}
         onClose={() => setImportVisible(false)}
         onCreated={handleCreated}
+        keyless={!canImport}
       />
 
       <InventRecipeSheet

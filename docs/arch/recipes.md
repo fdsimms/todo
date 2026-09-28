@@ -28,8 +28,8 @@ opens the ordinary `RecipeCreateSheet` on its link tab with the address already 
   keychain, so fetching, extracting and writing a recipe row are all things only the app can
   do. It also can't open the app: `NSExtensionContext.open(_:)` isn't available to this
   extension point, which is why the hand-off is a queue rather than a launch.
-- **A shared page waits for a tap; it does not import itself.** The import is a page fetch plus
-  an Anthropic call billed to the user's own key, and spending that unasked — for something
+- **A shared page waits for a tap; it does not import itself.** The import is a page fetch plus,
+  with a key, an Anthropic call billed to it, and spending that unasked — for something
   shared in a supermarket aisle three days ago, possibly several at once — is a decision nobody
   made. It also means a failure is reported in the sheet that caused it rather than after the
   fact.
@@ -46,20 +46,34 @@ opens the ordinary `RecipeCreateSheet` on its link tab with the address already 
 - **One banner at a time, oldest first.** Addresses are canonicalised through
   `normalizeRecipeUrl` on the way in, so the queue holds exactly what the import would accept
   and a re-share collapses onto the entry already there rather than jumping the line.
-- **The banner follows `useAiRoute('recipeExtraction')`, the same as the add button's import
-  menu**, so it offers Import only when an import can actually run. That is the key *and*
-  Recipe import's own switch in Settings: gated on the bare key, a key holder who had turned
-  the feature off was offered a sheet that could only say so.
-- **Without a key it says so rather than disappearing.** The extension confirms every share with
-  "Open dundundun to import the recipe", because it's a separate process and can't read the
-  keychain to know better. A banner that simply wasn't there then left the page queued with
-  nothing on screen to say it was waiting or what would import it. So with no key (and Recipe
-  import still switched on) the banner stays, says a key is what's missing, and its button opens
-  the API key row in Settings; Discard works as usual. With a key and the feature switched off
-  it goes, since that user asked for no recipe import. The queue persists either way, so a page
-  shared before a key is added turns up importable once there is one. The key lives in the
-  keychain rather than the `settings` table, so this reads the same inside demo mode as outside
-  it.
+- **The banner follows the add button's link import**, so it offers Import only when an import
+  can actually run: with a key through `useAiRoute('recipeExtraction')`, and without one while
+  Recipe import's own switch is on. Gated on the bare key, a key holder who had turned the feature
+  off was offered a sheet that could only say so, and switched off it still goes, since that user
+  asked for no recipe import. The queue persists either way, so a page shared while it's off
+  turns up importable once it's back on.
+- **Without a key it offers Import all the same** (#2930). It used to swap Import for "Add API
+  key", back when every link import needed the model. A page publishing `schema.org/Recipe` now
+  imports with no key at all (`recipePageOffline.ts`, below), which is most recipe sites and so
+  most shares; one that doesn't is refused in the sheet with a message naming the key, which is a
+  better place to learn it than a banner guessing before the page has been fetched. The
+  extension still confirms every share with "Open dundundun to import the recipe", because it's a
+  separate process and can't read the keychain to know better.
+- **A link imports without a key; a paste and a photo don't** (`recipePageOffline.ts`). Most of a
+  recipe page never needed the model: a page that publishes `schema.org/Recipe` states its title,
+  method, yield, time and attribution as data, and its ingredient lines are exactly what the
+  keyless parser behind "paste ingredients into a recipe" reads (`ingredientsFromText`). So with no
+  key (and Recipe import on) the add menu offers "From a link" alone and `RecipeCreateSheet` opens
+  on the link field only (`keyless`, `RecipeSourcePicker`'s `linkOnly`), building the same
+  `ExtractedRecipe` the model would have returned so the review list is one sheet either way. It
+  is honestly worse on the ingredients (no shop-label naming, no sections, no optional or water
+  flags) and every row is reviewed before anything is written. It **refuses rather than guesses**:
+  a page with no structured recipe, or one listing no ingredients, is refused with a message
+  naming the key, because reading a recipe out of stripped page text is the model's job and a
+  guess at it here is how a sidebar ends up in the ingredient list (the same reason
+  `parseRecipePage` never takes a method from page text). Paste and photo have no such floor and
+  stay behind the key. The fetch answers to Recipe import's switch, which is the "its own switch"
+  CLAUDE.md asks of a keyless network reach, and `fetchRecipePage` already refuses in demo mode.
 - **A link already in the recipe box is recognised before anything is fetched.** `sourceUrl` is
   `normalizeRecipeUrl` of the address, a pure function of what was typed, so `recipeImportedFrom`
   (`recipeUrl.ts`) can answer from the address alone. `RecipeCreateSheet` asks it before the

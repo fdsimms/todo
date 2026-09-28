@@ -670,10 +670,13 @@ piece of user data lives in a local SQLite file on device. Three things reach th
 not equivalent: `src/services/aiSuggestions.ts` posts task titles/notes straight to `api.anthropic.com`
 using a user-supplied API key, and every feature it powers is inert until the user pastes one into
 Settings; `src/services/recipePage.ts` fetches a recipe page the user pasted a link to;
-`src/services/productLookup.ts` asks up to three product databases what a scanned barcode is. **That third one is the
-only one that needs no key**, so "no key, no traffic" stopped being the whole privacy answer when it
+`src/services/productLookup.ts` asks up to three product databases what a scanned barcode is. **That third one
+needs no key**, so "no key, no traffic" stopped being the whole privacy answer when it
 shipped — it carries its own switch (`productLookupEnabled`) instead. Anything else added on those terms
-needs one too.
+needs one too. The recipe page fetch joined it (#2930): a link from a site publishing `schema.org/Recipe`
+now imports with no key (`src/utils/recipePageOffline.ts`), and the switch it answers to is Recipe
+import's own (`aiFeatureConfig.recipeExtraction.enabled`), since turning that off is asking for no recipe
+import at all. It is still only ever a page the user pasted or shared, fetched on their tap.
 
 A fourth thing runs a model and reaches nothing: `src/services/onDeviceModel.ts` puts a prompt
 through Apple's on-device `SystemLanguageModel` (iOS 26+), in-process, with no key and no
