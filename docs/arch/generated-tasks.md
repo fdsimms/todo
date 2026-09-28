@@ -135,6 +135,23 @@ one. Those three rules and the reasoning behind them are in
   event, so a completed cook task means the night happened and a second one would be an invention.
   A grocery item and a leftover are rows that come round again — reading the wide set there would
   mean a staple got exactly one use-up task, ever.
+- **The use-up cap is filled by one sweep over both kinds, soonest use-by day first** (#2924).
+  `useUpTaskCap` is shared by `groceryUseUp` and `leftoverUseUp`, and `reconcileGeneratedTask`
+  declines a new one when it is full without suppressing the source, on the understanding that a
+  later reconcile will find room. For a leftover that was the foreground sweep; a grocery item had
+  none, since every grocery reconcile runs off an edit to that one row, so the fourth perishable
+  under a cap of three never got its task after the first three were done. The catch-up pass and
+  the Today foreground now run `useGroceryStore.reconcileAllUseUpTasks`, which walks
+  `useUpSweepOrder` (`src/utils/useUpSweep.ts`): every live leftover and every grocery item that
+  wants a task, in one queue by date, which is also what makes the setting's "closest date first"
+  hold across the two kinds. Two refusals keep it from being noisier than the per-row path. It still
+  never evicts, so a task already showing keeps its slot. And it skips an item whose task for its
+  *current* use-by day was already completed or archived (the task's `deadline` is that day), because
+  only a live task blocks a new one on an edit and a sweep that ran on every foreground with that
+  rule would hand a ticked-off "Use up spinach" straight back. `initTasks` still runs the
+  leftover-only sweep it always has: it runs before settings load, so a grocery half there would be
+  judged against the defaults, and the catch-up pass that follows it runs the merged sweep against
+  the real ones.
 - **The per-source opt-out stays on the source row** (`MealPlanEntry.cookTask`,
   `GroceryItem.useUpTask`, `Leftover.useUpTask`), written by `deleteTask` and `bulkDeleteTasks` and
   dispatched in one `writeGeneratedOptOut` switch — both take a `skipGeneratedOptOut` option for the

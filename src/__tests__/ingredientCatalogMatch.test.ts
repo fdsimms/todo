@@ -79,6 +79,14 @@ describe('matchIngredientToCatalog', () => {
     expect(match.suggestedName).toBeNull();
   });
 
+  it('links a generic spelled the other way from the declaration (#2941)', () => {
+    const items = [makeItem({ name: 'White onions', varietyOfKey: 'onions' })];
+    const match = matchIngredientToCatalog('onion', items, NOW);
+    expect(match.kind).toBe('linked');
+    expect(match.reason).toBe('variety');
+    expect(match.item?.name).toBe('White onions');
+  });
+
   it('refuses the ranked tier when two candidates score identically', () => {
     // Both score matchWeight 2 against "onion" with equal familiarity, so the
     // sort falls through to name length and the alphabet — no basis for a

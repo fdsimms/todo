@@ -211,6 +211,11 @@ interface LeftoverStore extends UndoHistoryActions {
    * tasks have loaded) and again on app foreground, since `needsAttention` is
    * a function of the wall clock: a leftover can age from "fresh" into "soon"
    * purely by time passing, with no leftover mutation to trigger a reconcile.
+   *
+   * The launch-time call in `initTasks` is this one. The catch-up and
+   * foreground sweeps go through `useGroceryStore.reconcileAllUseUpTasks`
+   * instead, which visits these same leftovers interleaved with the grocery
+   * items by use-by day, so the shared cap goes to the soonest of both (#2924).
    */
   reconcileAllLeftoverTasks: () => void;
 
@@ -218,8 +223,9 @@ interface LeftoverStore extends UndoHistoryActions {
    * One live leftover's use-up task, brought into line. For the meal plan
    * (#2932): planning a leftover into a meal whose task already says to eat
    * it stands the use-up task down, and clearing or moving that meal brings it
-   * back, with no leftover mutation to trigger either. A finished or unknown
-   * id is a no-op.
+   * back, with no leftover mutation to trigger either. Also the step
+   * `useGroceryStore.reconcileAllUseUpTasks` takes for each leftover in its
+   * merged queue (#2924). A finished or unknown id is a no-op.
    */
   reconcileLeftoverUseUpTask: (id: string) => void;
 

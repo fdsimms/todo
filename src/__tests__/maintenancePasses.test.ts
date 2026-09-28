@@ -54,7 +54,7 @@ describe('the three maintenance groups', () => {
       'check birthday gift tasks',
       'check reach-out tasks',
       'check waiting follow-up tasks',
-      'reconcile leftover use-up tasks',
+      'reconcile use-up tasks',
       'check scheduled templates',
       'dismiss expired completion timers',
       'sweep task penalties',

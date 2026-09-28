@@ -1446,7 +1446,12 @@ nothing to backfill.
   `swappedFrom`, since this is the same thing spelled the other way rather than a swap —
   `recipeReadiness` counts it as covered, `recipeCost` prices it, `useUpRecipes` offers the recipe
   for the dying row, and the import review's own link icon (`ExtractedIngredientRow`) reports what
-  the store will actually do on save. Plural tolerance in
+  the store will actually do on save. A standing swap agrees too (#2940): `standingSwapMap` indexes
+  each rule under its row's plural variants as well as its own key, so "1 egg" shops flax eggs
+  when "2 eggs" does. It has to happen there rather than after `classifyPlanned`'s re-file, because
+  the swap is resolved first, in `flattenRecipeIngredients`; and it claims a variant only where
+  `resolvePluralKey` would resolve it to that row, so a catalog holding both "Egg" and "Eggs"
+  keeps the rule on Eggs alone. Plural tolerance in
   `matchWeight` is untouched and still does its own job: that one is autocomplete, where a wrong
   guess costs a keystroke.
 
@@ -1480,6 +1485,17 @@ read side.
   family: on the list, then staple, then the pantry guess). A declared variety nobody has
   changes nothing, and the ask stays an honest needToBuy under the generic name, which is also
   the right thing to put in the trolley.
+- **A declared generic answers either spelling** (#2941). `varietyIndex` files each declaration
+  under its other spelling as well, so "White onions counts as onions" covers a line saying "1
+  onion", which matters because the Variety of field can only suggest the item's own trailing
+  words and a plural-named item could otherwise only ever declare a plural generic. It is the
+  plural rule above, applied to keys that may have no row: two spellings pair only when each is
+  the other's *only* plural among the keys in play (every row and every declared generic), never
+  when both are rows the user kept apart, and when both are declared the family is the union.
+  Doing it in the index rather than at each reader is what keeps `classifyPlanned`,
+  `matchIngredientToCatalog` and `catalogCoverage` from disagreeing about it. `familyOnHand`
+  finds the parent row spelled the other way too, and `varietyOfferFor` accepts a catalog name
+  ending in the line's other spelling ("onion" turning up White onions).
 - **Single hop, never a chain.** Readers ask "which items declare themselves varieties of this
   key" and stop, so a mis-filed pointer can't loop and "vegetable" can't transitively claim
   every onion. A chain just means the middle name answers for the outer one and nothing else.
@@ -1534,8 +1550,10 @@ read side.
   (suggestions are the item's own trailing words plus generics already in use —
   `genericNameSuggestions`). Same discipline as substitutes, and a declaration is a user fact
   (`hasUserFacts`), so it protects its row from the clearList sweep.
-- **Standing swaps stay exact-key.** A swap is a rewrite mandate; firing a generic's mandate on
-  a line that named a specific variety would override a specificity the user wrote down.
+- **Standing swaps stay exact-key across varieties.** A swap is a rewrite mandate; firing a
+  generic's mandate on a line that named a specific variety would override a specificity the user
+  wrote down. Spelling is not specificity, so the singular or plural of the rule's own row does
+  reach it (see "Singular and plural are one row" above).
 
 ## Deciding at the shelf — an ingredient choice that survives onto the list
 
