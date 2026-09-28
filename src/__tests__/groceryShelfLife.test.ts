@@ -192,6 +192,16 @@ describe('the open shelf life', () => {
     expect(openShelfLifeDaysFor('cream cheese')).toBe(14);
   });
 
+  // The fridge-door sauces and cans: opened, they were read as "opened Sep 27"
+  // with no countdown at all, which is the jar this table exists to catch.
+  it('knows the opened sauces and cans that go off in the fridge door', () => {
+    expect(openShelfLifeDaysFor('Pesto')).toBe(5);
+    expect(openShelfLifeDaysFor('Pasta sauce')).toBe(5);
+    expect(openShelfLifeDaysFor('Marinara')).toBe(5);
+    expect(openShelfLifeDaysFor('Tomato paste')).toBe(7);
+    expect(openShelfLifeDaysFor('Coconut milk')).toBe(4);
+  });
+
   // Opening a bag of spinach doesn't restart anything, so the table is silent
   // about produce, meat and bakery on purpose.
   it('says nothing about a name opening tells you nothing about', () => {

@@ -345,10 +345,13 @@ export function normalizeStep(raw: unknown): RecipeStep | null {
   // same round-trip reason: a step nobody has kept a note on serializes exactly
   // as it did before the field existed.
   const note = typeof r.note === 'string' ? r.note.trim().slice(0, RECIPE_STEP_NOTE_MAX_LENGTH) : '';
+  // Same treatment, same reason — see RecipeStep.section.
+  const section = typeof r.section === 'string' ? r.section.trim().slice(0, RECIPE_SECTION_MAX_LENGTH) : '';
   return {
     id: typeof r.id === 'string' && r.id ? r.id : generateId(),
     text,
     ...(timerSeconds === null ? {} : { timerSeconds }),
+    ...(section ? { section } : {}),
     ...(note ? { note } : {}),
   };
 }

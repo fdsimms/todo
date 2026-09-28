@@ -1280,6 +1280,32 @@ export function metricAverage(
   return values.length > 0 ? mean(values) : null;
 }
 
+/**
+ * A nutrient's average a day, for the Mood screen's EATING card, or null.
+ *
+ * **Stats' rule rather than the pairing rule.** The food axis keeps today,
+ * because pairing a half-eaten day against its mood is fine once it has reached
+ * two meals (see `foodDayInputs`). An *average* is the case `nutritionStats.ts`
+ * refuses today for: a partial day drags every average down, so on somebody's
+ * first afternoon of logging this read "900 calories a day" off breakfast and
+ * lunch. So today is dropped here, as it is on Stats.
+ *
+ * **And nothing below `MIN_PAIRED_DAYS` days**, the same floor every read on
+ * this screen answers to. A figure off two or three days is a figure about those
+ * days, and beside the insights it would read as one about the person.
+ */
+export function finishedDaysAverage(
+  days: readonly MoodDay[],
+  metric: NutrientKey,
+  todayKey: string,
+): number | null {
+  const values = days
+    .filter(d => d.dayKey < todayKey)
+    .map(d => axisValue(d, metric))
+    .filter((v): v is number => v !== null);
+  return values.length >= MIN_PAIRED_DAYS ? mean(values) : null;
+}
+
 export interface TimeOfDayMood {
   segment: TimeOfDay;
   entryCount: number;

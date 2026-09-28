@@ -1,0 +1,4 @@
+{
+  "message": "Meal tasks from a day that has passed are now removed if you never started them, instead of staying overdue on Today. Turning off a meal or pantry task setting, or Groceries & meals, now also removes its tasks that no longer apply.",
+  "date": "2026-09-27"
+}

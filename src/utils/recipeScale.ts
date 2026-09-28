@@ -194,15 +194,15 @@ export function scaleQuantity(quantity: string, factor: number): ScaledQuantity 
 // ---------------------------------------------------------------------------
 
 /**
- * The factors the pickers offer. Halves and small whole multiples, which is
- * what a cook actually reaches for — and deliberately not derived from a
+ * The factors the pickers offer. Quarters, halves and small whole multiples,
+ * which is what a cook actually reaches for — and deliberately not derived from a
  * target servings count, because `Recipe.servings` is nullable and plenty of
  * recipes never had one, so a "cook for 6" stepper would be unavailable
  * exactly where a factor still makes perfect sense. Scaled servings are shown
  * *alongside* the factor when the recipe happens to know them (see
  * scaleServings).
  */
-export const RECIPE_SCALE_FACTORS = [0.5, 1, 1.5, 2, 3] as const;
+export const RECIPE_SCALE_FACTORS = [0.25, 0.5, 1, 1.5, 2, 3] as const;
 
 /** True for the do-nothing factor, including the `null`/legacy absence of one. */
 export function isUnscaled(factor: number | null | undefined): boolean {
@@ -279,6 +279,36 @@ export function factorForServings(target: number, baseServings: number): number 
  */
 export function targetServingsFor(baseServings: number, factor: number): number {
   return scaleServings(baseServings, null, factor).servings ?? Math.max(1, Math.round(baseServings));
+}
+
+/**
+ * The factor that keeps a planned meal feeding the same number of people when
+ * a different recipe takes its place — what `bulkReplaceItem` stores.
+ *
+ * A factor means different servings for different recipes: 2× a pasta that
+ * serves 2 is four servings, and carried over unchanged onto a soup that serves
+ * 4 it was eight. So the head count the old recipe implied is what survives the
+ * swap, converted back through the new recipe's own count (and rounded to whole
+ * people on the way, exactly as the servings stepper does).
+ *
+ * The factor is kept as it was whenever there is no head count to carry:
+ * - **Either recipe states no servings.** Nothing to convert through, and a
+ *   guess is the thing `recipeScale` never makes.
+ * - **The meal was never scaled.** As-written is "make the recipe", not a
+ *   number of people — a plan is allowed not to have answered how much
+ *   (see `planMeal`) — so converting it would invent a head count from the
+ *   old recipe's yield and quietly halve or double the new one.
+ */
+export function rescaleForRecipe(
+  factor: number | null | undefined,
+  fromServings: number | null | undefined,
+  toServings: number | null | undefined,
+): number {
+  const scale = normalizeScale(factor);
+  if (isUnscaled(scale)) return scale;
+  if (fromServings == null || !(fromServings > 0)) return scale;
+  if (toServings == null || !(toServings > 0)) return scale;
+  return factorForServings(targetServingsFor(fromServings, scale), toServings);
 }
 
 /**

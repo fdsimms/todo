@@ -57,7 +57,7 @@ Read-only except those marked **Write**, which need `MCP_WRITE_TOKEN`.
 | `search_tasks` | The app's own fuzzy ranking over titles, notes and project names. |
 | `get_task` | One task, with its subtasks, chain steps, project, and why it is not on Today. |
 | `list_projects` | Active projects and how far through each one is, counting a recurring member once rather than once per completion. |
-| `list_grocery_items` | The grocery list, or the whole catalog with `onListOnly: false`. |
+| `list_grocery_items` | The home grocery list, or the whole catalog with `onListOnly: false`. A separate list (a trip's, say) is not included. |
 | `list_food_log` | Logged food over a day range, with summed nutrients. |
 | `list_mood_logs` | Mood check-ins: rating, symptoms, context tags, notes. |
 | `list_medication_logs` | Doses recorded, scheduled and as-needed. |
@@ -66,9 +66,9 @@ Read-only except those marked **Write**, which need `MCP_WRITE_TOKEN`.
 | `create_task` | **Write.** Adds one task, with the app's own defaults and title rules applied. |
 | `complete_task` | **Write.** Ticks one off, spawning whatever that spawns: the next occurrence, the next chain step, the next set of a dated series. |
 | `defer_task` | **Write.** Moves a task to a date, or clears its date. |
-| `add_grocery_item` | **Write.** Puts something on the list, re-using the shelf item the user already has where there is one. |
-| `check_off_grocery_item` | **Write.** Ticks something off in the trolley, or un-ticks it. |
-| `remove_from_grocery_list` | **Write.** Takes something off the list. Does not delete it. |
+| `add_grocery_item` | **Write.** Puts something on the home list, re-using the shelf item the user already has where there is one. |
+| `check_off_grocery_item` | **Write.** Checks something off on the home list, or un-checks it. |
+| `remove_from_grocery_list` | **Write.** Takes something off the home list. Does not delete it. |
 
 `complete_task` refuses two things rather than doing them quietly, and both are
 deliberate. A task that **cannot** be completed says so: a negative habit has no

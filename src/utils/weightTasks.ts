@@ -111,6 +111,42 @@ export function wantsWeighIn(points: readonly WeightPoint[]): boolean {
   return weightReadings([...points]).length === 0;
 }
 
+/** Whole calendar days from one day key to another, negative when `to` is earlier. */
+function dayKeyGap(from: string, to: string): number {
+  // Date.UTC over the key's own parts rather than local midnights, so a DST
+  // change between the two can't make a day 23 or 25 hours long.
+  const utc = (key: string) => {
+    const [y, m, d] = key.split('-').map(Number);
+    return Date.UTC(y, m - 1, d);
+  };
+  return Math.round((utc(to) - utc(from)) / 86_400_000);
+}
+
+/**
+ * Whether a deleted request still holds, so the pass should not ask today.
+ *
+ * Deleting "Record your weight" used to mean nothing past the day it was
+ * deleted on: the next morning the window still had no reading in it, so the
+ * request came straight back, and a person asked every seven days was asked
+ * every day from the first ask onward. A decline now holds for the window the
+ * person chose (`everyDays`) from the day they declined, which is the same
+ * length of silence a recorded weight would have bought. A request the pass
+ * clears because its day has gone is not a decline and stamps nothing.
+ *
+ * A stamp dated after today (the clock moved back) holds, but not for longer
+ * than the window either way, so a wrong clock can't silence this for good.
+ */
+export function weighInDeclineHolds(
+  declinedDayKey: string | null,
+  todayKey: string,
+  everyDays: number
+): boolean {
+  if (!declinedDayKey) return false;
+  const days = clampWeighInEveryDays(everyDays);
+  const gap = dayKeyGap(declinedDayKey, todayKey);
+  return gap < days && gap > -days;
+}
+
 /**
  * The row's notes: why it is on the list.
  *

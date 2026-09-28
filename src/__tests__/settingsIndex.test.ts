@@ -303,6 +303,16 @@ describe('settings index', () => {
       expect(on.find(e => e.id === 'simpleMode')).toBeDefined();
     });
 
+    // Searching a food by name survives simplified mode, and a failed search's
+    // "Open Settings" lands on the key row. Hidden, it landed on nothing.
+    it('keeps the food search switch and key, and drops only the scanner\'s rows', () => {
+      const on = visibleSettingsEntries('ios', true, true).map(e => e.id);
+      expect(on).toContain('productLookupEnabled');
+      expect(on).toContain('fdcApiKey');
+      expect(on).not.toContain('goUpcApiKey');
+      expect(on).not.toContain('clearGtinLookups');
+    });
+
     it('composes with the kitchen gate rather than overriding it', () => {
       const both = visibleSettingsEntries('ios', false, true);
       expect(both.some(e => e.kitchen)).toBe(false);

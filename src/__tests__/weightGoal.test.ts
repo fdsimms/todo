@@ -16,6 +16,7 @@ import {
   type WeightGoal,
 } from '@/utils/weightGoal';
 import type { BodyProfile } from '@/utils/energyBudget';
+import { dayKeyToDate } from '@/utils/dateUtils';
 import type { WeightPoint } from '@/utils/weightLog';
 
 const completeProfile: BodyProfile = {
@@ -211,8 +212,8 @@ describe('weightSinceGoalStart', () => {
     { dayKey: '2026-09-08', kilograms: 78.4 },
   ];
 
-  it('takes the last reading on or after the start day', () => {
-    expect(weightSinceGoalStart(losingGoal(), points)).toBe(78.4);
+  it('takes the last reading on or after the start day, with its day', () => {
+    expect(weightSinceGoalStart(losingGoal(), points)).toEqual({ kilograms: 78.4, dayKey: '2026-09-08' });
   });
 
   it('ignores readings from before the goal existed', () => {
@@ -220,7 +221,24 @@ describe('weightSinceGoalStart', () => {
   });
 
   it('counts a reading on the start day itself', () => {
-    expect(weightSinceGoalStart(losingGoal({ startDayKey: '2026-08-31' }), points.slice(0, 2))).toBe(83);
+    expect(weightSinceGoalStart(losingGoal({ startDayKey: '2026-08-31' }), points.slice(0, 2)))
+      .toEqual({ kilograms: 83, dayKey: '2026-08-31' });
+  });
+
+  it('lets an old reading be measured against the pace on its own day', () => {
+    // On pace three weeks in (78.5 on Sep 22 for a goal set Sep 1 at half a
+    // kilo a week), then nothing for three weeks. Measured at its own day it
+    // is on pace and the forecast counts from that day; measured against
+    // today it read 1.5 kg behind for a weight that was exactly on plan.
+    const reading = weightSinceGoalStart(losingGoal(), [
+      { dayKey: '2026-09-22', kilograms: 78.5 },
+      { dayKey: '2026-10-01', kilograms: null },
+    ])!;
+    expect(reading.dayKey).toBe('2026-09-22');
+    const pace = goalPace(losingGoal(), reading.kilograms, dayKeyToDate(reading.dayKey))!;
+    expect(pace.daysElapsed).toBe(21);
+    expect(pace.aheadKg).toBeCloseTo(0);
+    expect(goalPace(losingGoal(), reading.kilograms, new Date(2026, 9, 13))!.aheadKg).toBeCloseTo(-1.5);
   });
 });
 

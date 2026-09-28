@@ -80,6 +80,7 @@ import { allRecipeTags, filterRecipesByTags, formatTagList, recipeTagCounts } fr
 import { tagColor } from '../utils/tagColor';
 import { groceryNameKey } from '../utils/groceryParse';
 import { useFilterField } from '../hooks/useFilterField';
+import { useAiRoute } from '../hooks/useOnDeviceAi';
 
 /**
  * The recipe box.
@@ -182,6 +183,9 @@ export function RecipesScreen() {
   // drag never starts at all.
   const [upNextDragging, setUpNextDragging] = useState(false);
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
+  const recipeImportEnabled = useSettingsStore(s => s.aiFeatureConfig.recipeExtraction.enabled);
+  const canImport = useAiRoute('recipeExtraction') !== 'unavailable';
+  const canInvent = useAiRoute('mealIdeas') !== 'unavailable';
   const recipeSort = useSettingsStore(s => s.recipeSortOption);
   const setRecipeSort = useSettingsStore(s => s.setRecipeSortOption);
   const recipeLovedOnly = useSettingsStore(s => s.recipeLovedOnly);
@@ -272,15 +276,24 @@ export function RecipesScreen() {
   // plain-Fab variant this used to need removable. Invent sits furthest from
   // the thumb: unlike the three imports it has nothing to read from, so it's
   // the one most likely to need a moment's thought before tapping.
-  const addMenuItems = useMemo<FabMenuItem[]>(() => (anthropicApiKey ? [
-    { key: 'invent', label: 'Invent a recipe', icon: 'sparkles-outline' },
-    { key: 'paste', label: 'Paste text', icon: 'clipboard-outline' },
-    { key: 'link', label: 'From a link', icon: 'link-outline' },
-    { key: 'import', label: 'From a photo', icon: 'camera-outline' },
-    { key: 'name', label: 'New recipe', icon: 'add-circle-outline' },
-  ] : [
-    { key: 'name', label: 'New recipe', icon: 'add-circle-outline' },
-  ]), [anthropicApiKey]);
+  //
+  // Each half follows its own feature's route rather than the bare key:
+  // Invent is Meal ideas and the imports are Recipe import, and a key holder
+  // who turned either off in Settings loses those items rather than being
+  // offered a sheet that can only say the feature is off.
+  const addMenuItems = useMemo<FabMenuItem[]>(() => {
+    const list: FabMenuItem[] = [];
+    if (canInvent) list.push({ key: 'invent', label: 'Invent a recipe', icon: 'sparkles-outline' });
+    if (canImport) {
+      list.push(
+        { key: 'paste', label: 'Paste text', icon: 'clipboard-outline' },
+        { key: 'link', label: 'From a link', icon: 'link-outline' },
+        { key: 'import', label: 'From a photo', icon: 'camera-outline' },
+      );
+    }
+    list.push({ key: 'name', label: 'New recipe', icon: 'add-circle-outline' });
+    return list;
+  }, [canInvent, canImport]);
 
   const handleAddMenuSelect = useCallback((key: string) => {
     // All three import items open the one sheet, on their own tab — see
@@ -313,6 +326,11 @@ export function RecipesScreen() {
     if (sharedUrl) dismissSharedLink(sharedUrl);
   }, [sharedUrl, dismissSharedLink]);
 
+  // The no-key banner's one action: the Settings row the key goes in.
+  const handleAddKey = useCallback(() => {
+    navigation.navigate('SettingsGroup', { groupId: 'privacyAi', entryId: 'apiKey' });
+  }, [navigation]);
+
   // Drop the queued page once a recipe has actually been made from it. Keyed on
   // the source url the sheet reports rather than on whatever it opened with:
   // the tabs are still live, so someone who opened the banner and then pasted a
@@ -338,7 +356,11 @@ export function RecipesScreen() {
   );
   const tagFiltering = activeTags.length > 0;
   const filtering = tagFiltering || recipeLovedOnly;
-  const activeFilterCount = (recipeSort !== 'default' ? 1 : 0) + (recipeLovedOnly ? 1 : 0);
+  // Every narrowing the list is under, tags included: those are set from the
+  // Tags button under the search field rather than from the sheet this badge
+  // opens, but a badge that ignored them read as "nothing filtered" over a
+  // list that was.
+  const activeFilterCount = (recipeSort !== 'default' ? 1 : 0) + (recipeLovedOnly ? 1 : 0) + activeTags.length;
 
   const visible = useMemo(() => {
     // Filter, then rank — the same order GroceryCatalogSheet's store filter uses.
@@ -793,17 +815,23 @@ export function RecipesScreen() {
           onClear={handleClearTrip}
         />
       )}
-      {/* Gated on the key for the same reason the add button's import menu is,
-          below: without one there is no import to offer, and this banner would
-          otherwise be the only route into a sheet that can only end at "No API
-          key". The queue is persisted, so a page shared before a key is added
-          isn't lost — it turns up once there's something to import it with. */}
-      {!selectionMode && !!anthropicApiKey && !!sharedUrl && (
+      {/* Gated on Recipe import's route for the same reason the add button's
+          import menu is: without it there is no import to offer, and Import
+          would open a sheet that can only end at "No API key" or "turned off
+          in Settings". With no key (and the feature left on) it stays, as the
+          variant that says a key is what's missing and opens that row: the
+          share extension already told the user to open the app to import,
+          and a banner that simply wasn't there left the page queued with no
+          sign of it. Turned off with a key, it goes, since the user asked for
+          no recipe import. The queue is persisted either way, so a page
+          shared before a key is added turns up importable once there is one. */}
+      {!selectionMode && !!sharedUrl && (canImport || (!anthropicApiKey && recipeImportEnabled)) && (
         <SharedLinkBanner
           url={sharedUrl}
           remaining={sharedUrls.length - 1}
           onImport={handleImportShared}
           onDismiss={handleDismissShared}
+          onAddKey={canImport ? undefined : handleAddKey}
         />
       )}
 
@@ -860,7 +888,7 @@ export function RecipesScreen() {
               >
                 <Ionicons name="funnel-outline" size={13} color={colors.text} />
                 <Text style={styles.filterButtonText}>
-                  {filtering ? `Tags (${activeTags.length})` : 'Tags'}
+                  {tagFiltering ? `Tags (${activeTags.length})` : 'Tags'}
                 </Text>
                 <Ionicons name="chevron-down" size={12} color={colors.textTertiary} />
               </TouchableOpacity>

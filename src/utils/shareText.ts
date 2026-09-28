@@ -173,14 +173,41 @@ export function buildIngredientsText(
  * (list order, so it reads like the actual list rather than a re-sort this
  * function would have to justify).
  *
+ * Each line carries what the row itself shows a shopper, because the person
+ * reading it is standing at the shelf without the app:
+ * - the amount in the caller's `unitSystem`, as `GroceryRow` renders it, so
+ *   "500 g" on a US-units screen goes out as the "≈1.1 lbs" that was on it;
+ * - the preferred product (`productCaptions`, keyed by item id and worded by
+ *   `describeProduct`, the row's own caption) after a colon: "cheddar:
+ *   Tillamook sharp", the one caption that decides which box leaves the shelf;
+ * - the item's note in parentheses: "milk (the green top one)".
+ *
+ * `listName` titles the text when the list isn't the home one (a week away
+ * has its own list, and "Grocery list" over the cabin's shop is the wrong
+ * list to someone who has both); omitted, it's the home list's plain title.
+ *
  * Empty string for nothing to share, so a caller can gate the share action
  * on it directly rather than sending a bare "Grocery list" header.
  */
-export function buildGroceryListShareText(items: readonly GroceryItem[]): string {
+export function buildGroceryListShareText(
+  items: readonly GroceryItem[],
+  options: {
+    unitSystem?: UnitSystem;
+    productCaptions?: ReadonlyMap<string, string>;
+    listName?: string | null;
+  } = {},
+): string {
   const onList = items.filter(i => i.onList && !i.checked);
   if (onList.length === 0) return '';
-  const lines = groceryShareLines(onList).map(line => `- ${line}`);
-  return ['Grocery list', ...lines].join('\n');
+  const unitSystem = options.unitSystem ?? 'asWritten';
+  const describe = (item: GroceryItem) => {
+    const quantity = convertQuantity(item.quantity ?? '', unitSystem).text;
+    const product = options.productCaptions?.get(item.id);
+    const note = item.note?.trim();
+    return `${quantity ? `${quantity} ` : ''}${item.name}${product ? `: ${product}` : ''}${note ? ` (${note})` : ''}`;
+  };
+  const lines = groceryShareLines(onList, describe).map(line => `- ${line}`);
+  return [options.listName?.trim() || 'Grocery list', ...lines].join('\n');
 }
 
 function groceryItemText(item: GroceryItem): string {
@@ -193,7 +220,10 @@ function groceryItemText(item: GroceryItem): string {
  * The list screen stitches a group into one card with an "or pears" caption;
  * sent as two ordinary lines, the person reading it buys both.
  */
-function groceryShareLines(items: readonly GroceryItem[]): string[] {
+function groceryShareLines(
+  items: readonly GroceryItem[],
+  text: (item: GroceryItem) => string,
+): string[] {
   const groups = new Map<string, GroceryItem[]>();
   for (const item of items) {
     if (!item.choiceGroup) continue;
@@ -205,10 +235,10 @@ function groceryShareLines(items: readonly GroceryItem[]): string[] {
   const emitted = new Set<string>();
   for (const item of items) {
     const group = item.choiceGroup;
-    if (!group) { lines.push(groceryItemText(item)); continue; }
+    if (!group) { lines.push(text(item)); continue; }
     if (emitted.has(group)) continue;
     emitted.add(group);
-    lines.push((groups.get(group) ?? [item]).map(groceryItemText).join(' or '));
+    lines.push((groups.get(group) ?? [item]).map(text).join(' or '));
   }
   return lines;
 }
@@ -217,7 +247,10 @@ function groceryShareLines(items: readonly GroceryItem[]): string[] {
  * The same rows `buildGroceryListShareText` sends, as the plain lines another
  * shopping app's paste box wants: no "Grocery list" title, no `- ` bullets,
  * one item per line. Same reasoning as `buildIngredientsText` — a title line
- * and a bullet each become part of an item on the other side.
+ * and a bullet each become part of an item on the other side. That's also
+ * why the share's product, note and converted amount stay out: "cheddar:
+ * Tillamook sharp (the orange one)" or "≈1.1 lbs" pasted into another app is
+ * one item with a strange name, so each line is the stored amount and name.
  *
  * Empty string for nothing to copy, same gating convention as the rest.
  */
@@ -233,6 +266,12 @@ export function buildGroceryListText(items: readonly GroceryItem[]): string {
  * planned slot, days with nothing planned omitted rather than padded out
  * with blanks.
  *
+ * The heading says "This week's meals" only when the caller says the week is
+ * this one (`thisWeek`); any other week is named by its dates, "Meals for
+ * Oct 5 – 11", since the plan pages forward and back and "this week" over
+ * next week's dinners tells the reader the wrong week. Left out, it's the
+ * dates, which are never wrong.
+ *
  * Empty string for a week with nothing planned at all, same gating
  * convention as `buildGroceryListShareText`.
  */
@@ -240,8 +279,10 @@ export function buildWeekPlanShareText(
   days: readonly Date[],
   entries: readonly MealPlanEntry[],
   recipesById: ReadonlyMap<string, Recipe>,
+  options: { thisWeek?: boolean } = {},
 ): string {
-  const lines = [`This week's meals (${describeWeekRange(days)})`];
+  const range = describeWeekRange(days);
+  const lines = [options.thisWeek ? `This week's meals (${range})` : `Meals for ${range}`];
   for (const day of days) {
     const dayEntries = entriesForDay(entries, dayKeyOf(day));
     if (dayEntries.length === 0) continue;

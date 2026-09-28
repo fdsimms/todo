@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { MealPlanEntry, MealSlot, Task } from '../types';
 import {
   dbGetMealPlanEntries,
+  dbGetMealPlanEntriesForRecipe,
   dbGetMealPlanEntry,
   dbInsertMealPlanEntry,
   dbUpdateMealPlanEntry,
@@ -34,7 +35,7 @@ import {
 import { standingSwapMap } from '../utils/standingSwaps';
 import { onHandNameKeys } from '../utils/grocerySuggest';
 import { generateId } from '../utils/id';
-import { normalizeScale } from '../utils/recipeScale';
+import { normalizeScale, rescaleForRecipe } from '../utils/recipeScale';
 import { mealCookCounts, type CookingWindow, type MealCookCounts } from '../utils/cookingStats';
 import { totalMinutes } from '../utils/recipeUtils';
 import {
@@ -46,6 +47,7 @@ import {
   mealPlanPurgeCutoffKey,
   nextSortOrder,
   recipeIndex,
+  recipeIsGone,
   resolveBulkMoveTargets,
   shiftDayKey,
   sortMealEntries,
@@ -53,7 +55,7 @@ import {
   weekCopyDrafts,
 } from '../utils/mealPlan';
 import { countPlannedSlots } from '../utils/mealPlanNudge';
-import { mealSlotDrift, mealSlotSourceId, mealSlotTaskDraft } from '../utils/mealSlotTasks';
+import { mealSlotDrift, mealSlotSourceId, mealSlotTaskDraft, slotEntryForTask } from '../utils/mealSlotTasks';
 import { dayKeyOf, dayKeyToDate, getLogicalToday } from '../utils/dateUtils';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { setHours } from 'date-fns/setHours';
@@ -331,6 +333,12 @@ interface MealPlanStore extends UndoHistoryActions {
    * rule as planMeal) and is a no-op on a recipe-backed entry — that title
    * comes from the recipe, and renaming it here would just be overwritten the
    * next time titleForEntry resolves the recipe again.
+   *
+   * **An entry whose recipe was deleted renames like free text**, since that's
+   * how it reads everywhere (titleForEntry falls back to `title`). The rename
+   * clears the dead `recipeId` with its `recipeChoices` and `recipeScale`: the
+   * meal is something else now, and leaving the pointer would have a recipe
+   * restored by sync rename it straight back.
    */
   renameEntry: (id: string, title: string) => void;
 
@@ -518,10 +526,15 @@ interface MealPlanStore extends UndoHistoryActions {
    * keeps). `cookedAt` is left untouched: relabelling what a past night was
    * doesn't un-cook it.
    *
-   * `recipeScale` is left untouched too, which is the deliberate asymmetry with
+   * `recipeScale` survives too, which is the deliberate asymmetry with
    * `recipeChoices`: a choice group belongs to the recipe that defined it and
    * can't survive a swap, but "I'm feeding eight on Sunday" is a fact about the
-   * night and stays true whichever dish lands on it.
+   * night and stays true whichever dish lands on it. **What survives is the
+   * servings, not the multiplier** (`rescaleForRecipe`): the same factor means
+   * a different amount of food for a different recipe, so 2× a pasta that
+   * serves 2 becomes 1× a soup that serves 4 rather than eight servings of it.
+   * Where either recipe states no servings, or the meal was never scaled, there
+   * is no head count to carry and the factor is kept as it was.
    */
   bulkReplaceItem: (ids: string[], replacement: { recipeId: string | null; title: string }) => void;
 
@@ -537,6 +550,33 @@ interface MealPlanStore extends UndoHistoryActions {
    * appears in this app.
    */
   bulkSetCooked: (ids: string[], cooked: boolean) => void;
+
+  /**
+   * The tail of `useRecipeStore.renameRecipe`: rewrites the captured `title` of
+   * every entry planned from this recipe, and with it the two replicas built
+   * off that title, the slot's task on Today ("Make X") and the shared calendar
+   * event ("Dinner: X").
+   *
+   * The plan never needed this, since titleForEntry reads the recipe's live
+   * name, which is how it went unnoticed: the calendar, the task and a copied
+   * week all read `title`, and kept the old name for good. Every date is
+   * rewritten, cooked nights included, because the plan row of a past night
+   * already shows the new name; it's the dish that was renamed, not what was
+   * eaten. Registers no undo, like the rename it finishes.
+   */
+  retitleRecipeEntries: (recipeId: string, name: string) => void;
+
+  /**
+   * The tail of `useRecipeStore.deleteRecipe`/`bulkDeleteRecipes`: brings the
+   * Today task of every meal planned from these recipes back in line.
+   *
+   * The entries keep pointing at the deleted recipe on purpose (see
+   * MealPlanEntry.recipeId), and their slot tasks now read that as a typed meal
+   * (slotEntryForTask), but a task only changes when something reconciles it,
+   * and nothing about the plan changed. Without this, Thursday's row kept
+   * saying "Make Chili" and linking to a recipe that was gone.
+   */
+  reconcileRecipeSlots: (recipeIds: readonly string[]) => void;
 
   /**
    * When "Add week to list" was last used for a given week, keyed by the
@@ -851,11 +891,21 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     const entry = get().entries.find(e => e.id === id);
     // A backed entry's title says what it's backed by — a recipe's live name, or
     // the leftover-and-its-age captured at plan time — so neither is
-    // independently editable here. Free text is the only thing this renames.
-    if (!entry || entry.recipeId || entry.leftoverId) return;
+    // independently editable here. Free text is the only thing this renames,
+    // and a meal whose recipe was deleted is free text in all but the pointer.
+    if (!entry || entry.leftoverId) return;
+    const dangling = recipeIsGone(entry, useRecipeStore.getState());
+    if (entry.recipeId && !dangling) return;
     const cleaned = cleanMealTitle(title);
     if (!cleaned || cleaned === entry.title) return;
-    const renamed: MealPlanEntry = { ...entry, title: cleaned };
+    // Renaming it says it's a different meal now, so the dead pointer goes and
+    // takes the two facts about cooking that recipe with it: its choice picks,
+    // and a scale nothing could change any more (Scale is only offered for a
+    // recipe that resolves), which would otherwise sit on "Tacos" as "2×" for
+    // good. A recipe that came back by sync afterwards isn't this meal.
+    const renamed: MealPlanEntry = dangling
+      ? { ...entry, title: cleaned, recipeId: null, recipeChoices: [], recipeScale: 1 }
+      : { ...entry, title: cleaned };
     dbUpdateMealPlanEntry(renamed);
     set(s => ({ entries: s.entries.map(e => e.id === id ? renamed : e) }));
     reconcileMealSlot(get, renamed);
@@ -1098,12 +1148,19 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     const toUpdate = get().entries.filter(e => idSet.has(e.id));
     if (toUpdate.length === 0) return;
 
+    const recipesById = recipeIndex(useRecipeStore.getState().recipes);
+    const toServings = replacement.recipeId ? recipesById.get(replacement.recipeId)?.servings : null;
     const updated = toUpdate.map((e): MealPlanEntry => ({
       ...e,
       recipeId: replacement.recipeId,
       title,
       recipeChoices: [],
       leftoverId: null,
+      // Same recipe, same factor: converting through its own servings would
+      // only round a 1.5× of 3 to a different number.
+      recipeScale: e.recipeId && e.recipeId !== replacement.recipeId
+        ? rescaleForRecipe(e.recipeScale, recipesById.get(e.recipeId)?.servings, toServings)
+        : e.recipeScale,
     }));
     updated.forEach(dbUpdateMealPlanEntry);
     const byId = new Map(updated.map(e => [e.id, e]));
@@ -1111,7 +1168,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     // Retitles the cook tasks, and can create or remove them outright: swapping
     // a free-text night for a recipe is exactly the change that makes a meal
     // qualify. `cookTask` is deliberately kept by the replace (see the note on
-    // recipeScale surviving a swap for the same reason), so an explicit
+    // the servings surviving a swap for the same reason), so an explicit
     // per-meal answer isn't quietly undone by changing what's cooked.
     updated.forEach(e => reconcileMealSlot(get, e));
     updated.forEach(reconcileMealEvent);
@@ -1126,6 +1183,30 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
         toUpdate.forEach(reconcileMealEvent);
       },
     });
+  },
+
+  retitleRecipeEntries(recipeId, name) {
+    const title = cleanMealTitle(name);
+    if (!title) return;
+    // A leftover carrying a recipe id would be a row that somehow holds both
+    // backings (see MealPlanEntry.leftoverId); its title is the container's,
+    // captured with its age, and isn't the recipe's to rewrite.
+    const stale = dbGetMealPlanEntriesForRecipe(recipeId).filter(e => !e.leftoverId && e.title !== title);
+    if (stale.length === 0) return;
+    const retitled = stale.map((e): MealPlanEntry => ({ ...e, title }));
+    retitled.forEach(e => dbUpdateMealPlanEntry(e));
+    const byId = new Map(retitled.map(e => [e.id, e]));
+    set(s => ({ entries: s.entries.map(e => byId.get(e.id) ?? e) }));
+    retitled.forEach(e => reconcileMealSlot(get, e));
+    retitled.forEach(reconcileMealEvent);
+  },
+
+  reconcileRecipeSlots(recipeIds) {
+    for (const recipeId of new Set(recipeIds)) {
+      // reconcileMealSlot returns straight away for a slot with no live task,
+      // which is every past night, so reaching the whole history costs little.
+      dbGetMealPlanEntriesForRecipe(recipeId).forEach(e => reconcileMealSlot(get, e));
+    }
   },
 
   bulkSetCooked(ids, cooked) {
@@ -1460,11 +1541,12 @@ function createMealSlotTask(get: () => MealPlanStore, entry: MealPlanEntry): voi
   const { tasks, addTask } = useTaskStore.getState();
   if (hasAnyGeneratedTask(tasks, 'mealSlot', sourceId)) return;
   ensureGeneratedTaskCategory('mealSlot');
+  const planned = slotEntryForTask(entry, useRecipeStore.getState());
   addTask(
     // Re-read after ensureGeneratedTaskCategory, which may have just filled it.
     mealSlotTaskDraft(
-      entry.date, entry.slot, entry, useSettingsStore.getState().mealCookTaskCategory, recipeMinutesFor(entry.recipeId),
-      useSettingsStore.getState().mealSlotStepEstimates
+      entry.date, entry.slot, planned, useSettingsStore.getState().mealCookTaskCategory,
+      recipeMinutesFor(planned?.recipeId ?? null), useSettingsStore.getState().mealSlotStepEstimates
     ),
     derivedId(spawnSeed.generated('mealSlot', sourceId, generatedTaskCountOf(tasks, 'mealSlot', sourceId))),
     { skipCategoryDefault: true, skipTitleRules: true },
@@ -1506,8 +1588,12 @@ function reconcileMealSlot(get: () => MealPlanStore, entry: Pick<MealPlanEntry, 
     return;
   }
 
+  // A meal whose recipe was deleted reads as the typed meal it now is — see
+  // slotEntryForTask. Its minutes come off the same copy, so a gone recipe has
+  // none to lend the step it no longer has.
+  const planned = slotEntryForTask(current, useRecipeStore.getState());
   const updates = mealSlotDrift(
-    live, dayKey, slot, current, recipeMinutesFor(current?.recipeId ?? null),
+    live, dayKey, slot, planned, recipeMinutesFor(planned?.recipeId ?? null),
     useSettingsStore.getState().mealSlotStepEstimates
   );
   // skipPostponeCount for reconcileGeneratedTask's reason: this row's date is

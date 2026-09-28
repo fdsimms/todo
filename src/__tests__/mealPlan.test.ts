@@ -15,6 +15,7 @@ import {
   mealTitleOffPlan,
   nextSortOrder,
   recipeIndex,
+  recipeIsGone,
   resolveBulkMoveTargets,
   selectTodayMealEntries,
   slotLabel,
@@ -81,6 +82,7 @@ function recipe(id: string, name: string): Recipe {
     tags: [],
     ingredients: [],
     emptySections: [],
+    emptyStepSections: [],
     components: [],
     prepTasks: [],
     steps: [],
@@ -527,6 +529,26 @@ describe('titleForEntry', () => {
   it('uses the typed title for a free-text meal', () => {
     const planned = entry('2026-08-05', 'dinner', { recipeId: null, title: 'Leftovers' });
     expect(titleForEntry(planned, index)).toBe('Leftovers');
+  });
+});
+
+describe('recipeIsGone', () => {
+  const loaded = { initialized: true, recipes: [recipe('r1', 'Chili')] };
+
+  it('is true for a pointer the loaded list has no recipe for', () => {
+    expect(recipeIsGone(entry('2026-08-05', 'dinner', { recipeId: 'deleted' }), loaded)).toBe(true);
+  });
+
+  it('is false while the recipe is there, and for a meal with no recipe at all', () => {
+    expect(recipeIsGone(entry('2026-08-05', 'dinner', { recipeId: 'r1' }), loaded)).toBe(false);
+    expect(recipeIsGone(entry('2026-08-05', 'dinner', { recipeId: null }), loaded)).toBe(false);
+  });
+
+  it('says nothing is gone until the list has loaded', () => {
+    // An empty list before the store has loaded is not evidence about any
+    // recipe, and every reader of this acts on a "yes".
+    const unloaded = { initialized: false, recipes: [] };
+    expect(recipeIsGone(entry('2026-08-05', 'dinner', { recipeId: 'r1' }), unloaded)).toBe(false);
   });
 });
 

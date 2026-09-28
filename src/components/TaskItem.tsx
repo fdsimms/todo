@@ -1090,6 +1090,7 @@ export const TaskItem = React.memo(function TaskItem({
   );
   const shortfallGroceryItems = useGroceryStore(s => (shortfallEntry ? s.items : EMPTY_GROCERY_ITEMS));
   const shortfallItemSubs = useGroceryStore(s => (shortfallEntry ? s.itemSubs : EMPTY_ITEM_SUBS));
+  const shortfallItemProducts = useGroceryStore(s => (shortfallEntry ? s.itemProducts : EMPTY_ITEM_PRODUCTS));
   const shortfallRecipes = useRecipeStore(s => (shortfallEntry ? s.recipes : EMPTY_RECIPES));
   const shortfallRows = useMemo(() => {
     if (!shortfallEntry) return null;
@@ -1099,9 +1100,12 @@ export const TaskItem = React.memo(function TaskItem({
       shortfallGroceryItems,
       shortfallItemSubs,
       standingSwapMap(shortfallItemSubs, shortfallGroceryItems),
-      new Date()
+      new Date(),
+      // The boxes, which the sweep that wrote this row reads too — or the chip
+      // would count a frozen packet the task itself no longer asks for.
+      shortfallItemProducts
     );
-  }, [shortfallEntry, shortfallRecipes, shortfallGroceryItems, shortfallItemSubs]);
+  }, [shortfallEntry, shortfallRecipes, shortfallGroceryItems, shortfallItemSubs, shortfallItemProducts]);
   // No chip rather than "0 to buy" — a shortfall task can outlive its own
   // reason by up to one sweep (the item got bought some other way, the
   // meal's ingredients changed), and naming a shortfall of zero would be
@@ -3802,6 +3806,32 @@ export const TaskItem = React.memo(function TaskItem({
                       }
                     >
                       <Ionicons name="close-circle-outline" size={iconSize.sm} color={colors.textSecondary} />
+                    </PressableScale>
+                  )}
+                  {/* The missed button above always advances a mid-chain miss
+                      into the next step (see the comment on `atChainEnd` in
+                      taskCompletion.ts) — right for a chain of independent
+                      steps, wrong for one whose later steps depend on the
+                      one just missed (meal-slot's Choose → Prepare → Eat:
+                      nothing to prepare with nothing chosen). This is that
+                      other case: it ends the whole chain here instead of
+                      spawning the next step. Only offered while there's a
+                      later step for it to matter against — on the chain's
+                      last step it would be identical to the button above. */}
+                  {chainStep &&
+                    chainStepIndex < task.chainItems.length - 1 &&
+                    (task.recurrenceType !== 'none' || isMissableMealPlanTask(task)) && (
+                    <PressableScale
+                      style={styles.iconActionBtn}
+                      onPress={async () => {
+                        await haptics.impactMedium();
+                        markMissed(task.id, { wholeChain: true });
+                        if (expanded) onPress(rowId);
+                      }}
+                      hitSlop={8}
+                      accessibilityLabel={`Mark ${task.title} missed and end the rest of its chain for today`}
+                    >
+                      <Ionicons name="stop-circle-outline" size={iconSize.sm} color={colors.textSecondary} />
                     </PressableScale>
                   )}
                   {/* Distinct from the missed button above: this occurrence

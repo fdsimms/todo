@@ -58,6 +58,7 @@ function recipe(name: string, ingredients: RecipeIngredient[], overrides: Partia
     tags: [],
     ingredients,
     emptySections: [],
+    emptyStepSections: [],
     components: [],
     prepTasks: [],
     steps: [],
@@ -229,6 +230,14 @@ describe('estimateRecipeCost', () => {
     // Only the garlic line relates safely: 1 of 2 (50%, right at the floor).
     expect(estimate).toMatchObject({ priced: 1, total: 2 });
     expect(estimate!.totalMinor).toBe(150); // 500 * 3/10
+  });
+
+  it('relates a bare count to a price per dozen', () => {
+    const dish = recipe('Frittata', [ing('Eggs', { quantity: '3' })]);
+    const catalog = [item({ name: 'Eggs', lastPriceMinor: 480, lastPriceQuantity: '1 dozen' })];
+    const estimate = estimateRecipeCost(dish, catalog);
+    expect(estimate).toMatchObject({ priced: 1, total: 1 });
+    expect(estimate!.totalMinor).toBe(120); // 480 * 3/12
   });
 
   it('refuses to relate two different dimensions', () => {

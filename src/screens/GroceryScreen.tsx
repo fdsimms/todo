@@ -90,8 +90,8 @@ import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
 import { KNOWN_LINK_APPS } from '../constants/linkApps';
 import type { GroceryItem, ItemProduct, Recipe, Shop } from '../types';
-import { preferredProductOf } from '../utils/groceryProduct';
-import { itemsOnList, listNameFor, isAwayList, HOME_LIST_NAME } from '../utils/groceryLists';
+import { describeProduct, preferredProductOf } from '../utils/groceryProduct';
+import { entryFor, itemsOnList, listNameFor, isAwayList, HOME_LIST_NAME } from '../utils/groceryLists';
 
 // The same scheme a recurring "Grocery run" task already carries in its
 // linkUrl — looked up by name rather than duplicated as a literal, so the two
@@ -371,19 +371,23 @@ export function GroceryScreen() {
     deselectAll,
   } = useRowSelection();
 
-  // Every AI affordance is gated on this, so a user without a key never sees
-  // an entry point — the offline lexicon carries the feature on its own.
+  // Every AI affordance is gated on its route, so a user who can't run it
+  // never sees an entry point — the offline lexicon carries the feature on
+  // its own.
   //
-  // Two exceptions now, and both go through `useAiRoute` rather than reading
-  // this: aisle sorting can be answered by the on-device language model, and
+  // Aisle sorting can be answered by the on-device language model, and
   // receipt scanning can be *read* by Vision even though naming what was read
-  // still wants a key. What is left gated on a key outright is what needs world
-  // knowledge, or a photograph the device can't make sense of on its own.
-  const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
+  // still wants a key. Recipe import has no on-device engine, so its route is
+  // the key plus its own switch in Settings: it used to read the bare key, and
+  // a key holder who turned Recipe import off was still offered a sheet that
+  // could only say so.
+  const recipeImportRoute = useAiRoute('recipeExtraction');
+  const canImportRecipe = recipeImportRoute !== 'unavailable';
   const aisleSortRoute = useAiRoute('groceryAisles');
   const receiptRoute = useAiRoute('receiptImport');
   const simpleMode = useSettingsStore(s => s.simpleMode);
   const currencySymbol = useSettingsStore(s => s.currencySymbol);
+  const unitSystem = useSettingsStore(s => s.unitSystem);
 
   // ==== the list: items grouped into aisle sections ====
   const grouped = useMemo(() => {
@@ -528,8 +532,21 @@ export function GroceryScreen() {
     if (checkedCount > 0) setFinishOpen(true);
   }, [openFinishStamp, handledFinishStamp, checkedCount]);
   // Empty for nothing left to buy, which is what the header action's disabled
-  // state gates on — see buildGroceryListShareText.
-  const shareText = useMemo(() => buildGroceryListShareText(listRows), [listRows]);
+  // state gates on — see buildGroceryListShareText. Sent the way the rows read:
+  // the amount in this screen's units, the preferred product's caption and the
+  // note, under the list's own name when it isn't the home one.
+  const shareText = useMemo(() => {
+    const productCaptions = new Map<string, string>();
+    for (const [id, product] of preferredProductById) {
+      const caption = describeProduct(product);
+      if (caption) productCaptions.set(id, caption);
+    }
+    return buildGroceryListShareText(listRows, {
+      unitSystem,
+      productCaptions,
+      listName: away ? activeListName : null,
+    });
+  }, [listRows, unitSystem, preferredProductById, away, activeListName]);
   // The same rows without the title line or the bullets, for pasting into
   // another shopping app rather than sending to a person — see shareText.ts.
   const copyText = useMemo(() => buildGroceryListText(listRows), [listRows]);
@@ -751,7 +768,15 @@ export function GroceryScreen() {
       // `rows` is this render's list, from before the add — which is exactly
       // what placeNewGroceryItems wants, since it splices the new rows in
       // itself (and drops them from their old spot if they were already there).
-      const placements = placeNewGroceryItems(rows, drop.anchorKey, drop.before, created);
+      // Projected onto this list's entries, read fresh because this render's
+      // are from before the add: a row's slot is its entry's sortOrder, and
+      // the item's own is only the home list's mirror.
+      const { listEntries: entriesNow, activeListId: listNow } = useGroceryStore.getState();
+      const projected = created.map(item => {
+        const entry = entryFor(entriesNow, item.id, listNow);
+        return entry ? { ...item, sortOrder: entry.sortOrder } : item;
+      });
+      const placements = placeNewGroceryItems(rows, drop.anchorKey, drop.before, projected);
       if (placements) applyDrop(placements);
       const last = created[created.length - 1];
       pendingDropRef.current = { ...drop, anchorKey: last.id, before: false };
@@ -1185,7 +1210,7 @@ export function GroceryScreen() {
   // import a new one with; a user with neither gets a two-item menu.
   const addMenuItems = useMemo<FabMenuItem[]>(() => {
     const list: FabMenuItem[] = [];
-    if (recipes.length > 0 || anthropicApiKey) {
+    if (recipes.length > 0 || canImportRecipe) {
       list.push({ key: 'recipe', label: 'From a recipe', icon: 'restaurant-outline' });
     }
     // In the add menu rather than the header. The header is already five
@@ -1194,23 +1219,23 @@ export function GroceryScreen() {
     // exactly the case it's for. Gone in simplified mode, which takes the
     // scanner with it.
     if (!featureHidden('barcodeScanning', simpleMode)) {
-      list.push({ key: 'scan', label: 'Scan barcodes', icon: 'barcode-outline' });
+      list.push({ key: 'scan', label: 'Scan what you bought', icon: 'barcode-outline' });
     }
     list.push({ key: 'item', label: 'Add an item', icon: 'add-circle-outline' });
     return list;
-  }, [recipes.length, anthropicApiKey, simpleMode]);
+  }, [recipes.length, canImportRecipe, simpleMode]);
 
   const handleAddMenuSelect = useCallback((key: string) => {
     if (key === 'recipe') {
       // Only one way in skips the chooser and goes straight there — there'd
       // be nothing left to choose between.
-      if (recipes.length === 0 && anthropicApiKey) setAiMode('recipe');
-      else if (recipes.length === 1 && !anthropicApiKey) setRecipeToAdd(recipes[0]);
+      if (recipes.length === 0 && canImportRecipe) setAiMode('recipe');
+      else if (recipes.length === 1 && !canImportRecipe) setRecipeToAdd(recipes[0]);
       else setRecipeSourceOpen(true);
     }
     else if (key === 'scan') setScanOpen(true);
     else setAddOpen(true);
-  }, [recipes, anthropicApiKey]);
+  }, [recipes, canImportRecipe]);
 
   const renderRow = useCallback(
     ({ item: row, drag, isActive }: { item: ListRow; drag?: () => void; isActive?: boolean }) => {
@@ -1663,7 +1688,7 @@ export function GroceryScreen() {
       />
       <RecipeSourceSheet
         visible={recipeSourceOpen}
-        allowAIImport={!!anthropicApiKey}
+        allowAIImport={canImportRecipe}
         onPickSaved={recipe => {
           setRecipeSourceOpen(false);
           setRecipeToAdd(recipe);

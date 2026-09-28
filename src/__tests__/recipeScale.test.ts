@@ -5,6 +5,7 @@ import {
   formatScale,
   isUnscaled,
   normalizeScale,
+  rescaleForRecipe,
   scaleQuantity,
   scaleServings,
   targetServingsFor,
@@ -282,6 +283,43 @@ describe('factorForServings / targetServingsFor', () => {
     expect(factorForServings(3, 0)).toBe(1);
     expect(factorForServings(3, -1)).toBe(1);
     expect(factorForServings(NaN, 8)).toBe(1);
+  });
+});
+
+describe('rescaleForRecipe', () => {
+  it('keeps the servings, not the factor, when one recipe replaces another', () => {
+    // 2x a pasta that serves 2 is four servings, which is 1x of a soup that
+    // serves 4. Carried over unchanged it was eight.
+    expect(rescaleForRecipe(2, 2, 4)).toBe(1);
+    // And the other way: four servings of a recipe that makes 8 is half of it.
+    expect(rescaleForRecipe(2, 2, 8)).toBe(0.5);
+  });
+
+  it('can land between the chip presets, the way a typed servings target does', () => {
+    // 1.5x of a recipe for 4 is six people, which is 6/9 of a recipe for 9.
+    expect(rescaleForRecipe(1.5, 4, 9)).toBe(6 / 9);
+  });
+
+  it('rounds the head count to whole people before converting', () => {
+    // 1.5x of 3 is 4.5 servings, which the stepper shows as 5.
+    expect(rescaleForRecipe(1.5, 3, 5)).toBe(1);
+  });
+
+  it('keeps the factor when either recipe states no servings', () => {
+    expect(rescaleForRecipe(2, null, 4)).toBe(2);
+    expect(rescaleForRecipe(2, 4, null)).toBe(2);
+    expect(rescaleForRecipe(2, 0, 4)).toBe(2);
+    expect(rescaleForRecipe(2, 4, undefined)).toBe(2);
+  });
+
+  it('leaves an as-written meal as written, since it never named a head count', () => {
+    expect(rescaleForRecipe(1, 2, 4)).toBe(1);
+    expect(rescaleForRecipe(null, 2, 4)).toBe(1);
+  });
+
+  it('normalizes a nonsense stored factor before anything else', () => {
+    expect(rescaleForRecipe(0, 2, 4)).toBe(1);
+    expect(rescaleForRecipe(-3, 2, 4)).toBe(1);
   });
 });
 

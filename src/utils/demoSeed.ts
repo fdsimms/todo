@@ -2825,13 +2825,18 @@ function seedRecipes(): DemoRecipes {
   // rule a single ingredient list can't: it holds "brown sugar" and "sugar" as
   // separate lines, so the frosting step's plain "sugar" has to go to the line
   // actually called that rather than to the alias the other one offers.
-  [
-    'Heat the oven to 180°C and line a 9-inch cake pan.',
-    'Whisk the eggs with the brown sugar, then fold in the flour, cinnamon and grated carrot.',
-    'Bake for 35 minutes, until a skewer comes out clean.',
-    'Beat the cream cheese, butter and sugar together while the cake cools.',
-    'Frost the cake once it is completely cool.',
-  ].forEach(text => addStep(cake.id, text));
+  //
+  // The method is filed under the same two headings the ingredients already
+  // use (RecipeStep.section) — this is the one recipe in the box showing that
+  // a method can be grouped the same way a shopping list is, not a second
+  // feature to demonstrate on its own.
+  ([
+    ['Heat the oven to 180°C and line a 9-inch cake pan.', 'For the cake'],
+    ['Whisk the eggs with the brown sugar, then fold in the flour, cinnamon and grated carrot.', 'For the cake'],
+    ['Bake for 35 minutes, until a skewer comes out clean.', 'For the cake'],
+    ['Beat the cream cheese, butter and sugar together while the cake cools.', 'For the frosting'],
+    ['Frost the cake once it is completely cool.', 'For the frosting'],
+  ] as const).forEach(([text, section]) => addStep(cake.id, text, section));
   setRecipeYield(cake.id, '1 9-inch cake');
   setServings(cake.id, 12);
   setEstimatedMinutes(cake.id, 45);
@@ -3214,6 +3219,8 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
     linkItemSub,
     setShopExcludedFromSuggestions,
     setShopAisles,
+    setShopReceiptStyle,
+    rememberAliases,
     startTrip,
     setItemPrice,
     addList,
@@ -3612,6 +3619,17 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
   // its own demonstration), and paper goods at a pharmacy is the shape of it.
   const pharmacy = newShop('Corner Pharmacy');
   setShopAisles(pharmacy.id, ['Household']);
+  // A store's receipt shorthand, remembered the way applying a receipt review
+  // remembers it, so the next Trader Joe's receipt reads these two lines
+  // without asking. With none, the matcher's "remembered" tier (and the link
+  // the catalog counts for it) reads as something the app doesn't do.
+  rememberAliases([
+    { shopId: traderJoes.id, rawText: 'ORG BABY SPINACH', itemId: itemNamed('Spinach').id },
+    { shopId: traderJoes.id, rawText: 'CHKN BRST BNLS', itemId: itemNamed('Chicken breast').id },
+  ]);
+  // And a store whose receipt isn't worth photographing: an online order hands
+  // you no paper, so the receipt sheet says so instead of reading nothing.
+  setShopReceiptStyle(amazon.id, 'none');
 
   // Three finished trips, so the catalog and the autocomplete ranking have a
   // real spread of purchase counts to sort by rather than a flat list of ones.

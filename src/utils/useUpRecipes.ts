@@ -42,6 +42,13 @@ import { flattenRecipeIngredients, recipeMap } from './recipeComponents';
  * aren't ingredients: you reheat last night's chilli, you don't cook with it.
  * `LeftoversCard` is where a container gets planned onto a night.
  *
+ * "Groceries" includes a box (`kind: 'product'`), which is the same catalog
+ * row tracked apart and carries that row's own `nameKey`. A thawed packet of
+ * chicken going off tomorrow is exactly as much chicken as the item-level row
+ * would be, and skipping it left the one thing dying out of every suggestion.
+ * An item and its boxes share a key, so the most urgent of them is the one
+ * that answers for it.
+ *
  * **It reads; it writes nothing and schedules nothing.** No task is spawned, no
  * meal is planned. Cooking something tonight is a decision, and the two
  * generators that *do* write unattended (`groceryExpiry`, `leftoverTasks`) each
@@ -98,11 +105,15 @@ export function useUpRecipes(
 ): UseUpRecipe[] {
   const dying = new Map<string, KitchenEntry>();
   for (const entry of entries) {
-    // Groceries only, and a blank key never matches: `groceryNameKey` returns
-    // '' for a name with no letters or digits, and an ingredient that
-    // normalised away would otherwise match every one of them at once.
-    if (entry.kind !== 'grocery' || !entry.matchKey) continue;
-    dying.set(entry.matchKey, entry);
+    // Groceries (boxes included) only, and a blank key never matches:
+    // `groceryNameKey` returns '' for a name with no letters or digits, and an
+    // ingredient that normalised away would otherwise match every one of them
+    // at once.
+    if (entry.kind === 'leftover' || !entry.matchKey) continue;
+    // An item and its boxes share one key; the most urgent of them is the one
+    // a recipe would be using up.
+    const current = dying.get(entry.matchKey);
+    if (!current || compareByUrgency(entry, current) < 0) dying.set(entry.matchKey, entry);
   }
   if (dying.size === 0) return [];
 

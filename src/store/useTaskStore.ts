@@ -76,6 +76,7 @@ import {
   wantsPantryReview,
 } from '../utils/pantryReviewTasks';
 import {
+  MAX_MEAL_SHORTFALL_TASKS,
   mealShortfallEntryId,
   mealShortfallLinkUrl,
   staleMealShortfallTasks,
@@ -112,6 +113,7 @@ import {
   clampWeighInEveryDays,
   wantsWeighIn,
   weighInDayKey,
+  weighInDeclineHolds,
   weighInNotes,
 } from '../utils/weightTasks';
 import { buildMoodDays, lowMoodRun } from '../utils/moodInsights';
@@ -172,7 +174,7 @@ import {
 } from '../utils/supply';
 import { getNextDueDate, getCurrentDayStart, getLogicalDayKey, getLogicalToday, getLogicalTomorrow, getTaskDayStart, getEffectiveTaskDate, dayKeyOf, dayKeyToDate, getDeadlineFromOffset, getDeadlineFromMonthDay, getReminderOffsetDate, getStreakOutcome, getNextSeriesDates, recurrenceAnchorDayFor, captureReminderOffset, reanchorReminderToWallClock } from '../utils/dateUtils';
 import { entriesForSlot, shiftDayKey } from '../utils/mealPlan';
-import { MEAL_SLOT_TASK_DAYS, completesMealSlot, mealSlotSourceId, mealSlotStepTimeSegments, mealSlotTaskDraft, parseMealSlotSource } from '../utils/mealSlotTasks';
+import { MEAL_SLOT_TASK_DAYS, completesMealSlot, mealSlotSourceId, mealSlotStepTimeSegments, mealSlotTaskDraft, parseMealSlotSource, slotEntryForTask, staleMealSlotTasks } from '../utils/mealSlotTasks';
 import { wantsMealLogPrompt } from '../utils/mealLog';
 import { quotaRunSpan, quotaTargetForInterval, quotaDueTimesAfter, isQuotaRunOver, quotaWeekStart } from '../utils/quotaSchedule';
 import { isRotationTask, rotationCoversNew, rotationPick, rotationUnpick } from '../utils/rotation';
@@ -641,6 +643,21 @@ function writeGeneratedOptOut(task: Task, value: false | null): void {
     // growing-record path generatedTasks.ts warns about.
     case 'mealSlot':
       return;
+    // A settings stamp rather than a row one, since a day key names no row,
+    // and one that expires: deleting "Record your weight" means "not this
+    // time", so it holds for weighInEveryDays from today (weighInDeclineHolds)
+    // and no longer. Without it the request came back the next morning, since
+    // the window still had no reading in it. The pass's own clearing of a
+    // request whose day has gone drops it rather than deleting, so an ignored
+    // request never lands here.
+    //
+    // `value === null` is the undo path, and restores what the delete found: a
+    // stamp already sitting there was old enough to have let this request be
+    // written, so clearing it changes nothing the reader can see.
+    case 'weighIn':
+      useSettingsStore.getState()
+        .setWeighInDeclinedDayKey(value === false ? dayKeyOf(getCurrentDayStart()) : null);
+      return;
     // A stamp, not a `false`, and the one generator whose opt-out expires. The
     // fields a project could carry a permanent "no" on are nudgeOptIn and
     // nudgeCadenceDays, and both mean "never chase me about this again" — far
@@ -860,7 +877,7 @@ function writeMealSlotTasks(
   // above every section.
   ensureGeneratedTaskCategory('mealSlot');
   const category = useSettingsStore.getState().mealCookTaskCategory;
-  const recipes = useRecipeStore.getState().recipes;
+  const library = useRecipeStore.getState();
 
   for (let dayKey = fromKey; dayKey <= toKey; dayKey = shiftDayKey(dayKey, 1)) {
     for (const slot of slots) {
@@ -884,10 +901,13 @@ function writeMealSlotTasks(
       // Already cooked before the pass ran — there is nothing left to do and
       // nothing to ask.
       if (entry?.cookedAt) continue;
-      const recipe = entry?.recipeId ? recipes.find(r => r.id === entry.recipeId) : undefined;
+      // A meal whose recipe was deleted is written as the typed meal it now
+      // reads as, rather than "Make X" linking to a recipe that's gone.
+      const planned = slotEntryForTask(entry, library);
+      const recipe = planned?.recipeId ? library.recipes.find(r => r.id === planned.recipeId) : undefined;
       const created = useTaskStore.getState().addTask(
         mealSlotTaskDraft(
-          dayKey, slot, entry, category, recipe ? totalMinutes(recipe) : null,
+          dayKey, slot, planned, category, recipe ? totalMinutes(recipe) : null,
           useSettingsStore.getState().mealSlotStepEstimates
         ),
         derivedId(spawnSeed.generated('mealSlot', sourceId, generatedTaskCountOf(tasks, 'mealSlot', sourceId))),
@@ -1486,6 +1506,8 @@ interface TaskStore extends UndoHistoryActions {
    */
   completeTask: (id: string, options?: {
     missed?: boolean;
+    /** See CompletionOptions.missChain (taskCompletion.ts) — ends a mid-chain miss here rather than advancing to the next step. */
+    missChain?: boolean;
     deliverableValue?: string | null;
     neutral?: boolean;
     completedAt?: string;
@@ -1531,8 +1553,13 @@ interface TaskStore extends UndoHistoryActions {
    *
    * Recurring only, like the skip it replaces. "I didn't do this" needs a next
    * occurrence to move on to; on a one-off it would just be a delete.
+   *
+   * `wholeChain` forwards to `completeTask`'s `missChain` — for a mid-chain
+   * step whose later steps depend on this one (meal-slot's Choose → Prepare
+   * → Eat), ending the routine here instead of advancing into a step that
+   * now has nothing to act on.
    */
-  markMissed: (id: string) => void;
+  markMissed: (id: string, options?: { wholeChain?: boolean }) => void;
   /**
    * Report a slip against a negative habit — the tap that says "I smoked".
    *
@@ -3236,7 +3263,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     });
   },
 
-  markMissed(id) {
+  markMissed(id, options) {
     const task = get().tasks.find(t => t.id === id);
     if (!task || task.completed) return;
     // A meal-plan task is recurring in every way a user would recognize —
@@ -3258,7 +3285,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       get().skipNextRecurrence(id);
       return;
     }
-    get().completeTask(id, { missed: true });
+    get().completeTask(id, { missed: true, missChain: options?.wholeChain });
   },
 
   completeTask(id, options) {
@@ -4948,6 +4975,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         category,
         groupId: group.id,
         ...generatedBy('mealPlanNudge', day.dayKey),
+        // After the spread, which pauses the row on vacation like every kind
+        // that stands down for it: with "Also during vacation" on, these rows
+        // are written during a trip on purpose, so hiding them would undo it.
+        vacationPause: !settings.mealPlanNudgeIgnoresVacation,
         // skipTitleRules for the reason generatedTaskSync passes it: "Plan
         // meals for Monday" is a title the app wrote, and this generator has
         // its own "File them under" setting (mealPlanNudgeTaskCategory). A
@@ -5422,6 +5453,22 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // recording anything, so the trigger declined here fires for real the
     // first time the app is opened after vacation ends.
     if (generatorPausedForVacation('mealSlot', settings.vacationMode)) return;
+
+    // The *logical* day, not the calendar one: at 1am with a 2am reset the meal
+    // tasks that belong on screen are still yesterday's, and dayKeyOf(new Date())
+    // would open the window a day early. See CLAUDE.md on the grace window.
+    const today = dayKeyOf(getLogicalToday());
+
+    // Clear first, and ahead of the switch and kitchen gates below: those stop
+    // this pass *writing*, and a row about a meal that has already gone by is
+    // stale whether or not the generator is still on. Only rows nobody started
+    // or moved go (see staleMealSlotTasks). dropGeneratedTask writes no opt-out,
+    // and a slot has nothing to write one on anyway, so the mark alone still
+    // keeps a dropped day from being written again.
+    staleMealSlotTasks(get().tasks, today).forEach(task =>
+      dropGeneratedTask('mealSlot', task.generatedSourceId)
+    );
+
     // The same gate checkPantryCheckTasks takes, and for the same reason —
     // which that one's comment claimed was unique to it, back when it was. This
     // pass fires on time passing rather than on a purchase or an edit, so with
@@ -5434,10 +5481,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (!settings.kitchenEnabled) return;
     if (!settings.mealCookTasks || settings.mealSlotsEnabled.length === 0) return;
 
-    // The *logical* day, not the calendar one: at 1am with a 2am reset the meal
-    // tasks that belong on screen are still yesterday's, and dayKeyOf(new Date())
-    // would open the window a day early. See CLAUDE.md on the grace window.
-    const today = dayKeyOf(getLogicalToday());
     const horizonEnd = shiftDayKey(today, MEAL_SLOT_TASK_DAYS - 1);
     const mark = settings.mealSlotTasksWrittenThroughDayKey;
     // A mark behind today means the app has been closed for a while: pick up
@@ -5488,18 +5531,26 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // recording anything, so the trigger declined here fires for real the
     // first time the app is opened after vacation ends.
     if (generatorPausedForVacation('pantryCheck', settings.vacationMode)) return;
-    if (!settings.pantryCheckTasks) return;
-    // The whole grocery area can be switched off (kitchenEnabled), and this
-    // generator fires on time passing rather than on a purchase or an edit — so
-    // without this gate it would be a hidden feature still writing rows onto
-    // Today. This used to say "unlike every other grocery generator", which
-    // stopped being true the moment mealSlot arrived firing on the same trigger
-    // — and that stale claim is most of why mealSlot shipped without the gate.
-    // Which generators need one is `GeneratedKindSpec.kitchen` now, rather than
-    // a sentence here that goes out of date silently.
-    if (!settings.kitchenEnabled) return;
-
+    // The switch and the whole grocery area (kitchenEnabled) gate *creating*
+    // only, and are checked below the clear rather than here. This generator
+    // fires on time passing rather than on a purchase or an edit — so without
+    // the gate it would be a hidden feature still writing rows onto Today. This
+    // used to say "unlike every other grocery generator", which stopped being
+    // true the moment mealSlot arrived firing on the same trigger — and that
+    // stale claim is most of why mealSlot shipped without the gate. Which
+    // generators need one is `GeneratedKindSpec.kitchen` now, rather than a
+    // sentence here that goes out of date silently.
+    //
+    // But returning above the clear froze every row already written: an item
+    // bought again or deleted after the switch went off left its "Check if you
+    // still have X" on Today until somebody deleted it by hand. Off means stop
+    // asking, not stop tidying up, the same line reconcileGeneratedTask draws
+    // for vacation. With nothing live there is nothing to clear, so an off
+    // switch still costs nothing.
+    const creating = settings.pantryCheckTasks && settings.kitchenEnabled;
     const tasks = get().tasks;
+    if (!creating && liveGeneratedTasksOfKind(tasks, 'pantryCheck').length === 0) return;
+
     const { items, listEntries } = useGroceryStore.getState();
     // Every trolley, not just the one at home: a row already on the Airbnb list
     // is shopping you are on your way to do, so asking whether you still have it
@@ -5526,6 +5577,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // app's own tidying up.
     const stale = stalePantryCheckTasks(tasks, items, now, listed);
     stale.forEach(task => dropGeneratedTask('pantryCheck', pantryCheckItemId(task)));
+    if (!creating) return;
 
     // One review row already asks about the whole cupboard, so the drip stands
     // down rather than adding three more questions about individual shelves of
@@ -5581,14 +5633,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // recording anything, so the trigger declined here fires for real the
     // first time the app is opened after vacation ends.
     if (generatorPausedForVacation('pantryReview', settings.vacationMode)) return;
-    if (!settings.pantryReviewTasks) return;
-    // The same kitchenEnabled gate checkPantryCheckTasks takes directly above,
-    // for the same reason: this fires on time passing rather than on a purchase
-    // or an edit, so without it this would be the one part of a switched-off
-    // feature still writing rows onto Today.
-    if (!settings.kitchenEnabled) return;
-
+    // The switch and the same kitchenEnabled gate checkPantryCheckTasks takes
+    // directly above, for the same reason: this fires on time passing rather
+    // than on a purchase or an edit, so without it this would be the one part
+    // of a switched-off feature still writing rows onto Today. Checked below
+    // the clear for that pass's reason too: off stops the offer, and a row
+    // whose deck has since emptied still goes.
+    const creating = settings.pantryReviewTasks && settings.kitchenEnabled;
     const tasks = get().tasks;
+    if (!creating && liveGeneratedTasksOfKind(tasks, 'pantryReview').length === 0) return;
+
     const grocery = useGroceryStore.getState();
     // Bare `new Date()` on purpose, the call checkPantryCheckTasks makes and
     // for its reason: a pantry window is real elapsed days from a till receipt
@@ -5604,6 +5658,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     stalePantryReviewTasks(tasks, deck).forEach(task =>
       dropGeneratedTask('pantryReview', pantryReviewDayKey(task))
     );
+    // Before the mark below, which is spent only on a day the offer could
+    // actually have been made.
+    if (!creating) return;
 
     // The day boundary is the user's own here, unlike the deck's window above:
     // this is "have I offered this today", which is a question about their
@@ -5676,14 +5733,17 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // recording anything, so the trigger declined here fires for real the
     // first time the app is opened after vacation ends.
     if (generatorPausedForVacation('mealShortfall', settings.vacationMode)) return;
-    if (!settings.mealShortfallTasks) return;
     // The whole grocery area can be switched off, and this generator reads the
     // catalog to decide what's missing — without this gate it would be part of
     // a hidden feature still writing rows onto Today. Same gate
-    // checkPantryCheckTasks takes, and for the same reason.
-    if (!settings.kitchenEnabled) return;
-
+    // checkPantryCheckTasks takes, for the same reason, and below the clear for
+    // that pass's reason as well: a "Shop for Ragu" whose meal was dropped from
+    // the plan after the switch went off otherwise stayed on Today naming a
+    // meal that no longer existed.
+    const creating = settings.mealShortfallTasks && settings.kitchenEnabled;
     const tasks = get().tasks;
+    if (!creating && liveGeneratedTasksOfKind(tasks, 'mealShortfall').length === 0) return;
+
     const leadDays = settings.mealShortfallLeadDays;
     // The *logical* today: this decides which meals are close enough to shop
     // for, which is a scheduling decision, and at 1am with a 2am reset the
@@ -5706,7 +5766,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     );
     const recipes = useRecipeStore.getState().recipes;
     const recipesById = new Map(recipes.map(r => [r.id, r]));
-    const { items, itemSubs } = useGroceryStore.getState();
+    // The boxes too, so a packet frozen or marked "Got it" counts as having it
+    // here the way it does in the Pantry (see classifyPlanned's `products`).
+    const { items, itemSubs, itemProducts } = useGroceryStore.getState();
     const swaps = standingSwapMap(itemSubs, items);
 
     // Clear first, create second, and never the reverse — the ordering
@@ -5720,12 +5782,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // stamp shopTask: false on a meal the user never turned down, and so
     // suppress the offer for ever on the strength of the app's own tidying up.
     const stale = staleMealShortfallTasks(
-      tasks, entries, recipesById, items, itemSubs, swaps, todayKey, now, leadDays
+      tasks, entries, recipesById, items, itemSubs, swaps, todayKey, now, leadDays, itemProducts
     );
     stale.forEach(task => dropGeneratedTask('mealShortfall', mealShortfallEntryId(task)));
+    if (!creating) return;
 
     const wanted = wantedMealShortfalls(
-      entries, recipesById, items, itemSubs, swaps, todayKey, now, leadDays
+      entries, recipesById, items, itemSubs, swaps, todayKey, now, leadDays,
+      MAX_MEAL_SHORTFALL_TASKS, itemProducts
     );
     if (wanted.length === 0) return;
 
@@ -5784,10 +5848,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   checkMealLogNudgeTasks() {
     const settings = useSettingsStore.getState();
     if (generatorPausedForVacation('mealLogNudge', settings.vacationMode)) return;
-    if (!settings.mealLogNudgeTasks) return;
-    if (!settings.kitchenEnabled) return;
-
+    // The switch and the kitchen gate stop creating only, below the clear, for
+    // checkPantryCheckTasks' reason: a row for a meal since logged or deleted
+    // goes whether or not the generator is still on.
+    const creating = settings.mealLogNudgeTasks && settings.kitchenEnabled;
     const tasks = get().tasks;
+    if (!creating && liveGeneratedTasksOfKind(tasks, 'mealLogNudge').length === 0) return;
+
     const todayKey = dayKeyOf(getLogicalToday());
     // One day wider on the near edge, for the reason checkMealShortfallTasks
     // reads one day wider on each of its own: a task whose entry has moved is
@@ -5803,6 +5870,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // against a list that still held it.
     const stale = staleMealLogNudgeTasks(tasks, entries, logged, todayKey);
     stale.forEach(task => dropGeneratedTask('mealLogNudge', mealLogNudgeEntryId(task)));
+    if (!creating) return;
 
     const wanted = wantedMealLogNudges(entries, logged, todayKey);
     if (wanted.length === 0) return;
@@ -5857,7 +5925,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // user's next shake would be labelled as something they had just done and
       // point at an item they may never have opened. Same reason the completed
       // task purge doesn't route through bulkDeleteTasks.
-      lowIds.forEach(itemId => grocery.setRunningLow(itemId, true, { registerUndo: false }));
+      // listId: null — the home list, the one the supply is restocked from.
+      // The active list may be an away one (checkAwayGroceryList switches to
+      // it), and a supply flagged low there is never restocked by that trip
+      // and, already flagged, never reaches the home list after it.
+      lowIds.forEach(itemId => grocery.setRunningLow(itemId, true, { registerUndo: false, listId: null }));
     }
 
     if (!settings.supplyReorderTasks) return;
@@ -5873,10 +5945,20 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // stamp supplyDeclinedAtCount on a task the user never turned down, and so
     // silence the offer until the *next* restock on the strength of the app's
     // own tidying up.
-    const stale = staleSupplyReorderTasks(tasks, dayResetTime);
+    // The rows a supply's grocery link can act through: every live catalog row
+    // with the kitchen on, none with it off. A link outside that set asks
+    // through a reorder task instead (see supplyLinkActs), or a supply whose
+    // item was deleted would ask nowhere at all. Undefined, meaning "trust
+    // every link", until the grocery store has loaded: an empty catalog
+    // mid-launch is not every item having been deleted.
+    const grocery = useGroceryStore.getState();
+    const actingItemIds = !settings.kitchenEnabled
+      ? new Set<string>()
+      : grocery.initialized ? new Set(grocery.items.map(i => i.id)) : undefined;
+    const stale = staleSupplyReorderTasks(tasks, dayResetTime, actingItemIds);
     stale.forEach(task => dropGeneratedTask('supplyReorder', supplyReorderSourceId(task)));
 
-    const wanted = wantedSupplyReorders(get().tasks, dayResetTime);
+    const wanted = wantedSupplyReorders(get().tasks, dayResetTime, undefined, actingItemIds);
     if (wanted.length === 0) return;
 
     // Noon today, the landing every other unattended writer picks: an offer
@@ -6805,13 +6887,22 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // clear-first-create-second ordering every day-keyed generator uses. An
     // unanswered request is a question about a window that has moved on, not a
     // task still owed.
+    //
+    // Dropped rather than deleted quietly: the quiet delete writes the opt-out,
+    // which for this kind is the decline stamp below, and a request nobody
+    // answered has not been declined.
     liveGeneratedTasksOfKind(get().tasks, 'weighIn')
       .filter(task => weighInDayKey(task) !== todayKey)
-      .forEach(task => deleteGeneratedTaskQuietly(task.id));
+      .forEach(task => dropGeneratedTask('weighIn', task.generatedSourceId));
 
     if (settings.weighInLastDayKey === todayKey) return;
 
     const everyDays = clampWeighInEveryDays(settings.weighInEveryDays);
+    // A deleted request holds for the window from the day it was deleted on,
+    // rather than until tomorrow. Checked before the read, which it makes
+    // unnecessary, and without spending the mark, which has nothing to say
+    // about a day nobody asked about.
+    if (weighInDeclineHolds(settings.weighInDeclinedDayKey, todayKey, everyDays)) return;
     const points = await useHealthStore.getState().readRecentWeights(everyDays);
     // **Null is not an empty window.** It means there was no way to ask at all
     // (not iOS, no Health, demo mode), which is evidence of nothing — and

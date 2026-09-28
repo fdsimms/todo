@@ -1,4 +1,4 @@
-import type { GroceryItem, MealPlanEntry, Recipe, RecipeIngredient } from '../types';
+import type { GroceryItem, ItemProduct, MealPlanEntry, Recipe, RecipeIngredient } from '../types';
 import { groceryNameKey } from '../utils/groceryParse';
 import { choiceGroupKey } from '../utils/recipeComponents';
 import {
@@ -61,6 +61,7 @@ function recipe(name: string, ingredients: RecipeIngredient[]): Recipe {
     tags: [],
     ingredients,
     emptySections: [],
+    emptyStepSections: [],
     components: [],
     prepTasks: [],
     steps: [],
@@ -1007,6 +1008,48 @@ describe('classifyPlanned', () => {
       { name: 'Salt', nameKey: 'salt', quantity: '', aisle: null, source: 'Sat Soup' },
     ];
     expect(classifyPlanned(planned, [], now)[0].quantity).toBe('×3');
+  });
+
+  // A box (ItemProduct) frozen or marked "Got it" on its own keeps its item in
+  // the Pantry after the item's own purchase window lapses. The plan has to read
+  // it the same way, or the add sheet ticks a packet sitting in the freezer.
+  describe('boxes', () => {
+    const box = (itemId: string, overrides: Partial<ItemProduct> = {}): ItemProduct => ({
+      id: `p-${++seq}`, itemId, brand: 'Beyond', variant: null, productKey: 'beyond|',
+      rating: null, nutrition: null, note: '', purchaseCount: 0, lastPurchasedAt: null,
+      gtin: null, onHandUntil: null, expiresAt: null, frozenAt: null, openedAt: null,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      ...overrides,
+    });
+    const plannedBeef = [
+      { name: 'Vegan ground beef', nameKey: 'vegan ground beef', quantity: '1 lb', aisle: null, source: 'Mon Tacos' },
+    ];
+
+    it('counts an item whose only claim is a frozen box as probably had', () => {
+      const beef = item({ name: 'Vegan ground beef' });
+      const frozen = box(beef.id, { frozenAt: new Date(2026, 6, 18).toISOString() });
+
+      expect(classifyPlanned(plannedBeef, [beef], now, [], null, [frozen])[0].category).toBe('probablyHave');
+      // Without the boxes it falls back to the item alone, which has nothing.
+      expect(classifyPlanned(plannedBeef, [beef], now)[0].category).toBe('needToBuy');
+    });
+
+    it('ignores another item\'s boxes', () => {
+      const beef = item({ name: 'Vegan ground beef' });
+      const frozen = box('someone-else', { frozenAt: new Date(2026, 6, 18).toISOString() });
+
+      expect(classifyPlanned(plannedBeef, [beef], now, [], null, [frozen])[0].category).toBe('needToBuy');
+    });
+
+    it('lets a variety answered only by a box cover the generic line', () => {
+      const white = item({ name: 'White onion', varietyOfKey: 'onion' });
+      const gotIt = box(white.id, { onHandUntil: new Date(2026, 8, 1).toISOString() });
+      const planned = [{ name: 'onion', nameKey: 'onion', quantity: '1', aisle: null, source: 'Tue Ragù' }];
+
+      const row = classifyPlanned(planned, [white], now, [], null, [gotIt])[0];
+      expect(row.nameKey).toBe('white onion');
+      expect(row.category).toBe('probablyHave');
+    });
   });
 
   // Varieties (GroceryItem.varietyOfKey) — a generic line covered by a

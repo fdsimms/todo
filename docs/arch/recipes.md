@@ -46,13 +46,27 @@ opens the ordinary `RecipeCreateSheet` on its link tab with the address already 
 - **One banner at a time, oldest first.** Addresses are canonicalised through
   `normalizeRecipeUrl` on the way in, so the queue holds exactly what the import would accept
   and a re-share collapses onto the entry already there rather than jumping the line.
-- **The banner is gated on `anthropicApiKey`, the same as the add button's import menu.**
-  Without a key there is no import to offer, and this would otherwise be the one route into a
-  sheet that can only end at "No API key". The extension keeps queueing either way — it's a
-  separate process and knows nothing about the keychain — and the queue persists, so a page
-  shared before a key is added turns up once there's something to import it with rather than
-  being dropped. The key lives in the keychain rather than the `settings` table, so this reads
-  the same inside demo mode as outside it.
+- **The banner follows `useAiRoute('recipeExtraction')`, the same as the add button's import
+  menu**, so it offers Import only when an import can actually run. That is the key *and*
+  Recipe import's own switch in Settings: gated on the bare key, a key holder who had turned
+  the feature off was offered a sheet that could only say so.
+- **Without a key it says so rather than disappearing.** The extension confirms every share with
+  "Open dundundun to import the recipe", because it's a separate process and can't read the
+  keychain to know better. A banner that simply wasn't there then left the page queued with
+  nothing on screen to say it was waiting or what would import it. So with no key (and Recipe
+  import still switched on) the banner stays, says a key is what's missing, and its button opens
+  the API key row in Settings; Discard works as usual. With a key and the feature switched off
+  it goes, since that user asked for no recipe import. The queue persists either way, so a page
+  shared before a key is added turns up importable once there is one. The key lives in the
+  keychain rather than the `settings` table, so this reads the same inside demo mode as outside
+  it.
+- **A link already in the recipe box is recognised before anything is fetched.** `sourceUrl` is
+  `normalizeRecipeUrl` of the address, a pure function of what was typed, so `recipeImportedFrom`
+  (`recipeUrl.ts`) can answer from the address alone. `RecipeCreateSheet` asks it before the
+  page fetch and offers Open it / Import anyway, and asks it again once the page is in hand for
+  the card under the name. Both ask the same function so they can't disagree, and Import anyway
+  waives the second for that one address: asking first and then refusing to save would spend a
+  page fetch and a paid extraction on a recipe that can't be kept.
 
 ---
 
@@ -392,6 +406,23 @@ choosable before anything's filed under it.
   vocabularies that happen to collide, so a component opening with "Sauce" under a root whose last
   line was also "Sauce" gets its own heading rather than reading as a continuation.
 
+**`RecipeStep.section`/`Recipe.emptyStepSections` are the same model, one field over — "For the
+sauce", "For the tofu" as headings over the method instead of the ingredient list.** Every helper
+above (`sectionsOf`, `allSectionsOf`, `sectionsFromMergedOrder`, `parseEmptySections`) is generic
+over `{ id, section }` and is reused verbatim rather than duplicated; `RecipeDetailScreen` builds
+its own merged step+heading list (`mergedStepRows`) the same way it does for ingredients, and
+`useRecipeStore`'s `addEmptyStepSection`/`removeEmptyStepSection`/`reorderSteps` mirror
+`addEmptySection`/`removeEmptySection`/`reorderIngredients` exactly, `save()` reconciling
+`emptyStepSections` against `steps` the same way it does `emptySections` against `ingredients`.
+Two differences, both because `RecipeStep` predates this field and already follows the
+absent-not-null convention `timerSeconds`/`note` use: `section` is `string | undefined` rather
+than `RecipeIngredient`'s mandatory `string | null`, so `withStepSection` (`useRecipeStore.ts`)
+drops the key entirely on clear rather than writing `null`; and a step's own numbering
+(`mergedStepRows`' `number`) is stamped during the merge rather than read off `SortableList`'s
+`displayIndex`, since a heading occupies a slot in that list too and "Step 3" has to count steps
+only. `cookSteps` (`cookMode.ts`) carries the same one-pass inference into cook mode, resetting at
+every dish boundary for the same reason `ingredientHeadings` does.
+
 ## Linking an ingredient to an existing item (`CatalogLinkPicker.tsx`)
 
 `RecipeIngredient.nameKey` is always *derived* from `name` (`groceryNameKey`, never written
@@ -523,7 +554,10 @@ The four rules that make it safe, all enforced in `scaleQuantity`:
   it as a component); the recipe screen and the add-to-list sheets hold it in view/sheet state and
   write nothing. **Never store it on `Recipe`.** `bulkReplaceItem` deliberately keeps the scale while
   resetting `recipeChoices` — a choice group belongs to the recipe that defined it, but "feeding
-  eight on Sunday" survives a swap of what's being cooked.
+  eight on Sunday" survives a swap of what's being cooked. What it keeps is the **servings**, not
+  the multiplier (`rescaleForRecipe`): 2× a pasta that serves 2 is four servings, which is 1× of a
+  soup that serves 4, and carrying the 2× over unchanged made it eight. Where either recipe states no
+  servings, or the meal was never scaled (as-written names no head count), the factor is kept.
 - **Factor chips are the floor, a servings stepper is layered on where it can be.** `Recipe.servings`
   is nullable and plenty of recipes never had one, so the chips (`½× 1× 1½× 2× 3×`) are what's always
   available. When a recipe does know its own count, `RecipeScaleChips` also renders a `CountStepper`

@@ -1738,6 +1738,9 @@ export function initDatabase(): void {
     'ALTER TABLE projects ADD COLUMN show_checked INTEGER NOT NULL DEFAULT 0',
     // Off on every existing section. See TaskGroup.checklist.
     'ALTER TABLE task_groups ADD COLUMN checklist INTEGER NOT NULL DEFAULT 0',
+    // Empty on every existing recipe: a method heading declared ahead of any
+    // step is new. See Recipe.emptyStepSections.
+    "ALTER TABLE recipes ADD COLUMN empty_step_sections TEXT NOT NULL DEFAULT '[]'",
   ];
   // Asking SQLite for a table's columns once is cheaper than handing it every
   // ALTER for that table and catching the duplicate-column error, and by the
@@ -2801,6 +2804,11 @@ export function dbApplySyncChanges(payload: SyncPayload, transport?: string): Ap
 
   db.withTransactionSync(() => {
     const ctx = loadFoldContext();
+    // Grocery rows whose on-list mirror this apply may have left wrong: an item
+    // row arrives with the peer's copy of it, and an entry arriving or leaving
+    // changes what it should be. Recomputed once at the end, after every table
+    // and deletion, since a payload's tables arrive in no particular order.
+    const groceryItemIds = new Set<string>();
     for (const [name, rows] of Object.entries(payload.tables)) {
       const table = trackedTable(name);
       if (!table) continue;
@@ -2906,6 +2914,8 @@ export function dbApplySyncChanges(payload: SyncPayload, transport?: string): Ap
            VALUES (?, ?, ?, ${NOW_EXPR})`,
           [name, rowKey, transport ?? null]
         );
+        if (name === 'grocery_items' && typeof row.id === 'string') groceryItemIds.add(row.id);
+        if (name === 'grocery_list_items' && typeof row.item_id === 'string') groceryItemIds.add(row.item_id);
       }
     }
 
@@ -2926,6 +2936,13 @@ export function dbApplySyncChanges(payload: SyncPayload, transport?: string): Ap
         continue;
       }
 
+      if (deletion.table === 'grocery_list_items') {
+        const entry = db.getFirstSync<{ item_id: string }>(
+          `SELECT item_id FROM grocery_list_items WHERE ${where.sql}`,
+          where.values
+        );
+        if (entry) groceryItemIds.add(entry.item_id);
+      }
       db.runSync(`DELETE FROM "${deletion.table}" WHERE ${where.sql}`, where.values);
       // The tombstone trigger just stamped this deletion with local now. Put
       // the peer's time back, or a third device hearing it relayed would take
@@ -2939,6 +2956,8 @@ export function dbApplySyncChanges(payload: SyncPayload, transport?: string): Ap
       );
       report.deleted++;
     }
+
+    for (const id of groceryItemIds) resyncGroceryHomeColumns(id);
   });
 
   return report;
@@ -4374,17 +4393,25 @@ export function dbFinishGroceryShopping(
   const rows = db.getAllSync<{
     id: string;
     quantity: string | null;
+    quantity_from_recipe: number | null;
     preferred_product_id: string | null;
     brand_strict: number | null;
     price_history: string | null;
   }>(
-    `SELECT i.id, i.quantity, i.preferred_product_id, i.brand_strict, i.price_history
+    `SELECT i.id, i.quantity, i.quantity_from_recipe, i.preferred_product_id, i.brand_strict, i.price_history
        FROM grocery_items i
        JOIN grocery_list_items e ON e.item_id = i.id
       WHERE e.list_id = ? AND e.checked = 1`,
     [listKey(listId)]
   );
   if (rows.length === 0) return [];
+  // What a typed price was paid for. A quantity a recipe wrote ("3 cups") is
+  // the cooking amount, not the pack that came home, so a price is recorded
+  // against nothing rather than against that: recipeCost divides by this
+  // string, and a gallon's price over "3 cups" costs every later recipe wrong.
+  // Mirrors pricedQuantityById in useGroceryStore.finishShopping.
+  const pricedQuantity = (row: { quantity: string | null; quantity_from_recipe: number | null }) =>
+    row.quantity_from_recipe ? null : row.quantity ?? null;
   const ids = rows.map(r => r.id);
   const placeholders = ids.map(() => '?').join(',');
   // The trolley empties by the entries going, which is the whole of what an
@@ -4502,7 +4529,7 @@ export function dbFinishGroceryShopping(
         // record of not knowing which one came home — see PriceObservation.
         {
           minor: price,
-          quantity: row.quantity ?? null,
+          quantity: pricedQuantity(row),
           at: purchasedAt,
           productId: row.preferred_product_id ?? null,
         }
@@ -4512,7 +4539,7 @@ export function dbFinishGroceryShopping(
             SET last_price_minor = ?, last_priced_at = ?, last_price_quantity = ?,
                 price_history = ?
           WHERE id = ?`,
-        [price, purchasedAt, row.quantity ?? null, JSON.stringify(history), row.id]
+        [price, purchasedAt, pricedQuantity(row), JSON.stringify(history), row.id]
       );
     }
   }
@@ -4568,7 +4595,7 @@ export function dbFinishGroceryShopping(
           // store's baseline against the item's must be comparing like boxes.
           {
             minor: price,
-            quantity: row.quantity ?? null,
+            quantity: pricedQuantity(row),
             at: purchasedAt,
             productId: row.preferred_product_id ?? null,
           }
@@ -4578,7 +4605,7 @@ export function dbFinishGroceryShopping(
               SET last_price_minor = ?, last_priced_at = ?, last_price_quantity = ?,
                   price_history = ?
             WHERE item_id = ? AND shop_id = ?`,
-          [price, purchasedAt, row.quantity ?? null, JSON.stringify(history), row.id, shopId]
+          [price, purchasedAt, pricedQuantity(row), JSON.stringify(history), row.id, shopId]
         );
       }
     }
@@ -4694,6 +4721,22 @@ export function dbDeleteGroceryListEntriesForItem(itemId: string): void {
  * Airbnb list is not unused.
  */
 export function dbSyncGroceryHomeColumns(itemId: string): void {
+  const cols = homeColumnsFor(itemId);
+  db.runSync(
+    'UPDATE grocery_items SET on_list = ?, checked = ?, sort_order = ?, choice_group = ? WHERE id = ?',
+    [cols.on_list, cols.checked, cols.sort_order, cols.choice_group, itemId]
+  );
+}
+
+interface HomeColumns {
+  on_list: number;
+  checked: number;
+  sort_order: number;
+  choice_group: string | null;
+}
+
+/** What `dbSyncGroceryHomeColumns` writes for `itemId`, read off its entries. */
+function homeColumnsFor(itemId: string): HomeColumns {
   const home = db.getFirstSync<{ checked: number; sort_order: number; choice_group: string | null }>(
     "SELECT checked, sort_order, choice_group FROM grocery_list_items WHERE item_id = ? AND list_id = ''",
     [itemId]
@@ -4702,16 +4745,43 @@ export function dbSyncGroceryHomeColumns(itemId: string): void {
     'SELECT COUNT(*) AS n FROM grocery_list_items WHERE item_id = ?',
     [itemId]
   );
-  db.runSync(
-    'UPDATE grocery_items SET on_list = ?, checked = ?, sort_order = ?, choice_group = ? WHERE id = ?',
-    [
-      (anywhere?.n ?? 0) > 0 ? 1 : 0,
-      home?.checked ? 1 : 0,
-      home?.sort_order ?? 0,
-      home?.choice_group ?? null,
-      itemId,
-    ]
+  return {
+    on_list: (anywhere?.n ?? 0) > 0 ? 1 : 0,
+    checked: home?.checked ? 1 : 0,
+    sort_order: home?.sort_order ?? 0,
+    choice_group: home?.choice_group ?? null,
+  };
+}
+
+/**
+ * `dbSyncGroceryHomeColumns` for the sync apply: writes only when the stored
+ * columns disagree with the entries.
+ *
+ * A peer's item row arrives carrying the peer's copy of the mirror, and a
+ * peer's entry changes what the mirror should be, so neither can be trusted
+ * as it lands. **The write-only-when-wrong half is what stops a bounce.** Any
+ * UPDATE restamps the row (the stamp trigger), so recomputing every applied
+ * row would send each one straight back to the peer as a local change. A row
+ * that does need correcting is restamped and does travel back, which is the
+ * fold's rule too (see `afterFold`): the peer takes the corrected columns,
+ * recomputes them from the same entries, finds them right and writes nothing.
+ */
+function resyncGroceryHomeColumns(itemId: string): void {
+  const stored = db.getFirstSync<{ on_list: number | null; checked: number | null; sort_order: number | null; choice_group: string | null }>(
+    'SELECT on_list, checked, sort_order, choice_group FROM grocery_items WHERE id = ?',
+    [itemId]
   );
+  if (!stored) return;
+  const want = homeColumnsFor(itemId);
+  if (
+    (stored.on_list ? 1 : 0) === want.on_list &&
+    (stored.checked ? 1 : 0) === want.checked &&
+    (stored.sort_order ?? 0) === want.sort_order &&
+    (stored.choice_group ?? null) === want.choice_group
+  ) {
+    return;
+  }
+  dbSyncGroceryHomeColumns(itemId);
 }
 
 // ─── Grocery lists ──────────────────────────────────────────────────────────
@@ -5515,6 +5585,7 @@ function rowToRecipe(row: Record<string, unknown>): Recipe {
     components: parseRecipeComponents(row.components),
     prepTasks: parsePrepTasks(row.prep_tasks),
     steps: parseSteps(row.steps),
+    emptyStepSections: parseEmptySections(row.empty_step_sections),
     sortOrder: (row.sort_order as number) ?? 0,
     createdAt: row.created_at as string,
     cookCount: (row.cook_count as number) ?? 0,
@@ -5548,11 +5619,11 @@ export function dbGetAllRecipes(): Recipe[] {
 export function dbInsertRecipe(recipe: Recipe): void {
   db.runSync(
     `INSERT INTO recipes
-      (id, name, name_key, notes, source_url, source_name, author, source, source_type, source_page, cookbook_id, servings, servings_max, recipe_yield, cooked_weight_g, leftover_keep_days, image_path, meal_type, tags, ingredients, empty_sections, components, prep_tasks, steps, sort_order, created_at, cook_count, last_cooked_at, vote, up_next, up_next_order,
+      (id, name, name_key, notes, source_url, source_name, author, source, source_type, source_page, cookbook_id, servings, servings_max, recipe_yield, cooked_weight_g, leftover_keep_days, image_path, meal_type, tags, ingredients, empty_sections, components, prep_tasks, steps, empty_step_sections, sort_order, created_at, cook_count, last_cooked_at, vote, up_next, up_next_order,
        estimated_minutes, timer_started_at, timer_elapsed_seconds, last_cook_minutes, cook_time_count, total_cook_minutes,
        prep_minutes, prep_timer_started_at, prep_timer_elapsed_seconds, last_prep_minutes, prep_time_count, total_prep_minutes,
        backfill_dismissed_fields)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       recipe.id, recipe.name, recipe.nameKey, recipe.notes, recipe.sourceUrl ?? null,
       recipe.sourceName ?? null, recipe.author ?? null, recipe.source ?? null,
@@ -5564,6 +5635,7 @@ export function dbInsertRecipe(recipe: Recipe): void {
       JSON.stringify(recipe.ingredients),
       JSON.stringify(recipe.emptySections),
       JSON.stringify(recipe.components), JSON.stringify(recipe.prepTasks), JSON.stringify(recipe.steps),
+      JSON.stringify(recipe.emptyStepSections),
       recipe.sortOrder, recipe.createdAt,
       recipe.cookCount, recipe.lastCookedAt ?? null, recipe.vote ?? null,
       recipe.upNext ? 1 : 0, recipe.upNextOrder,
@@ -5579,7 +5651,7 @@ export function dbInsertRecipe(recipe: Recipe): void {
 export function dbUpdateRecipe(recipe: Recipe): void {
   db.runSync(
     `UPDATE recipes SET
-       name=?, name_key=?, notes=?, source_url=?, source_name=?, author=?, source=?, source_type=?, source_page=?, cookbook_id=?, servings=?, servings_max=?, recipe_yield=?, cooked_weight_g=?, leftover_keep_days=?, image_path=?, meal_type=?, tags=?, ingredients=?, empty_sections=?, components=?, prep_tasks=?, steps=?,
+       name=?, name_key=?, notes=?, source_url=?, source_name=?, author=?, source=?, source_type=?, source_page=?, cookbook_id=?, servings=?, servings_max=?, recipe_yield=?, cooked_weight_g=?, leftover_keep_days=?, image_path=?, meal_type=?, tags=?, ingredients=?, empty_sections=?, components=?, prep_tasks=?, steps=?, empty_step_sections=?,
        sort_order=?, cook_count=?, last_cooked_at=?, vote=?, up_next=?, up_next_order=?,
        estimated_minutes=?, timer_started_at=?, timer_elapsed_seconds=?, last_cook_minutes=?, cook_time_count=?, total_cook_minutes=?,
        prep_minutes=?, prep_timer_started_at=?, prep_timer_elapsed_seconds=?, last_prep_minutes=?, prep_time_count=?, total_prep_minutes=?,
@@ -5596,6 +5668,7 @@ export function dbUpdateRecipe(recipe: Recipe): void {
       JSON.stringify(recipe.ingredients),
       JSON.stringify(recipe.emptySections),
       JSON.stringify(recipe.components), JSON.stringify(recipe.prepTasks), JSON.stringify(recipe.steps),
+      JSON.stringify(recipe.emptyStepSections),
       recipe.sortOrder,
       recipe.cookCount, recipe.lastCookedAt ?? null, recipe.vote ?? null,
       recipe.upNext ? 1 : 0, recipe.upNextOrder,
@@ -6229,6 +6302,24 @@ export function dbGetMealPlanEntries(startKey: string, endKey: string): MealPlan
     `SELECT * FROM meal_plan_entries WHERE date >= ? AND date <= ?
      ORDER BY date ASC, sort_order ASC, created_at ASC`,
     [startKey, endKey]
+  );
+  return rows.map(rowToMealPlanEntry);
+}
+
+/**
+ * Every entry planned from one recipe, whatever its date.
+ *
+ * Not range-scoped, unlike `dbGetMealPlanEntries`, because what reads it is a
+ * change to the recipe itself (a rename retitles these entries, a delete
+ * reconciles their tasks), and the entries that change has to reach are
+ * exactly the ones outside the week on screen. The purge horizon bounds it
+ * anyway.
+ */
+export function dbGetMealPlanEntriesForRecipe(recipeId: string): MealPlanEntry[] {
+  const rows = db.getAllSync<Record<string, unknown>>(
+    `SELECT * FROM meal_plan_entries WHERE recipe_id = ?
+     ORDER BY date ASC, sort_order ASC, created_at ASC`,
+    [recipeId]
   );
   return rows.map(rowToMealPlanEntry);
 }

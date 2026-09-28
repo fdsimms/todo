@@ -77,7 +77,11 @@ export interface NutrientAverage {
   key: NutrientKey;
   /** Summed across the window's completed days. */
   total: number;
-  /** How many of those days stated this nutrient at all — the divisor. */
+  /**
+   * How many of those days stated this nutrient in every food entry: the
+   * divisor. Water's own row counts the days anything stated it (see
+   * `nutrientAverages`).
+   */
   days: number;
   /** `total / days`, rounded to a tenth. */
   average: number;
@@ -205,6 +209,22 @@ export function nutritionCounts(
  * not others; dividing by every day would report a fibre average built from
  * three days as if it were built from thirty. The count travels back on the row.
  *
+ * **And a day states a nutrient only when every food entry on it did**, the
+ * coverage rule `foodDayInputs` below applies, for the reason it gives: across
+ * days there is nowhere to print "from 1 of 3 entries", and the coverage varies
+ * day to day, so the variation reads as variation in the food. Summing whatever
+ * was stated used to let one scanned cereal's 3 g of fibre stand for a whole
+ * day's fibre beside a lunch and a dinner that stated none, and since every
+ * complete day had *some* entry stating it, the row's "across N days" clause
+ * never appeared. A day that fails the rule for one nutrient still counts for
+ * the others it did state throughout.
+ *
+ * **The day's water is on its own path.** It is the one entry that states
+ * `waterMl` and nothing else, so it would veto every other nutrient under the
+ * rule above, and the rule would veto water on every day with a meal. So it
+ * feeds only the water row, and water keeps the plain rule: a day counts when
+ * anything on it stated a volume.
+ *
  * Absent throughout means absent from the result. A nutrient nothing in the
  * window ever stated has no average, rather than an average of zero.
  */
@@ -213,28 +233,42 @@ export function nutrientAverages(
   window: CookingWindow,
 ): NutrientAverage[] {
   const totals = new Map<string, Partial<Record<NutrientKey, number>>>();
+  // Per day, how many food entries stated each nutrient, against how many food
+  // entries the day has: a nutrient counts for a day only when the two match.
+  const statedByDay = new Map<string, Partial<Record<NutrientKey, number>>>();
+  const foodEntriesByDay = new Map<string, number>();
   const slotsByDay = new Map<string, Set<string>>();
 
   for (const entry of inWindow(entries, window)) {
     // The averaging window stops at yesterday: a partial day drags every
     // figure down, and today is partial by definition.
     if (entry.dayKey >= window.todayKey) continue;
-    // Water still feeds the water average, but it is not a meal, so it never
-    // counts toward a day's completeness (see nutritionCounts).
-    if (!isWaterEntry(entry)) {
-      const slot = entry.slot ?? 'none';
-      const seen = slotsByDay.get(entry.dayKey);
-      if (seen) seen.add(slot);
-      else slotsByDay.set(entry.dayKey, new Set([slot]));
+    const day = totals.get(entry.dayKey) ?? {};
+    totals.set(entry.dayKey, day);
+
+    // Water feeds the water average and nothing else. It is not a meal, so it
+    // never counts toward a day's completeness (see nutritionCounts), and it
+    // is not a food, so it never vetoes another nutrient's coverage.
+    if (isWaterEntry(entry)) {
+      const ml = entry.nutrition.amounts.waterMl;
+      if (ml !== undefined) day.waterMl = (day.waterMl ?? 0) + ml;
+      continue;
     }
 
-    const day = totals.get(entry.dayKey) ?? {};
+    const slot = entry.slot ?? 'none';
+    const seen = slotsByDay.get(entry.dayKey);
+    if (seen) seen.add(slot);
+    else slotsByDay.set(entry.dayKey, new Set([slot]));
+    foodEntriesByDay.set(entry.dayKey, (foodEntriesByDay.get(entry.dayKey) ?? 0) + 1);
+
+    const stated = statedByDay.get(entry.dayKey) ?? {};
+    statedByDay.set(entry.dayKey, stated);
     for (const key of NUTRIENT_KEYS) {
       const amount = entry.nutrition.amounts[key];
       if (amount === undefined) continue;
       day[key] = (day[key] ?? 0) + amount;
+      stated[key] = (stated[key] ?? 0) + 1;
     }
-    totals.set(entry.dayKey, day);
   }
 
   const out: NutrientAverage[] = [];
@@ -245,6 +279,10 @@ export function nutrientAverages(
       if ((slotsByDay.get(dayKey)?.size ?? 0) < COMPLETE_DAY_SLOTS) continue;
       const amount = day[key];
       if (amount === undefined) continue;
+      // Water keeps the plain rule; everything else needs every food entry
+      // that day to have stated it, or the day is left out of this row.
+      if (key !== 'waterMl'
+        && (statedByDay.get(dayKey)?.[key] ?? 0) < (foodEntriesByDay.get(dayKey) ?? 0)) continue;
       total += amount;
       days += 1;
     }

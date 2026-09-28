@@ -84,7 +84,7 @@ import { defaultOnHandUntil, OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
 import { ensureProductFor, newItemRow, nextSortOrder, planGroceryAdd } from '../utils/groceryAdd';
 import type { PantryReviewAnswer } from '../utils/pantryReview';
 import { wantsShelfLifePrompt, type DisposalOutcome } from '../utils/itemDisposal';
-import { expiresAtForOpening, expiresAtForPurchase } from '../utils/groceryShelfLife';
+import { expiresAtForOpening, expiresAtForPurchase, liveExpiresAt } from '../utils/groceryShelfLife';
 import { useUpTaskDraft, useUpTaskDrift, wantsUseUpTask } from '../utils/groceryExpiry';
 import { dropGeneratedTask, reconcileGeneratedTask } from './generatedTaskSync';
 import {
@@ -824,6 +824,21 @@ interface GroceryStore extends UndoHistoryActions {
    * unplaced trip does. Not part of the undo snapshot on this batch's *links*
    * — the item rows revert wholesale with everything else, matching how
    * `addProduct` is already treated here.
+   *
+   * `acquired` says every name is a packet that has just come home — a
+   * receipt, or a barcode scanned off the bag — rather than a "Got it" about
+   * one already in the cupboard. A row it finds then drops the three claims a
+   * purchase refutes, the same three `finishShopping` clears: the old bag's
+   * `frozenAt`, the old jar's `openedAt`, and `runningLowAt`. A running-low
+   * row also comes off the home list, which is the one list `setRunningLow`
+   * reaches into on anyone's behalf: the thing it was on there to buy has just
+   * been bought. Still not a trip, so no purchase count and no use-by day of
+   * its own; a frozen or opened row's `expiresAt` goes with the state that set
+   * or suspended it, rather than a stale day coming back to life on the new
+   * packet. The use-up task follows the row, and undo puts back the rows, the
+   * list entries and the tasks together. The scan sheet's own freezer toggle
+   * still wins, applied after the clear, the way `finishShopping`'s
+   * `frozenIds` does.
    */
   addManyToPantry: (
     names: readonly string[],
@@ -839,7 +854,8 @@ interface GroceryStore extends UndoHistoryActions {
         nameFromScan?: boolean;
       }
     >,
-    prices?: { byName: ReadonlyMap<string, number>; shopId: string | null }
+    prices?: { byName: ReadonlyMap<string, number>; shopId: string | null },
+    opts?: { acquired?: boolean }
   ) => number;
   /**
    * The day this should be used up by, as a `YYYY-MM-DD` key, or null for
@@ -928,8 +944,13 @@ interface GroceryStore extends UndoHistoryActions {
    * shake labelled as something they just did. Same opt-out `addToPantry`
    * takes, and the same rule the completed-task purge follows by not going
    * through `bulkDeleteTasks`.
+   *
+   * `listId` names the list the add joins, defaulting to the active one (a
+   * tap). The supply sweep passes `null`, the home list: a supply is restocked
+   * from a home trip, and joining an away list it would be flagged low, never
+   * restocked there, and never offered to the home list afterwards.
    */
-  setRunningLow: (id: string, low: boolean, opts?: { registerUndo?: boolean }) => void;
+  setRunningLow: (id: string, low: boolean, opts?: { registerUndo?: boolean; listId?: string | null }) => void;
   /**
    * One card's answer in the pantry review deck (see
    * `src/utils/pantryReview.ts`).
@@ -1351,6 +1372,10 @@ interface GroceryStore extends UndoHistoryActions {
    * Say you're at a store. Explicit only — nothing in the app infers a trip,
    * because a wrong guess marks up the whole list in the one place it has to
    * stay scannable one-handed.
+   *
+   * `budgetMinor` omitted keeps the budget of a trip already running, which
+   * is what changing store mid-shop is: the same shop moved, not a new one
+   * with its ceiling silently cleared. Pass `null` to start with none.
    */
   startTrip: (shopId: string, budgetMinor?: number | null) => void;
   /** Set or clear the ceiling mid-shop. A no-op when no trip is running. */
@@ -1437,6 +1462,14 @@ export interface PlanAddResult {
    */
   alreadyOnList: GroceryItem[];
   /**
+   * The subset of `alreadyOnList` whose quantity this call changed, which is
+   * what ticking an "Already on your list" row asks for. Counted apart so the
+   * result can say "Updated 2 amounts" rather than "Nothing to add" after a
+   * tap that did something. A merge that only dropped the recipe credit is
+   * not counted: nothing the user sees on the row moved.
+   */
+  toppedUp: GroceryItem[];
+  /**
    * Already in the trolley, and deliberately untouched. THIS IS THE WHOLE
    * REASON THIS FUNCTION EXISTS rather than a loop over addByName at the call
    * site: addByName sets `checked: false` on a row it finds, so adding a
@@ -1445,6 +1478,31 @@ export interface PlanAddResult {
    * rows are reported and skipped.
    */
   skippedInCart: GroceryItem[];
+}
+
+/**
+ * The alert a plan add closes with, shared by the two sheets that add a
+ * recipe's or a week's ingredients. Each count is said on its own terms and
+ * never added together (the discipline describeShops keeps), and a top-up
+ * counts as having done something, so a deliberate one doesn't read
+ * "Nothing to add / Added 0".
+ */
+export function describePlanAdd(result: PlanAddResult): { title: string; message: string; changed: boolean } {
+  const added = result.added.length;
+  const toppedUp = result.toppedUp.length;
+  const untouched = result.alreadyOnList.length - toppedUp;
+  const inCart = result.skippedInCart.length;
+  const parts: string[] = [];
+  if (added > 0) parts.push(`Added ${added}`);
+  if (toppedUp > 0) parts.push(`Updated ${toppedUp} amount${toppedUp === 1 ? '' : 's'} already on your list`);
+  if (untouched > 0) parts.push(`${untouched} already on your list`);
+  if (inCart > 0) parts.push(`${inCart} already in your cart`);
+  const changed = added > 0 || toppedUp > 0;
+  return {
+    title: changed ? 'On the list' : 'Nothing to add',
+    message: parts.length > 0 ? parts.join(' · ') : 'Added 0',
+    changed,
+  };
 }
 
 /**
@@ -1999,7 +2057,10 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       // The same resolution addByName is about to make, or this loop counts a
       // line it merged into an existing row as a freshly minted one.
       const before = catalogItemForKey(key, get().items) ?? undefined;
-      const wasOnList = before?.onList === true;
+      // On the list being pasted into, not on any list: milk on the home list
+      // is a fresh add to the Airbnb one, and its undo has to take it off.
+      const wasOnList = !!before
+        && entryFor(get().listEntries, before.id, get().activeListId) !== null;
       const item = get().addByName(line, undefined, undefined, { registerUndo: false });
       if (wasOnList) alreadyOnList.push(item);
       else added.push(item);
@@ -2077,6 +2138,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const preexisting = new Set(get().items.map(i => i.id));
     const added: GroceryItem[] = [];
     const alreadyOnList: GroceryItem[] = [];
+    const toppedUp: GroceryItem[] = [];
     const skippedInCart: GroceryItem[] = [];
 
     // One opaque id per incoming key, minted here rather than carried from the
@@ -2113,6 +2175,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
           if (merged) {
             dbUpdateGroceryItem(merged);
             set(s => ({ items: s.items.map(i => (i.id === merged.id ? merged : i)) }));
+            if (merged.quantity !== existing.quantity) toppedUp.push(merged);
           }
           alreadyOnList.push(merged ?? existing);
           continue;
@@ -2160,7 +2223,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       });
     }
 
-    return { added, alreadyOnList, skippedInCart };
+    return { added, alreadyOnList, toppedUp, skippedInCart };
   },
 
   toggleChecked(id) {
@@ -3146,10 +3209,15 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     return item;
   },
 
-  addManyToPantry(names, frozenNames, products, prices) {
+  addManyToPantry(names, frozenNames, products, prices, opts) {
     const addedIds: string[] = [];
     const revertRows: GroceryItem[] = [];
     const gtinLinks: ScannedGtinLink[] = [];
+    // What `acquired` changed beyond the row itself, so undo can put it back:
+    // the home-list entries it took away, and the rows whose use-up task it
+    // re-derived.
+    const removedEntries: GroceryListEntry[] = [];
+    const refreshedIds = new Set<string>();
     let count = 0;
     for (const raw of names) {
       const key = groceryNameKey(parseGroceryInput(raw).name);
@@ -3168,8 +3236,45 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       });
       if (!item) continue;
       count++;
-      if (before) revertRows.push(before);
-      else addedIds.push(item.id);
+      // The first snapshot of a row is the one undo wants. A receipt naming the
+      // same thing twice (two packs of chicken) reaches this row again with
+      // the first line's write already on it, and restoring that would keep
+      // the "Got it" and the cleared claims undo is meant to take back.
+      if (before) {
+        if (!revertRows.some(r => r.id === before.id)) revertRows.push(before);
+      } else addedIds.push(item.id);
+      // A new packet, so the old one's claims go (see `acquired` on the
+      // interface). Only a found row can carry any; one this batch minted
+      // starts clean. Ahead of the freezer toggle below so a fresh "into the
+      // freezer" lands on the new packet rather than being swallowed by the
+      // old one's stamp, which `setFrozen` would read as nothing to do.
+      if (opts?.acquired && before && (item.frozenAt || item.openedAt || item.runningLowAt)) {
+        const fresh: GroceryItem = {
+          ...item,
+          frozenAt: null,
+          openedAt: null,
+          runningLowAt: null,
+          // A frozen row's day was suspended and an opened jar's was set by
+          // the opening; either way it is the old packet's, and clearing the
+          // state while keeping it would wake a stale day on the new one.
+          expiresAt: item.frozenAt || item.openedAt ? null : item.expiresAt,
+        };
+        dbUpdateGroceryItem(fresh);
+        set(s => ({ items: s.items.map(i => (i.id === fresh.id ? fresh : i)) }));
+        if (item.runningLowAt) {
+          const entry = entryFor(get().listEntries, item.id, null);
+          if (entry) {
+            removedEntries.push(entry);
+            writeMembership({ remove: [{ itemId: item.id, listId: null }] });
+          }
+        }
+        // Dropped when there's no live day left, since there is nothing to
+        // reconcile against; neither path writes the item's "never" (see
+        // reconcileGeneratedTask).
+        if (liveExpiresAt(fresh) === null) dropUseUpTask(fresh.id);
+        else reconcileUseUpTask(fresh);
+        refreshedIds.add(fresh.id);
+      }
       // Captured before this row's own write, so undo's restore of `before`
       // (or delete of a fresh row) already reverts the freeze along with it —
       // no separate bookkeeping needed for this half of the batch.
@@ -3212,6 +3317,15 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
           for (const b of revertRows) dbUpdateGroceryItem(b);
           const revertById = new Map(revertRows.map(b => [b.id, b]));
           set(s => ({ items: s.items.map(i => revertById.get(i.id) ?? i) }));
+          // Back on the home list with the tick and slot it had, and each task
+          // re-derived against the row as it now stands again.
+          writeMembership({ upsert: removedEntries });
+          for (const id of refreshedIds) {
+            const restored = revertById.get(id);
+            if (!restored) continue;
+            if (liveExpiresAt(restored) === null) dropUseUpTask(id);
+            else reconcileUseUpTask(restored);
+          }
           // Through deleteItems rather than a bare filter, which took the new
           // rows out of memory only: they came back on the next launch, with
           // the products and barcode links the batch attached.
@@ -3228,12 +3342,15 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const now = minor === null ? null : new Date().toISOString();
     // The quantity it's a price *for* is this row's current one — the same
     // pairing a finished trip records. Cleared with the price, so a stale
-    // quantity can never be left describing a number that's gone.
+    // quantity can never be left describing a number that's gone. A quantity
+    // a recipe wrote is a cooking amount, not a pack, so it pairs with nothing
+    // (see finishShopping's pricedQuantityById).
+    const pricedQuantity = minor === null || item.quantityFromRecipe ? null : item.quantity;
     const updated: GroceryItem = {
       ...item,
       lastPriceMinor: minor,
       lastPricedAt: now,
-      lastPriceQuantity: minor === null ? null : item.quantity,
+      lastPriceQuantity: pricedQuantity,
     };
     dbUpdateGroceryItem(updated);
     set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
@@ -3250,7 +3367,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       ...link,
       lastPriceMinor: minor,
       lastPricedAt: now,
-      lastPriceQuantity: minor === null ? null : item.quantity,
+      lastPriceQuantity: pricedQuantity,
     };
     dbSetItemShopLink(nextLink);
     set(s => ({
@@ -3310,11 +3427,11 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
     // Opposite things in the two directions: freezing drops a use-up task
     // that's now about food under ice, thawing spawns the one the fresh date
-    // earns. Freezing *drops* rather than reconciles, though. A reconcile that
-    // finds its source no longer wanted deletes through `deleteTask`, which
-    // stamps the item's own "never" (`useUpTask: false`) as if the person had
-    // swiped the task away, so an item frozen once with a live task never got
-    // one again after it thawed.
+    // earns. Neither direction may write the item's own "never"
+    // (`useUpTask: false`): an item frozen once with a live task used to lose
+    // use-up tasks for good, because the delete stamped the opt-out as if the
+    // person had swiped it away. Both paths now skip it (see
+    // reconcileGeneratedTask); dropping on the way in just says so outright.
     if (frozen) dropUseUpTask(id);
     else reconcileUseUpTask(updated);
   },
@@ -3372,7 +3489,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
   setRunningLow(id, low, opts = {}) {
     const item = get().items.find(i => i.id === id);
     if (!item || !!item.runningLowAt === low) return;
-    const listId = get().activeListId;
+    const listId = opts.listId !== undefined ? opts.listId : get().activeListId;
     // Already in the trolley you're looking at is what makes this a no-op on
     // the list, not being in some other one — a staple you're nearly out of at
     // home is worth adding to the Airbnb list too.
@@ -3823,9 +3940,14 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // trolley — a price with no quantity beside it is the ambiguity
     // GroceryItem.lastPriceQuantity exists to close. Read from state rather
     // than handed back by the db so the in-memory patch below and the row it
-    // mirrors can't disagree.
+    // mirrors can't disagree. A quantity a recipe wrote ("3 cups") is the
+    // cooking amount rather than the pack that came home, so its price is
+    // recorded against nothing: recipeCost divides by this, and a gallon's
+    // price filed against "3 cups" costs every later recipe wrong.
     const pricedQuantityById = new Map(
-      get().items.filter(i => priceById[i.id] !== undefined).map(i => [i.id, i.quantity])
+      get().items
+        .filter(i => priceById[i.id] !== undefined)
+        .map(i => [i.id, i.quantityFromRecipe ? null : i.quantity])
     );
     // Snapshotted before anything is written, so undo restores the rows
     // themselves rather than reconstructing what they probably were — same
@@ -4054,11 +4176,11 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
                   ? {
                       lastPriceMinor: priceById[i.id],
                       lastPricedAt: purchasedAt,
-                      lastPriceQuantity: i.quantity,
+                      lastPriceQuantity: pricedQuantityById.get(i.id) ?? null,
                       // Same append the db just made at the item level. An
                       // unpriced row falls through and keeps the run it had.
                       priceHistory: appendPriceObservation(i.priceHistory, {
-                        minor: priceById[i.id], quantity: i.quantity, at: purchasedAt,
+                        minor: priceById[i.id], quantity: pricedQuantityById.get(i.id) ?? null, at: purchasedAt,
                         productId: i.preferredProductId,
                       }),
                     }
@@ -4566,6 +4688,9 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     set(s => ({
       shops: s.shops.filter(x => x.id !== id),
       itemShops: s.itemShops.filter(l => l.shopId !== id),
+      // dbDeleteGroceryShop deletes them too; without this the in-memory copy
+      // kept matching receipt lines against a store that no longer exists.
+      storeAliases: s.storeAliases.filter(a => a.shopId !== id),
       lastShopId: wasLast ? null : s.lastShopId,
       tripShopId: wasTrip ? null : s.tripShopId,
       tripStartedAt: wasTrip ? null : s.tripStartedAt,
@@ -4981,6 +5106,13 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       e => e.listId === listId && (e.itemId === item.id || e.itemId === sub.id)
     );
 
+    // A substitute already on this list (margarine for another recipe, maybe
+    // already in the cart) keeps its own entry, its checked state and its own
+    // quantity: the swap only takes the original off. Overwriting it would
+    // un-tick something already in the cart and replace "1 tub" with the
+    // converted amount of the row it stands in for.
+    const subEntry = entryFor(get().listEntries, sub.id, listId);
+
     const link = get().itemSubs.find(l => l.itemId === itemId && l.subItemId === subItemId);
     let quantity = item.quantity;
     if (item.quantity && link?.ratioFrom && link?.ratioTo) {
@@ -4988,13 +5120,15 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       if (converted.converted) quantity = converted.text;
     }
 
-    const updatedSub: GroceryItem = {
-      ...sub,
-      quantity: quantity ?? sub.quantity,
-      quantityFromRecipe: quantity ? item.quantityFromRecipe : sub.quantityFromRecipe,
-      lastAddedAt: new Date().toISOString(),
-    };
-    dbUpdateGroceryItem(updatedSub);
+    const updatedSub: GroceryItem = subEntry
+      ? sub
+      : {
+          ...sub,
+          quantity: quantity ?? sub.quantity,
+          quantityFromRecipe: quantity ? item.quantityFromRecipe : sub.quantityFromRecipe,
+          lastAddedAt: new Date().toISOString(),
+        };
+    if (!subEntry) dbUpdateGroceryItem(updatedSub);
 
     // The row being swapped out just comes off the list — it used to be deleted
     // when provisional, which is the case this refactor is most obviously about:
@@ -5021,7 +5155,9 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // rather than being appended to the bottom of a list you are walking. The
     // row it stands in for leaves this trolley and no other.
     writeMembership({
-      upsert: [{ ...swappedEntry, itemId: sub.id, checked: false, addedAt: new Date().toISOString() }],
+      upsert: subEntry
+        ? []
+        : [{ ...swappedEntry, itemId: sub.id, checked: false, addedAt: new Date().toISOString() }],
       remove: [{ itemId: item.id, listId }],
     });
 
@@ -5183,12 +5319,15 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     set({ lastShopId: id });
   },
 
-  startTrip(shopId, budgetMinor = null) {
+  startTrip(shopId, requestedBudget) {
     // Resolved against live state for the same reason finishShopping re-resolves
     // its shop: the picker that offered this id may have been open while the
     // store was deleted somewhere else.
     const shop = get().shops.find(s => s.id === shopId);
     if (!shop) return;
+    const budgetMinor = requestedBudget !== undefined
+      ? requestedBudget
+      : get().activeShop() ? get().tripBudgetMinor : null;
     const startedAt = new Date().toISOString();
     dbSetTrip(shopId, startedAt, budgetMinor);
     set({ tripShopId: shopId, tripStartedAt: startedAt, tripBudgetMinor: budgetMinor });

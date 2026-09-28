@@ -32,7 +32,7 @@ import { PillGroup } from './PillGroup';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { EmptyState } from './EmptyState';
 import { OTHER_AISLE, isNonFoodAisle } from '../utils/groceryAisles';
-import { describeShopAisles, itemCountsByShop } from '../utils/groceryShops';
+import { describeShopAisles, describeShopDelete, itemCountsByShop } from '../utils/groceryShops';
 import { haptics } from '../utils/haptics';
 import { confirmDelete } from '../utils/confirmDelete';
 import { AISLE_NAME_MAX_LENGTH, SHOP_NAME_MAX_LENGTH, type Shop } from '../types';
@@ -154,15 +154,22 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
   }, [visible]);
 
   // Fires on open (tab is forced to 'aisles' above) and on every manual tab
-  // switch — the add field is each tab's own primary action, and unlike the
-  // rename fields above (which remount fresh because they're conditional on
-  // `editing`), this sheet stays mounted across opens so a bare `autoFocus`
-  // on the add fields would only ever fire once.
+  // switch. Unlike the rename fields above (which remount fresh because
+  // they're conditional on `editing`), this sheet stays mounted across opens,
+  // so a bare `autoFocus` on the add fields would only ever fire once.
+  //
+  // The aisles tab focuses its add field only while it has no aisles yet.
+  // With a list to reorder, which is what the sheet is usually opened for,
+  // the keyboard came up over the bottom half of it and the list scrolled to
+  // the field in its footer. Read at the moment of opening rather than kept
+  // in the deps, so adding the first aisle doesn't pull focus back.
+  const hasAisleRows = aisleOrder.some(a => a !== OTHER_AISLE);
   useEffect(() => {
     if (!visible) return;
-    if (tab === 'aisles') newAisleInputRef.current?.focus();
-    else if (tab === 'stores') newShopInputRef.current?.focus();
-  }, [visible, tab]);
+    if (tab === 'aisles') {
+      if (!hasAisleRows) newAisleInputRef.current?.focus();
+    } else if (tab === 'stores') newShopInputRef.current?.focus();
+  }, [visible, tab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const shopCounts = useMemo(() => itemCountsByShop(items, itemShops), [items, itemShops]);
 
@@ -189,12 +196,11 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
   };
 
   const confirmDeleteShop = (id: string, name: string) => {
-    const count = shopCounts.get(id) ?? 0;
+    // Read at the tap: the aliases and the trip matter to this message only.
+    const { storeAliases, tripShopId } = useGroceryStore.getState();
     confirmDelete({
       title: `Delete ${name}?`,
-      message: count > 0
-        ? `${count} ${count === 1 ? 'item is' : 'items are'} recorded as coming from here. Deleting the store forgets that. The items themselves stay. This can’t be undone.`
-        : 'Nothing is recorded against this store yet.',
+      message: describeShopDelete(id, items, itemShops, storeAliases, tripShopId),
       onConfirm: () => {
         deleteShop(id);
         haptics.warning();

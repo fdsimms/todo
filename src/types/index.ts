@@ -1888,7 +1888,7 @@ export type GeneratedKind =
   // src/utils/weightTasks.ts. Its source id is the day key the request was
   // raised on, the same "square on the calendar, not a row" position moodLog
   // is in, and what stops a swiped-away one coming straight back is
-  // weighInLastDayKey.
+  // weighInLastDayKey, then weighInDeclinedDayKey for the rest of the window.
   //
   // Deliberately not part of 'health' despite reading the same store: that
   // kind fires *because* a reading crossed a rule the user wrote, and this one
@@ -4555,6 +4555,10 @@ export interface GroceryItem {
    * which inherits every refusal `parseQuantityAmount` makes ("a bunch" has no
    * per-unit price) — so the string is shown next to the price and the reader
    * does the comparing.
+   *
+   * Null rather than `quantity` when a recipe wrote that quantity
+   * (`quantityFromRecipe`): "3 cups" is what the week's cooking needed, not
+   * the pack the price was paid for, and `recipeCost` divides by this string.
    */
   lastPriceQuantity: string | null;
   /**
@@ -5885,6 +5889,13 @@ export interface Recipe {
   // second list to keep in step with this one, worth adding only once
   // something actually reads them (#1695).
   steps: RecipeStep[];
+  // Method headings declared with nothing filed under them yet — the same
+  // gap `emptySections` covers for ingredients, for `RecipeStep.section`
+  // instead. Pruned the moment a step actually carries the same label, so
+  // it never duplicates what `sectionsOf(steps)` already reports. Empty for
+  // every recipe that's never had a method heading declared ahead of its
+  // steps, which is most of them.
+  emptyStepSections: string[];
   sortOrder: number;
   createdAt: string;
   /**
@@ -6028,6 +6039,17 @@ export interface RecipeStep {
    * changes gets a new reading rather than an old answer.
    */
   timerSeconds?: number | null;
+  /**
+   * Which part of the method this step belongs to — "For the sauce", "For the
+   * tofu". Absent (not null — see the round-trip note on `note` below) means
+   * the recipe wasn't authored with sections, the common case. Same model as
+   * `RecipeIngredient.section`: a label on a flat list, not a nested groups
+   * type, inferred wherever a step's section differs from the step before it
+   * (`RecipeDetailScreen`), with `Recipe.emptyStepSections` covering a heading
+   * declared ahead of any step. `recipeSections.ts`'s helpers are generic over
+   * `{ id, section }` and are reused here verbatim rather than duplicated.
+   */
+  section?: string;
   /**
    * A note kept alongside the step, shown under it in cook mode and on the
    * recipe screen; absent on a step nobody has written one for.

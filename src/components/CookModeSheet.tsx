@@ -352,6 +352,13 @@ export function CookModeSheet({
 
   const startCooking = () => {
     haptics.tap();
+    // Starting the cook timer here (rather than leaving it to a second tap on
+    // RecipeTimerRow) is the indicator that a cook is actually underway: the
+    // elapsed stopwatch and progress bar start moving the moment mise en
+    // place is left behind. Only when nothing's running or paused yet — a
+    // cook who already started or logged the timer isn't reset by leaving
+    // mise en place a second time (Back then Start Cooking again).
+    if (!cookTimer.inProgress) cookTimer.onToggle();
     setRawIndex(0);
   };
 
@@ -513,6 +520,13 @@ export function CookModeSheet({
                   <Ionicons name="layers-outline" size={iconSize.xs} color={colors.accent} />
                   <Text style={styles.attributionText} numberOfLines={1}>{step.recipe.name}</Text>
                 </View>
+              )}
+              {/* The method heading this step opens, read out loud the same
+                  way the recipe screen draws it as a caption above the row —
+                  a cook working from this screen alone should still see
+                  "For the sauce" land where the sauce steps start. */}
+              {!!step.section && (
+                <Text style={styles.sectionCaption}>{step.section}</Text>
               )}
               {/* The recipe's own sentence, with the amount this cooking needs
                   and any standing swap named where the ingredient is. The
@@ -992,6 +1006,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   fromNotes: {
     color: colors.textTertiary,
     fontSize: font.xs,
+  },
+  // Same section-header treatment as every other list in the app — see the
+  // note on section headers in CLAUDE.md's design system section.
+  sectionCaption: {
+    color: colors.textSecondary,
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
   },
   // Everything below the step, pinned: the panel, the timer and the controls
   // stay put while a long step scrolls above them.

@@ -1,4 +1,4 @@
-import type { GroceryItem } from '../types';
+import type { GroceryItem, ItemProduct } from '../types';
 import { groceryNameKey } from '../utils/groceryParse';
 import {
   coveringVariety,
@@ -111,6 +111,21 @@ describe('coveringVariety', () => {
     expect(coveringVariety([onHand, staple, listed], NOW)).toBe(listed);
     expect(coveringVariety([onHand, staple], NOW)).toBe(staple);
     expect(coveringVariety([onHand], NOW)).toBe(onHand);
+  });
+
+  // A box frozen or marked "Got it" keeps its item in the Pantry, so it has to
+  // answer for the family here too, the same way probablyHaveReason reads it.
+  it('answers with a variety whose only claim is one of its boxes, when handed them', () => {
+    const white = makeItem({ name: 'White onion', varietyOfKey: 'onion' });
+    const box: ItemProduct = {
+      id: 'p-white', itemId: white.id, brand: 'Farm', variant: null, productKey: 'farm|',
+      rating: null, nutrition: null, note: '', purchaseCount: 0, lastPurchasedAt: null,
+      gtin: null, onHandUntil: future(7), expiresAt: null, frozenAt: null, openedAt: null,
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+
+    expect(coveringVariety([white], NOW, null, [box])).toBe(white);
+    expect(coveringVariety([white], NOW)).toBeNull();
   });
 
   it('still answers with a checked (in-cart) list row', () => {

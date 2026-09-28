@@ -29,6 +29,19 @@ jest.mock('../db/database', () => ({
   dbBatchUpdateRecipeUpNextOrders: jest.fn(),
 }));
 
+// The meal plan is what a rename or a delete owes a write to (its entries
+// point at recipes by id), and the store reaches it lazily. Mocked here for
+// the reason useMealPlanStore.test.ts mocks this store back: what's pinned is
+// what the recipe store asks of it, and the meal plan's own suite covers what
+// it then does.
+const mockMealPlan = {
+  retitleRecipeEntries: jest.fn(),
+  reconcileRecipeSlots: jest.fn(),
+};
+jest.mock('../store/useMealPlanStore', () => ({
+  useMealPlanStore: { getState: () => mockMealPlan },
+}));
+
 let seq = 0;
 function makeRecipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
   return {
@@ -51,6 +64,7 @@ function makeRecipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
     tags: [],
     ingredients: [],
     emptySections: [],
+    emptyStepSections: [],
     components: [],
     prepTasks: [],
     steps: [],
@@ -163,6 +177,28 @@ describe('renameRecipe', () => {
     const r = makeRecipe('Ragu');
     seed([r]);
     expect(useRecipeStore.getState().renameRecipe(r.id, '  ')).toBe(false);
+  });
+
+  it('retitles the meals planned from it, with the cleaned name', () => {
+    // The plan shows the live name, but the calendar event and the "Make X"
+    // task read each entry's captured title, which kept the old name for good.
+    const r = makeRecipe('Chicken thing', { nameKey: 'chicken thing' });
+    seed([r]);
+
+    useRecipeStore.getState().renameRecipe(r.id, '  Lemon garlic chicken ');
+
+    expect(mockMealPlan.retitleRecipeEntries).toHaveBeenCalledWith(r.id, 'Lemon garlic chicken');
+  });
+
+  it('leaves the plan alone when the rename is refused', () => {
+    const a = makeRecipe('Ragu', { nameKey: 'ragu' });
+    const b = makeRecipe('Soup', { nameKey: 'soup' });
+    seed([a, b]);
+
+    useRecipeStore.getState().renameRecipe(b.id, 'ragu');
+    useRecipeStore.getState().renameRecipe(b.id, '   ');
+
+    expect(mockMealPlan.retitleRecipeEntries).not.toHaveBeenCalled();
   });
 });
 
@@ -808,6 +844,124 @@ describe('steps', () => {
     useRecipeStore.getState().removeStep(r.id, 'gone');
     expect(useRecipeStore.getState().recipeById(r.id)!.steps).toEqual([]);
   });
+
+  it('files a new step under a section, trimmed and capped, and leaves it absent with none given', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+
+    const withSection = useRecipeStore.getState().addStep(r.id, 'Simmer the sauce', '  For the sauce  ')!;
+    expect(withSection.section).toBe('For the sauce');
+
+    const withoutSection = useRecipeStore.getState().addStep(r.id, 'Plate it up')!;
+    expect(withoutSection.section).toBeUndefined();
+  });
+});
+
+describe('addEmptyStepSection / removeEmptyStepSection', () => {
+  it('declares a heading with nothing under it yet', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+
+    expect(useRecipeStore.getState().addEmptyStepSection(r.id, ' For the tofu ')).toBe(true);
+    expect(useRecipeStore.getState().recipeById(r.id)!.emptyStepSections).toEqual(['For the tofu']);
+  });
+
+  it('refuses a blank name', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+
+    expect(useRecipeStore.getState().addEmptyStepSection(r.id, '   ')).toBe(false);
+  });
+
+  it('refuses a heading a step already uses', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+    useRecipeStore.getState().addStep(r.id, 'Simmer the sauce', 'For the sauce');
+
+    expect(useRecipeStore.getState().addEmptyStepSection(r.id, 'For the sauce')).toBe(false);
+  });
+
+  it('refuses a heading already declared', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+    useRecipeStore.getState().addEmptyStepSection(r.id, 'For the sauce');
+
+    expect(useRecipeStore.getState().addEmptyStepSection(r.id, 'For the sauce')).toBe(false);
+  });
+
+  it('un-declares a heading', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+    useRecipeStore.getState().addEmptyStepSection(r.id, 'For the sauce');
+
+    useRecipeStore.getState().removeEmptyStepSection(r.id, 'For the sauce');
+
+    expect(useRecipeStore.getState().recipeById(r.id)!.emptyStepSections).toEqual([]);
+  });
+
+  it('is a no-op for a heading that was never declared', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+    jest.clearAllMocks();
+
+    useRecipeStore.getState().removeEmptyStepSection(r.id, 'Never declared');
+
+    expect(dbUpdateRecipe).not.toHaveBeenCalled();
+  });
+
+  it('prunes a declared heading the moment a step adopts the same label', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+    useRecipeStore.getState().addEmptyStepSection(r.id, 'For the sauce');
+
+    useRecipeStore.getState().addStep(r.id, 'Simmer the sauce', 'For the sauce');
+
+    const recipe = useRecipeStore.getState().recipeById(r.id)!;
+    expect(recipe.emptyStepSections).toEqual([]);
+    expect(recipe.steps[0].section).toBe('For the sauce');
+  });
+});
+
+describe('reorderSteps with sections', () => {
+  it('applies the resolved section for each step in the same write as the order', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+    const a = useRecipeStore.getState().addStep(r.id, 'Simmer the sauce')!;
+    const b = useRecipeStore.getState().addStep(r.id, 'Press the tofu')!;
+
+    useRecipeStore.getState().reorderSteps(r.id, [b.id, a.id], new Map([
+      [b.id, 'For the tofu'],
+      [a.id, 'For the sauce'],
+    ]));
+
+    const steps = useRecipeStore.getState().recipeById(r.id)!.steps;
+    expect(steps.map(s => s.id)).toEqual([b.id, a.id]);
+    expect(steps[0].section).toBe('For the tofu');
+    expect(steps[1].section).toBe('For the sauce');
+  });
+
+  it('clears a section when the map resolves it to null', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+    const a = useRecipeStore.getState().addStep(r.id, 'Simmer the sauce', 'For the sauce')!;
+
+    useRecipeStore.getState().reorderSteps(r.id, [a.id], new Map([[a.id, null]]));
+
+    expect(useRecipeStore.getState().recipeById(r.id)!.steps[0].section).toBeUndefined();
+  });
+
+  it('keeps a step\'s current section when no map is given, same as a plain reorder', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+    const a = useRecipeStore.getState().addStep(r.id, 'Simmer the sauce', 'For the sauce')!;
+    const b = useRecipeStore.getState().addStep(r.id, 'Press the tofu')!;
+
+    useRecipeStore.getState().reorderSteps(r.id, [b.id, a.id]);
+
+    const steps = useRecipeStore.getState().recipeById(r.id)!.steps;
+    expect(steps.map(s => s.id)).toEqual([b.id, a.id]);
+    expect(steps.find(s => s.id === a.id)!.section).toBe('For the sauce');
+  });
 });
 
 describe('remapIngredientKey', () => {
@@ -1219,6 +1373,21 @@ describe('deleteRecipe', () => {
     expect(useRecipeStore.getState().recipes).toEqual([]);
   });
 
+  it('reconciles the planned meals\' tasks once the recipe has left the list', () => {
+    // So Thursday's "Make Chili" stops asking to make a recipe that's gone.
+    const r = makeRecipe('Chili');
+    seed([r]);
+    mockMealPlan.reconcileRecipeSlots.mockImplementation(() => {
+      // Read at call time: the reconcile resolves the recipe against the list.
+      expect(useRecipeStore.getState().recipes).toEqual([]);
+    });
+
+    useRecipeStore.getState().deleteRecipe(r.id);
+
+    expect(mockMealPlan.reconcileRecipeSlots).toHaveBeenCalledWith([r.id]);
+    mockMealPlan.reconcileRecipeSlots.mockReset();
+  });
+
   it('leaves a parent’s link dangling rather than editing a recipe the user didn’t touch', () => {
     const steak = makeRecipe('Steak');
     const mash = makeRecipe('Mash');
@@ -1258,6 +1427,16 @@ describe('bulkDeleteRecipes', () => {
     expect(dbDeleteRecipe).toHaveBeenCalledWith(a.id);
     expect(dbDeleteRecipe).toHaveBeenCalledWith(c.id);
     expect(useRecipeStore.getState().recipes.map(r => r.id)).toEqual([b.id]);
+  });
+
+  it('reconciles the planned meals\' tasks for every recipe it deleted', () => {
+    const a = makeRecipe('Ragu');
+    const b = makeRecipe('Soup');
+    seed([a, b]);
+
+    useRecipeStore.getState().bulkDeleteRecipes([a.id, 'not-a-recipe']);
+
+    expect(mockMealPlan.reconcileRecipeSlots).toHaveBeenCalledWith([a.id]);
   });
 
   it('writes nothing for an empty selection', () => {

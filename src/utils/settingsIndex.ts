@@ -743,9 +743,12 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { id: 'productLookupEnabled', groupId: 'privacyAi', label: 'Look up food databases', section: 'Barcode lookups',
     keywords: ['upc', 'ean', 'gtin', 'open food facts', 'pantry', 'unpack', 'network', 'privacy',
       'nutrition', 'calories', 'usda', 'food data central', 'search food'],
-    kitchen: true, simple: true },
+    kitchen: true },
+  // Not `simple`, unlike the two below: searching a food by name survives
+  // simplified mode and needs both of these, and a failed search sends you
+  // here. The scanner-only rows go with the scanner.
   { id: 'fdcApiKey', requires: 'productLookupEnabled', groupId: 'privacyAi', label: 'FoodData Central key', section: 'Barcode lookups',
-    keywords: ['usda', 'api', 'barcode', 'scan', 'branded', 'nutrition'], kitchen: true, simple: true },
+    keywords: ['usda', 'api', 'barcode', 'scan', 'branded', 'nutrition', 'search food', 'api.data.gov'], kitchen: true },
   { id: 'goUpcApiKey', requires: 'productLookupEnabled', groupId: 'privacyAi', label: 'Go-UPC key', section: 'Barcode lookups',
     keywords: ['api', 'barcode', 'scan', 'paid', 'fallback'], kitchen: true, simple: true },
   { id: 'clearGtinLookups', requires: 'productLookupEnabled', groupId: 'privacyAi', label: 'Forget saved barcodes', section: 'Barcode lookups',

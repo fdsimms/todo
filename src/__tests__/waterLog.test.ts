@@ -4,6 +4,7 @@ import {
   describeWaterMl,
   isWaterEntry,
   waterEntryOf,
+  waterEntryQuantity,
   waterHelping,
   waterInUnit,
   waterRange,
@@ -236,5 +237,26 @@ describe('waterHelping', () => {
     expect(waterHelping(0, NOW)).toBeNull();
     expect(waterHelping(-250, NOW)).toBeNull();
     expect(waterHelping(Number.NaN, NOW)).toBeNull();
+  });
+});
+
+describe('waterEntryQuantity', () => {
+  // The row under the card said "1.89 L" while the card, stepped in ounces,
+  // said "64 fl oz" about the same water.
+  it('says the water entry in the picked unit rather than its stored words', () => {
+    const water = entry({ ...waterHelping(1893, NOW)! });
+    expect(water.quantity).toBe('1.89 L');
+    expect(waterEntryQuantity(water, 'flOz')).toBe('64 fl oz');
+    expect(waterEntryQuantity(water, 'ml')).toBe('1.89 L');
+  });
+
+  it('leaves a bottle logged as a catalog food in its own words', () => {
+    const bottle = entry({ itemId: 'i-bottle', quantity: '1 bottle' });
+    expect(waterEntryQuantity(bottle, 'flOz')).toBe('1 bottle');
+  });
+
+  it('leaves any other food alone', () => {
+    const toast = entry({ label: 'Toast', quantity: '2 slices', nutrition: panel({ calorieKcal: 260 }) });
+    expect(waterEntryQuantity(toast, 'flOz')).toBe('2 slices');
   });
 });

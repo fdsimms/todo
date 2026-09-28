@@ -1,0 +1,4 @@
+{
+  "message": "Recipe and week cost estimates are more accurate. A price you enter for an item whose amount came from a recipe (like \"3 cups\") is no longer treated as the price of that amount, and eggs priced per dozen now count toward recipes that call for a number of eggs",
+  "date": "2026-09-27"
+}

@@ -427,7 +427,31 @@ describe('the replica', () => {
       const milk = replica.addGroceryItem('milk').item;
       replica.removeFromGroceryList(milk.id);
       replica.refresh();
-      expect(() => replica.setGroceryChecked(milk.id, true)).toThrow(/not on the list/);
+      expect(() => replica.setGroceryChecked(milk.id, true)).toThrow(/not on the home list/);
+    });
+
+    // Every grocery tool is about the list at home. A row only on a trip's
+    // list is in *a* trolley (GroceryItem.onList), which is not this one.
+    it('exposes the list entries, so a read can tell the home list from a trip\'s', () => {
+      const sunscreen = replica.addGroceryItem('sunscreen', { listId: 'airbnb' }).item;
+      replica.refresh();
+      expect(replica.groceryListEntries().map(e => [e.itemId, e.listId])).toEqual([[sunscreen.id, 'airbnb']]);
+    });
+
+    it('refuses to take a row off the home list when only a trip\'s list holds it', () => {
+      const sunscreen = replica.addGroceryItem('sunscreen', { listId: 'airbnb' }).item;
+      replica.refresh();
+      expect(() => replica.removeFromGroceryList(sunscreen.id)).toThrow(/not on the home list/);
+      expect(replica.groceryListEntries()).toHaveLength(1);
+    });
+
+    it('does not call an add to the home list a no-op when only a trip\'s list held the row', () => {
+      replica.addGroceryItem('sunscreen', { listId: 'airbnb' });
+      replica.refresh();
+      const again = replica.addGroceryItem('sunscreen');
+      expect(again.isNew).toBe(false);
+      expect(again.wasOnList).toBe(false);
+      expect(replica.groceryListEntries().map(e => e.listId).sort()).toEqual(['airbnb', null].sort());
     });
 
     // Parks, never deletes. Dropping a row wrongly destroys a price history or

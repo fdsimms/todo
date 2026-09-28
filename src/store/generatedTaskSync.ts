@@ -114,20 +114,17 @@ export interface ReconcileGeneratedOptions {
 /**
  * Bring this source's generated task into line with the source.
  *
- * **A delete here writes the source's opt-out**, because it goes through
- * `useTaskStore.deleteTask`, which stamps `false` on whatever the task was
- * generated from. That is right for a delete the *user* performs and wrong for
- * one a reconcile performs — so step 1 below is reached only when the source
- * has already said no (the setting is off, the date was cleared, the leftover
- * was eaten), and writing "no" onto a row that already means no is a no-op the
- * store's own equality guard drops. The one path that must not write it is a
- * source being deleted outright, which is why `dropGeneratedTask` exists
- * separately and why its callers run it *after* the source row is gone.
- *
- * A `wanted: false` that reverses by itself is not the source saying no
- * either. Freezing an item or a leftover makes it unwanted until it thaws, and
- * reconciling it here wrote the permanent "never", so `setFrozen` drops on the
- * way in and only reconciles on the way out.
+ * **A delete here writes no opt-out.** Deleting through
+ * `useTaskStore.deleteTask` normally stamps `false` on whatever the task was
+ * generated from, which is right for a delete the *user* performs and wrong for
+ * one the app performs. Step 1 below used to rely on the source having already
+ * said no (the setting is off, the date was cleared, the leftover was eaten),
+ * so that writing "no" onto it was a no-op. That held until a reason that
+ * reverses by itself came along: freezing an item made it unwanted until it
+ * thawed, and the stamp turned that into a permanent "never", so the use-up
+ * task never came back. A reconcile answers "does the source want a task right
+ * now", and only a person's delete may answer "never", so this passes
+ * `skipOptOut` exactly as `dropGeneratedTask` does.
  */
 export function reconcileGeneratedTask(options: ReconcileGeneratedOptions): void {
   const { kind, sourceId, wanted, drift, draft, blocksOnFinished = false, useUpCap = null } = options;
@@ -137,7 +134,7 @@ export function reconcileGeneratedTask(options: ReconcileGeneratedOptions): void
   if (!wanted) {
     // Only the live one goes. A completed generated task is a record of a thing
     // that was done, and the source changing its mind is not a claim it wasn't.
-    if (existing) deleteGeneratedTaskQuietly(existing.id);
+    if (existing) deleteGeneratedTaskQuietly(existing.id, { skipOptOut: true });
     return;
   }
 
