@@ -1,4 +1,4 @@
-import { describePlanAdd, useGroceryStore } from '../store/useGroceryStore';
+import { describePlanAdd, subscribeCartHoldRelease, useGroceryStore } from '../store/useGroceryStore';
 import {
   dbGetAllGroceryItems,
   dbGetGroceryAisleOrder,
@@ -923,6 +923,48 @@ describe('toggleChecked', () => {
 
     jest.advanceTimersByTime(5000);
     expect(useGroceryStore.getState().cartHoldIds).toEqual([]);
+    jest.useRealTimers();
+  });
+
+  it('tells the screen just before the hold lets go, once per burst, so it can animate the sink (#2943)', () => {
+    jest.useFakeTimers();
+    const milk = makeItem({ name: 'Milk', onList: true });
+    const eggs = makeItem({ name: 'Eggs', onList: true });
+    seed([milk, eggs]);
+    // What the hold still held when the listener ran: a LayoutAnimation has to
+    // be configured before the commit that moves the rows, not after it.
+    const heldAtRelease: string[][] = [];
+    const unsubscribe = subscribeCartHoldRelease(() => {
+      heldAtRelease.push(useGroceryStore.getState().cartHoldIds);
+    });
+
+    useGroceryStore.getState().toggleChecked(milk.id);
+    useGroceryStore.getState().toggleChecked(eggs.id);
+    jest.advanceTimersByTime(5000);
+
+    expect(heldAtRelease).toEqual([[milk.id, eggs.id]]);
+    expect(useGroceryStore.getState().cartHoldIds).toEqual([]);
+    unsubscribe();
+    jest.useRealTimers();
+  });
+
+  it('stays quiet when the hold empties some other way, and after unsubscribing', () => {
+    jest.useFakeTimers();
+    const milk = makeItem({ name: 'Milk', onList: true });
+    seed([milk]);
+    const listener = jest.fn();
+    const unsubscribe = subscribeCartHoldRelease(listener);
+
+    // Unticked inside the window: the row never sinks, so there's nothing to animate.
+    useGroceryStore.getState().toggleChecked(milk.id);
+    useGroceryStore.getState().toggleChecked(milk.id);
+    jest.advanceTimersByTime(5000);
+    expect(listener).not.toHaveBeenCalled();
+
+    unsubscribe();
+    useGroceryStore.getState().toggleChecked(milk.id);
+    jest.advanceTimersByTime(5000);
+    expect(listener).not.toHaveBeenCalled();
     jest.useRealTimers();
   });
 

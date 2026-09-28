@@ -75,7 +75,7 @@ import { useSheetSubject } from '../hooks/useSheetSubject';
 import { OTHER_AISLE } from '../utils/groceryAisles';
 import { describeListEstimate, estimateListTotal, lastPriceFor, pricedSince, priceToInput } from '../utils/groceryPrice';
 import { buildGroceryListShareText, buildGroceryListText } from '../utils/shareText';
-import { useGroceryStore } from '../store/useGroceryStore';
+import { subscribeCartHoldRelease, useGroceryStore } from '../store/useGroceryStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { describeSupplyStockCaption, suppliesStockedFrom } from '../utils/supply';
 import { useRecipeStore } from '../store/useRecipeStore';
@@ -698,6 +698,32 @@ export function GroceryScreen() {
 
   const dropZonesRef = useRef<FabDropZonesHandle>(null);
   const [fabDragging, setFabDragging] = useState(false);
+
+  // ——— The cart hold letting go ————————————————————————————————————
+  //
+  // Checked rows hold their slot for a moment and then sink into "In cart"
+  // together (armCartHold). That move lands on a timer, a second after the
+  // last tap, with no handler of ours around it to animate it, so the list
+  // jumped under a thumb already reaching for the next row (#2943). The store
+  // says when it is about to let go, and this animates that one commit, the
+  // way handleToggle animates the tap itself.
+  //
+  // Not during a drag of either kind. A row drag drives its own animations and
+  // a LayoutAnimation in the same commit fights them (see layoutAnimation.ts);
+  // the add button's drop zones are measured off rows that mustn't be moving.
+  // The rows still sink then, just without the animation.
+  const rowDraggingRef = useRef(false);
+  const fabDraggingRef = useRef(fabDragging);
+  fabDraggingRef.current = fabDragging;
+  const markRowDragging = useCallback(() => { rowDraggingRef.current = true; }, []);
+  const clearRowDragging = useCallback(() => { rowDraggingRef.current = false; }, []);
+  useEffect(
+    () => subscribeCartHoldRelease(() => {
+      if (rowDraggingRef.current || fabDraggingRef.current) return;
+      animateLayout();
+    }),
+    []
+  );
   // Lets the drag scroll the list once it reaches either end of the screen.
   const scrollControl = useRef<DragScroller | null>(null);
   // Separate from the drag scroller above: this one backs the tab-press
@@ -1477,6 +1503,8 @@ export function GroceryScreen() {
         // and unthrottled ticks run together into one long buzz. The lift
         // itself is fired by ReorderableList.
         onHoverChange={haptics.dragTick}
+        onDragBegin={markRowDragging}
+        onDragEnd={clearRowDragging}
         dragRange={groceryDragRange}
         placeholderStyle={styles.dropSlot}
         onReorder={reordered => applyDrop(resolveGroceryDrop(reordered))}

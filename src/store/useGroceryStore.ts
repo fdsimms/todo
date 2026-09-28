@@ -153,11 +153,35 @@ import {
 // down one row at a time.
 let cartHoldTimer: ReturnType<typeof setTimeout> | null = null;
 
+const cartHoldReleaseListeners = new Set<() => void>();
+
+/**
+ * Hears the cart hold let go, immediately before the held rows sink into "In
+ * cart", so the screen can animate the move (#2943). Returns the unsubscribe.
+ *
+ * An event rather than a state transition the screen watches for, because
+ * `cartHoldIds` also empties for reasons that aren't this: an untick inside
+ * the window, a re-add, a list switch or a clear. Only the timer's release is
+ * a burst of rows leaving the aisle the eye is on, a second after the last
+ * tap, with nothing at the call site to animate it. Every other path empties
+ * it from a handler that already calls `animateLayout`, or shouldn't.
+ *
+ * Called before the `setState`, so a listener's `LayoutAnimation` is
+ * configured ahead of the commit that moves the rows. The animation itself is
+ * the screen's to run: the store can't import `react-native`, since its tests
+ * run in Node, and only the screen knows whether a drag is holding the list.
+ */
+export function subscribeCartHoldRelease(listener: () => void): () => void {
+  cartHoldReleaseListeners.add(listener);
+  return () => { cartHoldReleaseListeners.delete(listener); };
+}
+
 function armCartHold(): void {
   if (cartHoldTimer) clearTimeout(cartHoldTimer);
   cartHoldTimer = setTimeout(() => {
     cartHoldTimer = null;
     if (useGroceryStore.getState().cartHoldIds.length > 0) {
+      for (const listener of cartHoldReleaseListeners) listener();
       useGroceryStore.setState({ cartHoldIds: [] });
     }
   }, CART_HOLD_MS);
