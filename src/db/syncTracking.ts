@@ -257,6 +257,7 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'calendarEventCategory',
   'kitchenEnabled',
   'unitSystem',
+  'householdServings',
   'currencySymbol',
 
   // Automatic tasks. Per-generator, matching the settings keys themselves

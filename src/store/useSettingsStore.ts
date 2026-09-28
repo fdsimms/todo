@@ -90,6 +90,7 @@ import {
   serializeOptionalCount,
 } from '../utils/focusSettings';
 import { UNIT_SYSTEMS, type UnitSystem } from '../utils/unitConvert';
+import { MAX_HOUSEHOLD_SERVINGS } from '../utils/recipeScale';
 import { parseTitleRules } from '../utils/titleRules';
 import { parseWeatherRules, defaultWeatherRules } from '../utils/weatherTasks';
 import {
@@ -594,6 +595,13 @@ interface SettingsStore {
   // what's stored. Defaults to 'asWritten', so an install upgrading into this
   // reads exactly as it did.
   unitSystem: UnitSystem;
+  // How many people a planned recipe usually feeds (#2910), which planMeal
+  // turns into the new meal's starting scale through the recipe's own servings
+  // (see householdScale in src/utils/recipeScale.ts). 0 means not set, and is
+  // the default, so a meal keeps starting as written until somebody says
+  // otherwise. A starting point only: every meal's own servings stepper still
+  // changes it, and nothing already planned is touched when this changes.
+  householdServings: number;
   // The symbol grocery prices are shown with. Cosmetic and nothing else: every
   // price is stored as minor units of whatever the user shops in, and there is
   // no second currency and no conversion — see src/utils/groceryPrice.ts. A
@@ -1572,6 +1580,7 @@ interface SettingsStore {
   setConfirmBeforeDeleting: (on: boolean) => void;
   setMealsOnToday: (mode: MealsOnToday) => void;
   setUnitSystem: (system: UnitSystem) => void;
+  setHouseholdServings: (servings: number) => void;
   setCurrencySymbol: (symbol: string) => void;
   setMealCookTasks: (on: boolean) => void;
   setMealCookTaskCategory: (category: string | null) => void;
@@ -1831,6 +1840,7 @@ const DEFAULT_SETTINGS = {
   collapsedGroceryGroups: [] as string[],
   mealsOnToday: 'inline' as MealsOnToday,
   unitSystem: 'asWritten' as UnitSystem,
+  householdServings: 0,
   currencySymbol: DEFAULT_CURRENCY_SYMBOL,
   mealCookTasks: true,
   mealCookTaskCategory: null,
@@ -2246,6 +2256,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   kitchenEnabled: true,
   mealsOnToday: 'inline',
   unitSystem: 'asWritten',
+  householdServings: 0,
   currencySymbol: DEFAULT_CURRENCY_SYMBOL,
   mealCookTasks: true,
   mealCookTaskCategory: null,
@@ -2501,6 +2512,13 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const unitSystem: UnitSystem =
       storedUnitSystem && UNIT_SYSTEMS.includes(storedUnitSystem) ? storedUnitSystem : 'asWritten';
     const currencySymbol = parseCurrencySymbol(dbGetSetting('currencySymbol'));
+    // Same TEXT-column parse as defaultProjectNudgeCadenceDays: missing or
+    // unparseable reads as 0, not set, and a stored count is held to the cap
+    // the Settings stepper has.
+    const storedHousehold = Math.round(Number(dbGetSetting('householdServings')));
+    const householdServings = Number.isFinite(storedHousehold) && storedHousehold > 0
+      ? Math.min(storedHousehold, MAX_HOUSEHOLD_SERVINGS)
+      : 0;
     // Defaults on, like hapticsEnabled — but unlike it, "on" here is a change
     // for an existing install rather than a preservation of what it had. It's
     // safe to default on anyway because nothing is backfilled: no cook task
@@ -2957,6 +2975,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       healthWriteNutrients,
       hideCategories,
       hideHelpText,
+      householdServings,
       keepOpenAfterFoodLog,
       kitchenEnabled,
       lastDeloadAppliedDayKey,
@@ -3914,6 +3933,14 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setUnitSystem(system: UnitSystem) {
     dbSetSetting('unitSystem', system);
     set({ unitSystem: system });
+  },
+
+  setHouseholdServings(servings: number) {
+    const next = Number.isFinite(servings) && servings > 0
+      ? Math.min(Math.round(servings), MAX_HOUSEHOLD_SERVINGS)
+      : 0;
+    dbSetSetting('householdServings', String(next));
+    set({ householdServings: next });
   },
 
   setCurrencySymbol(symbol: string) {

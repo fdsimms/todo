@@ -41,6 +41,8 @@ jest.mock('../db/database', () => ({
 // mealCookTasks defaults on, matching the real store — so every test here runs
 // with cook-task reconciliation live rather than only the ones that opt in.
 let mockMealCookTasks = true;
+// "Usually cooking for" (#2910); 0 is not set, the default.
+let mockHouseholdServings = 0;
 // mealCalendarId defaults to null, also matching the real store: the calendar
 // mirror is off until a calendar is picked, so only the tests that opt in run
 // with it live.
@@ -62,6 +64,7 @@ jest.mock('../store/useSettingsStore', () => ({
       dayResetTime: '00:00',
       get mealPlanNudgeSlots() { return mockMealPlanNudgeSlots; },
       get mealCookTasks() { return mockMealCookTasks; },
+      get householdServings() { return mockHouseholdServings; },
       get mealCalendarId() { return mockMealCalendarId; },
     }),
   },
@@ -195,6 +198,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   seq = 0;
   mockMealCookTasks = true;
+  mockHouseholdServings = 0;
   mockMealCalendarId = null;
   mockMealPlanNudgeSlots = ['breakfast', 'lunch', 'dinner'];
   mockCreateAllDayEvent.mockResolvedValue('evt-new');
@@ -604,6 +608,36 @@ describe('planMeal', () => {
 
     expect(planned.leftoverId).toBe('lo-1');
     expect(planned.recipeId).toBeNull();
+  });
+
+  it('starts a recipe at the household size when one is set (#2910)', () => {
+    mockHouseholdServings = 4;
+    mockRecipeState.recipes = [
+      { ...recipeWith('Pasta', []), servings: 2 },
+      { ...recipeWith('Chili', []), servings: 4, servingsMax: 6 },
+      { ...recipeWith('Toast', []), servings: null },
+    ];
+    loadWeek();
+    const plan = (recipeId: string | null, title: string) => useMealPlanStore.getState().planMeal({
+      date: '2026-08-05', slot: 'dinner', recipeId, title,
+    })!.recipeScale;
+
+    expect(plan('r-Pasta', 'Pasta')).toBe(2);
+    // Already feeds four, and a recipe with no servings has nothing to scale by.
+    expect(plan('r-Chili', 'Chili')).toBe(1);
+    expect(plan('r-Toast', 'Toast')).toBe(1);
+    // A typed meal has no recipe to scale.
+    expect(plan(null, 'Takeout')).toBe(1);
+  });
+
+  it('starts every meal as written while no household size is set', () => {
+    mockRecipeState.recipes = [{ ...recipeWith('Pasta', []), servings: 2 }];
+    loadWeek();
+    const planned = useMealPlanStore.getState().planMeal({
+      date: '2026-08-05', slot: 'dinner', recipeId: 'r-Pasta', title: 'Pasta',
+    })!;
+
+    expect(planned.recipeScale).toBe(1);
   });
 
   it('leaves leftoverId null for an ordinary plan', () => {
@@ -1490,6 +1524,27 @@ describe('bulkReplaceItem', () => {
     expect(scaleOf(asWritten.id)).toBe(1);
     expect(scaleOf(freeText.id)).toBe(2);
     expect(scaleOf(sameRecipe.id)).toBe(1.5);
+  });
+
+  it('starts an as-written night at the household size, as planning the new recipe would (#2910)', () => {
+    mockHouseholdServings = 4;
+    mockRecipeState.recipes = [
+      { ...recipeWith('Chili', []), servings: 4 },
+      { ...recipeWith('Pasta', []), servings: 2 },
+    ];
+    const recipeNight = entry('2026-08-04', 'dinner', { recipeId: 'r-Chili', recipeScale: 1 });
+    const typedNight = entry('2026-08-05', 'dinner', { recipeId: null, title: 'Takeout', recipeScale: 1 });
+    const scaledNight = entry('2026-08-06', 'dinner', { recipeId: 'r-Chili', recipeScale: 2 });
+    loadWeek([recipeNight, typedNight, scaledNight]);
+
+    useMealPlanStore.getState().bulkReplaceItem(
+      [recipeNight.id, typedNight.id, scaledNight.id], { recipeId: 'r-Pasta', title: 'Pasta' });
+
+    const scaleOf = (id: string) => getEntries().find(e => e.id === id)!.recipeScale;
+    expect(scaleOf(recipeNight.id)).toBe(2);
+    expect(scaleOf(typedNight.id)).toBe(2);
+    // A night somebody scaled keeps its own head count (eight), not the household's.
+    expect(scaleOf(scaledNight.id)).toBe(4);
   });
 
   it("keeps one meal's day, slot and per-meal answers, which removing and re-planning lost (#2911)", () => {

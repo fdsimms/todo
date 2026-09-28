@@ -35,7 +35,7 @@ import {
 import { standingSwapMap } from '../utils/standingSwaps';
 import { onHandNameKeys } from '../utils/grocerySuggest';
 import { generateId } from '../utils/id';
-import { normalizeScale, rescaleForRecipe } from '../utils/recipeScale';
+import { householdScale, isUnscaled, normalizeScale, rescaleForRecipe } from '../utils/recipeScale';
 import { mealCookCounts, type CookingWindow, type MealCookCounts } from '../utils/cookingStats';
 import { totalMinutes } from '../utils/recipeUtils';
 import {
@@ -534,8 +534,11 @@ interface MealPlanStore extends UndoHistoryActions {
    * servings, not the multiplier** (`rescaleForRecipe`): the same factor means
    * a different amount of food for a different recipe, so 2× a pasta that
    * serves 2 becomes 1× a soup that serves 4 rather than eight servings of it.
-   * Where either recipe states no servings, or the meal was never scaled, there
-   * is no head count to carry and the factor is kept as it was.
+   * Where either recipe states no servings there is no head count to carry and
+   * the factor is kept as it was. A meal that was never scaled carries none
+   * either, so the new recipe starts where `planMeal` would start it: at the
+   * household size when one is set (`householdScale`, #2910), as written
+   * otherwise.
    */
   bulkReplaceItem: (ids: string[], replacement: { recipeId: string | null; title: string }) => void;
 
@@ -779,6 +782,9 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
   planMeal(draft) {
     const title = cleanMealTitle(draft.title);
     if (!title) return null;
+    const recipe = draft.recipeId
+      ? useRecipeStore.getState().recipes.find(r => r.id === draft.recipeId)
+      : undefined;
 
     const entry: MealPlanEntry = {
       id: generateId(),
@@ -806,8 +812,16 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
       // same call MealPlanEntry.recipeId makes about naming a recipe at all.
       recipeChoices: [],
       // As written, for the same reason: how much of it you're making is a
-      // question a plan is allowed not to have answered.
-      recipeScale: 1,
+      // question a plan is allowed not to have answered. Unless the person has
+      // answered it once for every meal (#2910): "Usually cooking for 4" starts
+      // a recipe that serves 2 at 2x, through householdScale, which stays as
+      // written whenever the recipe states no servings or already covers them.
+      // A leftover or a typed meal has no recipe and no servings to scale.
+      recipeScale: householdScale(
+        useSettingsStore.getState().householdServings,
+        recipe?.servings,
+        recipe?.servingsMax,
+      ),
       // Unanswered, so the setting decides — see MealPlanEntry.cookTask. The
       // picker can pass an explicit answer, which is how "add a cook task" is
       // said at plan time.
@@ -1169,7 +1183,9 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     if (toUpdate.length === 0) return;
 
     const recipesById = recipeIndex(useRecipeStore.getState().recipes);
-    const toServings = replacement.recipeId ? recipesById.get(replacement.recipeId)?.servings : null;
+    const toRecipe = replacement.recipeId ? recipesById.get(replacement.recipeId) : undefined;
+    const toServings = toRecipe?.servings ?? null;
+    const household = useSettingsStore.getState().householdServings;
     const updated = toUpdate.map((e): MealPlanEntry => ({
       ...e,
       recipeId: replacement.recipeId,
@@ -1178,9 +1194,18 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
       leftoverId: null,
       // Same recipe, same factor: converting through its own servings would
       // only round a 1.5× of 3 to a different number.
-      recipeScale: e.recipeId && e.recipeId !== replacement.recipeId
-        ? rescaleForRecipe(e.recipeScale, recipesById.get(e.recipeId)?.servings, toServings)
-        : e.recipeScale,
+      recipeScale: e.recipeId === replacement.recipeId && e.recipeId
+        ? e.recipeScale
+        // An as-written night names no head count of its own, so the new
+        // recipe starts where planning it would have (#2910): the household
+        // size when one is set, as written otherwise. Without this a household
+        // of four swapping a 1x recipe for 4 onto one for 2 was left cooking
+        // for two, while planning the same recipe fresh gave it 2x.
+        : isUnscaled(e.recipeScale)
+          ? householdScale(household, toServings, toRecipe?.servingsMax)
+          : e.recipeId
+            ? rescaleForRecipe(e.recipeScale, recipesById.get(e.recipeId)?.servings, toServings)
+            : e.recipeScale,
     }));
     updated.forEach(dbUpdateMealPlanEntry);
     const byId = new Map(updated.map(e => [e.id, e]));

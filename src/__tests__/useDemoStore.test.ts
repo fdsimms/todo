@@ -3434,6 +3434,22 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect([...ahead].some(date => !dinners.has(date))).toBe(true);
   });
 
+  it('sets a household size that starts a newly planned recipe scaled, and moved nothing seeded (#2910)', () => {
+    expect(useSettingsStore.getState().householdServings).toBe(4);
+    // Set after the plan was seeded, so the one scaled night is still the
+    // steak dinner someone scaled by hand.
+    const { entries } = useMealPlanStore.getState();
+    expect(entries.filter(e => e.recipeScale !== 1)).toHaveLength(1);
+
+    const forTwo = useRecipeStore.getState().recipes.find(r => r.servings === 2 && r.servingsMax == null)!;
+    // A month out, beyond the loaded fortnight, so no seeded night moves.
+    const planned = useMealPlanStore.getState().planMeal({
+      date: dayKeyOf(addDays(new Date(), 30)), slot: 'dinner', recipeId: forTwo.id, title: forTwo.name,
+    })!;
+    expect(planned.recipeScale).toBe(2);
+    useMealPlanStore.getState().removeEntry(planned.id);
+  });
+
   // And again: marking tonight cooked is a real write, and the rest of the
   // block reads the meal plan.
   describe('the recap tonight\'s dinner raises when it is cooked', () => {

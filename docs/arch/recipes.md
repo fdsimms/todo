@@ -557,7 +557,21 @@ The four rules that make it safe, all enforced in `scaleQuantity`:
   eight on Sunday" survives a swap of what's being cooked. What it keeps is the **servings**, not
   the multiplier (`rescaleForRecipe`): 2× a pasta that serves 2 is four servings, which is 1× of a
   soup that serves 4, and carrying the 2× over unchanged made it eight. Where either recipe states no
-  servings, or the meal was never scaled (as-written names no head count), the factor is kept.
+  servings the factor is kept. A meal that was never scaled names no head count either, so the new
+  recipe starts where planning it fresh would: the household size below when one is set, as written
+  otherwise. (Before the household size existed this read "the factor is kept" for that case too,
+  which is still what happens with it unset.)
+- **A household size is where a planned recipe starts, never what it is** (`householdServings`,
+  "Usually cooking for", #2910). `planMeal` turns it into the new meal's factor through the recipe's
+  own servings (`householdScale`), so a household of four planning a recipe for two gets 2× without
+  a trip into the meal's sheet. It is **0, not set, by default**, which keeps "a plan is allowed not
+  to have answered how much you're making" the default answer. It stays as written wherever there is
+  no head count to divide by (no servings stated) or nothing to change (the household falls inside
+  the recipe's stated range), and it is per meal from then on: changing the setting rescales nothing
+  already planned, and the meal's own chips and stepper still change it. A per-recipe "last time you
+  made this for N" was the other option and was rejected: one party night would silently set the
+  size of every later plan of that dish, where a stated household size is one number the person
+  chose and can see in Settings.
 - **Factor chips are the floor, a servings stepper is layered on where it can be.** `Recipe.servings`
   is nullable and plenty of recipes never had one, so the chips (`½× 1× 1½× 2× 3×`) are what's always
   available. When a recipe does know its own count, `RecipeScaleChips` also renders a `CountStepper`
