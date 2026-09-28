@@ -84,6 +84,8 @@ import {
   KEY_SEPARATOR,
   NOW_EXPR,
   isSyncedSettingKey,
+  isDeviceLocalColumn,
+  withoutDeviceLocalColumns,
   backfillStatements,
   installStatements,
   updatedAtMigrations,
@@ -2384,9 +2386,10 @@ export function dbSyncChangesSince(since: string | null, transport?: string): Sy
       // Only some settings rows travel; every other table sends all of them.
       // Filtered here rather than in the trigger so the policy lives in one
       // readable list — see SYNCED_SETTING_KEYS.
+      // And only some *columns* of some tables — see SYNC_DEVICE_LOCAL_COLUMNS.
       tables[name] = name === 'settings'
         ? rows.filter(r => typeof r.key === 'string' && isSyncedSettingKey(r.key))
-        : rows;
+        : rows.map(r => withoutDeviceLocalColumns(name, r));
     }
 
     // A first read needs no deletions: a peer that has never heard of a row
@@ -2816,7 +2819,10 @@ export function dbApplySyncChanges(payload: SyncPayload, transport?: string): Ap
     for (const [name, rows] of Object.entries(payload.tables)) {
       const table = trackedTable(name);
       if (!table) continue;
-      const allowed = dbTableColumns(name);
+      // Never a device-local column, even from a peer that sends one (an older
+      // build): the local value is this device's own and must survive the
+      // apply. See SYNC_DEVICE_LOCAL_COLUMNS.
+      const allowed = dbTableColumns(name).filter(c => !isDeviceLocalColumn(name, c));
 
       for (const received of rows) {
         // Pointed at the survivors of any fold first, since that can move the

@@ -1,0 +1,4 @@
+{
+  "message": "If you sync between devices, editing a meal on one device no longer disconnects the calendar event another device wrote for it, which used to leave a duplicate event behind.",
+  "date": "2026-09-28"
+}

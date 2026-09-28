@@ -6389,6 +6389,11 @@ export interface MealPlanEntry {
    * Not in `MealPlanDraft` — nothing may create an entry pre-pointed at an
    * event. Written only by `reconcileMealEvent` in useMealPlanStore, from
    * whatever the device write returned.
+   *
+   * **This device's, and it doesn't sync** (#2950): an EventKit id names a
+   * record on one phone, so the column is kept off the wire in both directions
+   * (`SYNC_DEVICE_LOCAL_COLUMNS` in db/syncTracking.ts). Each device holds the
+   * id of the event *it* wrote, and a peer's edit to the meal leaves it alone.
    */
   calendarEventId: string | null;
 }
