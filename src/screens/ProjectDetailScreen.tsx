@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useRef, useEffect, useSyncExternalStore } from 'react';
+import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -44,7 +44,7 @@ import { TaskGroupEditor } from '../components/TaskGroupEditor';
 import { TaskGroupHeader } from '../components/TaskGroupHeader';
 import { TaskGroupBody } from '../components/TaskGroupBody';
 import { TaskGroupTray } from '../components/TaskGroupTray';
-import { GroupDropTarget } from '../components/GroupDropTarget';
+import { ChannelDropTarget, useDropTargetChannel } from '../components/DropTargetChannel';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { confirmBulkSetWhen } from '../utils/scheduleMovePrompt';
 import { alphabeticalPageOrder, buildProjectListItems, filterProjectListItems, orderWithInserted, projectCopyText, type ProjectListItem } from '../utils/projectStacks';
@@ -173,50 +173,6 @@ function AddProjectTaskFabWithDropLabel({
     }
   });
   return <FabMenu {...props} dragLabel={label} />;
-}
-
-// The section a dragged line is aimed at, held outside React state for the
-// same reason as the add button's intent above: as screen state, each crossing
-// re-rendered the whole page mid-drag. One per screen.
-interface JoinTargetChannel {
-  publish: (groupId: string | null) => void;
-  subscribe: (listener: () => void) => () => void;
-  get: () => string | null;
-}
-
-function useJoinTargetChannel(): JoinTargetChannel {
-  return useMemo(() => {
-    let current: string | null = null;
-    const listeners = new Set<() => void>();
-    return {
-      publish: groupId => {
-        if (groupId === current) return;
-        current = groupId;
-        listeners.forEach(l => l());
-      },
-      subscribe: listener => {
-        listeners.add(listener);
-        return () => { listeners.delete(listener); };
-      },
-      get: () => current,
-    };
-  }, []);
-}
-
-// A section row's drop highlight. Children arrive as an untouched prop, so a
-// change here repaints the highlight and not the section's rows.
-function JoinTargetRow({
-  channel,
-  groupId,
-  children,
-}: {
-  channel: JoinTargetChannel;
-  groupId: string;
-  children: React.ReactNode;
-}) {
-  const getActive = useCallback(() => channel.get() === groupId, [channel, groupId]);
-  const active = useSyncExternalStore(channel.subscribe, getActive, getActive);
-  return <GroupDropTarget active={active}>{children}</GroupDropTarget>;
 }
 
 /** A pasted list's lines, without the bullets it often carries. */
@@ -366,10 +322,9 @@ export function ProjectDetailScreen() {
   // row and every sheet beside the list, which is what made dragging a line
   // into a section stutter. The section's highlight reads joinTargetChannel
   // and the list's freeze goes through dropCapture, so a crossing repaints
-  // the one section it lit (see JoinTargetRow and ReorderableList's
-  // dropCaptureRef).
+  // the one section it lit (see DropTargetChannel).
   const joinGroupIntentRef = React.useRef<string | null>(null);
-  const joinTargetChannel = useJoinTargetChannel();
+  const joinTargetChannel = useDropTargetChannel();
   const dropCapture = React.useRef<DropCapture>(null);
   // Task the drop just handed to a group (set in onDragEnd, which runs before
   // onReorder), so the placement pass below leaves it alone — it belongs to
@@ -1926,7 +1881,7 @@ export function ProjectDetailScreen() {
                 const stackExpanded = empty || !group.collapsed;
                 return (
                   <FabDropZone zone={zone}>
-                  <JoinTargetRow channel={joinTargetChannel} groupId={group.id}>
+                  <ChannelDropTarget channel={joinTargetChannel} id={group.id}>
                   <TaskGroupTray>
                     <TaskGroupHeader
                       selectionMode={selectionMode}
@@ -2050,7 +2005,7 @@ export function ProjectDetailScreen() {
                       )}
                     </TaskGroupBody>
                   </TaskGroupTray>
-                  </JoinTargetRow>
+                  </ChannelDropTarget>
                   </FabDropZone>
                 );
               }

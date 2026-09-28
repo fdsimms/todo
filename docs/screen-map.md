@@ -39,7 +39,7 @@ components below.
 - `src/screens/MoodScreen.tsx` — ContrastBars, EmptyState, HubPills, InlineAction, MilestoneSheet, MoodEntryRow, MoodExportSheet, MoodLogSheet, ScreenHeader
 - `src/screens/PeopleScreen.tsx` — ContactPickerSheet, EmptyState, Fab, HubPills, PaintSelection, PersonEditor, QuickAddNameSheet, ReorderableList, ScreenHeader, SelectionDot, SimpleBulkBar, SwipeableRow, +1 more
 - `src/screens/PersonDetailScreen.tsx` — DetailHeader, EmptyState, InlineAction, PersonEditor, PersonHistorySheet, PersonNoteSheet
-- `src/screens/ProjectDetailScreen.tsx` — AddGuestsSheet, ApplyTemplateSheet, BulkActionBar, DeliverablePromptQueue, DeliverablePromptSheet, DetailHeader, EmptyState, Fab, FabDropZones, GroupDropTarget, InlineAction, LinkedText, +24 more
+- `src/screens/ProjectDetailScreen.tsx` — AddGuestsSheet, ApplyTemplateSheet, BulkActionBar, DeliverablePromptQueue, DeliverablePromptSheet, DetailHeader, DropTargetChannel, EmptyState, Fab, FabDropZones, InlineAction, LinkedText, +24 more
 - `src/screens/ProjectsScreen.tsx` — CookbookChecklistSheet, EmptyState, Fab, FabDropZones, ListBulkBar, PaintSelection, ProgressBar, ProjectCategoriesSheet, ProjectEditor, ProjectsOptionsMenu, QuickAddProjectModal, ReorderableList, +5 more
 - `src/screens/RecipeDetailScreen.tsx` — ComponentChoiceSheet, CookModeSheet, CountStepper, DetailHeader, EmptyState, IngredientCatalogMatchSheet, InlineAction, ListBulkBar, NumberPadAccessory, OverlapPickerSheet, PillGroup, PlanMealSheet, +15 more
 - `src/screens/RecipesScreen.tsx` — ActiveTripBanner, CookbookChecklistSheet, EmptyState, Fab, FabDropZones, HubPills, InventRecipeSheet, ListBulkBar, OverlapPickerSheet, PlanMealSheet, QuickAddNameSheet, RecipeCreateSheet, +9 more
@@ -57,7 +57,7 @@ components below.
 - `src/screens/TemplateDetailScreen.tsx` — ApplyTemplateSheet, DetailHeader, EmptyState, Fab, NestedTemplatePicker, ReorderableList, SwipeableRow, TemplateAppliedToast, TemplateEditor, TemplateItemBulkBar, TemplateItemEditor, TemplateItemQuickAdd, +1 more
 - `src/screens/TemplatesScreen.tsx` — ApplyTemplateSheet, EmptyState, Fab, FabDropZones, HubPills, ListBulkBar, QuickAddNameSheet, ReorderableList, ScreenHeader, SwipeableRow, TemplateAppliedToast, TemplateEditor
 - `src/screens/TipsScreen.tsx` — EmptyState, ScreenHeader, SearchField, TipHost
-- `src/screens/TodayScreen.tsx` — AddTaskFab, ApplyTemplateSheet, BulkActionBar, CategoryOrderSheet, CompletionCollapse, CreatedTaskToast, DayContextRow, DeliverablePromptQueue, DeloadSheet, EmptyState, EventImportSheet, FabDropZones, +31 more
+- `src/screens/TodayScreen.tsx` — AddTaskFab, ApplyTemplateSheet, BulkActionBar, CategoryOrderSheet, CompletionCollapse, CreatedTaskToast, DayContextRow, DeliverablePromptQueue, DeloadSheet, DropTargetChannel, EmptyState, EventImportSheet, +32 more
 - `src/screens/UnattendedLogScreen.tsx` — EmptyState, HubPills, PillGroup, ScreenHeader
 - `src/screens/WeightScreen.tsx` — EmptyState, HubPills, LogWeightSheet, ScreenHeader, SegmentedControl, WeightChart, WeightGoalSheet
 
@@ -109,6 +109,7 @@ Where each component can appear.
 - `src/components/DeloadSheet.tsx` — on TodayScreen
 - `src/components/DemoBanner.tsx` — on app shell
 - `src/components/DetailHeader.tsx` — on BackfillScreen, CategoryDetailScreen, CookbookDetailScreen, MoodHistoryScreen, PersonDetailScreen, ProjectDetailScreen, RecipeDetailScreen, SavedViewDetailScreen, SavedViewsScreen, SettingsGroupScreen, SettingsScreen, SymptomDetailScreen, +2 more
+- `src/components/DropTargetChannel.tsx` — on ProjectDetailScreen, TodayScreen
 - `src/components/EditorGroup.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, ProjectDetailScreen, RemindersScreen, SavedViewDetailScreen, SearchScreen, StacksScreen, StuckScreen, TagsScreen, TodayScreen
 - `src/components/EditorRow.tsx` — on ArchivedScreen, CalendarScreen, CategoriesScreen, CategoryDetailScreen, MedicationScreen, MoodHistoryScreen, MoodScreen, PeopleScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RecipeDetailScreen, +11 more
 - `src/components/EditorSheet.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, MedicationScreen, MoodHistoryScreen, MoodScreen, PeopleScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RecipeDetailScreen, RemindersScreen, +11 more
