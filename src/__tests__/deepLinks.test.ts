@@ -21,6 +21,7 @@ const mockStopCookTimer = jest.fn();
 const mockRemoveStepTimer = jest.fn();
 const mockStopPrepTimer = jest.fn();
 const mockFinishCookForRecipe = jest.fn();
+const mockEntryById = jest.fn();
 const mockResetToFocusSession = jest.fn();
 const mockFocusAdvance = jest.fn();
 const mockFocusPause = jest.fn();
@@ -42,7 +43,9 @@ jest.mock('../store/useRecipeStore', () => ({
   useRecipeStore: { getState: () => ({ stopCookTimer: mockStopCookTimer, stopPrepTimer: mockStopPrepTimer }) },
 }));
 jest.mock('../store/useMealPlanStore', () => ({
-  useMealPlanStore: { getState: () => ({ finishCookForRecipe: mockFinishCookForRecipe }) },
+  useMealPlanStore: {
+    getState: () => ({ finishCookForRecipe: mockFinishCookForRecipe, entryById: mockEntryById }),
+  },
 }));
 jest.mock('../store/useStepTimerStore', () => ({
   useStepTimerStore: { getState: () => ({ remove: mockRemoveStepTimer }) },
@@ -90,6 +93,8 @@ import {
   isRecipesUrl,
   isRecipeUrl,
   recipeUrlId,
+  recipeUrlEntryId,
+  plannedRecipeParams,
   isPeopleUrl,
   peopleUrlPersonId,
   isFoodLogUrl,
@@ -792,8 +797,37 @@ describe('openInAppUrl', () => {
     expect(isRecipeUrl('dundundun://recipe?id=r1')).toBe(true);
     expect(recipeUrlId('dundundun://recipe?id=r1')).toBe('r1');
     expect(openInAppUrl('dundundun://recipe?id=r1')).toBe(true);
-    expect(mockResetToRecipeDetail).toHaveBeenCalledWith('r1');
+    expect(mockResetToRecipeDetail).toHaveBeenCalledWith('r1', {});
     expect(mockResetToRecipes).not.toHaveBeenCalled();
+    // No entry named, so nothing is looked up.
+    expect(mockEntryById).not.toHaveBeenCalled();
+  });
+
+  // #2931: a meal task's link names its planned meal, so a doubled chili
+  // opened from Today reads doubled, the way the Meal Plan screen's own
+  // "Open recipe" already did.
+  it('opens a meal task\'s recipe on the meal\'s own scale and picks', () => {
+    mockEntryById.mockReturnValueOnce({ id: 'm1', recipeId: 'r1', recipeScale: 2, recipeChoices: ['c1'] });
+    expect(recipeUrlEntryId('dundundun://recipe?id=r1&entry=m1')).toBe('m1');
+    expect(openInAppUrl('dundundun://recipe?id=r1&entry=m1')).toBe(true);
+    expect(mockEntryById).toHaveBeenCalledWith('m1');
+    expect(mockResetToRecipeDetail).toHaveBeenCalledWith('r1', { choices: ['c1'], scale: 2 });
+  });
+
+  it('reads a planned meal\'s scale and picks only while it still holds that recipe', () => {
+    expect(plannedRecipeParams({ recipeId: 'r-chili', recipeScale: 2, recipeChoices: ['rice'] }, 'r-chili'))
+      .toEqual({ choices: ['rice'], scale: 2 });
+    // One recipe's picks are meaningless ids on another's, so a slot re-planned
+    // since the link was written opens the recipe on its own defaults.
+    expect(plannedRecipeParams({ recipeId: 'r-soup', recipeScale: 2, recipeChoices: [] }, 'r-chili')).toEqual({});
+    expect(plannedRecipeParams(null, 'r-chili')).toEqual({});
+  });
+
+  it('opens the recipe on its defaults when the planned meal has gone', () => {
+    mockEntryById.mockReturnValueOnce(null);
+    expect(openInAppUrl('dundundun://recipe?id=r1&entry=gone')).toBe(true);
+    expect(mockResetToRecipeDetail).toHaveBeenCalledWith('r1', {});
+    expect(recipeUrlEntryId('dundundun://recipe?id=r1')).toBeNull();
   });
 
   it('falls back to the recipe box for a malformed recipe link', () => {

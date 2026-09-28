@@ -15,6 +15,7 @@ import {
   mealSlotTaskFields,
   mealSlotTaskTitle,
   parseMealSlotSource,
+  recipeLinkUrl,
   staleMealSlotTasks,
 } from '../utils/mealSlotTasks';
 import { dayKeyOf } from '../utils/dateUtils';
@@ -260,8 +261,8 @@ describe('the fields a slot owns', () => {
   });
 
   it('opens the recipe itself once the slot holds one to cook', () => {
-    expect(mealSlotLinkUrl('2026-08-22', 'dinner', entry({ recipeId: 'r-1' })))
-      .toBe('dundundun://recipe?id=r-1');
+    expect(mealSlotLinkUrl('2026-08-22', 'dinner', entry({ id: 'm-chili', recipeId: 'r-1' })))
+      .toBe('dundundun://recipe?id=r-1&entry=m-chili');
     // A leftover naming both a recipe and its own id has nothing to cook —
     // there's no Cook step (see mealSlotChain) and so no recipe to open.
     expect(mealSlotLinkUrl('2026-08-22', 'dinner', entry({ recipeId: 'r-1', leftoverId: 'lo-1' })))
@@ -319,6 +320,19 @@ describe('mealSlotStepTimeSegments', () => {
   });
 });
 
+describe('the recipe link carries its planned meal (#2931)', () => {
+  it('names the entry, so the scale and picks are read when the link is tapped', () => {
+    expect(recipeLinkUrl('r-1')).toBe('dundundun://recipe?id=r-1');
+    expect(recipeLinkUrl('r 1', 'm/2')).toBe('dundundun://recipe?id=r%201&entry=m%2F2');
+  });
+
+  it('keeps the link stable across a scale change, so a reconcile writes nothing', () => {
+    const planned = entry({ recipeId: 'r1', title: 'Chili' });
+    const task = taskFor('2026-08-22', 'dinner', planned);
+    expect(mealSlotDrift(task, '2026-08-22', 'dinner', { ...planned, recipeScale: 3 })).toBeNull();
+  });
+});
+
 describe('drift', () => {
   it('writes nothing when nothing has changed', () => {
     // The reconcile runs on every meal-plan mutation, most of which (a scale
@@ -333,7 +347,7 @@ describe('drift', () => {
     const updates = mealSlotDrift(task, '2026-08-22', 'dinner', planned)!;
     expect(updates.title).toBe('Chili');
     expect(updates.chainItems!.map(c => c.title)).toEqual(['Make Chili', 'Eat Chili']);
-    expect(updates.linkUrl).toBe('dundundun://recipe?id=r1');
+    expect(updates.linkUrl).toBe(`dundundun://recipe?id=r1&entry=${planned.id}`);
     // Still step 0 of its (now two-step) chain either way — nothing to write.
     expect(updates.timeSegments).toBeUndefined();
   });

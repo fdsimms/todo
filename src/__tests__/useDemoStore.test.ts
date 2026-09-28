@@ -3508,7 +3508,7 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(dinner.chainItems.map(c => c.estimatedMinutes)).toEqual([35, null]);
     // Answered with a recipe, so its link opens that rather than the day.
     const stirFry = useRecipeStore.getState().recipes.find(r => r.name === 'Weeknight chicken stir-fry')!;
-    expect(dinner.linkUrl).toBe('dundundun://recipe?id=' + stirFry.id);
+    expect(dinner.linkUrl).toMatch(new RegExp('^dundundun://recipe\\?id=' + stirFry.id + '&entry='));
 
     // The per-meal opt-out is invisible unless something uses it — today's
     // lunch is the meal that says no, and so has no task and renders as a

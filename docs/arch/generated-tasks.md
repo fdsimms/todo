@@ -770,6 +770,15 @@ carried unchanged into "Eat X" (`mealSlotDrift` writes `linkUrl` unconditionally
 destinations for one row. The picker link for an unanswered slot, and the meal-plan link for a
 leftover/takeout/typed answer, are unchanged.
 
+**The recipe link names the planned meal too (`&entry=…`), and resolves it when tapped.** The Meal
+Plan screen's own "Open recipe" seeds RecipeDetail with the meal's `recipeChoices` and
+`recipeScale`; a link carrying only the recipe id opened a doubled chili at 1× with the default
+side, so cook mode read out half the quantities and "Log to food log" logged half the helping
+(#2931). The entry's id travels rather than its numbers because `mealSlotDrift` rewrites `linkUrl`
+on every reconcile: a scale in the URL would make every scale change a task write, while the id is
+stable and `plannedRecipeParams` reads the entry as it stands at the tap. An entry that has gone, or
+that now holds a different recipe, gives nothing and the recipe opens on its own defaults.
+
 **A recipe that has since been deleted is not a recipe to cook.** `MealPlanEntry.recipeId` outlives
 the recipe on purpose, so every path that builds a slot task from an entry (the daily pass, the
 reconcile, `setCookTask`'s create) goes through `slotEntryForTask` first, which hands the projection

@@ -65,10 +65,17 @@ export function resetToFoodLog(): void {
 // once the slot holds a recipe (mealSlotTasks.recipeLinkUrl). Recipes first,
 // always, so the back chevron on RecipeDetail has somewhere to go — the same
 // shape resetToPeople already uses for PersonDetail.
-export function resetToRecipeDetail(recipeId: string): void {
+//
+// `planned` is the meal the link was written for, when it names one: its picks
+// and scale, the same `choices`/`scale` params MealPlanScreen's "Open recipe"
+// passes, so a doubled chili opened from Today reads doubled (#2931).
+export function resetToRecipeDetail(
+  recipeId: string,
+  planned: { choices?: string[]; scale?: number } = {}
+): void {
   if (!navigationRef.isReady()) return;
   navigationRef.navigate('Recipes');
-  navigationRef.navigate({ name: 'RecipeDetail', params: { recipeId } });
+  navigationRef.navigate({ name: 'RecipeDetail', params: { recipeId, ...planned } });
 }
 
 // Where `dundundun://mealplan` lands — the third of the kitchen links, so a

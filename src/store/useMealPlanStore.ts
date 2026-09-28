@@ -220,6 +220,15 @@ interface MealPlanStore extends UndoHistoryActions {
   entriesForDayLive: (dayKey: string) => MealPlanEntry[];
 
   /**
+   * One entry by id, read through the loaded window and SQLite when it isn't
+   * there — `resolveEntry` (internal, below), exposed for the one caller
+   * outside this store with the same cross-screen shape: a meal task's recipe
+   * link (`deepLinks`, #2931), tapped on Today with no week loaded, which
+   * opens the recipe on the meal's own scale and picks.
+   */
+  entryById: (id: string) => MealPlanEntry | null;
+
+  /**
    * How many of each day's three meals are planned, keyed by day key — what the
    * weekly nudge's per-day tasks show as "2/3 planned" (#1585). A day with no
    * key here is one nothing has asked about, and its row shows no counter at
@@ -684,6 +693,10 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
       ? entries
       : dbGetMealPlanEntries(dayKey, dayKey);
     return entriesForDay(source, dayKey);
+  },
+
+  entryById(id) {
+    return resolveEntry(get, id);
   },
 
   refreshPlannedSlotCounts(dayKeys) {
@@ -1333,8 +1346,8 @@ function patchInRange(
  * isn't.
  *
  * Every other read in this store is deliberately window-scoped, and stays that
- * way. This exists for the cook-task link alone, which is inherently
- * cross-screen: a task ticked off on Today knows its entry's id and nothing
+ * way. This exists for the cook-task link (and its public face `entryById`,
+ * the recipe link on a meal task) alone, which is inherently cross-screen: a task ticked off on Today knows its entry's id and nothing
  * about which week Meal plan has open — usually none at all, since the store
  * only loads a range once that screen has been visited.
  */

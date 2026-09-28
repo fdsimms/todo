@@ -1862,8 +1862,10 @@ describe('meal tasks', () => {
     expect(task.chainItems.map(c => c.title))
       .toEqual(['Make Frijoles de la olla', 'Eat Frijoles de la olla']);
     expect(task.title).toBe('Frijoles de la olla');
-    // Answered with a recipe, so the link opens that instead of the day.
-    expect(task.linkUrl).toBe('dundundun://recipe?id=r1');
+    // Answered with a recipe, so the link opens that instead of the day, and
+    // names the meal so its scale and picks travel with it (#2931).
+    const planned = useMealPlanStore.getState().entries.find(e => e.date === '2026-08-05' && e.slot === 'dinner')!;
+    expect(task.linkUrl).toBe(`dundundun://recipe?id=r1&entry=${planned.id}`);
     expect(mockTaskState.addTask).not.toHaveBeenCalled();
   });
 
@@ -2101,7 +2103,7 @@ describe('meal tasks', () => {
     loadWeek([thursday]);
     plantSlotTask('2026-08-06', 'dinner', thursday);
     plantSlotTask('2026-08-10', 'dinner', monday);
-    expect(slotTaskFor('2026-08-06', 'dinner')!.linkUrl).toBe('dundundun://recipe?id=r-Chili');
+    expect(slotTaskFor('2026-08-06', 'dinner')!.linkUrl).toBe(`dundundun://recipe?id=r-Chili&entry=${thursday.id}`);
 
     // What useRecipeStore.deleteRecipe does: the recipe leaves the list, then
     // the plan is told.
