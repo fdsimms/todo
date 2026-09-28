@@ -1,7 +1,7 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { PanResponder, StyleSheet, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
-import { navigationRef } from './navigationRef';
+import { navigationRef, flushPendingNavigation } from './navigationRef';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -387,7 +387,15 @@ export default function AppNavigator() {
 
   return (
     <>
-      <NavigationContainer ref={navRef} onStateChange={handleStateChange}>
+      <NavigationContainer
+        ref={navRef}
+        onStateChange={handleStateChange}
+        // Replays any resetTo*/openQuickAdd* call that arrived before the
+        // container was ready — a widget tap or Home Screen quick action that
+        // raced app startup — instead of leaving it silently dropped. See
+        // navigationRef.ts's runWhenReady/flushPendingNavigation.
+        onReady={flushPendingNavigation}
+      >
         <RootStack.Navigator screenOptions={{ headerShown: false }}>
           <RootStack.Screen name="MainTabs">
             {() => (
