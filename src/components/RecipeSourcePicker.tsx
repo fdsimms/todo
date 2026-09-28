@@ -57,6 +57,13 @@ interface Props {
    * paste — where offering an empty box would be offering a dead end.
    */
   photoOnly?: boolean;
+  /**
+   * Drops the tabs and shows only the link field — `photoOnly`'s mirror. For a
+   * caller that can read a link and nothing else: a keyless recipe import,
+   * which builds a recipe from a page's own structured data but has no model
+   * to read a paste or a photo with (see `recipePageOffline.ts`).
+   */
+  linkOnly?: boolean;
   /** One line under the two photo buttons saying what a good shot looks like. */
   photoHint?: string;
   ctaLabel: string;
@@ -98,6 +105,7 @@ export function RecipeSourcePicker({
   maxPhotos,
   picking = false,
   photoOnly = false,
+  linkOnly = false,
   photoHint,
   ctaLabel,
   onRun,
@@ -111,8 +119,8 @@ export function RecipeSourcePicker({
   // Both text modes are read through locals rather than off `mode` directly,
   // because `photoOnly` removes them: a caller with no text form at all must
   // not be able to land on a refusal about a box it never renders.
-  const paste = mode === 'paste' && !photoOnly;
-  const link = mode === 'link' && !photoOnly;
+  const paste = mode === 'paste' && !photoOnly && !linkOnly;
+  const link = (mode === 'link' || linkOnly) && !photoOnly;
   const bareUrl = paste && looksLikeBareUrl(text);
   const typedUrl = url.trim();
   const badUrl = link && !!typedUrl && !normalizeRecipeUrl(typedUrl);
@@ -161,7 +169,7 @@ export function RecipeSourcePicker({
     <>
       <Text style={styles.intro}>{intro}</Text>
 
-      {!photoOnly && (
+      {!photoOnly && !linkOnly && (
         <SegmentedControl
           label="How to add the recipe"
           value={mode}

@@ -1,0 +1,4 @@
+{
+  "message": "You can now import a recipe from a link without an Anthropic API key. It works for pages that list the recipe in a standard format, which most recipe sites do, and you review every ingredient before it is added",
+  "date": "2026-09-28"
+}

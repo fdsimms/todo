@@ -1,4 +1,5 @@
 import type { StepTimer } from '../types';
+import { formatStopwatch } from './effort';
 
 /**
  * Cooking step timers — the duration a step already names, and the countdown
@@ -390,6 +391,69 @@ export function stepDurationOffers(step: { text: string; timerSeconds?: number |
   return parseStepDurations(step.text);
 }
 
+// ==== what a running timer is called ====
+
+/** How long a timer's excerpt runs before it is cut at a word. */
+export const STEP_TIMER_EXCERPT_MAX = 32;
+
+/**
+ * A few words of the step a timer was started from, so two rows in the stack
+ * read "Simmer the rice, covered…" and "Add the pasta and cook 9 to…" rather
+ * than "Step 2 of 12" and "Step 5 of 12", which a cook with a pan in each hand
+ * has to remember the meaning of.
+ *
+ * The **clause holding the duration** (`at`, the offer's `start`), not the
+ * step's opening words: a step is often two instructions, and the timer
+ * belongs to the second ("Bring the water to a boil. Add the pasta and cook 9
+ * minutes"). A clause ends at `.`, `!`, `?` or `;` followed by a space, so
+ * "1.5 cups" stays whole. It is the recipe's own words, trimmed, never a
+ * summary: the same "read it, don't rewrite it" rule the parse above keeps.
+ * Stored on the timer when it starts, like `stepLabel`, so the row reads
+ * without the recipe and survives an edit to the step.
+ */
+export function stepTimerExcerpt(text: string, at: number = 0, max: number = STEP_TIMER_EXCERPT_MAX): string {
+  const pos = Math.max(0, Math.min(at, text.length));
+  const boundary = /[.!?;](?=\s)/g;
+  let start = 0;
+  let end = text.length;
+  for (let match = boundary.exec(text); match; match = boundary.exec(text)) {
+    if (match.index < pos) start = match.index + 1;
+    else { end = match.index; break; }
+  }
+  const clause = text.slice(start, end)
+    .replace(/\s+/g, ' ')
+    .trim()
+    // A method typed as a numbered list keeps its numbers in the text.
+    .replace(/^\d+[.)]\s*/, '')
+    .replace(/[.!?;:,]+$/, '');
+  if (clause.length <= max) return clause;
+  const cut = clause.slice(0, max);
+  // Cut where a word ends: at the cap itself when a space follows it, else
+  // back to the last space inside it (unless that throws away half the text).
+  const space = clause[max] === ' ' ? max : cut.lastIndexOf(' ');
+  const head = (space > max / 2 ? cut.slice(0, space) : cut).replace(/[\s,;:]+$/, '');
+  return `${head}…`;
+}
+
+/**
+ * The confirm before a timer still counting is cancelled, or null when there
+ * is nothing to lose. Cancel sits on the same row as Pause, reached for with a
+ * floury knuckle, and there's no getting a countdown back once it's gone; a
+ * timer that has already rung is only being dismissed, so that stays one tap.
+ */
+export function stepTimerCancelPrompt(
+  timer: StepTimer,
+  now: number = Date.now(),
+): { title: string; message: string } | null {
+  if (isStepTimerReady(timer, now)) return null;
+  const left = `${formatStopwatch(stepTimerRemaining(timer, now))} left`;
+  const where = [timer.stepExcerpt, timer.stepLabel].filter(Boolean).join('\n');
+  return {
+    title: 'Cancel this timer?',
+    message: where ? `${where}\n${isStepTimerRunning(timer) ? left : `Paused, ${left}`}` : left,
+  };
+}
+
 // ==== persistence ====
 
 /**
@@ -446,6 +510,7 @@ export function parseStepTimerQueue(raw: string | null): StepTimer[] {
       stepId: typeof t.stepId === 'string' ? t.stepId : '',
       recipeName: typeof t.recipeName === 'string' ? t.recipeName : '',
       stepLabel: typeof t.stepLabel === 'string' ? t.stepLabel : '',
+      ...(typeof t.stepExcerpt === 'string' && t.stepExcerpt ? { stepExcerpt: t.stepExcerpt } : {}),
       durationSeconds: Math.max(0, Math.round(t.durationSeconds)),
       startedAt: typeof t.startedAt === 'string' ? t.startedAt : null,
       elapsedSeconds: typeof t.elapsedSeconds === 'number' && Number.isFinite(t.elapsedSeconds)

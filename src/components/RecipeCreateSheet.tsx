@@ -1,5 +1,5 @@
 // Builds a whole new recipe out of a photo or a paste — the Recipes screen's
-// import entry. One component of ~1,020 lines, so grep a landmark rather than
+// import entry. One component of ~1,350 lines, so grep a landmark rather than
 // reading it start to finish:
 //
 //   ==== <name> ====        the section banners through the logic half
@@ -51,6 +51,7 @@ import {
 } from '../services/aiSuggestions';
 import { describeImportError, isRetryableImportError } from '../services/recipePage';
 import { normalizeRecipeUrl, recipeImportedFrom } from '../utils/recipeUrl';
+import { recipeFromPageOffline } from '../utils/recipePageOffline';
 import {
   normalizeIngredient, cleanRecipeName, formatServingsRange, parseServingsRange,
 } from '../utils/recipeUtils';
@@ -102,6 +103,13 @@ interface Props {
    * the source the recipe ended up with.
    */
   onCreated: (recipeId: string, sourceUrl: string | null) => void;
+  /**
+   * No Anthropic key (and Recipe import left on): only the link tab, and a
+   * page is read from its own structured data rather than by the model
+   * (`recipeFromPageOffline`). A page that publishes none is refused with a
+   * message naming the key, since nothing else here could read it.
+   */
+  keyless?: boolean;
 }
 
 /**
@@ -134,6 +142,13 @@ interface Props {
  * a cookbook clipping has a source just as much as a web page does, it's just
  * not one the app can read off the input.
  *
+ * **With no key it is a link import and nothing else** (`keyless`, #2930). A
+ * page publishing `schema.org/Recipe` is built into the same `ExtractedRecipe`
+ * by `recipeFromPageOffline` instead of the model, so the review list below is
+ * one sheet either way; a page that publishes none is refused with a message
+ * naming the key rather than guessed at. Paste and photo have no keyless
+ * reading, so the picker shows the link field alone.
+ *
  * **The method and the prep tasks are reviewable rows, not a footnote** (#1618).
  * They used to be written to the new recipe unconditionally, announced only by
  * a sentence in the intro saying how many of each had been found — so the one
@@ -144,7 +159,7 @@ interface Props {
  * of the user's own for them to land on top of.
  */
 export function RecipeCreateSheet({
-  visible, initialMode = 'photo', initialUrl = null, onClose, onCreated,
+  visible, initialMode = 'photo', initialUrl = null, onClose, onCreated, keyless = false,
 }: Props) {
   // ==== store bindings ====
   const colors = useColors();
@@ -328,11 +343,14 @@ export function RecipeCreateSheet({
   // set any earlier.
   useEffect(() => {
     if (!visible) return;
-    setMode(initialMode);
+    // A keyless import can only read a link, and `resolveSource` reads
+    // whichever mode is set, so the mode has to *be* link rather than only
+    // look like it.
+    setMode(keyless ? 'link' : initialMode);
     // Only when there is one — the add menu's two items open with an empty
     // field, and clearing it here would fight the reset that just ran.
     if (initialUrl) setUrl(initialUrl);
-  }, [visible, initialMode, initialUrl, setMode, setUrl]);
+  }, [visible, initialMode, initialUrl, keyless, setMode, setUrl]);
 
   // ==== running the extraction ====
   const extract = useCallback(async () => {
@@ -342,7 +360,27 @@ export function RecipeCreateSheet({
       // A link is fetched first; a paste and a photo resolve to themselves.
       const resolved = await resolveSource();
       if (!resolved) return;
-      const result = await extractRecipe(resolved.source, [...aisleOrder]);
+      // No key: the page's own structured data, read with no model at all.
+      // The same `ExtractedRecipe` shape comes back, so everything below and
+      // the whole review list is the same sheet either way.
+      const result = keyless
+        ? (resolved.page
+            ? recipeFromPageOffline(
+                resolved.page,
+                name => rememberedAisleFor(name) ?? aisleForName(name) ?? 'Other',
+              )
+            : null)
+        : await extractRecipe(resolved.source, [...aisleOrder]);
+      if (!result) {
+        if (visibleRef.current) {
+          setError(
+            'This page doesn’t list its recipe in a format the app can read on its own. '
+            + 'Add an Anthropic API key in Settings to import it.',
+          );
+          setCanRetry(false);
+        }
+        return;
+      }
       // Canceled while the request was in flight: don't repopulate a sheet
       // the user already discarded — it would silently reappear filled in
       // the next time this sheet opens.
@@ -386,7 +424,7 @@ export function RecipeCreateSheet({
     } finally {
       setLoading(false);
     }
-  }, [resolveSource, aisleOrder]);
+  }, [resolveSource, aisleOrder, keyless, rememberedAisleFor]);
 
   // A link already in the recipe box is recognised from the address alone,
   // before anything is fetched: `sourceUrl` is `normalizeRecipeUrl` of the
@@ -770,7 +808,10 @@ export function RecipeCreateSheet({
           {...keyboardScroll.props}
         >
           <RecipeSourcePicker
-            intro="Open a recipe link, photograph a cookbook page, or paste a recipe, and it’ll be added to your recipe box: name, servings and all."
+            intro={keyless
+              ? 'Open a recipe link and it’ll be added to your recipe box. Without an Anthropic API key this works for pages that list the recipe in a standard format, which most recipe sites do.'
+              : 'Open a recipe link, photograph a cookbook page, or paste a recipe, and it’ll be added to your recipe box: name, servings and all.'}
+            linkOnly={keyless}
             mode={input.mode}
             onChangeMode={input.setMode}
             text={input.text}
@@ -1189,7 +1230,9 @@ export function RecipeCreateSheet({
       <View style={styles.root}>
         <SheetHeader
           title="Import a recipe"
-          icon="sparkles"
+          // The sparkle marks a sheet the model answers, and a keyless import
+          // reads the page's own data instead.
+          icon={keyless ? undefined : 'sparkles'}
           left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={72} />}
           right={
             <SheetHeaderButton

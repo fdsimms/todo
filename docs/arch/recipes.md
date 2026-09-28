@@ -28,8 +28,8 @@ opens the ordinary `RecipeCreateSheet` on its link tab with the address already 
   keychain, so fetching, extracting and writing a recipe row are all things only the app can
   do. It also can't open the app: `NSExtensionContext.open(_:)` isn't available to this
   extension point, which is why the hand-off is a queue rather than a launch.
-- **A shared page waits for a tap; it does not import itself.** The import is a page fetch plus
-  an Anthropic call billed to the user's own key, and spending that unasked — for something
+- **A shared page waits for a tap; it does not import itself.** The import is a page fetch plus,
+  with a key, an Anthropic call billed to it, and spending that unasked — for something
   shared in a supermarket aisle three days ago, possibly several at once — is a decision nobody
   made. It also means a failure is reported in the sheet that caused it rather than after the
   fact.
@@ -46,20 +46,34 @@ opens the ordinary `RecipeCreateSheet` on its link tab with the address already 
 - **One banner at a time, oldest first.** Addresses are canonicalised through
   `normalizeRecipeUrl` on the way in, so the queue holds exactly what the import would accept
   and a re-share collapses onto the entry already there rather than jumping the line.
-- **The banner follows `useAiRoute('recipeExtraction')`, the same as the add button's import
-  menu**, so it offers Import only when an import can actually run. That is the key *and*
-  Recipe import's own switch in Settings: gated on the bare key, a key holder who had turned
-  the feature off was offered a sheet that could only say so.
-- **Without a key it says so rather than disappearing.** The extension confirms every share with
-  "Open dundundun to import the recipe", because it's a separate process and can't read the
-  keychain to know better. A banner that simply wasn't there then left the page queued with
-  nothing on screen to say it was waiting or what would import it. So with no key (and Recipe
-  import still switched on) the banner stays, says a key is what's missing, and its button opens
-  the API key row in Settings; Discard works as usual. With a key and the feature switched off
-  it goes, since that user asked for no recipe import. The queue persists either way, so a page
-  shared before a key is added turns up importable once there is one. The key lives in the
-  keychain rather than the `settings` table, so this reads the same inside demo mode as outside
-  it.
+- **The banner follows the add button's link import**, so it offers Import only when an import
+  can actually run: with a key through `useAiRoute('recipeExtraction')`, and without one while
+  Recipe import's own switch is on. Gated on the bare key, a key holder who had turned the feature
+  off was offered a sheet that could only say so, and switched off it still goes, since that user
+  asked for no recipe import. The queue persists either way, so a page shared while it's off
+  turns up importable once it's back on.
+- **Without a key it offers Import all the same** (#2930). It used to swap Import for "Add API
+  key", back when every link import needed the model. A page publishing `schema.org/Recipe` now
+  imports with no key at all (`recipePageOffline.ts`, below), which is most recipe sites and so
+  most shares; one that doesn't is refused in the sheet with a message naming the key, which is a
+  better place to learn it than a banner guessing before the page has been fetched. The
+  extension still confirms every share with "Open dundundun to import the recipe", because it's a
+  separate process and can't read the keychain to know better.
+- **A link imports without a key; a paste and a photo don't** (`recipePageOffline.ts`). Most of a
+  recipe page never needed the model: a page that publishes `schema.org/Recipe` states its title,
+  method, yield, time and attribution as data, and its ingredient lines are exactly what the
+  keyless parser behind "paste ingredients into a recipe" reads (`ingredientsFromText`). So with no
+  key (and Recipe import on) the add menu offers "From a link" alone and `RecipeCreateSheet` opens
+  on the link field only (`keyless`, `RecipeSourcePicker`'s `linkOnly`), building the same
+  `ExtractedRecipe` the model would have returned so the review list is one sheet either way. It
+  is honestly worse on the ingredients (no shop-label naming, no sections, no optional or water
+  flags) and every row is reviewed before anything is written. It **refuses rather than guesses**:
+  a page with no structured recipe, or one listing no ingredients, is refused with a message
+  naming the key, because reading a recipe out of stripped page text is the model's job and a
+  guess at it here is how a sidebar ends up in the ingredient list (the same reason
+  `parseRecipePage` never takes a method from page text). Paste and photo have no such floor and
+  stay behind the key. The fetch answers to Recipe import's switch, which is the "its own switch"
+  CLAUDE.md asks of a keyless network reach, and `fetchRecipePage` already refuses in demo mode.
 - **A link already in the recipe box is recognised before anything is fetched.** `sourceUrl` is
   `normalizeRecipeUrl` of the address, a pure function of what was typed, so `recipeImportedFrom`
   (`recipeUrl.ts`) can answer from the address alone. `RecipeCreateSheet` asks it before the
@@ -224,6 +238,16 @@ for a book, a `cookbookId` pointing at a real `Cookbook` row holding the title a
   Sodha one; a shelf that can hold only one of them is a worse bug than the near-duplicate a
   compound key lets through.
 - **The page stays on the recipe.** A book has many pages and this recipe is on one of them.
+- **A book's page lists its recipes in page order** (`recipesInCookbook`, `cookbookRecipes.ts`),
+  since every row already says "Page N" and that is how a cookbook is browsed. Roman front
+  matter comes before the body, a page nobody could read as a number after it, and a recipe with
+  no page last, each broken by name.
+- **"Link a recipe" asks before it rewrites an attribution.** The mirror above means linking is a
+  write of `source`/`author`/`sourceType`, and there is no undo for it, so a recipe filed under
+  another book (a move) or crediting a different source (a website, another author) is confirmed
+  first (`cookbookLinkEffect`). A recipe with no attribution, or one that already names this book,
+  links on the tap as before. Each picker row says where the recipe is now, and the picker says
+  when its 30-row cap is hiding the rest rather than letting the cap pass for the whole box.
 
 The import side is `sourceFieldsFor`/`sourcePlanFor` (`recipeProvenance.ts`), shared by both
 import sheets rather than hand-copied into each, since they are the same sheet twice over.
@@ -779,8 +803,18 @@ ingredient panel's fold die with the modal.
   second), so a halved recipe reads correctly mid-step. Nothing parses an amount back *out* of a
   sentence: what a step says about an ingredient it names comes from that ingredient's own line,
   through the same pipeline — see Ingredient references below.
-- **Nothing is ticked off by itself.** Finishing the last step closes the sheet and logs nothing —
-  logging a cook time is the timer's own ✓, the same call `timer.ts` makes about a countdown.
+- **Nothing is ticked off by itself, but finishing offers.** Done on the last step logs nothing —
+  logging a cook time is the timer's own ✓, the same call `timer.ts` makes about a countdown. It
+  used to close the sheet as well, which left the cook back on the recipe screen with the rating,
+  leftovers and pantry questions behind an unlabelled flame in the header. So it now opens an end
+  screen (Back returns to the last step) whose primary button is **Log as cooked**, the same
+  `cookRecipeNow` the recipe screen runs, with Add to food log beside it where the recipe's
+  nutrition is known. Both are offers a person taps, never a write on Done, and both close cook
+  mode in the same handler that raises their sheet, so the recap and the food-log prompt (mounted
+  in `AppNavigator`) are never siblings of a visible cook mode. On the recipe screen the same two
+  verbs sit behind one labelled "Made it" control rather than two glyphs; it is a menu even when
+  only one of them applies, because `lastCookedAt` steers suggestions for weeks and a stray tap on
+  a header icon shouldn't move it.
 - **`useKeepAwake` is called from inside the Modal's content** (`ScreenAwake`), not at the top of
   the sheet: the sheet stays mounted with `visible` false, and a lock taken there would hold the
   phone awake for the rest of the session. `expo-keep-awake` was already in the tree as one of
@@ -977,6 +1011,17 @@ through a locked phone, and outlives the sheet.
   timer belongs to the footer: pressing Next must not take a running countdown off screen, and Pause
   has to be reachable without navigating back to the step that started it. The recipe screen shows
   the same rows on its timer card, since closing cook mode mid-timer is the ordinary thing to do.
+- **A row is sized for a knuckle and named by the step's own words.** Every control on
+  `StepTimerRow` is at least 44pt, with no `hitSlop` reaching into a neighbour, and Cancel sits a
+  wider gap from Pause and asks first while the timer still has time left (`stepTimerCancelPrompt`;
+  dismissing one that has rung stays one tap, since nothing is lost). The countdown is `font.lg`.
+  Two rows labelled "Step 2 of 12" and "Step 5 of 12" made the cook remember which step was the
+  rice, so a timer now stores `stepExcerpt` when it starts: the clause of the step holding the
+  duration, cut at a word (`stepTimerExcerpt`). It is the recipe's own words, never a summary, and
+  it gets a full-width line of its own under the controls, since squeezed beside three 44pt
+  buttons it came out as "Simmer the r…". It is stored rather than derived for the reason
+  `stepLabel` is: the row reads without the recipe and survives an edit to the step. This is where
+  the row parts from `RecipeTimerRow`'s dimensions while keeping its idiom.
 - **A rung timer sinks to the bottom of the stack rather than jumping to the top.** It's the one row
   that wants dealing with, which argues for the top — but the stack is what a thumb aims at with
   hands full, and a row that jumps as it rings moves Pause out from under a finger already on its

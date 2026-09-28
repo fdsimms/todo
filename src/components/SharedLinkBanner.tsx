@@ -14,11 +14,6 @@ interface Props {
   remaining: number;
   onImport: () => void;
   onDismiss: () => void;
-  /**
-   * Set when there is no Anthropic API key, which turns Import into a way to
-   * add one. See the note on the no-key variant below.
-   */
-  onAddKey?: () => void;
 }
 
 /**
@@ -27,7 +22,7 @@ interface Props {
  *
  * **It waits for a tap rather than importing on arrival**, which is the whole
  * reason it exists as a banner and not as a recipe that's already there. The
- * import is a page fetch plus an Anthropic call billed to the user's own key,
+ * import is a page fetch plus, with a key, an Anthropic call billed to it,
  * and running that unasked — for something shared in a supermarket aisle three
  * days ago, possibly several of them at once — spends money on a decision nobody
  * made. Tapping Import opens the same `RecipeCreateSheet` a typed link opens,
@@ -42,14 +37,15 @@ interface Props {
  * queue is worked front to back and a stack of banners would bury the screen
  * it's sitting on.
  *
- * **Without a key it says so rather than disappearing** (`onAddKey`). The
- * extension can't read the keychain, so it confirms every share with "Open
- * dundundun to import the recipe" whatever the app can do. Hiding the banner
- * then left the page queued with nothing on screen to say it was there or
- * what would import it. The no-key variant names the missing piece and opens
- * the Settings row that supplies it; Discard still works either way.
+ * **Without a key it offers Import all the same.** It used to swap Import for
+ * "Add API key", back when every link import needed the model. A page that
+ * publishes `schema.org/Recipe` now imports with no key at all
+ * (`recipePageOffline.ts`), which is most recipe sites and so most shares, and
+ * one that doesn't is refused in the sheet with a message naming the key. That
+ * is a better place to learn it than a banner guessing before the page has
+ * even been fetched.
  */
-export function SharedLinkBanner({ url, remaining, onImport, onDismiss, onAddKey }: Props) {
+export function SharedLinkBanner({ url, remaining, onImport, onDismiss }: Props) {
   const colors = useColors();
   const styles = makeStyles(colors);
   const label = sharedLinkLabel(url);
@@ -64,11 +60,6 @@ export function SharedLinkBanner({ url, remaining, onImport, onDismiss, onAddKey
     onDismiss();
   };
 
-  const handleAddKey = () => {
-    haptics.tap();
-    onAddKey?.();
-  };
-
   return (
     <View style={styles.container}>
       <View style={styles.summary}>
@@ -78,11 +69,6 @@ export function SharedLinkBanner({ url, remaining, onImport, onDismiss, onAddKey
         </Text>
         {remaining > 0 && <Text style={styles.count}>+{remaining}</Text>}
       </View>
-      {!!onAddKey && (
-        <Text style={styles.note}>
-          Importing a recipe from a link needs an Anthropic API key.
-        </Text>
-      )}
 
       <View style={styles.actionRow}>
         <PressableScale
@@ -92,25 +78,14 @@ export function SharedLinkBanner({ url, remaining, onImport, onDismiss, onAddKey
         >
           <Text style={styles.dismissText}>Discard</Text>
         </PressableScale>
-        {onAddKey ? (
-          <PressableScale
-            style={styles.importButton}
-            onPress={handleAddKey}
-            accessibilityLabel="Open Settings to add an Anthropic API key"
-          >
-            <Ionicons name="key-outline" size={iconSize.sm} color={colors.onAccent} />
-            <Text style={styles.importText}>Add API key</Text>
-          </PressableScale>
-        ) : (
-          <PressableScale
-            style={styles.importButton}
-            onPress={handleImport}
-            accessibilityLabel={`Import a recipe from ${label}`}
-          >
-            <Ionicons name="download-outline" size={iconSize.sm} color={colors.onAccent} />
-            <Text style={styles.importText}>Import recipe</Text>
-          </PressableScale>
-        )}
+        <PressableScale
+          style={styles.importButton}
+          onPress={handleImport}
+          accessibilityLabel={`Import a recipe from ${label}`}
+        >
+          <Ionicons name="download-outline" size={iconSize.sm} color={colors.onAccent} />
+          <Text style={styles.importText}>Import recipe</Text>
+        </PressableScale>
       </View>
     </View>
   );
@@ -136,7 +111,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   text: { flexShrink: 1, color: colors.text, fontSize: font.md },
   // Information rather than an aside, so `textSecondary` for the reason
   // EmptyNote's own text is.
-  note: { color: colors.textSecondary, fontSize: font.sm },
   host: { fontWeight: fontWeight.bold },
   // The queue's depth, not a badge on an action — same quiet treatment the
   // "N more" counters elsewhere get, so it reads as context for the line it
