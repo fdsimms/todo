@@ -224,6 +224,16 @@ for a book, a `cookbookId` pointing at a real `Cookbook` row holding the title a
   Sodha one; a shelf that can hold only one of them is a worse bug than the near-duplicate a
   compound key lets through.
 - **The page stays on the recipe.** A book has many pages and this recipe is on one of them.
+- **A book's page lists its recipes in page order** (`recipesInCookbook`, `cookbookRecipes.ts`),
+  since every row already says "Page N" and that is how a cookbook is browsed. Roman front
+  matter comes before the body, a page nobody could read as a number after it, and a recipe with
+  no page last, each broken by name.
+- **"Link a recipe" asks before it rewrites an attribution.** The mirror above means linking is a
+  write of `source`/`author`/`sourceType`, and there is no undo for it, so a recipe filed under
+  another book (a move) or crediting a different source (a website, another author) is confirmed
+  first (`cookbookLinkEffect`). A recipe with no attribution, or one that already names this book,
+  links on the tap as before. Each picker row says where the recipe is now, and the picker says
+  when its 30-row cap is hiding the rest rather than letting the cap pass for the whole box.
 
 The import side is `sourceFieldsFor`/`sourcePlanFor` (`recipeProvenance.ts`), shared by both
 import sheets rather than hand-copied into each, since they are the same sheet twice over.

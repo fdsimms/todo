@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, Keyboard } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, Keyboard, Alert } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -16,6 +16,9 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { totalMinutes } from '../utils/recipeUtils';
+import {
+  cookbookLinkCandidates, cookbookLinkPrompt, recipesInCookbook, type CookbookLinkCandidate,
+} from '../utils/cookbookRecipes';
 import type { Recipe } from '../types';
 import { useFilterField } from '../hooks/useFilterField';
 
@@ -35,10 +38,9 @@ export function CookbookDetailScreen() {
   const cookbook = useRecipeStore(s => s.cookbookById(cookbookId));
   const allRecipes = useRecipeStore(useShallow(s => s.recipes));
   const linkCookbook = useRecipeStore(s => s.linkCookbook);
-  const recipes = useMemo(
-    () => allRecipes.filter(r => r.cookbookId === cookbookId).sort((a, b) => a.name.localeCompare(b.name)),
-    [allRecipes, cookbookId]
-  );
+  const cookbooks = useRecipeStore(s => s.cookbooks);
+  // Page order, the way a cookbook is browsed: each row already says "Page N".
+  const recipes = useMemo(() => recipesInCookbook(allRecipes, cookbookId), [allRecipes, cookbookId]);
 
   const [linkPickerVisible, setLinkPickerVisible] = useState(false);
   const searchFilter = useFilterField();
@@ -52,13 +54,29 @@ export function CookbookDetailScreen() {
   }, [linkPickerVisible]);
   // Recipes not already claimed by this book — one already filed under it
   // would just link to itself again, and the search is over what's left.
-  const linkable = useMemo(() => {
-    const q = linkSearch.trim().toLowerCase();
-    return allRecipes
-      .filter(r => r.cookbookId !== cookbookId && (q === '' || r.name.toLowerCase().includes(q)))
-      .sort((a, b) => a.name.localeCompare(b.name))
-      .slice(0, 30);
-  }, [allRecipes, cookbookId, linkSearch]);
+  // `total` is what matched before the cap, so the footer can say the list
+  // is a slice rather than letting 30 rows pass for the whole box.
+  const { shown: linkable, total: linkableTotal } = useMemo(
+    () => cookbook
+      ? cookbookLinkCandidates(allRecipes, cookbook, linkSearch, id => cookbooks.find(c => c.id === id))
+      : { shown: [], total: 0 },
+    [allRecipes, cookbook, cookbooks, linkSearch]
+  );
+
+  // Linking mirrors the book's title and author onto the recipe, so it moves a
+  // recipe out of another book, or replaces a website's credit, with no undo.
+  // Those two ask first; a recipe with nothing to lose links on the tap.
+  const handleLink = (candidate: CookbookLinkCandidate) => {
+    if (!cookbook) return;
+    const link = () => { haptics.tap(); linkCookbook(candidate.recipe.id, cookbookId); };
+    const prompt = cookbookLinkPrompt(candidate.recipe.name, cookbook, candidate.effect);
+    if (!prompt) { link(); return; }
+    Keyboard.dismiss();
+    Alert.alert(prompt.title, prompt.message, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: prompt.confirm, onPress: link },
+    ]);
+  };
 
   const closeLinkPicker = () => {
     Keyboard.dismiss();
@@ -172,20 +190,35 @@ export function CookbookDetailScreen() {
           />
           <FlatList
             data={linkable}
-            keyExtractor={r => r.id}
+            keyExtractor={c => c.recipe.id}
+            keyboardShouldPersistTaps="handled"
             contentContainerStyle={linkable.length === 0 ? styles.emptyContainer : undefined}
             renderItem={({ item }) => (
               <TouchableOpacity
                 style={styles.pickerRow}
-                onPress={() => { haptics.tap(); linkCookbook(item.id, cookbookId); }}
+                onPress={() => handleLink(item)}
                 activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel={item.note ? `Link ${item.recipe.name}, ${item.note}` : `Link ${item.recipe.name}`}
               >
-                <Text style={styles.pickerRowText} numberOfLines={1}>{item.name}</Text>
+                <View style={styles.info}>
+                  <Text style={styles.pickerRowText} numberOfLines={1}>{item.recipe.name}</Text>
+                  {item.note && (
+                    <Text style={styles.pickerRowNote} numberOfLines={1}>{item.note}</Text>
+                  )}
+                </View>
                 <Ionicons name="add-circle-outline" size={18} color={colors.accent} />
               </TouchableOpacity>
             )}
             ListEmptyComponent={
               <EmptyState icon="search" title="No matching recipes" subtitle="Recipes already in this book won't show here" />
+            }
+            ListFooterComponent={
+              linkableTotal > linkable.length ? (
+                <Text style={styles.pickerFooter}>
+                  Showing {linkable.length} of {linkableTotal} recipes. Search to find the rest.
+                </Text>
+              ) : null
             }
           />
         </View>
@@ -238,9 +271,20 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: spacing.md,
   },
   pickerRowText: {
-    flex: 1,
     color: colors.text,
     fontSize: font.md,
+  },
+  pickerRowNote: {
+    color: colors.textSecondary,
+    fontSize: font.xs,
+  },
+  pickerFooter: {
+    color: colors.textSecondary,
+    fontSize: font.sm,
+    textAlign: 'center',
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.xl,
   },
   row: {
     flexDirection: 'row',
