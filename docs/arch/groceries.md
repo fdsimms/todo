@@ -1429,7 +1429,12 @@ nothing to backfill.
   `swappedFrom`, since this is the same thing spelled the other way rather than a swap —
   `recipeReadiness` counts it as covered, `recipeCost` prices it, `useUpRecipes` offers the recipe
   for the dying row, and the import review's own link icon (`ExtractedIngredientRow`) reports what
-  the store will actually do on save. Plural tolerance in
+  the store will actually do on save. A standing swap agrees too (#2940): `standingSwapMap` indexes
+  each rule under its row's plural variants as well as its own key, so "1 egg" shops flax eggs
+  when "2 eggs" does. It has to happen there rather than after `classifyPlanned`'s re-file, because
+  the swap is resolved first, in `flattenRecipeIngredients`; and it claims a variant only where
+  `resolvePluralKey` would resolve it to that row, so a catalog holding both "Egg" and "Eggs"
+  keeps the rule on Eggs alone. Plural tolerance in
   `matchWeight` is untouched and still does its own job: that one is autocomplete, where a wrong
   guess costs a keystroke.
 
@@ -1517,8 +1522,10 @@ read side.
   (suggestions are the item's own trailing words plus generics already in use —
   `genericNameSuggestions`). Same discipline as substitutes, and a declaration is a user fact
   (`hasUserFacts`), so it protects its row from the clearList sweep.
-- **Standing swaps stay exact-key.** A swap is a rewrite mandate; firing a generic's mandate on
-  a line that named a specific variety would override a specificity the user wrote down.
+- **Standing swaps stay exact-key across varieties.** A swap is a rewrite mandate; firing a
+  generic's mandate on a line that named a specific variety would override a specificity the user
+  wrote down. Spelling is not specificity, so the singular or plural of the rule's own row does
+  reach it (see "Singular and plural are one row" above).
 
 ## Deciding at the shelf — an ingredient choice that survives onto the list
 
