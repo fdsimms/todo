@@ -75,7 +75,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/daySegments.ts` — DAY_SEGMENT_KEYS, DaySegmentKey, DaySegmentTimes, applyDaySegmentTime, daySegmentsInOrder
 - `src/utils/dayTimeline.ts` — MINUTES_IN_DAY, DEFAULT_FIRST_HOUR, DEFAULT_LAST_HOUR, TimelineEntry, DayTimeline, DayTimelineInput, clockToDayMinutes, instantToDayMinutes, buildDayTimeline
 - `src/utils/deadlineCalendarSync.ts` — syncDeadlineEvent
-- `src/utils/deepLinks.ts` — AddTaskLink, parseAddTaskUrl, handleIncomingUrl, isQuickAddUrl, isAddEventUrl, isOpenAppUrl, isGroceriesUrl, groceriesUrlFinish, isRecipesUrl, isRecipeUrl, +31 more
+- `src/utils/deepLinks.ts` — AddTaskLink, parseAddTaskUrl, handleIncomingUrl, isQuickAddUrl, isAddEventUrl, isOpenAppUrl, isGroceriesUrl, groceriesUrlFinish, groceriesLinkUrl, groceriesUrlShop, +33 more
 - `src/utils/deliverables.ts` — DELIVERABLE_TEXT_MAX_LENGTH, DELIVERABLE_META, YES_NO_OPTIONS, DELIVERABLE_OPTIONS_MAX, isTentativeAnswer, RSVP_OPTIONS, parseDeliverableOptions, cleanDeliverableOptions, deliverableOptionsFor, deliverableMeta, +8 more
 - `src/utils/deloadPlan.ts` — DeloadDestination, DeloadProposal, DeloadPlan, buildDeloadPlan
 - `src/utils/demoHold.ts` — runOrHoldForDemo, replayHeldForDemo
@@ -124,7 +124,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/groceryReminderMirror.ts` — GroceryReminderLink, GroceryLinkIndex, parseGroceryLinks, serializeGroceryLinks, withGroceryLinks, MirrorItem, MirrorReminder, mirrorNote, mirrorTitleFor, normalizeMirrorTitle, +2 more
 - `src/utils/groceryReorder.ts` — GroceryDropRow, GroceryPlacement, resolveGroceryDrop, KeyedGroceryDropRow, placeNewGroceryItems, groceryDragRange
 - `src/utils/groceryShelfLife.ts` — SHELF_LIFE_LEXICON, OPEN_SHELF_LIFE_LEXICON, openShelfLifeDaysFor, shelfLifeDaysFor, clampExpiryDays, expiryKeyFor, defaultExpiresAt, expiresAtForPurchase, expiresAtForOpening, liveExpiresAt, +2 more
-- `src/utils/groceryShops.ts` — isUnavailable, isAsserted, lacksWantedProduct, countsForItem, sellsAisle, isOutOfRange, describeShopAisles, ShopWithCount, shopsForItem, unavailableShopsFor, +7 more
+- `src/utils/groceryShops.ts` — isUnavailable, isAsserted, lacksWantedProduct, countsForItem, sellsAisle, isOutOfRange, describeShopAisles, ShopWithCount, shopsForItem, unavailableShopsFor, +11 more
 - `src/utils/grocerySuggest.ts` — GrocerySuggestion, GrocerySection, GroceryRecipeSection, NO_RECIPE_LABEL, matchWeight, rankGrocerySuggestions, rankedCatalogItems, sectionsInAisleOrder, buildGrocerySections, buildGroceryRecipeSections, +11 more
 - `src/utils/gtin.ts` — gtinCheckDigit, normalizeGtin, isGtin, formatGtin, GTIN_MISS_TTL_DAYS, isCacheEntryFresh
 - `src/utils/haptics.ts` — haptics
@@ -155,12 +155,12 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/lookAhead.ts` — LookAheadWindow, LookAheadDay, AwayEntry, TightDeadline, LookAheadTotals, LookAhead, BuildLookAheadOptions, buildLookAhead, carriedOverTasks, awayEntries, +8 more
 - `src/utils/maintenancePasses.ts` — MaintenanceStep, expiryPasses, catchUpPasses, retentionPasses, rebuildNotificationQueue
 - `src/utils/maps.ts` — directionsUrl, isMappable
-- `src/utils/mealCalendarSync.ts` — mealEventTitle, mealEventFields, syncMealEvent
+- `src/utils/mealCalendarSync.ts` — mealEventTitle, mealEventFields, syncMealEvent, MealEventSyncPlan, mealEventsAfterSync
 - `src/utils/mealIdeas.ts` — MIN_MEAL_IDEAS, MAX_MEAL_IDEAS, RECENT_MEAL_DAYS, MealIdea, RawMealIdea, mealTitleKey, clampIdeaCount, dedupeMealIdeas, MealSuggestion, mergeMealSuggestions, +6 more
 - `src/utils/mealLog.ts` — DishFigures, MealHelping, wantsMealLogPrompt, defaultHelpings, mealHelping, servingGrams, weighedHelping, cookedDishGrams, describeCookedWeight, COOKED_WEIGHT_MIN_G, +5 more
 - `src/utils/mealLogCoverage.ts` — SlotCoverage, countsAsMealLog, loggedMealSlotKeys, mealDayCoverage, describeSlotLog, describeDayCoverage, unloggedPlannedSlots, describePlannedSlot
 - `src/utils/mealLogNudgeTasks.ts` — MEAL_LOG_NUDGE_LOOKBACK_DAYS, mealLogNudgeTitle, mealLogNudgeEntryId, mealLogNudgeLinkUrl, isWithinLogNudgeWindow, MealLogRecord, isMealLogged, MealLogNudgeWant, wantedMealLogNudges, staleMealLogNudgeTasks
-- `src/utils/mealPlan.ts` — slotRank, slotLabel, mealSlotKey, sortMealEntries, entriesForDay, cookEntryForRecipe, earliestUnplannedSlot, entriesForSlot, nextSortOrder, upcomingDays, +22 more
+- `src/utils/mealPlan.ts` — slotRank, slotLabel, mealSlotKey, sortMealEntries, entriesForDay, cookEntryForRecipe, earliestUnplannedSlot, entriesForSlot, nextSortOrder, upcomingDays, +25 more
 - `src/utils/mealPlanGroceries.ts` — PlannedIngredient, collectPlannedIngredients, hasShoppableMeals, plannedIngredientsForRecipe, parseQuantityAmount, mergeQuantities, describeQuantities, PlanCategory, ClassifiedIngredient, classifyPlanned, +8 more
 - `src/utils/mealPlanNudge.ts` — DEFAULT_MEAL_PLAN_NUDGE_WEEKDAY, DEFAULT_MEAL_PLAN_NUDGE_TIME, MEAL_PLAN_NUDGE_LINK_URL, mealPlanNudgeLinkUrl, MEAL_PLAN_NUDGE_SLOTS, MEAL_PLAN_NUDGE_SLOT_COUNT, countPlannedSlots, mealPlanNudgeDayKey, MealPlanNudgeDue, MealPlanNudgeDay, +3 more
 - `src/utils/mealShortfallTasks.ts` — MAX_MEAL_SHORTFALL_TASKS, mealShortfallTitle, mealShortfallEntryId, mealShortfallLinkUrl, isWithinShopWindow, mealShortfallRows, MealShortfallWant, wantedMealShortfalls, staleMealShortfallTasks
@@ -252,7 +252,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/recipeTags.ts` — cleanRecipeTag, normalizeRecipeTags, parseRecipeTags, allRecipeTags, recipeTagCounts, filterRecipesByTags, formatTagList, toggleRecipeTag
 - `src/utils/recipeTimer.ts` — CookTimerState, PrepTimerState, hasCookTimer, isCookTimerRunning, cookTimerElapsed, cookTimerRemaining, cookTimerProgress, isCookTimerReady, hasPrepTimer, isPrepTimerRunning, +8 more
 - `src/utils/recipeUrl.ts` — normalizeRecipeUrl, recipeImportedFrom, decodeEntities, htmlToText, metaContent, PageRecipe, parseIsoDuration, parseRecipeJsonLd, focusRecipeText, recipeToPlainText, +2 more
-- `src/utils/recipeUtils.ts` — parseRecipeIngredients, normalizeIngredient, makeIngredient, ingredientDedupeKey, duplicateIngredientIn, blockedIngredientNote, alreadyInRecipeNote, blockedReviewRows, ingredientsFromText, mergeIngredients, +52 more
+- `src/utils/recipeUtils.ts` — parseRecipeIngredients, normalizeIngredient, makeIngredient, ingredientDedupeKey, duplicateIngredientIn, blockedIngredientNote, alreadyInRecipeNote, blockedReviewRows, ingredientsFromText, mergeIngredients, +54 more
 - `src/utils/recurrenceLabels.ts` — recurrenceUnitLabel, ORDINAL_OPTIONS, MONTH_NAMES, MONTH_ABBREVIATIONS, RecurrenceRule, describeTaskRecurrence, recurrenceRuleOf, describeRecurrence
 - `src/utils/refreshGuard.ts` — RefreshGuard, createRefreshGuard
 - `src/utils/reminderCaptures.ts` — CAPTURE_TITLE_MAX_LENGTH, MAX_REMINDER_CAPTURES, makeReminderCapture, parseReminderCaptures, serializeReminderCaptures, activeReminderCaptures, drainableReminderCaptures, captureListIds, captureDraftFields, describeReminderCaptureFiling
@@ -305,7 +305,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/syncEngine.ts` — SyncTransport, PullResult, SyncLocal, SyncStatus, SyncRunResult, hasChanges, runSync, NamedSyncRun, runSyncAll, SyncSummary, +1 more
 - `src/utils/syncIds.ts` — derivedId, isDerivedId, spawnSeed
 - `src/utils/syncLocal.ts` — databaseSyncLocal
-- `src/utils/syncMerge.ts` — SyncDeletion, SyncChangeSet, SYNC_FORMAT, SyncPayload, ParsedPayload, buildPayload, serializePayload, parsePayload, remoteRowWins, remoteDeletionWins, +3 more
+- `src/utils/syncMerge.ts` — SyncDeletion, SyncChangeSet, SYNC_FORMAT, SyncPayload, ParsedPayload, buildPayload, serializePayload, parsePayload, remoteRowWins, remoteDeletionWins, +4 more
 - `src/utils/syncStatus.ts` — describeLastSynced
 - `src/utils/tagColor.ts` — tagColor
 - `src/utils/taskCompletion.ts` — CompletionOptions, CompletionContext, CompletionRows, completionRefusal, buildCompletion, completionSettings
