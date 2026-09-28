@@ -2871,8 +2871,6 @@ export function QuickAddModal({
         onInsert={insertTitleToken}
         onConfirm={applyActiveParse}
         confirmVisible={confirmVisible}
-        onAdd={handleAdd}
-        addDisabled={!title.trim() || blocked !== null}
       />
     </SheetModal>
     {/* newTaskDefaults.openEditorAfterQuickAdd hand-off — see createTask. A
