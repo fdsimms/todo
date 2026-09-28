@@ -769,7 +769,9 @@ export interface FoodLogEntryEdit {
  * - **No link and no kept panel.** A described meal the model estimated, or a
  *   database food logged before entries kept their panel. There is nothing to
  *   measure a new amount against, and offering the figures as fields to
- *   retype would put an unmeasured panel into a health record.
+ *   retype would put an unmeasured panel into a health record. An estimate
+ *   has its own narrower correction, `eatenFractionPatch`, which takes a share
+ *   of the figures the model stated and re-measures nothing.
  * - **Answered "Anything else?" lines.** What was typed against each varying
  *   line of a dish is not stored, only the line's name in `quantity`, so the
  *   sheet would reopen with them blank and a save would silently drop them.
@@ -795,7 +797,10 @@ export function foodLogEntryEdit(entry: FoodLogEntry): FoodLogEntryEdit | null {
     const dish = dishAmountFrom(typed);
     return dish && { amount: dish.amount, dishMeasure: dish.dishMeasure };
   }
-  if (entry.productId || entry.itemId || entry.sourcePanel) {
+  // A kept panel that is itself an estimate is the whole of a described meal
+  // (see `wholeEstimate`), which has no amounts to re-measure against.
+  const keptPanel = !!entry.sourcePanel && entry.sourcePanel.source !== 'estimated';
+  if (entry.productId || entry.itemId || keptPanel) {
     // A scan logged with "The whole package (10 servings)" stores that button
     // label as its helping (`packageChoices` in scanPortion.ts), which has no
     // leading number to re-measure. The count inside it is the amount.
@@ -826,6 +831,141 @@ function dishAmountFrom(text: string): { amount: string; dishMeasure: 'weight' |
   if (ofDish) return { amount: ofDish[1], dishMeasure: 'servings' };
   const servings = /^(\d+(?:\.\d+)?) servings?$/.exec(text);
   if (servings) return { amount: servings[1], dishMeasure: 'servings' };
+  return null;
+}
+
+/** One share "Fraction eaten" offers, and how the entry's amount says it. */
+export interface EatenFraction {
+  value: number;
+  /** The segment's own label. */
+  label: string;
+  /** Read aloud, where the label is a glyph. */
+  spoken: string;
+  /** What goes in front of the meal's own words ("half of 1 burger"). Empty for the whole. */
+  words: string;
+}
+
+/**
+ * The shares of an estimated meal that can be said to have been eaten,
+ * smallest first, ending on the whole of it.
+ *
+ * A closed set rather than a typed number, because "I ate about half" is the
+ * precision the estimate itself has: a model's figure for a described meal is
+ * not improved by saying 0.47 of it. Never more than the whole, since a
+ * multiple of an estimate would be a larger meal nobody described.
+ */
+export const EATEN_FRACTIONS: readonly EatenFraction[] = [
+  { value: 1 / 4, label: '¼', spoken: 'A quarter', words: 'a quarter of' },
+  { value: 1 / 3, label: '⅓', spoken: 'A third', words: 'a third of' },
+  { value: 1 / 2, label: '½', spoken: 'Half', words: 'half of' },
+  { value: 2 / 3, label: '⅔', spoken: 'Two-thirds', words: 'two-thirds of' },
+  { value: 3 / 4, label: '¾', spoken: 'Three-quarters', words: 'three-quarters of' },
+  { value: 1, label: 'All', spoken: 'All of it', words: '' },
+];
+
+/**
+ * The whole meal an estimated entry described, which "Fraction eaten" takes
+ * its share of, or null for an entry that cannot take one.
+ *
+ * **Only an estimate linked to nothing.** A linked entry is corrected by
+ * re-measuring against its row (`foodLogEntryEdit`), and so is a database food
+ * that kept its panel. What is left is the described meal, which has no panel
+ * to re-measure against and so, until this, had no correction but a rename.
+ *
+ * **The whole is the estimate as first logged, not the helping stored now.**
+ * The first share taken keeps the whole estimate in `sourcePanel`, and every
+ * later choice is a share of that rather than of the last one. So a half
+ * chosen by mistake is undone by choosing All, and a half then a three-quarters
+ * is three-quarters of the meal rather than three-eighths of it. Taking a share
+ * of the stored helping each time would have lost the model's own figures for
+ * good the first time, with only a division by a rounded number to get them
+ * back.
+ */
+export function wholeEstimate(entry: FoodLogEntry): FoodNutrition | null {
+  if (entry.recipeId || entry.itemId || entry.productId) return null;
+  if (entry.nutrition.source !== 'estimated') return null;
+  const kept = entry.sourcePanel;
+  if (kept) return kept.source === 'estimated' ? kept : null;
+  // Nothing taken yet, so the helping is the whole. Its words and weight are
+  // carried onto the copy that will be kept, from wherever the entry holds
+  // them, so a later share can still say what it is a share of.
+  return {
+    ...entry.nutrition,
+    servingText: entry.nutrition.servingText?.trim() || entry.quantity.trim() || null,
+    servingGrams: entry.nutrition.servingGrams ?? entry.grams,
+  };
+}
+
+/** What "Fraction eaten" writes: the share as the helping, and the whole it was taken of. */
+export interface EatenFractionPatch {
+  quantity: string;
+  grams: number | null;
+  nutrition: FoodNutrition;
+  sourcePanel: FoodNutrition;
+}
+
+/**
+ * An estimated entry corrected to a share of what it described, or null when
+ * the entry can't take one or the share isn't one.
+ *
+ * **The one correction here that multiplies stored figures rather than
+ * re-measuring them**, and the exception is narrow on purpose. "Re-measured,
+ * never multiplied" exists because a helping's figures are already one
+ * amount's worth, so scaling them to a different amount would claim a
+ * measurement nobody made. A share of at most the whole claims nothing new:
+ * every figure is the model's own, times a fraction the person chose, and no
+ * nutrient appears that the estimate did not state. The source stays
+ * `estimated` and the figures keep the moment they were estimated at.
+ *
+ * All returns the whole exactly, figures untouched rather than rounded again,
+ * so choosing it after a share puts the entry back as it was logged.
+ */
+export function eatenFractionPatch(entry: FoodLogEntry, fraction: number): EatenFractionPatch | null {
+  const whole = wholeEstimate(entry);
+  if (!whole) return null;
+  if (!Number.isFinite(fraction) || fraction <= 0 || fraction > 1) return null;
+
+  const base = whole.servingText?.trim() ?? '';
+  if (fraction === 1) {
+    return { quantity: base, grams: whole.servingGrams, nutrition: whole, sourcePanel: whole };
+  }
+
+  const amounts: Partial<Record<NutrientKey, number>> = {};
+  for (const key of NUTRIENT_KEYS) {
+    const amount = whole.amounts[key];
+    if (amount !== undefined) amounts[key] = round(amount * fraction);
+  }
+  const preset = EATEN_FRACTIONS.find(f => Math.abs(f.value - fraction) < 1e-9);
+  const share = preset ? preset.words : `${Math.round(fraction * 100)}% of`;
+  // With no words of its own to take a share of, the share stands alone.
+  const quantity = base ? `${share} ${base}` : share.replace(/ of$/, '');
+  const grams = whole.servingGrams !== null ? Math.round(whole.servingGrams * fraction) : null;
+  return {
+    quantity,
+    grams,
+    nutrition: { ...whole, servingText: quantity, servingGrams: grams, amounts },
+    sourcePanel: whole,
+  };
+}
+
+/**
+ * Which of `EATEN_FRACTIONS` an estimated entry stands at now, or null when
+ * it can't take one or its figures are none of them.
+ *
+ * Worked out by taking each share again and comparing, rather than stored, so
+ * there is no second record of the choice to fall out of step with the
+ * figures Health was told.
+ */
+export function currentEatenFraction(entry: FoodLogEntry): number | null {
+  if (!wholeEstimate(entry)) return null;
+  // From the whole downward, so figures every share agrees on (an estimate of
+  // nothing but zeros) read as the whole rather than as a quarter.
+  for (const { value } of [...EATEN_FRACTIONS].reverse()) {
+    const patch = eatenFractionPatch(entry, value);
+    if (!patch) continue;
+    const same = NUTRIENT_KEYS.every(key => patch.nutrition.amounts[key] === entry.nutrition.amounts[key]);
+    if (same) return value;
+  }
   return null;
 }
 

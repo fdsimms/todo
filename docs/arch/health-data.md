@@ -723,9 +723,26 @@ something nobody measured:
   running `scalePanelToAmount` over the food's own panel again. That panel is
   reachable through the entry's links, or through the one panel an entry keeps
   for itself (below), which is what `foodLogEntryEdit` decides on.
-- **An entry with no link is not offered the editor, only a rename, unless it
-  kept its panel.** A described meal the model estimated has no panel to
-  measure against. Offering its figures as fields to retype was the obvious
+
+  **One exception: a share of an estimate** (`eatenFractionPatch`, #2914). A
+  described meal has no panel, and "I ate two-thirds of it" needs none: every
+  figure is one the model already stated, times a fraction the person chose,
+  so nothing is measured and nothing new is claimed. That is the test the rule
+  exists for, and a multiple would fail it, which is why the share is never
+  more than the whole. It is a closed set (a quarter, a third, a half,
+  two-thirds, three-quarters, all), since an estimate is not made more exact by
+  a finer fraction, and the source stays `estimated`. **The share is always of
+  the whole meal as estimated, never of the last share**: the first one keeps
+  the whole in `sourcePanel` (as a panel whose own source is `estimated`, which
+  is what keeps it out of the editor) and every later choice is taken from
+  that. Taking it of the stored helping each time was the literal reading, and
+  it would have thrown the model's own figures away on the first mistaken tap,
+  with only a division by rounded numbers to get them back. With the whole
+  kept, All puts the entry back exactly as it was logged. It goes through
+  `reviseEntry` like any other correction of the figures.
+- **An entry with no link is not offered the editor, only a rename (and, for
+  an estimate, the share above), unless it kept its panel.** A described meal
+  the model estimated has no panel to measure against. Offering its figures as fields to retype was the obvious
   alternative and is the one thing this must not do: a hand-typed panel going
   into a medical record is exactly the unmeasured claim the rest of this
   document refuses. Renaming is carved out because it claims nothing about how

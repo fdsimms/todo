@@ -4148,11 +4148,18 @@ export interface FoodLogEntry {
    * The panel `nutrition` was measured against, kept on the entry because no
    * catalog row holds it. Null (or absent) on everything else.
    *
-   * **Written for one case: a food a database answered that nobody filed**
-   * (#2914). `nutrition` is one helping with its portion table emptied, so an
-   * entry like that had nothing left to re-measure a corrected amount against,
-   * and "I logged 200 g, it was 170 g" could only be a delete and a fresh
-   * search. This is the database's own panel, per 100 g with its portions,
+   * **Written for two cases, both linked to nothing** (#2914). The main one is
+   * a food a database answered that nobody filed, below. The other is an
+   * estimate once a share of it has been logged as eaten: then this is the
+   * whole meal the model described, `source: 'estimated'` like the helping,
+   * so every later share is taken of the whole rather than of the last share
+   * (see `wholeEstimate`). The source tells the two apart, and only the first
+   * is something an amount can be re-measured against.
+   *
+   * **The database food.** `nutrition` is one helping with its portion table
+   * emptied, so an entry like that had nothing left to re-measure a corrected
+   * amount against, and "I logged 200 g, it was 170 g" could only be a delete
+   * and a fresh search. This is the database's own panel, per 100 g with its portions,
    * snapshotted at log time on `nutrition`'s rule: a later lookup of the same
    * food must not rewrite what was measured. `foodLogEntryEdit` reopens such
    * an entry on it exactly as it reopens a linked food on its row's panel.

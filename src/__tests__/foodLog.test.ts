@@ -5,6 +5,9 @@ import {
   composeFoodAmount,
   describeFoodLogEntry,
   describeFoodLogTotals,
+  EATEN_FRACTIONS,
+  currentEatenFraction,
+  eatenFractionPatch,
   foodLogEntryEdit,
   foodLogSections,
   foodLogTotals,
@@ -22,6 +25,7 @@ import {
   resolveFoodLogDrop,
   savedMealCalories,
   scalePanelToAmount,
+  wholeEstimate,
   type FoodLogListItem,
 } from '../utils/foodLog';
 import type { FoodLogEntry, FoodNutrition, MealPlanEntry, NutrientKey, SavedMealItem } from '../types';
@@ -769,6 +773,112 @@ describe('foodLogEntryEdit', () => {
 
   it('refuses a dish whose helping does not parse', () => {
     expect(foodLogEntryEdit(entry({ recipeId: 'r1', quantity: 'a big plate' }))).toBeNull();
+  });
+});
+
+describe('fraction eaten (#2914)', () => {
+  // The seeded "Five Guys" estimate's shape: a described meal, linked to
+  // nothing, stating a short list and no weight.
+  const burger = () => entry({
+    label: 'Cheeseburger and fries',
+    quantity: '1 burger and a regular fries',
+    grams: null,
+    nutrition: {
+      basis: 'perServing',
+      servingGrams: null,
+      servingText: '1 burger and a regular fries',
+      amounts: { calorieKcal: 1250, proteinG: 45, fatG: 68, sodiumMg: 1470 },
+      source: 'estimated',
+      sourceId: null,
+      portions: [],
+      recordedAt: '2026-04-02T13:00:00.000Z',
+    },
+  });
+
+  /** The entry as `reviseEntry` would leave it after a patch. */
+  const applied = (row: FoodLogEntry, fraction: number): FoodLogEntry => {
+    const patch = eatenFractionPatch(row, fraction)!;
+    return { ...row, ...patch };
+  };
+
+  it('offers a share only for an estimate linked to nothing', () => {
+    expect(wholeEstimate(burger())).not.toBeNull();
+    // Linked: corrected by re-measuring against its row instead.
+    expect(wholeEstimate({ ...burger(), itemId: 'item-a' })).toBeNull();
+    expect(wholeEstimate({ ...burger(), recipeId: 'r1' })).toBeNull();
+    // Not an estimate: a database food that kept its panel is re-measured,
+    // and one that didn't claims figures a share would still be a guess at.
+    expect(wholeEstimate(entry({ nutrition: panel({ basis: 'perServing' }) }))).toBeNull();
+  });
+
+  it('takes a share of every stated figure, and states nothing the estimate did not', () => {
+    const patch = eatenFractionPatch(burger(), 2 / 3)!;
+    expect(patch.nutrition.amounts).toEqual({ calorieKcal: 833.3, proteinG: 30, fatG: 45.3, sodiumMg: 980 });
+    expect(patch.nutrition.source).toBe('estimated');
+    expect(patch.nutrition.basis).toBe('perServing');
+    // Stamped when the model estimated it, not when the share was chosen.
+    expect(patch.nutrition.recordedAt).toBe('2026-04-02T13:00:00.000Z');
+    expect(patch.quantity).toBe('two-thirds of 1 burger and a regular fries');
+    expect(patch.nutrition.servingText).toBe(patch.quantity);
+    expect(patch.grams).toBeNull();
+  });
+
+  it('keeps the whole meal, so a second share is of the whole rather than of the first', () => {
+    const halved = applied(burger(), 1 / 2);
+    expect(halved.sourcePanel?.amounts.calorieKcal).toBe(1250);
+    expect(halved.nutrition.amounts.calorieKcal).toBe(625);
+
+    const threeQuarters = applied(halved, 3 / 4);
+    // Three-quarters of the meal, not three-eighths of it.
+    expect(threeQuarters.nutrition.amounts.calorieKcal).toBe(937.5);
+    expect(threeQuarters.quantity).toBe('three-quarters of 1 burger and a regular fries');
+  });
+
+  it('puts the entry back exactly as logged when All is chosen', () => {
+    const original = burger();
+    const restored = applied(applied(original, 1 / 3), 1);
+    expect(restored.nutrition.amounts).toEqual(original.nutrition.amounts);
+    expect(restored.quantity).toBe(original.quantity);
+  });
+
+  it('refuses a share of nothing, or more than the whole', () => {
+    expect(eatenFractionPatch(burger(), 0)).toBeNull();
+    expect(eatenFractionPatch(burger(), -0.5)).toBeNull();
+    expect(eatenFractionPatch(burger(), 1.5)).toBeNull();
+    expect(eatenFractionPatch(burger(), Number.NaN)).toBeNull();
+    expect(eatenFractionPatch({ ...burger(), itemId: 'item-a' }, 0.5)).toBeNull();
+  });
+
+  it('scales a weight the estimate carried, and says the share alone when it had no words', () => {
+    const weighed = { ...burger(), quantity: '', grams: 400, nutrition: { ...burger().nutrition, servingText: null } };
+    const patch = eatenFractionPatch(weighed, 1 / 4)!;
+    expect(patch.grams).toBe(100);
+    expect(patch.nutrition.servingGrams).toBe(100);
+    expect(patch.quantity).toBe('a quarter');
+  });
+
+  it('is not offered the editor once a share has been kept', () => {
+    // The kept whole is an estimate, which has no amounts to re-measure.
+    expect(foodLogEntryEdit(applied(burger(), 1 / 2))).toBeNull();
+  });
+
+  it('reads back which share an entry stands at', () => {
+    expect(currentEatenFraction(burger())).toBe(1);
+    expect(currentEatenFraction(applied(burger(), 1 / 3))).toBe(1 / 3);
+    expect(currentEatenFraction(applied(applied(burger(), 1 / 3), 1))).toBe(1);
+    expect(currentEatenFraction(entry({ itemId: 'item-a' }))).toBeNull();
+  });
+
+  it('reads an estimate of nothing but zeros as the whole rather than a quarter', () => {
+    const water = { ...burger(), nutrition: { ...burger().nutrition, amounts: { calorieKcal: 0 } } };
+    expect(currentEatenFraction(water)).toBe(1);
+  });
+
+  it('offers the shares smallest first, ending on the whole', () => {
+    const values = EATEN_FRACTIONS.map(f => f.value);
+    expect(values).toEqual([...values].sort((a, b) => a - b));
+    expect(values[values.length - 1]).toBe(1);
+    expect(values.every(v => v > 0 && v <= 1)).toBe(true);
   });
 });
 
