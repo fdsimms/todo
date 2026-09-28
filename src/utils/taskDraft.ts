@@ -416,6 +416,7 @@ export function newTaskFromDraft(
     followUpTaskTally: 0,
     previousFollowUpTaskTally: 0,
     followUpTaskSourceTitle: draft.followUpTaskSourceTitle ?? null,
+    followUpTaskSourceId: draft.followUpTaskSourceId ?? null,
   };
   // Captured here rather than defaulted to null in the literal above: a task
   // created with a monthly rule and a due date on the 31st has to carry the

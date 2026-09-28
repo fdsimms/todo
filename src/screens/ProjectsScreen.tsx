@@ -40,7 +40,6 @@ import { ReorderableList, type RowScroller } from '../components/ReorderableList
 import { useScrollToTopOnTabPress } from '../hooks/useScrollToTopOnTabPress';
 import { ProgressBar } from '../components/ProgressBar';
 import { ProjectsOptionsMenu, type ProjectFilter } from '../components/ProjectsOptionsMenu';
-import { CookbookChecklistSheet } from '../components/CookbookChecklistSheet';
 import { ProjectCategoriesSheet } from '../components/ProjectCategoriesSheet';
 import { ListBulkBar } from '../components/ListBulkBar';
 import { SelectionDot } from '../components/SelectionDot';
@@ -122,7 +121,6 @@ export function ProjectsScreen() {
   const [quickAddVisible, setQuickAddVisible] = useState(false);
   const [optionsMenuVisible, setOptionsMenuVisible] = useState(false);
   const [categoriesSheetVisible, setCategoriesSheetVisible] = useState(false);
-  const [cookbookChecklistVisible, setCookbookChecklistVisible] = useState(false);
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
 
   // Also reachable from the header, since both of a project row's own
@@ -621,6 +619,7 @@ export function ProjectsScreen() {
         <ReorderableList
           data={projectListItems}
           keyExtractor={item => item.key}
+          scrollToTop={{ bottom: insets.bottom + tabBarHeight + spacing.md }}
           // The user can't scroll during an add-button drag (the button's
           // responder has the touch); the drag scrolls it instead, through the
           // control below. Same while a paint gesture owns the touch — see
@@ -704,7 +703,6 @@ export function ProjectsScreen() {
         archivedCount={archivedCount}
         categoryCount={projectCategories.length}
         onManageCategories={() => setCategoriesSheetVisible(true)}
-        onScanCookbook={() => setCookbookChecklistVisible(true)}
         sort={projectSort}
         onSortChange={setProjectSort}
       />
@@ -712,11 +710,6 @@ export function ProjectsScreen() {
       <ProjectCategoriesSheet
         visible={categoriesSheetVisible}
         onClose={() => setCategoriesSheetVisible(false)}
-      />
-
-      <CookbookChecklistSheet
-        visible={cookbookChecklistVisible}
-        onClose={() => setCookbookChecklistVisible(false)}
       />
 
       <QuickAddProjectModal
@@ -881,19 +874,19 @@ const ProjectRow = React.memo(function ProjectRow({
                     onPress={() => onQuickComplete(project)}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     accessibilityRole="button"
-                    accessibilityLabel={`Mark ${project.title} complete: ${project.kind === 'list' ? 'every line is checked' : 'every task is done'}`}
+                    accessibilityLabel={`Mark ${project.title} complete: ${project.kind === 'list' ? 'every item is checked' : 'every task is done'}`}
                   >
                     <Ionicons name="checkmark-circle" size={16} color={colors.green} />
                   </TouchableOpacity>
                 )}
                 {/* Add to a list without hunting for its field: opens the
-                    list with the add field focused. */}
+                    list with the add field open. */}
                 {project.kind === 'list' && projectFilter === 'active' && (
                   <TouchableOpacity
                     onPress={() => onAddLine(project)}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     accessibilityRole="button"
-                    accessibilityLabel={`Add a line to ${project.title}`}
+                    accessibilityLabel={`Add an item to ${project.title}`}
                   >
                     <Ionicons name="add-circle-outline" size={16} color={colors.textTertiary} />
                   </TouchableOpacity>

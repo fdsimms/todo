@@ -109,6 +109,7 @@ const BASE: Task = {
   followUpTaskTally: 0,
   previousFollowUpTaskTally: 0,
   followUpTaskSourceTitle: null,
+  followUpTaskSourceId: null,
   followUpTaskDraft: null,
   followUpTaskOneAtATime: false,
   vacationPause: false, excludeFromSuggestions: false,
