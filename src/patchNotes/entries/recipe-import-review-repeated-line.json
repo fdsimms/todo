@@ -1,0 +1,4 @@
+{
+  "message": "When you import a recipe, a line that repeats one above it under the same section (like a second \"olive oil\" with no prep) now shows unchecked with a note naming the line it repeats, instead of looking checked and then not being added.",
+  "date": "2026-09-28"
+}

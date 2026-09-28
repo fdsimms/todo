@@ -439,6 +439,14 @@ choosable before anything's filed under it.
   the row that blocked it instead of guessing. Two rows sharing a key was already a shape every
   reader handles, because a composed recipe produces it: `classifyPlanned` sums them, cost and
   nutrition are per line, and `stepIngredients` gives a name two lines share no amount.
+- **An import review says which rows won't go in, before the tap** (`blockedReviewRows`). With the
+  amount out of the key, "3 tbsp olive oil" and "2 tbsp olive oil" under one heading are still one
+  line, so the second is dropped on Create. The review shows it unticked with the add field's own
+  wording (`alreadyInRecipeNote`) naming the row it repeats, the same way a row a component covers
+  is unticked with a note. It walks the ticked rows through the store's own test in the store's
+  own order, so what it names is exactly what `mergeIngredients` drops, and unticking the first row
+  frees the second. `RecipeExtractSheet` runs it against the recipe's existing rows as well, since
+  a line the recipe already has is dropped by the same merge.
 
 **`RecipeStep.section`/`Recipe.emptyStepSections` are the same model, one field over — "For the
 sauce", "For the tofu" as headings over the method instead of the ingredient list.** Every helper

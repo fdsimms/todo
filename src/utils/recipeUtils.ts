@@ -274,14 +274,54 @@ export function blockedIngredientNote(
   added: number,
 ): string | null {
   if (blocked.length === 0) return null;
-  const label = (row: RecipeIngredient) => [row.quantity.trim(), row.name].filter(Boolean).join(' ');
-  if (blocked.length === 1 && added === 0) {
-    const row = blocked[0];
-    const where = row.section ? ` under ${row.section}` : '';
-    return `Already in this recipe${where}: ${label(row)}. Edit that line to change it.`;
-  }
+  if (blocked.length === 1 && added === 0) return alreadyInRecipeNote(blocked[0]);
   const count = blocked.length === 1 ? '1 line' : `${blocked.length} lines`;
-  return `Skipped ${count} already in this recipe: ${blocked.map(label).join(', ')}.`;
+  return `Skipped ${count} already in this recipe: ${blocked.map(blockedRowLabel).join(', ')}.`;
+}
+
+/** "3 cloves garlic": how a blocking row is named, amount first as the recipe shows it. */
+function blockedRowLabel(row: RecipeIngredient): string {
+  return [row.quantity.trim(), row.name].filter(Boolean).join(' ');
+}
+
+/**
+ * What a line says about the one row that blocks it: `blockedIngredientNote`'s
+ * single-row wording, shared with the import review, which names each blocked
+ * row where it sits rather than summing up an add (`blockedReviewRows`).
+ */
+export function alreadyInRecipeNote(blocker: RecipeIngredient): string {
+  const where = blocker.section ? ` under ${blocker.section}` : '';
+  return `Already in this recipe${where}: ${blockedRowLabel(blocker)}. Edit that line to change it.`;
+}
+
+/**
+ * Which rows of an import review won't be added, each mapped to the row that
+ * blocks it: an earlier row of the same review, or one the recipe already has
+ * (`existing`, empty for a recipe the review is creating).
+ *
+ * `rows` is the review's lines normalized, with null for any line that isn't
+ * going in (unticked, or covered by a component), which neither blocks nor is
+ * blocked. Walked in order through `duplicateIngredientIn`, which is exactly
+ * how `mergeIngredients` keeps the first of each line on Create, so a row
+ * named here is one the store drops. Without it the review showed "3 tbsp olive
+ * oil" and "2 tbsp olive oil" under one heading both ticked, and the second
+ * never arrived, with nothing said (#2917's remainder). The detail screen's
+ * add field already said so; this is the review saying the same thing before
+ * the tap rather than after it.
+ */
+export function blockedReviewRows(
+  rows: readonly (RecipeIngredient | null)[],
+  existing: readonly RecipeIngredient[] = [],
+): Map<number, RecipeIngredient> {
+  const kept = [...existing];
+  const out = new Map<number, RecipeIngredient>();
+  rows.forEach((row, i) => {
+    if (!row) return;
+    const blocker = duplicateIngredientIn(kept, row);
+    if (blocker) out.set(i, blocker);
+    else kept.push(row);
+  });
+  return out;
 }
 
 /**

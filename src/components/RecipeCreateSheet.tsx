@@ -53,6 +53,7 @@ import { describeImportError, isRetryableImportError } from '../services/recipeP
 import { normalizeRecipeUrl, recipeImportedFrom } from '../utils/recipeUrl';
 import { recipeFromPageOffline } from '../utils/recipePageOffline';
 import {
+  alreadyInRecipeNote, blockedReviewRows,
   normalizeIngredient, cleanRecipeName, formatServingsRange, parseServingsRange,
 } from '../utils/recipeUtils';
 import { describeKeepDays } from '../utils/leftovers';
@@ -272,6 +273,16 @@ export function RecipeCreateSheet({
   const covered = useMemo(
     () => coveredIngredients(ingredients, candidates, acceptedKeys),
     [ingredients, candidates, acceptedKeys],
+  );
+  // A line Create would drop as a repeat of an earlier one (same heading, prep
+  // and purpose), mapped to the row it repeats, so the review can say so on
+  // the row rather than showing both ticked and saving one (#2917). The same
+  // test the store's merge applies, run over what's actually going in.
+  const blocked = useMemo(
+    () => blockedReviewRows(
+      ingredients.map((row, i) => (accepted.has(i) && !covered.has(i) ? normalizeIngredient(row) : null)),
+    ),
+    [ingredients, accepted, covered],
   );
 
   // Every heading the Section picker can offer, for a recipe that doesn't
@@ -1202,13 +1213,14 @@ export function RecipeCreateSheet({
           const prevSection = i > 0 ? ingredients[i - 1].section : null;
           const sectionHeader = row.section && row.section !== prevSection ? row.section : null;
           const coveredBy = covered.get(i);
+          const blockedBy = blocked.get(i);
           return (
             <ExtractedIngredientRow
               key={`${row.name}-${i}`}
               row={row}
               edits={edits}
               index={i}
-              checked={accepted.has(i) && !coveredBy}
+              checked={accepted.has(i) && !coveredBy && !blockedBy}
               onToggle={() => toggle(i)}
               onEditName={name => editIngredient(i, { name })}
               onEditQuantity={quantity => editIngredient(i, { quantity })}
@@ -1217,7 +1229,11 @@ export function RecipeCreateSheet({
               existingSections={existingSections}
               catalogItems={groceryItems}
               sectionHeader={sectionHeader}
-              note={coveredBy ? `made from the ${coveredBy} recipe` : null}
+              note={
+                coveredBy ? `made from the ${coveredBy} recipe`
+                  : blockedBy ? alreadyInRecipeNote(blockedBy)
+                  : null
+              }
             />
           );
         })}
