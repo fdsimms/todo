@@ -648,12 +648,26 @@ which rows you don't usually get here.
   and can only be answered inside the app. The deep link *is* that question asked from the Lock
   Screen. It carries no count, because the attributes are fixed when the trip starts and nothing
   is ever pushed an update; `GroceryScreen` decides on arrival whether there's anything to finish,
-  and lands on the list without a sheet when there isn't.
+  and lands on the list without a sheet when there isn't. **Its stale date is the trip's expiry**
+  (`TripRun.staleAtMs`, `TRIP_MAX_MS` after the start): only the app's own sync ends the activity,
+  and that doesn't run while the app is closed, so without one an abandoned trip went on claiming
+  "Shopping at X" with a clock past six hours until the next launch (#2937). Past it, the activity
+  says the trip ended and keeps its Finish button, since a cart can be finished without a trip.
 - **The row caption is its own third text treatment**, borrowing `note`'s colour and
   `alternatives`' weight. A row can carry all three at once (a noted either/or item on record
   elsewhere); at identical styling they run together into a block you can't read while walking.
   It outranks the recipe caption and only that — provenance is the least useful thing at a shelf,
   while a user's note ("the blue cap one") is exactly what you're there for.
+- **A price typed on a row during a trip is the trip store's price, and Finish files it there.**
+  The row's price tag writes through `setItemPrice`, which deliberately never mints a store link
+  (a price is not a claim that the store stocks it), so at a store with no link yet the number
+  landed on the item alone. The finish sheet then showed an empty field, and skipping it minted
+  the store's link with no price (#2936). So the finish sheet seeds each field with the price
+  typed at the shelf this trip (`pricesRecordedSince`), and finishing is what records it against
+  the store, with its observation in the run, the same as a price typed at the checkout. The tag
+  itself opens holding only the trip store's own price or one typed this trip (`tripPriceFor`),
+  never another store's: `lastPriceFor`'s fallback to the item's price is right for a placeholder
+  and wrong for a value nobody labelled.
 - **The `usually` case can't be seeded into demo mode.** It needs an item bought at two stores
   while you stand in a third, and the demo has two stores anyone would shop at. The seeded trip
   is at Trader Joe's and shows the other two.

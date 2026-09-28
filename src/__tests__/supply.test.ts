@@ -23,6 +23,7 @@ import {
   supplyReorderReason,
   supplyReorderSourceId,
   supplyReorderTitle,
+  supplyRestockReleasesItem,
   supplyRunOutDate,
   wantedSupplyReorders,
 } from '../utils/supply';
@@ -623,6 +624,42 @@ describe('suppliesWantingList', () => {
     const a = supplyTask({ id: 'a', supplyCount: 1, supplyGroceryItemId: 'item-1' });
     const b = supplyTask({ id: 'b', supplyCount: 0, supplyGroceryItemId: 'item-1' });
     expect(suppliesWantingList([a, b], [item('item-1')])).toEqual(['item-1']);
+  });
+});
+
+describe('supplyRestockReleasesItem', () => {
+  // #2935: a row taken off the list by hand left the supply's flag standing,
+  // so a later restock in the editor never re-armed it and the next run-down
+  // asked nowhere.
+  it('names the linked item once a restock clears the threshold', () => {
+    const before = supplyTask({ supplyCount: 1, supplyGroceryItemId: 'item-1' });
+    const after = { ...before, supplyCount: 6 };
+    expect(supplyRestockReleasesItem(before, after)).toBe('item-1');
+  });
+
+  it('leaves the flag while the supply is still low after the top-up', () => {
+    // Clearing here would have the next sweep put a row the user just took off
+    // the list straight back on it.
+    const before = supplyTask({ supplyCount: 0, supplyReorderAt: 2, supplyGroceryItemId: 'item-1' });
+    const after = { ...before, supplyCount: 1 };
+    expect(supplyRestockReleasesItem(before, after)).toBeNull();
+  });
+
+  it('ignores a save that did not raise the count', () => {
+    // The editor writes the whole supply card on every save.
+    const before = supplyTask({ supplyCount: 4, supplyGroceryItemId: 'item-1' });
+    expect(supplyRestockReleasesItem(before, { ...before, supplyLeadDays: 3 })).toBeNull();
+    expect(supplyRestockReleasesItem(before, { ...before, supplyCount: 3 })).toBeNull();
+  });
+
+  it('names nothing for an unlinked supply', () => {
+    const before = supplyTask({ supplyCount: 1 });
+    expect(supplyRestockReleasesItem(before, { ...before, supplyCount: 6 })).toBeNull();
+  });
+
+  it('names nothing for a supply that has stopped being one', () => {
+    const before = supplyTask({ supplyCount: null, supplyGroceryItemId: 'item-1' });
+    expect(supplyRestockReleasesItem(before, { ...before, supplyCount: 6 })).toBeNull();
   });
 });
 

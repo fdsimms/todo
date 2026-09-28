@@ -676,6 +676,58 @@ export function pricedSince(
 }
 
 /**
+ * What a running trip's price tag on a shopping-list row holds, and whether it
+ * was typed during this trip.
+ *
+ * **Never another store's price.** `lastPriceFor` falls back to the item's own
+ * price for a store with none of its own, which is right for a placeholder and
+ * wrong for a value: the tag used to open holding Costco's number while
+ * standing in Aldi, with nothing saying whose it was, and confirming it wrote
+ * nothing because it matched (#2936). So the tag holds the trip store's own
+ * price, or a price typed during this trip (which `setItemPrice` files on the
+ * item when the store has no link yet), and otherwise nothing.
+ *
+ * `recorded` is `pricedSince`, which already reads the same two places in the
+ * same order, so the two halves can't disagree about which price they mean.
+ */
+export function tripPriceFor(
+  item: GroceryItem,
+  shopId: string,
+  links: readonly ItemShopLink[],
+  since: string
+): { minor: number | null; recorded: boolean } {
+  const recorded = pricedSince(item, shopId, links, since);
+  const link = links.find(l => l.itemId === item.id && l.shopId === shopId);
+  if (link?.lastPriceMinor != null) return { minor: link.lastPriceMinor, recorded };
+  return { minor: recorded ? item.lastPriceMinor : null, recorded };
+}
+
+/**
+ * The prices typed at the shelf during a trip, by item id, for the rows given.
+ *
+ * What the finish sheet seeds its price fields with, so that finishing records
+ * them against the trip's store. Without it a price typed for an item never
+ * bought at this store went only onto the item (`setItemPrice` never mints a
+ * store link, on purpose), the finish sheet showed an empty field, and skipping
+ * it minted the store's link with no price at all (#2936). Seeded as a value
+ * rather than a placeholder because it is an answer the user already gave,
+ * this trip, about this store.
+ */
+export function pricesRecordedSince(
+  items: readonly GroceryItem[],
+  shopId: string,
+  links: readonly ItemShopLink[],
+  since: string
+): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const item of items) {
+    const { minor, recorded } = tripPriceFor(item, shopId, links, since);
+    if (recorded && minor !== null) out[item.id] = minor;
+  }
+  return out;
+}
+
+/**
  * What this item *usually* costs — the median of the run kept for it, falling
  * back to the last price when there is no run to take one of.
  *

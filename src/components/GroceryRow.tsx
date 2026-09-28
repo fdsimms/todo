@@ -122,6 +122,11 @@ interface Props {
    * itemShops here would re-render every row on any store write. Present
    * (possibly `null`, meaning no price known yet) only while a trip is
    * running; absent otherwise, which is what hides the chip below entirely.
+   *
+   * Only ever this store's own price or one typed during this trip, never a
+   * price from another store (see `tripPriceFor`): it is what the field opens
+   * holding, and an unlabelled Costco number in a field at Aldi reads as
+   * Aldi's (#2936).
    */
   tripPriceMinor?: number | null;
   /**

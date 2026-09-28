@@ -431,7 +431,10 @@ export function staleSupplyReorderTasks<T extends Task>(
  *
  * The other half of `wantedSupplyReorders`: same trigger, different answer. An
  * item already flagged low is left alone rather than re-stamped, so the flag
- * keeps saying when the app first noticed rather than when it last looked.
+ * keeps saying when the app first noticed rather than when it last looked, and
+ * so a row taken off the list by hand stays off while the supply is still low.
+ * What spends the flag is a restock: a home trip buying the item, or the count
+ * rising far enough to satisfy the supply (`supplyRestockReleasesItem`).
  */
 export function suppliesWantingList(
   tasks: readonly Task[],
@@ -448,6 +451,46 @@ export function suppliesWantingList(
     if (!out.includes(itemId)) out.push(itemId);
   }
   return out;
+}
+
+/**
+ * The grocery item whose "running low" flag a restock has just refuted, or
+ * null when there is none.
+ *
+ * `suppliesWantingList` leaves an item already flagged low alone, and that is
+ * what makes taking the row off the list a refusal that holds: the sweep won't
+ * put it straight back while the supply is still low. But the flag was the
+ * supply's own answer, and nothing used to take it back except a home trip
+ * buying the item. Top the count up any other way (the editor, after ordering
+ * online and swiping the row off) and the flag stood for good, so the next time
+ * the supply ran low it was "already handled" and asked nowhere at all (#2935).
+ *
+ * So a count that rose far enough for the supply to stop wanting more spends
+ * the flag, the same way a purchase refutes it in `finishShopping`. Two limits
+ * keep it from reaching past that:
+ *
+ * - **The count has to rise.** Same key the decline stamp uses in
+ *   `updateTask`: the editor writes the whole supply card on every save, and a
+ *   save that only moved the lead time is not a restock.
+ * - **The supply has to be satisfied afterwards.** A top-up that still leaves
+ *   it under the threshold is not "the next time it crosses the threshold",
+ *   and clearing there would have the sweep put a row the user just took off
+ *   the list straight back on it.
+ *
+ * Only a link names an item here; whether that item still exists is the
+ * caller's lookup to shrug at.
+ */
+export function supplyRestockReleasesItem(
+  before: Pick<Task, 'supplyCount'>,
+  after: Task,
+  dayResetTime?: string,
+): string | null {
+  const itemId = after.supplyGroceryItemId;
+  if (!itemId) return null;
+  if (before.supplyCount === null || after.supplyCount === null) return null;
+  if (after.supplyCount <= before.supplyCount) return null;
+  if (after.completed || after.archived) return null;
+  return supplyReorderReason(after, dayResetTime) === null ? itemId : null;
 }
 
 /**
