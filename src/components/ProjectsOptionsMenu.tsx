@@ -165,9 +165,16 @@ export function ProjectsOptionsMenu({
         {/* Its own card for the same reason the categories row below is: this
             is a second question (in what order), with its own tick. The order
             is applied inside each category section, and only "Your order" can
-            be changed by dragging, so the others say that a drag is off. */}
-        <Text style={styles.cardLabel}>Sort by</Text>
+            be changed by dragging, so the others say that a drag is off.
+            The label lives inside the card (not floating above it like a
+            Settings section header) because this sheet sits over the
+            translucent backdrop dim rather than an opaque screen — an
+            unbacked label there let whatever's dimmed behind it (a project
+            category header, most often) read straight through and collide
+            with it. */}
         <View style={styles.optionsCard}>
+          <Text style={styles.cardLabel}>Sort by</Text>
+          <View style={styles.optionSep} />
           {PROJECT_SORT_OPTIONS.map((option, i) => (
             <React.Fragment key={option}>
               {i > 0 && <View style={styles.optionSep} />}
@@ -279,7 +286,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   cardLabel: {
     color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.semibold,
     textTransform: 'uppercase', letterSpacing: 0.8,
-    marginHorizontal: spacing.md, marginTop: spacing.xs, marginBottom: spacing.xs,
+    paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.xs,
   },
   optionSep: {
     height: border.hairline,
