@@ -1,4 +1,4 @@
-import { describePlanAdd, useGroceryStore } from '../store/useGroceryStore';
+import { describePlanAdd, subscribeCartHoldRelease, useGroceryStore } from '../store/useGroceryStore';
 import {
   dbGetAllGroceryItems,
   dbGetGroceryAisleOrder,
@@ -926,6 +926,48 @@ describe('toggleChecked', () => {
     jest.useRealTimers();
   });
 
+  it('tells the screen just before the hold lets go, once per burst, so it can animate the sink (#2943)', () => {
+    jest.useFakeTimers();
+    const milk = makeItem({ name: 'Milk', onList: true });
+    const eggs = makeItem({ name: 'Eggs', onList: true });
+    seed([milk, eggs]);
+    // What the hold still held when the listener ran: a LayoutAnimation has to
+    // be configured before the commit that moves the rows, not after it.
+    const heldAtRelease: string[][] = [];
+    const unsubscribe = subscribeCartHoldRelease(() => {
+      heldAtRelease.push(useGroceryStore.getState().cartHoldIds);
+    });
+
+    useGroceryStore.getState().toggleChecked(milk.id);
+    useGroceryStore.getState().toggleChecked(eggs.id);
+    jest.advanceTimersByTime(5000);
+
+    expect(heldAtRelease).toEqual([[milk.id, eggs.id]]);
+    expect(useGroceryStore.getState().cartHoldIds).toEqual([]);
+    unsubscribe();
+    jest.useRealTimers();
+  });
+
+  it('stays quiet when the hold empties some other way, and after unsubscribing', () => {
+    jest.useFakeTimers();
+    const milk = makeItem({ name: 'Milk', onList: true });
+    seed([milk]);
+    const listener = jest.fn();
+    const unsubscribe = subscribeCartHoldRelease(listener);
+
+    // Unticked inside the window: the row never sinks, so there's nothing to animate.
+    useGroceryStore.getState().toggleChecked(milk.id);
+    useGroceryStore.getState().toggleChecked(milk.id);
+    jest.advanceTimersByTime(5000);
+    expect(listener).not.toHaveBeenCalled();
+
+    unsubscribe();
+    useGroceryStore.getState().toggleChecked(milk.id);
+    jest.advanceTimersByTime(5000);
+    expect(listener).not.toHaveBeenCalled();
+    jest.useRealTimers();
+  });
+
   it('refuses to check a row that is not on the list', () => {
     // The checked ⇒ onList invariant.
     const milk = makeItem({ name: 'Milk', onList: false });
@@ -1404,6 +1446,80 @@ describe('list membership', () => {
     expect(dbUpdateGroceryItem).not.toHaveBeenCalled();
     expect(dbDeleteGroceryItem).not.toHaveBeenCalled();
   });
+
+  it('removeFromListMany registers nothing unless asked, since its other callers are undos or unattended', () => {
+    const milk = makeItem({ name: 'Milk', onList: true });
+    seed([milk]);
+
+    useGroceryStore.getState().removeFromListMany([milk.id]);
+
+    expect(useGroceryStore.getState().lastAction).toBeNull();
+  });
+
+  it("the bulk bar's Remove undoes as one step, entries and recipe claims included (#2942)", () => {
+    const milk = makeItem({ name: 'Milk', onList: true, checked: true, sortOrder: 7 });
+    const rice = makeItem({
+      name: 'Rice', onList: true, sortOrder: 3, quantity: '2 cups', quantityFromRecipe: true,
+      sourceRecipeId: 'r1', sourceRecipeTitle: 'Paella',
+    });
+    const apples = makeItem({ name: 'Apples', onList: true, choiceGroup: 'g1' });
+    const pears = makeItem({ name: 'Pears', onList: true, choiceGroup: 'g1' });
+    seed([milk, rice, apples, pears]);
+    const entriesBefore = useGroceryStore.getState().listEntries;
+
+    useGroceryStore.getState().removeFromListMany([milk.id, rice.id, apples.id], { registerUndo: true });
+
+    const action = useGroceryStore.getState().lastAction!;
+    expect(action.label).toBe('Removed 3 items from the list');
+    // Clear the list's twin, so it gets the undo bar Clear gets.
+    expect(action.destructive).toBe(true);
+    expect(useGroceryStore.getState().itemById(rice.id)!.quantity).toBeNull();
+
+    useGroceryStore.getState().undoLastAction();
+
+    const s = useGroceryStore.getState();
+    // Each entry as it was: the tick, the walk-order slot and the either/or.
+    const sorted = (es: GroceryListEntry[]) => [...es].sort((a, b) => a.itemId.localeCompare(b.itemId));
+    expect(sorted(s.listEntries)).toEqual(sorted(entriesBefore));
+    expect(s.itemById(milk.id)).toMatchObject({ onList: true, checked: true });
+    expect(s.itemById(rice.id)).toMatchObject({
+      quantity: '2 cups', quantityFromRecipe: true, sourceRecipeId: 'r1', sourceRecipeTitle: 'Paella',
+    });
+  });
+
+  it('undoing the bulk Remove keeps what was recorded on a row since, and skips a row deleted since', () => {
+    const milk = makeItem({ name: 'Milk', onList: true });
+    const bread = makeItem({ name: 'Bread', onList: true });
+    seed([milk, bread]);
+
+    useGroceryStore.getState().removeFromListMany([milk.id, bread.id], { registerUndo: true });
+    const undo = useGroceryStore.getState().lastAction!.undo;
+    // Written straight to state, as something that registers no undo of its own would.
+    useGroceryStore.setState(s => ({
+      items: s.items
+        .filter(i => i.id !== bread.id)
+        .map(i => (i.id === milk.id ? { ...i, note: 'the blue cap one' } : i)),
+    }));
+
+    undo();
+
+    const s = useGroceryStore.getState();
+    expect(s.itemById(milk.id)).toMatchObject({ onList: true, note: 'the blue cap one' });
+    expect(s.listEntries.map(e => e.itemId)).toEqual([milk.id]);
+  });
+
+  it('the bulk Remove redoes', () => {
+    const milk = makeItem({ name: 'Milk', onList: true });
+    seed([milk]);
+
+    useGroceryStore.getState().removeFromListMany([milk.id], { registerUndo: true });
+    useGroceryStore.getState().undoLastAction();
+    expect(useGroceryStore.getState().itemById(milk.id)!.onList).toBe(true);
+
+    useGroceryStore.getState().redoLastUndone();
+    expect(useGroceryStore.getState().itemById(milk.id)!.onList).toBe(false);
+    expect(useGroceryStore.getState().lastAction!.label).toBe('Removed 1 item from the list');
+  });
 });
 
 describe('aisles', () => {
@@ -1415,6 +1531,60 @@ describe('aisles', () => {
 
     expect(useGroceryStore.getState().items[0].aisle).toBe('Butcher');
     expect(useGroceryStore.getState().aisleOrder).toContain('Butcher');
+  });
+
+  it('setAisleMany registers nothing unless asked, so the item sheet and the AI tidy stay as they were', () => {
+    const item = makeItem({ name: 'nduja' });
+    seed([item]);
+
+    useGroceryStore.getState().setAisleMany({ [item.id]: 'Butcher' });
+
+    expect(useGroceryStore.getState().lastAction).toBeNull();
+  });
+
+  it("the bulk bar's Move to Aisle undoes the aisles and the filings it remembered (#2942)", () => {
+    const peas = makeItem({ name: 'Peas', aisle: 'Produce' });
+    const bread = makeItem({ name: 'Bread', aisle: 'Bakery' });
+    const nduja = makeItem({ name: 'nduja', aisle: 'Deli' });
+    // Peas had a filing of its own; bread had none.
+    seed([peas, bread, nduja], { aisleOverrides: { peas: 'Produce', basil: 'Produce' } });
+
+    useGroceryStore.getState().setAisleMany(
+      { [peas.id]: 'Frozen', [bread.id]: 'Frozen' },
+      { registerUndo: true },
+    );
+    const moved = useGroceryStore.getState();
+    expect(moved.lastAction!.label).toBe('Moved 2 items to Frozen');
+    expect(moved.lastAction!.destructive).toBeFalsy();
+    expect(moved.aisleOverrides).toMatchObject({ peas: 'Frozen', bread: 'Frozen' });
+    // A filing made after the move, for a name the move didn't touch.
+    useGroceryStore.getState().setAisle(nduja.id, 'Butcher');
+    const nKey = useGroceryStore.getState().itemById(nduja.id)!.nameKey;
+    // setAisle registers nothing, so the move is still the step on top.
+    useGroceryStore.getState().undoLastAction();
+
+    const s = useGroceryStore.getState();
+    expect(s.itemById(peas.id)!.aisle).toBe('Produce');
+    expect(s.itemById(bread.id)!.aisle).toBe('Bakery');
+    expect(s.aisleOverrides.peas).toBe('Produce');
+    expect('bread' in s.aisleOverrides).toBe(false);
+    expect(s.aisleOverrides.basil).toBe('Produce');
+    expect(s.aisleOverrides[nKey]).toBe('Butcher');
+    expect(s.itemById(nduja.id)!.aisle).toBe('Butcher');
+    expect(dbSetGroceryAisleOverrides).toHaveBeenLastCalledWith(s.aisleOverrides);
+  });
+
+  it('names no aisle when the move sent rows to several', () => {
+    const peas = makeItem({ name: 'Peas', aisle: 'Produce' });
+    const bread = makeItem({ name: 'Bread', aisle: 'Bakery' });
+    seed([peas, bread]);
+
+    useGroceryStore.getState().setAisleMany(
+      { [peas.id]: 'Frozen', [bread.id]: 'Pantry' },
+      { registerUndo: true },
+    );
+
+    expect(useGroceryStore.getState().lastAction!.label).toBe('Moved 2 items');
   });
 
   it('applyDrop writes the new order and any aisle the drop changed', () => {

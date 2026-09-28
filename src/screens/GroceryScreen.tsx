@@ -65,6 +65,7 @@ import { ListBulkBar } from '../components/ListBulkBar';
 import { ReorderableList, type RowScroller } from '../components/ReorderableList';
 import { useScrollToTopOnTabPress } from '../hooks/useScrollToTopOnTabPress';
 import { useRowSelection } from '../hooks/useRowSelection';
+import { PaintSelectionProvider } from '../components/PaintSelection';
 import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
 import { GroceryAISheet, type GroceryAIMode } from '../components/GroceryAISheet';
 import { RecipeSourceSheet } from '../components/RecipeSourceSheet';
@@ -75,7 +76,7 @@ import { useSheetSubject } from '../hooks/useSheetSubject';
 import { OTHER_AISLE } from '../utils/groceryAisles';
 import { describeListEstimate, estimateListTotal, lastPriceFor, pricedSince, priceToInput } from '../utils/groceryPrice';
 import { buildGroceryListShareText, buildGroceryListText } from '../utils/shareText';
-import { useGroceryStore } from '../store/useGroceryStore';
+import { subscribeCartHoldRelease, useGroceryStore } from '../store/useGroceryStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { describeSupplyStockCaption, suppliesStockedFrom } from '../utils/supply';
 import { useRecipeStore } from '../store/useRecipeStore';
@@ -369,6 +370,8 @@ export function GroceryScreen() {
     exitSelection,
     selectAll,
     deselectAll,
+    painting,
+    paintProps,
   } = useRowSelection();
 
   // Every AI affordance is gated on its route, so a user who can't run it
@@ -698,6 +701,32 @@ export function GroceryScreen() {
 
   const dropZonesRef = useRef<FabDropZonesHandle>(null);
   const [fabDragging, setFabDragging] = useState(false);
+
+  // ——— The cart hold letting go ————————————————————————————————————
+  //
+  // Checked rows hold their slot for a moment and then sink into "In cart"
+  // together (armCartHold). That move lands on a timer, a second after the
+  // last tap, with no handler of ours around it to animate it, so the list
+  // jumped under a thumb already reaching for the next row (#2943). The store
+  // says when it is about to let go, and this animates that one commit, the
+  // way handleToggle animates the tap itself.
+  //
+  // Not during a drag of either kind. A row drag drives its own animations and
+  // a LayoutAnimation in the same commit fights them (see layoutAnimation.ts);
+  // the add button's drop zones are measured off rows that mustn't be moving.
+  // The rows still sink then, just without the animation.
+  const rowDraggingRef = useRef(false);
+  const fabDraggingRef = useRef(fabDragging);
+  fabDraggingRef.current = fabDragging;
+  const markRowDragging = useCallback(() => { rowDraggingRef.current = true; }, []);
+  const clearRowDragging = useCallback(() => { rowDraggingRef.current = false; }, []);
+  useEffect(
+    () => subscribeCartHoldRelease(() => {
+      if (rowDraggingRef.current || fabDraggingRef.current) return;
+      animateLayout();
+    }),
+    []
+  );
   // Lets the drag scroll the list once it reaches either end of the screen.
   const scrollControl = useRef<DragScroller | null>(null);
   // Separate from the drag scroller above: this one backs the tab-press
@@ -874,15 +903,19 @@ export function GroceryScreen() {
       if (!aisle) return;
       animateLayout();
       const ids = Array.from(selectedIds);
-      setAisleMany(Object.fromEntries(ids.map(id => [id, aisle])));
+      // With an undo, as Remove has: see setAisleMany's registerUndo (#2942).
+      setAisleMany(Object.fromEntries(ids.map(id => [id, aisle])), { registerUndo: true });
       exitSelection();
     },
     [selectedIds, setAisleMany, exitSelection]
   );
 
+  // No confirm, unlike Clear the list: Remove parks rows rather than deleting
+  // any, and one undo puts the whole batch back (#2942). Clear confirms
+  // because it can delete a row outright.
   const handleBulkRemove = useCallback(() => {
     animateLayout();
-    removeFromListMany(Array.from(selectedIds));
+    removeFromListMany(Array.from(selectedIds), { registerUndo: true });
     exitSelection();
   }, [selectedIds, removeFromListMany, exitSelection]);
 
@@ -1454,6 +1487,10 @@ export function GroceryScreen() {
           mounted changes, on the tick that gives it something to do. */}
       {checkedCount > 0 && startCard}
 
+      {/* A drag down the column of selection dots picks up a run of rows
+          (#2944), as on every other selectable list. Outside the drop zones,
+          the way ProjectsScreen nests the same two. */}
+      <PaintSelectionProvider {...paintProps}>
       <FabDropZoneProvider
         ref={dropZonesRef}
         onIntentChange={fabIntentChannel.publish}
@@ -1465,14 +1502,17 @@ export function GroceryScreen() {
         renderItem={renderRow}
         // The user can't scroll during an add-button drag (the button's
         // responder has the touch); the drag scrolls it instead, through the
-        // control below.
-        scrollEnabled={!fabDragging}
+        // control below. Same while a paint gesture owns the touch: iOS has
+        // to be told directly (see PaintSelectionProvider).
+        scrollEnabled={!fabDragging && !painting}
         scrollControlRef={scrollControl}
         rowScrollerRef={rowScroller}
         // dragTick, not tap: a fast drag crosses several rows between frames
         // and unthrottled ticks run together into one long buzz. The lift
         // itself is fired by ReorderableList.
         onHoverChange={haptics.dragTick}
+        onDragBegin={markRowDragging}
+        onDragEnd={clearRowDragging}
         dragRange={groceryDragRange}
         placeholderStyle={styles.dropSlot}
         onReorder={reordered => applyDrop(resolveGroceryDrop(reordered))}
@@ -1565,6 +1605,7 @@ export function GroceryScreen() {
         }
       />
       </FabDropZoneProvider>
+      </PaintSelectionProvider>
 
       {/* The bulk bar sits where the button does, and adding an item isn't
           something you're doing mid-selection anyway. */}

@@ -19,7 +19,8 @@ import {
   interaction,
   type Colors,
 } from '../theme';
-import { trolleyStateFor } from '../utils/groceryLists';
+import { entryFor, trolleyStateFor } from '../utils/groceryLists';
+import { reAddNotice } from '../utils/groceryAdd';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { correctableHaveReason, OUT_OF_IT_UNTIL, rankGrocerySuggestions } from '../utils/grocerySuggest';
 import { InlineAction } from './InlineAction';
@@ -41,10 +42,16 @@ import { useFilterField } from '../hooks/useFilterField';
 interface Props {
   /**
    * Fired after anything is added, with the rows it put on the list in the
-   * order they were typed — the sheet counts them, and the screen places them
-   * when the sheet was opened by dropping the add button somewhere.
+   * order they were typed — the screen places them when the sheet was opened
+   * by dropping the add button somewhere.
+   *
+   * `newCount` is how many of them weren't already on this list, which is the
+   * number the sheet's header counts. A name typed again while it is already
+   * on the list is still handed over, so a drop seam places it as it always
+   * has, but it is not an add: counting it put "Added 1 item" over a line
+   * that changed nothing (#2945).
    */
-  onAdded?: (items: GroceryItem[]) => void;
+  onAdded?: (items: GroceryItem[], newCount: number) => void;
 }
 
 /**
@@ -92,10 +99,20 @@ export interface GroceryAddFieldHandle {
  *
  * Behaviour is otherwise the chain-step input from QuickAddModal, verbatim.
  */
+
+// Map of this file (one component holding most of it; `grep -n '// ===='` is
+// the table of contents):
+//   state          the typed line, the status, the two offers, Brand/Variant
+//   typing         the parsed-token preview, the matches, the either/or split
+//   adding         the either/or add, one name, and the two offers it can make
+//   submit/paste   return and Done, the imperative handle, a pasted block
+//   render         the field, the toolbar, and the out-of-flow results block
+// Below the component: styles.
 export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function GroceryAddField(
   { onAdded },
   ref
 ) {
+  // ==== state ====
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -113,6 +130,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
   const undoForAdds = useGroceryStore(s => s.undoForAdds);
   const setOnHandUntil = useGroceryStore(s => s.setOnHandUntil);
   const setRunningLow = useGroceryStore(s => s.setRunningLow);
+  const setCheckedMany = useGroceryStore(s => s.setCheckedMany);
 
   const addFilter = useFilterField();
   const text = addFilter.query;
@@ -132,6 +150,15 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
    */
   const [pantryOffer, setPantryOffer] = useState<
     { id: string; name: string; reason: string } | null
+  >(null);
+  /**
+   * The name just typed was already checked off into the cart, and this is
+   * the offer to take it back out (see `reAddNotice`). Held and cleared on the
+   * same terms as `pantryOffer`, and never shown beside it: one question at a
+   * time under a field that is mid-burst.
+   */
+  const [cartOffer, setCartOffer] = useState<
+    { id: string; name: string; listId: string | null } | null
   >(null);
   // Named by the exact parsed text they dismissed, not a plain on/off flag —
   // see resolveGroceryTokens for why that's what makes a rejection survive
@@ -164,6 +191,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
     setActivePanel(prev => (prev === panel ? null : panel));
   }, []);
 
+  // ==== typing: tokens, matches, either/or ====
 
   // What committing `text` right now would actually save — the whole point is
   // showing this *before* the tap, not after, so the split is a visible
@@ -201,6 +229,8 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
     [tokens]
   );
 
+  // ==== adding: either/or, one name, the two offers ====
+
   const acceptAlternatives = useCallback(() => {
     if (!alternatives) return;
     animateLayout();
@@ -208,6 +238,9 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
     // from one it re-listed — the snapshot undoForAdds needs, taken at the only
     // moment it is knowable.
     const preexisting = new Set(useGroceryStore.getState().items.map(i => i.id));
+    // And which were already in this trolley, so the sheet counts only the
+    // options this put there — see Props.onAdded.
+    const { listEntries: entriesBefore, activeListId: listBefore } = useGroceryStore.getState();
     // An opaque id, not the typed line — see GroceryItem.choiceGroup for why
     // this half of the feature doesn't want a label.
     const group = generateId();
@@ -231,6 +264,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
     // Two rows, so there's no single item the offer could be about — same call
     // the paste path makes, and for the same reason.
     setPantryOffer(null);
+    setCartOffer(null);
     setRejectedQuantity(null);
     setRejectedPrep(null);
     setRejectedPurpose(null);
@@ -247,7 +281,8 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
       label: `${addedItems.length} either/or items added`,
       undo: undoForAdds(addedIds, preexisting),
     });
-    onAdded?.(addedItems);
+    const newCount = addedItems.filter(i => !entryFor(entriesBefore, i.id, listBefore)).length;
+    onAdded?.(addedItems, newCount);
   }, [alternatives, addByName, tokens, setLastAction, undoForAdds, onAdded, resetAttributes]);
 
   const commit = useCallback(
@@ -262,32 +297,62 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
       },
       /**
        * False on the "Done" path, which commits and then dismisses the sheet:
-       * the offer would appear for the length of the fade-out and go with it,
+       * an offer would appear for the length of the fade-out and go with it,
        * which is a flash of something you were never given the chance to
        * answer. It needs the field to still be there afterwards.
        */
-      offerPantry = true
+      offer = true
     ) => {
       const trimmed = raw.trim();
       if (!trimmed) return;
       animateLayout();
+      // What this list held before the add, since afterwards the row has an
+      // entry either way — see reAddNotice. A snapshot rather than a second
+      // copy of addByName's own find, which is how the two would drift.
+      const { listEntries: entriesBefore, activeListId: listBefore, items: itemsBefore } =
+        useGroceryStore.getState();
       const item = addByName(trimmed, override);
+      const priorEntry = entryFor(entriesBefore, item.id, listBefore);
+      const notice = reAddNotice(
+        priorEntry,
+        itemsBefore.find(i => i.id === item.id)?.quantity ?? null,
+        item,
+      );
       haptics.tap();
       addFilter.clear();
-      setStatus(null);
+      setStatus(notice?.text ?? null);
       setRejectedQuantity(null);
       setRejectedPrep(null);
       setRejectedPurpose(null);
       resetAttributes();
+      const inCart = offer && !!notice?.inCart;
+      setCartOffer(inCart ? { id: item.id, name: item.name, listId: listBefore } : null);
       // Read off the row addByName just returned, which is safe because it
       // writes none of the columns the claim is built from — it only ever sets
-      // `onList`, and `probablyHaveReason` has never consulted that.
-      const reason = offerPantry ? correctableHaveReason(item, new Date()) : null;
+      // `onList`, and `probablyHaveReason` has never consulted that. Not beside
+      // the cart offer: one question at a time.
+      const reason = offer && !inCart ? correctableHaveReason(item, new Date()) : null;
       setPantryOffer(reason ? { id: item.id, name: item.name, reason } : null);
-      onAdded?.([item]);
+      onAdded?.([item], priorEntry ? 0 : 1);
     },
     [addByName, onAdded, resetAttributes]
   );
+
+  /**
+   * Takes a name typed while already in the cart back out of it, so it reads
+   * as still to buy. On the trolley the add went to, named rather than read
+   * off whatever is active now; the other lists' ticks are theirs. Through
+   * setCheckedMany rather than toggleChecked because this must only ever
+   * uncheck, whatever happened to the row since.
+   */
+  const uncheckCartItem = useCallback(() => {
+    if (!cartOffer) return;
+    haptics.tap();
+    animateLayout();
+    setCheckedMany([cartOffer.id], false, { listId: cartOffer.listId });
+    setStatus(`“${cartOffer.name}” unchecked`);
+    setCartOffer(null);
+  }, [cartOffer, setCheckedMany]);
 
   /**
    * The two corrections the offer above puts within reach, both of them the
@@ -319,6 +384,8 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
     [pantryOffer, setOnHandUntil, setRunningLow]
   );
 
+  // ==== submit, discard, paste ====
+
   const submitWith = useCallback(
     (offerPantry: boolean) => {
       if (!tokens) return;
@@ -348,6 +415,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
     addFilter.clear();
     setStatus(null);
     setPantryOffer(null);
+    setCartOffer(null);
     setRejectedQuantity(null);
     setRejectedPrep(null);
     setRejectedPurpose(null);
@@ -377,6 +445,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
         // Unconditional: React bails out when it's already null, so this needs
         // no dependency of its own the way `status` above does.
         setPantryOffer(null);
+        setCartOffer(null);
         return;
       }
 
@@ -390,6 +459,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
       // captioning it with whichever line happened to be last would be worse
       // than saying nothing.
       setPantryOffer(null);
+      setCartOffer(null);
       const { added, alreadyOnList } = addManyFromText(next);
       const total = added.length + alreadyOnList.length;
       if (total === 0) {
@@ -407,17 +477,20 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
           ? `${alreadyOnList.length} already on the list`
           : null
       );
-      onAdded?.(added);
+      onAdded?.(added, added.length);
     },
     [addManyFromText, onAdded, status, resetAttributes]
   );
+
+  // ==== render ====
 
   // Everything the field can grow — the parsed-token chips, the either/or
   // offer, the paste status, the matches — or nothing at all.
   const hasTokenChips =
     !!tokens && (tokens.quantityAccepted || tokens.prepAccepted || tokens.purposeAccepted);
   const hasResults =
-    hasTokenChips || !!alternatives || !!status || !!pantryOffer || suggestions.length > 0;
+    hasTokenChips || !!alternatives || !!status || !!pantryOffer || !!cartOffer
+    || suggestions.length > 0;
 
   // `results` is pinned off the bottom of everything static above it — see
   // FIELD_HEIGHT's own note. The toolbar is there unless simplified mode took
@@ -659,6 +732,20 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
 
       {!!status && <Text style={styles.status}>{status}</Text>}
 
+      {/* The name just typed was already checked off. Stated by the status
+          line above; this is only the way back, since wanting a second one is
+          the likeliest reason to type something you've already picked up. A
+          single action, so accent: there's no pair here to rank. */}
+      {!!cartOffer && (
+        <View style={styles.cartOffer}>
+          <InlineAction
+            label="Uncheck"
+            onPress={uncheckCartItem}
+            accessibilityLabel={`Uncheck ${cartOffer.name} so it is still to buy`}
+          />
+        </View>
+      )}
+
       {/* The pantry still says you have the thing you just put on the list.
           Stated, not asked: silence is a real answer here (stocking up early is
           ordinary), so there's no "yes" pill and ignoring this costs nothing.
@@ -866,6 +953,12 @@ function makeStyles(colors: Colors) {
     status: {
       fontSize: font.sm,
       color: colors.textSecondary,
+      marginLeft: spacing.xs,
+    },
+    // Under the status line that says why, aligned with it; the block's own
+    // gap is the space between them.
+    cartOffer: {
+      flexDirection: 'row',
       marginLeft: spacing.xs,
     },
     pantryOffer: {
