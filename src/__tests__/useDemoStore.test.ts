@@ -1237,6 +1237,21 @@ describe('demo mode', () => {
     expect(draft.notes).not.toBe('');
   });
 
+  // A follow-up task that already resolves to a live parent, so the demo
+  // shows TaskEditor's "Follow-up frequency" shortcut (Task.followUpTaskSourceId)
+  // and not just the rule that will one day add one.
+  it('seeds a follow-up task whose source id resolves to the live parent', () => {
+    useDemoStore.getState().enterDemoMode();
+    const tasks = useTaskStore.getState().tasks;
+    const spawned = tasks.find(t => t.followUpTaskSourceId !== null);
+
+    expect(spawned).toBeDefined();
+    const parent = tasks.find(t => t.id === spawned!.followUpTaskSourceId);
+    expect(parent).toBeDefined();
+    expect(followUpTaskRule(parent!)).not.toBeNull();
+    expect(spawned!.followUpTaskSourceTitle).toBe(parent!.title);
+  });
+
   // No number on any task means no call/text button anywhere in the demo.
   it('seeds a task carrying a phone number', () => {
     useDemoStore.getState().enterDemoMode();
@@ -1481,22 +1496,6 @@ describe('demo mode', () => {
     const members = useTaskStore.getState().tasks.filter(t => t.projectId === giftIdeas?.id);
     expect(members.length).toBeGreaterThan(0);
     expect(members.every(t => !t.dueDate)).toBe(true);
-  });
-
-  it('seeds a cookbook checklist with some recipes already cooked', () => {
-    // What CookbookChecklistSheet builds from a photo of a table of
-    // contents: a list-kind project named for the book, one item per
-    // recipe. Seeded with a mix of completed and outstanding rows so it
-    // reads as progress through a book rather than as an ordinary list.
-    useDemoStore.getState().enterDemoMode();
-
-    const cookbook = useProjectStore.getState().projects.find(p => p.title === 'Six Seasons');
-    expect(cookbook?.kind).toBe('list');
-
-    const members = useTaskStore.getState().tasks.filter(t => t.projectId === cookbook?.id);
-    expect(members.length).toBeGreaterThan(2);
-    expect(members.some(t => t.completed)).toBe(true);
-    expect(members.some(t => !t.completed)).toBe(true);
   });
 
   it('seeds a running list that never offers to mark itself complete', () => {

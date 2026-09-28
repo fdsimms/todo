@@ -29,7 +29,6 @@ import { EmptyState } from '../components/EmptyState';
 import { QuickAddNameSheet } from '../components/QuickAddNameSheet';
 import { RecipeCreateSheet } from '../components/RecipeCreateSheet';
 import { InventRecipeSheet } from '../components/InventRecipeSheet';
-import { CookbookChecklistSheet } from '../components/CookbookChecklistSheet';
 import type { RecipeInputMode } from '../components/RecipeSourcePicker';
 import { RecipeTagFilterSheet } from '../components/RecipeTagFilterSheet';
 import { OverlapPickerSheet } from '../components/OverlapPickerSheet';
@@ -249,7 +248,6 @@ export function RecipesScreen() {
   const [importVisible, setImportVisible] = useState(false);
   const [importMode, setImportMode] = useState<RecipeInputMode>('photo');
   const [inventVisible, setInventVisible] = useState(false);
-  const [cookbookChecklistVisible, setCookbookChecklistVisible] = useState(false);
   // The shared page the import sheet was opened for, if it was opened from the
   // banner rather than the add menu. Deliberately not cleared when the sheet
   // closes: `RecipeCreateSheet` calls `onClose` before `onCreated`, so clearing
@@ -782,20 +780,6 @@ export function RecipesScreen() {
       <HubPills hub="kitchen" active="Recipes" />
       <TipHost screen="recipes" />
       <View style={styles.cookbookLinksRow}>
-        {/* A checklist of what's *in* a book rather than a recipe kept from
-            one — see CookbookChecklistSheet. Sits beside the shelf link
-            rather than in the add menu below, since every item there ends in
-            a full Recipe and this one deliberately doesn't. */}
-        <TouchableOpacity
-          style={styles.cookbooksLink}
-          onPress={() => { haptics.tap(); setCookbookChecklistVisible(true); }}
-          activeOpacity={interaction.activeOpacity}
-          accessibilityRole="button"
-          accessibilityLabel="Scan a cookbook"
-        >
-          <Ionicons name="camera-outline" size={13} color={colors.textTertiary} />
-          <Text style={styles.cookbooksLinkText}>Scan a cookbook</Text>
-        </TouchableOpacity>
         {/* A shelf for recipes rather than a fifth Kitchen-hub tab: it isn't a
             working surface the way Groceries/Recipes/Meal plan/Pantry are, so
             it doesn't need equal billing in the pill row — just a way in from
@@ -1085,11 +1069,6 @@ export function RecipesScreen() {
         onCreated={recipeId => handleCreated(recipeId, null)}
       />
 
-      <CookbookChecklistSheet
-        visible={cookbookChecklistVisible}
-        onClose={() => setCookbookChecklistVisible(false)}
-      />
-
       <RecipeTagFilterSheet
         visible={tagFilterVisible}
         onClose={() => setTagFilterVisible(false)}
@@ -1143,7 +1122,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   cookbookLinksRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-end',
     alignItems: 'center',
     marginHorizontal: spacing.md,
     marginTop: spacing.xs,

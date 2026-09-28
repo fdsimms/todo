@@ -262,6 +262,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   followUpTaskTally: 0,
   previousFollowUpTaskTally: 0,
   followUpTaskSourceTitle: null,
+  followUpTaskSourceId: null,
   vacationPause: false, excludeFromSuggestions: false,
   timerStartedAt: null,
   timedMinutes: null,
@@ -906,11 +907,12 @@ describe('dbInsertTask + rowToTask round-trip', () => {
     };
     dbInsertTask(makeTask({
       id: 'xd', followUpTaskEveryN: 4, followUpTaskTitle: 'Rosin', followUpTaskDraft: draft,
-      followUpTaskSourceTitle: 'Practice violin',
+      followUpTaskSourceTitle: 'Practice violin', followUpTaskSourceId: 'violin-1',
     }));
     expect(dbGetAllTasks()[0].followUpTaskDraft).toEqual(draft);
     expect(dbGetAllTasks()[0].followUpTaskTitle).toBe('Rosin');
     expect(dbGetAllTasks()[0].followUpTaskSourceTitle).toBe('Practice violin');
+    expect(dbGetAllTasks()[0].followUpTaskSourceId).toBe('violin-1');
 
     dbUpdateTask({ ...dbGetAllTasks()[0], followUpTaskDraft: { ...draft, notes: 'Moved' }, title: 'Renamed' });
     const [t] = dbGetAllTasks();
@@ -920,6 +922,10 @@ describe('dbInsertTask + rowToTask round-trip', () => {
     expect(t.followUpTaskTally).toBe(0);
     expect(t.followUpTaskEveryN).toBe(4);
     expect(t.followUpTaskSourceTitle).toBe('Practice violin');
+    // extra_task_source_id sits at the very end of both column lists, so a
+    // dropped or shifted placeholder there would misalign nothing else and
+    // fail silently without its own assertion.
+    expect(t.followUpTaskSourceId).toBe('violin-1');
   });
 
   it('reads a row written before the draft column as "just the title"', () => {

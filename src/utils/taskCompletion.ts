@@ -791,6 +791,11 @@ export function buildCompletion(
       // with it, and the tally goes back with the restored row.
       previousOccurrenceId: task.id,
       followUpTaskSourceTitle: task.title,
+      // The successor's id, not the completed row's — see the field note on
+      // Task.followUpTaskSourceId. With no successor (a one-off's last cycle,
+      // or a series that just ran out) there's nothing live to point at, so
+      // the editor's shortcut simply won't find a parent to resolve.
+      followUpTaskSourceId: nextTask?.id ?? null,
     }, now.toISOString(), maxOrder + 1);
     // Derived for the same reason the occurrence above is: one milestone
     // task per completion, however many devices saw that completion.

@@ -3043,6 +3043,23 @@ export interface Task {
   // undo path that needs the live row. Same call the pending-suppression
   // match above makes, and for the same reason.
   followUpTaskSourceTitle: string | null;
+  // A pointer, unlike the title above — but at the *rule's* current
+  // occurrence rather than at the one that earned this task, which is the
+  // row followUpTaskSourceTitle explicitly declined to point at. Stamped
+  // with the successor's id the same completion spawns (nextTask.id in
+  // buildCompletion), so it names whichever row is carrying
+  // followUpTaskEveryN/followUpTaskTitle forward right now — what
+  // TaskEditor's "Follow-up frequency" row resolves against, so the count
+  // can be raised or lowered from here without leaving for the parent's own
+  // editor.
+  //
+  // It goes stale the next time the parent completes again: every occurrence
+  // is a fresh id, so a follow-up task left unopened across another cycle of
+  // its parent points at a row that no longer carries the live rule. That
+  // isn't corrected here — the id simply stops resolving to a task, and the
+  // editor's shortcut quietly stops offering itself, the same "nothing to
+  // show" a dangling blocker pointer already reads as elsewhere.
+  followUpTaskSourceId: string | null;
 
   vacationPause: boolean;    // hide and protect streak while vacation mode is on
 

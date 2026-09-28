@@ -7,13 +7,13 @@ export type AiFeatureId =
   | 'taskBreakdown' | 'templateSuggestions' | 'projectTaskSuggestions' | 'groceryAisles'
   | 'recipeExtraction' | 'mealIdeas' | 'substitutes' | 'receiptImport' | 'calendarImport'
   | 'cookHelp' | 'nutritionEstimate' | 'nutritionLabelPhoto' | 'backfillSuggestions'
-  | 'cookbookChecklist' | 'recipeNutritionEstimate';
+  | 'recipeNutritionEstimate';
 
 export const AI_FEATURE_IDS: AiFeatureId[] = [
   'taskBreakdown', 'templateSuggestions', 'projectTaskSuggestions', 'groceryAisles',
   'recipeExtraction', 'mealIdeas', 'substitutes', 'receiptImport', 'calendarImport',
   'cookHelp', 'nutritionEstimate', 'nutritionLabelPhoto', 'backfillSuggestions',
-  'cookbookChecklist', 'recipeNutritionEstimate',
+  'recipeNutritionEstimate',
 ];
 
 export type AiModelId = 'claude-haiku-4-5-20251001' | 'claude-sonnet-5' | 'claude-opus-5';
@@ -144,11 +144,6 @@ export const AI_FEATURES: AiFeatureMeta[] = [
     hint: 'Falls back to Claude to read a nutrition panel photo the on-device reading could not',
   },
   {
-    id: 'cookbookChecklist',
-    label: 'Cookbook checklist from a photo',
-    hint: 'Reads a photo of a cookbook\'s table of contents into a checklist of its recipes',
-  },
-  {
     id: 'recipeNutritionEstimate',
     label: 'Estimate a recipe\'s nutrition',
     // Offered on the recipe's own nutrition sheet only once the ingredient
@@ -244,11 +239,6 @@ export function defaultAiFeatureConfig(): AiFeatureConfigMap {
     // user's own food packaging, not a third party's data, the same
     // distinction that keeps receiptImport on by default too.
     nutritionLabelPhoto: { enabled: true, model: 'claude-sonnet-5' },
-    // The default model: every title still passes in front of the user before
-    // a task is created from it, the same review this feature shares with
-    // recipeExtraction, so a mediocre read costs an edit rather than a wrong
-    // write.
-    cookbookChecklist: { enabled: true, model: DEFAULT_AI_MODEL },
     // Sonnet for the same reason `nutritionEstimate` picked it over the
     // default: this also wants real-world judgment about how ingredients
     // combine (a marinade mostly poured off, a batter's rise), which is where

@@ -153,7 +153,7 @@ const LIST_ADD_MENU_ITEMS: FabMenuItem[] = [
   { key: 'replies', label: 'Track replies', icon: 'people-outline' },
   { key: 'stack', label: 'New section', icon: 'layers' },
   { key: 'template', label: 'Template', icon: 'copy' },
-  { key: 'new', label: 'New line', icon: 'checkbox' },
+  { key: 'new', label: 'New item', icon: 'checkbox' },
 ];
 
 // The add button, naming what a release right now would do — same wrapper
@@ -175,6 +175,28 @@ function AddProjectTaskFabWithDropLabel({
   return <FabMenu {...props} dragLabel={label} />;
 }
 
+// A section row, lit by either drag that can land in it: an existing task
+// dragged onto it (`active`), or the add button aimed at it — the same
+// wrapper Today's own GroupDropTargetRow gives a stack, so a section here
+// gets the same border the add button lights up a stack with there.
+function GroupDropTargetRow({
+  channel,
+  groupId,
+  active,
+  children,
+}: {
+  channel: FabIntentChannel;
+  groupId: string;
+  active: boolean;
+  children: React.ReactNode;
+}) {
+  const aimed = useFabIntentSelector(
+    channel,
+    intent => intent?.kind === 'joinGroup' && intent.groupId === groupId,
+  );
+  return <GroupDropTarget active={active || aimed}>{children}</GroupDropTarget>;
+}
+
 /** A pasted list's lines, without the bullets it often carries. */
 function cleanPastedLines(raw: string[]): string[] {
   return raw.map(l => l.replace(/^\s*(?:[-*•◦▪]|\d+[.)]|\[[ xX]?\])\s+/, '').trim()).filter(Boolean);
@@ -192,12 +214,14 @@ function NewLineField({
   onDone,
   styles,
   placeholderColor,
+  placeholder = 'New line',
 }: {
   onAdd: (text: string) => void;
   onAddMany: (lines: string[]) => void;
   onDone: () => void;
   styles: { newLineRow: object; newLineInput: object };
   placeholderColor: string;
+  placeholder?: string;
 }) {
   const [text, setText] = useState('');
   // What's typed, read by onBlur. A ref rather than the state, and emptied on
@@ -226,7 +250,7 @@ function NewLineField({
         value={text}
         onChangeText={change}
         autoFocus
-        placeholder="New line"
+        placeholder={placeholder}
         placeholderTextColor={placeholderColor}
         maxLength={TITLE_MAX_LENGTH}
         returnKeyType="next"
@@ -246,7 +270,7 @@ function NewLineField({
           if (typed) onAdd(typed);
           onDone();
         }}
-        accessibilityLabel="New line"
+        accessibilityLabel={placeholder}
       />
     </View>
   );
@@ -355,14 +379,16 @@ export function ProjectDetailScreen() {
   // tray is lifted over its neighbours (see rowElevated), exactly as Today does.
   const [draggingSectionId, setDraggingSectionId] = useState<string | null>(null);
   const [quickAddVisible, setQuickAddVisible] = useState(false);
-  const [listDraft, setListDraft] = useState('');
-  // The line just added from the list's field, named under it for a moment.
-  const listInputRef = useRef<TextInput>(null);
-  // From a list card's "+": the field is focused once the push has finished,
-  // so the keyboard doesn't ride in on top of the transition.
+  // The list's own "New item" field, opened on demand (from the FAB, the
+  // empty state, or a card's "+") rather than sitting on screen all the
+  // time. Null when closed; a number otherwise, bumped on every add so the
+  // field remounts empty and focused for the next one.
+  const [topLineOpen, setTopLineOpen] = useState<number | null>(null);
+  // From a list card's "+": the field opens once the push has finished, so
+  // the keyboard doesn't ride in on top of the transition.
   useEffect(() => {
     if (!addLine) return;
-    const handle = InteractionManager.runAfterInteractions(() => listInputRef.current?.focus());
+    const handle = InteractionManager.runAfterInteractions(() => setTopLineOpen(v => v ?? 0));
     return () => handle.cancel();
   }, [addLine]);
   const [templatePickerVisible, setTemplatePickerVisible] = useState(false);
@@ -635,7 +661,7 @@ export function ProjectDetailScreen() {
   const checklistLineCount = projectListItems.reduce(
     (n, item) => n + (item.type === 'group' && item.group.checklist ? item.children.length : 0), 0,
   );
-  const lineFilterShown = isList ? lineCount >= LIST_FILTER_MIN_LINES : checklistLineCount >= LIST_FILTER_MIN_LINES;
+  const lineFilterShown = !isList && checklistLineCount >= LIST_FILTER_MIN_LINES;
   const filteringLines = lineFilterShown && lineFilter.query.trim().length > 0;
   const shownListItems = useMemo(
     () => (filteringLines ? filterProjectListItems(projectListItems, lineFilter.query) : projectListItems),
@@ -677,7 +703,7 @@ export function ProjectDetailScreen() {
   const dropZonesRef = useRef<FabDropZonesHandle>(null);
   const [fabDragging, setFabDragging] = useState(false);
   const scrollControl = useRef<DragScroller | null>(null);
-  // Scrolls back up to a list's add field from the "Add a line" at the bottom.
+  // Scrolls back up to a list's add field when it's opened from the FAB.
   const listScroller = useRef<RowScroller | null>(null);
   const fabIntentChannel = useFabIntentChannel();
   const [quickAddSeed, setQuickAddSeed] = useState<{ groupId?: string } | undefined>(undefined);
@@ -854,9 +880,9 @@ export function ProjectDetailScreen() {
   const handleAddMenuSelect = (key: string) => {
     if (!project) return;
     if (key === 'new') {
-      // A list's line is typed in its own field, which takes no dates or
+      // A list's item is typed in its own field, which takes no dates or
       // categories and adds on return, not in the task sheet.
-      if (isList) { listScroller.current?.scrollToTop(); listInputRef.current?.focus(); return; }
+      if (isList) { listScroller.current?.scrollToTop(); setTopLineOpen(v => v ?? 0); return; }
       setQuickAddVisible(true);
       return;
     }
@@ -1007,7 +1033,7 @@ export function ProjectDetailScreen() {
       }
       if (intent.kind === 'plain' || intent.kind === 'insert') {
         listScroller.current?.scrollToTop();
-        listInputRef.current?.focus();
+        setTopLineOpen(v => v ?? 0);
         return;
       }
     }
@@ -1058,33 +1084,15 @@ export function ProjectDetailScreen() {
   // `indented` rows are already under their stack's header, so the inline
   // stack chip (`showGroup`) would just repeat it.
   /**
-   * A list's add field: one line, straight into the project, and the keyboard
-   * stays up for the next one.
-   *
-   * The FAB stays for a list too, but its menu shrinks to Add existing /
-   * Section — New task is this field, and Template doesn't fit a
-   * doctor-questions list. Writing five questions in a row is the whole
-   * activity here, so the field is the surface for that and the FAB is only
-   * for the two things it can't do: pull in a task from elsewhere, or start a
-   * new section to write questions under.
-   *
-   * No date, no category, no title rules: a line typed here is exactly what it
-   * says. `skipTitleRules` matters — a rule rewriting "Ask about the MRI
-   * results" would be editing the user's own note back at them.
+   * A list's items, added straight into the project with no date, category
+   * or title rules — an item typed here is exactly what it says.
+   * `skipTitleRules` matters: a rule rewriting "Ask about the MRI results"
+   * would be editing the user's own note back at them.
    */
-  const handleListAdd = () => addListLines([listDraft]);
-
-  // Several lines pasted at once (a list copied out of Notes) become a line
-  // each, rather than one line holding the lot.
-  const handleListDraftChange = (text: string) => {
-    if (/[\r\n]/.test(text)) addListLines(text.split(/\r?\n/));
-    else setListDraft(text);
-  };
-
   const addListLines = (raw: string[]) => {
-    // A pasted list often carries its own bullets; those aren't part of the line.
+    // A pasted list often carries its own bullets; those aren't part of the item.
     const lines = cleanPastedLines(raw);
-    if (lines.length === 0 || !project) { setListDraft(''); return; }
+    if (lines.length === 0 || !project) return;
     animateLayout();
     // New lines go at the top, right under the field they were typed in, in
     // the order written. They used to go to the end, which on a long list was
@@ -1118,11 +1126,11 @@ export function ProjectDetailScreen() {
       ]);
     }
     haptics.tap();
-    setListDraft('');
-    // A new line needn't match what's being searched for, and a line added
+    // A new item needn't match what's being searched for, and one added
     // straight into hiding reads as one that wasn't added.
     lineFilter.clear();
-    listInputRef.current?.focus();
+    // Keeps the field open, remounted empty and focused, for the next item.
+    setTopLineOpen(v => (v ?? 0) + 1);
     if (flashTimeoutRef.current) clearTimeout(flashTimeoutRef.current);
     setFlashTaskId(created[0]);
     flashTimeoutRef.current = setTimeout(() => setFlashTaskId(null), 2500);
@@ -1182,6 +1190,7 @@ export function ProjectDetailScreen() {
           onDone={() => setInsertAfterId(null)}
           styles={styles}
           placeholderColor={colors.textTertiary}
+          placeholder={isList ? 'New item' : 'New line'}
         />
       </>
     );
@@ -1377,8 +1386,9 @@ export function ProjectDetailScreen() {
       );
     }
   };
-  // The trailing "New task" / "Add a line" under the list. Only once there's a
-  // list to be under: the empty state already has its own button.
+  // The trailing "New task" under a project's list. Only once there's a
+  // list to be under: the empty state already has its own button. A list
+  // (isList) has no trailing button of its own — see the top of the screen.
   const showInlineNewTask = !!project && !selectionMode && projectListItems.length > 0;
 
   /**
@@ -1814,28 +1824,29 @@ export function ProjectDetailScreen() {
                     </View>
                   </View>
                 )}
-                {isList && !selectionMode && (
-                  <View style={styles.listAddRow}>
-                    <Ionicons name="add" size={18} color={colors.textTertiary} />
-                    <TextInput
-                      ref={listInputRef}
-                      style={styles.listAddInput}
-                      value={listDraft}
-                      onChangeText={handleListDraftChange}
-                      onSubmitEditing={handleListAdd}
-                      // Names the field rather than giving an example: the
-                      // doctor's-questions example sat on every list, books
-                      // and gift ideas included.
-                      placeholder="Add a line"
-                      placeholderTextColor={colors.textTertiary}
-                      maxLength={TITLE_MAX_LENGTH}
-                      // "Next", not "Done": the return key adds the line and
-                      // keeps the keyboard up for another.
-                      returnKeyType="next"
-                      blurOnSubmit={false}
-                      accessibilityLabel="Add a line to this list"
+                {/* Sorting sits at the top rather than under the list, where
+                    it used to share a row with the add button. */}
+                {isList && !selectionMode && lineCount >= 3 && (
+                  <View style={styles.sectionAddRow}>
+                    <InlineAction
+                      icon="swap-vertical-outline"
+                      label="Sort A to Z"
+                      variant="neutral"
+                      onPress={sortListAToZ}
+                      accessibilityLabel="Sort this list's items from A to Z"
                     />
                   </View>
+                )}
+                {isList && !selectionMode && topLineOpen !== null && (
+                  <NewLineField
+                    key={`top-line-${topLineOpen}`}
+                    onAdd={text => addListLines([text])}
+                    onAddMany={lines => addListLines(lines)}
+                    onDone={() => setTopLineOpen(null)}
+                    styles={styles}
+                    placeholderColor={colors.textTertiary}
+                    placeholder="New item"
+                  />
                 )}
                 {/* Stays while selecting: the selection is taken from what it
                     leaves showing, so it has to be visible that it's on. */}
@@ -1843,8 +1854,8 @@ export function ProjectDetailScreen() {
                   <SearchField
                     style={styles.lineFilter}
                     field={lineFilter}
-                    placeholder={isList ? 'Find a line' : 'Find a task or line'}
-                    accessibilityLabel={isList ? 'Find a line in this list' : 'Find a task or line in this project'}
+                    placeholder="Find a task or line"
+                    accessibilityLabel="Find a task or line in this project"
                   />
                 )}
                 <ProjectDecisions
@@ -1877,7 +1888,7 @@ export function ProjectDetailScreen() {
                 const stackExpanded = empty || !group.collapsed;
                 return (
                   <FabDropZone zone={zone}>
-                  <GroupDropTarget active={joinGroupIntentId === group.id}>
+                  <GroupDropTargetRow channel={fabIntentChannel} groupId={group.id} active={joinGroupIntentId === group.id}>
                   <TaskGroupTray>
                     <TaskGroupHeader
                       selectionMode={selectionMode}
@@ -1922,15 +1933,16 @@ export function ProjectDetailScreen() {
                           onDone={() => setSectionLine(null)}
                           styles={styles}
                           placeholderColor={colors.textTertiary}
+                          placeholder={isList ? 'New item' : 'New line'}
                         />
                       ) : empty ? (
                         <View style={styles.emptyStackRow}>
-                          <Text style={styles.emptyStackText}>{isList || group.checklist ? 'No lines in this section yet' : 'No tasks in this section yet'}</Text>
+                          <Text style={styles.emptyStackText}>{isList ? 'No items in this section yet' : group.checklist ? 'No lines in this section yet' : 'No tasks in this section yet'}</Text>
                           <InlineAction
-                            label={isList || group.checklist ? 'Add a line' : 'Add task'}
+                            label={isList ? 'Add an item' : group.checklist ? 'Add a line' : 'Add task'}
                             icon="add"
                             onPress={() => openAddToSection(group)}
-                            accessibilityLabel={group.title.trim() ? `Add a ${isList ? 'line' : 'task'} to the ${group.title.trim()} section` : `Add a ${isList ? 'line' : 'task'} to this section`}
+                            accessibilityLabel={group.title.trim() ? `Add ${isList ? 'an item' : group.checklist ? 'a line' : 'a task'} to the ${group.title.trim()} section` : `Add ${isList ? 'an item' : group.checklist ? 'a line' : 'a task'} to this section`}
                           />
                         </View>
                       ) : (
@@ -1972,20 +1984,22 @@ export function ProjectDetailScreen() {
                             onDone={() => setSectionLine(null)}
                             styles={styles}
                             placeholderColor={colors.textTertiary}
+                            placeholder={isList ? 'New item' : 'New line'}
                           />
                         )}
                         {!selectionMode && sectionLine?.groupId !== group.id && (
                           <View style={styles.sectionAddRow}>
                             <InlineAction
-                              label={isList || group.checklist ? 'Add a line' : 'Add task'}
+                              label={isList ? 'Add an item' : group.checklist ? 'Add a line' : 'Add task'}
                               icon="add"
                               variant="neutral"
                               onPress={() => openAddToSection(group)}
-                              accessibilityLabel={group.title.trim() ? `Add a ${isList ? 'line' : 'task'} to the ${group.title.trim()} section` : `Add a ${isList ? 'line' : 'task'} to this section`}
+                              accessibilityLabel={group.title.trim() ? `Add ${isList ? 'an item' : group.checklist ? 'a line' : 'a task'} to the ${group.title.trim()} section` : `Add ${isList ? 'an item' : group.checklist ? 'a line' : 'a task'} to this section`}
                             />
-                            {/* A list sorts from its own footer; a checklist
-                                section on a project sorts here. Hidden while
-                                narrowed, since only some lines are showing. */}
+                            {/* A list sorts from the top of the screen; a
+                                checklist section on a project sorts here.
+                                Hidden while narrowed, since only some lines
+                                are showing. */}
                             {!isList && group.checklist && children.length >= 3 && !filteringLines && (
                               <InlineAction
                                 label="Sort A to Z"
@@ -2001,7 +2015,7 @@ export function ProjectDetailScreen() {
                       )}
                     </TaskGroupBody>
                   </TaskGroupTray>
-                  </GroupDropTarget>
+                  </GroupDropTargetRow>
                   </FabDropZone>
                 );
               }
@@ -2018,9 +2032,9 @@ export function ProjectDetailScreen() {
                 <EmptyState
                   icon={isList ? 'list-outline' : 'briefcase-outline'}
                   title={isList ? 'Nothing on this list yet' : 'No tasks yet'}
-                  subtitle={isList ? 'Type a line in the field above. Paste several lines to add them all' : "Add a new task, or pull in one you've already written down"}
-                  actionLabel={isList ? 'Add a line' : 'New task'}
-                  onAction={() => isList ? listInputRef.current?.focus() : setQuickAddVisible(true)}
+                  subtitle={isList ? 'Add an item above. Paste several at once to add them all' : "Add a new task, or pull in one you've already written down"}
+                  actionLabel={isList ? 'Add an item' : 'New task'}
+                  onAction={() => isList ? setTopLineOpen(v => v ?? 0) : setQuickAddVisible(true)}
                 />
               ) : null
             }
@@ -2028,30 +2042,18 @@ export function ProjectDetailScreen() {
             // completed the footer is bare padding — and that padding comes off
             // the box the empty state centres in.
             ListFooterComponent={
-              completedProjectTasks.length === 0 && !showInlineNewTask ? null : (
+              completedProjectTasks.length === 0 && (!showInlineNewTask || isList) ? null : (
               <View style={[styles.detailFooter, { paddingBottom: insets.bottom + FAB_SIZE + spacing.lg }]}>
-                {/* One tap to a new task from wherever the list ends. The add
-                    button's menu is two, and a list's own field has scrolled
-                    away by the bottom of a long one. */}
-                {showInlineNewTask && (
+                {/* One tap to a new task from wherever the list ends. A
+                    list's own add field is reached from the FAB instead —
+                    see the top of the screen. */}
+                {showInlineNewTask && !isList && (
                   <View style={styles.inlineNewTask}>
                     <InlineAction
                       icon="add"
-                      label={isList ? 'Add a line' : 'New task'}
-                      onPress={() => {
-                        if (isList) { listScroller.current?.scrollToTop(); listInputRef.current?.focus(); }
-                        else setQuickAddVisible(true);
-                      }}
+                      label="New task"
+                      onPress={() => setQuickAddVisible(true)}
                     />
-                    {isList && lineCount >= 3 && (
-                      <InlineAction
-                        icon="swap-vertical"
-                        label="Sort A to Z"
-                        variant="neutral"
-                        onPress={sortListAToZ}
-                        accessibilityLabel="Sort this list's lines from A to Z"
-                      />
-                    )}
                   </View>
                 )}
                 {completedProjectTasks.length > 0 && (
@@ -2064,7 +2066,7 @@ export function ProjectDetailScreen() {
                       onPress={() => { animateLayout(); setShowCompleted(v => !v); }}
                       activeOpacity={interaction.activeOpacity}
                       accessibilityRole="button"
-                      accessibilityLabel={`${showCompleted ? 'Hide' : 'Show'} ${completedProjectTasks.length} ${isList ? 'checked lines' : 'completed tasks'}`}
+                      accessibilityLabel={`${showCompleted ? 'Hide' : 'Show'} ${completedProjectTasks.length} ${isList ? 'checked items' : 'completed tasks'}`}
                     >
                       <Ionicons name="checkmark-circle-outline" size={13} color={colors.textTertiary} />
                       <Text style={styles.completedToggleText}>
@@ -2088,7 +2090,7 @@ export function ProjectDetailScreen() {
                             haptics.tap();
                             bulkUncompleteTasks(completedProjectTasks.map(t => t.id));
                           }}
-                          accessibilityLabel={`Uncheck all ${completedProjectTasks.length} lines`}
+                          accessibilityLabel={`Uncheck all ${completedProjectTasks.length} items`}
                         />
                       </View>
                     )}
@@ -2524,27 +2526,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   forecastLine: { color: colors.text, fontSize: font.sm },
   forecastGap: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.xxs },
-  listAddRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    backgroundColor: colors.bgSecondary,
-    marginHorizontal: spacing.md,
-    marginTop: spacing.md,
-    marginBottom: spacing.sm,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    // A height rather than lineHeight, which RN maps onto the iOS paragraph
-    // style with no baseline compensation and draws the glyphs low in the box.
-    minHeight: 44,
-  },
-  // Tucked under the field, into the gap the row's own bottom margin leaves.
-  listAddInput: {
-    flex: 1,
-    color: colors.text,
-    fontSize: font.md,
-    paddingVertical: 10,
-  },
   detailRoot: {
     flex: 1,
     backgroundColor: colors.bg,
