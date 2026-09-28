@@ -434,6 +434,19 @@ describe('ingredients', () => {
     expect(useRecipeStore.getState().recipeById(r.id)!.ingredients).toHaveLength(1);
   });
 
+  it('adds the same ingredient again under another heading (#2917)', () => {
+    const r = makeRecipe('Carnitas tacos');
+    seed([r]);
+    useRecipeStore.getState().addIngredient(r.id, '3 cloves garlic', 'For the marinade');
+
+    expect(useRecipeStore.getState().addIngredient(r.id, '2 cloves garlic', 'For the sauce')).not.toBeNull();
+    const rows = useRecipeStore.getState().recipeById(r.id)!.ingredients;
+    expect(rows.map(i => [i.section, i.quantity])).toEqual([
+      ['For the marinade', '3 cloves'],
+      ['For the sauce', '2 cloves'],
+    ]);
+  });
+
   it('recognizes clove/cloves as a unit', () => {
     const r = makeRecipe('Ragu');
     seed([r]);
