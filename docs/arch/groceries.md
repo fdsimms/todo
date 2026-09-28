@@ -654,6 +654,16 @@ which rows you don't usually get here.
   elsewhere); at identical styling they run together into a block you can't read while walking.
   It outranks the recipe caption and only that — provenance is the least useful thing at a shelf,
   while a user's note ("the blue cap one") is exactly what you're there for.
+- **A price typed on a row during a trip is the trip store's price, and Finish files it there.**
+  The row's price tag writes through `setItemPrice`, which deliberately never mints a store link
+  (a price is not a claim that the store stocks it), so at a store with no link yet the number
+  landed on the item alone. The finish sheet then showed an empty field, and skipping it minted
+  the store's link with no price (#2936). So the finish sheet seeds each field with the price
+  typed at the shelf this trip (`pricesRecordedSince`), and finishing is what records it against
+  the store, with its observation in the run, the same as a price typed at the checkout. The tag
+  itself opens holding only the trip store's own price or one typed this trip (`tripPriceFor`),
+  never another store's: `lastPriceFor`'s fallback to the item's price is right for a placeholder
+  and wrong for a value nobody labelled.
 - **The `usually` case can't be seeded into demo mode.** It needs an item bought at two stores
   while you stand in a third, and the demo has two stores anyone would shop at. The seeded trip
   is at Trader Joe's and shows the other two.

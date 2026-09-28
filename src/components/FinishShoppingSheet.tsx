@@ -31,6 +31,7 @@ import {
   lastPriceFor as lastPriceForItem,
   parsePriceInput,
   priceToInput,
+  pricesRecordedSince,
 } from '../utils/groceryPrice';
 import { resolveShoppingSubstitutes, substitutesFor } from '../utils/itemSubs';
 import { describeShopAisles, isOutOfRange } from '../utils/groceryShops';
@@ -207,7 +208,10 @@ interface Props {
  * trip with no store still records the item's own price (see
  * GroceryItem.lastPriceMinor). Every field starts empty with the last known
  * price as its placeholder, so leaving the section alone changes nothing and
- * an unpriced trip is not a claim that anything got cheaper. It sits last
+ * an unpriced trip is not a claim that anything got cheaper. The exception is
+ * a price already given for this trip (a receipt's line, a shelf label read by
+ * the barcode scanner, or a row's price tag while shopping), which fills its
+ * field so that finishing files it against this store. It sits last
  * because it's the longest, and Finish lives in the header where a long
  * section can't push it off the screen.
  */
@@ -259,8 +263,31 @@ export function FinishShoppingSheet({
   // question — you said where you were on the way in. Falling back to where you
   // finished last, which is right far more often than it's wrong: most people
   // shop the same two places.
-  const defaultShopId =
-    resolveActiveTrip(tripShopId, tripStartedAt, shops, new Date())?.id ?? lastShopId;
+  const activeTrip = resolveActiveTrip(tripShopId, tripStartedAt, shops, new Date());
+  const defaultShopId = activeTrip?.id ?? lastShopId;
+
+  // The prices typed into a row's price tag during this trip, as field text.
+  // They seed their fields on opening, so that finishing records them against
+  // the trip's store (#2936): the tag writes only the item's own price when
+  // the store has no link yet (setItemPrice never mints one), and an empty
+  // field here then minted the link with no price at all. Read through a ref
+  // on opening, like the other seeds below. Nothing on an away list, which
+  // asks no prices.
+  const tripPriceTextRef = useRef<() => Record<string, string>>(() => ({}));
+  tripPriceTextRef.current = () => {
+    if (away || !activeTrip || !tripStartedAt) return {};
+    const inCart = new Set(purchased.map(p => p.id));
+    const prices = pricesRecordedSince(
+      items.filter(i => inCart.has(i.id)),
+      activeTrip.id,
+      itemShops,
+      tripStartedAt
+    );
+    return Object.fromEntries(Object.entries(prices).map(([id, minor]) => [id, priceToInput(minor)]));
+  };
+  // What those seeds were, so the dirty check doesn't count them: they are
+  // already saved on the item, and cancelling loses none of them.
+  const tripPriceSeedRef = useRef<Record<string, string>>({});
 
   // Read through a ref so the reset fires on opening only. Reset on every
   // opening rather than on mount: the sheet outlives a trip, and last week's
@@ -293,8 +320,12 @@ export function FinishShoppingSheet({
       setSelected(shopId);
       initialSelectedRef.current = shopId;
       // Same reset and the same reason: last week's typed prices belong to last
-      // week's shop. A scanned receipt's prices are this shop's, so they seed.
-      setPriceText(seed.priceText ?? {});
+      // week's shop. A scanned receipt's prices are this shop's, so they seed,
+      // and so do the ones typed at the shelf this trip. The receipt wins a
+      // row both name: it is what was actually charged.
+      const tripPrices = tripPriceTextRef.current();
+      tripPriceSeedRef.current = tripPrices;
+      setPriceText({ ...tripPrices, ...(seed.priceText ?? {}) });
     }
   }, [visible]);
 
@@ -336,7 +367,9 @@ export function FinishShoppingSheet({
   const handleCancel = () => {
     const dirty = selected !== initialSelectedRef.current
       || unavailable.length > 0
-      || Object.values(priceText).some(t => t.trim() !== '');
+      || Object.entries(priceText).some(
+        ([id, t]) => t.trim() !== '' && t !== tripPriceSeedRef.current[id]
+      );
     if (!dirty) { Keyboard.dismiss(); onClose(); return; }
     Alert.alert(
       'Discard changes?',

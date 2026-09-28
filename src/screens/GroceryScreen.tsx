@@ -73,7 +73,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useAiRoute } from '../hooks/useOnDeviceAi';
 import { useSheetSubject } from '../hooks/useSheetSubject';
 import { OTHER_AISLE } from '../utils/groceryAisles';
-import { describeListEstimate, estimateListTotal, lastPriceFor, pricedSince, priceToInput } from '../utils/groceryPrice';
+import { describeListEstimate, estimateListTotal, priceToInput, tripPriceFor } from '../utils/groceryPrice';
 import { buildGroceryListShareText, buildGroceryListText } from '../utils/shareText';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useTaskStore } from '../store/useTaskStore';
@@ -489,10 +489,9 @@ export function GroceryScreen() {
     const out = new Map<string, { minor: number | null; recorded: boolean }>();
     if (!activeTripShop || !tripStartedAt) return out;
     for (const item of listRows) {
-      out.set(item.id, {
-        minor: lastPriceFor(item, activeTripShop.id, itemShops),
-        recorded: pricedSince(item, activeTripShop.id, itemShops, tripStartedAt),
-      });
+      // The trip store's own price, or one typed this trip, and never another
+      // store's: see tripPriceFor (#2936).
+      out.set(item.id, tripPriceFor(item, activeTripShop.id, itemShops, tripStartedAt));
     }
     return out;
   }, [activeTripShop, tripStartedAt, listRows, itemShops]);
