@@ -40,6 +40,7 @@ import { WhenPicker } from '../components/WhenPicker';
 import { MealReplaceItemSheet, type MealReplacement } from '../components/MealReplaceItemSheet';
 import { ListBulkBar } from '../components/ListBulkBar';
 import { useRowSelection } from '../hooks/useRowSelection';
+import { useSheetSubject } from '../hooks/useSheetSubject';
 import { usePlanMeal } from '../hooks/usePlanMeal';
 import {
   FabDropZone,
@@ -110,6 +111,7 @@ import {
   earliestUnplannedSlot,
   entriesForDay,
   daysWithMeal,
+  isKeyInRange,
   recipeIndex,
   recipeNamedLike,
   slotLabel,
@@ -612,6 +614,14 @@ export function MealPlanScreen() {
   // The entry whose date is being picked outside this week (#1364) — held by
   // id, since MealEntrySheet has closed by the time the calendar is up.
   const [movingFurtherId, setMovingFurtherId] = useState<string | null>(null);
+  // The entry being copied to a date outside this week (#2913), off the sheet's
+  // Also on row, held by id for movingFurtherId's reason. It shares that one's
+  // WhenPicker rather than mounting a second (an unopened WhenPicker still
+  // subscribes to the whole task list), so `furtherMode` is which of the two
+  // the picker is asking, held past the close so its title doesn't flip to
+  // "Move to" for the commit it spends fading out.
+  const [copyingFurtherId, setCopyingFurtherId] = useState<string | null>(null);
+  const furtherMode = useSheetSubject(copyingFurtherId ? 'copy' : movingFurtherId ? 'move' : null);
   const [bulkReplaceVisible, setBulkReplaceVisible] = useState(false);
   // The one entry being swapped from its own sheet (#2911), held by id for
   // movingFurtherId's reason. Shares MealReplaceItemSheet with the bulk bar's
@@ -1888,6 +1898,30 @@ export function MealPlanScreen() {
     if (n > 0) haptics.success();
   };
 
+  /**
+   * "Also on" past the week's seven chips (#2913). The chips refuse a day that
+   * already has this meal by not taking the tap; the calendar reaches any day,
+   * so the refusal is `copyEntryTo`'s and this says so. A copy landing outside
+   * the week on screen changes nothing in view, so that is said too, the way
+   * adding prep tasks is.
+   */
+  const copyToDate = (id: string, dayKey: string) => {
+    const source = entries.find(e => e.id === id);
+    if (!source) return;
+    const onScreen = !!range && isKeyInRange(dayKey, range.startKey, range.endKey);
+    if (onScreen) animateLayout();
+    const copied = copyEntryTo(id, [dayKey]) > 0;
+    const title = titleForEntry(source, recipesById);
+    const slot = slotLabel(source.slot).toLowerCase();
+    const day = format(dayKeyToDate(dayKey), 'EEEE, MMMM d');
+    if (!copied) {
+      Alert.alert('Already planned', `${title} is already ${slot} on ${day}.`);
+      return;
+    }
+    haptics.success();
+    if (!onScreen) Alert.alert('Meal copied', `${title} is also planned for ${slot} on ${day}.`);
+  };
+
   const handleCopySlot = (slot: MealSlot) => {
     if (!copyFromKey || !range) return;
     animateLayout();
@@ -2284,14 +2318,15 @@ export function MealPlanScreen() {
       />
 
       {/*
-        The way past the sheet's seven day chips. It opens after that sheet has
-        gone — two modals can't be up at once — and lands on the same
-        WhenPicker the bulk move uses, natural language included.
+        The way past the sheet's seven day chips, for Move to and for Also on
+        alike. It opens after that sheet has gone — two modals can't be up at
+        once — and lands on the same WhenPicker the bulk move uses, natural
+        language included.
       */}
       <WhenPicker
-        visible={movingFurtherId !== null}
+        visible={movingFurtherId !== null || copyingFurtherId !== null}
         value={null}
-        title="Move to"
+        title={furtherMode === 'copy' ? 'Also on' : 'Move to'}
         showTimeOfDay={false}
         showSuggest={false}
         nlEnabled
@@ -2300,9 +2335,14 @@ export function MealPlanScreen() {
             animateLayout();
             moveEntry(movingFurtherId, { date: dayKeyOf(date) });
           }
+          if (copyingFurtherId && date) copyToDate(copyingFurtherId, dayKeyOf(date));
           setMovingFurtherId(null);
+          setCopyingFurtherId(null);
         }}
-        onCancel={() => setMovingFurtherId(null)}
+        onCancel={() => {
+          setMovingFurtherId(null);
+          setCopyingFurtherId(null);
+        }}
       />
 
       <MealEntrySheet
@@ -2313,6 +2353,7 @@ export function MealPlanScreen() {
         onMove={to => selected && moveEntry(selected.id, to)}
         onMoveFurther={selected ? () => setMovingFurtherId(selected.id) : undefined}
         onCopyTo={selected && !selected.leftoverId ? date => copyEntryTo(selected.id, [date]) : undefined}
+        onCopyFurther={selected && !selected.leftoverId ? () => setCopyingFurtherId(selected.id) : undefined}
         copiedDays={selected ? daysWithMeal(entries, selected) : undefined}
         onReplace={selected && !isTypedEntry(selected) ? () => setReplacingId(selected.id) : undefined}
         onChooseRecipe={selected && isTypedEntry(selected) ? () => setReplacingId(selected.id) : undefined}

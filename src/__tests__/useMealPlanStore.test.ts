@@ -1225,6 +1225,28 @@ describe('copyEntryTo', () => {
     expect(dbInsertMealPlanEntry).not.toHaveBeenCalled();
   });
 
+  it('refuses a day that already has this meal in this slot, however it was reached (#2913)', () => {
+    const monday = entry('2026-08-03', 'lunch', { recipeId: 'r1', title: 'Pasta salad' });
+    loadWeek([monday]);
+    // A date past the loaded week, as "Another date…" picks: the day's own
+    // rows are read from SQLite rather than from the window.
+    (dbGetMealPlanEntries as jest.Mock).mockImplementation((start: string) => (
+      start === '2026-10-06' ? [entry('2026-10-06', 'lunch', { recipeId: 'r1', title: 'Pasta salad' })]
+        : start === '2026-10-07' ? [entry('2026-10-07', 'dinner', { recipeId: 'r1', title: 'Pasta salad' })]
+          : []
+    ));
+
+    expect(useMealPlanStore.getState().copyEntryTo(monday.id, ['2026-10-06'])).toBe(0);
+    expect(dbInsertMealPlanEntry).not.toHaveBeenCalled();
+    expect(useMealPlanStore.getState().lastAction).toBeNull();
+
+    // The same recipe in another slot is another meal, and a day with nothing
+    // takes it; only the refused day is dropped from a call naming several.
+    expect(useMealPlanStore.getState().copyEntryTo(monday.id, ['2026-10-06', '2026-10-07', '2026-10-08'])).toBe(2);
+    const written = (dbInsertMealPlanEntry as jest.Mock).mock.calls.map(c => [c[0].date, c[0].slot]);
+    expect(written).toEqual([['2026-10-07', 'lunch'], ['2026-10-08', 'lunch']]);
+  });
+
   it('undoes every copy it wrote in one step', () => {
     const monday = entry('2026-08-03', 'lunch', { title: 'Soup' });
     loadWeek([monday]);

@@ -45,6 +45,7 @@ import { totalMinutes } from '../utils/recipeUtils';
 import {
   cleanMealTitle,
   cookEntryForRecipe,
+  daysWithMeal,
   entriesForDay,
   entriesForSlot,
   isKeyInRange,
@@ -687,9 +688,11 @@ interface MealPlanStore extends UndoHistoryActions {
    * many were written.
    *
    * Skips the meal's own day, and a leftover night altogether: one container
-   * can't supply several dinners, the reason a week copy drops it. Which days
-   * already have the meal is the caller's to show (`daysWithMeal`); this adds
-   * where it's told.
+   * can't supply several dinners, the reason a week copy drops it. **Also
+   * skips a day that already has this meal in this slot** (`daysWithMeal`,
+   * read from SQLite for that day). The Also on chips show that by not taking
+   * the tap, but "Another date…" is a calendar that reaches any day, so the
+   * refusal has to live here; a caller learns of it from the count.
    *
    * One `lastAction` for the whole call, removing every row it wrote, the
    * "one action, one undo" `copyWeek` keeps.
@@ -1458,17 +1461,16 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     if (!source) return 0;
     const targets = [...new Set(dates)].filter(date => date !== source.date);
     const drafts = targets.flatMap(date => {
+      const day = dbGetMealPlanEntries(date, date);
+      if (daysWithMeal(day, source).has(date)) return [];
       const draft = mealCopyDraft(source, date);
-      return draft ? [draft] : [];
+      // At the end of what that day's slot already has, as planMeal places a
+      // meal; the source's own position means nothing on another day.
+      return draft ? [{ ...draft, sortOrder: nextSortOrder(day, date, draft.slot) }] : [];
     });
     if (drafts.length === 0) return 0;
 
-    const created = drafts.map(draft => copyRow({
-      ...draft,
-      // At the end of what that day's slot already has, as planMeal places a
-      // meal; the source's own position means nothing on another day.
-      sortOrder: nextSortOrder(dbGetMealPlanEntries(draft.date, draft.date), draft.date, draft.slot),
-    }));
+    const created = drafts.map(copyRow);
     return writeCopies(
       set, get, created,
       `Copied "${source.title}" to ${created.length} day${created.length === 1 ? '' : 's'}`,
