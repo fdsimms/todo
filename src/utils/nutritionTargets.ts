@@ -116,13 +116,14 @@ export function targetedNutrients(targets: NutritionTargets): NutrientKey[] {
 /**
  * "1,840 of 2,000 cal", or null when there is nothing to say.
  *
- * **Null for a nutrient nothing logged today stated**, rather than "0 of
- * 2,000". A day nobody has eaten in yet has no total, and rendering a zero
- * against a goal every morning is the same mistake the step row refuses to
- * make: it reads as a scold to somebody who has not eaten and as a bug to
- * everybody else.
+ * **"0 of 2,000" for a nutrient nothing logged today stated, as long as a
+ * target is set.** A target is something the person is aiming at for the
+ * whole day, and a day with no entries yet hasn't missed it — it just hasn't
+ * been recorded against yet, same as a fresh morning's step count. Showing
+ * the target line lets it answer "what am I aiming for today" before
+ * anything is logged, rather than only once something is.
  *
- * Null too for a nutrient with no target, since the caller is asking how the
+ * Null for a nutrient with no target, since the caller is asking how the
  * day reads against one and there isn't one. The total on its own is the day
  * view's own business.
  */
@@ -132,10 +133,10 @@ export function describeAgainstTarget(
   targets: NutritionTargets,
 ): string | null {
   const target = targets[key];
-  if (target === undefined || total === undefined) return null;
+  if (target === undefined) return null;
   const unit = NUTRIENT_LABEL[key].unit;
   const suffix = unit === 'cal' ? ' cal' : unit;
-  return `${round(total).toLocaleString()} of ${target.toLocaleString()}${suffix}`;
+  return `${round(total ?? 0).toLocaleString()} of ${target.toLocaleString()}${suffix}`;
 }
 
 /**
