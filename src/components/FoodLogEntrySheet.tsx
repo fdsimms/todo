@@ -903,15 +903,43 @@ export function FoodLogEntrySheet({
     );
   };
 
-  /** Filing it under its own name, minting the row when there isn't one. */
+  /**
+   * Filing it as a new catalog row, minting the row when there isn't one.
+   *
+   * **The name is asked for first, opening on the database's own** (#2914). A
+   * database names a food the way a database does ("Chicken, broilers or
+   * fryers, breast, meat only, cooked, roasted"), and filing used to make that
+   * the row's name in the grocery catalog with no chance to shorten it, which
+   * is then the name it is searched for and listed under from here on. Only
+   * the catalog row takes the typed name: this entry keeps the description it
+   * was found under, the same as filing it against "Something I already have"
+   * does. A blank name files nothing, the way the app's renames treat a blank.
+   */
   const fileAsNewItem = () => {
     if (!picked) return;
-    // `ensureCatalogItem` rather than `addByName`, the same restraint
-    // `FoodLogScreen`'s scan handler takes: eating something is not a plan to
-    // buy it, so a row minted here arrives off the list.
-    const item = ensureCatalogItem(picked.label);
-    if (!item) { haptics.error(); return; }
-    fileInCatalog(item);
+    const described = picked.label;
+    Alert.prompt(
+      'Add as a new item',
+      'The name it will have in your grocery catalog. It is not added to your shopping list.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Add',
+          onPress: (text?: string) => {
+            const name = (text ?? '').trim();
+            if (!name) return;
+            // `ensureCatalogItem` rather than `addByName`, the same restraint
+            // `FoodLogScreen`'s scan handler takes: eating something is not a
+            // plan to buy it, so a row minted here arrives off the list.
+            const item = ensureCatalogItem(name);
+            if (!item) { haptics.error(); return; }
+            fileInCatalog(item);
+          },
+        },
+      ],
+      'plain-text',
+      described,
+    );
   };
 
   // ==== actions: saving, picking from the database, leaving ====
@@ -1323,7 +1351,7 @@ export function FoodLogEntrySheet({
                 </Text>
                 <View style={styles.fileRow}>
                   <InlineAction
-                    label={`Add “${picked.label}”`}
+                    label="Add as a new item"
                     icon="add"
                     onPress={() => { haptics.tap(); fileAsNewItem(); }}
                   />
