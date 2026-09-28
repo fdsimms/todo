@@ -277,6 +277,7 @@ export function TemplatesScreen() {
         // control below.
         scrollEnabled={!fabDragging}
         scrollControlRef={scrollControl}
+        scrollToTop={{ bottom: insets.bottom + tabBarHeight + spacing.md }}
         onReorder={data => {
           const { templateIds, categoryUpdates } = resolveTemplateDrop(data, templateCategoryOrder);
           reorderTemplatesWithCategoryUpdates(templateIds, categoryUpdates);

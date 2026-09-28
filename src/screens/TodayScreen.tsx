@@ -79,6 +79,7 @@ import { featureHidden, featureShown, visibleLenses } from '../utils/simpleMode'
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useKeyboardLift } from '../hooks/useKeyboardLift';
 import { InlineNameField } from '../components/InlineNameField';
+import { useScrollToTopVisibility } from '../hooks/useScrollToTopVisibility';
 import { useElevatedCellRenderer } from '../hooks/useElevatedCellRenderer';
 import { useMealPlanNudgeProgress } from '../hooks/useMealPlanNudgeProgress';
 import { useCategoryStore } from '../store/useCategoryStore';
@@ -94,9 +95,16 @@ import { TaskGroupHeader } from '../components/TaskGroupHeader';
 import { TaskGroupBody } from '../components/TaskGroupBody';
 import { TaskGroupTray } from '../components/TaskGroupTray';
 import { TaskGroupEditor } from '../components/TaskGroupEditor';
-import { ReorderableList, type RowScroller } from '../components/ReorderableList';
+import { ReorderableList, type RowScroller, type DropCapture } from '../components/ReorderableList';
+import { ScrollToTopButton } from '../components/ScrollToTopButton';
 import { PaintSelectionProvider } from '../components/PaintSelection';
 import { GroupDropTarget } from '../components/GroupDropTarget';
+import {
+  ChannelDropTarget,
+  useDropTargetAimed,
+  useDropTargetChannel,
+  type DropTargetChannel,
+} from '../components/DropTargetChannel';
 import {
   FabDropZone,
   FabDropZoneProvider,
@@ -259,6 +267,9 @@ const NO_GROUP_CHILDREN: Task[] = [];
 // value but re-registers the payload every render, and the pinned block is one
 // zone rather than one per row.
 const PINNED_DROP_ZONE = { kind: 'pinned', key: '__pinned-header__' } as const;
+// The Pinned block's id on the drag's DropTargetChannel, where the stacks are
+// named by their own ids.
+const PINNED_DRAG_TARGET = '__pinned-header__';
 
 // Category section header. When `onToggle` is given, the header is a
 // tappable collapse/expand control for its category (chevron reflects
@@ -328,23 +339,24 @@ function SectionHeader({
 // untouched prop, so the row underneath doesn't re-render with the wrapper.
 
 // A stack row, lit by either drag that can land in it: an existing task dragged
-// onto it (`active`), or the add button aimed at it.
+// onto it (`dragTarget`), or the add button aimed at it.
 function GroupDropTargetRow({
   channel,
   groupId,
-  active,
+  dragTarget,
   children,
 }: {
   channel: FabIntentChannel;
   groupId: string;
-  active: boolean;
+  dragTarget: DropTargetChannel;
   children: React.ReactNode;
 }) {
   const aimed = useFabIntentSelector(
     channel,
     intent => intent?.kind === 'joinGroup' && intent.groupId === groupId,
   );
-  return <GroupDropTarget active={active || aimed}>{children}</GroupDropTarget>;
+  const dragAimed = useDropTargetAimed(dragTarget, groupId);
+  return <GroupDropTarget active={dragAimed || aimed}>{children}</GroupDropTarget>;
 }
 
 // The add button, naming what a release right now would do.
@@ -709,6 +721,8 @@ export function TodayScreen() {
   // each needs its own ref and its own record of where it last settled.
   const unscheduledScroll = useKeyboardInsetScroll<FlatList>();
   const inboxScroll = useKeyboardInsetScroll<FlatList>();
+  const unscheduledScrollTop = useScrollToTopVisibility();
+  const inboxScrollTop = useScrollToTopVisibility();
   // Lifts the expanded row's cell above the row below it — Unscheduled and
   // Inbox are genuine FlatLists, unlike Today/Later's own ReorderableList
   // (see useElevatedCellRenderer for why that one needs no equivalent).
@@ -2818,8 +2832,15 @@ export function TodayScreen() {
   // is being dragged: set from onDragMove below whenever the dragged card
   // sits over a group — header or children — and cleared the moment it isn't.
   // Read once at drop time in onDragEnd.
+  //
+  // The highlight and the list's freeze don't go through screen state: as
+  // state, every crossing re-rendered all of Today mid-drag. The stack (or the
+  // Pinned block, below) reads dropTargetChannel and the list is told through
+  // dropCapture, so a crossing repaints only the target it lit. See
+  // DropTargetChannel.
   const joinGroupIntentRef = useRef<string | null>(null);
-  const [joinGroupIntentId, setJoinGroupIntentId] = useState<string | null>(null);
+  const dropTargetChannel = useDropTargetChannel();
+  const dropCapture = useRef<DropCapture>(null);
   // Task the drop just handed to a group (set in onDragEnd, which runs before
   // onReorder), so the placement pass below leaves it alone — it belongs to
   // the group now, not to whatever slot it was let go over.
@@ -2831,7 +2852,6 @@ export function TodayScreen() {
   // here, the pinned block — so there's no group id to track, just whether
   // the drop is currently aimed there.
   const pinIntentRef = useRef(false);
-  const [pinIntentActive, setPinIntentActive] = useState(false);
   const pinnedTaskIdRef = useRef<string | null>(null);
   // Index (within draggableData) of the row currently being dragged in the
   // main list — kept up to date from dragRange (called every hover update)
@@ -3081,7 +3101,7 @@ export function TodayScreen() {
         <GroupDropTargetRow
           channel={fabIntentChannel}
           groupId={item.group.id}
-          active={joinGroupIntentId === item.group.id}
+          dragTarget={dropTargetChannel}
         >
           <TaskGroupTray>
             <TaskGroupHeader
@@ -3418,7 +3438,7 @@ export function TodayScreen() {
     // the next task's card sit back to back with only the ordinary 2px
     // inter-row gap, reading as one section.
     <>
-    <GroupDropTarget active={pinIntentActive}>
+    <ChannelDropTarget channel={dropTargetChannel} id={PINNED_DRAG_TARGET}>
     <FabDropZone zone={PINNED_DROP_ZONE}>
       <Pressable style={styles.focusSectionHeader} onPress={() => setExpandedTaskId(null)}>
         <View style={styles.focusSectionTitleRow}>
@@ -3529,7 +3549,7 @@ export function TodayScreen() {
         }
       />
     </FabDropZone>
-    </GroupDropTarget>
+    </ChannelDropTarget>
     <View style={styles.pinnedBlockFooter}>
       <SpotlightScrim />
     </View>
@@ -4020,6 +4040,7 @@ export function TodayScreen() {
           <ReorderableList
             scrollEnabled={!painting && !draggingSubtask}
             rowScrollerRef={laterRowScroller}
+            scrollToTop={{ bottom: insets.bottom + 64 }}
             data={laterDraggableData}
             keyExtractor={item => item.key}
             // See the Today list's own note: an expanded row's card shadow
@@ -4147,6 +4168,7 @@ export function TodayScreen() {
             scrollEnabled={!painting && !fabDragging && !draggingStackChildGroupId && !draggingSubtask && !draggingPin}
             scrollControlRef={todayScrollControl}
             rowScrollerRef={todayRowScroller}
+            scrollToTop={{ bottom: insets.bottom + 64 }}
             data={draggableData}
             keyExtractor={listItemKey}
             renderItem={renderItem}
@@ -4170,7 +4192,8 @@ export function TodayScreen() {
               joinedTaskIdRef.current = null;
               pinnedTaskIdRef.current = null;
               pinIntentRef.current = false;
-              setPinIntentActive(false);
+              joinGroupIntentRef.current = null;
+              dropTargetChannel.publish(null);
               // Fires synchronously inside drag(), so this is the group whose
               // header started this drag — or null for any other row, which
               // also clears a previous group drag that somehow outlived its
@@ -4180,10 +4203,10 @@ export function TodayScreen() {
             onDragEnd={({ committed }) => {
               const joinGroupId = joinGroupIntentRef.current;
               joinGroupIntentRef.current = null;
-              setJoinGroupIntentId(null);
               const pinTarget = pinIntentRef.current;
               pinIntentRef.current = false;
-              setPinIntentActive(false);
+              dropTargetChannel.publish(null);
+              dropCapture.current?.capture(null);
               // The join/pin lands here rather than in onReorder: a drop onto a
               // group or the pinned block leaves the list order untouched (the
               // list stops reordering once it's aimed at either), and onReorder
@@ -4221,31 +4244,22 @@ export function TodayScreen() {
               const over = overIndex !== null ? draggableData[overIndex] : null;
               const target = over?.type === 'group' ? over.group : null;
               const nextId = target ? target.id : null;
-              if (nextId !== joinGroupIntentRef.current) {
-                joinGroupIntentRef.current = nextId;
-                setJoinGroupIntentId(nextId);
-                if (nextId) haptics.impactLight();
-              }
               // Already-pinned task hovering its own block would be a no-op
               // write, so it's left out of the intent rather than treated as a
               // target.
               const wantsPin = nextId === null && overHeader && !draggedItem.task.pinned;
-              if (wantsPin !== pinIntentRef.current) {
-                pinIntentRef.current = wantsPin;
-                setPinIntentActive(wantsPin);
-                if (wantsPin) haptics.impactLight();
-              }
+              if (nextId === joinGroupIntentRef.current && wantsPin === pinIntentRef.current) return;
+              joinGroupIntentRef.current = nextId;
+              pinIntentRef.current = wantsPin;
+              dropTargetChannel.publish(nextId ?? (wantsPin ? PINNED_DRAG_TARGET : null));
+              // Aiming at a group or the pinned block takes the drag over: the
+              // list stops opening a reorder gap, so the target stays put under
+              // the card instead of sliding away from the finger chasing it,
+              // and a drop settles into it.
+              dropCapture.current?.capture(nextId !== null ? overIndex : wantsPin ? 'header' : null);
+              if (nextId || wantsPin) haptics.impactLight();
             }}
-            // Aiming at a group or the pinned block takes the drag over: the
-            // list stops opening a reorder gap, so the target stays put under
-            // the card instead of sliding away from the finger chasing it.
-            dropDisabled={joinGroupIntentId !== null || pinIntentActive}
-            dropIntoIndex={
-              joinGroupIntentId === null
-                ? null
-                : draggableData.findIndex(i => i.type === 'group' && i.group.id === joinGroupIntentId)
-            }
-            dropIntoHeader={pinIntentActive}
+            dropCaptureRef={dropCapture}
             // Only here to record which row is in flight (onDragMove reads it);
             // every draggable row on this list may go anywhere in it. Section
             // headers aren't draggable at all — their order is set from the "…"
@@ -4373,6 +4387,8 @@ export function TodayScreen() {
                 unscheduledScroll.ref.current?.scrollToIndex({ index: info.index, animated: true, viewPosition: 0.3 });
               }, 100);
             }}
+            onScroll={unscheduledScrollTop.onScroll}
+            scrollEventThrottle={16}
             {...unscheduledScroll.props}
             renderItem={({ item }) => {
               const subs = subtasksByParent.get(item.id) ?? NO_SUBTASKS;
@@ -4467,6 +4483,8 @@ export function TodayScreen() {
                 inboxScroll.ref.current?.scrollToIndex({ index: info.index, animated: true, viewPosition: 0.3 });
               }, 100);
             }}
+            onScroll={inboxScrollTop.onScroll}
+            scrollEventThrottle={16}
             {...inboxScroll.props}
             renderItem={({ item }) => {
               const content =
@@ -4526,6 +4544,24 @@ export function TodayScreen() {
         </FabDropZoneProvider>
         </PaintSelectionProvider>
         </View>
+
+        {/* Today and Later get their own scroll-to-top button from
+            ReorderableList's scrollToTop prop; Unscheduled and Inbox are
+            plain FlatLists, so they need one wired by hand. */}
+        {viewMode === 'unscheduled' && (
+          <ScrollToTopButton
+            visible={unscheduledScrollTop.visible}
+            bottom={insets.bottom + 64}
+            onPress={() => unscheduledScroll.ref.current?.scrollToOffset({ offset: 0, animated: true })}
+          />
+        )}
+        {viewMode === 'inbox' && (
+          <ScrollToTopButton
+            visible={inboxScrollTop.visible}
+            bottom={insets.bottom + 64}
+            onPress={() => inboxScroll.ref.current?.scrollToOffset({ offset: 0, animated: true })}
+          />
+        )}
 
         {!selectionMode && !namingStack && (
           <AddTaskFabWithDropLabel
