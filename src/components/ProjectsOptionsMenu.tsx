@@ -31,8 +31,6 @@ interface Props {
   categoryCount: number;
   sort: ProjectSortOption;
   onSortChange: (sort: ProjectSortOption) => void;
-  /** Opens `CookbookChecklistSheet` — a photo of a table of contents in, a list-kind project out. */
-  onScanCookbook: () => void;
 }
 
 /**
@@ -48,7 +46,7 @@ interface Props {
  */
 export function ProjectsOptionsMenu({
   visible, onClose, filter, onFilterChange, completedCount, archivedCount,
-  onManageCategories, categoryCount, onScanCookbook, sort, onSortChange,
+  onManageCategories, categoryCount, sort, onSortChange,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -219,24 +217,6 @@ export function ProjectsOptionsMenu({
                   ? `Rename, reorder or delete the ${categoryCount === 1 ? 'one you have' : `${categoryCount} you have`}`
                   : 'Group projects under headings of your own'}
               </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
-          </TouchableOpacity>
-          <View style={styles.optionSep} />
-          <TouchableOpacity
-            style={styles.optionRow}
-            onPress={() => {
-              haptics.tap();
-              dismissThen(onScanCookbook);
-            }}
-            activeOpacity={interaction.activeOpacity}
-            accessibilityRole="button"
-            accessibilityLabel="Scan a cookbook"
-          >
-            <Ionicons name="camera-outline" size={18} color={colors.textSecondary} />
-            <View style={styles.optionContent}>
-              <Text style={styles.optionLabel}>Scan a cookbook</Text>
-              <Text style={styles.optionHint}>Photograph its table of contents to build a checklist</Text>
             </View>
             <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
           </TouchableOpacity>

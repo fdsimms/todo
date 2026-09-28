@@ -322,6 +322,7 @@ export const SIMPLE_EDITOR_ROW_FEATURES: Readonly<Record<string, SimpleFeatureId
   waitingOn: 'blocking',
   blocks: 'blocking',
   followUpTask: 'followUpTasks',
+  followUpSource: 'followUpTasks',
   deliverable: 'deliverables',
   stack: 'stacks',
   effort: 'effortRating',

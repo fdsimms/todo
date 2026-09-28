@@ -746,6 +746,23 @@ export function seedDemoData(): void {
     effort: 2,
   });
   updateTask(violin.id, { followUpTaskTally: 2 });
+  // One follow-up task already added by an earlier cycle of the rule above,
+  // pointing back at the live "Practice the violin" row — what TaskEditor's
+  // "Follow-up frequency" row (Task.followUpTaskSourceId) resolves against,
+  // so the demo shows the rule editable from the task it added and not just
+  // from the task that owns it.
+  addTask({
+    title: 'Rosin the bow',
+    category: 'Home',
+    tags: ['upkeep'],
+    priority: 1,
+    effort: 1,
+    estimatedMinutes: 5,
+    timeSegments: ['evening'],
+    dueDate: today.toISOString(),
+    followUpTaskSourceTitle: 'Practice the violin',
+    followUpTaskSourceId: violin.id,
+  });
 
   // A decision task — one that completes by recording an answer rather than
   // just being ticked. Seeded live so its checkbox shows the "?" that says it
@@ -1071,13 +1088,12 @@ export function seedDemoData(): void {
   const doctor = createProject('Questions for Dr. Okafor', { kind: 'list' });
   updateProject(doctor.id, { category: 'Ideas' });
 
-  // What `CookbookChecklistSheet` builds from a photo of a table of contents:
-  // a list-kind project named for the book, one item per recipe, some already
-  // checked off. Seeded with a couple already cooked so the checklist reads as
-  // progress through a book rather than as an ordinary uncompleted list —
-  // that's the whole feature this exists to demo.
+  // A list-kind project that's read in book order rather than worked off a
+  // list, and crossed out rather than dropped once done (Project.showChecked)
+  // — a book is read with what's done still on the page. Seeded with a couple
+  // already cooked so it reads as progress through a book.
   const cookbook = createProject('Six Seasons', { kind: 'list' });
-  updateProject(cookbook.id, { category: 'Ideas' });
+  updateProject(cookbook.id, { category: 'Ideas', showChecked: true });
   ['Grilled Asparagus with Anchovy', 'Sugar Snaps with Mint', 'Roast Chicken with Crispy Bread Salad',
     'Corn Chaat', 'Slow-Roasted Tomatoes'].forEach((title, i) => {
     const t = addTask({ title });
@@ -1139,10 +1155,6 @@ export function seedDemoData(): void {
   updateProject(lisbon.id, {
     links: [{ id: 'demo-lisbon-flat', label: 'The flat in Alfama', url: 'https://example.com/lisbon-flat' }],
   });
-
-  // Six Seasons keeps its cooked recipes in view, crossed out in book order
-  // (Project.showChecked): a book is read with what's done still on the page.
-  updateProject(cookbook.id, { showChecked: true });
 
   // A party: RSVPs as one Pick-one task per guest, counted on the project page
   // ("2 Yes, 1 No, 2 waiting"), and invitations that wait on two things at

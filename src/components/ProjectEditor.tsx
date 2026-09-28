@@ -1088,7 +1088,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
           icon="pause-outline"
           label="Pause until"
           hint={isList
-            ? 'Hides all of its lines and stops any nudges until this day.'
+            ? 'Hides all of its items and stops any nudges until this day.'
             : 'Hides all of its tasks, repeating ones too, and stops any nudges until this day.'}
           value={pausedUntil ? formatDeadlineDate(pausedUntil.toISOString()) : undefined}
           onPress={() => setPickingPause(true)}
@@ -1101,16 +1101,16 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
             onPress={() => { haptics.tap(); setShowChecked(v => !v); }}
             activeOpacity={interaction.activeOpacity}
             accessibilityRole="switch"
-            accessibilityLabel="Keep checked lines in view"
+            accessibilityLabel="Keep checked items in view"
             accessibilityState={{ checked: showChecked }}
           >
             <Ionicons name="checkmark-done-outline" size={18} color={showChecked ? colors.accent : colors.textSecondary} />
             <View style={styles.optionContent}>
-              <Text style={styles.optionLabel}>Keep checked lines in view</Text>
+              <Text style={styles.optionLabel}>Keep checked items in view</Text>
               <Text style={styles.optionHint}>
                 {showChecked
-                  ? 'Checked lines stay at the bottom, crossed out, in list order'
-                  : 'Checked lines fold away under a "Show checked" button at the bottom'}
+                  ? 'Checked items stay at the bottom, crossed out, in list order'
+                  : 'Checked items fold away under a "Show checked" button at the bottom'}
               </Text>
             </View>
             <View style={[styles.toggle, showChecked && styles.toggleOn]}>
@@ -1154,8 +1154,8 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
             <Text style={styles.optionLabel}>Ongoing</Text>
             <Text style={styles.optionHint}>
               {ongoing
-                ? `Never offered as complete. Its card counts open ${isList ? 'lines' : 'tasks'} instead of a progress bar`
-                : isList ? 'Offers to mark complete once every line is checked' : 'Offers to mark complete once every task is done'}
+                ? `Never offered as complete. Its card counts open ${isList ? 'items' : 'tasks'} instead of a progress bar`
+                : isList ? 'Offers to mark complete once every item is checked' : 'Offers to mark complete once every task is done'}
             </Text>
           </View>
           <View style={[styles.toggle, ongoing && styles.toggleOn]}>
