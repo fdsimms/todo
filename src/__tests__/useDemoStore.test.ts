@@ -1235,6 +1235,21 @@ describe('demo mode', () => {
     expect(draft.notes).not.toBe('');
   });
 
+  // A follow-up task that already resolves to a live parent, so the demo
+  // shows TaskEditor's "Follow-up frequency" shortcut (Task.followUpTaskSourceId)
+  // and not just the rule that will one day add one.
+  it('seeds a follow-up task whose source id resolves to the live parent', () => {
+    useDemoStore.getState().enterDemoMode();
+    const tasks = useTaskStore.getState().tasks;
+    const spawned = tasks.find(t => t.followUpTaskSourceId !== null);
+
+    expect(spawned).toBeDefined();
+    const parent = tasks.find(t => t.id === spawned!.followUpTaskSourceId);
+    expect(parent).toBeDefined();
+    expect(followUpTaskRule(parent!)).not.toBeNull();
+    expect(spawned!.followUpTaskSourceTitle).toBe(parent!.title);
+  });
+
   // No number on any task means no call/text button anywhere in the demo.
   it('seeds a task carrying a phone number', () => {
     useDemoStore.getState().enterDemoMode();

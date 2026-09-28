@@ -75,6 +75,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   followUpTaskEveryN: null, followUpTaskTitle: null, followUpTaskDraft: null,
   followUpTaskOneAtATime: false, followUpTaskTally: 0, previousFollowUpTaskTally: 0,
   followUpTaskSourceTitle: null,
+  followUpTaskSourceId: null,
   archived: false, archivedAt: null, timerStartedAt: null, actualMinutes: null,
   timedMinutes: null, timerElapsedSeconds: 0,
   healthMetric: null,
@@ -519,6 +520,28 @@ describe('buildCompletion', () => {
       expect(followUpTask).not.toBeNull();
       expect(followUpTask!.title).toBe('Rosin the bow');
       expect(followUpTask!.followUpTaskSourceTitle).toBe('Practice');
+    });
+
+    // followUpTaskSourceId is what TaskEditor's "Follow-up frequency" row
+    // resolves the parent against, and it has to be the *successor's* id —
+    // the row that will actually carry followUpTaskEveryN forward — not the
+    // row that was just completed and is on its way to being purged.
+    it('points the source id at the next occurrence, not the completed row', () => {
+      const task = everyThird(2);
+      const recurring = { ...task, recurrenceType: 'daily' as const };
+      const { followUpTask, nextTask } = build(recurring);
+      expect(nextTask).not.toBeNull();
+      expect(followUpTask!.followUpTaskSourceId).toBe(nextTask!.id);
+      expect(followUpTask!.followUpTaskSourceId).not.toBe(task.id);
+    });
+
+    // A one-off's last completion (or a series that's run out) spawns no
+    // successor, so there's nothing live for the shortcut to resolve — the
+    // field reads null rather than pointing at a row that won't exist.
+    it('has no source id when the completion spawns no successor', () => {
+      const { followUpTask, nextTask } = build(everyThird(2));
+      expect(nextTask).toBeNull();
+      expect(followUpTask!.followUpTaskSourceId).toBeNull();
     });
 
     // The tally counts completions, and a miss is not one.
