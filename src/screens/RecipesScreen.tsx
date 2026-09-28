@@ -529,6 +529,17 @@ export function RecipesScreen() {
     [recipes, pantryCatalog, itemSubs]
   );
 
+  // Each row's subtitle, worked out once per recipe rather than twice per row
+  // render (the spoken label and the meta line both read it), and handed to
+  // the row as a plain string (#2922). A string compares by value, so a
+  // recount that leaves a recipe's own count where it was gives its row the
+  // same prop it had.
+  const rowDescriptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const recipe of recipes) map.set(recipe.id, describeRecipe(recipe, pantryCounts.get(recipe.id)));
+    return map;
+  }, [recipes, pantryCounts]);
+
   // "Love"/"Unlove" flips direction based on the selection itself, the
   // same way the grocery bulk bar's Check/Uncheck does — a selection that's
   // already all loved has nothing left to love.
@@ -683,6 +694,9 @@ export function RecipesScreen() {
     item: Recipe; drag?: () => void; isActive?: boolean; duplicateRow?: boolean;
   }) => {
     const selected = selectedIds.has(recipe.id);
+    // The fallback covers the one commit a just-deleted recipe can still sit
+    // in `draggableData` before its effect catches up with the store.
+    const description = rowDescriptions.get(recipe.id) ?? describeRecipe(recipe, pantryCounts.get(recipe.id));
     const rowBody = (
       <TouchableOpacity
         style={[styles.row, selectionMode && selected && styles.rowSelected]}
@@ -691,7 +705,7 @@ export function RecipesScreen() {
         activeOpacity={interaction.activeOpacity}
         accessibilityRole={selectionMode ? 'checkbox' : 'button'}
         accessibilityState={selectionMode ? { checked: selected } : undefined}
-        accessibilityLabel={`${recipe.name}. ${describeRecipe(recipe, pantryCounts.get(recipe.id))}`}
+        accessibilityLabel={`${recipe.name}. ${description}`}
         accessibilityHint={selectionMode ? 'Double tap to select recipe' : 'Double tap to open this recipe.'}
       >
         {/* The photo or tile stays put while selecting. Selection is the
@@ -708,7 +722,7 @@ export function RecipesScreen() {
         <View style={styles.info}>
           <Text style={styles.name} numberOfLines={2}>{recipe.name}</Text>
           <Text style={styles.meta} numberOfLines={1}>
-            {[describeRecipe(recipe, pantryCounts.get(recipe.id)), describeCookHistory(recipe)].filter(Boolean).join(' · ')}
+            {[description, describeCookHistory(recipe)].filter(Boolean).join(' · ')}
           </Text>
         </View>
         {recipe.vote === 'loved' && (
