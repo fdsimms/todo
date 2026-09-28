@@ -194,15 +194,15 @@ export function scaleQuantity(quantity: string, factor: number): ScaledQuantity 
 // ---------------------------------------------------------------------------
 
 /**
- * The factors the pickers offer. Halves and small whole multiples, which is
- * what a cook actually reaches for — and deliberately not derived from a
+ * The factors the pickers offer. Quarters, halves and small whole multiples,
+ * which is what a cook actually reaches for — and deliberately not derived from a
  * target servings count, because `Recipe.servings` is nullable and plenty of
  * recipes never had one, so a "cook for 6" stepper would be unavailable
  * exactly where a factor still makes perfect sense. Scaled servings are shown
  * *alongside* the factor when the recipe happens to know them (see
  * scaleServings).
  */
-export const RECIPE_SCALE_FACTORS = [0.5, 1, 1.5, 2, 3] as const;
+export const RECIPE_SCALE_FACTORS = [0.25, 0.5, 1, 1.5, 2, 3] as const;
 
 /** True for the do-nothing factor, including the `null`/legacy absence of one. */
 export function isUnscaled(factor: number | null | undefined): boolean {

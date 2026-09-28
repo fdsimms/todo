@@ -1,13 +1,15 @@
 import React, { useMemo } from 'react';
-import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View, type StyleProp, type ViewStyle } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
-import { font, fontWeight, radius, spacing, type Colors } from '../theme';
+import { font, fontWeight, iconSize, radius, spacing, type Colors } from '../theme';
 import { PressableScale } from './PressableScale';
 import { CountStepper } from './CountStepper';
 import {
   RECIPE_SCALE_FACTORS,
   factorForServings,
   formatScale,
+  isUnscaled,
   normalizeScale,
   targetServingsFor,
 } from '../utils/recipeScale';
@@ -51,7 +53,7 @@ interface Props {
 }
 
 /**
- * The ½ · 1 · 1½ · 2 · 3 row that halves or doubles a recipe.
+ * The ¼ · ½ · 1 · 1½ · 2 · 3 row that scales a recipe up or down.
  *
  * Shared between the recipe screen (where the factor is a way of *reading* the
  * recipe and lasts as long as you're looking at it) and the add-to-list sheets
@@ -59,15 +61,20 @@ interface Props {
  * two shapes for one idea.
  *
  * Chips for the *common* factors — the useful ones are a short closed set,
- * and half is one of them, so a stepper over ½, 1, 1½ … would have no natural
- * step. But "makes 8, I need 3" is a genuinely open-ended number, which is
- * exactly the case this app otherwise reaches for a `CountStepper` over a
- * chip row for (see its own doc comment) — so when the recipe knows its own
- * serving count, a stepper renders below the chips, targeting servings
- * directly rather than making the cook do the division themselves. It's a
- * second view of the one `value` factor, not a separate setting: picking a
- * chip moves the stepper, typing a number moves the chip selection (usually
- * to none, since most targets aren't a preset).
+ * and half is one of them, so a stepper over ¼, ½, 1, 1½ … would have no
+ * natural step. But "makes 8, I need 3" is a genuinely open-ended number,
+ * which is exactly the case this app otherwise reaches for a `CountStepper`
+ * over a chip row for (see its own doc comment) — so when the recipe knows
+ * its own serving count, a stepper renders below the chips, targeting
+ * servings directly rather than making the cook do the division themselves.
+ * It's a second view of the one `value` factor, not a separate setting:
+ * picking a chip moves the stepper, typing a number moves the chip selection
+ * (usually to none, since most targets aren't a preset).
+ *
+ * A close-circle beside the chips resets to 1× whenever the recipe is
+ * actually scaled — the servings stepper especially can land the factor
+ * somewhere no chip is lit, so there needs to be a way back that doesn't
+ * depend on remembering which chip that was.
  */
 export function RecipeScaleChips({
   value,
@@ -89,33 +96,52 @@ export function RecipeScaleChips({
 
   return (
     <View style={[styles.wrap, style]}>
-      <View style={styles.chips}>
-        {RECIPE_SCALE_FACTORS.map(factor => {
-          const on = Math.abs(factor - active) < 1e-9;
-          return (
-            <PressableScale
-              key={factor}
-              style={[
-                styles.chip,
-                surface === 'card' ? styles.chipOnCard : styles.chipOnBackground,
-                on && styles.chipSelected,
-              ]}
-              onPress={() => {
-                haptics.tap();
-                onChange(factor);
-              }}
-              accessibilityRole="button"
-              accessibilityState={{ selected: on }}
-              accessibilityLabel={
-                factor === 1 ? 'Cook as written' : `Cook ${formatScale(factor)} the recipe`
-              }
-            >
-              <Text style={[styles.chipText, on && styles.chipTextSelected]}>
-                {formatScale(factor)}
-              </Text>
-            </PressableScale>
-          );
-        })}
+      <View style={styles.chipsRow}>
+        <View style={styles.chips}>
+          {RECIPE_SCALE_FACTORS.map(factor => {
+            const on = Math.abs(factor - active) < 1e-9;
+            return (
+              <PressableScale
+                key={factor}
+                style={[
+                  styles.chip,
+                  surface === 'card' ? styles.chipOnCard : styles.chipOnBackground,
+                  on && styles.chipSelected,
+                ]}
+                onPress={() => {
+                  haptics.tap();
+                  onChange(factor);
+                }}
+                accessibilityRole="button"
+                accessibilityState={{ selected: on }}
+                accessibilityLabel={
+                  factor === 1 ? 'Cook as written' : `Cook ${formatScale(factor)} the recipe`
+                }
+              >
+                <Text style={[styles.chipText, on && styles.chipTextSelected]}>
+                  {formatScale(factor)}
+                </Text>
+              </PressableScale>
+            );
+          })}
+        </View>
+        {/* Only shown once the recipe is actually scaled — resets straight to
+            1×, the same as tapping the "1" chip, but visible without having
+            to find that chip again once the row has scrolled or the servings
+            stepper has moved the selection away from any of the presets. */}
+        {!isUnscaled(active) && (
+          <TouchableOpacity
+            onPress={() => {
+              haptics.tap();
+              onChange(1);
+            }}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="Reset to the recipe as written"
+          >
+            <Ionicons name="close-circle" size={iconSize.md} color={colors.textTertiary} />
+          </TouchableOpacity>
+        )}
       </View>
       {servings !== null && (
         <View style={styles.servingsBlock}>
@@ -153,7 +179,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // wrapped row, and at 4pt the stepper's own 44pt keys sat hard against the
   // chips above them.
   wrap: { gap: spacing.sm },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
+  chipsRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  chips: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
   chip: {
     borderRadius: radius.full,
     paddingHorizontal: spacing.md,
