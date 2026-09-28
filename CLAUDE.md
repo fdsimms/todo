@@ -1434,4 +1434,15 @@ inset is what just went away) — that asymmetry is the whole design, don't coll
   which is right for a tap and wrong for the Reminders mirror, sync, the MCP replica or any
   background pass. The mirror read the home list and then ticked and removed items on whichever
   list happened to be open. Read from a list and write to that same list, by name.
+- **Every expo-calendar event update goes through `rewriteEvent`, and a reminder update sends
+  back what its pass read.** expo-calendar's native save assigns every field it knows on each
+  update, so a field the call leaves out is reset rather than left alone. A moved meal or deadline
+  event lost its location, notes and alerts, a retitled time block lost the alert set on it in the
+  sheet, and the Reminders mirror erased a reminder's location each time it ticked one off (#2933).
+  That was one cause found three times. `rewriteEvent` (`calendarSync.ts`) reads the event first
+  and sends back what `carriedEventFields` says the save would clear, with the fields the app owns
+  written over the top. Reminders have no such helper, so `mirrorOnce` (`remindersImportSync.ts`)
+  keeps the location it read and passes it along. A new `updateEventAsync` goes through
+  `rewriteEvent`, and a new `updateReminderAsync` sends back every field the native save assigns,
+  not only the one it means to change.
 - **Patch notes**: when a change in this PR is user-facing, add a new fragment file to `src/patchNotes/entries/` before opening the PR — one JSON file per entry, `{ "message": "...", "date": "YYYY-MM-DD" }`, named after the change (e.g. `icon-action-buttons.json`). Keep the message short and written for someone who isn't reading the diff. Don't edit `src/utils/patchNotes.ts` or `src/utils/patchNotesData.ts` directly (generated, gitignored). Skip it for internal-only changes (refactors, tests, CI, tooling).
