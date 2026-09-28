@@ -175,6 +175,28 @@ function AddProjectTaskFabWithDropLabel({
   return <FabMenu {...props} dragLabel={label} />;
 }
 
+// A section row, lit by either drag that can land in it: an existing task
+// dragged onto it (`active`), or the add button aimed at it — the same
+// wrapper Today's own GroupDropTargetRow gives a stack, so a section here
+// gets the same border the add button lights up a stack with there.
+function GroupDropTargetRow({
+  channel,
+  groupId,
+  active,
+  children,
+}: {
+  channel: FabIntentChannel;
+  groupId: string;
+  active: boolean;
+  children: React.ReactNode;
+}) {
+  const aimed = useFabIntentSelector(
+    channel,
+    intent => intent?.kind === 'joinGroup' && intent.groupId === groupId,
+  );
+  return <GroupDropTarget active={active || aimed}>{children}</GroupDropTarget>;
+}
+
 /** A pasted list's lines, without the bullets it often carries. */
 function cleanPastedLines(raw: string[]): string[] {
   return raw.map(l => l.replace(/^\s*(?:[-*•◦▪]|\d+[.)]|\[[ xX]?\])\s+/, '').trim()).filter(Boolean);
@@ -1877,7 +1899,7 @@ export function ProjectDetailScreen() {
                 const stackExpanded = empty || !group.collapsed;
                 return (
                   <FabDropZone zone={zone}>
-                  <GroupDropTarget active={joinGroupIntentId === group.id}>
+                  <GroupDropTargetRow channel={fabIntentChannel} groupId={group.id} active={joinGroupIntentId === group.id}>
                   <TaskGroupTray>
                     <TaskGroupHeader
                       selectionMode={selectionMode}
@@ -2001,7 +2023,7 @@ export function ProjectDetailScreen() {
                       )}
                     </TaskGroupBody>
                   </TaskGroupTray>
-                  </GroupDropTarget>
+                  </GroupDropTargetRow>
                   </FabDropZone>
                 );
               }
