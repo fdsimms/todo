@@ -170,9 +170,12 @@ interface ScanRow extends ScannedItem {
    * null when nothing near the code read as one.
    *
    * Only ever a proposal: it is shown on the row and cleared with a tap, and
-   * nothing is written until Add. It rides `ReceiptAddDraft.priceMinor`, which
-   * already existed for the receipt sheet, so the write on the other side needs
-   * nothing new — this path simply stopped always passing null.
+   * nothing is written until Add. A row this sheet mints or promotes carries it
+   * on `ReceiptAddDraft.priceMinor`; a row that matched an item already on the
+   * list has no draft, so its price travels in `onApply`'s `priceById`. Both
+   * halves have to be read by the caller, or the price is shown and then lost
+   * (#2934): `GroceryScreen` seeds the finish sheet's price fields with them,
+   * and `KitchenScreen` hands them to `addManyToPantry`.
    */
   priceMinor: number | null;
 }
@@ -268,11 +271,11 @@ interface Props {
    * Hands the confirmed session back to the screen: rows to check off, and
    * rows to create or promote first.
    *
-   * The same two arguments `ReceiptImportSheet` hands over, minus the store,
-   * the prices and the date — a barcode carries none of those, and the finish
-   * sheet is where they get answered anyway. **Nothing is written from here**,
-   * for the reason that sheet gives: the thing on the other side of the confirm
-   * takes a whole list off in one pass.
+   * The same two arguments `ReceiptImportSheet` hands over, minus the store
+   * and the date — a barcode carries neither, and the finish sheet is where
+   * they get answered anyway. **Nothing is written from here**, for the reason
+   * that sheet gives: the thing on the other side of the confirm takes a whole
+   * list off in one pass.
    *
    * In `'pantry'` context the caller reads only the names off these — see
    * `KitchenScreen`'s `handleScanApply`, which resolves `itemIds` back to
@@ -299,13 +302,20 @@ interface Props {
    * improve on its own. Rows this sheet *mints* aren't here at all, for the
    * reason `products` splits the same way — they have no id until the caller
    * creates them, so the caller links those from `ReceiptAddDraft.gtin`.
+   *
+   * `priceById` is the shelf price read beside the barcode (`ScanRow.priceMinor`)
+   * for rows in the first array, keyed by item id: the last split of the same
+   * kind, since a draft in `toAdd` carries its own on `priceMinor`. A row the
+   * user cleared the price off, or one nothing near the code read as a price,
+   * has no entry.
    */
   onApply: (
     itemIds: string[],
     toAdd: ReceiptAddDraft[],
     frozenItemIds: ReadonlySet<string>,
     products: ScanProductDraft[],
-    gtinLinks: ScannedGtinLink[]
+    gtinLinks: ScannedGtinLink[],
+    priceById: Readonly<Record<string, number>>
   ) => void;
   /**
    * A row's name, handed up when the person asks to photograph its label
@@ -673,6 +683,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
     const frozenItemIds = new Set<string>();
     const products: ScanProductDraft[] = [];
     const gtinLinks: ScannedGtinLink[] = [];
+    const priceById: Record<string, number> = {};
     /**
      * The box, for a row that resolved to a catalog item that already exists.
      *
@@ -751,6 +762,9 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
       if (itemId) {
         itemIds.push(itemId);
         if (row.frozen) frozenItemIds.add(itemId);
+        // A matched row has no draft to carry the shelf price on, so it rides
+        // a map of its own. See `Props.onApply`.
+        if (row.priceMinor !== null) priceById[itemId] = row.priceMinor;
         recordProduct(itemId, row);
         recordGtinLink(itemId, row);
         return;
@@ -802,7 +816,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
         .map(d => ({ shopId: null, rawText: d.label, itemId: d.existingItemId as string })),
     ]);
     Keyboard.dismiss();
-    onApply(itemIds, toAdd, frozenItemIds, products, gtinLinks);
+    onApply(itemIds, toAdd, frozenItemIds, products, gtinLinks, priceById);
   }, [rows, matches, items, itemProducts, onApply, rememberAliases, gtinProductFor]);
 
   /** What a row resolved to, or null when it has nothing to say yet. */

@@ -293,12 +293,14 @@ export function GroceryScreen() {
   // What a scanned receipt read, held between the two sheets. Undefined rather
   // than null when there's no receipt in play: the finish sheet tells the two
   // apart, since a receipt naming no store is a real answer and not an absent
-  // one.
+  // one. A barcode session seeds prices only (the shelf labels it read), so it
+  // leaves `shopId` and `purchasedAt` undefined and the finish sheet defaults
+  // both exactly as it does for a hand-finished trip.
   const [receiptSeed, setReceiptSeed] = useState<
     {
-      shopId: string | null;
+      shopId?: string | null;
       priceText: Record<string, string>;
-      purchasedAt: string;
+      purchasedAt?: string;
       /**
        * Distinguishes one reading from the next, for the finish sheet's sake —
        * see its `seedStamp` prop. A receipt read while that sheet is open has
@@ -1014,11 +1016,15 @@ export function GroceryScreen() {
    * A scan session, confirmed. Same two writes the receipt path makes, minus
    * everything a barcode can't know.
    *
-   * A receipt names a store, a date and a price per line; a barcode names none
-   * of the three, so this seeds nothing and lets the finish sheet default as it
-   * always does. Clearing `receiptSeed` is the load-bearing half of that: a
-   * receipt read earlier in the session would otherwise attach its store and
-   * its prices to a trip these scans are what's actually finishing.
+   * A receipt names a store, a date and a price per line; a barcode names
+   * neither of the first two, so the finish sheet defaults both as it always
+   * does. What a scan can carry is the shelf price printed beside the code
+   * (`ScanRow.priceMinor`), and that seeds the price field for its row, the
+   * way a receipt's line does (#2934): it used to be shown on the scan row and
+   * then dropped here. Replacing `receiptSeed` rather than merging into it is
+   * the load-bearing half: a receipt read earlier in the session would
+   * otherwise attach its store and its prices to a trip these scans are what's
+   * actually finishing.
    *
    * It still routes through the finish sheet rather than calling
    * `finishShopping` — see the sheet's own doc comment. Unpacking is the end of
@@ -1051,10 +1057,12 @@ export function GroceryScreen() {
       toAdd: ReceiptAddDraft[],
       frozenItemIds: ReadonlySet<string>,
       products: ScanProductDraft[],
-      gtinLinks: ScannedGtinLink[]
+      gtinLinks: ScannedGtinLink[],
+      priceById: Readonly<Record<string, number>>
     ) => {
       animateLayout();
       const allIds = [...itemIds];
+      const allPriceById: Record<string, number> = { ...priceById };
       const frozenIds = new Set(itemIds.filter(id => frozenItemIds.has(id)));
       // A row this loop mints, with the barcode it came from. The sheet linked
       // everything whose id it already knew; these are the ones that had no id
@@ -1085,6 +1093,7 @@ export function GroceryScreen() {
         }
         allIds.push(id);
         if (draft.frozen) frozenIds.add(id);
+        if (draft.priceMinor !== null) allPriceById[id] = draft.priceMinor;
       }
       // After the loop, so a row this session minted is already there to hang a
       // box off. Default opts: addProduct only promotes when the item has no
@@ -1103,7 +1112,20 @@ export function GroceryScreen() {
       if (frozenIds.size > 0) {
         setScanFrozenIds(prev => new Set([...prev, ...frozenIds]));
       }
-      setReceiptSeed(null);
+      // Prices only: no store and no date, so the finish sheet defaults both
+      // (see receiptSeed). Null when no row read a price, which is the old
+      // "seed nothing" exactly.
+      const pricedIds = Object.keys(allPriceById);
+      setReceiptSeed(
+        pricedIds.length > 0
+          ? {
+              priceText: Object.fromEntries(
+                pricedIds.map(id => [id, priceToInput(allPriceById[id])])
+              ),
+              stamp: generateId(),
+            }
+          : null
+      );
       setScanOpen(false);
       setFinishOpen(true);
     },
