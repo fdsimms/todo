@@ -3456,6 +3456,7 @@ describe('meal plan entries', () => {
       cookTask: null,
       shopTask: null,
       logMeal: null,
+      thawTask: null,
       calendarEventId: null,
       cookedAt: null,
       leftoverId: null,

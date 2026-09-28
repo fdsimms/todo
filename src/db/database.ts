@@ -1741,6 +1741,10 @@ export function initDatabase(): void {
     // Empty on every existing recipe: a method heading declared ahead of any
     // step is new. See Recipe.emptyStepSections.
     "ALTER TABLE recipes ADD COLUMN empty_step_sections TEXT NOT NULL DEFAULT '[]'",
+    // Nullable with no default, for log_meal's reason: NULL is "the setting
+    // decides", and a DEFAULT 0 would record every meal ever planned as having
+    // declined a freezer reminder. See MealPlanEntry.thawTask.
+    'ALTER TABLE meal_plan_entries ADD COLUMN thaw_task INTEGER',
   ];
   // Asking SQLite for a table's columns once is cheaper than handing it every
   // ALTER for that table and catching the duplicate-column error, and by the
@@ -5737,6 +5741,10 @@ function rowToMealPlanEntry(row: Record<string, unknown>): MealPlanEntry {
     logMeal: row.log_meal === null || row.log_meal === undefined
       ? null
       : Boolean(row.log_meal),
+    // And a fourth time — see MealPlanEntry.thawTask.
+    thawTask: row.thaw_task === null || row.thaw_task === undefined
+      ? null
+      : Boolean(row.thaw_task),
     calendarEventId: (row.calendar_event_id as string | null) ?? null,
   };
 }
@@ -6343,8 +6351,8 @@ export function dbGetMealPlanEntriesForLeftover(leftoverId: string): MealPlanEnt
 
 export function dbInsertMealPlanEntry(entry: MealPlanEntry): void {
   db.runSync(
-    `INSERT INTO meal_plan_entries (id, date, slot, recipe_id, title, sort_order, created_at, cooked_at, leftover_id, recipe_choices, recipe_scale, cook_task, shop_task, log_meal, calendar_event_id)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    `INSERT INTO meal_plan_entries (id, date, slot, recipe_id, title, sort_order, created_at, cooked_at, leftover_id, recipe_choices, recipe_scale, cook_task, shop_task, log_meal, calendar_event_id, thaw_task)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       entry.id, entry.date, entry.slot, entry.recipeId ?? null,
       entry.title, entry.sortOrder, entry.createdAt, entry.cookedAt ?? null,
@@ -6354,13 +6362,14 @@ export function dbInsertMealPlanEntry(entry: MealPlanEntry): void {
       entry.shopTask === null || entry.shopTask === undefined ? null : (entry.shopTask ? 1 : 0),
       entry.logMeal === null || entry.logMeal === undefined ? null : (entry.logMeal ? 1 : 0),
       entry.calendarEventId ?? null,
+      entry.thawTask === null || entry.thawTask === undefined ? null : (entry.thawTask ? 1 : 0),
     ]
   );
 }
 
 export function dbUpdateMealPlanEntry(entry: MealPlanEntry): void {
   db.runSync(
-    `UPDATE meal_plan_entries SET date=?, slot=?, recipe_id=?, title=?, sort_order=?, cooked_at=?, leftover_id=?, recipe_choices=?, recipe_scale=?, cook_task=?, shop_task=?, log_meal=?, calendar_event_id=? WHERE id=?`,
+    `UPDATE meal_plan_entries SET date=?, slot=?, recipe_id=?, title=?, sort_order=?, cooked_at=?, leftover_id=?, recipe_choices=?, recipe_scale=?, cook_task=?, shop_task=?, log_meal=?, calendar_event_id=?, thaw_task=? WHERE id=?`,
     [
       entry.date, entry.slot, entry.recipeId ?? null, entry.title, entry.sortOrder,
       entry.cookedAt ?? null, entry.leftoverId ?? null,
@@ -6369,6 +6378,7 @@ export function dbUpdateMealPlanEntry(entry: MealPlanEntry): void {
       entry.shopTask === null || entry.shopTask === undefined ? null : (entry.shopTask ? 1 : 0),
       entry.logMeal === null || entry.logMeal === undefined ? null : (entry.logMeal ? 1 : 0),
       entry.calendarEventId ?? null,
+      entry.thawTask === null || entry.thawTask === undefined ? null : (entry.thawTask ? 1 : 0),
       entry.id,
     ]
   );

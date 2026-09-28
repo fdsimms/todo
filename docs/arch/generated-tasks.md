@@ -594,6 +594,30 @@ one. Those three rules and the reasoning behind them are in
     people keep loosely, and a half-filled week answered with shopping rows is the fastest way to
     have the whole thing switched off.
 
+- **`mealThaw` is `mealShortfall` asking the other question about the same rows** (#2926,
+  `src/utils/mealThawTasks.ts`). `probablyHaveReason` reads a live `frozenAt` as on hand, which is
+  what keeps the shortfall quiet about chicken in the freezer, and correctly; but being quiet was
+  all anything did, and "frozen and planned" is the moment somebody avoiding waste needs telling,
+  because a fridge thaw takes a day. So a meal planned for today or tomorrow whose ingredients are
+  on hand only frozen gets "Take chicken out of the freezer (Thursday Dinner)".
+  - **Everything but the question is borrowed**: the same source row, the same `classifyPlanned`
+    over the entry's own picks, scale and standing swaps, the same clear-then-create pass re-running
+    the create predicate, the same cap of three, `blocksOnFinished`, and a permanent per-meal `false`
+    (`MealPlanEntry.thawTask`, beside `shopTask`) that only ever subtracts. What it asks about is a
+    `probablyHave` row whose reason is `FROZEN_REASON`, the freezer's own rung on that ladder, so an
+    "Out of it" or "running low" outranks it exactly as it does in the Pantry, and a frozen item also
+    on the shopping list reads as being bought fresh.
+  - **The window is today and tomorrow, and there is no lead-time setting.** Tomorrow is the day a
+    fridge thaw is for; today still has the quick methods. Further out is premature, since food
+    moved to the fridge early loses that many days off its clock.
+  - **One row per meal, naming everything frozen in it**, and a planned leftover counts: a frozen
+    container is still live and plannable (see "A frozen container is still live" in
+    `groceries.md`), and a frozen portion planned for tomorrow is the commonest case of all.
+  - **Ticking it thaws nothing.** Whether the food actually came out is said in the Pantry, which is
+    where the row's link goes (the one frozen row, or the Pantry itself when there are several).
+    The stale pass then clears any row whose food is no longer frozen.
+  - **It ships off**, for `mealShortfall`'s reason: it adds a surface rather than replacing one.
+
 ## Vacation mode: which of them stand down
 
 `GeneratedKindSpec.pausedOnVacation` is every generator's answer, required the way `kitchen` is
@@ -606,7 +630,8 @@ nowhere to record it.
 The rule is the one coined for `weather` below and reused for `screenTime` and `health`:
 **sunscreen, not work.** A generator that invents something to *do* is exactly what vacation mode
 was switched on to stop, so it pauses: `mealSlot`, `groceryUseUp`, `leftoverUseUp`, `pantryCheck`,
-`pantryReview`, `projectReview`, `supplyReorder`, `mealShortfall`, `mealPlanNudge`, `weekendNudge`.
+`pantryReview`, `projectReview`, `supplyReorder`, `mealShortfall`, `mealThaw`, `mealPlanNudge`,
+`weekendNudge`.
 A generator about your body, your mood, the weather, your own phone use, the people you care about,
 or what is on tomorrow is not work and keeps running: `weather`, `screenTime`, `health`, `moodLog`,
 `moodNudge`, `birthday`, `birthdayGift`, `reachOut`, `calendarReview`. A birthday missed because you
@@ -633,7 +658,7 @@ Three things enforce it, and they are not redundant:
   on purpose, so the pass writes them unpaused.
 
 **A kitchen pass's own switch and the kitchen gate stop creating, not clearing.** `mealSlot`,
-`pantryCheck`, `pantryReview`, `mealShortfall` and `mealLogNudge` check them *below* their stale
+`pantryCheck`, `pantryReview`, `mealShortfall`, `mealThaw` and `mealLogNudge` check them *below* their stale
 pass, not at the top, and short-circuit only when there is nothing live of their kind to clear.
 Returning above the clear froze every row already written: "Shop for Ragu" stayed on Today, overdue,
 naming a meal dropped from the plan after the switch went off, until somebody deleted it by hand.

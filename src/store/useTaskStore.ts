@@ -82,6 +82,7 @@ import {
   staleMealShortfallTasks,
   wantedMealShortfalls,
 } from '../utils/mealShortfallTasks';
+import { mealThawEntryId, staleMealThawTasks, wantedMealThaws } from '../utils/mealThawTasks';
 import {
   MEAL_LOG_NUDGE_LOOKBACK_DAYS,
   isMealLogged,
@@ -684,6 +685,12 @@ function writeGeneratedOptOut(task: Task, value: false | null): void {
     // property generatedTasks.ts asks a per-source opt-out to have.
     case 'mealShortfall':
       useMealPlanStore.getState().setShopTask(sourceId, value);
+      return;
+    // The same permanent-for-this-meal `false` shopTask gets, for the same
+    // reason: a meal on the 22nd happens once, and "I'm not thawing anything
+    // for this one" is an answer about that night alone.
+    case 'mealThaw':
+      useMealPlanStore.getState().setThawTask(sourceId, value);
       return;
     // The same field the completion-time log prompt's "Don't ask for this
     // meal" already writes — see mealLogNudgeTasks.ts. Declining either one
@@ -1762,6 +1769,12 @@ interface TaskStore extends UndoHistoryActions {
    * cooked, deleted or shopped for. See src/utils/mealShortfallTasks.ts.
    */
   checkMealShortfallTasks: () => void;
+  /**
+   * Give every meal planned for today or tomorrow that uses something only on
+   * hand frozen a "Take X out of the freezer" task, and clear the ones whose
+   * meal or freezer has since changed. See src/utils/mealThawTasks.ts.
+   */
+  checkMealThawTasks: () => void;
   /**
    * Give every planned meal a few days in the past with nothing logged
    * against it a "Log X" task, and clear the ones whose meal has since been
@@ -5830,6 +5843,81 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           linkUrl: mealShortfallLinkUrl(want.dayKey, want.entryId),
           category,
           ...generatedBy('mealShortfall', want.entryId),
+        }),
+      });
+    });
+    // No setLastAction, same reasoning as checkMealPlanNudge above.
+  },
+
+  /**
+   * Raise a "Take X out of the freezer" task for a meal today or tomorrow that
+   * uses something only on hand frozen, and clear the ones whose reason has
+   * gone (#2926). `checkMealShortfallTasks` with a different question: the
+   * same entries, catalog and classification, the same clear-then-create order
+   * and the same reasons for each gate. See src/utils/mealThawTasks.ts.
+   */
+  checkMealThawTasks() {
+    const settings = useSettingsStore.getState();
+    if (generatorPausedForVacation('mealThaw', settings.vacationMode)) return;
+    // Refuse to create without the switch or the kitchen, never to clear: a
+    // row naming a meal since dropped goes either way.
+    const creating = settings.mealThawTasks && settings.kitchenEnabled;
+    const tasks = get().tasks;
+    if (!creating && liveGeneratedTasksOfKind(tasks, 'mealThaw').length === 0) return;
+
+    // Logical today, for the grace-window reason checkMealShortfallTasks gives.
+    const todayKey = dayKeyOf(getLogicalToday());
+    const now = new Date();
+    // One day wider on each side than the window (today and tomorrow), for
+    // checkMealShortfallTasks' reason: a meal that has just moved out has to
+    // be read at its new date rather than looking deleted.
+    const entries = dbGetMealPlanEntries(shiftDayKey(todayKey, -1), shiftDayKey(todayKey, 2));
+    const recipesById = new Map(useRecipeStore.getState().recipes.map(r => [r.id, r]));
+    const { leftovers } = useLeftoverStore.getState();
+    const { items, itemSubs, itemProducts } = useGroceryStore.getState();
+    const swaps = standingSwapMap(itemSubs, items);
+
+    // Clear first, then create, and through dropGeneratedTask so the app's own
+    // tidying up never stamps thawTask: false on a meal nobody declined.
+    staleMealThawTasks(
+      tasks, entries, recipesById, leftovers, items, itemSubs, swaps, todayKey, now, itemProducts
+    ).forEach(task => dropGeneratedTask('mealThaw', mealThawEntryId(task)));
+    if (!creating) return;
+
+    const wanted = wantedMealThaws(
+      entries, recipesById, leftovers, items, itemSubs, swaps, todayKey, now, undefined, itemProducts
+    );
+    if (wanted.length === 0) return;
+
+    ensureGeneratedTaskCategory('mealThaw');
+    const category = useSettingsStore.getState().mealThawTaskCategory;
+    // Noon today, the landing every other unattended writer picks: the window
+    // is only today and tomorrow, so today *is* the day to do it.
+    const dueDate = getCurrentDayStart();
+    dueDate.setHours(12, 0, 0, 0);
+
+    wanted.forEach(want => {
+      reconcileGeneratedTask({
+        kind: 'mealThaw',
+        sourceId: want.entryId,
+        wanted: true,
+        // A meal is one event: having taken the chicken out for Thursday, a
+        // second row asking again would be an invention.
+        blocksOnFinished: true,
+        // The title and the link follow what's frozen (a second item frozen,
+        // one thawed); the date never does, so a deferral stands.
+        drift: existing => {
+          const updates: Partial<Task> = {};
+          if (existing.title !== want.title) updates.title = want.title;
+          if (existing.linkUrl !== want.linkUrl) updates.linkUrl = want.linkUrl;
+          return Object.keys(updates).length > 0 ? updates : null;
+        },
+        draft: () => ({
+          title: want.title,
+          dueDate: dueDate.toISOString(),
+          linkUrl: want.linkUrl,
+          category,
+          ...generatedBy('mealThaw', want.entryId),
         }),
       });
     });

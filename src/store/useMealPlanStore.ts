@@ -419,6 +419,13 @@ interface MealPlanStore extends UndoHistoryActions {
    */
   setShopTask: (id: string, value: boolean | null) => void;
   /**
+   * Says whether this meal gets a "Take X out of the freezer" task, or hands
+   * the decision back to the `mealThawTasks` setting with `null` (#2926).
+   * `setShopTask`'s twin, for the same caller and with the same "write the flag
+   * and stop" reasoning: `checkMealThawTasks` owns creating one.
+   */
+  setThawTask: (id: string, value: boolean | null) => void;
+  /**
    * Says whether finishing this meal offers to log what was eaten, or hands
    * the decision back to the `mealLogPrompt` setting with `null`.
    *
@@ -1008,6 +1015,15 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     // No reconcile and no create — see the interface note. The generator's own
     // sweep owns both directions here, and a `false` written by a delete has
     // already taken the row away by the time this runs.
+  },
+
+  setThawTask(id, value) {
+    const entry = resolveEntry(get, id);
+    if (!entry || (entry.thawTask ?? null) === value) return;
+    const next: MealPlanEntry = { ...entry, thawTask: value };
+    dbUpdateMealPlanEntry(next);
+    set(s => ({ entries: s.entries.map(e => e.id === id ? next : e) }));
+    // No reconcile and no create, for setShopTask's reason.
   },
 
   setLogMeal(id, value) {

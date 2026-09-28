@@ -55,6 +55,8 @@ import { birthdayGiftTitle, personLinkUrl } from './birthdayTasks';
 import { waitingFollowUpTitle } from './waitingFollowUpTasks';
 import { giftIdeasText } from './personNotes';
 import { mealShortfallLinkUrl, mealShortfallTitle } from './mealShortfallTasks';
+import { frozenForMeal, mealThawLinkUrl, mealThawTitle } from './mealThawTasks';
+import { standingSwapMap } from './standingSwaps';
 import { mealLogNudgeLinkUrl, mealLogNudgeTitle } from './mealLogNudgeTasks';
 import { CALENDAR_REVIEW_TITLE } from './calendarReviewTasks';
 import {
@@ -4456,10 +4458,18 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
   plan(0, 'dinner', { title: 'Weeknight chicken stir-fry', recipeId: recipes.stirFry });
   plan(0, 'snack', { title: 'Hummus snack plate', recipeId: recipes.snacks, cookTask: false });
 
-  plan(1, 'breakfast', { title: 'Overnight oats', recipeId: recipes.oats });
   // Captured for the shopping task seeded at the end of this function — it's
   // the night the kitchen can't currently make.
   const salmonNight = plan(1, 'dinner', { title: 'Lemon garlic salmon', recipeId: recipes.salmon });
+  // The frozen chili, planned for tomorrow's lunch: a frozen container is
+  // still live and plannable, which is most of what anyone freezes one for.
+  // Captured for the freezer task seeded at the end of this function. It took
+  // the place of a second morning of oats, which kept tomorrow at two meals
+  // of three: the nudge's counter wants exactly one day planned end to end
+  // (today), with the rest of the week spread either side of it.
+  const chiliLunch = frozenChilli
+    ? plan(1, 'lunch', { title: 'Beef chili', leftoverId: frozenChilli.id })
+    : null;
 
   // Freeform — planning doesn't require a recipe, and a night that just says
   // "eating out" holds its place and counts like any other.
@@ -4551,6 +4561,38 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
       category: 'Meal Plan',
       ...generatedBy('mealShortfall', salmonNight.id),
     });
+  }
+
+  // --- Something tonight's dinner needs out of the freezer ------------------
+  // The freezer generator (#2926, off by default, so written by hand for the
+  // shortfall task's reason). Tomorrow's lunch is the chili frozen with the
+  // leftovers above, which is the honest instance. (Tonight's stir-fry isn't:
+  // its chicken breast is frozen too, but it's also on the list, so the rule
+  // reads it as being bought fresh.) Worked out with the real rule rather than
+  // typed, so the first foreground sweep can't disagree with it and clear the
+  // row.
+  if (chiliLunch) {
+    const grocery = useGroceryStore.getState();
+    const frozen = frozenForMeal(
+      chiliLunch,
+      new Map(useRecipeStore.getState().recipes.map(r => [r.id, r])),
+      useLeftoverStore.getState().leftovers,
+      grocery.items,
+      grocery.itemSubs,
+      standingSwapMap(grocery.itemSubs, grocery.items),
+      new Date(),
+      grocery.itemProducts
+    );
+    if (frozen && frozen.names.length > 0) {
+      useSettingsStore.getState().setMealThawTaskCategory('Meal Plan');
+      useTaskStore.getState().addTask({
+        title: mealThawTitle(chiliLunch.date, chiliLunch.slot, frozen.names),
+        dueDate: today.toISOString(),
+        linkUrl: mealThawLinkUrl(frozen),
+        category: 'Meal Plan',
+        ...generatedBy('mealThaw', chiliLunch.id),
+      });
+    }
   }
 
   // --- A planned meal with nothing logged -----------------------------------
