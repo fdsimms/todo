@@ -754,8 +754,18 @@ ingredient panel's fold die with the modal.
   second), so a halved recipe reads correctly mid-step. Nothing parses an amount back *out* of a
   sentence: what a step says about an ingredient it names comes from that ingredient's own line,
   through the same pipeline — see Ingredient references below.
-- **Nothing is ticked off by itself.** Finishing the last step closes the sheet and logs nothing —
-  logging a cook time is the timer's own ✓, the same call `timer.ts` makes about a countdown.
+- **Nothing is ticked off by itself, but finishing offers.** Done on the last step logs nothing —
+  logging a cook time is the timer's own ✓, the same call `timer.ts` makes about a countdown. It
+  used to close the sheet as well, which left the cook back on the recipe screen with the rating,
+  leftovers and pantry questions behind an unlabelled flame in the header. So it now opens an end
+  screen (Back returns to the last step) whose primary button is **Log as cooked**, the same
+  `cookRecipeNow` the recipe screen runs, with Add to food log beside it where the recipe's
+  nutrition is known. Both are offers a person taps, never a write on Done, and both close cook
+  mode in the same handler that raises their sheet, so the recap and the food-log prompt (mounted
+  in `AppNavigator`) are never siblings of a visible cook mode. On the recipe screen the same two
+  verbs sit behind one labelled "Made it" control rather than two glyphs; it is a menu even when
+  only one of them applies, because `lastCookedAt` steers suggestions for weeks and a stray tap on
+  a header icon shouldn't move it.
 - **`useKeepAwake` is called from inside the Modal's content** (`ScreenAwake`), not at the top of
   the sheet: the sheet stays mounted with `visible` false, and a lock taken there would hold the
   phone awake for the rest of the session. `expo-keep-awake` was already in the tree as one of

@@ -830,6 +830,31 @@ export function RecipeDetailScreen() {
   // free. There's no meal-plan entry behind this, so mealPlanEntryId is
   // null: nothing here is "cooked" or "missed", it's just a dish someone
   // wants logged from the page they're looking at.
+  // "Made it" in the header. Log as cooked is the cooking half: rating,
+  // leftovers, pantry ticks and restock, the same post-cook sheet a planned
+  // meal's "Mark cooked" raises (CookRecap, mounted globally), and it needs no
+  // nutrition figures. Add to food log is gated on nutrition actually being
+  // computable (the read showNutritionRow uses): without it LogMealPrompt
+  // would open only to clear itself with nothing to show. Always a menu, even
+  // with one option, because the menu is where each verb says what it will
+  // ask, and Log as cooked moves `lastCookedAt`, which steers suggestions for
+  // weeks: a stray tap on the header shouldn't be enough.
+  const handleMadeIt = () => {
+    haptics.tap();
+    const canLogFood = !!nutritionReading?.nutrition;
+    Alert.alert(
+      `Log ${recipe.name}`,
+      canLogFood
+        ? 'Log as cooked asks for a rating, any leftovers and the ingredients you used up. Add to food log records what you ate.'
+        : 'Log as cooked asks for a rating, any leftovers and the ingredients you used up.',
+      [
+        { text: 'Log as cooked', onPress: () => cookRecipeNow(recipe) },
+        ...(canLogFood ? [{ text: 'Add to food log', onPress: handleLogToFoodLog }] : []),
+        { text: 'Cancel', style: 'cancel' as const },
+      ],
+    );
+  };
+
   const handleLogToFoodLog = () => {
     haptics.tap();
     const dayKey = dayKeyOf(getCurrentDayStart());
@@ -1636,34 +1661,16 @@ export function RecipeDetailScreen() {
                 />
               </TouchableOpacity>
             )}
-            {/* The cooking half of "log this recipe" — rating, leftovers,
-                pantry ticks and restock, the same post-cook sheet a planned
-                meal's "Mark cooked" raises (CookRecap, mounted globally).
-                Always shown: unlike the food-log icon below it needs no
-                nutrition figures, only a recipe to have cooked. */}
+            {/* Both ways of recording a cooking, behind one labelled control
+                (see handleMadeIt). They were a flame and a plate glyph in a
+                row of seven, with nothing on screen to say which was which. */}
             {!selectionMode && (
-              <TouchableOpacity
-                onPress={() => { haptics.tap(); cookRecipeNow(recipe); }}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel={`Log ${recipe.name} as cooked`}
-              >
-                <Ionicons name="flame-outline" size={iconSize.md} color={colors.textSecondary} />
-              </TouchableOpacity>
-            )}
-            {/* Gated on nutrition actually being computable (same read
-                showNutritionRow above uses) rather than always shown: without
-                it, tapping this would raise LogMealPrompt only for the prompt
-                to immediately clear itself with nothing to show. */}
-            {!selectionMode && !!nutritionReading?.nutrition && (
-              <TouchableOpacity
-                onPress={handleLogToFoodLog}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel={`Log ${recipe.name} to the food log`}
-              >
-                <Ionicons name="restaurant-outline" size={iconSize.md} color={colors.textSecondary} />
-              </TouchableOpacity>
+              <InlineAction
+                icon="flame-outline"
+                label="Made it"
+                accessibilityLabel={`Log ${recipe.name} as cooked or to the food log`}
+                onPress={handleMadeIt}
+              />
             )}
             {!selectionMode && (
               <TouchableOpacity
@@ -2545,6 +2552,8 @@ export function RecipeDetailScreen() {
         choices={choices}
         onChoicesChange={setChoices}
         onClose={() => setCookModeVisible(false)}
+        onLogCooked={() => cookRecipeNow(recipe)}
+        onLogFood={nutritionReading?.nutrition ? handleLogToFoodLog : undefined}
       />
 
       <ComponentChoiceSheet
