@@ -15,16 +15,17 @@ const item = (over: Partial<MirrorItem> & { id: string; name: string }): MirrorI
   quantity: null,
   onList: true,
   checked: false,
+  note: '',
   ...over,
 });
 
 const reminder = (
   over: Partial<MirrorReminder> & { id: string; title: string }
-): MirrorReminder => ({ completed: false, ...over });
+): MirrorReminder => ({ completed: false, notes: '', ...over });
 
 const link = (
   over: Partial<GroceryReminderLink> & { reminderId: string; itemId: string; name: string }
-): GroceryReminderLink => ({ checked: false, seen: true, ...over });
+): GroceryReminderLink => ({ checked: false, note: '', seen: true, ...over });
 
 describe('mirrorTitleFor', () => {
   it('puts the amount back in front of the name', () => {
@@ -89,6 +90,11 @@ describe('parseGroceryLinks', () => {
     expect(parseGroceryLinks(raw).L[0].seen).toBe(true);
   });
 
+  it('reads a record from before notes were mirrored as agreeing on no note (#2933)', () => {
+    const raw = JSON.stringify({ L: [{ reminderId: 'r1', itemId: 'i1', name: 'milk', checked: false }] });
+    expect(parseGroceryLinks(raw).L[0].note).toBe('');
+  });
+
   it('survives a serialize round trip', () => {
     const index = { L: [link({ reminderId: 'r1', itemId: 'i1', name: '2 lb chicken' })] };
     expect(parseGroceryLinks(serializeGroceryLinks(index))).toEqual(index);
@@ -117,8 +123,8 @@ describe('planGroceryReminderSync — first pass, nothing linked', () => {
       []
     );
     expect(plan.createReminders).toEqual([
-      { itemId: 'i1', title: 'milk' },
-      { itemId: 'i2', title: '2 lb chicken' },
+      { itemId: 'i1', title: 'milk', notes: '' },
+      { itemId: 'i2', title: '2 lb chicken', notes: '' },
     ]);
     expect(plan.links).toEqual([]);
   });
@@ -137,7 +143,7 @@ describe('planGroceryReminderSync — first pass, nothing linked', () => {
 
   it('imports a reminder the list has never heard of', () => {
     const plan = planGroceryReminderSync([], [reminder({ id: 'r1', title: 'milk' })], []);
-    expect(plan.addItems).toEqual([{ reminderId: 'r1', title: 'milk' }]);
+    expect(plan.addItems).toEqual([{ reminderId: 'r1', title: 'milk', notes: '' }]);
     expect(plan.createReminders).toEqual([]);
   });
 
@@ -165,7 +171,7 @@ describe('planGroceryReminderSync — adoption', () => {
     expect(plan.createReminders).toEqual([]);
     expect(plan.updateReminders).toEqual([]);
     expect(plan.links).toEqual([
-      { reminderId: 'r1', itemId: 'i1', name: 'milk', checked: false, seen: true },
+      { reminderId: 'r1', itemId: 'i1', name: 'milk', checked: false, note: '', seen: true },
     ]);
   });
 
@@ -179,7 +185,7 @@ describe('planGroceryReminderSync — adoption', () => {
     expect(plan.createReminders).toEqual([]);
     // Adopted, and the app's amount is pushed onto the reminder.
     expect(plan.updateReminders).toEqual([
-      { reminderId: 'r1', itemId: 'i1', title: '2 lb chicken', completed: false },
+      { reminderId: 'r1', itemId: 'i1', title: '2 lb chicken', completed: false, notes: '' },
     ]);
   });
 
@@ -203,7 +209,7 @@ describe('planGroceryReminderSync — adoption', () => {
       [reminder({ id: 'r1', title: 'milk' })],
       []
     );
-    expect(plan.addItems).toEqual([{ reminderId: 'r1', title: 'milk' }]);
+    expect(plan.addItems).toEqual([{ reminderId: 'r1', title: 'milk', notes: '' }]);
     expect(plan.createReminders).toEqual([]);
   });
 
@@ -224,7 +230,7 @@ describe('planGroceryReminderSync — adoption', () => {
       [reminder({ id: 'r1', title: 'milk' }), reminder({ id: 'r2', title: 'milk' })],
       []
     );
-    expect(plan.addItems).toEqual([{ reminderId: 'r1', title: 'milk' }]);
+    expect(plan.addItems).toEqual([{ reminderId: 'r1', title: 'milk', notes: '' }]);
   });
 
   // An adopted pair has no shadow to appeal to, so a disagreement resolves the
@@ -237,7 +243,7 @@ describe('planGroceryReminderSync — adoption', () => {
     );
     expect(plan.setChecked).toEqual([]);
     expect(plan.updateReminders).toEqual([
-      { reminderId: 'r1', itemId: 'i1', title: 'milk', completed: true },
+      { reminderId: 'r1', itemId: 'i1', title: 'milk', completed: true, notes: '' },
     ]);
   });
 });
@@ -265,7 +271,7 @@ describe('planGroceryReminderSync — a linked pair', () => {
       linked
     );
     expect(plan.updateReminders).toEqual([
-      { reminderId: 'r1', itemId: 'i1', title: 'milk', completed: true },
+      { reminderId: 'r1', itemId: 'i1', title: 'milk', completed: true, notes: '' },
     ]);
     expect(plan.links[0].checked).toBe(true);
   });
@@ -299,7 +305,7 @@ describe('planGroceryReminderSync — a linked pair', () => {
     );
     expect(plan.setChecked).toEqual([]);
     expect(plan.updateReminders).toEqual([
-      { reminderId: 'r1', itemId: 'i1', title: 'milk', completed: false },
+      { reminderId: 'r1', itemId: 'i1', title: 'milk', completed: false, notes: '' },
     ]);
   });
 
@@ -324,7 +330,7 @@ describe('planGroceryReminderSync — a linked pair', () => {
     );
     expect(plan.renameItems).toEqual([]);
     expect(plan.updateReminders).toEqual([
-      { reminderId: 'r1', itemId: 'i1', title: 'oat milk', completed: false },
+      { reminderId: 'r1', itemId: 'i1', title: 'oat milk', completed: false, notes: '' },
     ]);
   });
 
@@ -336,7 +342,7 @@ describe('planGroceryReminderSync — a linked pair', () => {
     );
     expect(plan.renameItems).toEqual([]);
     expect(plan.updateReminders).toEqual([
-      { reminderId: 'r1', itemId: 'i1', title: 'oat milk', completed: false },
+      { reminderId: 'r1', itemId: 'i1', title: 'oat milk', completed: false, notes: '' },
     ]);
   });
 
@@ -348,7 +354,7 @@ describe('planGroceryReminderSync — a linked pair', () => {
     );
     expect(plan.renameItems).toEqual([]);
     expect(plan.updateReminders).toEqual([
-      { reminderId: 'r1', itemId: 'i1', title: 'milk', completed: false },
+      { reminderId: 'r1', itemId: 'i1', title: 'milk', completed: false, notes: '' },
     ]);
   });
 
@@ -409,7 +415,7 @@ describe('planGroceryReminderSync — either side going away', () => {
       [link({ reminderId: 'r1', itemId: 'i1', name: 'milk', seen: false })]
     );
     expect(plan.removeItems).toEqual([]);
-    expect(plan.createReminders).toEqual([{ itemId: 'i1', title: 'milk' }]);
+    expect(plan.createReminders).toEqual([{ itemId: 'i1', title: 'milk', notes: '' }]);
   });
 
   it('honours the deletion once the link has been confirmed', () => {
@@ -435,6 +441,80 @@ describe('planGroceryReminderSync — either side going away', () => {
   });
 });
 
+describe('planGroceryReminderSync — notes (#2933)', () => {
+  const pair = (itemNote: string, reminderNotes: string, shadowNote: string) =>
+    planGroceryReminderSync(
+      [item({ id: 'i1', name: 'eggs', note: itemNote })],
+      [reminder({ id: 'r1', title: 'eggs', notes: reminderNotes })],
+      [link({ reminderId: 'r1', itemId: 'i1', name: 'eggs', note: shadowNote })]
+    );
+
+  it('takes a note typed into the reminder onto the row', () => {
+    const plan = pair('', 'free range, the blue carton', '');
+    expect(plan.setNotes).toEqual([{ itemId: 'i1', note: 'free range, the blue carton' }]);
+    expect(plan.updateReminders).toEqual([]);
+    expect(plan.links[0].note).toBe('free range, the blue carton');
+  });
+
+  it('writes a note edited here out to the reminder, with the rest of it', () => {
+    const plan = pair('lactose free', '', '');
+    expect(plan.setNotes).toEqual([]);
+    expect(plan.updateReminders).toEqual([
+      { reminderId: 'r1', itemId: 'i1', title: 'eggs', completed: false, notes: 'lactose free' },
+    ]);
+  });
+
+  it('carries a note cleared on either side to the other', () => {
+    expect(pair('', 'old', 'old').updateReminders[0].notes).toBe('');
+    expect(pair('old', '', 'old').setNotes).toEqual([{ itemId: 'i1', note: '' }]);
+  });
+
+  it('lets the app win when both sides changed the note', () => {
+    const plan = pair('lactose free', 'the big one', 'old');
+    expect(plan.setNotes).toEqual([]);
+    expect(plan.updateReminders[0].notes).toBe('lactose free');
+  });
+
+  it('reads whitespace and a missing note as no change', () => {
+    const plan = planGroceryReminderSync(
+      [item({ id: 'i1', name: 'eggs', note: 'free range' })],
+      [reminder({ id: 'r1', title: 'eggs', notes: '  free range\n' })],
+      [link({ reminderId: 'r1', itemId: 'i1', name: 'eggs', note: 'free range' })]
+    );
+    expect(plan.updateReminders).toEqual([]);
+    expect(plan.setNotes).toEqual([]);
+  });
+
+  it('carries a note on only one side of an adopted pair to the other', () => {
+    // The adoption shadow is empty, so the side with a note reads as the side
+    // that wrote it, rather than the empty side winning as "the app".
+    const pulled = planGroceryReminderSync(
+      [item({ id: 'i1', name: 'eggs' })],
+      [reminder({ id: 'r1', title: 'eggs', notes: 'free range' })],
+      []
+    );
+    expect(pulled.setNotes).toEqual([{ itemId: 'i1', note: 'free range' }]);
+    expect(pulled.updateReminders).toEqual([]);
+
+    const pushed = planGroceryReminderSync(
+      [item({ id: 'i1', name: 'eggs', note: 'free range' })],
+      [reminder({ id: 'r1', title: 'eggs' })],
+      []
+    );
+    expect(pushed.updateReminders[0].notes).toBe('free range');
+  });
+
+  it('writes a new reminder with the row’s note, and imports a reminder with its own', () => {
+    const plan = planGroceryReminderSync(
+      [item({ id: 'i1', name: 'milk', note: 'lactose free' })],
+      [reminder({ id: 'r1', title: 'eggs', notes: 'free range' })],
+      []
+    );
+    expect(plan.createReminders).toEqual([{ itemId: 'i1', title: 'milk', notes: 'lactose free' }]);
+    expect(plan.addItems).toEqual([{ reminderId: 'r1', title: 'eggs', notes: 'free range' }]);
+  });
+});
+
 describe('planGroceryReminderSync — convergence', () => {
   // Applying a plan and running again must produce nothing: a pass that keeps
   // finding work is a pass that keeps writing to both apps for ever.
@@ -443,11 +523,13 @@ describe('planGroceryReminderSync — convergence', () => {
     const nextItems = items.map(i => {
       const renamed = plan.renameItems.find(r => r.itemId === i.id);
       const checked = plan.setChecked.find(c => c.itemId === i.id);
+      const noted = plan.setNotes.find(n => n.itemId === i.id);
       const removed = plan.removeItems.some(r => r.itemId === i.id);
       return {
         ...i,
         ...(renamed ? { name: renamed.name, nameKey: renamed.name, quantity: renamed.quantity } : {}),
         ...(checked ? { checked: checked.checked } : {}),
+        ...(noted ? { note: noted.note } : {}),
         ...(removed ? { onList: false, checked: false } : {}),
       };
     });
@@ -456,22 +538,26 @@ describe('planGroceryReminderSync — convergence', () => {
       .filter(r => !deleted.has(r.id))
       .map(r => {
         const update = plan.updateReminders.find(u => u.reminderId === r.id);
-        return update ? { ...r, title: update.title, completed: update.completed } : r;
+        return update ? { ...r, title: update.title, completed: update.completed, notes: update.notes } : r;
       });
     const nextLinks = [...plan.links];
     plan.createReminders.forEach((create, index) => {
       const id = `new-r${index}`;
-      nextReminders.push({ id, title: create.title, completed: false });
-      nextLinks.push({ reminderId: id, itemId: create.itemId, name: create.title, checked: false, seen: false });
+      nextReminders.push({ id, title: create.title, completed: false, notes: create.notes });
+      nextLinks.push({
+        reminderId: id, itemId: create.itemId, name: create.title, checked: false, note: create.notes, seen: false,
+      });
     });
     plan.addItems.forEach((add, index) => {
       const id = `new-i${index}`;
       const parsed = normalizeMirrorTitle(add.title)!;
       nextItems.push({
         id, name: parsed.name, nameKey: parsed.name, quantity: parsed.quantity,
-        onList: true, checked: false,
+        onList: true, checked: false, note: add.notes,
       });
-      nextLinks.push({ reminderId: add.reminderId, itemId: id, name: parsed.title, checked: false, seen: true });
+      nextLinks.push({
+        reminderId: add.reminderId, itemId: id, name: parsed.title, checked: false, note: add.notes, seen: true,
+      });
     });
     return { items: nextItems, reminders: nextReminders, links: nextLinks };
   };
@@ -480,7 +566,7 @@ describe('planGroceryReminderSync — convergence', () => {
     plan.createReminders.length === 0 && plan.updateReminders.length === 0 &&
     plan.deleteReminders.length === 0 && plan.addItems.length === 0 &&
     plan.setChecked.length === 0 && plan.renameItems.length === 0 &&
-    plan.removeItems.length === 0;
+    plan.setNotes.length === 0 && plan.removeItems.length === 0;
 
   it('settles within two passes from a cold start on both sides', () => {
     let state = {
@@ -499,6 +585,24 @@ describe('planGroceryReminderSync — convergence', () => {
       .toEqual(['bread', 'chicken', 'eggs', 'milk']);
     expect(state.reminders.map(r => r.title).sort())
       .toEqual(['2 lb chicken', 'bread', 'eggs', 'milk']);
+  });
+
+  it('settles after a note is edited on each side', () => {
+    let state = {
+      items: [item({ id: 'i1', name: 'milk', note: 'lactose free' }), item({ id: 'i2', name: 'eggs' })],
+      reminders: [
+        reminder({ id: 'r1', title: 'milk' }),
+        reminder({ id: 'r2', title: 'eggs', notes: 'free range, the blue carton' }),
+      ],
+      links: [
+        link({ reminderId: 'r1', itemId: 'i1', name: 'milk' }),
+        link({ reminderId: 'r2', itemId: 'i2', name: 'eggs' }),
+      ],
+    };
+    state = settle(state.items, state.reminders, state.links);
+    expect(isQuiet(planGroceryReminderSync(state.items, state.reminders, state.links))).toBe(true);
+    expect(state.items.map(i => i.note)).toEqual(['lactose free', 'free range, the blue carton']);
+    expect(state.reminders.map(r => r.notes)).toEqual(['lactose free', 'free range, the blue carton']);
   });
 
   it('settles after a rename typed into the Reminders app', () => {
