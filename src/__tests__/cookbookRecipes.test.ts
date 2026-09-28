@@ -6,6 +6,7 @@ import {
   cookbookLinkEffect,
   cookbookLinkPrompt,
   cookbookPageKey,
+  pageAfterCookbookLink,
   recipesInCookbook,
 } from '../utils/cookbookRecipes';
 
@@ -217,5 +218,38 @@ describe('cookbookLinkPrompt', () => {
     expect(cookbookLinkPrompt('Tacos', jerusalem, { kind: 'replace', attribution: 'NYT Cooking' })?.message)
       .toBe('Linking "Tacos" to Jerusalem replaces its current source (NYT Cooking).');
     expect(cookbookLinkPrompt('Plain', jerusalem, { kind: 'none' })).toBeNull();
+  });
+
+  it('says the page number goes when the recipe has one', () => {
+    expect(cookbookLinkPrompt('Salad', jerusalem, { kind: 'move', from: plenty }, '42')?.message)
+      .toBe('Linking "Salad" to Jerusalem takes it out of Plenty. Its page number (p. 42) is cleared, since that was a page of Plenty.');
+    expect(cookbookLinkPrompt('Salad', jerusalem, { kind: 'replace', attribution: 'Plenty, p. 42' }, '42')?.message)
+      .toBe('Linking "Salad" to Jerusalem replaces its current source (Plenty, p. 42) and clears its page number.');
+    expect(cookbookLinkPrompt('Plain', jerusalem, { kind: 'none' }, '42')).toBeNull();
+  });
+});
+
+describe('pageAfterCookbookLink', () => {
+  it('clears a page from another book on a move', () => {
+    const r = recipe('Salad', {
+      cookbookId: 'b-plenty', source: 'Plenty', author: 'Yotam Ottolenghi', sourceType: 'cookbook', sourcePage: '42',
+    });
+    expect(pageAfterCookbookLink(r, jerusalem, byId)).toBeNull();
+  });
+
+  it('clears a page credited to another book the recipe is no longer filed under', () => {
+    // Unlinked (or its book deleted), the mirror and the page stay behind.
+    const r = recipe('Salad', { source: 'Plenty', author: 'Yotam Ottolenghi', sourceType: 'cookbook', sourcePage: '42' });
+    expect(pageAfterCookbookLink(r, jerusalem, byId)).toBeNull();
+  });
+
+  it('keeps the page within the same book, and when nothing names another', () => {
+    const filed = recipe('Hummus', {
+      cookbookId: 'b-jer', source: 'Jerusalem', author: 'Yotam Ottolenghi', sourceType: 'cookbook', sourcePage: '112',
+    });
+    expect(pageAfterCookbookLink(filed, jerusalem, byId)).toBe('112');
+    // A page read off a photo before its book was named.
+    const unnamed = recipe('Salsa verde', { sourceType: 'cookbook', sourcePage: '45' });
+    expect(pageAfterCookbookLink(unnamed, jerusalem, byId)).toBe('45');
   });
 });

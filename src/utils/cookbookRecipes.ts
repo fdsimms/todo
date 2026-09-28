@@ -113,6 +113,28 @@ export function cookbookLinkEffect(
   return sourceLost || authorLost ? { kind: 'replace', attribution } : { kind: 'none' };
 }
 
+/**
+ * The page number a recipe keeps when it's linked to `target`: its own when
+ * linking loses nothing (`cookbookLinkEffect` is `'none'`), none when the link
+ * moves it out of another book or replaces a source naming another book.
+ *
+ * A page is a page *of the book the recipe names*, so page 42 of Plenty is
+ * not page 42 of Jerusalem, and a moved recipe kept it anyway (#2921's
+ * remainder): the book page then listed it at 42 and its credit read
+ * "Jerusalem, p. 42", pointing at a page with some other recipe on it. Worked
+ * out from the same effect the picker's confirm asks about, so the store and
+ * the confirm can't disagree about when the page goes. A recipe with no
+ * attribution keeps its page, since there is no other book for it to belong
+ * to: that is a page read off a photo, waiting for its book to be named.
+ */
+export function pageAfterCookbookLink(
+  recipe: Recipe,
+  target: Cookbook,
+  cookbookById: (id: string | null | undefined) => Cookbook | undefined,
+): string | null {
+  return cookbookLinkEffect(recipe, target, cookbookById).kind === 'none' ? recipe.sourcePage : null;
+}
+
 /** One row of the picker: the recipe, and the line under its name, if any. */
 export interface CookbookLinkCandidate {
   recipe: Recipe;
@@ -157,23 +179,32 @@ export function cookbookLinkCandidates(
 /**
  * The confirm to raise before linking, or null when linking loses nothing.
  * Copy lives here so the two cases can't drift apart in the screen.
+ *
+ * `page` is the recipe's page number, which either kind of link clears
+ * (`pageAfterCookbookLink`), so the confirm says so rather than leaving a
+ * page to disappear unannounced.
  */
 export function cookbookLinkPrompt(
   recipeName: string,
   target: Cookbook,
   effect: CookbookLinkEffect,
+  page: string | null = null,
 ): { title: string; message: string; confirm: string } | null {
   if (effect.kind === 'move') {
+    const pageNote = page
+      ? ` Its page number (p. ${page}) is cleared, since that was a page of ${effect.from.title}.`
+      : '';
     return {
       title: `Move to ${target.title}?`,
-      message: `Linking "${recipeName}" to ${target.title} takes it out of ${effect.from.title}.`,
+      message: `Linking "${recipeName}" to ${target.title} takes it out of ${effect.from.title}.${pageNote}`,
       confirm: 'Move',
     };
   }
   if (effect.kind === 'replace') {
+    const replaces = `replaces its current source (${effect.attribution})`;
     return {
       title: 'Replace the source?',
-      message: `Linking "${recipeName}" to ${target.title} replaces its current source (${effect.attribution}).`,
+      message: `Linking "${recipeName}" to ${target.title} ${page ? `${replaces} and clears its page number` : replaces}.`,
       confirm: 'Link',
     };
   }

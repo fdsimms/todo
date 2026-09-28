@@ -69,7 +69,7 @@ export function CookbookDetailScreen() {
   const handleLink = (candidate: CookbookLinkCandidate) => {
     if (!cookbook) return;
     const link = () => { haptics.tap(); linkCookbook(candidate.recipe.id, cookbookId); };
-    const prompt = cookbookLinkPrompt(candidate.recipe.name, cookbook, candidate.effect);
+    const prompt = cookbookLinkPrompt(candidate.recipe.name, cookbook, candidate.effect, candidate.recipe.sourcePage);
     if (!prompt) { link(); return; }
     Keyboard.dismiss();
     Alert.alert(prompt.title, prompt.message, [

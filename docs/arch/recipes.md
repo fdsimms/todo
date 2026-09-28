@@ -245,7 +245,15 @@ for a book, a `cookbookId` pointing at a real `Cookbook` row holding the title a
 - **`titleKey` is keyed on title *and* author.** "Dinner" is a Melissa Clark book and also a Meera
   Sodha one; a shelf that can hold only one of them is a worse bug than the near-duplicate a
   compound key lets through.
-- **The page stays on the recipe.** A book has many pages and this recipe is on one of them.
+- **The page stays on the recipe, and goes when the recipe changes books.** A book has many pages
+  and this recipe is on one of them, which is also why a link to a *different* book clears it
+  (`pageAfterCookbookLink`): page 42 of Plenty is not page 42 of Jerusalem, and a moved recipe used
+  to keep it, listed at 42 in its new book and credited "Jerusalem, p. 42". "Different" is the same
+  test the confirm below asks on (`cookbookLinkEffect`, anything but `'none'`), so the store and
+  the confirm can't disagree, and the confirm says the page goes. It lives in the two link actions
+  rather than in `mirrorOf`, because a rename or a merge re-mirrors a recipe onto what is still
+  its own book. A recipe naming no book keeps its page when one is linked: that is a page read off
+  a photo, waiting for its book.
 - **A book's page lists its recipes in page order** (`recipesInCookbook`, `cookbookRecipes.ts`),
   since every row already says "Page N" and that is how a cookbook is browsed. Roman front
   matter comes before the body, a page nobody could read as a number after it, and a recipe with
