@@ -1,6 +1,6 @@
 import { format } from 'date-fns/format';
 import type { GroceryItem, MealPlanEntry, Recipe, RecipeIngredient } from '../types';
-import { flattenRecipeIngredients, type FlatIngredient } from './recipeComponents';
+import { cookedDishes, flattenRecipeIngredients, type FlatIngredient } from './recipeComponents';
 import { ingredientHeadings } from './recipeSections';
 import { describeAttribution, formatServingsRange, totalMinutes } from './recipeUtils';
 import { formatDuration } from './effort';
@@ -81,7 +81,9 @@ interface ShareIngredientRow {
  *
  * **A group of components stays resolved to its default**, the same line
  * `ChoiceResolution.undecided` draws: "mash or roast potatoes" in full would
- * put two dishes' lines under two headings. A group an ingredient shares with
+ * put two dishes' lines under two headings. The recipe share names the others
+ * in the default dish's heading instead (`componentAlternativeNames`); the
+ * paste has no headings and sends the default's lines alone. A group an ingredient shares with
  * a component ("corn tortillas" or the Tortillas de Maíz recipe) defaults to
  * the ingredient, and the component is named on that line instead.
  */
@@ -111,6 +113,37 @@ function shareIngredientRows(
   return rows;
 }
 
+/**
+ * The other dishes of the either/or each component in the share won, by the
+ * id of the component recipe that won it: the "Rice" in "For the Mash (or
+ * Rice):".
+ *
+ * A choice between two components still sends only the default dish's lines
+ * (see `shareIngredientRows`), and used to send nothing else, so the reader
+ * of "Steak with a side of Mash or Rice" was told the side was mash. The page
+ * shows both; the heading is where the dish is named, so the heading is where
+ * its alternatives are named too, without their lines. Read off the same walk
+ * the flatten took (`cookedDishes`, default resolution), so it names exactly
+ * the link that brought each dish in. A dish on no choice is absent.
+ */
+function componentAlternativeNames(
+  recipe: Recipe,
+  recipesById: ReadonlyMap<string, Recipe>,
+): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  for (const dish of cookedDishes(recipe, recipesById)) {
+    const label = dish.via?.component.choiceGroup;
+    if (!dish.via || !label) continue;
+    const chosen = dish.via.component;
+    const others = dish.via.parent.components
+      .filter(c => c.choiceGroup === label && c.id !== chosen.id)
+      .map(c => (recipesById.get(c.recipeId)?.name ?? c.name).trim())
+      .filter(Boolean);
+    if (others.length > 0) out.set(dish.recipe.id, others);
+  }
+  return out;
+}
+
 /** One slot as a line of text — every option joined by "or", each scaled and converted. */
 function formatShareIngredientRow(
   row: ShareIngredientRow,
@@ -137,7 +170,9 @@ function formatShareIngredientRow(
  * is omitted for no weights.
  *
  * An either/or is sent as the choice, one line holding every option (see
- * `shareIngredientRows`), rather than accepting a `ChoiceResolution` —
+ * `shareIngredientRows`), and a choice between whole dishes names the others
+ * in the default dish's heading ("For the Mash (or Rice):", see
+ * `componentAlternativeNames`), rather than accepting a `ChoiceResolution` —
  * sharing "the recipe" means the version anyone opening it fresh would see,
  * not the sender's mid-cook picks for tonight, which is exactly what
  * `MealPlanEntry.recipeChoices` exists to hold separately.
@@ -185,8 +220,13 @@ export function buildRecipeShareText(
     // Read off the slots rather than every option, so an option filed under
     // another heading can't open one for a line that isn't there.
     const headings = ingredientHeadings(rows.map(row => row.line));
+    const alternatives = componentAlternativeNames(recipe, recipesById);
     rows.forEach((row, index) => {
-      if (headings[index].dish) lines.push(`For the ${row.line.recipe.name}:`);
+      if (headings[index].dish) {
+        const others = alternatives.get(row.line.recipe.id);
+        const or = others ? ` (or ${others.join(' or ')})` : '';
+        lines.push(`For the ${row.line.recipe.name}${or}:`);
+      }
       const section = headings[index].section;
       if (section) lines.push(`${section}:`);
       lines.push(`- ${formatShareIngredientRow(row, scale, unitSystem, weights)}`);

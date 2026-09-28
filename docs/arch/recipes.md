@@ -194,6 +194,14 @@ already allows two things on one dinner, so ad-hoc pairing needs nothing.
   `classifyPlanned` would merge into one doubled quantity. `scoreRecipeAgainstCatalog` and
   `countLikelyInPantry` resolve to the defaults instead, or the coverage denominator inflates with
   lines that will never be bought.
+- **A shared recipe keeps a choice as a choice, and names a whole-dish one in the heading.** The
+  share text and the ingredient paste take no `ChoiceResolution` (the sender's picks are tonight's,
+  not the recipe's), so an ingredient either/or goes out as one line holding every option ("1
+  serrano or 2 jalapeños", #2948). A choice between components still sends only the default
+  dish's lines, since both in full would read as two dishes to shop for, but the share names the
+  others in that dish's heading: "For the Mash (or Rice):". It reads which link brought each dish
+  in off `cookedDishes`' `via`, the same walk the flatten takes, rather than a second walk of its
+  own. The paste has no headings, so it sends the default's lines alone.
 - **The cycle check deliberately ignores choices** (`reachableRecipeIds` walks every option): a loop
   down an unchosen branch is still a loop, and becomes live the moment someone picks that option.
 - **An ad-hoc "Add ingredients to list" holds its picks in sheet state and writes nothing** —

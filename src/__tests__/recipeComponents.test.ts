@@ -325,6 +325,18 @@ describe('cookedDishes', () => {
       .toEqual(['Steak', 'Roast potatoes']);
   });
 
+  it('carries the link each part was reached through, and none for the meal', () => {
+    const mash = recipe('r2', 'Mash');
+    const roast = recipe('r3', 'Roast potatoes');
+    const mashLink = link('r2', 'Mash', 'Side');
+    const steak = recipe('r1', 'Steak', { components: [mashLink, link('r3', 'Roast potatoes', 'Side')] });
+
+    const [meal, side] = cookedDishes(steak, recipeMap([steak, mash, roast]));
+
+    expect('via' in meal).toBe(false);
+    expect(side.via).toEqual({ parent: steak, component: mashLink });
+  });
+
   it('shrugs off a part whose recipe is gone', () => {
     const steak = recipe('r1', 'Steak', { components: [link('gone', 'Mash')] });
 
