@@ -1,6 +1,8 @@
 import type { GroceryItem, ItemProduct, ItemShopLink, Shop, StoreAlias } from '../types';
 import { describePreferredProduct, lacksPreferredProduct } from './groceryProduct';
 import { groceryNameKey } from './groceryParse';
+import { OTHER_AISLE } from './groceryAisles';
+import { sectionsInAisleOrder } from './grocerySuggest';
 
 /**
  * Which stores have which items — the read side of the purchase links.
@@ -292,6 +294,135 @@ export function exclusiveShopFor(
 ): Shop | null {
   const all = shopsForItem(item, links, shops).filter(s => !s.shop.excludeFromSuggestions);
   return all.length === 1 ? all[0].shop : null;
+}
+
+/**
+ * Where a row with no store to file under lands in `buildGroceryStoreSections`,
+ * always last, the convention `NO_RECIPE_LABEL` and `OTHER_AISLE` follow.
+ *
+ * Worded as what the app doesn't know rather than as anything about a store
+ * (#2938). "Any store" or "Anywhere" would be the app claiming a range for
+ * these rows, and the only thing actually true of them is that nothing on
+ * record ties them to one.
+ */
+export const NO_STORE_LABEL = 'No store on record';
+
+export interface GroceryStoreSection {
+  /** Null for the catch-all bucket; see NO_STORE_LABEL. */
+  shopId: string | null;
+  shopName: string;
+  data: GroceryItem[];
+}
+
+/**
+ * The store a list row files under in the store lens, or null.
+ *
+ * Habit first (`primaryShopFor`: where you have actually bought it most),
+ * then the user's own assertion (`exclusiveShopFor`: the one store it is
+ * linked to, a hand-tap included). Both already drop a store marked as not
+ * stocking it and a store flagged "don't suggest", so a row is never filed
+ * under a shop the user has said to leave out of exactly this kind of read.
+ * Nothing weaker is consulted: an item with two stores on record and no
+ * purchases at either has no answer, and guessing one would be the app
+ * inventing a habit.
+ */
+export function storeSectionShopFor(
+  item: GroceryItem,
+  links: readonly ItemShopLink[],
+  shops: readonly Shop[]
+): Shop | null {
+  return primaryShopFor(item, links, shops) ?? exclusiveShopFor(item, links, shops);
+}
+
+/**
+ * The third lens on the shopping list (#2938): cut into the stores each row is
+ * bought at, so a two-stop plan reads as two short lists rather than one long
+ * one. The sibling of `buildGrocerySections` and `buildGroceryRecipeSections`
+ * (grocerySuggest.ts), with the same return shape and the same in-cart hold.
+ *
+ * - **Which store** is `storeSectionShopFor`: habit, then the user's own
+ *   assertion, else the last section (`NO_STORE_LABEL`).
+ * - **Section order** is the user's own store order (the `shops` array as the
+ *   store holds it), except that the store a running trip is at comes first:
+ *   it is the one you are standing in. Pass `tripShopId` only from
+ *   `resolveActiveTrip`, so an aged-out trip can't keep reordering the list.
+ * - **Within a section, the aisle walk is kept.** The rows are cut into aisles
+ *   with the same `sectionsInAisleOrder` the aisle lens uses and read back in
+ *   that order, so a store's rows come in the order you'd pass them in the
+ *   aisle lens, just without the aisle headings.
+ *
+ * Nothing here decides a trip or reads the list as a claim about a store: a
+ * section is only where the record says you usually get something.
+ */
+export function buildGroceryStoreSections(
+  items: readonly GroceryItem[],
+  links: readonly ItemShopLink[],
+  shops: readonly Shop[],
+  aisleOrder: readonly string[],
+  cartHoldIds: readonly string[] = [],
+  tripShopId: string | null = null
+): { sections: GroceryStoreSection[]; inCart: GroceryItem[]; remaining: number } {
+  const held = new Set(cartHoldIds);
+  const onList = items.filter(i => i.onList);
+
+  // One pass over the links rather than a scan of all of them per row: the
+  // link table is every (item, store) pair ever recorded, and the list is a
+  // few dozen rows out of it.
+  const onListIds = new Set(onList.map(i => i.id));
+  const linksByItem = new Map<string, ItemShopLink[]>();
+  for (const l of links) {
+    if (!onListIds.has(l.itemId)) continue;
+    const bucket = linksByItem.get(l.itemId);
+    if (bucket) bucket.push(l);
+    else linksByItem.set(l.itemId, [l]);
+  }
+
+  const byShop = new Map<string | null, GroceryItem[]>();
+  const inCart: GroceryItem[] = [];
+  for (const item of onList) {
+    if (item.checked && !held.has(item.id)) {
+      inCart.push(item);
+      continue;
+    }
+    const shop = storeSectionShopFor(item, linksByItem.get(item.id) ?? [], shops);
+    const key = shop?.id ?? null;
+    const bucket = byShop.get(key);
+    if (bucket) bucket.push(item);
+    else byShop.set(key, [item]);
+  }
+
+  const bySortOrder = (a: GroceryItem, b: GroceryItem) =>
+    a.sortOrder - b.sortOrder || a.name.localeCompare(b.name);
+  const inAisleWalk = (data: GroceryItem[]): GroceryItem[] => {
+    const byAisle = new Map<string, GroceryItem[]>();
+    for (const item of data) {
+      const aisle = item.aisle || OTHER_AISLE;
+      const bucket = byAisle.get(aisle);
+      if (bucket) bucket.push(item);
+      else byAisle.set(aisle, [item]);
+    }
+    return sectionsInAisleOrder(byAisle, aisleOrder, bySortOrder).flatMap(s => s.data);
+  };
+
+  const ordered = shops.filter(s => byShop.has(s.id));
+  const tripIndex = tripShopId ? ordered.findIndex(s => s.id === tripShopId) : -1;
+  if (tripIndex > 0) ordered.unshift(...ordered.splice(tripIndex, 1));
+
+  const sections: GroceryStoreSection[] = ordered.map(shop => ({
+    shopId: shop.id,
+    shopName: shop.name,
+    data: inAisleWalk(byShop.get(shop.id)!),
+  }));
+  const unfiled = byShop.get(null);
+  if (unfiled) sections.push({ shopId: null, shopName: NO_STORE_LABEL, data: inAisleWalk(unfiled) });
+
+  inCart.sort(bySortOrder);
+
+  return {
+    sections,
+    inCart,
+    remaining: onList.filter(i => !i.checked).length,
+  };
 }
 
 /**

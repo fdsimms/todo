@@ -3383,7 +3383,12 @@ describe('grocery items', () => {
       expect(dbGetGroceryGroupBy()).toBe('recipe');
     });
 
-    it('reads back anything but recipe as aisle', () => {
+    it('survives a round trip as the store lens too', () => {
+      dbSetGroceryGroupBy('store');
+      expect(dbGetGroceryGroupBy()).toBe('store');
+    });
+
+    it('reads back anything but recipe or store as aisle', () => {
       dbSetSetting('grocery_group_by', 'nonsense');
       expect(dbGetGroceryGroupBy()).toBe('aisle');
     });

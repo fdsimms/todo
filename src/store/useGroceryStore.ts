@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { FoodNutrition, GroceryItem, GroceryList, GroceryListEntry, ItemProduct, ItemShopLink, ItemSubLink, ProductRating, ReceiptStyle, Shop, StoreAlias } from '../types';
+import type { FoodNutrition, GroceryGroupBy, GroceryItem, GroceryList, GroceryListEntry, ItemProduct, ItemShopLink, ItemSubLink, ProductRating, ReceiptStyle, Shop, StoreAlias } from '../types';
 import {
   dbGetAllGroceryItems,
   dbInsertGroceryItem,
@@ -393,12 +393,13 @@ interface GroceryStore extends UndoHistoryActions {
   /** Checked rows still holding their place in their own aisle. */
   cartHoldIds: string[];
   /**
-   * How the shopping list groups its unchecked rows — aisle (default) or
-   * recipe. See buildGroceryRecipeSections. A display setting, not a fact
-   * about any item, so it lives here rather than on the rows themselves.
+   * How the shopping list groups its unchecked rows — aisle (default),
+   * recipe, or store. See buildGroceryRecipeSections and
+   * buildGroceryStoreSections. A display setting, not a fact about any item,
+   * so it lives here rather than on the rows themselves.
    */
-  groceryGroupBy: 'aisle' | 'recipe';
-  setGroceryGroupBy: (groupBy: 'aisle' | 'recipe') => void;
+  groceryGroupBy: GroceryGroupBy;
+  setGroceryGroupBy: (groupBy: GroceryGroupBy) => void;
   /**
    * The shopping lists besides the one at home — "Airbnb", "Beach house". They
    * live here rather than in a store of their own for the reason `shops` and

@@ -19,6 +19,7 @@ import type {
   PersonNoteKind,
   Task,
   Category,
+  GroceryGroupBy,
   GroceryItem,
   GroceryList,
   GroceryListEntry,
@@ -4975,15 +4976,17 @@ export function dbSetGroceryAisleOverrides(overrides: Record<string, string>): v
   dbSetSetting('grocery_aisle_overrides', JSON.stringify(overrides));
 }
 
-// The list's two ways of grouping unchecked items — see
-// buildGroceryRecipeSections. A scalar, so it's a settings key like
-// grocery_aisle_order rather than a column; anything but 'recipe' reads back
-// as 'aisle', which is also what an install that predates this setting gets.
-export function dbGetGroceryGroupBy(): 'aisle' | 'recipe' {
-  return dbGetSetting('grocery_group_by') === 'recipe' ? 'recipe' : 'aisle';
+// The list's three ways of grouping unchecked items — see
+// buildGroceryRecipeSections and buildGroceryStoreSections. A scalar, so it's
+// a settings key like grocery_aisle_order rather than a column; anything but
+// 'recipe' or 'store' reads back as 'aisle', which is also what an install
+// that predates this setting gets.
+export function dbGetGroceryGroupBy(): GroceryGroupBy {
+  const stored = dbGetSetting('grocery_group_by');
+  return stored === 'recipe' || stored === 'store' ? stored : 'aisle';
 }
 
-export function dbSetGroceryGroupBy(groupBy: 'aisle' | 'recipe'): void {
+export function dbSetGroceryGroupBy(groupBy: GroceryGroupBy): void {
   dbSetSetting('grocery_group_by', groupBy);
 }
 

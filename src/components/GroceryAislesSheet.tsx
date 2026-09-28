@@ -32,10 +32,10 @@ import { PillGroup } from './PillGroup';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { EmptyState } from './EmptyState';
 import { OTHER_AISLE, isNonFoodAisle } from '../utils/groceryAisles';
-import { describeShopAisles, describeShopDelete, itemCountsByShop } from '../utils/groceryShops';
+import { describeShopAisles, describeShopDelete, itemCountsByShop, NO_STORE_LABEL } from '../utils/groceryShops';
 import { haptics } from '../utils/haptics';
 import { confirmDelete } from '../utils/confirmDelete';
-import { AISLE_NAME_MAX_LENGTH, SHOP_NAME_MAX_LENGTH, type Shop } from '../types';
+import { AISLE_NAME_MAX_LENGTH, SHOP_NAME_MAX_LENGTH, type GroceryGroupBy, type Shop } from '../types';
 
 interface Props {
   visible: boolean;
@@ -771,15 +771,19 @@ function StoresTab({
 
 interface GroupByTabProps {
   styles: ReturnType<typeof makeStyles>;
-  groupBy: 'aisle' | 'recipe';
-  onChange: (groupBy: 'aisle' | 'recipe') => void;
+  groupBy: GroceryGroupBy;
+  onChange: (groupBy: GroceryGroupBy) => void;
 }
 
 /**
- * Aisle vs. recipe grouping (#1717) — a closed two-way choice, so
+ * Aisle, recipe or store grouping (#1717, #2938) — a closed choice, so
  * SegmentedControl rather than another draggable list. Wrapped in a card:
  * the control's own track is bgTertiary, which is close to invisible sitting
  * directly on this sheet's bg (see SegmentedControl's doc comment).
+ *
+ * The store hint names the away-list exception because it is the one place
+ * the choice is not honored: GroceryScreen shows an away list by aisle
+ * whatever is picked here, since every store on record is one near home.
  */
 function GroupByTab({ styles, groupBy, onChange }: GroupByTabProps) {
   return (
@@ -795,12 +799,15 @@ function GroupByTab({ styles, groupBy, onChange }: GroupByTabProps) {
           options={[
             { value: 'aisle', label: 'Aisle' },
             { value: 'recipe', label: 'Recipe' },
+            { value: 'store', label: 'Store' },
           ]}
         />
         <Text style={styles.groupByHint}>
           {groupBy === 'recipe'
             ? 'Items are grouped by the recipe they were added from. Anything typed by hand, or added from more than one recipe at once, is under "No recipe."'
-            : 'Items are grouped by aisle, in the walk order set on the Aisles tab.'}
+            : groupBy === 'store'
+              ? `Items are grouped by the store you usually buy them at, or the one store you\u2019ve linked them to. Each store keeps your aisle order. Anything else is under "${NO_STORE_LABEL}." Away lists stay grouped by aisle.`
+              : 'Items are grouped by aisle, in the walk order set on the Aisles tab.'}
         </Text>
       </View>
     </>

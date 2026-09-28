@@ -520,7 +520,9 @@ tombstone per shop. This table is bounded by (items × stores you actually shop 
   filter chip row in `GroceryCatalogSheet`, because that's the catalog browser and it's open exactly
   when you're deciding what to buy where. **There is still no store chip on the shopping list
   rows** — the row is already dense, and a chip on every row is a column you can't act on. What
-  a row can now carry is one quiet caption, and only while a trip is running: see below.
+  a row can now carry is one quiet caption, and only while a trip is running: see below. The
+  other answer is the store lens, a heading per store rather than a chip per row: see "Grouping
+  the list by store" below.
 
 ### A store can be told which aisles it sells (`Shop.aisles`)
 
@@ -583,6 +585,40 @@ items from, and this is a person stating what a shop sells. Same side of the lin
   catalog's store filter. Those report the record, and a range would have them promise rows the
   filter can't produce. For the same reason `shopsForItem` needs no change at all — every link it
   returns is a positive one, and a positive link already outranks the range.
+
+### Grouping the list by store (#2938)
+
+A two-stop plan ("Trader Joe's, then the pharmacy") used to be two tasks opening the same long
+list. The list now has a third lens beside aisle and recipe (`groceryGroupBy: 'store'`,
+`buildGroceryStoreSections` in `groceryShops.ts`).
+
+- **A row files under habit, then assertion, then nothing.** `storeSectionShopFor` is
+  `primaryShopFor` (where you have actually bought it most) falling back to `exclusiveShopFor`
+  (the one store it is linked to, a hand tap included). Both already drop a stamped negative and
+  a "don't suggest" store. Anything else lands in the last section, "No store on record", which
+  says what the app doesn't know rather than anything about a store. An item with two
+  hand-asserted stores and no purchases files under neither: picking one would be the app
+  inventing a habit, the line `primaryShopFor` already draws.
+- **Sections follow the user's own store order, and a running trip's store leads.** Only a trip
+  `resolveActiveTrip` still honors, so an abandoned one can't keep reordering the list. Within a
+  section the aisle walk is kept (`sectionsInAisleOrder`, the rule the aisle lens and the kitchen
+  share), just without the aisle headings.
+- **No row drag and no add-button drop zones**, the recipe lens's rule for the recipe lens's
+  reason: which store a row is bought at is a fact on record, not a placement a drop could assign.
+- **An away list stays grouped by aisle** whatever is picked. Every store on record is one near
+  home, so store sections on the rental's list would name the wrong buildings, which is why
+  `StartTripPrompt` offers no stores there either. The setting is left alone and the picker's hint
+  says so.
+- **Row captions are the trip markers they always were, less one repetition.** A `usually` marker
+  naming the store the row already sits under is dropped, since "Usually Costco" under a "Costco"
+  heading says the heading twice. `only` stays ("Only at CVS" says no other store on record has
+  it, which a "CVS" heading doesn't), and so do the negatives, which are about the store you're
+  in. There is deliberately no "cheaper at X" caption: `tripMarkerFor` allows three captions, each
+  backed by something the user recorded, and a price comparison would be a fourth kind of claim.
+  It stays in the item sheet.
+- **Not built: a per-store aisle order.** `aisleOrder` is still one walk. A `Shop.aisleOrder`
+  applied during a trip would be the fifth place an aisle name lives, so `renameAisle` and
+  `deleteAisle` would have to keep it too.
 
 ## The active trip — "I'm at this store"
 

@@ -5122,6 +5122,14 @@ export interface GtinLookup {
   fetchedAt: string;
 }
 
+/**
+ * How the shopping list groups what's still to buy: by aisle (the default and
+ * the only one a drag can file into), by the recipe a row came from, or by the
+ * store it is usually bought at (#2938). Three lenses on one list, never
+ * layered; see `buildGroceryRecipeSections` and `buildGroceryStoreSections`.
+ */
+export type GroceryGroupBy = 'aisle' | 'recipe' | 'store';
+
 // A place you shop. "Store" everywhere the user can read; `Shop` in code,
 // because `store` is already Zustand's word here (useGroceryStore,
 // useTaskStore) and `useGroceryStoreStore` is not a name anyone should type.

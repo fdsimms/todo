@@ -267,6 +267,11 @@ export function buildGrocerySections(
  * still names its recipe correctly even after that recipe is renamed or
  * deleted. Sections are sorted by title, with the no-recipe bucket always
  * last; within a section, still the list's own sortOrder walk.
+ *
+ * The third lens, by store, is `buildGroceryStoreSections` in groceryShops.ts
+ * rather than here: it reads the store links through `primaryShopFor`, and
+ * groceryShops already imports this file (through groceryProduct), so the
+ * other way round would be a require cycle.
  */
 export function buildGroceryRecipeSections(
   items: readonly GroceryItem[],
