@@ -224,6 +224,11 @@ export const GroceryRow = React.memo(function GroceryRow({
   const [pricingActive, setPricingActive] = useState(false);
   const [draftPrice, setDraftPrice] = useState('');
 
+  // The trip price chip is on this row at all, and whether it has a price of
+  // this trip's to show — which decides where on the row it sits (#2946).
+  const tripPriceShown = !!onSetTripPrice && !selectionMode;
+  const priceRecorded = tripPriceRecorded && tripPriceMinor != null;
+
   const startPricing = () => {
     setDraftPrice(tripPriceMinor != null ? priceToInput(tripPriceMinor) : '');
     setPricingActive(true);
@@ -486,6 +491,65 @@ export const GroceryRow = React.memo(function GroceryRow({
           {!!alternatives && !choicePosition && (
             <Text style={styles.alternatives} numberOfLines={1}>{alternatives}</Text>
           )}
+          {/* The trip price once there's one to show, or while it's being
+              typed: its own line under the name rather than beside it (#2946).
+              Present only while a trip is running (see onSetTripPrice) and
+              not while selecting. Two of the chip's three states, same shape
+              as the inline rename above: recorded (a pill, tap to correct it)
+              and mid-edit (a TextInput swapped in for it). The idle state is
+              the icon at the end of the row, below, since a line per row for
+              an empty price would make every row taller for the whole trip.
+              The recorded pill is the one state worth a word: it's the only
+              thing on the row a trip asked the user to do. */}
+          {tripPriceShown && (pricingActive || priceRecorded) && (
+            <View style={styles.tripPriceLine}>
+              {pricingActive ? (
+                <View style={styles.priceField}>
+                  <Text style={styles.priceSymbol}>{currencySymbol}</Text>
+                  <TextInput
+                    style={styles.priceInput}
+                    value={draftPrice}
+                    onChangeText={text => setDraftPrice(formatPriceInput(text))}
+                    onBlur={commitPrice}
+                    onSubmitEditing={commitPrice}
+                    autoFocus
+                    keyboardType="number-pad"
+                    returnKeyType="done"
+                    inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
+                    // Names the field rather than showing a formatted number.
+                    // Placeholder text is textTertiary, the same grey a hint uses,
+                    // so "0.00" sitting in a price box reads as a price already
+                    // saved rather than as an empty field.
+                    placeholder="Price"
+                    placeholderTextColor={colors.textTertiary}
+                    maxLength={PRICE_INPUT_MAX_LENGTH}
+                    accessibilityLabel={`Price for ${item.name}`}
+                  />
+                  {/* Mounted by the row rather than by the grocery screen, because
+                      the field it belongs to is the row's own: pricingActive is
+                      this row's transient mid-edit flag, and only one row is ever
+                      in it (committing on blur is what ends the last one). The
+                      screen would have to be told which row is editing to do the
+                      same job. Several mounted copies are safe anyway — see
+                      NumberPadAccessory. */}
+                  <NumberPadAccessory />
+                </View>
+              ) : (
+                <TouchableOpacity
+                  onPress={startPricing}
+                  hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Price ${formatPrice(tripPriceMinor!, currencySymbol)}. Double tap to change it.`}
+                >
+                  <View style={styles.pricedPill}>
+                    <Text style={styles.pricedPillText} numberOfLines={1}>
+                      {formatPrice(tripPriceMinor!, currencySymbol)}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
         </View>
 
         {!!shownQuantity && (
@@ -502,76 +566,31 @@ export const GroceryRow = React.memo(function GroceryRow({
           </View>
         )}
 
-        {/* Present whenever a trip is running — see onSetTripPrice's doc
-            comment. Hidden while selecting, same as the trailing icons below:
-            a tap here has to select the row, not open an edit. Three states,
-            same shape as the inline rename above: nothing recorded yet (a
-            bare icon button, so it costs nothing to leave alone on the rows
-            you're not about to pick up), recorded (a plain pill, tap to
-            correct it), and mid-edit (a TextInput swapped in for either).
-            The bare-icon idle state is deliberately not an InlineAction —
-            this now sits on every unchecked row while a trip is live, not
-            just the ones already in the cart, so a labeled pill next to
-            every item would be the row-level noise this was built to avoid.
-            It stays a plain icon button through to the recorded pill, which
-            is the one state actually worth a word: it's the only thing on
-            the row a trip asked the user to do. */}
-        {!!onSetTripPrice && !selectionMode && (
-          pricingActive ? (
-            <View style={styles.priceField}>
-              <Text style={styles.priceSymbol}>{currencySymbol}</Text>
-              <TextInput
-                style={styles.priceInput}
-                value={draftPrice}
-                onChangeText={text => setDraftPrice(formatPriceInput(text))}
-                onBlur={commitPrice}
-                onSubmitEditing={commitPrice}
-                autoFocus
-                keyboardType="number-pad"
-                returnKeyType="done"
-                inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
-                // Names the field rather than showing a formatted number.
-                // Placeholder text is textTertiary, the same grey a hint uses,
-                // so "0.00" sitting in a price box reads as a price already
-                // saved rather than as an empty field.
-                placeholder="Price"
-                placeholderTextColor={colors.textTertiary}
-                maxLength={PRICE_INPUT_MAX_LENGTH}
-                accessibilityLabel={`Price for ${item.name}`}
-              />
-              {/* Mounted by the row rather than by the grocery screen, because
-                  the field it belongs to is the row's own: pricingActive is
-                  this row's transient mid-edit flag, and only one row is ever
-                  in it (committing on blur is what ends the last one). The
-                  screen would have to be told which row is editing to do the
-                  same job. Several mounted copies are safe anyway — see
-                  NumberPadAccessory. */}
-              <NumberPadAccessory />
-            </View>
-          ) : tripPriceRecorded && tripPriceMinor != null ? (
-            <TouchableOpacity
-              onPress={startPricing}
-              hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
-              accessibilityRole="button"
-              accessibilityLabel={`Price ${formatPrice(tripPriceMinor, currencySymbol)}. Double tap to change it.`}
-            >
-              <View style={styles.pricedPill}>
-                <Text style={styles.pricedPillText} numberOfLines={1}>
-                  {formatPrice(tripPriceMinor, currencySymbol)}
-                </Text>
-              </View>
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity
-              style={styles.priceIconButton}
-              onPress={startPricing}
-              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-              accessibilityRole="button"
-              accessibilityLabel={`Add a price for ${item.name}`}
-            >
-              <Ionicons name="pricetag-outline" size={iconSize.md} color={colors.textTertiary} />
-            </TouchableOpacity>
-          )
+        {/* The trip price's idle state, and the only one left beside the name:
+            a bare icon on a fixed, narrow box, the short fixed kind of thing
+            that may share a row with a name. Its recorded pill and the field
+            that edits it live on their own line under the name (see
+            `tripPriceLine` above), because a price is a label that grows, and
+            beside a long quantity it left the name 40pt of a 390pt row
+            (#2946). Hidden while selecting, same as the trailing icons below:
+            a tap here has to select the row, not open an edit.
+
+            The bare icon is deliberately not an InlineAction. It sits on
+            every row while a trip is live, not just the ones already in the
+            cart, so a labeled pill beside every item would be the row-level
+            noise this was built to avoid. */}
+        {tripPriceShown && !pricingActive && !priceRecorded && (
+          <TouchableOpacity
+            style={styles.priceIconButton}
+            onPress={startPricing}
+            // Out to a 40x44 target around the narrow box, a little less on
+            // the right where the swap icon's own slop begins.
+            hitSlop={{ top: 6, bottom: 6, left: 12, right: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel={`Add a price for ${item.name}`}
+          >
+            <Ionicons name="pricetag-outline" size={iconSize.md} color={colors.textTertiary} />
+          </TouchableOpacity>
         )}
       </TouchableOpacity>
 
@@ -892,6 +911,9 @@ function makeStyles(colors: Colors) {
       borderRadius: radius.sm,
       paddingHorizontal: spacing.sm,
       paddingVertical: 3,
+      // The quantity pill's own cap. On its own line now, so this is a
+      // backstop for a long currency symbol rather than what saves the name.
+      maxWidth: 90,
     },
     pricedPillText: {
       fontSize: font.sm,
@@ -928,11 +950,20 @@ function makeStyles(colors: Colors) {
     // since this now sits on every unchecked row for the duration of a trip
     // rather than only the ones already checked off. A pill here would be
     // exactly the per-row noise a trip-wide affordance has to avoid.
+    //
+    // The box is the glyph's own width, not a 32pt square: every point of it
+    // comes out of the name beside it, and hitSlop gives the touch back.
     priceIconButton: {
-      width: 32,
+      width: iconSize.md,
       height: 32,
       alignItems: 'center',
       justifyContent: 'center',
+    },
+    // The line under the name that holds a recorded trip price or its field.
+    // Left-aligned with the name, a step below the captions above it.
+    tripPriceLine: {
+      flexDirection: 'row',
+      marginTop: spacing.xs,
     },
   });
 }
