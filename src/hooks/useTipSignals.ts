@@ -7,6 +7,7 @@ import { useTemplateStore } from '../store/useTemplateStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useMealPlanStore } from '../store/useMealPlanStore';
+import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import type { TipSignals } from '../utils/tips';
 
@@ -14,7 +15,7 @@ import type { TipSignals } from '../utils/tips';
  * Builds the `TipSignals` snapshot a tip's `when` is tested against.
  *
  * **Only mount this once there is a tip that could use it.** It subscribes to
- * eight stores and walks the task list and the grocery catalog, which is a
+ * nine stores and walks the task list and the grocery catalog, which is a
  * silly amount of work to do on the Groceries screen so that a tip can decline
  * to show. `TipHost` does the cheap half of the decision first (is there an
  * unseen tip for this screen at all, and is today's slot free) and only then
@@ -38,6 +39,7 @@ export function useTipSignals(): TipSignals {
   const shops = useGroceryStore(s => s.shops);
   const recipes = useRecipeStore(s => s.recipes);
   const mealEntries = useMealPlanStore(s => s.entries);
+  const foodLogEntryCount = useFoodLogStore(s => s.totalCount);
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
   const hasApiKey = useSettingsStore(s => s.anthropicApiKey.length > 0);
 
@@ -90,12 +92,13 @@ export function useTipSignals(): TipSignals {
       shopCount: shops.length,
       recipeCount: recipes.length,
       plannedMealCount: mealEntries.length,
+      foodLogEntryCount,
       kitchenEnabled,
       hasApiKey,
     }),
     [
       taskCounts, groceryCounts, groups, categories, projects, templates,
-      tagRegistry, shops, recipes, mealEntries, kitchenEnabled, hasApiKey,
+      tagRegistry, shops, recipes, mealEntries, foodLogEntryCount, kitchenEnabled, hasApiKey,
     ]
   );
 }

@@ -62,6 +62,7 @@ import { useAiRoute } from '../hooks/useOnDeviceAi';
 import { EmptyState } from '../components/EmptyState';
 import { EmptyNote } from '../components/EmptyNote';
 import { HubPills } from '../components/HubPills';
+import { TipHost } from '../components/TipHost';
 import { InlineAction } from '../components/InlineAction';
 import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeader';
 import { FoodLogEntrySheet } from '../components/FoodLogEntrySheet';
@@ -202,6 +203,10 @@ export function FoodLogScreen() {
   // rule `aiRouting.ts` states. This feature has no on-device engine, so the
   // route is 'claude' or 'unavailable' and nothing renders for the second.
   const estimateRoute = useAiRoute('nutritionEstimate');
+  // Searching a food database by name needs lookups on and a FoodData Central
+  // key, the same pair the entry sheet's own search checks. Read here only to
+  // decide whether the empty state may name the search as a way in.
+  const canSearchFoods = useSettingsStore(s => s.productLookupEnabled && !!s.fdcApiKey);
   const entriesForDayLive = useMealPlanStore(s => s.entriesForDayLive);
   const offerMealLog = useFoodLogStore(s => s.offerMealLog);
   // A count rather than the array, so planning a meal re-reads the day without
@@ -878,6 +883,21 @@ export function FoodLogScreen() {
     </View>
   );
 
+  // What the log is, then the ways in this install actually has (#2928). Only
+  // the ones that would work are named: a search with no key or a scan
+  // simplified mode took away is a way in that isn't there.
+  const emptyWaysIn = [
+    'pick a food that has nutrition on it',
+    ...(scanShown ? ['scan a package'] : []),
+    ...(canSearchFoods ? ['search a food database'] : []),
+    ...(estimateRoute !== 'unavailable' ? ['describe a meal'] : []),
+  ];
+  const emptySubtitle = "Write down what you ate and see the day's totals. You can "
+    + (emptyWaysIn.length === 1
+      ? emptyWaysIn[0]
+      : `${emptyWaysIn.slice(0, -1).join(', ')} or ${emptyWaysIn[emptyWaysIn.length - 1]}`)
+    + '.';
+
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
       <ScreenHeader
@@ -919,6 +939,7 @@ export function FoodLogScreen() {
         ]}
       />
       <HubPills hub="kitchen" active="FoodLog" />
+      <TipHost screen="foodLog" />
 
       <View style={styles.dayNav}>
         <TouchableOpacity
@@ -977,7 +998,7 @@ export function FoodLogScreen() {
         <EmptyState
           icon="restaurant-outline"
           title={isToday ? 'Nothing logged today' : 'Nothing logged that day'}
-          subtitle="Foods and meals you log show up here, with the day's totals."
+          subtitle={emptySubtitle}
           actionLabel="Log something"
           onAction={() => { haptics.tap(); setAddingSlot(guessedSlot); setAddOpen(true); }}
           bottomOffset={tabBarHeight}

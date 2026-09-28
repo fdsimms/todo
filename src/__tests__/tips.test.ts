@@ -28,6 +28,7 @@ const NO_SIGNALS: TipSignals = {
   recipeCount: 0,
   purchasedItemCount: 0,
   plannedMealCount: 0,
+  foodLogEntryCount: 0,
   kitchenEnabled: true,
   hasApiKey: false,
 };
@@ -50,6 +51,7 @@ const MAXED: TipSignals = {
   recipeCount: 500,
   purchasedItemCount: 500,
   plannedMealCount: 500,
+  foodLogEntryCount: 500,
   hasApiKey: true,
 };
 
@@ -217,15 +219,48 @@ describe('tipsFor', () => {
    * with no tips in it, header included (see its `rows` builder), so this
    * renders as one fewer heading rather than as an empty one.
    *
+   * The food log area goes the same way for the same reason: simplified mode
+   * takes the Food log screen away (`foodLogScreen`), and every one of its tips
+   * is about that screen or the scanner the mode also removes.
+   *
    * Every *other* area has to survive, though. An area reduced to nothing by a
    * tip being retagged would be a heading quietly disappearing off the page
    * with nobody having decided it should.
    */
-  it('empties the kitchen area, and only that one', () => {
+  it('empties the kitchen and food log areas, and only those', () => {
     const emptied = TIP_AREAS
       .filter(area => tipsForArea(area.id, tipsFor(true)).length === 0)
       .map(area => area.id);
-    expect(emptied).toEqual(['kitchen']);
+    expect(emptied).toEqual(['kitchen', 'foodLog']);
+  });
+});
+
+describe('the food log tips', () => {
+  // The food log was the one kitchen hub screen with no tips (#2928), and its
+  // rules are the least guessable in the kitchen. These pin the ones a
+  // newcomer meets first.
+  const onFoodLog = unseenTipsForScreen('foodLog', []);
+
+  it('surfaces on the food log screen, starting with what can be logged', () => {
+    expect(onFoodLog.map(t => t.id)[0]).toBe('food-log-nutrition');
+    expect(onFoodLog.every(t => t.area === 'foodLog')).toBe(true);
+  });
+
+  it('shows how a food gets in from the first visit, before anything is logged', () => {
+    const first = chooseTip(onFoodLog, NO_SIGNALS, null, '2026-09-28');
+    expect(first?.tip.id).toBe('food-log-nutrition');
+    for (const id of ['food-log-nutrition', 'food-log-scan', 'food-log-search']) {
+      expect(onFoodLog.find(t => t.id === id)?.when).toBeUndefined();
+    }
+  });
+
+  it('holds back the tips about a log you already have until there is one', () => {
+    const later = onFoodLog.filter(t => t.when);
+    expect(later.length).toBeGreaterThan(0);
+    for (const t of later) {
+      expect(`${t.id}: ${t.when!({ ...NO_SIGNALS, foodLogEntryCount: 1 })}`).toBe(`${t.id}: false`);
+      expect(`${t.id}: ${t.when!({ ...NO_SIGNALS, foodLogEntryCount: 10 })}`).toBe(`${t.id}: true`);
+    }
   });
 });
 
@@ -325,7 +360,7 @@ describe('filterTips', () => {
   });
 
   it('finds something for the words someone would actually search', () => {
-    for (const term of ['swipe', 'pin', 'stack', 'recipe', 'freezer', 'widget', 'backup']) {
+    for (const term of ['swipe', 'pin', 'stack', 'recipe', 'freezer', 'widget', 'backup', 'calories', 'usda']) {
       expect(`${term}: ${filterTips(term).length > 0}`).toBe(`${term}: true`);
     }
   });
