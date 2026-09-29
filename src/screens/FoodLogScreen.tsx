@@ -57,7 +57,7 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { featureHidden } from '../utils/simpleMode';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { CatalogLinkSheet } from '../components/CatalogLinkSheet';
-import { EatenFractionSheet } from '../components/EatenFractionSheet';
+import { EstimateAmountSheet } from '../components/EstimateAmountSheet';
 import { ScanToLogFlow } from '../components/ScanToLogFlow';
 import { EstimateMealSheet } from '../components/EstimateMealSheet';
 import { useAiRoute } from '../hooks/useOnDeviceAi';
@@ -250,11 +250,11 @@ export function FoodLogScreen() {
   /** The entry being copied onto another day, opening the "Duplicate to" picker on it. */
   const [duplicatingEntry, setDuplicatingEntry] = useState<FoodLogEntry | null>(null);
   /**
-   * The estimated entry whose share eaten is being set, opening "Fraction
-   * eaten" on it. See `eatenFractionPatch` for why an estimate gets this and
+   * The estimated entry whose amount is being changed, opening "Change
+   * amount" on it. See `estimateAmountPatch` for why an estimate gets this and
    * not the editor.
    */
-  const [fractionEntry, setFractionEntry] = useState<FoodLogEntry | null>(null);
+  const [amountEntry, setAmountEntry] = useState<FoodLogEntry | null>(null);
   // Plain useRowSelection, same as Templates/Projects/People: there is
   // nothing recurrence- or meal-plan-aware to reuse useTaskSelection's delete
   // flow for, only a confirm.
@@ -507,10 +507,11 @@ export function FoodLogScreen() {
       foodLogEntryEdit(entry)
         ? { text: 'Edit', onPress: () => setEditingEntry(entry) }
         : { text: 'Rename', onPress: () => handleRename(entry) },
-      // A described meal has no panel for Edit to re-measure against, but a
-      // share of what the model stated needs none. See `eatenFractionPatch`.
+      // A described meal has no panel for Edit to re-measure against, but
+      // more or less of what the model stated needs none. See
+      // `estimateAmountPatch`.
       ...(wholeEstimate(entry)
-        ? [{ text: 'Fraction eaten…', onPress: () => setFractionEntry(entry) }]
+        ? [{ text: 'Change amount…', onPress: () => setAmountEntry(entry) }]
         : []),
       {
         text: 'Move to meal',
@@ -1320,14 +1321,14 @@ export function FoodLogScreen() {
         }}
       />
       {/* Through reviseEntry, since the figures change and Health holds them:
-          the old samples come out and the share goes in. */}
-      <EatenFractionSheet
-        visible={fractionEntry !== null}
-        entry={fractionEntry}
+          the old samples come out and the new amount goes in. */}
+      <EstimateAmountSheet
+        visible={amountEntry !== null}
+        entry={amountEntry}
         onSave={patch => {
-          if (fractionEntry) reviseEntry(fractionEntry.id, patch);
+          if (amountEntry) reviseEntry(amountEntry.id, patch);
         }}
-        onClose={() => setFractionEntry(null)}
+        onClose={() => setAmountEntry(null)}
       />
       <NutrientContributorsSheet
         visible={contributorsKey !== null}

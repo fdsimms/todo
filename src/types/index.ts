@@ -4184,11 +4184,13 @@ export interface FoodLogEntry {
    *
    * **Written for two cases, both linked to nothing** (#2914). The main one is
    * a food a database answered that nobody filed, below. The other is an
-   * estimate once a share of it has been logged as eaten: then this is the
-   * whole meal the model described, `source: 'estimated'` like the helping,
-   * so every later share is taken of the whole rather than of the last share
-   * (see `wholeEstimate`). The source tells the two apart, and only the first
-   * is something an amount can be re-measured against.
+   * estimate once its amount has been changed (more or less of it than the
+   * model was told about): then this is the whole meal the model described,
+   * `source: 'estimated'` like the helping, so every later change is taken of
+   * the whole rather than of the last one (see `wholeEstimate`). A Describe
+   * sheet recall at a new count writes it too, for the same reason. The source
+   * tells the two apart, and only the first is something an amount can be
+   * re-measured against.
    *
    * **The database food.** `nutrition` is one helping with its portion table
    * emptied, so an entry like that had nothing left to re-measure a corrected

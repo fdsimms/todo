@@ -11,7 +11,7 @@ import {
   dbUpdateFoodLogEntry,
 } from '../db/database';
 import { logFoodEntryToHealth, retractFoodEntryFromHealth } from '../utils/healthFoodSync';
-import { eatenFractionPatch } from '../utils/foodLog';
+import { estimateAmountPatch } from '../utils/foodLog';
 import type { FoodLogEntry, FoodNutrition } from '../types';
 
 jest.mock('react-native', () => ({ Platform: { OS: 'ios' } }));
@@ -651,14 +651,41 @@ describe('reviseEntry', () => {
   it('writes a share of an estimate to Health in place of the whole, keeping the whole on the row', async () => {
     const whole = panel({ amounts: { calorieKcal: 1250 }, source: 'estimated', servingGrams: null, servingText: '1 burger' });
     const entry = stored({ itemId: null, quantity: '1 burger', grams: null, nutrition: whole, healthSampleIds: ['sample-a'] });
-    const patch = eatenFractionPatch(entry, 1 / 2)!;
+    const patch = estimateAmountPatch(entry, 1 / 2)!;
     state().reviseEntry(entry.id, patch);
     await flush();
     expect(retractFoodEntryFromHealth).toHaveBeenCalledWith(['sample-a']);
     const written = (logFoodEntryToHealth as jest.Mock).mock.calls.at(-1)![0] as FoodLogEntry;
     expect(written.nutrition.amounts.calorieKcal).toBe(625);
     expect(state().entries[0].sourcePanel?.amounts.calorieKcal).toBe(1250);
-    expect(state().entries[0].quantity).toBe('half of 1 burger');
+    // "1 burger" counts the meal, so half of it is said in its own count.
+    expect(state().entries[0].quantity).toBe('1/2 burger');
+  });
+
+  it('writes more of an estimate to Health, and the original back when the count is restored', async () => {
+    // "I actually ate 3 slices" of a 2-slice estimate, and then back to 2.
+    // Each change retracts what Health holds and writes the new figures, the
+    // same retract-then-rewrite a re-measured correction gets.
+    const whole = panel({ amounts: { calorieKcal: 600, proteinG: 26 }, source: 'estimated', servingGrams: null, servingText: '2 slices' });
+    const entry = stored({ itemId: null, quantity: '2 slices', grams: null, nutrition: whole, healthSampleIds: ['sample-a'] });
+    (logFoodEntryToHealth as jest.Mock).mockResolvedValue({ outcome: 'written', sampleIds: ['sample-b'] });
+
+    state().reviseEntry(entry.id, estimateAmountPatch(entry, 3 / 2)!);
+    await flush();
+    expect(retractFoodEntryFromHealth).toHaveBeenLastCalledWith(['sample-a']);
+    const up = (logFoodEntryToHealth as jest.Mock).mock.calls.at(-1)![0] as FoodLogEntry;
+    expect(up.nutrition.amounts).toEqual({ calorieKcal: 900, proteinG: 39 });
+    expect(up.nutrition.source).toBe('estimated');
+    expect(up.quantity).toBe('3 slices');
+    expect(state().entries[0].healthSampleIds).toEqual(['sample-b']);
+
+    const changed = state().entries[0];
+    state().reviseEntry(changed.id, estimateAmountPatch(changed, 1)!);
+    await flush();
+    expect(retractFoodEntryFromHealth).toHaveBeenLastCalledWith(['sample-b']);
+    const back = (logFoodEntryToHealth as jest.Mock).mock.calls.at(-1)![0] as FoodLogEntry;
+    expect(back.nutrition.amounts).toEqual({ calorieKcal: 600, proteinG: 26 });
+    expect(back.quantity).toBe('2 slices');
   });
 
   it('leaves Health alone when the correction changed nothing it holds', async () => {
