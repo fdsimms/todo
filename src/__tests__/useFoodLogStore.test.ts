@@ -11,7 +11,7 @@ import {
   dbUpdateFoodLogEntry,
 } from '../db/database';
 import { logFoodEntryToHealth, retractFoodEntryFromHealth } from '../utils/healthFoodSync';
-import { eatenFractionPatch } from '../utils/foodLog';
+import { estimateAmountPatch } from '../utils/foodLog';
 import type { FoodLogEntry, FoodNutrition } from '../types';
 
 jest.mock('react-native', () => ({ Platform: { OS: 'ios' } }));
@@ -651,14 +651,15 @@ describe('reviseEntry', () => {
   it('writes a share of an estimate to Health in place of the whole, keeping the whole on the row', async () => {
     const whole = panel({ amounts: { calorieKcal: 1250 }, source: 'estimated', servingGrams: null, servingText: '1 burger' });
     const entry = stored({ itemId: null, quantity: '1 burger', grams: null, nutrition: whole, healthSampleIds: ['sample-a'] });
-    const patch = eatenFractionPatch(entry, 1 / 2)!;
+    const patch = estimateAmountPatch(entry, 1 / 2)!;
     state().reviseEntry(entry.id, patch);
     await flush();
     expect(retractFoodEntryFromHealth).toHaveBeenCalledWith(['sample-a']);
     const written = (logFoodEntryToHealth as jest.Mock).mock.calls.at(-1)![0] as FoodLogEntry;
     expect(written.nutrition.amounts.calorieKcal).toBe(625);
     expect(state().entries[0].sourcePanel?.amounts.calorieKcal).toBe(1250);
-    expect(state().entries[0].quantity).toBe('half of 1 burger');
+    // "1 burger" counts the meal, so half of it is said in its own count.
+    expect(state().entries[0].quantity).toBe('1/2 burger');
   });
 
   it('leaves Health alone when the correction changed nothing it holds', async () => {

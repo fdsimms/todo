@@ -37,7 +37,7 @@ import { OTHER_AISLE } from '../utils/groceryAisles';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useSavedMealsStore } from '../store/useSavedMealsStore';
-import { currentEatenFraction, describeFoodLogEntry, foodLogEntryEdit, foodLogTotals, recallAmount, scalePanelToAmount, wholeEstimate } from '../utils/foodLog';
+import { currentEstimateFactor, describeFoodLogEntry, foodLogEntryEdit, foodLogTotals, recallAmount, scalePanelToAmount, wholeEstimate } from '../utils/foodLog';
 import { foodLastAmounts, helpingAgain, recentUnlinkedHelpings } from '../utils/foodLogRecents';
 import { isWaterEntry } from '../utils/waterLog';
 import { foodDayInputs, foodKeyNames, hasNutritionData, nutrientAverages, nutritionCounts, sourceMix } from '../utils/nutritionStats';
@@ -2359,10 +2359,10 @@ describe('demo seed — people', () => {
     expect(describeFoodLogEntry(eatenOut[0])).toContain('estimated');
     // Absent stays absent: a short list is the ordinary case, not a thin seed.
     expect(eatenOut[0].nutrition.amounts.fiberG).toBeUndefined();
-    // And it is the row "Fraction eaten" is offered on (#2914), standing at
-    // the whole until a share is taken.
+    // And it is the row "Change amount" is offered on (#2914), standing at
+    // the whole until the amount is changed.
     expect(wholeEstimate(eatenOut[0])).not.toBeNull();
-    expect(currentEatenFraction(eatenOut[0])).toBe(1);
+    expect(currentEstimateFactor(eatenOut[0])).toBe(1);
   });
 
   it('seeds figures from more than one source, so the provenance stat has content', () => {

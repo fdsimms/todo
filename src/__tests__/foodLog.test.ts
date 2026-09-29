@@ -5,9 +5,14 @@ import {
   composeFoodAmount,
   describeFoodLogEntry,
   describeFoodLogTotals,
-  EATEN_FRACTIONS,
-  currentEatenFraction,
-  eatenFractionPatch,
+  ESTIMATE_AMOUNTS,
+  MAX_ESTIMATE_MULTIPLE,
+  currentEstimateFactor,
+  describeEstimateCount,
+  estimateAmountPatch,
+  estimateAmountUnchanged,
+  estimateCount,
+  estimateCountQuestion,
   foodLogEntryEdit,
   foodLogSections,
   foodLogTotals,
@@ -776,9 +781,9 @@ describe('foodLogEntryEdit', () => {
   });
 });
 
-describe('fraction eaten (#2914)', () => {
+describe('changing an estimate\'s amount (#2914)', () => {
   // The seeded "Five Guys" estimate's shape: a described meal, linked to
-  // nothing, stating a short list and no weight.
+  // nothing, stating a short list and no weight, in words that count nothing.
   const burger = () => entry({
     label: 'Cheeseburger and fries',
     quantity: '1 burger and a regular fries',
@@ -795,35 +800,140 @@ describe('fraction eaten (#2914)', () => {
     },
   });
 
+  // The one the report was about: an estimate whose words are a count.
+  const pizza = () => entry({
+    label: 'Pepperoni pizza',
+    quantity: '2 slices',
+    grams: null,
+    nutrition: {
+      basis: 'perServing',
+      servingGrams: null,
+      servingText: '2 slices',
+      amounts: { calorieKcal: 600, proteinG: 26, fatG: 25 },
+      source: 'estimated',
+      sourceId: null,
+      portions: [],
+      recordedAt: '2026-04-02T19:00:00.000Z',
+    },
+  });
+
   /** The entry as `reviseEntry` would leave it after a patch. */
-  const applied = (row: FoodLogEntry, fraction: number): FoodLogEntry => {
-    const patch = eatenFractionPatch(row, fraction)!;
+  const applied = (row: FoodLogEntry, factor: number): FoodLogEntry => {
+    const patch = estimateAmountPatch(row, factor)!;
     return { ...row, ...patch };
   };
 
-  it('offers a share only for an estimate linked to nothing', () => {
+  it('is offered only for an estimate linked to nothing', () => {
     expect(wholeEstimate(burger())).not.toBeNull();
     // Linked: corrected by re-measuring against its row instead.
     expect(wholeEstimate({ ...burger(), itemId: 'item-a' })).toBeNull();
     expect(wholeEstimate({ ...burger(), recipeId: 'r1' })).toBeNull();
     // Not an estimate: a database food that kept its panel is re-measured,
-    // and one that didn't claims figures a share would still be a guess at.
+    // and one that didn't claims figures a multiple would still be a guess at.
     expect(wholeEstimate(entry({ nutrition: panel({ basis: 'perServing' }) }))).toBeNull();
   });
 
-  it('takes a share of every stated figure, and states nothing the estimate did not', () => {
-    const patch = eatenFractionPatch(burger(), 2 / 3)!;
-    expect(patch.nutrition.amounts).toEqual({ calorieKcal: 833.3, proteinG: 30, fatG: 45.3, sodiumMg: 980 });
-    expect(patch.nutrition.source).toBe('estimated');
-    expect(patch.nutrition.basis).toBe('perServing');
-    // Stamped when the model estimated it, not when the share was chosen.
-    expect(patch.nutrition.recordedAt).toBe('2026-04-02T13:00:00.000Z');
-    expect(patch.quantity).toBe('two-thirds of 1 burger and a regular fries');
-    expect(patch.nutrition.servingText).toBe(patch.quantity);
-    expect(patch.grams).toBeNull();
+  describe('estimateCount', () => {
+    it('reads a count of one thing, in its own noun', () => {
+      expect(estimateCount('2 slices')).toMatchObject({ count: 2, noun: 'slices', rest: '', measure: false, step: 1 });
+      expect(estimateCount('1 burger')).toMatchObject({ count: 1, noun: 'burger', rest: '', step: 0.5 });
+      expect(estimateCount('3 tacos')).toMatchObject({ count: 3, noun: 'tacos' });
+      expect(estimateCount('1 1/2 cups')).toMatchObject({ count: 1.5, noun: 'cups', measure: true, step: 0.5 });
+      expect(estimateCount('12 oz')).toMatchObject({ count: 12, noun: 'oz', measure: true });
+      // "of" and the one thing counted still counts it.
+      expect(estimateCount('2 slices of pepperoni pizza')).toMatchObject({ count: 2, noun: 'slices', rest: ' of pepperoni pizza' });
+      expect(estimateCount('1 bowl of pho')).toMatchObject({ count: 1, noun: 'bowl', rest: ' of pho' });
+    });
+
+    it('gives none when the number counts only part of the meal, or nothing', () => {
+      // The 1 is the burger's; doubling it would double the fries unsaid.
+      expect(estimateCount('1 burger and a regular fries')).toBeNull();
+      expect(estimateCount('1 plate of rice and beans')).toBeNull();
+      expect(estimateCount('1 bowl of rice with 2 eggs')).toBeNull();
+      expect(estimateCount('2 slices, large')).toBeNull();
+      // A size in front of the noun is not the noun.
+      expect(estimateCount('1 large pizza')).toBeNull();
+      expect(estimateCount('a bowl of pho')).toBeNull();
+      expect(estimateCount('1-2 slices')).toBeNull();
+      expect(estimateCount('1 14 oz can')).toBeNull();
+      expect(estimateCount('3')).toBeNull();
+      expect(estimateCount('')).toBeNull();
+      expect(estimateCount(null)).toBeNull();
+    });
+
+    it('asks in the plural of the noun, or in the unit for a measure', () => {
+      expect(estimateCountQuestion(estimateCount('2 slices')!)).toBe('How many slices');
+      expect(estimateCountQuestion(estimateCount('1 slice')!)).toBe('How many slices');
+      expect(estimateCountQuestion(estimateCount('1 burger')!)).toBe('How many burgers');
+      expect(estimateCountQuestion(estimateCount('12 oz')!)).toBe('How much, in oz');
+      expect(estimateCountQuestion(estimateCount('1 cup')!)).toBe('How much, in cups');
+    });
+
+    it('writes a new count in agreement with its noun', () => {
+      const say = (words: string, n: number) => describeEstimateCount(estimateCount(words)!, n);
+      expect(say('2 slices', 3)).toBe('3 slices');
+      expect(say('2 slices', 1)).toBe('1 slice');
+      expect(say('1 slice', 1.5)).toBe('1 1/2 slices');
+      expect(say('1 burger', 2)).toBe('2 burgers');
+      expect(say('3 tacos', 1)).toBe('1 taco');
+      expect(say('2 sandwiches', 1)).toBe('1 sandwich');
+      expect(say('1 sandwich', 2)).toBe('2 sandwiches');
+      expect(say('2 cookies', 1)).toBe('1 cookie');
+      expect(say('1 patty', 3)).toBe('3 patties');
+      expect(say('12 oz', 16)).toBe('16 oz');
+      expect(say('1.5 cups', 2.5)).toBe('2.5 cups');
+      expect(say('2 slices of pepperoni pizza', 3)).toBe('3 slices of pepperoni pizza');
+    });
   });
 
-  it('keeps the whole meal, so a second share is of the whole rather than of the first', () => {
+  it('scales a counted estimate up in its own unit', () => {
+    // "I actually ate 3 slices": one and a half times the meal as estimated.
+    const patch = estimateAmountPatch(pizza(), 3 / 2)!;
+    expect(patch.nutrition.amounts).toEqual({ calorieKcal: 900, proteinG: 39, fatG: 37.5 });
+    expect(patch.quantity).toBe('3 slices');
+    expect(patch.nutrition.servingText).toBe('3 slices');
+    expect(patch.nutrition.source).toBe('estimated');
+    expect(patch.nutrition.basis).toBe('perServing');
+    // Stamped when the model estimated it, not when the count was changed.
+    expect(patch.nutrition.recordedAt).toBe('2026-04-02T19:00:00.000Z');
+    expect(patch.sourcePanel.amounts.calorieKcal).toBe(600);
+  });
+
+  it('scales it down the same way', () => {
+    const patch = estimateAmountPatch(pizza(), 1 / 2)!;
+    expect(patch.nutrition.amounts.calorieKcal).toBe(300);
+    expect(patch.quantity).toBe('1 slice');
+  });
+
+  it('takes every change of the whole, and puts the entry back at the count the model described', () => {
+    const three = applied(pizza(), 3 / 2);
+    // Four slices of a two-slice meal, not four-thirds of three.
+    const four = applied(three, 2);
+    expect(four.nutrition.amounts.calorieKcal).toBe(1200);
+    expect(four.quantity).toBe('4 slices');
+
+    const original = pizza();
+    const restored = applied(four, 1);
+    expect(restored.nutrition.amounts).toEqual(original.nutrition.amounts);
+    expect(restored.quantity).toBe(original.quantity);
+    expect(restored.nutrition.servingText).toBe(original.nutrition.servingText);
+  });
+
+  it('scales an estimate with no count by a share or a multiple of the whole', () => {
+    const twothirds = estimateAmountPatch(burger(), 2 / 3)!;
+    expect(twothirds.nutrition.amounts).toEqual({ calorieKcal: 833.3, proteinG: 30, fatG: 45.3, sodiumMg: 980 });
+    expect(twothirds.quantity).toBe('two-thirds of 1 burger and a regular fries');
+
+    const twice = estimateAmountPatch(burger(), 2)!;
+    expect(twice.nutrition.amounts).toEqual({ calorieKcal: 2500, proteinG: 90, fatG: 136, sodiumMg: 2940 });
+    expect(twice.quantity).toBe('twice 1 burger and a regular fries');
+    // No nutrient appears that the estimate did not state.
+    expect(twice.nutrition.amounts.fiberG).toBeUndefined();
+
+    expect(estimateAmountPatch(burger(), 3 / 2)!.quantity).toBe('one and a half times 1 burger and a regular fries');
+  });
+
+  it('keeps the whole meal, so a second change is of the whole rather than of the first', () => {
     const halved = applied(burger(), 1 / 2);
     expect(halved.sourcePanel?.amounts.calorieKcal).toBe(1250);
     expect(halved.nutrition.amounts.calorieKcal).toBe(625);
@@ -836,49 +946,67 @@ describe('fraction eaten (#2914)', () => {
 
   it('puts the entry back exactly as logged when All is chosen', () => {
     const original = burger();
-    const restored = applied(applied(original, 1 / 3), 1);
+    const restored = applied(applied(original, 3), 1);
     expect(restored.nutrition.amounts).toEqual(original.nutrition.amounts);
     expect(restored.quantity).toBe(original.quantity);
   });
 
-  it('refuses a share of nothing, or more than the whole', () => {
-    expect(eatenFractionPatch(burger(), 0)).toBeNull();
-    expect(eatenFractionPatch(burger(), -0.5)).toBeNull();
-    expect(eatenFractionPatch(burger(), 1.5)).toBeNull();
-    expect(eatenFractionPatch(burger(), Number.NaN)).toBeNull();
-    expect(eatenFractionPatch({ ...burger(), itemId: 'item-a' }, 0.5)).toBeNull();
+  it('refuses nothing, a non-number, or more than the cap', () => {
+    expect(estimateAmountPatch(burger(), 0)).toBeNull();
+    expect(estimateAmountPatch(burger(), -0.5)).toBeNull();
+    expect(estimateAmountPatch(burger(), Number.NaN)).toBeNull();
+    expect(estimateAmountPatch(burger(), MAX_ESTIMATE_MULTIPLE)).not.toBeNull();
+    expect(estimateAmountPatch(burger(), MAX_ESTIMATE_MULTIPLE + 1)).toBeNull();
+    expect(estimateAmountPatch({ ...burger(), itemId: 'item-a' }, 0.5)).toBeNull();
   });
 
-  it('scales a weight the estimate carried, and says the share alone when it had no words', () => {
+  it('scales a weight the estimate carried, and says the amount alone when it had no words', () => {
     const weighed = { ...burger(), quantity: '', grams: 400, nutrition: { ...burger().nutrition, servingText: null } };
-    const patch = eatenFractionPatch(weighed, 1 / 4)!;
-    expect(patch.grams).toBe(100);
-    expect(patch.nutrition.servingGrams).toBe(100);
-    expect(patch.quantity).toBe('a quarter');
+    const quarter = estimateAmountPatch(weighed, 1 / 4)!;
+    expect(quarter.grams).toBe(100);
+    expect(quarter.nutrition.servingGrams).toBe(100);
+    expect(quarter.quantity).toBe('a quarter');
+    const twice = estimateAmountPatch(weighed, 2)!;
+    expect(twice.grams).toBe(800);
+    expect(twice.quantity).toBe('twice');
   });
 
-  it('is not offered the editor once a share has been kept', () => {
+  it('is not offered the editor once a change has been kept', () => {
     // The kept whole is an estimate, which has no amounts to re-measure.
     expect(foodLogEntryEdit(applied(burger(), 1 / 2))).toBeNull();
+    expect(foodLogEntryEdit(applied(pizza(), 3 / 2))).toBeNull();
   });
 
-  it('reads back which share an entry stands at', () => {
-    expect(currentEatenFraction(burger())).toBe(1);
-    expect(currentEatenFraction(applied(burger(), 1 / 3))).toBe(1 / 3);
-    expect(currentEatenFraction(applied(applied(burger(), 1 / 3), 1))).toBe(1);
-    expect(currentEatenFraction(entry({ itemId: 'item-a' }))).toBeNull();
+  it('reads back how many times the whole an entry stands at', () => {
+    expect(currentEstimateFactor(burger())).toBe(1);
+    expect(currentEstimateFactor(applied(burger(), 1 / 3))).toBe(1 / 3);
+    expect(currentEstimateFactor(applied(burger(), 3))).toBe(3);
+    expect(currentEstimateFactor(applied(applied(burger(), 1 / 3), 1))).toBe(1);
+    expect(currentEstimateFactor(applied(pizza(), 3 / 2))).toBe(3 / 2);
+    // A count off the preset set, read back from the words the change wrote.
+    expect(currentEstimateFactor(applied(pizza(), 7 / 2))).toBe(7 / 2);
+    expect(currentEstimateFactor(entry({ itemId: 'item-a' }))).toBeNull();
   });
 
   it('reads an estimate of nothing but zeros as the whole rather than a quarter', () => {
     const water = { ...burger(), nutrition: { ...burger().nutrition, amounts: { calorieKcal: 0 } } };
-    expect(currentEatenFraction(water)).toBe(1);
+    expect(currentEstimateFactor(water)).toBe(1);
   });
 
-  it('offers the shares smallest first, ending on the whole', () => {
-    const values = EATEN_FRACTIONS.map(f => f.value);
+  it('says when a change would leave the entry as it is', () => {
+    const three = applied(pizza(), 3 / 2);
+    expect(estimateAmountUnchanged(three, estimateAmountPatch(three, 3 / 2)!)).toBe(true);
+    expect(estimateAmountUnchanged(three, estimateAmountPatch(three, 1)!)).toBe(false);
+    expect(estimateAmountUnchanged(pizza(), estimateAmountPatch(pizza(), 1)!)).toBe(true);
+  });
+
+  it('offers the amounts smallest first, from shares through the whole to multiples of it', () => {
+    const values = ESTIMATE_AMOUNTS.map(a => a.value);
     expect(values).toEqual([...values].sort((a, b) => a - b));
-    expect(values[values.length - 1]).toBe(1);
-    expect(values.every(v => v > 0 && v <= 1)).toBe(true);
+    expect(values).toContain(1);
+    expect(values.some(v => v < 1)).toBe(true);
+    expect(values.some(v => v > 1)).toBe(true);
+    expect(values.every(v => v > 0 && v <= MAX_ESTIMATE_MULTIPLE)).toBe(true);
   });
 });
 
