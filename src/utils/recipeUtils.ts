@@ -17,7 +17,7 @@ import { format } from 'date-fns/format';
 import { groceryNameKey, parseGroceryInput, splitExample, splitGroceryLines, splitPrep, splitPurpose } from './groceryParse';
 import { generateId } from './id';
 import { resolveOffsetDate } from './templateUtils';
-import { classifyPlanned, plannedIngredientsForRecipe } from './mealPlanGroceries';
+import { classifyPlanned, plannedCatalogIndex, plannedIngredientsForRecipe, type PlannedCatalogIndex } from './mealPlanGroceries';
 import { substitutesOnHand } from './itemSubs';
 import { varietyIndex } from './itemVarieties';
 import { onHandNameKeys } from './grocerySuggest';
@@ -810,9 +810,12 @@ interface PantryLookups {
   swaps: StandingSwapMap;
   /** Every catalog key, for `catalogMatches`. */
   itemKeys: ReadonlySet<string>;
+  /** `classifyPlanned`'s own catalog lookups, the larger part of what a recipe used to rebuild. */
+  catalog: PlannedCatalogIndex;
 }
 
 function pantryLookups(items: readonly GroceryItem[], now: Date, itemSubs: readonly ItemSubLink[]): PantryLookups {
+  const catalog = plannedCatalogIndex(items);
   return {
     // Live, not persisted — an unresolved choice group counts toward coverage
     // via whichever alternative is already on hand (see recipeComponents.ts's
@@ -825,7 +828,8 @@ function pantryLookups(items: readonly GroceryItem[], now: Date, itemSubs: reado
     // `countLikelyInPantry` above it — gets the same answer without a new
     // argument each.
     swaps: standingSwapMap(itemSubs, items),
-    itemKeys: new Set(items.map(i => i.nameKey)),
+    itemKeys: catalog.keys,
+    catalog,
   };
 }
 
@@ -840,7 +844,7 @@ function coverageWithLookups(
   const planned = plannedIngredientsForRecipe(recipe, recipesById, { onHand: lookups.onHand }, 1, lookups.swaps);
   if (planned.length === 0) return { total: 0, catalogMatches: 0, probablyHave: 0, viaSubstitute: 0, percent: null };
 
-  const classified = classifyPlanned(planned, items, now, itemSubs);
+  const classified = classifyPlanned(planned, items, now, itemSubs, null, [], lookups.catalog);
   const total = classified.length;
   const catalogMatches = classified.filter(row => lookups.itemKeys.has(row.nameKey)).length;
   const probablyHave = classified.filter(row => row.category === 'probablyHave' || row.category === 'staple').length;

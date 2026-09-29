@@ -159,6 +159,21 @@ describe('resolvePluralKey', () => {
   it('says nothing about a name the catalog has nothing like', () => {
     expect(resolvePluralKey('gochujang', ['milk', 'eggs'])).toBeNull();
   });
+
+  // A set is looked up rather than walked (#2922), and has to give the walk's
+  // answer in every case above.
+  it.each([
+    ['serrano pepper', ['milk', 'serrano peppers']],
+    ['eggs', ['egg', 'flour']],
+    ['pepper', ['pepper', 'peppers']],
+    ['pepper', ['peppers', 'pepper']],
+    ['leaves', ['leaf', 'leave']],
+    ['egg', ['eggs', 'eggs']],
+    ['gochujang', ['milk', 'eggs']],
+    ['ox', ['oxen']],
+  ])('answers %s the same from a set as from a list', (key, existing) => {
+    expect(resolvePluralKey(key, new Set(existing))).toBe(resolvePluralKey(key, existing));
+  });
 });
 
 // ─── catalogItemForKey ───────────────────────────────────────────────────────
