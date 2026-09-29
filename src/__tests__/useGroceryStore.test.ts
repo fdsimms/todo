@@ -7526,6 +7526,35 @@ describe('freezing some of a pack', () => {
     useGroceryStore.getState().lastAction!.undo();
     expect(portionOf(chicken.id)).toEqual(thawed);
   });
+
+  // The pantry review deck's "out of it" is the same answer by another door,
+  // and it left the thawed half standing to come back beside the next purchase.
+  it('takes a thawed portion with an "out of it" review answer, keeps a frozen one, and the deck\'s undo restores it', () => {
+    const chicken = makeItem({ name: 'Chicken thighs' });
+    seed([chicken]);
+    const portion = useGroceryStore.getState().freezePortion(chicken.id)!;
+    useGroceryStore.getState().setProductFrozen(portion.id, false);
+    const thawed = portionOf(chicken.id)!;
+    const before = itemById(chicken.id);
+
+    const taken = useGroceryStore.getState().answerPantryReview(chicken.id, 'out');
+    expect(taken).toEqual([thawed]);
+    expect(portionOf(chicken.id)).toBeNull();
+    expect(dbDeleteItemProduct).toHaveBeenCalledWith(portion.id);
+
+    useGroceryStore.getState().revertPantryAnswer(before, null, taken);
+    expect(portionOf(chicken.id)).toEqual(thawed);
+    expect(itemById(chicken.id)).toEqual(before);
+  });
+
+  it('leaves a frozen portion alone on an "out of it" review answer', () => {
+    const chicken = makeItem({ name: 'Chicken thighs' });
+    seed([chicken]);
+    const portion = useGroceryStore.getState().freezePortion(chicken.id)!;
+
+    expect(useGroceryStore.getState().answerPantryReview(chicken.id, 'out')).toEqual([]);
+    expect(portionOf(chicken.id)).toEqual(portion);
+  });
 });
 
 

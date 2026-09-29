@@ -1057,8 +1057,13 @@ interface GroceryStore extends UndoHistoryActions {
    * has already closed — and the deck offers its own per-card Undo, which is
    * the affordance a mis-swipe actually reaches for. `revertPantryAnswer` is
    * what that button calls.
+   *
+   * Returns the thawed portions an "out of it" answer deleted, the same ones
+   * `markOutOfMany` deletes (see `ItemProduct.isPortion`), so the deck can
+   * hand them back to `revertPantryAnswer`: the row snapshot alone can't
+   * restore a box that is no longer there.
    */
-  answerPantryReview: (itemId: string, answer: PantryReviewAnswer) => void;
+  answerPantryReview: (itemId: string, answer: PantryReviewAnswer) => ItemProduct[];
   /**
    * Put one row back exactly as it was — the deck's Undo button.
    *
@@ -1075,8 +1080,15 @@ interface GroceryStore extends UndoHistoryActions {
    * rather than derived, for the same reason the item snapshot does: "Running
    * low" puts a row on the list, and only a snapshot taken beforehand knows
    * whether it was already there. See `GroceryListEntry`.
+   *
+   * `portions` is what `answerPantryReview` returned for the answer being
+   * undone, put back unless they're already there.
    */
-  revertPantryAnswer: (item: GroceryItem, entry: GroceryListEntry | null) => void;
+  revertPantryAnswer: (
+    item: GroceryItem,
+    entry: GroceryListEntry | null,
+    portions?: readonly ItemProduct[],
+  ) => void;
   /**
    * The remembered shelf life — a dumb setter, unlike setExpiresAt: this
    * never touches expiresAt or the use-up task on its own. See
@@ -3812,7 +3824,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // then rides on the row it wrote.
     if (answer === 'low') get().setRunningLow(itemId, true, { registerUndo: false });
     const item = get().items.find(i => i.id === itemId);
-    if (!item) return;
+    if (!item) return [];
     // The other two answers are one column, which is why they share a path:
     // "still have it" is the window a fresh "Got it" asserts for, and "out of
     // it" is the sentinel. Bare `new Date()` on purpose — a pantry window is
@@ -3834,23 +3846,43 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       onHandUntil: until,
       pantryReviewedAt: now.toISOString(),
     };
-    dbUpdateGroceryItem(updated);
-    set(s => ({ items: s.items.map(i => (i.id === itemId ? updated : i)) }));
+    // Out of the item is out of a thawed portion too, the rule markOutOfMany
+    // keeps: a thawed portion is more of the item in the fridge, and left
+    // standing it came back beside the next purchase with its own stale
+    // window. A frozen one outlives it, as there.
+    const thawedPortions = answer === 'out'
+      ? get().itemProducts.filter(p => p.itemId === itemId && isPortionBox(p) && !p.frozenAt)
+      : [];
+    dbTransaction(() => {
+      dbUpdateGroceryItem(updated);
+      for (const p of thawedPortions) dbDeleteItemProduct(p.id);
+    });
+    const gone = new Set(thawedPortions.map(p => p.id));
+    set(s => ({
+      items: s.items.map(i => (i.id === itemId ? updated : i)),
+      itemProducts: gone.size > 0 ? s.itemProducts.filter(p => !gone.has(p.id)) : s.itemProducts,
+    }));
     // Answering "out of it" resolves the same question a live "Use up X"
     // task was asking — leaving the task standing is what had it come back
     // the morning after it was already answered here. Still gated on the column
     // having actually changed, which the stamp above no longer is: a second
     // "out of it" on a row already out has no task left to drop.
     if (answer === 'out' && item.onHandUntil !== OUT_OF_IT_UNTIL) dropUseUpTask(itemId);
+    return thawedPortions;
   },
 
-  revertPantryAnswer(item, entry) {
+  revertPantryAnswer(item, entry, portions = []) {
     // Guarded on the row still being there: a snapshot written back
     // unconditionally would resurrect an item deleted from another screen
     // while the deck was open.
     if (!get().items.some(i => i.id === item.id)) return;
     dbUpdateGroceryItem(item);
-    set(s => ({ items: s.items.map(i => (i.id === item.id ? item : i)) }));
+    const back = portions.filter(p => !get().itemProducts.some(q => q.id === p.id));
+    for (const p of back) dbSetItemProduct(p);
+    set(s => ({
+      items: s.items.map(i => (i.id === item.id ? item : i)),
+      itemProducts: back.length > 0 ? [...s.itemProducts, ...back] : s.itemProducts,
+    }));
     // The snapshot can restore an "out of it" answer's dropped use-up task
     // along with everything else it undoes; reconciling off the restored
     // item is a no-op for the other two answers, which never touched it.
