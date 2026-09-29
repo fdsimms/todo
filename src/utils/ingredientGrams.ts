@@ -148,8 +148,16 @@ function agreedDensity(
   return densities[0];
 }
 
-function gramsFromVolume(
-  millilitres: number,
+/**
+ * The one density a food's own portions agree on, in grams per millilitre, or
+ * null when none of them name a volume or they disagree with nothing to
+ * settle it.
+ *
+ * Shared by `gramsFromVolume` and `volumeFromMass` below — the same fact read
+ * in either direction, once for a recipe line and once for a per-100ml food
+ * that's had a volume weighed onto its own table.
+ */
+function densityForPortions(
   portions: readonly FoodPortion[],
   prep: string | null,
 ): number | null {
@@ -162,7 +170,7 @@ function gramsFromVolume(
   // and asking for a single matching row would refuse that, which is a
   // refusal with nothing behind it.
   const agreed = agreedDensity(withDensity);
-  if (agreed !== null) return millilitres * agreed;
+  if (agreed !== null) return agreed;
 
   const prepWords = prep ? labelWords(prep) : [];
   if (prepWords.length === 0) return null;
@@ -170,8 +178,46 @@ function gramsFromVolume(
     const words = labelWords(p.portion.label);
     return prepWords.every(w => words.includes(w));
   });
-  const settled = agreedDensity(matched);
-  return settled === null ? null : millilitres * settled;
+  return agreedDensity(matched);
+}
+
+function gramsFromVolume(
+  millilitres: number,
+  portions: readonly FoodPortion[],
+  prep: string | null,
+): number | null {
+  const density = densityForPortions(portions, prep);
+  return density === null ? null : millilitres * density;
+}
+
+/**
+ * A per-100ml food's own density, run the other way: how many millilitres a
+ * weighed amount comes to, so a mass line can reach the same per-100ml panel
+ * a volume line already could.
+ *
+ * **Still never a global density** — the module header's rule holds exactly
+ * as it does for `gramsFromVolume`. This only has anything to answer once a
+ * volume has actually been weighed onto the food's own portion table
+ * (`weighableLine`'s per-100ml branch is what writes one), which is what
+ * keeps it from inventing a density for a food nobody has measured.
+ */
+export function volumeFromMass(
+  grams: number,
+  portions: readonly FoodPortion[],
+  prep: string | null,
+): number | null {
+  const density = densityForPortions(portions, prep);
+  return density === null || density <= 0 ? null : grams / density;
+}
+
+/**
+ * Whether a food's own portions carry enough to answer a weight at all —
+ * what `foodUnitOptionsFor` checks before offering a "g" pill on a per-100ml
+ * food, so the pill only appears once a density actually resolves rather
+ * than promising a measurement `volumeFromMass` would go on to refuse.
+ */
+export function hasKnownDensity(portions: readonly FoodPortion[]): boolean {
+  return densityForPortions(portions, null) !== null;
 }
 
 /**
@@ -294,12 +340,18 @@ export function gramsForLine(
  * meal plan and through it the settings store and SQLite, which is not
  * something a figure-scaling helper should drag behind it.
  *
- * **The line is measured in the panel's own unit, never converted into it.**
- * A per-100g panel wants grams, a per-100ml panel wants millilitres, and
- * turning one into the other needs a density this app does not have. So a
- * volume line against a per-100g food goes through the food's own portion
- * table (`gramsForLine`), and a per-100ml food is answered only by a line that
- * is itself a volume. Anything else refuses, which is the whole posture.
+ * **The line is measured in the panel's own unit, never converted into it —
+ * unless the food's own table has already supplied the density that
+ * conversion needs.** A per-100g panel wants grams, a per-100ml panel wants
+ * millilitres, and turning one into the other ordinarily needs a density
+ * this app does not have. So a volume line against a per-100g food goes
+ * through the food's own portion table (`gramsForLine`), and a per-100ml
+ * food written in mass is refused *until* a volume has been weighed onto its
+ * table (`weighableLine`'s per-100ml branch, which is the only thing that
+ * writes one) — from then on `volumeFromMass` reads the same density
+ * `gramsFromVolume` would, off the same row, and a mass line resolves too.
+ * Anything else still refuses, which is the whole posture: no density is
+ * ever assumed, only ever read back off a weighing the food itself carries.
  *
  * A per-serving panel needs a serving to weigh something, since otherwise
  * "how many servings is 300g" has no answer.
@@ -335,8 +387,11 @@ export function panelMultiplier(
   if (nutrition.basis === 'per100ml') {
     const single = parsed.rangeMax ? { ...parsed, rangeMax: null } : parsed;
     const measured = measureLineAmount(single);
-    if (!measured || measured.dimension !== 'volume') return null;
-    return measured.base / 100;
+    if (!measured) return null;
+    if (measured.dimension === 'volume') return measured.base / 100;
+    if (measured.dimension !== 'mass') return null;
+    const millilitres = volumeFromMass(measured.base, nutrition.portions, prep);
+    return millilitres === null ? null : millilitres / 100;
   }
 
   const grams = gramsForLine(parsed, prep, nutrition.portions);
