@@ -136,9 +136,9 @@ import { isPortionBox } from '../types';
  * reading one is offered here and not only at the foot of the shopping list:
  * the paper names thirty things at once, and this screen is where someone
  * standing over the bags actually is. What it records is smaller than a
- * finished trip's — names, and what each cost — because it isn't a trip: no
- * purchase count, no store stocking claim, no purchase date (see
- * `handleReceiptApply`).
+ * finished trip's — names, what each cost, and which went straight in the
+ * freezer — because it isn't a trip: no purchase count, no store stocking
+ * claim, no purchase date (see `handleReceiptApply`).
  *
  * That keeps the model the one #1040 settled on — computed from what you buy,
  * corrected when it's wrong, never an inventory anybody has to keep up.
@@ -614,13 +614,19 @@ export function KitchenScreen() {
    * for the reason `addManyToPantry` gives — a row this batch mints has no id
    * until the loop creates it. What they record is deliberately smaller than a
    * trip's: see that action's own doc comment.
+   *
+   * The freezer flag is the sheet's per-row snowflake (#2925), reduced to names
+   * exactly as `handleScanApply` reduces the barcode sheet's: matched rows by
+   * `frozenItemIds`, new ones by `draft.frozen`. `addManyToPantry` applies it
+   * after the `acquired` clear, so it lands on the new packet.
    */
   const handleReceiptApply = (
     shopId: string | null,
     itemIds: string[],
     priceById: Record<string, number>,
     _purchasedAt: string,
-    toAdd: ReceiptAddDraft[]
+    toAdd: ReceiptAddDraft[],
+    frozenItemIds: ReadonlySet<string>
   ) => {
     const nameOf = (id: string) => items.find(i => i.id === id)?.name;
     const names = [
@@ -636,11 +642,18 @@ export function KitchenScreen() {
     for (const draft of toAdd) {
       if (draft.priceMinor !== null) priceByName.set(draft.name, draft.priceMinor);
     }
+    const frozenNames = new Set([
+      ...itemIds
+        .filter(id => frozenItemIds.has(id))
+        .map(nameOf)
+        .filter((name): name is string => !!name),
+      ...toAdd.filter(draft => draft.frozen).map(draft => draft.name),
+    ]);
     setReceiptOpen(false);
     if (names.length === 0) return;
     if (
       addManyToPantry(
-        names, undefined, undefined, { byName: priceByName, shopId }, { acquired: true }
+        names, frozenNames, undefined, { byName: priceByName, shopId }, { acquired: true }
       ) > 0
     ) haptics.success();
   };

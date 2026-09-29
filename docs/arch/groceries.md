@@ -1110,7 +1110,7 @@ froze, the jar you opened and the tub you were nearly out of are all the old one
 **A receipt or a barcode read into the Pantry clears them too** (`addManyToPantry`'s `acquired`,
 passed by `KitchenScreen`'s two scan paths and nothing else). It isn't a trip, so it still writes
 no purchase count and no use-by day of its own, but it is a new packet, and before this it carried
-the old one's "in the freezer", "opened" and "running low" straight onto it. Three details:
+the old one's "in the freezer", "opened" and "running low" straight onto it. Four details:
 
 - **A running-low row comes off the home list.** That is the one list `setRunningLow` reaches into,
   and the thing it was on there to buy has just been bought. The one-direction rule above is about
@@ -1120,8 +1120,15 @@ the old one's "in the freezer", "opened" and "running low" straight onto it. Thr
   date on the new packet (a month-old chicken day, overdue on arrival). A plain row keeps its day.
 - **The use-up task is dropped, not reconciled, when no live day is left.** The reason reverses on
   the next trip by itself, and a reconcile's delete would write the item's permanent "never".
-  The scan sheet's own freezer toggle is applied after the clear, so it lands on the new packet.
+  Both sheets' freezer toggles are applied after the clear, so they land on the new packet.
   A plain "Got it" (the typed field, the item sheet's pill) is not a new packet and clears nothing.
+- **A receipt read into the Pantry asks about the freezer too** (#2925). The receipt sheet used to
+  leave `ReceiptAddDraft.frozen` unset on the reading that a receipt has no shelf to ask about, but
+  a big shop is exactly when half of it goes straight in the freezer, and without the toggle each
+  row had to be found and dragged afterwards. So its rows carry the barcode sheet's snowflake in
+  the Pantry context, turning it on checks the row, and `handleReceiptApply` hands the result to
+  `addManyToPantry` as `frozenNames` the way `handleScanApply` does. It stays out of the shopping
+  context: that path ends in the finish sheet, which asks nothing about a freezer.
 
 ### Nothing leaves the pantry, so the one exit worth noticing is offered as a task
 

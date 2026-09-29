@@ -5085,6 +5085,29 @@ describe('addManyToPantry, acquired', () => {
     expect(updated.frozenAt).not.toBe(FROZEN_AT);
   });
 
+  // The receipt's own shape (#2925): prices and the freezer toggle in one
+  // batch, a found row and a minted one, only the flagged names frozen.
+  it('freezes the receipt rows flagged for the freezer and prices every row', () => {
+    const chicken = makeItem({ name: 'Chicken thighs' });
+    const milk = makeItem({ name: 'Milk' });
+    seed([chicken, milk]);
+
+    useGroceryStore.getState().addManyToPantry(
+      ['Chicken thighs', 'Milk', 'Frozen berries'],
+      new Set(['Chicken thighs', 'Frozen berries']),
+      undefined,
+      { byName: new Map([['Chicken thighs', 899], ['Milk', 429]]), shopId: null },
+      { acquired: true }
+    );
+
+    const byName = (name: string) => useGroceryStore.getState().items.find(i => i.name === name)!;
+    expect(byName('Chicken thighs').frozenAt).not.toBeNull();
+    expect(byName('Frozen berries').frozenAt).not.toBeNull();
+    expect(byName('Milk').frozenAt).toBeNull();
+    expect(byName('Chicken thighs').lastPriceMinor).toBe(899);
+    expect(byName('Milk').lastPriceMinor).toBe(429);
+  });
+
   it('is off without the option, which is still a plain "Got it"', () => {
     const chicken = makeItem({ name: 'Chicken breast', frozenAt: FROZEN_AT, expiresAt: '2026-06-03' });
     seed([chicken]);
