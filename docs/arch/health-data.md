@@ -724,24 +724,45 @@ something nobody measured:
   reachable through the entry's links, or through the one panel an entry keeps
   for itself (below), which is what `foodLogEntryEdit` decides on.
 
-  **One exception: a share of an estimate** (`eatenFractionPatch`, #2914). A
-  described meal has no panel, and "I ate two-thirds of it" needs none: every
-  figure is one the model already stated, times a fraction the person chose,
-  so nothing is measured and nothing new is claimed. That is the test the rule
-  exists for, and a multiple would fail it, which is why the share is never
-  more than the whole. It is a closed set (a quarter, a third, a half,
-  two-thirds, three-quarters, all), since an estimate is not made more exact by
-  a finer fraction, and the source stays `estimated`. **The share is always of
-  the whole meal as estimated, never of the last share**: the first one keeps
-  the whole in `sourcePanel` (as a panel whose own source is `estimated`, which
-  is what keeps it out of the editor) and every later choice is taken from
-  that. Taking it of the stored helping each time was the literal reading, and
-  it would have thrown the model's own figures away on the first mistaken tap,
-  with only a division by rounded numbers to get them back. With the whole
-  kept, All puts the entry back exactly as it was logged. It goes through
+  **One exception: more or less of an estimate** (`estimateAmountPatch`,
+  #2914). A described meal has no panel, and "I actually ate 3 slices" needs
+  none: every figure is one the model already stated, times a number the
+  person chose, so nothing is measured and no nutrient appears that the
+  estimate did not state. That is the test the rule exists for, and it allows
+  **any multiple of the whole as estimated, chosen by the person**, up as well
+  as down.
+
+  Scaling up is acceptable here and still not for a measured panel because of
+  what the figures are. A measured helping's figures are one amount's worth of
+  a food whose real panel is right there to measure a new amount against;
+  multiplying them instead claims a measurement of the new amount that nobody
+  made, and compounds the old helping's rounding, when a true answer was
+  available. An estimate has no panel behind it and was never a measurement.
+  It is the model's guess at a meal of a stated size, so 3 slices of a meal
+  estimated as 2 is that same guess at a meal half as big again, and it claims
+  no more precision than the whole did. Going up claims nothing more than going
+  down, so the cap (`MAX_ESTIMATE_MULTIPLE`, ten times the whole) is there for
+  a mistyped count, not for honesty.
+
+  **It is asked in the estimate's own unit when its words give one.**
+  `estimateCount` reads "2 slices" as two of one thing, so the question is
+  "How many slices" and the answer scales the whole by new over old, logged as
+  "3 slices". A number that counts only part of the meal ("1 burger and a
+  regular fries") is not a count of it, since doubling it would double the
+  fries unsaid, so words like those get a closed set instead: the shares (a
+  quarter up to three-quarters), all of it, and one and a half, two and three
+  times it. An estimate is not made more exact by a finer number, and the
+  source stays `estimated`. **Every change is of the whole meal as estimated,
+  never of the last one**: the first keeps the whole in `sourcePanel` (as a
+  panel whose own source is `estimated`, which is what keeps it out of the
+  editor) and every later choice is taken from that. Taking it of the stored
+  helping each time was the literal reading, and it would have thrown the
+  model's own figures away on the first mistaken tap, with only a division by
+  rounded numbers to get them back. With the whole kept, the original count
+  (or All) puts the entry back exactly as it was logged. It goes through
   `reviseEntry` like any other correction of the figures.
 - **An entry with no link is not offered the editor, only a rename (and, for
-  an estimate, the share above), unless it kept its panel.** A described meal
+  an estimate, the change of amount above), unless it kept its panel.** A described meal
   the model estimated has no panel to measure against. Offering its figures as fields to retype was the obvious
   alternative and is the one thing this must not do: a hand-typed panel going
   into a medical record is exactly the unmeasured claim the rest of this
