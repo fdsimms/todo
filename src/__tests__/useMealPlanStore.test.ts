@@ -36,6 +36,8 @@ jest.mock('../db/database', () => ({
   // Runs the body straight through: the grocery store batches its bulk writes
   // into one transaction, and what the tests below check is the writes.
   dbTransaction: jest.fn((fn: () => void) => fn()),
+  // #2950's launch backfill: the ids of the rows the write filled.
+  dbFillMealCalendarExternalIds: jest.fn().mockReturnValue([]),
 }));
 
 // mealCookTasks defaults on, matching the real store — so every test here runs
@@ -79,8 +81,11 @@ const mockCreateAllDayEvent = jest.fn().mockResolvedValue('evt-new');
 // rewritten in place (and moved, #2949, when the calendar changed).
 const mockMoveAllDayEvent = jest.fn((id: string) => Promise.resolve(id));
 let mockCalendarPermission = 'granted';
+// Whether a local id still names its event here: yes unless a test says not.
+const mockEventExists = jest.fn((_id: string) => Promise.resolve(true));
 jest.mock('../utils/calendarSync', () => ({
   getCalendarPermission: () => Promise.resolve(mockCalendarPermission),
+  calendarEventExists: (id: string) => mockEventExists(id),
   deleteCalendarEvent: (...args: unknown[]) => mockDeleteCalendarEvent(...args),
   createAllDayEvent: (...args: unknown[]) => mockCreateAllDayEvent(...args),
   moveAllDayEvent: (...args: unknown[]) => mockMoveAllDayEvent(...(args as [string])),
@@ -2737,6 +2742,22 @@ describe('calendar events (#1494)', () => {
     expect(mockDeleteCalendarEvent).toHaveBeenCalledWith('evt-1');
   });
 
+  it('deletes the event found by its server id when a restored phone\'s local id names nothing (#2950)', async () => {
+    mockMealCalendarId = 'cal-1';
+    mockEventExists.mockResolvedValueOnce(false);
+    mockEventsWithExternalId.mockResolvedValueOnce([{ id: 'evt-this-phone', allDay: true, calendarId: 'cal-1' }]);
+    loadWeek([entry('2026-08-05', 'dinner', {
+      id: 'm-a', calendarEventId: 'evt-old-phone', calendarEventExternalId: 'ext-1',
+    })]);
+
+    useMealPlanStore.getState().removeEntry('m-a');
+    await settle();
+
+    expect(mockEventsWithExternalId).toHaveBeenCalledWith('ext-1');
+    expect(mockDeleteCalendarEvent).toHaveBeenCalledWith('evt-this-phone');
+    expect(mockDeleteCalendarEvent).not.toHaveBeenCalledWith('evt-old-phone');
+  });
+
   it('deletes the event of a meal whose id was only just written back', async () => {
     // The undo closure captured the entry before reconcileMealEvent had an id
     // to write, so dropMealEvent has to re-resolve the row — trusting the
@@ -2876,7 +2897,7 @@ describe('calendar events (#1494)', () => {
   // #2950: the event is this device's, so a change made on another device
   // reaches it only through the reconcile the sync reload runs.
   describe('after a sync', () => {
-    const synced = (over: { mealEntryIds?: string[]; removedMealEvents?: { eventId: string; date: string }[] }) => ({
+    const synced = (over: { mealEntryIds?: string[]; removedMealEvents?: { eventId: string; externalId: string | null; date: string }[] }) => ({
       mealEntryIds: [], removedMealEvents: [], ...over,
     });
 
@@ -2951,7 +2972,7 @@ describe('calendar events (#1494)', () => {
       loadWeek();
 
       useMealPlanStore.getState().reconcileSyncedEvents(synced({
-        removedMealEvents: [{ eventId: 'evt-9', date: dayKeyOf(new Date()) }],
+        removedMealEvents: [{ eventId: 'evt-9', externalId: null, date: dayKeyOf(new Date()) }],
       }));
       await settle();
 
@@ -2967,7 +2988,7 @@ describe('calendar events (#1494)', () => {
 
       useMealPlanStore.getState().reconcileSyncedEvents(synced({
         mealEntryIds: ['m-a'],
-        removedMealEvents: [{ eventId: 'evt-9', date: dayKeyOf(new Date()) }],
+        removedMealEvents: [{ eventId: 'evt-9', externalId: null, date: dayKeyOf(new Date()) }],
       }));
       await settle();
 
@@ -3118,5 +3139,29 @@ describe('finishCookForRecipe', () => {
     expect(dbUpdateMealPlanEntry).toHaveBeenCalledWith(
       expect.objectContaining({ id: dinner.id, cookedAt: expect.any(String) })
     );
+  });
+});
+
+describe('fillCalendarExternalIds (#2950)', () => {
+  const { dbFillMealCalendarExternalIds } = jest.requireMock('../db/database') as {
+    dbFillMealCalendarExternalIds: jest.Mock;
+  };
+
+  it('fills the loaded window in memory for the rows the database write filled', () => {
+    dbFillMealCalendarExternalIds.mockReturnValueOnce(['m-a']);
+    useMealPlanStore.setState({
+      entries: [
+        entry('2026-08-05', 'dinner', { id: 'm-a', calendarEventId: 'evt-a' }),
+        entry('2026-08-06', 'dinner', { id: 'm-b', calendarEventId: 'evt-b' }),
+      ],
+    });
+    const found = { 'evt-a': 'ext-a', 'evt-b': 'ext-b' };
+
+    useMealPlanStore.getState().fillCalendarExternalIds(found);
+
+    expect(dbFillMealCalendarExternalIds).toHaveBeenCalledWith(found);
+    const byId = Object.fromEntries(useMealPlanStore.getState().entries.map(e => [e.id, e]));
+    expect(byId['m-a'].calendarEventExternalId).toBe('ext-a');
+    expect(byId['m-b'].calendarEventExternalId ?? null).toBeNull();
   });
 });

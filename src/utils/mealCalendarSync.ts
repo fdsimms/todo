@@ -1,8 +1,14 @@
 import type { MealPlanEntry } from '../types';
 import { MEAL_SLOT_LABELS, MEAL_PLAN_RETENTION_DAYS } from '../types';
 import { dayKeyToDate } from './dateUtils';
-import { deleteCalendarEvent } from './calendarSync';
-import { NO_EVENT_LINK, writeAllDayEvent, type CalendarEventLink } from './calendarEventLink';
+import {
+  NO_EVENT_LINK,
+  adoptableEventId,
+  deleteLinkedEvent,
+  uniqueLinks,
+  writeAllDayEvent,
+  type CalendarEventLink,
+} from './calendarEventLink';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { isDemoModeActive } from './demoState';
 import { mealPlanPurgeCutoffKey, mealTitleOffPlan } from './mealPlan';
@@ -118,7 +124,7 @@ export async function syncMealEvent(entry: MealPlanEntry): Promise<CalendarEvent
   // restore none of them. That breaks kitchenEnabled's own rule — turning
   // the area back on restores exactly what was there.
   if (!mealCalendarId) {
-    if (entry.calendarEventId) await deleteCalendarEvent(entry.calendarEventId);
+    await deleteMealEvent(mealEventLink(entry));
     return NO_EVENT_LINK;
   }
 
@@ -130,11 +136,23 @@ export async function syncMealEvent(entry: MealPlanEntry): Promise<CalendarEvent
   // is. An id that no longer resolves (deleted by hand, the calendar gone, or
   // a backup restored on a new phone, #2950) falls back to the event found by
   // its server id and then to a fresh one; `writeAllDayEvent` has the order.
-  return writeAllDayEvent(
-    { eventId: entry.calendarEventId, externalId: entry.calendarEventExternalId ?? null },
-    mealCalendarId,
-    mealEventFields(entry)
-  );
+  return writeAllDayEvent(mealEventLink(entry), mealCalendarId, mealEventFields(entry));
+}
+
+/** The event a planned meal is linked to on this device. */
+export function mealEventLink(entry: MealPlanEntry): CalendarEventLink {
+  return { eventId: entry.calendarEventId ?? null, externalId: entry.calendarEventExternalId ?? null };
+}
+
+/**
+ * Deletes a meal's event, by its server id when the local one names nothing
+ * here (a backup restored on a new phone, #2950). The server id's copies are
+ * narrowed by the calendar picked now, as a write's are; with none picked, only
+ * a single match counts. Fire-and-forget, never throws.
+ */
+export function deleteMealEvent(link: CalendarEventLink): Promise<void> {
+  const calendarId = useSettingsStore.getState().mealCalendarId ?? '';
+  return deleteLinkedEvent(link, matches => adoptableEventId(matches, calendarId));
 }
 
 /**
@@ -151,8 +169,8 @@ const SYNC_PURGE_MARGIN_DAYS = 2;
 export interface MealEventSyncPlan {
   /** Meals holding an event this device wrote, to bring in line through `syncMealEvent`. */
   reconcile: MealPlanEntry[];
-  /** Events whose meal another device removed, to delete. */
-  remove: string[];
+  /** Events whose meal another device removed, to delete through `deleteMealEvent`. */
+  remove: CalendarEventLink[];
 }
 
 /**
@@ -201,9 +219,11 @@ export function mealEventsAfterSync(
   }
 
   const purgedBefore = mealPlanPurgeCutoffKey(now, MEAL_PLAN_RETENTION_DAYS - SYNC_PURGE_MARGIN_DAYS);
-  const remove = [...new Set(
-    applied.removedMealEvents.filter(m => m.date >= purgedBefore).map(m => m.eventId)
-  )];
+  const remove = uniqueLinks(
+    applied.removedMealEvents
+      .filter(m => m.date >= purgedBefore)
+      .map(m => ({ eventId: m.eventId, externalId: m.externalId ?? null }))
+  );
 
   return { reconcile, remove };
 }

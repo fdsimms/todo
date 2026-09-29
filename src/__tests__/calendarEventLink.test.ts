@@ -5,17 +5,21 @@
 const mockCreate = jest.fn();
 const mockMove = jest.fn();
 const mockDelete = jest.fn();
+const mockExists = jest.fn();
 jest.mock('../utils/calendarSync', () => ({
   createAllDayEvent: (...args: unknown[]) => mockCreate(...args),
   moveAllDayEvent: (...args: unknown[]) => mockMove(...args),
   deleteCalendarEvent: (...args: unknown[]) => mockDelete(...args),
+  calendarEventExists: (id: string) => mockExists(id),
 }));
 
 const mockExternalIds = jest.fn();
 const mockEventsWithExternalId = jest.fn();
+let mockBridgeAvailable = true;
 jest.mock('todo-eventkit-bridge', () => ({
   externalIdentifiers: (ids: string[]) => mockExternalIds(ids),
   eventsWithExternalIdentifier: (id: string) => mockEventsWithExternalId(id),
+  isEventKitBridgeAvailable: () => mockBridgeAvailable,
 }), { virtual: true });
 
 let mockDemoActive = false;
@@ -27,9 +31,15 @@ import {
   NO_EVENT_LINK,
   adoptableEventId,
   adoptableTimeBlockId,
+  canReadExternalEventIds,
+  completionEventMatch,
+  deleteLinkedEvent,
   eventsWithExternalId,
   externalIdAfterWrite,
+  filledExternalId,
   readExternalEventId,
+  readExternalEventIds,
+  uniqueLinks,
   writeAllDayEvent,
   type ExternalEventMatch,
 } from '../utils/calendarEventLink';
@@ -48,6 +58,9 @@ beforeEach(() => {
   mockExternalIds.mockReset().mockImplementation((ids: string[]) =>
     Promise.resolve(Object.fromEntries(ids.map(id => [id, `ext-${id}`]))));
   mockEventsWithExternalId.mockReset().mockResolvedValue([]);
+  // Every local id names an event unless a test says otherwise.
+  mockExists.mockReset().mockResolvedValue(true);
+  mockBridgeAvailable = true;
 });
 
 describe('adoptableEventId', () => {
@@ -219,5 +232,125 @@ describe('writeAllDayEvent', () => {
     mockCreate.mockResolvedValue(null);
     expect(await writeAllDayEvent({ eventId: 'evt-1', externalId: 'ext-1' }, 'cal-family', FIELDS))
       .toEqual(NO_EVENT_LINK);
+  });
+});
+
+describe('completionEventMatch', () => {
+  it('takes the one timed event found, and never an all-day one', () => {
+    expect(completionEventMatch([match('evt-a', { allDay: false })], 'cal-log')).toBe('evt-a');
+    expect(completionEventMatch([match('evt-a')], 'cal-log')).toBeNull();
+  });
+
+  it('chooses between copies by the completion calendar, and refuses to guess otherwise', () => {
+    const copies = [
+      match('evt-a', { allDay: false, calendarId: 'cal-log' }),
+      match('evt-b', { allDay: false, calendarId: 'cal-other' }),
+    ];
+    expect(completionEventMatch(copies, 'cal-log')).toBe('evt-a');
+    expect(completionEventMatch(copies, 'cal-elsewhere')).toBeNull();
+  });
+});
+
+describe('deleteLinkedEvent', () => {
+  const pickAllDay = (matches: readonly ExternalEventMatch[]) => adoptableEventId(matches, 'cal-family');
+
+  it('deletes by the local id while it still names the event, and never looks further', async () => {
+    await deleteLinkedEvent({ eventId: 'evt-1', externalId: 'ext-1' }, pickAllDay);
+    expect(mockExists).toHaveBeenCalledWith('evt-1');
+    expect(mockDelete).toHaveBeenCalledTimes(1);
+    expect(mockDelete).toHaveBeenCalledWith('evt-1');
+    expect(mockEventsWithExternalId).not.toHaveBeenCalled();
+  });
+
+  it('deletes the event found by its server id when the local id names nothing here', async () => {
+    // A backup restored on a new phone: the old phone's local id is gone, and
+    // the calendar account brought the event down under a new one.
+    mockExists.mockResolvedValue(false);
+    mockEventsWithExternalId.mockResolvedValue([match('evt-this-phone')]);
+    await deleteLinkedEvent({ eventId: 'evt-old-phone', externalId: 'ext-1' }, pickAllDay);
+    expect(mockEventsWithExternalId).toHaveBeenCalledWith('ext-1');
+    expect(mockDelete).toHaveBeenCalledTimes(1);
+    expect(mockDelete).toHaveBeenCalledWith('evt-this-phone');
+  });
+
+  it('deletes nothing when the copies found don\'t settle which is the row\'s', async () => {
+    mockExists.mockResolvedValue(false);
+    mockEventsWithExternalId.mockResolvedValue([
+      match('evt-a', { calendarId: 'cal-x' }),
+      match('evt-b', { calendarId: 'cal-y' }),
+    ]);
+    await deleteLinkedEvent({ eventId: 'evt-old-phone', externalId: 'ext-1' }, pickAllDay);
+    expect(mockDelete).not.toHaveBeenCalled();
+  });
+
+  it('deletes by the local id alone, as before, for a row with no server id', async () => {
+    await deleteLinkedEvent({ eventId: 'evt-1', externalId: null }, pickAllDay);
+    expect(mockExists).not.toHaveBeenCalled();
+    expect(mockDelete).toHaveBeenCalledWith('evt-1');
+  });
+
+  it('does nothing for a row with no event, whatever else it holds', async () => {
+    await deleteLinkedEvent({ eventId: null, externalId: 'ext-1' }, pickAllDay);
+    expect(mockExists).not.toHaveBeenCalled();
+    expect(mockEventsWithExternalId).not.toHaveBeenCalled();
+    expect(mockDelete).not.toHaveBeenCalled();
+  });
+
+  it('never throws', async () => {
+    mockExists.mockRejectedValue(new Error('boom'));
+    await expect(deleteLinkedEvent({ eventId: 'evt-1', externalId: 'ext-1' }, pickAllDay)).resolves.toBeUndefined();
+  });
+});
+
+describe('uniqueLinks', () => {
+  it('keeps the first link per local id, and drops a link with none', () => {
+    expect(uniqueLinks([
+      { eventId: 'a', externalId: 'ext-a' },
+      { eventId: 'a', externalId: null },
+      { eventId: null, externalId: 'ext-x' },
+      { eventId: 'b', externalId: null },
+    ])).toEqual([{ eventId: 'a', externalId: 'ext-a' }, { eventId: 'b', externalId: null }]);
+  });
+});
+
+describe('filledExternalId', () => {
+  const found = { 'evt-1': 'ext-1' };
+  it('fills a link\'s missing server id from what was read for its local id', () => {
+    expect(filledExternalId('evt-1', null, found)).toBe('ext-1');
+    expect(filledExternalId('evt-1', undefined, found)).toBe('ext-1');
+  });
+  it('keeps a server id the link already has, and leaves null what wasn\'t read', () => {
+    expect(filledExternalId('evt-1', 'ext-kept', found)).toBe('ext-kept');
+    expect(filledExternalId('evt-2', null, found)).toBeNull();
+    expect(filledExternalId(null, null, found)).toBeNull();
+  });
+});
+
+describe('reading server ids in bulk', () => {
+  it('reads every id in one call, once each, and keeps only those with a server id', async () => {
+    mockExternalIds.mockResolvedValue({ 'evt-1': 'ext-1', 'evt-2': '' });
+    expect(await readExternalEventIds(['evt-1', 'evt-2', 'evt-1', ''])).toEqual({ 'evt-1': 'ext-1' });
+    expect(mockExternalIds).toHaveBeenCalledTimes(1);
+    expect(mockExternalIds).toHaveBeenCalledWith(['evt-1', 'evt-2']);
+  });
+
+  it('asks nothing for no ids, answers nothing on failure, and nothing in demo mode', async () => {
+    expect(await readExternalEventIds([])).toEqual({});
+    expect(mockExternalIds).not.toHaveBeenCalled();
+    mockExternalIds.mockRejectedValue(new Error('boom'));
+    expect(await readExternalEventIds(['evt-1'])).toEqual({});
+    mockDemoActive = true;
+    mockExternalIds.mockClear();
+    expect(await readExternalEventIds(['evt-1'])).toEqual({});
+    expect(mockExternalIds).not.toHaveBeenCalled();
+  });
+
+  it('says whether the bridge can read at all, which demo mode and a missing module both answer no', () => {
+    expect(canReadExternalEventIds()).toBe(true);
+    mockBridgeAvailable = false;
+    expect(canReadExternalEventIds()).toBe(false);
+    mockBridgeAvailable = true;
+    mockDemoActive = true;
+    expect(canReadExternalEventIds()).toBe(false);
   });
 });

@@ -1,7 +1,13 @@
 import type { Task } from '../types';
 import { displayTitleFor } from './visibilityUtils';
-import { deleteCalendarEvent } from './calendarSync';
-import { NO_EVENT_LINK, writeAllDayEvent, type CalendarEventLink } from './calendarEventLink';
+import {
+  NO_EVENT_LINK,
+  adoptableEventId,
+  deleteLinkedEvent,
+  uniqueLinks,
+  writeAllDayEvent,
+  type CalendarEventLink,
+} from './calendarEventLink';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { isDemoModeActive } from './demoState';
 import type { ApplyReport } from './syncMerge';
@@ -33,7 +39,7 @@ export async function syncDeadlineEvent(task: Task): Promise<CalendarEventLink> 
   // done/archived and has nothing left to be late for — the event (if one
   // exists) goes away, and there's nothing to link.
   if (!deadlineCalendarId || !task.deadlineOnCalendar || !task.deadline || task.completed || task.archived) {
-    if (task.calendarEventId) await deleteCalendarEvent(task.calendarEventId);
+    await deleteDeadlineEvent(deadlineEventLink(task));
     return NO_EVENT_LINK;
   }
 
@@ -47,10 +53,26 @@ export async function syncDeadlineEvent(task: Task): Promise<CalendarEventLink> 
   // restored on a new phone, #2950) falls back to the event found by its server
   // id and then to a fresh one; `writeAllDayEvent` has the order.
   return writeAllDayEvent(
-    { eventId: task.calendarEventId, externalId: task.calendarEventExternalId ?? null },
+    deadlineEventLink(task),
     deadlineCalendarId,
     { title: displayTitleFor(task) || 'Deadline', date: new Date(task.deadline) }
   );
+}
+
+/** The deadline event a task is linked to on this device. */
+export function deadlineEventLink(task: Task): CalendarEventLink {
+  return { eventId: task.calendarEventId ?? null, externalId: task.calendarEventExternalId ?? null };
+}
+
+/**
+ * Deletes a task's deadline event, by its server id when the local one names
+ * nothing here (a backup restored on a new phone, #2950), which is what every
+ * delete of a task row calls. `deleteMealEvent`'s rule, narrowed by the
+ * deadline calendar. Fire-and-forget, never throws.
+ */
+export function deleteDeadlineEvent(link: CalendarEventLink): Promise<void> {
+  const calendarId = useSettingsStore.getState().deadlineCalendarId ?? '';
+  return deleteLinkedEvent(link, matches => adoptableEventId(matches, calendarId));
 }
 
 /** What a sync apply asks of this device's task events. */
@@ -64,8 +86,8 @@ export interface TaskEventSyncPlan {
    * event, to delete as a local uncomplete would.
    */
   uncompleted: Task[];
-  /** Deadline events whose task another device removed, to delete. */
-  remove: string[];
+  /** Deadline events whose task another device removed, to delete through `deleteDeadlineEvent`. */
+  remove: CalendarEventLink[];
 }
 
 /**
@@ -147,5 +169,5 @@ export function taskEventsAfterSync(
     if (!task.completed && task.completionCalendarEventId) uncompleted.push(task);
   }
 
-  return { deadlines, timeBlocks, uncompleted, remove: [...new Set(applied.removedTaskEvents)] };
+  return { deadlines, timeBlocks, uncompleted, remove: uniqueLinks(applied.removedTaskEvents) };
 }

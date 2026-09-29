@@ -1769,6 +1769,9 @@ export function initDatabase(): void {
     // The same beside a time block's id, so a restored backup's task finds its
     // block again instead of dropping the pointer. See Task.timeBlockExternalId.
     'ALTER TABLE tasks ADD COLUMN time_block_external_id TEXT',
+    // And beside a completion event's, so reopening a task on a restored phone
+    // still deletes the old phone's event. See Task.completionCalendarEventExternalId.
+    'ALTER TABLE tasks ADD COLUMN completion_calendar_event_external_id TEXT',
     // A store's own aisle walk (#2938). NULL on every existing row, which is
     // every store following the usual order exactly as it did before this
     // column. Nullable rather than '[]' for the reason `aisles` is: an empty
@@ -2996,22 +2999,38 @@ export function dbApplySyncChanges(payload: SyncPayload, transport?: string): Ap
       // The meal's event id is device-local, so this row is the only place it
       // lives: read it now or the event outlives the meal (#2950).
       if (deletion.table === 'meal_plan_entries') {
-        const meal = db.getFirstSync<{ calendar_event_id: string | null; date: string }>(
-          `SELECT calendar_event_id, date FROM meal_plan_entries WHERE ${where.sql}`,
+        const meal = db.getFirstSync<{
+          calendar_event_id: string | null;
+          calendar_event_external_id: string | null;
+          date: string;
+        }>(
+          `SELECT calendar_event_id, calendar_event_external_id, date FROM meal_plan_entries WHERE ${where.sql}`,
           where.values
         );
         if (meal?.calendar_event_id) {
-          report.removedMealEvents.push({ eventId: meal.calendar_event_id, date: meal.date });
+          report.removedMealEvents.push({
+            eventId: meal.calendar_event_id,
+            externalId: meal.calendar_event_external_id ?? null,
+            date: meal.date,
+          });
         }
       }
       // A task's deadline event, for the same reason. Not its time block, which
       // the app never deletes, nor its completion event, which is history.
       if (deletion.table === 'tasks') {
-        const task = db.getFirstSync<{ calendar_event_id: string | null }>(
-          `SELECT calendar_event_id FROM tasks WHERE ${where.sql}`,
+        const task = db.getFirstSync<{
+          calendar_event_id: string | null;
+          calendar_event_external_id: string | null;
+        }>(
+          `SELECT calendar_event_id, calendar_event_external_id FROM tasks WHERE ${where.sql}`,
           where.values
         );
-        if (task?.calendar_event_id) report.removedTaskEvents.push(task.calendar_event_id);
+        if (task?.calendar_event_id) {
+          report.removedTaskEvents.push({
+            eventId: task.calendar_event_id,
+            externalId: task.calendar_event_external_id ?? null,
+          });
+        }
       }
       db.runSync(`DELETE FROM "${deletion.table}" WHERE ${where.sql}`, where.values);
       // The tombstone trigger just stamped this deletion with local now. Put
@@ -3285,6 +3304,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     timeBlockEventId: (row.time_block_event_id as string | null) ?? null,
     calendarEventExternalId: (row.calendar_event_external_id as string | null) ?? null,
     timeBlockExternalId: (row.time_block_external_id as string | null) ?? null,
+    completionCalendarEventExternalId: (row.completion_calendar_event_external_id as string | null) ?? null,
     backfillDismissedFields: JSON.parse((row.backfill_dismissed_fields as string) ?? '[]') as string[],
     location: (row.location as string) ?? null,
   };
@@ -3313,7 +3333,7 @@ export function dbInsertTask(task: Task): void {
       extra_task_every_n, extra_task_title, extra_task_draft, extra_task_one_at_a_time, extra_task_tally, previous_extra_task_tally, extra_task_source_title,
       deliverable_kind, deliverable_value, deadline_on_calendar, calendar_event_id,
       log_completion_to_calendar, completion_calendar_event_id, time_block_event_id,
-      calendar_event_external_id, time_block_external_id,
+      calendar_event_external_id, time_block_external_id, completion_calendar_event_external_id,
       streak_requires_window, backfill_dismissed_fields,
       supply_count, supply_unit, supply_refill_count, supply_reorder_at,
       supply_lead_days, supply_declined_at_count, supply_grocery_item_id,
@@ -3327,7 +3347,7 @@ export function dbInsertTask(task: Task): void {
       estimate_before_timing, waiting_on_person_since, waiting_follow_up_declined_at,
       reminder_tracks_visibility, recurrence_month,
       blocked_by_ids, deliverable_options, deliverable_sets_away, follow_up_on, extra_task_source_id
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -3383,6 +3403,7 @@ export function dbInsertTask(task: Task): void {
       task.timeBlockEventId ?? null,
       task.calendarEventExternalId ?? null,
       task.timeBlockExternalId ?? null,
+      task.completionCalendarEventExternalId ?? null,
       task.streakRequiresWindow ? 1 : 0,
       JSON.stringify(task.backfillDismissedFields),
       task.supplyCount ?? null,
@@ -3460,7 +3481,7 @@ export function dbUpdateTask(task: Task): void {
       extra_task_every_n=?, extra_task_title=?, extra_task_draft=?, extra_task_one_at_a_time=?, extra_task_tally=?, previous_extra_task_tally=?, extra_task_source_title=?,
       deliverable_kind=?, deliverable_value=?, deadline_on_calendar=?, calendar_event_id=?,
       log_completion_to_calendar=?, completion_calendar_event_id=?, time_block_event_id=?,
-      calendar_event_external_id=?, time_block_external_id=?,
+      calendar_event_external_id=?, time_block_external_id=?, completion_calendar_event_external_id=?,
       streak_requires_window=?, backfill_dismissed_fields=?,
       supply_count=?, supply_unit=?, supply_refill_count=?, supply_reorder_at=?,
       supply_lead_days=?, supply_declined_at_count=?, supply_grocery_item_id=?,
@@ -3530,6 +3551,7 @@ export function dbUpdateTask(task: Task): void {
       task.timeBlockEventId ?? null,
       task.calendarEventExternalId ?? null,
       task.timeBlockExternalId ?? null,
+      task.completionCalendarEventExternalId ?? null,
       task.streakRequiresWindow ? 1 : 0,
       JSON.stringify(task.backfillDismissedFields),
       task.supplyCount ?? null,
@@ -3667,6 +3689,98 @@ export function dbClearAllPins(): void {
 // nest.
 export function dbTransaction(fn: () => void): void {
   db.withTransactionSync(fn);
+}
+
+/**
+ * A device event id and the column holding the calendar server's id beside it.
+ * Every pair `fillCalendarExternalIds` fills.
+ */
+const CALENDAR_ID_PAIRS: Readonly<Record<'tasks' | 'meal_plan_entries', ReadonlyArray<readonly [string, string]>>> = {
+  tasks: [
+    ['calendar_event_id', 'calendar_event_external_id'],
+    ['time_block_event_id', 'time_block_external_id'],
+    ['completion_calendar_event_id', 'completion_calendar_event_external_id'],
+  ],
+  meal_plan_entries: [['calendar_event_id', 'calendar_event_external_id']],
+};
+
+/**
+ * Writes the calendar server id `found` holds for each device event id, beside
+ * that id, on every row of `table` that holds it with no server id yet, and
+ * returns the ids of the rows it wrote (#2950). The one-time launch backfill's
+ * write (`backfillCalendarExternalIds`).
+ *
+ * **Each row keeps the sync stamp it had.** Any UPDATE restamps a row as a
+ * local change (the stamp trigger), and a row's stamp is what decides which
+ * copy wins against a peer's. Restamped, every row holding an event would read
+ * as edited here just now, at launch, which is when a peer's edits made while
+ * the app was closed are least likely to have arrived yet: the next sync would
+ * put this device's stale copy over each of them. The columns written are
+ * device-local and never sent, so nothing about the row changed that a peer
+ * could want; putting the old stamp back, which the trigger lets through as
+ * the sync apply's own writes are let through, says exactly that.
+ *
+ * A row whose device id has moved on since `found` was read no longer matches
+ * and is left alone, and so is one that already has a server id.
+ */
+function fillCalendarExternalIds(
+  table: 'tasks' | 'meal_plan_entries',
+  found: Readonly<Record<string, string>>
+): string[] {
+  const pairs = CALENDAR_ID_PAIRS[table];
+  if (Object.keys(found).length === 0) return [];
+  const wanting = pairs.map(([idCol, extCol]) => `(${idCol} IS NOT NULL AND ${extCol} IS NULL)`).join(' OR ');
+  const written: string[] = [];
+  db.withTransactionSync(() => {
+    const rows = db.getAllSync<Record<string, string | null>>(
+      `SELECT id, updated_at, ${pairs.flat().join(', ')} FROM ${table} WHERE ${wanting}`
+    );
+    for (const row of rows) {
+      const sets: string[] = [];
+      const values: string[] = [];
+      for (const [idCol, extCol] of pairs) {
+        const eventId = row[idCol];
+        if (eventId && !row[extCol] && found[eventId]) {
+          sets.push(`${extCol} = ?`);
+          values.push(found[eventId]);
+        }
+      }
+      if (sets.length === 0) continue;
+      db.runSync(`UPDATE ${table} SET ${sets.join(', ')} WHERE id = ?`, [...values, row.id as string]);
+      db.runSync(`UPDATE ${table} SET updated_at = ? WHERE id = ?`, [row.updated_at ?? null, row.id as string]);
+      written.push(row.id as string);
+    }
+  });
+  return written;
+}
+
+/** `fillCalendarExternalIds` over tasks: deadline events, time blocks and completion events. */
+export function dbFillTaskCalendarExternalIds(found: Readonly<Record<string, string>>): string[] {
+  return fillCalendarExternalIds('tasks', found);
+}
+
+/** `fillCalendarExternalIds` over planned meals' events. */
+export function dbFillMealCalendarExternalIds(found: Readonly<Record<string, string>>): string[] {
+  return fillCalendarExternalIds('meal_plan_entries', found);
+}
+
+/**
+ * Every device event id on a task or a planned meal with no calendar server
+ * id beside it yet, which is what the launch backfill reads server ids for.
+ * Read from the tables rather than the stores, because the meal plan store
+ * holds only the window of days last asked for.
+ */
+export function dbCalendarEventIdsWantingExternalIds(): string[] {
+  const ids = new Set<string>();
+  for (const table of ['tasks', 'meal_plan_entries'] as const) {
+    for (const [idCol, extCol] of CALENDAR_ID_PAIRS[table]) {
+      const rows = db.getAllSync<{ event_id: string }>(
+        `SELECT ${idCol} AS event_id FROM ${table} WHERE ${idCol} IS NOT NULL AND ${idCol} <> '' AND ${extCol} IS NULL`
+      );
+      for (const row of rows) ids.add(row.event_id);
+    }
+  }
+  return [...ids];
 }
 
 const BULK_DELETE_CHUNK_SIZE = 500;

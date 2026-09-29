@@ -6,6 +6,7 @@ import {
   dbGetMealPlanEntry,
   dbInsertMealPlanEntry,
   dbUpdateMealPlanEntry,
+  dbFillMealCalendarExternalIds,
   dbDeleteMealPlanEntry,
   dbPurgeOldMealPlanEntries,
   dbGetMealPlanAddedToList,
@@ -24,9 +25,10 @@ import { generatedTaskCountOf, hasAnyGeneratedTask, liveGeneratedTask } from '..
 import { derivedId, spawnSeed } from '../utils/syncIds';
 import { ensureGeneratedTaskCategory } from './useCategoryStore';
 import { deleteGeneratedTaskQuietly, dropGeneratedTask } from './generatedTaskSync';
-import { mealEventsAfterSync, syncMealEvent } from '../utils/mealCalendarSync';
+import { mealEventsAfterSync, syncMealEvent, mealEventLink, deleteMealEvent } from '../utils/mealCalendarSync';
 import type { ApplyReport } from '../utils/syncMerge';
-import { deleteCalendarEvent, getCalendarPermission } from '../utils/calendarSync';
+import { getCalendarPermission } from '../utils/calendarSync';
+import { filledExternalId } from '../utils/calendarEventLink';
 import {
   classifyPlanned,
   consumedRows,
@@ -745,6 +747,14 @@ interface MealPlanStore extends UndoHistoryActions {
    * the rows it reads and any link it writes back are the synced ones.
    */
   reconcileSyncedEvents: (applied: Pick<ApplyReport, 'mealEntryIds' | 'removedMealEvents'>) => void;
+  /**
+   * Fills in the calendar server id beside each meal's event id that `found`
+   * names and the meal has none for yet, across the whole plan in the database
+   * and in the loaded window in memory, without restamping the rows for sync
+   * (`dbFillTaskCalendarExternalIds` says why). The meal half of the one-time
+   * launch backfill (`backfillCalendarExternalIds`).
+   */
+  fillCalendarExternalIds: (found: Readonly<Record<string, string>>) => void;
 }
 
 export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
@@ -1527,6 +1537,16 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     return removed;
   },
 
+  fillCalendarExternalIds(found) {
+    const written = new Set(dbFillMealCalendarExternalIds(found));
+    if (written.size === 0) return;
+    set(s => ({
+      entries: s.entries.map(e => (written.has(e.id)
+        ? { ...e, calendarEventExternalId: filledExternalId(e.calendarEventId, e.calendarEventExternalId, found) }
+        : e)),
+    }));
+  },
+
   reconcileSyncedEvents(applied) {
     const plan = mealEventsAfterSync(applied, id => resolveEntry(get, id));
     if (plan.reconcile.length === 0 && plan.remove.length === 0) return;
@@ -1546,7 +1566,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
           const current = resolveEntry(get, entry.id);
           if (current) reconcileMealEvent(current);
         }
-        for (const eventId of plan.remove) void deleteCalendarEvent(eventId);
+        for (const link of plan.remove) void deleteMealEvent(link);
       })
       .catch(() => {});
   },
@@ -2052,5 +2072,6 @@ function reconcileMealEvent(entry: MealPlanEntry): void {
  */
 function dropMealEvent(entryId: string): void {
   const current = resolveEntry(useMealPlanStore.getState, entryId);
-  if (current?.calendarEventId) deleteCalendarEvent(current.calendarEventId);
+  // By its server id when the local one names nothing here (#2950).
+  if (current?.calendarEventId) void deleteMealEvent(mealEventLink(current));
 }

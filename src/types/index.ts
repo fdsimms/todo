@@ -2712,6 +2712,16 @@ export interface Task {
   // delete here (`taskEventsAfterSync`'s `uncompleted`).
   completionCalendarEventId: string | null;
 
+  // The calendar server's id for the completion event above, read back after
+  // it is written, or null until one is (#2950). Read only when uncompleting
+  // deletes the event and the id above names nothing here, which is every
+  // completion event on a phone a backup was restored to: without it, the
+  // reopened task's "completed" event stayed on the calendar
+  // (`deleteLinkedEvent` in utils/calendarEventLink.ts). Cleared with the id
+  // above, device-local and kept in backups like it. Optional so a row or
+  // fixture from before it reads as null.
+  completionCalendarEventExternalId?: string | null;
+
   // The id of the timed event blocking out room to actually *do* this task,
   // or null until the user asks for one. Deliberately its own field rather
   // than sharing calendarEventId above: a deadline event and a time block are
@@ -3313,6 +3323,7 @@ export type TaskDraft = Omit<
   | 'calendarEventId'
   | 'calendarEventExternalId'
   | 'completionCalendarEventId'
+  | 'completionCalendarEventExternalId'
   | 'timeBlockEventId'
   | 'timeBlockExternalId'
   | 'backfillDismissedFields'

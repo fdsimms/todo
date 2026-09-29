@@ -169,8 +169,21 @@ export function remoteDeletionWins(localUpdatedAt: string | null, deletedAt: str
  */
 export interface RemovedMealEvent {
   eventId: string;
+  /**
+   * The calendar server's id beside it, or null when the row had none, so the
+   * delete can still find the event when the local id names nothing here (a
+   * backup restored on a new phone). See `deleteLinkedEvent`.
+   */
+  externalId: string | null;
   /** The meal's day key, which is how the reconcile tells a removal from the horizon purge. */
   date: string;
+}
+
+/** A deadline event read off a task row an apply deleted. `RemovedMealEvent` without the day. */
+export interface RemovedTaskEvent {
+  eventId: string;
+  /** The calendar server's id beside it, or null when the row had none. */
+  externalId: string | null;
 }
 
 /** What an apply did, for the sync log and for tests. */
@@ -207,7 +220,7 @@ export interface ApplyReport {
    * never deletes a time block (`Task.timeBlockEventId`), and a completion
    * event is a record of what happened rather than a mirror of the row.
    */
-  removedTaskEvents: string[];
+  removedTaskEvents: RemovedTaskEvent[];
 }
 
 export function emptyApplyReport(): ApplyReport {

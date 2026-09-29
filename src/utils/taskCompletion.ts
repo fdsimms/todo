@@ -717,6 +717,7 @@ export function buildCompletion(
         // occurrence's completion, not this fresh one's — which hasn't
         // happened yet.
         completionCalendarEventId: null,
+        completionCalendarEventExternalId: null,
         // Nor this: last Tuesday's block was time spent on last Tuesday's
         // occurrence. The next one starts unblocked, and asking for a slot
         // is a decision the user makes per occurrence — there is no

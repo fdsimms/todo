@@ -360,6 +360,7 @@ describe('device-local columns', () => {
     expect(isDeviceLocalColumn('meal_plan_entries', 'calendar_event_external_id')).toBe(true);
     expect(isDeviceLocalColumn('tasks', 'calendar_event_external_id')).toBe(true);
     expect(isDeviceLocalColumn('tasks', 'time_block_external_id')).toBe(true);
+    expect(isDeviceLocalColumn('tasks', 'completion_calendar_event_external_id')).toBe(true);
     expect(withoutDeviceLocalColumns('meal_plan_entries', {
       id: 'm1', calendar_event_id: 'evt', calendar_event_external_id: 'ext',
     })).toEqual({ id: 'm1' });

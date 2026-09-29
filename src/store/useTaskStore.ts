@@ -6,6 +6,7 @@ import {
   dbGetAllTasks,
   dbInsertTask,
   dbUpdateTask,
+  dbFillTaskCalendarExternalIds,
   dbDeleteTask,
   dbDeleteSubtasks,
   dbClearAllPins,
@@ -273,13 +274,12 @@ import {
   staleWaitingFollowUpTasks,
 } from '../utils/waitingFollowUpTasks';
 import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders, scheduleTimerAlarm, cancelTimerAlarm, scheduleQuotaNudges, cancelQuotaNudges, cancelCompletionTimer } from '../utils/notifications';
-import { syncDeadlineEvent, taskEventsAfterSync } from '../utils/deadlineCalendarSync';
+import { syncDeadlineEvent, taskEventsAfterSync, deadlineEventLink, deleteDeadlineEvent } from '../utils/deadlineCalendarSync';
 import type { ApplyReport } from '../utils/syncMerge';
-import { logTaskCompletionToCalendar } from '../utils/completionCalendarSync';
+import { logTaskCompletionToCalendar, completionEventLink, deleteCompletionEvent } from '../utils/completionCalendarSync';
 import { logTaskHealthValue, unlogTaskWaterFromFoodLog } from '../utils/healthCompletionSync';
 import { waterTotalMl } from '../utils/waterLog';
 import {
-  deleteCalendarEvent,
   getCalendarPermission,
   presentTimeBlockCreate,
   presentTimeBlockEdit,
@@ -291,6 +291,7 @@ import {
   NO_EVENT_LINK,
   adoptableTimeBlockId,
   eventsWithExternalId,
+  filledExternalId,
   readExternalEventId,
   type CalendarEventLink,
 } from '../utils/calendarEventLink';
@@ -563,11 +564,14 @@ function reconcileDeadlineEvent(task: Task): void {
  */
 function logCompletionEvent(task: Task, completedAt: Date): void {
   logTaskCompletionToCalendar(task, completedAt)
-    .then(completionCalendarEventId => {
+    .then(async completionCalendarEventId => {
       if (!completionCalendarEventId) return;
+      // The server id beside it, so reopening the task on a phone this backup is
+      // restored to can still find the event to delete (#2950).
+      const completionCalendarEventExternalId = await readExternalEventId(completionCalendarEventId);
       const current = useTaskStore.getState().tasks.find(t => t.id === task.id);
       if (!current) return;
-      const updated = { ...current, completionCalendarEventId };
+      const updated = { ...current, completionCalendarEventId, completionCalendarEventExternalId };
       dbUpdateTask(updated);
       useTaskStore.setState(s => ({ tasks: s.tasks.map(t => (t.id === task.id ? updated : t)) }));
     })
@@ -1487,6 +1491,14 @@ interface TaskStore extends UndoHistoryActions {
    * the rows it reads and any link it writes back are the synced ones.
    */
   reconcileSyncedEvents: (applied: Pick<ApplyReport, 'taskIds' | 'removedTaskEvents'>) => void;
+  /**
+   * Fills in the calendar server id beside each of a task's device event ids
+   * (deadline event, time block, completion event) that `found` names and the
+   * task has none for yet, in the database and in memory, without restamping
+   * the rows for sync (`dbFillTaskCalendarExternalIds` says why). The write
+   * half of the one-time launch backfill (`backfillCalendarExternalIds`).
+   */
+  fillCalendarExternalIds: (found: Readonly<Record<string, string>>) => void;
   /**
    * `id` is for the app's own unattended generators only — a person's task
    * always gets a fresh `generateId()`. Passing a `derivedId` (see syncIds.ts)
@@ -2452,14 +2464,31 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         for (const task of plan.uncompleted) {
           const current = find(task.id);
           if (!current || current.completed || !current.completionCalendarEventId) continue;
-          void deleteCalendarEvent(current.completionCalendarEventId);
-          const updated = { ...current, completionCalendarEventId: null };
+          void deleteCompletionEvent(completionEventLink(current));
+          const updated = { ...current, completionCalendarEventId: null, completionCalendarEventExternalId: null };
           dbUpdateTask(updated);
           set(s => ({ tasks: s.tasks.map(t => (t.id === updated.id ? updated : t)) }));
         }
-        for (const eventId of plan.remove) void deleteCalendarEvent(eventId);
+        for (const link of plan.remove) void deleteDeadlineEvent(link);
       })
       .catch(() => {});
+  },
+
+  fillCalendarExternalIds(found) {
+    const written = new Set(dbFillTaskCalendarExternalIds(found));
+    if (written.size === 0) return;
+    set(s => ({
+      tasks: s.tasks.map(t => (written.has(t.id)
+        ? {
+            ...t,
+            calendarEventExternalId: filledExternalId(t.calendarEventId, t.calendarEventExternalId, found),
+            timeBlockExternalId: filledExternalId(t.timeBlockEventId, t.timeBlockExternalId, found),
+            completionCalendarEventExternalId: filledExternalId(
+              t.completionCalendarEventId, t.completionCalendarEventExternalId, found
+            ),
+          }
+        : t)),
+    }));
   },
 
   addTask(draft, id, options) {
@@ -2580,7 +2609,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         dbDeleteTask(t.id);
         cancelTaskReminder(t.id);
         cancelQuotaNudges(t.id);
-        if (t.calendarEventId) deleteCalendarEvent(t.calendarEventId);
+        if (t.calendarEventId) void deleteDeadlineEvent(deadlineEventLink(t));
       });
       unfiled.forEach(dbUpdateTask);
 
@@ -2691,7 +2720,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       cancelQuotaNudges(t.id);
       // The row is gone for good, not archived — nothing will ever revisit
       // it to notice a dangling event, so clean it up now, same as deleteTask.
-      if (t.calendarEventId) deleteCalendarEvent(t.calendarEventId);
+      if (t.calendarEventId) void deleteDeadlineEvent(deadlineEventLink(t));
     });
     added.forEach(t => {
       dbInsertTask(t);
@@ -2793,6 +2822,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // logCompletionToCalendar carries via ...original the same way, but a
       // copy is a fresh, uncompleted task — it hasn't logged anything yet.
       completionCalendarEventId: null,
+      completionCalendarEventExternalId: null,
       // Same reasoning, and the copy has no claim on the original's slot
       // anyway — the block was time set aside for one piece of work.
       timeBlockEventId: null,
@@ -3392,7 +3422,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // here. Not restored on undo below — deleting a device event isn't
     // reversible, so an undone delete gets a fresh event on its next
     // reconcile rather than a promise this can't keep.
-    if (task.calendarEventId) deleteCalendarEvent(task.calendarEventId);
+    if (task.calendarEventId) void deleteDeadlineEvent(deadlineEventLink(task));
     set(s => ({ tasks: s.tasks.filter(t => t.id !== id && t.parentId !== id) }));
 
     // Deleting a generated task is the user saying this source doesn't need
@@ -4029,6 +4059,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // Un-completing means the completion the event logged didn't actually
       // happen, so there's nothing left for it to record.
       completionCalendarEventId: null,
+      completionCalendarEventExternalId: null,
       // The completion timer this task's own completion may have started no
       // longer means anything once that completion is undone — cleared
       // alongside cancelCompletionTimer below, which ends its Live Activity.
@@ -4038,7 +4069,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       penaltyCreditedAt: null,
     };
     uncreditPenaltyShield(task, new Date());
-    if (task.completionCalendarEventId) deleteCalendarEvent(task.completionCalendarEventId);
+    if (task.completionCalendarEventId) void deleteCompletionEvent(completionEventLink(task));
     // The dose this completion recorded goes with it. Unlike the Apple Health
     // write, which is one-shot because a sample is a historical record in
     // somebody else's database, this is the app's own record of what went into
@@ -4648,6 +4679,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         calendarEventId: null,
         calendarEventExternalId: null,
         completionCalendarEventId: null,
+        completionCalendarEventExternalId: null,
       });
     }
 
@@ -8906,7 +8938,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // deadline's event stayed on the device calendar, and a completion
       // timer kept counting down for a task that no longer existed.
       if (idSet.has(t.id)) cancelCompletionTimer(t.id);
-      if (idSet.has(t.id) && t.calendarEventId) deleteCalendarEvent(t.calendarEventId);
+      if (idSet.has(t.id) && t.calendarEventId) void deleteDeadlineEvent(deadlineEventLink(t));
     });
     set(s => ({
       tasks: s.tasks.filter(t => !idSet.has(t.id) && (t.parentId === null || !idSet.has(t.parentId))),

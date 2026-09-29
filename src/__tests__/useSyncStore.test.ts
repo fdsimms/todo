@@ -186,13 +186,13 @@ describe('syncNow', () => {
 
     (runSyncAll as jest.Mock).mockResolvedValue(runs(
       okResult({ updated: 1, mealEntryIds: ['m1'] }),
-      okResult({ deleted: 1, removedMealEvents: [{ eventId: 'evt-2', date: '2026-08-13' }] }),
+      okResult({ deleted: 1, removedMealEvents: [{ eventId: 'evt-2', externalId: null, date: '2026-08-13' }] }),
     ));
     await useSyncStore.getState().syncNow();
 
     expect(reload).toHaveBeenCalledWith(expect.objectContaining({
       mealEntryIds: ['m1'],
-      removedMealEvents: [{ eventId: 'evt-2', date: '2026-08-13' }],
+      removedMealEvents: [{ eventId: 'evt-2', externalId: null, date: '2026-08-13' }],
     }));
   });
 

@@ -12,10 +12,13 @@ jest.mock('../store/useCategoryStore', () => ({
 const mockCreateDeadlineEvent = jest.fn();
 const mockMoveDeadlineEvent = jest.fn();
 const mockDeleteDeadlineEvent = jest.fn();
+// Whether a local id still names an event here: yes unless a test says not.
+const mockEventExists = jest.fn((_id: string) => Promise.resolve(true));
 jest.mock('../utils/calendarSync', () => ({
   createAllDayEvent: (...args: unknown[]) => mockCreateDeadlineEvent(...args),
   moveAllDayEvent: (...args: unknown[]) => mockMoveDeadlineEvent(...args),
   deleteCalendarEvent: (...args: unknown[]) => mockDeleteDeadlineEvent(...args),
+  calendarEventExists: (id: string) => mockEventExists(id),
 }));
 
 // #2950: each write reads its event's server id back. Empty unless a test
@@ -178,6 +181,7 @@ beforeEach(() => {
   // EventKit reports the same id back for an event rewritten in place.
   mockMoveDeadlineEvent.mockReset().mockImplementation((id: string) => Promise.resolve(id));
   mockDeleteDeadlineEvent.mockReset().mockResolvedValue(undefined);
+  mockEventExists.mockReset().mockImplementation(() => Promise.resolve(true));
   mockExternalIds.mockReset().mockResolvedValue({});
   mockEventsWithExternalId.mockReset().mockResolvedValue([]);
 });
@@ -354,7 +358,7 @@ describe('syncDeadlineEvent', () => {
     expect(mockCreateDeadlineEvent).not.toHaveBeenCalled();
   });
 
-  it('deletes by the local id alone once a task stops wanting its event, and links nothing', async () => {
+  it('deletes by the local id while it still names the event, and links nothing', async () => {
     const task = makeTask({
       deadlineOnCalendar: false, deadline: '2026-08-20T00:00:00Z',
       calendarEventId: 'evt-1', calendarEventExternalId: 'ext-1',
@@ -362,6 +366,47 @@ describe('syncDeadlineEvent', () => {
     expect(await syncDeadlineEvent(task)).toEqual(NO_EVENT_LINK);
     expect(mockDeleteDeadlineEvent).toHaveBeenCalledWith('evt-1');
     expect(mockEventsWithExternalId).not.toHaveBeenCalled();
+  });
+
+  it('deletes the event found by its server id when the local id names nothing here', async () => {
+    // A backup restored on a new phone: the old phone's local id is gone.
+    mockEventExists.mockResolvedValueOnce(false);
+    mockEventsWithExternalId.mockResolvedValue([{ id: 'evt-this-phone', allDay: true, calendarId: 'cal-1' }]);
+    const task = makeTask({
+      deadlineOnCalendar: false, deadline: '2026-08-20T00:00:00Z',
+      calendarEventId: 'evt-old-phone', calendarEventExternalId: 'ext-1',
+    });
+    expect(await syncDeadlineEvent(task)).toEqual(NO_EVENT_LINK);
+    expect(mockEventsWithExternalId).toHaveBeenCalledWith('ext-1');
+    expect(mockDeleteDeadlineEvent).toHaveBeenCalledTimes(1);
+    expect(mockDeleteDeadlineEvent).toHaveBeenCalledWith('evt-this-phone');
+  });
+
+  it('deletes nothing it would have to guess at among copies under one server id', async () => {
+    mockEventExists.mockResolvedValueOnce(false);
+    // Two all-day copies, neither in the deadline calendar picked now.
+    mockEventsWithExternalId.mockResolvedValue([
+      { id: 'evt-a', allDay: true, calendarId: 'cal-x' },
+      { id: 'evt-b', allDay: true, calendarId: 'cal-y' },
+    ]);
+    const task = makeTask({
+      deadlineOnCalendar: false, deadline: '2026-08-20T00:00:00Z',
+      calendarEventId: 'evt-old-phone', calendarEventExternalId: 'ext-1',
+    });
+    await syncDeadlineEvent(task);
+    expect(mockDeleteDeadlineEvent).not.toHaveBeenCalled();
+  });
+
+  it('never looks a row up by server id when it holds none', async () => {
+    mockEventExists.mockResolvedValueOnce(false);
+    const task = makeTask({
+      deadlineOnCalendar: false, deadline: '2026-08-20T00:00:00Z',
+      calendarEventId: 'evt-1', calendarEventExternalId: null,
+    });
+    await syncDeadlineEvent(task);
+    expect(mockEventExists).not.toHaveBeenCalled();
+    expect(mockEventsWithExternalId).not.toHaveBeenCalled();
+    expect(mockDeleteDeadlineEvent).toHaveBeenCalledWith('evt-1');
   });
 });
 
@@ -444,16 +489,16 @@ describe('taskEventsAfterSync', () => {
     // Whatever removed it, the purge of old completions included: a completed
     // task's deadline event is one syncDeadlineEvent deletes anyway, so there
     // is no history here to keep the way the meal purge keeps its events.
-    const plan = taskEventsAfterSync(applied({ removedTaskEvents: ['evt-9', 'evt-9'] }), lookup());
+    const plan = taskEventsAfterSync(applied({ removedTaskEvents: [{ eventId: 'evt-9', externalId: null }, { eventId: 'evt-9', externalId: null }] }), lookup());
 
-    expect(plan.remove).toEqual(['evt-9']);
+    expect(plan.remove).toEqual([{ eventId: 'evt-9', externalId: null }]);
   });
 
   it('asks for nothing at all in demo mode', () => {
     mockDemoActive = true;
 
     const plan = taskEventsAfterSync(
-      applied({ taskIds: ['t1'], removedTaskEvents: ['evt-9'] }),
+      applied({ taskIds: ['t1'], removedTaskEvents: [{ eventId: 'evt-9', externalId: null }] }),
       lookup(makeTask({
         id: 't1', calendarEventId: 'evt-1', timeBlockEventId: 'block-1', completionCalendarEventId: 'done-1',
       })),

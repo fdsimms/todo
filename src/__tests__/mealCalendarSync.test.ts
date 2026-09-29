@@ -271,12 +271,25 @@ describe('mealEventsAfterSync', () => {
 
   it('deletes the event of a meal another device removed', () => {
     const plan = mealEventsAfterSync(
-      applied({ removedMealEvents: [{ eventId: 'evt-9', date: daysAgo(3) }] }),
+      applied({ removedMealEvents: [{ eventId: 'evt-9', externalId: null, date: daysAgo(3) }] }),
       lookup(),
       NOW,
     );
 
-    expect(plan.remove).toEqual(['evt-9']);
+    expect(plan.remove).toEqual([{ eventId: 'evt-9', externalId: null }]);
+  });
+
+  it('carries each removed event\'s server id, so a restored phone can still find it (#2950)', () => {
+    const plan = mealEventsAfterSync(
+      applied({ removedMealEvents: [
+        { eventId: 'evt-9', externalId: 'ext-9', date: daysAgo(3) },
+        { eventId: 'evt-9', externalId: 'ext-9', date: daysAgo(3) },
+      ] }),
+      lookup(),
+      NOW,
+    );
+
+    expect(plan.remove).toEqual([{ eventId: 'evt-9', externalId: 'ext-9' }]);
   });
 
   it('keeps the event of a meal the 180-day purge took, with a margin for a peer a day or two ahead', () => {
@@ -285,16 +298,16 @@ describe('mealEventsAfterSync', () => {
     const plan = mealEventsAfterSync(
       applied({
         removedMealEvents: [
-          { eventId: 'evt-purged', date: daysAgo(200) },
-          { eventId: 'evt-peer-ahead', date: daysAgo(179) },
-          { eventId: 'evt-removed', date: daysAgo(177) },
+          { eventId: 'evt-purged', externalId: null, date: daysAgo(200) },
+          { eventId: 'evt-peer-ahead', externalId: null, date: daysAgo(179) },
+          { eventId: 'evt-removed', externalId: null, date: daysAgo(177) },
         ],
       }),
       lookup(),
       NOW,
     );
 
-    expect(plan.remove).toEqual(['evt-removed']);
+    expect(plan.remove).toEqual([{ eventId: 'evt-removed', externalId: null }]);
   });
 
   it('asks for nothing at all in demo mode', () => {
@@ -303,7 +316,7 @@ describe('mealEventsAfterSync', () => {
     const plan = mealEventsAfterSync(
       applied({
         mealEntryIds: ['m1'],
-        removedMealEvents: [{ eventId: 'evt-9', date: daysAgo(3) }],
+        removedMealEvents: [{ eventId: 'evt-9', externalId: null, date: daysAgo(3) }],
       }),
       lookup(entry({ id: 'm1', calendarEventId: 'evt-1' })),
       NOW,

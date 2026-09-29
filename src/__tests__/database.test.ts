@@ -107,6 +107,9 @@ import {
   dbDeleteLeftover,
   dbPurgeOldLeftovers,
   dbSyncChangesSince,
+  dbFillTaskCalendarExternalIds,
+  dbFillMealCalendarExternalIds,
+  dbCalendarEventIdsWantingExternalIds,
   dbPruneSyncDeletions,
   isSyncableDatabase,
   dbApplySyncChanges,
@@ -2134,6 +2137,7 @@ describe('backup and restore', () => {
     dbInsertTask(makeTask({
       id: 't1', calendarEventId: 'evt-1', calendarEventExternalId: 'ext-1',
       timeBlockEventId: 'blk-1', timeBlockExternalId: 'blk-ext-1',
+      completionCalendarEventId: 'done-1', completionCalendarEventExternalId: 'done-ext-1',
     }));
     dbInsertMealPlanEntry({
       id: 'meal-b', date: '2026-08-13', slot: 'dinner', recipeId: null, title: 'Chili',
@@ -2149,9 +2153,84 @@ describe('backup and restore', () => {
     expect(dbGetAllTasks().find(t => t.id === 't1')).toMatchObject({
       calendarEventId: 'evt-1', calendarEventExternalId: 'ext-1',
       timeBlockEventId: 'blk-1', timeBlockExternalId: 'blk-ext-1',
+      completionCalendarEventId: 'done-1', completionCalendarEventExternalId: 'done-ext-1',
     });
     expect(dbGetMealPlanEntries('2026-08-13', '2026-08-13').find(e => e.id === 'meal-b'))
       .toMatchObject({ calendarEventId: 'evt-2', calendarEventExternalId: 'ext-2' });
+  });
+
+  // #2950's launch backfill: the server id beside every event this phone wrote
+  // before it kept one, filled in without the row reading as edited.
+  describe('filling in calendar server ids', () => {
+    beforeEach(() => mockRawDb.exec('DELETE FROM tasks; DELETE FROM meal_plan_entries;'));
+    const stampOf = (table: string, id: string) =>
+      (mockRawDb.prepare(`SELECT updated_at FROM ${table} WHERE id = ?`).get(id) as { updated_at: string | null }).updated_at;
+    const setStamp = (table: string, id: string, stamp: string) =>
+      mockRawDb.prepare(`UPDATE ${table} SET updated_at = ? WHERE id = ?`).run(stamp, id);
+    const meal = (id: string, calendarEventId: string | null, calendarEventExternalId: string | null = null) =>
+      dbInsertMealPlanEntry({
+        id, date: '2026-08-13', slot: 'dinner', recipeId: null, title: 'Chili',
+        sortOrder: 1, createdAt: '2026-08-01T00:00:00.000Z', cookedAt: null, leftoverId: null,
+        recipeChoices: [], recipeScale: 1, cookTask: null, shopTask: null, logMeal: null,
+        calendarEventId, calendarEventExternalId,
+      });
+
+    it('lists every device event id with no server id beside it, once each', () => {
+      dbInsertTask(makeTask({
+        id: 't1', calendarEventId: 'dl-1', timeBlockEventId: 'blk-1', completionCalendarEventId: 'done-1',
+      }));
+      dbInsertTask(makeTask({ id: 't2', calendarEventId: 'dl-2', calendarEventExternalId: 'ext-dl-2' }));
+      meal('m1', 'meal-1');
+      meal('m2', 'meal-2', 'ext-meal-2');
+      meal('m3', null);
+      expect(dbCalendarEventIdsWantingExternalIds().sort()).toEqual(['blk-1', 'dl-1', 'done-1', 'meal-1']);
+    });
+
+    it('fills each missing server id from what was read, and nothing already set', () => {
+      dbInsertTask(makeTask({
+        id: 't1', calendarEventId: 'dl-1', timeBlockEventId: 'blk-1', timeBlockExternalId: 'blk-kept',
+        completionCalendarEventId: 'done-1',
+      }));
+      dbInsertTask(makeTask({ id: 't2', calendarEventId: 'dl-unread' }));
+      meal('m1', 'meal-1');
+
+      const found = { 'dl-1': 'ext-dl-1', 'blk-1': 'ext-blk-1', 'done-1': 'ext-done-1', 'meal-1': 'ext-meal-1' };
+      expect(dbFillTaskCalendarExternalIds(found)).toEqual(['t1']);
+      expect(dbFillMealCalendarExternalIds(found)).toEqual(['m1']);
+
+      expect(dbGetAllTasks().find(t => t.id === 't1')).toMatchObject({
+        calendarEventExternalId: 'ext-dl-1',
+        // Already had one: kept, whatever was read.
+        timeBlockExternalId: 'blk-kept',
+        completionCalendarEventExternalId: 'ext-done-1',
+      });
+      expect(dbGetAllTasks().find(t => t.id === 't2')?.calendarEventExternalId).toBeNull();
+      expect(dbGetMealPlanEntries('2026-08-13', '2026-08-13').find(e => e.id === 'm1')?.calendarEventExternalId)
+        .toBe('ext-meal-1');
+    });
+
+    it('leaves each row\'s sync stamp where it was, so a stale copy can\'t beat a peer\'s edit', () => {
+      dbInsertTask(makeTask({ id: 't1', calendarEventId: 'dl-1' }));
+      meal('m1', 'meal-1');
+      setStamp('tasks', 't1', '2026-01-01T00:00:00.000Z');
+      setStamp('meal_plan_entries', 'm1', '2026-01-02T00:00:00.000Z');
+
+      dbFillTaskCalendarExternalIds({ 'dl-1': 'ext-dl-1' });
+      dbFillMealCalendarExternalIds({ 'meal-1': 'ext-meal-1' });
+
+      expect(stampOf('tasks', 't1')).toBe('2026-01-01T00:00:00.000Z');
+      expect(stampOf('meal_plan_entries', 'm1')).toBe('2026-01-02T00:00:00.000Z');
+      // And so neither reads as changed since a cursor past its old stamp.
+      const since = dbSyncChangesSince('2026-06-01T00:00:00.000Z');
+      expect(since.tables.tasks ?? []).toEqual([]);
+      expect(since.tables.meal_plan_entries ?? []).toEqual([]);
+    });
+
+    it('leaves a row alone whose device id moved on since the ids were read', () => {
+      dbInsertTask(makeTask({ id: 't1', calendarEventId: 'dl-rewritten' }));
+      expect(dbFillTaskCalendarExternalIds({ 'dl-1': 'ext-dl-1' })).toEqual([]);
+      expect(dbGetAllTasks().find(t => t.id === 't1')?.calendarEventExternalId).toBeNull();
+    });
   });
 
   it('survives a serialize/parse round trip on the way through', () => {
@@ -4180,7 +4259,11 @@ describe('dbApplySyncChanges', () => {
 
         expect(report.deleted).toBe(1);
         expect(stored()).toBeUndefined();
-        expect(report.removedMealEvents).toEqual([{ eventId: 'evt-this-phone', date: '2026-08-13' }]);
+        // With the server id beside it, so the delete can still find the event on
+        // a phone where the local id names nothing (#2950).
+        expect(report.removedMealEvents).toEqual([
+          { eventId: 'evt-this-phone', externalId: 'ext-this-phone', date: '2026-08-13' },
+        ]);
       });
 
       it('hands back nothing for a deleted meal with no event here, or a deletion it refused', () => {
@@ -4219,13 +4302,15 @@ describe('dbApplySyncChanges', () => {
     it('never leave this device', () => {
       dbInsertTask(makeTask({
         id: 'ev1', calendarEventId: 'dl', calendarEventExternalId: 'dl-ext',
-        completionCalendarEventId: 'done', timeBlockEventId: 'block', timeBlockExternalId: 'block-ext',
+        completionCalendarEventId: 'done', completionCalendarEventExternalId: 'done-ext',
+        timeBlockEventId: 'block', timeBlockExternalId: 'block-ext',
       }));
       const row = dbSyncChangesSince(null).tables.tasks.find(r => r.id === 'ev1');
       expect(row?.title).toBeDefined();
       expect(row).not.toHaveProperty('calendar_event_id');
       expect(row).not.toHaveProperty('calendar_event_external_id');
       expect(row).not.toHaveProperty('completion_calendar_event_id');
+      expect(row).not.toHaveProperty('completion_calendar_event_external_id');
       expect(row).not.toHaveProperty('time_block_event_id');
       expect(row).not.toHaveProperty('time_block_external_id');
     });
@@ -4297,7 +4382,7 @@ describe('dbApplySyncChanges', () => {
         expect(report.deleted).toBe(1);
         expect(rowOf('ev1')).toBeUndefined();
         // Only the deadline event: never the block, never the completion record.
-        expect(report.removedTaskEvents).toEqual(['dl']);
+        expect(report.removedTaskEvents).toEqual([{ eventId: 'dl', externalId: null }]);
       });
 
       it('hands back nothing for a deleted task with no deadline event here, or a deletion it refused', () => {

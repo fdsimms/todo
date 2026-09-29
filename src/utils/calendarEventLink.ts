@@ -1,4 +1,10 @@
-import { createAllDayEvent, moveAllDayEvent, deleteCalendarEvent, type AllDayEventFields } from './calendarSync';
+import {
+  calendarEventExists,
+  createAllDayEvent,
+  moveAllDayEvent,
+  deleteCalendarEvent,
+  type AllDayEventFields,
+} from './calendarSync';
 import { isDemoModeActive } from './demoState';
 
 /**
@@ -26,12 +32,15 @@ import { isDemoModeActive } from './demoState';
  * deadline, `adoptTimeBlock` in useTaskStore for a time block, each deciding
  * through `adoptableEventId` or `adoptableTimeBlockId` below).
  *
- * Nothing else reads it. Deleting an event still goes by the local id alone, so
- * a row deleted on a restored phone before its next reconcile still leaves its
- * event behind: deleting something found only by a server id is a bigger step
- * than rewriting it, and was left out on purpose. A completion event keeps no
- * server id for the same reason, since the only thing the app ever does to one
- * after writing it is delete it.
+ * A delete reads it the same way (`deleteLinkedEvent`), so a meal or a
+ * deadline deleted on a restored phone before its next reconcile, or a task
+ * reopened there, takes the event with it rather than leaving it behind. A
+ * completion event keeps one for that alone, since deleting it on uncomplete is
+ * the only thing the app ever does to one after writing it.
+ *
+ * Nothing else reads it. Rows written before it existed gain one on their next
+ * write, and once at launch (`backfillCalendarExternalIds`), so a backup taken
+ * soon after the update carries them.
  */
 export interface CalendarEventLink {
   /** EventKit's local id, or null when the row has no event on this device. */
@@ -85,6 +94,44 @@ export async function readExternalEventId(eventId: string): Promise<string | nul
   }
 }
 
+/**
+ * Whether the bridge can read server ids at all on this device: iOS, a build
+ * with the native module in it, and not demo mode. False means every read here
+ * answers empty for want of the module rather than for want of ids, which a
+ * one-time pass has to tell apart before it records itself as done.
+ */
+export function canReadExternalEventIds(): boolean {
+  const bridge = eventKitBridge();
+  if (!bridge) return false;
+  try {
+    return bridge.isEventKitBridgeAvailable();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The server id of each of `eventIds` that resolves on this device and has
+ * one, in one native call. Ids that name nothing, or an event the server
+ * hasn't named yet, are left out. Empty on any failure.
+ */
+export async function readExternalEventIds(eventIds: readonly string[]): Promise<Record<string, string>> {
+  const bridge = eventKitBridge();
+  const ids = [...new Set(eventIds.filter(Boolean))];
+  if (!bridge || ids.length === 0) return {};
+  try {
+    const found = await bridge.externalIdentifiers(ids);
+    const out: Record<string, string> = {};
+    for (const id of ids) {
+      const externalId = found?.[id];
+      if (typeof externalId === 'string' && externalId) out[id] = externalId;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
 /** Every event this device holds under the server id `externalId`. Empty on any failure. */
 export async function eventsWithExternalId(externalId: string): Promise<ExternalEventMatch[]> {
   const bridge = eventKitBridge();
@@ -95,6 +142,30 @@ export async function eventsWithExternalId(externalId: string): Promise<External
   } catch {
     return [];
   }
+}
+
+/**
+ * The server id a link should hold once `found` has been read: its own when it
+ * has one, else the one `found` holds for its local id, else null. What the
+ * launch backfill patches each row in memory with, matching the database write
+ * (`dbFillTaskCalendarExternalIds`), which applies the same rule.
+ */
+export function filledExternalId(
+  eventId: string | null | undefined,
+  externalId: string | null | undefined,
+  found: Readonly<Record<string, string>>
+): string | null {
+  if (externalId) return externalId;
+  return (eventId && found[eventId]) || null;
+}
+
+/**
+ * `links` with one entry per local id, the first kept. A sync can report the
+ * same removal from both of its transports.
+ */
+export function uniqueLinks(links: readonly CalendarEventLink[]): CalendarEventLink[] {
+  const seen = new Set<string>();
+  return links.filter(l => !!l.eventId && (seen.has(l.eventId) ? false : (seen.add(l.eventId), true)));
 }
 
 function uniqueById(matches: readonly ExternalEventMatch[]): ExternalEventMatch[] {
@@ -135,9 +206,26 @@ function uniqueById(matches: readonly ExternalEventMatch[]): ExternalEventMatch[
  * which the day could only second-guess.
  */
 export function adoptableEventId(matches: readonly ExternalEventMatch[], calendarId: string): string | null {
-  const allDay = uniqueById(matches.filter(m => m.allDay));
-  if (allDay.length === 1) return allDay[0].id;
-  const inPicked = allDay.filter(m => m.calendarId === calendarId);
+  return oneOf(matches.filter(m => m.allDay), calendarId);
+}
+
+/**
+ * Which event found under a completion event's server id is the one the task
+ * wrote, or null to leave the calendar alone. `adoptableEventId`'s rule with a
+ * timed event in place of an all-day one, since `logTaskCompletionToCalendar`
+ * only ever writes a point in time, and the picked calendar being the
+ * completion calendar. Read only to delete, which is the one thing the app does
+ * to a completion event once it is written.
+ */
+export function completionEventMatch(matches: readonly ExternalEventMatch[], calendarId: string): string | null {
+  return oneOf(matches.filter(m => !m.allDay), calendarId);
+}
+
+/** The one match, or the one match in `calendarId` when there are several. */
+function oneOf(matches: readonly ExternalEventMatch[], calendarId: string): string | null {
+  const unique = uniqueById(matches);
+  if (unique.length === 1) return unique[0].id;
+  const inPicked = unique.filter(m => m.calendarId === calendarId);
   return inPicked.length === 1 ? inPicked[0].id : null;
 }
 
@@ -223,4 +311,44 @@ export async function writeAllDayEvent(
 
   const created = await createAllDayEvent(calendarId, fields);
   return created ? linkAfterWrite(created, NO_EVENT_LINK) : NO_EVENT_LINK;
+}
+
+/**
+ * Deletes the event a row is linked to, by its local id, or by its server id
+ * when the local id no longer names anything here (#2950). The delete half of
+ * `writeAllDayEvent`'s fallback, for the three deletes a restored phone used to
+ * miss: a meal or a deadline deleted before its next reconcile, and a task
+ * reopened, each of which left the old phone's event on the calendar because
+ * the only id tried named nothing on this one.
+ *
+ * - **A row with no local id has no event**, whatever else it holds, and this
+ *   does nothing, as the delete it replaces did.
+ * - **The server id is tried only when the local id names nothing.** Tried
+ *   first, it would find the event the local id names and then, among copies
+ *   sharing its server id, possibly another; asking the local id first means a
+ *   working link never reaches a lookup at all. That costs one read per delete
+ *   of a row holding a server id, which is what knowing costs: expo-calendar's
+ *   own delete returns quietly for an id that names nothing.
+ * - **`pick` chooses, and it refuses to guess** (`adoptableEventId` for a meal
+ *   or a deadline, `completionEventMatch` for a completion). A delete is harder
+ *   to take back than the rewrite an adoption does, so nothing looser than the
+ *   rule an adoption already trusts.
+ *
+ * Fire-and-forget like the delete it replaces, and never throws.
+ */
+export async function deleteLinkedEvent(
+  link: CalendarEventLink,
+  pick: (matches: readonly ExternalEventMatch[]) => string | null
+): Promise<void> {
+  if (!link.eventId) return;
+  try {
+    if (link.externalId && !(await calendarEventExists(link.eventId))) {
+      const found = pick(await eventsWithExternalId(link.externalId));
+      if (found) await deleteCalendarEvent(found);
+      return;
+    }
+    await deleteCalendarEvent(link.eventId);
+  } catch {
+    // Resolve-or-shrug, like deleteCalendarEvent itself.
+  }
 }
