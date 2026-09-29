@@ -1,5 +1,5 @@
 import type { GroceryItem, ItemProduct, Leftover, LeftoverFreshness } from '../types';
-import { FROZEN_REASON } from '../types';
+import { FROZEN_REASON, isPortionBox } from '../types';
 import { OTHER_AISLE } from './groceryAisles';
 import { groceryNameKey } from './groceryParse';
 import { matchWeight, pantryEntries, sectionsInAisleOrder } from './grocerySuggest';
@@ -142,6 +142,14 @@ export const FRIDGE_SECTION = 'In the fridge';
  * leaves its aisle: nothing in the freezer is filed by which aisle it came from.
  */
 export const FREEZER_SECTION = 'In the freezer';
+
+/**
+ * What a frozen-portion row is called where a box's row would name its brand
+ * (`KitchenEntry.productName`). Plain on purpose: the item's name is the line
+ * above it and the freezer is the heading it sits under, so the one thing left
+ * to say is that this is part of the item rather than all of it.
+ */
+export const PORTION_LABEL = 'Portion';
 
 /** One thing in the kitchen, in the shape a row draws it. */
 export interface KitchenEntry {
@@ -359,7 +367,14 @@ export function kitchenInventory(
     // the row draws it in its own weight ahead of the caption rather than as
     // more caption — a mock of it at 390pt in both themes is the whole argument.
     // `caption` below still joins the two, because that's the accessible line.
-    const productName = product ? describeProduct(product) : null;
+    //
+    // A frozen portion has no brand to name, and it still needs the label
+    // more than any box does: it's the row that sits beside its own item's,
+    // under the same name, with the rest of the pack counting down in the
+    // aisle. See ItemProduct.isPortion.
+    const productName = product
+      ? isPortionBox(product) ? PORTION_LABEL : describeProduct(product)
+      : null;
     // Opening joins the reason half rather than the clock half — it's evidence
     // about the jar, not a state of the countdown — so it reads
     // "bought 4× · last on Aug 19 · opened Aug 12 · Use by tomorrow". Dropped

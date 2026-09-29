@@ -4842,6 +4842,17 @@ export const FROZEN_REASON = 'in the freezer';
  */
 export const RUNNING_LOW_REASON = 'running low';
 
+/**
+ * Why a portion that has come back out of the freezer is still in the kitchen
+ * — `productHaveReason`'s word for a thawed `ItemProduct.isPortion` box, and
+ * here beside the other two for the same module-weight reason.
+ *
+ * Its own phrase rather than "marked as on hand", which is what the same
+ * assertion reads as on an ordinary box: nobody tapped "Got it" on this one.
+ * They took it out of the freezer, and that is the fact the row can state.
+ */
+export const THAWED_PORTION_REASON = 'out of the freezer';
+
 // Shorter than TITLE_MAX_LENGTH on purpose — this is a shelf label, not a task
 // title, and a long one wrecks the row layout at the bigger grocery font size.
 export const GROCERY_NAME_MAX_LENGTH = 80;
@@ -5032,7 +5043,64 @@ export interface ItemProduct {
    * world and a label panel is that box's own statement about itself.
    */
   nutrition: FoodNutrition | null;
+  /**
+   * True for the one unnamed box "Freeze some" makes (`freezePortion`): part
+   * of a pack that went in the freezer while the rest stayed out and kept
+   * counting down (#2925). Every other box is a *brand*, and this is the one
+   * that isn't — it is a place some of the item went, not a thing anyone buys
+   * or rates.
+   *
+   * **It is a box because a box already had the four pantry columns** a split
+   * pack needs, and a box's row already joins its item's rather than replacing
+   * it. The item's own `frozenAt` couldn't say it: freezing the item suspends
+   * the fresh half's clock and drops its use-up task, and leaving it unfrozen
+   * left the frozen half nowhere to be written down. A second catalog row
+   * would split one food's purchase history and recipes in two, which is why
+   * `ItemProduct` exists in the first place.
+   *
+   * **Its identity is `productKey` = `PORTION_PRODUCT_KEY`**, a key
+   * `productKeyFor` can never produce, so the item's UNIQUE `(item_id,
+   * product_key)` index is what holds it to one per item and what folds two
+   * phones' portions into one on sync. This flag is the reading side of that
+   * and is what every reader tests (`isPortionBox`), so nothing ever compares
+   * keys.
+   *
+   * **Nothing that treats a box as a brand sees one.** It is left out of the
+   * Products list (`productsForItem`), can't be preferred, rated, renamed or
+   * given a barcode, isn't a "saved brand" to lose when the item is forgotten,
+   * and never earns a purchase count (only a preferred box does). It shows in
+   * exactly one place: the pantry, as frozen stock of its item.
+   *
+   * **An item-level "Out of it" doesn't reach it while it's frozen**, which is
+   * the one exception to "the item's Out of it outranks every box". "I've used
+   * up the chicken" said about the half in the fridge is not a statement about
+   * the half in the freezer, and a portion is not a brand you ran out of. Once
+   * it's thawed it's more of the item in the fridge again, and the item's
+   * "Out of it" takes it with the rest. It's deleted rather than marked when
+   * it's used up: a named box is a memory worth keeping after the packet is
+   * gone, and a portion is nothing but the packet.
+   */
+  isPortion: boolean;
   createdAt: string;
+}
+
+/**
+ * The `productKey` every portion box carries. It has no `|` in it, and
+ * `productKeyFor` always joins a brand and a variant with one, so no named box
+ * can ever collide with it however it is spelled. See ItemProduct.isPortion.
+ */
+export const PORTION_PRODUCT_KEY = 'portion';
+
+/**
+ * Whether a box is a frozen-portion box rather than a brand — the one test
+ * every reader that lists, counts or prefers boxes makes before treating it as
+ * one. Here beside the type rather than in `groceryProduct.ts` because the
+ * readers include `grocerySuggest` and `groceryFacts`, which that module reads
+ * down into, so the obvious home is a cycle. Optional in its input so a caller
+ * holding a narrowed `Pick` of a box can still ask.
+ */
+export function isPortionBox(product: { isPortion?: boolean } | null | undefined): boolean {
+  return product?.isPortion === true;
 }
 
 /**

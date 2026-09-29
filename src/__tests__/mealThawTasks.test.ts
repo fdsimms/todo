@@ -1,4 +1,5 @@
 import type { GroceryItem, ItemProduct, Leftover, MealPlanEntry, Recipe, RecipeIngredient, Task } from '../types';
+import { PORTION_PRODUCT_KEY } from '../types';
 import { groceryNameKey } from '../utils/groceryParse';
 import { NO_STANDING_SWAPS } from '../utils/standingSwaps';
 import {
@@ -85,7 +86,7 @@ function frozenBox(itemId: string): ItemProduct {
     id: `p-${++seq}`, itemId, brand: 'Store brand', variant: null, productKey: 'store brand|',
     rating: null, nutrition: null, note: '', purchaseCount: 0, lastPurchasedAt: null,
     gtin: null, onHandUntil: null, expiresAt: null, frozenAt: '2026-07-28T12:00:00.000Z', openedAt: null,
-    createdAt: '2026-01-01T00:00:00.000Z',
+    isPortion: false, createdAt: '2026-01-01T00:00:00.000Z',
   };
 }
 
@@ -146,6 +147,21 @@ describe('frozenForMeal', () => {
     const r = stirFry();
     const chicken = item({ name: 'Chicken thighs', frozenAt: '2026-08-01T09:00:00.000Z', onHandUntil: '1970-01-01T00:00:00.000Z' });
     expect(frozen(entry(TOMORROW, r.id), byId(r), [chicken])!.names).toEqual([]);
+  });
+
+  // "Freeze some" (#2925): half a pack in the freezer and half out. The half
+  // that's out covers the meal; once it's used up, the frozen half is what's
+  // left, and that's the thaw.
+  it('asks about a frozen portion only once the rest of the pack is gone', () => {
+    const r = stirFry();
+    const portion = { ...frozenBox('x'), brand: null, productKey: PORTION_PRODUCT_KEY, isPortion: true };
+    const fresh = item({ name: 'Chicken thighs', purchaseCount: 1, lastPurchasedAt: '2026-08-21T12:00:00.000Z' });
+    expect(frozen(entry(TOMORROW, r.id), byId(r), [fresh], [], [{ ...portion, itemId: fresh.id }])!.names)
+      .toEqual([]);
+
+    const usedUp = { ...fresh, onHandUntil: '1970-01-01T00:00:00.000Z' };
+    expect(frozen(entry(TOMORROW, r.id), byId(r), [usedUp], [], [{ ...portion, itemId: usedUp.id }])!.names)
+      .toEqual(['chicken thighs']);
   });
 
   it('names a frozen leftover planned for the meal', () => {

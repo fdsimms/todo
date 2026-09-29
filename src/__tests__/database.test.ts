@@ -127,6 +127,7 @@ import {
 import { buildBackup, serializeBackup, parseBackup } from '../utils/backup';
 import { OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
 import type { Task, TaskTemplate, TemplateItem, Project, Category, TaskGroup, GroceryItem, ItemProduct, ItemShopLink, Shop, Leftover, MealPlanEntry, MealSlot, Recipe, FoodLogEntry, FoodNutrition } from '../types';
+import { PORTION_PRODUCT_KEY } from '../types';
 
 // ---------------------------------------------------------------------------
 // Mock expo-sqlite with an in-memory better-sqlite3 database.
@@ -2353,6 +2354,7 @@ function makeProduct(
     expiresAt: null,
     frozenAt: null,
     openedAt: null,
+    isPortion: false,
     createdAt: '2026-01-01T00:00:00.000Z',
     ...overrides,
   };
@@ -2664,6 +2666,32 @@ describe('grocery items', () => {
       .run('p1', 'g1', "Arnold's", 'arnolds|', 'adored', '2026-01-01T00:00:00.000Z');
 
     expect(dbGetAllItemProducts()[0].rating).toBeNull();
+  });
+
+  // "Freeze some" (#2925): the one unnamed box an item can have.
+  it('round-trips a frozen portion, and reads a box written before the column as not one', () => {
+    insertListedGroceryItem(makeGroceryItem({ id: 'g1', name: 'Chicken thighs' }));
+    dbSetItemProduct(makeProduct({
+      id: 'p1', itemId: 'g1', brand: null, variant: null, productKey: PORTION_PRODUCT_KEY,
+      isPortion: true, frozenAt: '2026-08-01T12:00:00.000Z',
+    }));
+    // Written the way a build from before the column would have written it.
+    mockRawDb
+      .prepare('INSERT INTO grocery_item_products (id, item_id, brand, product_key, created_at) VALUES (?,?,?,?,?)')
+      .run('p2', 'g1', 'Bell & Evans', 'bell evans|', '2026-01-01T00:00:00.000Z');
+
+    const byId = Object.fromEntries(dbGetAllItemProducts().map(p => [p.id, p]));
+    expect(byId.p1).toMatchObject({ isPortion: true, frozenAt: '2026-08-01T12:00:00.000Z', brand: null });
+    expect(byId.p2.isPortion).toBe(false);
+  });
+
+  it('holds an item to one portion, through the same key index as its brands', () => {
+    insertListedGroceryItem(makeGroceryItem({ id: 'g1', name: 'Chicken thighs' }));
+    const portion = makeProduct({
+      id: 'p1', itemId: 'g1', brand: null, variant: null, productKey: PORTION_PRODUCT_KEY, isPortion: true,
+    });
+    dbSetItemProduct(portion);
+    expect(() => dbSetItemProduct({ ...portion, id: 'p2' })).toThrow();
   });
 
   // Hand-written, because FKs are off — a box that isn't a box *of* anything

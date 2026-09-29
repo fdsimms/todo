@@ -174,7 +174,7 @@ function frozenBox(itemId: string): ItemProduct {
     id: `p-${++seq}`, itemId, brand: 'Store brand', variant: null, productKey: 'store brand|',
     rating: null, nutrition: null, note: '', purchaseCount: 0, lastPurchasedAt: null,
     gtin: null, onHandUntil: null, expiresAt: null, frozenAt: '2026-07-28T12:00:00.000Z', openedAt: null,
-    createdAt: '2026-01-01T00:00:00.000Z',
+    isPortion: false, createdAt: '2026-01-01T00:00:00.000Z',
   };
 }
 

@@ -171,7 +171,7 @@ describe('coveringVariety', () => {
       id: 'p-white', itemId: white.id, brand: 'Farm', variant: null, productKey: 'farm|',
       rating: null, nutrition: null, note: '', purchaseCount: 0, lastPurchasedAt: null,
       gtin: null, onHandUntil: future(7), expiresAt: null, frozenAt: null, openedAt: null,
-      createdAt: '2026-01-01T00:00:00.000Z',
+      isPortion: false, createdAt: '2026-01-01T00:00:00.000Z',
     };
 
     expect(coveringVariety([white], NOW, null, [box])).toBe(white);

@@ -3244,6 +3244,7 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
     updateProduct,
     setPreferredProduct,
     setProductFrozen,
+    freezePortion,
     setProductOnHandUntil,
     linkScannedGtins,
     setProductStrict,
@@ -4107,6 +4108,18 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
   if (arnolds) {
     setProductOnHandUntil(arnolds.id, defaultOnHandUntil(itemNamed('Bread'), new Date()));
   }
+
+  // A family pack split in two, which is "Freeze some" (#2925): half the ground
+  // beef in the freezer, the other half out and counting down. Ground beef
+  // because the 2 lb pack above is exactly what people buy big and split, and
+  // unlike the two loaves there's no brand to tell the halves apart by, which
+  // is the case a named box couldn't cover. The item keeps its own use-by day
+  // (three days out, so it doesn't join the two "use up" rows above) and the
+  // portion gets a row of its own under the freezer. Through addToPantry, like
+  // the pepper, since no trip in this seed buys it.
+  addToPantry('Ground beef');
+  setExpiresAt(itemNamed('Ground beef').id, dayKeyOf(addDays(new Date(), 3)));
+  freezePortion(itemNamed('Ground beef').id);
 
   // A walk order the user has clearly edited: a custom section they file two
   // things into by hand, a built-in they never shop deleted (which leaves the

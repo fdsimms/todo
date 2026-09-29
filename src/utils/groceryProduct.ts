@@ -1,4 +1,5 @@
 import type { GroceryItem, ItemProduct, ItemSubLink, ProductRating } from '../types';
+import { isPortionBox } from '../types';
 import { groceryNameKey } from './groceryParse';
 import { probablyHaveReason } from './grocerySuggest';
 import { describeSubstitutes, substitutesFor } from './itemSubs';
@@ -127,6 +128,13 @@ export function describeCatalogItem(
  * remembering that you hated it is the whole point, and hiding it would take
  * the memory away exactly when you're standing in front of the shelf about to
  * buy it again.
+ *
+ * A frozen portion is left out (`ItemProduct.isPortion`). It's where some of
+ * the item went rather than which one you buy, so every surface that reads this
+ * list as "your brands" — the Products field, the scan sheet's box picker, the
+ * next box to try at a store — would be offering a nameless row that can't be
+ * picked, rated or asked for. The pantry is where it shows, through
+ * `pantryEntries`, which doesn't come through here.
  */
 export function productsForItem(
   itemId: string,
@@ -140,7 +148,7 @@ export function productsForItem(
     return 3;
   };
   return products
-    .filter(p => p.itemId === itemId)
+    .filter(p => p.itemId === itemId && !isPortionBox(p))
     .sort((a, b) => {
       const ra = rank(a);
       const rb = rank(b);
@@ -168,7 +176,10 @@ export function productForGtin(
   gtin: string | null,
 ): ItemProduct | null {
   if (!gtin) return null;
-  return products.find(p => p.gtin === gtin) ?? null;
+  // A portion never carries one (nothing links a barcode to a box it can't
+  // pick), so this is belt and braces against a hand-edited backup: a barcode
+  // names a product you buy, and a portion isn't one.
+  return products.find(p => p.gtin === gtin && !isPortionBox(p)) ?? null;
 }
 
 /**
@@ -186,7 +197,11 @@ export function preferredProductOf(
   products: readonly ItemProduct[],
 ): ItemProduct | null {
   if (!item.preferredProductId) return null;
-  return products.find(p => p.id === item.preferredProductId) ?? null;
+  // `setPreferredProduct` refuses a portion, so this is resolve-or-shrug for a
+  // half-merged sync rather than a case that arises: a portion is not an answer
+  // to "which one do you want".
+  const product = products.find(p => p.id === item.preferredProductId) ?? null;
+  return isPortionBox(product) ? null : product;
 }
 
 /**

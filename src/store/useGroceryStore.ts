@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { FoodNutrition, GroceryGroupBy, GroceryItem, GroceryList, GroceryListEntry, ItemProduct, ItemShopLink, ItemSubLink, ProductRating, ReceiptStyle, Shop, StoreAlias } from '../types';
+import { PORTION_PRODUCT_KEY, isPortionBox } from '../types';
 import {
   dbGetAllGroceryItems,
   dbInsertGroceryItem,
@@ -741,10 +742,41 @@ interface GroceryStore extends UndoHistoryActions {
    * off the item's own usedUp/spoiled counters, which stay item-level (how
    * often *this food* gets wasted is the useful record, and splitting it per
    * brand would leave both halves too thin to say anything).
+   *
+   * A frozen portion is deleted rather than marked: a named box is worth
+   * remembering after the packet is gone (its rating, its barcode), and a
+   * portion is nothing but the packet. See ItemProduct.isPortion. Undo puts
+   * it back.
    */
   markProductsOutOf: (ids: readonly string[]) => number;
-  /** This box in or out of the freezer. Suspends its own countdown only. */
+  /**
+   * This box in or out of the freezer. Suspends its own countdown only.
+   *
+   * A frozen portion (`ItemProduct.isPortion`) coming out also gets a "Got it"
+   * of its own, the item's usual window from now (`defaultOnHandUntil`). A
+   * named box thawed with nothing said about it defers to its item, which is
+   * right for a packet; a portion is nothing *but* its own claim, and without
+   * one it would leave the pantry the moment it left the freezer.
+   */
   setProductFrozen: (id: string, frozen: boolean) => void;
+  /**
+   * "Freeze some" — part of this item goes in the freezer and the rest stays
+   * out, counting down, with its use-up task (#2925).
+   *
+   * Writes the item's one portion box (`ItemProduct.isPortion`), minting it the
+   * first time and reusing it after, stamped frozen now with nothing else
+   * claimed about it. **The item itself is not touched**: its `frozenAt` stays
+   * clear, so its clock and its use-up task are exactly what they were, and the
+   * portion answers for the frozen half on its own row in the pantry.
+   *
+   * A portion that is already frozen is left as it is and returned, so a
+   * second tap can't restart the date it went in. Undoable like the item-level
+   * freeze isn't, because this one can mint a row: undo deletes a portion it
+   * made and puts back one it changed.
+   *
+   * Null when there's no such item.
+   */
+  freezePortion: (itemId: string) => ItemProduct | null;
   /** This box opened or resealed, re-dating it off the open lexicon. */
   setProductOpened: (id: string, opened: boolean) => void;
   /**
@@ -3017,7 +3049,10 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
 
   updateProduct(id, patch) {
     const product = get().itemProducts.find(p => p.id === id);
-    if (!product) return false;
+    // A portion has no brand or variant to edit, and giving it one would turn
+    // the frozen half of a pack into a product nobody named. See
+    // ItemProduct.isPortion.
+    if (!product || isPortionBox(product)) return false;
     const brand = patch.brand === undefined ? product.brand : patch.brand?.trim() || null;
     const variant = patch.variant === undefined ? product.variant : patch.variant?.trim() || null;
     const productKey = productKeyFor(brand, variant);
@@ -3049,7 +3084,11 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     if (!item) return;
     // Only ever one of this item's own products, so a stale id from a sheet
     // rendered against an older state can't file Bread under a milk product.
-    const next = productId && get().itemProducts.some(p => p.id === productId && p.itemId === itemId)
+    // Nor a portion, which is where some of the item went rather than an
+    // answer to "which one do you want". See ItemProduct.isPortion.
+    const next = productId && get().itemProducts.some(
+      p => p.id === productId && p.itemId === itemId && !isPortionBox(p)
+    )
       ? productId
       : null;
     if (next === item.preferredProductId) return;
@@ -3111,8 +3150,11 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       p => wanted.has(p.id) && p.onHandUntil !== OUT_OF_IT_UNTIL
     );
     if (before.length === 0) return 0;
-    // Mirrors markOutOfMany's own clear — see its note.
-    const updates = before.map((p): ItemProduct => ({
+    // A portion goes altogether rather than being marked — see the action's
+    // note. Everything else keeps its row and mirrors markOutOfMany's own
+    // clear, for the reason given there.
+    const portions = before.filter(p => isPortionBox(p));
+    const updates = before.filter(p => !isPortionBox(p)).map((p): ItemProduct => ({
       ...p,
       onHandUntil: OUT_OF_IT_UNTIL,
       expiresAt: null,
@@ -3120,19 +3162,30 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       openedAt: null,
     }));
     for (const u of updates) dbSetItemProduct(u);
+    for (const p of portions) dbDeleteItemProduct(p.id);
     const byId = new Map(updates.map(u => [u.id, u]));
-    set(s => ({ itemProducts: s.itemProducts.map(p => byId.get(p.id) ?? p) }));
+    const gone = new Set(portions.map(p => p.id));
+    set(s => ({
+      itemProducts: s.itemProducts.filter(p => !gone.has(p.id)).map(p => byId.get(p.id) ?? p),
+    }));
     get().setLastAction({
-      label: `Out of ${updates.length === 1 ? '1 thing' : `${updates.length} things`}`,
+      label: `Out of ${before.length === 1 ? '1 thing' : `${before.length} things`}`,
       destructive: true,
       redo: () => get().markProductsOutOf(ids),
       undo: () => {
+        // Every row as it was, the deleted portions included: an upsert puts a
+        // deleted one back under its own id.
         for (const row of before) dbSetItemProduct(row);
         const restore = new Map(before.map(p => [p.id, p]));
-        set(s => ({ itemProducts: s.itemProducts.map(p => restore.get(p.id) ?? p) }));
+        set(s => ({
+          itemProducts: [
+            ...s.itemProducts.map(p => restore.get(p.id) ?? p),
+            ...portions.filter(p => !s.itemProducts.some(q => q.id === p.id)),
+          ],
+        }));
       },
     });
-    return updates.length;
+    return before.length;
   },
 
   setProductFrozen(id, frozen) {
@@ -3147,11 +3200,77 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // food, not about which brand of it), and a box with no item to read —
     // impossible in practice, resolve-or-shrug like every pointer here — thaws
     // to no day at all rather than inventing one.
+    //
+    // A portion also gets its own "Got it" on the way out (see the action's
+    // note): it's the only thing keeping it in the pantry once the freezer
+    // isn't, and it lapses like any other so a portion nobody closes out
+    // doesn't sit there for ever.
     const updated: ItemProduct = frozen
       ? { ...product, frozenAt: now.toISOString() }
-      : { ...product, frozenAt: null, expiresAt: item ? expiresAtForPurchase(item, now) : null };
+      : {
+        ...product,
+        frozenAt: null,
+        expiresAt: item ? expiresAtForPurchase(item, now) : null,
+        ...(isPortionBox(product) && item ? { onHandUntil: defaultOnHandUntil(item, now) } : null),
+      };
     dbSetItemProduct(updated);
     set(s => ({ itemProducts: s.itemProducts.map(p => (p.id === id ? updated : p)) }));
+  },
+
+  freezePortion(itemId) {
+    const item = get().items.find(i => i.id === itemId);
+    if (!item) return null;
+    const existing = get().itemProducts.find(p => p.itemId === itemId && isPortionBox(p)) ?? null;
+    // Already in the freezer: the date it went in is the one fact the row
+    // shows, and a second tap restarting it would be the app misremembering.
+    if (existing?.frozenAt) return existing;
+    const nowIso = new Date().toISOString();
+    // Everything but the freeze cleared, on a reused portion as much as a new
+    // one. A thawed portion going back in is the same half of the same pack,
+    // and its "Got it" from the thaw and its re-dated day are both suspended
+    // by the freezer anyway; a lapsed or out-of-it one left over from an
+    // earlier pack is not this one.
+    const portion: ItemProduct = {
+      ...(existing ?? {
+        id: generateId(),
+        itemId,
+        brand: null,
+        variant: null,
+        productKey: PORTION_PRODUCT_KEY,
+        rating: null,
+        note: '',
+        purchaseCount: 0,
+        lastPurchasedAt: null,
+        gtin: null,
+        nutrition: null,
+        isPortion: true,
+        createdAt: nowIso,
+      }),
+      onHandUntil: null,
+      expiresAt: null,
+      frozenAt: nowIso,
+      openedAt: null,
+    };
+    dbSetItemProduct(portion);
+    set(s => ({
+      itemProducts: existing
+        ? s.itemProducts.map(p => (p.id === portion.id ? portion : p))
+        : [...s.itemProducts, portion],
+    }));
+    get().setLastAction({
+      label: `Froze some ${item.name}`,
+      redo: () => get().freezePortion(itemId),
+      undo: () => {
+        if (existing) {
+          dbSetItemProduct(existing);
+          set(s => ({ itemProducts: s.itemProducts.map(p => (p.id === existing.id ? existing : p)) }));
+        } else {
+          dbDeleteItemProduct(portion.id);
+          set(s => ({ itemProducts: s.itemProducts.filter(p => p.id !== portion.id) }));
+        }
+      },
+    });
+    return portion;
   },
 
   setProductOpened(id, opened) {
@@ -3226,9 +3345,28 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       frozenAt: null,
       openedAt: null,
     }));
-    dbTransaction(() => { for (const u of updates) dbUpdateGroceryItem(u); });
+    // A thawed portion is more of the item in the fridge again, so being out
+    // of the item is being out of it too, and it goes the way a portion goes
+    // (deleted, see markProductsOutOf). A frozen one is the exception this
+    // whole rule makes — "out of it" about the half in the fridge says nothing
+    // about the half in the freezer — and is left exactly as it is. See
+    // ItemProduct.isPortion.
+    const markedIds = new Set(updates.map(u => u.id));
+    const thawedPortions = get().itemProducts.filter(
+      p => markedIds.has(p.itemId) && isPortionBox(p) && !p.frozenAt
+    );
+    dbTransaction(() => {
+      for (const u of updates) dbUpdateGroceryItem(u);
+      for (const p of thawedPortions) dbDeleteItemProduct(p.id);
+    });
     const byId = new Map(updates.map(u => [u.id, u]));
-    set(s => ({ items: s.items.map(i => byId.get(i.id) ?? i) }));
+    const gonePortions = new Set(thawedPortions.map(p => p.id));
+    set(s => ({
+      items: s.items.map(i => byId.get(i.id) ?? i),
+      itemProducts: gonePortions.size > 0
+        ? s.itemProducts.filter(p => !gonePortions.has(p.id))
+        : s.itemProducts,
+    }));
     // Marking a row out of it answers the same question a live "Use up X"
     // task exists to ask — without this the task survives the mark and
     // resurfaces on its own schedule, reading as a fresh nag for something
@@ -3248,11 +3386,19 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       redo: () => get().markOutOfMany(ids, outcome),
       undo: () => {
         for (const b of before) dbUpdateGroceryItem(b);
+        for (const p of thawedPortions) dbSetItemProduct(p);
         const originalById = new Map(before.map(b => [b.id, b]));
         // The offer goes with it. It's a question about a row leaving the
         // pantry, and undoing that is the answer "it didn't" — leaving it up
         // would ask how something went that is, as of now, still there.
-        set(s => ({ items: s.items.map(i => originalById.get(i.id) ?? i), disposalOffer: null }));
+        set(s => ({
+          items: s.items.map(i => originalById.get(i.id) ?? i),
+          itemProducts: [
+            ...s.itemProducts,
+            ...thawedPortions.filter(p => !s.itemProducts.some(q => q.id === p.id)),
+          ],
+          disposalOffer: null,
+        }));
         // Restores whatever use-up task the mark just dropped, same as the
         // rest of the row's state.
         for (const b of before) reconcileUseUpTask(b);

@@ -241,9 +241,11 @@ times over, and the restraint that keeps it from becoming one is a single rule:
   box-specific about is exactly one row, as always, and each packet spoken about adds one. The one
   subtraction: when a box is the *only* thing answering for the item, the item row would be that
   box's claim wearing the item's name, so it's dropped and the box row says it better.
-- **An item-level "Out of it" outranks every box.** It's the blunter, later statement — "I'm out
-  of vegan ground beef" is about all of them — and keeping it in front is what stops the ✕ on an
-  item row reading as a dead control, the same argument that puts it above the freezer.
+- **An item-level "Out of it" outranks every box but a frozen portion.** It's the blunter, later
+  statement — "I'm out of vegan ground beef" is about all of them — and keeping it in front is what
+  stops the ✕ on an item row reading as a dead control, the same argument that puts it above the
+  freezer. The one box it doesn't reach is the portion "Freeze some" writes, and the next section
+  says why: a portion isn't a brand you ran out of.
 - **`runningLowAt` has no per-box counterpart**, and that asymmetry is the point. It's the one
   pantry assertion that writes `onList`, and being nearly out of one brand while a full packet of
   the other sits beside it is not a reason to buy more.
@@ -306,6 +308,71 @@ whole milk`) because the row is one line and naming both cuts off the half that 
 the same trade the `unavailable` branch makes when a substitute joins it. It is deliberately not
 that branch's "Not here": the store has the item, just not your box, and collapsing the two
 claims would say a shop had nothing when it had the thing and not your version of it.
+
+### Freezing some of a pack — the one box that isn't a brand (#2925)
+
+Buy a family pack of chicken, freeze half, cook the rest this week. Neither half could be written
+down. Freezing the item suspended the fresh half's clock and dropped its use-up task; leaving it
+unfrozen left the frozen half nowhere to live, and "Out of it" on the fresh half then cleared the
+item's `frozenAt` and took the frozen half out of the pantry too. Boxes were the only split, and a
+box is a brand: `productKeyFor` returns `''` for a box with neither brand nor variant, so two halves
+of one unbranded pack could not be told apart. Leftovers already had the answer (`LeftoverSheet`'s
+"Both" writes a fridge container and a freezer one), because a leftover is a container row.
+
+**"Freeze some" writes the item's one portion box** (`freezePortion`, `ItemProduct.isPortion`): an
+unnamed box stamped frozen now, with nothing else claimed about it. The item itself is not touched,
+so its `frozenAt` stays clear, its clock keeps running and its use-up task stays (`wantsUseUpTask`
+only reads the item). The pantry shows two rows for one food: the item in its aisle, counting down,
+and "Portion · in the freezer · Frozen Sep 28" under the freezer. It lives in the item sheet's
+Pantry field, which the Pantry row already opens straight into, rather than as a second control on
+the row: a swipe or a second button there is the check-in gesture this section rules out.
+
+- **A box rather than a second catalog row or a location field.** A box already carries the four
+  pantry columns and already joins its item's row rather than replacing it, so everything the
+  pantry does for a frozen box it does for a portion for free. A second `GroceryItem` would split
+  one food's purchase history and recipes in two (the reason boxes exist at all), and a
+  fridge/freezer/shelf field on the item is the location taxonomy the freezer section rules out.
+- **One per item, and the key is what enforces it.** Every portion carries `PORTION_PRODUCT_KEY`,
+  which `productKeyFor` can never produce (it always joins the halves with a `|`), so the existing
+  UNIQUE `(item_id, product_key)` index holds an item to one and `naturalKeyFold` folds two phones'
+  portions into one on sync. `isPortion` is the reading side, and every reader tests it through
+  `isPortionBox` rather than comparing keys. A second "Freeze some" reuses the row; one already in
+  the freezer is left alone so its date isn't restarted.
+- **Nothing that treats a box as a brand sees it.** `productsForItem` leaves it out (so the Products
+  field, the scan sheet's box picker and the shelf's next-box suggestion never offer it),
+  `preferredProductOf` and `setPreferredProduct` refuse it, `updateProduct` won't name it,
+  `productForGtin` won't answer with it, `describeForgetLoss` doesn't count it as a saved brand, and
+  the food log's recall lists skip it. It never earns a purchase count because only a preferred box
+  does. It shows in one place, the pantry, as frozen stock of its item.
+- **The item's "Out of it" doesn't reach a frozen portion, and that is the exception to the rule
+  above.** "I've used up the chicken" said about the half in the fridge (the item row's ✕, the
+  sheet's pill, a cook marking it used) is not a statement about the half in the freezer. So
+  `probablyHaveReason` answers `FROZEN_REASON` for an item marked out that still has one
+  (`outlivesItemOutOfIt`), `pantryEntries` keeps that portion's row and nothing else of the item's,
+  and `markOutOfMany` leaves it untouched. A named box doesn't get this: being out of vegan ground
+  beef is being out of the Beyond one too.
+- **Only while it's frozen.** Out of the freezer it's more of the item in the fridge again, so the
+  item's "Out of it" takes a thawed portion with the rest (`markOutOfMany` deletes it, and undo puts
+  it back).
+- **It answers for its item last, below the purchase reading.** A named box outranks the purchase
+  guess in `probablyHaveReason` because it's a statement against arithmetic. A portion is some of
+  the item split off the rest on purpose, so while the rest is on hand the rest is the answer.
+  Ranked with the other boxes, a pack bought yesterday with half frozen would read as "in the
+  freezer" everywhere the single answer is read, and a meal planned from the half left out would
+  get a task to thaw the other half (`mealThawTasks`).
+- **Thawing re-dates it and gives it a claim of its own.** `setProductFrozen` restarts it from the
+  item's `expiresAtForPurchase`, like any box, and also stamps a "Got it" window
+  (`defaultOnHandUntil`). A named box thawed with nothing said about it defers to its item, which
+  is right for a packet; a portion is nothing but its own claim and would otherwise leave the pantry
+  the moment it left the freezer. The window lapses like any other, so a portion nobody closes out
+  doesn't sit there for ever. Its row says "out of the freezer" (`THAWED_PORTION_REASON`) rather
+  than "marked as on hand", since nobody tapped "Got it".
+- **Used up or marked out, it's deleted rather than marked** (`markProductsOutOf`). A named box is
+  worth remembering after the packet is gone (its rating, its barcode, its store claims); a portion
+  is nothing but the packet.
+- **A purchase leaves it alone.** `finishShopping` clears the preferred box's claims because that
+  is the packet that came home, and a portion is never preferred. Buying more chicken is not
+  thawing the chicken in the freezer.
 
 ## Separate lists (`GroceryList`) — the trolley for a week away
 
@@ -885,6 +952,10 @@ chicken too.
   would be data entry that changes nothing for two of its three values, which is the maintained
   inventory this file rules out three times over. Only the freezer earns a field, because only the
   freezer stops a clock.
+- **Half a pack in the freezer is a box, not a second bit on the item.** `frozenAt` is one bit
+  for the whole row, so "some of it is frozen and the rest isn't" can't be said there without
+  stopping the rest's clock too. That is the portion box "Freeze some" writes, under Products above
+  (#2925).
 - **Suspended, not cleared, because the interesting event is the thaw.** `expiresAt` and
   `keepUntil` sit untouched behind a live `frozenAt` and every countdown reads through
   `liveUseBy` (bound per side as `groceryShelfLife.liveExpiresAt` and `leftovers.liveKeepUntil`).
@@ -1039,7 +1110,7 @@ froze, the jar you opened and the tub you were nearly out of are all the old one
 **A receipt or a barcode read into the Pantry clears them too** (`addManyToPantry`'s `acquired`,
 passed by `KitchenScreen`'s two scan paths and nothing else). It isn't a trip, so it still writes
 no purchase count and no use-by day of its own, but it is a new packet, and before this it carried
-the old one's "in the freezer", "opened" and "running low" straight onto it. Three details:
+the old one's "in the freezer", "opened" and "running low" straight onto it. Four details:
 
 - **A running-low row comes off the home list.** That is the one list `setRunningLow` reaches into,
   and the thing it was on there to buy has just been bought. The one-direction rule above is about
@@ -1049,8 +1120,15 @@ the old one's "in the freezer", "opened" and "running low" straight onto it. Thr
   date on the new packet (a month-old chicken day, overdue on arrival). A plain row keeps its day.
 - **The use-up task is dropped, not reconciled, when no live day is left.** The reason reverses on
   the next trip by itself, and a reconcile's delete would write the item's permanent "never".
-  The scan sheet's own freezer toggle is applied after the clear, so it lands on the new packet.
+  Both sheets' freezer toggles are applied after the clear, so they land on the new packet.
   A plain "Got it" (the typed field, the item sheet's pill) is not a new packet and clears nothing.
+- **A receipt read into the Pantry asks about the freezer too** (#2925). The receipt sheet used to
+  leave `ReceiptAddDraft.frozen` unset on the reading that a receipt has no shelf to ask about, but
+  a big shop is exactly when half of it goes straight in the freezer, and without the toggle each
+  row had to be found and dragged afterwards. So its rows carry the barcode sheet's snowflake in
+  the Pantry context, turning it on checks the row, and `handleReceiptApply` hands the result to
+  `addManyToPantry` as `frozenNames` the way `handleScanApply` does. It stays out of the shopping
+  context: that path ends in the finish sheet, which asks nothing about a freezer.
 
 ### Nothing leaves the pantry, so the one exit worth noticing is offered as a task
 

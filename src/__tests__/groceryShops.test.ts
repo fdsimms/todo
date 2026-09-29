@@ -50,6 +50,7 @@ function product(id: string, itemId: string, brand: string | null, variant: stri
     expiresAt: null,
     frozenAt: null,
     openedAt: null,
+    isPortion: false,
     createdAt: '2026-01-01T00:00:00.000Z',
   };
 }

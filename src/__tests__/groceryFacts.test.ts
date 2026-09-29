@@ -210,4 +210,14 @@ describe('describeForgetLoss', () => {
   it('counts rather than lists past two supplies', () => {
     expect(describeForgetLoss([OAT.id], none, ITEMS, ['A', 'B', 'C'])).toBe('It also removes 3 supply links.');
   });
+
+  // "Freeze some" (#2925) writes an unnamed box, and it isn't a brand anybody
+  // saved.
+  it('does not count a frozen portion as a saved brand', () => {
+    const products = [
+      { id: 'p1', itemId: OAT.id, gtin: null } as ItemProduct,
+      { id: 'p2', itemId: OAT.id, gtin: null, isPortion: true } as ItemProduct,
+    ];
+    expect(describeForgetLoss([OAT.id], { ...none, products }, ITEMS, [])).toBe('It also removes a saved brand.');
+  });
 });
