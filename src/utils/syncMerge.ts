@@ -196,9 +196,9 @@ export interface ApplyReport {
   removedMealEvents: RemovedMealEvent[];
   /**
    * Every task the apply wrote (inserted or updated), by id, for the same kind
-   * of reconcile. A task's deadline event and time block are this device's too
-   * (`SYNC_DEVICE_LOCAL_COLUMNS`), so a peer's rename, new deadline or
-   * completion reaches them only through this.
+   * of reconcile. A task's deadline event, time block and completion event are
+   * this device's too (`SYNC_DEVICE_LOCAL_COLUMNS`), so a peer's rename, new
+   * deadline, completion or uncomplete reaches them only through this.
    */
   taskIds: string[];
   /**

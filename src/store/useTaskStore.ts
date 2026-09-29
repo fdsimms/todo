@@ -1476,11 +1476,12 @@ interface TaskStore extends UndoHistoryActions {
    * Brings this device's task calendar events in line with what a sync just
    * applied (#2950): the deadline event of each changed task that holds one is
    * rewritten (or deleted) through the same reconcile a local edit runs, its
-   * time block gets the task's title and length, and the deadline event of
-   * each task another device deleted is deleted here. Which tasks, and why one
-   * with no event of this device's is left alone, is `taskEventsAfterSync`'s
-   * call; this does the device writes, fire-and-forget like every other
-   * deadline and time block reconcile.
+   * time block gets the task's title and length, the completion event of a
+   * task another device reopened is deleted and unlinked as a local uncomplete
+   * would, and the deadline event of each task another device deleted is
+   * deleted here. Which tasks, and why one with no event of this device's is
+   * left alone, is `taskEventsAfterSync`'s call; this does the device writes,
+   * fire-and-forget like every other deadline and time block reconcile.
    *
    * Called after the stores reload from the sync (`registerSyncReload`), so
    * the rows it reads and any link it writes back are the synced ones.
@@ -2417,7 +2418,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   reconcileSyncedEvents(applied) {
     const find = (id: string) => get().tasks.find(t => t.id === id) ?? null;
     const plan = taskEventsAfterSync(applied, find);
-    if (plan.deadlines.length === 0 && plan.timeBlocks.length === 0 && plan.remove.length === 0) return;
+    if (
+      plan.deadlines.length === 0 &&
+      plan.timeBlocks.length === 0 &&
+      plan.uncompleted.length === 0 &&
+      plan.remove.length === 0
+    ) return;
     // Only with calendar access, for the meal reconcile's reason. Without it
     // the deadline move fails, the fallback creates nothing and returns null,
     // and that null written over the link orphans an event this device can no
@@ -2438,6 +2444,18 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         for (const task of plan.timeBlocks) {
           const current = find(task.id);
           if (current) reconcileTimeBlockEvent(current);
+        }
+        // Reopened on another device, so the completion this device's event
+        // recorded didn't happen: the same delete and unlink `uncompleteTask`
+        // runs. Only while the row still says so, since it may have been
+        // completed again, or reopened here, while the permission was read.
+        for (const task of plan.uncompleted) {
+          const current = find(task.id);
+          if (!current || current.completed || !current.completionCalendarEventId) continue;
+          void deleteCalendarEvent(current.completionCalendarEventId);
+          const updated = { ...current, completionCalendarEventId: null };
+          dbUpdateTask(updated);
+          set(s => ({ tasks: s.tasks.map(t => (t.id === updated.id ? updated : t)) }));
         }
         for (const eventId of plan.remove) void deleteCalendarEvent(eventId);
       })

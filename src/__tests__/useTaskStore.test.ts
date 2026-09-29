@@ -16445,6 +16445,64 @@ describe('reconcileSyncedEvents', () => {
     expect(syncDeadlineEvent).not.toHaveBeenCalled();
   });
 
+  // A local uncomplete deletes this device's completion event and clears the
+  // id; one made on another device used to leave both here.
+  it('deletes and unlinks this device\'s completion event when another device reopened the task', async () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'rent', title: 'Pay rent', completed: false, completionCalendarEventId: 'done-1' })],
+    });
+
+    useTaskStore.getState().reconcileSyncedEvents(synced({ taskIds: ['rent'] }));
+    await settle();
+
+    expect(sync.deleteCalendarEvent).toHaveBeenCalledWith('done-1');
+    expect(rowOf('rent').completionCalendarEventId).toBeNull();
+    expect(dbUpdateTask).toHaveBeenCalledWith(expect.objectContaining({ id: 'rent', completionCalendarEventId: null }));
+  });
+
+  it('keeps the completion event of a task still completed after a sync', async () => {
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'rent', title: 'Paid the rent', completed: true, completedAt: '2026-08-19T09:00:00.000Z',
+        completionCalendarEventId: 'done-1',
+      })],
+    });
+
+    useTaskStore.getState().reconcileSyncedEvents(synced({ taskIds: ['rent'] }));
+    await settle();
+
+    expect(sync.deleteCalendarEvent).not.toHaveBeenCalled();
+    expect(rowOf('rent').completionCalendarEventId).toBe('done-1');
+  });
+
+  it('leaves a completion event alone when the task was completed again while access was read', async () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'rent', completed: false, completionCalendarEventId: 'done-1' })],
+    });
+
+    useTaskStore.getState().reconcileSyncedEvents(synced({ taskIds: ['rent'] }));
+    useTaskStore.setState(st => ({
+      tasks: st.tasks.map(t => ({ ...t, completed: true, completedAt: '2026-08-20T09:00:00.000Z' })),
+    }));
+    await settle();
+
+    expect(sync.deleteCalendarEvent).not.toHaveBeenCalled();
+    expect(rowOf('rent').completionCalendarEventId).toBe('done-1');
+  });
+
+  it('touches no completion event without calendar access', async () => {
+    sync.getCalendarPermission.mockResolvedValue('denied');
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'rent', completed: false, completionCalendarEventId: 'done-1' })],
+    });
+
+    useTaskStore.getState().reconcileSyncedEvents(synced({ taskIds: ['rent'] }));
+    await settle();
+
+    expect(sync.deleteCalendarEvent).not.toHaveBeenCalled();
+    expect(rowOf('rent').completionCalendarEventId).toBe('done-1');
+  });
+
   it('deletes the deadline event of a task another device removed, and never a block', async () => {
     useTaskStore.setState({ tasks: [] });
 

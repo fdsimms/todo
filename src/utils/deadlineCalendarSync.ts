@@ -59,6 +59,11 @@ export interface TaskEventSyncPlan {
   deadlines: Task[];
   /** Tasks holding a time block on this device's calendar, to retitle and resize. */
   timeBlocks: Task[];
+  /**
+   * Tasks another device reopened that still hold this device's completion
+   * event, to delete as a local uncomplete would.
+   */
+  uncompleted: Task[];
   /** Deadline events whose task another device removed, to delete. */
   remove: string[];
 }
@@ -67,13 +72,15 @@ export interface TaskEventSyncPlan {
  * Which of this device's task events a sync apply has left stale, and what to
  * do about each (#2950). The task-side sibling of `mealEventsAfterSync`.
  *
- * A task's deadline event and time block belong to the device that wrote them:
- * their ids are kept off the wire (`SYNC_DEVICE_LOCAL_COLUMNS`), and nothing
- * but this device can rewrite or delete them. Before this, a task renamed,
- * given a new deadline or completed on another device kept its old title and
- * day on this device's calendar until this device next edited it, and one
- * deleted there left its deadline event here for good. So a sync is treated
- * like the local edit it stands in for, and goes through the same paths.
+ * A task's deadline event, time block and completion event belong to the
+ * device that wrote them: their ids are kept off the wire
+ * (`SYNC_DEVICE_LOCAL_COLUMNS`), and nothing but this device can rewrite or
+ * delete them. Before this, a task renamed, given a new deadline or completed
+ * on another device kept its old title and day on this device's calendar until
+ * this device next edited it, one deleted there left its deadline event here
+ * for good, and one reopened there left this device's "completed" event on
+ * the calendar. So a sync is treated like the local edit it stands in for, and
+ * goes through the same paths.
  *
  * - **A task the apply changed is reconciled only for the events it already
  *   holds here.** Its deadline event goes through `syncDeadlineEvent`, which
@@ -92,8 +99,15 @@ export interface TaskEventSyncPlan {
  *   local delete does (`deleteTask`, `bulkDeleteTasks`, the series and expiry
  *   paths). **Never its time block**: the app never deletes one, because the
  *   block is time the user set aside in their own calendar and may have shared.
- *   The completion event is left alone either way; it records something that
- *   happened rather than mirroring the row.
+ *   Nor its completion event, which records something that happened rather
+ *   than mirroring the row, the same call every local delete makes.
+ * - **A task the apply reopened loses this device's completion event**, as a
+ *   local uncomplete does (`uncompleteTask` deletes the event and clears the
+ *   id): the completion it recorded no longer happened. "Reopened" is read off
+ *   the row as it now stands, not off what changed, so it is any changed task
+ *   that is not completed and still holds a completion event here. A task
+ *   still completed keeps its event whatever else changed, since the event is
+ *   written once and never rewritten.
  * - **No purge margin, unlike the meal rule.** The meal rule needs one because
  *   the 180-day meal purge deliberately leaves each event on the calendar as a
  *   record of what was eaten, so a purge arriving from a peer must not take
@@ -120,16 +134,18 @@ export function taskEventsAfterSync(
   applied: Pick<ApplyReport, 'taskIds' | 'removedTaskEvents'>,
   resolve: (id: string) => Task | null
 ): TaskEventSyncPlan {
-  if (isDemoModeActive()) return { deadlines: [], timeBlocks: [], remove: [] };
+  if (isDemoModeActive()) return { deadlines: [], timeBlocks: [], uncompleted: [], remove: [] };
 
   const deadlines: Task[] = [];
   const timeBlocks: Task[] = [];
+  const uncompleted: Task[] = [];
   for (const id of new Set(applied.taskIds)) {
     const task = resolve(id);
     if (!task) continue;
     if (task.calendarEventId) deadlines.push(task);
     if (task.timeBlockEventId) timeBlocks.push(task);
+    if (!task.completed && task.completionCalendarEventId) uncompleted.push(task);
   }
 
-  return { deadlines, timeBlocks, remove: [...new Set(applied.removedTaskEvents)] };
+  return { deadlines, timeBlocks, uncompleted, remove: [...new Set(applied.removedTaskEvents)] };
 }

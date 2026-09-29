@@ -377,7 +377,7 @@ describe('taskEventsAfterSync', () => {
 
     const plan = taskEventsAfterSync(applied({ taskIds: ['t1'] }), lookup(renamed));
 
-    expect(plan).toEqual({ deadlines: [renamed], timeBlocks: [], remove: [] });
+    expect(plan).toEqual({ deadlines: [renamed], timeBlocks: [], uncompleted: [], remove: [] });
   });
 
   it('retitles the time block of a changed task that holds one, apart from its deadline event', () => {
@@ -399,7 +399,7 @@ describe('taskEventsAfterSync', () => {
       lookup(makeTask({ id: 't1', deadlineOnCalendar: true, deadline: '2026-08-20T00:00:00Z' })),
     );
 
-    expect(plan).toEqual({ deadlines: [], timeBlocks: [], remove: [] });
+    expect(plan).toEqual({ deadlines: [], timeBlocks: [], uncompleted: [], remove: [] });
   });
 
   it('skips a task that no longer resolves, and reconciles one changed twice only once', () => {
@@ -409,6 +409,35 @@ describe('taskEventsAfterSync', () => {
 
     expect(plan.deadlines).toEqual([kept]);
     expect(plan.timeBlocks).toEqual([kept]);
+  });
+
+  // The completion event is this device's too, and a peer's uncomplete used to
+  // leave it on this device's calendar recording a completion that was undone.
+  it('takes the completion event of a task another device reopened, as an uncomplete here would', () => {
+    const reopened = makeTask({ id: 't1', completed: false, completionCalendarEventId: 'done-1' });
+
+    const plan = taskEventsAfterSync(applied({ taskIds: ['t1', 't1'] }), lookup(reopened));
+
+    expect(plan.uncompleted).toEqual([reopened]);
+    expect(plan.deadlines).toEqual([]);
+  });
+
+  it('leaves the completion event of a task still completed, whatever else changed', () => {
+    const renamed = makeTask({
+      id: 't1', title: 'Paid rent', completed: true, completedAt: '2026-08-19T09:00:00.000Z',
+      completionCalendarEventId: 'done-1',
+    });
+
+    const plan = taskEventsAfterSync(applied({ taskIds: ['t1'] }), lookup(renamed));
+
+    expect(plan.uncompleted).toEqual([]);
+  });
+
+  it('has nothing to take from a reopened task whose completion event another device wrote', () => {
+    // This device completed nothing, so it holds no completion event to delete.
+    const plan = taskEventsAfterSync(applied({ taskIds: ['t1'] }), lookup(makeTask({ id: 't1', completed: false })));
+
+    expect(plan.uncompleted).toEqual([]);
   });
 
   it('deletes the deadline event of a task another device removed, once', () => {
@@ -425,9 +454,11 @@ describe('taskEventsAfterSync', () => {
 
     const plan = taskEventsAfterSync(
       applied({ taskIds: ['t1'], removedTaskEvents: ['evt-9'] }),
-      lookup(makeTask({ id: 't1', calendarEventId: 'evt-1', timeBlockEventId: 'block-1' })),
+      lookup(makeTask({
+        id: 't1', calendarEventId: 'evt-1', timeBlockEventId: 'block-1', completionCalendarEventId: 'done-1',
+      })),
     );
 
-    expect(plan).toEqual({ deadlines: [], timeBlocks: [], remove: [] });
+    expect(plan).toEqual({ deadlines: [], timeBlocks: [], uncompleted: [], remove: [] });
   });
 });

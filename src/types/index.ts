@@ -2706,7 +2706,10 @@ export interface Task {
   //
   // On uncomplete, if this is set, the device event is deleted and this is
   // cleared — un-completing the task means the thing the event recorded
-  // didn't actually happen, so there's nothing left for it to log.
+  // didn't actually happen, so there's nothing left for it to log. That
+  // includes an uncomplete on another device (#2950): this id stays on the
+  // device that wrote the event, so the reload after the sync does the same
+  // delete here (`taskEventsAfterSync`'s `uncompleted`).
   completionCalendarEventId: string | null;
 
   // The id of the timed event blocking out room to actually *do* this task,
