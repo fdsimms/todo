@@ -462,6 +462,17 @@ describe('summarizeRuns', () => {
     expect(summary.applied.removedMealEvents).toEqual([{ eventId: 'evt-3', date: '2026-08-13' }]);
   });
 
+  // The same for a task's deadline event and time block.
+  it('keeps every store\'s changed tasks and removed deadline events', () => {
+    const summary = summarizeRuns([
+      run('fake', { applied: { ...emptyApplyReport(), updated: 1, deleted: 1, taskIds: ['t1'], removedTaskEvents: ['evt-1'] } }),
+      run('server', { applied: { ...emptyApplyReport(), inserted: 1, deleted: 1, taskIds: ['t2'], removedTaskEvents: ['evt-2'] } }),
+    ]);
+
+    expect(summary.applied.taskIds).toEqual(['t1', 't2']);
+    expect(summary.applied.removedTaskEvents).toEqual(['evt-1', 'evt-2']);
+  });
+
   it('names the transport in a failure, because "Sync failed" is unactionable with two', () => {
     const summary = summarizeRuns([
       run('server', { status: 'failed', reason: 'The sync server did not respond.' }),
