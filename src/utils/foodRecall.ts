@@ -144,6 +144,23 @@ export function describedGrams(description: string): string | null {
 }
 
 /**
+ * A typed description split into the separate foods it names, on the comma
+ * the field's own placeholder already treats as a food boundary ("31g
+ * baguette, 25g peach jam").
+ *
+ * **Matching and weight-extraction both run per clause, never over the whole
+ * string.** A multi-food description matched (or `describedGrams`-scanned) as
+ * one query mixes them up: "peach jam" can match a clause it isn't in, and a
+ * weight search over the whole string finds whichever number comes first
+ * rather than the one sitting next to the food it's meant to describe. Every
+ * offer `EstimateMealSheet` stages is scoped to the clause that produced it
+ * for exactly this reason.
+ */
+export function descriptionClauses(description: string): string[] {
+  return description.split(',').map(s => s.trim()).filter(Boolean);
+}
+
+/**
  * How well a stored label answers a typed description, in `matchWeight`'s own
  * 3/2/1 ladder.
  *

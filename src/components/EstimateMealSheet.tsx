@@ -28,11 +28,13 @@ import {
   type NutritionEstimate,
 } from '../utils/nutritionEstimate';
 import {
+  RECALL_LIMIT,
   RECALL_MIN_QUERY,
   catalogRecallFoods,
   describeCatalogRecall,
   describeRecall,
   describedGrams,
+  descriptionClauses,
   measuresByWeight,
   rankRecallCandidates,
   recallAmountAsk,
@@ -131,10 +133,17 @@ import { SheetHeader } from './SheetHeader';
 //                  `renderAmountStep`), the estimate row, the result card
 // Below the component: PendingRecallCard, KcalFigure, NutrientLine, styles.
 
-/** A recall row staged for confirmation, before its amount is settled. */
+/**
+ * A recall row staged for confirmation, before its amount is settled.
+ *
+ * `clause` is the piece of the typed description that produced this offer —
+ * see `descriptionClauses` — and is what `logStaged` strikes from the field
+ * on a successful log, rather than discarding the rest of a multi-food
+ * description outright.
+ */
 type PendingRecallLog =
-  | { kind: 'recall'; food: RecalledFood }
-  | { kind: 'catalog'; food: RecalledCatalogFood };
+  | { kind: 'recall'; food: RecalledFood; clause: string }
+  | { kind: 'catalog'; food: RecalledCatalogFood; clause: string };
 
 /**
  * What a staged row's amount step holds, whichever question it asks (see
@@ -293,7 +302,24 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
   // ==== offers: what has been eaten or filed before ====
   // Real data the user already owns beats a guess, so every offer is made
   // before the request rather than after it comes back.
-  const recalled = useMemo(() => recallFoods(history, description), [history, description]);
+  //
+  // Matched per clause of the description (see `descriptionClauses`), not
+  // over the whole string: "31 g baguette, 25g peach jam" is two foods, and
+  // matching the whole thing as one query can surface a food that's only in
+  // one of them while leaving no way to say which weight belongs to it.
+  const recalled = useMemo(() => {
+    const seen = new Set<string>();
+    const out: { food: RecalledFood; clause: string }[] = [];
+    for (const clause of descriptionClauses(description)) {
+      for (const food of recallFoods(history, clause)) {
+        if (seen.has(food.key)) continue;
+        seen.add(food.key);
+        out.push({ food, clause });
+        if (out.length >= RECALL_LIMIT) return out;
+      }
+    }
+    return out;
+  }, [history, description]);
 
   /**
    * Catalog rows with figures on them, arranged by what has actually been
@@ -313,9 +339,20 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
     // Anything already offered as something eaten is not offered again as
     // something owned: the entry knows the helping actually taken, where this
     // only knows what one serving of it is.
-    const offered = new Set(recalled.flatMap(creditedKeys));
+    const offered = new Set(recalled.flatMap(r => creditedKeys(r.food)));
     const open = catalogCandidates.filter(food => !offered.has(food.key));
-    return rankRecallCandidates(rankByRecency(open, recency), description, 2);
+    const ranked = rankByRecency(open, recency);
+    const seen = new Set<string>();
+    const out: { food: RecalledCatalogFood; clause: string }[] = [];
+    for (const clause of descriptionClauses(description)) {
+      for (const food of rankRecallCandidates(ranked, clause, 2)) {
+        if (seen.has(food.key)) continue;
+        seen.add(food.key);
+        out.push({ food, clause });
+        if (out.length >= 2) return out;
+      }
+    }
+    return out;
   }, [catalogCandidates, recalled, recency, description]);
 
   /**
@@ -326,11 +363,16 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
    * name twice for two different actions. The recall wins that: it knows the
    * helping actually eaten, where the recipe row still has to go and ask for
    * one.
+   *
+   * Matched over the whole description rather than per clause: a recipe row
+   * opens the picker instead of logging outright (its own accessibility label
+   * already says the rest of the field is left out), so there's no weight to
+   * misattribute and no in-place log to scope to one clause.
    */
   const matches = useMemo(() => {
     const key = groceryNameKey(description);
     if (key.length < RECALL_MIN_QUERY) return [];
-    const offered = new Set(recalled.map(food => food.recipeId).filter(Boolean));
+    const offered = new Set(recalled.map(r => r.food.recipeId).filter(Boolean));
     return recipes
       .filter(r => !offered.has(r.id))
       .map(recipe => ({ recipe, weight: recallWeight(groceryNameKey(recipe.name), key) }))
@@ -363,10 +405,10 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
    */
   const context = useMemo<EstimateContextFood[]>(() => {
     const out: EstimateContextFood[] = [];
-    for (const food of recalled) {
+    for (const { food } of recalled) {
       out.push({ label: food.label, quantity: food.quantity, amounts: food.nutrition.amounts });
     }
-    for (const food of catalogMatches) {
+    for (const { food } of catalogMatches) {
       const helping = helpingOf(food);
       if (helping) out.push({ label: food.label, quantity: food.choice.label, amounts: helping.amounts });
     }
@@ -482,16 +524,22 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
 
   // ==== staged rows: the amount step and the one-tap + ====
   /**
-   * `food`'s own panel scaled to the weight the typed description names,
-   * when it names one — "205g" against a food last logged at 127g scales
-   * every stated key by 205/127, the same arithmetic a portion sheet already
-   * trusts. Null for the ordinary case (no weight named, or one this food's
-   * panel can't answer — a serving count with no `servingGrams`, say), which
-   * is what lets every caller fall back to the recorded amount unchanged.
+   * The row's measuring panel (`measuringPanel`) scaled to the weight this
+   * row's own clause names, when it names one — "25g" against a food last
+   * logged at 30g scales every stated key by 25/30, the same arithmetic a
+   * portion sheet already trusts.
+   *
+   * Read off `staged.clause`, not the whole description: a second food named
+   * alongside this one can carry its own weight ("31 g baguette, 25g peach
+   * jam"), and a search over the whole field would find whichever number
+   * comes first rather than the one next to this food. Null for the ordinary
+   * case (no weight named in this clause, or one this food's panel can't
+   * answer — a serving count with no `servingGrams`, say), which is what lets
+   * every caller fall back to the recorded amount unchanged.
    */
-  const scaledWeight = (nutrition: FoodNutrition) => {
-    const grams = describedGrams(description);
-    return grams ? scalePanelToAmount(nutrition, grams, null, at) : null;
+  const scaledWeight = (staged: PendingRecallLog) => {
+    const grams = describedGrams(staged.clause);
+    return grams ? scalePanelToAmount(measuringPanel(staged), grams, null, at) : null;
   };
 
   /** The confirm step's weight field, read as a positive number of grams. */
@@ -524,7 +572,7 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
 
   /**
    * The amount a staged row opens with: the weight a "205g" already typed into
-   * the description implies, or the recorded one otherwise, and for an
+   * this food's own part of the description implies (`scaledWeight`), or the recorded one otherwise, and for an
    * estimate the count or multiple it was last logged at. `baseline` is the
    * recorded weight, kept so `stagedWrite` can tell an untouched weight from
    * an edited one; a count or multiple is compared with the ask's own
@@ -532,7 +580,7 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
    */
   const stagedDefaults = (staged: PendingRecallLog): StagedAmount => {
     const ask = askFor(staged);
-    const scaled = ask.kind === 'weight' ? scaledWeight(measuringPanel(staged)) : null;
+    const scaled = ask.kind === 'weight' ? scaledWeight(staged) : null;
     const baseline = staged.kind === 'recall'
       ? staged.food.grams
       : helpingOf(staged.food)?.servingGrams ?? null;
@@ -692,6 +740,32 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
     setPendingLog(null);
     setPendingAmount(null);
     setPendingError(null);
+
+    // Logging this row is logging its own clause, not the whole field: "31 g
+    // baguette, 25g peach jam" still has a baguette in it once the jam is
+    // written. Strike just the clause that was logged and keep the sheet open
+    // on what's left, rather than closing over an unlogged food with nothing
+    // said about it. Only the first match is removed, in case two identical
+    // clauses were typed. The now-stale estimate state (if any exists) is
+    // cleared too, since it was asked about the fuller description.
+    let struck = false;
+    const remaining = descriptionClauses(description)
+      .filter(clause => {
+        if (!struck && clause === staged.clause) { struck = true; return false; }
+        return true;
+      })
+      .join(', ');
+    if (remaining.trim()) {
+      setDescription(remaining);
+      setEstimate(null);
+      setEstimatedFor(null);
+      setQuestions([]);
+      setAnswers({});
+      setError(null);
+      setSavedRecipeId(null);
+      return null;
+    }
+
     onLogged?.();
     onClose();
     return null;
@@ -735,7 +809,7 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
     const recipe = existing ?? addRecipe(estimate.label);
     if (!recipe) { haptics.error(); return; }
     if (!existing) {
-      const lines = description.split(',').map(s => s.trim()).filter(Boolean).join('\n');
+      const lines = descriptionClauses(description).join('\n');
       if (lines) addIngredientsFromText(recipe.id, lines);
     }
     setSavedRecipeId(recipe.id);
@@ -763,8 +837,8 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
   const otherStated = shown.filter(k => k !== 'calorieKcal' && !MACRO_KEYS.includes(k)).length;
 
   const staged: PendingRecallLog[] = [
-    ...recalled.map(food => ({ kind: 'recall' as const, food })),
-    ...catalogMatches.map(food => ({ kind: 'catalog' as const, food })),
+    ...recalled.map(r => ({ kind: 'recall' as const, food: r.food, clause: r.clause })),
+    ...catalogMatches.map(r => ({ kind: 'catalog' as const, food: r.food, clause: r.clause })),
   ];
   const hasOffers = staged.length > 0 || matches.length > 0;
   const trimmed = description.trim();
