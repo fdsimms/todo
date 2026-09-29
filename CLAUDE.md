@@ -1446,4 +1446,12 @@ inset is what just went away) — that asymmetry is the whole design, don't coll
   keeps the location it read and passes it along. A new `updateEventAsync` goes through
   `rewriteEvent`, and a new `updateReminderAsync` sends back every field the native save assigns,
   not only the one it means to change.
+- **Never offer an input a code path can drop without saying so.** The Describe sheet's "You've
+  had this before" row asked for grams on an estimate logged as "2 slices", and `recalledHelping`
+  fell back to the recorded helping whenever a weight couldn't be measured, so 110 g logged the
+  whole previous meal with nothing said (#2914). A field that is shown gets honored, refused inline
+  with the reason, or not shown at all; quietly using some other value instead is the one answer
+  that isn't allowed. Decide what a row asks for with the same function that will apply it
+  (`recallAmountAsk` beside `recalledHelping`), so what the screen offers and what the write
+  accepts can't disagree.
 - **Patch notes**: when a change in this PR is user-facing, add a new fragment file to `src/patchNotes/entries/` before opening the PR — one JSON file per entry, `{ "message": "...", "date": "YYYY-MM-DD" }`, named after the change (e.g. `icon-action-buttons.json`). Keep the message short and written for someone who isn't reading the diff. Don't edit `src/utils/patchNotes.ts` or `src/utils/patchNotesData.ts` directly (generated, gitignored). Skip it for internal-only changes (refactors, tests, CI, tooling).
