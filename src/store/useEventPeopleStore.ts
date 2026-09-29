@@ -73,7 +73,7 @@ interface EventPeopleState {
    * time block's own create makes the same refusal.
    */
   createEvent: (
-    fields: { title: string; start: Date; end: Date; location?: string },
+    fields: { title: string; start: Date; end: Date; allDay?: boolean; location?: string },
     personIds?: readonly string[]
   ) => Promise<boolean>;
 }

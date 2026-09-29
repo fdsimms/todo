@@ -1053,6 +1053,11 @@ describe('amountHint / amountExample', () => {
       .toBe('A volume, like 250 ml or 1 cup, or a number of servings.');
   });
 
+  it('mentions a weight too, once a per-100ml panel has had a volume weighed onto it', () => {
+    const weighed = panel({ basis: 'per100ml', portions: [{ amount: 1, label: 'fl oz', grams: 20.45 }] });
+    expect(amountHint(weighed)).toBe('A volume, like 250 ml or 1 cup, or a weight now that one has been weighed.');
+  });
+
   it('asks for a serving count from a perServing panel with no serving weight', () => {
     expect(amountHint(panel({ basis: 'perServing', servingGrams: null, portions: [] })))
       .toBe('A number of servings, like 1 serving. This food states no weight per serving to measure anything else against.');
@@ -1117,6 +1122,15 @@ describe('foodUnitOptionsFor', () => {
   it('does not duplicate a volume unit the panel already states as a portion', () => {
     const options = foodUnitOptionsFor(panel({ basis: 'per100ml', portions: [{ amount: 1, label: 'cup', grams: 240 }] }));
     expect(options.filter(o => o.key === 'cup')).toHaveLength(1);
+  });
+
+  it('adds a grams pill for a per-100ml panel once a volume has been weighed onto it', () => {
+    // The exact shape `handleSaveWeighedPortion` writes when someone weighs a
+    // "fl oz" amount of a drink or an ice cream (#2968's bug was that weighing
+    // never recorded a usable density in the first place).
+    const weighed = panel({ basis: 'per100ml', portions: [{ amount: 1, label: 'fl oz', grams: 20.45 }] });
+    const options = foodUnitOptionsFor(weighed);
+    expect(options).toContainEqual({ key: 'g', label: 'g', suffix: 'g' });
   });
 });
 

@@ -102,6 +102,16 @@ describe('a line written as a volume', () => {
     expect(grams('8 fl oz', null, FLOUR)).toBeCloseTo(125, 4);
     expect(grams('4 fl oz', null, FLOUR)).toBeCloseTo(62.5, 4);
   });
+
+  it('reads a density off a portion whose own label is a two-word unit', () => {
+    // A weighed custom portion is saved under the unit exactly as parsed —
+    // "fl oz", not "fl" — so densityOf has to look up the whole label, not
+    // just its first word ("fl" alone names nothing). This is the same food
+    // as a cup of ice cream at roughly 0.69 g/ml.
+    const iceCream: FoodPortion[] = [{ amount: 1, label: 'fl oz', grams: 20.45 }];
+    expect(grams('1 fl oz', null, iceCream)).toBeCloseTo(20.45, 4);
+    expect(grams('1 cup', null, iceCream)).toBeCloseTo(163.6, 1);
+  });
 });
 
 describe('a line written as a count', () => {
@@ -392,5 +402,21 @@ describe('panelMultiplier and servings', () => {
     // Oat milk's own drink is per 100ml, and a weight is a fact nobody
     // measured — this must not silently treat "12g" as "12ml".
     expect(panelMultiplier('12g', null, panel({ basis: 'per100ml' }))).toBeNull();
+  });
+
+  it('answers a weight against a per-100ml panel once a volume has been weighed onto it', () => {
+    // The row `handleSaveWeighedPortion` writes after someone weighs "1 fl
+    // oz" of a per-100ml food: 1 fl oz (29.5735 ml) at 20.45g is the same
+    // ~0.69 g/ml as the ice cream in #2968. 100g of it is ~144.8 ml, so a
+    // per-100ml panel's own figures scale by that over 100.
+    const iceCream = panel({
+      basis: 'per100ml',
+      portions: [{ amount: 1, label: 'fl oz', grams: 20.45 }],
+    });
+    expect(panelMultiplier('100 g', null, iceCream)).toBeCloseTo(1.44614, 4);
+    // A cup of it should agree with what a cup would measure directly, once
+    // both are read off the same weighed density.
+    expect(panelMultiplier('1 cup', null, iceCream))
+      .toBeCloseTo(panelMultiplier('163.6 g', null, iceCream)!, 4);
   });
 });

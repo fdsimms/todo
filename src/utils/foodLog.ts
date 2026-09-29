@@ -1,7 +1,7 @@
 import type { FoodLogEntry, FoodNutrition, MealPlanEntry, MealSlot, NutrientKey, SavedMealItem } from '../types';
 import { MEAL_SLOTS, NUTRIENT_KEYS } from '../types';
 import { aisleForName } from './groceryAisles';
-import { gramsForLine, panelMultiplier } from './ingredientGrams';
+import { gramsForLine, hasKnownDensity, panelMultiplier } from './ingredientGrams';
 import { formatQuantityAmount, inflectUnit, parseQuantity, rationalToNumber } from './quantity';
 import { measureParsedQuantity, unitBase } from './unitConvert';
 
@@ -222,18 +222,23 @@ export function portionExamples(panel: FoodNutrition, limit = 3): string[] {
  * front instead of only after a refusal.
  *
  * **Basis-specific, not "a weight always works".** `panelMultiplier` refuses
- * a gram amount against a `per100ml` panel outright — a drink's weight is
- * a fact nobody here has, the same reason `servingGrams` is null for one —
- * so a hint that named grams for every food would be wrong for exactly the
- * foods (drinks) most likely to reach for it. Volume, by contrast, needs no
- * portion row for a `per100ml` panel: it's measured directly, `fl oz`
- * included since `unitConvert.ts` now carries it.
+ * a gram amount against a `per100ml` panel with no known density — a drink's
+ * weight is a fact nobody here has, the same reason `servingGrams` is null
+ * for one — so a hint that named grams for every food would be wrong for
+ * exactly the foods (drinks) most likely to reach for it. Volume, by
+ * contrast, needs no portion row for a `per100ml` panel: it's measured
+ * directly, `fl oz` included since `unitConvert.ts` now carries it. Once a
+ * volume has been weighed onto the panel's own table, `hasKnownDensity`
+ * says so and the hint adds grams back in — `panelMultiplier` can answer
+ * one from here on, off that same density.
  */
 export function amountHint(panel: FoodNutrition): string {
   if (panel.basis === 'per100ml') {
+    const grams = hasKnownDensity(panel.portions);
+    const weight = grams ? ', or a weight now that one has been weighed' : '';
     return panel.servingGrams
-      ? 'A volume, like 250 ml or 1 cup, or a number of servings.'
-      : 'A volume, like 250 ml or 1 cup.';
+      ? `A volume, like 250 ml or 1 cup${weight}, or a number of servings.`
+      : `A volume, like 250 ml or 1 cup${weight}.`;
   }
   if (panel.basis === 'perServing' && panel.servingGrams === null) {
     return 'A number of servings, like 1 serving. This food states no weight per serving to measure anything else against.';
@@ -295,13 +300,16 @@ export const VOLUME_UNIT_OPTIONS: FoodUnitOption[] = [
  * Every unit this food's own panel can measure — its stated portions, plus
  * grams and/or servings wherever `panelMultiplier` would actually resolve
  * them (mirrors `amountHint` above). Grams are left off a `per100ml` panel
- * and a `perServing` one with no stated serving weight, because typing them
- * would only ever be refused; a `serving` pill is offered for a `perServing`
- * panel (whose own figures already are one serving) and for any other basis
- * that states a `servingGrams` weight to scale by. A `per100ml` panel gets
- * `VOLUME_UNIT_OPTIONS` instead — the fixed table above, rather than
- * anything drawn from the panel, since a per100ml basis resolves any of them
- * without needing the food's own data.
+ * with no known density and a `perServing` panel with no stated serving
+ * weight, because typing them would only ever be refused; a `serving` pill
+ * is offered for a `perServing` panel (whose own figures already are one
+ * serving) and for any other basis that states a `servingGrams` weight to
+ * scale by. A `per100ml` panel gets `VOLUME_UNIT_OPTIONS` — the fixed table
+ * above, rather than anything drawn from the panel, since a per100ml basis
+ * resolves any of them without needing the food's own data — and a `g` pill
+ * too once `hasKnownDensity` says a volume has actually been weighed onto
+ * its table, at which point `panelMultiplier` can read that same density
+ * back to answer a mass line.
  */
 export function foodUnitOptionsFor(panel: FoodNutrition): FoodUnitOption[] {
   const out: FoodUnitOption[] = [];
@@ -312,8 +320,10 @@ export function foodUnitOptionsFor(panel: FoodNutrition): FoodUnitOption[] {
     seen.add(key);
     out.push({ key, label: p.label, suffix: ` ${p.label}` });
   }
-  const gramsResolve = panel.basis === 'per100g' || (panel.basis === 'perServing' && panel.servingGrams !== null);
-  if (gramsResolve) out.push({ key: 'g', label: 'g', suffix: 'g' });
+  const gramsResolve = panel.basis === 'per100g'
+    || (panel.basis === 'perServing' && panel.servingGrams !== null)
+    || (panel.basis === 'per100ml' && hasKnownDensity(panel.portions));
+  if (gramsResolve && !seen.has('g')) out.push({ key: 'g', label: 'g', suffix: 'g' });
   if (panel.basis === 'perServing' || panel.servingGrams !== null) {
     out.push({ key: 'serving', label: 'serving', suffix: ' serving' });
   }

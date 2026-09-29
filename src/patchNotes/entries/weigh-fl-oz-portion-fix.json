@@ -1,0 +1,4 @@
+{
+  "message": "Fixed weighing a food logged in fluid ounces (or another two-word unit) — Save was silently doing nothing because the weight wasn't being recorded",
+  "date": "2026-09-29"
+}
