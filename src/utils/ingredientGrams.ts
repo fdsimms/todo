@@ -79,7 +79,11 @@ function gramsPerUnit(portion: FoodPortion): number {
 function densityOf(portion: FoodPortion): number | null {
   const words = labelWords(portion.label);
   if (words.length === 0) return null;
-  const unit = unitBase(words[0]);
+  // A two-word unit ("fl oz") has to be tried whole before falling back to
+  // its first word alone, which names nothing on its own ("fl" isn't a unit;
+  // only "fl oz" is) — a custom portion weighed and saved under that exact
+  // label otherwise came back with no density at all.
+  const unit = unitBase(words.join(' ')) ?? unitBase(words[0]);
   if (!unit || unit.dimension !== 'volume' || unit.base <= 0) return null;
   return gramsPerUnit(portion) / unit.base;
 }

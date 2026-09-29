@@ -102,6 +102,16 @@ describe('a line written as a volume', () => {
     expect(grams('8 fl oz', null, FLOUR)).toBeCloseTo(125, 4);
     expect(grams('4 fl oz', null, FLOUR)).toBeCloseTo(62.5, 4);
   });
+
+  it('reads a density off a portion whose own label is a two-word unit', () => {
+    // A weighed custom portion is saved under the unit exactly as parsed —
+    // "fl oz", not "fl" — so densityOf has to look up the whole label, not
+    // just its first word ("fl" alone names nothing). This is the same food
+    // as a cup of ice cream at roughly 0.69 g/ml.
+    const iceCream: FoodPortion[] = [{ amount: 1, label: 'fl oz', grams: 20.45 }];
+    expect(grams('1 fl oz', null, iceCream)).toBeCloseTo(20.45, 4);
+    expect(grams('1 cup', null, iceCream)).toBeCloseTo(163.6, 1);
+  });
 });
 
 describe('a line written as a count', () => {
