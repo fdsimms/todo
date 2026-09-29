@@ -1454,4 +1454,14 @@ inset is what just went away) — that asymmetry is the whole design, don't coll
   that isn't allowed. Decide what a row asks for with the same function that will apply it
   (`recallAmountAsk` beside `recalledHelping`), so what the screen offers and what the write
   accepts can't disagree.
+- **A bulk or unattended write that changes only device-local columns puts the row's sync stamp
+  back.** Every UPDATE on a synced table restamps the row as a local change (the stamp trigger in
+  `syncTracking.ts`), including one that only touches a column `SYNC_DEVICE_LOCAL_COLUMNS` keeps
+  off the wire, and the stamp is what decides which copy wins against a peer's. The launch pass
+  that fills in calendar server ids (#2950) would otherwise have made every row holding an event
+  read as edited just now, at launch, which is exactly when a peer's edits made while the app was
+  closed haven't arrived yet: the next sync would have put this device's stale copy over each of
+  them. `dbFillTaskCalendarExternalIds` reads `updated_at` first and writes it back after, which
+  the trigger lets through. A one-row write that follows a real local edit (a reconcile writing
+  back the event id it just got) doesn't need this, since that row genuinely changed here.
 - **Patch notes**: when a change in this PR is user-facing, add a new fragment file to `src/patchNotes/entries/` before opening the PR — one JSON file per entry, `{ "message": "...", "date": "YYYY-MM-DD" }`, named after the change (e.g. `icon-action-buttons.json`). Keep the message short and written for someone who isn't reading the diff. Don't edit `src/utils/patchNotes.ts` or `src/utils/patchNotesData.ts` directly (generated, gitignored). Skip it for internal-only changes (refactors, tests, CI, tooling).
