@@ -4,6 +4,7 @@ import {
   describeCatalogRecall,
   describeRecall,
   describedGrams,
+  descriptionClauses,
   rankRecallCandidates,
   recallFoods,
   recallWeight,
@@ -347,5 +348,23 @@ describe('describedGrams', () => {
 
   it('does not mistake a serving count for a weight', () => {
     expect(describedGrams('2 servings of beans')).toBeNull();
+  });
+});
+
+describe('descriptionClauses', () => {
+  it('splits a multi-food description on the comma', () => {
+    expect(descriptionClauses('31 g baguette, 25g peach jam')).toEqual(['31 g baguette', '25g peach jam']);
+  });
+
+  it('trims each clause and drops empty ones', () => {
+    expect(descriptionClauses(' chicken tacos ,  , rice ')).toEqual(['chicken tacos', 'rice']);
+  });
+
+  it('returns the whole description as one clause with no comma', () => {
+    expect(descriptionClauses('cheeseburger and fries')).toEqual(['cheeseburger and fries']);
+  });
+
+  it('returns nothing for a blank description', () => {
+    expect(descriptionClauses('  ')).toEqual([]);
   });
 });
