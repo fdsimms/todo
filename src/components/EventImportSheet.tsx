@@ -34,8 +34,15 @@ type InputMode = 'paste' | 'photo';
 interface Props {
   visible: boolean;
   onClose: () => void;
-  /** Called once extraction finds at least one event; the sheet closes itself right after. */
-  onImported: (events: ExtractedCalendarEvent[]) => void;
+  /**
+   * Called once extraction finds at least one event; the sheet closes itself
+   * right after. A caller that presents a native sheet returns a promise that
+   * settles when it is done, and this sheet stays open underneath until then:
+   * the native sheet presents from the top-most view controller, and closing
+   * this Modal in the same tick left it presenting from one that was
+   * mid-dismissal, which showed as a blank sheet and no event.
+   */
+  onImported: (events: ExtractedCalendarEvent[]) => void | Promise<void>;
 }
 
 /**
@@ -152,11 +159,14 @@ export function EventImportSheet({ visible, onClose, onImported }: Props) {
 
   const ready = mode === 'photo' ? !!photo : !!text.trim();
 
-  const finish = useCallback((events: ExtractedCalendarEvent[]) => {
+  const finish = useCallback(async (events: ExtractedCalendarEvent[]) => {
     haptics.success();
     Keyboard.dismiss();
-    onImported(events);
-    onClose();
+    try {
+      await onImported(events);
+    } finally {
+      onClose();
+    }
   }, [onImported, onClose]);
 
   /**
@@ -202,7 +212,7 @@ export function EventImportSheet({ visible, onClose, onImported }: Props) {
         setTriedEmpty(true);
         return;
       }
-      finish(events);
+      await finish(events);
     } catch (e) {
       if (visibleRef.current) setError(describeAIError(e));
     } finally {

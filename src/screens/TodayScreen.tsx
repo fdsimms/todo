@@ -1802,12 +1802,19 @@ export function TodayScreen() {
   // rather than recursing itself, because the editor closes on its own time
   // (saved or cancelled) and there's no promise to chain off of the way there
   // is for a native sheet.
-  const advanceEventImportQueue = useCallback((queue: ExtractedCalendarEvent[]) => {
+  // Returns a promise that settles once every native sheet in the run has
+  // closed, so `EventImportSheet` can stay open underneath them (a native
+  // sheet presented as that Modal dismisses comes up blank).
+  const advanceEventImportQueue = useCallback(async (queue: ExtractedCalendarEvent[]): Promise<void> => {
     const [next, ...rest] = queue;
     if (!next) return;
     const eventFields = eventImportCreateFields(next);
     if (eventFields) {
-      presentEventCreate(eventFields).finally(() => advanceEventImportQueue(rest));
+      try {
+        await presentEventCreate(eventFields);
+      } finally {
+        await advanceEventImportQueue(rest);
+      }
       return;
     }
     setPendingEventImports(rest);
@@ -1816,9 +1823,7 @@ export function TodayScreen() {
     setEditorVisible(true);
   }, []);
 
-  const handleEventsImported = (events: ExtractedCalendarEvent[]) => {
-    advanceEventImportQueue(events);
-  };
+  const handleEventsImported = (events: ExtractedCalendarEvent[]) => advanceEventImportQueue(events);
 
   // Drains the queue an itinerary import left behind: as soon as the editor
   // closes — saved or cancelled, either is "done with this one" — and there's
