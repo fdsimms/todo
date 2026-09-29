@@ -763,6 +763,21 @@ something nobody measured:
   food, since a linked entry's row already holds its panel, and a correction
   that re-measures against a row or picks another food clears it. Entries
   logged before the column existed kept nothing and stay rename-only.
+
+  **Every route that logs the same food again carries the panel with it**, or
+  the copy is back to rename-only: Duplicate, Re-date, "Log the same again",
+  the Describe sheet's "had this before" recall, and a saved meal, whose
+  items keep the panel their entries kept (`SavedMealItem.sourcePanel`,
+  inside the `items` blob, so sync and backups carry it as they are). At the
+  same amount the copy takes it verbatim, an estimate's whole included, so
+  the copy is the same share of the same meal. A recall logged at a new weight is re-measured
+  against it rather than multiplied out of the stored helping
+  (`recalledHelping` in `foodRecall.ts`), and keeps it, since that is what the
+  new helping was measured against. An estimate's whole is never measured
+  against: `keptDatabasePanel` is the one test every measuring path uses to
+  tell the two kinds of kept panel apart, so a described meal at a new weight
+  scales its own helping as before and drops the whole it is no longer a share
+  of.
 - **The rewrite is skipped when nothing Health holds changed.** Moving the meal
   or re-filing the item touches no figure Health ever saw, and rewriting anyway
   would churn somebody's medical record for a field it never got.

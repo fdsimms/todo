@@ -797,10 +797,7 @@ export function foodLogEntryEdit(entry: FoodLogEntry): FoodLogEntryEdit | null {
     const dish = dishAmountFrom(typed);
     return dish && { amount: dish.amount, dishMeasure: dish.dishMeasure };
   }
-  // A kept panel that is itself an estimate is the whole of a described meal
-  // (see `wholeEstimate`), which has no amounts to re-measure against.
-  const keptPanel = !!entry.sourcePanel && entry.sourcePanel.source !== 'estimated';
-  if (entry.productId || entry.itemId || keptPanel) {
+  if (entry.productId || entry.itemId || keptDatabasePanel(entry)) {
     // A scan logged with "The whole package (10 servings)" stores that button
     // label as its helping (`packageChoices` in scanPortion.ts), which has no
     // leading number to re-measure. The count inside it is the amount.
@@ -811,6 +808,28 @@ export function foodLogEntryEdit(entry: FoodLogEntry): FoodLogEntryEdit | null {
 }
 
 const WHOLE_PACKAGE_LABEL = /^the whole package \((\d+(?:\.\d+)?) servings\)$/i;
+
+/**
+ * The panel an entry kept that a new amount can be re-measured against, or
+ * null when it kept none or kept an estimate's whole.
+ *
+ * **`sourcePanel` holds one of two different things** (#2914), and only the
+ * first is something to measure with. For a database food nobody filed it is
+ * the database's own per-100 g record with its portions, which measures a new
+ * amount exactly as a catalog row's panel would. For an estimate it is the
+ * whole meal as the model described it: the base "Fraction eaten" takes its
+ * shares of (`wholeEstimate`), with no amounts or portions to measure a weight
+ * against. Every path that re-measures asks this rather than testing the
+ * field, so the second is never read as the first: `foodLogEntryEdit` here,
+ * and the Describe sheet's recall (`recallMeasuringPanel`).
+ *
+ * Says nothing about links. A linked entry is re-measured against its row
+ * whatever it kept, and that is each caller's own check.
+ */
+export function keptDatabasePanel(entry: { sourcePanel?: FoodNutrition | null }): FoodNutrition | null {
+  const kept = entry.sourcePanel;
+  return kept && kept.source !== 'estimated' ? kept : null;
+}
 
 /**
  * The number and the measure behind one of `describeHelping`'s phrasings, or

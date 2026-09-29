@@ -35,7 +35,9 @@ import {
   describedGrams,
   rankRecallCandidates,
   recallFoods,
+  recallMeasuringPanel,
   recallWeight,
+  recalledHelping,
   type RecalledCatalogFood,
   type RecalledFood,
 } from '../utils/foodRecall';
@@ -476,13 +478,23 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
   };
 
   /**
+   * What a staged row's amount is measured against: a catalog row's own
+   * panel, or for something eaten before the panel `recallMeasuringPanel`
+   * picks, which is the database panel an unfiled food kept when it kept one.
+   * `logStaged` measures off the same one, so the default weight and the
+   * figure on the row are the ones that land.
+   */
+  const measuringPanel = (staged: PendingRecallLog) =>
+    staged.kind === 'recall' ? recallMeasuringPanel(staged.food) : staged.food.nutrition;
+
+  /**
    * The amount a staged row opens with: the weight a "205g" already typed into
    * the description implies, or the recorded one otherwise. `baseline` is the
    * recorded weight, kept so `logStaged` can tell an untouched amount from an
    * edited one.
    */
   const stagedDefaults = (staged: PendingRecallLog) => {
-    const scaled = scaledWeight(staged.food.nutrition);
+    const scaled = scaledWeight(measuringPanel(staged));
     const baseline = staged.kind === 'recall'
       ? staged.food.grams
       : helpingOf(staged.food)?.servingGrams ?? null;
@@ -496,7 +508,7 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
    * row is the number that lands in the day.
    */
   const stagedKcal = (staged: PendingRecallLog): number | undefined => {
-    const scaled = scaledWeight(staged.food.nutrition);
+    const scaled = scaledWeight(measuringPanel(staged));
     const panel = scaled?.nutrition
       ?? (staged.kind === 'recall' ? staged.food.nutrition : helpingOf(staged.food));
     return panel?.amounts.calorieKcal;
@@ -540,6 +552,11 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
    * dropped for the same reason it drops it (this is a fresh eating, not the
    * planned meal again) unless the caller named one.
    *
+   * Something eaten before goes through `recalledHelping`, which also carries
+   * the panel the entry kept (#2914): without it, a database food nobody
+   * filed came back as an entry that could only be renamed. A new weight is
+   * measured against that panel rather than multiplied out of the helping.
+   *
    * The section this was opened from decides the meal; with no section, a
    * recalled food's own last-eaten meal stands, rather than it landing under
    * no meal at all.
@@ -551,12 +568,13 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
 
     if (staged.kind === 'recall') {
       const food = staged.food;
-      const scaled = scale(food.nutrition);
+      const helping = recalledHelping(food, changed ? grams : null, at);
       const written = addEntry({
         label: food.label,
-        quantity: scaled?.grams != null ? `${scaled.grams}g` : food.quantity,
-        grams: scaled ? scaled.grams : food.grams,
-        nutrition: scaled?.nutrition ?? food.nutrition,
+        quantity: helping.quantity,
+        grams: helping.grams,
+        nutrition: helping.nutrition,
+        sourcePanel: helping.sourcePanel,
         slot: chosenSlot ?? food.slot,
         recipeId: food.recipeId,
         itemId: food.itemId,
