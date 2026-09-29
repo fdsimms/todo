@@ -23,12 +23,15 @@ import { isDemoModeActive } from './demoState';
  * like it, and is read in one place only: when the local id no longer resolves,
  * the event is looked up by it before anything fresh is written, and the row
  * adopts the local id the lookup finds (`writeAllDayEvent` for a meal or a
- * deadline, `adoptableTimeBlockId` for a time block).
+ * deadline, `adoptTimeBlock` in useTaskStore for a time block, each deciding
+ * through `adoptableEventId` or `adoptableTimeBlockId` below).
  *
  * Nothing else reads it. Deleting an event still goes by the local id alone, so
  * a row deleted on a restored phone before its next reconcile still leaves its
  * event behind: deleting something found only by a server id is a bigger step
- * than rewriting it, and was left out on purpose.
+ * than rewriting it, and was left out on purpose. A completion event keeps no
+ * server id for the same reason, since the only thing the app ever does to one
+ * after writing it is delete it.
  */
 export interface CalendarEventLink {
   /** EventKit's local id, or null when the row has no event on this device. */
