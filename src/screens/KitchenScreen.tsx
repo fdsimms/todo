@@ -73,6 +73,7 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { resolveActiveTrip } from '../utils/activeTrip';
 import { resetToGroceries } from '../navigation/navigationRef';
 import { useFilterField } from '../hooks/useFilterField';
+import { isPortionBox } from '../types';
 
 /**
  * Everything the app currently thinks is in your kitchen, in one place — the
@@ -160,6 +161,14 @@ export function KitchenScreen() {
   const setFrozen = useGroceryStore(s => s.setFrozen);
   const setAisle = useGroceryStore(s => s.setAisle);
   const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
+  // The frozen portions among the boxes (#2925). Their rows open the item's
+  // Pantry field, where "Freeze some" and the portion's own line live, rather
+  // than its Products field, which doesn't list them: a portion is some of the
+  // item, not a brand of it. See ItemProduct.isPortion.
+  const portionIds = useMemo(
+    () => new Set(itemProducts.filter(p => isPortionBox(p)).map(p => p.id)),
+    [itemProducts]
+  );
   const listEntries = useGroceryStore(useShallow(s => s.listEntries));
   const markProductsOutOf = useGroceryStore(s => s.markProductsOutOf);
   const setProductFrozen = useGroceryStore(s => s.setProductFrozen);
@@ -328,7 +337,7 @@ export function KitchenScreen() {
     if (focused) {
       if (focused.kind === 'leftover') setOpenLeftoverId(focused.sourceId);
       else if (focused.kind === 'product' && focused.itemId) {
-        setOpenItemField('products');
+        setOpenItemField(portionIds.has(focused.sourceId) ? 'pantry' : 'products');
         setOpenItemId(focused.itemId);
       } else setOpenItemId(focused.sourceId);
       return;
@@ -352,7 +361,7 @@ export function KitchenScreen() {
       // through the box rather than giving up.
       const product = itemProducts.find(p => p.id === parsed.sourceId);
       if (product && items.some(i => i.id === product.itemId)) {
-        setOpenItemField('products');
+        setOpenItemField(isPortionBox(product) ? 'pantry' : 'products');
         setOpenItemId(product.itemId);
       }
     }
@@ -410,7 +419,9 @@ export function KitchenScreen() {
     // A box's ✕ writes the box and says nothing about its siblings — being out
     // of the Beyond one is not being out of vegan ground beef. The item-level
     // ✕ still means all of them, which is why an item's own "Out of it"
-    // outranks every box in `probablyHaveReason`.
+    // outranks every box in `probablyHaveReason` — all but a frozen portion,
+    // which is the half of a pack that went in the freezer and which the ✕ on
+    // the rest of it says nothing about (#2925). A portion's own ✕ deletes it.
     const changed = entry.kind === 'product'
       ? markProductsOutOf([entry.sourceId])
       : markOutOfMany([entry.sourceId]);
@@ -639,6 +650,7 @@ export function KitchenScreen() {
     // as ordinary tertiary text, so most of a kitchen stays quiet and the one
     // thing going off is the one thing coloured.
     const tint = entry.freshness ? freshnessColor(entry.freshness, colors) : colors.textTertiary;
+    const isPortion = entry.kind === 'product' && portionIds.has(entry.sourceId);
     return (
       <TouchableOpacity
         style={[styles.row, isActive && styles.rowActive]}
@@ -650,9 +662,10 @@ export function KitchenScreen() {
           // sheet with the Products field already unfolded — the same
           // pre-opening a catalog row gets for its Pantry field, and for the
           // same reason: a collapsed field halfway down a dense sheet is in
-          // practice no way to correct anything.
+          // practice no way to correct anything. A frozen portion's
+          // corrections are in the Pantry field instead (see `portionIds`).
           else if (entry.kind === 'product' && entry.itemId) {
-            setOpenItemField('products');
+            setOpenItemField(portionIds.has(entry.sourceId) ? 'pantry' : 'products');
             setOpenItemId(entry.itemId);
           } else setOpenItemId(entry.sourceId);
         }}
@@ -664,9 +677,11 @@ export function KitchenScreen() {
         accessibilityHint={
           entry.kind === 'leftover'
             ? 'Opens the container, where you can close it out. Long press to move it between the fridge and the freezer'
-            : entry.kind === 'product'
-              ? 'Opens the item, where you can correct this one. Long press to move it to another aisle or the freezer'
-              : 'Opens the item, where you can correct it further. Long press to move it to another aisle or the freezer'
+            : isPortion
+              ? 'Opens the item, where you can take this portion out of the freezer. Long press to move it to another aisle or the freezer'
+              : entry.kind === 'product'
+                ? 'Opens the item, where you can correct this one. Long press to move it to another aisle or the freezer'
+                : 'Opens the item, where you can correct it further. Long press to move it to another aisle or the freezer'
         }
       >
         <View style={styles.body}>
@@ -696,14 +711,18 @@ export function KitchenScreen() {
             onPress={() => handleMarkOut(entry)}
             hitSlop={8}
             accessibilityLabel={
-              entry.productName
-                ? `Mark ${entry.productName} ${entry.title} out`
-                : `Mark ${entry.title} out`
+              isPortion
+                ? `Mark the portion of ${entry.title} used up`
+                : entry.productName
+                  ? `Mark ${entry.productName} ${entry.title} out`
+                  : `Mark ${entry.title} out`
             }
             accessibilityHint={
-              entry.kind === 'product'
-                ? 'Marks this one not on hand, leaving the others alone'
-                : 'Marks it not on hand, without opening the item'
+              isPortion
+                ? 'Removes this portion, leaving the rest of the item alone'
+                : entry.kind === 'product'
+                  ? 'Marks this one not on hand, leaving the others alone'
+                  : 'Marks it not on hand, without opening the item'
             }
           >
             <Ionicons name="close-circle-outline" size={iconSize.md} color={colors.textTertiary} />

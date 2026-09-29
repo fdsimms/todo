@@ -27,7 +27,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useShallow } from 'zustand/react/shallow';
 import { useColors } from '../theme/ThemeContext';
 import { border, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
-import { MEAL_SLOTS, MEAL_SLOT_LABELS, type FoodLogEntry, type FoodNutrition, type GroceryItem, type MealSlot } from '../types';
+import { MEAL_SLOTS, MEAL_SLOT_LABELS, isPortionBox, type FoodLogEntry, type FoodNutrition, type GroceryItem, type MealSlot } from '../types';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useFoodLogStore, type FoodLogDraft } from '../store/useFoodLogStore';
@@ -451,7 +451,9 @@ export function FoodLogEntrySheet({
   const candidates = useMemo<Candidate[]>(() => {
     const out: Candidate[] = [];
     for (const product of itemProducts) {
-      if (!product.nutrition) continue;
+      // A frozen portion is some of an item rather than a brand of it; the
+      // item's own row below already offers it. See ItemProduct.isPortion.
+      if (!product.nutrition || isPortionBox(product)) continue;
       const item = items.find(i => i.id === product.itemId);
       if (!item || isNonFoodAisle(item.aisle, nonFoodAisles)) continue;
       out.push({

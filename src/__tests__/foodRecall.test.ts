@@ -293,6 +293,13 @@ describe('catalogRecallFoods', () => {
     );
     expect(found.map(f => f.label)).toEqual(['Yogurt, Good Culture low fat', 'Yogurt']);
   });
+
+  // A portion carries no panel, so it would fall through to the item's and
+  // offer the item twice under one name (#2925).
+  it('leaves out a frozen portion, which is the item again rather than a packet of it', () => {
+    const portion = catalogProduct({ id: 'p-portion', brand: null, variant: null, nutrition: null, isPortion: true });
+    expect(catalogRecallFoods([catalogItem()], [portion]).map(f => f.key)).toEqual(['i:i1']);
+  });
 });
 
 describe('describeCatalogRecall', () => {

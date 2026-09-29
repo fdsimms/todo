@@ -1,6 +1,6 @@
 import { format } from 'date-fns/format';
 import type { GroceryItem, ItemProduct } from '../types';
-import { FROZEN_REASON, RUNNING_LOW_REASON } from '../types';
+import { FROZEN_REASON, RUNNING_LOW_REASON, THAWED_PORTION_REASON, isPortionBox } from '../types';
 import { groceryNameKey } from './groceryParse';
 import { OTHER_AISLE } from './groceryAisles';
 import { hasUserFacts } from './groceryFacts';
@@ -505,7 +505,9 @@ export function probablyHaveReason(
    * the item's own claims and above the purchase guess, so a packet the user
    * has frozen or marked "Got it" keeps answering for the item after the item's
    * own two-week window has run out. It cannot resurrect an item-level "Out of
-   * it", which still returns null before this is read — see the note there.
+   * it", which still returns null before this is read — see the note there —
+   * with the one exception of a frozen portion, which that statement was never
+   * about.
    */
   products: readonly ItemProduct[] = []
 ): string | null {
@@ -523,7 +525,17 @@ export function probablyHaveReason(
   // the freezer outranked it, tapping ✕ on a frozen row would leave the row
   // sitting there and read as a dead control. "I'm out of it" is also simply a
   // later and better-informed statement than "I put some in the freezer".
-  if (asserted === false) return null;
+  //
+  // Except for a frozen portion (`ItemProduct.isPortion`, #2925). That box is
+  // the half of a pack that went in the freezer while the rest stayed out, so
+  // "Out of it" said about the rest — the ✕ on the item's own row, a cook
+  // marking the chicken used up — is not said about it. The freezer is exactly
+  // what it survives, so the answer is the freezer's.
+  if (asserted === false) {
+    return products.some(p => p.itemId === item.id && outlivesItemOutOfIt(p, now))
+      ? FROZEN_REASON
+      : null;
+  }
 
   // Nearly out, and so on this week's list — but still *had*, which is the
   // whole distinction from "Out of it" above and the reason this reads as a
@@ -552,12 +564,34 @@ export function probablyHaveReason(
   // The wording is the box's own and doesn't name it — a caller with the
   // product in hand can say which one, and this answer is read by the callers
   // asking the plain question "is there any of this in the kitchen".
+  //
+  // A frozen portion is held back to the very end instead (see below).
   for (const product of products) {
-    if (product.itemId !== item.id) continue;
+    if (product.itemId !== item.id || isPortionBox(product)) continue;
     const reason = productHaveReason(product, now);
     if (reason) return reason;
   }
 
+  const bought = purchaseReason(item, now);
+  if (bought) return bought;
+
+  // A portion answers last, below the purchase reading rather than above it
+  // with the other boxes (#2925). A named box is a packet the user spoke about
+  // against a guess, so it wins; a portion is *some* of the item, split off
+  // the rest on purpose, so while the rest is still on hand the rest is the
+  // answer. Ranked above, a pack bought yesterday with half frozen would read
+  // as "in the freezer", and a meal planned from the half left out would be
+  // told to thaw the other half (`mealThawTasks`).
+  for (const product of products) {
+    if (product.itemId !== item.id || !isPortionBox(product)) continue;
+    const reason = productHaveReason(product, now);
+    if (reason) return reason;
+  }
+  return null;
+}
+
+/** The purchase reading's own words, or null when there's no purchase inside this item's window. */
+function purchaseReason(item: GroceryItem, now: Date): string | null {
   if (item.purchaseCount < 1 || !item.lastPurchasedAt) return null;
   if (daysBetween(now, item.lastPurchasedAt) >= onHandWindowDays(item, now)) return null;
 
@@ -619,8 +653,28 @@ export function productHaveReason(product: ItemProduct, now: Date): string | nul
   const asserted = onHandAssertion(product, now);
   if (asserted === false) return null;
   if (product.frozenAt) return FROZEN_REASON;
-  if (asserted === true) return 'marked as on hand';
+  // A thawed portion answers through the same assertion an ordinary box's "Got
+  // it" does — the thaw stamps one (`setProductFrozen`), so it lapses like any
+  // other claim rather than sitting in the pantry for ever — but in its own
+  // words, since nobody marked it on hand. They took it out of the freezer.
+  if (asserted === true) return isPortionBox(product) ? THAWED_PORTION_REASON : 'marked as on hand';
   return null;
+}
+
+/**
+ * Whether this box still answers for its item after the item itself has been
+ * marked "Out of it" — true for a frozen portion and nothing else.
+ *
+ * The one exception to "an item-level Out of it outranks every box" (see
+ * `pantryEntries`), and deliberately that narrow. A named box is a brand, and
+ * being out of vegan ground beef is being out of the Beyond one too. A portion
+ * is not a brand: it's the half of a pack that went in the freezer, and "I've
+ * used up the chicken" said about the half in the fridge says nothing about
+ * it. Only while frozen, though: a thawed portion is more of the item in the
+ * fridge again, and "Out of it" takes it with the rest.
+ */
+export function outlivesItemOutOfIt(product: ItemProduct, now: Date): boolean {
+  return isPortionBox(product) && !!product.frozenAt && onHandAssertion(product, now) !== false;
 }
 
 /**
@@ -721,10 +775,12 @@ export interface PantryEntry {
  * always been, and each packet spoken about adds one. Nothing is ever removed
  * by adding a box.
  *
- * The item-level gate runs first and unchanged, so an "Out of it" on the item
- * still empties the pantry of it, boxes and all. That's the blunter and later
- * statement — "I'm out of vegan ground beef" is about all of them — and keeping
- * it in front is what stops the ✕ on an item row reading as a dead control.
+ * An "Out of it" on the item still empties the pantry of it, boxes and all.
+ * That's the blunter and later statement — "I'm out of vegan ground beef" is
+ * about all of them — and keeping it in front is what stops the ✕ on an item
+ * row reading as a dead control. The one box it doesn't reach is a frozen
+ * portion (`outlivesItemOutOfIt`): the rest of a pack running out says nothing
+ * about the half in the freezer, so that row stays and the item's own goes.
  */
 export function pantryEntries(
   items: readonly GroceryItem[],
@@ -744,8 +800,14 @@ export function pantryEntries(
     if (itemReason) {
       entries.push({ item, reason: itemReason, asserted: onHandAssertion(item, now) === true, product: null });
     }
+    // The gate above let an item marked "Out of it" through only because a
+    // frozen portion outlives that — so that portion is the only box it
+    // brings. A staple is let through on its own account and keeps the rows
+    // it always had.
+    const outOfIt = !item.isStaple && onHandAssertion(item, now) === false;
     for (const product of products) {
       if (product.itemId !== item.id) continue;
+      if (outOfIt && !outlivesItemOutOfIt(product, now)) continue;
       const boxReason = productHaveReason(product, now);
       if (!boxReason) continue;
       entries.push({

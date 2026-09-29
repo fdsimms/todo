@@ -2566,7 +2566,7 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // per-box pantry columns exist for. A frozen one and an on-hand one on the
     // same item: with one slot per item the app could only have called both of
     // them frozen.
-    const frozenBox = itemProducts.find(p => p.frozenAt);
+    const frozenBox = itemProducts.find(p => p.frozenAt && !p.isPortion);
     expect(frozenBox).toBeDefined();
     const sibling = itemProducts.find(
       p => p.itemId === frozenBox!.itemId && p.id !== frozenBox!.id && p.onHandUntil
@@ -4255,6 +4255,28 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const cheddar = items.find(i => i.nameKey === 'cheddar')!;
     expect(cheddar.shelfLifeDays).not.toBeNull();
     expect(cheddar.expiresAt).toBeNull();
+  });
+
+  it('seeds one pack split between the freezer and the shelf', () => {
+    // "Freeze some" (#2925): the grocery-side twin of the split cooking below.
+    // One portion in the freezer while the rest of the same item stays out on
+    // its own clock, which a named box couldn't say about two halves of one
+    // unbranded pack.
+    const { items, itemProducts } = useGroceryStore.getState();
+    const portion = itemProducts.find(p => p.isPortion);
+    expect(portion).toBeDefined();
+    expect(portion!.frozenAt).not.toBeNull();
+    const item = items.find(i => i.id === portion!.itemId)!;
+    expect(item.frozenAt).toBeNull();
+    expect(item.expiresAt).not.toBeNull();
+    // Never a product anybody picks: not the preference, not a brand.
+    expect(item.preferredProductId).not.toBe(portion!.id);
+    expect(portion!.brand).toBeNull();
+
+    // Two rows for one food on the Pantry screen, one under the freezer.
+    const rows = kitchenInventory(items, [], new Date(), itemProducts).filter(e => e.title === item.name);
+    expect(rows.map(r => r.section)).toEqual(expect.arrayContaining([FREEZER_SECTION, item.aisle]));
+    expect(rows.find(r => r.section === FREEZER_SECTION)!.productName).toBe('Portion');
   });
 
   it('seeds one cooking split between the fridge and the freezer', () => {

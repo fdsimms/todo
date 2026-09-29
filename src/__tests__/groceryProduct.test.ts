@@ -8,7 +8,7 @@ import {
   productKeyFor,
   productsForItem,
 } from '../utils/groceryProduct';
-import type { ItemProduct } from '../types';
+import { PORTION_PRODUCT_KEY, type ItemProduct } from '../types';
 
 function product(overrides: Partial<ItemProduct> & { id: string }): ItemProduct {
   return {
@@ -26,6 +26,7 @@ function product(overrides: Partial<ItemProduct> & { id: string }): ItemProduct 
     expiresAt: null,
     frozenAt: null,
     openedAt: null,
+    isPortion: false,
     createdAt: '2026-01-01T00:00:00.000Z',
     ...overrides,
   };
@@ -238,5 +239,36 @@ describe('productForGtin', () => {
   it('refuses an empty code rather than matching every unlinked box', () => {
     expect(productForGtin([plain, linked], null)).toBeNull();
     expect(productForGtin([plain, linked], '')).toBeNull();
+  });
+});
+
+// ─── the frozen portion (#2925) ─────────────────────────────────────────────
+
+describe('a frozen portion among the boxes', () => {
+  const portion = product({
+    id: 'p-portion', productKey: PORTION_PRODUCT_KEY, isPortion: true, frozenAt: '2026-08-01T12:00:00.000Z',
+  });
+  const arnolds = product({ id: 'p-arnolds', brand: "Arnold's" });
+
+  // The Products field, the scan sheet's box picker and the next box to try at
+  // a store all read this list as "your brands", and a portion isn't one.
+  it('is left out of the item\'s products', () => {
+    expect(productsForItem('bread', [portion, arnolds]).map(p => p.id)).toEqual(['p-arnolds']);
+  });
+
+  it('can never be the preference, even from a stale pointer', () => {
+    expect(preferredProductOf({ preferredProductId: 'p-portion' }, [portion, arnolds])).toBeNull();
+  });
+
+  it('never answers for a barcode', () => {
+    expect(productForGtin([{ ...portion, gtin: '00850003201115' }], '00850003201115')).toBeNull();
+  });
+
+  // The key is what holds an item to one portion, so no spelling of a brand
+  // or variant may produce it.
+  it('carries a key no named box can collide with', () => {
+    expect(productKeyFor('portion', null)).not.toBe(PORTION_PRODUCT_KEY);
+    expect(productKeyFor(null, 'portion')).not.toBe(PORTION_PRODUCT_KEY);
+    expect(productKeyFor('Portion', 'Portion')).not.toBe(PORTION_PRODUCT_KEY);
   });
 });

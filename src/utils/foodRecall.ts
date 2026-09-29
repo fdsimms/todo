@@ -1,4 +1,5 @@
 import type { FoodLogEntry, FoodNutrition, GroceryItem, ItemProduct, MealSlot } from '../types';
+import { isPortionBox } from '../types';
 import { groceryNameKey } from './groceryParse';
 import { matchWeight } from './grocerySuggest';
 import { nutritionFor } from './foodNutrition';
@@ -287,7 +288,8 @@ export interface RecalledCatalogFood extends RecallCandidate {
  */
 /** Only what naming and measuring a row needs, the `Pick` style `nutritionFor` keeps. */
 export type RecallableItem = Pick<GroceryItem, 'id' | 'name' | 'nutrition'>;
-export type RecallableProduct = Pick<ItemProduct, 'id' | 'itemId' | 'brand' | 'variant' | 'nutrition'>;
+export type RecallableProduct = Pick<ItemProduct, 'id' | 'itemId' | 'brand' | 'variant' | 'nutrition'>
+  & Partial<Pick<ItemProduct, 'isPortion'>>;
 
 export function catalogRecallFoods(
   items: readonly RecallableItem[],
@@ -297,6 +299,11 @@ export function catalogRecallFoods(
   const itemsById = new Map(items.map(item => [item.id, item]));
 
   for (const product of products) {
+    // A frozen portion is some of the item rather than a brand of it, and it
+    // carries no panel, so `nutritionFor` would fall through to the item's and
+    // offer the item a second time under its own name. See
+    // ItemProduct.isPortion.
+    if (isPortionBox(product)) continue;
     const item = itemsById.get(product.itemId);
     if (!item) continue;
     const nutrition = nutritionFor(item, product);

@@ -5,6 +5,7 @@ import type {
   ItemSubLink,
   StoreAlias,
 } from '../types';
+import { isPortionBox } from '../types';
 import { aliasKeyFor, gtinAliasText } from './storeAliases';
 
 /**
@@ -193,7 +194,10 @@ export function describeForgetLoss(
   const standing = touching.filter(l => l.standing && nameOf.has(l.itemId) && nameOf.has(l.subItemId));
   const otherSubs = touching.length - standing.length;
 
-  const products = relations.products.filter(p => ids.has(p.itemId));
+  // A frozen portion isn't a saved brand, and forgetting the item takes it
+  // with the rest without it being one more thing to warn about by that name.
+  // See ItemProduct.isPortion.
+  const products = relations.products.filter(p => ids.has(p.itemId) && !isPortionBox(p));
   const aliases = relations.aliases.filter(a => ids.has(a.itemId));
   // A barcode is remembered twice, on the product and as a store-less alias
   // (see gtinAliasText), so the count is of distinct codes.

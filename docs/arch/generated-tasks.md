@@ -633,6 +633,11 @@ one. Those three rules and the reasoning behind them are in
   - **Ticking it thaws nothing.** Whether the food actually came out is said in the Pantry, which is
     where the row's link goes (the one frozen row, or the Pantry itself when there are several).
     The stale pass then clears any row whose food is no longer frozen.
+  - **Half a pack frozen asks nothing while the other half is out** (#2925). "Freeze some" writes a
+    portion box and leaves the item on its own clock, so `probablyHaveReason` answers with the
+    item's own reason and the meal is covered by the fresh half. Once that half is marked out of
+    it, the frozen portion is what answers (`FROZEN_REASON`) and the thaw row follows. The item's
+    own `groceryUseUp` task is untouched by the split, since `wantsUseUpTask` reads only the item.
   - **It ships off**, for `mealShortfall`'s reason: it adds a surface rather than replacing one.
 
 ## Vacation mode: which of them stand down

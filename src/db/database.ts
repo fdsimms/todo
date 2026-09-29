@@ -1752,6 +1752,9 @@ export function initDatabase(): void {
     // carried a pointer back to its parent's live occurrence, only the title
     // snapshot in extra_task_source_title. See Task.followUpTaskSourceId.
     'ALTER TABLE tasks ADD COLUMN extra_task_source_id TEXT',
+    // Off on every existing box: each one was named as a brand, and "Freeze
+    // some" is what makes the first unnamed one. See ItemProduct.isPortion.
+    'ALTER TABLE grocery_item_products ADD COLUMN is_portion INTEGER NOT NULL DEFAULT 0',
   ];
   // Asking SQLite for a table's columns once is cheaper than handing it every
   // ALTER for that table and catching the duplicate-column error, and by the
@@ -5185,6 +5188,7 @@ function rowToItemProduct(row: Record<string, unknown>): ItemProduct {
     frozenAt: (row.frozen_at as string) ?? null,
     openedAt: (row.opened_at as string) ?? null,
     nutrition: parseFoodNutrition(row.nutrition as string | null),
+    isPortion: Boolean(row.is_portion),
     createdAt: row.created_at as string,
   };
 }
@@ -5218,8 +5222,8 @@ export function dbSetItemProduct(product: ItemProduct): void {
   db.runSync(
     `INSERT INTO grocery_item_products
        (id, item_id, brand, variant, product_key, rating, note, purchase_count, last_purchased_at,
-        on_hand_until, expires_at, frozen_at, opened_at, nutrition, created_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        on_hand_until, expires_at, frozen_at, opened_at, nutrition, is_portion, created_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
      ON CONFLICT(id)
      DO UPDATE SET brand = excluded.brand,
                    variant = excluded.variant,
@@ -5232,7 +5236,8 @@ export function dbSetItemProduct(product: ItemProduct): void {
                    expires_at = excluded.expires_at,
                    frozen_at = excluded.frozen_at,
                    opened_at = excluded.opened_at,
-                   nutrition = excluded.nutrition`,
+                   nutrition = excluded.nutrition,
+                   is_portion = excluded.is_portion`,
     [
       product.id,
       product.itemId,
@@ -5248,6 +5253,7 @@ export function dbSetItemProduct(product: ItemProduct): void {
       product.frozenAt ?? null,
       product.openedAt ?? null,
       serializeFoodNutrition(product.nutrition),
+      product.isPortion ? 1 : 0,
       product.createdAt,
     ]
   );
