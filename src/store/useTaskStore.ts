@@ -273,12 +273,14 @@ import {
   staleWaitingFollowUpTasks,
 } from '../utils/waitingFollowUpTasks';
 import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders, scheduleTimerAlarm, cancelTimerAlarm, scheduleQuotaNudges, cancelQuotaNudges, cancelCompletionTimer } from '../utils/notifications';
-import { syncDeadlineEvent } from '../utils/deadlineCalendarSync';
+import { syncDeadlineEvent, taskEventsAfterSync } from '../utils/deadlineCalendarSync';
+import type { ApplyReport } from '../utils/syncMerge';
 import { logTaskCompletionToCalendar } from '../utils/completionCalendarSync';
 import { logTaskHealthValue, unlogTaskWaterFromFoodLog } from '../utils/healthCompletionSync';
 import { waterTotalMl } from '../utils/waterLog';
 import {
   deleteCalendarEvent,
+  getCalendarPermission,
   presentTimeBlockCreate,
   presentTimeBlockEdit,
   readTimeBlockEvent,
@@ -1382,6 +1384,20 @@ interface TaskStore extends UndoHistoryActions {
   /** Deletes completions older than the retention window; returns how many went. */
   purgeOldCompletedTasks: () => number;
   /**
+   * Brings this device's task calendar events in line with what a sync just
+   * applied (#2950): the deadline event of each changed task that holds one is
+   * rewritten (or deleted) through the same reconcile a local edit runs, its
+   * time block gets the task's title and length, and the deadline event of
+   * each task another device deleted is deleted here. Which tasks, and why one
+   * with no event of this device's is left alone, is `taskEventsAfterSync`'s
+   * call; this does the device writes, fire-and-forget like every other
+   * deadline and time block reconcile.
+   *
+   * Called after the stores reload from the sync (`registerSyncReload`), so
+   * the rows it reads and any link it writes back are the synced ones.
+   */
+  reconcileSyncedEvents: (applied: Pick<ApplyReport, 'taskIds' | 'removedTaskEvents'>) => void;
+  /**
    * `id` is for the app's own unattended generators only — a person's task
    * always gets a fresh `generateId()`. Passing a `derivedId` (see syncIds.ts)
    * is what lets two devices that independently create "the same" generated
@@ -2307,6 +2323,36 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       action: 'purged', kind: null, title: '', taskId: null, count: ids.length,
     });
     return ids.length;
+  },
+
+  reconcileSyncedEvents(applied) {
+    const find = (id: string) => get().tasks.find(t => t.id === id) ?? null;
+    const plan = taskEventsAfterSync(applied, find);
+    if (plan.deadlines.length === 0 && plan.timeBlocks.length === 0 && plan.remove.length === 0) return;
+    // Only with calendar access, for the meal reconcile's reason. Without it
+    // the deadline move fails, the fallback creates nothing and returns null,
+    // and that null written over the link orphans an event this device can no
+    // longer name; a time block reads back as null and loses its pointer the
+    // same way. This runs unasked, over every task another device touched, so
+    // it skips instead, and the task's next local reconcile once access is back
+    // puts its events right.
+    void getCalendarPermission()
+      .then(permission => {
+        if (permission !== 'granted') return;
+        // Re-read after the await: the row may have moved on, or gone. A link
+        // cleared meanwhile is not recreated here, for the reason the rule
+        // gives for a task that never had one.
+        for (const task of plan.deadlines) {
+          const current = find(task.id);
+          if (current?.calendarEventId) reconcileDeadlineEvent(current);
+        }
+        for (const task of plan.timeBlocks) {
+          const current = find(task.id);
+          if (current) reconcileTimeBlockEvent(current);
+        }
+        for (const eventId of plan.remove) void deleteCalendarEvent(eventId);
+      })
+      .catch(() => {});
   },
 
   addTask(draft, id, options) {

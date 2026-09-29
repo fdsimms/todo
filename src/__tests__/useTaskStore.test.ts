@@ -297,6 +297,9 @@ jest.mock('../utils/notifications', () => ({
 
 jest.mock('../utils/deadlineCalendarSync', () => ({
   syncDeadlineEvent: jest.fn().mockResolvedValue(null),
+  // The real rule: it is pure, and which tasks the post-sync reconcile touches
+  // is what that block of tests is about.
+  taskEventsAfterSync: jest.requireActual('../utils/deadlineCalendarSync').taskEventsAfterSync,
 }));
 
 jest.mock('../utils/completionCalendarSync', () => ({
@@ -310,6 +313,7 @@ jest.mock('../utils/healthCompletionSync', () => ({
 
 jest.mock('../utils/calendarSync', () => ({
   deleteCalendarEvent: jest.fn().mockResolvedValue(undefined),
+  getCalendarPermission: jest.fn().mockResolvedValue('granted'),
   // The #1492 half. Stubbed to "the user cancelled" / "no such event" by
   // default so nothing writes unless a test says so; the time-block block at
   // the bottom of this file drives them.
@@ -16168,6 +16172,155 @@ describe('time block reconcile', () => {
     // Time already set aside — and possibly shared with other people — is not
     // this app's to withdraw. See Task.timeBlockEventId.
     expect(rowOf('report').timeBlockEventId).toBe('ev-1');
+  });
+});
+
+// #2950: a task's deadline event and time block are this device's, so a change
+// made on another device reaches them only through the reconcile the sync
+// reload runs.
+describe('reconcileSyncedEvents', () => {
+  const sync = jest.requireMock('../utils/calendarSync') as {
+    getCalendarPermission: jest.Mock;
+    deleteCalendarEvent: jest.Mock;
+    readTimeBlockEvent: jest.Mock;
+    updateTimeBlockEvent: jest.Mock;
+  };
+  const synced = (over: { taskIds?: string[]; removedTaskEvents?: string[] }) => ({
+    taskIds: [], removedTaskEvents: [], ...over,
+  });
+  // The permission read, then each device write behind it.
+  const settle = async () => {
+    for (let i = 0; i < 6; i++) await Promise.resolve();
+  };
+  const linked = (overrides: Partial<Task> = {}) =>
+    makeTask({
+      id: 'rent', title: 'Pay rent', deadlineOnCalendar: true,
+      deadline: '2026-08-20T00:00:00.000Z', calendarEventId: 'evt-1', ...overrides,
+    });
+
+  beforeEach(() => {
+    sync.getCalendarPermission.mockResolvedValue('granted');
+    (syncDeadlineEvent as jest.Mock).mockResolvedValue(null);
+  });
+
+  it('rewrites this device\'s deadline event from the row another device changed', async () => {
+    (syncDeadlineEvent as jest.Mock).mockResolvedValue('evt-1');
+    // The row as the reload re-read it: renamed elsewhere.
+    useTaskStore.setState({ tasks: [linked({ title: 'Pay the rent' })] });
+
+    useTaskStore.getState().reconcileSyncedEvents(synced({ taskIds: ['rent'] }));
+    await settle();
+
+    expect(syncDeadlineEvent).toHaveBeenCalledWith(expect.objectContaining({ id: 'rent', title: 'Pay the rent' }));
+    expect(rowOf('rent').calendarEventId).toBe('evt-1');
+  });
+
+  it('links the fresh event when the old one had gone, same as a local edit', async () => {
+    (syncDeadlineEvent as jest.Mock).mockResolvedValue('evt-2');
+    useTaskStore.setState({ tasks: [linked()] });
+
+    useTaskStore.getState().reconcileSyncedEvents(synced({ taskIds: ['rent'] }));
+    await settle();
+
+    expect(rowOf('rent').calendarEventId).toBe('evt-2');
+    expect(dbUpdateTask).toHaveBeenCalledWith(expect.objectContaining({ id: 'rent', calendarEventId: 'evt-2' }));
+  });
+
+  it('drops the link once the reconcile deleted the event of a task completed elsewhere', async () => {
+    // syncDeadlineEvent deletes a completed task's event and reports null.
+    useTaskStore.setState({ tasks: [linked({ completed: true, completedAt: '2026-08-19T09:00:00.000Z' })] });
+
+    useTaskStore.getState().reconcileSyncedEvents(synced({ taskIds: ['rent'] }));
+    await settle();
+
+    expect(syncDeadlineEvent).toHaveBeenCalledWith(expect.objectContaining({ id: 'rent', completed: true }));
+    expect(rowOf('rent').calendarEventId).toBeNull();
+  });
+
+  it('writes no event for a synced task this device never wrote one for', async () => {
+    useTaskStore.setState({ tasks: [linked({ calendarEventId: null })] });
+
+    useTaskStore.getState().reconcileSyncedEvents(synced({ taskIds: ['rent'] }));
+    await settle();
+
+    expect(syncDeadlineEvent).not.toHaveBeenCalled();
+    expect(sync.getCalendarPermission).not.toHaveBeenCalled();
+    expect(dbUpdateTask).not.toHaveBeenCalled();
+  });
+
+  it('retitles and resizes this device\'s time block, keeping the time the user chose', async () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'report', title: 'Write the Q3 report', estimatedMinutes: 90, timeBlockEventId: 'block-1' })],
+    });
+    sync.readTimeBlockEvent.mockResolvedValue({
+      title: 'Write the report', start: new Date(2026, 7, 13, 14, 0), end: new Date(2026, 7, 13, 14, 45), allDay: false,
+    });
+
+    useTaskStore.getState().reconcileSyncedEvents(synced({ taskIds: ['report'] }));
+    await settle();
+
+    expect(sync.updateTimeBlockEvent).toHaveBeenCalledWith('block-1', {
+      title: 'Write the Q3 report',
+      endDate: new Date(2026, 7, 13, 15, 30),
+    });
+    // No deadline event here, so nothing asks for one.
+    expect(syncDeadlineEvent).not.toHaveBeenCalled();
+  });
+
+  it('deletes the deadline event of a task another device removed, and never a block', async () => {
+    useTaskStore.setState({ tasks: [] });
+
+    useTaskStore.getState().reconcileSyncedEvents(synced({ removedTaskEvents: ['evt-9'] }));
+    await settle();
+
+    expect(sync.deleteCalendarEvent).toHaveBeenCalledWith('evt-9');
+    expect(sync.deleteCalendarEvent).toHaveBeenCalledTimes(1);
+    expect(sync.updateTimeBlockEvent).not.toHaveBeenCalled();
+  });
+
+  // Without access the deadline move fails and its fallback returns null, and
+  // a block reads back as gone: either would be written over a good link.
+  it('touches nothing without calendar access, so no link is lost', async () => {
+    sync.getCalendarPermission.mockResolvedValue('denied');
+    useTaskStore.setState({ tasks: [linked({ timeBlockEventId: 'block-1' })] });
+
+    useTaskStore.getState().reconcileSyncedEvents(synced({ taskIds: ['rent'], removedTaskEvents: ['evt-9'] }));
+    await settle();
+
+    expect(syncDeadlineEvent).not.toHaveBeenCalled();
+    expect(sync.readTimeBlockEvent).not.toHaveBeenCalled();
+    expect(sync.deleteCalendarEvent).not.toHaveBeenCalled();
+    expect(rowOf('rent')).toMatchObject({ calendarEventId: 'evt-1', timeBlockEventId: 'block-1' });
+  });
+
+  it('reads each row again after the permission check, and leaves one whose link went meanwhile', async () => {
+    useTaskStore.setState({ tasks: [linked(), linked({ id: 'tax', title: 'File taxes', calendarEventId: 'evt-t' })] });
+
+    useTaskStore.getState().reconcileSyncedEvents(synced({ taskIds: ['rent', 'tax'] }));
+    useTaskStore.setState(s => ({
+      tasks: s.tasks.map(t => (t.id === 'rent' ? { ...t, title: 'Pay the rent' } : { ...t, calendarEventId: null })),
+    }));
+    await settle();
+
+    expect(syncDeadlineEvent).toHaveBeenCalledTimes(1);
+    expect(syncDeadlineEvent).toHaveBeenCalledWith(expect.objectContaining({ id: 'rent', title: 'Pay the rent' }));
+  });
+
+  it('asks for nothing at all in demo mode', async () => {
+    setDemoModeActive(true);
+    try {
+      useTaskStore.setState({ tasks: [linked({ timeBlockEventId: 'block-1' })] });
+
+      useTaskStore.getState().reconcileSyncedEvents(synced({ taskIds: ['rent'], removedTaskEvents: ['evt-9'] }));
+      await settle();
+
+      expect(sync.getCalendarPermission).not.toHaveBeenCalled();
+      expect(syncDeadlineEvent).not.toHaveBeenCalled();
+      expect(sync.readTimeBlockEvent).not.toHaveBeenCalled();
+      expect(sync.deleteCalendarEvent).not.toHaveBeenCalled();
+    } finally {
+      setDemoModeActive(false);
+    }
   });
 });
 

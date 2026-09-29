@@ -2678,6 +2678,11 @@ export interface Task {
   // **This device's, and it doesn't sync, like the two below** (#2950): an
   // EventKit id names a record on one phone (`SYNC_DEVICE_LOCAL_COLUMNS` in
   // db/syncTracking.ts says how each of the three went wrong on the wire).
+  // Each device holds the id of the event *it* wrote, and a peer's edit to the
+  // task leaves it alone. The event itself still follows that edit: the reload
+  // after a sync rewrites it, or deletes it when the peer completed or deleted
+  // the task (`reconcileSyncedEvents` in useTaskStore, with the rules in
+  // `taskEventsAfterSync`). A task with no event here gets none from a sync.
   calendarEventId: string | null;
 
   // The id of the one-shot event logging this task's completion, or null when
@@ -2713,6 +2718,11 @@ export interface Task {
   // made in their own calendar and may have shared with other people. A task
   // completed, deleted or spawned into its next occurrence leaves the event
   // alone. Resolve-or-shrug like every other cross-row pointer here.
+  //
+  // Device-local like calendarEventId (#2950), and a peer's rename or new
+  // estimate reaches the block the same way, through the reload after a sync:
+  // the title and the length, never the start, and a task deleted on another
+  // device still leaves its block where it is.
   timeBlockEventId: string | null;
 
   /**

@@ -90,8 +90,9 @@ let syncInFlight = false;
  * without them (see App.tsx and backgroundRefresh.ts for the registration).
  *
  * Handed what the sync applied, for the work a reload alone can't do: a meal's
- * calendar event lives on this device and only this device can move or delete
- * it (#2950, `reconcileSyncedEvents` in useMealPlanStore).
+ * calendar event, and a task's deadline event and time block, live on this
+ * device and only this device can move or delete them (#2950,
+ * `reconcileSyncedEvents` in useMealPlanStore and useTaskStore).
  */
 let reloadAfterSync: (applied: ApplyReport) => void = () => {};
 export function registerSyncReload(reload: (applied: ApplyReport) => void): void {
