@@ -1,0 +1,4 @@
+{
+  "message": "On the grocery list, a long quantity like \"2 x 14 oz cans, drained\" now shows on its own line under the item's name, so neither the name nor the quantity gets cut off. Short quantities stay at the end of the row",
+  "date": "2026-09-28"
+}

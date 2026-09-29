@@ -25,6 +25,7 @@ import { convertQuantity } from '../utils/unitConvert';
 import { describeProduct, RATING_LABELS } from '../utils/groceryProduct';
 import { formatPrice, formatPriceInput, parsePriceInput, priceToInput } from '../utils/groceryPrice';
 import { groceryNameKey } from '../utils/groceryParse';
+import { quantityFitsBesideName } from '../utils/groceryRowQuantity';
 import { haptics } from '../utils/haptics';
 
 // Matches GroceryItemSheet's own price field — "10000.00" is the longest a
@@ -201,6 +202,12 @@ export const GroceryRow = React.memo(function GroceryRow({
   // The item sheet's field deliberately doesn't — that one is editable, and an
   // editable field has to show what's stored.
   const shownQuantity = convertQuantity(item.quantity ?? '', unitSystem).text;
+  // A short quantity sits in the pill beside the name; a long one ("2 x 14 oz
+  // cans, drained") gets a line of its own under it, so the name keeps the
+  // row (#2946). The same rule with or without a trip, so starting one moves
+  // nothing. See groceryRowQuantity.ts for where the line is drawn and why.
+  const quantityBesideName = !!shownQuantity && quantityFitsBesideName(shownQuantity);
+  const quantityUnderName = !!shownQuantity && !quantityBesideName;
 
   // Tapping the name/quantity/star area used to toggle checked, same as the
   // rest of the row. Issue #1222: that's the only way in, so it now swaps the
@@ -443,6 +450,33 @@ export const GroceryRow = React.memo(function GroceryRow({
               </Text>
             </View>
           )}
+          {/* A quantity too long for the pill beside the name, on its own line
+              instead (#2946). The same pill, so it reads as the same field a
+              short quantity shows at the end of the row, only left-aligned and
+              given the text column's width rather than the side pill's 90pt.
+              Beside the name it took that full 90pt, wrapped, and still cut
+              the quantity off, while the name got about 80pt of a 390pt row
+              during a trip. Right after the brand, so the order on screen
+              stays the order `label` reads out (name, product, quantity).
+              Inside the tap zone like the side pill, so tapping it renames and
+              holding it drags, exactly as before. */}
+          {quantityUnderName && (
+            <View
+              style={[
+                styles.qtyPill,
+                styles.qtyPillUnder,
+                item.checked && styles.qtyPillChecked,
+                item.checked && styles.qtyPillUnderChecked,
+              ]}
+            >
+              <Text
+                style={[styles.qtyText, styles.qtyTextUnder, item.checked && styles.qtyTextChecked]}
+                numberOfLines={2}
+              >
+                {shownQuantity}
+              </Text>
+            </View>
+          )}
           {!!item.note && (
             <Text style={styles.note} numberOfLines={1}>
               {item.note}
@@ -557,14 +591,14 @@ export const GroceryRow = React.memo(function GroceryRow({
           )}
         </View>
 
-        {!!shownQuantity && (
+        {quantityBesideName && (
           <View style={[styles.qtyPill, item.checked && styles.qtyPillChecked]}>
-            {/* Two lines, capped by width rather than by lines: a quantity
-                carrying a recipe's prep instructions ("cut into ¼-inch-thick
-                rounds") is long enough that a wide, single-line pill starves
-                the name beside it down to a sliver. Same treatment
-                RecipeToListSheet's own quantity pill uses for the same
-                reason. */}
+            {/* Short quantities only now: a long one (a recipe's prep
+                instructions, "cut into ¼-inch-thick rounds") goes on its own
+                line under the name instead, see `qtyPillUnder` (#2946). What
+                stays here fits one line of the capped pill, so the two lines
+                are a backstop for unusually wide glyphs rather than the
+                layout. */}
             <Text style={[styles.qtyText, item.checked && styles.qtyTextChecked]} numberOfLines={2}>
               {shownQuantity}
             </Text>
@@ -893,6 +927,25 @@ function makeStyles(colors: Colors) {
     },
     qtyPillChecked: {
       backgroundColor: 'transparent',
+    },
+    // A long quantity's own line under the name (#2946): qtyPill above,
+    // sized to its text and left-aligned under the name, and as wide as the
+    // text column rather than the side pill's 90pt. A step below the line
+    // above it, the same gap the trip price line takes.
+    qtyPillUnder: {
+      alignSelf: 'flex-start',
+      maxWidth: '100%',
+      marginTop: spacing.xs,
+    },
+    // In the cart the pill loses its fill (qtyPillChecked), and with no fill
+    // its padding would leave the text indented from the name above it.
+    qtyPillUnderChecked: {
+      paddingHorizontal: 0,
+    },
+    // Left, where the side pill centres its two lines: under the name the
+    // text lines up with the name's own left edge.
+    qtyTextUnder: {
+      textAlign: 'left',
     },
     // Centred for the two-line case: the pill takes the width of its longest
     // line, so this only moves the shorter one and is a no-op on the
