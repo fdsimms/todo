@@ -6316,6 +6316,11 @@ function rowToSavedMeal(row: Record<string, unknown>): SavedMeal | null {
             quantity: typeof r.quantity === 'string' ? r.quantity : '',
             grams: typeof r.grams === 'number' && Number.isFinite(r.grams) ? r.grams : null,
             nutrition,
+            // Absent on every meal saved before items kept a panel, and a
+            // panel that won't parse reads as none kept rather than dropping
+            // the item: the helping is still whole, which is the same call
+            // rowToFoodLogEntry makes for the entry's own column.
+            sourcePanel: parseFoodNutrition(JSON.stringify(r.sourcePanel ?? null)),
           };
         })
         .filter((i): i is SavedMealItem => i !== null);

@@ -1,4 +1,4 @@
 {
-  "message": "A database food you log again from \"You've had this before\" in Describe a meal can now be corrected with Edit, the same as the entry it came from. Changing its weight there measures the new amount against the food's own figures.",
+  "message": "A database food you log again from a saved meal, or from \"You've had this before\" in Describe a meal, can now be corrected with Edit, the same as the entry it came from. Changing its weight in Describe a meal measures the new amount against the food's own figures.",
   "date": "2026-09-28"
 }

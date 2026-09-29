@@ -4182,7 +4182,7 @@ export interface FoodLogEntry {
    *
    * Optional on the type rather than required-nullable because absent and
    * null read identically at every reader, and every entry built in memory
-   * without one (a saved meal re-logged, a test) is the ordinary case.
+   * without one (most of what a saved meal logs, a test) is the ordinary case.
    */
   sourcePanel?: FoodNutrition | null;
   /**
@@ -4226,6 +4226,21 @@ export interface SavedMealItem {
   quantity: string;
   grams: number | null;
   nutrition: FoodNutrition;
+  /**
+   * The panel the entry it was built from kept (`FoodLogEntry.sourcePanel`),
+   * handed on to every entry the saved meal logs. Absent or null for an item
+   * built from an entry that kept none, which is most of them.
+   *
+   * Without it a database food nobody filed, saved as part of a meal, logged
+   * back as an entry that could only be renamed (#2914), and an estimate cut
+   * to a share came back with no whole to take a different share of. It is a
+   * snapshot on `nutrition`'s rule, copied verbatim both ways: the saved meal
+   * logs the same helping, so the same panel describes how it was measured.
+   *
+   * Optional because saved meals stored before it hold no such key, and it
+   * rides inside the `items` JSON blob, so sync and backups carry it as-is.
+   */
+  sourcePanel?: FoodNutrition | null;
 }
 
 /**

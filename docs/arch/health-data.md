@@ -766,9 +766,11 @@ something nobody measured:
 
   **Every route that logs the same food again carries the panel with it**, or
   the copy is back to rename-only: Duplicate, Re-date, "Log the same again",
-  and the Describe sheet's "had this before" recall. At the same amount the
-  copy takes it verbatim, an estimate's whole included, so the copy is the
-  same share of the same meal. A recall logged at a new weight is re-measured
+  the Describe sheet's "had this before" recall, and a saved meal, whose
+  items keep the panel their entries kept (`SavedMealItem.sourcePanel`,
+  inside the `items` blob, so sync and backups carry it as they are). At the
+  same amount the copy takes it verbatim, an estimate's whole included, so
+  the copy is the same share of the same meal. A recall logged at a new weight is re-measured
   against it rather than multiplied out of the stored helping
   (`recalledHelping` in `foodRecall.ts`), and keeps it, since that is what the
   new helping was measured against. An estimate's whole is never measured

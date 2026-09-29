@@ -111,6 +111,8 @@ import {
   dbApplySyncChanges,
   dbInsertFoodLogEntry,
   dbGetFoodLogEntry,
+  dbInsertSavedMeal,
+  dbGetSavedMeals,
   dbUpdateFoodLogEntry,
   dbGetDeviceId,
   dbGetSyncCursor,
@@ -126,7 +128,7 @@ import {
 } from '../db/syncTracking';
 import { buildBackup, serializeBackup, parseBackup } from '../utils/backup';
 import { OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
-import type { Task, TaskTemplate, TemplateItem, Project, Category, TaskGroup, GroceryItem, ItemProduct, ItemShopLink, Shop, Leftover, MealPlanEntry, MealSlot, Recipe, FoodLogEntry, FoodNutrition } from '../types';
+import type { Task, TaskTemplate, TemplateItem, Project, Category, TaskGroup, GroceryItem, ItemProduct, ItemShopLink, Shop, Leftover, MealPlanEntry, MealSlot, Recipe, FoodLogEntry, FoodNutrition, SavedMeal } from '../types';
 import { PORTION_PRODUCT_KEY } from '../types';
 
 // ---------------------------------------------------------------------------
@@ -5131,5 +5133,104 @@ describe('a food log entry\'s kept panel', () => {
     mockRawDb.exec('DELETE FROM food_logs;');
     dbReplaceAllData(parsed.backup.tables);
     expect(dbGetFoodLogEntry('f1')?.sourcePanel).toEqual(chicken);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Saved meals: the panel an item keeps (#2914)
+// ---------------------------------------------------------------------------
+
+describe('a saved meal item\'s kept panel', () => {
+  beforeEach(() => {
+    mockRawDb.exec('DELETE FROM saved_meals; DELETE FROM sync_deletions;');
+  });
+
+  const chicken: FoodNutrition = {
+    basis: 'per100g',
+    servingGrams: null,
+    servingText: null,
+    amounts: { calorieKcal: 165, proteinG: 31 },
+    source: 'fdc',
+    sourceId: '171077',
+    portions: [{ amount: 1, label: 'breast', grams: 172 }],
+    recordedAt: '2026-04-02T00:00:00.000Z',
+  };
+
+  const helping: FoodNutrition = {
+    ...chicken,
+    basis: 'perServing',
+    servingGrams: 200,
+    servingText: '200 g',
+    amounts: { calorieKcal: 330, proteinG: 62 },
+    portions: [],
+  };
+
+  const makeMeal = (sourcePanel?: FoodNutrition | null): SavedMeal => ({
+    id: 'm1',
+    name: 'Lunch',
+    items: [{
+      label: 'Chicken, broilers or fryers, breast, meat only, cooked, roasted',
+      recipeId: null,
+      itemId: null,
+      productId: null,
+      quantity: '200 g',
+      grams: 200,
+      nutrition: helping,
+      ...(sourcePanel !== undefined ? { sourcePanel } : {}),
+    }],
+    createdAt: '2026-04-02T12:00:00.000Z',
+  });
+
+  it('round-trips through insert and read', () => {
+    dbInsertSavedMeal(makeMeal(chicken));
+    expect(dbGetSavedMeals()[0].items[0].sourcePanel).toEqual(chicken);
+  });
+
+  it('reads a meal saved before items kept a panel as none kept', () => {
+    dbInsertSavedMeal(makeMeal());
+    const stored = mockRawDb.prepare('SELECT items FROM saved_meals WHERE id = ?').get('m1') as { items: string };
+    expect(JSON.parse(stored.items)[0]).not.toHaveProperty('sourcePanel');
+    const item = dbGetSavedMeals()[0].items[0];
+    expect(item.sourcePanel).toBeNull();
+    expect(item.nutrition).toEqual(helping);
+  });
+
+  it('reads a panel that will not parse as none kept, and keeps the item', () => {
+    dbInsertSavedMeal(makeMeal(chicken));
+    const broken = JSON.stringify([{ ...makeMeal().items[0], sourcePanel: { basis: 'nonsense' } }]);
+    mockRawDb.prepare('UPDATE saved_meals SET items = ? WHERE id = ?').run(broken, 'm1');
+    const meals = dbGetSavedMeals();
+    expect(meals).toHaveLength(1);
+    expect(meals[0].items).toHaveLength(1);
+    expect(meals[0].items[0].sourcePanel).toBeNull();
+  });
+
+  it('travels in a sync payload inside the items blob', () => {
+    dbInsertSavedMeal(makeMeal(chicken));
+    const out = dbSyncChangesSince(null);
+    const row = out.tables.saved_meals.find(r => r.id === 'm1');
+    expect(JSON.parse(String(row?.items))[0].sourcePanel).toEqual(chicken);
+
+    mockRawDb.exec('DELETE FROM saved_meals; DELETE FROM sync_deletions;');
+    dbApplySyncChanges({
+      format: SYNC_FORMAT,
+      deviceId: 'peer',
+      since: null,
+      until: '2030-01-01T00:00:00.000Z',
+      tables: { saved_meals: [{ ...row!, updated_at: '2026-04-02T12:00:00.000Z' }] },
+      deletions: [],
+    });
+    expect(dbGetSavedMeals()[0].items[0].sourcePanel).toEqual(chicken);
+  });
+
+  it('survives a backup and restore', () => {
+    dbInsertSavedMeal(makeMeal(chicken));
+    const backup = buildBackup(dbExportTables(), { appVersion: '1.0.0', exportedAt: new Date() });
+    const parsed = parseBackup(serializeBackup(backup));
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    mockRawDb.exec('DELETE FROM saved_meals;');
+    dbReplaceAllData(parsed.backup.tables);
+    expect(dbGetSavedMeals()[0].items[0].sourcePanel).toEqual(chicken);
   });
 });
