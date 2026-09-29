@@ -19,6 +19,7 @@ import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { describeAIError, estimateMealNutrition } from '../services/aiSuggestions';
 import {
+  ESTIMATE_AMOUNT_MAX_LENGTH,
   ESTIMATE_DESCRIPTION_MAX_LENGTH,
   MAX_CONTEXT_FOODS,
   describeEstimate,
@@ -265,6 +266,14 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
   /** Whether the full nutrient list and the per-ingredient split are open. */
   const [detailsOpen, setDetailsOpen] = useState(false);
   /**
+   * The amount the person typed over the model's own guess ("200 g"), which
+   * every re-ask carries, so answering a question afterward keeps it. Empty
+   * means the model's assumption stands.
+   */
+  const [amount, setAmount] = useState('');
+  /** The amount field's draft while it is open, or null while it is closed. */
+  const [amountDraft, setAmountDraft] = useState<string | null>(null);
+  /**
    * What has been eaten lately, taken once when the sheet opens.
    *
    * A snapshot rather than a subscription, the call `FoodLogEntrySheet` makes
@@ -295,6 +304,8 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
     setEstimatedFor(null);
     setQuestions([]);
     setDetailsOpen(false);
+    setAmount('');
+    setAmountDraft(null);
     const today = getCurrentDayStart();
     setHistory(recentEntries(dayKeyOf(subDays(today, 90)), dayKeyOf(today)));
   }, [visible, slot]);
@@ -468,6 +479,8 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
     setAnswers({});
     setQuestions([]);
     setDetailsOpen(false);
+    setAmount('');
+    setAmountDraft(null);
     setEstimatedFor(description);
     run(description, true);
   };
@@ -480,23 +493,43 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
   // button, so an answer reads as changing the figures, which is what it does.
   // Clearing the last answer re-asks the plain description, not the stale
   // refinement.
+  /** What a re-ask sends: the description with the typed amount and answers folded in. */
+  const refinedText = (base: string, nextAnswers: Record<string, string>, nextAmount: string) =>
+    refineDescription(
+      base,
+      questions.map(q => ({ prompt: q.prompt, answer: nextAnswers[q.prompt] ?? '' })),
+      nextAmount,
+    );
+
   const handleAnswer = (prompt: string, option: string) => {
     if (estimatedFor == null || loading) return;
     haptics.tap();
     const previous = answers;
     const next = { ...answers, [prompt]: answers[prompt] === option ? '' : option };
     setAnswers(next);
-    const anyAnswered = questions.some(q => next[q.prompt]);
-    void run(
-      anyAnswered
-        ? refineDescription(estimatedFor, questions.map(q => ({ prompt: q.prompt, answer: next[q.prompt] ?? '' })))
-        : estimatedFor,
-      false,
-    ).then(ok => {
+    void run(refinedText(estimatedFor, next, amount), false).then(ok => {
       // The kept estimate still answers the old choices, so the chips go back
       // to them rather than showing an answer the figures don't reflect. Not
       // for a dropped answer (null): that session's chips are already gone.
       if (ok === false) setAnswers(previous);
+    });
+  };
+
+  // The typed amount is re-asked like an answer is, for the same reason: the
+  // model knows what 200 g of this is and this sheet does not. A failed ask
+  // puts the old amount back so the row never names an amount the figures
+  // don't reflect.
+  const handleAmountSubmit = () => {
+    if (estimatedFor == null || loading || amountDraft == null) return;
+    const next = amountDraft.trim();
+    if (next === amount) { setAmountDraft(null); return; }
+    haptics.tap();
+    Keyboard.dismiss();
+    const previous = amount;
+    setAmount(next);
+    setAmountDraft(null);
+    void run(refinedText(estimatedFor, answers, next), false).then(ok => {
+      if (ok === false) setAmount(previous);
     });
   };
 
@@ -1080,7 +1113,42 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
                 <Text style={styles.cardTitle}>{estimate.label}</Text>
                 <Text style={styles.estimateTag}>Estimate</Text>
               </View>
-              <Text style={styles.quantity}>{estimate.quantity}</Text>
+              {/* The amount these figures assume, said outright and open to
+                  change: a description like "tofu" leaves the portion to the
+                  model, and the figures are only as right as that guess. */}
+              {amountDraft == null ? (
+                <TouchableOpacity
+                  style={styles.amountRow}
+                  activeOpacity={interaction.activeOpacity}
+                  disabled={loading}
+                  onPress={() => { haptics.tap(); setAmountDraft(amount); }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Based on ${estimate.quantity}. Change the amount`}
+                >
+                  <Text style={styles.quantity}>Based on {estimate.quantity}</Text>
+                  <Ionicons name="create-outline" size={iconSize.sm} color={colors.accent} />
+                </TouchableOpacity>
+              ) : (
+                <View style={styles.amountRow}>
+                  <TextInput
+                    style={styles.amountInput}
+                    value={amountDraft}
+                    onChangeText={setAmountDraft}
+                    placeholder="e.g. 200 g, half a block"
+                    placeholderTextColor={colors.textTertiary}
+                    maxLength={ESTIMATE_AMOUNT_MAX_LENGTH}
+                    autoFocus
+                    returnKeyType="done"
+                    onSubmitEditing={handleAmountSubmit}
+                    accessibilityLabel="How much you had"
+                  />
+                  <InlineAction
+                    label={amountDraft.trim() ? 'Update' : 'Reset'}
+                    onPress={handleAmountSubmit}
+                    accessibilityLabel={amountDraft.trim() ? 'Update the estimate for this amount' : 'Go back to the estimated amount'}
+                  />
+                </View>
+              )}
               {kcal !== undefined && (
                 <Text style={styles.bigKcal}>
                   {Math.round(kcal).toLocaleString()}
@@ -1321,7 +1389,17 @@ function makeStyles(colors: Colors) {
       gap: spacing.sm,
     },
     cardTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
-    quantity: { color: colors.textSecondary, fontSize: font.sm },
+    quantity: { color: colors.textSecondary, fontSize: font.sm, flexShrink: 1 },
+    amountRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xsm },
+    amountInput: {
+      flex: 1,
+      backgroundColor: colors.bgSecondary,
+      borderRadius: radius.sm,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.xs,
+      color: colors.text,
+      fontSize: font.sm,
+    },
     claim: { color: colors.textSecondary, fontSize: font.sm, lineHeight: 18 },
     figure: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
     figureLabel: { color: colors.text, fontSize: font.sm },
