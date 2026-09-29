@@ -7998,6 +7998,17 @@ describe('separate shopping lists', () => {
       );
     });
 
+    // The finish sheet hides its freezer toggle on an away list (#2925) on the
+    // strength of this: a rented freezer is not the pantry, so even a flag
+    // that got through writes nothing.
+    it('freezes nothing, even when the caller flags a row', () => {
+      const coffee = seedAwayTrip();
+
+      useGroceryStore.getState().finishShopping(null, {}, undefined, new Set([coffee.id]));
+
+      expect(useGroceryStore.getState().items.find(i => i.id === coffee.id)!.frozenAt).toBeNull();
+    });
+
     it('links no store, even when the caller names one', () => {
       // Every store on file is one near home. A trip at the shop by the rental
       // is not evidence about where you can get this.

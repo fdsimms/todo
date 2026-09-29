@@ -98,8 +98,8 @@ export interface ReceiptAddDraft {
    * but a big shop read into the Pantry is exactly when half of it goes
    * straight in the freezer, and without this the only way to say so was
    * finding each row afterwards. The shopping context still leaves it unset:
-   * nothing it hands the finish sheet carries a freezer, and that sheet asks
-   * nothing about one.
+   * that path ends in the finish sheet, which asks about the freezer itself
+   * on every row the trip bought, receipt or not.
    */
   frozen?: boolean;
   /**

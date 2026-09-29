@@ -479,9 +479,9 @@ going off.
   mirrors the db. The patch splits the purchase record into one conditional spread so a column
   added later can't be half-covered.
 - **The finish sheet drops the questions rather than discarding the answers.** `away` hides the
-  store picker, the "anything they didn't have?" section, the price fields and the receipt scan —
-  every one of them asks about what a purchase *leaves behind*. What's left is the confirm, which
-  is still worth asking for: it is what empties the trolley.
+  store picker, the "anything they didn't have?" section, the price fields (and the freezer toggle
+  on them) and the receipt scan — every one of them asks about what a purchase *leaves behind*.
+  What's left is the confirm, which is still worth asking for: it is what empties the trolley.
 - **`StartTripPrompt` offers no stores on an away list**, which leaves it as the Finish button
   alone — the shape it already takes for anyone with no stores on file. Every store on record is
   one near home.
@@ -1110,7 +1110,7 @@ froze, the jar you opened and the tub you were nearly out of are all the old one
 **A receipt or a barcode read into the Pantry clears them too** (`addManyToPantry`'s `acquired`,
 passed by `KitchenScreen`'s two scan paths and nothing else). It isn't a trip, so it still writes
 no purchase count and no use-by day of its own, but it is a new packet, and before this it carried
-the old one's "in the freezer", "opened" and "running low" straight onto it. Four details:
+the old one's "in the freezer", "opened" and "running low" straight onto it. Five details:
 
 - **A running-low row comes off the home list.** That is the one list `setRunningLow` reaches into,
   and the thing it was on there to buy has just been bought. The one-direction rule above is about
@@ -1128,7 +1128,23 @@ the old one's "in the freezer", "opened" and "running low" straight onto it. Fou
   row had to be found and dragged afterwards. So its rows carry the barcode sheet's snowflake in
   the Pantry context, turning it on checks the row, and `handleReceiptApply` hands the result to
   `addManyToPantry` as `frozenNames` the way `handleScanApply` does. It stays out of the shopping
-  context: that path ends in the finish sheet, which asks nothing about a freezer.
+  context: that path ends in the finish sheet, which asks for itself (below).
+- **So does finishing a trip** (#2925), which is where the other big shop ends. Every row under
+  "What did they cost?" carries the same snowflake at its trailing edge, and the sheet hands its
+  answer to `finishShopping` as `frozenIds`, which already existed for the barcode sheet's toggle
+  and lands after the purchase's own `frozenAt` clear. Three details:
+  - **It rides the price rows rather than being a section of its own.** Those rows already are
+    the list of what came home, one per item; a second copy of the list would double the longest
+    part of the sheet. Every row it sits on is already being bought, so turning it on has nothing
+    else to include, unlike the receipt's toggle, which checks its row.
+  - **The barcode sheet's flags seed it rather than being added to it.** `GroceryScreen` still
+    holds `scanFrozenIds` until the trip ends, but it now opens the finish sheet with those rows
+    lit, and what the sheet hands back is what is written. Unioned instead, a scanned row would
+    have shown an unlit snowflake and gone in the freezer anyway, with no way to take it back.
+  - **It is offered only where finishing records the purchase.** An away trip records nothing and
+    already hides the price rows it sits on. Simplified mode hides it with "Pantry and freezer
+    tracking", unless a scan this trip already flagged a row, the mode's usual "a feature in use
+    stays on show".
 
 ### Nothing leaves the pantry, so the one exit worth noticing is offered as a task
 

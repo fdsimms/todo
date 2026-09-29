@@ -292,9 +292,10 @@ export function GroceryScreen() {
   const [scanOpen, setScanOpen] = useState(false);
   // The scan sheet's per-row freezer toggle, held here rather than written
   // immediately: a scan only checks an item onto the list, and the item isn't
-  // bought yet — see finishShopping's own doc comment on frozenIds. Applied
-  // (and cleared) when the trip actually finishes; cleared without applying
-  // if the trip is abandoned instead.
+  // bought yet — see finishShopping's own doc comment on frozenIds. It seeds
+  // the finish sheet's own freezer toggle, whose answer is what the trip
+  // writes (#2925), and is cleared when the trip finishes; cleared without
+  // applying if the trip is abandoned instead.
   const [scanFrozenIds, setScanFrozenIds] = useState<ReadonlySet<string>>(new Set());
   // What a scanned receipt read, held between the two sheets. Undefined rather
   // than null when there's no receipt in play: the finish sheet tells the two
@@ -1027,7 +1028,8 @@ export function GroceryScreen() {
       unavailableIds: string[],
       priceById: Record<string, number>,
       substitutes: Array<{ itemId: string; subItemId: string }>,
-      purchasedAt?: string
+      purchasedAt: string | undefined,
+      frozenIds: ReadonlySet<string>
     ) => {
       setFinishOpen(false);
       // The receipt was for the trip that just ended. Leaving it set would
@@ -1053,11 +1055,14 @@ export function GroceryScreen() {
       }
       // The prices ride with the trip rather than being a fourth write: they're
       // about what it bought, so they have to land on the same rows in the same
-      // pass that takes them off the list. scanFrozenIds rides along the same
-      // way, for the same reason — see finishShopping's own doc comment.
+      // pass that takes them off the list. The freezer flags ride along the
+      // same way, for the same reason — see finishShopping's own doc comment.
+      // They are the finish sheet's answer, which started from scanFrozenIds
+      // and may have turned some of them off, so the scan's set isn't passed
+      // again here.
       // A whole trip closing out is more than one more item ticked off, same
       // distinction chainFinish already draws for a task chain's last step.
-      if (finishShopping(shopId, priceById, purchasedAt, scanFrozenIds) > 0) haptics.chainFinish();
+      if (finishShopping(shopId, priceById, purchasedAt, frozenIds) > 0) haptics.chainFinish();
       // Consumed either way: an id finishShopping didn't end up touching
       // (marked unavailable, substituted away) was never going to be applied
       // on some later trip either.
@@ -1068,7 +1073,7 @@ export function GroceryScreen() {
       endTrip();
       setCartOpen(false);
     },
-    [finishShopping, markItemsUnavailable, linkItemSub, endTrip, itemSubs, scanFrozenIds]
+    [finishShopping, markItemsUnavailable, linkItemSub, endTrip, itemSubs]
   );
 
   /**
@@ -1151,8 +1156,9 @@ export function GroceryScreen() {
    * question no scan can answer gets asked.
    *
    * The scan sheet's freezer toggle is captured into `scanFrozenIds` rather
-   * than written here, for the same reason: nothing is bought yet. It rides
-   * along to `finishShopping` in `handleFinished`, once it is.
+   * than written here, for the same reason: nothing is bought yet. It seeds
+   * the finish sheet's own freezer toggle, and what that sheet hands back
+   * goes to `finishShopping` in `handleFinished`, once it is.
    *
    * **What a barcode knows and a receipt doesn't is the box**: who makes it,
    * and which one of the item it is. A row this session mints takes its brand
@@ -1784,6 +1790,7 @@ export function GroceryScreen() {
         seedPriceText={receiptSeed?.priceText}
         seedPurchasedAt={receiptSeed?.purchasedAt}
         seedStamp={receiptSeed?.stamp}
+        seedFrozenIds={scanFrozenIds}
         // Gated for the reason the list's own button is: with neither a key
         // nor an on-device read, the action opens a sheet that can only
         // apologise.
