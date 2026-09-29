@@ -4427,8 +4427,9 @@ export function dbFinishGroceryShopping(
   shopId: string | null = null,
   expiresAtById: Readonly<Record<string, string>> = {},
   priceById: Readonly<Record<string, number>> = {},
-  // The rows this trip is putting straight in the freezer — the scan sheet's
-  // own toggle, made about the bag being carried home right now. It overrides
+  // The rows this trip is putting straight in the freezer — the finish
+  // sheet's toggle (which the scan sheet's own seeds), made about the bag
+  // being carried home right now. It overrides
   // the blanket `frozen_at = NULL` below, which is about the *previous* bag.
   // Without it the store's matching in-memory patch was the only record of the
   // freeze, so it survived until the next load and no further (see

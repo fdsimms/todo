@@ -1250,10 +1250,11 @@ interface GroceryStore extends UndoHistoryActions {
    * scanned (#1806).
    *
    * `frozenIds` overrides this trip's own `frozenAt: null` clear (see the
-   * write below) for just those rows — the barcode scan sheet's per-row
-   * freezer toggle, applied here rather than at scan time because scanning
-   * only checks an item onto the list; freezing a row this trip hasn't
-   * bought yet would be a claim about food that isn't home. An id the trip
+   * write below) for just those rows — the finish sheet's per-row freezer
+   * toggle (#2925), which starts from the barcode scan sheet's own. Applied
+   * here rather than at scan time because scanning only checks an item onto
+   * the list; freezing a row this trip hasn't bought yet would be a claim
+   * about food that isn't home. An id the trip
    * didn't actually purchase (marked unavailable, or substituted away) is
    * silently not among the rows this write touches, so flagging it here does
    * nothing rather than freezing the wrong row.
@@ -4545,9 +4546,9 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
                 // come home with a new one. Leaving it would suspend the fresh
                 // `expiresAt` being stamped right below, so the new bag would
                 // inherit "in the freezer" and never count down. `frozenIds`
-                // is a *fresh* claim about this exact bag — the scan sheet's
-                // own toggle, made this trip — so it wins over the clear
-                // rather than fighting it.
+                // is a *fresh* claim about this exact bag — the finish sheet's
+                // toggle, made this trip — so it wins over the clear rather
+                // than fighting it.
                 frozenAt: frozenIds?.has(i.id) ? purchasedAt : null,
                 // Same again: the jar you opened is not the jar in the bag you
                 // just carried home, and a fresh one is sealed.
