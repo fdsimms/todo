@@ -42,7 +42,7 @@ import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animat
 import { formatDeadlineDate, formatScheduledDate, formatTaskDate, formatHHMM, dateToHHMM, formatWindowRemaining, getDeadlineCountdown, getEffectiveTaskDate, getTaskDayStart, getCurrentDayStart, getLogicalDayKey, dayKeyToDate, formatTimeOfDay, hoursUnlockLabel } from '../utils/dateUtils';
 import { isNegativeTask, isCleanToday, slipsToday } from '../utils/negativeHabits';
 import { scheduleMoveUpdates } from '../utils/taskMoves';
-import { confirmScheduleMove } from '../utils/scheduleMovePrompt';
+import { confirmScheduleMove, confirmSegmentScope } from '../utils/scheduleMovePrompt';
 import { formatDuration, formatStopwatch } from '../utils/effort';
 import { confirmSlip } from '../utils/slipConfirm';
 import { scheduleCompletionTimer } from '../utils/notifications';
@@ -4111,7 +4111,7 @@ export const TaskItem = React.memo(function TaskItem({
           taskNotes={task.notes}
           taskEffort={task.effort}
           taskEstimatedMinutes={task.estimatedMinutes}
-          onConfirm={(date, segs) => confirmScheduleMove([task], date, restartSchedule => {
+          onConfirm={(date, segs) => confirmScheduleMove([task], date, restartSchedule => confirmSegmentScope([task], segs, segmentScope => {
             const snapshot = { ...task };
             // A recurring task's dueDate is the anchor its whole future grid is
             // measured from, and a series member's was hand-picked out of a set
@@ -4153,14 +4153,14 @@ export const TaskItem = React.memo(function TaskItem({
             updateTask(
               task.id,
               moved ? { ...baseUpdates, pinned: false } : baseUpdates,
-              { markSeenOnBecomeVisible: true },
+              { markSeenOnBecomeVisible: true, ...(segmentScope === 'occurrence' ? { scope: 'occurrence' as const } : {}) },
             );
             setLastAction({
               label: 'Task rescheduled',
               undo: () => updateTask(snapshot.id, snapshot),
             });
             setShowWhenPicker(false);
-          })}
+          }))}
           onClear={() => {
             const snapshot = { ...task };
             updateTask(task.id, {

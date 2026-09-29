@@ -6,6 +6,9 @@ import { pullForwardChoice } from './taskMoves';
 
 const day = (date: Date) => format(date, 'EEE, MMM d');
 
+// Not sameTimeSegments from visibilityUtils: that module pulls in the database.
+const sameSegments = (a: TimeOfDay[], b: TimeOfDay[]) => a.length === b.length && a.every(s => b.includes(s));
+
 /**
  * Ask what a pulled-forward repeating task's schedule should do, and go
  * straight through when there's nothing to ask.
@@ -56,6 +59,46 @@ export function confirmScheduleMove(
   );
 }
 
+/**
+ * Ask whether a changed time of day applies to a repeating task's future
+ * repeats, and go straight through when there's nothing to ask.
+ *
+ * `timeSegments` is a content field, so a plain `updateTask` carries it onto
+ * every later occurrence; the row picker and the bulk bar's When used to do
+ * exactly that with no question, where the task editor has always asked.
+ * `proceed('occurrence' | 'series')` gets the answer. Only a repeating task
+ * or a dated series whose segment actually changes counts, so picking a new
+ * day alone never prompts. Cancel calls nothing.
+ */
+export function confirmSegmentScope(
+  tasks: Task[],
+  timeSegments: TimeOfDay[],
+  proceed: (scope: 'occurrence' | 'series') => void,
+): void {
+  const asked = tasks.filter(
+    t => (t.recurrenceType !== 'none' || !!t.seriesId) && !sameSegments(t.timeSegments ?? [], timeSegments),
+  );
+  if (asked.length === 0) {
+    proceed('series');
+    return;
+  }
+  const one = asked.length === 1;
+  const isSeries = one && !!asked[0].seriesId && asked[0].recurrenceType === 'none';
+  Alert.alert(
+    'Change time of day',
+    one
+      ? isSeries
+        ? 'This task falls on more than one date. Apply the new time of day to just this date, or to this and its later dates?'
+        : 'This task repeats. Apply the new time of day to just this task, or to it and every future repeat?'
+      : `${asked.length} of these repeat. Apply the new time of day to just these tasks, or to them and every future repeat?`,
+    [
+      { text: isSeries ? 'This date' : 'This task', onPress: () => proceed('occurrence') },
+      { text: isSeries ? 'This and later dates' : 'This and future tasks', onPress: () => proceed('series') },
+      { text: 'Cancel', style: 'cancel' },
+    ],
+  );
+}
+
 /** The bulk bar's When: asks as above, then re-dates the selection and calls `onDone`. */
 export function confirmBulkSetWhen(
   ids: string[],
@@ -66,7 +109,9 @@ export function confirmBulkSetWhen(
   const { tasks, bulkSetWhen } = useTaskStore.getState();
   const selected = tasks.filter(t => ids.includes(t.id));
   confirmScheduleMove(selected, date, restart => {
-    bulkSetWhen(ids, date, timeSegments, { restartSchedules: restart });
-    onDone();
+    confirmSegmentScope(selected, timeSegments, scope => {
+      bulkSetWhen(ids, date, timeSegments, { restartSchedules: restart, scope });
+      onDone();
+    });
   });
 }

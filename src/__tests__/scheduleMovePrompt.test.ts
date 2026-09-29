@@ -11,7 +11,7 @@ jest.mock('../store/useTaskStore', () => ({
   useTaskStore: { getState: () => ({ tasks: mockStoreTasks, bulkSetWhen: mockBulkSetWhen }) },
 }));
 
-import { confirmBulkSetWhen, confirmScheduleMove } from '../utils/scheduleMovePrompt';
+import { confirmBulkSetWhen, confirmScheduleMove, confirmSegmentScope } from '../utils/scheduleMovePrompt';
 
 const at = (d: number) => new Date(2026, 5, d, 12, 0, 0, 0);
 const task = (over: Partial<Task> = {}): Task => ({
@@ -73,13 +73,44 @@ describe('confirmScheduleMove', () => {
   });
 });
 
+describe('confirmSegmentScope', () => {
+  it('goes straight through when the time of day is unchanged', () => {
+    const proceed = jest.fn();
+    confirmSegmentScope([task({ timeSegments: ['morning'] })], ['morning'], proceed);
+    expect(Alert.alert).not.toHaveBeenCalled();
+    expect(proceed).toHaveBeenCalledWith('series');
+  });
+
+  it('goes straight through for a task that does not repeat', () => {
+    const proceed = jest.fn();
+    confirmSegmentScope([task({ recurrenceType: 'none', timeSegments: [] })], ['evening'], proceed);
+    expect(Alert.alert).not.toHaveBeenCalled();
+    expect(proceed).toHaveBeenCalledWith('series');
+  });
+
+  it('asks for a repeating task whose time of day changes', () => {
+    const proceed = jest.fn();
+    confirmSegmentScope([task({ timeSegments: ['morning'] })], ['evening'], proceed);
+    expect(buttons().map(b => b.text)).toEqual(['This task', 'This and future tasks', 'Cancel']);
+    buttons()[0].onPress!();
+    expect(proceed).toHaveBeenCalledWith('occurrence');
+  });
+
+  it('does nothing on Cancel', () => {
+    const proceed = jest.fn();
+    confirmSegmentScope([task({ timeSegments: [] })], ['evening'], proceed);
+    buttons()[2].onPress?.();
+    expect(proceed).not.toHaveBeenCalled();
+  });
+});
+
 describe('confirmBulkSetWhen', () => {
   it('passes the answer through to bulkSetWhen and then finishes', () => {
     mockStoreTasks = [task({ id: 'a' })];
     const done = jest.fn();
     confirmBulkSetWhen(['a'], at(9), [], done);
     buttons()[1].onPress!();
-    expect(mockBulkSetWhen).toHaveBeenCalledWith(['a'], at(9), [], { restartSchedules: true });
+    expect(mockBulkSetWhen).toHaveBeenCalledWith(['a'], at(9), [], { restartSchedules: true, scope: 'series' });
     expect(done).toHaveBeenCalled();
   });
 
