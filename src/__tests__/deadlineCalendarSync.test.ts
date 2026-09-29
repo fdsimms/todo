@@ -18,12 +18,25 @@ jest.mock('../utils/calendarSync', () => ({
   deleteCalendarEvent: (...args: unknown[]) => mockDeleteDeadlineEvent(...args),
 }));
 
+// #2950: each write reads its event's server id back. Empty unless a test
+// says otherwise, so a link's server id is null.
+const mockExternalIds = jest.fn();
+const mockEventsWithExternalId = jest.fn();
+jest.mock('todo-eventkit-bridge', () => ({
+  externalIdentifiers: (ids: string[]) => mockExternalIds(ids),
+  eventsWithExternalIdentifier: (id: string) => mockEventsWithExternalId(id),
+}), { virtual: true });
+
 let mockDemoActive = false;
 jest.mock('../utils/demoState', () => ({
   isDemoModeActive: () => mockDemoActive,
 }));
 
 import { syncDeadlineEvent, taskEventsAfterSync } from '../utils/deadlineCalendarSync';
+import { NO_EVENT_LINK } from '../utils/calendarEventLink';
+
+/** What a write links when the server id can't be read. */
+const linked = (eventId: string) => ({ eventId, externalId: null });
 import { emptyApplyReport, type ApplyReport } from '../utils/syncMerge';
 
 const BASE: Task = {
@@ -165,13 +178,15 @@ beforeEach(() => {
   // EventKit reports the same id back for an event rewritten in place.
   mockMoveDeadlineEvent.mockReset().mockImplementation((id: string) => Promise.resolve(id));
   mockDeleteDeadlineEvent.mockReset().mockResolvedValue(undefined);
+  mockExternalIds.mockReset().mockResolvedValue({});
+  mockEventsWithExternalId.mockReset().mockResolvedValue([]);
 });
 
 describe('syncDeadlineEvent', () => {
   it('does nothing when no calendar is picked in settings', async () => {
     mockSettings.deadlineCalendarId = null;
     const result = await syncDeadlineEvent(makeTask({ deadlineOnCalendar: true, deadline: '2026-08-20T00:00:00Z' }));
-    expect(result).toBeNull();
+    expect(result).toEqual(NO_EVENT_LINK);
     expect(mockCreateDeadlineEvent).not.toHaveBeenCalled();
     expect(mockMoveDeadlineEvent).not.toHaveBeenCalled();
     expect(mockDeleteDeadlineEvent).not.toHaveBeenCalled();
@@ -179,27 +194,27 @@ describe('syncDeadlineEvent', () => {
 
   it('does nothing when the per-task toggle is off', async () => {
     const result = await syncDeadlineEvent(makeTask({ deadlineOnCalendar: false, deadline: '2026-08-20T00:00:00Z' }));
-    expect(result).toBeNull();
+    expect(result).toEqual(NO_EVENT_LINK);
     expect(mockCreateDeadlineEvent).not.toHaveBeenCalled();
   });
 
   it('does nothing when there is no deadline', async () => {
     const result = await syncDeadlineEvent(makeTask({ deadlineOnCalendar: true, deadline: null }));
-    expect(result).toBeNull();
+    expect(result).toEqual(NO_EVENT_LINK);
     expect(mockCreateDeadlineEvent).not.toHaveBeenCalled();
   });
 
-  it('deletes the existing event and returns null when the toggle is off but an event still exists', async () => {
+  it('deletes the existing event and links nothing when the toggle is off but an event still exists', async () => {
     const task = makeTask({ deadlineOnCalendar: false, deadline: '2026-08-20T00:00:00Z', calendarEventId: 'evt-1' });
     const result = await syncDeadlineEvent(task);
-    expect(result).toBeNull();
+    expect(result).toEqual(NO_EVENT_LINK);
     expect(mockDeleteDeadlineEvent).toHaveBeenCalledWith('evt-1');
   });
 
   it('deletes the existing event when the deadline is cleared', async () => {
     const task = makeTask({ deadlineOnCalendar: true, deadline: null, calendarEventId: 'evt-1' });
     const result = await syncDeadlineEvent(task);
-    expect(result).toBeNull();
+    expect(result).toEqual(NO_EVENT_LINK);
     expect(mockDeleteDeadlineEvent).toHaveBeenCalledWith('evt-1');
   });
 
@@ -208,7 +223,7 @@ describe('syncDeadlineEvent', () => {
       deadlineOnCalendar: true, deadline: '2026-08-20T00:00:00Z', calendarEventId: 'evt-1', completed: true,
     });
     const result = await syncDeadlineEvent(task);
-    expect(result).toBeNull();
+    expect(result).toEqual(NO_EVENT_LINK);
     expect(mockDeleteDeadlineEvent).toHaveBeenCalledWith('evt-1');
   });
 
@@ -217,7 +232,7 @@ describe('syncDeadlineEvent', () => {
       deadlineOnCalendar: true, deadline: '2026-08-20T00:00:00Z', calendarEventId: 'evt-1', archived: true,
     });
     const result = await syncDeadlineEvent(task);
-    expect(result).toBeNull();
+    expect(result).toEqual(NO_EVENT_LINK);
     expect(mockDeleteDeadlineEvent).toHaveBeenCalledWith('evt-1');
   });
 
@@ -231,7 +246,7 @@ describe('syncDeadlineEvent', () => {
     mockCreateDeadlineEvent.mockResolvedValue('new-evt');
     const task = makeTask({ deadlineOnCalendar: true, deadline: '2026-08-20T00:00:00Z', title: 'Renew passport' });
     const result = await syncDeadlineEvent(task);
-    expect(result).toBe('new-evt');
+    expect(result).toEqual(linked('new-evt'));
     expect(mockCreateDeadlineEvent).toHaveBeenCalledWith('cal-1', {
       title: 'Renew passport',
       date: new Date('2026-08-20T00:00:00Z'),
@@ -244,7 +259,7 @@ describe('syncDeadlineEvent', () => {
       deadlineOnCalendar: true, deadline: '2026-08-20T00:00:00Z', calendarEventId: 'evt-1', title: 'Renew passport',
     });
     const result = await syncDeadlineEvent(task);
-    expect(result).toBe('evt-1');
+    expect(result).toEqual(linked('evt-1'));
     expect(mockMoveDeadlineEvent).toHaveBeenCalledWith('evt-1', 'cal-1', {
       title: 'Renew passport',
       date: new Date('2026-08-20T00:00:00Z'),
@@ -262,7 +277,7 @@ describe('syncDeadlineEvent', () => {
     const task = makeTask({
       deadlineOnCalendar: true, deadline: '2026-08-20T00:00:00Z', calendarEventId: 'evt-work', title: 'Renew passport',
     });
-    expect(await syncDeadlineEvent(task)).toBe('evt-moved');
+    expect(await syncDeadlineEvent(task)).toEqual(linked('evt-moved'));
     expect(mockMoveDeadlineEvent).toHaveBeenCalledWith('evt-work', 'cal-home', expect.objectContaining({
       title: 'Renew passport',
     }));
@@ -276,7 +291,7 @@ describe('syncDeadlineEvent', () => {
       deadlineOnCalendar: true, deadline: '2026-08-20T00:00:00Z', calendarEventId: 'stale-evt',
     });
     const result = await syncDeadlineEvent(task);
-    expect(result).toBe('fresh-evt');
+    expect(result).toEqual(linked('fresh-evt'));
     expect(mockMoveDeadlineEvent).toHaveBeenCalledWith('stale-evt', 'cal-1', expect.anything());
     expect(mockCreateDeadlineEvent).toHaveBeenCalledWith('cal-1', expect.anything());
   });
@@ -307,10 +322,46 @@ describe('syncDeadlineEvent', () => {
     const task = makeTask({
       deadlineOnCalendar: true, deadline: '2026-08-20T00:00:00Z', calendarEventId: 'evt-1',
     });
-    expect(await syncDeadlineEvent(task)).toBeNull();
+    expect(await syncDeadlineEvent(task)).toEqual(NO_EVENT_LINK);
     expect(mockCreateDeadlineEvent).not.toHaveBeenCalled();
     expect(mockMoveDeadlineEvent).not.toHaveBeenCalled();
     expect(mockDeleteDeadlineEvent).not.toHaveBeenCalled();
+  });
+
+  // #2950: the server id is what finds the event again after a restore.
+  it('links the server id of the event it writes', async () => {
+    mockExternalIds.mockImplementation((ids: string[]) => Promise.resolve({ [ids[0]]: `ext-${ids[0]}` }));
+    mockCreateDeadlineEvent.mockResolvedValue('new-evt');
+    const task = makeTask({ deadlineOnCalendar: true, deadline: '2026-08-20T00:00:00Z' });
+    expect(await syncDeadlineEvent(task)).toEqual({ eventId: 'new-evt', externalId: 'ext-new-evt' });
+  });
+
+  it('finds a restored backup\'s event by its server id rather than writing a second one', async () => {
+    // The old phone's local id names nothing on this one.
+    mockMoveDeadlineEvent.mockImplementation((id: string) => Promise.resolve(id === 'evt-old-phone' ? null : id));
+    mockEventsWithExternalId.mockResolvedValue([{ id: 'evt-this-phone', allDay: true, calendarId: 'cal-1' }]);
+    const task = makeTask({
+      deadlineOnCalendar: true, deadline: '2026-08-21T00:00:00Z', title: 'Renew passport',
+      calendarEventId: 'evt-old-phone', calendarEventExternalId: 'ext-1',
+    });
+
+    expect(await syncDeadlineEvent(task)).toEqual({ eventId: 'evt-this-phone', externalId: 'ext-1' });
+    expect(mockEventsWithExternalId).toHaveBeenCalledWith('ext-1');
+    expect(mockMoveDeadlineEvent).toHaveBeenLastCalledWith('evt-this-phone', 'cal-1', {
+      title: 'Renew passport',
+      date: new Date('2026-08-21T00:00:00Z'),
+    });
+    expect(mockCreateDeadlineEvent).not.toHaveBeenCalled();
+  });
+
+  it('deletes by the local id alone once a task stops wanting its event, and links nothing', async () => {
+    const task = makeTask({
+      deadlineOnCalendar: false, deadline: '2026-08-20T00:00:00Z',
+      calendarEventId: 'evt-1', calendarEventExternalId: 'ext-1',
+    });
+    expect(await syncDeadlineEvent(task)).toEqual(NO_EVENT_LINK);
+    expect(mockDeleteDeadlineEvent).toHaveBeenCalledWith('evt-1');
+    expect(mockEventsWithExternalId).not.toHaveBeenCalled();
   });
 });
 

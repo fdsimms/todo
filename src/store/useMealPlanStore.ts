@@ -1532,9 +1532,10 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     if (plan.reconcile.length === 0 && plan.remove.length === 0) return;
     // Only with calendar access. Without it (revoked, or EventKit out of
     // reach) `syncMealEvent`'s fallback deletes nothing, creates nothing and
-    // returns null, and that null written over the link orphans an event this
-    // device can no longer name. A local edit has the same exposure, but this
-    // runs unasked, in the background, over every meal another device touched.
+    // returns an empty link, and writing that over the stored one orphans an
+    // event this device can no longer name. A local edit has the same
+    // exposure, but this runs unasked, in the background, over every meal
+    // another device touched.
     // Skipped, the links stay as they are, and the meal's next reconcile once
     // access is back puts its event right.
     void getCalendarPermission()
@@ -1568,6 +1569,7 @@ function copyRow(draft: MealCopyDraft): MealPlanEntry {
     createdAt: new Date().toISOString(),
     // Its own event, never the source's. See MealCopyDraft.
     calendarEventId: null,
+    calendarEventExternalId: null,
   };
 }
 
@@ -2009,17 +2011,22 @@ function syncCookTaskCompletion(entry: MealPlanEntry, cooked: boolean): void {
  * so nothing here awaits it and a failure is retried on the next reconcile
  * rather than surfaced.
  *
- * The two guards are what keep it cheap: most reconciles hand back the id the
- * entry already has and write nothing, and an entry deleted while the device
- * write was in flight is left alone rather than resurrected in SQLite.
+ * The two guards are what keep it cheap: most reconciles hand back the link
+ * the entry already has and write nothing, and an entry deleted while the
+ * device write was in flight is left alone rather than resurrected in SQLite.
+ * The link is both ids, the device's and the calendar server's (#2950), so a
+ * meal whose server id was read for the first time is written back too.
  */
 function reconcileMealEvent(entry: MealPlanEntry): void {
   syncMealEvent(entry)
-    .then(calendarEventId => {
-      if (calendarEventId === entry.calendarEventId) return;
+    .then(link => {
+      if (
+        link.eventId === entry.calendarEventId &&
+        link.externalId === (entry.calendarEventExternalId ?? null)
+      ) return;
       const current = resolveEntry(useMealPlanStore.getState, entry.id);
       if (!current) return;
-      const updated = { ...current, calendarEventId };
+      const updated = { ...current, calendarEventId: link.eventId, calendarEventExternalId: link.externalId };
       dbUpdateMealPlanEntry(updated);
       useMealPlanStore.setState(s => ({
         entries: s.entries.map(e => (e.id === entry.id ? updated : e)),

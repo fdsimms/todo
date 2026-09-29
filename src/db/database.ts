@@ -1759,6 +1759,16 @@ export function initDatabase(): void {
     // Off on every existing box: each one was named as a brand, and "Freeze
     // some" is what makes the first unnamed one. See ItemProduct.isPortion.
     'ALTER TABLE grocery_item_products ADD COLUMN is_portion INTEGER NOT NULL DEFAULT 0',
+    // The calendar server's id beside a meal's and a deadline's device event id
+    // (#2950), null until that event's next write reads one. Device-local in
+    // sync like the ids beside them, and in backups, which is what they are
+    // for: a restore on a new phone finds the old phone's events by them rather
+    // than writing each one again. See utils/calendarEventLink.ts.
+    'ALTER TABLE meal_plan_entries ADD COLUMN calendar_event_external_id TEXT',
+    'ALTER TABLE tasks ADD COLUMN calendar_event_external_id TEXT',
+    // The same beside a time block's id, so a restored backup's task finds its
+    // block again instead of dropping the pointer. See Task.timeBlockExternalId.
+    'ALTER TABLE tasks ADD COLUMN time_block_external_id TEXT',
   ];
   // Asking SQLite for a table's columns once is cheaper than handing it every
   // ALTER for that table and catching the duplicate-column error, and by the
@@ -3266,6 +3276,8 @@ function rowToTask(row: Record<string, unknown>): Task {
     logCompletionToCalendar: Boolean(row.log_completion_to_calendar),
     completionCalendarEventId: (row.completion_calendar_event_id as string | null) ?? null,
     timeBlockEventId: (row.time_block_event_id as string | null) ?? null,
+    calendarEventExternalId: (row.calendar_event_external_id as string | null) ?? null,
+    timeBlockExternalId: (row.time_block_external_id as string | null) ?? null,
     backfillDismissedFields: JSON.parse((row.backfill_dismissed_fields as string) ?? '[]') as string[],
     location: (row.location as string) ?? null,
   };
@@ -3294,6 +3306,7 @@ export function dbInsertTask(task: Task): void {
       extra_task_every_n, extra_task_title, extra_task_draft, extra_task_one_at_a_time, extra_task_tally, previous_extra_task_tally, extra_task_source_title,
       deliverable_kind, deliverable_value, deadline_on_calendar, calendar_event_id,
       log_completion_to_calendar, completion_calendar_event_id, time_block_event_id,
+      calendar_event_external_id, time_block_external_id,
       streak_requires_window, backfill_dismissed_fields,
       supply_count, supply_unit, supply_refill_count, supply_reorder_at,
       supply_lead_days, supply_declined_at_count, supply_grocery_item_id,
@@ -3307,7 +3320,7 @@ export function dbInsertTask(task: Task): void {
       estimate_before_timing, waiting_on_person_since, waiting_follow_up_declined_at,
       reminder_tracks_visibility, recurrence_month,
       blocked_by_ids, deliverable_options, deliverable_sets_away, follow_up_on, extra_task_source_id
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -3361,6 +3374,8 @@ export function dbInsertTask(task: Task): void {
       task.logCompletionToCalendar ? 1 : 0,
       task.completionCalendarEventId ?? null,
       task.timeBlockEventId ?? null,
+      task.calendarEventExternalId ?? null,
+      task.timeBlockExternalId ?? null,
       task.streakRequiresWindow ? 1 : 0,
       JSON.stringify(task.backfillDismissedFields),
       task.supplyCount ?? null,
@@ -3438,6 +3453,7 @@ export function dbUpdateTask(task: Task): void {
       extra_task_every_n=?, extra_task_title=?, extra_task_draft=?, extra_task_one_at_a_time=?, extra_task_tally=?, previous_extra_task_tally=?, extra_task_source_title=?,
       deliverable_kind=?, deliverable_value=?, deadline_on_calendar=?, calendar_event_id=?,
       log_completion_to_calendar=?, completion_calendar_event_id=?, time_block_event_id=?,
+      calendar_event_external_id=?, time_block_external_id=?,
       streak_requires_window=?, backfill_dismissed_fields=?,
       supply_count=?, supply_unit=?, supply_refill_count=?, supply_reorder_at=?,
       supply_lead_days=?, supply_declined_at_count=?, supply_grocery_item_id=?,
@@ -3505,6 +3521,8 @@ export function dbUpdateTask(task: Task): void {
       task.logCompletionToCalendar ? 1 : 0,
       task.completionCalendarEventId ?? null,
       task.timeBlockEventId ?? null,
+      task.calendarEventExternalId ?? null,
+      task.timeBlockExternalId ?? null,
       task.streakRequiresWindow ? 1 : 0,
       JSON.stringify(task.backfillDismissedFields),
       task.supplyCount ?? null,
@@ -5804,6 +5822,7 @@ function rowToMealPlanEntry(row: Record<string, unknown>): MealPlanEntry {
       ? null
       : Boolean(row.thaw_task),
     calendarEventId: (row.calendar_event_id as string | null) ?? null,
+    calendarEventExternalId: (row.calendar_event_external_id as string | null) ?? null,
   };
 }
 
@@ -6420,8 +6439,8 @@ export function dbGetMealPlanEntriesForLeftover(leftoverId: string): MealPlanEnt
 
 export function dbInsertMealPlanEntry(entry: MealPlanEntry): void {
   db.runSync(
-    `INSERT INTO meal_plan_entries (id, date, slot, recipe_id, title, sort_order, created_at, cooked_at, leftover_id, recipe_choices, recipe_scale, cook_task, shop_task, log_meal, calendar_event_id, thaw_task)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    `INSERT INTO meal_plan_entries (id, date, slot, recipe_id, title, sort_order, created_at, cooked_at, leftover_id, recipe_choices, recipe_scale, cook_task, shop_task, log_meal, calendar_event_id, thaw_task, calendar_event_external_id)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       entry.id, entry.date, entry.slot, entry.recipeId ?? null,
       entry.title, entry.sortOrder, entry.createdAt, entry.cookedAt ?? null,
@@ -6432,13 +6451,14 @@ export function dbInsertMealPlanEntry(entry: MealPlanEntry): void {
       entry.logMeal === null || entry.logMeal === undefined ? null : (entry.logMeal ? 1 : 0),
       entry.calendarEventId ?? null,
       entry.thawTask === null || entry.thawTask === undefined ? null : (entry.thawTask ? 1 : 0),
+      entry.calendarEventExternalId ?? null,
     ]
   );
 }
 
 export function dbUpdateMealPlanEntry(entry: MealPlanEntry): void {
   db.runSync(
-    `UPDATE meal_plan_entries SET date=?, slot=?, recipe_id=?, title=?, sort_order=?, cooked_at=?, leftover_id=?, recipe_choices=?, recipe_scale=?, cook_task=?, shop_task=?, log_meal=?, calendar_event_id=?, thaw_task=? WHERE id=?`,
+    `UPDATE meal_plan_entries SET date=?, slot=?, recipe_id=?, title=?, sort_order=?, cooked_at=?, leftover_id=?, recipe_choices=?, recipe_scale=?, cook_task=?, shop_task=?, log_meal=?, calendar_event_id=?, thaw_task=?, calendar_event_external_id=? WHERE id=?`,
     [
       entry.date, entry.slot, entry.recipeId ?? null, entry.title, entry.sortOrder,
       entry.cookedAt ?? null, entry.leftoverId ?? null,
@@ -6448,6 +6468,7 @@ export function dbUpdateMealPlanEntry(entry: MealPlanEntry): void {
       entry.logMeal === null || entry.logMeal === undefined ? null : (entry.logMeal ? 1 : 0),
       entry.calendarEventId ?? null,
       entry.thawTask === null || entry.thawTask === undefined ? null : (entry.thawTask ? 1 : 0),
+      entry.calendarEventExternalId ?? null,
       entry.id,
     ]
   );

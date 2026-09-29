@@ -85,6 +85,14 @@ jest.mock('../utils/calendarSync', () => ({
   createAllDayEvent: (...args: unknown[]) => mockCreateAllDayEvent(...args),
   moveAllDayEvent: (...args: unknown[]) => mockMoveAllDayEvent(...(args as [string])),
 }));
+// #2950: the native module that reads an event's calendar server id, and finds
+// an event by one. No server ids and no matches unless a test says so.
+const mockExternalIds = jest.fn((_ids: string[]) => Promise.resolve({} as Record<string, string>));
+const mockEventsWithExternalId = jest.fn((_id: string) => Promise.resolve([] as unknown[]));
+jest.mock('todo-eventkit-bridge', () => ({
+  externalIdentifiers: (ids: string[]) => mockExternalIds(ids),
+  eventsWithExternalIdentifier: (id: string) => mockEventsWithExternalId(id),
+}), { virtual: true });
 
 // useGroceryStore (real, below) imports these unconditionally for
 // startTrip/endTrip — same expo-notifications-in-node problem the task store
@@ -2784,6 +2792,85 @@ describe('calendar events (#1494)', () => {
     await settle();
 
     expect(mockDeleteCalendarEvent).not.toHaveBeenCalled();
+  });
+
+  // #2950: the calendar server's id is kept beside the device's, so a backup
+  // restored on a new phone finds the old phone's events rather than writing
+  // each one again.
+  it('links the server id of the event it writes, beside the event id', async () => {
+    mockMealCalendarId = 'cal-1';
+    mockExternalIds.mockResolvedValueOnce({ 'evt-new': 'ext-new' });
+    loadWeek();
+    const meal = useMealPlanStore.getState().planMeal({
+      date: '2026-08-05', slot: 'dinner', recipeId: 'r1', title: 'Ragu',
+    })!;
+    await settle();
+
+    expect(getEntries().find(e => e.id === meal.id)).toMatchObject({
+      calendarEventId: 'evt-new', calendarEventExternalId: 'ext-new',
+    });
+    expect(dbUpdateMealPlanEntry).toHaveBeenCalledWith(
+      expect.objectContaining({ id: meal.id, calendarEventId: 'evt-new', calendarEventExternalId: 'ext-new' })
+    );
+  });
+
+  it('moves a restored meal\'s event, found by its server id, rather than writing a second one', async () => {
+    mockMealCalendarId = 'cal-1';
+    // The old phone's local id names nothing here; its event came down from
+    // the shared calendar under the same server id and a new local one.
+    loadWeek([entry('2026-08-05', 'dinner', {
+      id: 'm-a', title: 'Ragu', calendarEventId: 'evt-old-phone', calendarEventExternalId: 'ext-1',
+    })]);
+    mockMoveAllDayEvent.mockImplementationOnce(() => Promise.resolve(null as unknown as string));
+    mockEventsWithExternalId.mockResolvedValueOnce([{ id: 'evt-this-phone', allDay: true, calendarId: 'cal-1' }]);
+
+    useMealPlanStore.getState().moveEntry('m-a', { date: '2026-08-07' });
+    await settle();
+
+    expect(mockEventsWithExternalId).toHaveBeenCalledWith('ext-1');
+    expect(mockMoveAllDayEvent).toHaveBeenLastCalledWith('evt-this-phone', 'cal-1', {
+      title: 'Dinner: Ragu',
+      date: dayKeyToDate('2026-08-07'),
+    });
+    expect(mockCreateAllDayEvent).not.toHaveBeenCalled();
+    expect(getEntries().find(e => e.id === 'm-a')).toMatchObject({
+      calendarEventId: 'evt-this-phone', calendarEventExternalId: 'ext-1',
+    });
+  });
+
+  it('writes a fresh event for a restored meal whose server id finds several copies', async () => {
+    mockMealCalendarId = 'cal-1';
+    loadWeek([entry('2026-08-05', 'dinner', {
+      id: 'm-a', title: 'Ragu', calendarEventId: 'evt-old-phone', calendarEventExternalId: 'ext-1',
+    })]);
+    mockMoveAllDayEvent.mockImplementationOnce(() => Promise.resolve(null as unknown as string));
+    mockEventsWithExternalId.mockResolvedValueOnce([
+      { id: 'evt-a', allDay: true, calendarId: 'cal-1' },
+      { id: 'evt-b', allDay: true, calendarId: 'cal-1' },
+    ]);
+
+    useMealPlanStore.getState().renameEntry('m-a', 'Lasagne');
+    await settle();
+
+    expect(mockMoveAllDayEvent).toHaveBeenCalledTimes(1);
+    expect(mockCreateAllDayEvent).toHaveBeenCalledWith('cal-1', expect.objectContaining({ title: 'Dinner: Lasagne' }));
+    expect(getEntries().find(e => e.id === 'm-a')!.calendarEventId).toBe('evt-new');
+  });
+
+  it('gives a copied meal no server id of its own until its own event is written', async () => {
+    mockMealCalendarId = 'cal-1';
+    loadWeek();
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([
+      entry('2026-08-05', 'dinner', {
+        id: 'm-a', title: 'Ragu', calendarEventId: 'evt-1', calendarEventExternalId: 'ext-1',
+      }),
+    ]);
+
+    useMealPlanStore.getState().copyWeek('2026-08-03', '2026-08-10');
+
+    const inserted = (dbInsertMealPlanEntry as jest.Mock).mock.calls.map(c => c[0] as MealPlanEntry);
+    expect(inserted.length).toBeGreaterThan(0);
+    expect(inserted.every(e => e.calendarEventId === null && e.calendarEventExternalId === null)).toBe(true);
   });
 
   // #2950: the event is this device's, so a change made on another device

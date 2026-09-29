@@ -192,7 +192,15 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
  * is what it can actually do, rather than breaking the block it can't see.
  *
  * A backup keeps the columns: restoring onto the phone that wrote the events is
- * the common case, and there the ids still resolve.
+ * the common case, and there the ids still resolve. Restored onto a new phone
+ * they don't, so each event's calendar server id is kept beside its local id
+ * (`calendar_event_external_id`, `time_block_external_id`) and the next write
+ * looks the event up by it before writing a fresh one (`writeAllDayEvent` in
+ * utils/calendarEventLink.ts), or, for a time block, before dropping the
+ * pointer (`adoptTimeBlock` in useTaskStore).
+ * That column names the same event this device wrote, so it stays here too:
+ * sent across, a peer could find the event by it and start rewriting an event
+ * it doesn't own.
  *
  * Keeping the id local also means only this device can act on the event, so a
  * peer's edit reaches it through the apply's report rather than the row: an
@@ -208,8 +216,11 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
  * delete strands whatever it pointed at.
  */
 export const SYNC_DEVICE_LOCAL_COLUMNS: Readonly<Record<string, readonly string[]>> = {
-  meal_plan_entries: ['calendar_event_id'],
-  tasks: ['calendar_event_id', 'completion_calendar_event_id', 'time_block_event_id'],
+  meal_plan_entries: ['calendar_event_id', 'calendar_event_external_id'],
+  tasks: [
+    'calendar_event_id', 'calendar_event_external_id',
+    'completion_calendar_event_id', 'time_block_event_id', 'time_block_external_id',
+  ],
 };
 
 /** Whether `column` of `table` stays on this device — see SYNC_DEVICE_LOCAL_COLUMNS. */

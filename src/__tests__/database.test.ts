@@ -2127,6 +2127,32 @@ describe('backup and restore', () => {
     expect(dbGetSetting('themeMode')).toBe('light');
   });
 
+  // #2950: kept off the sync wire, but kept in a backup, because a restore on a
+  // new phone is exactly where the server id is what finds the event again.
+  it('keeps each calendar event\'s server id beside its device id through a restore', () => {
+    dbInsertTask(makeTask({
+      id: 't1', calendarEventId: 'evt-1', calendarEventExternalId: 'ext-1',
+      timeBlockEventId: 'blk-1', timeBlockExternalId: 'blk-ext-1',
+    }));
+    dbInsertMealPlanEntry({
+      id: 'meal-b', date: '2026-08-13', slot: 'dinner', recipeId: null, title: 'Chili',
+      sortOrder: 1, createdAt: '2026-08-01T00:00:00.000Z', cookedAt: null, leftoverId: null,
+      recipeChoices: [], recipeScale: 1, cookTask: null, shopTask: null, logMeal: null,
+      calendarEventId: 'evt-2', calendarEventExternalId: 'ext-2',
+    });
+    const backup = buildBackup(dbExportTables(), { appVersion: '1.0.0', exportedAt: new Date() });
+    mockRawDb.exec('DELETE FROM tasks; DELETE FROM meal_plan_entries;');
+
+    dbReplaceAllData(backup.tables);
+
+    expect(dbGetAllTasks().find(t => t.id === 't1')).toMatchObject({
+      calendarEventId: 'evt-1', calendarEventExternalId: 'ext-1',
+      timeBlockEventId: 'blk-1', timeBlockExternalId: 'blk-ext-1',
+    });
+    expect(dbGetMealPlanEntries('2026-08-13', '2026-08-13').find(e => e.id === 'meal-b'))
+      .toMatchObject({ calendarEventId: 'evt-2', calendarEventExternalId: 'ext-2' });
+  });
+
   it('survives a serialize/parse round trip on the way through', () => {
     dbInsertTask(makeTask({ id: 't1', title: 'Quoted "title" and \\ backslash', notes: 'a\nb' }));
     const backup = buildBackup(dbExportTables(), { appVersion: '1.0.0', exportedAt: new Date() });
@@ -3503,6 +3529,7 @@ describe('meal plan entries', () => {
       logMeal: null,
       thawTask: null,
       calendarEventId: null,
+      calendarEventExternalId: null,
       cookedAt: null,
       leftoverId: null,
       ...overrides,
@@ -3868,13 +3895,14 @@ describe('sync change tracking', () => {
       id: 'meal-sync', date: '2026-08-13', slot: 'dinner', recipeId: null, title: 'Chili',
       sortOrder: 1, createdAt: '2026-08-01T00:00:00.000Z', cookedAt: null, leftoverId: null,
       recipeChoices: [], recipeScale: 1, cookTask: null, shopTask: null, logMeal: null,
-      calendarEventId: 'evt-this-phone',
+      calendarEventId: 'evt-this-phone', calendarEventExternalId: 'ext-this-phone',
     });
 
     const row = dbSyncChangesSince(null).tables.meal_plan_entries.find(r => r.id === 'meal-sync');
 
     expect(row?.title).toBe('Chili');
     expect(row).not.toHaveProperty('calendar_event_id');
+    expect(row).not.toHaveProperty('calendar_event_external_id');
   });
 
   it('reports a deletion as a tombstone, not a missing row', () => {
@@ -4051,7 +4079,7 @@ describe('dbApplySyncChanges', () => {
       id: 'meal-p', date: '2026-08-13', slot: 'dinner', recipeId: null, title: 'Chili',
       sortOrder: 1, createdAt: '2026-08-01T00:00:00.000Z', cookedAt: null, leftoverId: null,
       recipeChoices: [], recipeScale: 1, cookTask: null, shopTask: null, logMeal: null,
-      calendarEventId: 'evt-this-phone',
+      calendarEventId: 'evt-this-phone', calendarEventExternalId: 'ext-this-phone',
     });
     const peerMealRow = (over: Record<string, unknown>) => {
       const row = mockRawDb.prepare('SELECT * FROM meal_plan_entries WHERE id = ?').get('meal-p') as Record<string, unknown>;
@@ -4072,6 +4100,20 @@ describe('dbApplySyncChanges', () => {
 
       expect(report.updated).toBe(1);
       expect(stored()).toEqual({ date: '2026-08-14', calendar_event_id: 'evt-this-phone' });
+    });
+
+    // #2950: the server id beside it is this device's for the same reason.
+    it('keeps the server id beside it through a peer\'s edit that sends one of its own', () => {
+      localMeal();
+      mockRawDb.prepare("UPDATE meal_plan_entries SET updated_at = '2026-01-01T00:00:00.000Z' WHERE id = 'meal-p'").run();
+
+      dbApplySyncChanges(payload({
+        tables: { meal_plan_entries: [peerMealRow({ date: '2026-08-14', calendar_event_external_id: 'ext-other-phone' })] },
+      }));
+
+      const row = mockRawDb.prepare('SELECT calendar_event_external_id FROM meal_plan_entries WHERE id = ?')
+        .get('meal-p') as { calendar_event_external_id: string | null };
+      expect(row.calendar_event_external_id).toBe('ext-this-phone');
     });
 
     it('arrives empty on a meal this device has never seen', () => {
@@ -4169,35 +4211,41 @@ describe('dbApplySyncChanges', () => {
   describe('a task\'s calendar event ids', () => {
     const ids = () =>
       mockRawDb.prepare(
-        'SELECT title, calendar_event_id, completion_calendar_event_id, time_block_event_id FROM tasks WHERE id = ?',
+        'SELECT title, calendar_event_id, calendar_event_external_id, completion_calendar_event_id, time_block_event_id, time_block_external_id FROM tasks WHERE id = ?',
       ).get('ev1') as Record<string, string | null>;
 
     it('never leave this device', () => {
       dbInsertTask(makeTask({
-        id: 'ev1', calendarEventId: 'dl', completionCalendarEventId: 'done', timeBlockEventId: 'block',
+        id: 'ev1', calendarEventId: 'dl', calendarEventExternalId: 'dl-ext',
+        completionCalendarEventId: 'done', timeBlockEventId: 'block', timeBlockExternalId: 'block-ext',
       }));
       const row = dbSyncChangesSince(null).tables.tasks.find(r => r.id === 'ev1');
       expect(row?.title).toBeDefined();
       expect(row).not.toHaveProperty('calendar_event_id');
+      expect(row).not.toHaveProperty('calendar_event_external_id');
       expect(row).not.toHaveProperty('completion_calendar_event_id');
       expect(row).not.toHaveProperty('time_block_event_id');
+      expect(row).not.toHaveProperty('time_block_external_id');
     });
 
     it('survive a peer\'s edit that sends nulls for them', () => {
       dbInsertTask(makeTask({
-        id: 'ev1', title: 'Rent', calendarEventId: 'dl', completionCalendarEventId: 'done', timeBlockEventId: 'block',
+        id: 'ev1', title: 'Rent', calendarEventId: 'dl', calendarEventExternalId: 'dl-ext',
+        completionCalendarEventId: 'done', timeBlockEventId: 'block', timeBlockExternalId: 'block-ext',
       }));
       stampLocal('ev1', '2026-01-01T00:00:00.000Z');
       const peer = {
         ...(mockRawDb.prepare('SELECT * FROM tasks WHERE id = ?').get('ev1') as Record<string, unknown>),
         title: 'Pay rent', updated_at: '2030-01-01T00:00:00.000Z',
-        calendar_event_id: null, completion_calendar_event_id: null, time_block_event_id: null,
+        calendar_event_id: null, calendar_event_external_id: null,
+        completion_calendar_event_id: null, time_block_event_id: null, time_block_external_id: null,
       };
 
       dbApplySyncChanges(payload({ tables: { tasks: [peer] } }));
 
       expect(ids()).toEqual({
-        title: 'Pay rent', calendar_event_id: 'dl', completion_calendar_event_id: 'done', time_block_event_id: 'block',
+        title: 'Pay rent', calendar_event_id: 'dl', calendar_event_external_id: 'dl-ext',
+        completion_calendar_event_id: 'done', time_block_event_id: 'block', time_block_external_id: 'block-ext',
       });
     });
 

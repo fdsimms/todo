@@ -288,7 +288,7 @@ jest.mock('../utils/calendarSync', () => ({
   deleteCalendarEvent: jest.fn().mockResolvedValue(undefined),
 }));
 jest.mock('../utils/deadlineCalendarSync', () => ({
-  syncDeadlineEvent: jest.fn().mockResolvedValue(null),
+  syncDeadlineEvent: jest.fn().mockResolvedValue({ eventId: null, externalId: null }),
 }));
 // And the same again for the time-block half (#1492), which reaches the
 // calendar store for a window of events to fit a block into — that one imports

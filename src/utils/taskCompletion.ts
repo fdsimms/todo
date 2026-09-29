@@ -709,8 +709,10 @@ export function buildCompletion(
         // Never carried forward: the old occurrence's device event still
         // shows the old deadline, and this is a fresh row with a fresh
         // deadline (nextDeadline above) that needs its own event, created
-        // by the store's reconcile.
+        // by the store's reconcile. Its server id goes too, or the fresh row
+        // could find the old occurrence's event by it (#2950).
         calendarEventId: null,
+        calendarEventExternalId: null,
         // Nor this: the old occurrence's completion event logged that
         // occurrence's completion, not this fresh one's — which hasn't
         // happened yet.
@@ -720,6 +722,7 @@ export function buildCompletion(
         // is a decision the user makes per occurrence — there is no
         // reconcile here to create one, deliberately.
         timeBlockEventId: null,
+        timeBlockExternalId: null,
       };
 
       // Subtasks belong to the series, not a single occurrence — carry them

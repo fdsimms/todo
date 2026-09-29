@@ -1,6 +1,7 @@
 import type { Task } from '../types';
 import { displayTitleFor } from './visibilityUtils';
-import { createAllDayEvent, moveAllDayEvent, deleteCalendarEvent } from './calendarSync';
+import { deleteCalendarEvent } from './calendarSync';
+import { NO_EVENT_LINK, writeAllDayEvent, type CalendarEventLink } from './calendarEventLink';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { isDemoModeActive } from './demoState';
 import type { ApplyReport } from './syncMerge';
@@ -15,15 +16,16 @@ import type { ApplyReport } from './syncMerge';
  * that calls this, from every mutation that could change what a deadline's
  * event should say (see `reconcileDeadlineEvent` in `useTaskStore.ts`),
  * so a dependency back on the store would be circular. This function only
- * ever reports what the device write produced; persisting the result onto
- * the task is the caller's job.
+ * ever reports what the device write produced (the event's device id and the
+ * calendar server's id for it, both null when there's no event); persisting
+ * the result onto the task is the caller's job.
  */
-export async function syncDeadlineEvent(task: Task): Promise<string | null> {
+export async function syncDeadlineEvent(task: Task): Promise<CalendarEventLink> {
   // Same guard notifications.ts uses — demo-seeded tasks currently never set
   // deadlineOnCalendar, so this is latent rather than reachable today, but a
   // future seed change or a real deadline mutation while demo mode happens
   // to be on shouldn't get a free pass to write a real device event.
-  if (isDemoModeActive()) return null;
+  if (isDemoModeActive()) return NO_EVENT_LINK;
 
   const { deadlineCalendarId } = useSettingsStore.getState();
 
@@ -32,30 +34,23 @@ export async function syncDeadlineEvent(task: Task): Promise<string | null> {
   // exists) goes away, and there's nothing to link.
   if (!deadlineCalendarId || !task.deadlineOnCalendar || !task.deadline || task.completed || task.archived) {
     if (task.calendarEventId) await deleteCalendarEvent(task.calendarEventId);
-    return null;
+    return NO_EVENT_LINK;
   }
 
-  const fields = { title: displayTitleFor(task) || 'Deadline', date: new Date(task.deadline) };
-
-  if (task.calendarEventId) {
-    // Into the calendar picked *now*, not the one it was first written to: a
-    // deadline written before "Write deadlines to" was switched moves across
-    // the next time its task is reconciled, rather than going on being
-    // rewritten in the old calendar while new deadlines land in the new one.
-    // The meal mirror's rule and reasoning (#2949, `syncMealEvent`), including
-    // that nothing sweeps: a task nobody touches keeps its event where it is.
-    const moved = await moveAllDayEvent(task.calendarEventId, deadlineCalendarId, fields);
-    if (moved) return moved;
-    // The id didn't resolve to a live event (deleted by hand, or the calendar
-    // itself is gone), or EventKit refused the move. Delete whatever is left
-    // under the old id first, so a refused move can't leave the deadline on
-    // both calendars once the fresh one is written; for an event that is
-    // already gone this does nothing. Then resolve-or-shrug: write a fresh one
-    // rather than leaving the task pointing at nothing.
-    await deleteCalendarEvent(task.calendarEventId);
-  }
-
-  return createAllDayEvent(deadlineCalendarId, fields);
+  // Into the calendar picked *now*, not the one it was first written to: a
+  // deadline written before "Write deadlines to" was switched moves across the
+  // next time its task is reconciled, rather than going on being rewritten in
+  // the old calendar while new deadlines land in the new one. The meal
+  // mirror's rule and reasoning (#2949, `syncMealEvent`), including that
+  // nothing sweeps: a task nobody touches keeps its event where it is. An id
+  // that no longer resolves (deleted by hand, the calendar gone, or a backup
+  // restored on a new phone, #2950) falls back to the event found by its server
+  // id and then to a fresh one; `writeAllDayEvent` has the order.
+  return writeAllDayEvent(
+    { eventId: task.calendarEventId, externalId: task.calendarEventExternalId ?? null },
+    deadlineCalendarId,
+    { title: displayTitleFor(task) || 'Deadline', date: new Date(task.deadline) }
+  );
 }
 
 /** What a sync apply asks of this device's task events. */

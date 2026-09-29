@@ -194,14 +194,15 @@ export function shiftDayKey(dayKey: string, days: number): string {
 
 /**
  * Everything a copied entry carries; the store adds the id, the stamp and a
- * null `calendarEventId`.
+ * null `calendarEventId` (and `calendarEventExternalId`, the server's name for
+ * the same event).
  *
  * `calendarEventId` is omitted rather than carried for the same reason
  * `duplicateTask` clears a task's: a copy is a new meal on a new day and
  * needs its own event, and two rows pointing at one device event means
  * whichever reconciles last rewrites the other's night.
  */
-export type MealCopyDraft = Omit<MealPlanEntry, 'id' | 'createdAt' | 'calendarEventId'>;
+export type MealCopyDraft = Omit<MealPlanEntry, 'id' | 'createdAt' | 'calendarEventId' | 'calendarEventExternalId'>;
 
 /**
  * What copying a week forward actually carries, shifted by `days`.
