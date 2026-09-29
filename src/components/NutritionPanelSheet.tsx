@@ -577,11 +577,12 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
               />
               <Text style={styles.hint}>
                 Most labels outside the US print per 100g. Pick "per serving" only if the
-                panel's own column says so.
+                panel's own column says so. If you typed the figures under the wrong one,
+                recalculate them here using the serving weight.
               </Text>
               {!!basisConvertTarget && (
                 <InlineAction
-                  label={`Convert typed figures to ${NUTRITION_BASIS_LABEL[basisConvertTarget]}`}
+                  label={basisConvertTarget === 'perServing' ? 'Recalculate for one serving' : 'Recalculate per 100g'}
                   icon="swap-horizontal-outline"
                   variant="neutral"
                   disabled={!canConvertBasis}
