@@ -15,6 +15,9 @@ import {
   withoutProductShopsFor,
   buildGroceryStoreSections,
   NO_STORE_LABEL,
+  shopWalkOrder,
+  shopAisleOrderToSave,
+  describeOwnAisleOrders,
 } from '../utils/groceryShops';
 import { groceryNameKey } from '../utils/groceryParse';
 import { OTHER_AISLE } from '../utils/groceryAisles';
@@ -30,6 +33,7 @@ function makeShop(name: string, sortOrder = 0): Shop {
     excludeFromSuggestions: false,
     receiptStyle: 'itemized' as const,
     aisles: null,
+    aisleOrder: null,
   };
 }
 
@@ -749,5 +753,143 @@ describe('buildGroceryStoreSections', () => {
       ['Costco', ['milk']],
       ['Safeway', ['eggs']],
     ]);
+  });
+
+  // #2938: a section is a store you'll be standing in, so it walks that
+  // store's own order where it has one.
+  describe('with a store that walks an order of its own', () => {
+    const rows = [
+      listed('apples', { aisle: 'Produce', sortOrder: 1 }),
+      listed('milk', { aisle: 'Dairy', sortOrder: 2 }),
+      listed('rice', { aisle: 'Pantry', sortOrder: 3 }),
+    ];
+    const tjWalk = { ...traderJoes, aisleOrder: ['Pantry', 'Dairy', 'Produce'] };
+    const shops = [costco, safeway, tjWalk];
+
+    it('walks that store\'s section in its own order', () => {
+      const links = rows.map(r => link(r.id, tjWalk.id, 1));
+      const { sections } = buildGroceryStoreSections(rows, links, shops, ORDER);
+      expect(ids(sections[0].data)).toEqual(['rice', 'milk', 'apples']);
+    });
+
+    it('leaves every other store on the usual order', () => {
+      const links = rows.map(r => link(r.id, costco.id, 1));
+      const { sections } = buildGroceryStoreSections(rows, links, shops, ORDER);
+      expect(ids(sections[0].data)).toEqual(['apples', 'milk', 'rice']);
+    });
+
+    it('walks the rows with no store in the running trip\'s order', () => {
+      const { sections } = buildGroceryStoreSections(rows, [], shops, ORDER, [], tjWalk.id);
+      expect(sections.map(s => s.shopName)).toEqual([NO_STORE_LABEL]);
+      expect(ids(sections[0].data)).toEqual(['rice', 'milk', 'apples']);
+    });
+
+    it('walks them in the usual order with no trip running', () => {
+      const { sections } = buildGroceryStoreSections(rows, [], shops, ORDER);
+      expect(ids(sections[0].data)).toEqual(['apples', 'milk', 'rice']);
+    });
+  });
+});
+
+describe('shopWalkOrder', () => {
+  const USUAL = ['Produce', 'Bakery', 'Dairy', 'Frozen', 'Pantry', OTHER_AISLE];
+
+  it('walks the usual order for a store with none of its own', () => {
+    expect(shopWalkOrder(null, USUAL)).toEqual(USUAL);
+    expect(shopWalkOrder([], USUAL)).toEqual(USUAL);
+  });
+
+  it('walks a full order of the store\'s own as given, Other last', () => {
+    expect(shopWalkOrder(['Frozen', 'Pantry', 'Dairy', 'Bakery', 'Produce'], USUAL)).toEqual([
+      'Frozen', 'Pantry', 'Dairy', 'Bakery', 'Produce', OTHER_AISLE,
+    ]);
+  });
+
+  it('puts an aisle the store never named straight after the one before it in the usual order', () => {
+    // Bakery is new since the store was arranged. The usual order has it after
+    // Produce, so that is where it walks here too, however far Produce moved.
+    expect(shopWalkOrder(['Frozen', 'Produce', 'Dairy', 'Pantry'], USUAL)).toEqual([
+      'Frozen', 'Produce', 'Bakery', 'Dairy', 'Pantry', OTHER_AISLE,
+    ]);
+  });
+
+  it('keeps a run of new aisles in their own order', () => {
+    const usual = ['Produce', 'Bulk bins', 'Deli', 'Dairy', OTHER_AISLE];
+    expect(shopWalkOrder(['Dairy', 'Produce'], usual)).toEqual([
+      'Dairy', 'Produce', 'Bulk bins', 'Deli', OTHER_AISLE,
+    ]);
+  });
+
+  it('puts a new aisle the usual order leads with straight before the one after it', () => {
+    const usual = ['Flowers', 'Produce', 'Dairy', OTHER_AISLE];
+    expect(shopWalkOrder(['Dairy', 'Produce'], usual)).toEqual([
+      'Dairy', 'Flowers', 'Produce', OTHER_AISLE,
+    ]);
+  });
+
+  it('drops a name the usual order no longer has, and a repeat', () => {
+    // "Snacks" was renamed or deleted on another device; the store's copy
+    // hasn't caught up yet.
+    expect(shopWalkOrder(['Pantry', 'Snacks', 'Dairy', 'Pantry'], ['Dairy', 'Pantry', OTHER_AISLE])).toEqual([
+      'Pantry', 'Dairy', OTHER_AISLE,
+    ]);
+  });
+
+  it('keeps Other last wherever the stored order put it', () => {
+    expect(shopWalkOrder([OTHER_AISLE, 'Pantry', 'Dairy'], ['Dairy', 'Pantry', OTHER_AISLE])).toEqual([
+      'Pantry', 'Dairy', OTHER_AISLE,
+    ]);
+  });
+
+  it('walks the usual order when the store\'s names all no longer exist', () => {
+    expect(shopWalkOrder(['Snacks', 'Deli'], USUAL)).toEqual(USUAL);
+  });
+});
+
+describe('shopAisleOrderToSave', () => {
+  const USUAL = ['Produce', 'Dairy', 'Pantry', OTHER_AISLE];
+
+  it('keeps an arrangement, without Other', () => {
+    expect(shopAisleOrderToSave(['Pantry', 'Dairy', 'Produce', OTHER_AISLE], USUAL)).toEqual([
+      'Pantry', 'Dairy', 'Produce',
+    ]);
+  });
+
+  it('saves nothing for an order that walks the same as the usual one', () => {
+    expect(shopAisleOrderToSave(['Produce', 'Dairy', 'Pantry'], USUAL)).toBeNull();
+  });
+
+  it('compares as walked, so a partial list that fills in to the usual order is nothing too', () => {
+    expect(shopAisleOrderToSave(['Produce', 'Pantry'], USUAL)).toBeNull();
+  });
+
+  it('fills in and cleans up what it keeps', () => {
+    expect(shopAisleOrderToSave(['Pantry', 'Snacks', 'Pantry', 'Produce'], USUAL)).toEqual([
+      'Pantry', 'Produce', 'Dairy',
+    ]);
+  });
+
+  it('saves nothing for an empty order', () => {
+    expect(shopAisleOrderToSave([], USUAL)).toBeNull();
+  });
+});
+
+describe('describeOwnAisleOrders', () => {
+  it('is null when every store walks the usual order', () => {
+    expect(describeOwnAisleOrders([makeShop('Costco'), makeShop('Safeway')])).toBeNull();
+  });
+
+  it('names one store, and says where its order is set', () => {
+    const tj = { ...makeShop("Trader Joe's"), aisleOrder: ['Pantry'] };
+    expect(describeOwnAisleOrders([makeShop('Costco'), tj])).toBe(
+      "Trader Joe's keeps its own order, set while shopping there."
+    );
+  });
+
+  it('names several, in store order', () => {
+    const own = (name: string) => ({ ...makeShop(name), aisleOrder: ['Pantry'] });
+    expect(describeOwnAisleOrders([own('Costco'), makeShop('Safeway'), own('Aldi'), own('Target')])).toBe(
+      'Costco, Aldi and Target keep their own orders, set while shopping at each.'
+    );
   });
 });

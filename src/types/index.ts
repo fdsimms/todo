@@ -5311,6 +5311,34 @@ export interface Shop {
    * `renameAisle` rewrites it and `deleteAisle` drops from it.
    */
   aisles: string[] | null;
+  /**
+   * The order you walk this store's aisles in, or `null` to walk it in the
+   * usual order (`useGroceryStore.aisleOrder`), which is every store until
+   * somebody arranges one (#2938).
+   *
+   * **Read through `shopWalkOrder` (groceryShops.ts), never directly.** The
+   * list here is what somebody arranged on the day they arranged it: an aisle
+   * added since is missing from it, and sorts where the usual order puts it
+   * relative to its neighbours rather than dropping off the end. `Other` is
+   * never stored and always walks last.
+   *
+   * **Applied only where the store is known**: the list while a trip at this
+   * store is running, and this store's own section in the store lens.
+   * Everywhere else (the kitchen, every aisle picker) keeps the usual order.
+   * Arranged from the Aisles tab of `GroceryAislesSheet` during a trip here,
+   * and cleared from the same place ("Use the usual order").
+   *
+   * **An order that walks the same as the usual one is saved as `null`**
+   * (`shopAisleOrderToSave`), so a drag that ends where it began leaves the
+   * store following the usual order, and any later change to it.
+   *
+   * Aisle names are strings, so this is the fifth place one lives (after
+   * `aisleOrder`, `GroceryItem.aisle`, the values of `aisleOverrides` and
+   * `aisles` above): `renameAisle` rewrites it and `deleteAisle` drops from it.
+   * It is about the store rather than the device, so it syncs and is backed up
+   * with the rest of the row.
+   */
+  aisleOrder: string[] | null;
 }
 
 /**

@@ -82,7 +82,7 @@ import { describeSupplyStockCaption, suppliesStockedFrom } from '../utils/supply
 import { useRecipeStore } from '../store/useRecipeStore';
 import { alternativeCaptions } from '../utils/recipeComponents';
 import { buildGrocerySections, buildGroceryRecipeSections } from '../utils/grocerySuggest';
-import { buildGroceryStoreSections } from '../utils/groceryShops';
+import { buildGroceryStoreSections, shopWalkOrder } from '../utils/groceryShops';
 import { resolveGroceryDrop, groceryDragRange, placeNewGroceryItems } from '../utils/groceryReorder';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors } from '../theme';
@@ -415,6 +415,14 @@ export function GroceryScreen() {
   // picker's hint says so. The setting itself is left alone.
   const lens = groupBy === 'store' && away ? 'aisle' : groupBy;
   const activeTripShopId = activeTripShop?.id ?? null;
+  // The walk the aisle lens follows: the store you're standing in, where it
+  // has an order of its own, else the usual one (#2938). Only a trip
+  // resolveActiveTrip still honors, so an abandoned one can't keep the list in
+  // another store's order. The store lens works its walks out per section.
+  const walkOrder = useMemo(
+    () => shopWalkOrder(activeTripShop?.aisleOrder ?? null, aisleOrder),
+    [activeTripShop, aisleOrder]
+  );
   const grouped = useMemo(() => {
     if (lens === 'recipe') {
       const r = buildGroceryRecipeSections(listRows, cartHoldIds);
@@ -426,9 +434,9 @@ export function GroceryScreen() {
       const r = buildGroceryStoreSections(listRows, itemShops, shops, aisleOrder, cartHoldIds, activeTripShopId);
       return { kind: 'store' as const, sections: r.sections, inCart: r.inCart };
     }
-    const r = buildGrocerySections(listRows, aisleOrder, cartHoldIds);
+    const r = buildGrocerySections(listRows, walkOrder, cartHoldIds);
     return { kind: 'aisle' as const, sections: r.sections, inCart: r.inCart };
-  }, [listRows, aisleOrder, cartHoldIds, lens, itemShops, shops, activeTripShopId]);
+  }, [listRows, aisleOrder, walkOrder, cartHoldIds, lens, itemShops, shops, activeTripShopId]);
   const { inCart } = grouped;
   const remaining = useMemo(() => listRows.filter(i => !i.checked).length, [listRows]);
 

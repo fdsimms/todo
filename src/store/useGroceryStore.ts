@@ -29,6 +29,7 @@ import {
   dbDeleteGroceryShop,
   dbSetShopExcludeFromSuggestions,
   dbSetShopAisles,
+  dbSetShopAisleOrder,
   dbSetShopReceiptStyle,
   dbGetAllItemShopLinks,
   dbSetItemShopLink,
@@ -101,6 +102,7 @@ import {
   OTHER_AISLE,
 } from '../utils/groceryAisles';
 import { isTripLive, resolveActiveTrip } from '../utils/activeTrip';
+import { shopAisleOrderToSave } from '../utils/groceryShops';
 import { scheduleTripReminder, cancelTripReminder } from '../utils/notifications';
 import { substituteQuantity } from '../utils/itemSubs';
 import { productForGtin, productKeyFor, productsForItem } from '../utils/groceryProduct';
@@ -1337,6 +1339,12 @@ interface GroceryStore extends UndoHistoryActions {
    * sells everything. See Shop.aisles.
    */
   setShopAisles: (id: string, aisles: string[] | null) => void;
+  /**
+   * The order this store's aisles are walked in, or `null` to walk the usual
+   * order again (#2938). An order that walks the same as the usual one is
+   * saved as `null` too (`shopAisleOrderToSave`). See Shop.aisleOrder.
+   */
+  setShopAisleOrder: (id: string, order: string[] | null) => void;
   /** What this store's receipts are worth reading. See ReceiptStyle. */
   setShopReceiptStyle: (id: string, style: ReceiptStyle) => void;
   /** Assert "this item is available here" without a purchase behind it. */
@@ -4860,11 +4868,23 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // stop selling it the moment that aisle is renamed to "Pharmacy". A scope
     // that loses its only aisle would read as "sells nothing", so this rewrites
     // names and never drops one.
+    //
+    // A store's own walk is the fifth (#2938), and moves for the same reason:
+    // renaming an aisle doesn't move it, at home or at any store. Rewritten in
+    // place, so the aisle keeps its spot in every store's walk.
     const nextShops = get().shops.map(shop => {
-      if (!shop.aisles || !shop.aisles.includes(from)) return shop;
-      const next = shop.aisles.map(a => (a === from ? trimmed : a));
-      dbSetShopAisles(shop.id, next);
-      return { ...shop, aisles: next };
+      let next = shop;
+      if (shop.aisles && shop.aisles.includes(from)) {
+        const aisles = shop.aisles.map(a => (a === from ? trimmed : a));
+        dbSetShopAisles(shop.id, aisles);
+        next = { ...next, aisles };
+      }
+      if (shop.aisleOrder && shop.aisleOrder.includes(from)) {
+        const aisleOrder = shop.aisleOrder.map(a => (a === from ? trimmed : a));
+        dbSetShopAisleOrder(shop.id, aisleOrder);
+        next = { ...next, aisleOrder };
+      }
+      return next;
     });
 
     set({
@@ -4924,12 +4944,28 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // not rewritten to Other, for the reason deleteAisle forgets the remembered
     // filings rather than repointing them: that would assert a range the user
     // never gave.
+    //
+    // A store's own walk just loses the name (#2938): there is nothing to file
+    // anywhere, and the rest of the walk is still the order somebody arranged.
+    // An order left naming nothing is cleared, the one state "no order of its
+    // own" has. Left alone the name would be dropped at read anyway
+    // (shopWalkOrder only walks aisles that exist), so this is about not
+    // carrying a dead name in the row, and not about what the list shows.
     const nextShops = get().shops.map(shop => {
-      if (!shop.aisles || !shop.aisles.includes(aisle)) return shop;
-      const rest = shop.aisles.filter(a => a !== aisle);
-      const next = rest.length > 0 ? rest : null;
-      dbSetShopAisles(shop.id, next);
-      return { ...shop, aisles: next };
+      let next = shop;
+      if (shop.aisles && shop.aisles.includes(aisle)) {
+        const rest = shop.aisles.filter(a => a !== aisle);
+        const aisles = rest.length > 0 ? rest : null;
+        dbSetShopAisles(shop.id, aisles);
+        next = { ...next, aisles };
+      }
+      if (shop.aisleOrder && shop.aisleOrder.includes(aisle)) {
+        const rest = shop.aisleOrder.filter(a => a !== aisle);
+        const aisleOrder = rest.length > 0 ? rest : null;
+        dbSetShopAisleOrder(shop.id, aisleOrder);
+        next = { ...next, aisleOrder };
+      }
+      return next;
     });
 
     set({
@@ -5018,6 +5054,9 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       // name, or from what gets bought there later, is the inference this
       // feature exists to replace with a statement. See Shop.aisles.
       aisles: null,
+      // Walks the usual order until somebody arranges it during a trip there.
+      // See Shop.aisleOrder.
+      aisleOrder: null,
     };
     dbInsertGroceryShop(shop);
     set(s => ({ shops: [...s.shops, shop] }));
@@ -5104,6 +5143,22 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const next = aisles && aisles.length > 0 ? aisles : null;
     dbSetShopAisles(id, next);
     set(s => ({ shops: s.shops.map(x => (x.id === id ? { ...x, aisles: next } : x)) }));
+  },
+
+  setShopAisleOrder(id, order) {
+    const shop = get().shops.find(s => s.id === id);
+    if (!shop) return;
+    // Settled against the usual order as it stands now: an arrangement that
+    // walks the same as it is no arrangement, and keeping a copy would stop
+    // the store following the next change to the usual order.
+    const next = order ? shopAisleOrderToSave(order, get().aisleOrder) : null;
+    const same =
+      next === shop.aisleOrder ||
+      (next !== null && shop.aisleOrder !== null &&
+        next.length === shop.aisleOrder.length && next.every((a, i) => a === shop.aisleOrder![i]));
+    if (same) return;
+    dbSetShopAisleOrder(id, next);
+    set(s => ({ shops: s.shops.map(x => (x.id === id ? { ...x, aisleOrder: next } : x)) }));
   },
 
   setShopReceiptStyle(id, style) {

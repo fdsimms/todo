@@ -74,6 +74,7 @@ import {
   dbGetAllGroceryShops,
   dbSetShopReceiptStyle,
   dbSetShopAisles,
+  dbSetShopAisleOrder,
   dbGetAllItemSubLinks,
   dbSetItemSubLink,
   dbDeleteItemSubLink,
@@ -2370,6 +2371,7 @@ function makeShop(overrides: { id: string; name: string }): Shop {
     excludeFromSuggestions: false,
     receiptStyle: 'itemized' as const,
     aisles: null,
+    aisleOrder: null,
     ...overrides,
   };
 }
@@ -2445,7 +2447,7 @@ describe('grocery items', () => {
   it('records a priced trip into the rolling window, at both levels', () => {
     const shop = { id: 's1', name: 'Costco', nameKey: 'costco', sortOrder: 1,
       createdAt: '2026-01-01T00:00:00.000Z', excludeFromSuggestions: false,
-      receiptStyle: 'itemized' as const, aisles: null };
+      receiptStyle: 'itemized' as const, aisles: null, aisleOrder: null };
     dbInsertGroceryShop(shop);
     const item = makeGroceryItem({
       id: 'g1', name: 'Olive oil', onList: true, checked: true, quantity: '1 l',
@@ -2469,7 +2471,7 @@ describe('grocery items', () => {
   it('records a price against no quantity when a recipe wrote the row’s quantity', () => {
     const shop = { id: 's1', name: 'Costco', nameKey: 'costco', sortOrder: 1,
       createdAt: '2026-01-01T00:00:00.000Z', excludeFromSuggestions: false,
-      receiptStyle: 'itemized' as const, aisles: null };
+      receiptStyle: 'itemized' as const, aisles: null, aisleOrder: null };
     dbInsertGroceryShop(shop);
     const item = makeGroceryItem({
       id: 'g1', name: 'Milk', onList: true, checked: true, quantity: '3 cups', quantityFromRecipe: true,
@@ -4971,7 +4973,7 @@ describe('a store\'s aisle range', () => {
   const insertShop = (id: string) => {
     dbInsertGroceryShop({
       id, name: id, nameKey: id, sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z',
-      excludeFromSuggestions: false, receiptStyle: 'itemized', aisles: null,
+      excludeFromSuggestions: false, receiptStyle: 'itemized', aisles: null, aisleOrder: null,
     });
   };
   const rangeOf = (id: string) => dbGetAllGroceryShops().find(s => s.id === id)?.aisles;
@@ -5023,6 +5025,99 @@ describe('a store\'s aisle range', () => {
       .run(JSON.stringify(['Produce', 3, '', null]), 'cvs');
 
     expect(rangeOf('cvs')).toEqual(['Produce']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A store's own aisle walk (#2938)
+// ---------------------------------------------------------------------------
+
+describe('a store\'s own aisle walk', () => {
+  const insertShop = (id: string) => {
+    dbInsertGroceryShop({
+      id, name: id, nameKey: id, sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z',
+      excludeFromSuggestions: false, receiptStyle: 'itemized', aisles: null, aisleOrder: null,
+    });
+  };
+  const walkOf = (id: string) => dbGetAllGroceryShops().find(s => s.id === id)?.aisleOrder;
+
+  it('reads back as none for a store nobody has arranged', () => {
+    insertShop('tj');
+    expect(walkOf('tj')).toBeNull();
+  });
+
+  it('round-trips an order', () => {
+    insertShop('tj');
+
+    dbSetShopAisleOrder('tj', ['Frozen', 'Produce', 'Dairy & Eggs']);
+
+    expect(walkOf('tj')).toEqual(['Frozen', 'Produce', 'Dairy & Eggs']);
+  });
+
+  it('stores an empty order, and null, as none at all', () => {
+    insertShop('tj');
+    dbSetShopAisleOrder('tj', ['Frozen']);
+    dbSetShopAisleOrder('tj', []);
+    expect(walkOf('tj')).toBeNull();
+
+    dbSetShopAisleOrder('tj', ['Frozen']);
+    dbSetShopAisleOrder('tj', null);
+    expect(walkOf('tj')).toBeNull();
+  });
+
+  // Resolve-or-shrug, on the side that changes nothing: an order that can't
+  // be read is the usual order.
+  it('reads a blob that will not parse as none', () => {
+    insertShop('tj');
+    mockRawDb.prepare('UPDATE grocery_shops SET aisle_order = ? WHERE id = ?').run('{oops', 'tj');
+
+    expect(walkOf('tj')).toBeNull();
+  });
+
+  it('is its own column, apart from the range', () => {
+    insertShop('tj');
+    dbSetShopAisles('tj', ['Produce']);
+    dbSetShopAisleOrder('tj', ['Frozen', 'Produce']);
+
+    const [shop] = dbGetAllGroceryShops();
+    expect(shop.aisles).toEqual(['Produce']);
+    expect(shop.aisleOrder).toEqual(['Frozen', 'Produce']);
+  });
+
+  // It is about the store, not the phone: a second device shopping there
+  // walks the same aisles in the same order.
+  it('travels in a sync payload', () => {
+    insertShop('tj');
+    dbSetShopAisleOrder('tj', ['Frozen', 'Produce']);
+
+    const out = dbSyncChangesSince(null);
+    const row = out.tables.grocery_shops.find(r => r.id === 'tj');
+    expect(JSON.parse(String(row?.aisle_order))).toEqual(['Frozen', 'Produce']);
+
+    mockRawDb.exec('DELETE FROM grocery_shops; DELETE FROM sync_deletions;');
+    dbApplySyncChanges({
+      format: SYNC_FORMAT,
+      deviceId: 'peer',
+      since: null,
+      until: '2030-01-01T00:00:00.000Z',
+      tables: { grocery_shops: [{ ...row!, updated_at: '2026-04-02T12:00:00.000Z' }] },
+      deletions: [],
+    });
+    expect(walkOf('tj')).toEqual(['Frozen', 'Produce']);
+  });
+
+  it('survives a backup and restore', () => {
+    insertShop('tj');
+    dbSetShopAisleOrder('tj', ['Frozen', 'Produce']);
+    const backup = buildBackup(dbExportTables(), { appVersion: '1.0.0', exportedAt: new Date() });
+
+    const parsed = parseBackup(serializeBackup(backup));
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    mockRawDb.exec('DELETE FROM grocery_shops;');
+    dbReplaceAllData(parsed.backup.tables);
+
+    expect(walkOf('tj')).toEqual(['Frozen', 'Produce']);
   });
 });
 
