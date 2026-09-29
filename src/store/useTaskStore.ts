@@ -1986,7 +1986,7 @@ interface TaskStore extends UndoHistoryActions {
   bulkSetPriority: (ids: string[], priority: Priority) => void;
   bulkTogglePin: (ids: string[]) => void;
   bulkDefer: (ids: string[], until: Date) => void;
-  bulkSetWhen: (ids: string[], date: Date | null, timeSegments: TimeOfDay[], options?: { restartSchedules?: boolean }) => void;
+  bulkSetWhen: (ids: string[], date: Date | null, timeSegments: TimeOfDay[], options?: { restartSchedules?: boolean; scope?: 'occurrence' | 'series' }) => void;
   bulkSetCategory: (ids: string[], category: string | null) => void;
   bulkAddTags: (ids: string[], tags: string[]) => void;
   addTag: (tag: string) => void;
@@ -8904,7 +8904,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
    *
    * `restartSchedules` is the answer to confirmScheduleMove: a repeating row
    * pulled forward then counts its schedule from the new date rather than
-   * keeping its grid (see pullForwardChoice).
+   * keeping its grid (see pullForwardChoice). `scope: 'occurrence'` is the
+   * answer to confirmSegmentScope: the new time of day stays on these rows and
+   * the repeats after them keep the old one.
    */
   bulkSetWhen(ids, date, timeSegments, options) {
     if (ids.length === 0) return;
@@ -8935,7 +8937,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           // engine writers of these same fields want the opposite (see
           // transitionedIntoNew); the row's own picker makes the same claim for
           // the same reason, and this is the same gesture.
-          { markSeenOnBecomeVisible: true },
+          { markSeenOnBecomeVisible: true, ...(options?.scope === 'occurrence' ? { scope: 'occurrence' as const } : {}) },
         );
       });
     });
