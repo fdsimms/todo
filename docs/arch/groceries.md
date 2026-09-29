@@ -18,7 +18,9 @@ doesn't already cover.
 An aisle is a *string*, held in three places at once: `aisleOrder` (a settings key), the `aisle`
 column on every row, and the values of `aisleOverrides` (the remembered filings). So `renameAisle`
 has to rewrite all three, and `deleteAisle` has to move the rows to `Other` — every row, not just
-this week's list, since the aisle lives on the catalog row.
+this week's list, since the aisle lives on the catalog row. Stores hold two more copies, a range
+(`Shop.aisles`) and a walk of their own (`Shop.aisleOrder`), and both actions keep those too: see
+the store sections below.
 
 **`normalizeAisleOrder` re-appends `DEFAULT_AISLES` on every read**, which is the feature (a bigger
 default list ships with no migration) and is also why a delete can't just drop the name from the
@@ -669,7 +671,8 @@ list. The list now has a third lens beside aisle and recipe (`groceryGroupBy: 's
 - **Sections follow the user's own store order, and a running trip's store leads.** Only a trip
   `resolveActiveTrip` still honors, so an abandoned one can't keep reordering the list. Within a
   section the aisle walk is kept (`sectionsInAisleOrder`, the rule the aisle lens and the kitchen
-  share), just without the aisle headings.
+  share), just without the aisle headings, and it is that store's own walk where it has one: see
+  the next section.
 - **No row drag and no add-button drop zones**, the recipe lens's rule for the recipe lens's
   reason: which store a row is bought at is a fact on record, not a placement a drop could assign.
 - **An away list stays grouped by aisle** whatever is picked. Every store on record is one near
@@ -690,9 +693,49 @@ list. The list now has a third lens beside aisle and recipe (`groceryGroupBy: 's
   planning to go there, and nothing infers a trip. The id rather than the name, so a rename between
   planning and tapping still lands. The bare link every older task carries opens the list exactly
   as it did.
-- **Not built: a per-store aisle order.** `aisleOrder` is still one walk. A `Shop.aisleOrder`
-  applied during a trip would be the fifth place an aisle name lives, so `renameAisle` and
-  `deleteAisle` would have to keep it too.
+
+### A store can walk its own aisle order (`Shop.aisleOrder`, #2938)
+
+The usual walk (`aisleOrder`) is one order for every store, so starting a trip at a store laid out
+differently changed nothing about the rows. `Shop.aisleOrder` is that store's own walk, or `null`
+to follow the usual one, which is every store until somebody arranges one.
+
+- **Applied only where the store is known.** The aisle lens follows it while a trip at that store
+  is running (only one `resolveActiveTrip` still honors, so an abandoned trip can't keep the list
+  in another store's order), and each store's section in the store lens walks that store. The
+  store lens's last section ("No store on record") has no store of its own, so it walks the trip's
+  store during a trip and the usual order otherwise: those are rows you might pick up where you
+  are, and the aisle lens walks them the same way. Everything else keeps the usual order: the
+  kitchen, since a pantry is laid out like no shop, and every aisle picker, whose order is a list
+  to choose from rather than a walk.
+- **Arranged where somebody would reach for it: the Aisles tab, during a trip there.** Standing in
+  the store is the one moment anyone knows its layout, and it is the order the list is following
+  right then, so that is what a drag in the tab changes. A card above the rows names the store and
+  carries "Use the usual order" once it has an order of its own. Nothing else sets one, and there
+  is deliberately no per-store editor on the Stores tab: arranging a store you aren't standing in
+  is guessing at its layout. With no trip running the tab arranges the usual order and names any
+  store that keeps its own, so a reorder that didn't take there isn't a mystery. Rename, delete
+  and the non-food flag stay about the aisle itself and apply at every store, which the tab says.
+  The drag stays in `GroceryAislesSheet`, which was already `fullScreen` because a drag can't live
+  in a page sheet.
+- **Read through `shopWalkOrder`, never directly.** The stored list is what was arranged on the
+  day, so an aisle added since is missing from it. It sorts where the usual order puts it relative
+  to its neighbours: straight after the aisle before it there, or straight before the one after it
+  for an aisle the usual order leads with. So it lands beside the aisle it sits beside everywhere
+  else rather than off the end of the store. A name the usual order no longer has (a copy from a
+  device that hasn't seen a rename yet) is dropped at read, and `Other` always walks last. Adding
+  an aisle from the tab during a trip is the one exception: it goes at the bottom of the walk on
+  screen, where the field is.
+- **An arrangement that walks the same as the usual order is saved as `null`**
+  (`shopAisleOrderToSave`). A drag that ends where it began says nothing about the store, and
+  keeping a copy would stop it following the next change to the usual order.
+- **It is the fifth place an aisle name lives**, so `renameAisle` rewrites it in place and
+  `deleteAisle` drops the name, clearing an order left naming nothing. A walk makes no claim about
+  what a store sells, so unlike the range there is nothing a delete could wrongly widen.
+- **It is about the store, not the device.** A plain column on `grocery_shops` (`aisle_order`), so
+  it syncs and is backed up with the rest of the row. Two phones that each added the same store
+  fold by `naturalKeyFold`'s default for a plain column: the survivor's walk whole, else the
+  other's. A union of two walks would be an order nobody arranged.
 
 ## The active trip — "I'm at this store"
 
@@ -724,6 +767,9 @@ which rows you don't usually get here.
   at read time (not written back, like the aisle order), and `checkTripExpiry` on screen focus
   and on the app returning to the foreground (`useTripLiveActivitySync`) clears the fields so an expiry that happened while the app was open becomes *visible* rather than
   merely true; a memo whose inputs haven't changed won't re-render itself away.
+- **The trip also decides the walk**, when its store has one of its own (`Shop.aisleOrder`, above).
+  It is the other thing a running trip changes about the list, and it is read off the same
+  `resolveActiveTrip` answer as everything else here.
 - **Silence is the default and it's load-bearing** (`tripMarkerFor`). Only three things can be
   said, and each is backed by something the user recorded: `unavailable` ("Not at Safeway", their
   own negative claim), `only` ("Only at Costco", every store on record is one other — a hand

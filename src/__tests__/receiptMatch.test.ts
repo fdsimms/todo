@@ -65,6 +65,7 @@ function makeShop(name: string): Shop {
     excludeFromSuggestions: false,
     receiptStyle: 'itemized' as const,
     aisles: null,
+    aisleOrder: null,
   };
 }
 

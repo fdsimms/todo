@@ -3276,6 +3276,7 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
     linkItemSub,
     setShopExcludedFromSuggestions,
     setShopAisles,
+    setShopAisleOrder,
     setShopReceiptStyle,
     rememberAliases,
     startTrip,
@@ -4133,6 +4134,16 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
   deleteAisle('Personal Care');
   const order = useGroceryStore.getState().aisleOrder;
   setAisleOrder([...order.filter(a => a !== 'Frozen'), 'Frozen']);
+
+  // Trader Joe's walks an order of its own (#2938): its freezers come straight
+  // after produce, where the usual order above puts Frozen last. The seeded
+  // trip below is at Trader Joe's, so the list follows this walk (Ice cream
+  // comes up second rather than last) and the Aisles tab opens on it, with its
+  // way back to the usual order. Set after the usual order, since an
+  // arrangement is measured against it and one that matched would save as none.
+  const tjWalk = useGroceryStore.getState().aisleOrder.filter(a => a !== 'Frozen');
+  tjWalk.splice(tjWalk.indexOf('Produce') + 1, 0, 'Frozen');
+  setShopAisleOrder(traderJoes.id, tjWalk);
 
   // Household holds Paper towels/Toilet paper/Dish soap above — none of it is
   // food, so it's flagged non-food the way a real shopper filing that aisle

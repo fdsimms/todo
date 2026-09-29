@@ -1769,6 +1769,13 @@ export function initDatabase(): void {
     // The same beside a time block's id, so a restored backup's task finds its
     // block again instead of dropping the pointer. See Task.timeBlockExternalId.
     'ALTER TABLE tasks ADD COLUMN time_block_external_id TEXT',
+    // A store's own aisle walk (#2938). NULL on every existing row, which is
+    // every store following the usual order exactly as it did before this
+    // column. Nullable rather than '[]' for the reason `aisles` is: an empty
+    // list is not a state, and NULL is what "no order of its own" reads as.
+    // A whole-row column like the rest of grocery_shops, so it syncs and is
+    // backed up with no list to add it to. See Shop.aisleOrder.
+    'ALTER TABLE grocery_shops ADD COLUMN aisle_order TEXT',
   ];
   // Asking SQLite for a table's columns once is cheaper than handing it every
   // ALTER for that table and catching the duplicate-column error, and by the
@@ -5062,6 +5069,9 @@ function rowToShop(row: Record<string, unknown>): Shop {
     // rather than one whose list has silently become empty. Same
     // resolve-or-shrug the rest of this file applies to a stored JSON value.
     aisles: parseShopAisles(row.aisles),
+    // Same parser and the same permissive answer: an order that can't be read
+    // is the usual order, never a store whose aisles have all gone missing.
+    aisleOrder: parseShopAisles(row.aisle_order),
   };
 }
 
@@ -5071,6 +5081,9 @@ function rowToShop(row: Record<string, unknown>): Shop {
  * array is not a state this feature has (see Shop.aisles), so it normalises to
  * null on the way in rather than being carried around as a second way to say
  * "unscoped".
+ *
+ * `Shop.aisleOrder` reads through this too, and for it the same null means
+ * "walk the usual order".
  */
 function parseShopAisles(value: unknown): string[] | null {
   if (typeof value !== 'string' || value === '') return null;
@@ -5117,6 +5130,18 @@ export function dbSetShopExcludeFromSuggestions(id: string, exclude: boolean): v
 export function dbSetShopAisles(id: string, aisles: string[] | null): void {
   const value = aisles && aisles.length > 0 ? JSON.stringify(aisles) : null;
   db.runSync('UPDATE grocery_shops SET aisles = ? WHERE id = ?', [value, id]);
+}
+
+/**
+ * The store's own aisle walk. `null` goes back to the usual order, and so does
+ * an empty list, collapsed here for the reason dbSetShopAisles collapses one.
+ * Whether an order is worth keeping at all (one that walks the same as the
+ * usual order isn't) is `shopAisleOrderToSave`'s call, made in the store
+ * before this.
+ */
+export function dbSetShopAisleOrder(id: string, order: string[] | null): void {
+  const value = order && order.length > 0 ? JSON.stringify(order) : null;
+  db.runSync('UPDATE grocery_shops SET aisle_order = ? WHERE id = ?', [value, id]);
 }
 
 export function dbSetShopReceiptStyle(id: string, style: ReceiptStyle): void {

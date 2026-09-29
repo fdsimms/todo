@@ -27,6 +27,7 @@ function makeShop(overrides: Partial<Shop> = {}): Shop {
     excludeFromSuggestions: false,
     receiptStyle: 'itemized' as const,
     aisles: null,
+    aisleOrder: null,
     ...overrides,
   };
 }

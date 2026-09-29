@@ -43,6 +43,20 @@ describe('foldRows', () => {
     expect(twice).toEqual(once);
   });
 
+  // Two phones that each added "Trader Joe's" and arranged it: a walk is one
+  // person's arrangement, so the survivor keeps its own whole rather than a
+  // merge of the two, and takes the other's only when it has none (#2938).
+  it('keeps one copy\'s aisle walk whole when two stores fold', () => {
+    const tj = (id: string, aisleOrder: string | null) =>
+      ({ id, name: "Trader Joe's", name_key: 'trader joe s', aisle_order: aisleOrder, created_at: '2026-01-01' });
+    const frozenFirst = JSON.stringify(['Frozen', 'Produce']);
+    const produceFirst = JSON.stringify(['Produce', 'Frozen']);
+
+    expect(foldRows('grocery_shops', tj('a', frozenFirst), tj('b', produceFirst)).aisle_order).toBe(frozenFirst);
+    expect(foldRows('grocery_shops', tj('a', null), tj('b', produceFirst)).aisle_order).toBe(produceFirst);
+    expect(foldRows('grocery_shops', tj('a', null), tj('b', null)).aisle_order).toBeNull();
+  });
+
   it('takes a recipe\'s cook-time total with the count it is over', () => {
     const out = foldRows(
       'recipes',

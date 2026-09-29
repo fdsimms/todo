@@ -34,6 +34,7 @@ import { isFocusRunning } from '../utils/focusPlan';
 import { itemsOnList } from '../utils/groceryLists';
 import { cartBudgetStanding, describeCartTotal, estimateCartTotal } from '../utils/groceryPrice';
 import { OTHER_AISLE } from '../utils/groceryAisles';
+import { shopWalkOrder } from '../utils/groceryShops';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useSavedMealsStore } from '../store/useSavedMealsStore';
@@ -3034,6 +3035,16 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(aisleOrder).not.toContain('Personal Care');
     expect(items.some(i => i.aisle === 'Bulk bins')).toBe(true);
     expect(aisleOrder.indexOf('Frozen')).toBeGreaterThan(aisleOrder.indexOf('Pantry'));
+
+    // And a store that walks its own order (#2938), the one the seeded trip is
+    // at, so the list and the Aisles tab both show it. Frozen right after
+    // Produce there, where the usual order has it last.
+    const own = shops.filter(s => s.aisleOrder !== null);
+    expect(own).toHaveLength(1);
+    const walk = shopWalkOrder(own[0].aisleOrder, aisleOrder);
+    expect(walk.indexOf('Frozen')).toBe(walk.indexOf('Produce') + 1);
+    expect(walk).not.toEqual(aisleOrder);
+    expect(useGroceryStore.getState().activeShop()?.id).toBe(own[0].id);
 
     // A pile in "Other" the offline lexicon couldn't place, which is what the
     // "Sort N into aisles" action at the foot of the list is offered for. With

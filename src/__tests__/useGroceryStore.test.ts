@@ -23,6 +23,7 @@ import {
   dbGetAllGroceryShops,
   dbInsertGroceryShop,
   dbSetShopAisles,
+  dbSetShopAisleOrder,
   dbUpdateGroceryShop,
   dbDeleteGroceryShop,
   dbGetAllItemShopLinks,
@@ -86,6 +87,7 @@ jest.mock('../db/database', () => ({
   dbUpdateGroceryShop: jest.fn(),
   dbDeleteGroceryShop: jest.fn(),
   dbSetShopAisles: jest.fn(),
+  dbSetShopAisleOrder: jest.fn(),
   dbGetAllItemShopLinks: jest.fn().mockReturnValue([]),
   dbSetItemShopLink: jest.fn(),
   dbDeleteItemShopLink: jest.fn(),
@@ -302,6 +304,7 @@ function makeShop(name: string, overrides: Partial<Shop> = {}): Shop {
     excludeFromSuggestions: false,
     receiptStyle: 'itemized' as const,
     aisles: null,
+    aisleOrder: null,
     ...overrides,
   };
 }
@@ -8307,6 +8310,120 @@ describe('a store\'s aisle range', () => {
 
     expect(useGroceryStore.getState().shops[0].aisles).toBeNull();
     expect(dbSetShopAisles).toHaveBeenLastCalledWith(cvs.id, null);
+  });
+});
+
+// #2938: the order a store's aisles are walked in, applied while you're there.
+describe('a store\'s own aisle walk', () => {
+  const others = DEFAULT_AISLES.filter(a => a !== 'Produce' && a !== 'Frozen' && a !== OTHER_AISLE);
+  // Frozen first, Produce last: nothing like the usual order.
+  const ARRANGED = ['Frozen', ...others, 'Produce'];
+  const orderOf = () => useGroceryStore.getState().shops[0].aisleOrder;
+
+  it('starts with none, so a new store walks the usual order', () => {
+    expect(useGroceryStore.getState().addShop("Trader Joe's")!.aisleOrder).toBeNull();
+  });
+
+  it('setShopAisleOrder writes an arrangement and keeps it in state', () => {
+    const tj = makeShop("Trader Joe's");
+    seed([], { shops: [tj] });
+
+    useGroceryStore.getState().setShopAisleOrder(tj.id, [...ARRANGED, OTHER_AISLE]);
+
+    // Other is never stored: it always walks last.
+    expect(dbSetShopAisleOrder).toHaveBeenCalledWith(tj.id, ARRANGED);
+    expect(orderOf()).toEqual(ARRANGED);
+  });
+
+  // A drag that ends where it began says nothing about the store, and keeping
+  // a copy would stop it following the next change to the usual order.
+  it('saves an order that walks the same as the usual one as none at all', () => {
+    const tj = makeShop("Trader Joe's", { aisleOrder: ARRANGED });
+    seed([], { shops: [tj] });
+
+    useGroceryStore.getState().setShopAisleOrder(tj.id, [...DEFAULT_AISLES]);
+
+    expect(dbSetShopAisleOrder).toHaveBeenCalledWith(tj.id, null);
+    expect(orderOf()).toBeNull();
+  });
+
+  it('goes back to the usual order on null', () => {
+    const tj = makeShop("Trader Joe's", { aisleOrder: ARRANGED });
+    seed([], { shops: [tj] });
+
+    useGroceryStore.getState().setShopAisleOrder(tj.id, null);
+
+    expect(dbSetShopAisleOrder).toHaveBeenCalledWith(tj.id, null);
+    expect(orderOf()).toBeNull();
+  });
+
+  it('writes nothing when the order hasn\'t changed', () => {
+    const tj = makeShop("Trader Joe's", { aisleOrder: ARRANGED });
+    const costco = makeShop('Costco');
+    seed([], { shops: [tj, costco] });
+
+    useGroceryStore.getState().setShopAisleOrder(tj.id, ARRANGED);
+    useGroceryStore.getState().setShopAisleOrder(costco.id, [...DEFAULT_AISLES]);
+
+    expect(dbSetShopAisleOrder).not.toHaveBeenCalled();
+  });
+
+  it('ignores a store that is gone', () => {
+    useGroceryStore.getState().setShopAisleOrder('nope', ARRANGED);
+    expect(dbSetShopAisleOrder).not.toHaveBeenCalled();
+  });
+
+  // The fifth place an aisle name lives, so a rename carries onto it, in place.
+  it('carries a renamed aisle onto every store\'s walk, where it was', () => {
+    const tj = makeShop("Trader Joe's", { aisleOrder: ARRANGED });
+    seed([], { shops: [tj] });
+
+    useGroceryStore.getState().renameAisle('Frozen', 'Freezer');
+
+    const expected = ['Freezer', ...others, 'Produce'];
+    expect(orderOf()).toEqual(expected);
+    expect(dbSetShopAisleOrder).toHaveBeenLastCalledWith(tj.id, expected);
+  });
+
+  it('leaves a store walking the usual order alone on a rename', () => {
+    const tj = makeShop("Trader Joe's");
+    seed([], { shops: [tj] });
+
+    useGroceryStore.getState().renameAisle('Frozen', 'Freezer');
+
+    expect(orderOf()).toBeNull();
+    expect(dbSetShopAisleOrder).not.toHaveBeenCalled();
+  });
+
+  it('keeps a store\'s range and walk apart through a rename', () => {
+    const tj = makeShop("Trader Joe's", { aisles: ['Produce', 'Frozen'], aisleOrder: ARRANGED });
+    seed([], { shops: [tj] });
+
+    useGroceryStore.getState().renameAisle('Produce', 'Fruit & Veg');
+
+    expect(useGroceryStore.getState().shops[0].aisles).toEqual(['Fruit & Veg', 'Frozen']);
+    expect(orderOf()).toEqual(['Frozen', ...others, 'Fruit & Veg']);
+  });
+
+  it('drops a deleted aisle from a store\'s walk and keeps the rest of it', () => {
+    const tj = makeShop("Trader Joe's", { aisleOrder: ARRANGED });
+    seed([], { shops: [tj] });
+
+    useGroceryStore.getState().deleteAisle('Frozen');
+
+    const expected = [...others, 'Produce'];
+    expect(orderOf()).toEqual(expected);
+    expect(dbSetShopAisleOrder).toHaveBeenLastCalledWith(tj.id, expected);
+  });
+
+  it('clears a walk left naming nothing', () => {
+    const tj = makeShop("Trader Joe's", { aisleOrder: ['Snacks'] });
+    seed([], { shops: [tj] });
+
+    useGroceryStore.getState().deleteAisle('Snacks');
+
+    expect(orderOf()).toBeNull();
+    expect(dbSetShopAisleOrder).toHaveBeenLastCalledWith(tj.id, null);
   });
 });
 
