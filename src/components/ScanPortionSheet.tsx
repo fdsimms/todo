@@ -284,6 +284,11 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
             const unitOptions = foodUnitOptionsFor(panel);
             const selectedUnitKey = amountUnits[food.key] ?? (unitOptions.length > 0 ? unitOptions[0].key : null);
             const usingPills = unitOptions.length > 0 && selectedUnitKey !== 'other';
+            // A package choice and a typed amount are two answers to one
+            // question, and only one of them is live. While a choice is, the
+            // unit pills must not read as selected too, or two blue pills
+            // ("1 serving" and "g") both look like the current answer.
+            const choiceActive = answer?.kind === 'choice';
             const selectedUnit = unitOptions.find(o => o.key === selectedUnitKey);
             // Offered once a typed amount resolves for nutrients but still has
             // no weight — a per-100ml panel's own volume math can do the
@@ -392,7 +397,7 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
                 {unitOptions.length > 0 && (
                   <View style={styles.choices}>
                     {unitOptions.map(option => {
-                      const on = selectedUnitKey === option.key;
+                      const on = !choiceActive && selectedUnitKey === option.key;
                       return (
                         <TouchableOpacity
                           key={option.key}
@@ -419,7 +424,7 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
                         free text, the same offer `FoodLogEntrySheet` makes. */}
                     <TouchableOpacity
                       key="other"
-                      style={[styles.choice, selectedUnitKey === 'other' && styles.choiceOn]}
+                      style={[styles.choice, !choiceActive && selectedUnitKey === 'other' && styles.choiceOn]}
                       activeOpacity={interaction.activeOpacity}
                       onPress={() => {
                         haptics.tap();
@@ -427,10 +432,10 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
                         setAnswers(a => ({ ...a, [food.key]: { kind: 'typed', text: '' } }));
                       }}
                       accessibilityRole="button"
-                      accessibilityState={{ selected: selectedUnitKey === 'other' }}
+                      accessibilityState={{ selected: !choiceActive && selectedUnitKey === 'other' }}
                       accessibilityLabel="Something else"
                     >
-                      <Text style={[styles.choiceText, selectedUnitKey === 'other' && styles.choiceTextOn]}>
+                      <Text style={[styles.choiceText, !choiceActive && selectedUnitKey === 'other' && styles.choiceTextOn]}>
                         Something else
                       </Text>
                     </TouchableOpacity>
@@ -440,7 +445,9 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
                     than only after a refusal. */}
                 <Text style={styles.hint}>
                   {usingPills
-                    ? 'Choose a unit below and type the amount. Anything else is refused rather than guessed at.'
+                    ? choiceActive
+                      ? 'Or type an exact amount above and pick its unit.'
+                      : 'Pick the unit for the amount you typed.'
                     : amountHint(panel)}
                 </Text>
                 {/* What the answer works out to, or why it doesn't. An amount
