@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { Platform, View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
+import { Platform, View, Text, TextInput, TouchableOpacity, StyleSheet, useWindowDimensions } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import {
@@ -25,7 +25,7 @@ import { convertQuantity } from '../utils/unitConvert';
 import { describeProduct, RATING_LABELS } from '../utils/groceryProduct';
 import { formatPrice, formatPriceInput, parsePriceInput, priceToInput } from '../utils/groceryPrice';
 import { groceryNameKey } from '../utils/groceryParse';
-import { quantityFitsBesideName } from '../utils/groceryRowQuantity';
+import { groceryRowNameSpace, quantityFitsBesideName } from '../utils/groceryRowQuantity';
 import { haptics } from '../utils/haptics';
 
 // Matches GroceryItemSheet's own price field — "10000.00" is the longest a
@@ -172,9 +172,10 @@ interface Props {
 //   trip price     the price field's draft, opening it, committing it
 //   label          the accessibility label, in the captions' order
 //   rename         opening, editing and committing the inline rename
-//   render         the checkbox; the tap zone (name, captions, a long
-//                  quantity, the trip price line, a short quantity, the price
-//                  icon); the trailing icons; then the card and its OR seam
+//   render         the checkbox; the tap zone (name, captions, a quantity
+//                  moved under the name, the trip price line, a quantity
+//                  beside the name, the price icon); the trailing icons; then
+//                  the card and its OR seam
 // Below the component: styles.
 export const GroceryRow = React.memo(function GroceryRow({
   item,
@@ -209,6 +210,7 @@ export const GroceryRow = React.memo(function GroceryRow({
   const paintRowRef = usePaintSelectionRow(isActive ? null : item.id);
   const unitSystem = useSettingsStore(s => s.unitSystem);
   const currencySymbol = useSettingsStore(s => s.currencySymbol);
+  const { width: windowWidth } = useWindowDimensions();
 
   // The row is read-only text, so it shows the amount in the reader's units.
   // The item sheet's field deliberately doesn't — that one is editable, and an
@@ -216,9 +218,25 @@ export const GroceryRow = React.memo(function GroceryRow({
   const shownQuantity = convertQuantity(item.quantity ?? '', unitSystem).text;
   // A short quantity sits in the pill beside the name; a long one ("2 x 14 oz
   // cans, drained") gets a line of its own under it, so the name keeps the
-  // row (#2946). The same rule with or without a trip, so starting one moves
-  // nothing. See groceryRowQuantity.ts for where the line is drawn and why.
-  const quantityBesideName = !!shownQuantity && quantityFitsBesideName(shownQuantity);
+  // row (#2946). So does one that would leave a long name too little room
+  // beside it ("Fire-roasted diced tomatoes" next to "2 x 400 ml" during a
+  // trip). See groceryRowQuantity.ts for where both lines are drawn and why.
+  //
+  // The space is counted as the row stands outside selection mode, and with
+  // the trip's price icon for the whole trip, even once a price is recorded
+  // and the icon gives way to the price's own line: otherwise selecting, or
+  // typing a price, would move the quantity back beside the name under the
+  // finger. The committed name, not the rename draft, so typing doesn't
+  // either.
+  const quantityBesideName =
+    !!shownQuantity &&
+    quantityFitsBesideName(shownQuantity, {
+      name: item.name,
+      space: groceryRowNameSpace(windowWidth, {
+        tripRunning: !!onSetTripPrice,
+        substitutesIcon: !!onOpenSubstitutes,
+      }),
+    });
   const quantityUnderName = !!shownQuantity && !quantityBesideName;
 
   // ==== rename state ====
@@ -473,7 +491,10 @@ export const GroceryRow = React.memo(function GroceryRow({
               given the text column's width rather than the side pill's 90pt.
               Beside the name it took that full 90pt, wrapped, and still cut
               the quantity off, while the name got about 80pt of a 390pt row
-              during a trip. Right after the brand, so the order on screen
+              during a trip. A shorter quantity comes here too when the name
+              beside it is too long to share the row, which is what cut
+              "Fire-roasted diced tomatoes" beside "2 x 400 ml" during a trip.
+              Right after the brand, so the order on screen
               stays the order `label` reads out (name, product, quantity).
               Inside the tap zone like the side pill, so tapping it renames and
               holding it drags, exactly as before. */}
@@ -610,9 +631,10 @@ export const GroceryRow = React.memo(function GroceryRow({
 
         {quantityBesideName && (
           <View style={[styles.qtyPill, item.checked && styles.qtyPillChecked]}>
-            {/* Short quantities only now: a long one (a recipe's prep
-                instructions, "cut into ¼-inch-thick rounds") goes on its own
-                line under the name instead, see `qtyPillUnder` (#2946). What
+            {/* Short quantities beside names that leave room for them only
+                now: a long one (a recipe's prep instructions, "cut into
+                ¼-inch-thick rounds"), or one beside a long name, goes on its
+                own line under the name instead, see `qtyPillUnder` (#2946). What
                 stays here fits one line of the capped pill, so the two lines
                 are a backstop for unusually wide glyphs rather than the
                 layout. */}
@@ -809,6 +831,9 @@ function makeStyles(colors: Colors) {
       borderRadius: radius.full,
       overflow: 'hidden',
     },
+    // groceryRowNameSpace (groceryRowQuantity.ts) counts this padding and gap,
+    // the card's margin, the checkbox and the icons beside the tap zone, to
+    // work out what the name has left. Change one and change it there too.
     row: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -945,7 +970,8 @@ function makeStyles(colors: Colors) {
     qtyPillChecked: {
       backgroundColor: 'transparent',
     },
-    // A long quantity's own line under the name (#2946): qtyPill above,
+    // A quantity's own line under the name (#2946), for one too long for the
+    // side pill or beside a name too long to share the row: qtyPill above,
     // sized to its text and left-aligned under the name, and as wide as the
     // text column rather than the side pill's 90pt. A step below the line
     // above it, the same gap the trip price line takes.
