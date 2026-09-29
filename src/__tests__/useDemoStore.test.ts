@@ -38,7 +38,7 @@ import { useGroceryStore } from '../store/useGroceryStore';
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useSavedMealsStore } from '../store/useSavedMealsStore';
 import { currentEatenFraction, describeFoodLogEntry, foodLogEntryEdit, foodLogTotals, recallAmount, scalePanelToAmount, wholeEstimate } from '../utils/foodLog';
-import { foodLastAmounts } from '../utils/foodLogRecents';
+import { foodLastAmounts, helpingAgain, recentUnlinkedHelpings } from '../utils/foodLogRecents';
 import { isWaterEntry } from '../utils/waterLog';
 import { foodDayInputs, foodKeyNames, hasNutritionData, nutrientAverages, nutritionCounts, sourceMix } from '../utils/nutritionStats';
 import { packageHelping } from '../utils/scanPortion';
@@ -2122,6 +2122,19 @@ describe('demo seed — people', () => {
     expect(plan).not.toBeNull();
     // And the amount it reopens on still measures against what it kept.
     expect(scalePanelToAmount(unfiled!.sourcePanel!, plan!.amount, null)).not.toBeNull();
+  });
+
+  it('seeds foods with no row, so the picker has earlier helpings to offer again (#2914)', () => {
+    // The unfiled database food and the estimate are the two rows above the
+    // picker's list; with neither in the seed, "Log the same again" never shows.
+    const window = cookingWindow(getLogicalToday(), 90);
+    useFoodLogStore.getState().loadWindow(window.startKey, window.endKey);
+    const helpings = recentUnlinkedHelpings(useFoodLogStore.getState().windowEntries);
+    expect(helpings.some(e => e.nutrition.source === 'estimated')).toBe(true);
+    const unfiled = helpings.find(e => e.sourcePanel);
+    expect(unfiled).toBeDefined();
+    // Logged again, it keeps the panel, so the copy can be corrected too.
+    expect(helpingAgain(unfiled!).sourcePanel).toEqual(unfiled!.sourcePanel);
   });
 
   it('seeds a food eaten before, so picking it again opens on the amount it was logged in', () => {

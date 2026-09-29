@@ -1,4 +1,12 @@
-import { creditedKeys, foodLastAmounts, foodLogRecency, rankByRecency } from '../utils/foodLogRecents';
+import {
+  RECENT_HELPING_LIMIT,
+  creditedKeys,
+  foodLastAmounts,
+  foodLogRecency,
+  helpingAgain,
+  rankByRecency,
+  recentUnlinkedHelpings,
+} from '../utils/foodLogRecents';
 import type { FoodLogEntry } from '../types';
 
 let seq = 0;
@@ -153,5 +161,104 @@ describe('foodLastAmounts', () => {
 
   it('remembers nothing for a food logged against no row', () => {
     expect(foodLastAmounts([logged('a bowl of ramen')]).size).toBe(0);
+  });
+});
+
+describe('recentUnlinkedHelpings (#2914)', () => {
+  const at = (day: number) => `2026-04-${String(day).padStart(2, '0')}T12:00:00.000Z`;
+  const estimated = (label: string, day: number, calorieKcal = 900) => entry({
+    label,
+    atISO: at(day),
+    quantity: '1 plate',
+    grams: null,
+    nutrition: {
+      basis: 'perServing', servingGrams: null, servingText: '1 plate', amounts: { calorieKcal },
+      portions: [], source: 'estimated', sourceId: null, recordedAt: at(day),
+    },
+  });
+
+  it('offers foods logged under no row, most recent first', () => {
+    const helpings = recentUnlinkedHelpings([
+      estimated('Pad thai', 1),
+      entry({ label: 'Chicken breast', atISO: at(3) }),
+      estimated('Burrito bowl', 2),
+    ]);
+    expect(helpings.map(e => e.label)).toEqual(['Chicken breast', 'Burrito bowl', 'Pad thai']);
+  });
+
+  it('leaves out anything with a row, which the list already offers', () => {
+    const helpings = recentUnlinkedHelpings([
+      entry({ label: 'Milk', itemId: 'milk', atISO: at(3) }),
+      entry({ label: 'Yogurt', productId: 'fage', itemId: 'yogurt', atISO: at(3) }),
+      entry({ label: 'Lasagne', recipeId: 'r1', atISO: at(3) }),
+      estimated('Pad thai', 1),
+    ]);
+    expect(helpings.map(e => e.label)).toEqual(['Pad thai']);
+  });
+
+  it('leaves out the day\'s water, which the water card steps rather than logs again', () => {
+    const water = entry({
+      label: 'Water',
+      atISO: at(3),
+      nutrition: {
+        basis: 'perServing', servingGrams: null, servingText: '500 ml', amounts: { waterMl: 500 },
+        portions: [], source: 'manual', sourceId: null, recordedAt: at(3),
+      },
+    });
+    expect(recentUnlinkedHelpings([water, estimated('Pad thai', 1)]).map(e => e.label)).toEqual(['Pad thai']);
+  });
+
+  it('keeps one per description and source, the most recent', () => {
+    const helpings = recentUnlinkedHelpings([
+      estimated('Pad thai', 1, 800),
+      estimated('pad Thai', 4, 950),
+      estimated('Pad thai', 2, 700),
+    ]);
+    expect(helpings).toHaveLength(1);
+    expect(helpings[0].nutrition.amounts.calorieKcal).toBe(950);
+  });
+
+  it('keeps an estimate and a database answer for one food apart, since they are two claims', () => {
+    const helpings = recentUnlinkedHelpings([
+      estimated('Chicken breast', 1),
+      entry({ label: 'Chicken breast', atISO: at(2) }),
+    ]);
+    expect(helpings.map(e => e.nutrition.source)).toEqual(['fdc', 'estimated']);
+  });
+
+  it('caps the offer, and narrows by the search before capping', () => {
+    const many = Array.from({ length: 8 }, (_, i) => estimated(`Takeout ${i + 1}`, i + 2));
+    many.push(estimated('Pho', 1));
+    expect(recentUnlinkedHelpings(many)).toHaveLength(RECENT_HELPING_LIMIT);
+    // The oldest of all, still found when it is what was typed.
+    expect(recentUnlinkedHelpings(many, 'pho').map(e => e.label)).toEqual(['Pho']);
+    expect(recentUnlinkedHelpings(many, 'sushi')).toEqual([]);
+  });
+});
+
+describe('helpingAgain', () => {
+  it('copies the helping verbatim, and the panel it kept', () => {
+    const kept = {
+      basis: 'per100g' as const, servingGrams: null, servingText: null, amounts: { calorieKcal: 165 },
+      portions: [], source: 'fdc' as const, sourceId: '171477', recordedAt: '2026-04-01T00:00:00.000Z',
+    };
+    const earlier = entry({
+      label: 'Chicken breast', quantity: '150 g', grams: 150, sourcePanel: kept, slot: 'lunch', mealPlanEntryId: 'plan-1',
+    });
+    const again = helpingAgain(earlier);
+    expect(again).toEqual({
+      label: 'Chicken breast',
+      quantity: '150 g',
+      grams: 150,
+      nutrition: earlier.nutrition,
+      sourcePanel: kept,
+    });
+    // Where it landed and the planned meal it answered are the caller's to decide.
+    expect(again).not.toHaveProperty('slot');
+    expect(again).not.toHaveProperty('mealPlanEntryId');
+  });
+
+  it('keeps none when the earlier entry kept none', () => {
+    expect(helpingAgain(entry({ label: 'Pad thai' })).sourcePanel).toBeNull();
   });
 });
