@@ -40,6 +40,7 @@ import { WhenPicker } from '../components/WhenPicker';
 import { MealReplaceItemSheet, type MealReplacement } from '../components/MealReplaceItemSheet';
 import { ListBulkBar } from '../components/ListBulkBar';
 import { useRowSelection } from '../hooks/useRowSelection';
+import { useSheetSubject } from '../hooks/useSheetSubject';
 import { usePlanMeal } from '../hooks/usePlanMeal';
 import {
   FabDropZone,
@@ -110,9 +111,11 @@ import {
   earliestUnplannedSlot,
   entriesForDay,
   daysWithMeal,
+  isKeyInRange,
   recipeIndex,
   recipeNamedLike,
   slotLabel,
+  slotPlural,
   titleForEntry,
 } from '../utils/mealPlan';
 import { liveGeneratedTask } from '../utils/generatedTasks';
@@ -377,6 +380,8 @@ export function MealPlanScreen() {
   const saveEntryAsRecipe = useMealPlanStore(s => s.saveEntryAsRecipe);
   const bulkSetCooked = useMealPlanStore(s => s.bulkSetCooked);
   const copyWeek = useMealPlanStore(s => s.copyWeek);
+  const slotsToCopyFrom = useMealPlanStore(s => s.slotsToCopyFrom);
+  const copySlotFromWeek = useMealPlanStore(s => s.copySlotFromWeek);
   const copyEntryTo = useMealPlanStore(s => s.copyEntryTo);
   const listRowsLeftBy = useMealPlanStore(s => s.listRowsLeftBy);
   const takeOffLists = useGroceryStore(s => s.takeOffLists);
@@ -609,6 +614,14 @@ export function MealPlanScreen() {
   // The entry whose date is being picked outside this week (#1364) — held by
   // id, since MealEntrySheet has closed by the time the calendar is up.
   const [movingFurtherId, setMovingFurtherId] = useState<string | null>(null);
+  // The entry being copied to a date outside this week (#2913), off the sheet's
+  // Also on row, held by id for movingFurtherId's reason. It shares that one's
+  // WhenPicker rather than mounting a second (an unopened WhenPicker still
+  // subscribes to the whole task list), so `furtherMode` is which of the two
+  // the picker is asking, held past the close so its title doesn't flip to
+  // "Move to" for the commit it spends fading out.
+  const [copyingFurtherId, setCopyingFurtherId] = useState<string | null>(null);
+  const furtherMode = useSheetSubject(copyingFurtherId ? 'copy' : movingFurtherId ? 'move' : null);
   const [bulkReplaceVisible, setBulkReplaceVisible] = useState(false);
   // The one entry being swapped from its own sheet (#2911), held by id for
   // movingFurtherId's reason. Shares MealReplaceItemSheet with the bulk bar's
@@ -1822,32 +1835,97 @@ export function MealPlanScreen() {
     return actions;
   }, [onThisWeek, selectionMode, page, exitSelection, weekStartsOn, handleShareWeek, weekShareText, weekMealsLabel, copiedWeek, copyWeekText, navigation, simpleMode, foodLogCount]);
 
+  // A week that has already ended is a record rather than a plan, so the
+  // partly-planned offer below isn't made into one. Paging back through
+  // history would otherwise find it on nearly every week.
+  const weekIsOver = !!range && range.endKey < todayKey;
+
   /**
-   * The week a "copy" would take from, and only while this one is empty.
-   *
-   * **Offered into an empty week and no other**, which is what keeps the whole
-   * feature free of a merge question: no "does it replace or add alongside",
-   * no double-booked Tuesday, no confirm dialog explaining which. A week with
-   * anything in it is a week the user is already working on.
+   * The week either copy offer takes from: the most recent one before this
+   * with anything planned in it. Looked for while this week is empty (the
+   * whole-week offer) or still running (the slot offer, below).
    *
    * Searched rather than assumed — a fortnightly cook, or anyone back from a
    * holiday, has an empty week directly behind them and nothing to copy from
    * it (see findPlannedWeekBefore).
    */
-  const copySourceKey = useMemo(
-    () => (range && entries.length === 0 ? findPlannedWeekBefore(range.startKey, COPY_LOOKBACK_WEEKS) : null),
-    [range?.startKey, entries.length, findPlannedWeekBefore]
+  const copyFromKey = useMemo(
+    () => (range && (entries.length === 0 || !weekIsOver)
+      ? findPlannedWeekBefore(range.startKey, COPY_LOOKBACK_WEEKS)
+      : null),
+    [range?.startKey, entries.length, weekIsOver, findPlannedWeekBefore]
+  );
+
+  /**
+   * The week a whole-week copy would take from, and only while this one is
+   * empty.
+   *
+   * **Offered into an empty week and no other**, which is what keeps the whole
+   * feature free of a merge question: no "does it replace or add alongside",
+   * no double-booked Tuesday, no confirm dialog explaining which. A week with
+   * anything in it is a week the user is already working on, and gets the
+   * narrower slot offer instead (`slotCopyOffers`).
+   */
+  const copySourceKey = entries.length === 0 ? copyFromKey : null;
+
+  /**
+   * The slots of `copyFromKey` a partly planned week could take one at a time
+   * (#2913): "Copy lunches from Jul 27 – Aug 2" for a household that planned
+   * dinners first and lunches second, which the whole-week offer never reaches
+   * because the week stopped being empty with the first dinner.
+   *
+   * Only ever made to a week that has something in it, so the two offers are
+   * never on one week together, and only into a slot this week has nothing in
+   * at all: `slotsToCopy` is the rule, and says why that keeps the merge
+   * question away just as the whole-week offer's empty week does.
+   */
+  const slotCopyOffers = useMemo(
+    () => (range && copyFromKey && entries.length > 0 && !weekIsOver
+      ? slotsToCopyFrom(copyFromKey, range.startKey)
+      : []),
+    [range?.startKey, copyFromKey, entries, weekIsOver, slotsToCopyFrom]
   );
 
   const copySourceLabel = useMemo(
-    () => copySourceKey ? describeWeekRange(buildWeekDays(dayKeyToDate(copySourceKey), weekStartsOn)) : '',
-    [copySourceKey, weekStartsOn]
+    () => copyFromKey ? describeWeekRange(buildWeekDays(dayKeyToDate(copyFromKey), weekStartsOn)) : '',
+    [copyFromKey, weekStartsOn]
   );
 
   const handleCopyWeek = () => {
     if (!copySourceKey || !range) return;
     animateLayout();
     const n = copyWeek(copySourceKey, range.startKey);
+    if (n > 0) haptics.success();
+  };
+
+  /**
+   * "Also on" past the week's seven chips (#2913). The chips refuse a day that
+   * already has this meal by not taking the tap; the calendar reaches any day,
+   * so the refusal is `copyEntryTo`'s and this says so. A copy landing outside
+   * the week on screen changes nothing in view, so that is said too, the way
+   * adding prep tasks is.
+   */
+  const copyToDate = (id: string, dayKey: string) => {
+    const source = entries.find(e => e.id === id);
+    if (!source) return;
+    const onScreen = !!range && isKeyInRange(dayKey, range.startKey, range.endKey);
+    if (onScreen) animateLayout();
+    const copied = copyEntryTo(id, [dayKey]) > 0;
+    const title = titleForEntry(source, recipesById);
+    const slot = slotLabel(source.slot).toLowerCase();
+    const day = format(dayKeyToDate(dayKey), 'EEEE, MMMM d');
+    if (!copied) {
+      Alert.alert('Already planned', `${title} is already ${slot} on ${day}.`);
+      return;
+    }
+    haptics.success();
+    if (!onScreen) Alert.alert('Meal copied', `${title} is also planned for ${slot} on ${day}.`);
+  };
+
+  const handleCopySlot = (slot: MealSlot) => {
+    if (!copyFromKey || !range) return;
+    animateLayout();
+    const n = copySlotFromWeek(copyFromKey, range.startKey, slot);
     if (n > 0) haptics.success();
   };
 
@@ -2014,6 +2092,26 @@ export function MealPlanScreen() {
                       onPress={handleCopyWeek}
                       accessibilityLabel={`Copy the meals from ${copySourceLabel} onto this week`}
                     />
+                  </View>
+                )}
+                {/* The same place and pill as the whole-week copy, which is
+                    never on screen with it (see slotCopyOffers), but quieter:
+                    in a week already being planned it's a shortcut rather
+                    than the obvious next step. One pill per slot, so taking
+                    the lunches never takes the breakfasts too. */}
+                {slotCopyOffers.length > 0 && (
+                  <View style={styles.weekActions}>
+                    {slotCopyOffers.map(slot => (
+                      <InlineAction
+                        key={slot}
+                        label={`Copy ${slotPlural(slot)} from ${copySourceLabel}`}
+                        icon="copy-outline"
+                        variant="neutral"
+                        surface="page"
+                        onPress={() => handleCopySlot(slot)}
+                        accessibilityLabel={`Copy the ${slotPlural(slot)} from ${copySourceLabel} onto this week`}
+                      />
+                    ))}
                   </View>
                 )}
                 {(hasPlannableEntries || canSuggestMeals) && (
@@ -2220,14 +2318,15 @@ export function MealPlanScreen() {
       />
 
       {/*
-        The way past the sheet's seven day chips. It opens after that sheet has
-        gone — two modals can't be up at once — and lands on the same
-        WhenPicker the bulk move uses, natural language included.
+        The way past the sheet's seven day chips, for Move to and for Also on
+        alike. It opens after that sheet has gone — two modals can't be up at
+        once — and lands on the same WhenPicker the bulk move uses, natural
+        language included.
       */}
       <WhenPicker
-        visible={movingFurtherId !== null}
+        visible={movingFurtherId !== null || copyingFurtherId !== null}
         value={null}
-        title="Move to"
+        title={furtherMode === 'copy' ? 'Also on' : 'Move to'}
         showTimeOfDay={false}
         showSuggest={false}
         nlEnabled
@@ -2236,9 +2335,14 @@ export function MealPlanScreen() {
             animateLayout();
             moveEntry(movingFurtherId, { date: dayKeyOf(date) });
           }
+          if (copyingFurtherId && date) copyToDate(copyingFurtherId, dayKeyOf(date));
           setMovingFurtherId(null);
+          setCopyingFurtherId(null);
         }}
-        onCancel={() => setMovingFurtherId(null)}
+        onCancel={() => {
+          setMovingFurtherId(null);
+          setCopyingFurtherId(null);
+        }}
       />
 
       <MealEntrySheet
@@ -2249,6 +2353,7 @@ export function MealPlanScreen() {
         onMove={to => selected && moveEntry(selected.id, to)}
         onMoveFurther={selected ? () => setMovingFurtherId(selected.id) : undefined}
         onCopyTo={selected && !selected.leftoverId ? date => copyEntryTo(selected.id, [date]) : undefined}
+        onCopyFurther={selected && !selected.leftoverId ? () => setCopyingFurtherId(selected.id) : undefined}
         copiedDays={selected ? daysWithMeal(entries, selected) : undefined}
         onReplace={selected && !isTypedEntry(selected) ? () => setReplacingId(selected.id) : undefined}
         onChooseRecipe={selected && isTypedEntry(selected) ? () => setReplacingId(selected.id) : undefined}

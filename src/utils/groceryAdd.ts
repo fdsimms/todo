@@ -110,6 +110,9 @@ export function ensureProductFor(
       // Claiming one has to release it from whichever box held it before, so
       // it goes through `linkScannedGtins` rather than riding an insert.
       gtin: null,
+      // A box named here has a brand or a variant, which is exactly what a
+      // portion doesn't. See ItemProduct.isPortion.
+      isPortion: false,
       createdAt,
     },
   };

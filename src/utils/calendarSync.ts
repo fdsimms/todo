@@ -465,6 +465,26 @@ export async function moveAllDayEvent(
 }
 
 /**
+ * Whether `eventId` still names an event on this device. False for an id that
+ * names nothing, and on any failure (no permission, not iOS), since from here
+ * those are one answer: there is no event under this id to act on.
+ *
+ * Its own read rather than something `deleteCalendarEvent` reports, because
+ * expo-calendar's delete returns quietly for an id that names nothing, and a
+ * caller that also holds the calendar server's id needs to know which of the
+ * two happened (`deleteLinkedEvent` in calendarEventLink.ts, #2950).
+ */
+export async function calendarEventExists(eventId: string): Promise<boolean> {
+  if (Platform.OS !== 'ios' || !eventId) return false;
+  try {
+    await calendar().getEventAsync(eventId, { futureEvents: false });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Deletes a deadline event. Never throws — a missing id, an already-deleted
  * event and a revoked permission all mean the same thing from here: there's
  * nothing left to delete.

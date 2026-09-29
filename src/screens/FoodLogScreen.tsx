@@ -28,6 +28,7 @@ import {
   foodLogTotals,
   logInstantFor,
   resolveFoodLogDrop,
+  wholeEstimate,
   type FoodLogListItem,
 } from '../utils/foodLog';
 import {
@@ -56,6 +57,7 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { featureHidden } from '../utils/simpleMode';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { CatalogLinkSheet } from '../components/CatalogLinkSheet';
+import { EstimateAmountSheet } from '../components/EstimateAmountSheet';
 import { ScanToLogFlow } from '../components/ScanToLogFlow';
 import { EstimateMealSheet } from '../components/EstimateMealSheet';
 import { useAiRoute } from '../hooks/useOnDeviceAi';
@@ -247,6 +249,12 @@ export function FoodLogScreen() {
   const [redatingEntry, setRedatingEntry] = useState<FoodLogEntry | null>(null);
   /** The entry being copied onto another day, opening the "Duplicate to" picker on it. */
   const [duplicatingEntry, setDuplicatingEntry] = useState<FoodLogEntry | null>(null);
+  /**
+   * The estimated entry whose amount is being changed, opening "Change
+   * amount" on it. See `estimateAmountPatch` for why an estimate gets this and
+   * not the editor.
+   */
+  const [amountEntry, setAmountEntry] = useState<FoodLogEntry | null>(null);
   // Plain useRowSelection, same as Templates/Projects/People: there is
   // nothing recurrence- or meal-plan-aware to reuse useTaskSelection's delete
   // flow for, only a confirm.
@@ -499,6 +507,12 @@ export function FoodLogScreen() {
       foodLogEntryEdit(entry)
         ? { text: 'Edit', onPress: () => setEditingEntry(entry) }
         : { text: 'Rename', onPress: () => handleRename(entry) },
+      // A described meal has no panel for Edit to re-measure against, but
+      // more or less of what the model stated needs none. See
+      // `estimateAmountPatch`.
+      ...(wholeEstimate(entry)
+        ? [{ text: 'Change amount…', onPress: () => setAmountEntry(entry) }]
+        : []),
       {
         text: 'Move to meal',
         onPress: () => Alert.alert('Move to meal', undefined, [
@@ -1305,6 +1319,16 @@ export function FoodLogScreen() {
           }
           setLinkingEntry(null);
         }}
+      />
+      {/* Through reviseEntry, since the figures change and Health holds them:
+          the old samples come out and the new amount goes in. */}
+      <EstimateAmountSheet
+        visible={amountEntry !== null}
+        entry={amountEntry}
+        onSave={patch => {
+          if (amountEntry) reviseEntry(amountEntry.id, patch);
+        }}
+        onClose={() => setAmountEntry(null)}
       />
       <NutrientContributorsSheet
         visible={contributorsKey !== null}

@@ -74,6 +74,7 @@ import {
   dbGetAllGroceryShops,
   dbSetShopReceiptStyle,
   dbSetShopAisles,
+  dbSetShopAisleOrder,
   dbGetAllItemSubLinks,
   dbSetItemSubLink,
   dbDeleteItemSubLink,
@@ -106,9 +107,17 @@ import {
   dbDeleteLeftover,
   dbPurgeOldLeftovers,
   dbSyncChangesSince,
+  dbFillTaskCalendarExternalIds,
+  dbFillMealCalendarExternalIds,
+  dbCalendarEventIdsWantingExternalIds,
   dbPruneSyncDeletions,
   isSyncableDatabase,
   dbApplySyncChanges,
+  dbInsertFoodLogEntry,
+  dbGetFoodLogEntry,
+  dbInsertSavedMeal,
+  dbGetSavedMeals,
+  dbUpdateFoodLogEntry,
   dbGetDeviceId,
   dbGetSyncCursor,
   dbSetSyncCursor,
@@ -123,7 +132,8 @@ import {
 } from '../db/syncTracking';
 import { buildBackup, serializeBackup, parseBackup } from '../utils/backup';
 import { OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
-import type { Task, TaskTemplate, TemplateItem, Project, Category, TaskGroup, GroceryItem, ItemProduct, ItemShopLink, Shop, Leftover, MealPlanEntry, MealSlot, Recipe } from '../types';
+import type { Task, TaskTemplate, TemplateItem, Project, Category, TaskGroup, GroceryItem, ItemProduct, ItemShopLink, Shop, Leftover, MealPlanEntry, MealSlot, Recipe, FoodLogEntry, FoodNutrition, SavedMeal } from '../types';
+import { PORTION_PRODUCT_KEY } from '../types';
 
 // ---------------------------------------------------------------------------
 // Mock expo-sqlite with an in-memory better-sqlite3 database.
@@ -2121,6 +2131,108 @@ describe('backup and restore', () => {
     expect(dbGetSetting('themeMode')).toBe('light');
   });
 
+  // #2950: kept off the sync wire, but kept in a backup, because a restore on a
+  // new phone is exactly where the server id is what finds the event again.
+  it('keeps each calendar event\'s server id beside its device id through a restore', () => {
+    dbInsertTask(makeTask({
+      id: 't1', calendarEventId: 'evt-1', calendarEventExternalId: 'ext-1',
+      timeBlockEventId: 'blk-1', timeBlockExternalId: 'blk-ext-1',
+      completionCalendarEventId: 'done-1', completionCalendarEventExternalId: 'done-ext-1',
+    }));
+    dbInsertMealPlanEntry({
+      id: 'meal-b', date: '2026-08-13', slot: 'dinner', recipeId: null, title: 'Chili',
+      sortOrder: 1, createdAt: '2026-08-01T00:00:00.000Z', cookedAt: null, leftoverId: null,
+      recipeChoices: [], recipeScale: 1, cookTask: null, shopTask: null, logMeal: null,
+      calendarEventId: 'evt-2', calendarEventExternalId: 'ext-2',
+    });
+    const backup = buildBackup(dbExportTables(), { appVersion: '1.0.0', exportedAt: new Date() });
+    mockRawDb.exec('DELETE FROM tasks; DELETE FROM meal_plan_entries;');
+
+    dbReplaceAllData(backup.tables);
+
+    expect(dbGetAllTasks().find(t => t.id === 't1')).toMatchObject({
+      calendarEventId: 'evt-1', calendarEventExternalId: 'ext-1',
+      timeBlockEventId: 'blk-1', timeBlockExternalId: 'blk-ext-1',
+      completionCalendarEventId: 'done-1', completionCalendarEventExternalId: 'done-ext-1',
+    });
+    expect(dbGetMealPlanEntries('2026-08-13', '2026-08-13').find(e => e.id === 'meal-b'))
+      .toMatchObject({ calendarEventId: 'evt-2', calendarEventExternalId: 'ext-2' });
+  });
+
+  // #2950's launch backfill: the server id beside every event this phone wrote
+  // before it kept one, filled in without the row reading as edited.
+  describe('filling in calendar server ids', () => {
+    beforeEach(() => mockRawDb.exec('DELETE FROM tasks; DELETE FROM meal_plan_entries;'));
+    const stampOf = (table: string, id: string) =>
+      (mockRawDb.prepare(`SELECT updated_at FROM ${table} WHERE id = ?`).get(id) as { updated_at: string | null }).updated_at;
+    const setStamp = (table: string, id: string, stamp: string) =>
+      mockRawDb.prepare(`UPDATE ${table} SET updated_at = ? WHERE id = ?`).run(stamp, id);
+    const meal = (id: string, calendarEventId: string | null, calendarEventExternalId: string | null = null) =>
+      dbInsertMealPlanEntry({
+        id, date: '2026-08-13', slot: 'dinner', recipeId: null, title: 'Chili',
+        sortOrder: 1, createdAt: '2026-08-01T00:00:00.000Z', cookedAt: null, leftoverId: null,
+        recipeChoices: [], recipeScale: 1, cookTask: null, shopTask: null, logMeal: null,
+        calendarEventId, calendarEventExternalId,
+      });
+
+    it('lists every device event id with no server id beside it, once each', () => {
+      dbInsertTask(makeTask({
+        id: 't1', calendarEventId: 'dl-1', timeBlockEventId: 'blk-1', completionCalendarEventId: 'done-1',
+      }));
+      dbInsertTask(makeTask({ id: 't2', calendarEventId: 'dl-2', calendarEventExternalId: 'ext-dl-2' }));
+      meal('m1', 'meal-1');
+      meal('m2', 'meal-2', 'ext-meal-2');
+      meal('m3', null);
+      expect(dbCalendarEventIdsWantingExternalIds().sort()).toEqual(['blk-1', 'dl-1', 'done-1', 'meal-1']);
+    });
+
+    it('fills each missing server id from what was read, and nothing already set', () => {
+      dbInsertTask(makeTask({
+        id: 't1', calendarEventId: 'dl-1', timeBlockEventId: 'blk-1', timeBlockExternalId: 'blk-kept',
+        completionCalendarEventId: 'done-1',
+      }));
+      dbInsertTask(makeTask({ id: 't2', calendarEventId: 'dl-unread' }));
+      meal('m1', 'meal-1');
+
+      const found = { 'dl-1': 'ext-dl-1', 'blk-1': 'ext-blk-1', 'done-1': 'ext-done-1', 'meal-1': 'ext-meal-1' };
+      expect(dbFillTaskCalendarExternalIds(found)).toEqual(['t1']);
+      expect(dbFillMealCalendarExternalIds(found)).toEqual(['m1']);
+
+      expect(dbGetAllTasks().find(t => t.id === 't1')).toMatchObject({
+        calendarEventExternalId: 'ext-dl-1',
+        // Already had one: kept, whatever was read.
+        timeBlockExternalId: 'blk-kept',
+        completionCalendarEventExternalId: 'ext-done-1',
+      });
+      expect(dbGetAllTasks().find(t => t.id === 't2')?.calendarEventExternalId).toBeNull();
+      expect(dbGetMealPlanEntries('2026-08-13', '2026-08-13').find(e => e.id === 'm1')?.calendarEventExternalId)
+        .toBe('ext-meal-1');
+    });
+
+    it('leaves each row\'s sync stamp where it was, so a stale copy can\'t beat a peer\'s edit', () => {
+      dbInsertTask(makeTask({ id: 't1', calendarEventId: 'dl-1' }));
+      meal('m1', 'meal-1');
+      setStamp('tasks', 't1', '2026-01-01T00:00:00.000Z');
+      setStamp('meal_plan_entries', 'm1', '2026-01-02T00:00:00.000Z');
+
+      dbFillTaskCalendarExternalIds({ 'dl-1': 'ext-dl-1' });
+      dbFillMealCalendarExternalIds({ 'meal-1': 'ext-meal-1' });
+
+      expect(stampOf('tasks', 't1')).toBe('2026-01-01T00:00:00.000Z');
+      expect(stampOf('meal_plan_entries', 'm1')).toBe('2026-01-02T00:00:00.000Z');
+      // And so neither reads as changed since a cursor past its old stamp.
+      const since = dbSyncChangesSince('2026-06-01T00:00:00.000Z');
+      expect(since.tables.tasks ?? []).toEqual([]);
+      expect(since.tables.meal_plan_entries ?? []).toEqual([]);
+    });
+
+    it('leaves a row alone whose device id moved on since the ids were read', () => {
+      dbInsertTask(makeTask({ id: 't1', calendarEventId: 'dl-rewritten' }));
+      expect(dbFillTaskCalendarExternalIds({ 'dl-1': 'ext-dl-1' })).toEqual([]);
+      expect(dbGetAllTasks().find(t => t.id === 't1')?.calendarEventExternalId).toBeNull();
+    });
+  });
+
   it('survives a serialize/parse round trip on the way through', () => {
     dbInsertTask(makeTask({ id: 't1', title: 'Quoted "title" and \\ backslash', notes: 'a\nb' }));
     const backup = buildBackup(dbExportTables(), { appVersion: '1.0.0', exportedAt: new Date() });
@@ -2350,6 +2462,7 @@ function makeProduct(
     expiresAt: null,
     frozenAt: null,
     openedAt: null,
+    isPortion: false,
     createdAt: '2026-01-01T00:00:00.000Z',
     ...overrides,
   };
@@ -2363,6 +2476,7 @@ function makeShop(overrides: { id: string; name: string }): Shop {
     excludeFromSuggestions: false,
     receiptStyle: 'itemized' as const,
     aisles: null,
+    aisleOrder: null,
     ...overrides,
   };
 }
@@ -2438,7 +2552,7 @@ describe('grocery items', () => {
   it('records a priced trip into the rolling window, at both levels', () => {
     const shop = { id: 's1', name: 'Costco', nameKey: 'costco', sortOrder: 1,
       createdAt: '2026-01-01T00:00:00.000Z', excludeFromSuggestions: false,
-      receiptStyle: 'itemized' as const, aisles: null };
+      receiptStyle: 'itemized' as const, aisles: null, aisleOrder: null };
     dbInsertGroceryShop(shop);
     const item = makeGroceryItem({
       id: 'g1', name: 'Olive oil', onList: true, checked: true, quantity: '1 l',
@@ -2462,7 +2576,7 @@ describe('grocery items', () => {
   it('records a price against no quantity when a recipe wrote the row’s quantity', () => {
     const shop = { id: 's1', name: 'Costco', nameKey: 'costco', sortOrder: 1,
       createdAt: '2026-01-01T00:00:00.000Z', excludeFromSuggestions: false,
-      receiptStyle: 'itemized' as const, aisles: null };
+      receiptStyle: 'itemized' as const, aisles: null, aisleOrder: null };
     dbInsertGroceryShop(shop);
     const item = makeGroceryItem({
       id: 'g1', name: 'Milk', onList: true, checked: true, quantity: '3 cups', quantityFromRecipe: true,
@@ -2661,6 +2775,32 @@ describe('grocery items', () => {
       .run('p1', 'g1', "Arnold's", 'arnolds|', 'adored', '2026-01-01T00:00:00.000Z');
 
     expect(dbGetAllItemProducts()[0].rating).toBeNull();
+  });
+
+  // "Freeze some" (#2925): the one unnamed box an item can have.
+  it('round-trips a frozen portion, and reads a box written before the column as not one', () => {
+    insertListedGroceryItem(makeGroceryItem({ id: 'g1', name: 'Chicken thighs' }));
+    dbSetItemProduct(makeProduct({
+      id: 'p1', itemId: 'g1', brand: null, variant: null, productKey: PORTION_PRODUCT_KEY,
+      isPortion: true, frozenAt: '2026-08-01T12:00:00.000Z',
+    }));
+    // Written the way a build from before the column would have written it.
+    mockRawDb
+      .prepare('INSERT INTO grocery_item_products (id, item_id, brand, product_key, created_at) VALUES (?,?,?,?,?)')
+      .run('p2', 'g1', 'Bell & Evans', 'bell evans|', '2026-01-01T00:00:00.000Z');
+
+    const byId = Object.fromEntries(dbGetAllItemProducts().map(p => [p.id, p]));
+    expect(byId.p1).toMatchObject({ isPortion: true, frozenAt: '2026-08-01T12:00:00.000Z', brand: null });
+    expect(byId.p2.isPortion).toBe(false);
+  });
+
+  it('holds an item to one portion, through the same key index as its brands', () => {
+    insertListedGroceryItem(makeGroceryItem({ id: 'g1', name: 'Chicken thighs' }));
+    const portion = makeProduct({
+      id: 'p1', itemId: 'g1', brand: null, variant: null, productKey: PORTION_PRODUCT_KEY, isPortion: true,
+    });
+    dbSetItemProduct(portion);
+    expect(() => dbSetItemProduct({ ...portion, id: 'p2' })).toThrow();
   });
 
   // Hand-written, because FKs are off — a box that isn't a box *of* anything
@@ -3383,7 +3523,12 @@ describe('grocery items', () => {
       expect(dbGetGroceryGroupBy()).toBe('recipe');
     });
 
-    it('reads back anything but recipe as aisle', () => {
+    it('survives a round trip as the store lens too', () => {
+      dbSetGroceryGroupBy('store');
+      expect(dbGetGroceryGroupBy()).toBe('store');
+    });
+
+    it('reads back anything but recipe or store as aisle', () => {
       dbSetSetting('grocery_group_by', 'nonsense');
       expect(dbGetGroceryGroupBy()).toBe('aisle');
     });
@@ -3465,6 +3610,7 @@ describe('meal plan entries', () => {
       logMeal: null,
       thawTask: null,
       calendarEventId: null,
+      calendarEventExternalId: null,
       cookedAt: null,
       leftoverId: null,
       ...overrides,
@@ -3830,13 +3976,14 @@ describe('sync change tracking', () => {
       id: 'meal-sync', date: '2026-08-13', slot: 'dinner', recipeId: null, title: 'Chili',
       sortOrder: 1, createdAt: '2026-08-01T00:00:00.000Z', cookedAt: null, leftoverId: null,
       recipeChoices: [], recipeScale: 1, cookTask: null, shopTask: null, logMeal: null,
-      calendarEventId: 'evt-this-phone',
+      calendarEventId: 'evt-this-phone', calendarEventExternalId: 'ext-this-phone',
     });
 
     const row = dbSyncChangesSince(null).tables.meal_plan_entries.find(r => r.id === 'meal-sync');
 
     expect(row?.title).toBe('Chili');
     expect(row).not.toHaveProperty('calendar_event_id');
+    expect(row).not.toHaveProperty('calendar_event_external_id');
   });
 
   it('reports a deletion as a tombstone, not a missing row', () => {
@@ -4013,7 +4160,7 @@ describe('dbApplySyncChanges', () => {
       id: 'meal-p', date: '2026-08-13', slot: 'dinner', recipeId: null, title: 'Chili',
       sortOrder: 1, createdAt: '2026-08-01T00:00:00.000Z', cookedAt: null, leftoverId: null,
       recipeChoices: [], recipeScale: 1, cookTask: null, shopTask: null, logMeal: null,
-      calendarEventId: 'evt-this-phone',
+      calendarEventId: 'evt-this-phone', calendarEventExternalId: 'ext-this-phone',
     });
     const peerMealRow = (over: Record<string, unknown>) => {
       const row = mockRawDb.prepare('SELECT * FROM meal_plan_entries WHERE id = ?').get('meal-p') as Record<string, unknown>;
@@ -4036,6 +4183,20 @@ describe('dbApplySyncChanges', () => {
       expect(stored()).toEqual({ date: '2026-08-14', calendar_event_id: 'evt-this-phone' });
     });
 
+    // #2950: the server id beside it is this device's for the same reason.
+    it('keeps the server id beside it through a peer\'s edit that sends one of its own', () => {
+      localMeal();
+      mockRawDb.prepare("UPDATE meal_plan_entries SET updated_at = '2026-01-01T00:00:00.000Z' WHERE id = 'meal-p'").run();
+
+      dbApplySyncChanges(payload({
+        tables: { meal_plan_entries: [peerMealRow({ date: '2026-08-14', calendar_event_external_id: 'ext-other-phone' })] },
+      }));
+
+      const row = mockRawDb.prepare('SELECT calendar_event_external_id FROM meal_plan_entries WHERE id = ?')
+        .get('meal-p') as { calendar_event_external_id: string | null };
+      expect(row.calendar_event_external_id).toBe('ext-this-phone');
+    });
+
     it('arrives empty on a meal this device has never seen', () => {
       localMeal();
       const row = peerMealRow({ calendar_event_id: 'evt-other-phone' });
@@ -4045,6 +4206,204 @@ describe('dbApplySyncChanges', () => {
       dbApplySyncChanges(payload({ tables: { meal_plan_entries: [row] } }));
 
       expect(stored().calendar_event_id).toBeNull();
+    });
+
+    // The rest of #2950: the event only this device can move or delete.
+    describe('reported for the calendar reconcile after the sync', () => {
+      it('names every meal it wrote, and no other row', () => {
+        localMeal();
+        mockRawDb.prepare("UPDATE meal_plan_entries SET updated_at = '2026-01-01T00:00:00.000Z' WHERE id = 'meal-p'").run();
+
+        const report = dbApplySyncChanges(payload({
+          tables: {
+            meal_plan_entries: [peerMealRow({ date: '2026-08-14' })],
+            tasks: [peerTaskRow('p1', 'From peer', '2026-01-01T00:00:00.000Z')],
+          },
+        }));
+
+        expect(report.mealEntryIds).toEqual(['meal-p']);
+        expect(report.removedMealEvents).toEqual([]);
+      });
+
+      it('names a meal that arrived new too, leaving the reconcile to skip it', () => {
+        localMeal();
+        const row = peerMealRow({});
+        mockRawDb.prepare('DELETE FROM meal_plan_entries WHERE id = ?').run('meal-p');
+        mockRawDb.exec('DELETE FROM sync_deletions');
+
+        const report = dbApplySyncChanges(payload({ tables: { meal_plan_entries: [row] } }));
+
+        expect(report.inserted).toBe(1);
+        expect(report.mealEntryIds).toEqual(['meal-p']);
+      });
+
+      it('leaves out a meal whose local copy is newer', () => {
+        localMeal();
+        mockRawDb.prepare("UPDATE meal_plan_entries SET updated_at = '2031-01-01T00:00:00.000Z' WHERE id = 'meal-p'").run();
+
+        const report = dbApplySyncChanges(payload({
+          tables: { meal_plan_entries: [peerMealRow({ date: '2026-08-14' })] },
+        }));
+
+        expect(report.skipped).toBe(1);
+        expect(report.mealEntryIds).toEqual([]);
+      });
+
+      it('hands back the event of a meal it deleted, read before the row went', () => {
+        localMeal();
+        mockRawDb.prepare("UPDATE meal_plan_entries SET updated_at = '2026-01-01T00:00:00.000Z' WHERE id = 'meal-p'").run();
+
+        const report = dbApplySyncChanges(payload({
+          deletions: [{ table: 'meal_plan_entries', rowKey: 'meal-p', deletedAt: '2026-06-01T00:00:00.000Z' }],
+        }));
+
+        expect(report.deleted).toBe(1);
+        expect(stored()).toBeUndefined();
+        // With the server id beside it, so the delete can still find the event on
+        // a phone where the local id names nothing (#2950).
+        expect(report.removedMealEvents).toEqual([
+          { eventId: 'evt-this-phone', externalId: 'ext-this-phone', date: '2026-08-13' },
+        ]);
+      });
+
+      it('hands back nothing for a deleted meal with no event here, or a deletion it refused', () => {
+        localMeal();
+        mockRawDb.prepare(
+          "UPDATE meal_plan_entries SET calendar_event_id = NULL, updated_at = '2026-01-01T00:00:00.000Z' WHERE id = 'meal-p'"
+        ).run();
+        const unlinked = dbApplySyncChanges(payload({
+          deletions: [{ table: 'meal_plan_entries', rowKey: 'meal-p', deletedAt: '2026-06-01T00:00:00.000Z' }],
+        }));
+        expect(unlinked.deleted).toBe(1);
+        expect(unlinked.removedMealEvents).toEqual([]);
+
+        localMeal();
+        mockRawDb.prepare("UPDATE meal_plan_entries SET updated_at = '2026-09-01T00:00:00.000Z' WHERE id = 'meal-p'").run();
+        const refused = dbApplySyncChanges(payload({
+          deletions: [{ table: 'meal_plan_entries', rowKey: 'meal-p', deletedAt: '2026-06-01T00:00:00.000Z' }],
+        }));
+        expect(refused.deletionsRefused).toBe(1);
+        expect(refused.removedMealEvents).toEqual([]);
+        expect(stored().calendar_event_id).toBe('evt-this-phone');
+      });
+    });
+  });
+
+  // #2950, the same shape on tasks: a peer without "Write deadlines to" set
+  // wrote null over this phone's deadline event id; another phone's editor
+  // cleared a time block it couldn't open; an uncomplete elsewhere dropped
+  // this phone's completion event.
+  describe('a task\'s calendar event ids', () => {
+    const ids = () =>
+      mockRawDb.prepare(
+        'SELECT title, calendar_event_id, calendar_event_external_id, completion_calendar_event_id, time_block_event_id, time_block_external_id FROM tasks WHERE id = ?',
+      ).get('ev1') as Record<string, string | null>;
+
+    it('never leave this device', () => {
+      dbInsertTask(makeTask({
+        id: 'ev1', calendarEventId: 'dl', calendarEventExternalId: 'dl-ext',
+        completionCalendarEventId: 'done', completionCalendarEventExternalId: 'done-ext',
+        timeBlockEventId: 'block', timeBlockExternalId: 'block-ext',
+      }));
+      const row = dbSyncChangesSince(null).tables.tasks.find(r => r.id === 'ev1');
+      expect(row?.title).toBeDefined();
+      expect(row).not.toHaveProperty('calendar_event_id');
+      expect(row).not.toHaveProperty('calendar_event_external_id');
+      expect(row).not.toHaveProperty('completion_calendar_event_id');
+      expect(row).not.toHaveProperty('completion_calendar_event_external_id');
+      expect(row).not.toHaveProperty('time_block_event_id');
+      expect(row).not.toHaveProperty('time_block_external_id');
+    });
+
+    it('survive a peer\'s edit that sends nulls for them', () => {
+      dbInsertTask(makeTask({
+        id: 'ev1', title: 'Rent', calendarEventId: 'dl', calendarEventExternalId: 'dl-ext',
+        completionCalendarEventId: 'done', timeBlockEventId: 'block', timeBlockExternalId: 'block-ext',
+      }));
+      stampLocal('ev1', '2026-01-01T00:00:00.000Z');
+      const peer = {
+        ...(mockRawDb.prepare('SELECT * FROM tasks WHERE id = ?').get('ev1') as Record<string, unknown>),
+        title: 'Pay rent', updated_at: '2030-01-01T00:00:00.000Z',
+        calendar_event_id: null, calendar_event_external_id: null,
+        completion_calendar_event_id: null, time_block_event_id: null, time_block_external_id: null,
+      };
+
+      dbApplySyncChanges(payload({ tables: { tasks: [peer] } }));
+
+      expect(ids()).toEqual({
+        title: 'Pay rent', calendar_event_id: 'dl', calendar_event_external_id: 'dl-ext',
+        completion_calendar_event_id: 'done', time_block_event_id: 'block', time_block_external_id: 'block-ext',
+      });
+    });
+
+    // The events only this device can move or delete, as for meals above.
+    describe('reported for the calendar reconcile after the sync', () => {
+      const linked = () => {
+        dbInsertTask(makeTask({
+          id: 'ev1', title: 'Rent', calendarEventId: 'dl', completionCalendarEventId: 'done', timeBlockEventId: 'block',
+        }));
+        stampLocal('ev1', '2026-01-01T00:00:00.000Z');
+      };
+      const peerEdit = (over: Record<string, unknown> = {}) => ({
+        ...(mockRawDb.prepare('SELECT * FROM tasks WHERE id = ?').get('ev1') as Record<string, unknown>),
+        title: 'Pay rent', updated_at: '2030-01-01T00:00:00.000Z', ...over,
+      });
+
+      it('names every task it wrote, new or updated', () => {
+        linked();
+
+        const report = dbApplySyncChanges(payload({
+          tables: { tasks: [peerEdit(), peerTaskRow('p1', 'From peer', '2026-01-01T00:00:00.000Z')] },
+        }));
+
+        expect(report).toMatchObject({ inserted: 1, updated: 1 });
+        expect(report.taskIds.sort()).toEqual(['ev1', 'p1']);
+        expect(report.mealEntryIds).toEqual([]);
+        expect(report.removedTaskEvents).toEqual([]);
+      });
+
+      it('leaves out a task whose local copy is newer', () => {
+        linked();
+        stampLocal('ev1', '2031-01-01T00:00:00.000Z');
+
+        const report = dbApplySyncChanges(payload({ tables: { tasks: [peerEdit()] } }));
+
+        expect(report.skipped).toBe(1);
+        expect(report.taskIds).toEqual([]);
+      });
+
+      it('hands back the deadline event of a task it deleted, read before the row went', () => {
+        linked();
+
+        const report = dbApplySyncChanges(payload({
+          deletions: [{ table: 'tasks', rowKey: 'ev1', deletedAt: '2026-06-01T00:00:00.000Z' }],
+        }));
+
+        expect(report.deleted).toBe(1);
+        expect(rowOf('ev1')).toBeUndefined();
+        // Only the deadline event: never the block, never the completion record.
+        expect(report.removedTaskEvents).toEqual([{ eventId: 'dl', externalId: null }]);
+      });
+
+      it('hands back nothing for a deleted task with no deadline event here, or a deletion it refused', () => {
+        linked();
+        mockRawDb.prepare('UPDATE tasks SET calendar_event_id = NULL WHERE id = ?').run('ev1');
+        stampLocal('ev1', '2026-01-01T00:00:00.000Z');
+        const unlinked = dbApplySyncChanges(payload({
+          deletions: [{ table: 'tasks', rowKey: 'ev1', deletedAt: '2026-06-01T00:00:00.000Z' }],
+        }));
+        expect(unlinked.deleted).toBe(1);
+        expect(unlinked.removedTaskEvents).toEqual([]);
+
+        linked();
+        stampLocal('ev1', '2026-09-01T00:00:00.000Z');
+        const refused = dbApplySyncChanges(payload({
+          deletions: [{ table: 'tasks', rowKey: 'ev1', deletedAt: '2026-06-01T00:00:00.000Z' }],
+        }));
+        expect(refused.deletionsRefused).toBe(1);
+        expect(refused.removedTaskEvents).toEqual([]);
+        expect(ids().calendar_event_id).toBe('dl');
+      });
     });
   });
 
@@ -4747,7 +5106,7 @@ describe('a store\'s aisle range', () => {
   const insertShop = (id: string) => {
     dbInsertGroceryShop({
       id, name: id, nameKey: id, sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z',
-      excludeFromSuggestions: false, receiptStyle: 'itemized', aisles: null,
+      excludeFromSuggestions: false, receiptStyle: 'itemized', aisles: null, aisleOrder: null,
     });
   };
   const rangeOf = (id: string) => dbGetAllGroceryShops().find(s => s.id === id)?.aisles;
@@ -4799,5 +5158,307 @@ describe('a store\'s aisle range', () => {
       .run(JSON.stringify(['Produce', 3, '', null]), 'cvs');
 
     expect(rangeOf('cvs')).toEqual(['Produce']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A store's own aisle walk (#2938)
+// ---------------------------------------------------------------------------
+
+describe('a store\'s own aisle walk', () => {
+  const insertShop = (id: string) => {
+    dbInsertGroceryShop({
+      id, name: id, nameKey: id, sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z',
+      excludeFromSuggestions: false, receiptStyle: 'itemized', aisles: null, aisleOrder: null,
+    });
+  };
+  const walkOf = (id: string) => dbGetAllGroceryShops().find(s => s.id === id)?.aisleOrder;
+
+  it('reads back as none for a store nobody has arranged', () => {
+    insertShop('tj');
+    expect(walkOf('tj')).toBeNull();
+  });
+
+  it('round-trips an order', () => {
+    insertShop('tj');
+
+    dbSetShopAisleOrder('tj', ['Frozen', 'Produce', 'Dairy & Eggs']);
+
+    expect(walkOf('tj')).toEqual(['Frozen', 'Produce', 'Dairy & Eggs']);
+  });
+
+  it('stores an empty order, and null, as none at all', () => {
+    insertShop('tj');
+    dbSetShopAisleOrder('tj', ['Frozen']);
+    dbSetShopAisleOrder('tj', []);
+    expect(walkOf('tj')).toBeNull();
+
+    dbSetShopAisleOrder('tj', ['Frozen']);
+    dbSetShopAisleOrder('tj', null);
+    expect(walkOf('tj')).toBeNull();
+  });
+
+  // Resolve-or-shrug, on the side that changes nothing: an order that can't
+  // be read is the usual order.
+  it('reads a blob that will not parse as none', () => {
+    insertShop('tj');
+    mockRawDb.prepare('UPDATE grocery_shops SET aisle_order = ? WHERE id = ?').run('{oops', 'tj');
+
+    expect(walkOf('tj')).toBeNull();
+  });
+
+  it('is its own column, apart from the range', () => {
+    insertShop('tj');
+    dbSetShopAisles('tj', ['Produce']);
+    dbSetShopAisleOrder('tj', ['Frozen', 'Produce']);
+
+    const [shop] = dbGetAllGroceryShops();
+    expect(shop.aisles).toEqual(['Produce']);
+    expect(shop.aisleOrder).toEqual(['Frozen', 'Produce']);
+  });
+
+  // It is about the store, not the phone: a second device shopping there
+  // walks the same aisles in the same order.
+  it('travels in a sync payload', () => {
+    insertShop('tj');
+    dbSetShopAisleOrder('tj', ['Frozen', 'Produce']);
+
+    const out = dbSyncChangesSince(null);
+    const row = out.tables.grocery_shops.find(r => r.id === 'tj');
+    expect(JSON.parse(String(row?.aisle_order))).toEqual(['Frozen', 'Produce']);
+
+    mockRawDb.exec('DELETE FROM grocery_shops; DELETE FROM sync_deletions;');
+    dbApplySyncChanges({
+      format: SYNC_FORMAT,
+      deviceId: 'peer',
+      since: null,
+      until: '2030-01-01T00:00:00.000Z',
+      tables: { grocery_shops: [{ ...row!, updated_at: '2026-04-02T12:00:00.000Z' }] },
+      deletions: [],
+    });
+    expect(walkOf('tj')).toEqual(['Frozen', 'Produce']);
+  });
+
+  it('survives a backup and restore', () => {
+    insertShop('tj');
+    dbSetShopAisleOrder('tj', ['Frozen', 'Produce']);
+    const backup = buildBackup(dbExportTables(), { appVersion: '1.0.0', exportedAt: new Date() });
+
+    const parsed = parseBackup(serializeBackup(backup));
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    mockRawDb.exec('DELETE FROM grocery_shops;');
+    dbReplaceAllData(parsed.backup.tables);
+
+    expect(walkOf('tj')).toEqual(['Frozen', 'Produce']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Food log entries: the panel an unfiled database food keeps (#2914)
+// ---------------------------------------------------------------------------
+
+describe('a food log entry\'s kept panel', () => {
+  beforeEach(() => {
+    mockRawDb.exec('DELETE FROM food_logs; DELETE FROM sync_deletions;');
+  });
+
+  const chicken: FoodNutrition = {
+    basis: 'per100g',
+    servingGrams: null,
+    servingText: null,
+    amounts: { calorieKcal: 165, proteinG: 31 },
+    source: 'fdc',
+    sourceId: '171077',
+    portions: [{ amount: 1, label: 'breast', grams: 172 }],
+    recordedAt: '2026-04-02T00:00:00.000Z',
+  };
+
+  const makeEntry = (overrides: Partial<FoodLogEntry> = {}): FoodLogEntry => ({
+    id: 'f1',
+    dayKey: '2026-04-02',
+    atISO: '2026-04-02T12:00:00.000Z',
+    slot: 'lunch',
+    label: 'Chicken, broilers or fryers, breast, meat only, cooked, roasted',
+    recipeId: null,
+    itemId: null,
+    productId: null,
+    mealPlanEntryId: null,
+    quantity: '200 g',
+    grams: 200,
+    nutrition: {
+      ...chicken,
+      basis: 'perServing',
+      servingGrams: 200,
+      servingText: '200 g',
+      amounts: { calorieKcal: 330, proteinG: 62 },
+      portions: [],
+    },
+    sourcePanel: chicken,
+    healthSampleIds: [],
+    sortOrder: 0,
+    createdAt: '2026-04-02T12:00:00.000Z',
+    ...overrides,
+  });
+
+  it('round-trips through insert and read', () => {
+    dbInsertFoodLogEntry(makeEntry());
+    expect(dbGetFoodLogEntry('f1')?.sourcePanel).toEqual(chicken);
+  });
+
+  it('reads as none for an entry that kept nothing', () => {
+    dbInsertFoodLogEntry(makeEntry({ sourcePanel: null }));
+    expect(dbGetFoodLogEntry('f1')?.sourcePanel).toBeNull();
+    dbInsertFoodLogEntry(makeEntry({ id: 'f2', sourcePanel: undefined }));
+    expect(dbGetFoodLogEntry('f2')?.sourcePanel).toBeNull();
+  });
+
+  it('is written and cleared by an update', () => {
+    dbInsertFoodLogEntry(makeEntry({ sourcePanel: null }));
+    dbUpdateFoodLogEntry(makeEntry());
+    expect(dbGetFoodLogEntry('f1')?.sourcePanel).toEqual(chicken);
+    dbUpdateFoodLogEntry(makeEntry({ itemId: 'item-chicken', sourcePanel: null }));
+    expect(dbGetFoodLogEntry('f1')?.sourcePanel).toBeNull();
+  });
+
+  it('reads a blob that will not parse as none kept, and keeps the entry', () => {
+    // Unlike a bad `nutrition`, which drops the row: the helping is still
+    // whole, and all this costs is the correction.
+    dbInsertFoodLogEntry(makeEntry());
+    mockRawDb.prepare('UPDATE food_logs SET source_panel = ? WHERE id = ?').run('{oops', 'f1');
+    const read = dbGetFoodLogEntry('f1');
+    expect(read).not.toBeNull();
+    expect(read?.sourcePanel).toBeNull();
+  });
+
+  it('travels in a sync payload, since it describes the entry rather than the device', () => {
+    dbInsertFoodLogEntry(makeEntry());
+    const out = dbSyncChangesSince(null);
+    const row = out.tables.food_logs.find(r => r.id === 'f1');
+    expect(JSON.parse(String(row?.source_panel))).toEqual(chicken);
+
+    // And a peer's row lands with it.
+    mockRawDb.exec('DELETE FROM food_logs; DELETE FROM sync_deletions;');
+    dbApplySyncChanges({
+      format: SYNC_FORMAT,
+      deviceId: 'peer',
+      since: null,
+      until: '2030-01-01T00:00:00.000Z',
+      tables: { food_logs: [{ ...row!, updated_at: '2026-04-02T12:00:00.000Z' }] },
+      deletions: [],
+    });
+    expect(dbGetFoodLogEntry('f1')?.sourcePanel).toEqual(chicken);
+  });
+
+  it('survives a backup and restore', () => {
+    dbInsertFoodLogEntry(makeEntry());
+    const backup = buildBackup(dbExportTables(), { appVersion: '1.0.0', exportedAt: new Date() });
+    expect(backup.tables.food_logs[0].source_panel).not.toBeNull();
+
+    const parsed = parseBackup(serializeBackup(backup));
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    mockRawDb.exec('DELETE FROM food_logs;');
+    dbReplaceAllData(parsed.backup.tables);
+    expect(dbGetFoodLogEntry('f1')?.sourcePanel).toEqual(chicken);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Saved meals: the panel an item keeps (#2914)
+// ---------------------------------------------------------------------------
+
+describe('a saved meal item\'s kept panel', () => {
+  beforeEach(() => {
+    mockRawDb.exec('DELETE FROM saved_meals; DELETE FROM sync_deletions;');
+  });
+
+  const chicken: FoodNutrition = {
+    basis: 'per100g',
+    servingGrams: null,
+    servingText: null,
+    amounts: { calorieKcal: 165, proteinG: 31 },
+    source: 'fdc',
+    sourceId: '171077',
+    portions: [{ amount: 1, label: 'breast', grams: 172 }],
+    recordedAt: '2026-04-02T00:00:00.000Z',
+  };
+
+  const helping: FoodNutrition = {
+    ...chicken,
+    basis: 'perServing',
+    servingGrams: 200,
+    servingText: '200 g',
+    amounts: { calorieKcal: 330, proteinG: 62 },
+    portions: [],
+  };
+
+  const makeMeal = (sourcePanel?: FoodNutrition | null): SavedMeal => ({
+    id: 'm1',
+    name: 'Lunch',
+    items: [{
+      label: 'Chicken, broilers or fryers, breast, meat only, cooked, roasted',
+      recipeId: null,
+      itemId: null,
+      productId: null,
+      quantity: '200 g',
+      grams: 200,
+      nutrition: helping,
+      ...(sourcePanel !== undefined ? { sourcePanel } : {}),
+    }],
+    createdAt: '2026-04-02T12:00:00.000Z',
+  });
+
+  it('round-trips through insert and read', () => {
+    dbInsertSavedMeal(makeMeal(chicken));
+    expect(dbGetSavedMeals()[0].items[0].sourcePanel).toEqual(chicken);
+  });
+
+  it('reads a meal saved before items kept a panel as none kept', () => {
+    dbInsertSavedMeal(makeMeal());
+    const stored = mockRawDb.prepare('SELECT items FROM saved_meals WHERE id = ?').get('m1') as { items: string };
+    expect(JSON.parse(stored.items)[0]).not.toHaveProperty('sourcePanel');
+    const item = dbGetSavedMeals()[0].items[0];
+    expect(item.sourcePanel).toBeNull();
+    expect(item.nutrition).toEqual(helping);
+  });
+
+  it('reads a panel that will not parse as none kept, and keeps the item', () => {
+    dbInsertSavedMeal(makeMeal(chicken));
+    const broken = JSON.stringify([{ ...makeMeal().items[0], sourcePanel: { basis: 'nonsense' } }]);
+    mockRawDb.prepare('UPDATE saved_meals SET items = ? WHERE id = ?').run(broken, 'm1');
+    const meals = dbGetSavedMeals();
+    expect(meals).toHaveLength(1);
+    expect(meals[0].items).toHaveLength(1);
+    expect(meals[0].items[0].sourcePanel).toBeNull();
+  });
+
+  it('travels in a sync payload inside the items blob', () => {
+    dbInsertSavedMeal(makeMeal(chicken));
+    const out = dbSyncChangesSince(null);
+    const row = out.tables.saved_meals.find(r => r.id === 'm1');
+    expect(JSON.parse(String(row?.items))[0].sourcePanel).toEqual(chicken);
+
+    mockRawDb.exec('DELETE FROM saved_meals; DELETE FROM sync_deletions;');
+    dbApplySyncChanges({
+      format: SYNC_FORMAT,
+      deviceId: 'peer',
+      since: null,
+      until: '2030-01-01T00:00:00.000Z',
+      tables: { saved_meals: [{ ...row!, updated_at: '2026-04-02T12:00:00.000Z' }] },
+      deletions: [],
+    });
+    expect(dbGetSavedMeals()[0].items[0].sourcePanel).toEqual(chicken);
+  });
+
+  it('survives a backup and restore', () => {
+    dbInsertSavedMeal(makeMeal(chicken));
+    const backup = buildBackup(dbExportTables(), { appVersion: '1.0.0', exportedAt: new Date() });
+    const parsed = parseBackup(serializeBackup(backup));
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    mockRawDb.exec('DELETE FROM saved_meals;');
+    dbReplaceAllData(parsed.backup.tables);
+    expect(dbGetSavedMeals()[0].items[0].sourcePanel).toEqual(chicken);
   });
 });

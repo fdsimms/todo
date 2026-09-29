@@ -14,7 +14,7 @@ import type { GroceryItem, MealPlanEntry, MealSlot, Recipe, Task } from '../type
 import { useGroceryStore } from '../store/useGroceryStore';
 import { groceryNameKey } from '../utils/groceryParse';
 import { mealSlotSourceId, mealSlotTaskDraft } from '../utils/mealSlotTasks';
-import { dayKeyOf } from '../utils/dateUtils';
+import { dayKeyOf, dayKeyToDate } from '../utils/dateUtils';
 
 /** A local wall-clock time as the ISO instant the app stores, so the suite reads the same in any zone. */
 const localIso = (local: string) => new Date(local).toISOString();
@@ -36,6 +36,8 @@ jest.mock('../db/database', () => ({
   // Runs the body straight through: the grocery store batches its bulk writes
   // into one transaction, and what the tests below check is the writes.
   dbTransaction: jest.fn((fn: () => void) => fn()),
+  // #2950's launch backfill: the ids of the rows the write filled.
+  dbFillMealCalendarExternalIds: jest.fn().mockReturnValue([]),
 }));
 
 // mealCookTasks defaults on, matching the real store — so every test here runs
@@ -78,11 +80,24 @@ const mockCreateAllDayEvent = jest.fn().mockResolvedValue('evt-new');
 // Hands back the id it was given, which is what EventKit reports for an event
 // rewritten in place (and moved, #2949, when the calendar changed).
 const mockMoveAllDayEvent = jest.fn((id: string) => Promise.resolve(id));
+let mockCalendarPermission = 'granted';
+// Whether a local id still names its event here: yes unless a test says not.
+const mockEventExists = jest.fn((_id: string) => Promise.resolve(true));
 jest.mock('../utils/calendarSync', () => ({
+  getCalendarPermission: () => Promise.resolve(mockCalendarPermission),
+  calendarEventExists: (id: string) => mockEventExists(id),
   deleteCalendarEvent: (...args: unknown[]) => mockDeleteCalendarEvent(...args),
   createAllDayEvent: (...args: unknown[]) => mockCreateAllDayEvent(...args),
   moveAllDayEvent: (...args: unknown[]) => mockMoveAllDayEvent(...(args as [string])),
 }));
+// #2950: the native module that reads an event's calendar server id, and finds
+// an event by one. No server ids and no matches unless a test says so.
+const mockExternalIds = jest.fn((_ids: string[]) => Promise.resolve({} as Record<string, string>));
+const mockEventsWithExternalId = jest.fn((_id: string) => Promise.resolve([] as unknown[]));
+jest.mock('todo-eventkit-bridge', () => ({
+  externalIdentifiers: (ids: string[]) => mockExternalIds(ids),
+  eventsWithExternalIdentifier: (id: string) => mockEventsWithExternalId(id),
+}), { virtual: true });
 
 // useGroceryStore (real, below) imports these unconditionally for
 // startTrip/endTrip — same expo-notifications-in-node problem the task store
@@ -211,6 +226,7 @@ beforeEach(() => {
   mockMealCookTasks = true;
   mockHouseholdServings = 0;
   mockMealCalendarId = null;
+  mockCalendarPermission = 'granted';
   mockMealPlanNudgeSlots = ['breakfast', 'lunch', 'dinner'];
   mockCreateAllDayEvent.mockResolvedValue('evt-new');
   mockMoveAllDayEvent.mockImplementation((id: string) => Promise.resolve(id));
@@ -1225,6 +1241,28 @@ describe('copyEntryTo', () => {
     expect(dbInsertMealPlanEntry).not.toHaveBeenCalled();
   });
 
+  it('refuses a day that already has this meal in this slot, however it was reached (#2913)', () => {
+    const monday = entry('2026-08-03', 'lunch', { recipeId: 'r1', title: 'Pasta salad' });
+    loadWeek([monday]);
+    // A date past the loaded week, as "Another date…" picks: the day's own
+    // rows are read from SQLite rather than from the window.
+    (dbGetMealPlanEntries as jest.Mock).mockImplementation((start: string) => (
+      start === '2026-10-06' ? [entry('2026-10-06', 'lunch', { recipeId: 'r1', title: 'Pasta salad' })]
+        : start === '2026-10-07' ? [entry('2026-10-07', 'dinner', { recipeId: 'r1', title: 'Pasta salad' })]
+          : []
+    ));
+
+    expect(useMealPlanStore.getState().copyEntryTo(monday.id, ['2026-10-06'])).toBe(0);
+    expect(dbInsertMealPlanEntry).not.toHaveBeenCalled();
+    expect(useMealPlanStore.getState().lastAction).toBeNull();
+
+    // The same recipe in another slot is another meal, and a day with nothing
+    // takes it; only the refused day is dropped from a call naming several.
+    expect(useMealPlanStore.getState().copyEntryTo(monday.id, ['2026-10-06', '2026-10-07', '2026-10-08'])).toBe(2);
+    const written = (dbInsertMealPlanEntry as jest.Mock).mock.calls.map(c => [c[0].date, c[0].slot]);
+    expect(written).toEqual([['2026-10-07', 'lunch'], ['2026-10-08', 'lunch']]);
+  });
+
   it('undoes every copy it wrote in one step', () => {
     const monday = entry('2026-08-03', 'lunch', { title: 'Soup' });
     loadWeek([monday]);
@@ -1311,6 +1349,105 @@ describe('copyWeek', () => {
 
     expect(getEntries()).toEqual([]);
     expect(dbDeleteMealPlanEntry).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('copySlotFromWeek', () => {
+  /** Answers each week's read from its own rows, keyed by the week's start. */
+  const weeks = (byStart: Record<string, MealPlanEntry[]>) =>
+    (dbGetMealPlanEntries as jest.Mock).mockImplementation((start: string) => byStart[start] ?? []);
+
+  it("copies last week's lunches into a week whose dinners are planned (#2913)", () => {
+    const tacos = entry('2026-08-03', 'dinner', { title: 'Tacos' });
+    loadWeek([tacos]);
+    weeks({
+      '2026-07-27': [
+        entry('2026-07-27', 'lunch', { title: 'Pasta salad', recipeId: 'r1', recipeScale: 2 }),
+        entry('2026-07-28', 'lunch', { title: 'Wraps' }),
+        entry('2026-07-27', 'dinner', { title: 'Ragù' }),
+      ],
+      '2026-08-03': [tacos],
+    });
+
+    const n = useMealPlanStore.getState().copySlotFromWeek('2026-07-27', '2026-08-03', 'lunch');
+
+    expect(n).toBe(2);
+    expect(getEntries().map(e => [e.date, e.slot, e.title, e.recipeScale])).toEqual([
+      ['2026-08-03', 'lunch', 'Pasta salad', 2],
+      ['2026-08-03', 'dinner', 'Tacos', 1],
+      ['2026-08-04', 'lunch', 'Wraps', 1],
+    ]);
+    expect(useMealPlanStore.getState().lastAction?.label).toBe('Copied 2 lunches');
+  });
+
+  it("leaves last week's leftover nights behind, as a week copy does", () => {
+    loadWeek([entry('2026-08-03', 'dinner')]);
+    weeks({
+      '2026-07-27': [
+        entry('2026-07-27', 'lunch', { title: 'Soup' }),
+        entry('2026-07-28', 'lunch', { title: 'Leftover chili', leftoverId: 'lo-1' }),
+      ],
+    });
+
+    expect(useMealPlanStore.getState().copySlotFromWeek('2026-07-27', '2026-08-03', 'lunch')).toBe(1);
+    const written = (dbInsertMealPlanEntry as jest.Mock).mock.calls.map(c => c[0].title);
+    expect(written).toEqual(['Soup']);
+  });
+
+  // The offer's rule, held here too: a week with any lunch in it is one the
+  // user is already planning lunches in, and a copy would have to merge.
+  it('writes nothing once the week has anything in that slot', () => {
+    const soup = entry('2026-08-05', 'lunch', { title: 'Soup' });
+    loadWeek([soup]);
+    weeks({
+      '2026-07-27': [entry('2026-07-27', 'lunch', { title: 'Wraps' })],
+      '2026-08-03': [soup],
+    });
+
+    expect(useMealPlanStore.getState().copySlotFromWeek('2026-07-27', '2026-08-03', 'lunch')).toBe(0);
+    expect(dbInsertMealPlanEntry).not.toHaveBeenCalled();
+    expect(useMealPlanStore.getState().lastAction).toBeNull();
+  });
+
+  it('undoes the whole slot in one go', () => {
+    loadWeek([entry('2026-08-03', 'dinner')]);
+    weeks({
+      '2026-07-27': [
+        entry('2026-07-27', 'lunch'),
+        entry('2026-07-28', 'lunch'),
+        entry('2026-07-29', 'lunch'),
+      ],
+    });
+    useMealPlanStore.getState().copySlotFromWeek('2026-07-27', '2026-08-03', 'lunch');
+    expect(getEntries()).toHaveLength(4);
+
+    useMealPlanStore.getState().undoLastAction();
+
+    expect(getEntries().map(e => e.slot)).toEqual(['dinner']);
+    expect(dbDeleteMealPlanEntry).toHaveBeenCalledTimes(3);
+  });
+
+  it('names one meal in the singular', () => {
+    loadWeek([entry('2026-08-03', 'dinner')]);
+    weeks({ '2026-07-27': [entry('2026-07-27', 'breakfast')] });
+
+    useMealPlanStore.getState().copySlotFromWeek('2026-07-27', '2026-08-03', 'breakfast');
+
+    expect(useMealPlanStore.getState().lastAction?.label).toBe('Copied 1 breakfast');
+  });
+});
+
+describe('slotsToCopyFrom', () => {
+  it('reads both weeks and answers which slots the target could take (#2913)', () => {
+    (dbGetMealPlanEntries as jest.Mock).mockImplementation((start: string) => (
+      start === '2026-07-27'
+        ? [entry('2026-07-27', 'lunch'), entry('2026-07-27', 'dinner'), entry('2026-07-28', 'snack')]
+        : [entry('2026-08-03', 'dinner')]
+    ));
+
+    expect(useMealPlanStore.getState().slotsToCopyFrom('2026-07-27', '2026-08-03')).toEqual(['lunch', 'snack']);
+    expect(dbGetMealPlanEntries).toHaveBeenCalledWith('2026-07-27', '2026-08-02');
+    expect(dbGetMealPlanEntries).toHaveBeenCalledWith('2026-08-03', '2026-08-09');
   });
 });
 
@@ -2605,6 +2742,22 @@ describe('calendar events (#1494)', () => {
     expect(mockDeleteCalendarEvent).toHaveBeenCalledWith('evt-1');
   });
 
+  it('deletes the event found by its server id when a restored phone\'s local id names nothing (#2950)', async () => {
+    mockMealCalendarId = 'cal-1';
+    mockEventExists.mockResolvedValueOnce(false);
+    mockEventsWithExternalId.mockResolvedValueOnce([{ id: 'evt-this-phone', allDay: true, calendarId: 'cal-1' }]);
+    loadWeek([entry('2026-08-05', 'dinner', {
+      id: 'm-a', calendarEventId: 'evt-old-phone', calendarEventExternalId: 'ext-1',
+    })]);
+
+    useMealPlanStore.getState().removeEntry('m-a');
+    await settle();
+
+    expect(mockEventsWithExternalId).toHaveBeenCalledWith('ext-1');
+    expect(mockDeleteCalendarEvent).toHaveBeenCalledWith('evt-this-phone');
+    expect(mockDeleteCalendarEvent).not.toHaveBeenCalledWith('evt-old-phone');
+  });
+
   it('deletes the event of a meal whose id was only just written back', async () => {
     // The undo closure captured the entry before reconcileMealEvent had an id
     // to write, so dropMealEvent has to re-resolve the row — trusting the
@@ -2660,6 +2813,190 @@ describe('calendar events (#1494)', () => {
     await settle();
 
     expect(mockDeleteCalendarEvent).not.toHaveBeenCalled();
+  });
+
+  // #2950: the calendar server's id is kept beside the device's, so a backup
+  // restored on a new phone finds the old phone's events rather than writing
+  // each one again.
+  it('links the server id of the event it writes, beside the event id', async () => {
+    mockMealCalendarId = 'cal-1';
+    mockExternalIds.mockResolvedValueOnce({ 'evt-new': 'ext-new' });
+    loadWeek();
+    const meal = useMealPlanStore.getState().planMeal({
+      date: '2026-08-05', slot: 'dinner', recipeId: 'r1', title: 'Ragu',
+    })!;
+    await settle();
+
+    expect(getEntries().find(e => e.id === meal.id)).toMatchObject({
+      calendarEventId: 'evt-new', calendarEventExternalId: 'ext-new',
+    });
+    expect(dbUpdateMealPlanEntry).toHaveBeenCalledWith(
+      expect.objectContaining({ id: meal.id, calendarEventId: 'evt-new', calendarEventExternalId: 'ext-new' })
+    );
+  });
+
+  it('moves a restored meal\'s event, found by its server id, rather than writing a second one', async () => {
+    mockMealCalendarId = 'cal-1';
+    // The old phone's local id names nothing here; its event came down from
+    // the shared calendar under the same server id and a new local one.
+    loadWeek([entry('2026-08-05', 'dinner', {
+      id: 'm-a', title: 'Ragu', calendarEventId: 'evt-old-phone', calendarEventExternalId: 'ext-1',
+    })]);
+    mockMoveAllDayEvent.mockImplementationOnce(() => Promise.resolve(null as unknown as string));
+    mockEventsWithExternalId.mockResolvedValueOnce([{ id: 'evt-this-phone', allDay: true, calendarId: 'cal-1' }]);
+
+    useMealPlanStore.getState().moveEntry('m-a', { date: '2026-08-07' });
+    await settle();
+
+    expect(mockEventsWithExternalId).toHaveBeenCalledWith('ext-1');
+    expect(mockMoveAllDayEvent).toHaveBeenLastCalledWith('evt-this-phone', 'cal-1', {
+      title: 'Dinner: Ragu',
+      date: dayKeyToDate('2026-08-07'),
+    });
+    expect(mockCreateAllDayEvent).not.toHaveBeenCalled();
+    expect(getEntries().find(e => e.id === 'm-a')).toMatchObject({
+      calendarEventId: 'evt-this-phone', calendarEventExternalId: 'ext-1',
+    });
+  });
+
+  it('writes a fresh event for a restored meal whose server id finds several copies', async () => {
+    mockMealCalendarId = 'cal-1';
+    loadWeek([entry('2026-08-05', 'dinner', {
+      id: 'm-a', title: 'Ragu', calendarEventId: 'evt-old-phone', calendarEventExternalId: 'ext-1',
+    })]);
+    mockMoveAllDayEvent.mockImplementationOnce(() => Promise.resolve(null as unknown as string));
+    mockEventsWithExternalId.mockResolvedValueOnce([
+      { id: 'evt-a', allDay: true, calendarId: 'cal-1' },
+      { id: 'evt-b', allDay: true, calendarId: 'cal-1' },
+    ]);
+
+    useMealPlanStore.getState().renameEntry('m-a', 'Lasagne');
+    await settle();
+
+    expect(mockMoveAllDayEvent).toHaveBeenCalledTimes(1);
+    expect(mockCreateAllDayEvent).toHaveBeenCalledWith('cal-1', expect.objectContaining({ title: 'Dinner: Lasagne' }));
+    expect(getEntries().find(e => e.id === 'm-a')!.calendarEventId).toBe('evt-new');
+  });
+
+  it('gives a copied meal no server id of its own until its own event is written', async () => {
+    mockMealCalendarId = 'cal-1';
+    loadWeek();
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([
+      entry('2026-08-05', 'dinner', {
+        id: 'm-a', title: 'Ragu', calendarEventId: 'evt-1', calendarEventExternalId: 'ext-1',
+      }),
+    ]);
+
+    useMealPlanStore.getState().copyWeek('2026-08-03', '2026-08-10');
+
+    const inserted = (dbInsertMealPlanEntry as jest.Mock).mock.calls.map(c => c[0] as MealPlanEntry);
+    expect(inserted.length).toBeGreaterThan(0);
+    expect(inserted.every(e => e.calendarEventId === null && e.calendarEventExternalId === null)).toBe(true);
+  });
+
+  // #2950: the event is this device's, so a change made on another device
+  // reaches it only through the reconcile the sync reload runs.
+  describe('after a sync', () => {
+    const synced = (over: { mealEntryIds?: string[]; removedMealEvents?: { eventId: string; externalId: string | null; date: string }[] }) => ({
+      mealEntryIds: [], removedMealEvents: [], ...over,
+    });
+
+    it('moves this device\'s event when another device moved the meal', async () => {
+      mockMealCalendarId = 'cal-1';
+      // The row as the reload re-read it: Wednesday's dinner, now on Friday.
+      loadWeek([entry('2026-08-07', 'dinner', { id: 'm-a', title: 'Ragu', calendarEventId: 'evt-1' })]);
+
+      useMealPlanStore.getState().reconcileSyncedEvents(synced({ mealEntryIds: ['m-a'] }));
+      await settle();
+
+      expect(mockMoveAllDayEvent).toHaveBeenCalledWith('evt-1', 'cal-1', {
+        title: 'Dinner: Ragu',
+        date: dayKeyToDate('2026-08-07'),
+      });
+      expect(mockCreateAllDayEvent).not.toHaveBeenCalled();
+    });
+
+    it('reads a meal outside the loaded week from SQLite', async () => {
+      mockMealCalendarId = 'cal-1';
+      loadWeek();
+      (dbGetMealPlanEntry as jest.Mock).mockImplementation((id: string) =>
+        id === 'm-far' ? entry('2026-09-18', 'lunch', { id: 'm-far', title: 'Soup', calendarEventId: 'evt-far' }) : null
+      );
+
+      useMealPlanStore.getState().reconcileSyncedEvents(synced({ mealEntryIds: ['m-far'] }));
+      await settle();
+
+      expect(mockMoveAllDayEvent).toHaveBeenCalledWith('evt-far', 'cal-1', expect.objectContaining({
+        title: 'Lunch: Soup',
+      }));
+    });
+
+    it('writes no event for a synced meal this device never wrote one for', async () => {
+      mockMealCalendarId = 'cal-1';
+      loadWeek([entry('2026-08-07', 'dinner', { id: 'm-a', calendarEventId: null })]);
+
+      useMealPlanStore.getState().reconcileSyncedEvents(synced({ mealEntryIds: ['m-a'] }));
+      await settle();
+
+      expect(mockCreateAllDayEvent).not.toHaveBeenCalled();
+      expect(mockMoveAllDayEvent).not.toHaveBeenCalled();
+      expect(dbUpdateMealPlanEntry).not.toHaveBeenCalled();
+    });
+
+    it('links the fresh event when the old one had gone, same as a local edit', async () => {
+      mockMealCalendarId = 'cal-1';
+      mockMoveAllDayEvent.mockImplementation(() => Promise.resolve(null as unknown as string));
+      loadWeek([entry('2026-08-07', 'dinner', { id: 'm-a', title: 'Ragu', calendarEventId: 'evt-1' })]);
+
+      useMealPlanStore.getState().reconcileSyncedEvents(synced({ mealEntryIds: ['m-a'] }));
+      await settle();
+
+      expect(mockCreateAllDayEvent).toHaveBeenCalledWith('cal-1', expect.objectContaining({ title: 'Dinner: Ragu' }));
+      expect(dbUpdateMealPlanEntry).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'm-a', calendarEventId: 'evt-new' })
+      );
+    });
+
+    it('deletes this device\'s event when no calendar is picked any more, same as a local edit', async () => {
+      loadWeek([entry('2026-08-07', 'dinner', { id: 'm-a', calendarEventId: 'evt-1' })]);
+
+      useMealPlanStore.getState().reconcileSyncedEvents(synced({ mealEntryIds: ['m-a'] }));
+      await settle();
+
+      expect(mockDeleteCalendarEvent).toHaveBeenCalledWith('evt-1');
+      expect(getEntries()[0].calendarEventId).toBeNull();
+    });
+
+    it('deletes the event of a meal another device removed', async () => {
+      mockMealCalendarId = 'cal-1';
+      loadWeek();
+
+      useMealPlanStore.getState().reconcileSyncedEvents(synced({
+        removedMealEvents: [{ eventId: 'evt-9', externalId: null, date: dayKeyOf(new Date()) }],
+      }));
+      await settle();
+
+      expect(mockDeleteCalendarEvent).toHaveBeenCalledWith('evt-9');
+    });
+
+    // Without access the move fails, the fallback creates nothing, and the
+    // null it returns would have been written over the link.
+    it('touches nothing without calendar access, so no link is lost', async () => {
+      mockCalendarPermission = 'denied';
+      mockMealCalendarId = 'cal-1';
+      loadWeek([entry('2026-08-07', 'dinner', { id: 'm-a', title: 'Ragu', calendarEventId: 'evt-1' })]);
+
+      useMealPlanStore.getState().reconcileSyncedEvents(synced({
+        mealEntryIds: ['m-a'],
+        removedMealEvents: [{ eventId: 'evt-9', externalId: null, date: dayKeyOf(new Date()) }],
+      }));
+      await settle();
+
+      expect(mockMoveAllDayEvent).not.toHaveBeenCalled();
+      expect(mockDeleteCalendarEvent).not.toHaveBeenCalled();
+      expect(dbUpdateMealPlanEntry).not.toHaveBeenCalled();
+      expect(getEntries()[0].calendarEventId).toBe('evt-1');
+    });
   });
 });
 
@@ -2802,5 +3139,29 @@ describe('finishCookForRecipe', () => {
     expect(dbUpdateMealPlanEntry).toHaveBeenCalledWith(
       expect.objectContaining({ id: dinner.id, cookedAt: expect.any(String) })
     );
+  });
+});
+
+describe('fillCalendarExternalIds (#2950)', () => {
+  const { dbFillMealCalendarExternalIds } = jest.requireMock('../db/database') as {
+    dbFillMealCalendarExternalIds: jest.Mock;
+  };
+
+  it('fills the loaded window in memory for the rows the database write filled', () => {
+    dbFillMealCalendarExternalIds.mockReturnValueOnce(['m-a']);
+    useMealPlanStore.setState({
+      entries: [
+        entry('2026-08-05', 'dinner', { id: 'm-a', calendarEventId: 'evt-a' }),
+        entry('2026-08-06', 'dinner', { id: 'm-b', calendarEventId: 'evt-b' }),
+      ],
+    });
+    const found = { 'evt-a': 'ext-a', 'evt-b': 'ext-b' };
+
+    useMealPlanStore.getState().fillCalendarExternalIds(found);
+
+    expect(dbFillMealCalendarExternalIds).toHaveBeenCalledWith(found);
+    const byId = Object.fromEntries(useMealPlanStore.getState().entries.map(e => [e.id, e]));
+    expect(byId['m-a'].calendarEventExternalId).toBe('ext-a');
+    expect(byId['m-b'].calendarEventExternalId ?? null).toBeNull();
   });
 });

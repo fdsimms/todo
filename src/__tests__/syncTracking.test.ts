@@ -347,12 +347,33 @@ describe('backfill', () => {
   });
 });
 
-// #2950: a meal's calendar event id names a record on one phone.
+// #2950: a calendar event id names a record on one phone.
 describe('device-local columns', () => {
   it('keeps a meal\'s calendar event id on the device and nothing else of its row', () => {
     expect(isDeviceLocalColumn('meal_plan_entries', 'calendar_event_id')).toBe(true);
     expect(isDeviceLocalColumn('meal_plan_entries', 'title')).toBe(false);
-    expect(isDeviceLocalColumn('tasks', 'calendar_event_id')).toBe(false);
+  });
+
+  it('keeps the server id kept beside each event id on the device too', () => {
+    // It names the event this device wrote; a peer holding it could find that
+    // event and start rewriting it.
+    expect(isDeviceLocalColumn('meal_plan_entries', 'calendar_event_external_id')).toBe(true);
+    expect(isDeviceLocalColumn('tasks', 'calendar_event_external_id')).toBe(true);
+    expect(isDeviceLocalColumn('tasks', 'time_block_external_id')).toBe(true);
+    expect(isDeviceLocalColumn('tasks', 'completion_calendar_event_external_id')).toBe(true);
+    expect(withoutDeviceLocalColumns('meal_plan_entries', {
+      id: 'm1', calendar_event_id: 'evt', calendar_event_external_id: 'ext',
+    })).toEqual({ id: 'm1' });
+  });
+
+  it('keeps a task\'s three event ids on the device and nothing else of its row', () => {
+    expect(isDeviceLocalColumn('tasks', 'calendar_event_id')).toBe(true);
+    expect(isDeviceLocalColumn('tasks', 'completion_calendar_event_id')).toBe(true);
+    expect(isDeviceLocalColumn('tasks', 'time_block_event_id')).toBe(true);
+    // The switches that ask for the events are the task's own and travel.
+    expect(isDeviceLocalColumn('tasks', 'deadline_on_calendar')).toBe(false);
+    expect(isDeviceLocalColumn('tasks', 'log_completion_to_calendar')).toBe(false);
+    expect(isDeviceLocalColumn('tasks', 'title')).toBe(false);
   });
 
   it('drops them from a row on the way out, and leaves other tables\' rows alone', () => {
@@ -360,8 +381,20 @@ describe('device-local columns', () => {
     expect(withoutDeviceLocalColumns('meal_plan_entries', row)).toEqual({ id: 'm1', title: 'Chili' });
     // A copy: the row read out of SQLite isn't mutated under its reader.
     expect(row.calendar_event_id).toBe('evt-local');
-    const task = { id: 't1', calendar_event_id: 'evt' };
-    expect(withoutDeviceLocalColumns('tasks', task)).toBe(task);
+    const project = { id: 'p1', name: 'Garden' };
+    expect(withoutDeviceLocalColumns('projects', project)).toBe(project);
+    expect(withoutDeviceLocalColumns('tasks', {
+      id: 't1', title: 'Rent', calendar_event_id: 'a', completion_calendar_event_id: 'b', time_block_event_id: 'c',
+    })).toEqual({ id: 't1', title: 'Rent' });
+  });
+
+  it('sends a food log entry\'s kept panel, which describes the entry and not the device (#2914)', () => {
+    // The per-100 g panel an unfiled database food was measured against. A
+    // phone that never saw it would offer only a rename on an entry the other
+    // phone can correct, so it travels with the rest of the row.
+    expect(isDeviceLocalColumn('food_logs', 'source_panel')).toBe(false);
+    const row = { id: 'f1', label: 'Chicken', source_panel: '{"basis":"per100g"}' };
+    expect(withoutDeviceLocalColumns('food_logs', row)).toBe(row);
   });
 
   it('names only tracked tables', () => {

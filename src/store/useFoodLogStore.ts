@@ -82,6 +82,11 @@ export interface FoodLogDraft {
   productId?: string | null;
   mealPlanEntryId?: string | null;
   /**
+   * The panel the helping was measured against, for a food no catalog row
+   * holds. See `FoodLogEntry.sourcePanel`; null or absent for anything linked.
+   */
+  sourcePanel?: FoodNutrition | null;
+  /**
    * The moment being recorded, defaulting to now.
    *
    * An entry is a record of a moment and the moment is not always the one you
@@ -184,7 +189,11 @@ export type FoodLogPatch = Partial<
     // `recipeId` is patchable for `reviseEntry`'s sake alone: correcting an
     // entry can also correct what was eaten, and a dish re-picked as a food
     // would otherwise keep pointing at the recipe it is no longer about.
-    'label' | 'quantity' | 'grams' | 'nutrition' | 'slot' | 'sortOrder' | 'itemId' | 'productId' | 'recipeId'
+    // `sourcePanel` rides with a correction for the same reason: re-measured
+    // against a row or re-picked as another food, the panel it kept describes
+    // how the helping used to be measured, not how it is now.
+    | 'label' | 'quantity' | 'grams' | 'nutrition' | 'sourcePanel' | 'slot' | 'sortOrder'
+    | 'itemId' | 'productId' | 'recipeId'
   >
 >;
 
@@ -586,6 +595,7 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
       quantity: draft.quantity.trim(),
       grams: draft.grams,
       nutrition: draft.nutrition,
+      sourcePanel: draft.sourcePanel ?? null,
       // Empty at insert and filled in by the Health write below once it comes
       // back, rather than awaited: this action is synchronous because every
       // caller uses the entry it returns to close a sheet, and a meal must land
@@ -845,6 +855,8 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
       quantity: current.quantity,
       grams: current.grams,
       nutrition: current.nutrition,
+      // The same food, so the same panel to correct it against later.
+      sourcePanel: current.sourcePanel ?? null,
       slot: current.slot,
       recipeId: current.recipeId,
       itemId: current.itemId,
@@ -862,6 +874,8 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
       quantity: current.quantity,
       grams: current.grams,
       nutrition: current.nutrition,
+      // The same food, so the same panel to correct it against later.
+      sourcePanel: current.sourcePanel ?? null,
       slot: current.slot,
       recipeId: current.recipeId,
       itemId: current.itemId,

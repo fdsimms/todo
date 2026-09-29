@@ -90,6 +90,8 @@ import {
 import {
   defaultOnHandUntil,
   OUT_OF_IT_UNTIL,
+  probablyHaveReason,
+  productHaveReason,
 } from '../utils/grocerySuggest';
 import { describeExpiry, expiryDaysFromNow, expiryKeyFor, liveExpiresAt } from '../utils/groceryShelfLife';
 import { wantsUseUpTask } from '../utils/groceryExpiry';
@@ -103,6 +105,7 @@ import {
   GROCERY_VARIANT_MAX_LENGTH,
   GROCERY_NAME_MAX_LENGTH,
   GROCERY_QUANTITY_MAX_LENGTH,
+  isPortionBox,
 } from '../types';
 
 /** "10000.00" — the widest thing GROCERY_PRICE_MINOR_MAX allows. */
@@ -113,6 +116,17 @@ const PRICE_INPUT_MAX_LENGTH = 8;
  * store's. This keys the first; a store keys itself by id.
  */
 const ITEM_PRICE_KEY = 'item';
+
+/**
+ * The Pantry field's collapsed summary with a frozen portion said after the
+ * item's own state ("Got it until Oct 12, some frozen"), or alone when the item
+ * has nothing of its own to say. Undefined in, undefined out, so an item with
+ * neither still reads "Automatic".
+ */
+function withFrozenPortion(summary: string | undefined, portionFrozen: boolean): string | undefined {
+  if (!portionFrozen) return summary;
+  return summary ? `${summary}, some frozen` : 'Some in the freezer';
+}
 
 /** The collapsible fields in the "More" card, in the order they render. */
 export type CollapsibleFieldKey = 'products' | 'aisle' | 'stores' | 'pantry' | 'useBy' | 'substitutes' | 'varietyOf' | 'usedIn' | 'nutrition';
@@ -200,6 +214,9 @@ export function GroceryItemSheet({
   const markOutOfMany = useGroceryStore(s => s.markOutOfMany);
   const setStaple = useGroceryStore(s => s.setStaple);
   const setFrozen = useGroceryStore(s => s.setFrozen);
+  const freezePortion = useGroceryStore(s => s.freezePortion);
+  const setProductFrozen = useGroceryStore(s => s.setProductFrozen);
+  const markProductsOutOf = useGroceryStore(s => s.markProductsOutOf);
   const setOpened = useGroceryStore(s => s.setOpened);
   const setRunningLow = useGroceryStore(s => s.setRunningLow);
   const setExpiresAt = useGroceryStore(s => s.setExpiresAt);
@@ -585,6 +602,32 @@ export function GroceryItemSheet({
   const toggleRunningLow = () => {
     haptics.tap();
     setRunningLow(item.id, !item.runningLowAt);
+  };
+
+  // "Freeze some" (#2925): part of a pack in the freezer while the rest stays
+  // out on its own clock, written as the item's one portion box rather than
+  // the item's own freezer bit — see ItemProduct.isPortion. Three states for
+  // the line under the pills: in the freezer, back out of it, or not yet.
+  // The offer needs the item to be on hand in its own right (a portion is
+  // *some* of something) and not frozen whole, which already says more.
+  const portion = itemProducts.find(p => p.itemId === item.id && isPortionBox(p)) ?? null;
+  const portionFrozen = !!portion?.frozenAt && productHaveReason(portion, new Date()) !== null;
+  const portionThawed = !!portion && !portion.frozenAt && productHaveReason(portion, new Date()) !== null;
+  const canFreezeSome = !frozen && !portionFrozen && !portionThawed
+    && probablyHaveReason(item, new Date()) !== null;
+  const freezeSome = () => {
+    haptics.tap();
+    freezePortion(item.id);
+  };
+  const takePortionOut = () => {
+    if (!portion) return;
+    haptics.tap();
+    setProductFrozen(portion.id, false);
+  };
+  const portionUsedUp = () => {
+    if (!portion) return;
+    haptics.tap();
+    markProductsOutOf([portion.id]);
   };
 
   // The stepper talks in days from today and the row stores a day; a date
@@ -1222,7 +1265,7 @@ export function GroceryItemSheet({
     {
       key: 'pantry',
       label: 'Pantry',
-      keywords: ['staple', 'always have it', 'have it', 'on hand', 'got it', 'out of it', 'freezer', 'frozen', 'freeze', 'thaw', 'defrost', 'opened', 'open', 'running low', 'low', 'nearly out', 'almost out'],
+      keywords: ['staple', 'always have it', 'have it', 'on hand', 'got it', 'out of it', 'freezer', 'frozen', 'freeze', 'freeze some', 'portion', 'half', 'split', 'thaw', 'defrost', 'opened', 'open', 'running low', 'low', 'nearly out', 'almost out'],
       node: (
         <View onLayout={(e: LayoutChangeEvent) => {
           fieldYRefs.current.pantry = e.nativeEvent.layout.y;
@@ -1235,18 +1278,23 @@ export function GroceryItemSheet({
               // the state that changes what the app does, so a frozen staple
               // should summarise as frozen rather than as a staple.
               // Same order probablyHaveReason resolves in, so this summary and
-              // the Pantry row can't say different things about one item.
-              onHandPast
-                ? 'Out of it'
-                : runningLow
-                  ? 'Running low'
-                  : frozen
-                    ? 'In the freezer'
-                    : item.isStaple
-                      ? 'Always have it'
-                      : onHandFuture
-                        ? `Got it until ${format(new Date(item.onHandUntil!), 'MMM d')}`
-                        : undefined
+              // the Pantry row can't say different things about one item. A
+              // frozen portion is said after it, because it's a second thing
+              // rather than another state of this one.
+              withFrozenPortion(
+                onHandPast
+                  ? 'Out of it'
+                  : runningLow
+                    ? 'Running low'
+                    : frozen
+                      ? 'In the freezer'
+                      : item.isStaple
+                        ? 'Always have it'
+                        : onHandFuture
+                          ? `Got it until ${format(new Date(item.onHandUntil!), 'MMM d')}`
+                          : undefined,
+                portionFrozen
+              )
             }
             emptySummary="Automatic"
             hint={
@@ -1257,13 +1305,81 @@ export function GroceryItemSheet({
                   : item.isStaple
                     ? 'Treated as on hand at all times. When a recipe adds ingredients to your list, this is filed under Always have instead of the shopping list.'
                     : onHandPast
-                      ? 'Marked out of it. Won’t show as probably-have until you buy it again.'
+                      ? portionFrozen
+                        ? 'Marked out of it, apart from the portion in the freezer.'
+                        : 'Marked out of it. Won’t show as probably-have until you buy it again.'
                       : 'Decided automatically from purchase history when this comes up in a week plan.'
             }
             expanded={openField === 'pantry'}
             onToggle={() => toggleField('pantry')}
           >
             <PillGroup options={pantryOptions} noun="state" />
+            {/* The frozen half of a split pack, under the pills rather than
+                as a seventh one: the pills describe the item, and this is a
+                second thing in the kitchen with its own row in the pantry.
+                The sentence gets its own line and the actions wrap under it,
+                so neither can squeeze the other. */}
+            {portionFrozen && (
+              <View style={styles.portionBlock}>
+                <Text style={styles.portionText}>
+                  {/* "The rest" only while there is one: once the rest is
+                      marked out of it, the frozen portion is all there is. */}
+                  {`Some in the freezer since ${format(new Date(portion!.frozenAt!), 'MMM d')}.${
+                    onHandPast ? '' : ' The rest keeps its own use-by date.'
+                  }`}
+                </Text>
+                <View style={styles.productActions}>
+                  <InlineAction
+                    label="Take it out"
+                    icon="exit-outline"
+                    variant="neutral"
+                    onPress={takePortionOut}
+                    accessibilityLabel={`Take the frozen ${item.name} out of the freezer`}
+                  />
+                  <InlineAction
+                    label="Used it up"
+                    icon="checkmark-circle-outline"
+                    variant="neutral"
+                    onPress={portionUsedUp}
+                    accessibilityLabel={`Mark the frozen ${item.name} used up`}
+                  />
+                </View>
+              </View>
+            )}
+            {portionThawed && (
+              <View style={styles.portionBlock}>
+                <Text style={styles.portionText}>
+                  {portion!.expiresAt
+                    ? `Some out of the freezer. ${describeExpiry(portion!.expiresAt, new Date())}.`
+                    : 'Some out of the freezer.'}
+                </Text>
+                <View style={styles.productActions}>
+                  <InlineAction
+                    label="Used it up"
+                    icon="checkmark-circle-outline"
+                    variant="neutral"
+                    onPress={portionUsedUp}
+                    accessibilityLabel={`Mark the thawed ${item.name} used up`}
+                  />
+                </View>
+              </View>
+            )}
+            {canFreezeSome && (
+              <View style={styles.portionBlock}>
+                <View style={styles.productActions}>
+                  <InlineAction
+                    label="Freeze some"
+                    icon="snow-outline"
+                    variant="neutral"
+                    onPress={freezeSome}
+                    accessibilityLabel={`Put some of the ${item.name} in the freezer and keep the rest out`}
+                  />
+                </View>
+                <Text style={styles.portionHint}>
+                  Keeps part of it in the freezer. The rest keeps its use-by date and use-up task.
+                </Text>
+              </View>
+            )}
           </CollapsibleField>
         </View>
       ),
@@ -1487,7 +1603,7 @@ export function GroceryItemSheet({
   // reaching for a capability, it never hides one you're already using.
   const simpleRowSet: Record<string, boolean> = {
     products: products.length > 0,
-    pantry: item.isStaple || onHandFuture || frozen || opened || runningLow,
+    pantry: item.isStaple || onHandFuture || frozen || opened || runningLow || portionFrozen || portionThawed,
     useBy: !!item.expiresAt || frozen,
     substitutes: substitutes.length > 0,
     varietyOf: !!item.varietyOfKey,
@@ -2017,6 +2133,14 @@ function makeStyles(colors: Colors) {
       gap: spacing.xs,
       marginTop: spacing.sm,
     },
+    // The frozen portion's line under the Pantry pills. Its own top margin to
+    // clear the pills, and a bottom one so the field's edge doesn't sit on the
+    // last pill or the hint.
+    portionBlock: { marginTop: spacing.smd, marginBottom: spacing.xs },
+    // textSecondary rather than the hint grey: it states where some of the
+    // food is, which is information rather than an aside.
+    portionText: { fontSize: font.sm, color: colors.textSecondary },
+    portionHint: { fontSize: font.sm, color: colors.textTertiary, marginTop: spacing.xs },
     body: { padding: spacing.md, paddingBottom: spacing.xl },
     // No marginHorizontal on either — `body`'s own padding already insets them.
     fieldSearch: { marginBottom: spacing.md },

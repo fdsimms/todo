@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import type { FoodNutrition, GroceryItem, GroceryList, GroceryListEntry, ItemProduct, ItemShopLink, ItemSubLink, ProductRating, ReceiptStyle, Shop, StoreAlias } from '../types';
+import type { FoodNutrition, GroceryGroupBy, GroceryItem, GroceryList, GroceryListEntry, ItemProduct, ItemShopLink, ItemSubLink, ProductRating, ReceiptStyle, Shop, StoreAlias } from '../types';
+import { PORTION_PRODUCT_KEY, isPortionBox } from '../types';
 import {
   dbGetAllGroceryItems,
   dbInsertGroceryItem,
@@ -28,6 +29,7 @@ import {
   dbDeleteGroceryShop,
   dbSetShopExcludeFromSuggestions,
   dbSetShopAisles,
+  dbSetShopAisleOrder,
   dbSetShopReceiptStyle,
   dbGetAllItemShopLinks,
   dbSetItemShopLink,
@@ -100,6 +102,7 @@ import {
   OTHER_AISLE,
 } from '../utils/groceryAisles';
 import { isTripLive, resolveActiveTrip } from '../utils/activeTrip';
+import { shopAisleOrderToSave } from '../utils/groceryShops';
 import { scheduleTripReminder, cancelTripReminder } from '../utils/notifications';
 import { substituteQuantity } from '../utils/itemSubs';
 import { productForGtin, productKeyFor, productsForItem } from '../utils/groceryProduct';
@@ -393,12 +396,13 @@ interface GroceryStore extends UndoHistoryActions {
   /** Checked rows still holding their place in their own aisle. */
   cartHoldIds: string[];
   /**
-   * How the shopping list groups its unchecked rows — aisle (default) or
-   * recipe. See buildGroceryRecipeSections. A display setting, not a fact
-   * about any item, so it lives here rather than on the rows themselves.
+   * How the shopping list groups its unchecked rows — aisle (default),
+   * recipe, or store. See buildGroceryRecipeSections and
+   * buildGroceryStoreSections. A display setting, not a fact about any item,
+   * so it lives here rather than on the rows themselves.
    */
-  groceryGroupBy: 'aisle' | 'recipe';
-  setGroceryGroupBy: (groupBy: 'aisle' | 'recipe') => void;
+  groceryGroupBy: GroceryGroupBy;
+  setGroceryGroupBy: (groupBy: GroceryGroupBy) => void;
   /**
    * The shopping lists besides the one at home — "Airbnb", "Beach house". They
    * live here rather than in a store of their own for the reason `shops` and
@@ -740,10 +744,41 @@ interface GroceryStore extends UndoHistoryActions {
    * off the item's own usedUp/spoiled counters, which stay item-level (how
    * often *this food* gets wasted is the useful record, and splitting it per
    * brand would leave both halves too thin to say anything).
+   *
+   * A frozen portion is deleted rather than marked: a named box is worth
+   * remembering after the packet is gone (its rating, its barcode), and a
+   * portion is nothing but the packet. See ItemProduct.isPortion. Undo puts
+   * it back.
    */
   markProductsOutOf: (ids: readonly string[]) => number;
-  /** This box in or out of the freezer. Suspends its own countdown only. */
+  /**
+   * This box in or out of the freezer. Suspends its own countdown only.
+   *
+   * A frozen portion (`ItemProduct.isPortion`) coming out also gets a "Got it"
+   * of its own, the item's usual window from now (`defaultOnHandUntil`). A
+   * named box thawed with nothing said about it defers to its item, which is
+   * right for a packet; a portion is nothing *but* its own claim, and without
+   * one it would leave the pantry the moment it left the freezer.
+   */
   setProductFrozen: (id: string, frozen: boolean) => void;
+  /**
+   * "Freeze some" — part of this item goes in the freezer and the rest stays
+   * out, counting down, with its use-up task (#2925).
+   *
+   * Writes the item's one portion box (`ItemProduct.isPortion`), minting it the
+   * first time and reusing it after, stamped frozen now with nothing else
+   * claimed about it. **The item itself is not touched**: its `frozenAt` stays
+   * clear, so its clock and its use-up task are exactly what they were, and the
+   * portion answers for the frozen half on its own row in the pantry.
+   *
+   * A portion that is already frozen is left as it is and returned, so a
+   * second tap can't restart the date it went in. Undoable like the item-level
+   * freeze isn't, because this one can mint a row: undo deletes a portion it
+   * made and puts back one it changed.
+   *
+   * Null when there's no such item.
+   */
+  freezePortion: (itemId: string) => ItemProduct | null;
   /** This box opened or resealed, re-dating it off the open lexicon. */
   setProductOpened: (id: string, opened: boolean) => void;
   /**
@@ -1024,8 +1059,13 @@ interface GroceryStore extends UndoHistoryActions {
    * has already closed — and the deck offers its own per-card Undo, which is
    * the affordance a mis-swipe actually reaches for. `revertPantryAnswer` is
    * what that button calls.
+   *
+   * Returns the thawed portions an "out of it" answer deleted, the same ones
+   * `markOutOfMany` deletes (see `ItemProduct.isPortion`), so the deck can
+   * hand them back to `revertPantryAnswer`: the row snapshot alone can't
+   * restore a box that is no longer there.
    */
-  answerPantryReview: (itemId: string, answer: PantryReviewAnswer) => void;
+  answerPantryReview: (itemId: string, answer: PantryReviewAnswer) => ItemProduct[];
   /**
    * Put one row back exactly as it was — the deck's Undo button.
    *
@@ -1042,8 +1082,15 @@ interface GroceryStore extends UndoHistoryActions {
    * rather than derived, for the same reason the item snapshot does: "Running
    * low" puts a row on the list, and only a snapshot taken beforehand knows
    * whether it was already there. See `GroceryListEntry`.
+   *
+   * `portions` is what `answerPantryReview` returned for the answer being
+   * undone, put back unless they're already there.
    */
-  revertPantryAnswer: (item: GroceryItem, entry: GroceryListEntry | null) => void;
+  revertPantryAnswer: (
+    item: GroceryItem,
+    entry: GroceryListEntry | null,
+    portions?: readonly ItemProduct[],
+  ) => void;
   /**
    * The remembered shelf life — a dumb setter, unlike setExpiresAt: this
    * never touches expiresAt or the use-up task on its own. See
@@ -1205,10 +1252,11 @@ interface GroceryStore extends UndoHistoryActions {
    * scanned (#1806).
    *
    * `frozenIds` overrides this trip's own `frozenAt: null` clear (see the
-   * write below) for just those rows — the barcode scan sheet's per-row
-   * freezer toggle, applied here rather than at scan time because scanning
-   * only checks an item onto the list; freezing a row this trip hasn't
-   * bought yet would be a claim about food that isn't home. An id the trip
+   * write below) for just those rows — the finish sheet's per-row freezer
+   * toggle (#2925), which starts from the barcode scan sheet's own. Applied
+   * here rather than at scan time because scanning only checks an item onto
+   * the list; freezing a row this trip hasn't bought yet would be a claim
+   * about food that isn't home. An id the trip
    * didn't actually purchase (marked unavailable, or substituted away) is
    * silently not among the rows this write touches, so flagging it here does
    * nothing rather than freezing the wrong row.
@@ -1291,6 +1339,12 @@ interface GroceryStore extends UndoHistoryActions {
    * sells everything. See Shop.aisles.
    */
   setShopAisles: (id: string, aisles: string[] | null) => void;
+  /**
+   * The order this store's aisles are walked in, or `null` to walk the usual
+   * order again (#2938). An order that walks the same as the usual one is
+   * saved as `null` too (`shopAisleOrderToSave`). See Shop.aisleOrder.
+   */
+  setShopAisleOrder: (id: string, order: string[] | null) => void;
   /** What this store's receipts are worth reading. See ReceiptStyle. */
   setShopReceiptStyle: (id: string, style: ReceiptStyle) => void;
   /** Assert "this item is available here" without a purchase behind it. */
@@ -3016,7 +3070,10 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
 
   updateProduct(id, patch) {
     const product = get().itemProducts.find(p => p.id === id);
-    if (!product) return false;
+    // A portion has no brand or variant to edit, and giving it one would turn
+    // the frozen half of a pack into a product nobody named. See
+    // ItemProduct.isPortion.
+    if (!product || isPortionBox(product)) return false;
     const brand = patch.brand === undefined ? product.brand : patch.brand?.trim() || null;
     const variant = patch.variant === undefined ? product.variant : patch.variant?.trim() || null;
     const productKey = productKeyFor(brand, variant);
@@ -3048,7 +3105,11 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     if (!item) return;
     // Only ever one of this item's own products, so a stale id from a sheet
     // rendered against an older state can't file Bread under a milk product.
-    const next = productId && get().itemProducts.some(p => p.id === productId && p.itemId === itemId)
+    // Nor a portion, which is where some of the item went rather than an
+    // answer to "which one do you want". See ItemProduct.isPortion.
+    const next = productId && get().itemProducts.some(
+      p => p.id === productId && p.itemId === itemId && !isPortionBox(p)
+    )
       ? productId
       : null;
     if (next === item.preferredProductId) return;
@@ -3110,8 +3171,11 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       p => wanted.has(p.id) && p.onHandUntil !== OUT_OF_IT_UNTIL
     );
     if (before.length === 0) return 0;
-    // Mirrors markOutOfMany's own clear — see its note.
-    const updates = before.map((p): ItemProduct => ({
+    // A portion goes altogether rather than being marked — see the action's
+    // note. Everything else keeps its row and mirrors markOutOfMany's own
+    // clear, for the reason given there.
+    const portions = before.filter(p => isPortionBox(p));
+    const updates = before.filter(p => !isPortionBox(p)).map((p): ItemProduct => ({
       ...p,
       onHandUntil: OUT_OF_IT_UNTIL,
       expiresAt: null,
@@ -3119,19 +3183,30 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       openedAt: null,
     }));
     for (const u of updates) dbSetItemProduct(u);
+    for (const p of portions) dbDeleteItemProduct(p.id);
     const byId = new Map(updates.map(u => [u.id, u]));
-    set(s => ({ itemProducts: s.itemProducts.map(p => byId.get(p.id) ?? p) }));
+    const gone = new Set(portions.map(p => p.id));
+    set(s => ({
+      itemProducts: s.itemProducts.filter(p => !gone.has(p.id)).map(p => byId.get(p.id) ?? p),
+    }));
     get().setLastAction({
-      label: `Out of ${updates.length === 1 ? '1 thing' : `${updates.length} things`}`,
+      label: `Out of ${before.length === 1 ? '1 thing' : `${before.length} things`}`,
       destructive: true,
       redo: () => get().markProductsOutOf(ids),
       undo: () => {
+        // Every row as it was, the deleted portions included: an upsert puts a
+        // deleted one back under its own id.
         for (const row of before) dbSetItemProduct(row);
         const restore = new Map(before.map(p => [p.id, p]));
-        set(s => ({ itemProducts: s.itemProducts.map(p => restore.get(p.id) ?? p) }));
+        set(s => ({
+          itemProducts: [
+            ...s.itemProducts.map(p => restore.get(p.id) ?? p),
+            ...portions.filter(p => !s.itemProducts.some(q => q.id === p.id)),
+          ],
+        }));
       },
     });
-    return updates.length;
+    return before.length;
   },
 
   setProductFrozen(id, frozen) {
@@ -3146,11 +3221,77 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // food, not about which brand of it), and a box with no item to read —
     // impossible in practice, resolve-or-shrug like every pointer here — thaws
     // to no day at all rather than inventing one.
+    //
+    // A portion also gets its own "Got it" on the way out (see the action's
+    // note): it's the only thing keeping it in the pantry once the freezer
+    // isn't, and it lapses like any other so a portion nobody closes out
+    // doesn't sit there for ever.
     const updated: ItemProduct = frozen
       ? { ...product, frozenAt: now.toISOString() }
-      : { ...product, frozenAt: null, expiresAt: item ? expiresAtForPurchase(item, now) : null };
+      : {
+        ...product,
+        frozenAt: null,
+        expiresAt: item ? expiresAtForPurchase(item, now) : null,
+        ...(isPortionBox(product) && item ? { onHandUntil: defaultOnHandUntil(item, now) } : null),
+      };
     dbSetItemProduct(updated);
     set(s => ({ itemProducts: s.itemProducts.map(p => (p.id === id ? updated : p)) }));
+  },
+
+  freezePortion(itemId) {
+    const item = get().items.find(i => i.id === itemId);
+    if (!item) return null;
+    const existing = get().itemProducts.find(p => p.itemId === itemId && isPortionBox(p)) ?? null;
+    // Already in the freezer: the date it went in is the one fact the row
+    // shows, and a second tap restarting it would be the app misremembering.
+    if (existing?.frozenAt) return existing;
+    const nowIso = new Date().toISOString();
+    // Everything but the freeze cleared, on a reused portion as much as a new
+    // one. A thawed portion going back in is the same half of the same pack,
+    // and its "Got it" from the thaw and its re-dated day are both suspended
+    // by the freezer anyway; a lapsed or out-of-it one left over from an
+    // earlier pack is not this one.
+    const portion: ItemProduct = {
+      ...(existing ?? {
+        id: generateId(),
+        itemId,
+        brand: null,
+        variant: null,
+        productKey: PORTION_PRODUCT_KEY,
+        rating: null,
+        note: '',
+        purchaseCount: 0,
+        lastPurchasedAt: null,
+        gtin: null,
+        nutrition: null,
+        isPortion: true,
+        createdAt: nowIso,
+      }),
+      onHandUntil: null,
+      expiresAt: null,
+      frozenAt: nowIso,
+      openedAt: null,
+    };
+    dbSetItemProduct(portion);
+    set(s => ({
+      itemProducts: existing
+        ? s.itemProducts.map(p => (p.id === portion.id ? portion : p))
+        : [...s.itemProducts, portion],
+    }));
+    get().setLastAction({
+      label: `Froze some ${item.name}`,
+      redo: () => get().freezePortion(itemId),
+      undo: () => {
+        if (existing) {
+          dbSetItemProduct(existing);
+          set(s => ({ itemProducts: s.itemProducts.map(p => (p.id === existing.id ? existing : p)) }));
+        } else {
+          dbDeleteItemProduct(portion.id);
+          set(s => ({ itemProducts: s.itemProducts.filter(p => p.id !== portion.id) }));
+        }
+      },
+    });
+    return portion;
   },
 
   setProductOpened(id, opened) {
@@ -3225,9 +3366,28 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       frozenAt: null,
       openedAt: null,
     }));
-    dbTransaction(() => { for (const u of updates) dbUpdateGroceryItem(u); });
+    // A thawed portion is more of the item in the fridge again, so being out
+    // of the item is being out of it too, and it goes the way a portion goes
+    // (deleted, see markProductsOutOf). A frozen one is the exception this
+    // whole rule makes — "out of it" about the half in the fridge says nothing
+    // about the half in the freezer — and is left exactly as it is. See
+    // ItemProduct.isPortion.
+    const markedIds = new Set(updates.map(u => u.id));
+    const thawedPortions = get().itemProducts.filter(
+      p => markedIds.has(p.itemId) && isPortionBox(p) && !p.frozenAt
+    );
+    dbTransaction(() => {
+      for (const u of updates) dbUpdateGroceryItem(u);
+      for (const p of thawedPortions) dbDeleteItemProduct(p.id);
+    });
     const byId = new Map(updates.map(u => [u.id, u]));
-    set(s => ({ items: s.items.map(i => byId.get(i.id) ?? i) }));
+    const gonePortions = new Set(thawedPortions.map(p => p.id));
+    set(s => ({
+      items: s.items.map(i => byId.get(i.id) ?? i),
+      itemProducts: gonePortions.size > 0
+        ? s.itemProducts.filter(p => !gonePortions.has(p.id))
+        : s.itemProducts,
+    }));
     // Marking a row out of it answers the same question a live "Use up X"
     // task exists to ask — without this the task survives the mark and
     // resurfaces on its own schedule, reading as a fresh nag for something
@@ -3247,11 +3407,19 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       redo: () => get().markOutOfMany(ids, outcome),
       undo: () => {
         for (const b of before) dbUpdateGroceryItem(b);
+        for (const p of thawedPortions) dbSetItemProduct(p);
         const originalById = new Map(before.map(b => [b.id, b]));
         // The offer goes with it. It's a question about a row leaving the
         // pantry, and undoing that is the answer "it didn't" — leaving it up
         // would ask how something went that is, as of now, still there.
-        set(s => ({ items: s.items.map(i => originalById.get(i.id) ?? i), disposalOffer: null }));
+        set(s => ({
+          items: s.items.map(i => originalById.get(i.id) ?? i),
+          itemProducts: [
+            ...s.itemProducts,
+            ...thawedPortions.filter(p => !s.itemProducts.some(q => q.id === p.id)),
+          ],
+          disposalOffer: null,
+        }));
         // Restores whatever use-up task the mark just dropped, same as the
         // rest of the row's state.
         for (const b of before) reconcileUseUpTask(b);
@@ -3665,7 +3833,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // then rides on the row it wrote.
     if (answer === 'low') get().setRunningLow(itemId, true, { registerUndo: false });
     const item = get().items.find(i => i.id === itemId);
-    if (!item) return;
+    if (!item) return [];
     // The other two answers are one column, which is why they share a path:
     // "still have it" is the window a fresh "Got it" asserts for, and "out of
     // it" is the sentinel. Bare `new Date()` on purpose — a pantry window is
@@ -3687,23 +3855,43 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       onHandUntil: until,
       pantryReviewedAt: now.toISOString(),
     };
-    dbUpdateGroceryItem(updated);
-    set(s => ({ items: s.items.map(i => (i.id === itemId ? updated : i)) }));
+    // Out of the item is out of a thawed portion too, the rule markOutOfMany
+    // keeps: a thawed portion is more of the item in the fridge, and left
+    // standing it came back beside the next purchase with its own stale
+    // window. A frozen one outlives it, as there.
+    const thawedPortions = answer === 'out'
+      ? get().itemProducts.filter(p => p.itemId === itemId && isPortionBox(p) && !p.frozenAt)
+      : [];
+    dbTransaction(() => {
+      dbUpdateGroceryItem(updated);
+      for (const p of thawedPortions) dbDeleteItemProduct(p.id);
+    });
+    const gone = new Set(thawedPortions.map(p => p.id));
+    set(s => ({
+      items: s.items.map(i => (i.id === itemId ? updated : i)),
+      itemProducts: gone.size > 0 ? s.itemProducts.filter(p => !gone.has(p.id)) : s.itemProducts,
+    }));
     // Answering "out of it" resolves the same question a live "Use up X"
     // task was asking — leaving the task standing is what had it come back
     // the morning after it was already answered here. Still gated on the column
     // having actually changed, which the stamp above no longer is: a second
     // "out of it" on a row already out has no task left to drop.
     if (answer === 'out' && item.onHandUntil !== OUT_OF_IT_UNTIL) dropUseUpTask(itemId);
+    return thawedPortions;
   },
 
-  revertPantryAnswer(item, entry) {
+  revertPantryAnswer(item, entry, portions = []) {
     // Guarded on the row still being there: a snapshot written back
     // unconditionally would resurrect an item deleted from another screen
     // while the deck was open.
     if (!get().items.some(i => i.id === item.id)) return;
     dbUpdateGroceryItem(item);
-    set(s => ({ items: s.items.map(i => (i.id === item.id ? item : i)) }));
+    const back = portions.filter(p => !get().itemProducts.some(q => q.id === p.id));
+    for (const p of back) dbSetItemProduct(p);
+    set(s => ({
+      items: s.items.map(i => (i.id === item.id ? item : i)),
+      itemProducts: back.length > 0 ? [...s.itemProducts, ...back] : s.itemProducts,
+    }));
     // The snapshot can restore an "out of it" answer's dropped use-up task
     // along with everything else it undoes; reconciling off the restored
     // item is a no-op for the other two answers, which never touched it.
@@ -4366,9 +4554,9 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
                 // come home with a new one. Leaving it would suspend the fresh
                 // `expiresAt` being stamped right below, so the new bag would
                 // inherit "in the freezer" and never count down. `frozenIds`
-                // is a *fresh* claim about this exact bag — the scan sheet's
-                // own toggle, made this trip — so it wins over the clear
-                // rather than fighting it.
+                // is a *fresh* claim about this exact bag — the finish sheet's
+                // toggle, made this trip — so it wins over the clear rather
+                // than fighting it.
                 frozenAt: frozenIds?.has(i.id) ? purchasedAt : null,
                 // Same again: the jar you opened is not the jar in the bag you
                 // just carried home, and a fresh one is sealed.
@@ -4680,11 +4868,23 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // stop selling it the moment that aisle is renamed to "Pharmacy". A scope
     // that loses its only aisle would read as "sells nothing", so this rewrites
     // names and never drops one.
+    //
+    // A store's own walk is the fifth (#2938), and moves for the same reason:
+    // renaming an aisle doesn't move it, at home or at any store. Rewritten in
+    // place, so the aisle keeps its spot in every store's walk.
     const nextShops = get().shops.map(shop => {
-      if (!shop.aisles || !shop.aisles.includes(from)) return shop;
-      const next = shop.aisles.map(a => (a === from ? trimmed : a));
-      dbSetShopAisles(shop.id, next);
-      return { ...shop, aisles: next };
+      let next = shop;
+      if (shop.aisles && shop.aisles.includes(from)) {
+        const aisles = shop.aisles.map(a => (a === from ? trimmed : a));
+        dbSetShopAisles(shop.id, aisles);
+        next = { ...next, aisles };
+      }
+      if (shop.aisleOrder && shop.aisleOrder.includes(from)) {
+        const aisleOrder = shop.aisleOrder.map(a => (a === from ? trimmed : a));
+        dbSetShopAisleOrder(shop.id, aisleOrder);
+        next = { ...next, aisleOrder };
+      }
+      return next;
     });
 
     set({
@@ -4744,12 +4944,28 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // not rewritten to Other, for the reason deleteAisle forgets the remembered
     // filings rather than repointing them: that would assert a range the user
     // never gave.
+    //
+    // A store's own walk just loses the name (#2938): there is nothing to file
+    // anywhere, and the rest of the walk is still the order somebody arranged.
+    // An order left naming nothing is cleared, the one state "no order of its
+    // own" has. Left alone the name would be dropped at read anyway
+    // (shopWalkOrder only walks aisles that exist), so this is about not
+    // carrying a dead name in the row, and not about what the list shows.
     const nextShops = get().shops.map(shop => {
-      if (!shop.aisles || !shop.aisles.includes(aisle)) return shop;
-      const rest = shop.aisles.filter(a => a !== aisle);
-      const next = rest.length > 0 ? rest : null;
-      dbSetShopAisles(shop.id, next);
-      return { ...shop, aisles: next };
+      let next = shop;
+      if (shop.aisles && shop.aisles.includes(aisle)) {
+        const rest = shop.aisles.filter(a => a !== aisle);
+        const aisles = rest.length > 0 ? rest : null;
+        dbSetShopAisles(shop.id, aisles);
+        next = { ...next, aisles };
+      }
+      if (shop.aisleOrder && shop.aisleOrder.includes(aisle)) {
+        const rest = shop.aisleOrder.filter(a => a !== aisle);
+        const aisleOrder = rest.length > 0 ? rest : null;
+        dbSetShopAisleOrder(shop.id, aisleOrder);
+        next = { ...next, aisleOrder };
+      }
+      return next;
     });
 
     set({
@@ -4838,6 +5054,9 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       // name, or from what gets bought there later, is the inference this
       // feature exists to replace with a statement. See Shop.aisles.
       aisles: null,
+      // Walks the usual order until somebody arranges it during a trip there.
+      // See Shop.aisleOrder.
+      aisleOrder: null,
     };
     dbInsertGroceryShop(shop);
     set(s => ({ shops: [...s.shops, shop] }));
@@ -4924,6 +5143,22 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const next = aisles && aisles.length > 0 ? aisles : null;
     dbSetShopAisles(id, next);
     set(s => ({ shops: s.shops.map(x => (x.id === id ? { ...x, aisles: next } : x)) }));
+  },
+
+  setShopAisleOrder(id, order) {
+    const shop = get().shops.find(s => s.id === id);
+    if (!shop) return;
+    // Settled against the usual order as it stands now: an arrangement that
+    // walks the same as it is no arrangement, and keeping a copy would stop
+    // the store following the next change to the usual order.
+    const next = order ? shopAisleOrderToSave(order, get().aisleOrder) : null;
+    const same =
+      next === shop.aisleOrder ||
+      (next !== null && shop.aisleOrder !== null &&
+        next.length === shop.aisleOrder.length && next.every((a, i) => a === shop.aisleOrder![i]));
+    if (same) return;
+    dbSetShopAisleOrder(id, next);
+    set(s => ({ shops: s.shops.map(x => (x.id === id ? { ...x, aisleOrder: next } : x)) }));
   },
 
   setShopReceiptStyle(id, style) {

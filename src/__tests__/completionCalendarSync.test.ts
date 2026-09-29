@@ -10,16 +10,26 @@ jest.mock('../store/useCategoryStore', () => ({
 }));
 
 const mockCreateTimedEvent = jest.fn();
+const mockDeleteEvent = jest.fn();
+const mockEventExists = jest.fn();
 jest.mock('../utils/calendarSync', () => ({
   createTimedEvent: (...args: unknown[]) => mockCreateTimedEvent(...args),
+  deleteCalendarEvent: (...args: unknown[]) => mockDeleteEvent(...args),
+  calendarEventExists: (id: string) => mockEventExists(id),
 }));
+
+const mockEventsWithExternalId = jest.fn();
+jest.mock('todo-eventkit-bridge', () => ({
+  externalIdentifiers: () => Promise.resolve({}),
+  eventsWithExternalIdentifier: (id: string) => mockEventsWithExternalId(id),
+}), { virtual: true });
 
 let mockDemoActive = false;
 jest.mock('../utils/demoState', () => ({
   isDemoModeActive: () => mockDemoActive,
 }));
 
-import { logTaskCompletionToCalendar } from '../utils/completionCalendarSync';
+import { completionEventLink, deleteCompletionEvent, logTaskCompletionToCalendar } from '../utils/completionCalendarSync';
 
 const BASE: Task = {
   id: 'task-1',
@@ -205,5 +215,40 @@ describe('logTaskCompletionToCalendar', () => {
     const task = makeTask({ logCompletionToCalendar: true });
     expect(await logTaskCompletionToCalendar(task, new Date('2026-08-20T12:00:00Z'))).toBeNull();
     expect(mockCreateTimedEvent).not.toHaveBeenCalled();
+  });
+});
+
+describe('deleteCompletionEvent (#2950)', () => {
+  beforeEach(() => {
+    mockSettings = { completionCalendarId: 'cal-log' };
+    mockDemoActive = false;
+    mockDeleteEvent.mockReset().mockResolvedValue(undefined);
+    mockEventExists.mockReset().mockResolvedValue(true);
+    mockEventsWithExternalId.mockReset().mockResolvedValue([]);
+  });
+
+  it('reads a task\'s link off its two completion columns', () => {
+    const task = { ...BASE, completionCalendarEventId: 'evt-1', completionCalendarEventExternalId: 'ext-1' };
+    expect(completionEventLink(task)).toEqual({ eventId: 'evt-1', externalId: 'ext-1' });
+    expect(completionEventLink(BASE)).toEqual({ eventId: null, externalId: null });
+  });
+
+  it('deletes the event found by its server id when a restored phone\'s local id names nothing', async () => {
+    mockEventExists.mockResolvedValue(false);
+    mockEventsWithExternalId.mockResolvedValue([
+      { id: 'evt-here', allDay: false, calendarId: 'cal-log' },
+      { id: 'evt-copy', allDay: false, calendarId: 'cal-shared' },
+    ]);
+    await deleteCompletionEvent({ eventId: 'evt-old-phone', externalId: 'ext-1' });
+    // Two copies, settled by the completion calendar picked now.
+    expect(mockDeleteEvent).toHaveBeenCalledTimes(1);
+    expect(mockDeleteEvent).toHaveBeenCalledWith('evt-here');
+  });
+
+  it('never deletes an all-day event found under the server id, since a completion is a point in time', async () => {
+    mockEventExists.mockResolvedValue(false);
+    mockEventsWithExternalId.mockResolvedValue([{ id: 'evt-all-day', allDay: true, calendarId: 'cal-log' }]);
+    await deleteCompletionEvent({ eventId: 'evt-old-phone', externalId: 'ext-1' });
+    expect(mockDeleteEvent).not.toHaveBeenCalled();
   });
 });

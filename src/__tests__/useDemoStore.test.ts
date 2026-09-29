@@ -34,11 +34,12 @@ import { isFocusRunning } from '../utils/focusPlan';
 import { itemsOnList } from '../utils/groceryLists';
 import { cartBudgetStanding, describeCartTotal, estimateCartTotal } from '../utils/groceryPrice';
 import { OTHER_AISLE } from '../utils/groceryAisles';
+import { shopWalkOrder } from '../utils/groceryShops';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useSavedMealsStore } from '../store/useSavedMealsStore';
-import { describeFoodLogEntry, foodLogTotals, recallAmount, scalePanelToAmount } from '../utils/foodLog';
-import { foodLastAmounts } from '../utils/foodLogRecents';
+import { currentEstimateFactor, describeFoodLogEntry, foodLogEntryEdit, foodLogTotals, recallAmount, scalePanelToAmount, wholeEstimate } from '../utils/foodLog';
+import { foodLastAmounts, helpingAgain, recentUnlinkedHelpings } from '../utils/foodLogRecents';
 import { isWaterEntry } from '../utils/waterLog';
 import { foodDayInputs, foodKeyNames, hasNutritionData, nutrientAverages, nutritionCounts, sourceMix } from '../utils/nutritionStats';
 import { packageHelping } from '../utils/scanPortion';
@@ -288,7 +289,7 @@ jest.mock('../utils/calendarSync', () => ({
   deleteCalendarEvent: jest.fn().mockResolvedValue(undefined),
 }));
 jest.mock('../utils/deadlineCalendarSync', () => ({
-  syncDeadlineEvent: jest.fn().mockResolvedValue(null),
+  syncDeadlineEvent: jest.fn().mockResolvedValue({ eventId: null, externalId: null }),
 }));
 // And the same again for the time-block half (#1492), which reaches the
 // calendar store for a window of events to fit a block into — that one imports
@@ -2107,6 +2108,36 @@ describe('demo seed — people', () => {
     expect(filed.length).toBeGreaterThan(0);
   });
 
+  it('seeds an unfiled database food that can still be corrected (#2914)', () => {
+    // Linked to nothing, so without the panel it kept the row menu would offer
+    // only a rename. With it, Edit reopens on the database's own figures.
+    const window = cookingWindow(getLogicalToday(), 30);
+    useFoodLogStore.getState().loadWindow(window.startKey, window.endKey);
+    const unfiled = useFoodLogStore.getState().windowEntries.find(e => e.sourcePanel);
+    expect(unfiled).toBeDefined();
+    expect(unfiled?.itemId).toBeNull();
+    expect(unfiled?.productId).toBeNull();
+    expect(unfiled?.recipeId).toBeNull();
+    expect(unfiled?.sourcePanel?.basis).toBe('per100g');
+    const plan = foodLogEntryEdit(unfiled!);
+    expect(plan).not.toBeNull();
+    // And the amount it reopens on still measures against what it kept.
+    expect(scalePanelToAmount(unfiled!.sourcePanel!, plan!.amount, null)).not.toBeNull();
+  });
+
+  it('seeds foods with no row, so the picker has earlier helpings to offer again (#2914)', () => {
+    // The unfiled database food and the estimate are the two rows above the
+    // picker's list; with neither in the seed, "Log the same again" never shows.
+    const window = cookingWindow(getLogicalToday(), 90);
+    useFoodLogStore.getState().loadWindow(window.startKey, window.endKey);
+    const helpings = recentUnlinkedHelpings(useFoodLogStore.getState().windowEntries);
+    expect(helpings.some(e => e.nutrition.source === 'estimated')).toBe(true);
+    const unfiled = helpings.find(e => e.sourcePanel);
+    expect(unfiled).toBeDefined();
+    // Logged again, it keeps the panel, so the copy can be corrected too.
+    expect(helpingAgain(unfiled!).sourcePanel).toEqual(unfiled!.sourcePanel);
+  });
+
   it('seeds a food eaten before, so picking it again opens on the amount it was logged in', () => {
     // The picker fills in a food's last amount (#2915). Greek yogurt is logged
     // against its own row, so its amount has to read back and still measure
@@ -2286,6 +2317,14 @@ describe('demo seed — people', () => {
       // panel, and carries a recipe instead of an item. Its own arithmetic is
       // pinned by the source assertion below.
       if (e.recipeId) continue;
+      // A database food nobody filed is measured against the panel it kept,
+      // which is the same arithmetic against a panel the entry carries itself.
+      if (!e.itemId && e.sourcePanel) {
+        const rebuilt = scalePanelToAmount(e.sourcePanel, e.quantity, null, undefined, e.label)?.nutrition;
+        expect(rebuilt?.amounts).toEqual(e.nutrition.amounts);
+        checked += 1;
+        continue;
+      }
       // An estimate has no source to recompute it from, which is the whole
       // reason it is marked. What is assertable about it is the marker, and
       // the case below does that.
@@ -2313,12 +2352,18 @@ describe('demo seed — people', () => {
     // got. It carries no item and no recipe, which is what an estimate is.
     const window = cookingWindow(getLogicalToday(), 30);
     useFoodLogStore.getState().loadWindow(window.startKey, window.endKey);
-    const eatenOut = seededFood().filter(e => !e.itemId && !e.recipeId);
+    // The unfiled database food is linked to nothing either, and is told
+    // apart by the panel it kept rather than by a marker.
+    const eatenOut = seededFood().filter(e => !e.itemId && !e.recipeId && !e.sourcePanel);
     expect(eatenOut).toHaveLength(1);
     expect(eatenOut[0].nutrition.source).toBe('estimated');
     expect(describeFoodLogEntry(eatenOut[0])).toContain('estimated');
     // Absent stays absent: a short list is the ordinary case, not a thin seed.
     expect(eatenOut[0].nutrition.amounts.fiberG).toBeUndefined();
+    // And it is the row "Change amount" is offered on (#2914), standing at
+    // the whole until the amount is changed.
+    expect(wholeEstimate(eatenOut[0])).not.toBeNull();
+    expect(currentEstimateFactor(eatenOut[0])).toBe(1);
   });
 
   it('seeds figures from more than one source, so the provenance stat has content', () => {
@@ -2566,7 +2611,7 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // per-box pantry columns exist for. A frozen one and an on-hand one on the
     // same item: with one slot per item the app could only have called both of
     // them frozen.
-    const frozenBox = itemProducts.find(p => p.frozenAt);
+    const frozenBox = itemProducts.find(p => p.frozenAt && !p.isPortion);
     expect(frozenBox).toBeDefined();
     const sibling = itemProducts.find(
       p => p.itemId === frozenBox!.itemId && p.id !== frozenBox!.id && p.onHandUntil
@@ -2990,6 +3035,16 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(aisleOrder).not.toContain('Personal Care');
     expect(items.some(i => i.aisle === 'Bulk bins')).toBe(true);
     expect(aisleOrder.indexOf('Frozen')).toBeGreaterThan(aisleOrder.indexOf('Pantry'));
+
+    // And a store that walks its own order (#2938), the one the seeded trip is
+    // at, so the list and the Aisles tab both show it. Frozen right after
+    // Produce there, where the usual order has it last.
+    const own = shops.filter(s => s.aisleOrder !== null);
+    expect(own).toHaveLength(1);
+    const walk = shopWalkOrder(own[0].aisleOrder, aisleOrder);
+    expect(walk.indexOf('Frozen')).toBe(walk.indexOf('Produce') + 1);
+    expect(walk).not.toEqual(aisleOrder);
+    expect(useGroceryStore.getState().activeShop()?.id).toBe(own[0].id);
 
     // A pile in "Other" the offline lexicon couldn't place, which is what the
     // "Sort N into aisles" action at the foot of the list is offered for. With
@@ -4255,6 +4310,28 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const cheddar = items.find(i => i.nameKey === 'cheddar')!;
     expect(cheddar.shelfLifeDays).not.toBeNull();
     expect(cheddar.expiresAt).toBeNull();
+  });
+
+  it('seeds one pack split between the freezer and the shelf', () => {
+    // "Freeze some" (#2925): the grocery-side twin of the split cooking below.
+    // One portion in the freezer while the rest of the same item stays out on
+    // its own clock, which a named box couldn't say about two halves of one
+    // unbranded pack.
+    const { items, itemProducts } = useGroceryStore.getState();
+    const portion = itemProducts.find(p => p.isPortion);
+    expect(portion).toBeDefined();
+    expect(portion!.frozenAt).not.toBeNull();
+    const item = items.find(i => i.id === portion!.itemId)!;
+    expect(item.frozenAt).toBeNull();
+    expect(item.expiresAt).not.toBeNull();
+    // Never a product anybody picks: not the preference, not a brand.
+    expect(item.preferredProductId).not.toBe(portion!.id);
+    expect(portion!.brand).toBeNull();
+
+    // Two rows for one food on the Pantry screen, one under the freezer.
+    const rows = kitchenInventory(items, [], new Date(), itemProducts).filter(e => e.title === item.name);
+    expect(rows.map(r => r.section)).toEqual(expect.arrayContaining([FREEZER_SECTION, item.aisle]));
+    expect(rows.find(r => r.section === FREEZER_SECTION)!.productName).toBe('Portion');
   });
 
   it('seeds one cooking split between the fridge and the freezer', () => {

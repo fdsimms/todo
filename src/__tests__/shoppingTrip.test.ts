@@ -20,6 +20,7 @@ function makeShop(name: string, sortOrder = 0, overrides: Partial<Shop> = {}): S
     excludeFromSuggestions: false,
     receiptStyle: 'itemized' as const,
     aisles: null,
+    aisleOrder: null,
     ...overrides,
   };
 }

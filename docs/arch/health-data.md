@@ -721,17 +721,96 @@ something nobody measured:
   `portions` was emptied when the helping was built. So "make it 2 cups instead
   of 1" has no arithmetic available to it, and correcting an amount means
   running `scalePanelToAmount` over the food's own panel again. That panel is
-  reachable only through the entry's links, which is what `foodLogEntryEdit`
-  decides on.
-- **An entry with no link is not offered the editor, only a rename.** A
-  described meal the model estimated, or a database food nobody filed, has no
-  panel left to measure against. Offering its figures as fields to retype was
-  the obvious alternative and is the one thing this must not do: a hand-typed
-  panel going into a medical record is exactly the unmeasured claim the rest of
-  this document refuses. Renaming is carved out because it claims nothing about
-  how much was eaten — it changes the row's own words and the name its sample
+  reachable through the entry's links, or through the one panel an entry keeps
+  for itself (below), which is what `foodLogEntryEdit` decides on.
+
+  **One exception: more or less of an estimate** (`estimateAmountPatch`,
+  #2914). A described meal has no panel, and "I actually ate 3 slices" needs
+  none: every figure is one the model already stated, times a number the
+  person chose, so nothing is measured and no nutrient appears that the
+  estimate did not state. That is the test the rule exists for, and it allows
+  **any multiple of the whole as estimated, chosen by the person**, up as well
+  as down.
+
+  Scaling up is acceptable here and still not for a measured panel because of
+  what the figures are. A measured helping's figures are one amount's worth of
+  a food whose real panel is right there to measure a new amount against;
+  multiplying them instead claims a measurement of the new amount that nobody
+  made, and compounds the old helping's rounding, when a true answer was
+  available. An estimate has no panel behind it and was never a measurement.
+  It is the model's guess at a meal of a stated size, so 3 slices of a meal
+  estimated as 2 is that same guess at a meal half as big again, and it claims
+  no more precision than the whole did. Going up claims nothing more than going
+  down, so the cap (`MAX_ESTIMATE_MULTIPLE`, ten times the whole) is there for
+  a mistyped count, not for honesty.
+
+  **It is asked in the estimate's own unit when its words give one.**
+  `estimateCount` reads "2 slices" as two of one thing, so the question is
+  "How many slices" and the answer scales the whole by new over old, logged as
+  "3 slices". A number that counts only part of the meal ("1 burger and a
+  regular fries") is not a count of it, since doubling it would double the
+  fries unsaid, so words like those get a closed set instead: the shares (a
+  quarter up to three-quarters), all of it, and one and a half, two and three
+  times it. An estimate is not made more exact by a finer number, and the
+  source stays `estimated`. **Every change is of the whole meal as estimated,
+  never of the last one**: the first keeps the whole in `sourcePanel` (as a
+  panel whose own source is `estimated`, which is what keeps it out of the
+  editor) and every later choice is taken from that. Taking it of the stored
+  helping each time was the literal reading, and it would have thrown the
+  model's own figures away on the first mistaken tap, with only a division by
+  rounded numbers to get them back. With the whole kept, the original count
+  (or All) puts the entry back exactly as it was logged. It goes through
+  `reviseEntry` like any other correction of the figures.
+- **An entry with no link is not offered the editor, only a rename (and, for
+  an estimate, the change of amount above), unless it kept its panel.** A described meal
+  the model estimated has no panel to measure against. Offering its figures as fields to retype was the obvious
+  alternative and is the one thing this must not do: a hand-typed panel going
+  into a medical record is exactly the unmeasured claim the rest of this
+  document refuses. Renaming is carved out because it claims nothing about how
+  much was eaten — it changes the row's own words and the name its sample
   carries, which is why it still goes through `reviseEntry` rather than
   `updateEntry`.
+
+  **The exception is a database food nobody filed, which keeps the panel it
+  was measured against** (`FoodLogEntry.sourcePanel`, #2914). Search a whole
+  food, weigh it, log it and skip filing is the ordinary macro-tracker path,
+  and it used to end on an entry whose only correction was a delete and a
+  fresh search (which needs a key and signal). The panel it keeps is the
+  database's own per-100 g record with its portions, snapshotted at log time
+  on the same rule as `nutrition`, so the sheet rebuilds the candidate it was
+  logged from and re-measures a corrected amount exactly as it would for a
+  catalog row. Nothing is typed and nothing is guessed, which is the whole
+  test the refusal above applies. It is written only for an unfiled database
+  food, since a linked entry's row already holds its panel, and a correction
+  that re-measures against a row or picks another food clears it. Entries
+  logged before the column existed kept nothing and stay rename-only.
+
+  **Every route that logs the same food again carries the panel with it**, or
+  the copy is back to rename-only: Duplicate, Re-date, "Log the same again",
+  the Describe sheet's "had this before" recall, and a saved meal, whose
+  items keep the panel their entries kept (`SavedMealItem.sourcePanel`,
+  inside the `items` blob, so sync and backups carry it as they are). At the
+  same amount the copy takes it verbatim, an estimate's whole included, so
+  the copy is the same amount of the same meal. A recall logged at a new weight is re-measured
+  against it rather than multiplied out of the stored helping
+  (`recalledHelping` in `foodRecall.ts`), and keeps it, since that is what the
+  new helping was measured against. An estimate's whole is never measured
+  against: `keptDatabasePanel` is the one test every measuring path uses to
+  tell the two kinds of kept panel apart.
+
+  **A recalled estimate is asked the way "Change amount" asks, never for a
+  weight** (`recallAmountAsk`). Its words' own count ("Amount to log 3
+  slices", opened on the count last logged) or, with no count, the same
+  closed set of shares and multiples, scaled off the whole it kept (or its
+  helping, when it kept none) by `estimateAmountPatch`, and the new entry
+  keeps that whole so it can be changed again. It used to show a grams field
+  that an estimate of "2 slices" had nothing to measure against, so 110 typed
+  there logged the whole previous helping with the field still reading 110.
+  The same rule holds for every other food on the card: **no field whose
+  value would be ignored.** A weight field appears only where the panel can
+  be weighed (`measuresByWeight`), a food that can't be shows what it will
+  log and why, and a weight that still can't be used is said in the card
+  rather than swapped for the recorded helping.
 - **The rewrite is skipped when nothing Health holds changed.** Moving the meal
   or re-filing the item touches no figure Health ever saw, and rewriting anyway
   would churn somebody's medical record for a field it never got.

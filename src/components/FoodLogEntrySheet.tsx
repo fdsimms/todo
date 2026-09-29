@@ -1,5 +1,5 @@
 // The food log's entry sheet: pick a food, a box of one or a cooked dish, say
-// how much, and save it as a helping. One component of ~1,500 lines, so grep a
+// how much, and save it as a helping. One component of ~1,900 lines, so grep a
 // landmark rather than reading it start to finish:
 //
 //   ==== <name> ====        the section banners through the logic half
@@ -27,7 +27,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useShallow } from 'zustand/react/shallow';
 import { useColors } from '../theme/ThemeContext';
 import { border, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
-import { MEAL_SLOTS, MEAL_SLOT_LABELS, type FoodLogEntry, type FoodNutrition, type GroceryItem, type MealSlot } from '../types';
+import { MEAL_SLOTS, MEAL_SLOT_LABELS, isPortionBox, type FoodLogEntry, type FoodNutrition, type GroceryItem, type MealSlot } from '../types';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useFoodLogStore, type FoodLogDraft } from '../store/useFoodLogStore';
@@ -38,6 +38,7 @@ import {
   amountHint,
   combineFoodNutrition,
   composeFoodAmount,
+  describeFoodLogEntry,
   foodLogEntryEdit,
   foodUnitOptionsFor,
   helpingNutrition,
@@ -56,7 +57,13 @@ import { groceryNameKey } from '../utils/groceryParse';
 import { dayKeyOf, getCurrentDayStart, getLogicalDayKey } from '../utils/dateUtils';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { foodLastAmounts, foodLogRecency, rankByRecency } from '../utils/foodLogRecents';
+import {
+  foodLastAmounts,
+  foodLogRecency,
+  helpingAgain,
+  rankByRecency,
+  recentUnlinkedHelpings,
+} from '../utils/foodLogRecents';
 import { haptics } from '../utils/haptics';
 import { weighableLine } from '../utils/ingredientGrams';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
@@ -130,6 +137,14 @@ import { useFilterField } from '../hooks/useFilterField';
  * measured the original, rather than multiplied out of figures that are
  * already one helping's worth. `foodLogEntryEdit` decides which entries can
  * come back at all and what their amount field opens on.
+ *
+ * **A food with no row is offered again as the helping it was** (#2914). The
+ * list can only offer rows, so an estimate or a database food nobody filed
+ * was a second request or a second search every time it was eaten. The ones
+ * logged lately sit above the list (`recentUnlinkedHelpings`) and log on the
+ * tap as Duplicate does, the same figures under the same claim. That keeps the
+ * rule above rather than bending it: nothing is measured, because nothing new
+ * is being said about how much.
  */
 
 interface Props {
@@ -144,11 +159,14 @@ interface Props {
    * instead of inserting one. The row keeps its id, so its place in the day
    * and the meal plan square it points back at both survive the correction.
    *
-   * A caller offers this only for an entry `foodLogEntryEdit` accepts. The one
-   * case that still opens unseeded is a food whose catalog row or recipe has
-   * since been deleted: the list has nothing to pick, so the search field
-   * opens on the entry's own name and whatever is chosen replaces it. That is
-   * the honest answer for a food the app no longer has.
+   * A caller offers this only for an entry `foodLogEntryEdit` accepts. A food
+   * a database answered and nobody filed has no row on the list, so it reopens
+   * on the panel it kept (`FoodLogEntry.sourcePanel`), built into a candidate
+   * the way a fresh database pick is. The one case that still opens unseeded
+   * is a food whose catalog row or recipe has since been deleted: the list has
+   * nothing to pick, so the search field opens on the entry's own name and
+   * whatever is chosen replaces it. That is the honest answer for a food the
+   * app no longer has.
    */
   editing?: FoodLogEntry | null;
   /** The logical day being logged, so a backdated entry lands where it is shown. */
@@ -324,6 +342,31 @@ interface Candidate {
   dishServings: number | null;
 }
 
+/**
+ * A food a database answered, as a candidate: its panel and nothing filed.
+ *
+ * One builder for the two ways one arrives, a fresh pick from the database
+ * search and an entry reopened on the panel it kept, so a correction measures
+ * against exactly the candidate the original was logged from.
+ */
+function databaseCandidate(key: string, label: string, panel: FoodNutrition): Candidate {
+  return {
+    key,
+    label,
+    detail: 'From a food database',
+    kind: 'food',
+    panel,
+    recipeId: null,
+    itemId: null,
+    productId: null,
+    panelItemId: null,
+    fromDatabase: true,
+    servingPanel: null,
+    cookedGrams: null,
+    dishServings: null,
+  };
+}
+
 export function FoodLogEntrySheet({
   visible, slot, at, seedRecipeId, initialQuery, mealPlanEntryId, editing, allowBurst, onClose, onEstimate, onScan, onSavedMeal, onDeclineMeal,
   overlays,
@@ -451,7 +494,9 @@ export function FoodLogEntrySheet({
   const candidates = useMemo<Candidate[]>(() => {
     const out: Candidate[] = [];
     for (const product of itemProducts) {
-      if (!product.nutrition) continue;
+      // A frozen portion is some of an item rather than a brand of it; the
+      // item's own row below already offers it. See ItemProduct.isPortion.
+      if (!product.nutrition || isPortionBox(product)) continue;
       const item = items.find(i => i.id === product.itemId);
       if (!item || isNonFoodAisle(item.aisle, nonFoodAisles)) continue;
       out.push({
@@ -597,11 +642,15 @@ export function FoodLogEntrySheet({
   const [recency, setRecency] = useState(() => foodLogRecency([]));
   // Read off the same snapshot, for the amount `choose` opens a food on.
   const [lastAmounts, setLastAmounts] = useState(() => foodLastAmounts([]));
+  // And the snapshot itself, for the earlier helpings offered above the list:
+  // the foods logged under no row, which `recency` cannot promote.
+  const [recentLog, setRecentLog] = useState<FoodLogEntry[]>([]);
   const refreshRecency = () => {
     const today = getCurrentDayStart();
     const entries = recentEntries(dayKeyOf(subDays(today, 90)), dayKeyOf(today));
     setRecency(foodLogRecency(entries));
     setLastAmounts(foodLastAmounts(entries));
+    setRecentLog(entries);
   };
   useEffect(() => {
     if (!visible) return;
@@ -628,11 +677,19 @@ export function FoodLogEntrySheet({
     // file and `foodLog.ts` need not agree on a string format. Most specific
     // first, the order `foodLogEntryEdit` reads them in; the last arm rules
     // out a box, whose row is the one above it.
-    const candidate = candidates.find(c => (
-      editing.recipeId ? c.recipeId === editing.recipeId
-        : editing.productId ? c.productId === editing.productId
-          : c.itemId === editing.itemId && c.productId === null
-    ));
+    //
+    // An entry linked to nothing has no row to find, and matching its null
+    // links against the list would land on a dish (whose item and product are
+    // null too). A database food that kept its panel is rebuilt from it
+    // instead, which is the candidate it was logged from.
+    const linked = !!(editing.recipeId || editing.productId || editing.itemId);
+    const candidate = !linked
+      ? (editing.sourcePanel ? databaseCandidate(`kept:${editing.id}`, editing.label, editing.sourcePanel) : undefined)
+      : candidates.find(c => (
+        editing.recipeId ? c.recipeId === editing.recipeId
+          : editing.productId ? c.productId === editing.productId
+            : c.itemId === editing.itemId && c.productId === null
+      ));
 
     // Recorded either way, so a food that could not be seeded is attempted
     // once rather than on every catalog write while the sheet sits open.
@@ -674,6 +731,16 @@ export function FoodLogEntrySheet({
     if (!key) return ranked.slice(0, 40);
     return ranked.filter(c => groceryNameKey(c.label).includes(key)).slice(0, 40);
   }, [candidates, query, recency]);
+
+  // Earlier helpings of foods with no row (an estimate, a database food nobody
+  // filed), offered above the list to log again as they were, since the list
+  // itself can only offer rows. Narrowed by the same search. Not offered while
+  // correcting an entry: that replaces one helping, and logging another from
+  // there would add a second.
+  const helpings = useMemo(
+    () => (editing ? [] : recentUnlinkedHelpings(recentLog, query)),
+    [editing, recentLog, query],
+  );
 
   // The dish's own lines with no fixed amount to count them by — a serving
   // suggestion like "1 baguette, warmed, for serving" rather than an
@@ -943,6 +1010,77 @@ export function FoodLogEntrySheet({
   };
 
   // ==== actions: saving, picking from the database, leaving ====
+  /**
+   * Writes a new entry, with the planned meal it probably answers. Shared by
+   * Save and by logging an earlier helping again, so the two can't disagree
+   * about which meal plan square a lunch fills. False when the store refused.
+   */
+  const logNew = (measurement: Omit<FoodLogDraft, 'mealPlanEntryId' | 'at'>): boolean => {
+    // A caller that already knows the planned meal (`LogMealEntrySheet`,
+    // the estimate sheet's offer) says so via the prop; a plain manual log
+    // has none, so it gets one last chance at `matchMealPlanEntry` before
+    // settling for null — see that function's doc comment for why this
+    // stays a guess rather than something the store attempts on every save.
+    const resolvedMealPlanEntryId = mealPlanEntryId ?? (() => {
+      const dayKey = getLogicalDayKey(at);
+      const dayPlan = useMealPlanStore.getState().entriesForDayLive(dayKey);
+      if (dayPlan.length === 0) return null;
+      const alreadyLinked = new Set(
+        recentEntries(dayKey, dayKey)
+          .map(e => e.mealPlanEntryId)
+          .filter((id): id is string => id != null),
+      );
+      const match = matchMealPlanEntry(dayPlan, alreadyLinked, {
+        slot: measurement.slot ?? null,
+        recipeId: measurement.recipeId ?? null,
+      });
+      return match?.id ?? null;
+    })();
+    const draft: FoodLogDraft = { ...measurement, mealPlanEntryId: resolvedMealPlanEntryId, at };
+    if (!addEntry(draft)) {
+      haptics.error();
+      return false;
+    }
+    return true;
+  };
+
+  /**
+   * What happens once a save has landed: close, or with "Add another" on,
+   * stay for the next food.
+   *
+   * `chosenSlot` is deliberately left alone in a burst — a burst is usually
+   * one meal's worth of things — and everything else resets the same way the
+   * `visible` effect above seeds a fresh open. `refreshRecency` retakes the
+   * snapshot `recency`'s own doc comment argues for, since this is the one
+   * path where something did happen while the sheet stayed open.
+   *
+   * From the amount half, the search field doesn't exist yet to focus: `picked`
+   * is still truthy, so the JSX is still on the amount-entry branch and
+   * `searchFilter.inputRef` points at nothing. `pendingBurstFocus` hands the
+   * actual `.focus()` to the effect above, which fires once the reset has
+   * committed and the search field has mounted in its place. From the list
+   * half (an earlier helping logged again) the field is already there, and
+   * `seed` carries its focus across on its own.
+   */
+  const afterSave = (label: string) => {
+    haptics.success();
+    if (burstMode) {
+      setBurstAdded(prev => [...prev, label]);
+      searchFilter.seed(initialQuery ?? '');
+      if (picked) pendingBurstFocus.current = true;
+      setPicked(null);
+      setAmount('');
+      setAmountUnit(null);
+      setAmountNumber('');
+      setRecalledAmount(null);
+      setDbSearchOpen(false);
+      refreshRecency();
+      return;
+    }
+    Keyboard.dismiss();
+    onClose();
+  };
+
   const handleSave = () => {
     if (!picked || !built) return;
     const answeredExtras = varyingResolved.filter(r => r.resolved).map(r => r.line.name);
@@ -957,6 +1095,12 @@ export function FoodLogEntrySheet({
       quantity,
       grams: built.grams,
       nutrition: built.nutrition,
+      // The database's own panel, kept on the entry while no catalog row holds
+      // it, so the amount can be corrected later (see FoodLogEntry.sourcePanel).
+      // Null for everything else, which on a correction also clears one that
+      // no longer describes how the helping was measured: it was re-measured
+      // against a row, or it is a different food now.
+      sourcePanel: picked.fromDatabase && picked.itemId === null ? picked.panel : null,
       slot: chosenSlot,
       recipeId: picked.recipeId,
       itemId: picked.itemId,
@@ -969,82 +1113,37 @@ export function FoodLogEntrySheet({
       // so its position in the day and the meal plan square it points back at
       // both survive the correction.
       reviseEntry(editing.id, measurement);
-    } else {
-      // A caller that already knows the planned meal (`LogMealEntrySheet`,
-      // the estimate sheet's offer) says so via the prop; a plain manual log
-      // has none, so it gets one last chance at `matchMealPlanEntry` before
-      // settling for null — see that function's doc comment for why this
-      // stays a guess rather than something the store attempts on every save.
-      const resolvedMealPlanEntryId = mealPlanEntryId ?? (() => {
-        const dayKey = getLogicalDayKey(at);
-        const dayPlan = useMealPlanStore.getState().entriesForDayLive(dayKey);
-        if (dayPlan.length === 0) return null;
-        const alreadyLinked = new Set(
-          recentEntries(dayKey, dayKey)
-            .map(e => e.mealPlanEntryId)
-            .filter((id): id is string => id != null),
-        );
-        const match = matchMealPlanEntry(dayPlan, alreadyLinked, {
-          slot: chosenSlot,
-          recipeId: measurement.recipeId,
-        });
-        return match?.id ?? null;
-      })();
-      const draft: FoodLogDraft = { ...measurement, mealPlanEntryId: resolvedMealPlanEntryId, at };
-      if (!addEntry(draft)) {
-        haptics.error();
-        return;
-      }
-    }
-    haptics.success();
-    // "Add another": file it and stay, ready for the next food, instead of
-    // closing. `chosenSlot` is deliberately left alone — a burst is usually
-    // one meal's worth of things — everything else resets the same way the
-    // `visible` effect above seeds a fresh open. `refreshRecency` retakes the
-    // snapshot `recency`'s own doc comment argues for, since this is the one
-    // path where something did happen while the sheet stayed open.
-    //
-    // The search field doesn't exist yet to focus: this runs while `picked`
-    // is still truthy, so the JSX is still on the amount-entry branch and
-    // `searchFilter.inputRef` points at nothing. `pendingBurstFocus` hands the actual
-    // `.focus()` to the effect below, which fires once the reset below has
-    // committed and the search field has mounted in its place.
-    if (burstMode) {
-      setBurstAdded(prev => [...prev, picked.label]);
-      searchFilter.seed(initialQuery ?? '');
-      setPicked(null);
-      setAmount('');
-      setAmountUnit(null);
-      setAmountNumber('');
-      setRecalledAmount(null);
-      setDbSearchOpen(false);
-      refreshRecency();
-      pendingBurstFocus.current = true;
+    } else if (!logNew(measurement)) {
       return;
     }
-    Keyboard.dismiss();
-    onClose();
+    afterSave(picked.label);
+  };
+
+  /**
+   * An earlier helping of something linked to no row, logged again as it was
+   * (#2914). The same figures under the same claim, and the panel it kept if
+   * it kept one, the way `duplicateEntry` copies an entry; see
+   * `recentUnlinkedHelpings` for why these are offered at all. It lands in the
+   * meal the sheet was opened for, or the one it was eaten at last time when
+   * the sheet names none, the call the estimate sheet's recall makes.
+   */
+  const logHelpingAgain = (entry: FoodLogEntry) => {
+    const again = helpingAgain(entry);
+    const logged = logNew({
+      ...again,
+      slot: chosenSlot ?? entry.slot,
+      recipeId: null,
+      itemId: null,
+      productId: null,
+    });
+    if (logged) afterSave(again.label);
   };
 
   // Nothing here has a `GroceryItem` or `ItemProduct` behind it, so there is
   // no row to attach the panel to — the candidate carries it directly, same
   // as a picked dish carries `servingPanel` rather than pointing at one.
   const handleDbPick = (nutrition: FoodNutrition, description: string) => {
-    setPicked({
-      key: `db:${description}`,
-      label: description,
-      detail: 'From a food database',
-      kind: 'food',
-      panel: nutrition,
-      recipeId: null,
-      itemId: null,
-      productId: null,
-      panelItemId: null,
-      fromDatabase: true,
-      servingPanel: null,
-      cookedGrams: null,
-      dishServings: null,
-    });
+    setPicked(databaseCandidate(`db:${description}`, description, nutrition));
     setAmount('');
     setRecalledAmount(null);
     const options = foodUnitOptionsFor(nutrition);
@@ -1504,10 +1603,41 @@ export function FoodLogEntrySheet({
               keyExtractor={c => c.key}
               renderItem={renderRow}
               keyboardShouldPersistTaps="handled"
+              ListHeaderComponent={helpings.length > 0 ? (
+                <View>
+                  <Text style={[styles.label, styles.helpingsLabel]}>LOG THE SAME AGAIN</Text>
+                  {helpings.map(entry => (
+                    <TouchableOpacity
+                      key={entry.id}
+                      style={styles.row}
+                      activeOpacity={interaction.activeOpacity}
+                      onPress={() => logHelpingAgain(entry)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Log ${entry.label} again, ${describeFoodLogEntry(entry)}`}
+                    >
+                      <View style={styles.rowText}>
+                        <Text style={styles.rowTitle}>{entry.label}</Text>
+                        <Text style={styles.rowMeta}>{describeFoodLogEntry(entry)}</Text>
+                      </View>
+                      {/* A plus rather than the list's chevron: this row logs on
+                          the tap, where a row below opens the amount first. */}
+                      <Ionicons name="add-circle-outline" size={iconSize.md} color={colors.accent} />
+                    </TouchableOpacity>
+                  ))}
+                  {results.length > 0 && (
+                    <Text style={[styles.label, styles.listLabel]}>FOODS AND RECIPES</Text>
+                  )}
+                </View>
+              ) : null}
               ListEmptyComponent={
                 <EmptyState
                   icon="nutrition-outline"
-                  title={candidates.length === 0 ? 'Nothing has figures yet' : 'No matching food'}
+                  // Said about the catalog when logged-before rows are showing
+                  // above, so it doesn't claim there is nothing to log while
+                  // offering something to log.
+                  title={candidates.length === 0
+                    ? (helpings.length > 0 ? 'Nothing in your catalog has figures yet' : 'Nothing has figures yet')
+                    : (helpings.length > 0 ? 'Nothing in your catalog matches' : 'No matching food')}
                   subtitle={
                     (candidates.length === 0
                       ? 'A food can be logged once it has nutrition on it.'
@@ -1757,5 +1887,10 @@ function makeStyles(colors: Colors) {
     rowText: { flex: 1, gap: spacing.xxs },
     rowTitle: { color: colors.text, fontSize: font.md },
     rowMeta: { color: colors.textSecondary, fontSize: font.sm },
+    // The section labels above and inside the list's own rows, which keep
+    // spacing.sm between themselves; a label takes that below it and a block
+    // gap above when it starts the second group.
+    helpingsLabel: { marginBottom: spacing.sm },
+    listLabel: { marginTop: spacing.md, marginBottom: spacing.sm },
   });
 }

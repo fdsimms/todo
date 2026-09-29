@@ -17,6 +17,7 @@ import type { GroceryItem } from '../types';
 export type GroceryDropRow =
   | { type: 'aisle'; aisle: string }
   | { type: 'recipeHeader' }
+  | { type: 'storeHeader' }
   | { type: 'unavailableHeader' }
   | { type: 'cartHeader' }
   | { type: 'item'; item: GroceryItem };
@@ -70,10 +71,11 @@ export interface GroceryPlacement {
  * new one — so it's skipped without touching `currentAisle`, the same way an
  * aisle header itself is the only thing allowed to change it.
  *
- * **`recipeHeader` never actually reaches here.** Row drag is disabled
- * whenever the list is grouped by recipe (see GroceryScreen), so this only
- * exists to keep the type honest about every row `ListRow` can hand it; it's
- * skipped the same way `unavailableHeader` is, on the off chance it does.
+ * **`recipeHeader` and `storeHeader` never actually reach here.** Row drag is
+ * disabled whenever the list is grouped by recipe or by store (see
+ * GroceryScreen), so these only exist to keep the type honest about every row
+ * `ListRow` can hand it; they're skipped the same way `unavailableHeader` is,
+ * on the off chance one does.
  */
 export function resolveGroceryDrop(rows: readonly GroceryDropRow[]): GroceryPlacement[] {
   const walk: Array<{ item: GroceryItem; aisle: string }> = [];
@@ -85,7 +87,7 @@ export function resolveGroceryDrop(rows: readonly GroceryDropRow[]): GroceryPlac
       currentAisle = row.aisle;
       continue;
     }
-    if (row.type === 'unavailableHeader' || row.type === 'recipeHeader') continue;
+    if (row.type === 'unavailableHeader' || row.type === 'recipeHeader' || row.type === 'storeHeader') continue;
     walk.push({
       item: row.item,
       // No header above at all (nothing on the list is laid out that way, but a

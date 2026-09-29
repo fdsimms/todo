@@ -9,6 +9,7 @@ import {
   mergeQuantities,
   describeQuantities,
   classifyPlanned,
+  plannedCatalogIndex,
   restockRows,
   consumedRows,
   groupBySourceRecipe,
@@ -702,6 +703,35 @@ describe('describeQuantities', () => {
 describe('classifyPlanned', () => {
   const now = new Date(2026, 7, 12);
 
+  // #2922: the recipe box classifies every recipe against one catalog, so it
+  // builds the catalog's lookups once and hands them in.
+  describe('with a prebuilt catalog index', () => {
+    const catalog = [
+      item({ name: 'Serrano peppers', onList: true }),
+      item({ name: 'Salt', isStaple: true }),
+      item({ name: 'White onion', varietyOfKey: 'onion', lastPurchasedAt: new Date(2026, 7, 10).toISOString() }),
+      item({ name: 'Butter', lastPurchasedAt: new Date(2026, 5, 1).toISOString() }),
+    ];
+    const planned = [
+      { name: 'serrano pepper', nameKey: 'serrano pepper', quantity: '2', aisle: null, source: 'Tue Stir-fry' },
+      { name: 'salt', nameKey: 'salt', quantity: '', aisle: null, source: 'Tue Stir-fry' },
+      { name: 'onion', nameKey: 'onion', quantity: '1', aisle: null, source: 'Thu Soup' },
+      { name: 'butter', nameKey: 'butter', quantity: '2 tbsp', aisle: null, source: 'Thu Soup' },
+      { name: 'saffron', nameKey: 'saffron', quantity: '1 pinch', aisle: null, source: 'Fri Paella' },
+    ];
+
+    it('classifies exactly as building the lookups itself does', () => {
+      expect(classifyPlanned(planned, catalog, now, [], null, [], plannedCatalogIndex(catalog)))
+        .toEqual(classifyPlanned(planned, catalog, now));
+    });
+
+    it('ignores an index built from some other catalog rather than answering from it', () => {
+      const stale = plannedCatalogIndex([item({ name: 'Saffron', isStaple: true })]);
+      expect(classifyPlanned(planned, catalog, now, [], null, [], stale))
+        .toEqual(classifyPlanned(planned, catalog, now));
+    });
+  });
+
   it('classifies a name with no catalog row as needToBuy', () => {
     const planned = [{ name: 'Saffron', nameKey: 'saffron', quantity: '1 pinch', aisle: null, source: 'Tue Paella' }];
     const rows = classifyPlanned(planned, [], now);
@@ -1038,7 +1068,7 @@ describe('classifyPlanned', () => {
       id: `p-${++seq}`, itemId, brand: 'Beyond', variant: null, productKey: 'beyond|',
       rating: null, nutrition: null, note: '', purchaseCount: 0, lastPurchasedAt: null,
       gtin: null, onHandUntil: null, expiresAt: null, frozenAt: null, openedAt: null,
-      createdAt: '2026-01-01T00:00:00.000Z',
+      isPortion: false, createdAt: '2026-01-01T00:00:00.000Z',
       ...overrides,
     });
     const plannedBeef = [

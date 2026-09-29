@@ -82,6 +82,7 @@ import { describeSupplyStockCaption, suppliesStockedFrom } from '../utils/supply
 import { useRecipeStore } from '../store/useRecipeStore';
 import { alternativeCaptions } from '../utils/recipeComponents';
 import { buildGrocerySections, buildGroceryRecipeSections } from '../utils/grocerySuggest';
+import { buildGroceryStoreSections, shopWalkOrder } from '../utils/groceryShops';
 import { resolveGroceryDrop, groceryDragRange, placeNewGroceryItems } from '../utils/groceryReorder';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors } from '../theme';
@@ -89,15 +90,13 @@ import { haptics } from '../utils/haptics';
 import { generateId } from '../utils/id';
 import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
-import { KNOWN_LINK_APPS } from '../constants/linkApps';
+import { groceriesLinkUrl } from '../utils/deepLinks';
 import type { GroceryItem, ItemProduct, Recipe, Shop } from '../types';
 import { describeProduct, preferredProductOf } from '../utils/groceryProduct';
 import { entryFor, itemsOnList, listNameFor, isAwayList, HOME_LIST_NAME } from '../utils/groceryLists';
 
-// The same scheme a recurring "Grocery run" task already carries in its
-// linkUrl — looked up by name rather than duplicated as a literal, so the two
-// stay in sync if the app's own entry ever moves.
-const GROCERIES_LINK_URL = KNOWN_LINK_APPS.find(app => app.name === 'Groceries')!.scheme;
+/** The collapse and scroll key of one store's section in the store lens. */
+const storeSectionKey = (shopId: string | null) => `store:${shopId ?? 'none'}`;
 
 /**
  * A flat stream of tagged rows rather than a SectionList — the same shape
@@ -120,7 +119,12 @@ const GROCERIES_LINK_URL = KNOWN_LINK_APPS.find(app => app.name === 'Groceries')
  * every FAB drop zone stands down to `rest` while grouped this way, and row
  * drag is disabled for the same reason (see the `drag` prop below).
  *
- * Both `aisle` and `recipeHeader` are collapsible, same mechanism as `cartHeader`
+ * `storeHeader` is the third lens (#2938), and takes both of those rules for
+ * the same reason: which store a row is usually bought at is a fact the record
+ * holds, not something dropping a row under a heading could assign. Its key is
+ * `storeSectionKey`, which is also what a stop's own task link scrolls to.
+ *
+ * `aisle`, `recipeHeader` and `storeHeader` are collapsible, same mechanism as `cartHeader`
  * below: collapsing one is just not pushing its item rows (and any `unavailableHeader`
  * run under it) into the array, with `count` carrying the total so the header can still
  * say how much it's hiding. Unlike the cart, which is session-only, which groups are
@@ -132,6 +136,7 @@ const GROCERIES_LINK_URL = KNOWN_LINK_APPS.find(app => app.name === 'Groceries')
 type ListRow =
   | { type: 'aisle'; key: string; aisle: string; count: number }
   | { type: 'recipeHeader'; key: string; label: string; count: number }
+  | { type: 'storeHeader'; key: string; label: string; count: number }
   | { type: 'unavailableHeader'; key: string; groupKey: string; count: number }
   | { type: 'cartHeader'; key: string; count: number }
   | {
@@ -287,9 +292,10 @@ export function GroceryScreen() {
   const [scanOpen, setScanOpen] = useState(false);
   // The scan sheet's per-row freezer toggle, held here rather than written
   // immediately: a scan only checks an item onto the list, and the item isn't
-  // bought yet — see finishShopping's own doc comment on frozenIds. Applied
-  // (and cleared) when the trip actually finishes; cleared without applying
-  // if the trip is abandoned instead.
+  // bought yet — see finishShopping's own doc comment on frozenIds. It seeds
+  // the finish sheet's own freezer toggle, whose answer is what the trip
+  // writes (#2925), and is cleared when the trip finishes; cleared without
+  // applying if the trip is abandoned instead.
   const [scanFrozenIds, setScanFrozenIds] = useState<ReadonlySet<string>>(new Set());
   // What a scanned receipt read, held between the two sheets. Undefined rather
   // than null when there's no receipt in play: the finish sheet tells the two
@@ -394,24 +400,45 @@ export function GroceryScreen() {
   const currencySymbol = useSettingsStore(s => s.currencySymbol);
   const unitSystem = useSettingsStore(s => s.unitSystem);
 
-  // ==== the list: items grouped into aisle sections ====
-  const grouped = useMemo(() => {
-    if (groupBy === 'recipe') {
-      const r = buildGroceryRecipeSections(listRows, cartHoldIds);
-      return { kind: 'recipe' as const, sections: r.sections, inCart: r.inCart };
-    }
-    const r = buildGrocerySections(listRows, aisleOrder, cartHoldIds);
-    return { kind: 'aisle' as const, sections: r.sections, inCart: r.inCart };
-  }, [listRows, aisleOrder, cartHoldIds, groupBy]);
-  const { inCart } = grouped;
-  const remaining = useMemo(() => listRows.filter(i => !i.checked).length, [listRows]);
-
+  // ==== the list: items grouped into sections (aisle, recipe or store) ====
   // The store you're standing in, if you've said. Everything the trip changes
   // on this screen hangs off this one value being non-null.
   const activeTripShop = useMemo(
     () => resolveActiveTrip(tripShopId, tripStartedAt, shops, new Date()),
     [tripShopId, tripStartedAt, shops]
   );
+
+  // The store lens reads the record of where you shop, and every store on
+  // record is one near home: on an away list its sections would name the
+  // wrong buildings, the reason StartTripPrompt offers no stores there either.
+  // So an away list stays grouped by aisle whatever is picked, and the
+  // picker's hint says so. The setting itself is left alone.
+  const lens = groupBy === 'store' && away ? 'aisle' : groupBy;
+  const activeTripShopId = activeTripShop?.id ?? null;
+  // The walk the aisle lens follows: the store you're standing in, where it
+  // has an order of its own, else the usual one (#2938). Only a trip
+  // resolveActiveTrip still honors, so an abandoned one can't keep the list in
+  // another store's order. The store lens works its walks out per section.
+  const walkOrder = useMemo(
+    () => shopWalkOrder(activeTripShop?.aisleOrder ?? null, aisleOrder),
+    [activeTripShop, aisleOrder]
+  );
+  const grouped = useMemo(() => {
+    if (lens === 'recipe') {
+      const r = buildGroceryRecipeSections(listRows, cartHoldIds);
+      return { kind: 'recipe' as const, sections: r.sections, inCart: r.inCart };
+    }
+    if (lens === 'store') {
+      // The running trip's store leads, and only a trip resolveActiveTrip
+      // still honors: an aged-out one mustn't keep reordering the list.
+      const r = buildGroceryStoreSections(listRows, itemShops, shops, aisleOrder, cartHoldIds, activeTripShopId);
+      return { kind: 'store' as const, sections: r.sections, inCart: r.inCart };
+    }
+    const r = buildGrocerySections(listRows, walkOrder, cartHoldIds);
+    return { kind: 'aisle' as const, sections: r.sections, inCart: r.inCart };
+  }, [listRows, aisleOrder, walkOrder, cartHoldIds, lens, itemShops, shops, activeTripShopId]);
+  const { inCart } = grouped;
+  const remaining = useMemo(() => listRows.filter(i => !i.checked).length, [listRows]);
 
   // A store flagged "don't suggest" (Amazon: "it has everything") stays out of
   // every trip-starting surface — the header action and StartTripPrompt below.
@@ -459,6 +486,19 @@ export function GroceryScreen() {
     return out;
   }, [items, itemProducts]);
 
+  // Grouped by store, the store each row sits under. Only read to keep a row's
+  // "Usually Costco" off it while it sits under a "Costco" heading, where the
+  // caption would restate the heading word for word.
+  const sectionShopByItem = useMemo(() => {
+    const out = new Map<string, string>();
+    if (grouped.kind !== 'store') return out;
+    for (const section of grouped.sections) {
+      if (!section.shopId) continue;
+      for (const item of section.data) out.set(item.id, section.shopId);
+    }
+    return out;
+  }, [grouped]);
+
   const storeMarkers = useMemo(() => {
     const out = new Map<string, { text: string; substituteId?: string; unavailable: boolean }>();
     if (!activeTripShop) return out;
@@ -467,6 +507,11 @@ export function GroceryScreen() {
       // rows being marked up are the list's.
       const marker = tripMarkerFor(item, itemShops, shops, activeTripShop, itemSubs, items, itemProducts);
       if (!marker) continue;
+      // The store lens's heading already says it. `only` stays, since "Only at
+      // CVS" says something a "CVS" heading doesn't: that no other store on
+      // record has it. The negatives are about the store you're in, not the
+      // heading, so they're never dropped.
+      if (marker.kind === 'usually' && sectionShopByItem.get(item.id) === marker.shop.id) continue;
       // Both of the user's negatives route a row into the section's "Not here"
       // group, because to somebody holding the list they say the same thing:
       // this isn't coming home from here. Which of them it was — a stamped
@@ -480,7 +525,7 @@ export function GroceryScreen() {
       });
     }
     return out;
-  }, [activeTripShop, listRows, items, itemShops, shops, itemSubs, itemProducts]);
+  }, [activeTripShop, listRows, items, itemShops, shops, itemSubs, itemProducts, sectionShopByItem]);
 
   // What each checked row costs at the trip's own store, and whether that
   // number was actually typed during *this* trip — see GroceryRow's
@@ -638,6 +683,15 @@ export function GroceryScreen() {
           section.data
         );
       }
+    } else if (grouped.kind === 'store') {
+      for (const section of grouped.sections) {
+        const key = storeSectionKey(section.shopId);
+        pushSection(
+          { type: 'storeHeader', key, label: section.shopName, count: section.data.length },
+          key,
+          section.data
+        );
+      }
     } else {
       for (const section of grouped.sections) {
         const key = `aisle:${section.aisle}`;
@@ -734,6 +788,48 @@ export function GroceryScreen() {
   // gesture, not autoscroll.
   const rowScroller = useRef<RowScroller | null>(null);
   useScrollToTopOnTabPress(rowScroller);
+
+  /**
+   * One stop of a planned trip, opened from its own task
+   * (`dundundun://groceries?shop=<id>`, #2938): grouped by store, land with
+   * that store's section open and scrolled into view.
+   *
+   * Grouped any other way the link just opens the list, and the lens is left
+   * as it is: which grouping the list uses is the user's setting, and a task
+   * tap is not a request to change it. A store with nothing on the list, or one
+   * deleted since the task was written, is the same shrug. **It never starts a
+   * trip**, since tapping a task named for a store is planning to go there,
+   * and nothing infers a trip (docs/arch/groceries.md).
+   *
+   * Stamped like `openFinish` above, so the same stop tapped twice still
+   * scrolls twice. The header's own position doesn't move when its section
+   * opens (only rows below it are added), so the scroll can go in the same
+   * pass as the expand; a header not laid out yet is waited for by
+   * `scrollToKey` itself.
+   */
+  const focusShopId: string | undefined = route.params?.focusShop;
+  const focusShopStamp: number | undefined = route.params?.focusShopStamp;
+  const [handledShopStamp, setHandledShopStamp] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    if (focusShopStamp === undefined || focusShopStamp === handledShopStamp) return;
+    setHandledShopStamp(focusShopStamp);
+    if (grouped.kind !== 'store' || !focusShopId) return;
+    if (!grouped.sections.some(section => section.shopId === focusShopId)) return;
+    const key = storeSectionKey(focusShopId);
+    if (collapsedGroups.has(key)) {
+      setStoredCollapsedGroups(storedCollapsedGroups.filter(k => k !== key));
+    }
+    rowScroller.current?.scrollToKey(key);
+  }, [
+    focusShopStamp,
+    handledShopStamp,
+    focusShopId,
+    grouped,
+    collapsedGroups,
+    storedCollapsedGroups,
+    setStoredCollapsedGroups,
+  ]);
+
   // What the drag is aimed at goes through a channel rather than state: it
   // changes as the finger crosses each row, and re-rendering this screen
   // re-runs every row's renderItem. Only the button's label reads it.
@@ -756,12 +852,12 @@ export function GroceryScreen() {
 
   const zoneByKey = useMemo(() => {
     const map = new Map<string, DropZone>();
-    // Grouped by recipe, every row stands down to `rest`: "which recipe" isn't
-    // a placement the add button can seed the way an aisle is (see the
-    // ListRow doc comment above `recipeHeader`), so a drop here always
-    // resolves to a plain add rather than an insert with a category nobody
-    // asked for.
-    if (grouped.kind === 'recipe') {
+    // Grouped by recipe or by store, every row stands down to `rest`: "which
+    // recipe" and "which store" aren't placements the add button can seed the
+    // way an aisle is (see the ListRow doc comment above `recipeHeader`), so a
+    // drop here always resolves to a plain add rather than an insert with a
+    // category nobody asked for.
+    if (grouped.kind !== 'aisle') {
       for (const row of rows) map.set(row.key, { kind: 'rest', key: row.key });
       return map;
     }
@@ -769,7 +865,7 @@ export function GroceryScreen() {
     rows.forEach((row, i) => {
       if (row.type === 'aisle') {
         map.set(row.key, { kind: 'header', key: row.key, category: row.aisle });
-      } else if (row.type === 'cartHeader' || row.type === 'unavailableHeader' || row.type === 'recipeHeader' || row.inCart || row.unavailableHere) {
+      } else if (row.type === 'cartHeader' || row.type === 'unavailableHeader' || row.type === 'recipeHeader' || row.type === 'storeHeader' || row.inCart || row.unavailableHere) {
         // Registered, but with nothing to say about placement: the cart is a
         // record of the trolley rather than a place to file something, which is
         // the same bound groceryDragRange puts on a row drag. Leaving these out
@@ -940,7 +1036,8 @@ export function GroceryScreen() {
       unavailableIds: string[],
       priceById: Record<string, number>,
       substitutes: Array<{ itemId: string; subItemId: string }>,
-      purchasedAt?: string
+      purchasedAt: string | undefined,
+      frozenIds: ReadonlySet<string>
     ) => {
       setFinishOpen(false);
       // The receipt was for the trip that just ended. Leaving it set would
@@ -966,11 +1063,14 @@ export function GroceryScreen() {
       }
       // The prices ride with the trip rather than being a fourth write: they're
       // about what it bought, so they have to land on the same rows in the same
-      // pass that takes them off the list. scanFrozenIds rides along the same
-      // way, for the same reason — see finishShopping's own doc comment.
+      // pass that takes them off the list. The freezer flags ride along the
+      // same way, for the same reason — see finishShopping's own doc comment.
+      // They are the finish sheet's answer, which started from scanFrozenIds
+      // and may have turned some of them off, so the scan's set isn't passed
+      // again here.
       // A whole trip closing out is more than one more item ticked off, same
       // distinction chainFinish already draws for a task chain's last step.
-      if (finishShopping(shopId, priceById, purchasedAt, scanFrozenIds) > 0) haptics.chainFinish();
+      if (finishShopping(shopId, priceById, purchasedAt, frozenIds) > 0) haptics.chainFinish();
       // Consumed either way: an id finishShopping didn't end up touching
       // (marked unavailable, substituted away) was never going to be applied
       // on some later trip either.
@@ -981,7 +1081,7 @@ export function GroceryScreen() {
       endTrip();
       setCartOpen(false);
     },
-    [finishShopping, markItemsUnavailable, linkItemSub, endTrip, itemSubs, scanFrozenIds]
+    [finishShopping, markItemsUnavailable, linkItemSub, endTrip, itemSubs]
   );
 
   /**
@@ -1064,8 +1164,9 @@ export function GroceryScreen() {
    * question no scan can answer gets asked.
    *
    * The scan sheet's freezer toggle is captured into `scanFrozenIds` rather
-   * than written here, for the same reason: nothing is bought yet. It rides
-   * along to `finishShopping` in `handleFinished`, once it is.
+   * than written here, for the same reason: nothing is bought yet. It seeds
+   * the finish sheet's own freezer toggle, and what that sheet hands back
+   * goes to `finishShopping` in `handleFinished`, once it is.
    *
    * **What a barcode knows and a receipt doesn't is the box**: who makes it,
    * and which one of the item it is. A row this session mints takes its brand
@@ -1203,14 +1304,16 @@ export function GroceryScreen() {
   // show up on Today, with linkUrl set to the same dundundun://groceries
   // scheme a recurring "Grocery run" task already uses. One task per store:
   // two stops are two errands, separately schedulable and separately
-  // completable, which one title can't be.
+  // completable, which one title can't be. Each stop's link names its store
+  // (#2938), so grouped by store the task opens on that stop's own section;
+  // the plain "Get groceries" names none and opens the list as it always has.
   const createGroceryTasks = useCallback(
     (chosen: Shop[]) => {
       if (chosen.length === 0) {
-        addTask({ title: 'Get groceries', linkUrl: GROCERIES_LINK_URL });
+        addTask({ title: 'Get groceries', linkUrl: groceriesLinkUrl() });
       } else {
         for (const shop of chosen) {
-          addTask({ title: `Get groceries at ${shop.name}`, linkUrl: GROCERIES_LINK_URL });
+          addTask({ title: `Get groceries at ${shop.name}`, linkUrl: groceriesLinkUrl(shop.id) });
         }
       }
       haptics.success();
@@ -1301,7 +1404,10 @@ export function GroceryScreen() {
       const withZone = (content: React.ReactNode) => (
         <FabDropZone zone={isActive ? null : zoneByKey.get(row.key) ?? null}>{content}</FabDropZone>
       );
-      if (row.type === 'aisle' || row.type === 'recipeHeader') {
+      // The three lenses' headers read the same way, as every section header
+      // in this app does; which lens is on is the user's own setting, and a
+      // store's name says what kind of section it is by itself.
+      if (row.type === 'aisle' || row.type === 'recipeHeader' || row.type === 'storeHeader') {
         const label = row.type === 'aisle' ? row.aisle : row.label;
         const collapsed = collapsedGroups.has(row.key);
         return withZone(
@@ -1377,15 +1483,15 @@ export function GroceryScreen() {
           // position is a fact about this trip, not something to manually
           // rearrange. Reordering is off while selecting too — the long
           // press that would start a drag is how a mis-tapped row gets
-          // selected instead. And off while grouped by recipe: a drag
-          // reorders within an aisle or moves a row to another one (see
-          // resolveGroceryDrop), neither of which recipe grouping has a
+          // selected instead. And off while grouped by recipe or store: a
+          // drag reorders within an aisle or moves a row to another one (see
+          // resolveGroceryDrop), neither of which those groupings have a
           // section to receive.
           drag={
             selectionMode ||
             row.inCart ||
             row.unavailableHere ||
-            grouped.kind === 'recipe'
+            grouped.kind !== 'aisle'
               ? undefined
               : drag
           }
@@ -1692,6 +1798,7 @@ export function GroceryScreen() {
         seedPriceText={receiptSeed?.priceText}
         seedPurchasedAt={receiptSeed?.purchasedAt}
         seedStamp={receiptSeed?.stamp}
+        seedFrozenIds={scanFrozenIds}
         // Gated for the reason the list's own button is: with neither a key
         // nor an on-device read, the action opens a sheet that can only
         // apologise.

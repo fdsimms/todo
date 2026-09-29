@@ -1,10 +1,18 @@
 import type { MealPlanEntry } from '../types';
-import { MEAL_SLOT_LABELS } from '../types';
+import { MEAL_SLOT_LABELS, MEAL_PLAN_RETENTION_DAYS } from '../types';
 import { dayKeyToDate } from './dateUtils';
-import { createAllDayEvent, moveAllDayEvent, deleteCalendarEvent } from './calendarSync';
+import {
+  NO_EVENT_LINK,
+  adoptableEventId,
+  deleteLinkedEvent,
+  uniqueLinks,
+  writeAllDayEvent,
+  type CalendarEventLink,
+} from './calendarEventLink';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { isDemoModeActive } from './demoState';
-import { mealTitleOffPlan } from './mealPlan';
+import { mealPlanPurgeCutoffKey, mealTitleOffPlan } from './mealPlan';
+import type { ApplyReport } from './syncMerge';
 
 /**
  * What a planned meal should look like on the device calendar right now, and
@@ -24,7 +32,7 @@ import { mealTitleOffPlan } from './mealPlan';
  * Deliberately free of any dependency on `useMealPlanStore` — it's the store
  * that calls this (see `reconcileMealEvent`), so a dependency back would be
  * circular. This function only reports what the device write produced;
- * persisting the id onto the entry is the caller's job.
+ * persisting the link onto the entry is the caller's job.
  */
 
 /**
@@ -73,8 +81,9 @@ export function mealEventFields(entry: MealPlanEntry): { title: string; date: Da
 }
 
 /**
- * Creates, updates or deletes this meal's calendar event, and returns the id
- * it should now be linked to (null when it shouldn't have one).
+ * Creates, updates or deletes this meal's calendar event, and returns what it
+ * should now be linked to: the event's device id and the calendar server's id
+ * for it, both null when it shouldn't have one.
  *
  * Which meals get an event: every one in the plan, once a calendar is picked.
  * There is deliberately no per-meal opt-out to match `cookTask`'s tri-state —
@@ -93,12 +102,12 @@ export function mealEventFields(entry: MealPlanEntry): { title: string; date: Da
  * a complete answer to the question the calendar is being asked. `cookTaskFor`
  * skips them because there is nothing to cook, which is a different question.
  */
-export async function syncMealEvent(entry: MealPlanEntry): Promise<string | null> {
+export async function syncMealEvent(entry: MealPlanEntry): Promise<CalendarEventLink> {
   // Same guard notifications.ts uses: demo mode seeds a full week of meals
   // through the real planMeal action, and without this every one of them
   // would write a real all-day event to whatever calendar the user had
   // picked before switching demo mode on.
-  if (isDemoModeActive()) return null;
+  if (isDemoModeActive()) return NO_EVENT_LINK;
 
   const { mealCalendarId } = useSettingsStore.getState();
 
@@ -115,29 +124,106 @@ export async function syncMealEvent(entry: MealPlanEntry): Promise<string | null
   // restore none of them. That breaks kitchenEnabled's own rule — turning
   // the area back on restores exactly what was there.
   if (!mealCalendarId) {
-    if (entry.calendarEventId) await deleteCalendarEvent(entry.calendarEventId);
-    return null;
+    await deleteMealEvent(mealEventLink(entry));
+    return NO_EVENT_LINK;
   }
 
-  const fields = mealEventFields(entry);
+  // Into the calendar picked *now*, not the one it was first written to: a
+  // meal written before "Write meals to" was switched moves across the next
+  // time it's reconciled, rather than going on being rewritten in the old
+  // calendar while new meals land in the new one (#2949). Still no sweep, for
+  // setMealCalendarId's reason: a meal nobody touches keeps its event where it
+  // is. An id that no longer resolves (deleted by hand, the calendar gone, or
+  // a backup restored on a new phone, #2950) falls back to the event found by
+  // its server id and then to a fresh one; `writeAllDayEvent` has the order.
+  return writeAllDayEvent(mealEventLink(entry), mealCalendarId, mealEventFields(entry));
+}
 
-  if (entry.calendarEventId) {
-    // Into the calendar picked *now*, not the one it was first written to: a
-    // meal written before "Write meals to" was switched moves across the next
-    // time it's reconciled, rather than going on being rewritten in the old
-    // calendar while new meals land in the new one (#2949). Still no sweep,
-    // for setMealCalendarId's reason: a meal nobody touches keeps its event
-    // where it is.
-    const moved = await moveAllDayEvent(entry.calendarEventId, mealCalendarId, fields);
-    if (moved) return moved;
-    // The id didn't resolve to a live event (deleted by hand, or the calendar
-    // itself is gone), or EventKit refused the move. Delete whatever is left
-    // under the old id first, so a refused move can't leave the meal on both
-    // calendars once the fresh one is written; for an event that is already
-    // gone this does nothing. Then resolve-or-shrug: write a fresh one rather
-    // than leaving the entry pointing at nothing.
-    await deleteCalendarEvent(entry.calendarEventId);
+/** The event a planned meal is linked to on this device. */
+export function mealEventLink(entry: MealPlanEntry): CalendarEventLink {
+  return { eventId: entry.calendarEventId ?? null, externalId: entry.calendarEventExternalId ?? null };
+}
+
+/**
+ * Deletes a meal's event, by its server id when the local one names nothing
+ * here (a backup restored on a new phone, #2950). The server id's copies are
+ * narrowed by the calendar picked now, as a write's are; with none picked, only
+ * a single match counts. Fire-and-forget, never throws.
+ */
+export function deleteMealEvent(link: CalendarEventLink): Promise<void> {
+  const calendarId = useSettingsStore.getState().mealCalendarId ?? '';
+  return deleteLinkedEvent(link, matches => adoptableEventId(matches, calendarId));
+}
+
+/**
+ * How many days inside the purge horizon a removal from another device is
+ * still read as that device's purge rather than as somebody removing the meal.
+ * The purge anchors to the calendar date (`mealPlanPurgeCutoffKey`), so a peer
+ * whose date is ahead of this one's purges meals this one still counts as
+ * inside the horizon. Two, because two time zones are at most 26 hours apart
+ * (UTC-12 against UTC+14), which is at most two calendar dates.
+ */
+const SYNC_PURGE_MARGIN_DAYS = 2;
+
+/** What a sync apply asks of this device's meal events. */
+export interface MealEventSyncPlan {
+  /** Meals holding an event this device wrote, to bring in line through `syncMealEvent`. */
+  reconcile: MealPlanEntry[];
+  /** Events whose meal another device removed, to delete through `deleteMealEvent`. */
+  remove: CalendarEventLink[];
+}
+
+/**
+ * Which of this device's meal events a sync apply has left stale, and what to
+ * do about each (#2950).
+ *
+ * A meal's event belongs to the device that wrote it: its id is kept off the
+ * wire (`SYNC_DEVICE_LOCAL_COLUMNS`), and nothing but this device can rewrite
+ * or delete it. Before this, a meal moved or renamed on another device kept
+ * its old day and title on the calendar until this device next edited it, and
+ * one removed there stayed on the calendar for good. So a sync is treated
+ * exactly like the local edit it stands in for, and goes through the same path.
+ *
+ * - **A meal the apply changed is reconciled only when it already holds an
+ *   event of this device's.** A meal with none is left alone, including every
+ *   meal that arrived new (a synced row never carries the id). Writing one here
+ *   would put a second event for the same dinner on a household calendar the
+ *   device that planned it may already have written to, and turning "Write
+ *   meals to" on has never swept the plan either. With no calendar picked the
+ *   reconcile deletes the event, the same as a local edit does.
+ * - **A meal the apply deleted takes its event with it**, as removing it here
+ *   would (`dropMealEvent`), with one exception: the 180-day purge. Every
+ *   device runs it, and it deliberately leaves events on the calendar as the
+ *   household's record of what was eaten; its deletions sync like any other.
+ *   So a removed meal older than the horizon (less the margin above) is read as
+ *   the purge, and its event stays.
+ * - **Nothing at all in demo mode.** A sync never runs there, and this carries
+ *   its own gate rather than trusting that, per the rule for anything that
+ *   writes outside the database.
+ *
+ * A meal changed twice across a sync's transports is reconciled once, and one
+ * the same sync then deleted is not reconciled (it no longer resolves), only
+ * its event deleted.
+ */
+export function mealEventsAfterSync(
+  applied: Pick<ApplyReport, 'mealEntryIds' | 'removedMealEvents'>,
+  resolve: (id: string) => MealPlanEntry | null,
+  now: Date = new Date()
+): MealEventSyncPlan {
+  if (isDemoModeActive()) return { reconcile: [], remove: [] };
+
+  const reconcile: MealPlanEntry[] = [];
+  for (const id of new Set(applied.mealEntryIds)) {
+    const entry = resolve(id);
+    if (entry?.calendarEventId) reconcile.push(entry);
   }
 
-  return createAllDayEvent(mealCalendarId, fields);
+  const purgedBefore = mealPlanPurgeCutoffKey(now, MEAL_PLAN_RETENTION_DAYS - SYNC_PURGE_MARGIN_DAYS);
+  const remove = uniqueLinks(
+    applied.removedMealEvents
+      .filter(m => m.date >= purgedBefore)
+      .map(m => ({ eventId: m.eventId, externalId: m.externalId ?? null }))
+  );
+
+  return { reconcile, remove };
 }

@@ -153,6 +153,10 @@ const FOLD_RULES: Record<string, FoldRule> = {
     histories: ['price_history'],
     groups: [{ by: 'last_priced_at', pick: 'latest', columns: ['last_price_minor', 'last_priced_at', 'last_price_quantity'] }],
   },
+  // `aisles` and `aisle_order` (a store's range and its own walk, #2938) take
+  // the default: the survivor's unless it has none, else the other copy's.
+  // Neither is a set to union, since two walks merged are no walk anybody
+  // arranged, and a range merged would widen what one person said a store sells.
   grocery_shops: { earliest: ['created_at'] },
   grocery_list_items: { and: ['checked'], earliest: ['added_at'] },
   grocery_item_shops: {

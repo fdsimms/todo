@@ -63,6 +63,10 @@ export const useSavedMealsStore = create<SavedMealsStore>((set, get) => ({
       quantity: e.quantity,
       grams: e.grams,
       nutrition: e.nutrition,
+      // The panel the entry kept, so what the meal logs can be corrected the
+      // way the entry could (#2914). Written only when there is one, which
+      // leaves an ordinary item's stored JSON exactly as it was.
+      ...(e.sourcePanel ? { sourcePanel: e.sourcePanel } : {}),
     })));
   },
 
@@ -97,6 +101,9 @@ export const useSavedMealsStore = create<SavedMealsStore>((set, get) => ({
         quantity: item.quantity,
         grams: item.grams,
         nutrition: item.nutrition,
+        // The same helping as the entry it was saved from, so the same panel
+        // to correct it against. See `SavedMealItem.sourcePanel`.
+        sourcePanel: item.sourcePanel ?? null,
         slot,
         recipeId: item.recipeId,
         itemId: item.itemId,

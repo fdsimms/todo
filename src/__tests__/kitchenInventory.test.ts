@@ -8,11 +8,12 @@ import {
   kitchenInventory,
   kitchenLinkUrl,
   parseKitchenEntryId,
+  PORTION_LABEL,
   useUpEntries,
 } from '../utils/kitchenInventory';
 import { groceryNameKey } from '../utils/groceryParse';
 import { OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
-import type { GroceryItem, ItemProduct, Leftover } from '../types';
+import { PORTION_PRODUCT_KEY, type GroceryItem, type ItemProduct, type Leftover } from '../types';
 
 /** A local wall-clock time as the ISO instant the app stores, so the suite reads the same in any zone. */
 const localIso = (local: string) => new Date(local).toISOString();
@@ -587,6 +588,7 @@ describe('a box of its own', () => {
       expiresAt: null,
       frozenAt: null,
       openedAt: null,
+      isPortion: false,
       createdAt: daysAgo(200),
       ...overrides,
     };
@@ -697,5 +699,55 @@ describe('a box of its own', () => {
     const item = bought('Bread');
     const silent = makeProduct({ itemId: item.id, brand: "Arnold's" });
     expect(kitchenInventory([item], [], NOW, [silent])).toEqual(kitchenInventory([item], [], NOW));
+  });
+});
+
+// ─── a split pack: the frozen portion (#2925) ───────────────────────────────
+
+describe('a frozen portion', () => {
+  /** Chicken bought yesterday, counting down, with half of the pack frozen. */
+  function split(itemOverrides: Partial<GroceryItem> = {}) {
+    const item = makeItem({
+      name: 'Chicken thighs', aisle: 'Meat', onHandUntil: null,
+      purchaseCount: 1, createdAt: daysAgo(30), lastPurchasedAt: daysAgo(1),
+      expiresAt: '2026-08-15',
+      ...itemOverrides,
+    });
+    const portion: ItemProduct = {
+      id: `p-${++productSeq}`, itemId: item.id, brand: null, variant: null,
+      productKey: PORTION_PRODUCT_KEY, isPortion: true,
+      rating: null, nutrition: null, note: '', purchaseCount: 0, lastPurchasedAt: null,
+      gtin: null, onHandUntil: null, expiresAt: null, frozenAt: daysAgo(1), openedAt: null,
+      createdAt: daysAgo(1),
+    };
+    return { item, portion };
+  }
+
+  it('files the frozen half under the freezer and leaves the rest counting down in its aisle', () => {
+    const { item, portion } = split();
+    const entries = kitchenInventory([item], [], NOW, [portion]);
+
+    const whole = entries.find(e => e.kind === 'grocery')!;
+    expect(whole.section).toBe('Meat');
+    expect(whole.useBy).toBe('2026-08-15');
+
+    const frozen = entries.find(e => e.kind === 'product')!;
+    expect(frozen.sourceId).toBe(portion.id);
+    expect(frozen.section).toBe(FREEZER_SECTION);
+    expect(frozen.useBy).toBeNull();
+    expect(frozen.title).toBe('Chicken thighs');
+  });
+
+  it('names the row a portion, since there is no brand to name it by', () => {
+    const { item, portion } = split();
+    const frozen = kitchenInventory([item], [], NOW, [portion]).find(e => e.kind === 'product')!;
+    expect(frozen.productName).toBe(PORTION_LABEL);
+    expect(frozen.caption).toBe('Portion · in the freezer · Frozen Aug 12');
+  });
+
+  it('keeps the frozen half in the pantry once the rest is marked out of it', () => {
+    const { item, portion } = split({ onHandUntil: OUT_OF_IT_UNTIL, expiresAt: null });
+    const entries = kitchenInventory([item], [], NOW, [portion]);
+    expect(entries.map(e => e.id)).toEqual([kitchenEntryId('product', portion.id)]);
   });
 });

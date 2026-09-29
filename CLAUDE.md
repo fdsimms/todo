@@ -421,7 +421,7 @@ file: the two maps are indexes, not write-ups.
 | how much of a cooked dish ended up on your plate | `Recipe.cookedWeightG` + `src/utils/mealLog.ts` — see `docs/arch/recipes.md`. The plate over the weighed dish is the fraction eaten; servings stay for every dish nobody has weighed |
 | whether a planned meal counts as eaten, in either screen | `src/utils/mealLogCoverage.ts` — the join between the meal plan and the food log, and it is the **(day, slot) pair** rather than `FoodLogEntry.mealPlanEntryId`. That column is stamped on one route into the log out of several, so a lunch typed in by hand left the plan reading unlogged, the nudge asking the next morning and the completion prompt offering again. Read its header before narrowing it back: it derives and never writes, for the reason a dinner holding two dishes gives |
 | writing down what you ate, and a day's totals | `src/utils/foodLog.ts` + `src/store/useFoodLogStore.ts` (+ `src/utils/nutritionTargets.ts` for the figure a total is read against) |
-| correcting an entry rather than deleting and relogging it | `foodLogEntryEdit` in `src/utils/foodLog.ts` (which entries can reopen) + `reviseEntry` in `useFoodLogStore` (the Health retract-then-rewrite) + `editing` on `FoodLogEntrySheet` — see `docs/arch/health-data.md`. An amount is re-measured against the food's own panel, never multiplied out of stored figures that are already one helping's worth |
+| correcting an entry rather than deleting and relogging it | `foodLogEntryEdit` in `src/utils/foodLog.ts` (which entries can reopen) + `reviseEntry` in `useFoodLogStore` (the Health retract-then-rewrite) + `editing` on `FoodLogEntrySheet` — see `docs/arch/health-data.md`. An amount is re-measured against the food's own panel, never multiplied out of stored figures that are already one helping's worth. An unfiled database food keeps its panel on the entry (`FoodLogEntry.sourcePanel`) so it reopens too, and an estimate, which has no panel, is scaled instead: more or less of its own figures, in its own count when its words give one ("3 slices" of a 2-slice estimate) and a closed set of shares and multiples when they don't (`estimateAmountPatch` + `estimateCount` + `EstimateAmountSheet`), always of the whole meal as estimated |
 | a glass of water | `src/utils/waterLog.ts` — one entry a day, stepped up and down, rather than one per glass; the day view's card is the only thing that writes it. It is an ordinary food log entry, so the meal write is what puts it in Health and `isWaterEntry` is a derived rule rather than a column. `waterUnit` in settings is display only (ml or fl oz) and is shared with the task editor's own water stepper |
 | saying which catalog row a scanned or logged food is | `CatalogLinkPicker` (the one ranked search every surface reuses) + `scanLinkTarget` in `src/utils/scanResolve.ts` (which of the matcher's two branches a hand-pick belongs to) + `catalogPanelWrite` in `src/utils/foodNutrition.ts` (whether filing a database's figures may overwrite a row's own). An entry's `itemId` is provenance and nothing else: re-pointing one never rewrites `FoodLogEntry.nutrition`, which is a snapshot of the helping |
 | how much of a scanned package was eaten | `src/utils/scanPortion.ts` — one serving or the whole package, and the package option is withheld rather than guessed when the source stated no pack size |
@@ -463,7 +463,7 @@ file: the two maps are indexes, not write-ups.
 | syncing with something that isn't an Apple device | `src/utils/httpSyncTransport.ts` + `mcp/src/syncStore.ts` — see `docs/arch/mcp-server.md`. A payload store the user runs; it never parses a payload, which is what keeps the merge rules on the devices. Configuration is the opt-in (a URL in settings, a token in the keychain, both or neither) |
 | letting Claude read or write the app's data | `mcp/` — see `docs/arch/mcp-server.md`. Its own npm package, deliberately not a dependency of the app; it opens a `todo.db` in Node by putting `mcp/src/expoSqliteShim.ts` in front of `expo-sqlite`, so the whole of `src/db` and `src/utils` runs unchanged. It reads tasks, projects, groceries and the three day-keyed logs, and writes templates, tasks, completions, reschedules and the grocery list behind a second token (`MCP_WRITE_TOKEN`) whose scope is decided per request. Each write moved the app's own core out of a store rather than reimplementing it: `taskDraft.ts`, `taskCompletion.ts`, `groceryAdd.ts`. Nothing is deployed. **weight is structurally unreadable** (HealthKit is the record and there is no table), which is the health model working rather than a gap |
 | exporting or restoring a backup | `src/utils/backup.ts` + `src/utils/backupFile.ts` |
-| writing tasks to the system calendar | `src/utils/calendarSync.ts` (+ `deadlineCalendarSync.ts`, `mealCalendarSync.ts`) |
+| writing tasks to the system calendar | `src/utils/calendarSync.ts` (+ `deadlineCalendarSync.ts`, `mealCalendarSync.ts`). A meal's or a deadline's event is written through `writeAllDayEvent` in `src/utils/calendarEventLink.ts`, which keeps the calendar server's id beside the device's and finds the event by it when a restored backup's device id names nothing (`adoptTimeBlock` in `useTaskStore` does the same for a time block). Deletes go through `deleteLinkedEvent` for the same reason, completion events included, and `calendarIdBackfill.ts` fills the server ids in once at launch without restamping a row for sync |
 | reading free/busy out of the system calendar | `src/utils/calendarBusy.ts` + `src/store/useCalendarStore.ts` |
 | a running list of things with no date (doctor questions, a wish list) | `Project.kind` in `src/types/index.ts` — a project drawn as a list; the members are ordinary undated tasks |
 | pulling tasks out of a project | `src/utils/projectPull.ts` |
@@ -491,11 +491,12 @@ are over 1,000 lines, and the ten biggest source files by name. It is generated 
 and checked in CI, so it is the one place those numbers are worth reading. They used to sit in
 this file as a marked block; see the note on `.gitattributes` above for why they moved.
 
-**The eighteen single-component files carry their own map.** `TaskEditor.tsx`, `TodayScreen.tsx`,
+**The twenty-one single-component files carry their own map.** `TaskEditor.tsx`, `TodayScreen.tsx`,
 `TaskItem.tsx`, `QuickAddModal.tsx`, `MealPlanScreen.tsx`, `RecipeDetailScreen.tsx`,
 `RecipeCreateSheet.tsx`, `GroceryItemSheet.tsx`, `TemplateItemEditor.tsx`, `LogbookScreen.tsx`,
 `GroceryScreen.tsx`, `SuggestMealsSheet.tsx`, `FoodLogEntrySheet.tsx`, `CookModeSheet.tsx`, `EstimateMealSheet.tsx`,
-`ReceiptImportSheet.tsx`, `GroceryAddField.tsx` and `GeneratedTasksSection.tsx` are
+`ReceiptImportSheet.tsx`, `GroceryAddField.tsx`, `GeneratedTasksSection.tsx`, `GroceryRow.tsx`,
+`FinishShoppingSheet.tsx` and `GroceryAislesSheet.tsx` are
 each one component holding most of the file, so there are almost no top-level symbols to grep
 for — `TaskEditor.tsx` has six in 4,200 lines and `RecipeDetailScreen.tsx` has two in 1,900.
 Each opens with a short header comment saying what's where, and its logic half is divided by
@@ -1445,4 +1446,22 @@ inset is what just went away) — that asymmetry is the whole design, don't coll
   keeps the location it read and passes it along. A new `updateEventAsync` goes through
   `rewriteEvent`, and a new `updateReminderAsync` sends back every field the native save assigns,
   not only the one it means to change.
+- **Never offer an input a code path can drop without saying so.** The Describe sheet's "You've
+  had this before" row asked for grams on an estimate logged as "2 slices", and `recalledHelping`
+  fell back to the recorded helping whenever a weight couldn't be measured, so 110 g logged the
+  whole previous meal with nothing said (#2914). A field that is shown gets honored, refused inline
+  with the reason, or not shown at all; quietly using some other value instead is the one answer
+  that isn't allowed. Decide what a row asks for with the same function that will apply it
+  (`recallAmountAsk` beside `recalledHelping`), so what the screen offers and what the write
+  accepts can't disagree.
+- **A bulk or unattended write that changes only device-local columns puts the row's sync stamp
+  back.** Every UPDATE on a synced table restamps the row as a local change (the stamp trigger in
+  `syncTracking.ts`), including one that only touches a column `SYNC_DEVICE_LOCAL_COLUMNS` keeps
+  off the wire, and the stamp is what decides which copy wins against a peer's. The launch pass
+  that fills in calendar server ids (#2950) would otherwise have made every row holding an event
+  read as edited just now, at launch, which is exactly when a peer's edits made while the app was
+  closed haven't arrived yet: the next sync would have put this device's stale copy over each of
+  them. `dbFillTaskCalendarExternalIds` reads `updated_at` first and writes it back after, which
+  the trigger lets through. A one-row write that follows a real local edit (a reconcile writing
+  back the event id it just got) doesn't need this, since that row genuinely changed here.
 - **Patch notes**: when a change in this PR is user-facing, add a new fragment file to `src/patchNotes/entries/` before opening the PR — one JSON file per entry, `{ "message": "...", "date": "YYYY-MM-DD" }`, named after the change (e.g. `icon-action-buttons.json`). Keep the message short and written for someone who isn't reading the diff. Don't edit `src/utils/patchNotes.ts` or `src/utils/patchNotesData.ts` directly (generated, gitignored). Skip it for internal-only changes (refactors, tests, CI, tooling).

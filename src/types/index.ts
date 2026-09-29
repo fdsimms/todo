@@ -2674,7 +2674,26 @@ export interface Task {
   // Resolve-or-shrug like every other cross-row pointer here — the event
   // gone missing (deleted by hand, or the calendar itself removed) leaves
   // this dangling, and the next reconcile just writes a fresh one.
+  //
+  // **This device's, and it doesn't sync, like the two below** (#2950): an
+  // EventKit id names a record on one phone (`SYNC_DEVICE_LOCAL_COLUMNS` in
+  // db/syncTracking.ts says how each of the three went wrong on the wire).
+  // Each device holds the id of the event *it* wrote, and a peer's edit to the
+  // task leaves it alone. The event itself still follows that edit: the reload
+  // after a sync rewrites it, or deletes it when the peer completed or deleted
+  // the task (`reconcileSyncedEvents` in useTaskStore, with the rules in
+  // `taskEventsAfterSync`). A task with no event here gets none from a sync.
   calendarEventId: string | null;
+
+  // The calendar server's id for the deadline event above
+  // (`calendarItemExternalIdentifier`), read back after every write, or null
+  // until one is (#2950). Only read when calendarEventId no longer resolves: a
+  // backup restored on a new phone carries the old phone's local ids, which
+  // name nothing there, so the event is looked up by this before a fresh one is
+  // written beside it (`writeAllDayEvent` in utils/calendarEventLink.ts).
+  // Device-local in sync and kept in backups, exactly like calendarEventId.
+  // Optional so a row or fixture from before it reads as null.
+  calendarEventExternalId?: string | null;
 
   // The id of the one-shot event logging this task's completion, or null when
   // logCompletionToCalendar is off, no calendar is picked, or the write
@@ -2687,8 +2706,21 @@ export interface Task {
   //
   // On uncomplete, if this is set, the device event is deleted and this is
   // cleared — un-completing the task means the thing the event recorded
-  // didn't actually happen, so there's nothing left for it to log.
+  // didn't actually happen, so there's nothing left for it to log. That
+  // includes an uncomplete on another device (#2950): this id stays on the
+  // device that wrote the event, so the reload after the sync does the same
+  // delete here (`taskEventsAfterSync`'s `uncompleted`).
   completionCalendarEventId: string | null;
+
+  // The calendar server's id for the completion event above, read back after
+  // it is written, or null until one is (#2950). Read only when uncompleting
+  // deletes the event and the id above names nothing here, which is every
+  // completion event on a phone a backup was restored to: without it, the
+  // reopened task's "completed" event stayed on the calendar
+  // (`deleteLinkedEvent` in utils/calendarEventLink.ts). Cleared with the id
+  // above, device-local and kept in backups like it. Optional so a row or
+  // fixture from before it reads as null.
+  completionCalendarEventExternalId?: string | null;
 
   // The id of the timed event blocking out room to actually *do* this task,
   // or null until the user asks for one. Deliberately its own field rather
@@ -2709,7 +2741,21 @@ export interface Task {
   // made in their own calendar and may have shared with other people. A task
   // completed, deleted or spawned into its next occurrence leaves the event
   // alone. Resolve-or-shrug like every other cross-row pointer here.
+  //
+  // Device-local like calendarEventId (#2950), and a peer's rename or new
+  // estimate reaches the block the same way, through the reload after a sync:
+  // the title and the length, never the start, and a task deleted on another
+  // device still leaves its block where it is.
   timeBlockEventId: string | null;
+
+  // The calendar server's id for the block above (`calendarItemExternalIdentifier`),
+  // read after the sheet saves it and again by any reconcile that finds it
+  // missing, or null until one is (#2950). Read only when timeBlockEventId no
+  // longer resolves, which a backup restored on a new phone leaves every
+  // block with: the task finds its block by this instead of forgetting it
+  // (`adoptTimeBlock` in useTaskStore). Device-local and kept in backups, like
+  // the id beside it. Optional so a row or fixture from before it reads as null.
+  timeBlockExternalId?: string | null;
 
   /**
    * Which direction success runs in. 'positive' — do the thing — is every task
@@ -3275,8 +3321,11 @@ export type TaskDraft = Omit<
   | 'followUpTaskTally'
   | 'previousFollowUpTaskTally'
   | 'calendarEventId'
+  | 'calendarEventExternalId'
   | 'completionCalendarEventId'
+  | 'completionCalendarEventExternalId'
   | 'timeBlockEventId'
+  | 'timeBlockExternalId'
   | 'backfillDismissedFields'
   // The set is configuration and a draft may carry it; the ledger, the period
   // stamp and the last-done memory are what a running rotation has recorded,
@@ -4141,6 +4190,39 @@ export interface FoodLogEntry {
    */
   nutrition: FoodNutrition;
   /**
+   * The panel `nutrition` was measured against, kept on the entry because no
+   * catalog row holds it. Null (or absent) on everything else.
+   *
+   * **Written for two cases, both linked to nothing** (#2914). The main one is
+   * a food a database answered that nobody filed, below. The other is an
+   * estimate once its amount has been changed (more or less of it than the
+   * model was told about): then this is the whole meal the model described,
+   * `source: 'estimated'` like the helping, so every later change is taken of
+   * the whole rather than of the last one (see `wholeEstimate`). A Describe
+   * sheet recall at a new count writes it too, for the same reason. The source
+   * tells the two apart, and only the first is something an amount can be
+   * re-measured against.
+   *
+   * **The database food.** `nutrition` is one helping with its portion table
+   * emptied, so an entry like that had nothing left to re-measure a corrected
+   * amount against, and "I logged 200 g, it was 170 g" could only be a delete
+   * and a fresh search. This is the database's own panel, per 100 g with its portions,
+   * snapshotted at log time on `nutrition`'s rule: a later lookup of the same
+   * food must not rewrite what was measured. `foodLogEntryEdit` reopens such
+   * an entry on it exactly as it reopens a linked food on its row's panel.
+   *
+   * **Not written for a linked entry**, whose row already holds the panel, and
+   * a correction that re-measures against a row (or picks a different food)
+   * clears it: from then on it would describe how a helping *used* to be
+   * measured. It travels in sync and backups with the row, since it describes
+   * the entry rather than the device.
+   *
+   * Optional on the type rather than required-nullable because absent and
+   * null read identically at every reader, and every entry built in memory
+   * without one (most of what a saved meal logs, a test) is the ordinary case.
+   */
+  sourcePanel?: FoodNutrition | null;
+  /**
    * Health sample identifiers this entry wrote, so an edit or a delete can
    * retract them.
    *
@@ -4181,6 +4263,21 @@ export interface SavedMealItem {
   quantity: string;
   grams: number | null;
   nutrition: FoodNutrition;
+  /**
+   * The panel the entry it was built from kept (`FoodLogEntry.sourcePanel`),
+   * handed on to every entry the saved meal logs. Absent or null for an item
+   * built from an entry that kept none, which is most of them.
+   *
+   * Without it a database food nobody filed, saved as part of a meal, logged
+   * back as an entry that could only be renamed (#2914), and an estimate cut
+   * to a share came back with no whole to take a different share of. It is a
+   * snapshot on `nutrition`'s rule, copied verbatim both ways: the saved meal
+   * logs the same helping, so the same panel describes how it was measured.
+   *
+   * Optional because saved meals stored before it hold no such key, and it
+   * rides inside the `items` JSON blob, so sync and backups carry it as-is.
+   */
+  sourcePanel?: FoodNutrition | null;
 }
 
 /**
@@ -4807,6 +4904,17 @@ export const FROZEN_REASON = 'in the freezer';
  */
 export const RUNNING_LOW_REASON = 'running low';
 
+/**
+ * Why a portion that has come back out of the freezer is still in the kitchen
+ * — `productHaveReason`'s word for a thawed `ItemProduct.isPortion` box, and
+ * here beside the other two for the same module-weight reason.
+ *
+ * Its own phrase rather than "marked as on hand", which is what the same
+ * assertion reads as on an ordinary box: nobody tapped "Got it" on this one.
+ * They took it out of the freezer, and that is the fact the row can state.
+ */
+export const THAWED_PORTION_REASON = 'out of the freezer';
+
 // Shorter than TITLE_MAX_LENGTH on purpose — this is a shelf label, not a task
 // title, and a long one wrecks the row layout at the bigger grocery font size.
 export const GROCERY_NAME_MAX_LENGTH = 80;
@@ -4997,7 +5105,64 @@ export interface ItemProduct {
    * world and a label panel is that box's own statement about itself.
    */
   nutrition: FoodNutrition | null;
+  /**
+   * True for the one unnamed box "Freeze some" makes (`freezePortion`): part
+   * of a pack that went in the freezer while the rest stayed out and kept
+   * counting down (#2925). Every other box is a *brand*, and this is the one
+   * that isn't — it is a place some of the item went, not a thing anyone buys
+   * or rates.
+   *
+   * **It is a box because a box already had the four pantry columns** a split
+   * pack needs, and a box's row already joins its item's rather than replacing
+   * it. The item's own `frozenAt` couldn't say it: freezing the item suspends
+   * the fresh half's clock and drops its use-up task, and leaving it unfrozen
+   * left the frozen half nowhere to be written down. A second catalog row
+   * would split one food's purchase history and recipes in two, which is why
+   * `ItemProduct` exists in the first place.
+   *
+   * **Its identity is `productKey` = `PORTION_PRODUCT_KEY`**, a key
+   * `productKeyFor` can never produce, so the item's UNIQUE `(item_id,
+   * product_key)` index is what holds it to one per item and what folds two
+   * phones' portions into one on sync. This flag is the reading side of that
+   * and is what every reader tests (`isPortionBox`), so nothing ever compares
+   * keys.
+   *
+   * **Nothing that treats a box as a brand sees one.** It is left out of the
+   * Products list (`productsForItem`), can't be preferred, rated, renamed or
+   * given a barcode, isn't a "saved brand" to lose when the item is forgotten,
+   * and never earns a purchase count (only a preferred box does). It shows in
+   * exactly one place: the pantry, as frozen stock of its item.
+   *
+   * **An item-level "Out of it" doesn't reach it while it's frozen**, which is
+   * the one exception to "the item's Out of it outranks every box". "I've used
+   * up the chicken" said about the half in the fridge is not a statement about
+   * the half in the freezer, and a portion is not a brand you ran out of. Once
+   * it's thawed it's more of the item in the fridge again, and the item's
+   * "Out of it" takes it with the rest. It's deleted rather than marked when
+   * it's used up: a named box is a memory worth keeping after the packet is
+   * gone, and a portion is nothing but the packet.
+   */
+  isPortion: boolean;
   createdAt: string;
+}
+
+/**
+ * The `productKey` every portion box carries. It has no `|` in it, and
+ * `productKeyFor` always joins a brand and a variant with one, so no named box
+ * can ever collide with it however it is spelled. See ItemProduct.isPortion.
+ */
+export const PORTION_PRODUCT_KEY = 'portion';
+
+/**
+ * Whether a box is a frozen-portion box rather than a brand — the one test
+ * every reader that lists, counts or prefers boxes makes before treating it as
+ * one. Here beside the type rather than in `groceryProduct.ts` because the
+ * readers include `grocerySuggest` and `groceryFacts`, which that module reads
+ * down into, so the obvious home is a cycle. Optional in its input so a caller
+ * holding a narrowed `Pick` of a box can still ask.
+ */
+export function isPortionBox(product: { isPortion?: boolean } | null | undefined): boolean {
+  return product?.isPortion === true;
 }
 
 /**
@@ -5118,6 +5283,14 @@ export interface GtinLookup {
   fetchedAt: string;
 }
 
+/**
+ * How the shopping list groups what's still to buy: by aisle (the default and
+ * the only one a drag can file into), by the recipe a row came from, or by the
+ * store it is usually bought at (#2938). Three lenses on one list, never
+ * layered; see `buildGroceryRecipeSections` and `buildGroceryStoreSections`.
+ */
+export type GroceryGroupBy = 'aisle' | 'recipe' | 'store';
+
 // A place you shop. "Store" everywhere the user can read; `Shop` in code,
 // because `store` is already Zustand's word here (useGroceryStore,
 // useTaskStore) and `useGroceryStoreStore` is not a name anyone should type.
@@ -5175,6 +5348,34 @@ export interface Shop {
    * `renameAisle` rewrites it and `deleteAisle` drops from it.
    */
   aisles: string[] | null;
+  /**
+   * The order you walk this store's aisles in, or `null` to walk it in the
+   * usual order (`useGroceryStore.aisleOrder`), which is every store until
+   * somebody arranges one (#2938).
+   *
+   * **Read through `shopWalkOrder` (groceryShops.ts), never directly.** The
+   * list here is what somebody arranged on the day they arranged it: an aisle
+   * added since is missing from it, and sorts where the usual order puts it
+   * relative to its neighbours rather than dropping off the end. `Other` is
+   * never stored and always walks last.
+   *
+   * **Applied only where the store is known**: the list while a trip at this
+   * store is running, and this store's own section in the store lens.
+   * Everywhere else (the kitchen, every aisle picker) keeps the usual order.
+   * Arranged from the Aisles tab of `GroceryAislesSheet` during a trip here,
+   * and cleared from the same place ("Use the usual order").
+   *
+   * **An order that walks the same as the usual one is saved as `null`**
+   * (`shopAisleOrderToSave`), so a drag that ends where it began leaves the
+   * store following the usual order, and any later change to it.
+   *
+   * Aisle names are strings, so this is the fifth place one lives (after
+   * `aisleOrder`, `GroceryItem.aisle`, the values of `aisleOverrides` and
+   * `aisles` above): `renameAisle` rewrites it and `deleteAisle` drops from it.
+   * It is about the store rather than the device, so it syncs and is backed up
+   * with the rest of the row.
+   */
+  aisleOrder: string[] | null;
 }
 
 /**
@@ -6428,8 +6629,22 @@ export interface MealPlanEntry {
    * record on one phone, so the column is kept off the wire in both directions
    * (`SYNC_DEVICE_LOCAL_COLUMNS` in db/syncTracking.ts). Each device holds the
    * id of the event *it* wrote, and a peer's edit to the meal leaves it alone.
+   * The event itself still follows that edit: the reload after a sync rewrites
+   * it, or deletes it when the peer removed the meal (`reconcileSyncedEvents`,
+   * with the rules in `mealEventsAfterSync`).
    */
   calendarEventId: string | null;
+  /**
+   * The calendar server's id for that same event (`calendarItemExternalIdentifier`),
+   * read back after every write, or null until one is (#2950). Read only when
+   * `calendarEventId` no longer resolves, which is what a backup restored on a
+   * new phone leaves every meal with: the event is looked up by this and
+   * adopted rather than written a second time beside the one the old phone
+   * wrote (`writeAllDayEvent` in utils/calendarEventLink.ts). Device-local in
+   * sync and kept in backups, like `calendarEventId`. Optional so a row or
+   * fixture from before it reads as null.
+   */
+  calendarEventExternalId?: string | null;
 }
 
 /**

@@ -129,7 +129,7 @@ import { SegmentedControl } from './SegmentedControl';
 import { InlineTimePicker } from '../screens/settings/InlineTimePicker';
 import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
 import { describeRecurrence } from '../utils/recurrenceLabels';
-import { KNOWN_LINK_APPS, linkAppsFor } from '../constants/linkApps';
+import { knownLinkAppFor, linkAppsFor } from '../constants/linkApps';
 import { capitalize } from '../utils/capitalize';
 import { useFilterField } from '../hooks/useFilterField';
 
@@ -5928,12 +5928,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               label="Link"
               hint="Open an app or link from the task."
               value={
-                KNOWN_LINK_APPS.find(app => app.scheme === linkUrl)?.name
+                knownLinkAppFor(linkUrl)?.name
                   ?? (linkUrl ?? undefined)
               }
               expanded={showLinkPicker}
               onPress={() => {
-                if (linkUrl && !KNOWN_LINK_APPS.some(app => app.scheme === linkUrl)) {
+                if (linkUrl && !knownLinkAppFor(linkUrl)) {
                   setCustomLinkText(linkUrl);
                 }
                 setShowLinkPicker(v => !v);

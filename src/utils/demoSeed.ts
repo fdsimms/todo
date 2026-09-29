@@ -1974,6 +1974,45 @@ function seedFoodLog(today: Date): void {
   }
 
   /**
+   * A food a database answered that nobody filed, logged by weight.
+   *
+   * **The one entry whose row menu offers Edit with no catalog row behind
+   * it** (#2914). Searching a whole food, weighing it and logging it without
+   * filing is the ordinary macro-tracker path, and the entry keeps the
+   * database's own per-100 g panel (`FoodLogEntry.sourcePanel`) so a wrong
+   * weight is a correction rather than a delete and a fresh search. With no
+   * row like this in the seed, that path reads as rename-only. It keeps the
+   * database's own long description, which is what an unfiled food is called.
+   */
+  {
+    const label = 'Chicken, broilers or fryers, breast, meat only, cooked, roasted';
+    const kept = {
+      basis: 'per100g' as const,
+      servingGrams: null,
+      servingText: null,
+      amounts: { calorieKcal: 165, proteinG: 31, fatG: 3.6, satFatG: 1, carbsG: 0, sodiumMg: 74 },
+      portions: [{ amount: 1, label: 'cup, chopped or diced', grams: 140 }],
+      source: 'fdc' as const,
+      sourceId: '171477',
+      recordedAt: subDays(today, 4).toISOString(),
+    };
+    const built = scalePanelToAmount(kept, '150 g', null, undefined, label);
+    if (built) {
+      const at = subDays(today, 4);
+      at.setHours(12, 30, 0, 0);
+      addEntry({
+        label,
+        quantity: '150 g',
+        grams: built.grams,
+        nutrition: built.nutrition,
+        sourcePanel: kept,
+        slot: 'lunch',
+        at,
+      });
+    }
+  }
+
+  /**
    * Today's water, part-way to its target.
    *
    * **On today rather than back in the run**, because the water card is what
@@ -3205,6 +3244,7 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
     updateProduct,
     setPreferredProduct,
     setProductFrozen,
+    freezePortion,
     setProductOnHandUntil,
     linkScannedGtins,
     setProductStrict,
@@ -3236,6 +3276,7 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
     linkItemSub,
     setShopExcludedFromSuggestions,
     setShopAisles,
+    setShopAisleOrder,
     setShopReceiptStyle,
     rememberAliases,
     startTrip,
@@ -4069,6 +4110,18 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
     setProductOnHandUntil(arnolds.id, defaultOnHandUntil(itemNamed('Bread'), new Date()));
   }
 
+  // A family pack split in two, which is "Freeze some" (#2925): half the ground
+  // beef in the freezer, the other half out and counting down. Ground beef
+  // because the 2 lb pack above is exactly what people buy big and split, and
+  // unlike the two loaves there's no brand to tell the halves apart by, which
+  // is the case a named box couldn't cover. The item keeps its own use-by day
+  // (three days out, so it doesn't join the two "use up" rows above) and the
+  // portion gets a row of its own under the freezer. Through addToPantry, like
+  // the pepper, since no trip in this seed buys it.
+  addToPantry('Ground beef');
+  setExpiresAt(itemNamed('Ground beef').id, dayKeyOf(addDays(new Date(), 3)));
+  freezePortion(itemNamed('Ground beef').id);
+
   // A walk order the user has clearly edited: a custom section they file two
   // things into by hand, a built-in they never shop deleted (which leaves the
   // tombstone that stops normalizeAisleOrder re-appending it), and Frozen
@@ -4081,6 +4134,16 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
   deleteAisle('Personal Care');
   const order = useGroceryStore.getState().aisleOrder;
   setAisleOrder([...order.filter(a => a !== 'Frozen'), 'Frozen']);
+
+  // Trader Joe's walks an order of its own (#2938): its freezers come straight
+  // after produce, where the usual order above puts Frozen last. The seeded
+  // trip below is at Trader Joe's, so the list follows this walk (Ice cream
+  // comes up second rather than last) and the Aisles tab opens on it, with its
+  // way back to the usual order. Set after the usual order, since an
+  // arrangement is measured against it and one that matched would save as none.
+  const tjWalk = useGroceryStore.getState().aisleOrder.filter(a => a !== 'Frozen');
+  tjWalk.splice(tjWalk.indexOf('Produce') + 1, 0, 'Frozen');
+  setShopAisleOrder(traderJoes.id, tjWalk);
 
   // Household holds Paper towels/Toilet paper/Dish soap above — none of it is
   // food, so it's flagged non-food the way a real shopper filing that aisle

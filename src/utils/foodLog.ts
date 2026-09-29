@@ -2,8 +2,8 @@ import type { FoodLogEntry, FoodNutrition, MealPlanEntry, MealSlot, NutrientKey,
 import { MEAL_SLOTS, NUTRIENT_KEYS } from '../types';
 import { aisleForName } from './groceryAisles';
 import { gramsForLine, hasKnownDensity, panelMultiplier } from './ingredientGrams';
-import { parseQuantity, rationalToNumber } from './quantity';
-import { measureParsedQuantity } from './unitConvert';
+import { formatQuantityAmount, inflectUnit, parseQuantity, rationalToNumber } from './quantity';
+import { measureParsedQuantity, unitBase } from './unitConvert';
 
 /**
  * The food log's rules: what a helping of something works out to, and what a
@@ -762,16 +762,27 @@ export interface FoodLogEntryEdit {
  * always `perServing`, the amounts are what was actually eaten, and `portions`
  * was emptied when the helping was built. So "make it 2 cups instead of 1" has
  * no arithmetic available to it here, and correcting an amount means running
- * `scalePanelToAmount` over the panel again. That panel is reachable only
- * through the entry's own links, which is what decides the refusals below.
+ * `scalePanelToAmount` over the panel again. That panel is reachable through
+ * the entry's own links, or through the one it kept (`sourcePanel`) when no
+ * row holds it, and which of those exists is what decides the refusals below.
+ *
+ * **An unfiled database food keeps its panel on the entry and reopens on it**
+ * (#2914). It is the database's own per-100 g record with its portions, so
+ * re-measuring against it is exactly what re-measuring against a catalog row
+ * is, and weighing out 170 g of chicken logged as 200 g is a correction rather
+ * than a delete and a fresh search. A link wins over it: a linked entry is
+ * re-measured against its row, the same as it always was.
  *
  * Four entries get null, and each is a case where an edit would have to invent
  * something:
  *
- * - **No link at all.** A described meal the model estimated, or a food a
- *   database answered and nobody filed. There is no panel to measure a new
- *   amount against, and offering the figures as fields to retype would put an
- *   unmeasured panel into a health record.
+ * - **No link and no kept panel.** A described meal the model estimated, or a
+ *   database food logged before entries kept their panel. There is nothing to
+ *   measure a new amount against, and offering the figures as fields to
+ *   retype would put an unmeasured panel into a health record. An estimate
+ *   has its own narrower correction, `estimateAmountPatch`, which scales the
+ *   figures the model stated by an amount the person chose and re-measures
+ *   nothing.
  * - **Answered "Anything else?" lines.** What was typed against each varying
  *   line of a dish is not stored, only the line's name in `quantity`, so the
  *   sheet would reopen with them blank and a save would silently drop them.
@@ -797,7 +808,7 @@ export function foodLogEntryEdit(entry: FoodLogEntry): FoodLogEntryEdit | null {
     const dish = dishAmountFrom(typed);
     return dish && { amount: dish.amount, dishMeasure: dish.dishMeasure };
   }
-  if (entry.productId || entry.itemId) {
+  if (entry.productId || entry.itemId || keptDatabasePanel(entry)) {
     // A scan logged with "The whole package (10 servings)" stores that button
     // label as its helping (`packageChoices` in scanPortion.ts), which has no
     // leading number to re-measure. The count inside it is the amount.
@@ -808,6 +819,28 @@ export function foodLogEntryEdit(entry: FoodLogEntry): FoodLogEntryEdit | null {
 }
 
 const WHOLE_PACKAGE_LABEL = /^the whole package \((\d+(?:\.\d+)?) servings\)$/i;
+
+/**
+ * The panel an entry kept that a new amount can be re-measured against, or
+ * null when it kept none or kept an estimate's whole.
+ *
+ * **`sourcePanel` holds one of two different things** (#2914), and only the
+ * first is something to measure with. For a database food nobody filed it is
+ * the database's own per-100 g record with its portions, which measures a new
+ * amount exactly as a catalog row's panel would. For an estimate it is the
+ * whole meal as the model described it: the base "Change amount" scales
+ * (`wholeEstimate`), with no amounts or portions to measure a weight
+ * against. Every path that re-measures asks this rather than testing the
+ * field, so the second is never read as the first: `foodLogEntryEdit` here,
+ * and the Describe sheet's recall (`recallMeasuringPanel`).
+ *
+ * Says nothing about links. A linked entry is re-measured against its row
+ * whatever it kept, and that is each caller's own check.
+ */
+export function keptDatabasePanel(entry: { sourcePanel?: FoodNutrition | null }): FoodNutrition | null {
+  const kept = entry.sourcePanel;
+  return kept && kept.source !== 'estimated' ? kept : null;
+}
 
 /**
  * The number and the measure behind one of `describeHelping`'s phrasings, or
@@ -829,6 +862,362 @@ function dishAmountFrom(text: string): { amount: string; dishMeasure: 'weight' |
   const servings = /^(\d+(?:\.\d+)?) servings?$/.exec(text);
   if (servings) return { amount: servings[1], dishMeasure: 'servings' };
   return null;
+}
+
+/**
+ * The most "Change amount" lets an estimate become, as a multiple of the whole
+ * meal as estimated.
+ *
+ * A bound rather than a judgement about appetite: it is what keeps a count
+ * typed with one digit too many ("30 slices" for 3) from landing in a health
+ * record as ten times the meal. Past it the meal is a different one, and a
+ * fresh description is the way to say so.
+ */
+export const MAX_ESTIMATE_MULTIPLE = 10;
+
+/**
+ * One amount "Change amount" offers an estimate whose words give no count
+ * (`estimateCount`), and how the entry's amount says it.
+ */
+export interface EstimateAmount {
+  /** Times the whole meal as estimated. */
+  value: number;
+  /** The segment's own label. */
+  label: string;
+  /** Read aloud, where the label is a glyph. */
+  spoken: string;
+  /**
+   * What goes in front of the meal's own words ("half of 1 burger and a
+   * regular fries", "twice a bowl of pho"). Empty for the whole.
+   */
+  words: string;
+}
+
+/**
+ * The amounts of an estimated meal with no count of its own that can be said
+ * to have been eaten, smallest first: the shares, the whole, then a few
+ * multiples of it.
+ *
+ * A closed set rather than a typed number, because "about half" or "about
+ * twice that" is the precision the estimate itself has: a model's figure for
+ * a described meal is not improved by saying 0.47 of it. A meal whose words
+ * do give a count ("2 slices") is asked for that count instead, which is the
+ * more direct question and needs no set at all.
+ */
+export const ESTIMATE_AMOUNTS: readonly EstimateAmount[] = [
+  { value: 1 / 4, label: '¼', spoken: 'A quarter', words: 'a quarter of' },
+  { value: 1 / 3, label: '⅓', spoken: 'A third', words: 'a third of' },
+  { value: 1 / 2, label: '½', spoken: 'Half', words: 'half of' },
+  { value: 2 / 3, label: '⅔', spoken: 'Two-thirds', words: 'two-thirds of' },
+  { value: 3 / 4, label: '¾', spoken: 'Three-quarters', words: 'three-quarters of' },
+  { value: 1, label: 'All', spoken: 'All of it', words: '' },
+  { value: 3 / 2, label: '1½×', spoken: 'One and a half times', words: 'one and a half times' },
+  { value: 2, label: '2×', spoken: 'Twice', words: 'twice' },
+  { value: 3, label: '3×', spoken: 'Three times', words: 'three times' },
+];
+
+/**
+ * What an estimate's own words count, when they count one thing: "2 slices",
+ * "1 burger", "3 tacos", "2 slices of pepperoni pizza".
+ */
+export interface EstimateCount {
+  /** How many the words say: 2 out of "2 slices". */
+  count: number;
+  /** The noun or unit as written: "slices". */
+  noun: string;
+  /** Whatever followed it, verbatim: " of pepperoni pizza", or ''. */
+  rest: string;
+  /** Written as a decimal ("1.5 cups"), so a new count is written back the same way. */
+  decimal: boolean;
+  /**
+   * A measure (grams, ounces, cups) rather than a count of things, which
+   * changes how the question is put ("How much, in oz" rather than "How many
+   * oz") and nothing else.
+   */
+  measure: boolean;
+  /** How far one press of a stepper moves it: whole things, or halves of a small count. */
+  step: number;
+}
+
+/** "of" and the name of the one thing counted: " of pepperoni pizza". */
+const COUNTED_OF = /^\s+of\s+[a-z][a-z' -]*$/i;
+
+/**
+ * Words that make the tail more than one thing. "1 plate of rice and beans"
+ * counts plates, but a plate is not what was estimated: the beans came with it.
+ */
+const MORE_THAN_ONE_THING = /\b(?:and|with|plus|or)\b/i;
+
+/**
+ * The count an estimate's words give, or null when they give none.
+ *
+ * **Only a count of one thing.** "2 slices" scales cleanly: 3 slices is one
+ * and a half times the meal the model described, because the model described
+ * two of the same slice. "1 burger and a regular fries" has a leading 1 as
+ * well, but it counts only the burger, and "2 burger and a regular fries"
+ * would double the fries while saying it hadn't. So the count has to be the
+ * whole of the words, or the whole with "of" and one thing after it, and
+ * anything else (a second food, a size word in front, a range, a sized
+ * container, words with no number at all like "a bowl of pho") has none. An
+ * estimate without one is offered `ESTIMATE_AMOUNTS` instead.
+ *
+ * Read through `parseQuantity`, so a count is read exactly as a recipe line's
+ * amount is: "1 1/2 cups" and "1.5 cups" are both one and a half.
+ */
+export function estimateCount(words: string | null | undefined): EstimateCount | null {
+  const text = (words ?? '').trim();
+  if (!text) return null;
+  const parsed = parseQuantity(text);
+  if (parsed.amount === null || parsed.container || parsed.rangeMax || !parsed.unitWritten) return null;
+  const count = rationalToNumber(parsed.amount);
+  if (!(count > 0)) return null;
+  const rest = parsed.trailing;
+  if (rest && (!COUNTED_OF.test(rest) || MORE_THAN_ONE_THING.test(rest))) return null;
+  return {
+    count,
+    noun: parsed.unitWritten,
+    rest,
+    decimal: parsed.decimal,
+    measure: unitBase(parsed.unitWritten) !== null,
+    step: Number.isInteger(count) && count >= 2 ? 1 : 0.5,
+  };
+}
+
+/** Whether `unitKey`'s own table inflects this word, which then decides its number. */
+function inflectsItself(word: string): boolean {
+  return inflectUnit(word, 1) !== word || inflectUnit(word, 2) !== word;
+}
+
+/**
+ * A count noun the unit table does not know, made plural or singular.
+ *
+ * `inflectUnit` passes an unknown word through untouched on purpose ("1 bulb"
+ * doubles to "2 bulb"), which suits a recipe line, whose unit is the cook's
+ * own word. It does not suit this: the noun is what the question is asked in
+ * ("How many burgers?") and what the log row then says, and "2 burger" reads
+ * as a typo in both. These are the plain English rules and they are only ever
+ * run in the one direction the count actually moved.
+ *
+ * Making a word singular is where the rules are least sure, so it is the
+ * narrower of the two: "-ies" loses only its "s" ("cookies", "pies",
+ * "brownies" outnumber "patties" on a plate).
+ */
+function pluralNoun(word: string): string {
+  if (/(?:s|x|z|ch|sh)$/i.test(word)) return `${word}es`;
+  if (/[^aeiou]y$/i.test(word)) return `${word.slice(0, -1)}ies`;
+  return `${word}s`;
+}
+
+function singularNoun(word: string): string {
+  if (/(?:ch|sh|x|ss|zz|o)es$/i.test(word)) return word.slice(0, -2);
+  if (/[^s]s$/i.test(word) && !/(?:us|is)$/i.test(word)) return word.slice(0, -1);
+  return word;
+}
+
+/** The count's noun agreeing with `n`, in the form it would be written. */
+export function estimateCountNoun(count: EstimateCount, n: number): string {
+  const { noun } = count;
+  if (count.measure || inflectsItself(noun)) return inflectUnit(noun, n);
+  // Written grammatically for its own count, so it only changes when the new
+  // count crosses one.
+  if ((n > 1) === (count.count > 1)) return noun;
+  return n > 1 ? pluralNoun(noun) : singularNoun(noun);
+}
+
+/** "3 slices", or "3 slices of pepperoni pizza": `n` of what the estimate counted. */
+export function describeEstimateCount(count: EstimateCount, n: number): string {
+  return `${formatQuantityAmount(n, count.decimal)} ${estimateCountNoun(count, n)}${count.rest}`;
+}
+
+/**
+ * The question "Change amount" asks for a counted estimate: "How many slices"
+ * for things, "How much, in oz" for a measure (where "How many g" would read
+ * as a typo).
+ */
+export function estimateCountQuestion(count: EstimateCount): string {
+  const plural = estimateCountNoun(count, 2);
+  return count.measure ? `How much, in ${plural}` : `How many ${plural}`;
+}
+
+/**
+ * The entry fields `wholeEstimate` reads: a logged entry has them all, and so
+ * does a food the Describe sheet recalls from the log (`RecalledFood`).
+ */
+export type EstimatedHelping = Pick<FoodLogEntry, 'recipeId' | 'itemId' | 'productId' | 'nutrition' | 'quantity' | 'grams'>
+  & { sourcePanel?: FoodNutrition | null };
+
+/**
+ * The whole meal an estimated entry described, which "Change amount" scales,
+ * or null for an entry that cannot be changed that way.
+ *
+ * **Only an estimate linked to nothing.** A linked entry is corrected by
+ * re-measuring against its row (`foodLogEntryEdit`), and so is a database food
+ * that kept its panel. What is left is the described meal, which has no panel
+ * to re-measure against and so, until this, had no correction but a rename.
+ *
+ * **The whole is the estimate as first logged, not the helping stored now.**
+ * The first change keeps the whole estimate in `sourcePanel`, and every later
+ * one is a multiple of that rather than of the last one. So a half chosen by
+ * mistake is undone by choosing All (or the count the model described), and a
+ * half then a three-quarters is three-quarters of the meal rather than
+ * three-eighths of it. Scaling the stored helping each time would have lost
+ * the model's own figures for good the first time, with only a division by a
+ * rounded number to get them back.
+ */
+export function wholeEstimate(entry: EstimatedHelping): FoodNutrition | null {
+  if (entry.recipeId || entry.itemId || entry.productId) return null;
+  if (entry.nutrition.source !== 'estimated') return null;
+  const kept = entry.sourcePanel;
+  if (kept) return kept.source === 'estimated' ? kept : null;
+  // Nothing changed yet, so the helping is the whole. Its words and weight are
+  // carried onto the copy that will be kept, from wherever the entry holds
+  // them, so a later change can still say what it is a multiple of.
+  return {
+    ...entry.nutrition,
+    servingText: entry.nutrition.servingText?.trim() || entry.quantity.trim() || null,
+    servingGrams: entry.nutrition.servingGrams ?? entry.grams,
+  };
+}
+
+/** What "Change amount" writes: the new helping, and the whole it was scaled from. */
+export interface EstimateAmountPatch {
+  quantity: string;
+  grams: number | null;
+  nutrition: FoodNutrition;
+  sourcePanel: FoodNutrition;
+}
+
+/** Whether `a` and `b` are the same multiple, past the dust division leaves. */
+function sameFactor(a: number, b: number): boolean {
+  return Math.abs(a - b) < 1e-9;
+}
+
+/**
+ * How a multiple of an estimate is said: in its own count when its words give
+ * one ("3 slices"), or in words in front of them ("half of 1 burger and a
+ * regular fries", "twice a bowl of pho").
+ */
+export function estimateAmountWords(wholeWords: string, factor: number): string {
+  const base = wholeWords.trim();
+  const count = estimateCount(base);
+  if (count) return describeEstimateCount(count, count.count * factor);
+  const preset = ESTIMATE_AMOUNTS.find(a => sameFactor(a.value, factor));
+  const lead = preset
+    ? preset.words
+    : factor < 1 ? `${Math.round(factor * 100)}% of` : `${formatQuantityAmount(factor)} times`;
+  // With no words of its own to scale, the amount stands alone.
+  if (!base) return lead.replace(/ of$/, '');
+  return lead ? `${lead} ${base}` : base;
+}
+
+/**
+ * An estimated entry changed to a multiple of what it described, or null when
+ * the entry can't be changed that way or the multiple isn't one.
+ *
+ * **The one correction here that multiplies stored figures rather than
+ * re-measuring them**, and the exception is narrow on purpose. "Re-measured,
+ * never multiplied" exists because a measured helping's figures are one
+ * amount's worth of a food with a real panel behind it, so scaling them claims
+ * a measurement of the new amount that nobody made; the panel was right
+ * there to be measured against instead. An estimate has no such panel, and
+ * its figures were never a measurement: they are the model's guess at a meal
+ * of a stated size. Three slices of a meal estimated as two is that same
+ * guess at a meal half as big again, which is every figure the model stated,
+ * times a number the person chose, and no nutrient appears that the estimate
+ * did not state. Going up claims nothing more than going down does, so either
+ * direction is allowed, up to `MAX_ESTIMATE_MULTIPLE`. The source stays
+ * `estimated` and the figures keep the moment they were estimated at.
+ *
+ * The factor is always of the whole meal as estimated (`wholeEstimate`),
+ * never of the helping stored now, and 1 returns that whole exactly, figures
+ * untouched rather than rounded again, so choosing All (or the count the
+ * model described) puts the entry back as it was logged.
+ */
+export function estimateAmountPatch(entry: EstimatedHelping, factor: number): EstimateAmountPatch | null {
+  const whole = wholeEstimate(entry);
+  if (!whole) return null;
+  if (!Number.isFinite(factor) || factor <= 0 || factor > MAX_ESTIMATE_MULTIPLE + 1e-9) return null;
+
+  const base = whole.servingText?.trim() ?? '';
+  if (sameFactor(factor, 1)) {
+    return { quantity: base, grams: whole.servingGrams, nutrition: whole, sourcePanel: whole };
+  }
+
+  const amounts: Partial<Record<NutrientKey, number>> = {};
+  for (const key of NUTRIENT_KEYS) {
+    const amount = whole.amounts[key];
+    if (amount !== undefined) amounts[key] = round(amount * factor);
+  }
+  const quantity = estimateAmountWords(base, factor);
+  const grams = whole.servingGrams !== null ? Math.round(whole.servingGrams * factor) : null;
+  return {
+    quantity,
+    grams,
+    nutrition: { ...whole, servingText: quantity, servingGrams: grams, amounts },
+    sourcePanel: whole,
+  };
+}
+
+/** Whether two sets of stated figures are the same figures. */
+function sameAmounts(a: FoodNutrition['amounts'], b: FoodNutrition['amounts']): boolean {
+  return NUTRIENT_KEYS.every(key => a[key] === b[key]);
+}
+
+/**
+ * How many times the whole meal as estimated an entry stands at now, or null
+ * when it can't be changed that way or its figures are no multiple of it.
+ *
+ * Worked out by trying multiples and comparing figures, rather than stored,
+ * so there is no second record of the choice to fall out of step with the
+ * figures Health was told. The candidates, in order: the whole (so figures
+ * every multiple agrees on, an estimate of nothing but zeros, read as the
+ * whole), the count the entry's own words say when that is what the change
+ * wrote, each preset, and last whatever one stated figure divides out to.
+ */
+export function currentEstimateFactor(entry: EstimatedHelping): number | null {
+  const whole = wholeEstimate(entry);
+  if (!whole) return null;
+  const candidates: number[] = [1];
+  const count = estimateCount(whole.servingText);
+  const said = (entry.nutrition.servingText ?? entry.quantity).trim();
+  const saidCount = count ? estimateCount(said) : null;
+  if (count && saidCount && describeEstimateCount(count, saidCount.count) === said) {
+    candidates.push(saidCount.count / count.count);
+  }
+  candidates.push(...ESTIMATE_AMOUNTS.map(a => a.value));
+  const key = NUTRIENT_KEYS.find(k => (whole.amounts[k] ?? 0) > 0);
+  const now = key ? entry.nutrition.amounts[key] : undefined;
+  if (key && now !== undefined) candidates.push(now / whole.amounts[key]!);
+
+  for (const factor of candidates) {
+    const patch = estimateAmountPatch(entry, factor);
+    if (patch && sameAmounts(patch.nutrition.amounts, entry.nutrition.amounts)) return factor;
+  }
+  return null;
+}
+
+/**
+ * The count a counted estimate stands at now ("3" for an entry changed to 3
+ * slices of a 2-slice estimate), or null when its words give no count or its
+ * figures are no multiple of the whole.
+ *
+ * Rounded past the dust a division leaves, so a stepper opened on it shows 3
+ * rather than 3.0000000000000004.
+ */
+export function currentEstimateCount(entry: EstimatedHelping): number | null {
+  const whole = wholeEstimate(entry);
+  const count = whole ? estimateCount(whole.servingText) : null;
+  const factor = count ? currentEstimateFactor(entry) : null;
+  if (!count || factor === null) return null;
+  return Math.round(count.count * factor * 1e6) / 1e6;
+}
+
+/**
+ * Whether a patch would leave the entry as it is: the same figures under the
+ * same words, so there is nothing to retract from Health and write again.
+ */
+export function estimateAmountUnchanged(entry: EstimatedHelping, patch: EstimateAmountPatch): boolean {
+  return sameAmounts(patch.nutrition.amounts, entry.nutrition.amounts) && patch.quantity === entry.quantity.trim();
 }
 
 /**

@@ -14,7 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
-import type { Recipe, RecipeMealType } from '../types';
+import type { GroceryItem, Recipe, RecipeMealType } from '../types';
 import { RECIPE_MEAL_TYPES, RECIPE_MEAL_TYPE_LABELS } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useGroceryStore } from '../store/useGroceryStore';
@@ -49,7 +49,7 @@ import { ReorderableList } from '../components/ReorderableList';
 import { SortableList } from '../components/SortableList';
 import { SwipeableRow } from '../components/SwipeableRow';
 import { SelectionDot } from '../components/SelectionDot';
-import { PaintSelectionProvider, PaintSelectionRow } from '../components/PaintSelection';
+import { PaintSelectionProvider, usePaintSelectionRow } from '../components/PaintSelection';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { PlanMealSheet } from '../components/PlanMealSheet';
 import { usePlanMeal } from '../hooks/usePlanMeal';
@@ -62,8 +62,7 @@ import { resolveActiveTrip } from '../utils/activeTrip';
 import { resetToGroceries } from '../navigation/navigationRef';
 import {
   cleanRecipeName,
-  countLikelyInPantry,
-  type LikelyInPantryCount,
+  countLikelyInPantryByRecipe,
   describeCookHistory,
   describeRecipe,
   flattenRecipeMealTypeSections,
@@ -72,6 +71,7 @@ import {
   recipeListItemKey,
   recipeSectionKey,
   resolveRecipeMealTypeDrop,
+  samePantryCatalog,
   sortRecipesBy,
   type RecipeListItem,
 } from '../utils/recipeUtils';
@@ -164,6 +164,23 @@ function AddRecipeFabMenuWithDropLabel({
   return <FabMenu {...props} dragLabel={label} />;
 }
 
+/**
+ * A grocery store selector for the catalog that keeps handing back the
+ * previous array while `samePantryCatalog` says nothing a pantry count reads
+ * has changed. zustand's own `useShallow` with that comparison in place of a
+ * shallow one, and the same shape: the ref is the selector's memory between
+ * renders.
+ */
+function usePantryCatalog() {
+  const prev = useRef<GroceryItem[] | null>(null);
+  return (state: { items: GroceryItem[] }): GroceryItem[] => {
+    const next = state.items;
+    if (prev.current !== null && samePantryCatalog(prev.current, next)) return prev.current;
+    prev.current = next;
+    return next;
+  };
+}
+
 export function RecipesScreen() {
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
@@ -224,7 +241,10 @@ export function RecipesScreen() {
       return next;
     });
   }, [setCollapsedSections]);
-  const groceryItems = useGroceryStore(useShallow(s => s.items));
+  // The catalog as far as the pantry counts below can tell: it holds its last
+  // value through a change that can't move a count (a check-off), so their
+  // memo holds too. See samePantryCatalog.
+  const pantryCatalog = useGroceryStore(usePantryCatalog());
   const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
   const shops = useGroceryStore(useShallow(s => s.shops));
   const tripShopId = useGroceryStore(s => s.tripShopId);
@@ -498,19 +518,27 @@ export function RecipesScreen() {
     },
   };
 
-  // Computed once for the visible list rather than per row render — same
+  // Computed once for the whole box rather than per row render — same
   // classifyPlanned pass RecipeToListSheet/AddWeekToListSheet already run,
-  // just reduced to a count per recipe.
-  const pantryCounts = useMemo(() => {
-    const now = new Date();
-    const byId = recipeMap(recipes);
-    const map = new Map<string, LikelyInPantryCount>();
-    for (const recipe of visible) {
-      const count = countLikelyInPantry(recipe, groceryItems, now, byId, itemSubs);
-      if (count !== null) map.set(recipe.id, count);
-    }
+  // just reduced to a count per recipe. Keyed on what a count reads and
+  // nothing else (#2922): the box rather than `visible`, so typing a search,
+  // sorting or filtering never recounts, and `pantryCatalog` rather than the
+  // raw items, so neither does checking a grocery item off.
+  const pantryCounts = useMemo(
+    () => countLikelyInPantryByRecipe(recipes, pantryCatalog, new Date(), recipeMap(recipes), itemSubs),
+    [recipes, pantryCatalog, itemSubs]
+  );
+
+  // Each row's subtitle, worked out once per recipe rather than twice per row
+  // render (the spoken label and the meta line both read it), and handed to
+  // the row as a plain string (#2922). A string compares by value, so a
+  // recount that leaves a recipe's own count where it was gives its row the
+  // same prop it had.
+  const rowDescriptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const recipe of recipes) map.set(recipe.id, describeRecipe(recipe, pantryCounts.get(recipe.id)));
     return map;
-  }, [visible, recipes, groceryItems, itemSubs]);
+  }, [recipes, pantryCounts]);
 
   // "Love"/"Unlove" flips direction based on the selection itself, the
   // same way the grocery bulk bar's Check/Uncheck does — a selection that's
@@ -573,10 +601,10 @@ export function RecipesScreen() {
     });
   };
 
-  const openRecipe = (recipe: Recipe) => {
+  const openRecipe = useCallback((recipe: Recipe) => {
     haptics.tap();
     navigation.navigate('RecipeDetail', { recipeId: recipe.id });
-  };
+  }, [navigation]);
 
   const { overlap, openOverlap, closeOverlap, handOffOverlap } = useOverlapPicker();
 
@@ -599,148 +627,66 @@ export function RecipesScreen() {
     if (existing) openRecipe(existing);
   };
 
-  // Icon-only because the row is already dense; the spoken label carries the
-  // meaning. Deliberately a button rather than a long-press: the row's
-  // long-press is already the drag-to-reorder handle. It's not on the swipe
-  // panel either — that's select-only (#1378), same contract as every other
-  // SwipeableRow in the app.
-  const planButton = (recipe: Recipe) => (
-    <TouchableOpacity
-      style={styles.planButton}
-      onPress={() => { haptics.tap(); setPlanningRecipe(recipe); }}
-      activeOpacity={interaction.activeOpacity}
-      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-      accessibilityRole="button"
-      accessibilityLabel={`Plan ${recipe.name} onto a day`}
-    >
-      <Ionicons name="calendar-outline" size={iconSize.md} color={colors.accent} />
-    </TouchableOpacity>
-  );
+  // The row's handlers. Stable, and each takes the recipe (or its id) it acts
+  // on, so one function serves every row and `RecipeRow`'s memo holds through
+  // a render of the screen (#2922) — see the row's own note.
+  const handlePlanRecipe = useCallback((recipe: Recipe) => {
+    haptics.tap();
+    setPlanningRecipe(recipe);
+  }, []);
 
-  // Icon-only, same treatment as planButton beside it — a button rather than
-  // a long-press for the same reason: the row's long-press is already the
-  // drag-to-reorder handle, and it's off the swipe panel because that's
-  // select-only (#1378). Always shown, not just on shelf rows, since this is
-  // the one control that puts a recipe on the shelf in the first place.
-  const upNextButton = (recipe: Recipe) => (
-    <TouchableOpacity
-      style={styles.planButton}
-      onPress={() => { haptics.tap(); setUpNext(recipe.id, !recipe.upNext); }}
-      activeOpacity={interaction.activeOpacity}
-      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-      accessibilityRole="button"
-      accessibilityLabel={recipe.upNext ? `Remove ${recipe.name} from Up Next` : `Add ${recipe.name} to Up Next`}
-    >
-      <Ionicons
-        name={recipe.upNext ? 'bookmark' : 'bookmark-outline'}
-        size={iconSize.md}
-        color={recipe.upNext ? colors.accent : colors.textTertiary}
-      />
-    </TouchableOpacity>
-  );
+  const handleToggleUpNext = useCallback((recipe: Recipe) => {
+    haptics.tap();
+    setUpNext(recipe.id, !recipe.upNext);
+  }, [setUpNext]);
 
-  // The third of the row's icon buttons, and the quietest of them — tertiary
-  // until tapped, where Plan is accent. A button rather than a swipe because
-  // both of SwipeableRow's slots are spoken for and "cook alongside" is not
-  // the time-shaped action `whenAction` is reserved for; and not a long-press,
-  // which is the drag handle, for the same reason upNextButton isn't.
-  const cookTogetherButton = (recipe: Recipe) => (
-    <TouchableOpacity
-      style={styles.planButton}
-      onPress={() => openOverlap(recipe)}
-      activeOpacity={interaction.activeOpacity}
-      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-      accessibilityRole="button"
-      accessibilityLabel={`Find recipes that share ingredients with ${recipe.name}`}
-    >
-      <Ionicons name="git-merge-outline" size={iconSize.md} color={colors.textTertiary} />
-    </TouchableOpacity>
-  );
+  // `openOverlap` is rebuilt whenever the grocery catalog changes, since it
+  // ranks against it, and a check-off changes the catalog. Handed to the rows
+  // directly, every check-off would re-render every row, so they get this
+  // stable wrapper instead, reading the current one at the tap.
+  const openOverlapRef = useRef(openOverlap);
+  openOverlapRef.current = openOverlap;
+  const handleCookTogether = useCallback((recipe: Recipe) => openOverlapRef.current(recipe), []);
 
-  // `duplicateRow` is the Up Next shelf's copy of a recipe that also has its
-  // ordinary row in the box below. It stays out of the paint registry, which
-  // is keyed by recipe id: the shelf unmounts as selection starts, and its
-  // copy leaving would evict the real row, the reason TaskItem's pinned copy
-  // passes the same flag.
-  const renderRecipe = ({ item: recipe, drag, isActive, duplicateRow }: {
-    item: Recipe; drag?: () => void; isActive?: boolean; duplicateRow?: boolean;
-  }) => {
-    const selected = selectedIds.has(recipe.id);
-    const rowBody = (
-      <TouchableOpacity
-        style={[styles.row, selectionMode && selected && styles.rowSelected]}
-        onPress={() => (selectionMode ? toggleSelection(recipe.id) : openRecipe(recipe))}
-        onLongPress={selectionMode ? undefined : drag}
-        activeOpacity={interaction.activeOpacity}
-        accessibilityRole={selectionMode ? 'checkbox' : 'button'}
-        accessibilityState={selectionMode ? { checked: selected } : undefined}
-        accessibilityLabel={`${recipe.name}. ${describeRecipe(recipe, pantryCounts.get(recipe.id))}`}
-        accessibilityHint={selectionMode ? 'Double tap to select recipe' : 'Double tap to open this recipe.'}
-      >
-        {/* The photo or tile stays put while selecting. Selection is the
-            SelectionDot at the other end of the row, the split every other
-            selectable list makes (#2944): a check filling the tile's place
-            read as a recipe marked done rather than one picked. */}
-        {recipe.imagePath ? (
-          <Image source={{ uri: resolveRecipeImagePath(recipe.imagePath) ?? undefined }} style={styles.thumb} />
-        ) : (
-          <View style={[styles.icon, { backgroundColor: colors.accentSubtle }]}>
-            <Ionicons name="restaurant-outline" size={18} color={colors.accent} />
-          </View>
-        )}
-        <View style={styles.info}>
-          <Text style={styles.name} numberOfLines={2}>{recipe.name}</Text>
-          <Text style={styles.meta} numberOfLines={1}>
-            {[describeRecipe(recipe, pantryCounts.get(recipe.id)), describeCookHistory(recipe)].filter(Boolean).join(' · ')}
-          </Text>
-        </View>
-        {recipe.vote === 'loved' && (
-          <Ionicons name="thumbs-up" size={iconSize.sm} color={colors.orange} />
-        )}
-        {!selectionMode && cookTogetherButton(recipe)}
-        {!selectionMode && upNextButton(recipe)}
-        {!selectionMode && planButton(recipe)}
-        {!selectionMode && (
-          <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
-        )}
-        {/* In the slot the three buttons and the chevron give up while
-            selecting, so nothing moves aside for it. On every row, picked or
-            not: the empty rings are what say selection is on. */}
-        {selectionMode && (
-          <SelectionDot selected={selected} onPress={() => toggleSelection(recipe.id)} />
-        )}
-      </TouchableOpacity>
-    );
-    return (
-      // Registered with the screen's PaintSelectionProvider so a drag down the
-      // column of dots picks up this row. Not the drag overlay's copy, which
-      // would claim this row's id and evict it on unmount.
-      <PaintSelectionRow
-        rowId={isActive || duplicateRow ? null : recipe.id}
-        style={[styles.itemWrapper, isActive && styles.itemWrapperActive]}
-      >
-        {/* SwipeableRow stays mounted through the selectionMode toggle rather
-            than swapping for a bare rowBody — swapping it unmounts the panel
-            mid-close-animation (the very moment its own select action just
-            fired), which is what read as the swipe panel freezing instead of
-            sliding shut. `enabled` turns the gesture off without disturbing
-            the mount, same as every other list's row. */}
-        <SwipeableRow
-          enabled={!isActive && !selectionMode}
-          selectAction={{
-            onSelect: () => enterSelectionMode(recipe.id),
-            accessibilityLabel: `Select ${recipe.name}`,
-          }}
-        >
-          {rowBody}
-        </SwipeableRow>
-      </PaintSelectionRow>
-    );
-  };
+  // One row, for all three lists that draw one: the grouped box, the flat box
+  // and the Up Next shelf. `duplicateRow` is the shelf's copy of a recipe that
+  // also has its ordinary row in the box below (see the prop's note on
+  // RecipeRow). Everything passed is a value or one of the stable handlers
+  // above, never an arrow bound to this recipe.
+  const recipeRow = useCallback((recipe: Recipe, drag?: () => void, isActive = false, duplicateRow = false) => (
+    <RecipeRow
+      recipe={recipe}
+      // The fallback covers the one commit a just-deleted recipe can still
+      // sit in `draggableData` before its effect catches up with the store.
+      description={rowDescriptions.get(recipe.id) ?? describeRecipe(recipe, pantryCounts.get(recipe.id))}
+      colors={colors}
+      styles={styles}
+      drag={drag}
+      isActive={isActive}
+      duplicateRow={duplicateRow}
+      selectionMode={selectionMode}
+      selected={selectedIds.has(recipe.id)}
+      onOpen={openRecipe}
+      onToggleSelect={toggleSelection}
+      onSwipeSelect={enterSelectionMode}
+      onPlan={handlePlanRecipe}
+      onToggleUpNext={handleToggleUpNext}
+      onCookTogether={handleCookTogether}
+    />
+  ), [
+    rowDescriptions, pantryCounts, colors, styles, selectionMode, selectedIds, openRecipe, toggleSelection,
+    enterSelectionMode, handlePlanRecipe, handleToggleUpNext, handleCookTogether,
+  ]);
+
+  // The flat view's renderItem. The FlatList still calls it for every row in
+  // its window whenever the screen renders (its header is rebuilt each time,
+  // and it re-wraps renderItem on each of its own renders), so it's the row's
+  // memo that saves the work there, as it is in the grouped box.
+  const renderFlatRecipe = useCallback(({ item }: { item: Recipe }) => recipeRow(item), [recipeRow]);
 
   /**
    * A small, hand-ordered queue of recipes you want to try but haven't put
-   * on a day yet — the bullpen `upNextButton` above adds to and `reorderUpNextRecipes`
+   * on a day yet — the bullpen a row's bookmark button adds to and `reorderUpNextRecipes`
    * reorders. Rendered as the main list's own `ListHeaderComponent` rather than
    * a section of the data it drags (same call the Pinned Tasks block on Today
    * makes, and the same reason: it's its own number space, `upNextOrder`, so
@@ -760,8 +706,7 @@ export function RecipesScreen() {
         onReorder={next => reorderUpNextRecipes(next.map(r => r.id))}
         onDragStateChange={setUpNextDragging}
         placeholderStyle={styles.dropSlot}
-        renderItem={(recipe, _displayIndex, drag, isActive) =>
-          renderRecipe({ item: recipe, drag, isActive, duplicateRow: true })}
+        renderItem={(recipe, _displayIndex, drag, isActive) => recipeRow(recipe, drag, isActive, true)}
       />
     </View>
   );
@@ -980,7 +925,7 @@ export function RecipesScreen() {
                       </View>
                       <Text style={styles.sectionHeaderCount}>{sectionCounts.get(item.mealType ?? '') ?? 0}</Text>
                     </TouchableOpacity>
-                  ) : renderRecipe({ item: item.recipe, drag: selectionMode ? undefined : drag, isActive });
+                  ) : recipeRow(item.recipe, drag, isActive);
                   return <FabDropZone zone={zone}>{row}</FabDropZone>;
                 }}
                 onHoverChange={haptics.dragTick}
@@ -1015,7 +960,7 @@ export function RecipesScreen() {
             <FlatList
               data={visible}
               keyExtractor={r => r.id}
-              renderItem={renderRecipe}
+              renderItem={renderFlatRecipe}
               keyboardShouldPersistTaps="handled"
               scrollEnabled={!upNextDragging && !painting}
               ListHeaderComponent={upNextBlock}
@@ -1139,6 +1084,179 @@ export function RecipesScreen() {
     </View>
   );
 }
+
+/**
+ * One recipe in the box, or its copy on the Up Next shelf. Swipe left enters
+ * bulk selection, the same contract as every other SwipeableRow in the app
+ * (#1378); long press drags wherever the list it's in hands it a `drag` (the
+ * grouped box, to re-tag a meal type, and the shelf, to reorder it).
+ *
+ * Memoized, and every handler takes the recipe (or its id) it acts on rather
+ * than the screen binding an arrow per row, so a render of the screen
+ * re-renders only the rows whose own props moved (#2922). It matters most in
+ * the grouped box, a ReorderableList, which keeps every recipe mounted: a
+ * sheet opening, a grocery check-off or one row's selection used to re-render
+ * all of them. The subtitle arrives as a string for the same reason (see
+ * `rowDescriptions` on the screen), and ProjectRow and TemplateRow follow the
+ * same rule.
+ */
+const RecipeRow = React.memo(function RecipeRow({
+  recipe, description, colors, styles, drag, isActive, duplicateRow, selectionMode, selected,
+  onOpen, onToggleSelect, onSwipeSelect, onPlan, onToggleUpNext, onCookTogether,
+}: {
+  recipe: Recipe;
+  /** describeRecipe's subtitle, pantry counts included; read by both the spoken label and the meta line. */
+  description: string;
+  colors: Colors;
+  styles: ReturnType<typeof makeStyles>;
+  /** The list's cached drag starter for this row; ignored while selecting. */
+  drag?: () => void;
+  /** The drag overlay's floating copy. */
+  isActive: boolean;
+  /**
+   * The Up Next shelf's copy of a recipe that also has its ordinary row in
+   * the box below. All it changes is that the copy stays out of the paint
+   * registry, which is keyed by recipe id: the shelf unmounts as selection
+   * starts, and its copy leaving would evict the real row, the reason
+   * TaskItem's pinned copy passes the same flag. A value rather than a
+   * different handler, so both rows share every function.
+   */
+  duplicateRow: boolean;
+  selectionMode: boolean;
+  selected: boolean;
+  onOpen: (recipe: Recipe) => void;
+  onToggleSelect: (recipeId: string) => void;
+  onSwipeSelect: (recipeId: string) => void;
+  onPlan: (recipe: Recipe) => void;
+  onToggleUpNext: (recipe: Recipe) => void;
+  onCookTogether: (recipe: Recipe) => void;
+}) {
+  // Registered with the screen's PaintSelectionProvider so a drag down the
+  // column of dots picks up this row. Not the drag overlay's copy, which
+  // would claim this row's id and evict it on unmount, nor the shelf's.
+  const paintRef = usePaintSelectionRow(isActive || duplicateRow ? null : recipe.id);
+  // Bound once per row rather than once per render of the list above it.
+  const toggleSelect = () => onToggleSelect(recipe.id);
+
+  const rowBody = (
+    <TouchableOpacity
+      style={[styles.row, selectionMode && selected && styles.rowSelected]}
+      onPress={() => (selectionMode ? toggleSelect() : onOpen(recipe))}
+      onLongPress={selectionMode ? undefined : drag}
+      activeOpacity={interaction.activeOpacity}
+      accessibilityRole={selectionMode ? 'checkbox' : 'button'}
+      accessibilityState={selectionMode ? { checked: selected } : undefined}
+      accessibilityLabel={`${recipe.name}. ${description}`}
+      accessibilityHint={selectionMode ? 'Double tap to select recipe' : 'Double tap to open this recipe.'}
+    >
+      {/* The photo or tile stays put while selecting. Selection is the
+          SelectionDot at the other end of the row, the split every other
+          selectable list makes (#2944): a check filling the tile's place
+          read as a recipe marked done rather than one picked. */}
+      {recipe.imagePath ? (
+        <Image source={{ uri: resolveRecipeImagePath(recipe.imagePath) ?? undefined }} style={styles.thumb} />
+      ) : (
+        <View style={[styles.icon, { backgroundColor: colors.accentSubtle }]}>
+          <Ionicons name="restaurant-outline" size={18} color={colors.accent} />
+        </View>
+      )}
+      <View style={styles.info}>
+        <Text style={styles.name} numberOfLines={2}>{recipe.name}</Text>
+        <Text style={styles.meta} numberOfLines={1}>
+          {[description, describeCookHistory(recipe)].filter(Boolean).join(' · ')}
+        </Text>
+      </View>
+      {recipe.vote === 'loved' && (
+        <Ionicons name="thumbs-up" size={iconSize.sm} color={colors.orange} />
+      )}
+      {/* The third of the row's icon buttons, and the quietest of them:
+          tertiary until tapped, where Plan is accent. A button rather than a
+          swipe because both of SwipeableRow's slots are spoken for and "cook
+          alongside" is not the time-shaped action `whenAction` is reserved
+          for; and not a long-press, which is the drag handle, for the same
+          reason the other two aren't. */}
+      {!selectionMode && (
+        <TouchableOpacity
+          style={styles.planButton}
+          onPress={() => onCookTogether(recipe)}
+          activeOpacity={interaction.activeOpacity}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel={`Find recipes that share ingredients with ${recipe.name}`}
+        >
+          <Ionicons name="git-merge-outline" size={iconSize.md} color={colors.textTertiary} />
+        </TouchableOpacity>
+      )}
+      {/* Icon-only, same treatment as Plan beside it, and a button rather
+          than a long-press for the same reason: the row's long-press is
+          already the drag handle, and it's off the swipe panel because that's
+          select-only (#1378). Always shown, not just on shelf rows, since this
+          is the one control that puts a recipe on the shelf in the first
+          place. */}
+      {!selectionMode && (
+        <TouchableOpacity
+          style={styles.planButton}
+          onPress={() => onToggleUpNext(recipe)}
+          activeOpacity={interaction.activeOpacity}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel={recipe.upNext ? `Remove ${recipe.name} from Up Next` : `Add ${recipe.name} to Up Next`}
+        >
+          <Ionicons
+            name={recipe.upNext ? 'bookmark' : 'bookmark-outline'}
+            size={iconSize.md}
+            color={recipe.upNext ? colors.accent : colors.textTertiary}
+          />
+        </TouchableOpacity>
+      )}
+      {/* Icon-only because the row is already dense; the spoken label carries
+          the meaning. Deliberately a button rather than a long-press: the
+          row's long-press is already the drag handle. It's not on the swipe
+          panel either, which is select-only (#1378), same contract as every
+          other SwipeableRow in the app. */}
+      {!selectionMode && (
+        <TouchableOpacity
+          style={styles.planButton}
+          onPress={() => onPlan(recipe)}
+          activeOpacity={interaction.activeOpacity}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel={`Plan ${recipe.name} onto a day`}
+        >
+          <Ionicons name="calendar-outline" size={iconSize.md} color={colors.accent} />
+        </TouchableOpacity>
+      )}
+      {!selectionMode && (
+        <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+      )}
+      {/* In the slot the three buttons and the chevron give up while
+          selecting, so nothing moves aside for it. On every row, picked or
+          not: the empty rings are what say selection is on. */}
+      {selectionMode && (
+        <SelectionDot selected={selected} onPress={toggleSelect} />
+      )}
+    </TouchableOpacity>
+  );
+  return (
+    <View ref={paintRef} style={[styles.itemWrapper, isActive && styles.itemWrapperActive]}>
+      {/* SwipeableRow stays mounted through the selectionMode toggle rather
+          than swapping for a bare rowBody — swapping it unmounts the panel
+          mid-close-animation (the very moment its own select action just
+          fired), which is what read as the swipe panel freezing instead of
+          sliding shut. `enabled` turns the gesture off without disturbing
+          the mount, same as every other list's row. */}
+      <SwipeableRow
+        enabled={!isActive && !selectionMode}
+        selectAction={{
+          onSelect: () => onSwipeSelect(recipe.id),
+          accessibilityLabel: `Select ${recipe.name}`,
+        }}
+      >
+        {rowBody}
+      </SwipeableRow>
+    </View>
+  );
+});
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   container: {

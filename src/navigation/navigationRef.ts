@@ -65,11 +65,22 @@ export function resetToToday(): void {
 // against the last value it handled, so asking twice in a row has to look
 // different each time. Omitted entirely for the bare link, which leaves the
 // screen alone.
-export function resetToGroceries(openFinish = false): void {
+//
+// `focusShopId` is the third, carried by one stop of a planned trip
+// (`dundundun://groceries?shop=<id>`, #2938): land on the list with that
+// store's section open and in view, when the list is grouped by store. Its own
+// stamp for the same reason. It never starts a trip: tapping a task named for
+// a store is planning to go there, and nothing infers a trip.
+export function resetToGroceries(openFinish = false, focusShopId: string | null = null): void {
   runWhenReady(() => {
+    const stamp = Date.now();
+    const params = {
+      ...(openFinish ? { openFinish: stamp } : {}),
+      ...(focusShopId ? { focusShop: focusShopId, focusShopStamp: stamp } : {}),
+    };
     navigationRef.navigate({
       name: 'Groceries',
-      params: openFinish ? { openFinish: Date.now() } : undefined,
+      params: Object.keys(params).length > 0 ? params : undefined,
     });
   });
 }

@@ -205,6 +205,15 @@ describe('resolveGroceryDrop', () => {
       { id: apples.id, sortOrder: 3, aisle: 'Produce' },
     ]);
   });
+
+  // Drag is off in the store lens, so this is the type being honest rather
+  // than a real path: a store header never files a row into an aisle, and a
+  // row under one keeps the aisle it already had.
+  it('never reads a store header as an aisle', () => {
+    const milk = makeItem('Milk', { aisle: 'Dairy', sortOrder: 1 });
+    const placements = resolveGroceryDrop([{ type: 'storeHeader' }, row(milk)]);
+    expect(placements).toEqual([{ id: milk.id, sortOrder: 1, aisle: 'Dairy' }]);
+  });
 });
 
 // ─── groceryDragRange ────────────────────────────────────────────────────────

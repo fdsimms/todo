@@ -484,6 +484,30 @@ export interface ClassifiedIngredient {
 }
 
 /**
+ * What `classifyPlanned` reads off the catalog as a whole rather than off the
+ * lines being classified: each row by key, the set of keys a plural is resolved
+ * against, and the declared varieties. None of it depends on the lines, so a
+ * caller classifying a whole recipe box builds it once (#2922); rebuilt per
+ * recipe, it was most of what counting a box's pantry coverage cost.
+ *
+ * `items` is the array it was built from, which is how `classifyPlanned`
+ * tells a matching index from one built for some other catalog.
+ */
+export interface PlannedCatalogIndex {
+  items: readonly GroceryItem[];
+  byKey: ReadonlyMap<string, GroceryItem>;
+  keys: ReadonlySet<string>;
+  varieties: ReadonlyMap<string, GroceryItem[]>;
+}
+
+/** Builds `classifyPlanned`'s catalog lookups once, for classifying many recipes against `items`. */
+export function plannedCatalogIndex(items: readonly GroceryItem[]): PlannedCatalogIndex {
+  const byKey = new Map<string, GroceryItem>();
+  for (const item of items) byKey.set(item.nameKey, item);
+  return { items, byKey, keys: new Set(byKey.keys()), varieties: varietyIndex(items) };
+}
+
+/**
  * Groups collectPlannedIngredients' flat list back into one row per catalog
  * key, and sorts each into a section:
  *
@@ -551,11 +575,17 @@ export function classifyPlanned(
    * it while the Pantry listed it in the freezer. Empty by default: the
    * item-only read every caller had before boxes carried pantry state.
    */
-  products: readonly ItemProduct[] = []
+  products: readonly ItemProduct[] = [],
+  /**
+   * The catalog-wide lookups, for a caller classifying many recipes against one
+   * catalog (`countLikelyInPantryByRecipe`). Built from `items` when omitted,
+   * which is every other caller, and rebuilt when it was built from a
+   * different array, so a stale one costs time rather than a wrong answer.
+   */
+  catalog: PlannedCatalogIndex = plannedCatalogIndex(items)
 ): ClassifiedIngredient[] {
-  const byKey = new Map<string, GroceryItem>();
-  for (const item of items) byKey.set(item.nameKey, item);
-  const varieties = varietyIndex(items);
+  const index = catalog.items === items ? catalog : plannedCatalogIndex(items);
+  const { byKey, keys: catalogKeys, varieties } = index;
 
   const groups = new Map<string, PlannedIngredient[]>();
   for (const p of planned) {
@@ -582,7 +612,7 @@ export function classifyPlanned(
   // refuses outright when the key is in the set it is given.
   for (const [key, group] of [...groups]) {
     if (byKey.has(key) || !groups.has(key)) continue;
-    const resolved = resolvePluralKey(key, byKey.keys())
+    const resolved = resolvePluralKey(key, catalogKeys)
       ?? resolvePluralKey(key, [...groups.keys()].filter(k => k !== key && !byKey.has(k)));
     if (!resolved) continue;
     groups.delete(key);

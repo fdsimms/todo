@@ -140,6 +140,19 @@ describe('useSavedMealsStore', () => {
       expect(useSavedMealsStore.getState().meals).toHaveLength(1);
     });
 
+    it('keeps the panel an entry kept, and adds no key for one that kept none', () => {
+      // #2914: without it, a database food nobody filed came back from a
+      // saved meal as an entry that could only be renamed.
+      const kept: FoodNutrition = { ...nutrition(165), basis: 'per100g', source: 'fdc', sourceId: '171077' };
+      const meal = useSavedMealsStore.getState().addFromEntries('Lunch', [
+        makeEntry({ label: 'Chicken breast, roasted', itemId: null, sourcePanel: kept }),
+        makeEntry({ label: 'Milk', sourcePanel: null }),
+      ]);
+      expect(meal?.items[0].sourcePanel).toEqual(kept);
+      // An ordinary item's stored JSON is left as it always was.
+      expect(meal?.items[1]).not.toHaveProperty('sourcePanel');
+    });
+
     it('refuses a blank name, same as addEntry refuses a blank label', () => {
       const meal = useSavedMealsStore.getState().addFromEntries('   ', [makeEntry()]);
       expect(meal).toBeNull();
@@ -181,6 +194,41 @@ describe('useSavedMealsStore', () => {
       // Each write is a fresh row — re-logging the meal must not resurrect the
       // ids of whatever it was originally saved from.
       expect(new Set(written.map(e => e.id)).size).toBe(2);
+    });
+
+    it('hands each item\'s kept panel to the entry it logs, so that entry can be corrected too', () => {
+      const kept: FoodNutrition = { ...nutrition(165), basis: 'per100g', source: 'fdc', sourceId: '171077' };
+      const whole: FoodNutrition = { ...nutrition(900), source: 'estimated' };
+      const meal = useSavedMealsStore.getState().addFromEntries('Lunch', [
+        makeEntry({ label: 'Chicken breast, roasted', itemId: null, sourcePanel: kept }),
+        makeEntry({ label: 'Burrito', itemId: null, nutrition: { ...whole, amounts: { calorieKcal: 450 } }, sourcePanel: whole }),
+        makeEntry({ label: 'Milk' }),
+      ]);
+
+      const written = useSavedMealsStore.getState().logMeal(meal as SavedMeal, 'lunch', new Date(2026, 3, 5, 12));
+      // Verbatim, an estimate's whole included: the same helping logged again
+      // is the same share of the same meal.
+      expect(written.map(e => e.sourcePanel)).toEqual([kept, whole, null]);
+    });
+
+    it('logs a meal saved before items kept a panel as entries that kept none', () => {
+      const meal: SavedMeal = {
+        id: 'm-old',
+        name: 'Old lunch',
+        items: [{
+          label: 'Chicken breast, roasted',
+          recipeId: null,
+          itemId: null,
+          productId: null,
+          quantity: '200 g',
+          grams: 200,
+          nutrition: nutrition(330),
+        }],
+        createdAt: '',
+      };
+      const written = useSavedMealsStore.getState().logMeal(meal, null, new Date(2026, 3, 5));
+      expect(written).toHaveLength(1);
+      expect(written[0].sourcePanel).toBeNull();
     });
 
     it('skips an item addEntry itself would refuse, same as any other caller', () => {

@@ -194,14 +194,15 @@ export function shiftDayKey(dayKey: string, days: number): string {
 
 /**
  * Everything a copied entry carries; the store adds the id, the stamp and a
- * null `calendarEventId`.
+ * null `calendarEventId` (and `calendarEventExternalId`, the server's name for
+ * the same event).
  *
  * `calendarEventId` is omitted rather than carried for the same reason
  * `duplicateTask` clears a task's: a copy is a new meal on a new day and
  * needs its own event, and two rows pointing at one device event means
  * whichever reconciles last rewrites the other's night.
  */
-export type MealCopyDraft = Omit<MealPlanEntry, 'id' | 'createdAt' | 'calendarEventId'>;
+export type MealCopyDraft = Omit<MealPlanEntry, 'id' | 'createdAt' | 'calendarEventId' | 'calendarEventExternalId'>;
 
 /**
  * What copying a week forward actually carries, shifted by `days`.
@@ -300,6 +301,57 @@ export function daysWithMeal(
     if (same) days.add(other.date);
   }
   return days;
+}
+
+const SLOT_PLURALS: Record<MealSlot, string> = {
+  breakfast: 'breakfasts',
+  lunch: 'lunches',
+  dinner: 'dinners',
+  snack: 'snacks',
+};
+
+/** "lunches": a slot counted, for "Copy lunches from Sep 21 – 27" and its undo. */
+export function slotPlural(slot: MealSlot): string {
+  return SLOT_PLURALS[slot] ?? 'meals';
+}
+
+/**
+ * The slots a week could take from `source` one at a time (#2913), in day
+ * order: those with nothing at all in `target`, and something in `source`
+ * that a copy would carry.
+ *
+ * **Offered only into a slot that is empty for the whole week**, which is the
+ * whole-week offer's own rule applied to a narrower unit. That offer is made
+ * only into an empty week because it copies every slot, and a week with
+ * anything in it would ask "does Tuesday's dinner replace the one there, or
+ * sit beside it?" This copies one slot, so the question is only avoided if
+ * that slot has nothing in it: a week with its dinners planned and no lunches
+ * yet takes last week's lunches with nothing to merge. A week with one lunch
+ * planned is being worked on, lunch-wise, and isn't offered them.
+ *
+ * "Something a copy would carry" is `weekCopyDrafts`' rule: a slot whose only
+ * meals were leftover nights has nothing to copy, so it isn't offered.
+ */
+export function slotsToCopy(
+  source: readonly MealPlanEntry[],
+  target: readonly MealPlanEntry[]
+): MealSlot[] {
+  const taken = new Set(target.map(e => e.slot));
+  const copyable = new Set(source.filter(e => !e.leftoverId).map(e => e.slot));
+  return MEAL_SLOTS.filter(slot => !taken.has(slot) && copyable.has(slot));
+}
+
+/**
+ * One slot of a week copied forward by `days`: `weekCopyDrafts` over just that
+ * slot's meals, so a slot copy and a week copy carry exactly the same things
+ * (and a leftover night is dropped from both).
+ */
+export function slotCopyDrafts(
+  source: readonly MealPlanEntry[],
+  slot: MealSlot,
+  days: number
+): MealCopyDraft[] {
+  return weekCopyDrafts(source.filter(e => e.slot === slot), days);
 }
 
 /** Where one entry lands in a bulk move — see resolveBulkMoveTargets. */

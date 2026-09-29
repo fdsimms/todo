@@ -73,6 +73,7 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { resolveActiveTrip } from '../utils/activeTrip';
 import { resetToGroceries } from '../navigation/navigationRef';
 import { useFilterField } from '../hooks/useFilterField';
+import { isPortionBox } from '../types';
 
 /**
  * Everything the app currently thinks is in your kitchen, in one place — the
@@ -135,9 +136,9 @@ import { useFilterField } from '../hooks/useFilterField';
  * reading one is offered here and not only at the foot of the shopping list:
  * the paper names thirty things at once, and this screen is where someone
  * standing over the bags actually is. What it records is smaller than a
- * finished trip's — names, and what each cost — because it isn't a trip: no
- * purchase count, no store stocking claim, no purchase date (see
- * `handleReceiptApply`).
+ * finished trip's — names, what each cost, and which went straight in the
+ * freezer — because it isn't a trip: no purchase count, no store stocking
+ * claim, no purchase date (see `handleReceiptApply`).
  *
  * That keeps the model the one #1040 settled on — computed from what you buy,
  * corrected when it's wrong, never an inventory anybody has to keep up.
@@ -160,6 +161,14 @@ export function KitchenScreen() {
   const setFrozen = useGroceryStore(s => s.setFrozen);
   const setAisle = useGroceryStore(s => s.setAisle);
   const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
+  // The frozen portions among the boxes (#2925). Their rows open the item's
+  // Pantry field, where "Freeze some" and the portion's own line live, rather
+  // than its Products field, which doesn't list them: a portion is some of the
+  // item, not a brand of it. See ItemProduct.isPortion.
+  const portionIds = useMemo(
+    () => new Set(itemProducts.filter(p => isPortionBox(p)).map(p => p.id)),
+    [itemProducts]
+  );
   const listEntries = useGroceryStore(useShallow(s => s.listEntries));
   const markProductsOutOf = useGroceryStore(s => s.markProductsOutOf);
   const setProductFrozen = useGroceryStore(s => s.setProductFrozen);
@@ -328,7 +337,7 @@ export function KitchenScreen() {
     if (focused) {
       if (focused.kind === 'leftover') setOpenLeftoverId(focused.sourceId);
       else if (focused.kind === 'product' && focused.itemId) {
-        setOpenItemField('products');
+        setOpenItemField(portionIds.has(focused.sourceId) ? 'pantry' : 'products');
         setOpenItemId(focused.itemId);
       } else setOpenItemId(focused.sourceId);
       return;
@@ -352,7 +361,7 @@ export function KitchenScreen() {
       // through the box rather than giving up.
       const product = itemProducts.find(p => p.id === parsed.sourceId);
       if (product && items.some(i => i.id === product.itemId)) {
-        setOpenItemField('products');
+        setOpenItemField(isPortionBox(product) ? 'pantry' : 'products');
         setOpenItemId(product.itemId);
       }
     }
@@ -410,7 +419,9 @@ export function KitchenScreen() {
     // A box's ✕ writes the box and says nothing about its siblings — being out
     // of the Beyond one is not being out of vegan ground beef. The item-level
     // ✕ still means all of them, which is why an item's own "Out of it"
-    // outranks every box in `probablyHaveReason`.
+    // outranks every box in `probablyHaveReason` — all but a frozen portion,
+    // which is the half of a pack that went in the freezer and which the ✕ on
+    // the rest of it says nothing about (#2925). A portion's own ✕ deletes it.
     const changed = entry.kind === 'product'
       ? markProductsOutOf([entry.sourceId])
       : markOutOfMany([entry.sourceId]);
@@ -603,13 +614,19 @@ export function KitchenScreen() {
    * for the reason `addManyToPantry` gives — a row this batch mints has no id
    * until the loop creates it. What they record is deliberately smaller than a
    * trip's: see that action's own doc comment.
+   *
+   * The freezer flag is the sheet's per-row snowflake (#2925), reduced to names
+   * exactly as `handleScanApply` reduces the barcode sheet's: matched rows by
+   * `frozenItemIds`, new ones by `draft.frozen`. `addManyToPantry` applies it
+   * after the `acquired` clear, so it lands on the new packet.
    */
   const handleReceiptApply = (
     shopId: string | null,
     itemIds: string[],
     priceById: Record<string, number>,
     _purchasedAt: string,
-    toAdd: ReceiptAddDraft[]
+    toAdd: ReceiptAddDraft[],
+    frozenItemIds: ReadonlySet<string>
   ) => {
     const nameOf = (id: string) => items.find(i => i.id === id)?.name;
     const names = [
@@ -625,11 +642,18 @@ export function KitchenScreen() {
     for (const draft of toAdd) {
       if (draft.priceMinor !== null) priceByName.set(draft.name, draft.priceMinor);
     }
+    const frozenNames = new Set([
+      ...itemIds
+        .filter(id => frozenItemIds.has(id))
+        .map(nameOf)
+        .filter((name): name is string => !!name),
+      ...toAdd.filter(draft => draft.frozen).map(draft => draft.name),
+    ]);
     setReceiptOpen(false);
     if (names.length === 0) return;
     if (
       addManyToPantry(
-        names, undefined, undefined, { byName: priceByName, shopId }, { acquired: true }
+        names, frozenNames, undefined, { byName: priceByName, shopId }, { acquired: true }
       ) > 0
     ) haptics.success();
   };
@@ -639,6 +663,7 @@ export function KitchenScreen() {
     // as ordinary tertiary text, so most of a kitchen stays quiet and the one
     // thing going off is the one thing coloured.
     const tint = entry.freshness ? freshnessColor(entry.freshness, colors) : colors.textTertiary;
+    const isPortion = entry.kind === 'product' && portionIds.has(entry.sourceId);
     return (
       <TouchableOpacity
         style={[styles.row, isActive && styles.rowActive]}
@@ -650,9 +675,10 @@ export function KitchenScreen() {
           // sheet with the Products field already unfolded — the same
           // pre-opening a catalog row gets for its Pantry field, and for the
           // same reason: a collapsed field halfway down a dense sheet is in
-          // practice no way to correct anything.
+          // practice no way to correct anything. A frozen portion's
+          // corrections are in the Pantry field instead (see `portionIds`).
           else if (entry.kind === 'product' && entry.itemId) {
-            setOpenItemField('products');
+            setOpenItemField(portionIds.has(entry.sourceId) ? 'pantry' : 'products');
             setOpenItemId(entry.itemId);
           } else setOpenItemId(entry.sourceId);
         }}
@@ -664,9 +690,11 @@ export function KitchenScreen() {
         accessibilityHint={
           entry.kind === 'leftover'
             ? 'Opens the container, where you can close it out. Long press to move it between the fridge and the freezer'
-            : entry.kind === 'product'
-              ? 'Opens the item, where you can correct this one. Long press to move it to another aisle or the freezer'
-              : 'Opens the item, where you can correct it further. Long press to move it to another aisle or the freezer'
+            : isPortion
+              ? 'Opens the item, where you can take this portion out of the freezer. Long press to move it to another aisle or the freezer'
+              : entry.kind === 'product'
+                ? 'Opens the item, where you can correct this one. Long press to move it to another aisle or the freezer'
+                : 'Opens the item, where you can correct it further. Long press to move it to another aisle or the freezer'
         }
       >
         <View style={styles.body}>
@@ -696,14 +724,18 @@ export function KitchenScreen() {
             onPress={() => handleMarkOut(entry)}
             hitSlop={8}
             accessibilityLabel={
-              entry.productName
-                ? `Mark ${entry.productName} ${entry.title} out`
-                : `Mark ${entry.title} out`
+              isPortion
+                ? `Mark the portion of ${entry.title} used up`
+                : entry.productName
+                  ? `Mark ${entry.productName} ${entry.title} out`
+                  : `Mark ${entry.title} out`
             }
             accessibilityHint={
-              entry.kind === 'product'
-                ? 'Marks this one not on hand, leaving the others alone'
-                : 'Marks it not on hand, without opening the item'
+              isPortion
+                ? 'Removes this portion, leaving the rest of the item alone'
+                : entry.kind === 'product'
+                  ? 'Marks this one not on hand, leaving the others alone'
+                  : 'Marks it not on hand, without opening the item'
             }
           >
             <Ionicons name="close-circle-outline" size={iconSize.md} color={colors.textTertiary} />

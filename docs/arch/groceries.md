@@ -18,7 +18,9 @@ doesn't already cover.
 An aisle is a *string*, held in three places at once: `aisleOrder` (a settings key), the `aisle`
 column on every row, and the values of `aisleOverrides` (the remembered filings). So `renameAisle`
 has to rewrite all three, and `deleteAisle` has to move the rows to `Other` — every row, not just
-this week's list, since the aisle lives on the catalog row.
+this week's list, since the aisle lives on the catalog row. Stores hold two more copies, a range
+(`Shop.aisles`) and a walk of their own (`Shop.aisleOrder`), and both actions keep those too: see
+the store sections below.
 
 **`normalizeAisleOrder` re-appends `DEFAULT_AISLES` on every read**, which is the feature (a bigger
 default list ships with no migration) and is also why a delete can't just drop the name from the
@@ -241,9 +243,11 @@ times over, and the restraint that keeps it from becoming one is a single rule:
   box-specific about is exactly one row, as always, and each packet spoken about adds one. The one
   subtraction: when a box is the *only* thing answering for the item, the item row would be that
   box's claim wearing the item's name, so it's dropped and the box row says it better.
-- **An item-level "Out of it" outranks every box.** It's the blunter, later statement — "I'm out
-  of vegan ground beef" is about all of them — and keeping it in front is what stops the ✕ on an
-  item row reading as a dead control, the same argument that puts it above the freezer.
+- **An item-level "Out of it" outranks every box but a frozen portion.** It's the blunter, later
+  statement — "I'm out of vegan ground beef" is about all of them — and keeping it in front is what
+  stops the ✕ on an item row reading as a dead control, the same argument that puts it above the
+  freezer. The one box it doesn't reach is the portion "Freeze some" writes, and the next section
+  says why: a portion isn't a brand you ran out of.
 - **`runningLowAt` has no per-box counterpart**, and that asymmetry is the point. It's the one
   pantry assertion that writes `onList`, and being nearly out of one brand while a full packet of
   the other sits beside it is not a reason to buy more.
@@ -306,6 +310,71 @@ whole milk`) because the row is one line and naming both cuts off the half that 
 the same trade the `unavailable` branch makes when a substitute joins it. It is deliberately not
 that branch's "Not here": the store has the item, just not your box, and collapsing the two
 claims would say a shop had nothing when it had the thing and not your version of it.
+
+### Freezing some of a pack — the one box that isn't a brand (#2925)
+
+Buy a family pack of chicken, freeze half, cook the rest this week. Neither half could be written
+down. Freezing the item suspended the fresh half's clock and dropped its use-up task; leaving it
+unfrozen left the frozen half nowhere to live, and "Out of it" on the fresh half then cleared the
+item's `frozenAt` and took the frozen half out of the pantry too. Boxes were the only split, and a
+box is a brand: `productKeyFor` returns `''` for a box with neither brand nor variant, so two halves
+of one unbranded pack could not be told apart. Leftovers already had the answer (`LeftoverSheet`'s
+"Both" writes a fridge container and a freezer one), because a leftover is a container row.
+
+**"Freeze some" writes the item's one portion box** (`freezePortion`, `ItemProduct.isPortion`): an
+unnamed box stamped frozen now, with nothing else claimed about it. The item itself is not touched,
+so its `frozenAt` stays clear, its clock keeps running and its use-up task stays (`wantsUseUpTask`
+only reads the item). The pantry shows two rows for one food: the item in its aisle, counting down,
+and "Portion · in the freezer · Frozen Sep 28" under the freezer. It lives in the item sheet's
+Pantry field, which the Pantry row already opens straight into, rather than as a second control on
+the row: a swipe or a second button there is the check-in gesture this section rules out.
+
+- **A box rather than a second catalog row or a location field.** A box already carries the four
+  pantry columns and already joins its item's row rather than replacing it, so everything the
+  pantry does for a frozen box it does for a portion for free. A second `GroceryItem` would split
+  one food's purchase history and recipes in two (the reason boxes exist at all), and a
+  fridge/freezer/shelf field on the item is the location taxonomy the freezer section rules out.
+- **One per item, and the key is what enforces it.** Every portion carries `PORTION_PRODUCT_KEY`,
+  which `productKeyFor` can never produce (it always joins the halves with a `|`), so the existing
+  UNIQUE `(item_id, product_key)` index holds an item to one and `naturalKeyFold` folds two phones'
+  portions into one on sync. `isPortion` is the reading side, and every reader tests it through
+  `isPortionBox` rather than comparing keys. A second "Freeze some" reuses the row; one already in
+  the freezer is left alone so its date isn't restarted.
+- **Nothing that treats a box as a brand sees it.** `productsForItem` leaves it out (so the Products
+  field, the scan sheet's box picker and the shelf's next-box suggestion never offer it),
+  `preferredProductOf` and `setPreferredProduct` refuse it, `updateProduct` won't name it,
+  `productForGtin` won't answer with it, `describeForgetLoss` doesn't count it as a saved brand, and
+  the food log's recall lists skip it. It never earns a purchase count because only a preferred box
+  does. It shows in one place, the pantry, as frozen stock of its item.
+- **The item's "Out of it" doesn't reach a frozen portion, and that is the exception to the rule
+  above.** "I've used up the chicken" said about the half in the fridge (the item row's ✕, the
+  sheet's pill, a cook marking it used) is not a statement about the half in the freezer. So
+  `probablyHaveReason` answers `FROZEN_REASON` for an item marked out that still has one
+  (`outlivesItemOutOfIt`), `pantryEntries` keeps that portion's row and nothing else of the item's,
+  and `markOutOfMany` leaves it untouched. A named box doesn't get this: being out of vegan ground
+  beef is being out of the Beyond one too.
+- **Only while it's frozen.** Out of the freezer it's more of the item in the fridge again, so the
+  item's "Out of it" takes a thawed portion with the rest (`markOutOfMany` deletes it, and undo puts
+  it back).
+- **It answers for its item last, below the purchase reading.** A named box outranks the purchase
+  guess in `probablyHaveReason` because it's a statement against arithmetic. A portion is some of
+  the item split off the rest on purpose, so while the rest is on hand the rest is the answer.
+  Ranked with the other boxes, a pack bought yesterday with half frozen would read as "in the
+  freezer" everywhere the single answer is read, and a meal planned from the half left out would
+  get a task to thaw the other half (`mealThawTasks`).
+- **Thawing re-dates it and gives it a claim of its own.** `setProductFrozen` restarts it from the
+  item's `expiresAtForPurchase`, like any box, and also stamps a "Got it" window
+  (`defaultOnHandUntil`). A named box thawed with nothing said about it defers to its item, which
+  is right for a packet; a portion is nothing but its own claim and would otherwise leave the pantry
+  the moment it left the freezer. The window lapses like any other, so a portion nobody closes out
+  doesn't sit there for ever. Its row says "out of the freezer" (`THAWED_PORTION_REASON`) rather
+  than "marked as on hand", since nobody tapped "Got it".
+- **Used up or marked out, it's deleted rather than marked** (`markProductsOutOf`). A named box is
+  worth remembering after the packet is gone (its rating, its barcode, its store claims); a portion
+  is nothing but the packet.
+- **A purchase leaves it alone.** `finishShopping` clears the preferred box's claims because that
+  is the packet that came home, and a portion is never preferred. Buying more chicken is not
+  thawing the chicken in the freezer.
 
 ## Separate lists (`GroceryList`) — the trolley for a week away
 
@@ -412,9 +481,9 @@ going off.
   mirrors the db. The patch splits the purchase record into one conditional spread so a column
   added later can't be half-covered.
 - **The finish sheet drops the questions rather than discarding the answers.** `away` hides the
-  store picker, the "anything they didn't have?" section, the price fields and the receipt scan —
-  every one of them asks about what a purchase *leaves behind*. What's left is the confirm, which
-  is still worth asking for: it is what empties the trolley.
+  store picker, the "anything they didn't have?" section, the price fields (and the freezer toggle
+  on them) and the receipt scan — every one of them asks about what a purchase *leaves behind*.
+  What's left is the confirm, which is still worth asking for: it is what empties the trolley.
 - **`StartTripPrompt` offers no stores on an away list**, which leaves it as the Finish button
   alone — the shape it already takes for anyone with no stores on file. Every store on record is
   one near home.
@@ -520,7 +589,9 @@ tombstone per shop. This table is bounded by (items × stores you actually shop 
   filter chip row in `GroceryCatalogSheet`, because that's the catalog browser and it's open exactly
   when you're deciding what to buy where. **There is still no store chip on the shopping list
   rows** — the row is already dense, and a chip on every row is a column you can't act on. What
-  a row can now carry is one quiet caption, and only while a trip is running: see below.
+  a row can now carry is one quiet caption, and only while a trip is running: see below. The
+  other answer is the store lens, a heading per store rather than a chip per row: see "Grouping
+  the list by store" below.
 
 ### A store can be told which aisles it sells (`Shop.aisles`)
 
@@ -584,6 +655,88 @@ items from, and this is a person stating what a shop sells. Same side of the lin
   filter can't produce. For the same reason `shopsForItem` needs no change at all — every link it
   returns is a positive one, and a positive link already outranks the range.
 
+### Grouping the list by store, and a link per stop (#2938)
+
+A two-stop plan ("Trader Joe's, then the pharmacy") used to be two tasks opening the same long
+list. The list now has a third lens beside aisle and recipe (`groceryGroupBy: 'store'`,
+`buildGroceryStoreSections` in `groceryShops.ts`), and each stop's task names its store.
+
+- **A row files under habit, then assertion, then nothing.** `storeSectionShopFor` is
+  `primaryShopFor` (where you have actually bought it most) falling back to `exclusiveShopFor`
+  (the one store it is linked to, a hand tap included). Both already drop a stamped negative and
+  a "don't suggest" store. Anything else lands in the last section, "No store on record", which
+  says what the app doesn't know rather than anything about a store. An item with two
+  hand-asserted stores and no purchases files under neither: picking one would be the app
+  inventing a habit, the line `primaryShopFor` already draws.
+- **Sections follow the user's own store order, and a running trip's store leads.** Only a trip
+  `resolveActiveTrip` still honors, so an abandoned one can't keep reordering the list. Within a
+  section the aisle walk is kept (`sectionsInAisleOrder`, the rule the aisle lens and the kitchen
+  share), just without the aisle headings, and it is that store's own walk where it has one: see
+  the next section.
+- **No row drag and no add-button drop zones**, the recipe lens's rule for the recipe lens's
+  reason: which store a row is bought at is a fact on record, not a placement a drop could assign.
+- **An away list stays grouped by aisle** whatever is picked. Every store on record is one near
+  home, so store sections on the rental's list would name the wrong buildings, which is why
+  `StartTripPrompt` offers no stores there either. The setting is left alone and the picker's hint
+  says so.
+- **Row captions are the trip markers they always were, less one repetition.** A `usually` marker
+  naming the store the row already sits under is dropped, since "Usually Costco" under a "Costco"
+  heading says the heading twice. `only` stays ("Only at CVS" says no other store on record has
+  it, which a "CVS" heading doesn't), and so do the negatives, which are about the store you're
+  in. There is deliberately no "cheaper at X" caption: `tripMarkerFor` allows three captions, each
+  backed by something the user recorded, and a price comparison would be a fourth kind of claim.
+  It stays in the item sheet.
+- **Each stop's task carries `dundundun://groceries?shop=<id>`** (`groceriesLinkUrl`, read back by
+  `groceriesUrlShop`). Grouped by store it opens with that section expanded and scrolled into view;
+  grouped any other way it opens the list and leaves the lens alone, since a task tap is not a
+  request to change a setting. **It never starts a trip**: tapping a task named for a store is
+  planning to go there, and nothing infers a trip. The id rather than the name, so a rename between
+  planning and tapping still lands. The bare link every older task carries opens the list exactly
+  as it did.
+
+### A store can walk its own aisle order (`Shop.aisleOrder`, #2938)
+
+The usual walk (`aisleOrder`) is one order for every store, so starting a trip at a store laid out
+differently changed nothing about the rows. `Shop.aisleOrder` is that store's own walk, or `null`
+to follow the usual one, which is every store until somebody arranges one.
+
+- **Applied only where the store is known.** The aisle lens follows it while a trip at that store
+  is running (only one `resolveActiveTrip` still honors, so an abandoned trip can't keep the list
+  in another store's order), and each store's section in the store lens walks that store. The
+  store lens's last section ("No store on record") has no store of its own, so it walks the trip's
+  store during a trip and the usual order otherwise: those are rows you might pick up where you
+  are, and the aisle lens walks them the same way. Everything else keeps the usual order: the
+  kitchen, since a pantry is laid out like no shop, and every aisle picker, whose order is a list
+  to choose from rather than a walk.
+- **Arranged where somebody would reach for it: the Aisles tab, during a trip there.** Standing in
+  the store is the one moment anyone knows its layout, and it is the order the list is following
+  right then, so that is what a drag in the tab changes. A card above the rows names the store and
+  carries "Use the usual order" once it has an order of its own. Nothing else sets one, and there
+  is deliberately no per-store editor on the Stores tab: arranging a store you aren't standing in
+  is guessing at its layout. With no trip running the tab arranges the usual order and names any
+  store that keeps its own, so a reorder that didn't take there isn't a mystery. Rename, delete
+  and the non-food flag stay about the aisle itself and apply at every store, which the tab says.
+  The drag stays in `GroceryAislesSheet`, which was already `fullScreen` because a drag can't live
+  in a page sheet.
+- **Read through `shopWalkOrder`, never directly.** The stored list is what was arranged on the
+  day, so an aisle added since is missing from it. It sorts where the usual order puts it relative
+  to its neighbours: straight after the aisle before it there, or straight before the one after it
+  for an aisle the usual order leads with. So it lands beside the aisle it sits beside everywhere
+  else rather than off the end of the store. A name the usual order no longer has (a copy from a
+  device that hasn't seen a rename yet) is dropped at read, and `Other` always walks last. Adding
+  an aisle from the tab during a trip is the one exception: it goes at the bottom of the walk on
+  screen, where the field is.
+- **An arrangement that walks the same as the usual order is saved as `null`**
+  (`shopAisleOrderToSave`). A drag that ends where it began says nothing about the store, and
+  keeping a copy would stop it following the next change to the usual order.
+- **It is the fifth place an aisle name lives**, so `renameAisle` rewrites it in place and
+  `deleteAisle` drops the name, clearing an order left naming nothing. A walk makes no claim about
+  what a store sells, so unlike the range there is nothing a delete could wrongly widen.
+- **It is about the store, not the device.** A plain column on `grocery_shops` (`aisle_order`), so
+  it syncs and is backed up with the rest of the row. Two phones that each added the same store
+  fold by `naturalKeyFold`'s default for a plain column: the survivor's walk whole, else the
+  other's. A union of two walks would be an order nobody arranged.
+
 ## The active trip — "I'm at this store"
 
 The store used to be captured only at the *end* of a shop, in the finish sheet, which meant the
@@ -605,7 +758,8 @@ which rows you don't usually get here.
   its header confirm plans a trip (a task, possibly for tomorrow), "Start shopping at X" says
   you're there now. Overloading the one button would set the mode at exactly the wrong moment.
   Offered for a single selection only: you can only stand in one store, and a two-stop plan is
-  still a plan. Nothing anywhere infers a trip.
+  still a plan. Nothing anywhere infers a trip, including a stop's own task link, which names its
+  store only to scroll the store lens to it (see "Grouping the list by store" above).
 - **Three terminators, and they're in three different places for a reason.** The banner's Stop
   button and `clearList` end it in the store; finishing ends it in `GroceryScreen.handleFinished`
   rather than inside `finishShopping`, because that early-returns on an empty trolley and finishing
@@ -613,6 +767,9 @@ which rows you don't usually get here.
   at read time (not written back, like the aisle order), and `checkTripExpiry` on screen focus
   and on the app returning to the foreground (`useTripLiveActivitySync`) clears the fields so an expiry that happened while the app was open becomes *visible* rather than
   merely true; a memo whose inputs haven't changed won't re-render itself away.
+- **The trip also decides the walk**, when its store has one of its own (`Shop.aisleOrder`, above).
+  It is the other thing a running trip changes about the list, and it is read off the same
+  `resolveActiveTrip` answer as everything else here.
 - **Silence is the default and it's load-bearing** (`tripMarkerFor`). Only three things can be
   said, and each is backed by something the user recorded: `unavailable` ("Not at Safeway", their
   own negative claim), `only` ("Only at Costco", every store on record is one other — a hand
@@ -841,6 +998,10 @@ chicken too.
   would be data entry that changes nothing for two of its three values, which is the maintained
   inventory this file rules out three times over. Only the freezer earns a field, because only the
   freezer stops a clock.
+- **Half a pack in the freezer is a box, not a second bit on the item.** `frozenAt` is one bit
+  for the whole row, so "some of it is frozen and the rest isn't" can't be said there without
+  stopping the rest's clock too. That is the portion box "Freeze some" writes, under Products above
+  (#2925).
 - **Suspended, not cleared, because the interesting event is the thaw.** `expiresAt` and
   `keepUntil` sit untouched behind a live `frozenAt` and every countdown reads through
   `liveUseBy` (bound per side as `groceryShelfLife.liveExpiresAt` and `leftovers.liveKeepUntil`).
@@ -995,7 +1156,7 @@ froze, the jar you opened and the tub you were nearly out of are all the old one
 **A receipt or a barcode read into the Pantry clears them too** (`addManyToPantry`'s `acquired`,
 passed by `KitchenScreen`'s two scan paths and nothing else). It isn't a trip, so it still writes
 no purchase count and no use-by day of its own, but it is a new packet, and before this it carried
-the old one's "in the freezer", "opened" and "running low" straight onto it. Three details:
+the old one's "in the freezer", "opened" and "running low" straight onto it. Five details:
 
 - **A running-low row comes off the home list.** That is the one list `setRunningLow` reaches into,
   and the thing it was on there to buy has just been bought. The one-direction rule above is about
@@ -1005,8 +1166,31 @@ the old one's "in the freezer", "opened" and "running low" straight onto it. Thr
   date on the new packet (a month-old chicken day, overdue on arrival). A plain row keeps its day.
 - **The use-up task is dropped, not reconciled, when no live day is left.** The reason reverses on
   the next trip by itself, and a reconcile's delete would write the item's permanent "never".
-  The scan sheet's own freezer toggle is applied after the clear, so it lands on the new packet.
+  Both sheets' freezer toggles are applied after the clear, so they land on the new packet.
   A plain "Got it" (the typed field, the item sheet's pill) is not a new packet and clears nothing.
+- **A receipt read into the Pantry asks about the freezer too** (#2925). The receipt sheet used to
+  leave `ReceiptAddDraft.frozen` unset on the reading that a receipt has no shelf to ask about, but
+  a big shop is exactly when half of it goes straight in the freezer, and without the toggle each
+  row had to be found and dragged afterwards. So its rows carry the barcode sheet's snowflake in
+  the Pantry context, turning it on checks the row, and `handleReceiptApply` hands the result to
+  `addManyToPantry` as `frozenNames` the way `handleScanApply` does. It stays out of the shopping
+  context: that path ends in the finish sheet, which asks for itself (below).
+- **So does finishing a trip** (#2925), which is where the other big shop ends. Every row under
+  "What did they cost?" carries the same snowflake at its trailing edge, and the sheet hands its
+  answer to `finishShopping` as `frozenIds`, which already existed for the barcode sheet's toggle
+  and lands after the purchase's own `frozenAt` clear. Three details:
+  - **It rides the price rows rather than being a section of its own.** Those rows already are
+    the list of what came home, one per item; a second copy of the list would double the longest
+    part of the sheet. Every row it sits on is already being bought, so turning it on has nothing
+    else to include, unlike the receipt's toggle, which checks its row.
+  - **The barcode sheet's flags seed it rather than being added to it.** `GroceryScreen` still
+    holds `scanFrozenIds` until the trip ends, but it now opens the finish sheet with those rows
+    lit, and what the sheet hands back is what is written. Unioned instead, a scanned row would
+    have shown an unlit snowflake and gone in the freezer anyway, with no way to take it back.
+  - **It is offered only where finishing records the purchase.** An away trip records nothing and
+    already hides the price rows it sits on. Simplified mode hides it with "Pantry and freezer
+    tracking", unless a scan this trip already flagged a row, the mode's usual "a feature in use
+    stays on show".
 
 ### Nothing leaves the pantry, so the one exit worth noticing is offered as a task
 
@@ -1370,6 +1554,15 @@ plumbing through the recipes JSON blob.
   neutral 0.5 wash on its own, and a linked substitute genuinely on hand lifts that (capped
   below a fresh direct purchase, so **the fully-stocked recipe still wins**) rather than
   leaving a coverable line reading as no better than an unstocked one.
+- **Checking an item off moves no pantry count, and the recipe box relies on it** (#2922). The
+  box counts every recipe in one pass (`countLikelyInPantryByRecipe`, which builds the
+  catalog-wide lookups once rather than once per recipe) and keeps those counts through any
+  catalog change `samePantryCatalog` calls a check-off, rather than recounting a few hundred
+  recipes on every tick in the trolley. That holds because a listed row is `alreadyOnList` or
+  `inCart` either way and neither is counted. **A change that lets `checked` matter to a count**
+  (counting `inCart` as on hand, say) has to change `samePantryCatalog` in the same edit, or the
+  box shows the count from before the check until something else changes; its last test pins
+  the premise and fails first.
 
 ## Standing swaps (`ItemSubLink.standing`) — "always use oat milk for milk"
 

@@ -54,6 +54,15 @@ interface Props {
    */
   onCopyTo?: (date: string) => void;
   /**
+   * The Also on row's way past its seven chips (#2913), as `onMoveFurther` is
+   * Move to's: opens a full date picker to plan this meal on a day outside the
+   * week too. The caller dismisses this sheet first and hosts the picker, for
+   * the same reason, and refuses a day that already has this meal in this
+   * slot (`copyEntryTo` does), since a calendar can't grey those out the way
+   * the chips do.
+   */
+  onCopyFurther?: () => void;
+  /**
    * The days already holding this meal in this slot (`daysWithMeal`), its own
    * included. Their chips read as done and don't take a tap, so a second tap
    * can't plan the same lunch twice on one day.
@@ -199,7 +208,7 @@ interface Props {
 const TOP_INSET = 72;
 
 export function MealEntrySheet({
-  visible, entry, title, weekDays, onMove, onMoveFurther, onCopyTo, copiedDays, onReplace, onChooseRecipe, onSaveAsRecipe, matchingRecipeName,
+  visible, entry, title, weekDays, onMove, onMoveFurther, onCopyTo, onCopyFurther, copiedDays, onReplace, onChooseRecipe, onSaveAsRecipe, matchingRecipeName,
   onRemove, onRename, choiceGroups = [], onChoose,
   onScale, baseServings, baseServingsMax, onSetCooked, onViewFoodLogEntry, onLogMeal, onOpenRecipe, onAddToList, onAddPrepTasks,
   onLogLeftovers,
@@ -472,6 +481,19 @@ export function MealEntrySheet({
                   );
                 })}
               </View>
+              {/* Where Move to keeps its own, so the two rows read alike:
+                  seven chips for the week, and a calendar for the rest. */}
+              {!!onCopyFurther && (
+                <View style={styles.furtherRow}>
+                  <InlineAction
+                    label="Another date…"
+                    icon="calendar-outline"
+                    variant="neutral"
+                    onPress={() => { haptics.tap(); dismiss(onCopyFurther); }}
+                    accessibilityLabel="Also plan this meal on a date outside this week"
+                  />
+                </View>
+              )}
               <Text style={styles.copyHint}>
                 Tap a day to plan this {slotLabel(entry?.slot ?? 'dinner').toLowerCase()} there too.
               </Text>

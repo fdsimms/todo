@@ -35,6 +35,7 @@ import {
 } from '../utils/groceryPrice';
 import { resolveShoppingSubstitutes, substitutesFor } from '../utils/itemSubs';
 import { describeShopAisles, isOutOfRange } from '../utils/groceryShops';
+import { featureShown } from '../utils/simpleMode';
 import { GROCERY_NAME_MAX_LENGTH, SHOP_NAME_MAX_LENGTH } from '../types';
 
 /** Matches the shopping list's own checkbox, so the shape reads as familiar. */
@@ -98,6 +99,15 @@ interface Props {
    */
   seedPurchasedAt?: string;
   /**
+   * Rows already flagged for the freezer before the trip reached this sheet:
+   * the barcode scan sheet's own snowflake, which the screen holds until the
+   * trip finishes (#2925). Read on opening, like the other seeds, so each one
+   * shows lit on its row here and can still be turned off. What `onFinished`
+   * hands back is this sheet's answer, not a union with the seed, so a
+   * snowflake that reads as off really is off.
+   */
+  seedFrozenIds?: ReadonlySet<string>;
+  /**
    * Opens the receipt sheet over this one, when the screen offers it.
    *
    * Optional because the reading needs an Anthropic API key, and whether there
@@ -141,14 +151,47 @@ interface Props {
    */
   away?: boolean;
   onClose: () => void;
+  /**
+   * `frozenIds` is the freezer toggle on the rows being bought, ready for
+   * `finishShopping`'s own `frozenIds`: only ids still in `purchased`, and
+   * always empty where the toggle isn't offered (see `freezerShown`).
+   */
   onFinished: (
     shopId: string | null,
     unavailableIds: string[],
     priceById: Record<string, number>,
     substitutes: Array<{ itemId: string; subItemId: string }>,
-    purchasedAt?: string
+    purchasedAt: string | undefined,
+    frozenIds: ReadonlySet<string>
   ) => void;
 }
+
+/** A copy of the set with `key` flipped, for a toggle. */
+function toggledIn<T>(set: ReadonlySet<T>, key: T): Set<T> {
+  const next = new Set(set);
+  if (next.has(key)) next.delete(key);
+  else next.add(key);
+  return next;
+}
+
+/** Whether two sets hold the same members. */
+function sameMembers<T>(a: ReadonlySet<T>, b: ReadonlySet<T>): boolean {
+  return a.size === b.size && Array.from(a).every(key => b.has(key));
+}
+
+// Map of this file (one component holding most of it; `grep -n '// ===='` is
+// the table of contents):
+//   bindings       theme, the keyboard inset, the stores and settings read
+//   state          the sheet's answers (store, leftovers, substitutes, prices,
+//                  freezer), the default store, whether the freezer is offered
+//   seeding        what each opening, and each receipt read from here, fills in
+//   finish         adding a store, Cancel and its dirty check, Finish
+//   leftovers      which leftovers are asked about, the store's range, the
+//                  "didn't have it" ticks and what came home instead
+//   prices         the freezer toggle, the count line, a row's last price
+//   render         the scan action, the store picker, the range card, the
+//                  leftovers, then the bought rows with price and freezer
+// Above: the helpers and the prop types. Below the component: styles.
 
 /**
  * Where the trip gets its store.
@@ -214,6 +257,19 @@ interface Props {
  * field so that finishing files it against this store. It sits last
  * because it's the longest, and Finish lives in the header where a long
  * section can't push it off the screen.
+ *
+ * **Each of those rows also carries the freezer toggle** (#2925), the barcode
+ * sheet's snowflake in the same place, since this is where a big shop ends and
+ * a big shop is when half of it goes straight in the freezer. It rides the
+ * price rows rather than getting a section of its own because they already
+ * are the list of what's coming home, one row per item, and a second copy of
+ * that list would double the longest part of the sheet. Every row it sits on
+ * is already being bought (there is no unticking here), so turning it on has
+ * nothing else to include, which is the rule the receipt's own toggle needs a
+ * line of code for. Off by default and silent when left alone, like every
+ * other question on this sheet; it goes to `finishShopping`'s `frozenIds`,
+ * which applies it after the purchase's own "no longer frozen" clear so it
+ * lands on the new packet.
  */
 export function FinishShoppingSheet({
   visible,
@@ -224,12 +280,14 @@ export function FinishShoppingSheet({
   seedPriceText,
   seedPurchasedAt,
   seedStamp,
+  seedFrozenIds,
   onScanReceipt,
   overlays,
   away = false,
   onClose,
   onFinished,
 }: Props) {
+  // ==== bindings ====
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
@@ -245,7 +303,9 @@ export function FinishShoppingSheet({
   const ensureCatalogItem = useGroceryStore(s => s.ensureCatalogItem);
   const setShopAisles = useGroceryStore(s => s.setShopAisles);
   const currencySymbol = useSettingsStore(s => s.currencySymbol);
+  const simpleMode = useSettingsStore(s => s.simpleMode);
 
+  // ==== state ====
   const [selected, setSelected] = useState<string | null>(null);
   // Leftovers the store didn't have. Ids rather than an index set, so a list
   // that changes underneath the sheet can't shift the answers onto other rows.
@@ -258,6 +318,10 @@ export function FinishShoppingSheet({
   // every keystroke, so a half-typed "4." is a field mid-edit and not a
   // rejected value flashing an error at someone holding a receipt.
   const [priceText, setPriceText] = useState<Record<string, string>>({});
+  // Rows going in the freezer, by item id. Seeded on opening from
+  // `seedFrozenIds` and read against `purchased` at Finish, so an id whose row
+  // has left the trolley since writes nothing.
+  const [frozen, setFrozen] = useState<ReadonlySet<string>>(new Set());
 
   // If a trip is running, the store is already known and this stops being a
   // question — you said where you were on the way in. Falling back to where you
@@ -266,6 +330,18 @@ export function FinishShoppingSheet({
   const activeTrip = resolveActiveTrip(tripShopId, tripStartedAt, shops, new Date());
   const defaultShopId = activeTrip?.id ?? lastShopId;
 
+  // Whether the freezer toggle is offered: only where finishing puts what was
+  // bought in the pantry. An away trip records nothing (the store drops
+  // `frozenIds` along with the rest), and simplified mode's "Pantry and
+  // freezer tracking" switch is this exact question, unless a scan this trip
+  // already flagged a row, which stays on show so it can be seen and undone.
+  const freezerShown = !away && featureShown(
+    'pantryTracking',
+    simpleMode,
+    purchased.some(p => seedFrozenIds?.has(p.id))
+  );
+
+  // ==== seeding ====
   // The prices typed into a row's price tag during this trip, as field text.
   // They seed their fields on opening, so that finishing records them against
   // the trip's store (#2936): the tag writes only the item's own price when
@@ -308,8 +384,11 @@ export function FinishShoppingSheet({
   // default store is: they belong to the trip being finished now, and letting
   // a prop change reach `selected`/`priceText` while the sheet is up would undo
   // an edit the user had already made on top of them.
-  const seedRef = useRef({ shopId: seedShopId, priceText: seedPriceText });
-  seedRef.current = { shopId: seedShopId, priceText: seedPriceText };
+  const seedRef = useRef({ shopId: seedShopId, priceText: seedPriceText, frozenIds: seedFrozenIds });
+  seedRef.current = { shopId: seedShopId, priceText: seedPriceText, frozenIds: seedFrozenIds };
+  // What `frozen` was seeded with, so the dirty check doesn't count a flag the
+  // scan already made: cancelling leaves it where it was, with the screen.
+  const frozenSeedRef = useRef<ReadonlySet<string>>(new Set());
 
   useEffect(() => {
     if (visible) {
@@ -326,6 +405,10 @@ export function FinishShoppingSheet({
       const tripPrices = tripPriceTextRef.current();
       tripPriceSeedRef.current = tripPrices;
       setPriceText({ ...tripPrices, ...(seed.priceText ?? {}) });
+      // Same reset: last trip's freezer flags were about last trip's bags.
+      const frozenSeed = new Set(seed.frozenIds ?? []);
+      frozenSeedRef.current = frozenSeed;
+      setFrozen(frozenSeed);
     }
   }, [visible]);
 
@@ -353,6 +436,7 @@ export function FinishShoppingSheet({
     setSubstituteFor({});
   }, [selected]);
 
+  // ==== finish ====
   /** Returning the message rejects the name and holds the field open. */
   const handleAdd = (name: string) => {
     const shop = addShop(name);
@@ -369,7 +453,8 @@ export function FinishShoppingSheet({
       || unavailable.length > 0
       || Object.entries(priceText).some(
         ([id, t]) => t.trim() !== '' && t !== tripPriceSeedRef.current[id]
-      );
+      )
+      || !sameMembers(frozen, frozenSeedRef.current);
     if (!dirty) { Keyboard.dismiss(); onClose(); return; }
     Alert.alert(
       'Discard changes?',
@@ -400,15 +485,23 @@ export function FinishShoppingSheet({
     // way; this is about not submitting an answer the user can no longer see.
     // The substitutes follow, since one is only ever about an unavailable row.
     const stillLeftover = unavailable.filter(id => leftover.some(l => l.id === id));
+    // The same "still here" rule for the freezer, from the other side: only
+    // rows still being bought. A hidden toggle hands back nothing, so what's
+    // written is exactly what the sheet showed.
+    const frozenIds = new Set(
+      freezerShown ? purchased.filter(p => frozen.has(p.id)).map(p => p.id) : []
+    );
     onFinished(
       selected,
       selected ? stillLeftover : [],
       priceById,
       selected ? resolveShoppingSubstitutes(stillLeftover, substituteFor) : [],
-      seedPurchasedAt
+      seedPurchasedAt,
+      frozenIds
     );
   };
 
+  // ==== leftovers ====
   const selectedShop = selected ? shops.find(s => s.id === selected) ?? null : null;
 
   // The leftovers actually worth asking about. A store told it only sells
@@ -501,6 +594,14 @@ export function FinishShoppingSheet({
     setSubstituteFor(prev => ({ ...prev, [itemId]: created.id }));
   };
 
+  // ==== prices ====
+  // Just the flag: every row carrying the toggle is already in the trolley,
+  // so unlike the receipt's own toggle there is no row to check alongside it.
+  const toggleFrozen = (itemId: string) => {
+    haptics.tap();
+    setFrozen(prev => toggledIn(prev, itemId));
+  };
+
   const countLabel = `${checkedCount} ${checkedCount === 1 ? 'item comes' : 'items come'} off the list`;
 
   /**
@@ -514,6 +615,7 @@ export function FinishShoppingSheet({
     return item ? lastPriceForItem(item, selected, itemShops) : null;
   };
 
+  // ==== render ====
   return (
     <SheetModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
@@ -749,7 +851,8 @@ export function FinishShoppingSheet({
 
           {/* Last, and asked with or without a store — see the note on the
               component. A row's placeholder is what it last cost, so the
-              common case is reading rather than typing. */}
+              common case is reading rather than typing. The freezer toggle
+              rides the same rows, for the reason the component note gives. */}
           {purchased.length > 0 && (
             <>
               <Text style={styles.label}>WHAT DID THEY COST?</Text>
@@ -757,55 +860,83 @@ export function FinishShoppingSheet({
                 Optional. Fill in what you remember and it shows next time this is on your list
                 {selectedShop ? `, along with what ${selectedShop.name} charges` : ''}. Skip any
                 you don’t know and the last price stays.
+                {freezerShown ? ' Tap the snowflake on anything going in the freezer.' : ''}
               </Text>
 
               <View style={styles.card}>
                 {purchased.map((row, i) => {
                   const known = lastPriceFor(row.id);
+                  const isFrozen = frozen.has(row.id);
                   return (
-                    <View key={row.id} style={[styles.row, i > 0 && styles.rowDivided]}>
-                      <View style={styles.priceName}>
-                        <Text style={styles.rowTitle} numberOfLines={1}>
-                          {row.name}
-                        </Text>
-                        {!!row.quantity && (
-                          <Text style={styles.rowQuantity} numberOfLines={1}>
-                            {row.quantity}
+                    <View key={row.id} style={[styles.rowLine, i > 0 && styles.rowDivided]}>
+                      <View style={freezerShown ? [styles.row, styles.rowBeforeFreezer] : [styles.row, styles.rowFill]}>
+                        <View style={styles.priceName}>
+                          <Text style={styles.rowTitle} numberOfLines={1}>
+                            {row.name}
                           </Text>
-                        )}
+                          {!!row.quantity && (
+                            <Text style={styles.rowQuantity} numberOfLines={1}>
+                              {row.quantity}
+                            </Text>
+                          )}
+                        </View>
+                        <View style={styles.priceField}>
+                          <Text style={styles.priceSymbol}>{currencySymbol}</Text>
+                          <TextInput
+                            style={styles.priceInput}
+                            value={priceText[row.id] ?? ''}
+                            onChangeText={text =>
+                              setPriceText(prev => ({ ...prev, [row.id]: formatPriceInput(text) }))
+                            }
+                            // Cents-first entry (formatPriceInput) never needs a
+                            // decimal key, so the plain digit pad is the right
+                            // one here — unlike the `numeric` fallback this used
+                            // to avoid, back when a decimal separator had to be
+                            // typed by hand.
+                            keyboardType="number-pad"
+                            // returnKeyType is inert on the iOS number pad,
+                            // which has no return key at all — the accessory
+                            // bar below is what actually dismisses this, and
+                            // it matters here more than anywhere: the prices
+                            // are a list, so the keyboard is up for the whole
+                            // walk down it and covers the Finish button.
+                            returnKeyType="done"
+                            inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
+                            // "Price" rather than a bare "0.00" when nothing
+                            // is known: a figure in the placeholder's grey
+                            // reads as a price already saved (CLAUDE.md's
+                            // placeholder rule), and $0.00 is a real price.
+                            placeholder={known !== null ? `e.g. ${priceToInput(known)}` : 'Price'}
+                            placeholderTextColor={colors.textTertiary}
+                            maxLength={PRICE_INPUT_MAX_LENGTH}
+                            accessibilityLabel={`Price for ${row.name}`}
+                          />
+                        </View>
                       </View>
-                      <View style={styles.priceField}>
-                        <Text style={styles.priceSymbol}>{currencySymbol}</Text>
-                        <TextInput
-                          style={styles.priceInput}
-                          value={priceText[row.id] ?? ''}
-                          onChangeText={text =>
-                            setPriceText(prev => ({ ...prev, [row.id]: formatPriceInput(text) }))
+                      {/* The barcode sheet's snowflake, same glyph, same
+                          trailing edge, and beside the row rather than inside
+                          it so it's its own control for VoiceOver. */}
+                      {freezerShown && (
+                        <TouchableOpacity
+                          activeOpacity={interaction.activeOpacity}
+                          style={styles.freezerControl}
+                          onPress={() => toggleFrozen(row.id)}
+                          hitSlop={{ top: spacing.xs, bottom: spacing.xs }}
+                          accessibilityRole="switch"
+                          accessibilityState={{ checked: isFrozen }}
+                          accessibilityLabel={
+                            isFrozen
+                              ? `${row.name}, going in the freezer. Tap to change.`
+                              : `Put ${row.name} in the freezer`
                           }
-                          // Cents-first entry (formatPriceInput) never needs a
-                          // decimal key, so the plain digit pad is the right
-                          // one here — unlike the `numeric` fallback this used
-                          // to avoid, back when a decimal separator had to be
-                          // typed by hand.
-                          keyboardType="number-pad"
-                          // returnKeyType is inert on the iOS number pad,
-                          // which has no return key at all — the accessory
-                          // bar below is what actually dismisses this, and
-                          // it matters here more than anywhere: the prices
-                          // are a list, so the keyboard is up for the whole
-                          // walk down it and covers the Finish button.
-                          returnKeyType="done"
-                          inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
-                          // "Price" rather than a bare "0.00" when nothing
-                          // is known: a figure in the placeholder's grey
-                          // reads as a price already saved (CLAUDE.md's
-                          // placeholder rule), and $0.00 is a real price.
-                          placeholder={known !== null ? `e.g. ${priceToInput(known)}` : 'Price'}
-                          placeholderTextColor={colors.textTertiary}
-                          maxLength={PRICE_INPUT_MAX_LENGTH}
-                          accessibilityLabel={`Price for ${row.name}`}
-                        />
-                      </View>
+                        >
+                          <Ionicons
+                            name={isFrozen ? 'snow' : 'snow-outline'}
+                            size={iconSize.sm}
+                            color={isFrozen ? colors.accent : colors.textTertiary}
+                          />
+                        </TouchableOpacity>
+                      )}
                     </View>
                   );
                 })}
@@ -855,6 +986,18 @@ function makeStyles(colors: Colors) {
       paddingVertical: spacing.md,
     },
     rowDivided: { borderTopWidth: border.hairline, borderTopColor: colors.separator },
+    // A bought row and its freezer toggle, side by side, as the receipt
+    // sheet's Pantry rows lay them out: the row keeps the width up to the
+    // snowflake and hands its trailing padding to the toggle, so the price
+    // field doesn't sit a card's padding away from it.
+    rowLine: { flexDirection: 'row', alignItems: 'stretch' },
+    rowFill: { flex: 1 },
+    rowBeforeFreezer: { flex: 1, paddingRight: spacing.xs },
+    freezerControl: {
+      justifyContent: 'center',
+      paddingLeft: spacing.sm,
+      paddingRight: spacing.md,
+    },
     rowTitle: { flex: 1, color: colors.text, fontSize: font.md },
     // Sits under its row rather than opening anything — no divider of its own,
     // so it reads as part of the row it's answering for, not a new one.

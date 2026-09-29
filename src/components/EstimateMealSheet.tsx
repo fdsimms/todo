@@ -35,14 +35,22 @@ import {
   describeRecall,
   describedGrams,
   descriptionClauses,
+  measuresByWeight,
   rankRecallCandidates,
+  recallAmountAsk,
   recallFoods,
+  recallMeasuringPanel,
   recallWeight,
+  recalledHelping,
+  type RecallAmountAsk,
+  type RecallChange,
   type RecalledCatalogFood,
   type RecalledFood,
+  type RecalledHelping,
 } from '../utils/foodRecall';
 import { creditedKeys, foodLogRecency, rankByRecency } from '../utils/foodLogRecents';
-import { scalePanelToAmount } from '../utils/foodLog';
+import { MAX_ESTIMATE_MULTIPLE, describeEstimateCount, estimateCountNoun, scalePanelToAmount } from '../utils/foodLog';
+import { formatQuantityAmount } from '../utils/quantity';
 import { perServing, recipeNutrition } from '../utils/recipeNutrition';
 import { standingSwapMap } from '../utils/standingSwaps';
 import { packageHelping } from '../utils/scanPortion';
@@ -53,6 +61,8 @@ import { groceryNameKey } from '../utils/groceryParse';
 import { haptics } from '../utils/haptics';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { CountStepper } from './CountStepper';
+import { ESTIMATE_AMOUNT_OPTIONS } from './EstimateAmountSheet';
 import { InlineAction } from './InlineAction';
 import { PressableScale } from './PressableScale';
 import { SegmentedControl } from './SegmentedControl';
@@ -116,9 +126,11 @@ import { SheetHeader } from './SheetHeader';
 //   state          the description, the estimate on screen, the staged row
 //   offers         past entries, catalog rows and recipes the text names
 //   estimate       asking the model, refining with answers, the Log button
-//   staged rows    a past entry's amount step, and its one-tap +
+//   staged rows    a past entry's amount step (a weight, or an estimate's
+//                  count or multiple), what it would log, and its one-tap +
 //   save/cancel    filing the estimate as a recipe, the discard guard
-//   render         the offer list, the estimate row, the result card
+//   render         the offer list (a staged row's amount step is
+//                  `renderAmountStep`), the estimate row, the result card
 // Below the component: PendingRecallCard, KcalFigure, NutrientLine, styles.
 
 /**
@@ -132,6 +144,21 @@ import { SheetHeader } from './SheetHeader';
 type PendingRecallLog =
   | { kind: 'recall'; food: RecalledFood; clause: string }
   | { kind: 'catalog'; food: RecalledCatalogFood; clause: string };
+
+/**
+ * What a staged row's amount step holds, whichever question it asks (see
+ * `askFor`): the weight field's text and the recorded weight it opened on, or
+ * an estimate's count or multiple. Only the one its question reads is used.
+ */
+interface StagedAmount {
+  weight: string;
+  baseline: number | null;
+  count: number | null;
+  factor: number | null;
+}
+
+/** What logging a staged row writes, beside where and when it lands. */
+type StagedWrite = RecalledHelping;
 
 interface Props {
   visible: boolean;
@@ -209,19 +236,17 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
   /**
    * The "you already have figures for this" row a person tapped, staged for
    * confirmation rather than logged on the tap itself — see the note above
-   * `openRecall`/`openCatalog` for why a tap used to log outright and no
-   * longer does.
+   * `openPending` for why a tap used to log outright and no longer does.
    */
   const [pendingLog, setPendingLog] = useState<PendingRecallLog | null>(null);
-  /** The weight field for the staged row, editable before it's logged. */
-  const [pendingWeight, setPendingWeight] = useState('');
   /**
-   * The recorded weight the staged row opened with, so `confirmPending` can
-   * tell an untouched field from an edited one and only rescale on the
-   * latter — reusing the stored panel verbatim otherwise, for the reason
-   * `confirmPending`'s own doc comment (below) gives.
+   * The staged row's amount step, editable before it's logged, with what it
+   * opened on so `stagedWrite` can tell an untouched amount from a changed
+   * one and reuse the stored panel verbatim for the first.
    */
-  const [pendingDefaultGrams, setPendingDefaultGrams] = useState<number | null>(null);
+  const [pendingAmount, setPendingAmount] = useState<StagedAmount | null>(null);
+  /** Why the staged row's last Log didn't log, shown in its card (#2914). */
+  const [pendingError, setPendingError] = useState<string | null>(null);
   /**
    * The description the current estimate was asked about, before any answers
    * were folded into it. A refinement re-asks from this rather than from the
@@ -265,8 +290,8 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
     setChosenSlot(slot);
     setSavedRecipeId(null);
     setPendingLog(null);
-    setPendingWeight('');
-    setPendingDefaultGrams(null);
+    setPendingAmount(null);
+    setPendingError(null);
     setEstimatedFor(null);
     setQuestions([]);
     setDetailsOpen(false);
@@ -499,9 +524,10 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
 
   // ==== staged rows: the amount step and the one-tap + ====
   /**
-   * `food`'s own panel scaled to the weight this row's own clause names, when
-   * it names one — "25g" against a food last logged at 30g scales every
-   * stated key by 25/30, the same arithmetic a portion sheet already trusts.
+   * The row's measuring panel (`measuringPanel`) scaled to the weight this
+   * row's own clause names, when it names one — "25g" against a food last
+   * logged at 30g scales every stated key by 25/30, the same arithmetic a
+   * portion sheet already trusts.
    *
    * Read off `staged.clause`, not the whole description: a second food named
    * alongside this one can carry its own weight ("31 g baguette, 25g peach
@@ -513,7 +539,7 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
    */
   const scaledWeight = (staged: PendingRecallLog) => {
     const grams = describedGrams(staged.clause);
-    return grams ? scalePanelToAmount(staged.food.nutrition, grams, null, at) : null;
+    return grams ? scalePanelToAmount(measuringPanel(staged), grams, null, at) : null;
   };
 
   /** The confirm step's weight field, read as a positive number of grams. */
@@ -523,30 +549,116 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
   };
 
   /**
-   * The amount a staged row opens with: the weight a "205g" already typed into
-   * the description implies, or the recorded one otherwise. `baseline` is the
-   * recorded weight, kept so `logStaged` can tell an untouched amount from an
-   * edited one.
+   * What a staged row's amount is measured against: a catalog row's own
+   * panel, or for something eaten before the panel `recallMeasuringPanel`
+   * picks, which is the database panel an unfiled food kept when it kept one.
+   * `stagedWrite` measures off the same one, so the default weight and the
+   * figure on the row are the ones that land.
    */
-  const stagedDefaults = (staged: PendingRecallLog) => {
-    const scaled = scaledWeight(staged);
+  const measuringPanel = (staged: PendingRecallLog) =>
+    staged.kind === 'recall' ? recallMeasuringPanel(staged.food) : staged.food.nutrition;
+
+  /**
+   * Which question a staged row's amount step asks (#2914): a count in its
+   * own unit or a multiple of the whole for an estimate, grams for anything
+   * that can be weighed, and no field at all for a food that can't, since a
+   * field whose value is ignored is worse than none. A catalog row is weighed
+   * against its own panel when that panel can be. See `recallAmountAsk`.
+   */
+  const askFor = (staged: PendingRecallLog): RecallAmountAsk => {
+    if (staged.kind === 'recall') return recallAmountAsk(staged.food);
+    return measuresByWeight(staged.food.nutrition) ? { kind: 'weight' } : { kind: 'none' };
+  };
+
+  /**
+   * The amount a staged row opens with: the weight a "205g" already typed into
+   * this food's own part of the description implies (`scaledWeight`), or the recorded one otherwise, and for an
+   * estimate the count or multiple it was last logged at. `baseline` is the
+   * recorded weight, kept so `stagedWrite` can tell an untouched weight from
+   * an edited one; a count or multiple is compared with the ask's own
+   * `opensAt` the same way.
+   */
+  const stagedDefaults = (staged: PendingRecallLog): StagedAmount => {
+    const ask = askFor(staged);
+    const scaled = ask.kind === 'weight' ? scaledWeight(staged) : null;
     const baseline = staged.kind === 'recall'
       ? staged.food.grams
       : helpingOf(staged.food)?.servingGrams ?? null;
     const weight = scaled?.grams != null ? String(scaled.grams) : (baseline != null ? String(baseline) : '');
-    return { weight, baseline };
+    return {
+      weight,
+      baseline,
+      count: ask.kind === 'count' ? ask.opensAt ?? ask.count.count : null,
+      factor: ask.kind === 'multiple' ? ask.opensAt : null,
+    };
+  };
+
+  /**
+   * What a staged row logs at `amount`, or why it can't, in the words the card
+   * shows. Everything that logs or shows a figure reads this: the row's
+   * calories and its + at the amount the step opens with, the card's preview
+   * and Log at whatever was chosen. So the figure on the row is the figure
+   * that lands, and nothing logs a helping other than the one on screen.
+   *
+   * **An amount left as it opened logs the stored panel verbatim**, which is
+   * the point: its `source` is the claim it was recorded under, and
+   * re-describing the same food to the model would replace that with
+   * `estimated`, permanently. A new weight is measured (`scalePanelToAmount`
+   * keeps the source), and a new count or multiple of an estimate is taken of
+   * its whole (`recalledHelping`), so changing the amount doesn't cost the
+   * claim either. Comparing against what it opened with rather than scaling
+   * unconditionally keeps an untouched amount byte-identical to the entry it
+   * came from.
+   *
+   * **A weight that can't be used is said, never swapped for the recorded
+   * helping.** That swap was the report (#2914): 110 typed into the field for
+   * an estimate of "2 slices" logged the whole previous helping, with the
+   * field still reading 110. Estimates are asked for a count or a multiple now
+   * and never for grams, a food that can't be weighed shows no field, and
+   * what's left (a field emptied, or a figure that isn't a weight) gets a line
+   * in the card instead of a log.
+   */
+  const stagedWrite = (staged: PendingRecallLog, amount: StagedAmount): StagedWrite | { error: string } => {
+    const ask = askFor(staged);
+    let change: RecallChange | null = null;
+    if (ask.kind === 'count') {
+      if (amount.count !== null && amount.count !== ask.opensAt) change = { factor: amount.count / ask.count.count };
+    } else if (ask.kind === 'multiple') {
+      if (amount.factor !== null && amount.factor !== ask.opensAt) change = { factor: amount.factor };
+    } else if (ask.kind === 'weight') {
+      const text = amount.weight.trim();
+      const grams = parseWeightGrams(text);
+      if (grams === null && (text || amount.baseline !== null)) return { error: 'Enter a weight in grams.' };
+      if (grams !== null && grams !== amount.baseline) change = { grams };
+    }
+
+    const unmeasured = { error: 'That amount can\'t be measured for this food, so nothing was logged.' };
+    if (staged.kind === 'recall') return recalledHelping(staged.food, change, at) ?? unmeasured;
+
+    const food = staged.food;
+    if (change && 'grams' in change) {
+      const scaled = scalePanelToAmount(food.nutrition, `${change.grams}g`, null, at);
+      if (!scaled) return unmeasured;
+      return {
+        quantity: scaled.grams != null ? `${scaled.grams}g` : food.choice.label,
+        grams: scaled.grams,
+        nutrition: scaled.nutrition,
+        sourcePanel: null,
+      };
+    }
+    const nutrition = helpingOf(food);
+    if (!nutrition) return unmeasured;
+    return { quantity: food.choice.label, grams: nutrition.servingGrams, nutrition, sourcePanel: null };
   };
 
   /**
    * The calories the row's + would log, for the row to show beside it. The
-   * same panel `logStaged` writes at the default amount, so the number on the
+   * same write `logStaged` makes at the default amount, so the number on the
    * row is the number that lands in the day.
    */
   const stagedKcal = (staged: PendingRecallLog): number | undefined => {
-    const scaled = scaledWeight(staged);
-    const panel = scaled?.nutrition
-      ?? (staged.kind === 'recall' ? staged.food.nutrition : helpingOf(staged.food));
-    return panel?.amounts.calorieKcal;
+    const write = stagedWrite(staged, stagedDefaults(staged));
+    return 'error' in write ? undefined : write.nutrition.amounts.calorieKcal;
   };
 
   /**
@@ -557,85 +669,77 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
    */
   const openPending = (staged: PendingRecallLog) => {
     haptics.tap();
-    const { weight, baseline } = stagedDefaults(staged);
     setPendingLog(staged);
-    setPendingWeight(weight);
-    setPendingDefaultGrams(baseline);
+    setPendingAmount(stagedDefaults(staged));
+    setPendingError(null);
   };
 
   const cancelPending = () => {
     haptics.tap();
     Keyboard.dismiss();
     setPendingLog(null);
-    setPendingWeight('');
-    setPendingDefaultGrams(null);
+    setPendingAmount(null);
+    setPendingError(null);
+  };
+
+  /** One field of the open amount step changed, which also clears a stale error. */
+  const editPending = (patch: Partial<StagedAmount>) => {
+    setPendingAmount(current => current && { ...current, ...patch });
+    setPendingError(null);
   };
 
   /**
-   * Logs a staged row as it was eaten, or at the weight `weightText` names
-   * when that differs from `baseline`.
+   * Logs a staged row at `amount`, through `stagedWrite`. Returns the reason
+   * when it couldn't, for the card to show.
    *
-   * The stored panel goes back verbatim when the amount wasn't changed, which
-   * is the point: its `source` is the claim it was recorded under, and
-   * re-describing the same food to the model would replace that with
-   * `estimated`, permanently. A scale keeps that same source (see
-   * `scalePanelToAmount`), so naming a different weight doesn't cost the
-   * claim either. Comparing against the baseline rather than scaling
-   * unconditionally keeps an untouched amount byte-identical to the entry it
-   * came from rather than run back through the scaling arithmetic for no
-   * reason. Same reuse `duplicateEntry` performs, and `mealPlanEntryId` is
-   * dropped for the same reason it drops it (this is a fresh eating, not the
-   * planned meal again) unless the caller named one.
+   * Something eaten before carries the panel it kept (#2914): without it, a
+   * database food nobody filed came back as an entry that could only be
+   * renamed, and an estimate at a new count keeps the whole it was taken of so
+   * it can be changed again. `mealPlanEntryId` is dropped for the reason
+   * `duplicateEntry` drops it (this is a fresh eating, not the planned meal
+   * again) unless the caller named one.
    *
    * The section this was opened from decides the meal; with no section, a
    * recalled food's own last-eaten meal stands, rather than it landing under
    * no meal at all.
    */
-  const logStaged = (staged: PendingRecallLog, weightText: string, baseline: number | null) => {
-    const grams = parseWeightGrams(weightText);
-    const changed = grams != null && grams !== baseline;
-    const scale = (nutrition: FoodNutrition) => (changed ? scalePanelToAmount(nutrition, `${grams}g`, null, at) : null);
+  const logStaged = (staged: PendingRecallLog, amount: StagedAmount): string | null => {
+    const write = stagedWrite(staged, amount);
+    if ('error' in write) { haptics.error(); return write.error; }
 
-    if (staged.kind === 'recall') {
-      const food = staged.food;
-      const scaled = scale(food.nutrition);
-      const written = addEntry({
+    const { food } = staged;
+    const written = staged.kind === 'recall'
+      ? addEntry({
         label: food.label,
-        quantity: scaled?.grams != null ? `${scaled.grams}g` : food.quantity,
-        grams: scaled ? scaled.grams : food.grams,
-        nutrition: scaled?.nutrition ?? food.nutrition,
-        slot: chosenSlot ?? food.slot,
-        recipeId: food.recipeId,
-        itemId: food.itemId,
-        productId: food.productId,
+        quantity: write.quantity,
+        grams: write.grams,
+        nutrition: write.nutrition,
+        sourcePanel: write.sourcePanel,
+        slot: chosenSlot ?? staged.food.slot,
+        recipeId: staged.food.recipeId,
+        itemId: staged.food.itemId,
+        productId: staged.food.productId,
         mealPlanEntryId: mealPlanEntryId ?? null,
         at,
-      });
-      if (!written) { haptics.error(); return; }
-    } else {
-      const food = staged.food;
-      const scaled = scale(food.nutrition);
-      const nutrition = scaled?.nutrition ?? helpingOf(food);
-      if (!nutrition) { haptics.error(); return; }
-      const written = addEntry({
+      })
+      : addEntry({
         label: food.label,
-        quantity: scaled?.grams != null ? `${scaled.grams}g` : food.choice.label,
-        grams: nutrition.servingGrams,
-        nutrition,
+        quantity: write.quantity,
+        grams: write.grams,
+        nutrition: write.nutrition,
         slot: chosenSlot,
-        itemId: food.itemId,
-        productId: food.productId,
+        itemId: staged.food.itemId,
+        productId: staged.food.productId,
         mealPlanEntryId: mealPlanEntryId ?? null,
         at,
       });
-      if (!written) { haptics.error(); return; }
-    }
+    if (!written) { haptics.error(); return 'Couldn\'t log this. Try again.'; }
 
     haptics.success();
     Keyboard.dismiss();
     setPendingLog(null);
-    setPendingWeight('');
-    setPendingDefaultGrams(null);
+    setPendingAmount(null);
+    setPendingError(null);
 
     // Logging this row is logging its own clause, not the whole field: "31 g
     // baguette, 25g peach jam" still has a baguette in it once the jam is
@@ -659,22 +763,30 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
       setAnswers({});
       setError(null);
       setSavedRecipeId(null);
-      return;
+      return null;
     }
 
     onLogged?.();
     onClose();
+    return null;
   };
 
   const confirmPending = () => {
-    if (!pendingLog) return;
-    logStaged(pendingLog, pendingWeight, pendingDefaultGrams);
+    if (!pendingLog || !pendingAmount) return;
+    setPendingError(logStaged(pendingLog, pendingAmount));
   };
 
-  /** The row's + button: logs it at the amount the amount step would open with. */
+  /**
+   * The row's + button: logs it at the amount the amount step would open with.
+   * Should that ever fail, the step opens with the reason rather than the tap
+   * doing nothing.
+   */
   const quickLog = (staged: PendingRecallLog) => {
-    const { weight, baseline } = stagedDefaults(staged);
-    logStaged(staged, weight, baseline);
+    const failed = logStaged(staged, stagedDefaults(staged));
+    if (failed) {
+      openPending(staged);
+      setPendingError(failed);
+    }
   };
 
   // ==== save as recipe, cancel ====
@@ -735,19 +847,95 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
   // asked about.
   const showEstimateRow = !!trimmed && (!estimate || trimmed !== estimatedFor?.trim());
 
+  /**
+   * The open card's amount step, in whichever question `askFor` says the row
+   * is asked: a weight, a count in the estimate's own unit, a multiple of the
+   * whole, or none at all.
+   */
+  const renderAmountStep = (row: PendingRecallLog, ask: RecallAmountAsk, amount: StagedAmount) => {
+    const { food } = row;
+    switch (ask.kind) {
+      case 'weight':
+        return (
+          <View style={styles.confirmWeightRow}>
+            <Text style={styles.confirmWeightLabel}>Amount to log</Text>
+            <TextInput
+              style={styles.confirmWeightInput}
+              value={amount.weight}
+              onChangeText={text => editPending({ weight: text })}
+              keyboardType="numeric"
+              placeholder="grams"
+              placeholderTextColor={colors.textTertiary}
+              accessibilityLabel={`Amount to log for ${food.label}, in grams`}
+            />
+            <Text style={styles.confirmWeightUnit}>g</Text>
+          </View>
+        );
+      case 'count': {
+        const count = amount.count ?? ask.count.count;
+        return (
+          <View style={styles.confirmWeightRow}>
+            <Text style={styles.confirmWeightLabel}>Amount to log</Text>
+            <CountStepper
+              value={count}
+              onChange={next => { if (next !== null) editPending({ count: next }); }}
+              min={Math.min(ask.count.step, ask.count.count)}
+              max={ask.count.count * MAX_ESTIMATE_MULTIPLE}
+              step={ask.count.step}
+              format={n => formatQuantityAmount(n, ask.count.decimal)}
+              label={`Amount of ${food.label} to log`}
+              describeValue={n => describeEstimateCount(ask.count, n ?? ask.count.count)}
+              style={styles.confirmStepper}
+            />
+            <Text style={styles.confirmWeightUnit}>{estimateCountNoun(ask.count, count)}</Text>
+          </View>
+        );
+      }
+      case 'multiple':
+        return (
+          <View style={styles.confirmMultiple}>
+            <Text style={styles.confirmMultipleLabel}>Amount to log</Text>
+            {/* On a card of its own colour, so the track reads as a track
+                rather than as the card it sits in. */}
+            <View style={styles.confirmTrackCard}>
+              <SegmentedControl
+                options={ESTIMATE_AMOUNT_OPTIONS}
+                value={amount.factor}
+                onChange={factor => editPending({ factor })}
+                columns={3}
+                label={`Amount of ${food.label} to log`}
+              />
+            </View>
+          </View>
+        );
+      case 'none':
+        return null;
+    }
+  };
+
   const renderStagedRow = (row: PendingRecallLog, index: number) => {
     const { food } = row;
     const meta = row.kind === 'recall' ? describeRecall(row.food) : describeCatalogRecall(row.food);
-    if (pendingLog?.kind === row.kind && pendingLog.food.key === food.key) {
+    if (pendingLog?.kind === row.kind && pendingLog.food.key === food.key && pendingAmount) {
+      const ask = askFor(row);
+      const write = stagedWrite(row, pendingAmount);
+      const preview = 'error' in write ? null : write;
+      const kcal = preview?.nutrition.amounts.calorieKcal;
       return (
         <PendingRecallCard
           key={`${row.kind}-${food.key}`}
           styles={styles}
-          colors={colors}
           label={food.label}
           meta={meta}
-          weight={pendingWeight}
-          onChangeWeight={setPendingWeight}
+          amount={renderAmountStep(row, ask, pendingAmount)}
+          preview={preview && (
+            ask.kind === 'none'
+              // Nothing to change, so the line says why rather than showing a
+              // field that would be ignored.
+              ? `Logs ${preview.quantity}. Its figures can't be measured at another weight.`
+              : `${kcal !== undefined ? `${Math.round(kcal).toLocaleString()} cal` : 'No calories stated'}, ${preview.quantity}`
+          )}
+          error={pendingError}
           onCancel={cancelPending}
           onConfirm={confirmPending}
         />
@@ -1068,39 +1256,33 @@ function NutrientLine({ styles, nutrient, amount }: { styles: ReturnType<typeof 
 
 interface PendingRecallCardProps {
   styles: ReturnType<typeof makeStyles>;
-  colors: Colors;
   label: string;
   meta: string;
-  weight: string;
-  onChangeWeight: (text: string) => void;
+  /** The amount step itself, or null for a food with nothing to change. */
+  amount: React.ReactNode;
+  /** What Log would write, in words, or null while the amount can't be used. */
+  preview: string | null;
+  /** Why the last Log didn't log, until the amount is changed again. */
+  error: string | null;
   onCancel: () => void;
   onConfirm: () => void;
 }
 
 /**
  * The "you already have figures for this" row, expanded into a confirm step
- * once tapped — see `openRecall`/`confirmPending`'s doc comments for why a
- * tap no longer logs outright. Shared between the recalled-entry and
- * catalog-row lists, which differ only in what `meta` and `label` say.
+ * once tapped — see `openPending`/`stagedWrite`'s doc comments for why a tap
+ * no longer logs outright and what each amount step asks. Shared between the
+ * recalled-entry and catalog-row lists, which differ only in what `meta`,
+ * `label` and the amount step say.
  */
-function PendingRecallCard({ styles, colors, label, meta, weight, onChangeWeight, onCancel, onConfirm }: PendingRecallCardProps) {
+function PendingRecallCard({ styles, label, meta, amount, preview, error, onCancel, onConfirm }: PendingRecallCardProps) {
   return (
     <View style={styles.confirmCard}>
       <Text style={styles.offerName}>{label}</Text>
       <Text style={styles.offerMeta}>{meta}</Text>
-      <View style={styles.confirmWeightRow}>
-        <Text style={styles.confirmWeightLabel}>Amount to log</Text>
-        <TextInput
-          style={styles.confirmWeightInput}
-          value={weight}
-          onChangeText={onChangeWeight}
-          keyboardType="numeric"
-          placeholder="grams"
-          placeholderTextColor={colors.textTertiary}
-          accessibilityLabel={`Amount to log for ${label}, in grams`}
-        />
-        <Text style={styles.confirmWeightUnit}>g</Text>
-      </View>
+      {amount}
+      {!!preview && <Text style={styles.confirmPreview}>{preview}</Text>}
+      {!!error && <Text style={styles.error} accessibilityLiveRegion="polite">{error}</Text>}
       <View style={styles.confirmActions}>
         <InlineAction label="Cancel" onPress={onCancel} variant="neutral" accessibilityLabel={`Cancel logging ${label}`} />
         <InlineAction label="Log" onPress={onConfirm} variant="accent" accessibilityLabel={`Log ${label}`} />
@@ -1273,6 +1455,13 @@ function makeStyles(colors: Colors) {
       textAlign: 'right',
     },
     confirmWeightUnit: { color: colors.textSecondary, fontSize: font.sm },
+    // The stepper's own pill is bgTertiary, the card's colour, so it takes the
+    // field colour the weight input already uses to read as a control.
+    confirmStepper: { backgroundColor: colors.bgSecondary },
+    confirmMultiple: { gap: spacing.sm },
+    confirmMultipleLabel: { color: colors.text, fontSize: font.sm },
+    confirmTrackCard: { backgroundColor: colors.bgSecondary, borderRadius: radius.md, padding: spacing.xs },
+    confirmPreview: { color: colors.textSecondary, fontSize: font.sm },
     confirmActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm },
     error: { color: colors.red, fontSize: font.sm, lineHeight: 18 },
   });
