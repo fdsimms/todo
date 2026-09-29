@@ -1187,6 +1187,22 @@ export function currentEstimateFactor(entry: EstimatedHelping): number | null {
 }
 
 /**
+ * The count a counted estimate stands at now ("3" for an entry changed to 3
+ * slices of a 2-slice estimate), or null when its words give no count or its
+ * figures are no multiple of the whole.
+ *
+ * Rounded past the dust a division leaves, so a stepper opened on it shows 3
+ * rather than 3.0000000000000004.
+ */
+export function currentEstimateCount(entry: EstimatedHelping): number | null {
+  const whole = wholeEstimate(entry);
+  const count = whole ? estimateCount(whole.servingText) : null;
+  const factor = count ? currentEstimateFactor(entry) : null;
+  if (!count || factor === null) return null;
+  return Math.round(count.count * factor * 1e6) / 1e6;
+}
+
+/**
  * Whether a patch would leave the entry as it is: the same figures under the
  * same words, so there is nothing to retract from Health and write again.
  */

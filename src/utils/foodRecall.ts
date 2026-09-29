@@ -3,7 +3,16 @@ import { isPortionBox } from '../types';
 import { groceryNameKey } from './groceryParse';
 import { matchWeight } from './grocerySuggest';
 import { nutritionFor } from './foodNutrition';
-import { keptDatabasePanel, scalePanelToAmount } from './foodLog';
+import {
+  currentEstimateCount,
+  currentEstimateFactor,
+  estimateAmountPatch,
+  estimateCount,
+  keptDatabasePanel,
+  scalePanelToAmount,
+  wholeEstimate,
+  type EstimateCount,
+} from './foodLog';
 import { describeProduct } from './groceryProduct';
 import { packageChoices, type PackageChoice } from './scanPortion';
 
@@ -246,13 +255,61 @@ export function recallFoods(
  * stays the base only for a food that kept nothing better.
  *
  * Only for a food linked to nothing, the order `foodLogEntryEdit` reads them
- * in: a link wins over a kept panel. And an estimate's kept whole is not a
- * panel to measure with (`keptDatabasePanel` says why), so a described meal
- * falls back to its helping as it always did.
+ * in: a link wins over a kept panel. An estimate is never weighed against
+ * this: `recalledHelping` changes it as a multiple of its whole instead, and
+ * its kept whole is not a panel to measure with (`keptDatabasePanel` says why).
  */
 export function recallMeasuringPanel(food: RecalledFood): FoodNutrition {
   const linked = !!(food.recipeId || food.itemId || food.productId);
   return (linked ? null : keptDatabasePanel(food)) ?? food.nutrition;
+}
+
+/**
+ * Whether a panel can be measured at a weight at all: per 100 g, or a helping
+ * or serving whose weight is known.
+ *
+ * Asked before a weight field is shown, because a field whose value would be
+ * ignored is worse than none (#2914). A per-100 ml drink, or a helping
+ * recorded as "1 serving" with no weight, has nothing a gram figure can be
+ * measured against, and every weight typed into one used to log the recorded
+ * helping without a word.
+ */
+export function measuresByWeight(panel: FoodNutrition): boolean {
+  return scalePanelToAmount(panel, '100g', null) !== null;
+}
+
+/**
+ * How the Describe sheet's amount step asks for a different amount of a food
+ * eaten before.
+ *
+ * - **`count`**: an estimate whose words count one thing ("2 slices"). Asked
+ *   in that unit, the question "Change amount" asks. `opensAt` is the count
+ *   last logged, or null when that helping is no count of its whole.
+ * - **`multiple`**: an estimate whose words give no count. The same closed
+ *   set of shares and multiples "Change amount" offers, `opensAt` being the
+ *   one last logged, or null when it was none of them.
+ * - **`weight`**: anything else its measuring panel can weigh, in grams.
+ * - **`none`**: nothing a different amount could be measured against. It
+ *   logs as recorded, and the step shows no field that would be ignored.
+ *
+ * An estimate is never asked for grams, even one whose whole carried a
+ * weight: the count is the unit it was estimated in, and a described meal is
+ * logged with no weight (`handleLog` in `EstimateMealSheet`).
+ */
+export type RecallAmountAsk =
+  | { kind: 'count'; count: EstimateCount; opensAt: number | null }
+  | { kind: 'multiple'; opensAt: number | null }
+  | { kind: 'weight' }
+  | { kind: 'none' };
+
+export function recallAmountAsk(food: RecalledFood): RecallAmountAsk {
+  const whole = wholeEstimate(food);
+  if (whole) {
+    const count = estimateCount(whole.servingText);
+    if (count) return { kind: 'count', count, opensAt: currentEstimateCount(food) };
+    return { kind: 'multiple', opensAt: currentEstimateFactor(food) };
+  }
+  return measuresByWeight(recallMeasuringPanel(food)) ? { kind: 'weight' } : { kind: 'none' };
 }
 
 /** What logging a recalled food again writes, beside where and when it lands. */
@@ -264,36 +321,65 @@ export interface RecalledHelping {
 }
 
 /**
- * A recalled food as it is logged again: as recorded, or measured at `grams`
- * when a different weight was named (null means the recorded one).
+ * A different amount of a recalled food: a weight in grams, or for an
+ * estimate a multiple of the whole meal it described (a count asked in its
+ * own unit arrives here as new over old).
+ */
+export type RecallChange = { grams: number } | { factor: number };
+
+/**
+ * A recalled food as it is logged again: as recorded when `change` is null,
+ * or at the amount it names. Null when that amount can't be applied, which a
+ * caller says in words rather than logging the recorded helping in its place.
  *
  * **As recorded, everything goes back verbatim, the kept panel included**,
  * the copy `duplicateEntry` and `helpingAgain` make. The new entry can then be
- * corrected, or for an estimate cut to a share, exactly as the old one could.
- * Leaving the panel behind was the bug (#2914): an unfiled database food came
- * back as an entry that could only be renamed.
+ * corrected, or for an estimate changed in amount, exactly as the old one
+ * could. Leaving the panel behind was the bug (#2914): an unfiled database
+ * food came back as an entry that could only be renamed.
  *
- * **At a new weight it is measured off `recallMeasuringPanel`**, and keeps
- * the panel only when that is what measured it. Measured off a kept database
- * panel, the new entry keeps that panel, since its helping was measured
- * against exactly that. Measured off the recorded helping, it keeps nothing:
- * an estimate's whole no longer has this helping as one of its shares (All
- * would put back a meal of a different size), and a linked food's kept panel
- * is dropped the way a correction against its row drops it.
+ * **An estimate at a new amount is a multiple of its whole**, through
+ * `estimateAmountPatch`, the same arithmetic "Change amount" uses: its kept
+ * whole when it has one, else its helping (`wholeEstimate`). "2 slices" last
+ * logged as 3 and asked for at 4 is twice the 2-slice meal, not four-thirds of
+ * the helping, and the new entry keeps that whole as its `sourcePanel` so it
+ * can be changed again later. A weight is taken only against a whole that
+ * recorded one, scaled by it, and refused otherwise: there is nothing to
+ * measure 110 g of "2 slices" against, and logging the recorded helping in
+ * its place, with the field still showing 110, was the other half of the
+ * report.
  *
- * A weight the base cannot measure logs as recorded, as it always has.
+ * **Anything else at a new weight is measured off `recallMeasuringPanel`**,
+ * and keeps the panel only when that is what measured it. Measured off a kept
+ * database panel, the new entry keeps that panel, since its helping was
+ * measured against exactly that. Measured off the recorded helping, it keeps
+ * nothing, the way a correction against a linked row drops it. A weight the
+ * base cannot measure gets null, as does a multiple, which is an estimate's
+ * correction and nothing else's.
  */
-export function recalledHelping(food: RecalledFood, grams: number | null, now: Date): RecalledHelping {
-  const asRecorded: RecalledHelping = {
-    quantity: food.quantity,
-    grams: food.grams,
-    nutrition: food.nutrition,
-    sourcePanel: food.sourcePanel,
-  };
-  if (grams === null) return asRecorded;
+export function recalledHelping(food: RecalledFood, change: RecallChange | null, now: Date): RecalledHelping | null {
+  if (change === null) {
+    return { quantity: food.quantity, grams: food.grams, nutrition: food.nutrition, sourcePanel: food.sourcePanel };
+  }
+
+  const whole = wholeEstimate(food);
+  if (whole) {
+    const factor = 'factor' in change
+      ? change.factor
+      : whole.servingGrams !== null && whole.servingGrams > 0 ? change.grams / whole.servingGrams : null;
+    const patch = factor === null ? null : estimateAmountPatch(food, factor);
+    return patch && {
+      quantity: patch.quantity,
+      grams: patch.grams,
+      nutrition: patch.nutrition,
+      sourcePanel: patch.sourcePanel,
+    };
+  }
+
+  if (!('grams' in change)) return null;
   const base = recallMeasuringPanel(food);
-  const scaled = scalePanelToAmount(base, `${grams}g`, null, now);
-  if (!scaled) return asRecorded;
+  const scaled = scalePanelToAmount(base, `${change.grams}g`, null, now);
+  if (!scaled) return null;
   return {
     quantity: scaled.grams != null ? `${scaled.grams}g` : food.quantity,
     grams: scaled.grams,

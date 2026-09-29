@@ -7,6 +7,7 @@ import {
   describeFoodLogTotals,
   ESTIMATE_AMOUNTS,
   MAX_ESTIMATE_MULTIPLE,
+  currentEstimateCount,
   currentEstimateFactor,
   describeEstimateCount,
   estimateAmountPatch,
@@ -986,6 +987,15 @@ describe('changing an estimate\'s amount (#2914)', () => {
     // A count off the preset set, read back from the words the change wrote.
     expect(currentEstimateFactor(applied(pizza(), 7 / 2))).toBe(7 / 2);
     expect(currentEstimateFactor(entry({ itemId: 'item-a' }))).toBeNull();
+  });
+
+  it('reads back the count a counted estimate stands at, without division dust', () => {
+    expect(currentEstimateCount(pizza())).toBe(2);
+    expect(currentEstimateCount(applied(pizza(), 3 / 2))).toBe(3);
+    expect(currentEstimateCount(applied(pizza(), 7 / 2))).toBe(7);
+    // Words with no count have no count to stand at.
+    expect(currentEstimateCount(burger())).toBeNull();
+    expect(currentEstimateCount(entry({ itemId: 'item-a' }))).toBeNull();
   });
 
   it('reads an estimate of nothing but zeros as the whole rather than a quarter', () => {

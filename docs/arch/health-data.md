@@ -791,14 +791,26 @@ something nobody measured:
   items keep the panel their entries kept (`SavedMealItem.sourcePanel`,
   inside the `items` blob, so sync and backups carry it as they are). At the
   same amount the copy takes it verbatim, an estimate's whole included, so
-  the copy is the same share of the same meal. A recall logged at a new weight is re-measured
+  the copy is the same amount of the same meal. A recall logged at a new weight is re-measured
   against it rather than multiplied out of the stored helping
   (`recalledHelping` in `foodRecall.ts`), and keeps it, since that is what the
   new helping was measured against. An estimate's whole is never measured
   against: `keptDatabasePanel` is the one test every measuring path uses to
-  tell the two kinds of kept panel apart, so a described meal at a new weight
-  scales its own helping as before and drops the whole it is no longer a share
-  of.
+  tell the two kinds of kept panel apart.
+
+  **A recalled estimate is asked the way "Change amount" asks, never for a
+  weight** (`recallAmountAsk`). Its words' own count ("Amount to log 3
+  slices", opened on the count last logged) or, with no count, the same
+  closed set of shares and multiples, scaled off the whole it kept (or its
+  helping, when it kept none) by `estimateAmountPatch`, and the new entry
+  keeps that whole so it can be changed again. It used to show a grams field
+  that an estimate of "2 slices" had nothing to measure against, so 110 typed
+  there logged the whole previous helping with the field still reading 110.
+  The same rule holds for every other food on the card: **no field whose
+  value would be ignored.** A weight field appears only where the panel can
+  be weighed (`measuresByWeight`), a food that can't be shows what it will
+  log and why, and a weight that still can't be used is said in the card
+  rather than swapped for the recorded helping.
 - **The rewrite is skipped when nothing Health holds changed.** Moving the meal
   or re-filing the item touches no figure Health ever saw, and rewriting anyway
   would churn somebody's medical record for a field it never got.

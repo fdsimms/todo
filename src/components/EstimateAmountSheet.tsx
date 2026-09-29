@@ -8,6 +8,7 @@ import { haptics } from '../utils/haptics';
 import {
   ESTIMATE_AMOUNTS,
   MAX_ESTIMATE_MULTIPLE,
+  currentEstimateCount,
   currentEstimateFactor,
   describeEstimateCount,
   estimateAmountPatch,
@@ -44,11 +45,6 @@ export const ESTIMATE_AMOUNT_OPTIONS: SegmentOption<number | null>[] = ESTIMATE_
   label: a.label,
   accessibilityLabel: a.spoken,
 }));
-
-/** Division leaves dust on a count ("3.0000000004 slices"); a stepper should never show it. */
-function tidyCount(n: number): number {
-  return Math.round(n * 1e6) / 1e6;
-}
 
 /**
  * "Change amount": how much of an estimated meal was actually eaten, less or
@@ -99,9 +95,8 @@ export function EstimateAmountSheet({ visible, entry, onSave, onClose }: Props) 
     if (!visible) return;
     translateY.setValue(hiddenY);
     backdropOpacity.setValue(0);
-    const opened = entry ? currentEstimateFactor(entry) : null;
-    setFactor(opened);
-    if (counted) setCount(tidyCount(counted.count * (opened ?? 1)));
+    setFactor(entry ? currentEstimateFactor(entry) : null);
+    if (counted) setCount((entry && currentEstimateCount(entry)) ?? counted.count);
     Animated.parallel([
       Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
       Animated.timing(backdropOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),

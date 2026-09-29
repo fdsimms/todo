@@ -1,4 +1,4 @@
 {
-  "message": "A meal you described and had estimated now has Change amount in its menu, for when you ate more or less than you described. If the estimate was a count, like 2 slices, set how many you actually had. Otherwise pick a share or a multiple of it, from a quarter up to three times. The figures scale from the original estimate, and setting it back to the original amount restores them.",
+  "message": "A meal you described and had estimated now has Change amount in its menu, for when you ate more or less than you described. If the estimate was a count, like 2 slices, set how many you actually had. Otherwise pick a share or a multiple of it, from a quarter up to three times. The figures scale from the original estimate, and setting it back to the original amount restores them. Logging one again from Describe a meal asks the same way instead of asking for a weight it couldn't use, and a weight that can't be applied to a food is now pointed out rather than ignored.",
   "date": "2026-09-28"
 }
