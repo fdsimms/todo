@@ -23,7 +23,8 @@ jest.mock('../utils/demoState', () => ({
   isDemoModeActive: () => mockDemoActive,
 }));
 
-import { syncDeadlineEvent } from '../utils/deadlineCalendarSync';
+import { syncDeadlineEvent, taskEventsAfterSync } from '../utils/deadlineCalendarSync';
+import { emptyApplyReport, type ApplyReport } from '../utils/syncMerge';
 
 const BASE: Task = {
   id: 'task-1',
@@ -310,5 +311,72 @@ describe('syncDeadlineEvent', () => {
     expect(mockCreateDeadlineEvent).not.toHaveBeenCalled();
     expect(mockMoveDeadlineEvent).not.toHaveBeenCalled();
     expect(mockDeleteDeadlineEvent).not.toHaveBeenCalled();
+  });
+});
+
+// #2950. A task's deadline event and time block belong to the device that
+// wrote them, so a peer's rename, new deadline, completion or delete reaches
+// them only through this.
+describe('taskEventsAfterSync', () => {
+  const applied = (over: Partial<ApplyReport>) => ({ ...emptyApplyReport(), ...over });
+  const lookup = (...rows: Task[]) => (id: string) => rows.find(r => r.id === id) ?? null;
+
+  it('reconciles the deadline event of a changed task that holds one of this device\'s', () => {
+    const renamed = makeTask({ id: 't1', title: 'Pay rent', calendarEventId: 'evt-1' });
+
+    const plan = taskEventsAfterSync(applied({ taskIds: ['t1'] }), lookup(renamed));
+
+    expect(plan).toEqual({ deadlines: [renamed], timeBlocks: [], remove: [] });
+  });
+
+  it('retitles the time block of a changed task that holds one, apart from its deadline event', () => {
+    const blocked = makeTask({ id: 't1', timeBlockEventId: 'block-1' });
+    const both = makeTask({ id: 't2', calendarEventId: 'evt-2', timeBlockEventId: 'block-2' });
+
+    const plan = taskEventsAfterSync(applied({ taskIds: ['t1', 't2'] }), lookup(blocked, both));
+
+    expect(plan.deadlines).toEqual([both]);
+    expect(plan.timeBlocks).toEqual([blocked, both]);
+  });
+
+  it('leaves a changed task with no event here alone, rather than writing one', () => {
+    // Every task that arrives new is this shape, since the ids never sync, and
+    // so is the successor a completion elsewhere spawned. The completing device
+    // writes that one's deadline, maybe into the same shared calendar.
+    const plan = taskEventsAfterSync(
+      applied({ taskIds: ['t1'] }),
+      lookup(makeTask({ id: 't1', deadlineOnCalendar: true, deadline: '2026-08-20T00:00:00Z' })),
+    );
+
+    expect(plan).toEqual({ deadlines: [], timeBlocks: [], remove: [] });
+  });
+
+  it('skips a task that no longer resolves, and reconciles one changed twice only once', () => {
+    const kept = makeTask({ id: 't1', calendarEventId: 'evt-1', timeBlockEventId: 'block-1' });
+
+    const plan = taskEventsAfterSync(applied({ taskIds: ['t1', 'gone', 't1'] }), lookup(kept));
+
+    expect(plan.deadlines).toEqual([kept]);
+    expect(plan.timeBlocks).toEqual([kept]);
+  });
+
+  it('deletes the deadline event of a task another device removed, once', () => {
+    // Whatever removed it, the purge of old completions included: a completed
+    // task's deadline event is one syncDeadlineEvent deletes anyway, so there
+    // is no history here to keep the way the meal purge keeps its events.
+    const plan = taskEventsAfterSync(applied({ removedTaskEvents: ['evt-9', 'evt-9'] }), lookup());
+
+    expect(plan.remove).toEqual(['evt-9']);
+  });
+
+  it('asks for nothing at all in demo mode', () => {
+    mockDemoActive = true;
+
+    const plan = taskEventsAfterSync(
+      applied({ taskIds: ['t1'], removedTaskEvents: ['evt-9'] }),
+      lookup(makeTask({ id: 't1', calendarEventId: 'evt-1', timeBlockEventId: 'block-1' })),
+    );
+
+    expect(plan).toEqual({ deadlines: [], timeBlocks: [], remove: [] });
   });
 });

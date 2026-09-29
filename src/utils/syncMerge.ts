@@ -194,6 +194,20 @@ export interface ApplyReport {
    * here, before the delete, or the event stays on the calendar for good.
    */
   removedMealEvents: RemovedMealEvent[];
+  /**
+   * Every task the apply wrote (inserted or updated), by id, for the same kind
+   * of reconcile. A task's deadline event and time block are this device's too
+   * (`SYNC_DEVICE_LOCAL_COLUMNS`), so a peer's rename, new deadline or
+   * completion reaches them only through this.
+   */
+  taskIds: string[];
+  /**
+   * The deadline events of the tasks the apply deleted, read before the delete
+   * for the reason `removedMealEvents` is. Only the deadline event: the app
+   * never deletes a time block (`Task.timeBlockEventId`), and a completion
+   * event is a record of what happened rather than a mirror of the row.
+   */
+  removedTaskEvents: string[];
 }
 
 export function emptyApplyReport(): ApplyReport {
@@ -205,6 +219,8 @@ export function emptyApplyReport(): ApplyReport {
     deletionsRefused: 0,
     mealEntryIds: [],
     removedMealEvents: [],
+    taskIds: [],
+    removedTaskEvents: [],
   };
 }
 

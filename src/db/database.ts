@@ -2905,6 +2905,11 @@ export function dbApplySyncChanges(payload: SyncPayload, transport?: string): Ap
         if (name === 'meal_plan_entries' && typeof placed.row.id === 'string') {
           report.mealEntryIds.push(placed.row.id);
         }
+        // And which tasks, for their deadline events and time blocks: device-local
+        // the same way, so the same reconcile is the only thing that reaches them.
+        if (name === 'tasks' && typeof placed.row.id === 'string') {
+          report.taskIds.push(placed.row.id);
+        }
         if (placed.folded) {
           if (local) updateRowStampNow(name, where, placed.row);
           else insertRowStampNow(name, placed.row);
@@ -2981,6 +2986,15 @@ export function dbApplySyncChanges(payload: SyncPayload, transport?: string): Ap
         if (meal?.calendar_event_id) {
           report.removedMealEvents.push({ eventId: meal.calendar_event_id, date: meal.date });
         }
+      }
+      // A task's deadline event, for the same reason. Not its time block, which
+      // the app never deletes, nor its completion event, which is history.
+      if (deletion.table === 'tasks') {
+        const task = db.getFirstSync<{ calendar_event_id: string | null }>(
+          `SELECT calendar_event_id FROM tasks WHERE ${where.sql}`,
+          where.values
+        );
+        if (task?.calendar_event_id) report.removedTaskEvents.push(task.calendar_event_id);
       }
       db.runSync(`DELETE FROM "${deletion.table}" WHERE ${where.sql}`, where.values);
       // The tombstone trigger just stamped this deletion with local now. Put

@@ -94,6 +94,8 @@ function addReport(into: ApplyReport, from: ApplyReport): void {
   into.deletionsRefused += from.deletionsRefused;
   into.mealEntryIds.push(...from.mealEntryIds);
   into.removedMealEvents.push(...from.removedMealEvents);
+  into.taskIds.push(...from.taskIds);
+  into.removedTaskEvents.push(...from.removedTaskEvents);
 }
 
 /**

@@ -61,8 +61,13 @@ const mockTaskState = {
   sweepExpiredCompletionTimers: mockRecord('sweepExpiredCompletionTimers'),
   sweepTaskPenalties: mockRecord('sweepTaskPenalties'),
   purgeOldCompletedTasks: mockRecord('purgeOldCompletedTasks'),
+  reconcileSyncedEvents: (applied: unknown) => {
+    mockCalls.push('reconcileSyncedTaskEvents');
+    mockTaskReconciledWith = applied;
+  },
   tasks: [] as unknown[],
 };
+let mockTaskReconciledWith: unknown = null;
 const mockSettingsState = { initialized: true, initialize: mockRecord('initializeSettings') };
 const mockSyncState = {
   initialize: mockRecord('initializeSync'),
@@ -84,7 +89,7 @@ jest.mock('../store/useMealPlanStore', () => ({
     getState: () => ({
       purgeOldEntries: mockRecord('purgeOldMealPlanEntries'),
       reconcileSyncedEvents: (applied: unknown) => {
-        mockCalls.push('reconcileSyncedEvents');
+        mockCalls.push('reconcileSyncedMealEvents');
         mockReconciledWith = applied;
       },
     }),
@@ -326,13 +331,18 @@ describe('the reload after a sync', () => {
   // #2950: a meal's calendar event is this device's, so the reload is also
   // where a peer's move or removal reaches it. After the stores re-read, so the
   // reconcile sees the synced rows and writes any new link over fresh state.
-  it('re-reads the stores, then reconciles meal events with what was applied', () => {
-    const applied = { mealEntryIds: ['m1'], removedMealEvents: [] };
+  // A task's deadline event and time block are the same shape, and are
+  // reconciled from the same report after the same re-read.
+  it('re-reads the stores, then reconciles task and meal events with what was applied', () => {
+    const applied = { mealEntryIds: ['m1'], removedMealEvents: [], taskIds: ['t1'], removedTaskEvents: [] };
 
     const { mockRegistered } = jest.requireMock<{ mockRegistered: { reload: SyncReload } }>('../store/useSyncStore');
     mockRegistered.reload(applied);
 
-    expect(mockCalls).toEqual(['initialize', 'initializeSettings', 'reconcileSyncedEvents']);
+    expect(mockCalls).toEqual([
+      'initialize', 'initializeSettings', 'reconcileSyncedTaskEvents', 'reconcileSyncedMealEvents',
+    ]);
+    expect(mockTaskReconciledWith).toBe(applied);
     expect(mockReconciledWith).toBe(applied);
   });
 });

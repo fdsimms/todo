@@ -4198,6 +4198,76 @@ describe('dbApplySyncChanges', () => {
         title: 'Pay rent', calendar_event_id: 'dl', completion_calendar_event_id: 'done', time_block_event_id: 'block',
       });
     });
+
+    // The events only this device can move or delete, as for meals above.
+    describe('reported for the calendar reconcile after the sync', () => {
+      const linked = () => {
+        dbInsertTask(makeTask({
+          id: 'ev1', title: 'Rent', calendarEventId: 'dl', completionCalendarEventId: 'done', timeBlockEventId: 'block',
+        }));
+        stampLocal('ev1', '2026-01-01T00:00:00.000Z');
+      };
+      const peerEdit = (over: Record<string, unknown> = {}) => ({
+        ...(mockRawDb.prepare('SELECT * FROM tasks WHERE id = ?').get('ev1') as Record<string, unknown>),
+        title: 'Pay rent', updated_at: '2030-01-01T00:00:00.000Z', ...over,
+      });
+
+      it('names every task it wrote, new or updated', () => {
+        linked();
+
+        const report = dbApplySyncChanges(payload({
+          tables: { tasks: [peerEdit(), peerTaskRow('p1', 'From peer', '2026-01-01T00:00:00.000Z')] },
+        }));
+
+        expect(report).toMatchObject({ inserted: 1, updated: 1 });
+        expect(report.taskIds.sort()).toEqual(['ev1', 'p1']);
+        expect(report.mealEntryIds).toEqual([]);
+        expect(report.removedTaskEvents).toEqual([]);
+      });
+
+      it('leaves out a task whose local copy is newer', () => {
+        linked();
+        stampLocal('ev1', '2031-01-01T00:00:00.000Z');
+
+        const report = dbApplySyncChanges(payload({ tables: { tasks: [peerEdit()] } }));
+
+        expect(report.skipped).toBe(1);
+        expect(report.taskIds).toEqual([]);
+      });
+
+      it('hands back the deadline event of a task it deleted, read before the row went', () => {
+        linked();
+
+        const report = dbApplySyncChanges(payload({
+          deletions: [{ table: 'tasks', rowKey: 'ev1', deletedAt: '2026-06-01T00:00:00.000Z' }],
+        }));
+
+        expect(report.deleted).toBe(1);
+        expect(rowOf('ev1')).toBeUndefined();
+        // Only the deadline event: never the block, never the completion record.
+        expect(report.removedTaskEvents).toEqual(['dl']);
+      });
+
+      it('hands back nothing for a deleted task with no deadline event here, or a deletion it refused', () => {
+        linked();
+        mockRawDb.prepare('UPDATE tasks SET calendar_event_id = NULL WHERE id = ?').run('ev1');
+        stampLocal('ev1', '2026-01-01T00:00:00.000Z');
+        const unlinked = dbApplySyncChanges(payload({
+          deletions: [{ table: 'tasks', rowKey: 'ev1', deletedAt: '2026-06-01T00:00:00.000Z' }],
+        }));
+        expect(unlinked.deleted).toBe(1);
+        expect(unlinked.removedTaskEvents).toEqual([]);
+
+        linked();
+        stampLocal('ev1', '2026-09-01T00:00:00.000Z');
+        const refused = dbApplySyncChanges(payload({
+          deletions: [{ table: 'tasks', rowKey: 'ev1', deletedAt: '2026-06-01T00:00:00.000Z' }],
+        }));
+        expect(refused.deletionsRefused).toBe(1);
+        expect(refused.removedTaskEvents).toEqual([]);
+        expect(ids().calendar_event_id).toBe('dl');
+      });
+    });
   });
 
   it('is idempotent — applying the same payload twice changes nothing', () => {

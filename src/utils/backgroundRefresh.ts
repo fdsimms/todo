@@ -205,14 +205,16 @@ export async function runBackgroundSync(): Promise<SyncSummary | null> {
 // meet: App.tsx imports it at startup for the foreground, and a cold
 // background launch enters through the task below. Same order as AppGate and
 // exitDemoMode: tasks (which fans out to every data store), then settings,
-// since some settings sync too. Then the meal calendar events a peer's changes
-// left stale (#2950), last, so the reconcile reads the rows as the sync left
-// them and writes any new event link over the reloaded state rather than under
-// it. Its device writes are fire-and-forget, like every meal event reconcile:
-// one cut short by a background run ending waits for that meal's next change.
+// since some settings sync too. Then the calendar events a peer's changes left
+// stale (#2950), a task's deadline event and time block and a meal's event,
+// last, so each reconcile reads the rows as the sync left them and writes any
+// new event link over the reloaded state rather than under it. Their device
+// writes are fire-and-forget, like every event reconcile: one cut short by a
+// background run ending waits for that row's next change.
 registerSyncReload(applied => {
   useTaskStore.getState().initialize();
   useSettingsStore.getState().initialize();
+  useTaskStore.getState().reconcileSyncedEvents(applied);
   useMealPlanStore.getState().reconcileSyncedEvents(applied);
 });
 

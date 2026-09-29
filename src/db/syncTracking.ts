@@ -198,9 +198,14 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
  * peer's edit reaches it through the apply's report rather than the row: an
  * apply names the meals it wrote and, for a meal it deletes, the event id read
  * off the row first (`ApplyReport.mealEntryIds`/`removedMealEvents`), and the
- * reload after the sync reconciles them. A column added here that names
- * something outside the database needs the same, or a peer's delete strands
- * whatever it pointed at.
+ * reload after the sync reconciles them. Tasks get the same
+ * (`taskIds`/`removedTaskEvents`): a changed task's deadline event and time
+ * block are rewritten, and a deleted task's deadline event is deleted. Not
+ * its time block, which the app never deletes, and not its completion event,
+ * which is written once as a record and never reconciled, so the peer's
+ * uncomplete still leaves it on this device's calendar. A column added here
+ * that names something outside the database needs the same, or a peer's
+ * delete strands whatever it pointed at.
  */
 export const SYNC_DEVICE_LOCAL_COLUMNS: Readonly<Record<string, readonly string[]>> = {
   meal_plan_entries: ['calendar_event_id'],
