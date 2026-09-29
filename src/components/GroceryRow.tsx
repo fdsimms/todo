@@ -165,6 +165,17 @@ interface Props {
  * on a shopping-list line, and the panel this component used to worry about
  * revealing as a no-op is simply never rendered when `whenAction` is omitted.
  */
+// Map of this file (one component holding most of it; `grep -n '// ===='` is
+// the table of contents):
+//   bindings       theme, stores, the displayed quantity and where it sits
+//   rename state   the inline rename's draft and its refusal message
+//   trip price     the price field's draft, opening it, committing it
+//   label          the accessibility label, in the captions' order
+//   rename         opening, editing and committing the inline rename
+//   render         the checkbox; the tap zone (name, captions, a long
+//                  quantity, the trip price line, a short quantity, the price
+//                  icon); the trailing icons; then the card and its OR seam
+// Below the component: styles.
 export const GroceryRow = React.memo(function GroceryRow({
   item,
   product: preferredProduct,
@@ -187,6 +198,7 @@ export const GroceryRow = React.memo(function GroceryRow({
   tripPriceRecorded = false,
   onSetTripPrice,
 }: Props) {
+  // ==== bindings: theme, stores, the displayed quantity and where it sits ====
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const renameItem = useGroceryStore(s => s.renameItem);
@@ -209,6 +221,7 @@ export const GroceryRow = React.memo(function GroceryRow({
   const quantityBesideName = !!shownQuantity && quantityFitsBesideName(shownQuantity);
   const quantityUnderName = !!shownQuantity && !quantityBesideName;
 
+  // ==== rename state ====
   // Tapping the name/quantity/star area used to toggle checked, same as the
   // rest of the row. Issue #1222: that's the only way in, so it now swaps the
   // name into an inline TextInput instead — the checkbox (its own zone below)
@@ -229,6 +242,7 @@ export const GroceryRow = React.memo(function GroceryRow({
   // nothing more until the text changes.
   const refusedName = useRef<string | null>(null);
 
+  // ==== trip price: state, opening and committing the field ====
   // The trip price chip's own inline edit, same shape as renaming above:
   // tapping the chip swaps it for a TextInput, blurring or submitting
   // commits. Kept in this row rather than lifted to the screen because it's
@@ -261,6 +275,7 @@ export const GroceryRow = React.memo(function GroceryRow({
     if (parsed !== null && parsed !== tripPriceMinor) onSetTripPrice?.(item.id, parsed);
   };
 
+  // ==== label: what the row announces ====
   // Brand and variant name one product, so they compose into one caption line
   // rather than taking one each — a fifth treatment on a row that can already
   // be four captions tall is past what's readable while walking. See
@@ -283,6 +298,7 @@ export const GroceryRow = React.memo(function GroceryRow({
     item.checked ? ', in cart' : '',
   ].join('');
 
+  // ==== rename: open, edit, commit ====
   const startRename = () => {
     if (selectionMode) {
       onSelect?.(item.id);
@@ -339,6 +355,7 @@ export const GroceryRow = React.memo(function GroceryRow({
     setNameError(null);
   };
 
+  // ==== render. Everything below is JSX ====
   const rowBody = (
     <View
       style={[
