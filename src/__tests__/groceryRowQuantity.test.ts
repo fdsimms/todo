@@ -1,5 +1,7 @@
 import {
+  addMealsToListNameSpace,
   groceryRowNameSpace,
+  quantityCharsForPill,
   quantityFitsBesideName,
   recipeToListNameSpace,
   QUANTITY_BESIDE_NAME_MAX_CHARS,
@@ -195,5 +197,36 @@ describe('quantityFitsBesideName, given the name', () => {
     expect(quantityFitsBesideName('2 x 400 ml', { ...tight, name: 'Fire-roasted diced tomatoes' })).toBe(false);
     expect(quantityFitsBesideName('2 x 400 ml', { ...roomy, name: 'Fire-roasted diced tomatoes' })).toBe(true);
     expect(quantityFitsBesideName('1 large pie crust, thawed', { ...roomy, name: 'Pie crust' })).toBe(false);
+  });
+});
+
+// AddMealsToListSheet draws RecipeToListSheet's line with a 110pt pill.
+describe('addMealsToListNameSpace', () => {
+  it('reads the length threshold off the pill it is given', () => {
+    expect(quantityCharsForPill(90)).toBe(QUANTITY_BESIDE_NAME_MAX_CHARS);
+    expect(quantityCharsForPill(110)).toBe(13);
+  });
+
+  it('has the recipe-to-list line\'s width and only a wider pill', () => {
+    const row = { substitutes: 1, pantryButton: true };
+    const addMeals = addMealsToListNameSpace(390, row);
+    const recipe = recipeToListNameSpace(390, row);
+    expect(addMeals.width).toBe(recipe.width);
+    expect(addMeals.pillMaxWidth).toBe(110);
+  });
+
+  it('keeps a quantity the wider pill holds beside a short name', () => {
+    const row = { substitutes: 0, pantryButton: false };
+    // 12 characters: under the 90pt pill's line, over it on the 110pt one.
+    const space = addMealsToListNameSpace(390, row);
+    expect(quantityFitsBesideName('2 tablespoon', { name: 'Butter', space })).toBe(true);
+    expect(quantityFitsBesideName('2 tablespoon', { name: 'Butter', space: recipeToListNameSpace(390, row) })).toBe(false);
+    expect(quantityFitsBesideName('2 x 14 oz cans, drained', { name: 'Chickpeas', space })).toBe(false);
+  });
+
+  it('still moves a short quantity under a name too long to share the line', () => {
+    const space = addMealsToListNameSpace(390, { substitutes: 1, pantryButton: true });
+    expect(quantityFitsBesideName('2 x 400 ml', { name: 'Fire-roasted diced tomatoes with green chiles', space })).toBe(false);
+    expect(quantityFitsBesideName('2 x 400 ml', { name: 'Onion', space })).toBe(true);
   });
 });

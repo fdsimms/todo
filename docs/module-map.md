@@ -123,7 +123,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/groceryProduct.ts` — productKeyFor, describeProduct, describeCatalogItem, productsForItem, productForGtin, preferredProductOf, describePreferredProduct, RATING_LABELS, describeProductPurchases, parseUnavailableProductIds, +1 more
 - `src/utils/groceryReminderMirror.ts` — GroceryReminderLink, GroceryLinkIndex, parseGroceryLinks, serializeGroceryLinks, withGroceryLinks, MirrorItem, MirrorReminder, mirrorNote, mirrorTitleFor, normalizeMirrorTitle, +2 more
 - `src/utils/groceryReorder.ts` — GroceryDropRow, GroceryPlacement, resolveGroceryDrop, KeyedGroceryDropRow, placeNewGroceryItems, groceryDragRange
-- `src/utils/groceryRowQuantity.ts` — QUANTITY_BESIDE_NAME_MAX_CHARS, NameRowSpace, groceryRowNameSpace, recipeToListNameSpace, quantityFitsBesideName
+- `src/utils/groceryRowQuantity.ts` — QUANTITY_BESIDE_NAME_MAX_CHARS, quantityCharsForPill, NameRowSpace, groceryRowNameSpace, recipeToListNameSpace, addMealsToListNameSpace, quantityFitsBesideName
 - `src/utils/groceryShelfLife.ts` — SHELF_LIFE_LEXICON, OPEN_SHELF_LIFE_LEXICON, openShelfLifeDaysFor, shelfLifeDaysFor, clampExpiryDays, expiryKeyFor, defaultExpiresAt, expiresAtForPurchase, expiresAtForOpening, liveExpiresAt, +2 more
 - `src/utils/groceryShops.ts` — isUnavailable, isAsserted, lacksWantedProduct, countsForItem, sellsAisle, isOutOfRange, describeShopAisles, ShopWithCount, shopsForItem, unavailableShopsFor, +11 more
 - `src/utils/grocerySuggest.ts` — GrocerySuggestion, GrocerySection, GroceryRecipeSection, NO_RECIPE_LABEL, matchWeight, rankGrocerySuggestions, rankedCatalogItems, sectionsInAisleOrder, buildGrocerySections, buildGroceryRecipeSections, +12 more

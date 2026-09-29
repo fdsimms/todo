@@ -85,8 +85,21 @@ const CHAR_WIDTH_PER_FONT_PT = 7 / 13;
 const QUANTITY_FONT_SIZE = 13;
 /** The pill's 8pt (spacing.sm) of padding either side. */
 const PILL_PADDING = 16;
-/** The pill's cap, `maxWidth: 90` on both surfaces' `qtyPill`. */
+/**
+ * The pill's cap, `maxWidth: 90` on the grocery row's and RecipeToListSheet's
+ * `qtyPill`. AddMealsToListSheet's is 110 and says so in its own space.
+ */
 const PILL_MAX_WIDTH = 90;
+
+/**
+ * How many characters of quantity fit on one line of a pill capped at
+ * `pillMaxWidth`: the cap less its padding, at the quantity's width a
+ * character. 10 for the 90pt pill, which is `QUANTITY_BESIDE_NAME_MAX_CHARS`,
+ * and 13 for AddMealsToListSheet's 110pt one.
+ */
+export function quantityCharsForPill(pillMaxWidth: number): number {
+  return Math.floor((pillMaxWidth - PILL_PADDING) / (QUANTITY_FONT_SIZE * CHAR_WIDTH_PER_FONT_PT));
+}
 
 /**
  * What the name, the pill beside it and the gap between them share on one
@@ -103,6 +116,12 @@ export interface NameRowSpace {
   nameFontSize: number;
   /** How many lines the name wraps to before it is cut (its numberOfLines). */
   nameLines: number;
+  /**
+   * The side pill's cap on this surface, which sets both how long a quantity
+   * may be before it moves (`quantityCharsForPill`) and how wide the pill
+   * beside the name gets. Left out, the 90pt pill.
+   */
+  pillMaxWidth?: number;
 }
 
 /**
@@ -172,6 +191,20 @@ export function recipeToListNameSpace(
 }
 
 /**
+ * A line of AddMealsToListSheet, which is RecipeToListSheet's line drawn again
+ * for a week of meals: the same list and row padding, checkbox, substitutes
+ * button and pantry button, so the same width. Only its pill differs, capped
+ * at 110pt rather than 90, which lets a quantity of up to 13 characters stay
+ * beside the name before it moves under it.
+ */
+export function addMealsToListNameSpace(
+  screenWidth: number,
+  row: { substitutes: number; pantryButton: boolean },
+): NameRowSpace {
+  return { ...recipeToListNameSpace(screenWidth, row), pillMaxWidth: 110 };
+}
+
+/**
  * How many lines `text` takes wrapped into lines `lineChars` characters wide:
  * a word at a time, breaking after a space or a hyphen, and a word longer than
  * a whole line carried on across lines by character.
@@ -203,9 +236,9 @@ function wrappedLineCount(text: string, lineChars: number): number {
   return lines;
 }
 
-/** The side pill's width for a quantity `chars` characters long. */
-function sidePillWidth(chars: number): number {
-  return Math.min(PILL_MAX_WIDTH, chars * QUANTITY_FONT_SIZE * CHAR_WIDTH_PER_FONT_PT + PILL_PADDING);
+/** The side pill's width for a quantity `chars` characters long, under its cap. */
+function sidePillWidth(chars: number, pillMaxWidth: number): number {
+  return Math.min(pillMaxWidth, chars * QUANTITY_FONT_SIZE * CHAR_WIDTH_PER_FONT_PT + PILL_PADDING);
 }
 
 /**
@@ -225,10 +258,11 @@ export function quantityFitsBesideName(
   // By code point rather than UTF-16 unit, so a character outside the basic
   // plane still counts once.
   const chars = Array.from(shownQuantity.trim()).length;
-  if (chars > QUANTITY_BESIDE_NAME_MAX_CHARS) return false;
+  const pillMaxWidth = beside?.space.pillMaxWidth ?? PILL_MAX_WIDTH;
+  if (chars > quantityCharsForPill(pillMaxWidth)) return false;
   if (chars === 0 || !beside) return true;
   const { name, space } = beside;
-  const nameWidth = space.width - space.gap - sidePillWidth(chars);
+  const nameWidth = space.width - space.gap - sidePillWidth(chars, pillMaxWidth);
   const lineChars = Math.floor(nameWidth / (space.nameFontSize * CHAR_WIDTH_PER_FONT_PT));
   return wrappedLineCount(name.trim(), lineChars) <= space.nameLines;
 }
