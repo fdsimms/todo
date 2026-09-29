@@ -14,12 +14,22 @@ jest.mock('../utils/calendarSync', () => ({
   deleteCalendarEvent: (...args: unknown[]) => mockDelete(...args),
 }));
 
+// #2950: each write reads its event's server id back. Empty unless a test
+// says otherwise, so a link's server id is null.
+const mockExternalIds = jest.fn();
+const mockEventsWithExternalId = jest.fn();
+jest.mock('todo-eventkit-bridge', () => ({
+  externalIdentifiers: (ids: string[]) => mockExternalIds(ids),
+  eventsWithExternalIdentifier: (id: string) => mockEventsWithExternalId(id),
+}), { virtual: true });
+
 let mockDemoActive = false;
 jest.mock('../utils/demoState', () => ({
   isDemoModeActive: () => mockDemoActive,
 }));
 
 import { mealEventTitle, mealEventFields, mealEventsAfterSync, syncMealEvent } from '../utils/mealCalendarSync';
+import { NO_EVENT_LINK } from '../utils/calendarEventLink';
 import { emptyApplyReport, type ApplyReport } from '../utils/syncMerge';
 import { dayKeyOf } from '../utils/dateUtils';
 import { subDays } from 'date-fns/subDays';
@@ -43,6 +53,8 @@ const BASE: MealPlanEntry = {
 };
 
 const entry = (overrides: Partial<MealPlanEntry> = {}): MealPlanEntry => ({ ...BASE, ...overrides });
+/** What a write links when the server id can't be read. */
+const linked = (eventId: string) => ({ eventId, externalId: null });
 
 beforeEach(() => {
   mockSettings = { mealCalendarId: 'cal-1' };
@@ -51,6 +63,8 @@ beforeEach(() => {
   // EventKit reports the same id back for an event rewritten in place.
   mockMove.mockReset().mockImplementation((id: string) => Promise.resolve(id));
   mockDelete.mockReset().mockResolvedValue(undefined);
+  mockExternalIds.mockReset().mockResolvedValue({});
+  mockEventsWithExternalId.mockReset().mockResolvedValue([]);
 });
 
 describe('mealEventTitle', () => {
@@ -89,7 +103,7 @@ describe('mealEventFields', () => {
 
 describe('syncMealEvent', () => {
   it('creates an event and hands back the new id', async () => {
-    expect(await syncMealEvent(entry())).toBe('evt-new');
+    expect(await syncMealEvent(entry())).toEqual(linked('evt-new'));
     expect(mockCreate).toHaveBeenCalledWith('cal-1', {
       title: 'Dinner: Weeknight chicken stir-fry',
       date: expect.any(Date),
@@ -97,7 +111,7 @@ describe('syncMealEvent', () => {
   });
 
   it('updates in place and keeps the same id', async () => {
-    expect(await syncMealEvent(entry({ calendarEventId: 'evt-1' }))).toBe('evt-1');
+    expect(await syncMealEvent(entry({ calendarEventId: 'evt-1' }))).toEqual(linked('evt-1'));
     expect(mockMove).toHaveBeenCalledWith('evt-1', 'cal-1', expect.objectContaining({
       title: 'Dinner: Weeknight chicken stir-fry',
     }));
@@ -111,7 +125,7 @@ describe('syncMealEvent', () => {
   it('moves an existing event into the calendar picked now, and links the id it comes back with', async () => {
     mockSettings = { mealCalendarId: 'cal-home' };
     mockMove.mockResolvedValue('evt-moved');
-    expect(await syncMealEvent(entry({ calendarEventId: 'evt-family' }))).toBe('evt-moved');
+    expect(await syncMealEvent(entry({ calendarEventId: 'evt-family' }))).toEqual(linked('evt-moved'));
     expect(mockMove).toHaveBeenCalledWith('evt-family', 'cal-home', expect.objectContaining({
       title: 'Dinner: Weeknight chicken stir-fry',
     }));
@@ -120,7 +134,7 @@ describe('syncMealEvent', () => {
 
   it('writes a fresh event when the stored id no longer resolves', async () => {
     mockMove.mockResolvedValue(null);
-    expect(await syncMealEvent(entry({ calendarEventId: 'stale' }))).toBe('evt-new');
+    expect(await syncMealEvent(entry({ calendarEventId: 'stale' }))).toEqual(linked('evt-new'));
     expect(mockCreate).toHaveBeenCalledWith('cal-1', expect.anything());
   });
 
@@ -133,14 +147,14 @@ describe('syncMealEvent', () => {
 
   it('deletes the event and unlinks when no calendar is picked', async () => {
     mockSettings = { mealCalendarId: null };
-    expect(await syncMealEvent(entry({ calendarEventId: 'evt-1' }))).toBeNull();
+    expect(await syncMealEvent(entry({ calendarEventId: 'evt-1' }))).toEqual(NO_EVENT_LINK);
     expect(mockDelete).toHaveBeenCalledWith('evt-1');
     expect(mockCreate).not.toHaveBeenCalled();
   });
 
   it('does not call delete when there was never an event to remove', async () => {
     mockSettings = { mealCalendarId: null };
-    expect(await syncMealEvent(entry())).toBeNull();
+    expect(await syncMealEvent(entry())).toEqual(NO_EVENT_LINK);
     expect(mockDelete).not.toHaveBeenCalled();
   });
 
@@ -148,7 +162,7 @@ describe('syncMealEvent', () => {
     // Unlike a cook task, which a cooked meal has no use for: Thursday's
     // dinner having been eaten doesn't stop it being what was for dinner.
     expect(await syncMealEvent(entry({ cookedAt: '2026-08-13T19:00:00.000Z', calendarEventId: 'evt-1' })))
-      .toBe('evt-1');
+      .toEqual(linked('evt-1'));
     expect(mockDelete).not.toHaveBeenCalled();
   });
 
@@ -160,15 +174,15 @@ describe('syncMealEvent', () => {
       recipeId: null,
       leftoverId: 'lo-1',
       title: 'Leftover stir-fry (1 day old)',
-    }))).toBe('evt-new');
+    }))).toEqual(linked('evt-new'));
     expect(mockCreate).toHaveBeenCalledWith('cal-1', expect.objectContaining({
       title: 'Dinner: Leftover stir-fry (1 day old)',
     }));
   });
 
-  it('returns null when the device write fails, so the next reconcile retries', async () => {
+  it('links nothing when the device write fails, so the next reconcile retries', async () => {
     mockCreate.mockResolvedValue(null);
-    expect(await syncMealEvent(entry())).toBeNull();
+    expect(await syncMealEvent(entry())).toEqual(NO_EVENT_LINK);
   });
 
   it('never touches the device calendar while demo mode is active', async () => {
@@ -177,10 +191,44 @@ describe('syncMealEvent', () => {
     // all-day event to whatever calendar the user had picked before
     // switching demo mode on.
     mockDemoActive = true;
-    expect(await syncMealEvent(entry({ calendarEventId: 'evt-1' }))).toBeNull();
+    expect(await syncMealEvent(entry({ calendarEventId: 'evt-1' }))).toEqual(NO_EVENT_LINK);
     expect(mockCreate).not.toHaveBeenCalled();
     expect(mockMove).not.toHaveBeenCalled();
     expect(mockDelete).not.toHaveBeenCalled();
+  });
+
+  // #2950: the server id is what finds the event again after a restore.
+  it('links the server id of the event it writes, and keeps it through a move', async () => {
+    mockExternalIds.mockImplementation((ids: string[]) => Promise.resolve({ [ids[0]]: `ext-${ids[0]}` }));
+    expect(await syncMealEvent(entry())).toEqual({ eventId: 'evt-new', externalId: 'ext-evt-new' });
+    mockExternalIds.mockResolvedValue({});
+    expect(await syncMealEvent(entry({ calendarEventId: 'evt-1', calendarEventExternalId: 'ext-1' })))
+      .toEqual({ eventId: 'evt-1', externalId: 'ext-1' });
+  });
+
+  it('finds a restored backup\'s event by its server id and moves it, rather than writing a second one', async () => {
+    // The old phone's local id names nothing on this one; its event came down
+    // from the family calendar under the same server id.
+    mockMove.mockImplementation((id: string) => Promise.resolve(id === 'evt-old-phone' ? null : id));
+    mockEventsWithExternalId.mockResolvedValue([{ id: 'evt-this-phone', allDay: true, calendarId: 'cal-1' }]);
+
+    const link = await syncMealEvent(entry({
+      date: '2026-08-14', calendarEventId: 'evt-old-phone', calendarEventExternalId: 'ext-1',
+    }));
+
+    expect(link).toEqual({ eventId: 'evt-this-phone', externalId: 'ext-1' });
+    expect(mockMove).toHaveBeenLastCalledWith('evt-this-phone', 'cal-1', {
+      title: 'Dinner: Weeknight chicken stir-fry',
+      date: new Date(2026, 7, 14),
+    });
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it('writes a fresh event, as before, when a restored meal\'s server id finds nothing', async () => {
+    mockMove.mockResolvedValue(null);
+    expect(await syncMealEvent(entry({ calendarEventId: 'evt-old-phone', calendarEventExternalId: 'ext-1' })))
+      .toEqual(linked('evt-new'));
+    expect(mockEventsWithExternalId).toHaveBeenCalledWith('ext-1');
   });
 });
 

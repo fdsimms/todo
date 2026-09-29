@@ -296,7 +296,7 @@ jest.mock('../utils/notifications', () => ({
 }));
 
 jest.mock('../utils/deadlineCalendarSync', () => ({
-  syncDeadlineEvent: jest.fn().mockResolvedValue(null),
+  syncDeadlineEvent: jest.fn().mockResolvedValue({ eventId: null, externalId: null }),
   // The real rule: it is pure, and which tasks the post-sync reconcile touches
   // is what that block of tests is about.
   taskEventsAfterSync: jest.requireActual('../utils/deadlineCalendarSync').taskEventsAfterSync,
@@ -322,6 +322,14 @@ jest.mock('../utils/calendarSync', () => ({
   readTimeBlockEvent: jest.fn().mockResolvedValue(null),
   updateTimeBlockEvent: jest.fn().mockResolvedValue(true),
 }));
+// #2950: the native module that reads a calendar event's server id and finds
+// an event by one. No server ids and no matches unless a test says so.
+const mockExternalIds = jest.fn((_ids: string[]) => Promise.resolve({} as Record<string, string>));
+const mockEventsWithExternalId = jest.fn((_id: string) => Promise.resolve([] as unknown[]));
+jest.mock('todo-eventkit-bridge', () => ({
+  externalIdentifiers: (ids: string[]) => mockExternalIds(ids),
+  eventsWithExternalIdentifier: (id: string) => mockEventsWithExternalId(id),
+}), { virtual: true });
 jest.mock('../store/useCalendarStore', () => ({
   // subscribe: useEventPeopleStore follows the calendar to read server ids.
   useCalendarStore: { getState: jest.fn(() => ({ events: [], pastEvents: [], loaded: false })), subscribe: jest.fn() },
@@ -1071,6 +1079,39 @@ describe('addTask', () => {
     const task = useTaskStore.getState().addTask({ title: 'Renew passport' });
     expect(syncDeadlineEvent).toHaveBeenCalledWith(task);
   });
+
+  // #2950: the server id is what a restored backup finds the event by.
+  it('links the deadline event and its server id together', async () => {
+    (syncDeadlineEvent as jest.Mock).mockResolvedValueOnce({ eventId: 'evt-1', externalId: 'ext-1' });
+    const task = useTaskStore.getState().addTask({ title: 'Renew passport' });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(useTaskStore.getState().tasks.find(t => t.id === task.id))
+      .toMatchObject({ calendarEventId: 'evt-1', calendarEventExternalId: 'ext-1' });
+  });
+
+  it('writes a server id read for the first time even when the event id is the one it had', async () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', calendarEventId: 'evt-1' })] });
+    (syncDeadlineEvent as jest.Mock).mockResolvedValueOnce({ eventId: 'evt-1', externalId: 'ext-1' });
+    useTaskStore.getState().updateTask('t1', { title: 'Renew the passport' });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(dbUpdateTask).toHaveBeenLastCalledWith(expect.objectContaining({
+      id: 't1', calendarEventId: 'evt-1', calendarEventExternalId: 'ext-1',
+    }));
+  });
+
+  it('writes nothing when the reconcile hands back the link the task already has', async () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 't1', calendarEventId: 'evt-1', calendarEventExternalId: 'ext-1' })],
+    });
+    (syncDeadlineEvent as jest.Mock).mockResolvedValueOnce({ eventId: 'evt-1', externalId: 'ext-1' });
+    useTaskStore.getState().updateTask('t1', { title: 'Renew the passport' });
+    const writes = (dbUpdateTask as jest.Mock).mock.calls.length;
+    await Promise.resolve();
+    await Promise.resolve();
+    expect((dbUpdateTask as jest.Mock).mock.calls.length).toBe(writes);
+  });
 });
 
 // ─── newTaskFromDraft: Settings' newTaskDefaults ────────────────────────────
@@ -1691,12 +1732,14 @@ describe('duplicateTask', () => {
   it('does not carry the original calendar event id onto the copy', () => {
     useTaskStore.setState({
       tasks: [makeTask({
-        id: 't1', calendarEventId: 'evt-1', deadlineOnCalendar: true,
+        id: 't1', calendarEventId: 'evt-1', calendarEventExternalId: 'ext-1', deadlineOnCalendar: true,
         deadline: new Date(2025, 5, 20).toISOString(),
       })],
     });
     const copy = useTaskStore.getState().duplicateTask('t1')!;
     expect(copy.calendarEventId).toBeNull();
+    // Nor its server id, which would find the original's event again (#2950).
+    expect(copy.calendarEventExternalId).toBeNull();
     // The preference carries; the event doesn't — two tasks must never point
     // at one device event.
     expect(copy.deadlineOnCalendar).toBe(true);
@@ -16088,6 +16131,71 @@ describe('putTaskOnCalendar', () => {
     // hold no pointer than a broken one.
     expect(rowOf('report').timeBlockEventId).toBeNull();
   });
+
+  // #2950: a backup restored on a new phone carries the old phone's block id,
+  // which names nothing there, while the block itself came down from the
+  // calendar account under the same server id.
+  describe('the calendar server id', () => {
+    const settle = async () => {
+      for (let i = 0; i < 12; i++) await Promise.resolve();
+    };
+    const NOTHING = { saved: false, deleted: false, eventId: null };
+    beforeEach(() => {
+      // Nothing queued by an earlier test may answer for this one.
+      mockExternalIds.mockReset().mockResolvedValue({});
+      mockEventsWithExternalId.mockReset().mockResolvedValue([]);
+      sync.presentTimeBlockCreate.mockReset().mockResolvedValue(NOTHING);
+      sync.presentTimeBlockEdit.mockReset().mockResolvedValue(NOTHING);
+      sync.readTimeBlockEvent.mockReset().mockResolvedValue(null);
+    });
+    const onDevice = { title: 'Write the report', start: new Date(), end: new Date(), allDay: false };
+
+    it('is kept beside the block once the sheet saves it', async () => {
+      useTaskStore.setState({ tasks: [blockable()] });
+      sync.presentTimeBlockCreate.mockResolvedValueOnce({ saved: true, deleted: false, eventId: 'ev-1' });
+      mockExternalIds.mockResolvedValueOnce({ 'ev-1': 'ext-1' });
+
+      await expect(useTaskStore.getState().putTaskOnCalendar('report')).resolves.toBe(true);
+      await settle();
+
+      expect(rowOf('report')).toMatchObject({ timeBlockEventId: 'ev-1', timeBlockExternalId: 'ext-1' });
+    });
+
+    it('finds a restored block by it and opens that, rather than offering a fresh one', async () => {
+      useTaskStore.setState({
+        tasks: [blockable({ timeBlockEventId: 'ev-old-phone', timeBlockExternalId: 'ext-1' })],
+      });
+      sync.presentTimeBlockEdit
+        .mockResolvedValueOnce(NOTHING)
+        .mockResolvedValueOnce({ saved: true, deleted: false, eventId: 'ev-this-phone' });
+      sync.readTimeBlockEvent.mockResolvedValueOnce(null).mockResolvedValueOnce(onDevice);
+      mockEventsWithExternalId.mockResolvedValueOnce([{ id: 'ev-this-phone', allDay: false, calendarId: null }]);
+
+      await expect(useTaskStore.getState().putTaskOnCalendar('report')).resolves.toBe(true);
+
+      expect(mockEventsWithExternalId).toHaveBeenCalledWith('ext-1');
+      expect(sync.presentTimeBlockEdit).toHaveBeenLastCalledWith('ev-this-phone');
+      expect(sync.presentTimeBlockCreate).not.toHaveBeenCalled();
+      expect(rowOf('report')).toMatchObject({ timeBlockEventId: 'ev-this-phone', timeBlockExternalId: 'ext-1' });
+    });
+
+    it('drops the pointer as before when it finds several events, and offers a fresh block', async () => {
+      useTaskStore.setState({
+        tasks: [blockable({ timeBlockEventId: 'ev-old-phone', timeBlockExternalId: 'ext-1' })],
+      });
+      sync.readTimeBlockEvent.mockResolvedValueOnce(null);
+      mockEventsWithExternalId.mockResolvedValueOnce([
+        { id: 'ev-a', allDay: false, calendarId: 'cal-home' },
+        { id: 'ev-b', allDay: false, calendarId: 'cal-work' },
+      ]);
+
+      await expect(useTaskStore.getState().putTaskOnCalendar('report')).resolves.toBe(false);
+
+      expect(sync.presentTimeBlockEdit).toHaveBeenCalledTimes(1);
+      expect(sync.presentTimeBlockCreate).toHaveBeenCalled();
+      expect(rowOf('report')).toMatchObject({ timeBlockEventId: null, timeBlockExternalId: null });
+    });
+  });
 });
 
 describe('time block reconcile', () => {
@@ -16173,6 +16281,74 @@ describe('time block reconcile', () => {
     // this app's to withdraw. See Task.timeBlockEventId.
     expect(rowOf('report').timeBlockEventId).toBe('ev-1');
   });
+
+  // #2950: a block's id stops resolving when a backup is restored on a new
+  // phone, and that is not a block the user deleted.
+  describe('the calendar server id', () => {
+    const settle = async () => {
+      for (let i = 0; i < 12; i++) await Promise.resolve();
+    };
+    beforeEach(() => {
+      // Nothing queued by an earlier test may answer for this one.
+      mockExternalIds.mockReset().mockResolvedValue({});
+      mockEventsWithExternalId.mockReset().mockResolvedValue([]);
+      sync.readTimeBlockEvent.mockReset().mockResolvedValue(null);
+      sync.updateTimeBlockEvent.mockReset().mockResolvedValue(true);
+    });
+
+    it('moves a restored task onto the block found by it, and retitles that one', async () => {
+      useTaskStore.setState({ tasks: [blocked({ timeBlockEventId: 'ev-old-phone', timeBlockExternalId: 'ext-1' })] });
+      sync.readTimeBlockEvent.mockResolvedValueOnce(null).mockResolvedValueOnce(onDevice());
+      mockEventsWithExternalId.mockResolvedValueOnce([{ id: 'ev-this-phone', allDay: false, calendarId: null }]);
+
+      useTaskStore.getState().updateTask('report', { title: 'Write the Q3 report' });
+      await settle();
+
+      expect(rowOf('report')).toMatchObject({ timeBlockEventId: 'ev-this-phone', timeBlockExternalId: 'ext-1' });
+      expect(sync.updateTimeBlockEvent).toHaveBeenCalledWith('ev-this-phone', {
+        title: 'Write the Q3 report',
+        endDate: new Date(2026, 7, 13, 14, 45),
+      });
+    });
+
+    it('still drops the pointer when it finds no single block', async () => {
+      useTaskStore.setState({ tasks: [blocked({ timeBlockEventId: 'ev-old-phone', timeBlockExternalId: 'ext-1' })] });
+      sync.readTimeBlockEvent.mockResolvedValueOnce(null);
+      mockEventsWithExternalId.mockResolvedValueOnce([]);
+
+      useTaskStore.getState().updateTask('report', { title: 'Renamed' });
+      await settle();
+
+      expect(rowOf('report')).toMatchObject({ timeBlockEventId: null, timeBlockExternalId: null });
+      expect(sync.updateTimeBlockEvent).not.toHaveBeenCalled();
+    });
+
+    it('is read for a block made before it was kept', async () => {
+      useTaskStore.setState({ tasks: [blocked()] });
+      sync.readTimeBlockEvent.mockResolvedValueOnce(onDevice());
+      mockExternalIds.mockResolvedValueOnce({ 'ev-1': 'ext-1' });
+
+      useTaskStore.getState().updateTask('report', { title: 'Write the Q3 report' });
+      await settle();
+
+      expect(rowOf('report')).toMatchObject({ timeBlockEventId: 'ev-1', timeBlockExternalId: 'ext-1' });
+    });
+
+    it('never lands on a block the task no longer points at', async () => {
+      useTaskStore.setState({ tasks: [blocked({ timeBlockEventId: 'ev-old-phone', timeBlockExternalId: 'ext-1' })] });
+      sync.readTimeBlockEvent.mockResolvedValueOnce(null).mockResolvedValueOnce(onDevice());
+      mockEventsWithExternalId.mockResolvedValueOnce([{ id: 'ev-this-phone', allDay: false, calendarId: null }]);
+
+      useTaskStore.getState().updateTask('report', { title: 'Write the Q3 report' });
+      // Meanwhile the user made a new block from the editor.
+      useTaskStore.setState(st => ({
+        tasks: st.tasks.map(t => ({ ...t, timeBlockEventId: 'ev-new', timeBlockExternalId: null })),
+      }));
+      await settle();
+
+      expect(rowOf('report')).toMatchObject({ timeBlockEventId: 'ev-new', timeBlockExternalId: null });
+    });
+  });
 });
 
 // #2950: a task's deadline event and time block are this device's, so a change
@@ -16200,11 +16376,11 @@ describe('reconcileSyncedEvents', () => {
 
   beforeEach(() => {
     sync.getCalendarPermission.mockResolvedValue('granted');
-    (syncDeadlineEvent as jest.Mock).mockResolvedValue(null);
+    (syncDeadlineEvent as jest.Mock).mockResolvedValue({ eventId: null, externalId: null });
   });
 
   it('rewrites this device\'s deadline event from the row another device changed', async () => {
-    (syncDeadlineEvent as jest.Mock).mockResolvedValue('evt-1');
+    (syncDeadlineEvent as jest.Mock).mockResolvedValue({ eventId: 'evt-1', externalId: null });
     // The row as the reload re-read it: renamed elsewhere.
     useTaskStore.setState({ tasks: [linked({ title: 'Pay the rent' })] });
 
@@ -16216,14 +16392,16 @@ describe('reconcileSyncedEvents', () => {
   });
 
   it('links the fresh event when the old one had gone, same as a local edit', async () => {
-    (syncDeadlineEvent as jest.Mock).mockResolvedValue('evt-2');
+    (syncDeadlineEvent as jest.Mock).mockResolvedValue({ eventId: 'evt-2', externalId: 'ext-2' });
     useTaskStore.setState({ tasks: [linked()] });
 
     useTaskStore.getState().reconcileSyncedEvents(synced({ taskIds: ['rent'] }));
     await settle();
 
-    expect(rowOf('rent').calendarEventId).toBe('evt-2');
-    expect(dbUpdateTask).toHaveBeenCalledWith(expect.objectContaining({ id: 'rent', calendarEventId: 'evt-2' }));
+    expect(rowOf('rent')).toMatchObject({ calendarEventId: 'evt-2', calendarEventExternalId: 'ext-2' });
+    expect(dbUpdateTask).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'rent', calendarEventId: 'evt-2', calendarEventExternalId: 'ext-2',
+    }));
   });
 
   it('drops the link once the reconcile deleted the event of a task completed elsewhere', async () => {
@@ -16265,6 +16443,64 @@ describe('reconcileSyncedEvents', () => {
     });
     // No deadline event here, so nothing asks for one.
     expect(syncDeadlineEvent).not.toHaveBeenCalled();
+  });
+
+  // A local uncomplete deletes this device's completion event and clears the
+  // id; one made on another device used to leave both here.
+  it('deletes and unlinks this device\'s completion event when another device reopened the task', async () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'rent', title: 'Pay rent', completed: false, completionCalendarEventId: 'done-1' })],
+    });
+
+    useTaskStore.getState().reconcileSyncedEvents(synced({ taskIds: ['rent'] }));
+    await settle();
+
+    expect(sync.deleteCalendarEvent).toHaveBeenCalledWith('done-1');
+    expect(rowOf('rent').completionCalendarEventId).toBeNull();
+    expect(dbUpdateTask).toHaveBeenCalledWith(expect.objectContaining({ id: 'rent', completionCalendarEventId: null }));
+  });
+
+  it('keeps the completion event of a task still completed after a sync', async () => {
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'rent', title: 'Paid the rent', completed: true, completedAt: '2026-08-19T09:00:00.000Z',
+        completionCalendarEventId: 'done-1',
+      })],
+    });
+
+    useTaskStore.getState().reconcileSyncedEvents(synced({ taskIds: ['rent'] }));
+    await settle();
+
+    expect(sync.deleteCalendarEvent).not.toHaveBeenCalled();
+    expect(rowOf('rent').completionCalendarEventId).toBe('done-1');
+  });
+
+  it('leaves a completion event alone when the task was completed again while access was read', async () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'rent', completed: false, completionCalendarEventId: 'done-1' })],
+    });
+
+    useTaskStore.getState().reconcileSyncedEvents(synced({ taskIds: ['rent'] }));
+    useTaskStore.setState(st => ({
+      tasks: st.tasks.map(t => ({ ...t, completed: true, completedAt: '2026-08-20T09:00:00.000Z' })),
+    }));
+    await settle();
+
+    expect(sync.deleteCalendarEvent).not.toHaveBeenCalled();
+    expect(rowOf('rent').completionCalendarEventId).toBe('done-1');
+  });
+
+  it('touches no completion event without calendar access', async () => {
+    sync.getCalendarPermission.mockResolvedValue('denied');
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'rent', completed: false, completionCalendarEventId: 'done-1' })],
+    });
+
+    useTaskStore.getState().reconcileSyncedEvents(synced({ taskIds: ['rent'] }));
+    await settle();
+
+    expect(sync.deleteCalendarEvent).not.toHaveBeenCalled();
+    expect(rowOf('rent').completionCalendarEventId).toBe('done-1');
   });
 
   it('deletes the deadline event of a task another device removed, and never a block', async () => {

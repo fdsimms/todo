@@ -285,7 +285,15 @@ import {
   presentTimeBlockEdit,
   readTimeBlockEvent,
   updateTimeBlockEvent,
+  type TimeBlockEvent,
 } from '../utils/calendarSync';
+import {
+  NO_EVENT_LINK,
+  adoptableTimeBlockId,
+  eventsWithExternalId,
+  readExternalEventId,
+  type CalendarEventLink,
+} from '../utils/calendarEventLink';
 import { timeBlockFieldsFor, timeBlockUpdateFor } from '../utils/timeBlock';
 import { useCalendarStore } from './useCalendarStore';
 import { useWeatherStore } from './useWeatherStore';
@@ -514,8 +522,8 @@ function backfillRecurrenceAnchors(tasks: Task[]): void {
  * forget — same shape as every `scheduleTaskReminder(...)` call in this
  * file: the write is async and best-effort, so nothing here awaits it.
  *
- * Only patches the task if the resulting id actually changed (most calls are
- * a no-op — most saves don't touch the deadline), and only if the task is
+ * Only patches the task if the resulting link actually changed (most calls
+ * are a no-op — most saves don't touch the deadline), and only if the task is
  * still around by the time the device write finishes; one deleted mid-write
  * has nothing left to patch. `syncDeadlineEvent` (deadlineCalendarSync.ts)
  * owns the decision of what the device event should look like; this is only
@@ -524,11 +532,14 @@ function backfillRecurrenceAnchors(tasks: Task[]): void {
  */
 function reconcileDeadlineEvent(task: Task): void {
   syncDeadlineEvent(task)
-    .then(calendarEventId => {
-      if (calendarEventId === task.calendarEventId) return;
+    .then(link => {
+      if (
+        link.eventId === task.calendarEventId &&
+        link.externalId === (task.calendarEventExternalId ?? null)
+      ) return;
       const current = useTaskStore.getState().tasks.find(t => t.id === task.id);
       if (!current) return;
-      const updated = { ...current, calendarEventId };
+      const updated = { ...current, calendarEventId: link.eventId, calendarEventExternalId: link.externalId };
       dbUpdateTask(updated);
       useTaskStore.setState(s => ({ tasks: s.tasks.map(t => (t.id === task.id ? updated : t)) }));
     })
@@ -931,13 +942,86 @@ function writeMealSlotTasks(
   }
 }
 
-/** Points a task at its time block, if the task is still around to write to. */
-function setTimeBlockEventId(taskId: string, value: string | null): void {
+/**
+ * Points a task at its time block and the calendar server's id for it
+ * (#2950), if the task is still around to write to. Answers whether the task
+ * now holds that link.
+ *
+ * `from`, when given, is the block the caller read before an await, and the
+ * write only lands while the task still points at it: an answer about one
+ * block can't be written over the next one the user made meanwhile.
+ */
+function setTimeBlockLink(taskId: string, link: CalendarEventLink, from?: string | null): boolean {
   const current = useTaskStore.getState().tasks.find(t => t.id === taskId);
-  if (!current || current.timeBlockEventId === value) return;
-  const updated = { ...current, timeBlockEventId: value };
+  if (!current) return false;
+  if (from !== undefined && current.timeBlockEventId !== from) return false;
+  if (current.timeBlockEventId === link.eventId && (current.timeBlockExternalId ?? null) === link.externalId) {
+    return true;
+  }
+  const updated = { ...current, timeBlockEventId: link.eventId, timeBlockExternalId: link.externalId };
   dbUpdateTask(updated);
   useTaskStore.setState(s => ({ tasks: s.tasks.map(t => (t.id === taskId ? updated : t)) }));
+  return true;
+}
+
+/**
+ * Finds a task's block again by the calendar server's id when the id the task
+ * holds no longer resolves, points the task at it, and returns it; null leaves
+ * the caller to drop the pointer as it always has (#2950).
+ *
+ * The case this is for is a backup restored on a new phone. The old phone's
+ * local id names nothing here, while the block itself came down from the
+ * calendar account under the same server id. A block is never recreated (it
+ * is time the user set aside, through the system sheet), so without this the
+ * task would simply forget it: the reconcile and the editor's "On your
+ * calendar" row both drop a pointer they can't open. `adoptableTimeBlockId`
+ * decides when one event is safely the block, and it answers only for exactly
+ * one.
+ */
+async function adoptTimeBlock(task: Task): Promise<{ eventId: string; event: TimeBlockEvent } | null> {
+  const from = task.timeBlockEventId;
+  const externalId = task.timeBlockExternalId ?? null;
+  if (!from || !externalId) return null;
+  const adopted = adoptableTimeBlockId(await eventsWithExternalId(externalId));
+  if (!adopted || adopted === from) return null;
+  const event = await readTimeBlockEvent(adopted);
+  if (!event) return null;
+  if (!setTimeBlockLink(task.id, { eventId: adopted, externalId }, from)) return null;
+  return { eventId: adopted, event };
+}
+
+/**
+ * Keeps the server id of a block the task points at, read in the background:
+ * one made before the id was kept, or whose id the read straight after the
+ * sheet didn't get. Written only while the task still points at that block.
+ */
+function recordTimeBlockExternalId(taskId: string, eventId: string): void {
+  readExternalEventId(eventId)
+    .then(externalId => {
+      if (externalId) setTimeBlockLink(taskId, { eventId, externalId }, eventId);
+    })
+    .catch(() => {});
+}
+
+/**
+ * Opens the system edit sheet on a task's block and says what came of it:
+ * `'deleted'` (the user deleted it there, and the task's pointer went with it),
+ * `'kept'` (saved, or closed with the event still there) or `'gone'` (there was
+ * no event under that id to open).
+ */
+async function editTimeBlock(taskId: string, eventId: string): Promise<'deleted' | 'kept' | 'gone'> {
+  const result = await presentTimeBlockEdit(eventId);
+  if (result.deleted) {
+    setTimeBlockLink(taskId, NO_EVENT_LINK);
+    return 'deleted';
+  }
+  if (result.saved) return 'kept';
+
+  // Nothing came back: either the user closed the sheet without changing
+  // anything, or it never opened. Only one of those is worth acting on, so
+  // ask whether the event is actually still there before assuming the
+  // worst — `presentTimeBlockEdit` deliberately doesn't guess (see there).
+  return (await readTimeBlockEvent(eventId)) ? 'kept' : 'gone';
 }
 
 /**
@@ -955,19 +1039,24 @@ function setTimeBlockEventId(taskId: string, value: string | null): void {
  * opposite of the deadline mirror's resolve-or-shrug-then-recreate, and
  * deliberately so: a deadline event nobody asked for individually can be
  * re-minted silently, but a block the user deleted in their calendar was
- * deleted on purpose.
+ * deleted on purpose. Before dropping it, though, the block is looked for by
+ * the calendar server's id (`adoptTimeBlock`, #2950): an id that stopped
+ * resolving because a backup was restored on a new phone is not a block the
+ * user deleted.
  */
 function reconcileTimeBlockEvent(task: Task): void {
   const eventId = task.timeBlockEventId;
   if (!eventId) return;
   readTimeBlockEvent(eventId)
     .then(async event => {
-      if (!event) {
-        setTimeBlockEventId(task.id, null);
+      const block = event ? { eventId, event } : await adoptTimeBlock(task);
+      if (!block) {
+        setTimeBlockLink(task.id, NO_EVENT_LINK, eventId);
         return;
       }
-      const update = timeBlockUpdateFor(task, event);
-      if (update) await updateTimeBlockEvent(eventId, update);
+      if (event && !task.timeBlockExternalId) recordTimeBlockExternalId(task.id, eventId);
+      const update = timeBlockUpdateFor(task, block.event);
+      if (update) await updateTimeBlockEvent(block.eventId, update);
     })
     .catch(() => {});
 }
@@ -1387,11 +1476,12 @@ interface TaskStore extends UndoHistoryActions {
    * Brings this device's task calendar events in line with what a sync just
    * applied (#2950): the deadline event of each changed task that holds one is
    * rewritten (or deleted) through the same reconcile a local edit runs, its
-   * time block gets the task's title and length, and the deadline event of
-   * each task another device deleted is deleted here. Which tasks, and why one
-   * with no event of this device's is left alone, is `taskEventsAfterSync`'s
-   * call; this does the device writes, fire-and-forget like every other
-   * deadline and time block reconcile.
+   * time block gets the task's title and length, the completion event of a
+   * task another device reopened is deleted and unlinked as a local uncomplete
+   * would, and the deadline event of each task another device deleted is
+   * deleted here. Which tasks, and why one with no event of this device's is
+   * left alone, is `taskEventsAfterSync`'s call; this does the device writes,
+   * fire-and-forget like every other deadline and time block reconcile.
    *
    * Called after the stores reload from the sync (`registerSyncReload`), so
    * the rows it reads and any link it writes back are the synced ones.
@@ -2328,7 +2418,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   reconcileSyncedEvents(applied) {
     const find = (id: string) => get().tasks.find(t => t.id === id) ?? null;
     const plan = taskEventsAfterSync(applied, find);
-    if (plan.deadlines.length === 0 && plan.timeBlocks.length === 0 && plan.remove.length === 0) return;
+    if (
+      plan.deadlines.length === 0 &&
+      plan.timeBlocks.length === 0 &&
+      plan.uncompleted.length === 0 &&
+      plan.remove.length === 0
+    ) return;
     // Only with calendar access, for the meal reconcile's reason. Without it
     // the deadline move fails, the fallback creates nothing and returns null,
     // and that null written over the link orphans an event this device can no
@@ -2349,6 +2444,18 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         for (const task of plan.timeBlocks) {
           const current = find(task.id);
           if (current) reconcileTimeBlockEvent(current);
+        }
+        // Reopened on another device, so the completion this device's event
+        // recorded didn't happen: the same delete and unlink `uncompleteTask`
+        // runs. Only while the row still says so, since it may have been
+        // completed again, or reopened here, while the permission was read.
+        for (const task of plan.uncompleted) {
+          const current = find(task.id);
+          if (!current || current.completed || !current.completionCalendarEventId) continue;
+          void deleteCalendarEvent(current.completionCalendarEventId);
+          const updated = { ...current, completionCalendarEventId: null };
+          dbUpdateTask(updated);
+          set(s => ({ tasks: s.tasks.map(t => (t.id === updated.id ? updated : t)) }));
         }
         for (const eventId of plan.remove) void deleteCalendarEvent(eventId);
       })
@@ -2679,14 +2786,17 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // deadlineOnCalendar (the preference) carries via ...original, same as
       // every other setting on the copy, but the device event does not —
       // two tasks pointing at one event means editing either one's deadline
-      // silently drags the other's calendar entry with it.
+      // silently drags the other's calendar entry with it. Nor its server id,
+      // which would let the copy find the original's event again (#2950).
       calendarEventId: null,
+      calendarEventExternalId: null,
       // logCompletionToCalendar carries via ...original the same way, but a
       // copy is a fresh, uncompleted task — it hasn't logged anything yet.
       completionCalendarEventId: null,
       // Same reasoning, and the copy has no claim on the original's slot
       // anyway — the block was time set aside for one piece of work.
       timeBlockEventId: null,
+      timeBlockExternalId: null,
     };
     const copy: Task = {
       ...original,
@@ -2744,23 +2854,22 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Already has one — this is the edit sheet, and the only place in the app
     // a block can be deleted.
     if (task.timeBlockEventId) {
-      const result = await presentTimeBlockEdit(task.timeBlockEventId);
-      if (result.deleted) {
-        setTimeBlockEventId(id, null);
-        return false;
-      }
-      if (result.saved) return true;
+      const outcome = await editTimeBlock(id, task.timeBlockEventId);
+      if (outcome !== 'gone') return outcome === 'kept';
 
-      // Nothing came back: either the user closed the sheet without changing
-      // anything, or it never opened. Only one of those is worth acting on, so
-      // ask whether the event is actually still there before assuming the
-      // worst — `presentTimeBlockEdit` deliberately doesn't guess (see there).
-      if (await readTimeBlockEvent(task.timeBlockEventId)) return true;
+      // Not there under its own id. A backup restored on a new phone looks
+      // exactly like this, with the block still on the calendar under the
+      // server's id, so look for it by that before giving up on it (#2950).
+      const adopted = await adoptTimeBlock(task);
+      if (adopted) {
+        const again = await editTimeBlock(id, adopted.eventId);
+        if (again !== 'gone') return again === 'kept';
+      }
 
       // Genuinely gone — deleted from the Calendar app, or on a calendar that
       // was removed from the device. Drop the stale pointer and fall through
       // to offering a fresh block, so the tap that found the rot also fixes it.
-      setTimeBlockEventId(id, null);
+      setTimeBlockLink(id, NO_EVENT_LINK);
     }
 
     const { activeHoursStart, activeHoursEnd } = useSettingsStore.getState();
@@ -2779,7 +2888,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // would be worse than admitting we have none, so the pointer stays null
     // and the action offers to create another.
     if (!result.saved || !result.eventId) return false;
-    setTimeBlockEventId(id, result.eventId);
+    setTimeBlockLink(id, { eventId: result.eventId, externalId: null });
+    // And the server's id for it, so a backup restored on a new phone can find
+    // the block again (#2950). In the background: the sheet is closed and the
+    // block is made whether or not the read answers.
+    recordTimeBlockExternalId(id, result.eventId);
     return true;
   },
 
@@ -4533,6 +4646,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         rotationPeriodStart: null,
         quotaStartedAt: null,
         calendarEventId: null,
+        calendarEventExternalId: null,
         completionCalendarEventId: null,
       });
     }

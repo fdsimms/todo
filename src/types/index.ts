@@ -2685,6 +2685,16 @@ export interface Task {
   // `taskEventsAfterSync`). A task with no event here gets none from a sync.
   calendarEventId: string | null;
 
+  // The calendar server's id for the deadline event above
+  // (`calendarItemExternalIdentifier`), read back after every write, or null
+  // until one is (#2950). Only read when calendarEventId no longer resolves: a
+  // backup restored on a new phone carries the old phone's local ids, which
+  // name nothing there, so the event is looked up by this before a fresh one is
+  // written beside it (`writeAllDayEvent` in utils/calendarEventLink.ts).
+  // Device-local in sync and kept in backups, exactly like calendarEventId.
+  // Optional so a row or fixture from before it reads as null.
+  calendarEventExternalId?: string | null;
+
   // The id of the one-shot event logging this task's completion, or null when
   // logCompletionToCalendar is off, no calendar is picked, or the write
   // hasn't happened (yet, or ever). Resolve-or-shrug like calendarEventId
@@ -2696,7 +2706,10 @@ export interface Task {
   //
   // On uncomplete, if this is set, the device event is deleted and this is
   // cleared — un-completing the task means the thing the event recorded
-  // didn't actually happen, so there's nothing left for it to log.
+  // didn't actually happen, so there's nothing left for it to log. That
+  // includes an uncomplete on another device (#2950): this id stays on the
+  // device that wrote the event, so the reload after the sync does the same
+  // delete here (`taskEventsAfterSync`'s `uncompleted`).
   completionCalendarEventId: string | null;
 
   // The id of the timed event blocking out room to actually *do* this task,
@@ -2724,6 +2737,15 @@ export interface Task {
   // the title and the length, never the start, and a task deleted on another
   // device still leaves its block where it is.
   timeBlockEventId: string | null;
+
+  // The calendar server's id for the block above (`calendarItemExternalIdentifier`),
+  // read after the sheet saves it and again by any reconcile that finds it
+  // missing, or null until one is (#2950). Read only when timeBlockEventId no
+  // longer resolves, which a backup restored on a new phone leaves every
+  // block with: the task finds its block by this instead of forgetting it
+  // (`adoptTimeBlock` in useTaskStore). Device-local and kept in backups, like
+  // the id beside it. Optional so a row or fixture from before it reads as null.
+  timeBlockExternalId?: string | null;
 
   /**
    * Which direction success runs in. 'positive' — do the thing — is every task
@@ -3289,8 +3311,10 @@ export type TaskDraft = Omit<
   | 'followUpTaskTally'
   | 'previousFollowUpTaskTally'
   | 'calendarEventId'
+  | 'calendarEventExternalId'
   | 'completionCalendarEventId'
   | 'timeBlockEventId'
+  | 'timeBlockExternalId'
   | 'backfillDismissedFields'
   // The set is configuration and a draft may carry it; the ledger, the period
   // stamp and the last-done memory are what a running rotation has recorded,
@@ -6569,6 +6593,17 @@ export interface MealPlanEntry {
    * with the rules in `mealEventsAfterSync`).
    */
   calendarEventId: string | null;
+  /**
+   * The calendar server's id for that same event (`calendarItemExternalIdentifier`),
+   * read back after every write, or null until one is (#2950). Read only when
+   * `calendarEventId` no longer resolves, which is what a backup restored on a
+   * new phone leaves every meal with: the event is looked up by this and
+   * adopted rather than written a second time beside the one the old phone
+   * wrote (`writeAllDayEvent` in utils/calendarEventLink.ts). Device-local in
+   * sync and kept in backups, like `calendarEventId`. Optional so a row or
+   * fixture from before it reads as null.
+   */
+  calendarEventExternalId?: string | null;
 }
 
 /**

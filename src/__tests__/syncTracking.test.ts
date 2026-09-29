@@ -354,6 +354,17 @@ describe('device-local columns', () => {
     expect(isDeviceLocalColumn('meal_plan_entries', 'title')).toBe(false);
   });
 
+  it('keeps the server id kept beside each event id on the device too', () => {
+    // It names the event this device wrote; a peer holding it could find that
+    // event and start rewriting it.
+    expect(isDeviceLocalColumn('meal_plan_entries', 'calendar_event_external_id')).toBe(true);
+    expect(isDeviceLocalColumn('tasks', 'calendar_event_external_id')).toBe(true);
+    expect(isDeviceLocalColumn('tasks', 'time_block_external_id')).toBe(true);
+    expect(withoutDeviceLocalColumns('meal_plan_entries', {
+      id: 'm1', calendar_event_id: 'evt', calendar_event_external_id: 'ext',
+    })).toEqual({ id: 'm1' });
+  });
+
   it('keeps a task\'s three event ids on the device and nothing else of its row', () => {
     expect(isDeviceLocalColumn('tasks', 'calendar_event_id')).toBe(true);
     expect(isDeviceLocalColumn('tasks', 'completion_calendar_event_id')).toBe(true);

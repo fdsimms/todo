@@ -192,7 +192,15 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
  * is what it can actually do, rather than breaking the block it can't see.
  *
  * A backup keeps the columns: restoring onto the phone that wrote the events is
- * the common case, and there the ids still resolve.
+ * the common case, and there the ids still resolve. Restored onto a new phone
+ * they don't, so each event's calendar server id is kept beside its local id
+ * (`calendar_event_external_id`, `time_block_external_id`) and the next write
+ * looks the event up by it before writing a fresh one (`writeAllDayEvent` in
+ * utils/calendarEventLink.ts), or, for a time block, before dropping the
+ * pointer (`adoptTimeBlock` in useTaskStore).
+ * That column names the same event this device wrote, so it stays here too:
+ * sent across, a peer could find the event by it and start rewriting an event
+ * it doesn't own.
  *
  * Keeping the id local also means only this device can act on the event, so a
  * peer's edit reaches it through the apply's report rather than the row: an
@@ -200,16 +208,19 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
  * off the row first (`ApplyReport.mealEntryIds`/`removedMealEvents`), and the
  * reload after the sync reconciles them. Tasks get the same
  * (`taskIds`/`removedTaskEvents`): a changed task's deadline event and time
- * block are rewritten, and a deleted task's deadline event is deleted. Not
- * its time block, which the app never deletes, and not its completion event,
- * which is written once as a record and never reconciled, so the peer's
- * uncomplete still leaves it on this device's calendar. A column added here
- * that names something outside the database needs the same, or a peer's
- * delete strands whatever it pointed at.
+ * block are rewritten, a deleted task's deadline event is deleted, and a
+ * reopened task's completion event is deleted and unlinked, as a local
+ * uncomplete does. Not a deleted task's time block, which the app never
+ * deletes, nor its completion event, a record of something that happened. A
+ * column added here that names something outside the database needs the same,
+ * or a peer's delete strands whatever it pointed at.
  */
 export const SYNC_DEVICE_LOCAL_COLUMNS: Readonly<Record<string, readonly string[]>> = {
-  meal_plan_entries: ['calendar_event_id'],
-  tasks: ['calendar_event_id', 'completion_calendar_event_id', 'time_block_event_id'],
+  meal_plan_entries: ['calendar_event_id', 'calendar_event_external_id'],
+  tasks: [
+    'calendar_event_id', 'calendar_event_external_id',
+    'completion_calendar_event_id', 'time_block_event_id', 'time_block_external_id',
+  ],
 };
 
 /** Whether `column` of `table` stays on this device — see SYNC_DEVICE_LOCAL_COLUMNS. */

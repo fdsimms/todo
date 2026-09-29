@@ -1,7 +1,8 @@
 import type { MealPlanEntry } from '../types';
 import { MEAL_SLOT_LABELS, MEAL_PLAN_RETENTION_DAYS } from '../types';
 import { dayKeyToDate } from './dateUtils';
-import { createAllDayEvent, moveAllDayEvent, deleteCalendarEvent } from './calendarSync';
+import { deleteCalendarEvent } from './calendarSync';
+import { NO_EVENT_LINK, writeAllDayEvent, type CalendarEventLink } from './calendarEventLink';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { isDemoModeActive } from './demoState';
 import { mealPlanPurgeCutoffKey, mealTitleOffPlan } from './mealPlan';
@@ -25,7 +26,7 @@ import type { ApplyReport } from './syncMerge';
  * Deliberately free of any dependency on `useMealPlanStore` — it's the store
  * that calls this (see `reconcileMealEvent`), so a dependency back would be
  * circular. This function only reports what the device write produced;
- * persisting the id onto the entry is the caller's job.
+ * persisting the link onto the entry is the caller's job.
  */
 
 /**
@@ -74,8 +75,9 @@ export function mealEventFields(entry: MealPlanEntry): { title: string; date: Da
 }
 
 /**
- * Creates, updates or deletes this meal's calendar event, and returns the id
- * it should now be linked to (null when it shouldn't have one).
+ * Creates, updates or deletes this meal's calendar event, and returns what it
+ * should now be linked to: the event's device id and the calendar server's id
+ * for it, both null when it shouldn't have one.
  *
  * Which meals get an event: every one in the plan, once a calendar is picked.
  * There is deliberately no per-meal opt-out to match `cookTask`'s tri-state —
@@ -94,12 +96,12 @@ export function mealEventFields(entry: MealPlanEntry): { title: string; date: Da
  * a complete answer to the question the calendar is being asked. `cookTaskFor`
  * skips them because there is nothing to cook, which is a different question.
  */
-export async function syncMealEvent(entry: MealPlanEntry): Promise<string | null> {
+export async function syncMealEvent(entry: MealPlanEntry): Promise<CalendarEventLink> {
   // Same guard notifications.ts uses: demo mode seeds a full week of meals
   // through the real planMeal action, and without this every one of them
   // would write a real all-day event to whatever calendar the user had
   // picked before switching demo mode on.
-  if (isDemoModeActive()) return null;
+  if (isDemoModeActive()) return NO_EVENT_LINK;
 
   const { mealCalendarId } = useSettingsStore.getState();
 
@@ -117,30 +119,22 @@ export async function syncMealEvent(entry: MealPlanEntry): Promise<string | null
   // the area back on restores exactly what was there.
   if (!mealCalendarId) {
     if (entry.calendarEventId) await deleteCalendarEvent(entry.calendarEventId);
-    return null;
+    return NO_EVENT_LINK;
   }
 
-  const fields = mealEventFields(entry);
-
-  if (entry.calendarEventId) {
-    // Into the calendar picked *now*, not the one it was first written to: a
-    // meal written before "Write meals to" was switched moves across the next
-    // time it's reconciled, rather than going on being rewritten in the old
-    // calendar while new meals land in the new one (#2949). Still no sweep,
-    // for setMealCalendarId's reason: a meal nobody touches keeps its event
-    // where it is.
-    const moved = await moveAllDayEvent(entry.calendarEventId, mealCalendarId, fields);
-    if (moved) return moved;
-    // The id didn't resolve to a live event (deleted by hand, or the calendar
-    // itself is gone), or EventKit refused the move. Delete whatever is left
-    // under the old id first, so a refused move can't leave the meal on both
-    // calendars once the fresh one is written; for an event that is already
-    // gone this does nothing. Then resolve-or-shrug: write a fresh one rather
-    // than leaving the entry pointing at nothing.
-    await deleteCalendarEvent(entry.calendarEventId);
-  }
-
-  return createAllDayEvent(mealCalendarId, fields);
+  // Into the calendar picked *now*, not the one it was first written to: a
+  // meal written before "Write meals to" was switched moves across the next
+  // time it's reconciled, rather than going on being rewritten in the old
+  // calendar while new meals land in the new one (#2949). Still no sweep, for
+  // setMealCalendarId's reason: a meal nobody touches keeps its event where it
+  // is. An id that no longer resolves (deleted by hand, the calendar gone, or
+  // a backup restored on a new phone, #2950) falls back to the event found by
+  // its server id and then to a fresh one; `writeAllDayEvent` has the order.
+  return writeAllDayEvent(
+    { eventId: entry.calendarEventId, externalId: entry.calendarEventExternalId ?? null },
+    mealCalendarId,
+    mealEventFields(entry)
+  );
 }
 
 /**
