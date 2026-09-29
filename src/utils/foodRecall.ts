@@ -3,6 +3,7 @@ import { isPortionBox } from '../types';
 import { groceryNameKey } from './groceryParse';
 import { matchWeight } from './grocerySuggest';
 import { nutritionFor } from './foodNutrition';
+import { keptDatabasePanel, scalePanelToAmount } from './foodLog';
 import { describeProduct } from './groceryProduct';
 import { packageChoices, type PackageChoice } from './scanPortion';
 
@@ -94,6 +95,13 @@ export interface RecalledFood {
    * preserved. See the note above.
    */
   nutrition: FoodNutrition;
+  /**
+   * The panel the most recent logging kept (`FoodLogEntry.sourcePanel`), or
+   * null. Carried so the entry logged from this can be corrected just as that
+   * one can, and so a new weight is measured against it rather than
+   * multiplied out of `nutrition`. See `recalledHelping`.
+   */
+  sourcePanel: FoodNutrition | null;
   slot: MealSlot | null;
   recipeId: string | null;
   itemId: string | null;
@@ -184,6 +192,7 @@ export function recallFoods(
         quantity: entry.quantity,
         grams: entry.grams,
         nutrition: entry.nutrition,
+        sourcePanel: entry.sourcePanel ?? null,
         slot: entry.slot,
         recipeId: entry.recipeId,
         itemId: entry.itemId,
@@ -202,6 +211,7 @@ export function recallFoods(
       seen.quantity = entry.quantity;
       seen.grams = entry.grams;
       seen.nutrition = entry.nutrition;
+      seen.sourcePanel = entry.sourcePanel ?? null;
       seen.slot = entry.slot;
       seen.recipeId = entry.recipeId;
       seen.itemId = entry.itemId;
@@ -221,6 +231,75 @@ export function recallFoods(
     })
     .slice(0, limit)
     .map(scored => scored.food);
+}
+
+/**
+ * What a recalled food is measured against when it is logged at a weight of
+ * its own: the database panel it kept, or else the recorded helping.
+ *
+ * **The kept panel wins, because an amount is re-measured, never multiplied**
+ * (`docs/arch/health-data.md`). A database food nobody filed keeps the
+ * database's own per-100 g record (`FoodLogEntry.sourcePanel`, #2914), and
+ * 170 g of it is measured off that record exactly as the entry sheet's
+ * correction measures it. The recorded helping is already one amount's worth,
+ * so scaling it compounds that helping's rounding into the next one, and it
+ * stays the base only for a food that kept nothing better.
+ *
+ * Only for a food linked to nothing, the order `foodLogEntryEdit` reads them
+ * in: a link wins over a kept panel. And an estimate's kept whole is not a
+ * panel to measure with (`keptDatabasePanel` says why), so a described meal
+ * falls back to its helping as it always did.
+ */
+export function recallMeasuringPanel(food: RecalledFood): FoodNutrition {
+  const linked = !!(food.recipeId || food.itemId || food.productId);
+  return (linked ? null : keptDatabasePanel(food)) ?? food.nutrition;
+}
+
+/** What logging a recalled food again writes, beside where and when it lands. */
+export interface RecalledHelping {
+  quantity: string;
+  grams: number | null;
+  nutrition: FoodNutrition;
+  sourcePanel: FoodNutrition | null;
+}
+
+/**
+ * A recalled food as it is logged again: as recorded, or measured at `grams`
+ * when a different weight was named (null means the recorded one).
+ *
+ * **As recorded, everything goes back verbatim, the kept panel included**,
+ * the copy `duplicateEntry` and `helpingAgain` make. The new entry can then be
+ * corrected, or for an estimate cut to a share, exactly as the old one could.
+ * Leaving the panel behind was the bug (#2914): an unfiled database food came
+ * back as an entry that could only be renamed.
+ *
+ * **At a new weight it is measured off `recallMeasuringPanel`**, and keeps
+ * the panel only when that is what measured it. Measured off a kept database
+ * panel, the new entry keeps that panel, since its helping was measured
+ * against exactly that. Measured off the recorded helping, it keeps nothing:
+ * an estimate's whole no longer has this helping as one of its shares (All
+ * would put back a meal of a different size), and a linked food's kept panel
+ * is dropped the way a correction against its row drops it.
+ *
+ * A weight the base cannot measure logs as recorded, as it always has.
+ */
+export function recalledHelping(food: RecalledFood, grams: number | null, now: Date): RecalledHelping {
+  const asRecorded: RecalledHelping = {
+    quantity: food.quantity,
+    grams: food.grams,
+    nutrition: food.nutrition,
+    sourcePanel: food.sourcePanel,
+  };
+  if (grams === null) return asRecorded;
+  const base = recallMeasuringPanel(food);
+  const scaled = scalePanelToAmount(base, `${grams}g`, null, now);
+  if (!scaled) return asRecorded;
+  return {
+    quantity: scaled.grams != null ? `${scaled.grams}g` : food.quantity,
+    grams: scaled.grams,
+    nutrition: scaled.nutrition,
+    sourcePanel: base === food.nutrition ? null : base,
+  };
 }
 
 /** Anything that can be looked for by the words naming it. */

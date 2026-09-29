@@ -6,7 +6,9 @@ import {
   describedGrams,
   rankRecallCandidates,
   recallFoods,
+  recallMeasuringPanel,
   recallWeight,
+  recalledHelping,
   type RecallableItem,
   type RecallableProduct,
   type RecalledFood,
@@ -218,6 +220,159 @@ describe('recallFoods', () => {
 
   it('finds nothing in an empty log', () => {
     expect(recallFoods([], 'anything at all')).toEqual([]);
+  });
+
+  it('carries the panel the most recent logging kept, and none from one that kept nothing', () => {
+    // #2914: the panel is what lets the entry logged from this be corrected.
+    const kept = panel({ basis: 'per100g', servingGrams: null, servingText: null, source: 'fdc', sourceId: '171077' });
+    const found = recallFoods([
+      entry({ label: 'Roast chicken', atISO: '2026-04-01T08:00:00.000Z' }),
+      entry({ label: 'Roast chicken', atISO: '2026-04-05T08:00:00.000Z', sourcePanel: kept }),
+    ], 'roast chicken');
+    expect(found[0].sourcePanel).toEqual(kept);
+
+    const older = recallFoods([
+      entry({ label: 'Roast chicken', atISO: '2026-04-05T08:00:00.000Z', sourcePanel: kept }),
+      entry({ label: 'Roast chicken', atISO: '2026-04-09T08:00:00.000Z' }),
+    ], 'roast chicken');
+    // The most recent logging kept nothing, and what it kept is what comes back.
+    expect(older[0].sourcePanel).toBeNull();
+  });
+});
+
+describe('logging a recalled food again (#2914)', () => {
+  const now = new Date('2026-04-10T12:00:00');
+
+  /** The database's own record: per 100 g, with a portion row. */
+  const chicken: FoodNutrition = {
+    basis: 'per100g',
+    servingGrams: null,
+    servingText: null,
+    amounts: { calorieKcal: 165, proteinG: 31 },
+    portions: [{ amount: 1, label: 'breast', grams: 172 }],
+    source: 'fdc',
+    sourceId: '171077',
+    recordedAt: '2026-04-02T00:00:00.000Z',
+  };
+
+  /**
+   * One helping of it as an entry stores it. The figures here are deliberately
+   * not 200 g of the panel above, so a test can tell which of the two a new
+   * weight was measured against.
+   */
+  const helping: FoodNutrition = {
+    basis: 'perServing',
+    servingGrams: 200,
+    servingText: '200g',
+    amounts: { calorieKcal: 400, proteinG: 70 },
+    portions: [],
+    source: 'fdc',
+    sourceId: '171077',
+    recordedAt: '2026-04-02T00:00:00.000Z',
+  };
+
+  function unfiled(overrides: Partial<FoodLogEntry> = {}): RecalledFood {
+    return recallFoods([entry({
+      label: 'Chicken breast, roasted',
+      quantity: '200g',
+      grams: 200,
+      nutrition: helping,
+      sourcePanel: chicken,
+      ...overrides,
+    })], 'chicken breast')[0];
+  }
+
+  /** A described meal cut to half, keeping the whole it is half of. */
+  const wholeEstimate: FoodNutrition = {
+    basis: 'perServing',
+    servingGrams: 600,
+    servingText: '1 burrito',
+    amounts: { calorieKcal: 1000, proteinG: 40 },
+    portions: [],
+    source: 'estimated',
+    sourceId: null,
+    recordedAt: '2026-04-02T00:00:00.000Z',
+  };
+  const halfEstimate: FoodNutrition = {
+    ...wholeEstimate,
+    servingGrams: 300,
+    servingText: 'half of 1 burrito',
+    amounts: { calorieKcal: 500, proteinG: 20 },
+  };
+
+  function estimate(): RecalledFood {
+    return recallFoods([entry({
+      label: 'Chicken burrito',
+      quantity: 'half of 1 burrito',
+      grams: 300,
+      nutrition: halfEstimate,
+      sourcePanel: wholeEstimate,
+    })], 'chicken burrito')[0];
+  }
+
+  it('logs the same helping with the same kept panel when the weight is left alone', () => {
+    // Leaving the panel behind was the bug: the copy could only be renamed.
+    const again = recalledHelping(unfiled(), null, now);
+    expect(again).toEqual({ quantity: '200g', grams: 200, nutrition: helping, sourcePanel: chicken });
+  });
+
+  it('carries an estimate\'s whole verbatim too, so the copy is still a share of it', () => {
+    const again = recalledHelping(estimate(), null, now);
+    expect(again.nutrition).toBe(halfEstimate);
+    expect(again.sourcePanel).toBe(wholeEstimate);
+  });
+
+  it('measures a new weight against the kept panel, not the stored helping', () => {
+    const again = recalledHelping(unfiled(), 170, now);
+    // 170 g of 165 kcal and 31 g protein per 100 g. Multiplied out of the
+    // stored helping it would have been 340 kcal and 59.5 g.
+    expect(again.nutrition.amounts).toEqual({ calorieKcal: 280.5, proteinG: 52.7 });
+    expect(again.grams).toBe(170);
+    expect(again.quantity).toBe('170g');
+    expect(again.nutrition.servingText).toBe('170g');
+    // The claim it was measured under is the database's, and the new entry
+    // keeps the panel it was measured against so it can be corrected again.
+    expect(again.nutrition.source).toBe('fdc');
+    expect(again.nutrition.sourceId).toBe('171077');
+    expect(again.sourcePanel).toBe(chicken);
+  });
+
+  it('never measures against an estimate\'s whole', () => {
+    const food = estimate();
+    expect(recallMeasuringPanel(food)).toBe(halfEstimate);
+    const again = recalledHelping(food, 150, now);
+    // Half of the 300 g helping. Measured off the 600 g whole it would have
+    // been a quarter of the meal, which nobody said.
+    expect(again.nutrition.amounts).toEqual({ calorieKcal: 250, proteinG: 10 });
+    expect(again.nutrition.source).toBe('estimated');
+    // This helping is no longer one of the whole's shares, so All must not
+    // put back a meal of a different size.
+    expect(again.sourcePanel).toBeNull();
+  });
+
+  it('measures a linked food against its helping, the order foodLogEntryEdit keeps', () => {
+    const food = unfiled({ itemId: 'item-chicken' });
+    expect(recallMeasuringPanel(food)).toBe(helping);
+    const again = recalledHelping(food, 100, now);
+    expect(again.nutrition.amounts.calorieKcal).toBe(200);
+    expect(again.sourcePanel).toBeNull();
+  });
+
+  it('measures a food that kept nothing against its helping, as before', () => {
+    const food = unfiled({ sourcePanel: null });
+    expect(recallMeasuringPanel(food)).toBe(helping);
+    const again = recalledHelping(food, 100, now);
+    expect(again.nutrition.amounts.calorieKcal).toBe(200);
+    expect(again.sourcePanel).toBeNull();
+  });
+
+  it('logs as recorded when the weight cannot be measured', () => {
+    // A drink's panel is per 100 ml, and a weight in grams says nothing about
+    // a volume without a density the app deliberately has not got.
+    const drink: FoodNutrition = { ...chicken, basis: 'per100ml', portions: [] };
+    const food = unfiled({ sourcePanel: drink });
+    const again = recalledHelping(food, 250, now);
+    expect(again).toEqual({ quantity: '200g', grams: 200, nutrition: helping, sourcePanel: drink });
   });
 });
 
