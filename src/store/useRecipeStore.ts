@@ -43,8 +43,15 @@ import { makeComponent, recipeMap, wouldCreateRecipeCycle } from '../utils/recip
 import { sectionsOf } from '../utils/recipeSections';
 import { pageAfterCookbookLink } from '../utils/cookbookRecipes';
 import {
-  cleanIndexEntryFields, cleanIndexIngredients, indexEntryInBook, type IndexEntryFields,
+  cleanIndexEntryFields, cleanIndexIngredients, indexEntryInBook, mergedIndexLine,
+  type IndexDraft, type IndexEntryFields,
 } from '../utils/cookbookIndex';
+
+/** What `undoIndexImport` needs to take a scan back out. */
+export interface IndexImportUndo {
+  created: string[];
+  previous: CookbookIndexEntry[];
+}
 
 /**
  * The recipe library.
@@ -188,6 +195,18 @@ interface RecipeStore {
    * lines assumes a whole list. The entry stays as it was.
    */
   recipeFromIndexEntry: (id: string) => Recipe | null;
+  /**
+   * Writes a reviewed scan into a book's index: a new line per new draft, and
+   * each draft naming a line the index already has added to that line
+   * (`mergedIndexLine`). Returns what `undoIndexImport` needs to put it back.
+   */
+  applyIndexDrafts: (cookbookId: string, drafts: readonly IndexDraft[]) => IndexImportUndo;
+  /**
+   * Takes a scan back out: the lines it made are deleted and the lines it
+   * added to are restored as they were. A line edited since isn't touched
+   * twice, since it's restored to what the scan found rather than merged.
+   */
+  undoIndexImport: (undo: IndexImportUndo) => void;
   /**
    * `servingsMax` is the top of a range ("serves 4-6") and is optional — omit
    * it (or pass null) for a plain count. A max at or below `servings` isn't a
@@ -841,6 +860,42 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
   deleteIndexEntry(id) {
     dbDeleteCookbookIndexEntry(id);
     set(s => ({ indexEntries: s.indexEntries.filter(e => e.id !== id) }));
+  },
+
+  applyIndexDrafts(cookbookId, drafts) {
+    const undo: IndexImportUndo = { created: [], previous: [] };
+    if (!get().cookbooks.some(c => c.id === cookbookId)) return undo;
+    const createdAt = new Date().toISOString();
+    const added: CookbookIndexEntry[] = [];
+    const updated = new Map<string, CookbookIndexEntry>();
+    for (const draft of drafts) {
+      if (draft.existing) {
+        const merged = mergedIndexLine(draft);
+        if (!merged) continue;
+        dbUpdateCookbookIndexEntry(merged);
+        undo.previous.push(draft.existing);
+        updated.set(merged.id, merged);
+        continue;
+      }
+      const clean = cleanIndexEntryFields(draft);
+      if (!clean) continue;
+      const entry: CookbookIndexEntry = { id: generateId(), cookbookId, ...clean, createdAt };
+      dbInsertCookbookIndexEntry(entry);
+      undo.created.push(entry.id);
+      added.push(entry);
+    }
+    set(s => ({ indexEntries: [...s.indexEntries.map(e => updated.get(e.id) ?? e), ...added] }));
+    return undo;
+  },
+
+  undoIndexImport(undo) {
+    const created = new Set(undo.created);
+    for (const id of undo.created) dbDeleteCookbookIndexEntry(id);
+    for (const line of undo.previous) dbUpdateCookbookIndexEntry(line);
+    const restored = new Map(undo.previous.map(e => [e.id, e]));
+    set(s => ({
+      indexEntries: s.indexEntries.filter(e => !created.has(e.id)).map(e => restored.get(e.id) ?? e),
+    }));
   },
 
   recipeFromIndexEntry(id) {

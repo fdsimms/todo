@@ -89,6 +89,74 @@ export function indexEntryInBook(
   return entries.find(e => e.cookbookId === cookbookId && recipeNameKey(e.title) === key) ?? null;
 }
 
+/** One line a scan proposes, as the review shows it before anything is written. */
+export interface IndexDraft {
+  title: string;
+  page: string | null;
+  ingredients: string[];
+  /**
+   * The line this book's index already has under that name, which applying
+   * the draft adds to (its ingredients, and its page if it had none) rather
+   * than duplicating. Null for a new line.
+   */
+  existing: CookbookIndexEntry | null;
+}
+
+/**
+ * A scan's pages as one list of proposed lines, a dish once.
+ *
+ * An index files one dish under every ingredient it uses, so a scan meets
+ * "Braised lentils" under Lentils and again under Shallots: those fold into
+ * one line with both words, keyed by name the way `indexEntryInBook` keys
+ * the book's own lines, and the first page given wins. A dish the book's
+ * index already has is marked `existing`, so the review can say it adds to a
+ * line rather than making one. In the book's page order.
+ */
+export function mergeIndexDrafts(
+  read: readonly IndexEntryFields[],
+  bookEntries: readonly CookbookIndexEntry[],
+  cookbookId: string,
+): IndexDraft[] {
+  const byKey = new Map<string, IndexDraft>();
+  for (const fields of read) {
+    const clean = cleanIndexEntryFields(fields);
+    if (!clean) continue;
+    const key = recipeNameKey(clean.title);
+    const seen = byKey.get(key);
+    if (seen) {
+      seen.page = seen.page ?? clean.page;
+      seen.ingredients = cleanIndexIngredients([...seen.ingredients, ...clean.ingredients]);
+      continue;
+    }
+    byKey.set(key, { ...clean, existing: indexEntryInBook(bookEntries, clean.title, cookbookId) });
+  }
+  return [...byKey.values()].sort((a, b) => comparePages(a.page, b.page) || a.title.localeCompare(b.title));
+}
+
+/**
+ * What applying a draft does to the line it names: the existing line with the
+ * draft's words added and its page filled if it had none, or null when that
+ * changes nothing. Shared by the store's apply and the review's count, so
+ * "adds to 3 lines" can't disagree with what gets written.
+ */
+export function mergedIndexLine(draft: IndexDraft): CookbookIndexEntry | null {
+  const line = draft.existing;
+  if (!line) return null;
+  const ingredients = cleanIndexIngredients([...line.ingredients, ...draft.ingredients]);
+  const page = line.page ?? draft.page;
+  const changed = page !== line.page || ingredients.length !== line.ingredients.length;
+  return changed ? { ...line, page, ingredients } : null;
+}
+
+/** The line a book's page shows after a scan is added, beside its Undo. */
+export function describeIndexScan(added: number, updated: number): string {
+  const dishes = (n: number) => `${n} ${n === 1 ? 'dish' : 'dishes'}`;
+  if (added > 0 && updated > 0) return `Added ${dishes(added)}, and ingredients to ${updated} already in the index`;
+  if (added > 0) return `Added ${dishes(added)} to the index`;
+  if (updated > 0) return `Added ingredients to ${dishes(updated)} already in the index`;
+  return 'Nothing new was added';
+}
+
 /** "lentils, shallots; parsley" → the three words, as the entry form takes them. */
 export function splitIngredientText(text: string): string[] {
   return text.split(/[,;\n]/);
