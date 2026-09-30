@@ -1,0 +1,4 @@
+{
+  "message": "Logging a scanned food now asks for the amount in one place. Servings is a unit under the amount field and is picked by default, and the size of one serving is shown under the food's name.",
+  "date": "2026-09-30"
+}

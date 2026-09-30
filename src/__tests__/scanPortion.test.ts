@@ -1,5 +1,5 @@
 import type { FoodNutrition } from '../types';
-import { packageChoices, packageHelping, servingsPerPackage } from '../utils/scanPortion';
+import { packageChoices, packageHelping, servingDescription, servingsPerPackage } from '../utils/scanPortion';
 
 function panel(over: Partial<FoodNutrition> = {}): FoodNutrition {
   return {
@@ -155,5 +155,24 @@ describe('packageHelping', () => {
 
   it('refuses a panel that states no figures at all', () => {
     expect(packageHelping(panel({ amounts: {} }), 1, 'One')).toBeNull();
+  });
+});
+
+describe('servingDescription', () => {
+  it('says what a serving is in the packet\'s own words', () => {
+    expect(servingDescription(panel({ servingText: '2 pastries with icing' }))).toBe('1 serving is 2 pastries with icing');
+  });
+
+  it('keeps a source\'s own wording when it already says "serving"', () => {
+    expect(servingDescription(panel({ servingText: '1 serving (80 g)' }))).toBe('1 serving (80 g)');
+  });
+
+  it('falls back to the serving weight', () => {
+    expect(servingDescription(panel({ servingText: null }))).toBe('1 serving is 45g');
+  });
+
+  it('has nothing to say when the panel states no serving', () => {
+    expect(servingDescription(panel({ servingText: null, servingGrams: null }))).toBeNull();
+    expect(servingDescription(panel({ basis: 'perServing', servingText: '  ', servingGrams: null }))).toBeNull();
   });
 });

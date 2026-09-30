@@ -17,12 +17,11 @@ import { MEAL_SLOTS, MEAL_SLOT_LABELS, type FoodNutrition, type MealSlot } from 
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
-import { packageChoices, packageHelping } from '../utils/scanPortion';
+import { packageChoices, servingDescription } from '../utils/scanPortion';
 import { amountExample, amountHint, composeFoodAmount, foodUnitOptionsFor, scalePanelToAmount } from '../utils/foodLog';
 import { addCustomPortion } from '../utils/foodNutrition';
 import { weighableLine, type LineWeighing } from '../utils/ingredientGrams';
 import { haptics } from '../utils/haptics';
-import { CountStepper } from './CountStepper';
 import { InlineAction } from './InlineAction';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { SegmentedControl } from './SegmentedControl';
@@ -44,13 +43,17 @@ function formatServings(n: number): string {
  * count with nothing on screen to say so, which is the refusal the whole
  * nutrition tree is arranged around.
  *
- * **Two taps and a text field, in that order.** The panel's own serving and the
- * whole package are the two answers a label can support without typing, and
- * `packageChoices` withholds the second when the source never stated a pack
- * size — a made-up serving count multiplied by a real per-serving figure is
- * exactly the invented number this must not produce. Anything else is typed and
- * measured against the food's own portion table by `scalePanelToAmount`, which
- * refuses an amount it cannot resolve rather than approximating it.
+ * **One amount field, with the food's units under it.** Every answer is a
+ * number and a unit, measured against the food's own portion table by
+ * `scalePanelToAmount`, which refuses an amount it cannot resolve rather than
+ * approximating it. "Serving" is one of those units, opened on by default, and
+ * what a serving is sits under the title (`servingDescription`). It used to be
+ * a "1 serving" button of its own beside the field's "serving" unit, which was
+ * two controls for one question. The whole package is still a tap, because its
+ * serving count is worked out rather than known, and the tap only fills the
+ * field in. `packageChoices` withholds it when the source never stated a pack
+ * size, since a made-up serving count multiplied by a real per-serving figure is
+ * exactly the invented number this must not produce.
  *
  * **A row nobody answered is not logged.** Scanning several boxes and logging
  * one of them is an ordinary thing to do, so an untouched card is skipped
@@ -96,18 +99,6 @@ interface Props {
   onLogged?: () => void;
 }
 
-/** What one card is currently answering. `null` is the untouched state. */
-type Answer =
-  | {
-    kind: 'choice';
-    servings: number;
-    label: string;
-    /** The tapped choice's own servings/label, so scaling back to it restores its nice wording. */
-    baseServings: number;
-    baseLabel: string;
-  }
-  | { kind: 'typed'; text: string };
-
 export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, onClose, onLogged }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -120,7 +111,9 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
   // hook's own doc comment for why this beats a KeyboardAvoidingView here).
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
 
-  const [answers, setAnswers] = useState<Record<string, Answer>>({});
+  // What each card's amount currently reads as text ("0.5 serving"). Missing
+  // is the untouched state.
+  const [answers, setAnswers] = useState<Record<string, string>>({});
   const [chosenSlot, setChosenSlot] = useState<MealSlot | null>(slot);
   // Which unit's pill is selected per card, and the bare number typed against
   // it — split the same way `FoodLogEntrySheet`'s amount field is, and reset
@@ -158,22 +151,13 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
     >();
     for (const food of foods) {
       const answer = answers[food.key];
-      if (!answer) continue;
       // A field typed into and then cleared is untouched again, not a refusal.
       // Left as an answer it rendered "That amount can't be measured against
       // this label." under an empty box, which reads as the label being at
       // fault rather than the field being blank.
-      if (answer.kind === 'typed' && !answer.text.trim()) continue;
-      const panel = panelFor(food);
-      if (answer.kind === 'choice') {
-        const nutrition = packageHelping(panel, answer.servings, answer.label, at);
-        out.set(food.key, nutrition
-          ? { nutrition, grams: nutrition.servingGrams, quantity: answer.label, approximate: false }
-          : null);
-      } else {
-        const scaled = scalePanelToAmount(panel, answer.text, null, at, food.label);
-        out.set(food.key, scaled ? { ...scaled, quantity: answer.text.trim() } : null);
-      }
+      if (!answer?.trim()) continue;
+      const scaled = scalePanelToAmount(panelFor(food), answer, null, at, food.label);
+      out.set(food.key, scaled ? { ...scaled, quantity: answer.trim() } : null);
     }
     return out;
   }, [foods, answers, at, weighedPanels]);
@@ -277,24 +261,28 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
 
           {foods.map(food => {
             const panel = panelFor(food);
-            const answer = answers[food.key];
-            const choices = packageChoices(panel, food.packSize);
+            const answer = answers[food.key] ?? '';
+            // Only the whole package is still a tap: the panel's own serving is
+            // the "serving" unit below, which is the default for any panel that
+            // has one, so a "1 serving" button beside it was a second control
+            // for the same answer.
+            const wholePackage = packageChoices(panel, food.packSize).find(c => c.key === 'package') ?? null;
             const outcome = resolved.get(food.key);
-            const typed = answer?.kind === 'typed' ? answer.text : '';
             const unitOptions = foodUnitOptionsFor(panel);
-            const selectedUnitKey = amountUnits[food.key] ?? (unitOptions.length > 0 ? unitOptions[0].key : null);
+            const hasServingUnit = unitOptions.some(o => o.key === 'serving');
+            const selectedUnitKey = amountUnits[food.key]
+              ?? (hasServingUnit ? 'serving' : unitOptions.length > 0 ? unitOptions[0].key : null);
             const usingPills = unitOptions.length > 0 && selectedUnitKey !== 'other';
-            // A package choice and a typed amount are two answers to one
-            // question, and only one of them is live. While a choice is, the
-            // unit pills must not read as selected too, or two blue pills
-            // ("1 serving" and "g") both look like the current answer.
-            const choiceActive = answer?.kind === 'choice';
             const selectedUnit = unitOptions.find(o => o.key === selectedUnitKey);
+            const servingSize = hasServingUnit ? servingDescription(panel) : null;
+            const wholePackageOn = !!wholePackage
+              && selectedUnitKey === 'serving'
+              && (amountNumbers[food.key] ?? '') === formatServings(wholePackage.servings);
             // Offered once a typed amount resolves for nutrients but still has
             // no weight — a per-100ml panel's own volume math can do the
             // first without ever answering the second (see `weighableLine`).
-            const weighable = answer?.kind === 'typed' && answer.text.trim() && (!outcome || outcome.grams === null)
-              ? weighableLine(answer.text, null, panel, food.label)
+            const weighable = answer.trim() && (!outcome || outcome.grams === null)
+              ? weighableLine(answer, null, panel, food.label)
               : null;
             // The field itself is shown as soon as the unit is known — before
             // an amount is even typed — so the option is never hidden behind
@@ -304,78 +292,20 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
             const showWeighField = !!weighUnitLabel && (!outcome || outcome.grams === null);
             return (
               <View key={food.key} style={styles.card}>
-                <Text style={styles.cardTitle}>{food.label}</Text>
-                <View style={styles.choices}>
-                  {choices.map(choice => {
-                    const on = answer?.kind === 'choice' && answer.label === choice.label;
-                    return (
-                      <TouchableOpacity
-                        key={choice.key}
-                        style={[styles.choice, on && styles.choiceOn]}
-                        activeOpacity={interaction.activeOpacity}
-                        onPress={() => {
-                          haptics.tap();
-                          setAnswers(a => ({
-                            ...a,
-                            [food.key]: {
-                              kind: 'choice',
-                              servings: choice.servings,
-                              label: choice.label,
-                              baseServings: choice.servings,
-                              baseLabel: choice.label,
-                            },
-                          }));
-                        }}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected: on }}
-                        accessibilityLabel={choice.label}
-                      >
-                        <Text style={[styles.choiceText, on && styles.choiceTextOn]}>{choice.label}</Text>
-                      </TouchableOpacity>
-                    );
-                  })}
+                <View>
+                  <Text style={styles.cardTitle}>{food.label}</Text>
+                  {servingSize && <Text style={styles.servingSize}>{servingSize}</Text>}
                 </View>
-                {/* Only for the plain "1 serving" choice — its base count is
-                    always exactly 1 (see `packageChoices`), so whole-number
-                    steps land cleanly. The whole-package choice's own count
-                    is already a computed, possibly fractional number of
-                    servings, which `CountStepper`'s integer-only stepping
-                    (see its own doc comment) isn't built to scale further;
-                    the text field below still takes a typed amount for that. */}
-                {answer?.kind === 'choice' && answer.baseServings === 1 && (
-                  <View style={styles.servingsRow}>
-                    <Text style={styles.servingsLabel}>Servings</Text>
-                    <CountStepper
-                      value={answer.servings}
-                      onChange={next => {
-                        if (next === null) return;
-                        setAnswers(a => {
-                          const current = a[food.key];
-                          if (!current || current.kind !== 'choice') return a;
-                          const label = next === current.baseServings
-                            ? current.baseLabel
-                            : `${formatServings(next)} servings`;
-                          return { ...a, [food.key]: { ...current, servings: next, label } };
-                        });
-                      }}
-                      min={1}
-                      max={20}
-                      format={n => `${n}×`}
-                      describeValue={n => `${n ?? 0} serving${n === 1 ? '' : 's'}`}
-                      label="Servings"
-                    />
-                  </View>
-                )}
                 <View style={usingPills ? styles.inputRow : undefined}>
                   <TextInput
                     style={usingPills ? styles.inputWithSuffix : styles.input}
-                    value={usingPills ? (amountNumbers[food.key] ?? '') : typed}
+                    value={usingPills ? (amountNumbers[food.key] ?? '') : answer}
                     onChangeText={text => {
                       if (usingPills) {
                         setAmountNumbers(n => ({ ...n, [food.key]: text }));
-                        setAnswers(a => ({ ...a, [food.key]: { kind: 'typed', text: composeFoodAmount(text, selectedUnit) } }));
+                        setAnswers(a => ({ ...a, [food.key]: composeFoodAmount(text, selectedUnit) }));
                       } else {
-                        setAnswers(a => ({ ...a, [food.key]: { kind: 'typed', text } }));
+                        setAnswers(a => ({ ...a, [food.key]: text }));
                       }
                     }}
                     placeholder={usingPills ? 'Amount' : `e.g. ${amountExample(panel)}`}
@@ -397,7 +327,7 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
                 {unitOptions.length > 0 && (
                   <View style={styles.choices}>
                     {unitOptions.map(option => {
-                      const on = !choiceActive && selectedUnitKey === option.key;
+                      const on = selectedUnitKey === option.key;
                       return (
                         <TouchableOpacity
                           key={option.key}
@@ -408,7 +338,7 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
                             setAmountUnits(u => ({ ...u, [food.key]: option.key }));
                             setAnswers(a => ({
                               ...a,
-                              [food.key]: { kind: 'typed', text: composeFoodAmount(amountNumbers[food.key] ?? '', option) },
+                              [food.key]: composeFoodAmount(amountNumbers[food.key] ?? '', option),
                             }));
                           }}
                           accessibilityRole="button"
@@ -424,18 +354,18 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
                         free text, the same offer `FoodLogEntrySheet` makes. */}
                     <TouchableOpacity
                       key="other"
-                      style={[styles.choice, !choiceActive && selectedUnitKey === 'other' && styles.choiceOn]}
+                      style={[styles.choice, selectedUnitKey === 'other' && styles.choiceOn]}
                       activeOpacity={interaction.activeOpacity}
                       onPress={() => {
                         haptics.tap();
                         setAmountUnits(u => ({ ...u, [food.key]: 'other' }));
-                        setAnswers(a => ({ ...a, [food.key]: { kind: 'typed', text: '' } }));
+                        setAnswers(a => ({ ...a, [food.key]: '' }));
                       }}
                       accessibilityRole="button"
-                      accessibilityState={{ selected: !choiceActive && selectedUnitKey === 'other' }}
+                      accessibilityState={{ selected: selectedUnitKey === 'other' }}
                       accessibilityLabel="Something else"
                     >
-                      <Text style={[styles.choiceText, !choiceActive && selectedUnitKey === 'other' && styles.choiceTextOn]}>
+                      <Text style={[styles.choiceText, selectedUnitKey === 'other' && styles.choiceTextOn]}>
                         Something else
                       </Text>
                     </TouchableOpacity>
@@ -444,12 +374,33 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
                 {/* What will actually resolve, said before it's typed rather
                     than only after a refusal. */}
                 <Text style={styles.hint}>
-                  {usingPills
-                    ? choiceActive
-                      ? 'Or type an exact amount above and pick its unit.'
-                      : 'Pick the unit for the amount you typed.'
-                    : amountHint(panel)}
+                  {usingPills ? 'Pick the unit for the amount you typed.' : amountHint(panel)}
                 </Text>
+                {/* A shortcut that fills the field in rather than a second
+                    answer beside it, so the field always shows what will be
+                    logged. Its count is worked out from the pack size, which
+                    is why it's worth a tap where one serving isn't. */}
+                {wholePackage && (
+                  <View style={styles.choices}>
+                    <TouchableOpacity
+                      style={[styles.choice, wholePackageOn && styles.choiceOn]}
+                      activeOpacity={interaction.activeOpacity}
+                      onPress={() => {
+                        haptics.tap();
+                        const serving = unitOptions.find(o => o.key === 'serving');
+                        const count = formatServings(wholePackage.servings);
+                        setAmountUnits(u => ({ ...u, [food.key]: 'serving' }));
+                        setAmountNumbers(n => ({ ...n, [food.key]: count }));
+                        setAnswers(a => ({ ...a, [food.key]: composeFoodAmount(count, serving) }));
+                      }}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: wholePackageOn }}
+                      accessibilityLabel={wholePackage.label}
+                    >
+                      <Text style={[styles.choiceText, wholePackageOn && styles.choiceTextOn]}>{wholePackage.label}</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
                 {/* What the answer works out to, or why it doesn't. An amount
                     the food's own portion table can't measure is refused here
                     rather than at Log, since the field is what needs changing. */}
@@ -543,6 +494,7 @@ function makeStyles(colors: Colors) {
       gap: spacing.sm,
     },
     cardTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.medium },
+    servingSize: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.xxs },
     choices: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
     choice: {
       paddingHorizontal: spacing.md,
@@ -553,8 +505,6 @@ function makeStyles(colors: Colors) {
     choiceOn: { backgroundColor: colors.accent },
     choiceText: { color: colors.text, fontSize: font.sm },
     choiceTextOn: { color: colors.onAccent, fontWeight: fontWeight.medium },
-    servingsRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-    servingsLabel: { color: colors.textSecondary, fontSize: font.sm },
     input: {
       backgroundColor: colors.bgTertiary,
       borderRadius: radius.md,

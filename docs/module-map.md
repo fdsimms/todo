@@ -270,7 +270,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/rotation.ts` — RotationMember, RotationCarrier, MIN_ROTATION_ITEMS, isRotationTask, parseRotationItems, parseRotationLog, parseRotationLastDone, rotationPeriodStart, activeRotationLog, rotationMembers, +9 more
 - `src/utils/rsvp.ts` — parseGuestNames
 - `src/utils/savedViews.ts` — SAVED_VIEW_CLAUSE_KINDS, savedViewClauseLabel, SAVED_VIEW_ICONS, DEFAULT_SAVED_VIEW_ICON, SavedViewContext, matchesClause, matchesSavedView, isSavedViewCandidate, filterTasksForView, SavedViewLabels, +11 more
-- `src/utils/scanPortion.ts` — PackageChoice, servingsPerPackage, packageChoices, packageHelping
+- `src/utils/scanPortion.ts` — PackageChoice, servingsPerPackage, packageChoices, servingDescription, packageHelping
 - `src/utils/scanResolve.ts` — ScannedItem, ScannedGtinLink, shopperNameFor, shorterNameSuggestions, nameFromScanFor, sourceLabelFor, variantFor, scannedItemFor, pluScannedItem, unknownScannedItem, +6 more
 - `src/utils/scheduleMovePrompt.ts` — confirmScheduleMove, confirmSegmentScope, confirmBulkSetWhen
 - `src/utils/screenTimeBridge.ts` — ScreenTimeBridge, screenTimeBridge, isScreenTimeSupported
