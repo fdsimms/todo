@@ -25,7 +25,9 @@ import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { categoryLabel } from '../utils/categoryLabel';
-import { quickSearch, QUICK_SEARCH_LIMIT } from '../utils/quickSearch';
+import { quickSearch, quickDestinations, QUICK_SEARCH_LIMIT } from '../utils/quickSearch';
+import { menuDestinations, menuSearchTerms, type NavSearchResult } from '../utils/navHubs';
+import { useNavMenuOptions } from '../hooks/useNavMenuOptions';
 import type { SearchResult, GroupSearchResult, ProjectSearchResult } from '../utils/fuzzySearch';
 import { formatOccurrenceCount, type CollapsedOccurrence } from '../utils/searchCollapse';
 import { displayTitleFor, groupRoster } from '../utils/visibilityUtils';
@@ -56,6 +58,8 @@ interface Props {
   onSelectGroup: (group: TaskGroup) => void;
   /** Tapping a matched project. */
   onSelectProject: (projectId: string) => void;
+  /** Tapping a matched screen ("Weight", "People"). Hands over the route name. */
+  onSelectDestination: (route: string) => void;
   /** The footer row — hands the query over to the Search tab rather than growing this card. */
   onOpenFullSearch: (query: string) => void;
   /** The sheet is on screen (the native modal's `onShow`). */
@@ -284,6 +288,56 @@ function QuickSearchProjectRow({ result, onSelect, styles, colors }: {
 }
 
 /**
+ * A screen match: the side menu's own destination, in the card's one-line
+ * shape. The meta line says which hub it lives in, the same thing the menu's
+ * find field says under a result, because a match that came off a keyword
+ * ("scale" finding Weight) otherwise has nothing on screen saying why.
+ */
+function QuickSearchDestinationRow({ result, query, onSelect, styles, colors }: {
+  result: NavSearchResult;
+  query: string;
+  onSelect: (route: string) => void;
+  styles: ReturnType<typeof makeStyles>;
+  colors: Colors;
+}) {
+  const ranges = useMemo(() => {
+    const label = result.label.toLowerCase();
+    const found: [number, number][] = [];
+    for (const term of menuSearchTerms(query)) {
+      const at = label.indexOf(term);
+      if (at >= 0) found.push([at, at + term.length]);
+    }
+    return mergeRanges(found);
+  }, [result.label, query]);
+  return (
+    <TouchableOpacity
+      style={styles.resultRow}
+      onPress={() => onSelect(result.route)}
+      activeOpacity={interaction.activeOpacity}
+      accessibilityRole="button"
+      accessibilityLabel={result.hubLabel ? `${result.label}, screen, in ${result.hubLabel}` : `${result.label}, screen`}
+      accessibilityHint="Double tap to open screen"
+    >
+      <View style={styles.entityIcon}>
+        <Ionicons name={result.icon as React.ComponentProps<typeof Ionicons>['name']} size={iconSize.sm} color={colors.accent} />
+      </View>
+      <View style={styles.resultTap}>
+        <HighlightedText
+          text={result.label}
+          ranges={ranges}
+          style={styles.resultTitle}
+          highlightStyle={styles.highlight}
+          numberOfLines={1}
+        />
+        <Text style={styles.metaText} numberOfLines={1}>
+          {result.hubLabel ? `Screen in ${result.hubLabel}` : 'Screen'}
+        </Text>
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+/**
  * The pull-down quick search: a small card over a dimmed screen, holding a
  * field and at most five results.
  *
@@ -300,8 +354,14 @@ function QuickSearchProjectRow({ result, onSelect, styles, colors }: {
  * navigational lookup, not a task search — and they spend the same five-row
  * budget the task rows do (see `quickSearch`), rather than getting a budget
  * of their own on top.
+ *
+ * Screens lead ahead of both. The card searches the side menu's destinations
+ * too, so Weight or People is a pull and a few letters away rather than the
+ * menu, a hub row and a pill. They take at most `QUICK_DESTINATION_LIMIT` of
+ * the five slots and stay out of the footer's count, since the Search tab the
+ * footer opens has no screens in it.
  */
-export function QuickSearchModal({ visible, onClose, onSelectTask, onSelectGroup, onSelectProject, onOpenFullSearch, onShown }: Props) {
+export function QuickSearchModal({ visible, onClose, onSelectTask, onSelectGroup, onSelectProject, onSelectDestination, onOpenFullSearch, onShown }: Props) {
   const insets = useSafeAreaInsets();
   const colors = useColors();
   const { isDark, shadows } = useTheme();
@@ -370,12 +430,22 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onSelectGroup
   );
   useEffect(() => setHeldIds(new Set()), [debouncedQuery]);
 
+  // The menu's own index, so a screen simplified mode or the kitchen switch
+  // took away can't be found here either (see menuDestinations).
+  const menuOptions = useNavMenuOptions();
+  const destinations = useMemo(() => menuDestinations(menuOptions), [menuOptions]);
+  const destinationResults = useMemo(
+    () => quickDestinations(destinations, debouncedQuery),
+    [destinations, debouncedQuery]
+  );
+
+  // Screens spend the card's five slots rather than adding to them.
   const { groupResults, projectResults, results, total } = useMemo(
     () => quickSearch(
-      tasks, debouncedQuery, projectNamesById, QUICK_SEARCH_LIMIT, heldIds,
+      tasks, debouncedQuery, projectNamesById, QUICK_SEARCH_LIMIT - destinationResults.length, heldIds,
       groups, rosterByGroupId, projects, progressByProject
     ),
-    [tasks, debouncedQuery, projectNamesById, heldIds, groups, rosterByGroupId, projects, progressByProject]
+    [tasks, debouncedQuery, projectNamesById, destinationResults.length, heldIds, groups, rosterByGroupId, projects, progressByProject]
   );
 
   useEffect(() => {
@@ -429,6 +499,12 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onSelectGroup
     dismiss(() => onSelectProject(projectId));
   };
 
+  const handleSelectDestination = (route: string) => {
+    haptics.tap();
+    pushRecentSearch(query);
+    dismiss(() => onSelectDestination(route));
+  };
+
   const handleOpenFull = () => {
     haptics.tap();
     pushRecentSearch(query);
@@ -437,8 +513,21 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onSelectGroup
   };
 
   const trimmed = query.trim();
-  const hasResults = groupResults.length > 0 || projectResults.length > 0 || results.length > 0;
+  // Kept apart from the screen rows: the footer's count is what the Search tab
+  // will show, and that tab has no screens in it.
+  const hasEntityResults = groupResults.length > 0 || projectResults.length > 0 || results.length > 0;
+  const hasResults = hasEntityResults || destinationResults.length > 0;
   const showNoMatches = trimmed.length > 0 && !hasResults;
+
+  // Return goes to the Search tab as it always has, unless the only thing the
+  // query found is a screen: an empty Search tab is no answer to "weight".
+  const handleSubmit = () => {
+    if (!hasEntityResults && destinationResults.length > 0) {
+      handleSelectDestination(destinationResults[0].route);
+      return;
+    }
+    handleOpenFull();
+  };
 
   return (
     <SheetModal visible={visible} animationType="none" transparent onShow={onShown} onRequestClose={() => dismiss()}>
@@ -458,9 +547,9 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onSelectGroup
         >
           <SearchField
             surface="sunken"
-            placeholder="Search tasks"
+            placeholder="Search tasks and screens"
             field={searchFilter}
-            onSubmitEditing={handleOpenFull}
+            onSubmitEditing={handleSubmit}
           />
 
           {/* Looking the same thing up twice is the common case here too — see
@@ -498,6 +587,16 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onSelectGroup
 
           {hasResults && (
             <View style={styles.results}>
+              {destinationResults.map(result => (
+                <QuickSearchDestinationRow
+                  key={result.route}
+                  result={result}
+                  query={debouncedQuery}
+                  onSelect={handleSelectDestination}
+                  styles={styles}
+                  colors={colors}
+                />
+              ))}
               {/* Stacks and projects lead, same order and reasoning as the
                   Search screen's own sections (see the doc comment above). */}
               {groupResults.map(result => (
@@ -539,7 +638,7 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onSelectGroup
             <Text style={styles.noMatches}>No matches for “{trimmed}”</Text>
           )}
 
-          {hasResults && (
+          {hasEntityResults && (
             <View style={styles.footer}>
               <InlineAction
                 label={total === 1 ? 'See 1 result' : `See all ${total} results`}
