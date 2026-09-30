@@ -15,7 +15,7 @@ import { menuSearchTerms, searchMenu, type NavSearchResult } from './navHubs';
  * Search tab. The cap is what makes it "quick" — an uncapped card is just
  * the Search screen with worse chrome.
  */
-export const QUICK_SEARCH_LIMIT = 5;
+export const QUICK_SEARCH_LIMIT = 7;
 
 export interface QuickSearchOutcome {
   /** Stack matches, capped to whatever's left of `limit`. */
@@ -41,7 +41,7 @@ export interface QuickSearchOutcome {
  * Completed tasks stay in (finding something you already ticked is half of
  * why you search) but sort behind the active ones: the card has no
  * Active/Completed sections to separate them, so without this a task
- * completed months ago could take all five slots from live work that scored
+ * completed months ago could take every slot from live work that scored
  * slightly lower. Within each half the score order `fuzzySearch` returned is
  * preserved.
  *
@@ -70,9 +70,9 @@ export function quickSearch(
   const groupMatches = searchGroups(groups, query, rosterByGroupId);
   const projectMatches = searchProjects(projects, query, progressByProject);
 
-  // Collapsed before the cap, never after: five rows of one task's occurrences
-  // is exactly what the cap would otherwise spend itself on, and a card that
-  // shows five results would be showing one.
+  // Collapsed before the cap, never after: a card of one task's occurrences
+  // is exactly what the cap would otherwise spend itself on, and a full card
+  // of them would be showing one task.
   const taskMatches = collapseOccurrences(
     fuzzySearch(tasks, query, projectNamesById, heldIds),
     tasks,
@@ -109,7 +109,7 @@ export function quickSearch(
 /**
  * How many screen matches ("Go to Weight") the quick-search card shows at
  * most. They spend the card's own `QUICK_SEARCH_LIMIT` rather than adding to
- * it, so the card never grows past five rows; two is enough because a screen
+ * it, so the card never grows past seven rows; two is enough because a screen
  * query is almost always a name the user already knows, and the rest of the
  * card still belongs to their tasks.
  */
@@ -119,7 +119,7 @@ export const QUICK_DESTINATION_LIMIT = 2;
  * Screens the card never offers: the one it opens from (Tasks is Today) and
  * the one its own footer row already hands over to (Search). A result that
  * takes you where you are, or duplicates the row at the bottom, is a wasted
- * slot out of five.
+ * slot out of seven.
  */
 const SKIPPED_ROUTES: ReadonlySet<string> = new Set(['Today', 'Search']);
 
