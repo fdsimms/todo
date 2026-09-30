@@ -46,6 +46,7 @@ import { waterHelping } from './waterLog';
 import { cookedDishGrams, mealHelping, weighedHelping } from './mealLog';
 import { perServing, recipeNutrition } from './recipeNutrition';
 import { recipeMap } from './recipeComponents';
+import { recipeInBook } from './recipeUtils';
 import { packageChoices, packageHelping } from './scanPortion';
 import { describeProduct } from './groceryProduct';
 import { focusPlanOptionsFrom } from './focusSettings';
@@ -2629,8 +2630,7 @@ interface DemoRecipes {
 function newRecipe(name: string): Recipe {
   const created = useRecipeStore.getState().addRecipe(name);
   if (created) return created;
-  const key = groceryNameKey(name);
-  return useRecipeStore.getState().recipes.find(r => r.nameKey === key)!;
+  return recipeInBook(useRecipeStore.getState().recipes, name, null)!;
 }
 
 /** An ingredient row's id, by the name it was parsed down to. Null if the line didn't take. */
@@ -2684,6 +2684,7 @@ function seedRecipes(): DemoRecipes {
     setSourceType,
     setSourcePage,
     linkNewCookbook,
+    ensureCookbook,
     setEstimatedMinutes,
     setPrepMinutes,
     setLeftoverKeepDays,
@@ -2914,6 +2915,23 @@ function seedRecipes(): DemoRecipes {
   setEstimatedMinutes(shortbread.id, 40);
   setSourcePage(shortbread.id, '52');
   linkNewCookbook(shortbread.id, 'Sweet', 'Yotam Ottolenghi');
+
+  // A second shortbread of the same name from a different book. A name is
+  // unique per book rather than across the box, so the two sit side by side,
+  // told apart by the book in each row's subtitle.
+  const dessertPerson = ensureCookbook('Dessert Person', 'Claire Saffitz');
+  const otherShortbread = dessertPerson
+    ? useRecipeStore.getState().addRecipe('Brown sugar shortbread', dessertPerson.id)
+    : null;
+  if (otherShortbread) {
+    addIngredientsFromText(
+      otherShortbread.id,
+      ['225g butter', '110g dark brown sugar', '280g flour', '1/2 tsp salt', 'demerara sugar, for rolling'].join('\n')
+    );
+    setMealType(otherShortbread.id, 'dessert');
+    setRecipeYield(otherShortbread.id, '16 cookies');
+    setSourcePage(otherShortbread.id, '76');
+  }
 
   const tea = newRecipe('Iced mint tea');
   addIngredientsFromText(tea.id, ['4 tea bags', '1 bunch mint', '2 lemons', '1/4 cup honey'].join('\n'));

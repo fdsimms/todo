@@ -4639,8 +4639,14 @@ describe('dbApplySyncChanges', () => {
           { item_id: 'b2', list_id: '', checked: 1 },
         ],
       });
-      expect(mockRawDb.prepare('SELECT id, cook_count FROM recipes').all()).toEqual([{ id: 'r1', cook_count: 4 }]);
-      expect(mockRawDb.prepare('SELECT recipe_id FROM meal_plan_entries').all()).toEqual([{ recipe_id: 'r1' }]);
+      // Recipes are the exception: a name is unique per cookbook, so two rows
+      // sharing one are kept (see NATURAL_KEYS), and what pointed at either
+      // still does.
+      expect(mockRawDb.prepare('SELECT id, cook_count FROM recipes ORDER BY id').all()).toEqual([
+        { id: 'r1', cook_count: 1 },
+        { id: 'r2', cook_count: 4 },
+      ]);
+      expect(mockRawDb.prepare('SELECT recipe_id FROM meal_plan_entries').all()).toEqual([{ recipe_id: 'r2' }]);
       expect(mockRawDb.prepare('SELECT item_id, checked FROM grocery_list_items').all()).toEqual([{ item_id: 'a1', checked: 0 }]);
     });
   });

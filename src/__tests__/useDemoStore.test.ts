@@ -3477,6 +3477,10 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // and the search tier reading plain strings.
     expect(fromBook.every(r => r.source === shared!.title && r.author === shared!.author)).toBe(true);
     expect(new Set(fromBook.map(r => r.sourcePage)).size).toBe(fromBook.length);
+    // Two books can each hold a recipe of the same name.
+    const shortbreads = recipes.filter(r => r.nameKey === 'brown sugar shortbread');
+    expect(shortbreads).toHaveLength(2);
+    expect(new Set(shortbreads.map(r => r.cookbookId)).size).toBe(2);
     // What a link import leaves behind, all on one recipe: the address, the
     // site, the byline, and the method read off the page's own markup.
     expect(recipes.some(r =>

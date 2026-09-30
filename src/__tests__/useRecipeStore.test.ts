@@ -137,6 +137,43 @@ describe('addRecipe', () => {
     expect(useRecipeStore.getState().recipes).toHaveLength(1);
   });
 
+  it('allows a name another book already has', () => {
+    // Six Seasons and Plenty can each have a Lentil Soup: a name is unique per
+    // book, not across the box.
+    const plenty = { id: 'b-plenty', title: 'Plenty', titleKey: 'plenty|', author: null, sortOrder: 1, createdAt: '' };
+    seed([makeRecipe('Lentil soup', { nameKey: 'lentil soup', cookbookId: 'b-six' })]);
+    useRecipeStore.setState({ cookbooks: [plenty] });
+
+    const created = useRecipeStore.getState().addRecipe('Lentil Soup', plenty.id);
+
+    expect(created).not.toBeNull();
+    expect(useRecipeStore.getState().recipes).toHaveLength(2);
+  });
+
+  it('creates a recipe already linked to the book it names, mirroring it', () => {
+    const plenty = { id: 'b-plenty', title: 'Plenty', titleKey: 'plenty|yotam ottolenghi', author: 'Yotam Ottolenghi', sortOrder: 1, createdAt: '' };
+    useRecipeStore.setState({ cookbooks: [plenty] });
+
+    const created = useRecipeStore.getState().addRecipe('Lentil soup', plenty.id)!;
+
+    expect(created).toMatchObject({ cookbookId: 'b-plenty', source: 'Plenty', author: 'Yotam Ottolenghi', sourceType: 'cookbook' });
+  });
+
+  it('refuses a name already in the same book, and a bookless one among bookless ones', () => {
+    const plenty = { id: 'b-plenty', title: 'Plenty', titleKey: 'plenty|', author: null, sortOrder: 1, createdAt: '' };
+    seed([
+      makeRecipe('Lentil soup', { nameKey: 'lentil soup', cookbookId: 'b-plenty' }),
+      makeRecipe('Ragu', { nameKey: 'ragu' }),
+    ]);
+    useRecipeStore.setState({ cookbooks: [plenty] });
+
+    expect(useRecipeStore.getState().addRecipe('lentil soup', 'b-plenty')).toBeNull();
+    expect(useRecipeStore.getState().addRecipe('Ragu')).toBeNull();
+    // A bookless recipe is not a clash for a book, nor the other way round.
+    expect(useRecipeStore.getState().addRecipe('Ragu', 'b-plenty')).not.toBeNull();
+    expect(useRecipeStore.getState().addRecipe('Lentil soup')).not.toBeNull();
+  });
+
   it('hands each new recipe the next sort order', () => {
     useRecipeStore.getState().addRecipe('One');
     const second = useRecipeStore.getState().addRecipe('Two')!;
@@ -171,6 +208,22 @@ describe('renameRecipe', () => {
 
     expect(useRecipeStore.getState().renameRecipe(b.id, 'ragu')).toBe(false);
     expect(useRecipeStore.getState().recipeById(b.id)!.name).toBe('Soup');
+  });
+
+  it('allows a rename onto a name only another book has', () => {
+    const a = makeRecipe('Lentil soup', { nameKey: 'lentil soup', cookbookId: 'b-six' });
+    const b = makeRecipe('Soup', { nameKey: 'soup', cookbookId: 'b-plenty' });
+    seed([a, b]);
+
+    expect(useRecipeStore.getState().renameRecipe(b.id, 'Lentil soup')).toBe(true);
+  });
+
+  it('refuses a rename onto a name its own book already has', () => {
+    const a = makeRecipe('Lentil soup', { nameKey: 'lentil soup', cookbookId: 'b-plenty' });
+    const b = makeRecipe('Soup', { nameKey: 'soup', cookbookId: 'b-plenty' });
+    seed([a, b]);
+
+    expect(useRecipeStore.getState().renameRecipe(b.id, 'Lentil soup')).toBe(false);
   });
 
   it('refuses an empty name', () => {
@@ -2018,6 +2071,29 @@ describe('logManualPrepTime', () => {
 // ============================================================================
 
 describe('cookbooks', () => {
+  it('finds a book already on the shelf rather than making a second', () => {
+    const first = useRecipeStore.getState().ensureCookbook('Plenty', 'Yotam Ottolenghi')!;
+    const again = useRecipeStore.getState().ensureCookbook(' plenty ', 'Yotam Ottolenghi')!;
+
+    expect(again.id).toBe(first.id);
+    expect(useRecipeStore.getState().cookbooks).toHaveLength(1);
+    expect(useRecipeStore.getState().ensureCookbook('   ')).toBeNull();
+  });
+
+  it('lets two same-named recipes share a book after a merge, rather than failing it', () => {
+    // Names are unique per book at add and rename only; a merge of two books
+    // that each had one is allowed to leave both, since nothing below the
+    // store refuses it and failing the merge would strand the loser.
+    const a = makeRecipe('Lentil soup', { nameKey: 'lentil soup' });
+    const b = makeRecipe('Lentil soup', { nameKey: 'lentil soup' });
+    seed([a, b]);
+    const six = useRecipeStore.getState().linkNewCookbook(a.id, 'Six Seasons')!;
+    const copy = useRecipeStore.getState().linkNewCookbook(b.id, 'Six seasons!', 'Joshua McFadden')!;
+
+    expect(useRecipeStore.getState().mergeCookbooks(six.id, copy.id)).toBe(true);
+    expect(useRecipeStore.getState().recipes.filter(r => r.cookbookId === six.id)).toHaveLength(2);
+  });
+
   it('creates a book and mirrors it onto the recipe', () => {
     const cake = makeRecipe('Carrot cake');
     seed([cake]);

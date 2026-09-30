@@ -7,6 +7,12 @@ import { makeComponent } from '../utils/recipeComponents';
 import type { Recipe } from '../types';
 import type { ExtractedRecipeReference, RecipeGroceryItem } from '../services/aiSuggestions';
 
+// recipeUtils (the name lookup's home) reaches the settings store; nothing
+// here reads a setting.
+jest.mock('../store/useSettingsStore', () => ({
+  useSettingsStore: { getState: () => ({ dayResetTime: '00:00' }) },
+}));
+
 let seq = 0;
 
 function recipe(id: string, name: string, overrides: Partial<Recipe> = {}): Recipe {
@@ -103,6 +109,21 @@ describe('importableReferences', () => {
     expect(candidate.match).toBe(salsa);
     expect(candidate.key).toBe('salsa verde');
     expect(candidate.page).toBe('45');
+  });
+
+  it('matches the parent\'s own book when two books share the name', () => {
+    const plenty = recipe('p', 'Salsa verde', { cookbookId: 'plenty' });
+    const jerusalem = recipe('j', 'Salsa verde', { cookbookId: 'jerusalem' });
+    const parent = recipe('parent', 'Roast chicken', { cookbookId: 'jerusalem' });
+    const [candidate] = importableReferences([ref('Salsa verde', 'page 45')], [plenty, jerusalem, parent], parent);
+    expect(candidate.match).toBe(jerusalem);
+  });
+
+  it('matches nothing rather than guessing between two other books', () => {
+    const plenty = recipe('p', 'Salsa verde', { cookbookId: 'plenty' });
+    const jerusalem = recipe('j', 'Salsa verde', { cookbookId: 'jerusalem' });
+    const [candidate] = importableReferences([ref('Salsa verde', 'page 45')], [plenty, jerusalem], null);
+    expect(candidate.match).toBeNull();
   });
 
   it('leaves match null for a recipe the box has never heard of', () => {

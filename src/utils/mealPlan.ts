@@ -5,7 +5,7 @@ import { isSameDay } from 'date-fns/isSameDay';
 import { isSameWeek } from 'date-fns/isSameWeek';
 import type { MealPlanEntry, MealSlot, Recipe } from '../types';
 import { MEAL_SLOTS, MEAL_SLOT_LABELS, MEAL_PLAN_RETENTION_DAYS } from '../types';
-import { cleanRecipeName, recipeNameKey } from './recipeUtils';
+import { cleanRecipeName, recipeByName, recipeNameKey } from './recipeUtils';
 import { dayKeyOf, dayKeyToDate } from './dateUtils';
 import type { WeekStart } from '../store/useSettingsStore';
 
@@ -429,19 +429,19 @@ export function titleForEntry(
 /**
  * The recipe a typed meal is already named after, or null (#2929).
  *
- * Keyed by `recipeNameKey`, the key `addRecipe` refuses a second recipe on, so
- * "is there one called this?" can't answer differently from "could one be made
- * called this?": "Tacos" typed on the plan and a "tacos" recipe added later are
- * one name to both. That is what lets a typed meal's sheet offer the recipe
- * that now exists rather than a "Save as a new recipe" the store would refuse.
+ * `recipeByName`, so "is there one called this?" can't answer differently
+ * from "could one be made called this?": a typed meal is saved as a recipe
+ * under no book, and the recipe this returns when several books share the
+ * name is the one filed under no book, which is exactly the one `addRecipe`
+ * would refuse a second copy of. When the only matches are two books' recipes
+ * it returns null rather than picking one, and saving the meal makes a new
+ * recipe of its own.
  */
-export function recipeNamedLike<R extends Pick<Recipe, 'nameKey'>>(
+export function recipeNamedLike<R extends Pick<Recipe, 'nameKey' | 'cookbookId'>>(
   title: string,
   recipes: readonly R[]
 ): R | null {
-  const key = recipeNameKey(title);
-  if (!key) return null;
-  return recipes.find(r => r.nameKey === key) ?? null;
+  return recipeByName(recipes, title);
 }
 
 /**

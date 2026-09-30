@@ -26,7 +26,7 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { InlineAction } from './InlineAction';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { haptics } from '../utils/haptics';
-import { recipeNameKey } from '../utils/recipeUtils';
+import { recipeInBook, recipeNameKey } from '../utils/recipeUtils';
 
 interface Props {
   visible: boolean;
@@ -148,8 +148,9 @@ export function InventRecipeSheet({ visible, onClose, onCreated }: Props) {
       return next;
     });
     // Already in the box (saved since the ideas came back, say): open it
-    // rather than paying for a draft the box will refuse.
-    const owned = recipes.find(r => r.nameKey === recipeNameKey(idea.title));
+    // rather than paying for a draft the box will refuse. A drafted recipe is
+    // filed under no book, so that's the only place a clash can be.
+    const owned = recipeInBook(recipes, idea.title, null);
     if (owned) {
       haptics.success();
       setCreatingKey(null);
@@ -166,13 +167,13 @@ export function InventRecipeSheet({ visible, onClose, onCreated }: Props) {
       if (!visibleRef.current) { setCreatingKey(null); return; }
       const draft = mealIdeaRecipeDraft(idea, drafted.ingredients, drafted);
       if (!draft.name) throw new Error('IDEA_NAME_EMPTY');
-      // addRecipe refuses a name already in the box (nameKey is UNIQUE); land
-      // on the existing recipe rather than telling the user no, and open it
-      // as it is. The draft is for a new recipe: appending its ingredients,
-      // steps and notes onto the one she already has would rewrite it.
+      // addRecipe refuses a name already filed under no book; land on the
+      // existing recipe rather than telling the user no, and open it as it
+      // is. The draft is for a new recipe: appending its ingredients, steps
+      // and notes onto the one she already has would rewrite it.
       const recipe = addRecipe(draft.name);
       if (!recipe) {
-        const existing = recipes.find(r => r.nameKey === recipeNameKey(draft.name));
+        const existing = recipeInBook(recipes, draft.name, null);
         if (!existing) throw new Error('IDEA_SAVE_FAILED');
         haptics.success();
         setCreatingKey(null);

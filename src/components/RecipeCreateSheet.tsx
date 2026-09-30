@@ -54,10 +54,10 @@ import { normalizeRecipeUrl, recipeImportedFrom } from '../utils/recipeUrl';
 import { recipeFromPageOffline } from '../utils/recipePageOffline';
 import {
   alreadyInRecipeNote, blockedReviewRows,
-  normalizeIngredient, cleanRecipeName, formatServingsRange, parseServingsRange,
+  normalizeIngredient, cleanRecipeName, cleanRecipeSource, cookbookKey, formatServingsRange,
+  parseServingsRange, recipeInBook,
 } from '../utils/recipeUtils';
 import { describeKeepDays } from '../utils/leftovers';
-import { groceryNameKey } from '../utils/groceryParse';
 import { sourceFieldsFor, sourcePlanFor } from '../utils/recipeProvenance';
 import { aisleForName } from '../utils/groceryAisles';
 import { sectionsOf } from '../utils/recipeSections';
@@ -171,6 +171,7 @@ export function RecipeCreateSheet({
   const addToPantry = useGroceryStore(s => s.addToPantry);
   const recipes = useRecipeStore(useShallow(s => s.recipes));
   const addRecipe = useRecipeStore(s => s.addRecipe);
+  const ensureCookbook = useRecipeStore(s => s.ensureCookbook);
   const setServings = useRecipeStore(s => s.setServings);
   const setRecipeYield = useRecipeStore(s => s.setRecipeYield);
   const setEstimatedMinutes = useRecipeStore(s => s.setEstimatedMinutes);
@@ -180,7 +181,6 @@ export function RecipeCreateSheet({
   const setAuthor = useRecipeStore(s => s.setAuthor);
   const setSourceType = useRecipeStore(s => s.setSourceType);
   const setSourcePage = useRecipeStore(s => s.setSourcePage);
-  const linkNewCookbook = useRecipeStore(s => s.linkNewCookbook);
   const setMealType = useRecipeStore(s => s.setMealType);
   const setTags = useRecipeStore(s => s.setTags);
   const addStep = useRecipeStore(s => s.addStep);
@@ -518,12 +518,23 @@ export function RecipeCreateSheet({
   // ==== name entry and duplicate detection ====
   // Checked as they type rather than on tap, so the way out ("Open it", or just
   // keep typing) is visible before the button they'd reach for is disabled.
+  //
+  // A name is unique per book, not across the box, so the question is asked of
+  // the book the Source row says this is headed for: a "Lentil Soup" read off
+  // a page of Plenty is only a duplicate if Plenty already has one. A book the
+  // shelf doesn't hold yet can't have a clash in it.
   const cleaned = cleanRecipeName(name);
+  const cookbooks = useRecipeStore(useShallow(s => s.cookbooks));
   const duplicate = useMemo(() => {
     if (!cleaned) return null;
-    const key = groceryNameKey(cleaned);
-    return recipes.find(r => r.nameKey === key) ?? null;
-  }, [cleaned, recipes]);
+    const planned = applySource
+      ? sourcePlanFor(null, { source: siteName, author: sourceAuthor, page: '', sourceType: importedSourceType }).cookbook
+      : null;
+    if (!planned) return recipeInBook(recipes, cleaned, null);
+    const key = cookbookKey(cleanRecipeSource(planned.title), cleanRecipeSource(planned.author ?? '') || null);
+    const book = cookbooks.find(c => c.titleKey === key);
+    return book ? recipeInBook(recipes, cleaned, book.id) : null;
+  }, [cleaned, recipes, cookbooks, applySource, siteName, sourceAuthor, importedSourceType]);
 
   // A link already imported once is the same "already have this" case as a
   // repeated name, just keyed on sourceUrl instead of nameKey. Answered by the
@@ -568,14 +579,6 @@ export function RecipeCreateSheet({
   // ==== creating the recipe ====
   const handleCreate = () => {
     if (!extracted || !cleaned || duplicate || urlDuplicate) return;
-    const recipe = addRecipe(cleaned);
-    if (!recipe) {
-      // The store refused a name the live check said was free — the box changed
-      // under a sheet left open. Land them on the recipe they were after.
-      const existing = recipes.find(r => r.nameKey === groceryNameKey(cleaned));
-      if (existing) { Keyboard.dismiss(); onClose(); onCreated(existing.id, input.page?.url ?? null); }
-      return;
-    }
     // Tapping Create can beat a field's own blur, so every value below is read
     // through the pending-edit registry rather than straight off state a draft
     // hasn't landed in yet (same race TaskEditor's resolveX functions guard
@@ -583,6 +586,33 @@ export function RecipeCreateSheet({
     // instead of committing).
     const pending = edits.resolveAll();
     const pendingText = (key: string, fallback: string) => pending.get(key) ?? fallback;
+    // A link's URL comes from the page and isn't editable; the rest are,
+    // whether they arrived pre-filled from structured markup, were read off a
+    // photographed page, or were typed in by hand over a paste's blank fields.
+    // A photo or paste import has no page to read one off, so its URL is
+    // whatever was typed into the Link row (blank, same as before, if nothing
+    // was).
+    const { page } = input;
+    const plan = applySource
+      ? sourcePlanFor(page?.url ?? (pendingText('source:url', sourceUrlText).trim() || null), {
+          source: pendingText('source:site', siteName),
+          author: pendingText('source:author', sourceAuthor),
+          page: pendingText('source:page', sourcePageText),
+          sourceType: importedSourceType,
+        })
+      : null;
+    // The book before the recipe, because the recipe's name is only refused
+    // within its book. Find-or-create: a book read off a photo is
+    // overwhelmingly one already on the shelf from the last recipe out of it.
+    const book = plan?.cookbook ? ensureCookbook(plan.cookbook.title, plan.cookbook.author) : null;
+    const recipe = addRecipe(cleaned, book?.id ?? null);
+    if (!recipe) {
+      // The store refused a name the live check said was free — the box changed
+      // under a sheet left open. Land them on the recipe they were after.
+      const existing = recipeInBook(useRecipeStore.getState().recipes, cleaned, book?.id ?? null);
+      if (existing) { Keyboard.dismiss(); onClose(); onCreated(existing.id, input.page?.url ?? null); }
+      return;
+    }
     const resolvedIngredients = ingredients.map((row, i) => {
       const itemName = pending.get(`ingredient:${i}:name`);
       const quantity = pending.get(`ingredient:${i}:quantity`);
@@ -627,25 +657,9 @@ export function RecipeCreateSheet({
         if (!Number.isNaN(keepDays)) setLeftoverKeepDays(recipe.id, keepDays);
       }
     }
-    // A link's URL comes from the page and isn't editable; the rest are,
-    // whether they arrived pre-filled from structured markup, were read off a
-    // photographed page, or were typed in by hand over a paste's blank fields.
-    // A photo or paste import has no page to read one off, so its URL is
-    // whatever was typed into the Link row (blank, same as before, if nothing
-    // was).
-    const { page } = input;
-    if (applySource) {
-      const typedUrl = pendingText('source:url', sourceUrlText).trim();
-      const plan = sourcePlanFor(page?.url ?? (typedUrl || null), {
-        source: pendingText('source:site', siteName),
-        author: pendingText('source:author', sourceAuthor),
-        page: pendingText('source:page', sourcePageText),
-        sourceType: importedSourceType,
-      });
+    if (plan) {
       if (plan.url) setSourceUrl(recipe.id, plan.url);
-      // Find-or-create beats setSource here: a book read off a photo is
-      // overwhelmingly one already on the shelf from the last recipe out of it.
-      if (plan.cookbook) linkNewCookbook(recipe.id, plan.cookbook.title, plan.cookbook.author);
+      // The book was linked by addRecipe above.
       if (plan.sourceType) setSourceType(recipe.id, plan.sourceType);
       if (plan.source) setSource(recipe.id, plan.source);
       if (plan.author) setAuthor(recipe.id, plan.author);
@@ -890,7 +904,9 @@ export function RecipeCreateSheet({
           {!!duplicate && (
             <View style={styles.dupeRow}>
               <Text style={styles.dupeText} numberOfLines={2}>
-                You already have a recipe called “{duplicate.name}”.
+                {duplicate.cookbookId && duplicate.source
+                  ? `${duplicate.source} already has a recipe called “${duplicate.name}”.`
+                  : `You already have a recipe called “${duplicate.name}”.`}
               </Text>
               <InlineAction
                 label="Open it"

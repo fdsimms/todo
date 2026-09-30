@@ -41,7 +41,12 @@ export const NATURAL_KEYS: Record<string, NaturalKey[]> = {
   template_categories: [{ columns: ['name'] }],
   grocery_items: [{ columns: ['name_key'] }],
   grocery_shops: [{ columns: ['name_key'] }],
-  recipes: [{ columns: ['name_key'] }],
+  // Not recipes, any more. A recipe's name is unique per cookbook rather
+  // than across the box, so two rows sharing a name_key are usually two
+  // books' recipes, and folding them would merge one book's "Lentil Soup"
+  // into the other's and delete it. The cost is that the same recipe added
+  // on two devices before they sync arrives twice, which a person can see
+  // and delete; a fold's mistake is a deletion nobody sees.
   cookbooks: [{ columns: ['title_key'] }],
   grocery_store_aliases: [{ columns: ['shop_id', 'raw_key'] }],
   grocery_item_products: [
@@ -177,16 +182,6 @@ const FOLD_RULES: Record<string, FoldRule> = {
     earliest: ['created_at'],
     // Which item a receipt line means is whatever was confirmed last.
     groups: [{ by: 'last_used_at', pick: 'latest', columns: ['item_id', 'last_used_at'] }],
-  },
-  recipes: {
-    max: ['cook_count'],
-    earliest: ['created_at'],
-    union: ['tags', 'backfill_dismissed_fields'],
-    groups: [
-      { by: 'cook_time_count', pick: 'max', columns: ['cook_time_count', 'total_cook_minutes'] },
-      { by: 'prep_time_count', pick: 'max', columns: ['prep_time_count', 'total_prep_minutes'] },
-      { by: 'last_cooked_at', pick: 'latest', columns: ['last_cooked_at', 'last_cook_minutes', 'last_prep_minutes'] },
-    ],
   },
   cookbooks: { earliest: ['created_at'] },
 };
@@ -331,7 +326,8 @@ export const REFERENCES: Reference[] = [
   // A store.
   idColumn('grocery_shops', 'grocery_item_shops', 'shop_id'),
   idColumn('grocery_shops', 'grocery_store_aliases', 'shop_id'),
-  // A recipe.
+  // A recipe. Recipes no longer fold (see NATURAL_KEYS), but an alias
+  // recorded by a fold before that still resolves through these.
   idColumn('recipes', 'meal_plan_entries', 'recipe_id'),
   idColumn('recipes', 'leftovers', 'recipe_id'),
   idColumn('recipes', 'food_logs', 'recipe_id'),

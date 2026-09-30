@@ -849,9 +849,16 @@ export function initDatabase(): void {
     // Null for every existing target, which is exactly the old behaviour: no
     // unit means the meter keeps reading as the bare "5/12" it always has.
     'ALTER TABLE tasks ADD COLUMN target_unit TEXT',
-    // Where the no-duplicate-recipes guarantee actually lives, same as
-    // idx_grocery_items_name_key does for the catalog.
-    'CREATE UNIQUE INDEX IF NOT EXISTS idx_recipes_name_key ON recipes(name_key)',
+    // This used to create a UNIQUE index on recipes(name_key), the
+    // no-duplicate-recipes guarantee. A name is now unique per cookbook
+    // rather than across the box (two books can each have a "Lentil Soup"),
+    // which is a rule the store keeps (`recipeInBook`) and the database
+    // deliberately doesn't: a composite index would make every write that
+    // moves a recipe between books (link, unlink, deleting or merging a book)
+    // able to fail, and sync's natural-key fold would silently merge the two
+    // books' recipes into one. Dropped here, in the index's old slot, so an
+    // install that has it loses it and a fresh one never gets it.
+    'DROP INDEX IF EXISTS idx_recipes_name_key',
     // Nullable like link_url, and null is what every existing row wants: no
     // task written before this shipped has a number to call.
     'ALTER TABLE tasks ADD COLUMN phone_number TEXT',

@@ -908,7 +908,7 @@ export function cleanRecipeName(raw: string): string {
 
 /**
  * The key a recipe named `raw` is stored under, and so the one `addRecipe`
- * refuses a second recipe on (`Recipe.nameKey` is unique).
+ * refuses a second recipe on within a book (see `recipeInBook`).
  *
  * One function because every "is this already in the box?" check has to
  * agree with the refusal it is predicting. The AI sheets each kept their own
@@ -920,6 +920,61 @@ export function cleanRecipeName(raw: string): string {
 export function recipeNameKey(raw: string): string {
   const clean = cleanRecipeName(raw);
   return groceryNameKey(clean) || clean.toLowerCase();
+}
+
+/**
+ * The recipe already called `name` in `cookbookId` (null: filed under no
+ * book), which is exactly the recipe `addRecipe` and `renameRecipe` refuse a
+ * second one over.
+ *
+ * **A name is unique per book, not across the box.** Six Seasons and Plenty
+ * can each have a "Lentil Soup", and they are two recipes. Every "is this
+ * already in the box?" pre-check calls this rather than matching `nameKey`
+ * alone, for the reason `recipeNameKey` gives: a pre-check that disagrees with
+ * the refusal it predicts either blocks a recipe the store would take or lands
+ * on one it wasn't about.
+ *
+ * Nothing enforces this below the store. The database has no unique index on
+ * name (see the note where `idx_recipes_name_key` is dropped in database.ts),
+ * so moving recipes between books, deleting a book or merging two can leave
+ * two same-named recipes in one place, and that is allowed rather than failed.
+ */
+export function recipeInBook<R extends Pick<Recipe, 'nameKey' | 'cookbookId'>>(
+  recipes: readonly R[],
+  name: string,
+  cookbookId: string | null,
+): R | null {
+  const key = recipeNameKey(name);
+  if (!key) return null;
+  return recipes.find(r => r.nameKey === key && r.cookbookId === cookbookId) ?? null;
+}
+
+/**
+ * The one recipe a bare name means when nothing says which book: a typed meal
+ * on the plan, a component a page mentions by name.
+ *
+ * `preferCookbookId`, when given, is asked first (a component read off page 45
+ * is page 45 of the parent's book). Then a name only one recipe has is that
+ * recipe, and when several books share it, the one filed under no book
+ * answers, since that is what `addRecipe` without a book would be refused
+ * over. Otherwise null: two books' "Lentil Soup" and nothing to choose between
+ * them is a question, and picking by array order would be a guess.
+ */
+export function recipeByName<R extends Pick<Recipe, 'nameKey' | 'cookbookId'>>(
+  recipes: readonly R[],
+  name: string,
+  preferCookbookId?: string | null,
+): R | null {
+  const key = recipeNameKey(name);
+  if (!key) return null;
+  const hits = recipes.filter(r => r.nameKey === key);
+  if (hits.length === 0) return null;
+  if (preferCookbookId !== undefined) {
+    const inBook = hits.find(r => r.cookbookId === preferCookbookId);
+    if (inBook) return inBook;
+  }
+  if (hits.length === 1) return hits[0];
+  return hits.find(r => r.cookbookId === null) ?? null;
 }
 
 /**

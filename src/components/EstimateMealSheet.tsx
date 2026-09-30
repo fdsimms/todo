@@ -59,6 +59,7 @@ import { useGroceryStore } from '../store/useGroceryStore';
 import { NUTRIENT_LABEL } from '../utils/foodNutrition';
 import { dayKeyOf, getCurrentDayStart } from '../utils/dateUtils';
 import { groceryNameKey } from '../utils/groceryParse';
+import { recipeInBook } from '../utils/recipeUtils';
 import { haptics } from '../utils/haptics';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -835,10 +836,11 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
   const handleSaveRecipe = () => {
     if (!estimate || !description.trim()) return;
     haptics.tap();
-    const key = groceryNameKey(estimate.label);
-    // The box refuses a name it already has (nameKey is UNIQUE) — land on
-    // that recipe rather than failing, the same call InventRecipeSheet makes.
-    const existing = recipes.find(r => r.nameKey === key);
+    // The box refuses a name it already has under no book, which is where
+    // this is filed — land on that recipe rather than failing, the same call
+    // InventRecipeSheet makes. A cookbook's recipe of the same name is some
+    // other dish and doesn't count.
+    const existing = recipeInBook(recipes, estimate.label, null);
     const recipe = existing ?? addRecipe(estimate.label);
     if (!recipe) { haptics.error(); return; }
     if (!existing) {

@@ -62,13 +62,13 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { resolveActiveTrip } from '../utils/activeTrip';
 import { resetToGroceries } from '../navigation/navigationRef';
 import {
-  cleanRecipeName,
   countLikelyInPantryByRecipe,
   describeCookHistory,
   describeRecipe,
   flattenRecipeMealTypeSections,
   groupRecipesByMealType,
   rankRecipes,
+  recipeInBook,
   recipeListItemKey,
   recipeSectionKey,
   resolveRecipeMealTypeDrop,
@@ -80,7 +80,6 @@ import { recipeMap, recipesUsing } from '../utils/recipeComponents';
 import { recipeImageOnDevice, resolveRecipeImagePath } from '../utils/recipePhoto';
 import { allRecipeTags, filterRecipesByTags, formatTagList, recipeTagCounts } from '../utils/recipeTags';
 import { tagColor } from '../utils/tagColor';
-import { groceryNameKey } from '../utils/groceryParse';
 import { useFilterField } from '../hooks/useFilterField';
 import { useAiRoute } from '../hooks/useOnDeviceAi';
 
@@ -620,11 +619,10 @@ export function RecipesScreen() {
       navigation.navigate('RecipeDetail', { recipeId: recipe.id });
       return;
     }
-    // The only way addRecipe refuses a non-empty name is one already in the
-    // box. Opening the recipe they already have beats an error — it's where
-    // they were trying to get.
-    const key = groceryNameKey(cleanRecipeName(name));
-    const existing = recipes.find(r => r.nameKey === key);
+    // The only way addRecipe refuses a non-empty name is one already filed
+    // under no book, which is where this one was going. Opening the recipe
+    // they already have beats an error — it's where they were trying to get.
+    const existing = recipeInBook(recipes, name, null);
     if (existing) openRecipe(existing);
   };
 

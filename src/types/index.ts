@@ -5978,8 +5978,9 @@ export interface Cookbook {
 export interface Recipe {
   id: string;
   name: string;
-  // UNIQUE in SQLite, from groceryNameKey — so two spellings of one dish can't
-  // both exist, the same guarantee GroceryItem and Shop get.
+  // From recipeNameKey — so two spellings of one dish can't both exist in one
+  // book. Unique per cookbook (`recipeInBook`), not across the box: two books
+  // can each hold a "Lentil Soup". Kept by the store, not by an index.
   nameKey: string;
   notes: string;
   sourceUrl: string | null;

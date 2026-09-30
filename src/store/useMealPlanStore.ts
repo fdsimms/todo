@@ -578,10 +578,11 @@ interface MealPlanStore extends UndoHistoryActions {
    * meal (a live recipe already is one, and a leftover night is the
    * container's) or the name can't be a recipe.
    *
-   * A recipe already called that (`recipeNamedLike`, the key `addRecipe`
-   * refuses a second one on) is the answer rather than a refusal: two recipes
-   * can't share a name, so "Tacos" planned before the Tacos recipe existed was
-   * always going to mean that one.
+   * A recipe already called that (`recipeNamedLike`) is the answer rather
+   * than a refusal: "Tacos" planned before the Tacos recipe existed was always
+   * going to mean that one. When only cookbooks hold the name, and more than
+   * one of them, nothing says which was meant, so a new recipe under no book
+   * is made instead.
    *
    * The pointer is written through `bulkReplaceItem`, so it keeps what that
    * keeps and registers its undo. **Undo takes the meal back to typed text and
