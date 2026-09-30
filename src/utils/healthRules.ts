@@ -538,6 +538,39 @@ export function serializeHealthRules(rules: readonly HealthRule[]): string {
   return JSON.stringify(rules);
 }
 
+/**
+ * The edited list with the day's mark cleared on every rule whose *question*
+ * changed.
+ *
+ * `lastFiredDayKey` answers "has this rule been judged today", and an 'under'
+ * rule spends it on its first judgment past the checkpoint hour whether or not
+ * it matched (`checkHealthTasks`). That answer belongs to the rule as it was
+ * then. Tune a sodium rule from "under 2,000mg from noon" to "under 4,000mg
+ * from 8 PM" after noon and the old mark said the day was settled, so the new
+ * rule was skipped until tomorrow with nothing on screen to say why. Turning a
+ * rule on is the same case, since a disabled rule is still judged and marked.
+ *
+ * Only the fields the judgment reads reset it. A retitle keeps the mark, or
+ * renaming a task swiped away today would bring it straight back.
+ */
+export function clearMarksOnRuleEdit(
+  before: readonly HealthRule[],
+  after: readonly HealthRule[],
+): HealthRule[] {
+  const previous = new Map(before.map(r => [r.id, r]));
+  return after.map(rule => {
+    const old = previous.get(rule.id);
+    if (!old || rule.lastFiredDayKey === null) return rule;
+    const judgmentChanged =
+      old.metric !== rule.metric
+      || old.threshold !== rule.threshold
+      || old.enabled !== rule.enabled
+      || healthRuleDirection(old) !== healthRuleDirection(rule)
+      || healthRuleCheckpointHour(old) !== healthRuleCheckpointHour(rule);
+    return judgmentChanged ? { ...rule, lastFiredDayKey: null } : rule;
+  });
+}
+
 /** `${dayKey}#${ruleId}` — a square on the calendar and the rule that named it. */
 export function healthSourceId(dayKey: string, ruleId: string): string {
   return `${dayKey}#${ruleId}`;

@@ -67,6 +67,29 @@ export function defaultWeatherRules(): WeatherRule[] {
 }
 
 /**
+ * The edited list with both day marks cleared on every rule whose condition or
+ * enabled flag changed.
+ *
+ * `checkWeatherTasks` spends `lastFiredDayKey` (and `lastAheadDayKey`) on the
+ * first look at a rule each day, matched or not, so a rule changed from
+ * "sunny" to "rainy" after that look was skipped until tomorrow. The mark
+ * answered the old question. A retitle keeps both, or renaming a task swiped
+ * away today would bring it straight back.
+ */
+export function clearWeatherMarksOnEdit(
+  before: readonly WeatherRule[],
+  after: readonly WeatherRule[],
+): WeatherRule[] {
+  const previous = new Map(before.map(r => [r.id, r]));
+  return after.map(rule => {
+    const old = previous.get(rule.id);
+    if (!old) return rule;
+    if (old.condition === rule.condition && old.enabled === rule.enabled) return rule;
+    return { ...rule, lastFiredDayKey: null, lastAheadDayKey: null };
+  });
+}
+
+/**
  * `weatherRules` off `dbGetSetting`, defensively — same shape as
  * `parseTitleRules`: a malformed or missing stored value reads as "nothing
  * saved yet" rather than throwing, and a bad entry is dropped rather than
