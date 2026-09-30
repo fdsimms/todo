@@ -7,13 +7,13 @@ export type AiFeatureId =
   | 'taskBreakdown' | 'templateSuggestions' | 'projectTaskSuggestions' | 'groceryAisles'
   | 'recipeExtraction' | 'mealIdeas' | 'substitutes' | 'receiptImport' | 'calendarImport'
   | 'cookHelp' | 'nutritionEstimate' | 'nutritionLabelPhoto' | 'backfillSuggestions'
-  | 'recipeNutritionEstimate';
+  | 'recipeNutritionEstimate' | 'cookbookIndex';
 
 export const AI_FEATURE_IDS: AiFeatureId[] = [
   'taskBreakdown', 'templateSuggestions', 'projectTaskSuggestions', 'groceryAisles',
   'recipeExtraction', 'mealIdeas', 'substitutes', 'receiptImport', 'calendarImport',
   'cookHelp', 'nutritionEstimate', 'nutritionLabelPhoto', 'backfillSuggestions',
-  'recipeNutritionEstimate',
+  'recipeNutritionEstimate', 'cookbookIndex',
 ];
 
 export type AiModelId = 'claude-haiku-4-5-20251001' | 'claude-sonnet-5' | 'claude-opus-5';
@@ -152,6 +152,14 @@ export const AI_FEATURES: AiFeatureMeta[] = [
     hint: 'Reads a recipe\'s ingredient list into nutrition figures when too few of them have catalog data yet',
     kitchen: true,
   },
+  {
+    id: 'cookbookIndex',
+    label: 'Read a cookbook\'s index from a photo',
+    // "Scan the index" on a cookbook's page. It fills that book's index
+    // (CookbookIndexEntry), which only Cook with… and the book's page read.
+    hint: 'Reads photos of a cookbook\'s index into its dishes, pages and the ingredients they\'re listed under',
+    kitchen: true,
+  },
 ];
 
 /**
@@ -244,5 +252,10 @@ export function defaultAiFeatureConfig(): AiFeatureConfigMap {
     // combine (a marinade mostly poured off, a batter's rise), which is where
     // a smaller model confabulates most confidently.
     recipeNutritionEstimate: { enabled: true, model: 'claude-sonnet-5' },
+    // Sonnet: an index is dense small type in two or three columns, with
+    // sub-entries that only make sense under the heading above them, which is
+    // the reading a smaller model gets wrong. Every line still passes a
+    // review before anything is written, and it's the user's own book.
+    cookbookIndex: { enabled: true, model: 'claude-sonnet-5' },
   };
 }

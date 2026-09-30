@@ -9,6 +9,8 @@ import { DetailHeader } from '../components/DetailHeader';
 import { EmptyState } from '../components/EmptyState';
 import { EmptyNote } from '../components/EmptyNote';
 import { CookbookIndexEntrySheet } from '../components/CookbookIndexEntrySheet';
+import { CookbookIndexScanSheet } from '../components/CookbookIndexScanSheet';
+import type { IndexImportUndo } from '../store/useRecipeStore';
 import { InlineAction } from '../components/InlineAction';
 import { SheetModal } from '../components/SheetModal';
 import { SheetHeader } from '../components/SheetHeader';
@@ -21,7 +23,7 @@ import { totalMinutes } from '../utils/recipeUtils';
 import {
   cookbookLinkCandidates, cookbookLinkPrompt, recipesInCookbook, type CookbookLinkCandidate,
 } from '../utils/cookbookRecipes';
-import { entriesInCookbook } from '../utils/cookbookIndex';
+import { describeIndexScan, entriesInCookbook } from '../utils/cookbookIndex';
 import type { CookbookIndexEntry, Recipe } from '../types';
 import { useFilterField } from '../hooks/useFilterField';
 
@@ -57,6 +59,18 @@ export function CookbookDetailScreen() {
   // Which index line the entry sheet is editing; null while adding one.
   const [entrySheetOpen, setEntrySheetOpen] = useState(false);
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
+  const [scanOpen, setScanOpen] = useState(false);
+  // The last scan's result, so it can be taken back out from here once the
+  // sheet has closed. Session-only: leaving the page is accepting it.
+  const [lastScan, setLastScan] = useState<{ undo: IndexImportUndo; added: number; updated: number } | null>(null);
+  const undoIndexImport = useRecipeStore(s => s.undoIndexImport);
+  const undoLastScan = () => {
+    if (!lastScan) return;
+    haptics.warning();
+    undoIndexImport(lastScan.undo);
+    setLastScan(null);
+  };
+
   const openEntrySheet = (entryId: string | null) => {
     haptics.tap();
     setEditingEntryId(entryId);
@@ -203,12 +217,29 @@ export function CookbookDetailScreen() {
         ListFooterComponent={
           <>
             <Text style={[styles.sectionLabel, styles.sectionLabelSpaced]}>INDEX</Text>
-            <InlineAction
-              label="Add to index"
-              icon="add"
-              onPress={() => openEntrySheet(null)}
-              style={styles.linkAction}
-            />
+            <View style={styles.indexActions}>
+              <InlineAction label="Add to index" icon="add" onPress={() => openEntrySheet(null)} />
+              <InlineAction
+                label="Scan pages"
+                icon="camera-outline"
+                variant="neutral"
+                onPress={() => { haptics.tap(); setScanOpen(true); }}
+              />
+            </View>
+            {lastScan && (
+              <View style={styles.scanResult}>
+                <Text style={styles.scanResultText}>{describeIndexScan(lastScan.added, lastScan.updated)}</Text>
+                <InlineAction label="Undo" icon="arrow-undo" variant="neutral" onPress={undoLastScan} />
+                <TouchableOpacity
+                  onPress={() => setLastScan(null)}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Dismiss"
+                >
+                  <Ionicons name="close" size={16} color={colors.textTertiary} />
+                </TouchableOpacity>
+              </View>
+            )}
             {indexEntries.length === 0 ? (
               <View style={styles.note}>
                 <EmptyNote icon="list-outline">
@@ -228,6 +259,12 @@ export function CookbookDetailScreen() {
         cookbookId={cookbookId}
         entryId={editingEntryId}
         onClose={() => setEntrySheetOpen(false)}
+      />
+      <CookbookIndexScanSheet
+        visible={scanOpen}
+        cookbookId={cookbookId}
+        onClose={() => setScanOpen(false)}
+        onApplied={(undo, added, updated) => setLastScan({ undo, added, updated })}
       />
 
       {/* Existing recipes only — a brand new one still starts from the
@@ -327,6 +364,26 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginBottom: spacing.sm,
     alignSelf: 'flex-start',
   },
+  indexActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  scanResult: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    backgroundColor: colors.bgSecondary,
+    borderRadius: radius.md,
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  scanResultText: { flex: 1, minWidth: 140, color: colors.text, fontSize: font.sm },
   pickerRoot: {
     flex: 1,
     backgroundColor: colors.bg,
