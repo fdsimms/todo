@@ -1225,15 +1225,14 @@ const MIN_PREFIX_LENGTH = 3;
  */
 /**
  * What typing a suggestion rewrites the token to: the nickname if there is
- * one, else the first word of the name — except for a business, which has no
- * "first name" to fall back to, so the rewrite uses the whole name instead.
- * Shared by `getMentionSuggestions` and `getEditorMentionSuggestions`.
+ * one, else the whole name. `matchPersonMentions` reads a multi-word name
+ * spelled out after the "@" ("@Eye Q"), so nothing is cut down to a first word
+ * the person never chose. Shared by `getMentionSuggestions` and
+ * `getEditorMentionSuggestions`.
  */
 function mentionResolveKey(person: PersonToken): string {
   const nickname = person.nickname.trim();
-  if (nickname) return nickname;
-  const name = person.name.trim();
-  return person.kind === 'business' ? name : name.split(/\s+/)[0];
+  return nickname || person.name.trim();
 }
 
 function buildPersonNameIndex(people: PersonToken[]) {

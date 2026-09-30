@@ -1426,7 +1426,7 @@ describe('getMentionSuggestions', () => {
   it('narrows as more of the name is typed', () => {
     const r = getMentionSuggestions('respond to @lu', people);
     expect(r?.candidates.map(c => c.name)).toEqual(['Luke Harmon']);
-    expect(r?.candidates[0].resolveKey).toBe('Luke');
+    expect(r?.candidates[0].resolveKey).toBe('Luke Harmon');
   });
 
   it('resolves to a nickname over the first name when one is set', () => {
