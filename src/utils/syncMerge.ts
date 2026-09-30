@@ -54,6 +54,41 @@ export interface SyncPayload extends SyncChangeSet {
   format: number;
   /** Which device produced this, so a device can ignore its own echo. */
   deviceId: string;
+  /**
+   * Recipe photos, as base64 JPEG keyed by the filename `Recipe.imagePath`
+   * ends in (#2704). A row carries only the path, which names a file on the
+   * device that took the photo, so the bytes travel here, in payloads of
+   * their own that `runSync` pushes after the rows (`buildImagePayload`).
+   * Absent on every other payload.
+   *
+   * Optional rather than a format bump, for the reason `SYNC_FORMAT` gives: a
+   * build from before this reads the payload, finds no tables and no
+   * deletions in it, and applies nothing, which is the right answer for a
+   * device that has nowhere to put the bytes anyway.
+   */
+  images?: Record<string, string>;
+}
+
+/**
+ * The longest base64 string one photo may arrive as: about 7.5 MB of JPEG.
+ * `pickRecipeImage` saves at most 2000px at 0.7 quality, which lands well
+ * under a megabyte, so anything this size is not a photo the app took, and is
+ * refused rather than written to disk.
+ */
+export const MAX_SYNC_IMAGE_CHARS = 10_000_000;
+
+/**
+ * A photo's name as it may arrive off the wire: a bare filename, the shape
+ * `pickRecipeImage` mints (`<id>.jpg`). Anything with a path separator, a
+ * leading dot or a character outside that set is refused, since the name
+ * becomes a file written into this device's own recipe-images directory.
+ */
+export function isSyncImageName(name: unknown): name is string {
+  return typeof name === 'string'
+    && name.length > 0
+    && name.length <= 128
+    && !name.startsWith('.')
+    && /^[A-Za-z0-9._-]+$/.test(name);
 }
 
 export type ParsedPayload =
@@ -66,6 +101,20 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
 
 export function buildPayload(changes: SyncChangeSet, deviceId: string): SyncPayload {
   return { format: SYNC_FORMAT, deviceId, ...changes };
+}
+
+/**
+ * A payload carrying photos and no rows (#2704). It covers the same window as
+ * the rows pushed just before it, so a store that orders or prunes by it
+ * treats the two alike, and it has no tables and no deletions, so applying it
+ * writes nothing to the database on any build.
+ */
+export function buildImagePayload(
+  images: Record<string, string>,
+  window: Pick<SyncChangeSet, 'since' | 'until'>,
+  deviceId: string
+): SyncPayload {
+  return { format: SYNC_FORMAT, deviceId, since: window.since, until: window.until, tables: {}, deletions: [], images };
 }
 
 export function serializePayload(payload: SyncPayload): string {
@@ -123,6 +172,18 @@ export function parsePayload(text: string): ParsedPayload {
     if (!isPlainObject(d)) return { ok: false, error: "That update's list of deleted items is damaged." };
     if (typeof d.table !== 'string' || typeof d.rowKey !== 'string' || typeof d.deletedAt !== 'string') {
       return { ok: false, error: "That update's list of deleted items is damaged." };
+    }
+  }
+
+  // Held to the same standard as the rows: a photo is a file this device will
+  // write, named by the sender, so a bad name or a value that isn't a string
+  // rejects the payload rather than being skipped past.
+  if (raw.images !== undefined) {
+    if (!isPlainObject(raw.images)) return { ok: false, error: "That update's photos are damaged." };
+    for (const [name, data] of Object.entries(raw.images)) {
+      if (!isSyncImageName(name) || typeof data !== 'string' || data === '' || data.length > MAX_SYNC_IMAGE_CHARS) {
+        return { ok: false, error: "That update's photos are damaged." };
+      }
     }
   }
 

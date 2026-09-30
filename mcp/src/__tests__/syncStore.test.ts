@@ -4,11 +4,38 @@
  * No mocking: better-sqlite3 is what it runs on in production too, so an
  * in-memory database is the same code path with a different filename.
  */
-import { openSyncStore, parseCursor, DEFAULT_PULL_LIMIT, DEFAULT_RETENTION_DAYS } from '../syncStore';
+import { openSyncStore, parseCursor, DEFAULT_PULL_LIMIT, DEFAULT_PULL_MAX_CHARS, DEFAULT_RETENTION_DAYS } from '../syncStore';
 
 const store = () => openSyncStore(':memory:');
 
 describe('push and pull', () => {
+  // #2704: a payload can carry recipe photos now, so a page is capped by size
+  // as well as by count, and the cursor stops where the page did.
+  it('stops a page once it holds as much text as a pull may return', () => {
+    const s = store();
+    s.push('a'.repeat(6));
+    s.push('b'.repeat(6));
+    s.push('c'.repeat(6));
+
+    const first = s.pull(null, DEFAULT_PULL_LIMIT, 13);
+    expect(first.payloads).toEqual(['a'.repeat(6), 'b'.repeat(6)]);
+    expect(first.cursor).toBe('2');
+    expect(s.pull(first.cursor, DEFAULT_PULL_LIMIT, 13).payloads).toEqual(['c'.repeat(6)]);
+  });
+
+  it('still returns one payload larger than the whole budget, alone', () => {
+    const s = store();
+    s.push('x'.repeat(20));
+    s.push('y');
+    const page = s.pull(null, DEFAULT_PULL_LIMIT, 10);
+    expect(page.payloads).toEqual(['x'.repeat(20)]);
+    expect(page.cursor).toBe('1');
+  });
+
+  it('caps a default page well under the size a request is allowed', () => {
+    expect(DEFAULT_PULL_MAX_CHARS).toBeLessThan(32 * 1024 * 1024);
+  });
+
   it('hands back everything after a cursor, in order', () => {
     const s = store();
     s.push('one');

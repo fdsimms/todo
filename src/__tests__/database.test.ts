@@ -107,6 +107,7 @@ import {
   dbDeleteLeftover,
   dbPurgeOldLeftovers,
   dbSyncChangesSince,
+  dbRecipeImagePaths,
   dbFillTaskCalendarExternalIds,
   dbFillMealCalendarExternalIds,
   dbCalendarEventIdsWantingExternalIds,
@@ -5099,6 +5100,21 @@ describe('recipe rows', () => {
   it('reads a recipe that never dismissed anything as an empty list', () => {
     dbInsertRecipe(makeRecipe({ id: 'r1', name: 'Dal' }));
     expect(dbGetAllRecipes()[0].backfillDismissedFields).toEqual([]);
+  });
+
+  // #2704: which photos this device holds, and which ones an applied payload
+  // stopped pointing at, both read from here.
+  it('reads recipe photo paths, for the ids asked about or for every recipe with one', () => {
+    dbInsertRecipe(makeRecipe({ id: 'r1', name: 'Dal', imagePath: 'file:///x/recipe-images/p1.jpg' }));
+    dbInsertRecipe(makeRecipe({ id: 'r2', name: 'Chili', imagePath: null }));
+    dbInsertRecipe(makeRecipe({ id: 'r3', name: 'Soup', imagePath: 'file:///x/recipe-images/p3.jpg' }));
+
+    expect([...dbRecipeImagePaths().entries()].sort()).toEqual([
+      ['r1', 'file:///x/recipe-images/p1.jpg'],
+      ['r3', 'file:///x/recipe-images/p3.jpg'],
+    ]);
+    expect([...dbRecipeImagePaths(['r2', 'r3']).entries()]).toEqual([['r3', 'file:///x/recipe-images/p3.jpg']]);
+    expect(dbRecipeImagePaths([]).size).toBe(0);
   });
 });
 

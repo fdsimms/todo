@@ -1,6 +1,9 @@
 import {
+  MAX_SYNC_IMAGE_CHARS,
   SYNC_FORMAT,
+  buildImagePayload,
   buildPayload,
+  isSyncImageName,
   describeApply,
   emptyApplyReport,
   parsePayload,
@@ -72,6 +75,46 @@ describe('payload round trip', () => {
 
   it('stamps the current format', () => {
     expect(buildPayload(changeSet(), 'device-a').format).toBe(SYNC_FORMAT);
+  });
+});
+
+// #2704: recipe photos travel as base64 beside the rows, keyed by filename.
+describe('photo payloads', () => {
+  it('round-trip, covering the window of the rows before them and carrying no rows', () => {
+    const payload = buildImagePayload({ 'p1.jpg': 'AAAA' }, { since: 'from', until: 'to' }, 'device-a');
+    expect(payload).toEqual({
+      format: SYNC_FORMAT, deviceId: 'device-a', since: 'from', until: 'to',
+      tables: {}, deletions: [], images: { 'p1.jpg': 'AAAA' },
+    });
+    const parsed = parsePayload(serializePayload(payload));
+    expect(parsed.ok && parsed.payload).toEqual(payload);
+  });
+
+  it('leave a row payload without the field at all', () => {
+    expect(buildPayload(changeSet(), 'device-a')).not.toHaveProperty('images');
+  });
+
+  it('accept only a bare filename as a photo name', () => {
+    expect(isSyncImageName('a1b2-C3_d.jpg')).toBe(true);
+    for (const bad of ['', '../x.jpg', 'dir/x.jpg', '.hidden', 'x y.jpg', 'x\\y.jpg', 'a'.repeat(129), 42, null]) {
+      expect(isSyncImageName(bad)).toBe(false);
+    }
+  });
+
+  const withImages = (images: unknown) => JSON.stringify({
+    format: SYNC_FORMAT, deviceId: 'a', until: 'x', since: null, tables: {}, deletions: [], images,
+  });
+
+  it.each([
+    ['not an object', ['AAAA']],
+    ['a name that is a path', { '../x.jpg': 'AAAA' }],
+    ['a value that is not a string', { 'p1.jpg': 12 }],
+    ['an empty value', { 'p1.jpg': '' }],
+    ['a value too long to be a photo the app took', { 'p1.jpg': 'A'.repeat(MAX_SYNC_IMAGE_CHARS + 1) }],
+  ])('reject the whole payload for %s, rather than writing half of it', (_label, images) => {
+    const parsed = parsePayload(withImages(images));
+    expect(parsed.ok).toBe(false);
+    expect(!parsed.ok && parsed.error).toContain('photos');
   });
 });
 

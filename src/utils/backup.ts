@@ -22,7 +22,9 @@
  * one place this format steps outside "raw row" to carry the actual bytes,
  * keyed by the filename rather than the full path so a restore can write them
  * wherever the current device's document directory happens to be and repoint
- * `image_path` at that, not at the origin device's own layout.
+ * `image_path` at that, not at the origin device's own layout. Sync carries
+ * them the same way, keyed by the same filename, in payloads of their own
+ * (`SyncPayload.images`, #2704).
  */
 
 /**

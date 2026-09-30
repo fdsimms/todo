@@ -6,12 +6,22 @@
  * convergence test that used made-up merge rules would prove nothing about
  * whether two devices actually agree.
  */
-import { runSync, runSyncAll, summarizeRuns, hasChanges, type SyncLocal, type SyncTransport } from '../utils/syncEngine';
+import {
+  runSync,
+  runSyncAll,
+  summarizeRuns,
+  hasChanges,
+  imagesSentKey,
+  IMAGE_PAYLOAD_BUDGET_CHARS,
+  type SyncLocal,
+  type SyncTransport,
+} from '../utils/syncEngine';
 import {
   SYNC_FORMAT,
   emptyApplyReport,
   remoteDeletionWins,
   remoteRowWins,
+  parsePayload,
   serializePayload,
   type SyncChangeSet,
   type SyncPayload,
@@ -113,7 +123,7 @@ class FakeDevice implements SyncLocal {
 
 /** A shared store every device pushes to and pulls from, like CloudKit. */
 class FakeCloud implements SyncTransport {
-  readonly name = 'fake';
+  readonly name: string = 'fake';
   entries: string[] = [];
   pushThrows = false;
   pullThrows = false;
@@ -427,6 +437,8 @@ describe('summarizeRuns', () => {
       pushed: false,
       applied: emptyApplyReport(),
       unreadable: 0,
+      imagesSent: 0,
+      imagesReceived: 0,
       ...over,
     },
   });
@@ -488,6 +500,210 @@ describe('summarizeRuns', () => {
   it('reports no problem when every store merely skipped', () => {
     const summary = summarizeRuns([run('fake', { status: 'skipped', reason: 'Demo mode.' })]);
     expect(summary.ok).toBe(false);
+    expect(summary.problem).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Recipe photos (#2704): a row carries a photo's path, and the bytes travel in
+// payloads of their own, after the rows, once per transport.
+// ---------------------------------------------------------------------------
+
+/** A FakeDevice with a folder of photo files beside its rows. */
+class PhotoDevice extends FakeDevice {
+  files = new Map<string, string>();
+  /** Names whose rows point at a photo, whether or not the file is here. */
+  referenced = new Set<string>();
+  writeThrows = false;
+
+  take(name: string, base64: string): void {
+    this.files.set(name, base64);
+    this.referenced.add(name);
+  }
+
+  imageNames() { return [...new Set([...this.referenced, ...this.files.keys()])]; }
+  readImage(name: string) { return this.files.get(name) ?? null; }
+  writeImage(name: string, base64: string) {
+    if (this.writeThrows) return false;
+    if (this.files.has(name)) return false;
+    this.files.set(name, base64);
+    return true;
+  }
+}
+
+/** A store like FakeCloud, under a name of its own, so two can run side by side. */
+class NamedCloud extends FakeCloud {
+  readonly name: string;
+  constructor(name: string) {
+    super();
+    this.name = name;
+  }
+}
+
+const photoPayloads = (cloud: FakeCloud) =>
+  cloud.entries
+    .map(e => parsePayload(e))
+    .filter((p): p is { ok: true; payload: SyncPayload } => p.ok && p.payload.images !== undefined)
+    .map(p => p.payload);
+
+describe('recipe photos', () => {
+  it('sends a photo after the rows, in a payload with no rows of its own', async () => {
+    const a = new PhotoDevice('a');
+    a.write('t1', 'Chili', '2026-01-01T00:00:00.000Z');
+    a.take('p1.jpg', 'AAAA');
+    const cloud = new FakeCloud();
+
+    const result = await runSync(cloud, a);
+
+    expect(result.imagesSent).toBe(1);
+    expect(cloud.entries).toHaveLength(2);
+    // Rows first, so a peer has the recipe before its photo.
+    expect(parsePayload(cloud.entries[0])).toMatchObject({ ok: true, payload: { tables: { tasks: [{ id: 't1' }] } } });
+    const [photos] = photoPayloads(cloud);
+    expect(photos.images).toEqual({ 'p1.jpg': 'AAAA' });
+    expect(photos.tables).toEqual({});
+    expect(photos.deletions).toEqual([]);
+  });
+
+  it('sends each photo to a transport once, however often the rows change', async () => {
+    const a = new PhotoDevice('a');
+    a.take('p1.jpg', 'AAAA');
+    const cloud = new FakeCloud();
+
+    await runSync(cloud, a);
+    a.write('t1', 'Chili, renamed', '2026-02-01T00:00:00.000Z');
+    const second = await runSync(cloud, a);
+
+    expect(second.imagesSent).toBe(0);
+    expect(photoPayloads(cloud)).toHaveLength(1);
+    expect(JSON.parse(a.getCursor(imagesSentKey('fake'))!)).toEqual(['p1.jpg']);
+  });
+
+  it('splits photos across payloads rather than exceeding the budget', async () => {
+    const a = new PhotoDevice('a');
+    const big = 'B'.repeat(Math.floor(IMAGE_PAYLOAD_BUDGET_CHARS * 0.6));
+    a.take('p1.jpg', big);
+    a.take('p2.jpg', big);
+    a.take('p3.jpg', 'small');
+    const cloud = new FakeCloud();
+
+    const result = await runSync(cloud, a);
+
+    expect(result.imagesSent).toBe(3);
+    const sizes = photoPayloads(cloud).map(p => Object.values(p.images!).join('').length);
+    expect(sizes.length).toBe(2);
+    sizes.forEach(n => expect(n).toBeLessThanOrEqual(IMAGE_PAYLOAD_BUDGET_CHARS));
+  });
+
+  it('delivers a photo to another device, which counts it and keeps it', async () => {
+    const a = new PhotoDevice('a');
+    const b = new PhotoDevice('b');
+    a.take('p1.jpg', 'AAAA');
+    const cloud = new FakeCloud();
+
+    await runSync(cloud, a);
+    const result = await runSync(cloud, b);
+
+    expect(result.imagesReceived).toBe(1);
+    expect(b.files.get('p1.jpg')).toBe('AAAA');
+  });
+
+  it('never pushes a photo back to the store it came from, but relays it to another', async () => {
+    const a = new PhotoDevice('a');
+    const b = new PhotoDevice('b');
+    a.take('p1.jpg', 'AAAA');
+    const icloud = new NamedCloud('cloudkit');
+    const server = new NamedCloud('http');
+
+    await runSync(icloud, a);
+    await runSyncAll([icloud, server], b);
+
+    // b got it from iCloud and has nothing new for it...
+    expect(photoPayloads(icloud)).toHaveLength(1);
+    // ...but the server had never seen it.
+    expect(photoPayloads(server).map(p => Object.keys(p.images!))).toEqual([['p1.jpg']]);
+  });
+
+  it('skips a photo whose file is not here, and sends it once it arrives', async () => {
+    const a = new PhotoDevice('a');
+    a.referenced.add('p1.jpg');
+    const cloud = new FakeCloud();
+
+    const first = await runSync(cloud, a);
+    expect(first.imagesSent).toBe(0);
+    expect(photoPayloads(cloud)).toHaveLength(0);
+
+    a.files.set('p1.jpg', 'AAAA');
+    const second = await runSync(cloud, a);
+    expect(second.imagesSent).toBe(1);
+  });
+
+  it('keeps pulling when a photo payload is refused, and tries the photo again next time', async () => {
+    const a = new PhotoDevice('a');
+    a.write('t1', 'Chili', '2026-01-01T00:00:00.000Z');
+    a.take('p1.jpg', 'AAAA');
+    const b = new PhotoDevice('b');
+    b.write('t2', 'Soup', '2026-01-01T00:00:00.000Z');
+    const cloud = new FakeCloud();
+    await runSync(cloud, b);
+
+    // A store that takes rows and refuses anything carrying photos.
+    const push = cloud.push.bind(cloud);
+    cloud.push = async (payload: string) => {
+      if (payload.includes('"images"')) throw new Error('Payload too large');
+      return push(payload);
+    };
+    const result = await runSync(cloud, a);
+
+    expect(result.status).toBe('ok');
+    expect(result.imageProblem).toBe('Payload too large');
+    expect(result.imagesSent).toBe(0);
+    // The rows went, and the pull still ran.
+    expect(a.titleOf('t2')).toBe('Soup');
+    expect(a.getCursor(imagesSentKey('fake'))).toBeNull();
+
+    cloud.push = push;
+    const retry = await runSync(cloud, a);
+    expect(retry.imagesSent).toBe(1);
+    expect(retry.imageProblem).toBeUndefined();
+  });
+
+  it('forgets names of photos that are gone as it next records what was sent', async () => {
+    const a = new PhotoDevice('a');
+    a.take('old.jpg', 'OLD');
+    const cloud = new FakeCloud();
+    await runSync(cloud, a);
+
+    a.files.delete('old.jpg');
+    a.referenced.delete('old.jpg');
+    a.take('new.jpg', 'NEW');
+    await runSync(cloud, a);
+
+    expect(JSON.parse(a.getCursor(imagesSentKey('fake'))!)).toEqual(['new.jpg']);
+  });
+
+  it('syncs rows exactly as before for a local that holds no photos', async () => {
+    const plain = new FakeDevice('a');
+    plain.write('t1', 'Chili', '2026-01-01T00:00:00.000Z');
+    const cloud = new FakeCloud();
+    cloud.entries.push(serializePayload(payloadOf({ tables: {}, images: { 'p1.jpg': 'AAAA' } })));
+
+    const result = await runSync(cloud, plain);
+
+    expect(result.status).toBe('ok');
+    expect(result.imagesSent).toBe(0);
+    expect(result.imagesReceived).toBe(0);
+    expect(cloud.entries).toHaveLength(2);
+  });
+
+  it('adds up photos received and names the first transport whose photos did not go', () => {
+    const base = { status: 'ok' as const, pushed: false, applied: emptyApplyReport(), unreadable: 0, imagesSent: 0 };
+    const summary = summarizeRuns([
+      { transport: 'cloudkit', result: { ...base, imagesReceived: 2 } },
+      { transport: 'http', result: { ...base, imagesReceived: 1, imageProblem: 'Payload too large' } },
+    ]);
+    expect(summary.imagesReceived).toBe(3);
+    expect(summary.imageProblem).toBe('http: Payload too large');
     expect(summary.problem).toBeNull();
   });
 });

@@ -5918,6 +5918,32 @@ export function dbSetRecipeImagePath(id: string, imagePath: string | null): void
   db.runSync('UPDATE recipes SET image_path = ? WHERE id = ?', [imagePath, id]);
 }
 
+/**
+ * Every recipe's saved photo path, by recipe id: for the ids given, or every
+ * recipe that has one when `ids` is omitted. What sync reads to know which
+ * photos this device holds and which ones a peer's edit or delete just
+ * stopped pointing at (`recipeImageSync.ts`, #2704).
+ */
+export function dbRecipeImagePaths(ids?: readonly string[]): Map<string, string> {
+  const out = new Map<string, string>();
+  const add = (rows: { id: string; image_path: string }[]) => rows.forEach(r => out.set(r.id, r.image_path));
+  if (ids === undefined) {
+    add(db.getAllSync<{ id: string; image_path: string }>(
+      "SELECT id, image_path FROM recipes WHERE image_path IS NOT NULL AND image_path <> ''"
+    ));
+    return out;
+  }
+  for (let i = 0; i < ids.length; i += 500) {
+    const chunk = ids.slice(i, i + 500);
+    if (chunk.length === 0) continue;
+    add(db.getAllSync<{ id: string; image_path: string }>(
+      `SELECT id, image_path FROM recipes WHERE image_path IS NOT NULL AND image_path <> '' AND id IN (${chunk.map(() => '?').join(', ')})`,
+      chunk
+    ));
+  }
+  return out;
+}
+
 // ─── Meal plan ──────────────────────────────────────────────────────────────
 
 function rowToMealPlanEntry(row: Record<string, unknown>): MealPlanEntry {

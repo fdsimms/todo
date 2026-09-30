@@ -100,6 +100,7 @@ import {
   recipeImageBasename,
   resolveRecipeImagePath,
   readRecipeImageBase64,
+  recipeImageOnDevice,
   writeRecipeImageFile,
   getCameraPermission,
   requestCameraPermission,
@@ -577,6 +578,22 @@ describe('resolveRecipeImagePath', () => {
 
   it('resolves a bare basename the same way', () => {
     expect(resolveRecipeImagePath('abc.jpg')).toBe('file:///documents/recipe-images/abc.jpg');
+  });
+});
+
+// #2704: what the recipe screens ask before drawing a photo, so a synced
+// path whose file hasn't arrived says so instead of drawing an empty box.
+describe('recipeImageOnDevice', () => {
+  it('is false for a recipe with no photo', () => {
+    expect(recipeImageOnDevice(null)).toBe(false);
+    expect(recipeImageOnDevice('')).toBe(false);
+  });
+
+  it('follows whether the file is in this install\'s recipe-images directory', () => {
+    mockFileExists = true;
+    expect(recipeImageOnDevice('file:///other-device/documents/recipe-images/abc.jpg')).toBe(true);
+    mockFileExists = false;
+    expect(recipeImageOnDevice('file:///other-device/documents/recipe-images/abc.jpg')).toBe(false);
   });
 });
 

@@ -39,6 +39,13 @@ interface SyncState {
   problem: string | null;
   /** What the last successful sync brought in, for the status line. */
   lastSummary: string | null;
+  /**
+   * Bumped whenever a sync writes recipe photos to this device (#2704). A photo
+   * can arrive in a sync that changes no row, and then nothing else re-renders
+   * a recipe still showing that its photo isn't here, so the recipe screens
+   * read this to look again.
+   */
+  recipeImagesVersion: number;
 
   /**
    * The payload store's origin, or '' for none. Its token lives in the
@@ -107,6 +114,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
   lastSyncedAt: null,
   problem: null,
   lastSummary: null,
+  recipeImagesVersion: 0,
 
   serverUrl: '',
   hasServerToken: false,
@@ -202,6 +210,7 @@ async function syncOnce(enabled: boolean, serverUrl: string): Promise<SyncSummar
     // database either way. Skipped when nothing came in, which is most runs.
     const a = summary.applied;
     if (a.inserted + a.updated + a.deleted > 0) reloadAfterSync(a);
+    if (summary.imagesReceived > 0) set(s => ({ recipeImagesVersion: s.recipeImagesVersion + 1 }));
 
     if (summary.ok) {
       const now = new Date().toISOString();
@@ -213,7 +222,12 @@ async function syncOnce(enabled: boolean, serverUrl: string): Promise<SyncSummar
         // about, because the device it did not reach is the one they will
         // wonder about later.
         problem: summary.problem
-          ?? (summary.unreadable > 0 ? 'Some changes need a newer version of the app.' : null),
+          ?? (summary.unreadable > 0 ? 'Some changes need a newer version of the app.' : null)
+          // Last, and only when the rows went: a photo that didn't send is
+          // retried on its own, so this names it without calling the sync failed.
+          ?? (summary.imageProblem
+            ? `Some recipe photos didn't send (${summary.imageProblem}). They go again with the next sync.`
+            : null),
         lastSummary: describeApply(summary.applied),
       });
     } else if (summary.problem !== null) {

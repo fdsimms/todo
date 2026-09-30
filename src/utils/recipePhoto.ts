@@ -468,12 +468,34 @@ export function recipeImageBasename(uri: string): string | null {
  * stable, so this re-derives the full path from that basename against
  * *this* launch's document directory, the same trick `restoreRecipeImages`
  * already relies on for a restore.
+ *
+ * A path that resolves is still not a file that exists: a recipe synced from
+ * another device carries its photo's path before the photo itself arrives
+ * (#2704). `recipeImageOnDevice` is the check for that, and the screens ask it
+ * before drawing a photo at all.
  */
 export function resolveRecipeImagePath(stored: string | null | undefined): string | null {
   if (!stored) return null;
   const basename = recipeImageBasename(stored);
   if (!basename) return null;
   return new (fileSystem().File)(recipeImageDirectory(), basename).uri;
+}
+
+/**
+ * Whether a recipe's saved photo is actually on this device. False for a
+ * recipe with none, and for one whose file isn't here: the photo was taken on
+ * another device and hasn't arrived by sync yet (#2704), or this install lost
+ * it. The screens read this rather than handing `<Image>` a path to nothing,
+ * which fails with no error and draws an empty box.
+ */
+export function recipeImageOnDevice(stored: string | null | undefined): boolean {
+  try {
+    const resolved = resolveRecipeImagePath(stored);
+    if (!resolved) return false;
+    return new (fileSystem().File)(resolved).exists;
+  } catch {
+    return false;
+  }
 }
 
 /**
