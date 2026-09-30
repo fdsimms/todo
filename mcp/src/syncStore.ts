@@ -38,7 +38,7 @@ export interface PullPage {
 
 export interface SyncStore {
   push(payload: string): void;
-  pull(since: string | null, limit?: number): PullPage;
+  pull(since: string | null, limit?: number, maxChars?: number): PullPage;
   /** Drops payloads older than the horizon. Returns how many went. */
   prune(olderThanDays: number, now?: Date): number;
   count(): number;
@@ -54,6 +54,17 @@ export interface SyncStore {
  * sync that finishes next time.
  */
 export const DEFAULT_PULL_LIMIT = 200;
+
+/**
+ * How much payload text one pull may return, however few payloads that is.
+ *
+ * The count above was enough while every payload was a batch of rows. A
+ * payload can now carry recipe photos (#2704), up to about 6 MB each, so 200
+ * of them is a response nobody's phone finishes downloading, which is the
+ * failure the count exists to avoid. A page always holds at least one
+ * payload, so a single large one still gets through; it just comes alone.
+ */
+export const DEFAULT_PULL_MAX_CHARS = 16_000_000;
 
 /**
  * How long a payload is kept.
@@ -91,8 +102,15 @@ export function openSyncStore(filePath: string): SyncStore {
       insert.run(payload, new Date().toISOString());
     },
 
-    pull(since: string | null, limit = DEFAULT_PULL_LIMIT): PullPage {
-      const rows = selectSince.all(parseCursor(since), limit) as { seq: number; payload: string }[];
+    pull(since: string | null, limit = DEFAULT_PULL_LIMIT, maxChars = DEFAULT_PULL_MAX_CHARS): PullPage {
+      const fetched = selectSince.all(parseCursor(since), limit) as { seq: number; payload: string }[];
+      const rows: typeof fetched = [];
+      let chars = 0;
+      for (const row of fetched) {
+        if (rows.length > 0 && chars + row.payload.length > maxChars) break;
+        rows.push(row);
+        chars += row.payload.length;
+      }
       if (rows.length === 0) return { payloads: [], cursor: null };
 
       return {

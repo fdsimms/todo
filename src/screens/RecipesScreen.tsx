@@ -17,6 +17,7 @@ import { useShallow } from 'zustand/react/shallow';
 import type { GroceryItem, Recipe, RecipeMealType } from '../types';
 import { RECIPE_MEAL_TYPES, RECIPE_MEAL_TYPE_LABELS } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
+import { useSyncStore } from '../store/useSyncStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useRowSelection } from '../hooks/useRowSelection';
 import { ScreenHeader } from '../components/ScreenHeader';
@@ -76,7 +77,7 @@ import {
   type RecipeListItem,
 } from '../utils/recipeUtils';
 import { recipeMap, recipesUsing } from '../utils/recipeComponents';
-import { resolveRecipeImagePath } from '../utils/recipePhoto';
+import { recipeImageOnDevice, resolveRecipeImagePath } from '../utils/recipePhoto';
 import { allRecipeTags, filterRecipesByTags, formatTagList, recipeTagCounts } from '../utils/recipeTags';
 import { tagColor } from '../utils/tagColor';
 import { groceryNameKey } from '../utils/groceryParse';
@@ -1135,6 +1136,14 @@ const RecipeRow = React.memo(function RecipeRow({
   // column of dots picks up this row. Not the drag overlay's copy, which
   // would claim this row's id and evict it on unmount, nor the shelf's.
   const paintRef = usePaintSelectionRow(isActive || duplicateRow ? null : recipe.id);
+  // Whether the photo's file is here (#2704), re-checked when a sync brings
+  // photos in. One file check per row per change, not per render.
+  const recipeImagesVersion = useSyncStore(s => s.recipeImagesVersion);
+  const photoOnDevice = useMemo(
+    () => recipeImageOnDevice(recipe.imagePath),
+    // recipeImagesVersion isn't read inside: it is only the re-check trigger.
+    [recipe.imagePath, recipeImagesVersion]
+  );
   // Bound once per row rather than once per render of the list above it.
   const toggleSelect = () => onToggleSelect(recipe.id);
 
@@ -1153,8 +1162,15 @@ const RecipeRow = React.memo(function RecipeRow({
           SelectionDot at the other end of the row, the split every other
           selectable list makes (#2944): a check filling the tile's place
           read as a recipe marked done rather than one picked. */}
-      {recipe.imagePath ? (
+      {recipe.imagePath && photoOnDevice ? (
         <Image source={{ uri: resolveRecipeImagePath(recipe.imagePath) ?? undefined }} style={styles.thumb} />
+      ) : recipe.imagePath ? (
+        // A photo this device hasn't got yet (#2704): a photo glyph on the
+        // thumb's own ground, so it neither draws as an empty square nor
+        // passes for a recipe with no photo at all.
+        <View style={[styles.icon, { backgroundColor: colors.bgSunken }]}>
+          <Ionicons name="image-outline" size={18} color={colors.textTertiary} />
+        </View>
       ) : (
         <View style={[styles.icon, { backgroundColor: colors.accentSubtle }]}>
           <Ionicons name="restaurant-outline" size={18} color={colors.accent} />

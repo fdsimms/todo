@@ -44,6 +44,8 @@ const okResult = (overrides: Partial<ReturnType<typeof emptyApplyReport>> = {}) 
   pushed: true,
   applied: { ...emptyApplyReport(), ...overrides },
   unreadable: 0,
+  imagesSent: 0,
+  imagesReceived: 0,
 });
 
 /** One transport's run, as runSyncAll hands them back. */
@@ -69,6 +71,7 @@ beforeEach(() => {
     lastSyncedAt: null,
     problem: null,
     lastSummary: null,
+    recipeImagesVersion: 0,
     serverUrl: '',
     hasServerToken: false,
   });
@@ -213,6 +216,34 @@ describe('syncNow', () => {
     useSyncStore.setState({ enabled: true });
     await useSyncStore.getState().syncNow();
     expect(useSyncStore.getState().problem).toBe('Some changes need a newer version of the app.');
+  });
+
+  // #2704: a photo can arrive in a sync that changes no row, so the recipe
+  // screens are told separately, and without a reload of every store.
+  it('tells the recipe screens when photos arrived, without reloading the stores for them', async () => {
+    const reload = jest.fn();
+    registerSyncReload(reload);
+    (runSyncAll as jest.Mock).mockResolvedValue(runs({ ...okResult(), imagesReceived: 2 }));
+    useSyncStore.setState({ enabled: true });
+
+    await useSyncStore.getState().syncNow();
+    expect(useSyncStore.getState().recipeImagesVersion).toBe(1);
+    expect(reload).not.toHaveBeenCalled();
+
+    (runSyncAll as jest.Mock).mockResolvedValue(runs(okResult()));
+    await useSyncStore.getState().syncNow();
+    expect(useSyncStore.getState().recipeImagesVersion).toBe(1);
+  });
+
+  it('names photos that did not send, without calling a sync whose rows went a failure', async () => {
+    (runSyncAll as jest.Mock).mockResolvedValue(runs({ ...okResult(), imageProblem: 'Payload too large' }));
+    useSyncStore.setState({ enabled: true });
+    const result = await useSyncStore.getState().syncNow();
+    expect(result?.ok).toBe(true);
+    expect(dbSetSetting).toHaveBeenCalledWith('syncLastSyncedAt', expect.any(String));
+    expect(useSyncStore.getState().problem).toBe(
+      "Some recipe photos didn't send (cloudkit: Payload too large). They go again with the next sync."
+    );
   });
 
   it('records a failure reason and leaves lastSyncedAt untouched', async () => {

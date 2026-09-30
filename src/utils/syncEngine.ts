@@ -20,6 +20,7 @@
  * transport to speak in timestamps, which CloudKit's does not.
  */
 import {
+  buildImagePayload,
   buildPayload,
   emptyApplyReport,
   parsePayload,
@@ -62,6 +63,99 @@ export interface SyncLocal {
   apply(payload: SyncPayload, transport?: string): ApplyReport;
   getCursor(key: string): string | null;
   setCursor(key: string, value: string): void;
+  /**
+   * The recipe photos this device holds, by filename (#2704). Names only, so
+   * the list costs a query rather than a read of every file. Optional, like
+   * the two below: a local without photos (the MCP replica's tests, an older
+   * fake) syncs rows exactly as before.
+   */
+  imageNames?(): string[];
+  /** One photo's bytes as base64, or null when the file isn't here. */
+  readImage?(name: string): string | null;
+  /** Stores a photo a peer sent. True when a file was written, false when it was already here or couldn't be. */
+  writeImage?(name: string, base64: string): boolean;
+}
+
+/**
+ * How much base64 one photo payload carries before the rest go in another:
+ * six to twelve photos at the size `pickRecipeImage` saves. The self-hosted
+ * store accepts 32 MB a request (`express.json` in mcp/src/server.ts), and a
+ * payload is pulled whole on a phone that may be on cellular, so this stays
+ * well under both rather than finding either limit.
+ */
+export const IMAGE_PAYLOAD_BUDGET_CHARS = 6_000_000;
+
+/** The device-local cursor key holding which photos a transport already has. */
+export function imagesSentKey(transportName: string): string {
+  return `${transportName}:images`;
+}
+
+function readNameList(stored: string | null): Set<string> {
+  if (!stored) return new Set();
+  try {
+    const parsed: unknown = JSON.parse(stored);
+    return new Set(Array.isArray(parsed) ? parsed.filter((n): n is string => typeof n === 'string') : []);
+  } catch {
+    return new Set();
+  }
+}
+
+/**
+ * Pushes every photo this transport hasn't had yet, after the rows, in
+ * payloads of at most `IMAGE_PAYLOAD_BUDGET_CHARS` (#2704). Returns how many
+ * went.
+ *
+ * - **Each photo goes to a transport once.** A photo's filename is minted when
+ *   it is taken and never reused, so the name is its identity, and the names a
+ *   transport already has are kept under a device-local cursor key. That is
+ *   what stops a photo being re-sent every time its recipe is edited, and what
+ *   lets every photo taken before this existed go on the first sync after it
+ *   without a separate pass.
+ * - **A photo a transport handed to this device counts as one it has**, the
+ *   rule rows follow (`changesSince`'s `transport`), so nothing is echoed back
+ *   to the store it came from. It still goes to the other transport.
+ * - **Recorded per payload, as each one lands**, so a failure halfway through
+ *   re-sends only the photos that didn't go.
+ * - **A photo whose file isn't here is skipped, not recorded.** It may arrive
+ *   from a peer later, and then it goes on.
+ */
+async function pushImages(
+  transport: SyncTransport,
+  local: SyncLocal,
+  pushWindow: Pick<SyncChangeSet, 'since' | 'until'>
+): Promise<number> {
+  if (!local.imageNames || !local.readImage) return 0;
+  const key = imagesSentKey(transport.name);
+  const held = local.imageNames();
+  const heldSet = new Set(held);
+  // Names of photos no longer here are dropped as the list is next written,
+  // so it tracks the photos that exist rather than every one there ever was.
+  const sent = new Set([...readNameList(local.getCursor(key))].filter(n => heldSet.has(n)));
+  const pending = held.filter(n => !sent.has(n));
+  let count = 0;
+  let batch: Record<string, string> = {};
+  let batchChars = 0;
+
+  const flush = async () => {
+    const names = Object.keys(batch);
+    if (names.length === 0) return;
+    await transport.push(serializePayload(buildImagePayload(batch, pushWindow, local.deviceId())));
+    names.forEach(n => sent.add(n));
+    local.setCursor(key, JSON.stringify([...sent]));
+    count += names.length;
+    batch = {};
+    batchChars = 0;
+  };
+
+  for (const name of pending) {
+    const data = local.readImage(name);
+    if (!data) continue;
+    if (batchChars > 0 && batchChars + data.length > IMAGE_PAYLOAD_BUDGET_CHARS) await flush();
+    batch[name] = data;
+    batchChars += data.length;
+  }
+  await flush();
+  return count;
 }
 
 export type SyncStatus = 'ok' | 'skipped' | 'failed';
@@ -79,6 +173,16 @@ export interface SyncRunResult {
   unreadable: number;
   /** Set when status is 'failed' or 'skipped'. */
   reason?: string;
+  /** Recipe photos pushed to this transport (#2704). */
+  imagesSent: number;
+  /** Recipe photos written to this device from it. */
+  imagesReceived: number;
+  /**
+   * Set when the rows went but a photo payload didn't. Not a failed run: the
+   * rows are the sync, the photos go again next time, and a store that
+   * refuses photo payloads outright must not stop this device pulling.
+   */
+  imageProblem?: string;
 }
 
 export function hasChanges(changes: SyncChangeSet): boolean {
@@ -119,13 +223,20 @@ export async function runSync(
   const applied = emptyApplyReport();
 
   if (!local.isSyncable()) {
-    return { status: 'skipped', pushed: false, applied, unreadable: 0, reason: 'Demo mode.' };
+    return {
+      status: 'skipped', pushed: false, applied, unreadable: 0, reason: 'Demo mode.',
+      imagesSent: 0, imagesReceived: 0,
+    };
   }
 
   const pushKey = `${transport.name}:push`;
   const pullKey = `${transport.name}:pull`;
   let pushed = false;
   let unreadable = 0;
+  let imagesSent = 0;
+  let imagesReceived = 0;
+  let imageProblem: string | undefined;
+  let pushWindow: Pick<SyncChangeSet, 'since' | 'until'>;
 
   try {
     const changes = local.changesSince(local.getCursor(pushKey), transport.name);
@@ -137,6 +248,7 @@ export async function runSync(
     // held nothing, so re-reading it next time would only re-scan rows that
     // are already accounted for.
     local.setCursor(pushKey, changes.until);
+    pushWindow = { since: changes.since, until: changes.until };
   } catch (e) {
     return {
       status: 'failed',
@@ -144,12 +256,25 @@ export async function runSync(
       applied,
       unreadable,
       reason: messageOf(e, 'Could not send changes.'),
+      imagesSent,
+      imagesReceived,
     };
+  }
+
+  // After the rows, so a peer has the recipe before its photo, and outside
+  // the row push's own failure: see `imageProblem`.
+  try {
+    imagesSent = await pushImages(transport, local, pushWindow);
+    if (imagesSent > 0) pushed = true;
+  } catch (e) {
+    imageProblem = messageOf(e, 'Could not send recipe photos.');
   }
 
   try {
     const result = await transport.pull(local.getCursor(pullKey));
     const mine = local.deviceId();
+    const imageKey = imagesSentKey(transport.name);
+    let arrived: Set<string> | null = null;
 
     for (const raw of result.payloads) {
       const parsed = parsePayload(raw);
@@ -163,7 +288,19 @@ export async function runSync(
       if (parsed.payload.deviceId === mine) continue;
 
       addReport(applied, local.apply(parsed.payload, transport.name));
+
+      // After the payload's rows, which are none in a photo payload, and only
+      // where the local can store a file at all.
+      if (parsed.payload.images && local.writeImage) {
+        arrived ??= readNameList(local.getCursor(imageKey));
+        for (const [name, data] of Object.entries(parsed.payload.images)) {
+          if (local.writeImage(name, data)) imagesReceived++;
+          // The store has it, so it is never pushed back there (see pushImages).
+          arrived.add(name);
+        }
+      }
     }
+    if (arrived) local.setCursor(imageKey, JSON.stringify([...arrived]));
 
     // Only after every payload in the batch applied. A throw above leaves the
     // cursor where it was, so the whole batch is retried — the ones that
@@ -176,10 +313,16 @@ export async function runSync(
       applied,
       unreadable,
       reason: messageOf(e, 'Could not receive changes.'),
+      imagesSent,
+      imagesReceived,
+      ...(imageProblem ? { imageProblem } : {}),
     };
   }
 
-  return { status: 'ok', pushed, applied, unreadable };
+  return {
+    status: 'ok', pushed, applied, unreadable, imagesSent, imagesReceived,
+    ...(imageProblem ? { imageProblem } : {}),
+  };
 }
 
 function messageOf(e: unknown, fallback: string): string {
@@ -230,6 +373,13 @@ export interface SyncSummary {
   unreadable: number;
   /** The first failure, named by transport. Null when nothing failed. */
   problem: string | null;
+  /** Recipe photos written to this device, across every transport (#2704). */
+  imagesReceived: number;
+  /**
+   * The first transport whose photos didn't all go, named like `problem`.
+   * Null when they did. Kept apart from `problem` because the rows synced.
+   */
+  imageProblem: string | null;
 }
 
 /**
@@ -246,10 +396,14 @@ export function summarizeRuns(runs: readonly NamedSyncRun[]): SyncSummary {
   let pushed = false;
   let unreadable = 0;
   let problem: string | null = null;
+  let imagesReceived = 0;
+  let imageProblem: string | null = null;
 
   for (const { transport, result } of runs) {
     addReport(applied, result.applied);
     unreadable += result.unreadable;
+    imagesReceived += result.imagesReceived;
+    if (result.imageProblem && imageProblem === null) imageProblem = `${transport}: ${result.imageProblem}`;
     if (result.pushed) pushed = true;
     if (result.status === 'ok') ok = true;
     if (result.status === 'failed' && problem === null) {
@@ -257,5 +411,5 @@ export function summarizeRuns(runs: readonly NamedSyncRun[]): SyncSummary {
     }
   }
 
-  return { ok, applied, pushed, unreadable, problem };
+  return { ok, applied, pushed, unreadable, problem, imagesReceived, imageProblem };
 }

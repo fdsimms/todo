@@ -327,6 +327,51 @@ normalized to a one-entry array internally, so nothing about the single-photo pa
   is carried in a plain ref (`photosRef`/`statesRef`) rather than component state, because nothing
   there needs a render just to remember the last status.
 
+## A recipe's photo on another device (`recipeImageSync.ts`, `pushImages` in `syncEngine.ts`)
+
+A recipe row carries its photo as `image_path`, a `file://` path into the document directory of
+the device that took it. Sync moves rows, so for a long time the other device got a path to
+nothing, and `<Image>` fails on that with no error: the hero drew its own empty background and
+nobody could tell a photo was missing (#2704). Backup already solved the same problem by carrying
+the bytes beside the rows (`Backup.images`), and sync now does the same.
+
+- **The bytes ride in payloads of their own, after the rows.** `buildImagePayload` makes a payload
+  with no tables and no deletions and an `images` map of base64 keyed by filename. A build from
+  before this parses it, finds nothing to apply, and applies nothing, which is why it is an optional
+  field rather than a `SYNC_FORMAT` bump. Photos are batched up to `IMAGE_PAYLOAD_BUDGET_CHARS` per
+  payload, since the self-hosted store takes 32 MB a request and a phone on cellular pulls each
+  payload whole.
+- **Each photo goes to a transport once, by filename.** `pickRecipeImage` mints a fresh name per
+  photo and never reuses one, so the name is the photo's identity, and the names a transport already
+  has sit under a device-local cursor key (`imagesSentKey`, under the `syncCursor:` prefix, which
+  neither sync nor backup carries). That is what stops a photo being re-sent every time its recipe
+  is edited, and it is also why every photo taken before this existed went on the first sync after
+  it, with no separate backfill. A photo that came *from* a transport counts as one it has, so it is
+  never echoed back there, and it is still relayed to the other one, the rule rows follow.
+- **A photo push that fails is not a failed sync.** The rows went, and a store that refuses photo
+  payloads outright must not stop this device pulling, so `pushImages` failing sets `imageProblem`
+  rather than `status: 'failed'`, and the photos go again next time. The settings line names it.
+- **A photo arrives whether or not its row is here yet**, and is never written over a file of the
+  same name, which can only be the same photo. A store need not return payloads in push order, and
+  a photo refused for arriving early would never be offered again.
+- **Applying a peer's delete or replacement removes the old file** (`applyWithRecipeImages`), which
+  the local paths already did (`deleteRecipe`, `setRecipeImage`). Only names in use *before* the
+  apply are candidates, so a photo just taken here, whose file is written before its row, is never
+  one of them, and a name another recipe still points at (a duplicate keeps its original's path)
+  stays.
+- **A photo that isn't here says so.** `recipeImageOnDevice` is what the recipe hero and the list
+  thumbnail check before drawing one: the hero becomes a short "Photo isn't on this device" card
+  that still opens the photo menu, and the thumbnail shows a photo glyph instead of an empty square.
+  A photo can arrive in a sync that changes no row, so `useSyncStore.recipeImagesVersion` is bumped
+  when one does and both screens re-check on it.
+- **The rule that a stored path is never trusted is unchanged.** `resolveRecipeImagePath` still
+  re-derives the path from the filename against this install's own directory; this is about the
+  bytes, not the path.
+
+The file half never throws: a photo that can't be read or written costs that photo, never the sync,
+and the MCP replica runs the same adapter (`databaseSyncLocal`) in Node, where expo-file-system is
+not there to load at all.
+
 ## Component recipes read off a photo (`recipeImportComponents.ts`)
 
 A cookbook page routinely points at another recipe in the same book: "1 cup salsa verde

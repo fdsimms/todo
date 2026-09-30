@@ -214,6 +214,10 @@ table's maximum** — advancing past rows that were not returned is the only way
 here. And an unreadable cursor reads as **the beginning rather than as a skip**, because applying a
 payload twice is a no-op under `syncMerge`'s tie rule while skipping one loses an edit for good.
 
+A page is capped by size as well as by count (`DEFAULT_PULL_MAX_CHARS`, 16 MB), since a payload can
+carry recipe photos (#2704) and 200 of those is a response no phone finishes downloading. A page
+always holds at least one payload, so one larger than the cap still gets through on its own.
+
 Payloads are pruned at 90 days, matched to `TOMBSTONE_RETENTION_DAYS` rather than chosen
 separately: a device away longer than the tombstone window already needs a full reconcile, and
 pruning on a *shorter* horizon than the app's would drop changes whose deletions the devices have

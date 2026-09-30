@@ -31,6 +31,7 @@ import { useShallow } from 'zustand/react/shallow';
 import type { RecipeIngredient, RecipePrepTask, RecipeStep } from '../types';
 import { GROCERY_NAME_MAX_LENGTH, RECIPE_SECTION_MAX_LENGTH, RECIPE_STEP_NOTE_MAX_LENGTH, TITLE_MAX_LENGTH } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
+import { useSyncStore } from '../store/useSyncStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useFoodLogStore } from '../store/useFoodLogStore';
@@ -79,7 +80,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, lineHeight, radius, iconSize, interaction, flattenOverlay, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
-import { pickRecipeImage, resolveRecipeImagePath, type RecipePhotoSource } from '../utils/recipePhoto';
+import { pickRecipeImage, recipeImageOnDevice, resolveRecipeImagePath, type RecipePhotoSource } from '../utils/recipePhoto';
 import {
   blockedIngredientNote,
   describeRecipe,
@@ -376,6 +377,16 @@ export function RecipeDetailScreen() {
   // find. Re-filing a row that already exists is the sheet's job, or a drag.
   const [sectionDraft, setSectionDraft] = useState('');
   const [pickingImage, setPickingImage] = useState(false);
+  // Whether the photo's file is here to draw (#2704). A synced recipe carries
+  // its photo's path before the photo itself arrives, and a path to nothing
+  // draws an empty box with no error. Re-checked when a sync brings photos in,
+  // which can happen with no change to this recipe's row at all.
+  const recipeImagesVersion = useSyncStore(s => s.recipeImagesVersion);
+  const photoOnDevice = useMemo(
+    () => recipeImageOnDevice(recipe?.imagePath),
+    // recipeImagesVersion isn't read inside: it is only the re-check trigger.
+    [recipe?.imagePath, recipeImagesVersion]
+  );
   const draftInputRef = useRef<TextInput>(null);
   const [prepDraft, setPrepDraft] = useState('');
   // One field does both jobs — add and edit — rather than a second sheet like
@@ -1791,7 +1802,7 @@ export function RecipeDetailScreen() {
         keyboardShouldPersistTaps="handled"
         {...keyboardScroll.props}
       >
-        {recipe.imagePath ? (
+        {recipe.imagePath && photoOnDevice ? (
           <TouchableOpacity
             style={styles.hero}
             activeOpacity={interaction.activeOpacity}
@@ -1806,6 +1817,24 @@ export function RecipeDetailScreen() {
               resizeMode="cover"
               accessibilityIgnoresInvertColors
             />
+          </TouchableOpacity>
+        ) : recipe.imagePath && !pickingImage ? (
+          // The recipe has a photo and this device hasn't got it (#2704):
+          // taken on another device and not synced here yet, or lost from this
+          // install. Said, rather than drawn as the blank hero it used to be,
+          // and shorter than a photo so it doesn't read as one failing to load.
+          // Tapping still offers everything the photo hero does.
+          <TouchableOpacity
+            style={styles.heroMissing}
+            activeOpacity={interaction.activeOpacity}
+            onPress={openImagePicker}
+            accessibilityRole="button"
+            accessibilityLabel="Recipe photo isn't on this device"
+            accessibilityHint="Double tap to replace or remove it."
+          >
+            <Ionicons name="image-outline" size={iconSize.md} color={colors.textTertiary} />
+            <Text style={styles.heroMissingTitle}>Photo isn't on this device</Text>
+            <Text style={styles.heroMissingText}>It comes over when the device that took it syncs.</Text>
           </TouchableOpacity>
         ) : pickingImage ? (
           <View style={styles.heroEmptyRow}>
@@ -2690,6 +2719,29 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   heroImage: {
     width: '100%',
     height: '100%',
+  },
+  heroMissing: {
+    minHeight: 96,
+    borderRadius: radius.md,
+    backgroundColor: colors.bgSecondary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.smd,
+  },
+  heroMissingTitle: {
+    color: colors.textSecondary,
+    fontSize: font.sm,
+    fontWeight: fontWeight.semibold,
+    textAlign: 'center',
+  },
+  // textSecondary rather than the dimmer tertiary: this says why the photo
+  // isn't here, which is information, not an aside (EmptyNote's reasoning).
+  heroMissingText: {
+    color: colors.textSecondary,
+    fontSize: font.xs,
+    textAlign: 'center',
   },
   // Matches InlineAction's own minHeight, so the "Add a photo" pill doesn't
   // jump in height for the moment it's swapped for a spinner mid-pick.
