@@ -187,7 +187,7 @@ function QuickSearchRow({ result, onSelect, onTicked, styles, colors }: {
           <HighlightedText
             text={displayTitle}
             ranges={titleRanges}
-            style={[styles.resultTitle, task.completed && styles.resultTitleDone]}
+            style={[styles.resultTitle, styles.resultTitleFill, task.completed && styles.resultTitleDone]}
             highlightStyle={styles.highlight}
             numberOfLines={1}
           />
@@ -719,10 +719,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: spacing.sm,
   },
   resultTitle: {
-    flex: 1,
     color: colors.text,
     fontSize: font.md,
   },
+  // Only inside `resultTitleRow`, where the title shares a row with the
+  // Archived label. Never on `resultTitle` itself: the stack, project and
+  // screen rows put their title straight into `resultTap`, a column, where
+  // `flex: 1` sizes its *height* from zero and the title vanishes, leaving
+  // only the meta line under an icon.
+  resultTitleFill: { flex: 1 },
   resultMeta: {
     flexDirection: 'row',
     alignItems: 'center',
