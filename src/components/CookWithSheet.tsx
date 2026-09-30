@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, TextInput, ScrollView, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -7,16 +7,32 @@ import { SheetModal } from './SheetModal';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EmptyNote } from './EmptyNote';
+import { SegmentedControl } from './SegmentedControl';
 import { useRecipeStore } from '../store/useRecipeStore';
+import { useGroceryStore } from '../store/useGroceryStore';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { groceryNameKey } from '../utils/groceryParse';
 import {
-  cleanIndexIngredients, describeIndexLocation, findWithIngredients, mentionsIngredient,
-  splitIngredientText, type FinderEntryHit,
+  cleanIndexIngredients, describeIndexLocation, findWithIngredients, findWithPantry, mentionsIngredient,
+  pantryIngredients, splitIngredientText, type FinderEntryHit,
 } from '../utils/cookbookIndex';
+
+/** Which question the sheet is asking: about words you type, or about the pantry. */
+export type CookWithMode = 'pick' | 'have';
+
+const MODE_OPTIONS: { value: CookWithMode; label: string }[] = [
+  { value: 'pick', label: 'Pick ingredients' },
+  { value: 'have', label: 'What I have' },
+];
+
+/**
+ * Rows drawn per section. "What I have" asks about the whole pantry, which can
+ * match most of a large index; past this the list is a slice, and says so.
+ */
+const MAX_ROWS = 50;
 
 interface Props {
   visible: boolean;
@@ -25,6 +41,11 @@ interface Props {
   onOpenRecipe: (recipeId: string) => void;
   /** Opens a cookbook's page, for an index entry. The host closes this sheet and navigates. */
   onOpenCookbook: (cookbookId: string) => void;
+  /**
+   * The mode to open in, applied on every open. Omitted, the sheet opens in
+   * whichever mode it was last left in.
+   */
+  initialMode?: CookWithMode;
 }
 
 /**
@@ -36,11 +57,16 @@ interface Props {
  * of every recipe list and picker. The matching and the order are
  * `findWithIngredients`; this only draws them.
  *
+ * Two modes. "Pick ingredients" asks about words you type (`findWithIngredients`);
+ * "What I have" asks about everything the pantry says you have
+ * (`pantryIngredients` + `findWithPantry`), which is the Pantry screen's own
+ * way in.
+ *
  * What you've asked for is kept between opens, since it's a question you're
  * still asking; only the half-typed word goes. None of it is data, so there
  * is nothing for a discard guard to protect.
  */
-export function CookWithSheet({ visible, onClose, onOpenRecipe, onOpenCookbook }: Props) {
+export function CookWithSheet({ visible, onClose, onOpenRecipe, onOpenCookbook, initialMode }: Props) {
   const insets = useSafeAreaInsets();
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -51,12 +77,32 @@ export function CookWithSheet({ visible, onClose, onOpenRecipe, onOpenCookbook }
   const cookbooks = useRecipeStore(useShallow(s => s.cookbooks));
   const recipeFromIndexEntry = useRecipeStore(s => s.recipeFromIndexEntry);
 
+  const items = useGroceryStore(useShallow(s => s.items));
+  const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
+
   const [wanted, setWanted] = useState<string[]>([]);
   const [typed, setTyped] = useState('');
+  const [mode, setMode] = useState<CookWithMode>(initialMode ?? 'pick');
+  // "Now" for the pantry read, taken when the sheet opens rather than per
+  // render, so the results don't reshuffle while you're reading them.
+  const [openedAt, setOpenedAt] = useState(() => new Date());
+  useEffect(() => {
+    if (!visible) return;
+    setOpenedAt(new Date());
+    if (initialMode) setMode(initialMode);
+    // Only on the open edge: the host's `initialMode` is fixed per host.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
 
+  const have = useMemo(
+    () => (mode === 'have' ? pantryIngredients(items, openedAt, itemProducts) : []),
+    [mode, items, openedAt, itemProducts],
+  );
   const results = useMemo(
-    () => findWithIngredients(wanted, recipes, entries, cookbooks),
-    [wanted, recipes, entries, cookbooks],
+    () => mode === 'have'
+      ? findWithPantry(have, recipes, entries, cookbooks)
+      : findWithIngredients(wanted, recipes, entries, cookbooks),
+    [mode, have, wanted, recipes, entries, cookbooks],
   );
 
   const addWords = (text: string) => {
@@ -111,17 +157,24 @@ export function CookWithSheet({ visible, onClose, onOpenRecipe, onOpenCookbook }
     );
   };
 
-  // The entry's own words, marked where they answer what was asked.
+  // The entry's own words, marked where they answer what was asked. Either
+  // direction, so "onion" is marked for a white onion in the pantry; this only
+  // decides what's drawn in green, the match itself was already made.
   const entryWords = (hit: FinderEntryHit) => {
     const asked = hit.matched.map(groceryNameKey);
-    return hit.entry.ingredients.map(word => ({
-      word,
-      hit: asked.some(key => mentionsIngredient(groceryNameKey(word), key)),
-    }));
+    return hit.entry.ingredients.map(word => {
+      const key = groceryNameKey(word);
+      return { word, hit: asked.some(a => mentionsIngredient(key, a) || mentionsIngredient(a, key)) };
+    });
   };
 
-  const nothingAsked = wanted.length === 0;
+  const nothingAsked = mode === 'pick' ? wanted.length === 0 : have.length === 0;
   const nothingFound = !nothingAsked && results.recipes.length === 0 && results.entries.length === 0;
+  const shownRecipes = results.recipes.slice(0, MAX_ROWS);
+  const shownEntries = results.entries.slice(0, MAX_ROWS);
+  const moreNote = (total: number) => total > MAX_ROWS
+    ? <Text style={styles.moreNote}>{`Showing ${MAX_ROWS} of ${total}, the ones using the most first.`}</Text>
+    : null;
 
   return (
     <SheetModal
@@ -144,8 +197,17 @@ export function CookWithSheet({ visible, onClose, onOpenRecipe, onOpenCookbook }
           keyboardShouldPersistTaps="handled"
           {...keyboardScroll.props}
         >
+          <SegmentedControl options={MODE_OPTIONS} value={mode} onChange={m => { haptics.tap(); setMode(m); }} />
+          {mode === 'have' ? (
+            have.length > 0 && (
+              <Text style={styles.haveNote}>
+                {`Using the ${have.length === 1 ? 'one thing' : `${have.length} things`} the pantry says you have. Staples like salt aren't counted.`}
+              </Text>
+            )
+          ) : (
+          <>
           <TextInput
-            style={styles.input}
+            style={[styles.input, styles.inputSpaced]}
             value={typed}
             onChangeText={handleChange}
             onSubmitEditing={handleSubmit}
@@ -174,20 +236,26 @@ export function CookWithSheet({ visible, onClose, onOpenRecipe, onOpenCookbook }
               ))}
             </View>
           )}
+          </>
+          )}
 
           {nothingAsked && (
             <View style={styles.note}>
-              <EmptyNote icon="search-outline">
-                {`Add an ingredient to see the recipes you've typed up and the dishes in your cookbooks' indexes that use it.${
-                  entries.length === 0 ? " A cookbook's index is added from its page under Cookbooks." : ''
-                }`}
+              <EmptyNote icon={mode === 'have' ? 'basket-outline' : 'search-outline'}>
+                {mode === 'have'
+                  ? "The pantry doesn't list anything you have yet. Mark things as Got it on the Pantry screen, or finish a shopping trip, and they count here."
+                  : `Add an ingredient to see the recipes you've typed up and the dishes in your cookbooks' indexes that use it.${
+                      entries.length === 0 ? " A cookbook's index is added from its page under Cookbooks." : ''
+                    }`}
               </EmptyNote>
             </View>
           )}
           {nothingFound && (
             <View style={styles.note}>
               <EmptyNote icon="search-outline">
-                {`Nothing in your recipes or cookbook indexes uses ${wanted.join(' or ')} yet.`}
+                {mode === 'have'
+                  ? 'Nothing in your recipes or cookbook indexes uses what the pantry says you have.'
+                  : `Nothing in your recipes or cookbook indexes uses ${wanted.join(' or ')} yet.`}
               </EmptyNote>
             </View>
           )}
@@ -196,7 +264,7 @@ export function CookWithSheet({ visible, onClose, onOpenRecipe, onOpenCookbook }
             <>
               <Text style={styles.sectionLabel}>YOUR RECIPES · {results.recipes.length}</Text>
               <View style={styles.card}>
-                {results.recipes.map((hit, i) => (
+                {shownRecipes.map((hit, i) => (
                   <TouchableOpacity
                     key={hit.recipe.id}
                     style={[styles.row, i > 0 && styles.rowDivided]}
@@ -206,12 +274,13 @@ export function CookWithSheet({ visible, onClose, onOpenRecipe, onOpenCookbook }
                     accessibilityLabel={`${hit.recipe.name}. Uses ${hit.matched.join(', ')}`}
                   >
                     <Text style={styles.rowTitle} numberOfLines={2}>{hit.recipe.name}</Text>
-                    <Text style={styles.rowMeta} numberOfLines={1}>
+                    <Text style={styles.rowMeta} numberOfLines={2}>
                       Uses <Text style={styles.matched}>{hit.matched.join(', ')}</Text>
                     </Text>
                   </TouchableOpacity>
                 ))}
               </View>
+              {moreNote(results.recipes.length)}
             </>
           )}
 
@@ -219,7 +288,7 @@ export function CookWithSheet({ visible, onClose, onOpenRecipe, onOpenCookbook }
             <>
               <Text style={styles.sectionLabel}>IN YOUR COOKBOOKS · {results.entries.length}</Text>
               <View style={styles.card}>
-                {results.entries.map((hit, i) => {
+                {shownEntries.map((hit, i) => {
                   const words = entryWords(hit);
                   const where = describeIndexLocation(hit.entry, hit.cookbook);
                   return (
@@ -245,6 +314,7 @@ export function CookWithSheet({ visible, onClose, onOpenRecipe, onOpenCookbook }
                   );
                 })}
               </View>
+              {moreNote(results.entries.length)}
             </>
           )}
         </ScrollView>
@@ -265,6 +335,19 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: spacing.smd,
     color: colors.text,
     fontSize: font.md,
+  },
+  inputSpaced: { marginTop: spacing.md },
+  haveNote: {
+    color: colors.textSecondary,
+    fontSize: font.sm,
+    paddingHorizontal: spacing.xs,
+    marginTop: spacing.md,
+  },
+  moreNote: {
+    color: colors.textSecondary,
+    fontSize: font.xs,
+    paddingHorizontal: spacing.xs,
+    marginTop: spacing.sm,
   },
   chips: {
     flexDirection: 'row',

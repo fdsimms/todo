@@ -1,4 +1,5 @@
-import type { Cookbook, CookbookIndexEntry, Recipe } from '../types';
+import type { Cookbook, CookbookIndexEntry, GroceryItem, ItemProduct, Recipe } from '../types';
+import { probablyHaveReason } from './grocerySuggest';
 import { GROCERY_NAME_MAX_LENGTH } from '../types';
 import { groceryNameKey } from './groceryParse';
 import { pluralKeyVariants } from './groceryPlural';
@@ -147,6 +148,12 @@ export interface FinderResults {
   entries: FinderEntryHit[];
 }
 
+/** One thing being asked about: the word to show, and the keys that answer for it. */
+interface Asked {
+  word: string;
+  keys: string[];
+}
+
 /**
  * Everything that uses any of `wanted`, most matches first.
  *
@@ -170,10 +177,83 @@ export function findWithIngredients(
   entries: readonly CookbookIndexEntry[],
   cookbooks: readonly Cookbook[],
 ): FinderResults {
-  const asked = cleanIndexIngredients(wanted).map(word => ({ word, key: groceryNameKey(word) }));
+  const asked = cleanIndexIngredients(wanted).map(word => ({ word, keys: [groceryNameKey(word)] }));
+  return search(asked, mentionsIngredient, true, recipes, entries, cookbooks);
+}
+
+/** Something the pantry says you have, as "What I have" asks about it. */
+export interface PantryIngredient {
+  /** The catalog row's own name, which is what a result says it uses. */
+  word: string;
+  /**
+   * Its key, plus the generic it declares itself a variety of
+   * (`GroceryItem.varietyOfKey`): white onion in the pantry answers a recipe
+   * asking for onion. Specific satisfies generic and never the other way, the
+   * one widening `useUpRecipes` makes too.
+   */
+  keys: string[];
+}
+
+/**
+ * What "What I have" asks about: every catalog row `probablyHaveReason`
+ * vouches for, and nothing else, since that function is the app's single
+ * answer to "do I have this" (docs/arch/groceries.md). A staple is left out
+ * though it reads as on hand: salt and oil are in nearly every dish, so
+ * counting them would put whatever uses the most seasoning at the top.
+ * Leftovers aren't in it either; you reheat a container, you don't cook with it.
+ */
+export function pantryIngredients(
+  items: readonly GroceryItem[],
+  now: Date,
+  products: readonly ItemProduct[] = [],
+): PantryIngredient[] {
+  return items
+    .filter(item => !item.isStaple && probablyHaveReason(item, now, products) !== null)
+    .map(item => ({ word: item.name, keys: item.varietyOfKey ? [item.nameKey, item.varietyOfKey] : [item.nameKey] }))
+    .sort((a, b) => a.word.localeCompare(b.word));
+}
+
+/**
+ * Everything that uses what the pantry says you have, most of it first.
+ *
+ * Matched by key rather than by word: a recipe line or an index ingredient
+ * counts when it names the same catalog item, singular or plural, which is
+ * the join every other pantry read makes (`useUpRecipes`, pantry coverage).
+ * Whole-word matching suits a word someone typed; here the asking set is the
+ * whole pantry, and "butter" in it answering "peanut butter" would claim a
+ * dish you can't make. For the same reason an index entry's title isn't read.
+ *
+ * Ranked by how many things you have that a dish uses, never by how much of
+ * the dish you have: `probablyHaveReason` returning null means the app
+ * doesn't know, not that you're out, so "6 of 8" would be a number built on
+ * a set that was never meant to carry one (the same refusal `useUpRecipes`
+ * makes).
+ */
+export function findWithPantry(
+  have: readonly PantryIngredient[],
+  recipes: readonly Recipe[],
+  entries: readonly CookbookIndexEntry[],
+  cookbooks: readonly Cookbook[],
+): FinderResults {
+  return search(have.map(h => ({ word: h.word, keys: h.keys })), sameKey, false, recipes, entries, cookbooks);
+}
+
+/** The same catalog item: one key, or its singular or plural. */
+function sameKey(key: string, wantedKey: string): boolean {
+  return key === wantedKey || pluralKeyVariants(key).includes(wantedKey);
+}
+
+function search(
+  asked: readonly Asked[],
+  matches: (key: string, wantedKey: string) => boolean,
+  readTitles: boolean,
+  recipes: readonly Recipe[],
+  entries: readonly CookbookIndexEntry[],
+  cookbooks: readonly Cookbook[],
+): FinderResults {
   if (asked.length === 0) return { recipes: [], entries: [] };
   const matchedIn = (keys: readonly string[]) =>
-    asked.filter(a => keys.some(key => mentionsIngredient(key, a.key))).map(a => a.word);
+    asked.filter(a => keys.some(key => a.keys.some(wanted => matches(key, wanted)))).map(a => a.word);
 
   const byId = recipeMap(recipes);
   const recipeHits: FinderRecipeHit[] = [];
@@ -192,7 +272,8 @@ export function findWithIngredients(
   for (const entry of entries) {
     const recipe = recipeInBook(recipes, entry.title, entry.cookbookId);
     if (recipe && hasContent(recipe)) continue;
-    const keys = [...entry.ingredients.map(groceryNameKey), groceryNameKey(entry.title)];
+    const keys = entry.ingredients.map(groceryNameKey);
+    if (readTitles) keys.push(groceryNameKey(entry.title));
     const matched = matchedIn(keys);
     if (matched.length === 0) continue;
     entryHits.push({ entry, cookbook: booksById.get(entry.cookbookId) ?? null, matched, recipe });

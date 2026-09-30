@@ -1,10 +1,14 @@
-import type { Cookbook, CookbookIndexEntry, Recipe } from '../types';
+import type { Cookbook, CookbookIndexEntry, GroceryItem, Recipe } from '../types';
+import { groceryNameKey } from '../utils/groceryParse';
+import { OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
 import {
   cleanIndexEntryFields,
   cleanIndexIngredients,
   describeIndexLocation,
   entriesInCookbook,
   findWithIngredients,
+  findWithPantry,
+  pantryIngredients,
   indexEntryInBook,
   MAX_INDEX_INGREDIENTS,
   mentionsIngredient,
@@ -217,5 +221,75 @@ describe('a book\'s own index', () => {
   it('says where to look', () => {
     expect(describeIndexLocation(entry('b-six', 'Soup', '88'), six)).toBe('Six Seasons, p. 88');
     expect(describeIndexLocation(entry('b-six', 'Soup', null), six)).toBe('Six Seasons');
+  });
+});
+
+// A catalog row, with only what the pantry read looks at filled in.
+function item(name: string, overrides: Partial<GroceryItem> = {}): GroceryItem {
+  return {
+    nameFromScan: false, id: `i-${++seq}`, nameKey: groceryNameKey(name), name,
+    preferredProductId: null, productStrict: false, aisle: 'Other', quantity: null,
+    quantityFromRecipe: false, note: '', onList: false, checked: false, sortOrder: seq,
+    purchaseCount: 0, lastAddedAt: null, lastPurchasedAt: null, createdAt: '2025-01-01T00:00:00.000Z',
+    onHandUntil: null, sourceRecipeId: null, sourceRecipeTitle: null, choiceGroup: null,
+    isStaple: false, expiresAt: null, frozenAt: null, openedAt: null, runningLowAt: null,
+    shelfLifeDays: null, useUpTask: null, pantryCheckDeclinedAt: null, pantryReviewedAt: null,
+    usedUpCount: 0, spoiledCount: 0, lastSpoiledAt: null, varietyOfKey: null, nutrition: null,
+    backfillDismissedFields: [], lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null,
+    priceHistory: [],
+    ...overrides,
+  };
+}
+
+describe('pantryIngredients', () => {
+  const NOW = new Date(2026, 8, 30, 12);
+  const gotIt = new Date(2026, 9, 14, 12).toISOString();
+
+  it('is what the pantry says you have, less the staples', () => {
+    const have = pantryIngredients([
+      item('Lentils', { onHandUntil: gotIt }),
+      item('Salt', { onHandUntil: gotIt, isStaple: true }),
+      item('Feta', { onHandUntil: OUT_OF_IT_UNTIL }),
+      item('Bread'),
+    ], NOW);
+
+    expect(have.map(h => h.word)).toEqual(['Lentils']);
+  });
+
+  it('lets a variety answer for the generic it names', () => {
+    const [onion] = pantryIngredients([item('White onion', { onHandUntil: gotIt, varietyOfKey: 'onion' })], NOW);
+    expect(onion.keys).toEqual(['white onion', 'onion']);
+  });
+});
+
+describe('findWithPantry', () => {
+  const have = [
+    { word: 'Butter', keys: ['butter'] },
+    { word: 'Lentil', keys: ['lentil'] },
+    { word: 'White onion', keys: ['white onion', 'onion'] },
+  ];
+
+  it('matches a recipe line naming the same item, singular or plural, and nothing that merely contains it', () => {
+    const dal = recipe('Dal', ['1 cup lentils', '1 onion']);
+    const toast = recipe('Peanut toast', ['2 tbsp peanut butter']);
+    const redOnion = recipe('Pickles', ['1 red onion']);
+
+    const { recipes } = findWithPantry(have, [toast, redOnion, dal], [], []);
+
+    expect(recipes.map(h => h.recipe.name)).toEqual(['Dal']);
+    expect(recipes[0].matched).toEqual(['Lentil', 'White onion']);
+  });
+
+  it('reads an index line\'s ingredients but not its title', () => {
+    const listed = entry('b-six', 'Braised greens', '142', ['lentils']);
+    const titled = entry('b-six', 'Butter beans', '12');
+
+    const titles = findWithPantry(have, [], [listed, titled], [six]).entries.map(h => h.entry.title);
+
+    expect(titles).toEqual(['Braised greens']);
+  });
+
+  it('answers nothing for an empty pantry', () => {
+    expect(findWithPantry([], [recipe('Dal', ['1 cup lentils'])], [], [])).toEqual({ recipes: [], entries: [] });
   });
 });
