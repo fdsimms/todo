@@ -1440,7 +1440,9 @@ inset is what just went away) — that asymmetry is the whole design, don't coll
   `groceryNameKey`, so "Chicken Tacos" and "Chicken taco" were two names to the sheet and one to
   the store: a paid draft was made for a dish the store then refused. `recipeNameKey`
   (`recipeUtils.ts`) is that key, exported so a pre-check can't drift from it. Reuse the store's
-  function; don't write a lookalike.
+  function; don't write a lookalike. For a recipe the refusal is also scoped to a cookbook (two
+  books can each have a "Lentil Soup"), so a recipe pre-check calls `recipeInBook` with the book
+  the new recipe is headed for, not a bare `nameKey` match.
 - **A caller that isn't a person looking at the grocery screen passes `listId` explicitly.**
   `setCheckedMany`, `removeFromListMany` and the other list actions default to `activeListId`,
   which is right for a tap and wrong for the Reminders mirror, sync, the MCP replica or any

@@ -16,7 +16,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { useRecipeStore } from '../store/useRecipeStore';
-import { describeRecipe, rankRecipes, sortRecipesForDisplay } from '../utils/recipeUtils';
+import { describeRecipe, rankRecipes, sharedRecipeNameKeys, sortRecipesForDisplay } from '../utils/recipeUtils';
 import { recipeMap, wouldCreateRecipeCycle } from '../utils/recipeComponents';
 import { EmptyState } from './EmptyState';
 import { SheetHeader } from './SheetHeader';
@@ -51,6 +51,8 @@ export function RecipeComponentPicker({ visible, recipe, onClose, onSelect }: Pr
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const recipes = useRecipeStore(useShallow(s => s.recipes));
+  // Recipes another recipe shares a name with lead their subtitle with the book.
+  const sharedNames = useMemo(() => sharedRecipeNameKeys(recipes), [recipes]);
 
   const { query, clear: clearQuery, props: filterField } = useFilterField();
   useEffect(() => { if (visible) clearQuery(); }, [visible]);
@@ -139,7 +141,7 @@ export function RecipeComponentPicker({ visible, recipe, onClose, onSelect }: Pr
                     disabled={!!reason}
                     activeOpacity={interaction.activeOpacity}
                     accessibilityRole="button"
-                    accessibilityLabel={`${candidate.name}. ${reason ?? describeRecipe(candidate)}`}
+                    accessibilityLabel={`${candidate.name}. ${reason ?? describeRecipe(candidate, null, { sharedName: sharedNames.has(candidate.nameKey) })}`}
                     accessibilityState={{ disabled: !!reason }}
                   >
                     <View style={[styles.icon, { backgroundColor: colors.accentSubtle }]}>
@@ -153,7 +155,7 @@ export function RecipeComponentPicker({ visible, recipe, onClose, onSelect }: Pr
                       <Text style={[styles.name, !!reason && styles.nameDisabled]} numberOfLines={1}>
                         {candidate.name}
                       </Text>
-                      <Text style={styles.hint} numberOfLines={1}>{reason ?? describeRecipe(candidate)}</Text>
+                      <Text style={styles.hint} numberOfLines={1}>{reason ?? describeRecipe(candidate, null, { sharedName: sharedNames.has(candidate.nameKey) })}</Text>
                     </View>
                     {!reason && <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />}
                   </TouchableOpacity>

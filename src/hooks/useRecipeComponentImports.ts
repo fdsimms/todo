@@ -2,8 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Recipe } from '../types';
 import { extractRecipe, type ExtractedRecipe } from '../services/aiSuggestions';
 import { useRecipeStore } from '../store/useRecipeStore';
-import { cleanRecipeName, normalizeIngredient } from '../utils/recipeUtils';
-import { groceryNameKey } from '../utils/groceryParse';
+import { cleanRecipeName, normalizeIngredient, recipeInBook } from '../utils/recipeUtils';
 import { describeImportError } from '../services/recipePage';
 import { pickRecipePhoto, MAX_RECIPE_PHOTOS, type RecipePhoto, type RecipePhotoSource } from '../utils/recipePhoto';
 import type { ReferenceCandidate } from '../utils/recipeImportComponents';
@@ -271,10 +270,18 @@ export function useRecipeComponentImports(
       const name = cleanRecipeName(extracted.name || candidate.reference.name);
       if (!name) continue;
 
-      const created = store.addRecipe(name);
+      // The book first, since the name is only refused within it. The parent's
+      // own book first: the reference said "page 45", which is page 45 *of
+      // this book*, and the parent has usually been linked to it already by
+      // the import that read it. The component's own photo is the fallback
+      // for the case where it hasn't — a running head the parent's page
+      // didn't show.
+      const parent = useRecipeStore.getState().recipeById(parentRecipeId);
+      const book = store.cookbookById(parent?.cookbookId)
+        ?? (extracted.sourceTitle ? store.ensureCookbook(extracted.sourceTitle, extracted.sourceAuthor) : null);
+      const created = store.addRecipe(name, book?.id ?? null);
       const target = created
-        ?? useRecipeStore.getState().recipes.find(r => r.nameKey === groceryNameKey(name))
-        ?? null;
+        ?? recipeInBook(useRecipeStore.getState().recipes, name, book?.id ?? null);
       if (!target) continue;
 
       if (created) {
@@ -288,20 +295,9 @@ export function useRecipeComponentImports(
         if (extracted.prepMinutes !== null) {
           store.setEstimatedMinutes(target.id, extracted.prepMinutes);
         }
-        // The parent's own book first: the reference said "page 45", which is
-        // page 45 *of this book*, and the parent has usually been linked to it
-        // already by the import that read it. The component's own photo is the
-        // fallback for the case where it hasn't — a running head the parent's
-        // page didn't show.
-        const parent = useRecipeStore.getState().recipeById(parentRecipeId);
-        const parentBook = store.cookbookById(parent?.cookbookId);
-        if (parentBook) {
-          store.linkCookbook(target.id, parentBook.id);
-        } else if (extracted.sourceTitle) {
-          store.linkNewCookbook(target.id, extracted.sourceTitle, extracted.sourceAuthor);
-        } else if (candidate.page) {
-          store.setSourceType(target.id, 'cookbook');
-        }
+        // addRecipe linked the book when there was one; a page number with no
+        // book still says it came out of one.
+        if (!book && candidate.page) store.setSourceType(target.id, 'cookbook');
         // After whichever of those ran — each sets the type, which clears the
         // page for anything that isn't a cookbook.
         if (candidate.page) store.setSourcePage(target.id, candidate.page);

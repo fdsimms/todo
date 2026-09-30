@@ -57,15 +57,6 @@ describe('foldRows', () => {
     expect(foldRows('grocery_shops', tj('a', null), tj('b', null)).aisle_order).toBeNull();
   });
 
-  it('takes a recipe\'s cook-time total with the count it is over', () => {
-    const out = foldRows(
-      'recipes',
-      { id: 'a', cook_time_count: 2, total_cook_minutes: 60, cook_count: 2 },
-      { id: 'b', cook_time_count: 5, total_cook_minutes: 200, cook_count: 6 },
-    );
-    expect(out).toMatchObject({ cook_time_count: 5, total_cook_minutes: 200, cook_count: 6 });
-  });
-
   it('keeps the newer price\'s own block whole, blank quantity included', () => {
     // The newer price was seen with no quantity; the older one's "1 pint"
     // must not be pinned to it.
@@ -75,15 +66,6 @@ describe('foldRows', () => {
       { id: 'b2', last_price_minor: 129, last_priced_at: '2026-04-01', last_price_quantity: '1 pint' },
     );
     expect(out).toMatchObject({ last_price_minor: 429, last_priced_at: '2026-05-01', last_price_quantity: null });
-  });
-
-  it('keeps the latest cook\'s timings with it, even when it has none', () => {
-    const out = foldRows(
-      'recipes',
-      { id: 'a', last_cooked_at: '2026-05-01', last_cook_minutes: null, last_prep_minutes: null },
-      { id: 'b', last_cooked_at: '2026-04-01', last_cook_minutes: 90, last_prep_minutes: 20 },
-    );
-    expect(out).toMatchObject({ last_cooked_at: '2026-05-01', last_cook_minutes: null, last_prep_minutes: null });
   });
 
   it('keeps a list entry unchecked unless both copies were checked', () => {

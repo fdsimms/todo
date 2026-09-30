@@ -20,7 +20,7 @@ import { RECIPE_MEAL_TYPES, RECIPE_MEAL_TYPE_LABELS } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, interaction, type Colors } from '../theme';
 import { dayKeyOf } from '../utils/dateUtils';
-import { describeCookHistory, describePantryCoverage, describeRecipe, recipeNameKey, type PantryCoverage } from '../utils/recipeUtils';
+import { describeCookHistory, describePantryCoverage, describeRecipe, recipeInBook, sharedRecipeNameKeys, recipeNameKey, type PantryCoverage } from '../utils/recipeUtils';
 import { flattenRecipeIngredients, recipeMap, type FlatIngredient } from '../utils/recipeComponents';
 import { ingredientHeadings } from '../utils/recipeSections';
 import { describeStandingSwap, standingSwapMap } from '../utils/standingSwaps';
@@ -216,6 +216,8 @@ export function SuggestMealsSheet({
     [itemSubs, groceryItems]
   );
   const allRecipes = useRecipeStore(useShallow(s => s.recipes));
+  // Recipes another recipe shares a name with lead their subtitle with the book.
+  const sharedNames = useMemo(() => sharedRecipeNameKeys(allRecipes), [allRecipes]);
   const addRecipe = useRecipeStore(s => s.addRecipe);
   const addStructuredIngredients = useRecipeStore(s => s.addStructuredIngredients);
   const setNotes = useRecipeStore(s => s.setNotes);
@@ -407,19 +409,20 @@ export function SuggestMealsSheet({
    */
   const saveIdeaAsRecipe = useCallback(async (idea: MealIdea): Promise<Recipe> => {
     // Already in the box: plan that one rather than paying for a draft the
-    // box will refuse.
-    const owned = allRecipes.find(r => r.nameKey === recipeNameKey(idea.title));
+    // box will refuse. A drafted recipe is filed under no book, so that's the
+    // only place a clash can be.
+    const owned = recipeInBook(allRecipes, idea.title, null);
     if (owned) return owned;
     const drafted = await draftMealRecipe(idea.title, [...aisleOrder], null);
     const draft = mealIdeaRecipeDraft(idea, drafted.ingredients, drafted);
     if (!draft.name) throw new Error('IDEA_NAME_EMPTY');
-    // addRecipe refuses a name already in the box (nameKey is UNIQUE); land
-    // on the existing recipe rather than telling the user no, as it is: the
-    // draft is for a new recipe, and appending its ingredients, steps and
-    // notes onto the one already saved would rewrite it.
+    // addRecipe refuses a name already filed under no book; land on the
+    // existing recipe rather than telling the user no, as it is: the draft is
+    // for a new recipe, and appending its ingredients, steps and notes onto
+    // the one already saved would rewrite it.
     const recipe = addRecipe(draft.name);
     if (!recipe) {
-      const existing = allRecipes.find(r => r.nameKey === recipeNameKey(draft.name));
+      const existing = recipeInBook(allRecipes, draft.name, null);
       if (!existing) throw new Error('IDEA_SAVE_FAILED');
       return existing;
     }
@@ -640,7 +643,7 @@ export function SuggestMealsSheet({
         accessibilityState={{ disabled, selected: isSelected }}
         accessibilityLabel={landedDay
           ? `${recipe.name}, planned for ${format(landedDay, 'EEEE')}`
-          : `${isSelected ? 'Deselect' : 'Select'} ${recipe.name}. ${describeRecipe(recipe)}${signalsLabel ? `. ${signalsLabel}` : ''}`}
+          : `${isSelected ? 'Deselect' : 'Select'} ${recipe.name}. ${describeRecipe(recipe, null, { sharedName: sharedNames.has(recipe.nameKey) })}${signalsLabel ? `. ${signalsLabel}` : ''}`}
       >
         <View style={styles.body}>
           <Text style={styles.name} numberOfLines={1}>{recipe.name}</Text>
@@ -649,7 +652,7 @@ export function SuggestMealsSheet({
               ? `Planned for ${format(landedDay, 'EEEE')}`
               : isSelected && previewDay
                 ? `Selected, will land on ${format(previewDay, 'EEEE')}`
-                : describeRecipe(recipe)}
+                : describeRecipe(recipe, null, { sharedName: sharedNames.has(recipe.nameKey) })}
           </Text>
           {!landedDay && (pantryLabel || cookHistory) && (
             <View style={styles.signalRow}>

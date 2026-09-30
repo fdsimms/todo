@@ -86,8 +86,8 @@ interface Props {
    * Makes a typed meal a recipe (#2929). Present only for a typed meal.
    * `matchingRecipeName` is the recipe already called what the meal is
    * called, when the box has one: the row then offers that recipe instead of
-   * a new one, which is all "Save as" could have done, since two recipes
-   * can't share a name.
+   * a new one, which is all "Save as" could have done (see
+   * `recipeNamedLike` for which recipe that is when cookbooks share the name).
    */
   onSaveAsRecipe?: () => void;
   matchingRecipeName?: string | null;

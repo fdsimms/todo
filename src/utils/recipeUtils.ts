@@ -608,8 +608,18 @@ export interface LikelyInPantryCount {
  * under it. What the component clause is for is saying there's more: "3
  * ingredients" alone would read as the whole shop for a dish that's mostly its
  * parts.
+ *
+ * `sharedName` moves the attribution to the front, for a recipe whose name
+ * another recipe also has (`sharedRecipeNameKeys`). Two cookbooks can each hold
+ * a "Lentil Soup", and in a one-line row the attribution at the end is the
+ * clause a long subtitle truncates, so the one thing telling the two rows apart
+ * was the part cut off. Every other recipe keeps the usual order.
  */
-export function describeRecipe(recipe: Recipe, likelyInPantry?: LikelyInPantryCount | null): string {
+export function describeRecipe(
+  recipe: Recipe,
+  likelyInPantry?: LikelyInPantryCount | null,
+  options: { sharedName?: boolean } = {},
+): string {
   // Choice-aware, so "serrano or jalapeño" reads as the one pepper a meal of
   // this actually buys — see countChoiceAware.
   const count = countChoiceAware(recipe.ingredients);
@@ -630,8 +640,28 @@ export function describeRecipe(recipe: Recipe, likelyInPantry?: LikelyInPantryCo
   const total = totalMinutes(recipe);
   if (total) parts.push(formatDuration(total));
   const attribution = describeAttribution(recipe);
-  if (attribution) parts.push(attribution);
+  if (attribution) {
+    if (options.sharedName) parts.unshift(attribution);
+    else parts.push(attribution);
+  }
   return parts.join(' · ');
+}
+
+/**
+ * The name keys more than one recipe has: two cookbooks' "Lentil Soup", or a
+ * bookless one beside a book's. What `describeRecipe`'s `sharedName` is asked
+ * of, computed once over the whole box rather than per row, and over the whole
+ * box rather than a filtered list, since the other recipe of that name being
+ * filtered out of view doesn't make this row's name any less ambiguous.
+ */
+export function sharedRecipeNameKeys(recipes: readonly Pick<Recipe, 'nameKey'>[]): Set<string> {
+  const seen = new Set<string>();
+  const shared = new Set<string>();
+  for (const recipe of recipes) {
+    if (seen.has(recipe.nameKey)) shared.add(recipe.nameKey);
+    else seen.add(recipe.nameKey);
+  }
+  return shared;
 }
 
 /**
@@ -908,7 +938,7 @@ export function cleanRecipeName(raw: string): string {
 
 /**
  * The key a recipe named `raw` is stored under, and so the one `addRecipe`
- * refuses a second recipe on (`Recipe.nameKey` is unique).
+ * refuses a second recipe on within a book (see `recipeInBook`).
  *
  * One function because every "is this already in the box?" check has to
  * agree with the refusal it is predicting. The AI sheets each kept their own
@@ -920,6 +950,61 @@ export function cleanRecipeName(raw: string): string {
 export function recipeNameKey(raw: string): string {
   const clean = cleanRecipeName(raw);
   return groceryNameKey(clean) || clean.toLowerCase();
+}
+
+/**
+ * The recipe already called `name` in `cookbookId` (null: filed under no
+ * book), which is exactly the recipe `addRecipe` and `renameRecipe` refuse a
+ * second one over.
+ *
+ * **A name is unique per book, not across the box.** Six Seasons and Plenty
+ * can each have a "Lentil Soup", and they are two recipes. Every "is this
+ * already in the box?" pre-check calls this rather than matching `nameKey`
+ * alone, for the reason `recipeNameKey` gives: a pre-check that disagrees with
+ * the refusal it predicts either blocks a recipe the store would take or lands
+ * on one it wasn't about.
+ *
+ * Nothing enforces this below the store. The database has no unique index on
+ * name (see the note where `idx_recipes_name_key` is dropped in database.ts),
+ * so moving recipes between books, deleting a book or merging two can leave
+ * two same-named recipes in one place, and that is allowed rather than failed.
+ */
+export function recipeInBook<R extends Pick<Recipe, 'nameKey' | 'cookbookId'>>(
+  recipes: readonly R[],
+  name: string,
+  cookbookId: string | null,
+): R | null {
+  const key = recipeNameKey(name);
+  if (!key) return null;
+  return recipes.find(r => r.nameKey === key && r.cookbookId === cookbookId) ?? null;
+}
+
+/**
+ * The one recipe a bare name means when nothing says which book: a typed meal
+ * on the plan, a component a page mentions by name.
+ *
+ * `preferCookbookId`, when given, is asked first (a component read off page 45
+ * is page 45 of the parent's book). Then a name only one recipe has is that
+ * recipe, and when several books share it, the one filed under no book
+ * answers, since that is what `addRecipe` without a book would be refused
+ * over. Otherwise null: two books' "Lentil Soup" and nothing to choose between
+ * them is a question, and picking by array order would be a guess.
+ */
+export function recipeByName<R extends Pick<Recipe, 'nameKey' | 'cookbookId'>>(
+  recipes: readonly R[],
+  name: string,
+  preferCookbookId?: string | null,
+): R | null {
+  const key = recipeNameKey(name);
+  if (!key) return null;
+  const hits = recipes.filter(r => r.nameKey === key);
+  if (hits.length === 0) return null;
+  if (preferCookbookId !== undefined) {
+    const inBook = hits.find(r => r.cookbookId === preferCookbookId);
+    if (inBook) return inBook;
+  }
+  if (hits.length === 1) return hits[0];
+  return hits.find(r => r.cookbookId === null) ?? null;
 }
 
 /**

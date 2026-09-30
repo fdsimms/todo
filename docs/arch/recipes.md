@@ -254,6 +254,20 @@ for a book, a `cookbookId` pointing at a real `Cookbook` row holding the title a
   rather than in `mirrorOf`, because a rename or a merge re-mirrors a recipe onto what is still
   its own book. A recipe naming no book keeps its page when one is linked: that is a page read off
   a photo, waiting for its book.
+- **A recipe's name is unique per book, not across the box.** Six Seasons and Plenty can each
+  have a "Lentil Soup", and they are two recipes. `recipeInBook` (`recipeUtils.ts`) is the rule,
+  and `addRecipe` takes the book the recipe is headed for so it can ask it; an import finds or
+  creates the book first (`ensureCookbook`) for the same reason. **The database deliberately
+  doesn't enforce it.** The unique index on `name_key` was dropped rather than widened to
+  `(name_key, cookbook_id)`, because a composite index would let every write that moves a recipe
+  between books fail (linking, the unlink a retyped source does, deleting or merging a book), and
+  sync's natural-key fold would merge two books' recipes into one and delete the other. So
+  recipes don't fold on name any more (`NATURAL_KEYS`), and those moves can leave two same-named
+  recipes in one place, which is allowed. The cost is that the same recipe added on two devices
+  before they sync arrives twice, which a person can see and delete. A lookup that has only a
+  name and no book (a typed meal on the plan, a component a page mentions) goes through
+  `recipeByName`, which asks the preferred book first, then takes a sole match, then the bookless
+  one, and otherwise returns null rather than picking between two books.
 - **A book's page lists its recipes in page order** (`recipesInCookbook`, `cookbookRecipes.ts`),
   since every row already says "Page N" and that is how a cookbook is browsed. Roman front
   matter comes before the body, a page nobody could read as a number after it, and a recipe with

@@ -674,7 +674,8 @@ describe('recipeIsGone', () => {
 describe('recipeNamedLike', () => {
   // The nameKey addRecipe stores, so the helper is checked against the same
   // key the store would refuse a second recipe on.
-  const named = (id: string, name: string) => ({ id, name, nameKey: recipeNameKey(name) });
+  const named = (id: string, name: string, cookbookId: string | null = null) =>
+    ({ id, name, nameKey: recipeNameKey(name), cookbookId });
 
   it('finds the recipe a typed meal is named after, whatever the case and spacing (#2929)', () => {
     const tacos = named('r-tacos', 'Tacos');
@@ -686,6 +687,24 @@ describe('recipeNamedLike', () => {
     // offer that recipe rather than a new one the store won't make.
     const pho = named('r-pho', 'Phở gà!');
     expect(recipeNamedLike('pho ga', [pho])).toBe(pho);
+  });
+
+  it('finds a cookbook recipe when it is the only one called that', () => {
+    const soup = named('r-soup', 'Lentil soup', 'b-six');
+    expect(recipeNamedLike('lentil soup', [soup])).toBe(soup);
+  });
+
+  it('answers with the bookless recipe when books share the name too', () => {
+    // That's the one addRecipe would refuse a second bookless copy of.
+    const mine = named('r-mine', 'Lentil soup');
+    const six = named('r-six', 'Lentil soup', 'b-six');
+    expect(recipeNamedLike('Lentil soup', [six, mine])).toBe(mine);
+  });
+
+  it('is null when only two books share the name, rather than picking one', () => {
+    const six = named('r-six', 'Lentil soup', 'b-six');
+    const plenty = named('r-plenty', 'Lentil soup', 'b-plenty');
+    expect(recipeNamedLike('Lentil soup', [six, plenty])).toBeNull();
   });
 
   it('is null when nothing is called that, or the title is blank', () => {

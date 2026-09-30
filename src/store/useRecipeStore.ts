@@ -26,6 +26,7 @@ import {
   ingredientsFromText,
   makeIngredient,
   mergeIngredients,
+  recipeInBook,
   recipeNameKey,
   remapIngredientKeyIn,
 } from '../utils/recipeUtils';
@@ -71,10 +72,17 @@ interface RecipeStore {
 
   initialize: () => void;
 
-  /** Null when the name is empty or already taken — the caller shows why. */
-  addRecipe: (name: string) => Recipe | null;
   /**
-   * False on an empty name or a collision with another recipe. A rename that
+   * Null when the name is empty or already taken in that book — the caller
+   * shows why. A name is unique per book (`recipeInBook`), so `cookbookId`
+   * is part of the question: "Lentil Soup" for Plenty is refused only when
+   * Plenty already has one. When the book resolves, the recipe is created
+   * already linked to it (mirrored the way `linkCookbook` mirrors).
+   */
+  addRecipe: (name: string, cookbookId?: string | null) => Recipe | null;
+  /**
+   * False on an empty name or a collision with another recipe in the same
+   * book. A rename that
    * lands also retitles the meals planned from it (see
    * useMealPlanStore.retitleRecipeEntries).
    */
@@ -111,6 +119,13 @@ interface RecipeStore {
    * working on plain strings. Null only when the title is empty.
    */
   linkNewCookbook: (recipeId: string, title: string, author?: string | null) => Cookbook | null;
+  /**
+   * The book with this title and author, created when the shelf doesn't have
+   * it yet. `linkNewCookbook`'s find-or-create half, for a caller that needs
+   * the book *before* the recipe exists, to ask `addRecipe` about the right
+   * book. Null only when the title is empty.
+   */
+  ensureCookbook: (title: string, author?: string | null) => Cookbook | null;
   /**
    * Points a recipe at a book already on the shelf, mirroring it down. Null id
    * unlinks. Both link actions clear `sourcePage` when the recipe named a
@@ -513,11 +528,12 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     set({ recipes: dbGetAllRecipes(), cookbooks: dbGetAllCookbooks(), initialized: true });
   },
 
-  addRecipe(name) {
+  addRecipe(name, cookbookId = null) {
     const clean = cleanRecipeName(name);
     if (!clean) return null;
     const key = recipeNameKey(clean);
-    if (get().recipes.some(r => r.nameKey === key)) return null;
+    const cookbook = cookbookId ? get().cookbooks.find(c => c.id === cookbookId) ?? null : null;
+    if (recipeInBook(get().recipes, clean, cookbook?.id ?? null)) return null;
 
     const maxOrder = get().recipes.reduce((m, r) => Math.max(m, r.sortOrder), 0);
     const recipe: Recipe = {
@@ -568,6 +584,7 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
       // Nobody has dismissed a Backfill screen field on a recipe that didn't
       // exist a moment ago.
       backfillDismissedFields: [],
+      ...(cookbook ? mirrorOf(cookbook) : {}),
     };
     dbInsertRecipe(recipe);
     set(s => ({ recipes: [...s.recipes, recipe] }));
@@ -581,8 +598,10 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     if (!clean) return false;
     const key = recipeNameKey(clean);
     // A rename that only changes capitalisation keeps the same key, so compare
-    // against *other* recipes rather than refusing to touch this one.
-    if (key !== recipe.nameKey && get().recipes.some(r => r.nameKey === key)) return false;
+    // against *other* recipes rather than refusing to touch this one. Only
+    // those in its own book: another book's recipe of that name is no clash.
+    const others = get().recipes.filter(r => r.id !== id);
+    if (key !== recipe.nameKey && recipeInBook(others, clean, recipe.cookbookId)) return false;
     save(set, { ...recipe, name: clean, nameKey: key });
     // The plan shows the live name already, but the calendar event and the
     // "Make X" task are built off each entry's captured title.
@@ -639,6 +658,13 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
   linkNewCookbook(recipeId, title, author = null) {
     const recipe = get().recipes.find(r => r.id === recipeId);
     if (!recipe) return null;
+    const cookbook = get().ensureCookbook(title, author);
+    if (!cookbook) return null;
+    save(set, linkedTo(recipe, cookbook, get().cookbooks));
+    return cookbook;
+  },
+
+  ensureCookbook(title, author = null) {
     const cleanTitle = cleanRecipeSource(title);
     if (!cleanTitle) return null;
     const cleanAuthor = cleanRecipeSource(author ?? '') || null;
@@ -657,7 +683,6 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
       dbInsertCookbook(cookbook);
       set(s => ({ cookbooks: [...s.cookbooks, cookbook!] }));
     }
-    save(set, linkedTo(recipe, cookbook, get().cookbooks));
     return cookbook;
   },
 

@@ -12,6 +12,9 @@ import {
   remapIngredientKeyIn,
   describeRecipe,
   cleanRecipeName,
+  recipeByName,
+  sharedRecipeNameKeys,
+  recipeInBook,
   recipeNameKey,
   rankRecipes,
   parsePrepTasks,
@@ -921,6 +924,33 @@ describe('prepTaskDraftsForMeal', () => {
   });
 });
 
+describe('describeRecipe with a shared name', () => {
+  const soup = recipe('Lentil soup', {
+    mealType: 'dinner',
+    source: 'Plenty',
+    sourceType: 'cookbook',
+    sourcePage: '112',
+  });
+
+  it('leads with the book, where a one-line row can\'t cut it off', () => {
+    expect(describeRecipe(soup, null, { sharedName: true }).startsWith('Plenty, p. 112 · Dinner')).toBe(true);
+  });
+
+  it('keeps it last otherwise, and says it only once either way', () => {
+    const usual = describeRecipe(soup);
+    expect(usual.startsWith('Dinner')).toBe(true);
+    expect(usual.endsWith('Plenty, p. 112')).toBe(true);
+    expect(describeRecipe(soup, null, { sharedName: true }).split('Plenty').length).toBe(2);
+  });
+
+  it('finds the names more than one recipe has', () => {
+    const keys = sharedRecipeNameKeys([
+      { nameKey: 'lentil soup' }, { nameKey: 'ragu' }, { nameKey: 'lentil soup' },
+    ]);
+    expect([...keys]).toEqual(['lentil soup']);
+  });
+});
+
 describe('describeRecipe', () => {
   it('counts ingredients and singularises one', () => {
     expect(describeRecipe(recipe('A', { ingredients: [ing('Salt')] }))).toBe('1 ingredient');
@@ -1217,6 +1247,32 @@ describe('recipeSectionKey', () => {
   it('is the mealType itself, or "untagged" for the null section', () => {
     expect(recipeSectionKey('breakfast')).toBe('breakfast');
     expect(recipeSectionKey(null)).toBe('untagged');
+  });
+});
+
+describe('recipeInBook / recipeByName', () => {
+  const named = (id: string, name: string, cookbookId: string | null = null) =>
+    ({ id, nameKey: recipeNameKey(name), cookbookId });
+  const mine = named('mine', 'Lentil soup');
+  const six = named('six', 'Lentil Soup', 'b-six');
+  const plenty = named('plenty', 'Lentil soup!', 'b-plenty');
+
+  it('asks one book, so another book\'s recipe of the name is no clash', () => {
+    expect(recipeInBook([six, plenty], 'lentil soup', 'b-six')).toBe(six);
+    expect(recipeInBook([six, plenty], 'lentil soup', null)).toBeNull();
+    expect(recipeInBook([six, mine], 'LENTIL SOUP', null)).toBe(mine);
+    expect(recipeInBook([six], '   ', 'b-six')).toBeNull();
+  });
+
+  it('prefers the named book, then a sole match, then the bookless one', () => {
+    expect(recipeByName([six, plenty, mine], 'Lentil soup', 'b-plenty')).toBe(plenty);
+    expect(recipeByName([six], 'Lentil soup')).toBe(six);
+    expect(recipeByName([six, plenty], 'Lentil soup', 'b-other')).toBeNull();
+    expect(recipeByName([six, plenty, mine], 'Lentil soup')).toBe(mine);
+  });
+
+  it('refuses to guess between two books', () => {
+    expect(recipeByName([six, plenty], 'Lentil soup')).toBeNull();
   });
 });
 
