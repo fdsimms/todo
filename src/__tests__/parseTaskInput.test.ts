@@ -1237,7 +1237,16 @@ describe('matchPersonMentions', () => {
   it('does not match the first word of a business name', () => {
     const withBusiness = [...PEOPLE, { id: 'p4', name: 'Eye Q', nickname: '', kind: 'business' as const }];
     expect(matchPersonMentions('call @eye about the appointment', withBusiness)).toEqual([]);
-    expect(matchPersonMentions('call @Eye Q about the appointment', withBusiness)).toEqual([]);
+  });
+
+  it('matches a multi-word name typed in full after the @', () => {
+    const withBusiness = [...PEOPLE, { id: 'p4', name: 'Eye Q', nickname: '', kind: 'business' as const }];
+    const title = 'call @Eye Q about the appointment';
+    const [m] = matchPersonMentions(title, withBusiness);
+    expect(m.personId).toBe('p4');
+    expect(title.slice(m.start, m.end)).toBe('@Eye Q');
+    // Only at a word boundary, so a longer word doesn't count.
+    expect(matchPersonMentions('call @Eye Quinn', withBusiness)).toEqual([]);
   });
 
   it('still matches a business by its full name or nickname', () => {

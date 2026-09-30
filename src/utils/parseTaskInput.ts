@@ -1274,6 +1274,51 @@ function buildPersonNameIndex(people: PersonToken[]) {
 }
 
 /**
+ * Names and nicknames that contain a space ("Eye Q"), which `PERSON_TOKEN_PATTERN`
+ * alone can never match because it stops at the first space. Kept apart from
+ * `buildPersonNameIndex` on purpose: that index also feeds the *prefix* scan,
+ * where a multi-word business name must not answer to its first word.
+ */
+function buildPhraseIndex(people: PersonToken[]): Map<string, string[]> {
+  const phrases = new Map<string, string[]>();
+  const add = (raw: string, id: string) => {
+    const k = raw.trim().replace(/\s+/g, ' ').toLowerCase();
+    if (!k.includes(' ')) return;
+    const held = phrases.get(k);
+    if (held) { if (!held.includes(id)) held.push(id); }
+    else phrases.set(k, [id]);
+  };
+  for (const person of people) {
+    add(person.name, person.id);
+    add(person.nickname, person.id);
+  }
+  return phrases;
+}
+
+/**
+ * The longest multi-word name spelled out right after the "@" at `atIndex`
+ * ("@Eye Q about..."), ending at a word boundary, or null. Longest wins so a
+ * full name beats the first word it starts with.
+ */
+function phraseAt(
+  input: string,
+  atIndex: number,
+  phrases: Map<string, string[]>
+): { end: number; ids: string[] } | null {
+  if (phrases.size === 0) return null;
+  const from = atIndex + 1;
+  let best: { end: number; ids: string[] } | null = null;
+  for (const [key, ids] of phrases) {
+    const end = from + key.length;
+    if (best && end <= best.end) continue;
+    if (input.slice(from, end).toLowerCase() !== key) continue;
+    if (/[\w'-]/.test(input.charAt(end))) continue;
+    best = { end, ids };
+  }
+  return best;
+}
+
+/**
  * The same index, one shelf over, for group names — exact and first-word,
  * same as people. Kept separate from `buildPersonNameIndex` rather than
  * merged into one map: a group resolving to several ids is a deliberate
@@ -1352,12 +1397,20 @@ export function matchPersonMentions(
   groups: GroupMentionToken[] = []
 ): PersonMention[] {
   const { byName } = buildPersonNameIndex(people);
+  const phrases = buildPhraseIndex(people);
   const groupByName = groups.length > 0 ? buildGroupNameIndex(groups) : null;
   const groupById = groups.length > 0 ? new Map(groups.map(g => [g.id, g])) : null;
   const mentions: PersonMention[] = [];
 
   for (const m of input.matchAll(PERSON_TOKEN_PATTERN)) {
     if (m.index === undefined) continue;
+    // A full multi-word name ("@Eye Q") is tried first; the single-word
+    // grammar below would only ever see "@Eye".
+    const phrase = phraseAt(input, m.index, phrases);
+    if (phrase && phrase.ids.length === 1) {
+      mentions.push({ start: m.index, end: phrase.end, personId: phrase.ids[0] });
+      continue;
+    }
     const token = m[1].toLowerCase();
     let hits = byName.get(token);
     // No exact answer yet: try a unique prefix, so a name still being typed
@@ -1426,9 +1479,11 @@ export function findAmbiguousMention(
   overrides: Record<string, string> = {}
 ): AmbiguousMention | null {
   const { byName, toCandidates } = buildPersonNameIndex(people);
+  const phrases = buildPhraseIndex(people);
 
   for (const m of input.matchAll(PERSON_TOKEN_PATTERN)) {
     if (m.index === undefined) continue;
+    if (phraseAt(input, m.index, phrases)) continue; // a full name, already resolved
     const token = m[1].toLowerCase();
     if (overrides[token]) continue;
     const hits = byName.get(token);
