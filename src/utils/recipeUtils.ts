@@ -608,8 +608,18 @@ export interface LikelyInPantryCount {
  * under it. What the component clause is for is saying there's more: "3
  * ingredients" alone would read as the whole shop for a dish that's mostly its
  * parts.
+ *
+ * `sharedName` moves the attribution to the front, for a recipe whose name
+ * another recipe also has (`sharedRecipeNameKeys`). Two cookbooks can each hold
+ * a "Lentil Soup", and in a one-line row the attribution at the end is the
+ * clause a long subtitle truncates, so the one thing telling the two rows apart
+ * was the part cut off. Every other recipe keeps the usual order.
  */
-export function describeRecipe(recipe: Recipe, likelyInPantry?: LikelyInPantryCount | null): string {
+export function describeRecipe(
+  recipe: Recipe,
+  likelyInPantry?: LikelyInPantryCount | null,
+  options: { sharedName?: boolean } = {},
+): string {
   // Choice-aware, so "serrano or jalapeño" reads as the one pepper a meal of
   // this actually buys — see countChoiceAware.
   const count = countChoiceAware(recipe.ingredients);
@@ -630,8 +640,28 @@ export function describeRecipe(recipe: Recipe, likelyInPantry?: LikelyInPantryCo
   const total = totalMinutes(recipe);
   if (total) parts.push(formatDuration(total));
   const attribution = describeAttribution(recipe);
-  if (attribution) parts.push(attribution);
+  if (attribution) {
+    if (options.sharedName) parts.unshift(attribution);
+    else parts.push(attribution);
+  }
   return parts.join(' · ');
+}
+
+/**
+ * The name keys more than one recipe has: two cookbooks' "Lentil Soup", or a
+ * bookless one beside a book's. What `describeRecipe`'s `sharedName` is asked
+ * of, computed once over the whole box rather than per row, and over the whole
+ * box rather than a filtered list, since the other recipe of that name being
+ * filtered out of view doesn't make this row's name any less ambiguous.
+ */
+export function sharedRecipeNameKeys(recipes: readonly Pick<Recipe, 'nameKey'>[]): Set<string> {
+  const seen = new Set<string>();
+  const shared = new Set<string>();
+  for (const recipe of recipes) {
+    if (seen.has(recipe.nameKey)) shared.add(recipe.nameKey);
+    else seen.add(recipe.nameKey);
+  }
+  return shared;
 }
 
 /**

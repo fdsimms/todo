@@ -13,6 +13,7 @@ import {
   describeRecipe,
   cleanRecipeName,
   recipeByName,
+  sharedRecipeNameKeys,
   recipeInBook,
   recipeNameKey,
   rankRecipes,
@@ -920,6 +921,33 @@ describe('prepTaskDraftsForMeal', () => {
     const roastLinkId = steak.components[1].id;
     const onRoast = prepTaskDraftsForMeal(steak, byId, mealDate, { chosen: [roastLinkId] });
     expect(onRoast.map(d => d.title)).toEqual(['Take the steak out', 'Heat the oven']);
+  });
+});
+
+describe('describeRecipe with a shared name', () => {
+  const soup = recipe('Lentil soup', {
+    mealType: 'dinner',
+    source: 'Plenty',
+    sourceType: 'cookbook',
+    sourcePage: '112',
+  });
+
+  it('leads with the book, where a one-line row can\'t cut it off', () => {
+    expect(describeRecipe(soup, null, { sharedName: true }).startsWith('Plenty, p. 112 · Dinner')).toBe(true);
+  });
+
+  it('keeps it last otherwise, and says it only once either way', () => {
+    const usual = describeRecipe(soup);
+    expect(usual.startsWith('Dinner')).toBe(true);
+    expect(usual.endsWith('Plenty, p. 112')).toBe(true);
+    expect(describeRecipe(soup, null, { sharedName: true }).split('Plenty').length).toBe(2);
+  });
+
+  it('finds the names more than one recipe has', () => {
+    const keys = sharedRecipeNameKeys([
+      { nameKey: 'lentil soup' }, { nameKey: 'ragu' }, { nameKey: 'lentil soup' },
+    ]);
+    expect([...keys]).toEqual(['lentil soup']);
   });
 });
 

@@ -21,7 +21,7 @@ import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, animation, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { useRecipeStore } from '../store/useRecipeStore';
-import { rankRecipes, describeRecipe, cleanRecipeName, sortRecipesForDisplay } from '../utils/recipeUtils';
+import { rankRecipes, describeRecipe, cleanRecipeName, sharedRecipeNameKeys, sortRecipesForDisplay } from '../utils/recipeUtils';
 import { RECIPE_NAME_MAX_LENGTH } from '../types';
 import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
 import { useFilterField } from '../hooks/useFilterField';
@@ -74,6 +74,8 @@ export function MealReplaceItemSheet({ visible, count, title, hint, onReplace, o
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const recipes = useRecipeStore(useShallow(s => s.recipes));
+  // Recipes another recipe shares a name with lead their subtitle with the book.
+  const sharedNames = useMemo(() => sharedRecipeNameKeys(recipes), [recipes]);
   const { query, clear: clearQuery, props: filterField, inputRef: searchInputRef } = useFilterField();
   const typed = cleanRecipeName(query);
 
@@ -236,14 +238,14 @@ export function MealReplaceItemSheet({ visible, count, title, hint, onReplace, o
                     onPress={() => pick(recipe.id, recipe.name)}
                     activeOpacity={interaction.activeOpacity}
                     accessibilityRole="button"
-                    accessibilityLabel={`Replace with ${recipe.name}. ${describeRecipe(recipe)}`}
+                    accessibilityLabel={`Replace with ${recipe.name}. ${describeRecipe(recipe, null, { sharedName: sharedNames.has(recipe.nameKey) })}`}
                   >
                     <View style={[styles.rowIcon, { backgroundColor: colors.accentSubtle }]}>
                       <Ionicons name="restaurant-outline" size={16} color={colors.accent} />
                     </View>
                     <View style={styles.rowInfo}>
                       <Text style={styles.rowName} numberOfLines={1}>{recipe.name}</Text>
-                      <Text style={styles.rowHint} numberOfLines={1}>{describeRecipe(recipe)}</Text>
+                      <Text style={styles.rowHint} numberOfLines={1}>{describeRecipe(recipe, null, { sharedName: sharedNames.has(recipe.nameKey) })}</Text>
                     </View>
                     {recipe.vote === 'loved' && <Ionicons name="thumbs-up" size={13} color={colors.orange} />}
                   </TouchableOpacity>

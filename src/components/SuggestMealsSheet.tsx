@@ -20,7 +20,7 @@ import { RECIPE_MEAL_TYPES, RECIPE_MEAL_TYPE_LABELS } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, interaction, type Colors } from '../theme';
 import { dayKeyOf } from '../utils/dateUtils';
-import { describeCookHistory, describePantryCoverage, describeRecipe, recipeInBook, recipeNameKey, type PantryCoverage } from '../utils/recipeUtils';
+import { describeCookHistory, describePantryCoverage, describeRecipe, recipeInBook, sharedRecipeNameKeys, recipeNameKey, type PantryCoverage } from '../utils/recipeUtils';
 import { flattenRecipeIngredients, recipeMap, type FlatIngredient } from '../utils/recipeComponents';
 import { ingredientHeadings } from '../utils/recipeSections';
 import { describeStandingSwap, standingSwapMap } from '../utils/standingSwaps';
@@ -216,6 +216,8 @@ export function SuggestMealsSheet({
     [itemSubs, groceryItems]
   );
   const allRecipes = useRecipeStore(useShallow(s => s.recipes));
+  // Recipes another recipe shares a name with lead their subtitle with the book.
+  const sharedNames = useMemo(() => sharedRecipeNameKeys(allRecipes), [allRecipes]);
   const addRecipe = useRecipeStore(s => s.addRecipe);
   const addStructuredIngredients = useRecipeStore(s => s.addStructuredIngredients);
   const setNotes = useRecipeStore(s => s.setNotes);
@@ -641,7 +643,7 @@ export function SuggestMealsSheet({
         accessibilityState={{ disabled, selected: isSelected }}
         accessibilityLabel={landedDay
           ? `${recipe.name}, planned for ${format(landedDay, 'EEEE')}`
-          : `${isSelected ? 'Deselect' : 'Select'} ${recipe.name}. ${describeRecipe(recipe)}${signalsLabel ? `. ${signalsLabel}` : ''}`}
+          : `${isSelected ? 'Deselect' : 'Select'} ${recipe.name}. ${describeRecipe(recipe, null, { sharedName: sharedNames.has(recipe.nameKey) })}${signalsLabel ? `. ${signalsLabel}` : ''}`}
       >
         <View style={styles.body}>
           <Text style={styles.name} numberOfLines={1}>{recipe.name}</Text>
@@ -650,7 +652,7 @@ export function SuggestMealsSheet({
               ? `Planned for ${format(landedDay, 'EEEE')}`
               : isSelected && previewDay
                 ? `Selected, will land on ${format(previewDay, 'EEEE')}`
-                : describeRecipe(recipe)}
+                : describeRecipe(recipe, null, { sharedName: sharedNames.has(recipe.nameKey) })}
           </Text>
           {!landedDay && (pantryLabel || cookHistory) && (
             <View style={styles.signalRow}>
