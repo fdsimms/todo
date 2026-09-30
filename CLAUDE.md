@@ -1416,6 +1416,16 @@ inset is what just went away) — that asymmetry is the whole design, don't coll
   use-up task away and wrote a permanent "never", so it never came back after thawing. A new
   path that deletes a generated task goes through one of those two, not a bare `deleteTask`.
   Only a delete the user performs records a decision.
+- **Editing a day-keyed rule clears its idempotency mark when the edit changes what the rule
+  asks.** `HealthRule` and `WeatherRule` spend `lastFiredDayKey` the first time a rule is judged
+  that day, matched or not, so the mark means "this question was answered today". Change the
+  question (a threshold, hour, direction, condition, or the enabled flag) after that and the old
+  answer still stands: a sodium rule tuned from "under 2,000mg from noon" to "under 4,000mg from
+  8 PM" at 10 PM was skipped until tomorrow with nothing on screen to say why. The sheets run
+  every edit through `clearMarksOnRuleEdit` / `clearWeatherMarksOnEdit`; a retitle deliberately
+  keeps the mark, or a task swiped away today would return on rename. A new rule sheet with a
+  per-day mark does the same. `ScreenTimeRule` is the exception: its mark is written only when a
+  rule actually fires, so an edit cannot retire it early.
 - **After an `await`, check the result still belongs where it's about to be written.** A sheet
   can close, a cook can move to the next step, and a row can be edited or deleted while a model
   or Health call is in flight, and five fixes in one audit were this one bug: `InventRecipeSheet`
