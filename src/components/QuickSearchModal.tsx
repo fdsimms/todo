@@ -339,7 +339,7 @@ function QuickSearchDestinationRow({ result, query, onSelect, styles, colors }: 
 
 /**
  * The pull-down quick search: a small card over a dimmed screen, holding a
- * field and at most five results.
+ * field and at most seven results.
  *
  * Deliberately a *narrower* thing than the Search tab rather than a smaller
  * copy of it. The Search screen's rows carry tags, a notes preview and a
@@ -351,14 +351,14 @@ function QuickSearchDestinationRow({ result, query, onSelect, styles, colors }: 
  *
  * Stacks and projects lead the card, same priority the Search screen gives
  * them and the same reasoning — a title match on either is almost always a
- * navigational lookup, not a task search — and they spend the same five-row
+ * navigational lookup, not a task search — and they spend the same seven-row
  * budget the task rows do (see `quickSearch`), rather than getting a budget
  * of their own on top.
  *
  * Screens lead ahead of both. The card searches the side menu's destinations
  * too, so Weight or People is a pull and a few letters away rather than the
  * menu, a hub row and a pill. They take at most `QUICK_DESTINATION_LIMIT` of
- * the five slots and stay out of the footer's count, since the Search tab the
+ * the seven slots and stay out of the footer's count, since the Search tab the
  * footer opens has no screens in it.
  */
 export function QuickSearchModal({ visible, onClose, onSelectTask, onSelectGroup, onSelectProject, onSelectDestination, onOpenFullSearch, onShown }: Props) {
@@ -439,7 +439,7 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onSelectGroup
     [destinations, debouncedQuery]
   );
 
-  // Screens spend the card's five slots rather than adding to them.
+  // Screens spend the card's seven slots rather than adding to them.
   const { groupResults, projectResults, results, total } = useMemo(
     () => quickSearch(
       tasks, debouncedQuery, projectNamesById, QUICK_SEARCH_LIMIT - destinationResults.length, heldIds,

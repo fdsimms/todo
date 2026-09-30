@@ -285,7 +285,7 @@ describe('quickSearch', () => {
         makeTask({ id: `t${i}`, title: `Rent job ${i}` })
       );
       // The second row is ticked off. Without the hold it sorts behind the
-      // other six and falls off the end of a five-row card entirely.
+      // other eight and falls off the end of a seven-row card entirely.
       const ticked = tasks.map(t => (t.id === 't1' ? { ...t, completed: true } : t));
 
       expect(quickSearch(ticked, 'rent').results.map(r => r.task.id)).not.toContain('t1');
