@@ -1,4 +1,5 @@
 import { eventMarkerText, parseQuickEvent } from '../utils/quickEvent';
+import { findAmbiguousMention } from '../utils/parseTaskInput';
 
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: {
@@ -54,6 +55,40 @@ describe('parseQuickEvent', () => {
     const draft = parseQuickEvent('call @zed', opts);
     expect(draft.title).toBe('call @zed');
     expect(draft.personIds).toEqual([]);
+  });
+});
+
+describe('parseQuickEvent, for the quick-add sheet', () => {
+  it('reports the schedule phrase and the line without it', () => {
+    const draft = parseQuickEvent('lunch w/ @dustin sat 12pm', opts);
+    expect(draft.phrase).toEqual({ start: 17, text: 'sat 12pm', lineWithout: 'lunch w/ @dustin' });
+    expect(draft.mentionSpans).toEqual([[9, 16]]);
+  });
+
+  it('keeps an ignored phrase as part of the title', () => {
+    const draft = parseQuickEvent('lunch sat 12pm', { ...opts, ignoreSchedule: true });
+    expect(draft.title).toBe('lunch sat 12pm');
+    expect(draft.phrase).toBeNull();
+    expect(draft.scheduled).toBe(false);
+    expect(draft.start).toEqual(new Date(2026, 8, 25, 15, 0));
+  });
+
+  it('links a pick made for an ambiguous @name', () => {
+    const twoSams = [
+      { id: 's1', name: 'Sam Ortiz', nickname: '' },
+      { id: 's2', name: 'Sam Park', nickname: '' },
+    ];
+    const line = 'coffee with @sam';
+    const ambiguous = findAmbiguousMention(line, twoSams);
+    expect(ambiguous).not.toBeNull();
+    const plain = parseQuickEvent(line, { ...opts, people: twoSams, nameOf: () => 'Sam' });
+    expect(plain.personIds).toEqual([]);
+    const picked = parseQuickEvent(line, {
+      ...opts, people: twoSams, nameOf: () => 'Sam',
+      mentionOverrides: { [ambiguous!.token]: 's2' },
+    });
+    expect(picked.personIds).toEqual(['s2']);
+    expect(picked.title).toBe('coffee with Sam');
   });
 });
 
