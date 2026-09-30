@@ -111,6 +111,26 @@ export function packageChoices(
 }
 
 /**
+ * What one serving of this panel is, in the packet's own words, for the line
+ * that sits beside a "serving" unit. Null when there is no serving to describe.
+ *
+ * The scan sheet used to offer "1 serving (2 pastries with icing)" as a button
+ * of its own, beside an amount field whose units included "serving" too: two
+ * controls answering one question. The field is the control now, and this is
+ * what the button was still for, which is saying how big a serving is.
+ */
+export function servingDescription(nutrition: FoodNutrition): string | null {
+  const text = nutrition.servingText?.trim();
+  // A source that already wrote the word ("1 serving (80 g)") is shown as it
+  // wrote it, the same rule `packageChoices` applies to its label.
+  if (text) return /serving/i.test(text) ? text : `1 serving is ${text}`;
+  if (nutrition.servingGrams !== null && nutrition.servingGrams > 0) {
+    return `1 serving is ${trim(nutrition.servingGrams)}g`;
+  }
+  return null;
+}
+
+/**
  * What `servings` of a package works out to, as a panel of its own.
  *
  * The basis becomes `perServing` and the figures are the amounts actually
