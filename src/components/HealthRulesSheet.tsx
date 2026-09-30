@@ -15,6 +15,7 @@ import {
   HEALTH_THRESHOLDS,
   clampCheckpointHour,
   clampHealthThreshold,
+  clearMarksOnRuleEdit,
   describeHealthRule,
   formatCheckpointHour,
   healthMetricAmount,
@@ -113,7 +114,7 @@ export function HealthRulesSheet({ visible, onClose }: Props) {
         + 'Each rule adds its task at most once a day.'
       }
       rules={rules}
-      onChange={setRules}
+      onChange={next => setRules(clearMarksOnRuleEdit(rules, next))}
       makeRule={() => ({
         id: generateId(),
         metric: 'sleepHours',

@@ -7,6 +7,7 @@ import {
   SHORT_SLEEP_HOURS,
   clampCheckpointHour,
   clampHealthThreshold,
+  clearMarksOnRuleEdit,
   defaultHealthRules,
   describeHealthRule,
   anyExerciseRule,
@@ -191,6 +192,49 @@ describe('the source id', () => {
     // read goes through generatedSourceOf's kind check.
     expect(healthRuleIdOf({ generatedKind: 'weather', generatedSourceId: '2026-09-02#r1' })).toBeNull();
     expect(healthRuleIdOf({ generatedKind: null, generatedSourceId: null })).toBeNull();
+  });
+});
+
+describe('clearMarksOnRuleEdit', () => {
+  const judged = rule({
+    metric: 'sodiumMg', threshold: 2000, direction: 'under', checkpointHour: 12,
+    lastFiredDayKey: '2026-09-30',
+  });
+
+  it('clears the mark when the threshold changes', () => {
+    const [out] = clearMarksOnRuleEdit([judged], [{ ...judged, threshold: 4000 }]);
+    expect(out.lastFiredDayKey).toBeNull();
+  });
+
+  it('clears the mark when the checkpoint hour, direction, metric or enabled flag changes', () => {
+    for (const change of [
+      { checkpointHour: 20 },
+      { direction: 'over' as const },
+      { metric: 'proteinG' as const },
+      { enabled: false },
+    ]) {
+      const [out] = clearMarksOnRuleEdit([judged], [{ ...judged, ...change }]);
+      expect(out.lastFiredDayKey).toBeNull();
+    }
+  });
+
+  it('keeps the mark on a retitle, so a swiped-away task stays away', () => {
+    const [out] = clearMarksOnRuleEdit([judged], [{ ...judged, title: 'Take salt' }]);
+    expect(out.lastFiredDayKey).toBe('2026-09-30');
+  });
+
+  it('does not treat writing out a default as a change', () => {
+    const before = rule({ metric: 'sodiumMg', threshold: 2000, lastFiredDayKey: '2026-09-30' });
+    const after = { ...before, direction: 'under' as const, checkpointHour: 12 };
+    const [out] = clearMarksOnRuleEdit([before], [after]);
+    expect(out.lastFiredDayKey).toBe('2026-09-30');
+  });
+
+  it('leaves a new rule and its neighbours alone', () => {
+    const other = rule({ id: 'r2', lastFiredDayKey: '2026-09-30' });
+    const fresh = rule({ id: 'r3', lastFiredDayKey: '2026-09-30' });
+    const out = clearMarksOnRuleEdit([judged, other], [judged, other, fresh]);
+    expect(out.map(r => r.lastFiredDayKey)).toEqual(['2026-09-30', '2026-09-30', '2026-09-30']);
   });
 });
 
