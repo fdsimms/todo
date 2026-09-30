@@ -229,7 +229,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/quantity.ts` — Rational, rational, multiplyRational, rationalToNumber, rationalFromNumber, formatRational, formatQuantityAmount, unitKey, inflectUnit, SIZE_UNITS, +7 more
 - `src/utils/quickActions.ts` — quickActionsFor, handleQuickActionId, useHomeScreenQuickActions
 - `src/utils/quickEvent.ts` — QuickEventDraft, parseQuickEvent, eventMarkerText
-- `src/utils/quickSearch.ts` — QUICK_SEARCH_LIMIT, QuickSearchOutcome, quickSearch
+- `src/utils/quickSearch.ts` — QUICK_SEARCH_LIMIT, QuickSearchOutcome, quickSearch, QUICK_DESTINATION_LIMIT, quickDestinations
 - `src/utils/quotaSchedule.ts` — QuotaSpan, QuotaSpanInput, quotaRunSpan, quotaWeekStart, quotaWeekSpan, quotaTargetForInterval, quotaDueTimes, quotaDueTimesAfter, isQuotaRunOver
 - `src/utils/quotaUnit.ts` — MAX_TARGET_UNIT_LENGTH, normalizeTargetUnit, formatQuotaProgress, formatQuotaCatchUp, formatQuotaTarget
 - `src/utils/ranges.ts` — mergeRanges, scoreSubstring
@@ -413,6 +413,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useLogicalDayKey.ts` — useLogicalDayKey
 - `src/hooks/useMealPlanNudgeProgress.ts` — useMealPlanNudgeProgress
 - `src/hooks/useMeasuredTextWidth.ts` — useMeasuredTextWidth
+- `src/hooks/useNavMenuOptions.ts` — useNavMenuOptions
 - `src/hooks/useNowTick.ts` — useNowTick
 - `src/hooks/useOnDeviceAi.ts` — useOnDeviceAvailability, useAiRoute
 - `src/hooks/useOverlapPicker.ts` — OverlapPickerState, useOverlapPicker

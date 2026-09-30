@@ -1730,6 +1730,12 @@ export function TodayScreen() {
     useTaskStore.getState().dismissPendingImport(id);
   }, []);
 
+  // A screen matched in quick search. The route names come from the side
+  // menu's own index, so each is one the navigator already registers.
+  const handleOpenDestination = useCallback((route: string) => {
+    navigation.navigate(route as never);
+  }, [navigation]);
+
   const handleOpenProject = useCallback((projectId: string) => {
     navigation.navigate({ name: 'ProjectDetail', params: { projectId } } as never);
   }, [navigation]);
@@ -4641,6 +4647,7 @@ export function TodayScreen() {
           onSelectTask={openEditor}
           onSelectGroup={group => handleGroupPressEdit(group.id)}
           onSelectProject={handleOpenProject}
+          onSelectDestination={handleOpenDestination}
           onOpenFullSearch={handleOpenFullSearch}
         />
 
