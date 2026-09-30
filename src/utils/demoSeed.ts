@@ -2933,6 +2933,22 @@ function seedRecipes(): DemoRecipes {
     setSourcePage(otherShortbread.id, '76');
   }
 
+  // A few lines of each book's index: dishes known only by name, page and the
+  // ingredients the index lists them under. They aren't recipes and don't sit
+  // in the box; Cook with… is where they turn up ("butter" finds the two
+  // shortbreads above and the apple cake here), and the book's page lists them.
+  const sweet = useRecipeStore.getState().cookbooks.find(c => c.title === 'Sweet');
+  const { addIndexEntry } = useRecipeStore.getState();
+  if (sweet) {
+    addIndexEntry(sweet.id, { title: 'Lemon and poppy seed cake', page: '30', ingredients: ['lemons', 'poppy seeds'] });
+    addIndexEntry(sweet.id, { title: 'Chocolate hazelnut cookies', page: '64', ingredients: ['chocolate', 'hazelnuts'] });
+    addIndexEntry(sweet.id, { title: 'Fig and almond tart', page: '188', ingredients: ['figs', 'almonds'] });
+  }
+  if (dessertPerson) {
+    addIndexEntry(dessertPerson.id, { title: 'Brown butter apple cake', page: '110', ingredients: ['apples', 'butter'] });
+    addIndexEntry(dessertPerson.id, { title: 'Lemon curd tart', page: '204', ingredients: ['lemons', 'eggs'] });
+  }
+
   const tea = newRecipe('Iced mint tea');
   addIngredientsFromText(tea.id, ['4 tea bags', '1 bunch mint', '2 lemons', '1/4 cup honey'].join('\n'));
   setMealType(tea.id, 'beverage');

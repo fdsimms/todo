@@ -54,6 +54,9 @@ export function CookbookEditor({ visible, cookbookId: liveCookbookId, onClose }:
   const recipeCount = useRecipeStore(s =>
     cookbookId ? s.recipes.filter(r => r.cookbookId === cookbookId).length : 0
   );
+  const indexCount = useRecipeStore(s =>
+    cookbookId ? s.indexEntries.filter(e => e.cookbookId === cookbookId).length : 0
+  );
 
   const [title, setTitle] = useState('');
   const [author, setAuthor] = useState('');
@@ -101,9 +104,16 @@ export function CookbookEditor({ visible, cookbookId: liveCookbookId, onClose }:
     haptics.warning();
     confirmDelete({
       title: 'Delete cookbook',
-      message: recipeCount > 0
-        ? `Unlink "${cookbook?.title}" from ${recipeCount} ${recipeCount === 1 ? 'recipe' : 'recipes'}? They'll keep their author and title text, just not the link to this book.`
-        : `Delete "${cookbook?.title}"?`,
+      // Recipes are unlinked and kept; the index goes with the book, since a
+      // line of it is only a page of this book (see dbDeleteCookbook).
+      message: [
+        recipeCount > 0
+          ? `Unlink "${cookbook?.title}" from ${recipeCount} ${recipeCount === 1 ? 'recipe' : 'recipes'}? They'll keep their author and title text, just not the link to this book.`
+          : `Delete "${cookbook?.title}"?`,
+        indexCount > 0
+          ? `The ${indexCount} ${indexCount === 1 ? 'dish' : 'dishes'} in its index will be deleted.`
+          : null,
+      ].filter(Boolean).join(' '),
       onConfirm: () => { Keyboard.dismiss(); deleteCookbook(cookbookId); onClose(); },
     });
   };
@@ -116,7 +126,7 @@ export function CookbookEditor({ visible, cookbookId: liveCookbookId, onClose }:
     haptics.warning();
     confirmDelete({
       title: 'Merge these books?',
-      message: `"${loser.title}" will come off the shelf, and its recipes will move to "${cookbook.title}".`,
+      message: `"${loser.title}" will come off the shelf, and its recipes and index will move to "${cookbook.title}".`,
       confirmLabel: 'Merge',
       onConfirm: () => { haptics.success(); mergeCookbooks(cookbookId, loser.id); },
     });

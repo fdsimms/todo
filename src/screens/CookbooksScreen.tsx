@@ -9,6 +9,7 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
 import { CookbookEditor } from '../components/CookbookEditor';
+import { CookWithSheet } from '../components/CookWithSheet';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -35,6 +36,7 @@ export function CookbooksScreen() {
   const recipes = useRecipeStore(useShallow(s => s.recipes));
 
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [cookWithVisible, setCookWithVisible] = useState(false);
 
   const recipeCountOf = (id: string) => recipes.filter(r => r.cookbookId === id).length;
 
@@ -107,6 +109,22 @@ export function CookbooksScreen() {
           keyExtractor={c => c.id}
           renderItem={renderItem}
           contentContainerStyle={styles.list}
+          ListHeaderComponent={
+            // The same quiet link the Recipes screen puts beside "Cookbooks":
+            // the finder searches these books' indexes and the recipe box.
+            <View style={styles.cookWithRow}>
+              <TouchableOpacity
+                style={styles.cookWith}
+                onPress={() => { haptics.tap(); setCookWithVisible(true); }}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel="Find recipes by ingredient"
+              >
+                <Ionicons name="search-outline" size={13} color={colors.textTertiary} />
+                <Text style={styles.cookWithText}>Cook with…</Text>
+              </TouchableOpacity>
+            </View>
+          }
           ListFooterComponent={<View style={{ height: tabBarHeight + spacing.xl }} />}
         />
       )}
@@ -115,6 +133,12 @@ export function CookbooksScreen() {
         visible={editingId !== null}
         cookbookId={editingId}
         onClose={() => setEditingId(null)}
+      />
+      <CookWithSheet
+        visible={cookWithVisible}
+        onClose={() => setCookWithVisible(false)}
+        onOpenRecipe={id => { setCookWithVisible(false); navigation.navigate('RecipeDetail', { recipeId: id }); }}
+        onOpenCookbook={id => { setCookWithVisible(false); navigation.navigate('CookbookDetail', { cookbookId: id }); }}
       />
     </View>
   );
@@ -127,6 +151,22 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   list: {
     paddingTop: spacing.sm,
+  },
+  cookWithRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  cookWith: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  cookWithText: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+    fontWeight: fontWeight.medium,
   },
   row: {
     flexDirection: 'row',

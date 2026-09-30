@@ -184,6 +184,10 @@ jest.mock('../db/database', () => ({
   // otherwise untouched by this file's subject.
   dbGetAllRecipes: jest.fn().mockReturnValue([]),
   dbGetAllCookbooks: jest.fn().mockReturnValue([]),
+  dbGetAllCookbookIndexEntries: jest.fn().mockReturnValue([]),
+  dbInsertCookbookIndexEntry: jest.fn(),
+  dbUpdateCookbookIndexEntry: jest.fn(),
+  dbDeleteCookbookIndexEntry: jest.fn(),
   dbInsertCookbook: jest.fn(),
   dbUpdateCookbook: jest.fn(),
   dbDeleteCookbook: jest.fn(),

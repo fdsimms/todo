@@ -3,6 +3,7 @@ import * as SQLite from 'expo-sqlite';
 // on the settings load in useSettingsStore.ts: a list every new type is added to, so one line is a guaranteed conflict.
 import type {
   Cookbook,
+  CookbookIndexEntry,
   DeliverableKind,
   FoodLogEntry,
   GeneratedKind,
@@ -638,6 +639,18 @@ export function initDatabase(): void {
       title_key TEXT NOT NULL,
       author TEXT,
       sort_order REAL NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL
+    );
+
+    -- One line of a cookbook's index: a dish, its page, and the ingredients
+    -- the index files it under (a JSON array of the printed words). Not a
+    -- recipe, on purpose; see CookbookIndexEntry in types.
+    CREATE TABLE IF NOT EXISTS cookbook_index_entries (
+      id TEXT PRIMARY KEY NOT NULL,
+      cookbook_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      page TEXT,
+      ingredients TEXT NOT NULL DEFAULT '[]',
       created_at TEXT NOT NULL
     );
 
@@ -2196,6 +2209,8 @@ export const BACKUP_TABLES = [
   'grocery_store_aliases',
   // Before recipes: a recipe can point at a cookbook.
   'cookbooks',
+  // After cookbooks: every entry names one.
+  'cookbook_index_entries',
   'recipes',
   // Before meal_plan_entries: an entry can point at a leftover.
   'leftovers',
@@ -5773,7 +5788,53 @@ export function dbUpdateCookbook(cookbook: Cookbook): void {
  */
 export function dbDeleteCookbook(id: string): void {
   db.runSync('UPDATE recipes SET cookbook_id = NULL WHERE cookbook_id = ?', [id]);
+  // The index goes with the book, though, where recipes don't: an entry is
+  // only "page 142 of this book", and with the book gone it names nothing.
+  db.runSync('DELETE FROM cookbook_index_entries WHERE cookbook_id = ?', [id]);
   db.runSync('DELETE FROM cookbooks WHERE id = ?', [id]);
+}
+
+// ─── Cookbook index entries ─────────────────────────────────────────────────
+
+function rowToCookbookIndexEntry(row: Record<string, unknown>): CookbookIndexEntry {
+  let ingredients: string[] = [];
+  try {
+    const parsed = JSON.parse((row.ingredients as string) ?? '[]');
+    if (Array.isArray(parsed)) ingredients = parsed.filter((w): w is string => typeof w === 'string');
+  } catch { /* a malformed blob reads as no ingredients rather than failing the load */ }
+  return {
+    id: row.id as string,
+    cookbookId: row.cookbook_id as string,
+    title: row.title as string,
+    page: (row.page as string) ?? null,
+    ingredients,
+    createdAt: row.created_at as string,
+  };
+}
+
+export function dbGetAllCookbookIndexEntries(): CookbookIndexEntry[] {
+  const rows = db.getAllSync<Record<string, unknown>>(
+    'SELECT * FROM cookbook_index_entries ORDER BY created_at ASC'
+  );
+  return rows.map(rowToCookbookIndexEntry);
+}
+
+export function dbInsertCookbookIndexEntry(entry: CookbookIndexEntry): void {
+  db.runSync(
+    'INSERT INTO cookbook_index_entries (id, cookbook_id, title, page, ingredients, created_at) VALUES (?,?,?,?,?,?)',
+    [entry.id, entry.cookbookId, entry.title, entry.page ?? null, JSON.stringify(entry.ingredients), entry.createdAt]
+  );
+}
+
+export function dbUpdateCookbookIndexEntry(entry: CookbookIndexEntry): void {
+  db.runSync(
+    'UPDATE cookbook_index_entries SET cookbook_id=?, title=?, page=?, ingredients=? WHERE id=?',
+    [entry.cookbookId, entry.title, entry.page ?? null, JSON.stringify(entry.ingredients), entry.id]
+  );
+}
+
+export function dbDeleteCookbookIndexEntry(id: string): void {
+  db.runSync('DELETE FROM cookbook_index_entries WHERE id = ?', [id]);
 }
 
 // ─── Recipes ────────────────────────────────────────────────────────────────

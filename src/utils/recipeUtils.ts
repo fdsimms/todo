@@ -5,6 +5,7 @@ import {
   RECIPE_MEAL_TYPES,
   RECIPE_MEAL_TYPE_LABELS,
   RECIPE_NAME_MAX_LENGTH,
+  RECIPE_PAGE_MAX_LENGTH,
   RECIPE_SOURCE_MAX_LENGTH,
   RECIPE_SECTION_MAX_LENGTH,
   RECIPE_STEP_NOTE_MAX_LENGTH,
@@ -1017,6 +1018,17 @@ export function cleanRecipeSource(raw: string, maxLength: number = RECIPE_SOURCE
 }
 
 /**
+ * A page number as stored: a leading "p." comes off, because every reader puts
+ * one back (describeAttribution renders "Sweet, p. 142" and the editor's row
+ * reads "p. 142", so a stored "p. 142" renders "p. p. 142"). Only the prefix;
+ * the rest stays free text, since some books print "xii". Empty means none.
+ */
+export function cleanSourcePage(raw: string | null | undefined): string {
+  const typed = (raw ?? '').replace(/^\s*(?:pages?|pp?)(?:\s*\.\s*|\s+)/i, '');
+  return cleanRecipeSource(typed, RECIPE_PAGE_MAX_LENGTH);
+}
+
+/**
  * A cookbook's normalised identity, from its title *and* its author.
  *
  * Title alone would be wrong: "Dinner" is a Melissa Clark book and also a Meera
@@ -1210,7 +1222,7 @@ export function rankRecipes(query: string, recipes: readonly Recipe[]): Recipe[]
   return scored
     .sort((a, b) =>
       b.weight - a.weight ||
-      voteRank(a.recipe.vote) - voteRank(b.recipe.vote) ||
+      recipeVoteRank(a.recipe.vote) - recipeVoteRank(b.recipe.vote) ||
       a.recipe.name.localeCompare(b.recipe.name)
     )
     .map(s => s.recipe);
@@ -1350,7 +1362,7 @@ export function describePrepTime(recipe: Recipe): string {
  */
 export function sortRecipesForDisplay(recipes: readonly Recipe[]): Recipe[] {
   return [...recipes].sort((a, b) =>
-    voteRank(a.vote) - voteRank(b.vote) || a.sortOrder - b.sortOrder
+    recipeVoteRank(a.vote) - recipeVoteRank(b.vote) || a.sortOrder - b.sortOrder
   );
 }
 
@@ -1360,7 +1372,7 @@ export function sortRecipesForDisplay(recipes: readonly Recipe[]): Recipe[] {
 // opinion sits above never-again for the same reason it always did: cooking
 // something you never explicitly rejected isn't the same as having decided
 // against it.
-function voteRank(vote: RecipeVote | null): number {
+export function recipeVoteRank(vote: RecipeVote | null): number {
   if (vote === 'loved') return 0;
   if (vote === 'liked') return 1;
   if (vote === 'never') return 3;
