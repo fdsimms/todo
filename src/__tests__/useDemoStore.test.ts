@@ -36,6 +36,7 @@ import { cartBudgetStanding, describeCartTotal, estimateCartTotal } from '../uti
 import { OTHER_AISLE } from '../utils/groceryAisles';
 import { shopWalkOrder } from '../utils/groceryShops';
 import { useGroceryStore } from '../store/useGroceryStore';
+import { findWithPantry, pantryIngredients } from '../utils/cookbookIndex';
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useSavedMealsStore } from '../store/useSavedMealsStore';
 import { currentEstimateFactor, describeFoodLogEntry, foodLogEntryEdit, foodLogTotals, recallAmount, scalePanelToAmount, wholeEstimate } from '../utils/foodLog';
@@ -3488,6 +3489,13 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(new Set(indexEntries.map(e => e.cookbookId)).size).toBeGreaterThan(1);
     const recipeNames = new Set(recipes.map(r => r.name));
     expect(indexEntries.some(e => recipeNames.has(e.title))).toBe(false);
+    // Cook with… on "What I have" has something to say about the demo pantry:
+    // the seeded catalog's on-hand rows are used by at least one recipe.
+    const grocery = useGroceryStore.getState();
+    const have = pantryIngredients(grocery.items, new Date(), grocery.itemProducts);
+    expect(have.length).toBeGreaterThan(0);
+    const cookable = findWithPantry(have, recipes, indexEntries, useRecipeStore.getState().cookbooks);
+    expect(cookable.recipes.length + cookable.entries.length).toBeGreaterThan(0);
     // What a link import leaves behind, all on one recipe: the address, the
     // site, the byline, and the method read off the page's own markup.
     expect(recipes.some(r =>

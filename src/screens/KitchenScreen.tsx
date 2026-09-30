@@ -66,6 +66,7 @@ import { BarcodeScanSheet, type ScanProductDraft } from '../components/BarcodeSc
 import { featureHidden } from '../utils/simpleMode';
 import type { ScannedGtinLink } from '../utils/scanResolve';
 import { ReceiptImportSheet, type ReceiptAddDraft } from '../components/ReceiptImportSheet';
+import { CookWithSheet } from '../components/CookWithSheet';
 import { freshnessColor } from '../components/LeftoversCard';
 import { useNowTick } from '../hooks/useNowTick';
 import { haptics } from '../utils/haptics';
@@ -215,6 +216,7 @@ export function KitchenScreen() {
   // card opens. Offered on the same condition that card offers it: something
   // has been closed out, since an empty history is a sheet with nothing in it.
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [cookWithOpen, setCookWithOpen] = useState(false);
   const hasFridgeHistory = useMemo(() => leftovers.some(l => !!l.finishedAt), [leftovers]);
   // Lazily, then kept: most pantries never open it, and a sheet that has been
   // opened has to stay mounted for its ordered close (see useSheetMount).
@@ -826,6 +828,21 @@ export function KitchenScreen() {
         ]}
       />
       <HubPills hub="kitchen" active="Kitchen" />
+      {/* The recipe finder, opened on "What I have": the pantry is the other
+          half of that question, so this is where it's asked from. The same
+          quiet link the Recipes and Cookbooks screens carry. */}
+      <View style={styles.cookWithRow}>
+        <TouchableOpacity
+          style={styles.cookWith}
+          onPress={() => { haptics.tap(); setCookWithOpen(true); }}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole="button"
+          accessibilityLabel="Find recipes that use what you have"
+        >
+          <Ionicons name="search-outline" size={13} color={colors.textTertiary} />
+          <Text style={styles.cookWithText}>Cook with…</Text>
+        </TouchableOpacity>
+      </View>
       <TipHost screen="kitchen" />
       {!!activeTripShop && (
         <ActiveTripBanner
@@ -947,6 +964,13 @@ export function KitchenScreen() {
         onApply={handleScanApply}
       />
 
+      <CookWithSheet
+        visible={cookWithOpen}
+        initialMode="have"
+        onClose={() => setCookWithOpen(false)}
+        onOpenRecipe={id => { setCookWithOpen(false); navigation.navigate('RecipeDetail', { recipeId: id }); }}
+        onOpenCookbook={id => { setCookWithOpen(false); navigation.navigate('CookbookDetail', { cookbookId: id }); }}
+      />
       <ReceiptImportSheet
         visible={receiptOpen}
         context="pantry"
@@ -1108,5 +1132,21 @@ function makeStyles(colors: Colors) {
     meta: { fontSize: font.xs, color: colors.textTertiary, marginTop: spacing.xxs },
     metaBox: { color: colors.textSecondary, fontWeight: fontWeight.medium },
     outButton: { padding: spacing.xxs },
+    cookWithRow: {
+      flexDirection: 'row',
+      justifyContent: 'flex-end',
+      marginHorizontal: spacing.md,
+      marginTop: spacing.xs,
+    },
+    cookWith: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 3,
+    },
+    cookWithText: {
+      color: colors.textTertiary,
+      fontSize: font.xs,
+      fontWeight: fontWeight.medium,
+    },
   });
 }

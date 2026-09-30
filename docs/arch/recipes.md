@@ -332,6 +332,17 @@ asks that question, and `findWithIngredients` answers it.
   unasked, and this answers a search somebody typed. A line is matched on its title as well as its
   ingredients, since a title-only index says what a dish uses in its name and nowhere else. A
   typed-up recipe is matched on its flattened lines with every option counted, and not its name.
+- **"What I have" asks the pantry, and matches by key rather than by word** (`pantryIngredients`,
+  `findWithPantry`). The asking set is every row `probablyHaveReason` vouches for, the app's one
+  answer to "do I have this" (see "The kitchen" in `docs/arch/groceries.md`), less staples, which
+  are in nearly every dish and would put whatever uses the most salt on top. A recipe line or an
+  index ingredient counts when it names the same catalog item, singular or plural, and a variety
+  answers for its generic (white onion for onion), the join `useUpRecipes` makes. Whole-word
+  matching suits a word somebody typed; applied to the whole pantry it would let butter claim
+  peanut butter. An index line's title isn't read here for the same reason. Results rank by how
+  many things you have that a dish uses and **never by how much of the dish you have**:
+  `probablyHaveReason` returning null means the app doesn't know, not that you're out, the
+  refusal `useUpRecipes` already makes. The Pantry screen opens the sheet in this mode.
 - **A line whose recipe is typed up drops out of the results.** The recipe (same book, same name,
   `recipeInBook`) is the better answer and shows under yours when it matches. One made from the
   line but still empty keeps the line in the results, and opening it opens that recipe.
