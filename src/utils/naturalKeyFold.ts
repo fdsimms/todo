@@ -337,6 +337,7 @@ export const REFERENCES: Reference[] = [
   urlToken('recipes', 'tasks', 'link_url', 'recipe?id='),
   // A cookbook.
   idColumn('cookbooks', 'recipes', 'cookbook_id'),
+  idColumn('cookbooks', 'cookbook_index_entries', 'cookbook_id'),
   // A product.
   idColumn('grocery_item_products', 'grocery_items', 'preferred_product_id'),
   idColumn('grocery_item_products', 'grocery_item_shops', 'product_id'),

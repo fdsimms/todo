@@ -34,6 +34,7 @@ import type { RecipeInputMode } from '../components/RecipeSourcePicker';
 import { RecipeTagFilterSheet } from '../components/RecipeTagFilterSheet';
 import { OverlapPickerSheet } from '../components/OverlapPickerSheet';
 import { useOverlapPicker } from '../hooks/useOverlapPicker';
+import { CookWithSheet } from '../components/CookWithSheet';
 import { RecipeSortFilterSheet } from '../components/RecipeSortFilterSheet';
 import { FabMenu, FAB_SIZE, type FabDragHandlers, type FabMenuItem } from '../components/Fab';
 import {
@@ -269,6 +270,7 @@ export function RecipesScreen() {
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [tagFilterVisible, setTagFilterVisible] = useState(false);
   const [sortFilterVisible, setSortFilterVisible] = useState(false);
+  const [cookWithVisible, setCookWithVisible] = useState(false);
   const [addVisible, setAddVisible] = useState(false);
   const [importVisible, setImportVisible] = useState(false);
   const [importMode, setImportMode] = useState<RecipeInputMode>('photo');
@@ -744,6 +746,19 @@ export function RecipesScreen() {
       <HubPills hub="kitchen" active="Recipes" />
       <TipHost screen="recipes" />
       <View style={styles.cookbookLinksRow}>
+        {/* The ingredient finder, beside the shelf it searches: it reads the
+            recipes here and the cookbooks' indexes, which show nowhere else
+            (see CookbookIndexEntry). */}
+        <TouchableOpacity
+          style={styles.cookbooksLink}
+          onPress={() => { haptics.tap(); setCookWithVisible(true); }}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole="button"
+          accessibilityLabel="Find recipes by ingredient"
+        >
+          <Ionicons name="search-outline" size={13} color={colors.textTertiary} />
+          <Text style={styles.cookbooksLinkText}>Cook with…</Text>
+        </TouchableOpacity>
         {/* A shelf for recipes rather than a fifth Kitchen-hub tab: it isn't a
             working surface the way Groceries/Recipes/Meal plan/Pantry are, so
             it doesn't need equal billing in the pill row — just a way in from
@@ -1064,6 +1079,12 @@ export function RecipesScreen() {
         onClose={closeOverlap}
       />
 
+      <CookWithSheet
+        visible={cookWithVisible}
+        onClose={() => setCookWithVisible(false)}
+        onOpenRecipe={id => { setCookWithVisible(false); navigation.navigate('RecipeDetail', { recipeId: id }); }}
+        onOpenCookbook={id => { setCookWithVisible(false); navigation.navigate('CookbookDetail', { cookbookId: id }); }}
+      />
       <RecipeSortFilterSheet
         visible={sortFilterVisible}
         onClose={() => setSortFilterVisible(false)}
@@ -1284,6 +1305,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'flex-end',
     alignItems: 'center',
+    gap: spacing.md,
     marginHorizontal: spacing.md,
     marginTop: spacing.xs,
   },

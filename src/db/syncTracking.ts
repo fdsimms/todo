@@ -132,6 +132,10 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
   // receipt's printed text and can contain anything, '|' included.
   { name: 'grocery_store_aliases', key: ['id'] },
   { name: 'cookbooks', key: ['id'] },
+  // A cookbook's index lines. Entered by hand or a page at a time, so a phone
+  // that didn't get them would search a different shelf from the one it was
+  // typed into. Ids are base36 from generateId().
+  { name: 'cookbook_index_entries', key: ['id'] },
   { name: 'recipes', key: ['id'] },
   { name: 'leftovers', key: ['id'] },
   { name: 'meal_plan_entries', key: ['id'] },

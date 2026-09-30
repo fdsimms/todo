@@ -20,6 +20,10 @@ jest.mock('../utils/recipePhoto', () => ({
 jest.mock('../db/database', () => ({
   dbGetAllRecipes: jest.fn().mockReturnValue([]),
   dbGetAllCookbooks: jest.fn().mockReturnValue([]),
+  dbGetAllCookbookIndexEntries: jest.fn().mockReturnValue([]),
+  dbInsertCookbookIndexEntry: jest.fn(),
+  dbUpdateCookbookIndexEntry: jest.fn(),
+  dbDeleteCookbookIndexEntry: jest.fn(),
   dbInsertCookbook: jest.fn(),
   dbUpdateCookbook: jest.fn(),
   dbDeleteCookbook: jest.fn(),
@@ -95,7 +99,7 @@ function makeRecipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
 }
 
 function seed(recipes: Recipe[]) {
-  useRecipeStore.setState({ recipes, cookbooks: [], initialized: true });
+  useRecipeStore.setState({ recipes, cookbooks: [], indexEntries: [], initialized: true });
 }
 
 beforeEach(() => {
@@ -2341,5 +2345,79 @@ describe('setSourcePage', () => {
     useRecipeStore.getState().setSourcePage(cake.id, typed);
     // Every reader prefixes "p." itself, so storing one renders "p. p. 142".
     expect(useRecipeStore.getState().recipeById(cake.id)!.sourcePage).toBe(expected);
+  });
+});
+
+describe('cookbook index entries', () => {
+  const book = (id: string, title: string) =>
+    ({ id, title, titleKey: `${title.toLowerCase()}|`, author: null, sortOrder: 1, createdAt: '' });
+
+  beforeEach(() => {
+    useRecipeStore.setState({ cookbooks: [book('b-six', 'Six Seasons'), book('b-plenty', 'Plenty')] });
+  });
+
+  it('adds a line to a book\'s index, cleaned, and never as a recipe', () => {
+    const entry = useRecipeStore.getState().addIndexEntry('b-six', {
+      title: '  Braised lentils ', page: 'p. 142', ingredients: ['Lentils', ' shallots ', 'lentils', ''],
+    })!;
+
+    expect(entry).toMatchObject({ cookbookId: 'b-six', title: 'Braised lentils', page: '142', ingredients: ['Lentils', 'shallots'] });
+    expect(useRecipeStore.getState().indexEntries).toHaveLength(1);
+    expect(useRecipeStore.getState().recipes).toHaveLength(0);
+  });
+
+  it('refuses no title, a book that isn\'t on the shelf, and a second line of one name in one book', () => {
+    const store = useRecipeStore.getState();
+    expect(store.addIndexEntry('b-six', { title: '  ', page: null, ingredients: [] })).toBeNull();
+    expect(store.addIndexEntry('b-gone', { title: 'Soup', page: null, ingredients: [] })).toBeNull();
+    expect(store.addIndexEntry('b-six', { title: 'Lentil soup', page: '88', ingredients: [] })).not.toBeNull();
+    expect(useRecipeStore.getState().addIndexEntry('b-six', { title: 'lentil soup', page: '90', ingredients: [] })).toBeNull();
+    // Another book's index may have its own.
+    expect(useRecipeStore.getState().addIndexEntry('b-plenty', { title: 'Lentil soup', page: '12', ingredients: [] })).not.toBeNull();
+  });
+
+  it('edits and deletes a line', () => {
+    const entry = useRecipeStore.getState().addIndexEntry('b-six', { title: 'Soup', page: '1', ingredients: [] })!;
+    expect(useRecipeStore.getState().updateIndexEntry(entry.id, { title: 'Lentil soup', page: '2', ingredients: ['lentils'] })).toBe(true);
+    expect(useRecipeStore.getState().indexEntries[0]).toMatchObject({ title: 'Lentil soup', page: '2', ingredients: ['lentils'] });
+
+    useRecipeStore.getState().deleteIndexEntry(entry.id);
+    expect(useRecipeStore.getState().indexEntries).toHaveLength(0);
+  });
+
+  it('takes a book\'s index with it when the book is deleted', () => {
+    useRecipeStore.getState().addIndexEntry('b-six', { title: 'Soup', page: '1', ingredients: [] });
+    useRecipeStore.getState().addIndexEntry('b-plenty', { title: 'Salad', page: '2', ingredients: [] });
+
+    useRecipeStore.getState().deleteCookbook('b-six');
+
+    expect(useRecipeStore.getState().indexEntries.map(e => e.title)).toEqual(['Salad']);
+  });
+
+  it('moves the loser\'s index to the survivor on a merge, folding a dish both listed', () => {
+    const store = useRecipeStore.getState();
+    store.addIndexEntry('b-six', { title: 'Lentil soup', page: null, ingredients: ['lentils'] });
+    store.addIndexEntry('b-plenty', { title: 'Lentil Soup', page: '88', ingredients: ['lentils', 'cumin'] });
+    store.addIndexEntry('b-plenty', { title: 'Fennel salad', page: '40', ingredients: ['fennel'] });
+
+    expect(useRecipeStore.getState().mergeCookbooks('b-six', 'b-plenty')).toBe(true);
+
+    const entries = useRecipeStore.getState().indexEntries;
+    expect(entries).toHaveLength(2);
+    expect(entries.every(e => e.cookbookId === 'b-six')).toBe(true);
+    expect(entries.find(e => e.title === 'Lentil soup')).toMatchObject({ page: '88', ingredients: ['lentils', 'cumin'] });
+  });
+
+  it('makes the recipe to cook a line from, with its book and page and no lines', () => {
+    const entry = useRecipeStore.getState().addIndexEntry('b-six', { title: 'Braised lentils', page: '142', ingredients: ['lentils'] })!;
+
+    const recipe = useRecipeStore.getState().recipeFromIndexEntry(entry.id)!;
+
+    expect(recipe).toMatchObject({ name: 'Braised lentils', cookbookId: 'b-six', source: 'Six Seasons', sourcePage: '142' });
+    expect(recipe.ingredients).toEqual([]);
+    // The entry stays, and asking again opens the same recipe.
+    expect(useRecipeStore.getState().indexEntries).toHaveLength(1);
+    expect(useRecipeStore.getState().recipeFromIndexEntry(entry.id)!.id).toBe(recipe.id);
+    expect(useRecipeStore.getState().recipes).toHaveLength(1);
   });
 });

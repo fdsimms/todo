@@ -445,6 +445,7 @@ file: the two maps are indexes, not write-ups.
 | "if there's no butter, use margarine" | `src/utils/itemSubs.ts` — see `docs/arch/groceries.md` |
 | "white onion is still onion" | `src/utils/itemVarieties.ts` — see `docs/arch/groceries.md` |
 | "always use oat milk for milk" | `src/utils/standingSwaps.ts` — see `docs/arch/groceries.md` |
+| a cookbook's index, and finding what to cook by ingredient ("Cook with…") | `src/utils/cookbookIndex.ts` + `CookbookIndexEntry` + `src/components/CookWithSheet.tsx` — see `docs/arch/recipes.md`. An index line is deliberately **not a recipe**: its own table, read only by Cook with… and the book's own page, so a 150-dish index never reaches a picker, a count or Backfill |
 | one recipe used inside another | `src/utils/recipeComponents.ts` — see `docs/arch/recipes.md` |
 | "serrano or jalapeño", decided at the shelf | `ChoiceResolution.undecided` in `src/utils/recipeComponents.ts` — see `docs/arch/groceries.md` |
 | which heading an ingredient sits under | `src/utils/recipeSections.ts` — see `docs/arch/recipes.md` |

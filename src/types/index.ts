@@ -5967,6 +5967,32 @@ export interface Cookbook {
   createdAt: string;
 }
 
+// One line of a cookbook's index: a dish, the page it's on, and the
+// ingredients the index files it under ("Lentils", "Shallots").
+//
+// **Deliberately not a Recipe.** It has no ingredient list, no method and
+// nothing to shop for, so as a recipe row it would sit in every picker, count,
+// Backfill queue and meal-plan list as a recipe that can't be cooked from.
+// Its own table keeps it out of all of them by construction, because none of
+// them read it. Two surfaces do: the "Cook with" finder
+// (`src/utils/cookbookIndex.ts`) and the book's own page. When you decide to
+// cook one, `recipeFromIndexEntry` makes the real recipe and the entry stays
+// as it was. See docs/arch/recipes.md.
+//
+// `ingredients` is the index's own words, not grocery keys, so a catalog
+// rename never has to rewrite it and matching works the key out at read time.
+// It is the main things the dish uses, never all of them, which is the other
+// reason it can't be recipe lines: every reader of those assumes a whole list.
+export interface CookbookIndexEntry {
+  id: string;
+  cookbookId: string;
+  title: string;
+  // As printed ("142", "112-115"), the same shape as Recipe.sourcePage.
+  page: string | null;
+  ingredients: string[];
+  createdAt: string;
+}
+
 // A dish you cook, with what it takes to shop for it.
 //
 // Its own table rather than a TaskTemplate variant: applyTemplate materialises

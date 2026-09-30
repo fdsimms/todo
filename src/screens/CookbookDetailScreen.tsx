@@ -7,6 +7,8 @@ import { useShallow } from 'zustand/react/shallow';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { DetailHeader } from '../components/DetailHeader';
 import { EmptyState } from '../components/EmptyState';
+import { EmptyNote } from '../components/EmptyNote';
+import { CookbookIndexEntrySheet } from '../components/CookbookIndexEntrySheet';
 import { InlineAction } from '../components/InlineAction';
 import { SheetModal } from '../components/SheetModal';
 import { SheetHeader } from '../components/SheetHeader';
@@ -19,14 +21,22 @@ import { totalMinutes } from '../utils/recipeUtils';
 import {
   cookbookLinkCandidates, cookbookLinkPrompt, recipesInCookbook, type CookbookLinkCandidate,
 } from '../utils/cookbookRecipes';
-import type { Recipe } from '../types';
+import { entriesInCookbook } from '../utils/cookbookIndex';
+import type { CookbookIndexEntry, Recipe } from '../types';
 import { useFilterField } from '../hooks/useFilterField';
 
 type RootStackParamList = {
   CookbookDetail: { cookbookId: string };
 };
 
-/** One book's title, author, and the recipes linked to it. */
+/**
+ * One book's title, author, the recipes linked to it, and its index.
+ *
+ * The index is the book's dishes as its index lists them, which aren't
+ * recipes (see `CookbookIndexEntry`): this page and Cook with… are the only
+ * two places they're shown, and this is the one where they're added and
+ * corrected.
+ */
 export function CookbookDetailScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
@@ -41,6 +51,17 @@ export function CookbookDetailScreen() {
   const cookbooks = useRecipeStore(s => s.cookbooks);
   // Page order, the way a cookbook is browsed: each row already says "Page N".
   const recipes = useMemo(() => recipesInCookbook(allRecipes, cookbookId), [allRecipes, cookbookId]);
+  const allEntries = useRecipeStore(useShallow(s => s.indexEntries));
+  const indexEntries = useMemo(() => entriesInCookbook(allEntries, cookbookId), [allEntries, cookbookId]);
+
+  // Which index line the entry sheet is editing; null while adding one.
+  const [entrySheetOpen, setEntrySheetOpen] = useState(false);
+  const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
+  const openEntrySheet = (entryId: string | null) => {
+    haptics.tap();
+    setEditingEntryId(entryId);
+    setEntrySheetOpen(true);
+  };
 
   const [linkPickerVisible, setLinkPickerVisible] = useState(false);
   const searchFilter = useFilterField();
@@ -111,6 +132,27 @@ export function CookbookDetailScreen() {
     );
   };
 
+  const renderIndexEntry = (entry: CookbookIndexEntry) => (
+    <TouchableOpacity
+      key={entry.id}
+      style={styles.row}
+      onPress={() => openEntrySheet(entry.id)}
+      activeOpacity={interaction.activeOpacity}
+      accessibilityRole="button"
+      accessibilityLabel={`Edit ${entry.title} in the index`}
+    >
+      <View style={styles.info}>
+        <Text style={styles.title} numberOfLines={2}>{entry.title}</Text>
+        <Text style={styles.metaText} numberOfLines={1}>
+          {[entry.page ? `Page ${entry.page}` : null, entry.ingredients.join(', ') || null]
+            .filter(Boolean)
+            .join(' · ')}
+        </Text>
+      </View>
+      <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+    </TouchableOpacity>
+  );
+
   // The row can be gone while this screen is still mounted (deleted from
   // another screen), same reasoning RecipeDetailScreen's own guard gives.
   if (!cookbook) {
@@ -132,33 +174,61 @@ export function CookbookDetailScreen() {
       <Text style={styles.subtitle}>
         {cookbook.author ? `${cookbook.author} · ` : ''}
         {recipes.length === 0 ? 'No recipes' : recipes.length === 1 ? '1 recipe' : `${recipes.length} recipes`}
+        {indexEntries.length > 0 ? ` · ${indexEntries.length} in the index` : ''}
       </Text>
 
-      {recipes.length === 0 ? (
-        <EmptyState
-          icon="restaurant-outline"
-          title="No recipes from this book yet"
-          subtitle="Link a recipe to it from the recipe's Source row, or find one already in your box"
-          actionLabel="Link a recipe"
-          onAction={() => setLinkPickerVisible(true)}
-        />
-      ) : (
-        <FlatList
-          data={recipes}
-          keyExtractor={r => r.id}
-          renderItem={renderItem}
-          contentContainerStyle={styles.list}
-          ListHeaderComponent={
+      <FlatList
+        data={recipes}
+        keyExtractor={r => r.id}
+        renderItem={renderItem}
+        contentContainerStyle={styles.list}
+        ListHeaderComponent={
+          <>
+            <Text style={styles.sectionLabel}>RECIPES</Text>
             <InlineAction
               label="Link a recipe"
               icon="add"
               onPress={() => setLinkPickerVisible(true)}
               style={styles.linkAction}
             />
-          }
-          ListFooterComponent={<View style={{ height: insets.bottom + spacing.xl }} />}
-        />
-      )}
+          </>
+        }
+        ListEmptyComponent={
+          <View style={styles.note}>
+            <EmptyNote icon="restaurant-outline">
+              No recipes from this book yet. Link one from its Source row, or find one already in your box.
+            </EmptyNote>
+          </View>
+        }
+        ListFooterComponent={
+          <>
+            <Text style={[styles.sectionLabel, styles.sectionLabelSpaced]}>INDEX</Text>
+            <InlineAction
+              label="Add to index"
+              icon="add"
+              onPress={() => openEntrySheet(null)}
+              style={styles.linkAction}
+            />
+            {indexEntries.length === 0 ? (
+              <View style={styles.note}>
+                <EmptyNote icon="list-outline">
+                  Add the dishes this book's index lists, with the ingredients it lists them under. Cook with… finds them by ingredient, and they stay out of your recipe box.
+                </EmptyNote>
+              </View>
+            ) : (
+              indexEntries.map(renderIndexEntry)
+            )}
+            <View style={{ height: insets.bottom + spacing.xl }} />
+          </>
+        }
+      />
+
+      <CookbookIndexEntrySheet
+        visible={entrySheetOpen}
+        cookbookId={cookbookId}
+        entryId={editingEntryId}
+        onClose={() => setEntrySheetOpen(false)}
+      />
 
       {/* Existing recipes only — a brand new one still starts from the
           Recipes screen's own add menu, same as any other recipe. */}
@@ -242,6 +312,16 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   list: {
     paddingTop: spacing.sm,
   },
+  sectionLabel: {
+    color: colors.textSecondary,
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
+    letterSpacing: 0.8,
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.sm,
+  },
+  sectionLabelSpaced: { marginTop: spacing.lg },
+  note: { marginHorizontal: spacing.md, marginVertical: spacing.xxs },
   linkAction: {
     marginHorizontal: spacing.md,
     marginBottom: spacing.sm,

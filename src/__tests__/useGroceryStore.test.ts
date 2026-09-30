@@ -116,6 +116,10 @@ jest.mock('../db/database', () => ({
   // ingredient keys in step.
   dbGetAllRecipes: jest.fn().mockReturnValue([]),
   dbGetAllCookbooks: jest.fn().mockReturnValue([]),
+  dbGetAllCookbookIndexEntries: jest.fn().mockReturnValue([]),
+  dbInsertCookbookIndexEntry: jest.fn(),
+  dbUpdateCookbookIndexEntry: jest.fn(),
+  dbDeleteCookbookIndexEntry: jest.fn(),
   dbInsertCookbook: jest.fn(),
   dbUpdateCookbook: jest.fn(),
   dbDeleteCookbook: jest.fn(),
