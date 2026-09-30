@@ -25,18 +25,13 @@ import { useReduceMotion } from '../utils/useReduceMotion';
 import { listRemainingCount } from '../utils/groceryLists';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { useTaskGroupStore } from '../store/useTaskGroupStore';
-import { useTemplateStore } from '../store/useTemplateStore';
-import { usePersonStore } from '../store/usePersonStore';
-import { useFoodLogStore } from '../store/useFoodLogStore';
-import { useMoodStore } from '../store/useMoodStore';
-import { useMedicationStore } from '../store/useMedicationStore';
 import {
   hubSubtitle, menuDestinations, menuSearchTerms, rowEntryRoute, searchMenu, visibleMenuRows,
   type NavMenuRow, type NavSearchResult,
 } from '../utils/navHubs';
 import { tipsFor } from '../utils/tips';
 import { useFilterField } from '../hooks/useFilterField';
+import { useNavMenuOptions } from '../hooks/useNavMenuOptions';
 
 // 85% rather than the 72% this used to be. The drawer is the only thing on
 // screen while it's open — everything behind it is blurred and dimmed and
@@ -82,32 +77,17 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
   // A scalar, so it's referentially stable and needs no useShallow. Counts
   // what's still to buy — items already in the trolley aren't a reason to go.
   const groceryCount = useGroceryStore(s => listRemainingCount(s.listEntries, s.activeListId));
-  const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
-  const simpleMode = useSettingsStore(s => s.simpleMode);
   // A scalar for the same reason groceryCount is one. TIPS is a module-level
   // constant, so the only thing that can move this is a dismissal.
   // Counted over `tipsFor`, not `TIPS`: the badge has to agree with the list
   // behind it, and simplified mode can take thirty tips out of that list.
   const unreadTipCount = useSettingsStore(s =>
     tipsFor(s.simpleMode).filter(tip => !s.seenTips.includes(tip.id)).length);
-  // Counted, not listed, for the same reason: a scalar selector is
-  // referentially stable, so the drawer doesn't re-render every time a stack
-  // or template is edited.
-  const stackCount = useTaskGroupStore(s => s.groups.length);
-  const templateCount = useTemplateStore(s => s.templates.length);
-  const peopleCount = usePersonStore(s => s.people.length);
-  const moodCount = useMoodStore(s => s.logs.length);
-  const medicationCount = useMedicationStore(s => s.logs.length);
-  // The whole history, not today's rows — see useFoodLogStore.totalCount.
-  const foodLogCount = useFoodLogStore(s => s.totalCount);
 
   const searchFilter = useFilterField();
   const query = searchFilter.query;
-  const menuOptions = useMemo(() => ({
-    kitchenEnabled,
-    simpleMode,
-    counts: { stacks: stackCount, templates: templateCount, people: peopleCount, mood: moodCount, medications: medicationCount, foodLog: foodLogCount },
-  }), [kitchenEnabled, simpleMode, stackCount, templateCount, peopleCount, moodCount, medicationCount, foodLogCount]);
+  // Shared with the pull-down quick search, which searches the same screens.
+  const menuOptions = useNavMenuOptions();
   const menuRows = useMemo(() => visibleMenuRows(menuOptions), [menuOptions]);
   const terms = useMemo(() => menuSearchTerms(query), [query]);
   const results = useMemo(

@@ -8,6 +8,7 @@ import {
   type ProjectSearchResult,
 } from './fuzzySearch';
 import { collapseOccurrences, type CollapsedOccurrence } from './searchCollapse';
+import { menuSearchTerms, searchMenu, type NavSearchResult } from './navHubs';
 
 /**
  * How many matches the quick-search card shows before it defers to the
@@ -103,4 +104,55 @@ export function quickSearch(
     total,
     overflow: total - shown,
   };
+}
+
+/**
+ * How many screen matches ("Go to Weight") the quick-search card shows at
+ * most. They spend the card's own `QUICK_SEARCH_LIMIT` rather than adding to
+ * it, so the card never grows past five rows; two is enough because a screen
+ * query is almost always a name the user already knows, and the rest of the
+ * card still belongs to their tasks.
+ */
+export const QUICK_DESTINATION_LIMIT = 2;
+
+/**
+ * Screens the card never offers: the one it opens from (Tasks is Today) and
+ * the one its own footer row already hands over to (Search). A result that
+ * takes you where you are, or duplicates the row at the bottom, is a wasted
+ * slot out of five.
+ */
+const SKIPPED_ROUTES: ReadonlySet<string> = new Set(['Today', 'Search']);
+
+/**
+ * The screens a quick-search query names, so a pull and a few letters reach
+ * Weight or People without going through the menu and a hub.
+ *
+ * The index is the side menu's own (`menuDestinations`, passed in already
+ * filtered by the kitchen switch and simplified mode) and so is the matching
+ * (`searchMenu`), which is what keeps the two from disagreeing about which
+ * screens exist or what finds them. Unlike the menu's find field this one
+ * *ranks*, because it keeps two rows rather than showing every hit: in menu
+ * order, "we" would spend a slot on Meal plan (keyword "week") ahead of
+ * Weight. A label starting with the query beats a label containing it, which
+ * beats a keyword-only match, and menu order breaks ties so the result is
+ * stable as the query grows.
+ */
+export function quickDestinations(
+  destinations: NavSearchResult[],
+  query: string,
+  limit: number = QUICK_DESTINATION_LIMIT
+): NavSearchResult[] {
+  const terms = menuSearchTerms(query);
+  if (terms.length === 0 || limit <= 0) return [];
+  const tier = (d: NavSearchResult): number => {
+    const label = d.label.toLowerCase();
+    if (label.startsWith(terms[0]) && terms.every(t => label.includes(t))) return 0;
+    if (terms.every(t => label.includes(t))) return 1;
+    return 2;
+  };
+  return searchMenu(destinations.filter(d => !SKIPPED_ROUTES.has(d.route)), terms)
+    .map((d, i) => ({ d, i, t: tier(d) }))
+    .sort((a, b) => a.t - b.t || a.i - b.i)
+    .slice(0, limit)
+    .map(x => x.d);
 }
