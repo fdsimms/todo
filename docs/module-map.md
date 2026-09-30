@@ -331,6 +331,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/tips.ts` — TipArea, TipScreen, TipSignals, Tip, TipAreaInfo, TIP_AREAS, TIPS, tipsFor, tipsForArea, unseenTipsForScreen, +4 more
 - `src/utils/titleRules.ts` — MIN_KEYWORD_LENGTH, KEYWORD_MAX_LENGTH, TITLE_RULE_MATCHES, TitleRuleMatchResult, TitleRuleFill, emptyTitleRule, titleRuleSaysNothing, titleRuleIsUseless, normalizeKeywords, matchKeyword, +7 more
 - `src/utils/titleSuggestions.ts` — TitleSuggestion, suggestTitles
+- `src/utils/tooltipAim.ts` — TOOLTIP_CARET_W, aimTooltip
 - `src/utils/tripForecast.ts` — TripForecast, summarizeTripForecast, describeTripForecast, describeForecastGap
 - `src/utils/tripLiveActivity.ts` — TripRun, buildTripRun, useTripLiveActivitySync
 - `src/utils/unattendedLedger.ts` — UnattendedActionSpec, UNATTENDED_ACTION_SPECS, unattendedIcon, unattendedSource, describeUnattendedEntry, UnattendedDay, unattendedDays, unattendedDayLabel, unattendedSummary, unattendedKinds, +1 more

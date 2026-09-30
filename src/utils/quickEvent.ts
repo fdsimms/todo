@@ -1,5 +1,6 @@
 import { addHours } from 'date-fns/addHours';
 import {
+  applyMentionOverrides,
   matchPersonMentions,
   parseTaskInput,
   type GroupMentionToken,
@@ -32,6 +33,14 @@ export interface QuickEventDraft {
   personIds: string[];
   /** Whether a day or time was read from the line, for the preview. */
   scheduled: boolean;
+  /**
+   * The schedule phrase that was read, for the sheet to highlight and offer
+   * to set: where it starts, the text itself, and the line with it taken out
+   * (mentions left as typed). Null when nothing was read or it was ignored.
+   */
+  phrase: { start: number; text: string; lineWithout: string } | null;
+  /** Each resolved "@name" span in the line, for highlighting. */
+  mentionSpans: [number, number][];
 }
 
 /** A representative hour for a day-part word with no clock time. */
@@ -58,10 +67,21 @@ export function parseQuickEvent(
      * pulled back a day in the grace window so a parsed "tomorrow" lands right.
      */
     wallClock: Date;
+    /**
+     * Read no schedule phrase at all: the user said "not that" to it, so it
+     * stays part of the title and the day falls back to the default.
+     */
+    ignoreSchedule?: boolean;
+    /** Picks made for an "@name" more than one person answers to, by token. */
+    mentionOverrides?: Record<string, string>;
   }
 ): QuickEventDraft {
-  const parsed = parseTaskInput(input, opts.now, opts.wallClock);
-  const mentions = matchPersonMentions(input, [...opts.people], [...(opts.groups ?? [])]);
+  const parsed = opts.ignoreSchedule ? null : parseTaskInput(input, opts.now, opts.wallClock);
+  const mentions = applyMentionOverrides(
+    input,
+    matchPersonMentions(input, [...opts.people], [...(opts.groups ?? [])]),
+    opts.mentionOverrides ?? {}
+  );
   const personIds = [...new Set(mentions.map(m => m.personId))];
 
   // Rebuild the title from the original input so both kinds of span can be
@@ -105,7 +125,12 @@ export function parseQuickEvent(
     start = defaultNewEventSpan(schedule?.dueDate ?? opts.today, opts.today, opts.wallClock).start;
   }
 
-  return { title, start, end: addHours(start, 1), personIds, scheduled: !!schedule };
+  const phrase = parsed
+    ? { start: parsed.matchStart, text: parsed.matchedText, lineWithout: parsed.cleanTitle }
+    : null;
+  const mentionSpans = [...bySpan.keys()].map(k => k.split(':').map(Number) as [number, number]);
+
+  return { title, start, end: addHours(start, 1), personIds, scheduled: !!schedule, phrase, mentionSpans };
 }
 
 /**

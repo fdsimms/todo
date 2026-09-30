@@ -75,6 +75,7 @@ import { suggestTitles } from '../utils/titleSuggestions';
 import { findArchivedMatch } from '../utils/archiveMatch';
 import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, parseDurationInput, parseSupplyInput, parseCategoryAndTagsInput, parsePriorityInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, applyMentionOverrides, withTrailingSpace, type ParsedCategoryAndTags, type MentionSuggestionCandidate } from '../utils/parseTaskInput';
 import { mergeRanges } from '../utils/ranges';
+import { aimTooltip } from '../utils/tooltipAim';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { usePersonGroupStore } from '../store/usePersonGroupStore';
 import { groupMentionTokens } from '../utils/peopleRegistry';
@@ -955,32 +956,9 @@ export function QuickAddModal({
   // Tooltip geometry: center the bubble under the highlighted phrase and aim
   // the caret at it, clamped to the row. Mirror-text widths land a frame after
   // the parse appears; until then the tooltip is still fading in from 0.
-  const CARET_W = 12;
-  let bubbleLeft = 0;
-  let caretLeft = 14;
-  if (activeMatch && prefixW != null && matchW != null) {
-    const center = Math.min((prefixW + matchW) / 2, Math.max(inputW - 8, 0));
-    bubbleLeft = Math.min(Math.max(center - bubbleW / 2, 0), Math.max(tooltipRowW - bubbleW, 0));
-    const rawAim = center - bubbleLeft;
-    // A multi-candidate row has gaps between its pills (tooltipCandidateRow's
-    // own `gap`), and the raw aim point can land in one — floating the caret
-    // over nothing rather than a pill it visibly touches. Snap to whichever
-    // pill is actually nearest instead.
-    let aim = rawAim;
-    let nearestDist = Infinity;
-    for (const layout of candidateLayouts) {
-      if (!layout) continue;
-      const dist = Math.abs(layout.x + layout.width / 2 - rawAim);
-      if (dist < nearestDist) {
-        nearestDist = dist;
-        aim = layout.x + layout.width / 2;
-      }
-    }
-    caretLeft = Math.min(
-      Math.max(aim - CARET_W / 2, 10),
-      Math.max(bubbleW - CARET_W - 10, 10),
-    );
-  }
+  const { bubbleLeft, caretLeft } = activeMatch
+    ? aimTooltip({ prefixW, matchW, inputW, bubbleW, rowW: tooltipRowW, candidateLayouts })
+    : { bubbleLeft: 0, caretLeft: 14 };
 
   // Apply the suggested schedule and strip the phrase from the title.
   const applyParse = () => {
