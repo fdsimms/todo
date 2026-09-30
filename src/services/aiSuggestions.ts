@@ -2448,6 +2448,7 @@ export async function estimateMealNutrition(
     system: [
       'You estimate what one described meal contains, for somebody writing it down in a food diary.',
       'Give figures for the whole thing described, as one helping. Do not give per-100g figures.',
+      'A line reading "Amount eaten: ..." is the amount the person actually had. Base every figure on exactly that amount and state it in quantity.',
       'State only the nutrients you actually have a view on. Omit a field entirely rather than guessing a zero: an omitted nutrient reads as unknown, and a zero reads as a measurement that the food contains none.',
       'When the description names more than one component (separate foods, or an item plus a side), also split the total across a breakdown array, one entry per component named. Each entry states only the nutrients you have a view on for that component, same rule as the total. Skip the breakdown entirely for a single named item, or when you cannot split it sensibly.',
       'Set basis to "published" only when you are recalling figures a specific chain or manufacturer publishes, and name them in attribution. Otherwise set it to "typical" and leave attribution empty.',
@@ -2467,7 +2468,7 @@ export async function estimateMealNutrition(
         type: 'object',
         properties: {
           label: { type: 'string', description: 'What to call this in a food diary, e.g. "Cheeseburger and fries, Five Guys"' },
-          quantity: { type: 'string', description: 'The amount these figures are for, in words, e.g. "1 burger and a regular fries"' },
+          quantity: { type: 'string', description: 'The amount these figures are for. Always a concrete, checkable amount: a weight or volume, plus a household measure where one fits, e.g. "150 g (about 1/3 block)" or "1 burger and a regular fries (about 450 g)". Never a bare "1 serving". When the description states an amount, use exactly that.' },
           amounts: amountsSchema,
           basis: {
             type: 'string',
