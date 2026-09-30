@@ -2,6 +2,7 @@ import type { GroceryItem, Task, TaskDraft } from '../types';
 import { GROCERY_USE_UP_LEAD_DAYS_MAX, GROCERY_USE_UP_LEAD_DAYS_MIN } from '../types';
 import { dayKeyToDate } from './dateUtils';
 import { generatedBy, wantsGeneratedTask } from './generatedTasks';
+import { OUT_OF_IT_UNTIL } from './grocerySuggest';
 import { liveExpiresAt } from './groceryShelfLife';
 import { kitchenEntryId, kitchenLinkUrl } from './kitchenInventory';
 import { resolveOffsetDate } from './templateUtils';
@@ -65,6 +66,12 @@ export function wantsUseUpTask(item: GroceryItem, enabled: boolean): boolean {
   // An opt-in isn't lost by this, only deferred — it's still sitting on the row
   // when the item thaws or is bought again, and takes effect then.
   if (liveExpiresAt(item) === null) return false;
+  // Out of it is the other "nothing to remind about": every path that marks a
+  // row out clears its use-by day now, but rows marked out before that clear
+  // existed still carry the old date, and the catch-up sweep (#2924) walks
+  // every row with one. Without this, a packet thrown away weeks ago came back
+  // as "Use up X, 14d overdue".
+  if (item.onHandUntil === OUT_OF_IT_UNTIL) return false;
   return wantsGeneratedTask(item.useUpTask, enabled, true);
 }
 

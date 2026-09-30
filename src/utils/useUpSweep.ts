@@ -34,7 +34,8 @@ export type UseUpSweepSource =
  *   always swept, so replacing that sweep with this one changes nothing about
  *   a leftover but its place in the queue.
  * - **Only the grocery items that want a task and haven't already had one for
- *   this use-by day.** Not every catalog row, since a catalog runs to hundreds
+ *   this use-by day**, plus, ahead of everything, any item still holding a
+ *   live task it no longer wants, so the reconcile can drop it. Not every catalog row, since a catalog runs to hundreds
  *   and nearly all of them have no date. And not an item whose task for its
  *   current use-by day was already finished (completed or archived): only a
  *   *live* task blocks a new one on a mutation (`reconcileUseUpTask`), which is
@@ -56,12 +57,21 @@ export function useUpSweepOrder(
   groceryUseUpTasks: boolean
 ): UseUpSweepSource[] {
   const finished = new Set<string>();
+  const live = new Set<string>();
   for (const task of tasks) {
-    if (!task.completed && !task.archived) continue;
+    if (!task.completed && !task.archived) {
+      const itemId = generatedSourceOf(task, 'groceryUseUp');
+      if (itemId) live.add(itemId);
+      continue;
+    }
     const itemId = generatedSourceOf(task, 'groceryUseUp');
     if (itemId && task.deadline) finished.add(`${itemId}\u0000${task.deadline}`);
   }
 
+  // An item still holding a live task it no longer wants (marked out of it
+  // before that ended its task) is visited first, so the reconcile drops the
+  // task and the slot it frees goes to whoever is next in the queue.
+  const stale: UseUpSweepSource[] = [];
   const queue: Array<{ source: UseUpSweepSource; day: string | null; index: number }> = [];
   for (const leftover of leftovers) {
     if (leftover.finishedAt) continue;
@@ -72,7 +82,10 @@ export function useUpSweepOrder(
     });
   }
   for (const item of items) {
-    if (!wantsUseUpTask(item, groceryUseUpTasks)) continue;
+    if (!wantsUseUpTask(item, groceryUseUpTasks)) {
+      if (live.has(item.id)) stale.push({ kind: 'groceryUseUp', id: item.id });
+      continue;
+    }
     // wantsUseUpTask has already required a live day, so `expiresAt` is set.
     const deadline = useUpTaskFields(item, 0).deadline;
     if (finished.has(`${item.id}\u0000${deadline}`)) continue;
@@ -83,7 +96,7 @@ export function useUpSweepOrder(
     });
   }
 
-  return queue
+  return [...stale, ...queue
     .sort((a, b) => {
       if (a.day !== b.day) {
         if (a.day === null) return 1;
@@ -92,5 +105,5 @@ export function useUpSweepOrder(
       }
       return a.index - b.index;
     })
-    .map(entry => entry.source);
+    .map(entry => entry.source)];
 }

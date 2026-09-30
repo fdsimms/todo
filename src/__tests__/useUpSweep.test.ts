@@ -1,6 +1,7 @@
 import { useUpSweepOrder } from '../utils/useUpSweep';
 import { useUpTaskFields } from '../utils/groceryExpiry';
 import type { GroceryItem, Leftover, Task } from '../types';
+import { OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
 
 // The chain reaches dateUtils, which reaches the settings store for
 // dayResetTime. Nothing here needs it: every date is a calendar day key.
@@ -137,6 +138,16 @@ describe('useUpSweepOrder', () => {
     const spinach = item({ expiresAt: '2026-08-24' });
     const lastWeek = useUpTask(item({ id: spinach.id, expiresAt: '2026-08-17' }), { completed: true });
     expect(useUpSweepOrder([spinach], [], [lastWeek], true).map(s => s.id)).toEqual([spinach.id]);
+  });
+
+  it('lists an item marked out of it only when it still holds a live task, and first', () => {
+    const early = item({ name: 'Kale', expiresAt: '2026-08-14' });
+    const out = item({ name: 'Just Egg', onHandUntil: OUT_OF_IT_UNTIL, expiresAt: '2026-08-20' });
+    expect(useUpSweepOrder([early, out], [], [], true).map(s => s.id)).toEqual([early.id]);
+    // Visited ahead of the rest, so the slot its dropped task frees is open
+    // for the others.
+    expect(useUpSweepOrder([early, out], [], [useUpTask(out)], true).map(s => s.id))
+      .toEqual([out.id, early.id]);
   });
 
   it('still lists an item with a live task, so the reconcile can keep it in line', () => {

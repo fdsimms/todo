@@ -6158,6 +6158,36 @@ describe('use-up tasks', () => {
     expect(useGroceryStore.getState().items[0].useUpTask).not.toBe(false);
   });
 
+  it('answerPantryReview("out") clears the use-by day, as the other out-of-it paths do', () => {
+    mockUseUpTasks = true;
+    const spinach = makeItem({ name: NAME });
+    seed([spinach]);
+    useGroceryStore.getState().setExpiresAt(spinach.id, '2026-08-17');
+
+    useGroceryStore.getState().answerPantryReview(spinach.id, 'out');
+
+    expect(useGroceryStore.getState().items[0].expiresAt).toBeNull();
+  });
+
+  it('the catch-up sweep drops a live task on a row marked out that kept its date', () => {
+    // A row marked out before the out-of-it paths cleared expiresAt: the sweep
+    // walked it as dated and handed back "Use up X", weeks overdue.
+    mockUseUpTasks = true;
+    const spinach = makeItem({ name: NAME });
+    seed([spinach]);
+    useGroceryStore.getState().setExpiresAt(spinach.id, '2026-08-17');
+    expect(useUpTaskFor(spinach.id)).toBeDefined();
+    useGroceryStore.setState(s => ({
+      items: s.items.map(i => ({ ...i, onHandUntil: OUT_OF_IT_UNTIL })),
+    }));
+
+    useGroceryStore.getState().reconcileAllUseUpTasks();
+
+    expect(useUpTaskFor(spinach.id)).toBeUndefined();
+    // Dropped by the app, so not a permanent opt-out.
+    expect(useGroceryStore.getState().items[0].useUpTask).not.toBe(false);
+  });
+
   it('honours an opt-out on the item, which is what deleting the task records', () => {
     mockUseUpTasks = true;
     const spinach = makeItem({ name: NAME, useUpTask: false });
