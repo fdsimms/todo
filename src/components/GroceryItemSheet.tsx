@@ -982,7 +982,8 @@ export function GroceryItemSheet({
   // toggles whether this item gets a use-up task, and a frozen item can't have
   // one whichever way the switch is set (see wantsUseUpTask). A live control
   // over a suspended mechanism is worse than no control.
-  const useUpTaskVisible = liveExpiresAt(item) !== null && (!searching
+  // Out of it is hidden for the same reason (wantsUseUpTask refuses it too).
+  const useUpTaskVisible = liveExpiresAt(item) !== null && !onHandPast && (!searching
     || matchesEditorQuery({ key: 'useUpTask', label: 'Use-up task', keywords: ['reminder', 'notification', 'task'] }, searchTerms));
   const removeFromListVisible = onViewedList && (!searching
     || matchesEditorQuery({ key: 'removeFromList', label: 'Remove from list', keywords: ['take off', 'delete'] }, searchTerms));

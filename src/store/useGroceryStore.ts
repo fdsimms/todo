@@ -3854,6 +3854,10 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       ...item,
       onHandUntil: until,
       pantryReviewedAt: now.toISOString(),
+      // The same clear setOnHandUntil and markOutOfMany make for the sentinel.
+      // Without it the disposed box's use-by day stayed on the row, reading as
+      // "14 days past" and dating the next re-add off it.
+      ...(answer === 'out' ? { expiresAt: null, frozenAt: null, openedAt: null } : null),
     };
     // Out of the item is out of a thawed portion too, the rule markOutOfMany
     // keeps: a thawed portion is more of the item in the fridge, and left

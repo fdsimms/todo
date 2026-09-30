@@ -8,6 +8,7 @@ import {
 } from '../utils/groceryExpiry';
 import type { GroceryItem } from '../types';
 import { GROCERY_USE_UP_LEAD_DAYS_MAX } from '../types';
+import { OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
 
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: { getState: () => ({ dayResetTime: '00:00' }) },
@@ -73,6 +74,12 @@ describe('wantsUseUpTask', () => {
 
   it('lets an item opt out with the setting on — what deleting the task records', () => {
     expect(wantsUseUpTask(item({ useUpTask: false }), true)).toBe(false);
+  });
+
+  it('wants nothing for a row marked out of it, even one still carrying a date', () => {
+    // Rows marked out before that cleared expiresAt kept the old day.
+    expect(wantsUseUpTask(item({ onHandUntil: OUT_OF_IT_UNTIL }), true)).toBe(false);
+    expect(wantsUseUpTask(item({ onHandUntil: OUT_OF_IT_UNTIL, useUpTask: true }), true)).toBe(false);
   });
 
   it('ignores whether the item is back on this week\'s list', () => {
