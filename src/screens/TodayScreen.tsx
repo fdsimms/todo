@@ -137,6 +137,7 @@ import { SavedViewEditorSheet } from '../components/SavedViewEditorSheet';
 import { clausesFromFilters } from '../utils/savedViews';
 import { useSavedViewStore } from '../store/useSavedViewStore';
 import { TodayOptionsMenu } from '../components/TodayOptionsMenu';
+import type { CardAnchor } from '../components/CardSheet';
 import { CategoryOrderSheet } from '../components/CategoryOrderSheet';
 import { DeloadSheet } from '../components/DeloadSheet';
 import { useMoodStore } from '../store/useMoodStore';
@@ -663,6 +664,7 @@ export function TodayScreen() {
   // filters it was opened from stand for.
   const [saveViewClauses, setSaveViewClauses] = useState<SavedViewClause[] | null>(null);
   const [optionsMenuVisible, setOptionsMenuVisible] = useState(false);
+  const [optionsMenuAnchor, setOptionsMenuAnchor] = useState<CardAnchor | null>(null);
   const [focusSetupVisible, setFocusSetupVisible] = useState(false);
   // Which entry point opened the setup sheet — whether it should seed from
   // the pinned block instead of running the suggester. See FocusSetupSheet's
@@ -3924,7 +3926,10 @@ export function TodayScreen() {
     ...(viewMode === 'today'
       ? [{
           icon: 'ellipsis-horizontal' as const,
-          onPress: () => setOptionsMenuVisible(true),
+          onPress: (e: GestureResponderEvent) => {
+            setOptionsMenuAnchor({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY });
+            setOptionsMenuVisible(true);
+          },
           active: hideCategories,
           accessibilityLabel: 'More options',
         }]
@@ -4755,6 +4760,7 @@ export function TodayScreen() {
             setEventsSheetVisible(true);
           } : undefined}
           eventCount={todayCalendarEvents.length}
+          anchor={optionsMenuAnchor}
         />
 
         <CategoryOrderSheet

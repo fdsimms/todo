@@ -4,13 +4,10 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  Keyboard,
-  KeyboardAvoidingView,
-  Platform,
   StyleSheet,
   Alert,
 } from 'react-native';
-import { SheetModal } from './SheetModal';
+import { CardSheet, useCardSheet } from './CardSheet';
 import { useSheetSubject } from '../hooks/useSheetSubject';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRecipeStore } from '../store/useRecipeStore';
@@ -61,6 +58,9 @@ export function CookbookEditor({ visible, cookbookId: liveCookbookId, onClose }:
   const [title, setTitle] = useState('');
   const [author, setAuthor] = useState('');
   const [mergeVisible, setMergeVisible] = useState(false);
+  const card = useCardSheet();
+  // Every way out, animated: the card fades and then the host lowers `visible`.
+  const finish = (after?: () => void) => card.close(() => { after?.(); onClose(); });
 
   // Reloads from the store each time the sheet opens on a book, so a
   // half-finished edit from last time never leaks into the next one — same
@@ -77,14 +77,13 @@ export function CookbookEditor({ visible, cookbookId: liveCookbookId, onClose }:
   }, [cookbookId, visible]);
 
   const saveAndClose = () => {
-    Keyboard.dismiss();
-    if (!cookbookId || !cookbook) { onClose(); return; }
+    if (!cookbookId || !cookbook) { finish(); return; }
     const trimmedTitle = title.trim();
     const trimmedAuthor = author.trim() || null;
     if (!trimmedTitle) {
       // A book with no title is one nobody can pick — see recipeProvenance.ts —
       // so an emptied field is left as it was rather than saved blank.
-      onClose();
+      finish();
       return;
     }
     if (trimmedTitle !== cookbook.title || trimmedAuthor !== cookbook.author) {
@@ -96,7 +95,7 @@ export function CookbookEditor({ visible, cookbookId: liveCookbookId, onClose }:
         return;
       }
     }
-    onClose();
+    finish();
   };
 
   const handleDelete = () => {
@@ -114,7 +113,8 @@ export function CookbookEditor({ visible, cookbookId: liveCookbookId, onClose }:
           ? `The ${indexCount} ${indexCount === 1 ? 'dish' : 'dishes'} in its index will be deleted.`
           : null,
       ].filter(Boolean).join(' '),
-      onConfirm: () => { Keyboard.dismiss(); deleteCookbook(cookbookId); onClose(); },
+      // Deleted once the card is gone, since the card is drawn from the book.
+      onConfirm: () => finish(() => deleteCookbook(cookbookId)),
     });
   };
 
@@ -135,66 +135,12 @@ export function CookbookEditor({ visible, cookbookId: liveCookbookId, onClose }:
   if (!cookbook) return null;
 
   return (
-    <SheetModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={saveAndClose}>
-      <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <View style={styles.header}>
-          <SheetHeaderButton label="Done" onPress={saveAndClose} />
-          <Text style={styles.headerTitle}>Edit cookbook</Text>
-          <TouchableOpacity
-            onPress={handleDelete}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel={`Delete cookbook ${cookbook.title}`}
-          >
-            <Ionicons name="trash-outline" size={20} color={colors.red} />
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.body}>
-          <Text style={styles.fieldLabel}>TITLE</Text>
-          <TextInput
-            style={styles.input}
-            value={title}
-            onChangeText={setTitle}
-            placeholder="Cookbook title"
-            placeholderTextColor={colors.textTertiary}
-            maxLength={RECIPE_SOURCE_MAX_LENGTH}
-            autoCapitalize="words"
-            returnKeyType="next"
-            accessibilityLabel="Cookbook title"
-          />
-          <Text style={[styles.fieldLabel, styles.fieldLabelSpaced]}>AUTHOR</Text>
-          <TextInput
-            style={styles.input}
-            value={author}
-            onChangeText={setAuthor}
-            placeholder="Author, optional"
-            placeholderTextColor={colors.textTertiary}
-            maxLength={RECIPE_SOURCE_MAX_LENGTH}
-            autoCapitalize="words"
-            returnKeyType="done"
-            accessibilityLabel="Cookbook author"
-          />
-          <Text style={styles.hint}>
-            {recipeCount === 0 ? 'No recipes' : recipeCount === 1 ? '1 recipe' : `${recipeCount} recipes`} linked
-            to this book. Changing the title or author here updates every one of them.
-          </Text>
-
-          {/* For the same book imported twice under a slightly different
-              title or author (see recipeProvenance.ts) — folds another book's
-              recipes into this one and removes it from the shelf. */}
-          <View style={styles.mergeRow}>
-            <InlineAction
-              label="Merge another book in"
-              icon="git-merge-outline"
-              variant="neutral"
-              onPress={() => { haptics.tap(); setMergeVisible(true); }}
-            />
-          </View>
-        </View>
-      </KeyboardAvoidingView>
-
-      {cookbookId && (
+    <CardSheet
+      name="CookbookEditor"
+      visible={visible}
+      controller={card}
+      onRequestClose={saveAndClose}
+      overlays={cookbookId && (
         <CookbookMergeSheet
           visible={mergeVisible}
           survivorId={cookbookId}
@@ -202,16 +148,70 @@ export function CookbookEditor({ visible, cookbookId: liveCookbookId, onClose }:
           onSelect={handleMergeSelect}
         />
       )}
-    </SheetModal>
+    >
+      <View style={styles.header}>
+        <SheetHeaderButton label="Done" onPress={saveAndClose} />
+        <Text style={styles.headerTitle}>Edit cookbook</Text>
+        <TouchableOpacity
+          onPress={handleDelete}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel={`Delete cookbook ${cookbook.title}`}
+        >
+          <Ionicons name="trash-outline" size={20} color={colors.red} />
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.body}>
+        <Text style={styles.fieldLabel}>TITLE</Text>
+        <TextInput
+          style={styles.input}
+          value={title}
+          onChangeText={setTitle}
+          placeholder="Cookbook title"
+          placeholderTextColor={colors.textTertiary}
+          maxLength={RECIPE_SOURCE_MAX_LENGTH}
+          autoCapitalize="words"
+          returnKeyType="next"
+          accessibilityLabel="Cookbook title"
+        />
+        <Text style={[styles.fieldLabel, styles.fieldLabelSpaced]}>AUTHOR</Text>
+        <TextInput
+          style={styles.input}
+          value={author}
+          onChangeText={setAuthor}
+          placeholder="Author, optional"
+          placeholderTextColor={colors.textTertiary}
+          maxLength={RECIPE_SOURCE_MAX_LENGTH}
+          autoCapitalize="words"
+          returnKeyType="done"
+          accessibilityLabel="Cookbook author"
+        />
+        <Text style={styles.hint}>
+          {recipeCount === 0 ? 'No recipes' : recipeCount === 1 ? '1 recipe' : `${recipeCount} recipes`} linked
+          to this book. Changing the title or author here updates every one of them.
+        </Text>
+
+        {/* For the same book imported twice under a slightly different
+            title or author (see recipeProvenance.ts) — folds another book's
+            recipes into this one and removes it from the shelf. */}
+        <View style={styles.mergeRow}>
+          <InlineAction
+            label="Merge another book in"
+            icon="git-merge-outline"
+            variant="neutral"
+            onPress={() => { haptics.tap(); setMergeVisible(true); }}
+          />
+        </View>
+      </View>
+    </CardSheet>
   );
 }
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.bg },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg, paddingVertical: spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator,
+    paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: spacing.xs,
   },
   headerTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
   body: { padding: spacing.md },
@@ -222,7 +222,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   fieldLabelSpaced: { marginTop: spacing.lg },
   input: {
-    backgroundColor: colors.bgSecondary,
+    backgroundColor: colors.bgTertiary,
     borderRadius: radius.md,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.smd,

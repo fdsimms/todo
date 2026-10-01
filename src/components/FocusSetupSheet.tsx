@@ -42,7 +42,7 @@ import { useCalendarStore } from '../store/useCalendarStore';
 import { useShallow } from 'zustand/react/shallow';
 import { useSettingsStore } from '../store/useSettingsStore';
 import type { Task } from '../types';
-import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
+import { useSheetMotion } from '../hooks/useSheetMotion';
 
 interface Props {
   visible: boolean;
@@ -194,10 +194,8 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
   // tidy.
   const [reordering, setReordering] = useState(false);
 
-  const hiddenY = useSheetHiddenOffset();
-
-  const translateY = useRef(new Animated.Value(hiddenY)).current;
-  const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const sheet = useSheetMotion(visible);
+  const { translateY, backdropOpacity } = sheet;
 
   /**
    * Take a fresh shortlist for the given window.
@@ -256,12 +254,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
     repick(windowMinutes);
     setBreaksEnabled(true);
     setHideTimersEnabled(settingsHideTimers);
-    translateY.setValue(hiddenY);
-    backdropOpacity.setValue(0);
-    Animated.parallel([
-      Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
-    ]).start();
+    sheet.show();
     // Keyed on `visible` alone — the shortlist is taken once, at open, and
     // after that only a window change re-takes it.
   }, [visible]);
@@ -272,11 +265,8 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
   };
 
   const dismiss = () => {
-    Animated.parallel([
-      Animated.spring(translateY, { toValue: hiddenY, ...animation.spring.sheetDismiss, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
-    ]).start(() => {
-      // No re-arming setValue here — see useSheetHiddenOffset.
+    sheet.hide(() => {
+      // No re-arming setValue here — see useSheetMotion.
       onClose();
     });
   };
@@ -301,7 +291,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
       },
       onPanResponderRelease: (_, { dy, vy }) => {
         if (dy > 80 || vy > 1.2) dismiss();
-        else Animated.spring(translateY, { toValue: 0, ...animation.spring.snappy, useNativeDriver: true }).start();
+        else sheet.restore();
       },
     })
   ).current;
@@ -501,7 +491,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
       </Animated.View>
       <SheetScrim onPress={dismiss} />
 
-      <Animated.View style={[styles.sheetOuter, { transform: [{ translateY }] }]}>
+      <Animated.View onLayout={sheet.onCardLayout} style={[styles.sheetOuter, { transform: [{ translateY }] }]}>
         <View style={styles.handleArea} {...panResponder.panHandlers}>
           <View style={styles.handle} />
         </View>

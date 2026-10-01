@@ -23,7 +23,7 @@ import { spacing, radius, font, fontWeight, lineHeight, border, animation, inter
 import { patchNotes } from '../utils/patchNotes';
 import { useSettingsStore, type PatchNoteQaStatus } from '../store/useSettingsStore';
 import { haptics } from '../utils/haptics';
-import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
+import { useSheetMotion } from '../hooks/useSheetMotion';
 
 interface Props {
   visible: boolean;
@@ -110,44 +110,18 @@ export function PatchNotesModal({ visible, onDismiss }: Props) {
     );
   }, [patchNotesQaStatus, colors, styles]);
 
-  const hiddenY = useSheetHiddenOffset();
-
-  const translateY = useRef(new Animated.Value(hiddenY)).current;
-  const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const sheet = useSheetMotion(visible);
+  const { translateY, backdropOpacity } = sheet;
 
   useEffect(() => {
     if (visible) {
-      translateY.setValue(hiddenY);
-      backdropOpacity.setValue(0);
-      Animated.parallel([
-        Animated.spring(translateY, {
-          toValue: 0,
-          ...animation.spring.smooth,
-          useNativeDriver: true,
-        }),
-        Animated.timing(backdropOpacity, {
-          toValue: 1,
-          duration: animation.duration.sheetBackdropIn,
-          useNativeDriver: true,
-        }),
-      ]).start();
+      sheet.show();
     }
   }, [visible]);
 
   const dismiss = () => {
-    Animated.parallel([
-      Animated.spring(translateY, {
-        toValue: hiddenY,
-        ...animation.spring.sheetDismiss,
-        useNativeDriver: true,
-      }),
-      Animated.timing(backdropOpacity, {
-        toValue: 0,
-        duration: animation.duration.sheetBackdropOut,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      // No re-arming setValue here — see useSheetHiddenOffset.
+    sheet.hide(() => {
+      // No re-arming setValue here — see useSheetMotion.
       onDismiss();
     });
   };
@@ -191,7 +165,7 @@ export function PatchNotesModal({ visible, onDismiss }: Props) {
         </Animated.View>
         <SheetScrim onPress={dismiss} />
 
-        <Animated.View style={[styles.sheetOuter, { transform: [{ translateY }] }]}>
+        <Animated.View onLayout={sheet.onCardLayout} style={[styles.sheetOuter, { transform: [{ translateY }] }]}>
           <View style={styles.handleArea} {...panResponder.panHandlers}>
             <View style={styles.handle} />
           </View>

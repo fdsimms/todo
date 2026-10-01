@@ -366,7 +366,7 @@ export const animation = {
     dismiss: 120,
     /**
      * A bottom sheet's own backdrop dimming, paired with the `spring.smooth`
-     * open / `spring.sheetDismiss` close it runs alongside — the same drift
+     * open / `sheetExit` close it runs alongside (see `useSheetMotion`) — the same drift
      * `dismiss` above stops, for a different shape of sheet. Nine of them
      * (CategoryPicker, GroceryListSheet, PatchNotesModal, the sort/filter and
      * picker sheets, SideMenuDrawer, TaskRelationPickerSheet) had this
@@ -374,12 +374,18 @@ export const animation = {
      */
     sheetBackdropIn: 200,
     sheetBackdropOut: 180,
+    /**
+     * A bottom sheet's card leaving, a timed curve over its own height (see
+     * `useSheetMotion`). It used to be a spring over a whole window height,
+     * which only reported done once settled and so held every touch behind the
+     * sheet for over a second after the card was gone.
+     */
+    sheetExit: 220,
   },
   spring: {
     snappy: { damping: 22, stiffness: 300, mass: 0.8 },
     smooth: { damping: 26, stiffness: 220, mass: 1.0 },
     bouncy: { damping: 15, stiffness: 350, mass: 0.9 },
-    sheetDismiss: { damping: 28, stiffness: 320 },
   },
 };
 

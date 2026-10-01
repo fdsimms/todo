@@ -12,7 +12,7 @@ import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeBlurView } from './SafeBlurView';
 import { useColors, useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, lineHeight, border, animation, interaction, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, lineHeight, border, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { formatDuration } from '../utils/effort';
@@ -25,7 +25,7 @@ import { WhenPicker } from './WhenPicker';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { SheetScrim } from './SheetScrim';
 import type { Task } from '../types';
-import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
+import { useSheetMotion } from '../hooks/useSheetMotion';
 
 interface Props {
   visible: boolean;
@@ -91,10 +91,8 @@ export function DeloadSheet({ visible, todaysTasks, notes, onClose }: Props) {
   const [pickerTarget, setPickerTarget] = useState<DeloadProposal | null>(null);
   const [dayMode, setDayMode] = useState<DayMode>('suggested');
 
-  const hiddenY = useSheetHiddenOffset();
-
-  const translateY = useRef(new Animated.Value(hiddenY)).current;
-  const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const sheet = useSheetMotion(visible);
+  const { translateY, backdropOpacity } = sheet;
 
   useEffect(() => {
     if (!visible) return;
@@ -105,22 +103,14 @@ export function DeloadSheet({ visible, todaysTasks, notes, onClose }: Props) {
     setOverrides({});
     setPickerTarget(null);
     setDayMode('suggested');
-    translateY.setValue(hiddenY);
-    backdropOpacity.setValue(0);
-    Animated.parallel([
-      Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
-    ]).start();
+    sheet.show();
     // Keyed on `visible` alone — deliberately not on todaysTasks/allTasks, so
     // the plan is a snapshot taken at open rather than a live derivation.
   }, [visible]);
 
   const dismiss = () => {
-    Animated.parallel([
-      Animated.spring(translateY, { toValue: hiddenY, ...animation.spring.sheetDismiss, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
-    ]).start(() => {
-      // No re-arming setValue here — see useSheetHiddenOffset.
+    sheet.hide(() => {
+      // No re-arming setValue here — see useSheetMotion.
       onClose();
     });
   };
@@ -129,16 +119,12 @@ export function DeloadSheet({ visible, todaysTasks, notes, onClose }: Props) {
   // once causes touch conflicts (same choreography as ApplyTemplateSheet).
   const openPicker = (proposal: DeloadProposal) => {
     haptics.tap();
-    Animated.spring(translateY, {
-      toValue: hiddenY,
-      ...animation.spring.sheetDismiss,
-      useNativeDriver: true,
-    }).start(() => setPickerTarget(proposal));
+    sheet.slideOut(() => setPickerTarget(proposal));
   };
 
   const restoreSheet = () => {
     setPickerTarget(null);
-    Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }).start();
+    sheet.slideIn();
   };
 
   const panResponder = useRef(
@@ -150,7 +136,7 @@ export function DeloadSheet({ visible, todaysTasks, notes, onClose }: Props) {
       },
       onPanResponderRelease: (_, { dy, vy }) => {
         if (dy > 80 || vy > 1.2) dismiss();
-        else Animated.spring(translateY, { toValue: 0, ...animation.spring.snappy, useNativeDriver: true }).start();
+        else sheet.restore();
       },
     })
   ).current;
@@ -285,7 +271,7 @@ export function DeloadSheet({ visible, todaysTasks, notes, onClose }: Props) {
       </Animated.View>
       <SheetScrim onPress={dismiss} />
 
-      <Animated.View style={[styles.sheetOuter, { transform: [{ translateY }] }]}>
+      <Animated.View onLayout={sheet.onCardLayout} style={[styles.sheetOuter, { transform: [{ translateY }] }]}>
         <View style={styles.handleArea} {...panResponder.panHandlers}>
           <View style={styles.handle} />
         </View>

@@ -1,9 +1,9 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, KeyboardAvoidingView, Platform, StyleSheet, Text, View } from 'react-native';
-import { SheetModal } from './SheetModal';
+import React, { useEffect, useMemo, useState } from 'react';
+import { KeyboardAvoidingView, StyleSheet, Text, View } from 'react-native';
+import { CardSheet, useCardSheet } from './CardSheet';
 import type { FoodLogEntry } from '../types';
-import { useColors, useTheme } from '../theme/ThemeContext';
-import { animation, font, fontWeight, radius, spacing, type Colors } from '../theme';
+import { useColors } from '../theme/ThemeContext';
+import { font, fontWeight, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import {
   ESTIMATE_AMOUNTS,
@@ -21,11 +21,8 @@ import {
 } from '../utils/foodLog';
 import { formatQuantityAmount } from '../utils/quantity';
 import { CountStepper } from './CountStepper';
-import { SafeBlurView } from './SafeBlurView';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { SheetHeaderButton } from './SheetHeaderButton';
-import { SheetScrim } from './SheetScrim';
-import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
 
 interface Props {
   visible: boolean;
@@ -76,12 +73,9 @@ export const ESTIMATE_AMOUNT_OPTIONS: SegmentOption<number | null>[] = ESTIMATE_
  */
 export function EstimateAmountSheet({ visible, entry, onSave, onClose }: Props) {
   const colors = useColors();
-  const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
-  const hiddenY = useSheetHiddenOffset();
-  const translateY = useRef(new Animated.Value(hiddenY)).current;
-  const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const card = useCardSheet();
 
   const whole = entry ? wholeEstimate(entry) : null;
   const counted = whole ? estimateCount(whole.servingText) : null;
@@ -93,23 +87,13 @@ export function EstimateAmountSheet({ visible, entry, onSave, onClose }: Props) 
 
   useEffect(() => {
     if (!visible) return;
-    translateY.setValue(hiddenY);
-    backdropOpacity.setValue(0);
     setFactor(entry ? currentEstimateFactor(entry) : null);
     if (counted) setCount((entry && currentEstimateCount(entry)) ?? counted.count);
-    Animated.parallel([
-      Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
-    ]).start();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, entry?.id]);
 
   const dismiss = (after: () => void) => {
-    Animated.parallel([
-      Animated.spring(translateY, { toValue: hiddenY, ...animation.spring.sheetDismiss, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
-    ]).start(() => {
-      // No re-arming setValue here — see useSheetHiddenOffset.
+    card.close(() => {
       after();
     });
   };
@@ -131,96 +115,79 @@ export function EstimateAmountSheet({ visible, entry, onSave, onClose }: Props) 
   const question = counted ? estimateCountQuestion(counted) : 'How much you ate';
 
   return (
-    <SheetModal name="Change amount" visible={visible} animationType="none" transparent onRequestClose={() => dismiss(onClose)}>
-      <Animated.View style={[StyleSheet.absoluteFill, { opacity: backdropOpacity }]} pointerEvents="none">
-        <SafeBlurView intensity={isDark ? 20 : 15} tint="dark" style={StyleSheet.absoluteFill} />
-        <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
-      </Animated.View>
-      <SheetScrim onPress={() => dismiss(onClose)} />
+    <CardSheet
+      name="EstimateAmountSheet"
+      visible={visible}
+      controller={card}
+      onRequestClose={() => dismiss(onClose)}
+    >
+      <View style={styles.card}>
+        <View style={styles.headerRow}>
+          <SheetHeaderButton label="Cancel" role="cancel" onPress={() => dismiss(onClose)} minWidth={56} />
+          <Text style={styles.heading} numberOfLines={2}>{entry?.label ?? ''}</Text>
+          <SheetHeaderButton
+            label="Save"
+            onPress={save}
+            disabled={unchanged}
+            minWidth={56}
+            style={styles.headerRight}
+          />
+        </View>
 
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.avoider}
-        pointerEvents="box-none"
-      >
-        <Animated.View style={[styles.sheetOuter, { transform: [{ translateY }] }]}>
-          <View style={styles.card}>
-            <View style={styles.headerRow}>
-              <SheetHeaderButton label="Cancel" role="cancel" onPress={() => dismiss(onClose)} minWidth={56} />
-              <Text style={styles.heading} numberOfLines={2}>{entry?.label ?? ''}</Text>
-              <SheetHeaderButton
-                label="Save"
-                onPress={save}
-                disabled={unchanged}
-                minWidth={56}
-                style={styles.headerRight}
+        <Text style={styles.label}>{question}</Text>
+        <View style={styles.body}>
+          {counted ? (
+            <View style={styles.countRow}>
+              <CountStepper
+                value={count}
+                onChange={next => { if (next !== null) setCount(next); }}
+                min={Math.min(counted.step, counted.count)}
+                max={counted.count * MAX_ESTIMATE_MULTIPLE}
+                step={counted.step}
+                format={n => formatQuantityAmount(n, counted.decimal)}
+                label={question}
+                describeValue={n => describeEstimateCount(counted, n ?? counted.count)}
               />
-            </View>
-
-            <Text style={styles.label}>{question}</Text>
-            <View style={styles.body}>
-              {counted ? (
-                <View style={styles.countRow}>
-                  <CountStepper
-                    value={count}
-                    onChange={next => { if (next !== null) setCount(next); }}
-                    min={Math.min(counted.step, counted.count)}
-                    max={counted.count * MAX_ESTIMATE_MULTIPLE}
-                    step={counted.step}
-                    format={n => formatQuantityAmount(n, counted.decimal)}
-                    label={question}
-                    describeValue={n => describeEstimateCount(counted, n ?? counted.count)}
-                  />
-                  {/* The noun agrees with the count, and whatever the count
-                      is "of" follows it, so the row reads as the amount. */}
-                  <Text style={styles.countNoun}>
-                    {`${estimateCountNoun(counted, count)}${counted.rest}`}
-                  </Text>
-                </View>
-              ) : (
-                <SegmentedControl
-                  options={ESTIMATE_AMOUNT_OPTIONS}
-                  value={factor}
-                  onChange={setFactor}
-                  columns={3}
-                  label={question}
-                />
-              )}
-              {!!patch && (
-                <View style={styles.previewBlock}>
-                  <Text style={styles.preview}>
-                    {kcal !== undefined ? `${Math.round(kcal).toLocaleString()} cal` : 'No calories stated'}
-                    {protein !== undefined ? `, ${Math.round(protein)} g protein` : ''}
-                  </Text>
-                  {/* On its own line: the meal's own words can run long, and
-                      the figures are what the choice is being made on. A
-                      count already says its amount in the row above. */}
-                  {!counted && !!patch.quantity && <Text style={styles.amount}>{patch.quantity}</Text>}
-                </View>
-              )}
-              <Text style={styles.hint}>
-                {counted
-                  ? `The estimate was ${wholeKcalText ? `${wholeKcalText} ` : ''}for ${whole?.servingText ?? ''}. The figures change with the count, so nothing new is guessed. Setting it back to ${formatQuantityAmount(counted.count, counted.decimal)} puts them back.`
-                  : `The figures are the estimate for the whole meal${wholeKcalText ? ` (${wholeKcalText})` : ''}, scaled to your choice, so nothing new is guessed. All puts them back.`}
+              {/* The noun agrees with the count, and whatever the count
+                  is "of" follows it, so the row reads as the amount. */}
+              <Text style={styles.countNoun}>
+                {`${estimateCountNoun(counted, count)}${counted.rest}`}
               </Text>
             </View>
-          </View>
-        </Animated.View>
-      </KeyboardAvoidingView>
-    </SheetModal>
+          ) : (
+            <SegmentedControl
+              options={ESTIMATE_AMOUNT_OPTIONS}
+              value={factor}
+              onChange={setFactor}
+              columns={3}
+              label={question}
+            />
+          )}
+          {!!patch && (
+            <View style={styles.previewBlock}>
+              <Text style={styles.preview}>
+                {kcal !== undefined ? `${Math.round(kcal).toLocaleString()} cal` : 'No calories stated'}
+                {protein !== undefined ? `, ${Math.round(protein)} g protein` : ''}
+              </Text>
+              {/* On its own line: the meal's own words can run long, and
+                  the figures are what the choice is being made on. A
+                  count already says its amount in the row above. */}
+              {!counted && !!patch.quantity && <Text style={styles.amount}>{patch.quantity}</Text>}
+            </View>
+          )}
+          <Text style={styles.hint}>
+            {counted
+              ? `The estimate was ${wholeKcalText ? `${wholeKcalText} ` : ''}for ${whole?.servingText ?? ''}. The figures change with the count, so nothing new is guessed. Setting it back to ${formatQuantityAmount(counted.count, counted.decimal)} puts them back.`
+              : `The figures are the estimate for the whole meal${wholeKcalText ? ` (${wholeKcalText})` : ''}, scaled to your choice, so nothing new is guessed. All puts them back.`}
+          </Text>
+        </View>
+      </View>
+    </CardSheet>
   );
 }
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
-  backdropDim: { backgroundColor: colors.backdrop },
-  avoider: { flex: 1, justifyContent: 'flex-end' },
-  sheetOuter: {
-    paddingHorizontal: spacing.md,
-    paddingBottom: 34,
-  },
   card: {
-    backgroundColor: colors.bgSecondary,
-    borderRadius: radius.lg,
     paddingBottom: spacing.md,
   },
   headerRow: {

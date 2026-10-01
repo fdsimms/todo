@@ -30,7 +30,7 @@ import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, animation, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { confirmDelete } from '../utils/confirmDelete';
-import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
+import { useSheetMotion } from '../hooks/useSheetMotion';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { listPickerRows } from '../utils/groceryLists';
 
@@ -68,9 +68,8 @@ export function GroceryListSheet({ visible, onClose }: Props) {
   const [editingName, setEditingName] = useState('');
   const newNameInputRef = useRef<TextInput>(null);
 
-  const hiddenY = useSheetHiddenOffset();
-  const translateY = useRef(new Animated.Value(hiddenY)).current;
-  const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const sheet = useSheetMotion(visible);
+  const { translateY, backdropOpacity } = sheet;
   const keyboardOffset = useRef(new Animated.Value(0)).current;
   const [keyboardHeight, setKeyboardHeight] = useState(0);
 
@@ -100,24 +99,16 @@ export function GroceryListSheet({ visible, onClose }: Props) {
     // The field stays mounted across opens, so a bare `autoFocus` would only
     // ever fire once — same fix as GroceryAddSheet's own field.
     newNameInputRef.current?.focus();
-    translateY.setValue(hiddenY);
-    backdropOpacity.setValue(0);
     const height = Keyboard.metrics()?.height ?? 0;
     setKeyboardHeight(height);
     keyboardOffset.setValue(-height);
-    Animated.parallel([
-      Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 1, duration: animation.duration.sheetBackdropIn, useNativeDriver: true }),
-    ]).start();
+    sheet.show();
   }, [visible]);
 
   const dismiss = (after?: () => void) => {
     Keyboard.dismiss();
-    Animated.parallel([
-      Animated.spring(translateY, { toValue: hiddenY, ...animation.spring.sheetDismiss, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.sheetBackdropOut, useNativeDriver: true }),
-    ]).start(() => {
-      // No re-arming setValue here — see useSheetHiddenOffset.
+    sheet.hide(() => {
+      // No re-arming setValue here — see useSheetMotion.
       onClose();
       after?.();
     });
@@ -130,7 +121,7 @@ export function GroceryListSheet({ visible, onClose }: Props) {
       onPanResponderMove: (_, { dy }) => { if (dy > 0) translateY.setValue(dy); },
       onPanResponderRelease: (_, { dy, vy }) => {
         if (dy > 80 || vy > 1.2) dismiss();
-        else Animated.spring(translateY, { toValue: 0, ...animation.spring.snappy, useNativeDriver: true }).start();
+        else sheet.restore();
       },
     })
   ).current;
@@ -174,6 +165,7 @@ export function GroceryListSheet({ visible, onClose }: Props) {
       <SheetScrim onPress={() => dismiss()} />
 
       <Animated.View
+        onLayout={sheet.onCardLayout}
         style={[
           styles.sheetOuter,
           { maxHeight: windowHeight - keyboardHeight - TOP_INSET },

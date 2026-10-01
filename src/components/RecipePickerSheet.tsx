@@ -32,7 +32,7 @@ import { describeLeftover, liveFreshnessOf, liveLeftovers, mealTitleForLeftover 
 import { freshnessColor } from './LeftoversCard';
 import { SheetScrim } from './SheetScrim';
 import { MEAL_SLOTS, RECIPE_NAME_MAX_LENGTH, type Leftover, type MealPlanEntry, type MealSlot } from '../types';
-import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
+import { useSheetMotion } from '../hooks/useSheetMotion';
 import { useFilterField } from '../hooks/useFilterField';
 
 export interface MealPick {
@@ -200,10 +200,8 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
   const showFreeText =
     !!typed && !matches.some(r => r.name.toLowerCase() === typed.toLowerCase());
 
-  const hiddenY = useSheetHiddenOffset();
-
-  const translateY = useRef(new Animated.Value(hiddenY)).current;
-  const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const sheet = useSheetMotion(visible);
+  const { translateY, backdropOpacity } = sheet;
   const keyboardOffset = useRef(new Animated.Value(0)).current;
   const [keyboardHeight, setKeyboardHeight] = useState(0);
 
@@ -240,14 +238,9 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
     clearQuery();
     setSlot(forceSlot ?? lastPickedSlot ?? defaultSlotRef.current);
     setPlanned([]);
-    translateY.setValue(hiddenY);
-    backdropOpacity.setValue(0);
     keyboardOffset.setValue(0);
     setKeyboardHeight(0);
-    Animated.parallel([
-      Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
-    ]).start();
+    sheet.show();
     // Same fix as QuickSearchModal's own field: the sheet stays mounted
     // across opens, so nothing else focuses this one.
     searchInputRef.current?.focus();
@@ -255,11 +248,8 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
 
   const dismiss = () => {
     Keyboard.dismiss();
-    Animated.parallel([
-      Animated.spring(translateY, { toValue: hiddenY, ...animation.spring.sheetDismiss, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
-    ]).start(() => {
-      // No re-arming setValue here — see useSheetHiddenOffset.
+    sheet.hide(() => {
+      // No re-arming setValue here — see useSheetMotion.
       onClose();
       // Deferred to here rather than fired as each pick lands — see onPlanned
       // on the props, and `pick`/`pickLeftover` below.
@@ -276,7 +266,7 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
       },
       onPanResponderRelease: (_, { dy, vy }) => {
         if (dy > 80 || vy > 1.2) dismiss();
-        else Animated.spring(translateY, { toValue: 0, ...animation.spring.snappy, useNativeDriver: true }).start();
+        else sheet.restore();
       },
     })
   ).current;
@@ -359,6 +349,7 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
       <SheetScrim onPress={dismiss} />
 
       <Animated.View
+        onLayout={sheet.onCardLayout}
         style={[
           styles.sheetOuter,
           { maxHeight: windowHeight - keyboardHeight - TOP_INSET },

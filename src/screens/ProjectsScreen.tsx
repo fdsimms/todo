@@ -5,6 +5,7 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
+  type GestureResponderEvent,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
@@ -40,6 +41,7 @@ import { ReorderableList, type RowScroller } from '../components/ReorderableList
 import { useScrollToTopOnTabPress } from '../hooks/useScrollToTopOnTabPress';
 import { ProgressBar } from '../components/ProgressBar';
 import { ProjectsOptionsMenu, type ProjectFilter } from '../components/ProjectsOptionsMenu';
+import type { CardAnchor } from '../components/CardSheet';
 import { ProjectCategoriesSheet } from '../components/ProjectCategoriesSheet';
 import { ListBulkBar } from '../components/ListBulkBar';
 import { SelectionDot } from '../components/SelectionDot';
@@ -120,6 +122,7 @@ export function ProjectsScreen() {
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [quickAddVisible, setQuickAddVisible] = useState(false);
   const [optionsMenuVisible, setOptionsMenuVisible] = useState(false);
+  const [optionsMenuAnchor, setOptionsMenuAnchor] = useState<CardAnchor | null>(null);
   const [categoriesSheetVisible, setCategoriesSheetVisible] = useState(false);
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
 
@@ -551,7 +554,10 @@ export function ProjectsScreen() {
             ? []
             : [{
                 icon: 'ellipsis-horizontal' as const,
-                onPress: () => setOptionsMenuVisible(true),
+                onPress: (e: GestureResponderEvent) => {
+                  setOptionsMenuAnchor({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY });
+                  setOptionsMenuVisible(true);
+                },
                 active: projectFilter !== 'active',
                 accessibilityLabel: 'Project options',
               }]),
@@ -705,6 +711,7 @@ export function ProjectsScreen() {
         onManageCategories={() => setCategoriesSheetVisible(true)}
         sort={projectSort}
         onSortChange={setProjectSort}
+        anchor={optionsMenuAnchor}
       />
 
       <ProjectCategoriesSheet

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -26,7 +26,6 @@ import {
   fontWeight,
   lineHeight,
   border,
-  animation,
   interaction,
   type Colors,
 } from '../theme';
@@ -59,7 +58,7 @@ import { useProjectStore } from '../store/useProjectStore';
 import { useShallow } from 'zustand/react/shallow';
 import { awayStatus, nextAwayProject } from '../utils/awayDates';
 import type { Task } from '../types';
-import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
+import { useSheetMotion } from '../hooks/useSheetMotion';
 
 interface Props {
   visible: boolean;
@@ -140,10 +139,8 @@ export function LookAheadSheet({ visible, onClose, tripProjectId = null }: Props
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
-  const hiddenY = useSheetHiddenOffset();
-
-  const translateY = useRef(new Animated.Value(hiddenY)).current;
-  const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const sheet = useSheetMotion(visible);
+  const { translateY, backdropOpacity } = sheet;
 
   /** What a fresh opening starts on. */
   useEffect(() => {
@@ -186,16 +183,7 @@ export function LookAheadSheet({ visible, onClose, tripProjectId = null }: Props
     setMode('read');
     setPicking(null);
     setExpanded(new Set());
-    translateY.setValue(hiddenY);
-    backdropOpacity.setValue(0);
-    Animated.parallel([
-      Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, {
-        toValue: 1,
-        duration: animation.duration.normal,
-        useNativeDriver: true,
-      }),
-    ]).start();
+    sheet.show();
     // Keyed on `visible` alone: the window is a snapshot the reader is deciding
     // on, the same rule DeloadSheet's plan follows.
   }, [visible]);
@@ -224,19 +212,8 @@ export function LookAheadSheet({ visible, onClose, tripProjectId = null }: Props
   ]);
 
   const dismiss = () => {
-    Animated.parallel([
-      Animated.spring(translateY, {
-        toValue: hiddenY,
-        ...animation.spring.sheetDismiss,
-        useNativeDriver: true,
-      }),
-      Animated.timing(backdropOpacity, {
-        toValue: 0,
-        duration: animation.duration.fast,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      // No re-arming setValue here — see useSheetHiddenOffset.
+    sheet.hide(() => {
+      // No re-arming setValue here — see useSheetMotion.
       onClose();
     });
   };
@@ -652,6 +629,7 @@ export function LookAheadSheet({ visible, onClose, tripProjectId = null }: Props
       <SheetScrim onPress={dismiss} />
 
       <Animated.View
+        onLayout={sheet.onCardLayout}
         style={[
           styles.sheetOuter,
           { paddingTop: insets.top + spacing.lg, transform: [{ translateY }] },

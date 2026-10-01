@@ -1,28 +1,23 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Animated,
   Keyboard,
   KeyboardAvoidingView,
-  Platform,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
-import { SheetModal } from './SheetModal';
+import { CardSheet, useCardSheet } from './CardSheet';
 import type { ChainItem } from '../types';
-import { useColors, useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, animation, type Colors } from '../theme';
+import { useColors } from '../theme/ThemeContext';
+import { spacing, radius, font, fontWeight, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { DOSE_UNITS, medicationVocabulary, medicationKey } from '../utils/medicationLog';
 import { useMedicationStore } from '../store/useMedicationStore';
 import { useShallow } from 'zustand/react/shallow';
-import { SafeBlurView } from './SafeBlurView';
 import { PillGroup } from './PillGroup';
 import { SegmentedControl } from './SegmentedControl';
 import { SheetHeaderButton } from './SheetHeaderButton';
-import { SheetScrim } from './SheetScrim';
-import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
 
 const NAME_MAX_LENGTH = 60;
 
@@ -61,12 +56,9 @@ export function ChainStepMedicationSheet({
   visible, step, taskMedicationName, onSave, onClose,
 }: Props) {
   const colors = useColors();
-  const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
-  const hiddenY = useSheetHiddenOffset();
-  const translateY = useRef(new Animated.Value(hiddenY)).current;
-  const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const card = useCardSheet();
 
   const [name, setName] = useState('');
   const [amount, setAmount] = useState('');
@@ -82,24 +74,14 @@ export function ChainStepMedicationSheet({
 
   useEffect(() => {
     if (!visible) return;
-    translateY.setValue(hiddenY);
-    backdropOpacity.setValue(0);
     setName(step?.medicationName ?? '');
     setAmount(step?.medicationAmount != null ? String(step.medicationAmount) : '');
     setUnit(step?.medicationUnit ?? null);
-    Animated.parallel([
-      Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
-    ]).start();
   }, [visible, step?.id]);
 
   const dismiss = (after: () => void) => {
     Keyboard.dismiss();
-    Animated.parallel([
-      Animated.spring(translateY, { toValue: hiddenY, ...animation.spring.sheetDismiss, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
-    ]).start(() => {
-      // No re-arming setValue here — see useSheetHiddenOffset.
+    card.close(() => {
       after();
     });
   };
@@ -122,102 +104,85 @@ export function ChainStepMedicationSheet({
   };
 
   return (
-    <SheetModal visible={visible} animationType="none" transparent onRequestClose={() => dismiss(onClose)}>
-      <Animated.View style={[StyleSheet.absoluteFill, { opacity: backdropOpacity }]} pointerEvents="none">
-        <SafeBlurView intensity={isDark ? 20 : 15} tint="dark" style={StyleSheet.absoluteFill} />
-        <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
-      </Animated.View>
-      <SheetScrim onPress={() => dismiss(onClose)} />
+    <CardSheet
+      name="ChainStepMedicationSheet"
+      visible={visible}
+      controller={card}
+      onRequestClose={() => dismiss(onClose)}
+    >
+      <View style={styles.card}>
+        <View style={styles.headerRow}>
+          <SheetHeaderButton label="Cancel" role="cancel" onPress={() => dismiss(onClose)} minWidth={56} />
+          <Text style={styles.heading} numberOfLines={2}>{step?.title ?? 'Step'}</Text>
+          <SheetHeaderButton label="Done" onPress={save} minWidth={56} style={styles.headerRight} />
+        </View>
 
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.avoider}
-        pointerEvents="box-none"
-      >
-        <Animated.View style={[styles.sheetOuter, { transform: [{ translateY }] }]}>
-          <View style={styles.card}>
-            <View style={styles.headerRow}>
-              <SheetHeaderButton label="Cancel" role="cancel" onPress={() => dismiss(onClose)} minWidth={56} />
-              <Text style={styles.heading} numberOfLines={2}>{step?.title ?? 'Step'}</Text>
-              <SheetHeaderButton label="Done" onPress={save} minWidth={56} style={styles.headerRight} />
-            </View>
+        <Text style={styles.label}>Log a dose</Text>
+        <View style={styles.body}>
+          <TextInput
+            style={styles.fieldBox}
+            value={name}
+            onChangeText={setName}
+            placeholder="e.g. Sertraline"
+            placeholderTextColor={colors.textTertiary}
+            maxLength={NAME_MAX_LENGTH}
+            returnKeyType="done"
+            accessibilityLabel="What this step records a dose of"
+          />
+          <Text style={styles.hint}>
+            {taskMedicationName
+              ? `Leave it empty and this step records the task's ${taskMedicationName}.`
+              : 'Leave it empty and this step records nothing.'}
+          </Text>
 
-            <Text style={styles.label}>Log a dose</Text>
-            <View style={styles.body}>
+          {/* Picking one of these is what makes it the *same* medication
+              as an earlier dose — medicationKey does no fuzzy matching
+              (see docs/arch/mood-log.md), so retyping "Sertraline" as
+              "sertraline" would otherwise split one medicine's history
+              into two untallied entries. */}
+          {medicationSuggestions.length > 0 && (
+            <PillGroup
+              noun="medication"
+              surface="card"
+              options={medicationSuggestions.map(n => ({
+                key: medicationKey(n),
+                label: n,
+                selected: !!name.trim() && medicationKey(n) === medicationKey(name),
+                onPress: () => { haptics.tap(); setName(n); },
+              }))}
+            />
+          )}
+
+          {name.trim().length > 0 && (
+            <>
               <TextInput
                 style={styles.fieldBox}
-                value={name}
-                onChangeText={setName}
-                placeholder="e.g. Sertraline"
+                value={amount}
+                onChangeText={setAmount}
+                placeholder="e.g. 50"
                 placeholderTextColor={colors.textTertiary}
-                maxLength={NAME_MAX_LENGTH}
+                keyboardType="decimal-pad"
                 returnKeyType="done"
-                accessibilityLabel="What this step records a dose of"
+                accessibilityLabel="How much, optional"
               />
-              <Text style={styles.hint}>
-                {taskMedicationName
-                  ? `Leave it empty and this step records the task's ${taskMedicationName}.`
-                  : 'Leave it empty and this step records nothing.'}
-              </Text>
-
-              {/* Picking one of these is what makes it the *same* medication
-                  as an earlier dose — medicationKey does no fuzzy matching
-                  (see docs/arch/mood-log.md), so retyping "Sertraline" as
-                  "sertraline" would otherwise split one medicine's history
-                  into two untallied entries. */}
-              {medicationSuggestions.length > 0 && (
-                <PillGroup
-                  noun="medication"
-                  surface="card"
-                  options={medicationSuggestions.map(n => ({
-                    key: medicationKey(n),
-                    label: n,
-                    selected: !!name.trim() && medicationKey(n) === medicationKey(name),
-                    onPress: () => { haptics.tap(); setName(n); },
-                  }))}
-                />
-              )}
-
-              {name.trim().length > 0 && (
-                <>
-                  <TextInput
-                    style={styles.fieldBox}
-                    value={amount}
-                    onChangeText={setAmount}
-                    placeholder="e.g. 50"
-                    placeholderTextColor={colors.textTertiary}
-                    keyboardType="decimal-pad"
-                    returnKeyType="done"
-                    accessibilityLabel="How much, optional"
-                  />
-                  <SegmentedControl
-                    options={DOSE_UNITS.map(u => ({ value: u.value, label: u.value }))}
-                    value={unit ?? ''}
-                    columns={5}
-                    label="Unit"
-                    surface="card"
-                    onChange={next => { haptics.tap(); setUnit(next === unit ? null : next); }}
-                  />
-                </>
-              )}
-            </View>
-          </View>
-        </Animated.View>
-      </KeyboardAvoidingView>
-    </SheetModal>
+              <SegmentedControl
+                options={DOSE_UNITS.map(u => ({ value: u.value, label: u.value }))}
+                value={unit ?? ''}
+                columns={5}
+                label="Unit"
+                surface="card"
+                onChange={next => { haptics.tap(); setUnit(next === unit ? null : next); }}
+              />
+            </>
+          )}
+        </View>
+      </View>
+    </CardSheet>
   );
 }
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
-  backdropDim: { backgroundColor: colors.backdrop },
-  avoider: { flex: 1, justifyContent: 'flex-end' },
-  sheetOuter: {
-    paddingHorizontal: spacing.md,
-    paddingBottom: 34,
-  },
   card: {
-    backgroundColor: colors.bgSecondary,
-    borderRadius: radius.lg,
     paddingBottom: spacing.md,
   },
   headerRow: {

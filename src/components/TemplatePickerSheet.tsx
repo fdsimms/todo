@@ -22,7 +22,7 @@ import { useTemplateCategoryStore } from '../store/useTemplateCategoryStore';
 import { groupTemplatesByCategory } from '../utils/templateGrouping';
 import type { TaskTemplate } from '../types';
 import { useNavigation } from '@react-navigation/native';
-import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
+import { useSheetMotion } from '../hooks/useSheetMotion';
 
 interface Props {
   visible: boolean;
@@ -56,44 +56,18 @@ export function TemplatePickerSheet({ visible, onClose, onSelect }: Props) {
     [templates, categoryOrder]
   );
 
-  const hiddenY = useSheetHiddenOffset();
-
-  const translateY = useRef(new Animated.Value(hiddenY)).current;
-  const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const sheet = useSheetMotion(visible);
+  const { translateY, backdropOpacity } = sheet;
 
   useEffect(() => {
     if (visible) {
-      translateY.setValue(hiddenY);
-      backdropOpacity.setValue(0);
-      Animated.parallel([
-        Animated.spring(translateY, {
-          toValue: 0,
-          ...animation.spring.smooth,
-          useNativeDriver: true,
-        }),
-        Animated.timing(backdropOpacity, {
-          toValue: 1,
-          duration: animation.duration.sheetBackdropIn,
-          useNativeDriver: true,
-        }),
-      ]).start();
+      sheet.show();
     }
   }, [visible]);
 
   const dismiss = (after?: () => void) => {
-    Animated.parallel([
-      Animated.spring(translateY, {
-        toValue: hiddenY,
-        ...animation.spring.sheetDismiss,
-        useNativeDriver: true,
-      }),
-      Animated.timing(backdropOpacity, {
-        toValue: 0,
-        duration: animation.duration.sheetBackdropOut,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      // No re-arming setValue here — see useSheetHiddenOffset.
+    sheet.hide(() => {
+      // No re-arming setValue here — see useSheetMotion.
       onClose();
       after?.();
     });
@@ -133,7 +107,7 @@ export function TemplatePickerSheet({ visible, onClose, onSelect }: Props) {
       </Animated.View>
       <SheetScrim onPress={() => dismiss()} />
 
-      <Animated.View style={[styles.sheetOuter, { transform: [{ translateY }] }]}>
+      <Animated.View onLayout={sheet.onCardLayout} style={[styles.sheetOuter, { transform: [{ translateY }] }]}>
         <View style={styles.handleArea} {...panResponder.panHandlers}>
           <View style={styles.handle} />
         </View>

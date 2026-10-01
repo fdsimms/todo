@@ -39,6 +39,7 @@ import { SearchField } from '../components/SearchField';
 import { SegmentedControl, type SegmentOption } from '../components/SegmentedControl';
 import { EmptyState } from '../components/EmptyState';
 import { LogbookEntryMenu } from '../components/LogbookEntryMenu';
+import type { CardAnchor } from '../components/CardSheet';
 import { RotationWeekSheet } from '../components/RotationWeekSheet';
 import { SimpleBulkBar } from '../components/SimpleBulkBar';
 import { SwipeableRow } from '../components/SwipeableRow';
@@ -259,6 +260,13 @@ export function LogbookScreen() {
   );
 
   const [menuTask, setMenuTask] = useState<Task | null>(null);
+  const [menuAnchor, setMenuAnchor] = useState<CardAnchor | null>(null);
+  // A row's "…" hands over where it was tapped so the menu opens from it; the
+  // swipe action has no point to give and gets the centered card.
+  const openMenu = useCallback((task: Task, anchor?: CardAnchor) => {
+    setMenuAnchor(anchor ?? null);
+    setMenuTask(task);
+  }, []);
   // The entry whose answer is being corrected. Read back off the live list by
   // id when rendering, so the sheet re-seeds from the store rather than from a
   // snapshot taken when the menu was opened.
@@ -728,7 +736,7 @@ export function LogbookScreen() {
               onToggleSelect={toggleSelection}
               onEnterSelection={enterSelectionMode}
               onUncomplete={uncompleteTask}
-              onOpenMenu={setMenuTask}
+              onOpenMenu={openMenu}
             />
           );
         }}
@@ -814,6 +822,7 @@ export function LogbookScreen() {
           if (task) handleDeleteEntry(task);
         }}
         onClose={() => setMenuTask(null)}
+        anchor={menuAnchor}
       />
 
       {shownAnswerTask && (
@@ -872,7 +881,7 @@ interface RowProps {
   onToggleSelect: (id: string) => void;
   onEnterSelection: (initial: string) => void;
   onUncomplete: (id: string) => void;
-  onOpenMenu: (task: Task) => void;
+  onOpenMenu: (task: Task, anchor?: CardAnchor) => void;
 }
 
 // One Logbook entry. A component rather than an inline renderItem so it can
@@ -1104,7 +1113,7 @@ const LogbookRow = React.memo(function LogbookRow({
         ) : (
           <TouchableOpacity
             style={styles.menuButton}
-            onPress={() => onOpenMenu(task)}
+            onPress={e => onOpenMenu(task, { x: e.nativeEvent.pageX, y: e.nativeEvent.pageY })}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             accessibilityRole="button"
             accessibilityLabel={`More options for ${task.title}`}
