@@ -3123,7 +3123,7 @@ export const TaskItem = React.memo(function TaskItem({
         <TouchableOpacity
           onPress={() => {
             haptics.tap();
-            animateLayout();
+            animateLayout(100);
             togglePin(task.id);
           }}
           hitSlop={8}
