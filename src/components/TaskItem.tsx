@@ -550,7 +550,11 @@ export const TaskItem = React.memo(function TaskItem({
   const [chainStepsExpanded, setChainStepsExpanded] = useState(false);
   // Natural height of the expansion panel content, measured off-screen so the
   // expansion can animate to the real height instead of an arbitrary cap.
-  const [panelHeight, setPanelHeight] = useState(0);
+  // A shared value rather than state: only the UI-thread style below reads it,
+  // and as state every row re-rendered once right after mounting just to
+  // record it — a whole second render of every row a list mounts, which is
+  // what a page of Later rows arriving mid-scroll paid for twice.
+  const panelHeight = useSharedValue(0);
   // Drives the live-counting timer display. We only re-render on a 1s tick while
   // this task's timer is actually running, so idle rows never spin an interval.
   const [nowTick, setNowTick] = useState(() => Date.now());
@@ -635,7 +639,9 @@ export const TaskItem = React.memo(function TaskItem({
   // it waits: the completion is committed by then, so the row's own tap handler
   // (handleUndoComplete) would uncheck something it can no longer take back.
   const [awaitingCollapse, setAwaitingCollapse] = useState(false);
-  const [rowHeight, setRowHeight] = useState<number | null>(null);
+  // A shared value for the same reason as panelHeight: only collapseStyle
+  // reads it, so recording it needn't re-render the row.
+  const rowHeight = useSharedValue<number | null>(null);
   // Remounts the collapse wrapper below, for a row that has to come back after
   // it already collapsed (see restoreFromCompletion). Putting collapseProgress
   // back to 1 is not enough on its own: above 1 the animated style stops
@@ -717,7 +723,7 @@ export const TaskItem = React.memo(function TaskItem({
   // height change rather than a half-duration cross-fade overlapping the shrink
   // (the latter is what made collapse look like two separate phases).
   const expandedPanelStyle = useAnimatedStyle(() => ({
-    height: interpolate(expansionProgress.value, [0, 1], [0, panelHeight], Extrapolation.CLAMP),
+    height: interpolate(expansionProgress.value, [0, 1], [0, panelHeight.value], Extrapolation.CLAMP),
     opacity: interpolate(expansionProgress.value, [0, 0.2, 1], [0, 1, 1], Extrapolation.CLAMP),
   }));
 
@@ -735,9 +741,10 @@ export const TaskItem = React.memo(function TaskItem({
   const collapseStyle = useAnimatedStyle(() => {
     if (collapseProgress.value >= 1) return {};
     const opacity = interpolate(collapseProgress.value, [0.3, 1], [0, 1], Extrapolation.CLAMP);
-    if (rowHeight === null) return { opacity };
+    const measured = rowHeight.value;
+    if (measured === null) return { opacity };
     return {
-      height: interpolate(collapseProgress.value, [0, 1], [0, rowHeight], Extrapolation.CLAMP),
+      height: interpolate(collapseProgress.value, [0, 1], [0, measured], Extrapolation.CLAMP),
       opacity,
       overflow: 'hidden' as const,
     };
@@ -747,15 +754,13 @@ export const TaskItem = React.memo(function TaskItem({
     // Same guard as the panel's, and it matters more here: this is the whole
     // row, so it re-measures on every frame of its own panel animation.
     if (collapseStartedRef.current || !e.nativeEvent?.layout) return;
-    // Read the height now, synchronously, rather than inside the updater
-    // below: `setRowHeight`'s functional form only *schedules* that function,
-    // and React can call it later, during a subsequent render, once this
-    // event has already returned — RN recycles the event object after the
-    // handler that received it returns, so `e.nativeEvent` reads back null by
-    // then. A crash from exactly that showed up in production with a stack
-    // through useState's reducer, not through this callback.
+    // Read the height now, synchronously, and never from anything that runs
+    // later: RN recycles the event object after the handler that received it
+    // returns, so `e.nativeEvent` reads back null by then. A crash from exactly
+    // that showed up in production when this was a functional setState, whose
+    // updater React may call during a later render.
     const height = e.nativeEvent.layout.height;
-    setRowHeight(prev => nextMeasuredHeight(prev, height));
+    rowHeight.value = nextMeasuredHeight(rowHeight.value, height);
   };
 
   // The store flips this on for every row of a burst in the same commit, which
@@ -3162,15 +3167,15 @@ export const TaskItem = React.memo(function TaskItem({
       <View
         style={styles.panelMeasure}
         // Guarded like AnimatedCollapsible's: this feeds the animated height
-        // above it, so an accepted measurement costs a React commit — and a
-        // pixel-grid rounding difference is not a content change. Unguarded,
-        // an expanded row inside a stack commits on every layout pass of the
-        // section animating around it.
+        // above it, so an accepted measurement re-runs that style on the UI
+        // thread — and a pixel-grid rounding difference is not a content
+        // change. Unguarded, an expanded row inside a stack re-applied its
+        // height on every layout pass of the section animating around it.
         onLayout={e => {
           if (!e.nativeEvent?.layout) return;
           // See handleItemLayout above: read now, close over the number, not `e`.
           const height = e.nativeEvent.layout.height;
-          setPanelHeight(prev => nextMeasuredHeight(prev, height));
+          panelHeight.value = nextMeasuredHeight(panelHeight.value, height);
         }}
       >
       <View style={styles.expandedPanel}>
