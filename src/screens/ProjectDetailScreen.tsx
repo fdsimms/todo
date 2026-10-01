@@ -1850,7 +1850,7 @@ export function ProjectDetailScreen() {
                 {/* Sorting sits at the top rather than under the list, where
                     it used to share a row with the add button. */}
                 {isList && !selectionMode && lineCount >= 3 && (
-                  <View style={styles.sectionAddRow}>
+                  <View style={[styles.sectionAddRow, styles.listSortRow]}>
                     <InlineAction
                       icon="swap-vertical-outline"
                       label="Sort A to Z"
@@ -2530,6 +2530,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingTop: spacing.xs,
     paddingBottom: spacing.xxs,
   },
+  // The list-level sort sits directly on the screen rather than inside a
+  // section tray, so it needs the same side gutter as the cards around it.
+  listSortRow: { marginHorizontal: spacing.md },
   newSectionField: { marginTop: spacing.sm },
   inlineNewTask: {
     flexDirection: 'row',
