@@ -555,6 +555,19 @@ export const TaskItem = React.memo(function TaskItem({
   // record it — a whole second render of every row a list mounts, which is
   // what a page of Later rows arriving mid-scroll paid for twice.
   const panelHeight = useSharedValue(0);
+  // The panel's contents are built on the row's first expand and kept from
+  // then on, so it can still animate shut. Building them for every row up
+  // front, at zero height, only so their height was known in advance made a
+  // collapsed row cost about as much to mount as an expanded one — a few
+  // hundred elements each, most of them for an expansion that never comes.
+  // The cost of building lazily is that the first expand starts a frame or
+  // two before the panel has been measured, at a height of zero; the timing
+  // curve's slow start hides that.
+  //
+  // Set during render, not in an effect, so the contents mount in the same
+  // commit as `expanded` rather than a frame after it.
+  const [panelMounted, setPanelMounted] = useState(expanded);
+  if (expanded && !panelMounted) setPanelMounted(true);
   // Drives the live-counting timer display. We only re-render on a 1s tick while
   // this task's timer is actually running, so idle rows never spin an interval.
   const [nowTick, setNowTick] = useState(() => Date.now());
@@ -3163,7 +3176,9 @@ export const TaskItem = React.memo(function TaskItem({
       {/* Absolutely positioned so it always lays out at natural height for
           measurement, independent of the animated clipping height above.
           Top-anchored: the growing card uncovers the content in place, and
-          cardClip keeps the slice edge's corners rounded. */}
+          cardClip keeps the slice edge's corners rounded. Not built until the
+          row first expands (see panelMounted). */}
+      {panelMounted && (
       <View
         style={styles.panelMeasure}
         // Guarded like AnimatedCollapsible's: this feeds the animated height
@@ -3959,6 +3974,7 @@ export const TaskItem = React.memo(function TaskItem({
         )}
       </View>
       </View>
+      )}
       {/* Continues the urgency bar from the row down through the expanded
           panel, so it reads as one strip along the whole card's left edge
           instead of stopping at the collapsed row's height. Sized against
