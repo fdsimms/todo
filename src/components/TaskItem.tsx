@@ -494,6 +494,12 @@ export const TaskItem = React.memo(function TaskItem({
   // ==== local state (expansion, completion animation, inline editing) ====
   const [showWhenPicker, setShowWhenPicker] = useState(false);
   const [showBreakdown, setShowBreakdown] = useState(false);
+  // The pin glyph flips on the tap, ahead of the store write: the write
+  // re-renders the whole Today screen, and the glyph used to wait for that.
+  // `pinWritesPending` counts taps whose write hasn't run, so a double tap
+  // doesn't drop back to the stored value between its two writes.
+  const [pinOverride, setPinOverride] = useState<boolean | null>(null);
+  const pinWritesPending = useRef(0);
   const [showDeliverablePrompt, setShowDeliverablePrompt] = useState(false);
   const [showMealPicker, setShowMealPicker] = useState(false);
   const { offerPrepTasksForEach } = usePlanMeal();
@@ -3123,21 +3129,31 @@ export const TaskItem = React.memo(function TaskItem({
         <TouchableOpacity
           onPress={() => {
             haptics.tap();
-            animateLayout();
-            togglePin(task.id);
+            setPinOverride(!(pinOverride ?? task.pinned));
+            pinWritesPending.current += 1;
+            // A frame later, so the glyph commits and paints before the
+            // screen-wide render the write causes. animateLayout goes with the
+            // write, since it applies to the next layout pass and would
+            // otherwise be spent on the glyph's own commit.
+            requestAnimationFrame(() => {
+              animateLayout();
+              togglePin(task.id);
+              pinWritesPending.current -= 1;
+              if (pinWritesPending.current === 0) setPinOverride(null);
+            });
           }}
           hitSlop={8}
           style={styles.pinBtn}
           accessibilityRole="button"
-          accessibilityState={{ selected: task.pinned }}
+          accessibilityState={{ selected: pinOverride ?? task.pinned }}
           accessibilityLabel={
-            task.pinned ? `Unpin ${task.title}` : `Pin ${task.title}`
+            (pinOverride ?? task.pinned) ? `Unpin ${task.title}` : `Pin ${task.title}`
           }
         >
           <PinIcon
-            filled={task.pinned}
+            filled={pinOverride ?? task.pinned}
             size={iconSize.sm}
-            color={task.pinned ? colors.orange : colors.textSecondary}
+            color={(pinOverride ?? task.pinned) ? colors.orange : colors.textSecondary}
           />
         </TouchableOpacity>
       )}
