@@ -224,10 +224,17 @@ const VIEW_BADGE_LABELS: Partial<Record<ViewMode, string>> = {
 // Task budgets for the Later list (see the laterTaskLimit block below for why
 // it has one at all). INITIAL is about a screenful — it's what the tap into
 // Later has to mount before anything paints; SETTLED is topped up once that
-// commit is done, and PAGE_SIZE is what each scroll to the bottom adds.
+// commit is done, and PAGE_SIZE is what each scroll toward the bottom adds.
+//
+// A page lands mid-scroll, usually mid-fling, and mounting it blocks the frame
+// it commits in, so pages are small and asked for early: thirty rows a screen
+// and a bit ahead of the end costs a short hitch where sixty at the last few
+// rows cost a visible one, and could let a fling hit the bottom before they
+// arrived.
 const LATER_INITIAL_TASK_LIMIT = 15;
 const LATER_SETTLED_TASK_LIMIT = 60;
-const LATER_TASK_PAGE_SIZE = 60;
+const LATER_TASK_PAGE_SIZE = 30;
+const LATER_END_REACHED_THRESHOLD = 900;
 // The same first-paint budget for the Today list, which is remounted from
 // scratch on every switch back to it (see the todayTaskLimit block below).
 // There is no settled size: once the switch has painted, the whole day mounts.
@@ -4136,7 +4143,7 @@ export function TodayScreen() {
               reorderTasks(laterTaskOrder(reordered));
             }}
             onEndReached={handleLaterEndReached}
-            onEndReachedThreshold={400}
+            onEndReachedThreshold={LATER_END_REACHED_THRESHOLD}
             contentContainerStyle={
               laterDraggableData.length === 0
                 ? styles.emptyContainer
