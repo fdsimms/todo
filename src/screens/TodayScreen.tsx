@@ -8,7 +8,7 @@
 //
 // The small components above TodayScreen (SectionHeader, LaterTodaySection,
 // ExpiredSection, …) are its section furniture and are declared at module level.
-import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef, useOptimistic, startTransition } from 'react';
 import {
   View,
   Text,
@@ -536,6 +536,91 @@ function ExpiredSection({
   );
 }
 
+// The view mode switcher. Its own component so a tap can light the pill on a
+// render of just this row: the switch itself (setViewMode) unmounts one list
+// and mounts another, the most expensive render this screen does, so it runs
+// as a transition and the optimistic highlight shows in the meantime. Without
+// that, the pill, the haptic's visual partner, waited out the whole new list.
+// A transition is also interruptible, so a second tap before the first list
+// has rendered abandons it rather than queueing behind it. Programmatic
+// switches (tabPress, a created task's jump) stay synchronous on purpose:
+// they scroll the destination list straight after, and need it mounted.
+// `onLeave` runs outside the transition: leaving selection mode calls
+// animateLayout(), which applies to whichever commit lands next, and inside the
+// transition that would be the pill's own render rather than the rows leaving.
+function ViewModePills({
+  modes,
+  viewMode,
+  inboxCount,
+  unscheduledCount,
+  onLeave,
+  onSelect,
+  styles,
+}: {
+  modes: ViewMode[];
+  viewMode: ViewMode;
+  inboxCount: number;
+  unscheduledCount: number;
+  onLeave: () => void;
+  onSelect: (mode: ViewMode) => void;
+  styles: ReturnType<typeof makeStyles>;
+}) {
+  const [shownMode, showMode] = useOptimistic(viewMode);
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      style={styles.viewModePillsScroll}
+      contentContainerStyle={styles.viewModePills}
+    >
+      {modes.map(mode => {
+        const active = shownMode === mode;
+        const badge = mode === 'inbox'
+          ? inboxCount
+          : mode === 'unscheduled' ? unscheduledCount : 0;
+        return (
+          <TouchableOpacity
+            key={mode}
+            style={[styles.viewModePill, active && styles.viewModePillActive]}
+            onPress={() => {
+              haptics.tap();
+              onLeave();
+              startTransition(() => {
+                showMode(mode);
+                onSelect(mode);
+              });
+            }}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: active }}
+            accessibilityLabel={
+              badge > 0
+                ? `${VIEW_TITLES[mode]} view, ${badge} ${VIEW_BADGE_LABELS[mode]}`
+                : `${VIEW_TITLES[mode]} view`
+            }
+          >
+            <Text style={[styles.viewModePillText, active && styles.viewModePillTextActive]}>
+              {VIEW_TITLES[mode]}
+            </Text>
+            {badge > 0 && (
+              <View style={[styles.viewModePillBadge, mode !== 'inbox' && styles.viewModePillBadgeQuiet]}>
+                <Text
+                  style={[
+                    styles.viewModePillBadgeText,
+                    mode !== 'inbox' && styles.viewModePillBadgeTextQuiet,
+                  ]}
+                >
+                  {badge}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        );
+      })}
+    </ScrollView>
+  );
+}
+
 export function TodayScreen() {
   // ==== store bindings, navigation, layout insets ====
   const insets = useSafeAreaInsets();
@@ -1002,7 +1087,7 @@ export function TodayScreen() {
       // A row left spotlighted on the view being switched away from has no
       // match in the destination's rows, so the dimmed backdrop would stay
       // up with nothing lit — same reset the view-mode pills do on a manual
-      // switch (see the pill row's onPress below).
+      // switch (see leaveViewMode/selectViewMode below).
       setExpandedTaskId(null);
     }
     if (destination === 'later') {
@@ -1590,6 +1675,17 @@ export function TodayScreen() {
   // Later and Inbox stay whatever the mode is: each is the only route to a set
   // of real tasks, and a lens that hides tasks isn't a simplification. Only
   // Unscheduled goes, and only while it's empty and isn't the view you're on.
+  // What a pill tap does: the first half at once, the second once its
+  // transition renders (see ViewModePills). Same reset goToCreatedTask does on
+  // a switch: an expanded or selected row on the view being left has no match
+  // in the destination's rows.
+  const leaveViewMode = () => {
+    if (selectionMode) exitSelection();
+  };
+  const selectViewMode = (mode: ViewMode) => {
+    setViewMode(mode);
+    setExpandedTaskId(null);
+  };
   const viewModes = useMemo(
     () => (featureHidden('unscheduledLens', simpleMode)
       ? visibleLenses(VIEW_MODES, { unscheduled: unscheduledCount }, viewMode)
@@ -3962,56 +4058,15 @@ export function TodayScreen() {
           }
         />
 
-        {/* View mode switcher */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.viewModePillsScroll}
-          contentContainerStyle={styles.viewModePills}
-        >
-          {viewModes.map(mode => {
-            const active = viewMode === mode;
-            const badge = mode === 'inbox'
-              ? inboxTasks.length
-              : mode === 'unscheduled' ? unscheduledCount : 0;
-            return (
-              <TouchableOpacity
-                key={mode}
-                style={[styles.viewModePill, active && styles.viewModePillActive]}
-                onPress={() => {
-                  haptics.tap();
-                  setViewMode(mode);
-                  setExpandedTaskId(null);
-                  if (selectionMode) exitSelection();
-                }}
-                activeOpacity={interaction.activeOpacity}
-                accessibilityRole="tab"
-                accessibilityState={{ selected: active }}
-                accessibilityLabel={
-                  badge > 0
-                    ? `${VIEW_TITLES[mode]} view, ${badge} ${VIEW_BADGE_LABELS[mode]}`
-                    : `${VIEW_TITLES[mode]} view`
-                }
-              >
-                <Text style={[styles.viewModePillText, active && styles.viewModePillTextActive]}>
-                  {VIEW_TITLES[mode]}
-                </Text>
-                {badge > 0 && (
-                  <View style={[styles.viewModePillBadge, mode !== 'inbox' && styles.viewModePillBadgeQuiet]}>
-                    <Text
-                      style={[
-                        styles.viewModePillBadgeText,
-                        mode !== 'inbox' && styles.viewModePillBadgeTextQuiet,
-                      ]}
-                    >
-                      {badge}
-                    </Text>
-                  </View>
-                )}
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
+        <ViewModePills
+          modes={viewModes}
+          viewMode={viewMode}
+          inboxCount={inboxTasks.length}
+          unscheduledCount={unscheduledCount}
+          onLeave={leaveViewMode}
+          onSelect={selectViewMode}
+          styles={styles}
+        />
 
         {/* Outside the `viewMode` gate on purpose: a session runs against the
             tasks, not against a lens over them, so switching to Later must
