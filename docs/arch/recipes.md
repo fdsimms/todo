@@ -362,7 +362,10 @@ asks that question, and `findWithIngredients` answers it.
   last one ended under (`lastHeading`), since a heading's entries run on from one page to the
   next with the heading printed only once. The model is asked only for ingredients the index
   *files* a dish under, never ones guessed from its name, which is what keeps the words honest
-  enough to search by.
+  enough to search by. The photo goes up at the high-resolution tier (`DENSE_PAGE_PHOTO_EDGE`),
+  not the recipe cap, because index type is small, and the prompt reads past a sideways or partly
+  blurry shot rather than returning nothing: an all-or-nothing read of a dense page came back
+  empty on a page that was mostly legible.
 - **A scan is merged before it's shown, and shown before it's written.** `mergeIndexDrafts`
   folds a dish listed under several headings into one line (keyed as `indexEntryInBook` keys the
   book's own lines) and marks one the book already has, which `applyIndexDrafts` adds to rather

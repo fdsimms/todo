@@ -18,6 +18,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { extractCookbookIndex, describeAIError } from '../services/aiSuggestions';
+import { DENSE_PAGE_PHOTO_EDGE } from '../utils/recipePhoto';
 import {
   cleanIndexEntryFields, mergeIndexDrafts, mergedIndexLine, splitIngredientText,
   type IndexDraft, type IndexEntryFields,
@@ -63,7 +64,7 @@ export function CookbookIndexScanSheet({ visible, cookbookId, onClose, onApplied
   const indexEntries = useRecipeStore(useShallow(s => s.indexEntries));
   const applyIndexDrafts = useRecipeStore(s => s.applyIndexDrafts);
 
-  const input = useRecipeImportSource('photo', "photograph a cookbook's index", MAX_INDEX_PHOTOS);
+  const input = useRecipeImportSource('photo', "photograph a cookbook's index", MAX_INDEX_PHOTOS, DENSE_PAGE_PHOTO_EDGE);
   const { photos, clearPhoto, reset: resetInput } = input;
 
   const [step, setStep] = useState<'capture' | 'review'>('capture');

@@ -252,7 +252,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/recipeNutritionEstimate.ts` — RecipeEstimateConfidence, RecipeNutritionEstimate, RawRecipeNutritionEstimate, readRecipeNutritionEstimate, describeRecipeNutritionEstimate
 - `src/utils/recipeOverlap.ts` — SharedIngredient, OverlapSeed, OverlapMatch, overlapSeedFromPlanned, overlapSeedFromRecipes, rankOverlapRecipes, describeOverlap
 - `src/utils/recipePageOffline.ts` — OfflineRecipeItem, servingsFromYield, recipeFromPageOffline
-- `src/utils/recipePhoto.ts` — MAX_PHOTO_EDGE, MAX_RECIPE_PHOTOS, RecipePhotoSource, RecipePhoto, RecipePhotoResult, photoTargetSize, CameraPermission, PhotoLibraryPermission, getCameraPermission, requestCameraPermission, +13 more
+- `src/utils/recipePhoto.ts` — MAX_PHOTO_EDGE, DENSE_PAGE_PHOTO_EDGE, MAX_RECIPE_PHOTOS, RecipePhotoSource, RecipePhoto, RecipePhotoResult, photoTargetSize, CameraPermission, PhotoLibraryPermission, getCameraPermission, +14 more
 - `src/utils/recipeProvenance.ts` — ExtractedSource, FetchedSourcePage, SourceFields, sourceFieldsFor, CookbookEditIntent, cookbookEditIntent, SourcePlan, sourcePlanFor
 - `src/utils/recipeScale.ts` — ScaledQuantity, scaleQuantity, RECIPE_SCALE_FACTORS, isUnscaled, normalizeScale, formatScale, scaleServings, factorForServings, MAX_HOUSEHOLD_SERVINGS, householdScale, +3 more
 - `src/utils/recipeSections.ts` — parseEmptySections, SectionedRow, SectionListEntry, sectionsFromMergedOrder, sectionsOf, allSectionsOf, FlatSectionRow, IngredientHeading, ingredientHeadings
