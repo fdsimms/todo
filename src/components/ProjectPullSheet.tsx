@@ -12,7 +12,7 @@ import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeBlurView } from './SafeBlurView';
 import { useColors, useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, lineHeight, border, animation, interaction, iconSize, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, lineHeight, border, interaction, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import {
@@ -31,7 +31,7 @@ import { liveGeneratedTask } from '../utils/generatedTasks';
 import { WhenPicker } from './WhenPicker';
 import { SheetScrim } from './SheetScrim';
 import type { Task } from '../types';
-import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
+import { useSheetMotion } from '../hooks/useSheetMotion';
 import { displayTitleFor } from '../utils/visibilityUtils';
 import { describeCadence } from '../utils/nudgeCadence';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -149,10 +149,8 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, landOn
     return new Set(result.proposals.filter(p => p.selected).map(p => p.candidates[0].id));
   };
 
-  const hiddenY = useSheetHiddenOffset();
-
-  const translateY = useRef(new Animated.Value(hiddenY)).current;
-  const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const sheet = useSheetMotion(visible);
+  const { translateY, backdropOpacity } = sheet;
 
   // Raised by tapping "+N more waiting"; back to the calm default on each open.
   const [limit, setLimit] = useState(MAX_PULLED_PROJECTS);
@@ -174,21 +172,13 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, landOn
     setCandidateIndex({});
     setOverrides({});
     setPickerTarget(null);
-    translateY.setValue(hiddenY);
-    backdropOpacity.setValue(0);
-    Animated.parallel([
-      Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
-    ]).start();
+    sheet.show();
     // Keyed on `visible` alone — deliberately not on the store, same as DeloadSheet.
   }, [visible]);
 
   const dismiss = () => {
-    Animated.parallel([
-      Animated.spring(translateY, { toValue: hiddenY, ...animation.spring.sheetDismiss, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
-    ]).start(() => {
-      // No re-arming setValue here — see useSheetHiddenOffset.
+    sheet.hide(() => {
+      // No re-arming setValue here — see useSheetMotion.
       onClose();
     });
   };
@@ -197,16 +187,12 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, landOn
   // once causes touch conflicts (same choreography as DeloadSheet).
   const openPicker = (proposal: ProjectPullProposal, task: Task) => {
     haptics.tap();
-    Animated.spring(translateY, {
-      toValue: hiddenY,
-      ...animation.spring.sheetDismiss,
-      useNativeDriver: true,
-    }).start(() => setPickerTarget({ proposal, task }));
+    sheet.slideOut(() => setPickerTarget({ proposal, task }));
   };
 
   const restoreSheet = () => {
     setPickerTarget(null);
-    Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }).start();
+    sheet.slideIn();
   };
 
   const panResponder = useRef(
@@ -218,7 +204,7 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, landOn
       },
       onPanResponderRelease: (_, { dy, vy }) => {
         if (dy > 80 || vy > 1.2) dismiss();
-        else Animated.spring(translateY, { toValue: 0, ...animation.spring.snappy, useNativeDriver: true }).start();
+        else sheet.restore();
       },
     })
   ).current;
@@ -455,6 +441,7 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, landOn
       <SheetScrim onPress={dismiss} />
 
       <Animated.View
+        onLayout={sheet.onCardLayout}
         style={[styles.sheetOuter, { paddingBottom: insets.bottom + spacing.sm, transform: [{ translateY }] }]}
       >
         <View style={styles.handleArea} {...panResponder.panHandlers}>

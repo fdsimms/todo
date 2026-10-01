@@ -57,7 +57,7 @@ import { PillGroup } from './PillGroup';
 import { SheetScrim } from './SheetScrim';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import type { Task, TaskTemplate, TemplateContainer, TemplateItem, TemplateQuestion, Person } from '../types';
-import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
+import { useSheetMotion } from '../hooks/useSheetMotion';
 import { useKeyboardLift } from '../hooks/useKeyboardLift';
 
 interface Props {
@@ -177,10 +177,8 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId, onAp
   // way MealEntrySheet's guest picker omits itself rather than showing empty.
   const visibleQuestions = questions.filter(q => q.kind !== 'people' || people.length > 0);
 
-  const hiddenY = useSheetHiddenOffset();
-
-  const translateY = useRef(new Animated.Value(hiddenY)).current;
-  const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const sheet = useSheetMotion(visible);
+  const { translateY, backdropOpacity } = sheet;
   // The run name, the questions and the blanks all sit above the item list,
   // in a card anchored to the bottom of the screen, so the keyboard covered
   // the very field it opened for. The card rides up with it instead, and the
@@ -219,20 +217,7 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId, onAp
       setRunName(initialRunName ?? '');
       setPlaceholderValues({});
       setTypedAnswers({});
-      translateY.setValue(hiddenY);
-      backdropOpacity.setValue(0);
-      Animated.parallel([
-        Animated.spring(translateY, {
-          toValue: 0,
-          ...animation.spring.smooth,
-          useNativeDriver: true,
-        }),
-        Animated.timing(backdropOpacity, {
-          toValue: 1,
-          duration: animation.duration.sheetBackdropIn,
-          useNativeDriver: true,
-        }),
-      ]).start();
+      sheet.show();
     }
   }, [visible, template]);
 
@@ -250,19 +235,8 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId, onAp
 
   const dismiss = (onDismissed?: () => void) => {
     Keyboard.dismiss();
-    Animated.parallel([
-      Animated.spring(translateY, {
-        toValue: hiddenY,
-        ...animation.spring.sheetDismiss,
-        useNativeDriver: true,
-      }),
-      Animated.timing(backdropOpacity, {
-        toValue: 0,
-        duration: animation.duration.sheetBackdropOut,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      // No re-arming setValue here — see useSheetHiddenOffset.
+    sheet.hide(() => {
+      // No re-arming setValue here — see useSheetMotion.
       onClose();
       onDismissed?.();
     });
@@ -271,22 +245,14 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId, onAp
   // Slide the sheet away before showing the calendar — rendering both at once
   // causes touch conflicts.
   const openCalendar = (target: 'start' | 'end') => {
-    Animated.spring(translateY, {
-      toValue: hiddenY,
-      ...animation.spring.sheetDismiss,
-      useNativeDriver: true,
-    }).start(() => {
+    sheet.slideOut(() => {
       setCalendarTarget(target);
     });
   };
 
   const restoreSheet = () => {
     setCalendarTarget(null);
-    Animated.spring(translateY, {
-      toValue: 0,
-      ...animation.spring.smooth,
-      useNativeDriver: true,
-    }).start();
+    sheet.slideIn();
   };
 
   const panResponder = useRef(
@@ -300,11 +266,7 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId, onAp
         if (dy > 80 || vy > 1.2) {
           dismiss();
         } else {
-          Animated.spring(translateY, {
-            toValue: 0,
-            ...animation.spring.snappy,
-            useNativeDriver: true,
-          }).start();
+          sheet.restore();
         }
       },
     })
@@ -505,6 +467,7 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId, onAp
       <SheetScrim onPress={() => dismiss()} />
 
       <Animated.View
+        onLayout={sheet.onCardLayout}
         style={[
           styles.sheetOuter,
           keyboard.height > 0 && { maxHeight: windowHeight - keyboard.height - KEYBOARD_TOP_INSET },

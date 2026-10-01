@@ -1,11 +1,9 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, Animated, Alert, ActivityIndicator } from 'react-native';
-import { SheetModal } from './SheetModal';
+import React, { useEffect, useMemo, useState } from 'react';
+import { View, Text, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import { CardSheet, useCardSheet } from './CardSheet';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, animation, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
-import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
-import { SheetScrim } from './SheetScrim';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
 import { SegmentedControl } from './SegmentedControl';
@@ -65,34 +63,19 @@ export function CsvExportSheet<T>({
 }) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const hiddenY = useSheetHiddenOffset();
+  const card = useCardSheet();
 
   const [range, setRange] = useState<ExportRange>(90);
   const [sharing, setSharing] = useState(false);
 
-  const translateY = useRef(new Animated.Value(hiddenY)).current;
-  const backdropOpacity = useRef(new Animated.Value(0)).current;
-
   useEffect(() => {
     if (visible) {
       setRange(90);
-      translateY.setValue(hiddenY);
-      backdropOpacity.setValue(0);
-      Animated.parallel([
-        Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
-        Animated.timing(backdropOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
-      ]).start();
     }
   }, [visible]);
 
   const dismiss = () => {
-    Animated.parallel([
-      Animated.spring(translateY, { toValue: hiddenY, ...animation.spring.sheetDismiss, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
-    ]).start(() => {
-      // No re-arming setValue here — see useSheetHiddenOffset.
-      onClose();
-    });
+    card.close(onClose);
   };
 
   const selected = useMemo(() => {
@@ -127,57 +110,47 @@ export function CsvExportSheet<T>({
   };
 
   return (
-    <SheetModal visible={visible} animationType="none" transparent onRequestClose={dismiss}>
-      <View style={styles.modalRoot}>
-        <Animated.View style={[styles.overlay, { opacity: backdropOpacity }]}>
-          <SheetScrim onPress={dismiss} />
-        </Animated.View>
-        <Animated.View style={[styles.sheet, { transform: [{ translateY }] }]}>
-          <SheetHeader
-            size="lg"
-            title="Export"
-            left={<SheetHeaderButton label="Cancel" role="cancel" onPress={dismiss} minWidth={64} />}
-            right={<View style={styles.headerSpacer} />}
+    <CardSheet name="CsvExportSheet" visible={visible} controller={card} onRequestClose={dismiss}>
+      <View style={styles.sheet}>
+        <SheetHeader
+          size="lg"
+          title="Export"
+          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={dismiss} minWidth={64} />}
+          right={<View style={styles.headerSpacer} />}
+        />
+
+        <View style={styles.body}>
+          <Text style={styles.hint}>{hint}</Text>
+
+          <SegmentedControl
+            label="Range"
+            options={RANGES.map(r => ({ value: r.value, label: r.label }))}
+            value={range}
+            onChange={setRange}
+            columns={2}
           />
 
-          <View style={styles.body}>
-            <Text style={styles.hint}>{hint}</Text>
+          <Text style={styles.summary}>{summary(selected)}</Text>
 
-            <SegmentedControl
-              label="Range"
-              options={RANGES.map(r => ({ value: r.value, label: r.label }))}
-              value={range}
-              onChange={setRange}
-              columns={2}
-            />
-
-            <Text style={styles.summary}>{summary(selected)}</Text>
-
-            <PressableScale
-              style={[styles.shareButton, selected.length === 0 && styles.shareButtonDisabled]}
-              onPress={share}
-              disabled={selected.length === 0 || sharing}
-              accessibilityLabel="Share the file"
-            >
-              {sharing
-                ? <ActivityIndicator color={colors.onAccent} />
-                : <Text style={styles.shareLabel}>Share</Text>}
-            </PressableScale>
-          </View>
-        </Animated.View>
+          <PressableScale
+            style={[styles.shareButton, selected.length === 0 && styles.shareButtonDisabled]}
+            onPress={share}
+            disabled={selected.length === 0 || sharing}
+            accessibilityLabel="Share the file"
+          >
+            {sharing
+              ? <ActivityIndicator color={colors.onAccent} />
+              : <Text style={styles.shareLabel}>Share</Text>}
+          </PressableScale>
+        </View>
       </View>
-    </SheetModal>
+    </CardSheet>
   );
 }
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
-  modalRoot: { flex: 1, justifyContent: 'flex-end' },
-  overlay: { ...StyleSheet.absoluteFill, backgroundColor: colors.backdrop },
   sheet: {
-    backgroundColor: colors.bgSecondary,
-    borderTopLeftRadius: radius.lg,
-    borderTopRightRadius: radius.lg,
-    paddingBottom: 40,
+    paddingBottom: spacing.xs,
   },
   headerSpacer: { minWidth: 64 },
   body: { padding: spacing.md, gap: spacing.md },

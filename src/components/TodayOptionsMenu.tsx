@@ -1,18 +1,16 @@
-import React, { useRef, useEffect, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
-  Animated,
+  ScrollView,
   StyleSheet,
 } from 'react-native';
-import { SheetModal } from './SheetModal';
+import { CardSheet, type CardAnchor } from './CardSheet';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, border, animation, interaction, type Colors } from '../theme';
+import { spacing, font, fontWeight, border, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
-import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
-import { SheetScrim } from './SheetScrim';
 
 interface Props {
   visible: boolean;
@@ -68,6 +66,8 @@ interface Props {
   onManageEvents?: () => void;
   /** How many events are on today, shown as the action's hint. */
   eventCount?: number;
+  /** Where the "…" was tapped, so the menu opens from it. See `CardSheet`. */
+  anchor?: CardAnchor | null;
 }
 
 /**
@@ -91,42 +91,21 @@ export function TodayOptionsMenu({
   categoryCount,
   onManageEvents,
   eventCount,
+  anchor,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
-  const hiddenY = useSheetHiddenOffset();
-
-  const translateY = useRef(new Animated.Value(hiddenY)).current;
-  const backdropOpacity = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    if (visible) {
-      translateY.setValue(hiddenY);
-      backdropOpacity.setValue(0);
-      Animated.parallel([
-        Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
-        Animated.timing(backdropOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
-      ]).start();
-    }
-  }, [visible]);
-
-  const dismiss = () => {
-    Animated.parallel([
-      Animated.spring(translateY, { toValue: hiddenY, ...animation.spring.bouncy, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
-    ]).start(() => {
-      // No re-arming setValue here — see useSheetHiddenOffset.
-      onClose();
-    });
-  };
-
   return (
-    <SheetModal visible={visible} animationType="none" transparent onRequestClose={dismiss}>
-      <Animated.View style={[StyleSheet.absoluteFill, styles.backdropDim, { opacity: backdropOpacity }]} pointerEvents="none" />
-      <SheetScrim onPress={dismiss} />
-
-      <Animated.View style={[styles.sheetOuter, { transform: [{ translateY }] }]}>
+    <CardSheet
+      name="TodayOptionsMenu"
+      visible={visible}
+      onClose={onClose}
+      anchor={anchor}
+      popoverWidth={340}
+      scrimLabel="Close menu"
+    >
+      <ScrollView bounces={false} showsVerticalScrollIndicator={false}>
         <View style={styles.optionsCard}>
           {onLightenDay && (
             <>
@@ -308,33 +287,13 @@ export function TodayOptionsMenu({
             </View>
           </TouchableOpacity>
         </View>
-
-        <TouchableOpacity style={styles.cancelCard} onPress={dismiss} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
-          <Text style={styles.cancelLabel}>Close</Text>
-        </TouchableOpacity>
-      </Animated.View>
-    </SheetModal>
+      </ScrollView>
+    </CardSheet>
   );
 }
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
-  backdropDim: {
-    backgroundColor: colors.backdrop,
-  },
-  sheetOuter: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    paddingHorizontal: spacing.md,
-    paddingBottom: 34,
-  },
-  optionsCard: {
-    backgroundColor: colors.bgSecondary,
-    borderRadius: radius.lg,
-    overflow: 'hidden',
-    marginBottom: spacing.sm,
-  },
+  optionsCard: {},
   optionRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -375,15 +334,4 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.textSecondary,
   },
   toggleKnobOn: { backgroundColor: colors.onAccent, alignSelf: 'flex-end' },
-  cancelCard: {
-    backgroundColor: colors.bgSecondary,
-    borderRadius: radius.lg,
-    paddingVertical: 18,
-    alignItems: 'center',
-  },
-  cancelLabel: {
-    color: colors.text,
-    fontSize: font.md,
-    fontWeight: fontWeight.semibold,
-  },
 });

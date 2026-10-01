@@ -30,7 +30,7 @@ import { canBeBlockedBy, canBeBlockerOf, resolverFor, sortByBlockerAffinity, typ
 import { displayTitleFor } from '../utils/visibilityUtils';
 import { categoryLabel } from '../utils/categoryLabel';
 import type { Task } from '../types';
-import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
+import { useSheetMotion } from '../hooks/useSheetMotion';
 import { useFilterField } from '../hooks/useFilterField';
 
 /**
@@ -169,10 +169,8 @@ export function TaskRelationPickerSheet({ visible, onClose, relation, taskId, co
     return parts.length ? parts.join(' · ') : null;
   };
 
-  const hiddenY = useSheetHiddenOffset();
-
-  const translateY = useRef(new Animated.Value(hiddenY)).current;
-  const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const sheet = useSheetMotion(visible);
+  const { translateY, backdropOpacity } = sheet;
   /**
    * The sheet is bottom-anchored, so with a short list the whole thing — rows
    * and Cancel both — sits behind the keyboard the search field just raised.
@@ -204,40 +202,16 @@ export function TaskRelationPickerSheet({ visible, onClose, relation, taskId, co
   useEffect(() => {
     if (visible) {
       clearQuery();
-      translateY.setValue(hiddenY);
-      backdropOpacity.setValue(0);
       keyboardOffset.setValue(0);
       setKeyboardHeight(0);
-      Animated.parallel([
-        Animated.spring(translateY, {
-          toValue: 0,
-          ...animation.spring.smooth,
-          useNativeDriver: true,
-        }),
-        Animated.timing(backdropOpacity, {
-          toValue: 1,
-          duration: animation.duration.sheetBackdropIn,
-          useNativeDriver: true,
-        }),
-      ]).start();
+      sheet.show();
     }
   }, [visible]);
 
   const dismiss = (after?: () => void) => {
     Keyboard.dismiss();
-    Animated.parallel([
-      Animated.spring(translateY, {
-        toValue: hiddenY,
-        ...animation.spring.sheetDismiss,
-        useNativeDriver: true,
-      }),
-      Animated.timing(backdropOpacity, {
-        toValue: 0,
-        duration: animation.duration.sheetBackdropOut,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      // No re-arming setValue here — see useSheetHiddenOffset.
+    sheet.hide(() => {
+      // No re-arming setValue here — see useSheetMotion.
       onClose();
       after?.();
     });
@@ -278,6 +252,7 @@ export function TaskRelationPickerSheet({ visible, onClose, relation, taskId, co
       <SheetScrim onPress={() => dismiss()} />
 
       <Animated.View
+        onLayout={sheet.onCardLayout}
         style={[
           styles.sheetOuter,
           // Capped against what's left above the keyboard; the card and its list

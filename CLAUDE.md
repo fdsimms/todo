@@ -892,11 +892,13 @@ sized as an icon, a large hero number (a focus countdown, an estimate's total), 
 - `interaction.activeOpacity` (0.7), `interaction.pressScale`, `interaction.delayLongPress` — press behavior
 - `animation.spring.snappy/smooth/bouncy` and `animation.duration.*` — every Animated call
 - `getShadows(isDark)` via `useTheme().shadows` (`card`, `fab`, `sheet`) — every shadow
-- `useSheetHiddenOffset()` (`src/hooks/`) — how far down a bottom sheet's card parks while
-  hidden, never a hardcoded number (a data-driven card can be taller than any guess). Read the
-  hook's doc comment before touching a sheet's open/close animation; the other half of the rule,
-  not re-arming the offset in the dismiss animation's completion callback, lives at the call
-  sites.
+- `useSheetMotion(visible)` (`src/hooks/`) — a hand-built bottom sheet's whole entrance and
+  exit: `show()` in the open effect, `hide(after)` on the way out, `onCardLayout` on the card. It
+  measures the card and travels only that far (a window-height spring makes a short menu spend
+  most of its entrance off screen), and leaves on a timed curve (`animation.duration.sheetExit`),
+  because a spring only reports done once it settles and holds the modal, and every touch behind
+  it, until then. A new bottom sheet uses it rather than writing the springs out again, and never
+  re-arms `translateY` in `hide`'s callback (see `useSheetHiddenOffset`'s doc comment for why).
 
 **Any `pageSheet` Modal whose `ScrollView` holds a `TextInput` needs `useKeyboardInsetScroll`
 (`src/hooks/`), or the keyboard sits on top of whatever's below the focused field.** A bare
@@ -926,6 +928,16 @@ right.
   replacement taking the same props, which dismisses the keyboard before it lets the modal close
   (see the freeze note under list rows below). Rendering `react-native`'s `Modal` directly fails
   `noRawModal.test.ts`.
+- `CardSheet` (`src/components/CardSheet.tsx`) — the quick-add shape for any short sheet: a card
+  that scales in at the middle of the screen and fades out in a blink. **Reach for it before a
+  bottom sheet when the sheet is one small decision** (a field or two, a closed set of options, a
+  short list of actions): the answer prompt, the chain step settings, the cookbook editor and the
+  calendar choice are all this. With `anchor` (a touch's `pageX`/`pageY`) it opens as a popover
+  from that point instead, which is what an overflow menu is: Today's and Projects' "…" and a
+  Logbook row's menu. `ScreenHeaderAction.onPress` gets the press event for exactly this. Exits
+  go through `useCardSheet()`'s `close(after)` so the content stays put while it fades, and a
+  sheet raised from the card goes in `overlays`, not in the card (see "Two sibling Modals"). A
+  picker over a long list, a filter (see below) or a multi-step flow still wants a bottom sheet.
 - `ScreenHeader` (`src/components/ScreenHeader.tsx`) — every screen's large-title header: title, optional subtitle/overline, 34pt icon actions with badges/active tint/loading, or custom `right` content.
 - `PressableScale` (`src/components/PressableScale.tsx`) — standard press feedback (spring scale + opacity dip) for buttons, chips, FABs, icon buttons. Full-width list rows keep `TouchableOpacity` with `interaction.activeOpacity` — scaling a full row looks wrong.
 - `InlineAction` (`src/components/InlineAction.tsx`) — the small tinted pill that adds a thing to the

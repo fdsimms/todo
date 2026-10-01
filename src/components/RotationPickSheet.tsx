@@ -1,11 +1,11 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { Animated, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SheetModal } from './SheetModal';
 import { SafeBlurView } from './SafeBlurView';
 import { SheetScrim } from './SheetScrim';
 import { SheetHeaderButton } from './SheetHeaderButton';
-import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
+import { useSheetMotion } from '../hooks/useSheetMotion';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { getCurrentDayStart } from '../utils/dateUtils';
@@ -13,7 +13,7 @@ import { displayTitleFor } from '../utils/visibilityUtils';
 import { haptics } from '../utils/haptics';
 import { openInAppUrl } from '../utils/deepLinks';
 import { rotationLastDoneLabel, rotationMembers } from '../utils/rotation';
-import { spacing, radius, font, fontWeight, iconSize, animation, interaction, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import type { Task } from '../types';
 
 interface Props {
@@ -60,9 +60,8 @@ export function RotationPickSheet({ visible, task, onPick, onCancel }: Props) {
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
 
-  const hiddenY = useSheetHiddenOffset();
-  const translateY = useRef(new Animated.Value(hiddenY)).current;
-  const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const sheet = useSheetMotion(visible);
+  const { translateY, backdropOpacity } = sheet;
 
   // Read once per open rather than per render: a sheet held across the
   // dayResetTime boundary re-deciding which week it is about, mid-tap, is a
@@ -74,18 +73,12 @@ export function RotationPickSheet({ visible, task, onPick, onCancel }: Props) {
 
   useEffect(() => {
     if (!visible) return;
-    Animated.parallel([
-      Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
-    ]).start();
+    sheet.show();
   }, [visible, task.id]);
 
   const dismiss = (after: () => void) => {
-    Animated.parallel([
-      Animated.spring(translateY, { toValue: hiddenY, ...animation.spring.sheetDismiss, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
-    ]).start(() => {
-      // No re-arming setValue here — see useSheetHiddenOffset.
+    sheet.hide(() => {
+      // No re-arming setValue here — see useSheetMotion.
       after();
     });
   };
@@ -176,7 +169,7 @@ export function RotationPickSheet({ visible, task, onPick, onCancel }: Props) {
       {/* Tapping out logs nothing — the reflex gesture has to be the safe one. */}
       <SheetScrim onPress={() => dismiss(onCancel)} />
 
-      <Animated.View style={[styles.sheetOuter, { transform: [{ translateY }] }]}>
+      <Animated.View onLayout={sheet.onCardLayout} style={[styles.sheetOuter, { transform: [{ translateY }] }]}>
         <View style={styles.card}>
           <View style={styles.headerRow}>
             <SheetHeaderButton label="Cancel" role="cancel" onPress={() => dismiss(onCancel)} minWidth={56} />

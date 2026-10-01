@@ -38,7 +38,7 @@ import {
   resolveCategorySubmit,
   type CategoryOption,
 } from '../utils/categoryPicker';
-import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
+import { useSheetMotion } from '../hooks/useSheetMotion';
 import { useFilterField } from '../hooks/useFilterField';
 
 interface ListProps {
@@ -304,10 +304,8 @@ export function PickerSheet({ visible, onClose, title, children }: {
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const { height: windowHeight } = useWindowDimensions();
 
-  const hiddenY = useSheetHiddenOffset();
-
-  const translateY = useRef(new Animated.Value(hiddenY)).current;
-  const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const sheet = useSheetMotion(visible);
+  const { translateY, backdropOpacity } = sheet;
   /**
    * The sheet is bottom-anchored, so a short list sits behind the keyboard the
    * search field raises. Lifting it clear needs the height cap below as well
@@ -337,8 +335,6 @@ export function PickerSheet({ visible, onClose, title, children }: {
 
   useEffect(() => {
     if (visible) {
-      translateY.setValue(hiddenY);
-      backdropOpacity.setValue(0);
       // Seeded from whatever is on screen rather than assumed to be nothing:
       // both hosts open this over a keyboard of their own (quick add's title
       // field, the bulk bar's tag field), and if iOS leaves that keyboard up
@@ -348,20 +344,14 @@ export function PickerSheet({ visible, onClose, title, children }: {
       const height = Keyboard.metrics()?.height ?? 0;
       setKeyboardHeight(height);
       keyboardOffset.setValue(-height);
-      Animated.parallel([
-        Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
-        Animated.timing(backdropOpacity, { toValue: 1, duration: animation.duration.sheetBackdropIn, useNativeDriver: true }),
-      ]).start();
+      sheet.show();
     }
   }, [visible]);
 
   const dismiss = (after?: () => void) => {
     Keyboard.dismiss();
-    Animated.parallel([
-      Animated.spring(translateY, { toValue: hiddenY, ...animation.spring.sheetDismiss, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.sheetBackdropOut, useNativeDriver: true }),
-    ]).start(() => {
-      // No re-arming setValue here — see useSheetHiddenOffset.
+    sheet.hide(() => {
+      // No re-arming setValue here — see useSheetMotion.
       onClose();
       after?.();
     });
@@ -378,7 +368,7 @@ export function PickerSheet({ visible, onClose, title, children }: {
         if (dy > 80 || vy > 1.2) {
           dismiss();
         } else {
-          Animated.spring(translateY, { toValue: 0, ...animation.spring.snappy, useNativeDriver: true }).start();
+          sheet.restore();
         }
       },
     })
@@ -393,6 +383,7 @@ export function PickerSheet({ visible, onClose, title, children }: {
       <SheetScrim onPress={() => dismiss()} />
 
       <Animated.View
+        onLayout={sheet.onCardLayout}
         style={[
           styles.sheetOuter,
           // Capped against what's left above the keyboard; the card and its
