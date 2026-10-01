@@ -12,7 +12,7 @@ import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeBlurView } from './SafeBlurView';
 import { useColors, useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, lineHeight, border, animation, interaction, iconSize, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, lineHeight, border, interaction, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { formatDuration, sumEstimatedMinutes } from '../utils/effort';
 import {
@@ -26,7 +26,7 @@ import { useTaskStore } from '../store/useTaskStore';
 import { PinIcon } from './PinIcon';
 import { SheetScrim } from './SheetScrim';
 import type { Task } from '../types';
-import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
+import { useSheetMotion } from '../hooks/useSheetMotion';
 import { activeChainStep } from '../utils/chain';
 
 interface Props {
@@ -66,10 +66,8 @@ export function SuggestedPinsSheet({ visible, tasks, pinnedTasks, onClose, onCon
   /** Swapped-away ids, never offered again while the sheet is open. */
   const [rejectedIds, setRejectedIds] = useState<string[]>([]);
 
-  const hiddenY = useSheetHiddenOffset();
-
-  const translateY = useRef(new Animated.Value(hiddenY)).current;
-  const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const sheet = useSheetMotion(visible);
+  const { translateY, backdropOpacity } = sheet;
 
   useEffect(() => {
     if (!visible) return;
@@ -81,21 +79,13 @@ export function SuggestedPinsSheet({ visible, tasks, pinnedTasks, onClose, onCon
     setSlotIds(picked);
     setSelectedIds(new Set(picked));
     setRejectedIds([]);
-    translateY.setValue(hiddenY);
-    backdropOpacity.setValue(0);
-    Animated.parallel([
-      Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
-    ]).start();
+    sheet.show();
     // Keyed on `visible` alone — the shortlist is taken once, at open.
   }, [visible]);
 
   const dismiss = () => {
-    Animated.parallel([
-      Animated.spring(translateY, { toValue: hiddenY, ...animation.spring.sheetDismiss, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
-    ]).start(() => {
-      // No re-arming setValue here — see useSheetHiddenOffset.
+    sheet.hide(() => {
+      // No re-arming setValue here — see useSheetMotion.
       onClose();
     });
   };
@@ -109,7 +99,7 @@ export function SuggestedPinsSheet({ visible, tasks, pinnedTasks, onClose, onCon
       },
       onPanResponderRelease: (_, { dy, vy }) => {
         if (dy > 80 || vy > 1.2) dismiss();
-        else Animated.spring(translateY, { toValue: 0, ...animation.spring.snappy, useNativeDriver: true }).start();
+        else sheet.restore();
       },
     })
   ).current;
@@ -258,7 +248,7 @@ export function SuggestedPinsSheet({ visible, tasks, pinnedTasks, onClose, onCon
       </Animated.View>
       <SheetScrim onPress={dismiss} />
 
-      <Animated.View style={[styles.sheetOuter, { transform: [{ translateY }] }]}>
+      <Animated.View onLayout={sheet.onCardLayout} style={[styles.sheetOuter, { transform: [{ translateY }] }]}>
         <View style={styles.handleArea} {...panResponder.panHandlers}>
           <View style={styles.handle} />
         </View>

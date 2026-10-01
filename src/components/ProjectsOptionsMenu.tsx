@@ -1,19 +1,16 @@
-import React, { useRef, useEffect, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
-  Animated,
+  ScrollView,
   StyleSheet,
 } from 'react-native';
-import { SheetModal } from './SheetModal';
+import { CardSheet, useCardSheet, type CardAnchor } from './CardSheet';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, border, animation, interaction, type Colors } from '../theme';
+import { spacing, font, fontWeight, border, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
-import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
-import { SheetScrim } from './SheetScrim';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { ProjectSortOption } from '../types';
 import { PROJECT_SORT_LABEL, PROJECT_SORT_OPTIONS, type ProjectListFilter } from '../utils/projectList';
 
@@ -31,6 +28,8 @@ interface Props {
   categoryCount: number;
   sort: ProjectSortOption;
   onSortChange: (sort: ProjectSortOption) => void;
+  /** Where the "…" was tapped, so the menu opens from it. See `CardSheet`. */
+  anchor?: CardAnchor | null;
 }
 
 /**
@@ -46,42 +45,18 @@ interface Props {
  */
 export function ProjectsOptionsMenu({
   visible, onClose, filter, onFilterChange, completedCount, archivedCount,
-  onManageCategories, categoryCount, sort, onSortChange,
+  onManageCategories, categoryCount, sort, onSortChange, anchor,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const insets = useSafeAreaInsets();
 
-  const hiddenY = useSheetHiddenOffset();
-
-  const translateY = useRef(new Animated.Value(hiddenY)).current;
-  const backdropOpacity = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    if (visible) {
-      translateY.setValue(hiddenY);
-      backdropOpacity.setValue(0);
-      Animated.parallel([
-        Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
-        Animated.timing(backdropOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
-      ]).start();
-    }
-  }, [visible]);
+  const card = useCardSheet();
 
   // Closes, then runs `then` once the sheet is off screen. A row that opens
   // another sheet goes through here so the two modals don't overlap — a sheet
   // presented from under one that is still animating out inherits the
   // dismissal (see the nested-modal note in ProjectDetail).
-  const dismissThen = (then?: () => void) => {
-    Animated.parallel([
-      Animated.spring(translateY, { toValue: hiddenY, ...animation.spring.bouncy, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
-    ]).start(() => {
-      // No re-arming setValue here — see useSheetHiddenOffset.
-      onClose();
-      then?.();
-    });
-  };
+  const dismissThen = (then?: () => void) => card.close(then);
   const dismiss = () => dismissThen();
 
   const choose = (v: ProjectFilter) => {
@@ -97,16 +72,16 @@ export function ProjectsOptionsMenu({
   };
 
   return (
-    <SheetModal visible={visible} animationType="none" transparent onRequestClose={dismiss}>
-      <Animated.View style={[StyleSheet.absoluteFill, styles.backdropDim, { opacity: backdropOpacity }]} pointerEvents="none" />
-      <SheetScrim onPress={dismiss} />
-
-      <Animated.View
-        style={[
-          styles.sheetOuter,
-          { paddingBottom: insets.bottom + spacing.sm, transform: [{ translateY }] },
-        ]}
-      >
+    <CardSheet
+      name="ProjectsOptionsMenu"
+      visible={visible}
+      onClose={onClose}
+      controller={card}
+      anchor={anchor}
+      popoverWidth={300}
+      scrimLabel="Close menu"
+    >
+      <ScrollView bounces={false} showsVerticalScrollIndicator={false}>
         <View style={styles.optionsCard}>
           <TouchableOpacity
             style={styles.optionRow}
@@ -170,7 +145,7 @@ export function ProjectsOptionsMenu({
             unbacked label there let whatever's dimmed behind it (a project
             category header, most often) read straight through and collide
             with it. */}
-        <View style={styles.optionsCard}>
+        <View style={[styles.optionsCard, styles.secondCard]}>
           <Text style={styles.cardLabel}>Sort by</Text>
           <View style={styles.optionSep} />
           {PROJECT_SORT_OPTIONS.map((option, i) => (
@@ -221,36 +196,18 @@ export function ProjectsOptionsMenu({
             <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
           </TouchableOpacity>
         </View>
-
-        <TouchableOpacity style={styles.cancelCard} onPress={dismiss} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
-          <Text style={styles.cancelLabel}>Close</Text>
-        </TouchableOpacity>
-      </Animated.View>
-    </SheetModal>
+      </ScrollView>
+    </CardSheet>
   );
 }
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
-  backdropDim: {
-    backgroundColor: colors.backdrop,
-  },
-  sheetOuter: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    paddingHorizontal: spacing.md,
-  },
-  optionsCard: {
-    backgroundColor: colors.bgSecondary,
-    borderRadius: radius.lg,
-    overflow: 'hidden',
-    marginBottom: spacing.sm,
-  },
-  // Its own card, not a fourth row in the one above: those three are one
+  optionsCard: {},
+  // Its own group, not a fourth row in the one above: those three are one
   // question (which list am I looking at) with a tick on the current answer,
-  // and a row that opens somewhere else is not an answer to it.
-  secondCard: { marginBottom: spacing.sm },
+  // and a row that opens somewhere else is not an answer to it. The band is
+  // the iOS menu's group break, drawn in the screen colour.
+  secondCard: { borderTopWidth: spacing.xsm, borderTopColor: colors.bg },
   optionRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -281,15 +238,4 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   optionLabelActive: { color: colors.text, fontWeight: fontWeight.semibold },
   optionHint: { color: colors.textTertiary, fontSize: font.sm, marginTop: spacing.xxs },
-  cancelCard: {
-    backgroundColor: colors.bgSecondary,
-    borderRadius: radius.lg,
-    paddingVertical: 18,
-    alignItems: 'center',
-  },
-  cancelLabel: {
-    color: colors.text,
-    fontSize: font.md,
-    fontWeight: fontWeight.semibold,
-  },
 });

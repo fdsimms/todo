@@ -23,7 +23,7 @@ import { haptics } from '../utils/haptics';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { rankRecipes, describeRecipe, cleanRecipeName, sharedRecipeNameKeys, sortRecipesForDisplay } from '../utils/recipeUtils';
 import { RECIPE_NAME_MAX_LENGTH } from '../types';
-import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
+import { useSheetMotion } from '../hooks/useSheetMotion';
 import { useFilterField } from '../hooks/useFilterField';
 
 export interface MealReplacement {
@@ -91,10 +91,8 @@ export function MealReplaceItemSheet({ visible, count, title, hint, onReplace, o
   const showFreeText =
     !!typed && !matches.some(r => r.name.toLowerCase() === typed.toLowerCase());
 
-  const hiddenY = useSheetHiddenOffset();
-
-  const translateY = useRef(new Animated.Value(hiddenY)).current;
-  const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const sheet = useSheetMotion(visible);
+  const { translateY, backdropOpacity } = sheet;
   const keyboardOffset = useRef(new Animated.Value(0)).current;
 
   // Without this, the card stays pinned to the physical bottom of the
@@ -120,13 +118,8 @@ export function MealReplaceItemSheet({ visible, count, title, hint, onReplace, o
   useEffect(() => {
     if (!visible) return;
     clearQuery();
-    translateY.setValue(hiddenY);
-    backdropOpacity.setValue(0);
     keyboardOffset.setValue(0);
-    Animated.parallel([
-      Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
-    ]).start();
+    sheet.show();
     // Same fix as QuickSearchModal's own field: the sheet stays mounted
     // across opens, so nothing else focuses this one.
     searchInputRef.current?.focus();
@@ -134,11 +127,8 @@ export function MealReplaceItemSheet({ visible, count, title, hint, onReplace, o
 
   const dismiss = (after?: () => void) => {
     Keyboard.dismiss();
-    Animated.parallel([
-      Animated.spring(translateY, { toValue: hiddenY, ...animation.spring.sheetDismiss, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
-    ]).start(() => {
-      // No re-arming setValue here — see useSheetHiddenOffset.
+    sheet.hide(() => {
+      // No re-arming setValue here — see useSheetMotion.
       onClose();
       after?.();
     });
@@ -153,7 +143,7 @@ export function MealReplaceItemSheet({ visible, count, title, hint, onReplace, o
       },
       onPanResponderRelease: (_, { dy, vy }) => {
         if (dy > 80 || vy > 1.2) dismiss();
-        else Animated.spring(translateY, { toValue: 0, ...animation.spring.snappy, useNativeDriver: true }).start();
+        else sheet.restore();
       },
     })
   ).current;
@@ -173,7 +163,7 @@ export function MealReplaceItemSheet({ visible, count, title, hint, onReplace, o
       </Animated.View>
       <SheetScrim onPress={() => dismiss()} />
 
-      <Animated.View style={[styles.sheetOuter, { transform: [{ translateY: Animated.add(translateY, keyboardOffset) }] }]}>
+      <Animated.View onLayout={sheet.onCardLayout} style={[styles.sheetOuter, { transform: [{ translateY: Animated.add(translateY, keyboardOffset) }] }]}>
         <View style={styles.handleArea} {...panResponder.panHandlers}>
           <View style={styles.handle} />
         </View>

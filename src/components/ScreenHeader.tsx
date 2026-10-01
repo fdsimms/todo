@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { View, Text, ActivityIndicator, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, ActivityIndicator, TouchableOpacity, StyleSheet, type GestureResponderEvent } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, lineHeight, iconSize, interaction, type Colors } from '../theme';
@@ -8,7 +8,11 @@ import { TargetIcon, TARGET_ICON } from './TargetIcon';
 
 export interface ScreenHeaderAction {
   icon: keyof typeof Ionicons.glyphMap | typeof TARGET_ICON;
-  onPress: () => void;
+  /**
+   * Gets the press event, whose `pageX`/`pageY` is what an overflow menu opens
+   * from (see `CardSheet`'s `anchor`).
+   */
+  onPress: (e: GestureResponderEvent) => void;
   /** Filled accent/orange background for an engaged state. */
   active?: boolean;
   tint?: 'accent' | 'orange';

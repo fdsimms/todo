@@ -47,7 +47,7 @@ import {
   type LeftoverPick,
 } from '../utils/leftovers';
 import { useScrollEdgeFade } from '../hooks/useScrollEdgeFade';
-import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
+import { useSheetMotion } from '../hooks/useSheetMotion';
 
 /** Kept clear above the sheet so its first row never slides under the status bar. */
 const TOP_INSET = 72;
@@ -205,10 +205,8 @@ export function LeftoverSheet({
   const fade = useScrollEdgeFade();
   const { height: windowHeight } = useWindowDimensions();
 
-  const hiddenY = useSheetHiddenOffset();
-
-  const translateY = useRef(new Animated.Value(hiddenY)).current;
-  const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const sheet = useSheetMotion(visible);
+  const { translateY, backdropOpacity } = sheet;
   // The sheet is bottom-anchored, the same edge the keyboard docks to — with
   // nothing accounting for it, an autofocused TextInput (fresh, unseeded
   // "Log a leftover") raises a keyboard that covers the sheet entirely rather
@@ -268,12 +266,7 @@ export function LeftoverSheet({
 
   useEffect(() => {
     if (!visible) return;
-    translateY.setValue(hiddenY);
-    backdropOpacity.setValue(0);
-    Animated.parallel([
-      Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
-    ]).start();
+    sheet.show();
     // A fresh open always starts from the row (or the seed) rather than from
     // whatever the last one was left on.
     setTitle(leftover?.title ?? seed?.title ?? '');
@@ -291,11 +284,8 @@ export function LeftoverSheet({
 
   const dismiss = (after?: () => void) => {
     Keyboard.dismiss();
-    Animated.parallel([
-      Animated.spring(translateY, { toValue: hiddenY, ...animation.spring.sheetDismiss, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
-    ]).start(() => {
-      // No re-arming setValue here — see useSheetHiddenOffset.
+    sheet.hide(() => {
+      // No re-arming setValue here — see useSheetMotion.
       onClose();
       after?.();
     });
@@ -310,7 +300,7 @@ export function LeftoverSheet({
       },
       onPanResponderRelease: (_, { dy, vy }) => {
         if (dy > 80 || vy > 1.2) dismiss();
-        else Animated.spring(translateY, { toValue: 0, ...animation.spring.snappy, useNativeDriver: true }).start();
+        else sheet.restore();
       },
     })
   ).current;
@@ -428,6 +418,7 @@ export function LeftoverSheet({
       <SheetScrim onPress={() => dismiss()} />
 
       <Animated.View
+        onLayout={sheet.onCardLayout}
         style={[
           styles.sheetOuter,
           { maxHeight: windowHeight - TOP_INSET },

@@ -27,7 +27,7 @@ import { SheetScrim } from './SheetScrim';
 import { dayKeyOf, getLogicalToday } from '../utils/dateUtils';
 import { slotLabel, upcomingDays } from '../utils/mealPlan';
 import { useScrollEdgeFade } from '../hooks/useScrollEdgeFade';
-import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
+import { useSheetMotion } from '../hooks/useSheetMotion';
 
 /** Kept clear above the sheet so its title never slides under the status bar. */
 const TOP_INSET = 72;
@@ -104,10 +104,8 @@ export function PlanMealSheet({ visible, title, defaultSlot, onPlan, onPlanned, 
   const fade = useScrollEdgeFade();
   const { height: windowHeight } = useWindowDimensions();
 
-  const hiddenY = useSheetHiddenOffset();
-
-  const translateY = useRef(new Animated.Value(hiddenY)).current;
-  const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const sheet = useSheetMotion(visible);
+  const { translateY, backdropOpacity } = sheet;
 
   // Fixed for the life of one opening: a rolling window recomputed mid-render
   // would slide under the user at midnight, and the chips are already labelled
@@ -137,20 +135,12 @@ export function PlanMealSheet({ visible, title, defaultSlot, onPlan, onPlanned, 
     setDayKey(dayKeyOf(fresh[0]));
     setSlot(defaultSlotRef.current);
     setPlanned(null);
-    translateY.setValue(hiddenY);
-    backdropOpacity.setValue(0);
-    Animated.parallel([
-      Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
-    ]).start();
+    sheet.show();
   }, [visible, title]);
 
   const dismiss = (after?: () => void) => {
-    Animated.parallel([
-      Animated.spring(translateY, { toValue: hiddenY, ...animation.spring.snappy, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
-    ]).start(() => {
-      // No re-arming setValue here — see useSheetHiddenOffset.
+    sheet.hide(() => {
+      // No re-arming setValue here — see useSheetMotion.
       onClose();
       after?.();
     });
@@ -212,6 +202,7 @@ export function PlanMealSheet({ visible, title, defaultSlot, onPlan, onPlanned, 
       <SheetScrim onPress={close} />
 
       <Animated.View
+        onLayout={sheet.onCardLayout}
         style={[
           styles.sheetOuter,
           { maxHeight: windowHeight - TOP_INSET },

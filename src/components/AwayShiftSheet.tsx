@@ -12,12 +12,12 @@ import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeBlurView } from './SafeBlurView';
 import { useColors, useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, border, animation, interaction, iconSize, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, border, interaction, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { SheetScrim } from './SheetScrim';
-import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
+import { useSheetMotion } from '../hooks/useSheetMotion';
 import { formatDeadlineDate, getEffectiveTaskDate } from '../utils/dateUtils';
 import {
   awayShiftUpdates,
@@ -79,30 +79,21 @@ export function AwayShiftSheet({ visible, tasks, from, to, projectTitle, onClose
   );
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
-  const hiddenY = useSheetHiddenOffset();
-  const translateY = useRef(new Animated.Value(hiddenY)).current;
-  const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const sheet = useSheetMotion(visible);
+  const { translateY, backdropOpacity } = sheet;
 
   useEffect(() => {
     if (!visible || !from || !to) return;
     const next = buildAwayShiftPlan(tasks, from, to, dayResetTime);
     setPlan(next);
     setSelectedIds(new Set(next.proposals.filter(p => p.selected && p.destination).map(p => p.task.id)));
-    translateY.setValue(hiddenY);
-    backdropOpacity.setValue(0);
-    Animated.parallel([
-      Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
-    ]).start();
+    sheet.show();
     // Keyed on `visible` alone, same as the sheets beside it.
   }, [visible]);
 
   const dismiss = () => {
-    Animated.parallel([
-      Animated.spring(translateY, { toValue: hiddenY, ...animation.spring.sheetDismiss, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
-    ]).start(() => {
-      // No re-arming setValue here — see useSheetHiddenOffset.
+    sheet.hide(() => {
+      // No re-arming setValue here — see useSheetMotion.
       onClose();
     });
   };
@@ -116,7 +107,7 @@ export function AwayShiftSheet({ visible, tasks, from, to, projectTitle, onClose
       },
       onPanResponderRelease: (_, { dy, vy }) => {
         if (dy > 80 || vy > 1.2) dismiss();
-        else Animated.spring(translateY, { toValue: 0, ...animation.spring.snappy, useNativeDriver: true }).start();
+        else sheet.restore();
       },
     })
   ).current;
@@ -156,7 +147,7 @@ export function AwayShiftSheet({ visible, tasks, from, to, projectTitle, onClose
       </Animated.View>
       <SheetScrim onPress={dismiss} />
 
-      <Animated.View style={[styles.sheetOuter, { transform: [{ translateY }] }]}>
+      <Animated.View onLayout={sheet.onCardLayout} style={[styles.sheetOuter, { transform: [{ translateY }] }]}>
         <View style={styles.handleArea} {...panResponder.panHandlers}>
           <View style={styles.handle} />
         </View>

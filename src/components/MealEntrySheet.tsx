@@ -17,7 +17,7 @@ import { format } from 'date-fns/format';
 import type { MealPlanEntry, MealSlot } from '../types';
 import { MEAL_SLOTS, RECIPE_NAME_MAX_LENGTH } from '../types';
 import { useColors, useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, border, animation, interaction, iconSize, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, border, interaction, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { SegmentedControl } from './SegmentedControl';
 import { SafeBlurView } from './SafeBlurView';
@@ -30,7 +30,7 @@ import { RecipeScaleChips } from './RecipeScaleChips';
 import { ScrollEdgeFade } from './ScrollEdgeFade';
 import { SheetScrim } from './SheetScrim';
 import { useScrollEdgeFade } from '../hooks/useScrollEdgeFade';
-import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
+import { useSheetMotion } from '../hooks/useSheetMotion';
 
 interface Props {
   visible: boolean;
@@ -221,22 +221,15 @@ export function MealEntrySheet({
   const { height: windowHeight } = useWindowDimensions();
   const cooked = !!entry?.cookedAt;
 
-  const hiddenY = useSheetHiddenOffset();
-
-  const translateY = useRef(new Animated.Value(hiddenY)).current;
-  const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const sheet = useSheetMotion(visible);
+  const { translateY, backdropOpacity } = sheet;
 
   const [editingTitle, setEditingTitle] = useState(false);
   const [draftTitle, setDraftTitle] = useState(title);
 
   useEffect(() => {
     if (!visible) return;
-    translateY.setValue(hiddenY);
-    backdropOpacity.setValue(0);
-    Animated.parallel([
-      Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
-    ]).start();
+    sheet.show();
     // A fresh open (or a switch to a different entry) always starts read-only,
     // regardless of whether the previous entry was left mid-edit.
     setEditingTitle(false);
@@ -252,11 +245,8 @@ export function MealEntrySheet({
 
   const dismiss = (after?: () => void) => {
     Keyboard.dismiss();
-    Animated.parallel([
-      Animated.spring(translateY, { toValue: hiddenY, ...animation.spring.sheetDismiss, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
-    ]).start(() => {
-      // No re-arming setValue here — see useSheetHiddenOffset. "Open recipe"
+    sheet.hide(() => {
+      // No re-arming setValue here — see useSheetMotion. "Open recipe"
       // is the call site that made this visible: the card was put back on
       // screen at the bottom of the meal plan and stayed there until
       // RecipeDetail had finished rendering.
@@ -274,7 +264,7 @@ export function MealEntrySheet({
       },
       onPanResponderRelease: (_, { dy, vy }) => {
         if (dy > 80 || vy > 1.2) dismiss();
-        else Animated.spring(translateY, { toValue: 0, ...animation.spring.snappy, useNativeDriver: true }).start();
+        else sheet.restore();
       },
     })
   ).current;
@@ -288,6 +278,7 @@ export function MealEntrySheet({
       <SheetScrim onPress={() => dismiss()} />
 
       <Animated.View
+        onLayout={sheet.onCardLayout}
         style={[
           styles.sheetOuter,
           { maxHeight: windowHeight - TOP_INSET },

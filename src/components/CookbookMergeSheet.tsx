@@ -14,12 +14,12 @@ import { SheetScrim } from './SheetScrim';
 import { EmptyState } from './EmptyState';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors, useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, interaction, animation, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { useShallow } from 'zustand/react/shallow';
 import { useRecipeStore } from '../store/useRecipeStore';
 import type { Cookbook } from '../types';
-import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
+import { useSheetMotion } from '../hooks/useSheetMotion';
 
 interface Props {
   visible: boolean;
@@ -49,26 +49,17 @@ export function CookbookMergeSheet({ visible, survivorId, onClose, onSelect }: P
   );
   const recipeCountOf = (id: string) => recipes.filter(r => r.cookbookId === id).length;
 
-  const hiddenY = useSheetHiddenOffset();
-  const translateY = useRef(new Animated.Value(hiddenY)).current;
-  const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const sheet = useSheetMotion(visible);
+  const { translateY, backdropOpacity } = sheet;
 
   useEffect(() => {
     if (visible) {
-      translateY.setValue(hiddenY);
-      backdropOpacity.setValue(0);
-      Animated.parallel([
-        Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
-        Animated.timing(backdropOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
-      ]).start();
+      sheet.show();
     }
-  }, [visible, hiddenY, translateY, backdropOpacity]);
+  }, [visible]);
 
   const dismiss = (after?: () => void) => {
-    Animated.parallel([
-      Animated.spring(translateY, { toValue: hiddenY, ...animation.spring.sheetDismiss, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
-    ]).start(() => {
+    sheet.hide(() => {
       onClose();
       after?.();
     });
@@ -83,7 +74,7 @@ export function CookbookMergeSheet({ visible, survivorId, onClose, onSelect }: P
       },
       onPanResponderRelease: (_, { dy, vy }) => {
         if (dy > 80 || vy > 1.2) dismiss();
-        else Animated.spring(translateY, { toValue: 0, ...animation.spring.snappy, useNativeDriver: true }).start();
+        else sheet.restore();
       },
     })
   ).current;
@@ -101,7 +92,7 @@ export function CookbookMergeSheet({ visible, survivorId, onClose, onSelect }: P
       </Animated.View>
       <SheetScrim onPress={() => dismiss()} />
 
-      <Animated.View style={[styles.sheetOuter, { transform: [{ translateY }] }]}>
+      <Animated.View onLayout={sheet.onCardLayout} style={[styles.sheetOuter, { transform: [{ translateY }] }]}>
         <View style={styles.handleArea} {...panResponder.panHandlers}>
           <View style={styles.handle} />
         </View>
