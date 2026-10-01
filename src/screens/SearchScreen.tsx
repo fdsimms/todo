@@ -44,6 +44,7 @@ import { SearchField } from '../components/SearchField';
 import { EmptyState } from '../components/EmptyState';
 import { HighlightedText } from '../components/HighlightedText';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
+import { useStableCallback } from '../hooks/useStableCallback';
 import { format } from 'date-fns/format';
 import { useFilterField } from '../hooks/useFilterField';
 
@@ -570,6 +571,10 @@ export function SearchScreen() {
     setEditorInitialDraft(draft);
     setEditorVisible(true);
   };
+  // Stable, because QuickAddModal is memoized and stays mounted while hidden:
+  // a fresh prop each render would re-render the hidden sheet with this screen.
+  const onQuickAddClose = useStableCallback(() => setQuickAddVisible(false));
+  const onQuickAddOpenFull = useStableCallback(handleQuickAddOpenFull);
 
   const renderItem = ({ item }: { item: ListItem }) => {
     if (item.type === 'sectionHeader') {
@@ -710,8 +715,8 @@ export function SearchScreen() {
 
       <QuickAddModal
         visible={quickAddVisible}
-        onClose={() => setQuickAddVisible(false)}
-        onOpenFull={handleQuickAddOpenFull}
+        onClose={onQuickAddClose}
+        onOpenFull={onQuickAddOpenFull}
         initialTitle={query}
       />
     </View>

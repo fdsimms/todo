@@ -15,6 +15,7 @@ import { useAnswerFirstCompletion } from '../hooks/useAnswerFirstCompletion';
 import { DeliverablePromptQueue } from '../components/DeliverablePromptQueue';
 import { useTaskStore } from '../store/useTaskStore';
 import { useTaskSelection } from '../hooks/useTaskSelection';
+import { useStableCallback } from '../hooks/useStableCallback';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useElevatedCellRenderer } from '../hooks/useElevatedCellRenderer';
 import { PaintSelectionProvider } from '../components/PaintSelection';
@@ -170,6 +171,11 @@ export function CategoryDetailScreen() {
     setEditorInitialDraft({ ...draft, category });
     setEditorVisible(true);
   };
+  // Stable, because QuickAddModal is memoized and stays mounted while hidden:
+  // a fresh prop each render would re-render the hidden sheet with this screen.
+  const onQuickAddClose = useStableCallback(() => setQuickAddVisible(false));
+  const onQuickAddOpenFull = useStableCallback(handleQuickAddOpenFull);
+  const quickAddSeed = useMemo(() => ({ category }), [category]);
 
   const handleRowSwipeSelect = useCallback((id: string) => {
     setExpandedTaskId(null);
@@ -344,9 +350,9 @@ export function CategoryDetailScreen() {
 
         <QuickAddModal
           visible={quickAddVisible}
-          onClose={() => setQuickAddVisible(false)}
-          onOpenFull={handleQuickAddOpenFull}
-          seed={{ category }}
+          onClose={onQuickAddClose}
+          onOpenFull={onQuickAddOpenFull}
+          seed={quickAddSeed}
           seedLabel={category}
         />
       </View>

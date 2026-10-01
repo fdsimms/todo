@@ -12012,6 +12012,13 @@ describe('addExistingToProject / removeFromProject', () => {
     expect(useTaskStore.getState().tasks.find(t => t.id === 'a')?.projectId).toBe('p1');
   });
 
+  it('writes nothing for a task already in that project', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1' })] });
+    const before = useTaskStore.getState().tasks;
+    useTaskStore.getState().addExistingToProject('a', 'p1');
+    expect(useTaskStore.getState().tasks).toBe(before);
+  });
+
   it('clears a task\'s project assignment', () => {
     useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1' })] });
     useTaskStore.getState().removeFromProject('a');

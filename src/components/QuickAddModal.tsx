@@ -6,7 +6,7 @@
 //
 // The parsing itself lives in src/utils/parseTaskInput.ts and parseNaturalDate.ts;
 // this file only decides what to do with what they return.
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useDeferredValue } from 'react';
 import {
   Alert,
   View,
@@ -218,13 +218,20 @@ const RECURRENCE_UNITS: Record<Exclude<RecurrenceType, 'none'>, [string, string]
   hours: ['hour', 'hours'],
 };
 
-export function QuickAddModal({
+// Mounted on every screen that can add a task, and hidden most of the time.
+// The two task-store reads below are gated on `visible` and the component is
+// memoized, so a hidden sheet costs nothing on a task write or on its host's
+// re-render: it used to re-render, and rescan every task's tags, on each one.
+const NO_TASKS: Task[] = [];
+const NO_TAGS: string[] = [];
+
+export const QuickAddModal = React.memo(function QuickAddModal({
   visible, onClose, onOpenFull, context, onCreated, onResumed, seed, seedLabel,
   initialType = 'task', initialTitle, intoProjectId = null,
 }: Props) {
   const addTask = useTaskStore(s => s.addTask);
   const unarchiveTask = useTaskStore(s => s.unarchiveTask);
-  const allTags = useTaskStore(useShallow(s => s.allTags()));
+  const allTags = useTaskStore(useShallow(s => (visible ? s.allTags() : NO_TAGS)));
   const categories = useCategoryStore(useShallow(s => s.categories));
   // Archived people are out of the picker but never stripped off a task that
   // already names them, the same call TaskEditor makes.
@@ -236,7 +243,7 @@ export function QuickAddModal({
   // the next task rather than frozen at mount.
   const hostDefaultCategory = () =>
     (intoProjectId ? projects.find(p => p.id === intoProjectId)?.defaultTaskCategory : null) ?? null;
-  const tasks = useTaskStore(s => s.tasks);
+  const tasks = useTaskStore(s => (visible ? s.tasks : NO_TASKS));
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
   const newTaskDefaults = useSettingsStore(s => s.newTaskDefaults);
   const setNewTaskDefaults = useSettingsStore(s => s.setNewTaskDefaults);
@@ -924,9 +931,12 @@ export function QuickAddModal({
   // Suggest previously-used titles that match what's being typed. Suppressed
   // while a schedule/link phrase is detected so the list doesn't fight the
   // tooltip that renders just below the input row.
+  // Deferred: it scans every task, so it runs behind the keystroke rather
+  // than holding the field up while it does.
+  const suggestQuery = useDeferredValue(title);
   const suggestions = useMemo(
-    () => (activeMatch ? [] : suggestTitles(tasks, title)),
-    [tasks, title, activeMatch]
+    () => (activeMatch ? [] : suggestTitles(tasks, suggestQuery)),
+    [tasks, suggestQuery, activeMatch]
   );
 
   const applySuggestion = (suggestion: string) => {
@@ -2861,7 +2871,7 @@ export function QuickAddModal({
     />
     </>
   );
-}
+});
 
 const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create({
   backdropDim: { backgroundColor: colors.backdrop },

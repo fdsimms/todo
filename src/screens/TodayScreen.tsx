@@ -76,6 +76,7 @@ import { useGroceryStore } from '../store/useGroceryStore';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { useWidgetCompletionStore } from '../store/useWidgetCompletionStore';
 import { useTaskSelection } from '../hooks/useTaskSelection';
+import { useStableCallback } from '../hooks/useStableCallback';
 import { featureHidden, featureShown, visibleLenses } from '../utils/simpleMode';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useKeyboardLift } from '../hooks/useKeyboardLift';
@@ -2577,6 +2578,11 @@ export function TodayScreen() {
     setQuickAddType('task');
     pendingDropRef.current = null;
   };
+  // Stable, because QuickAddModal is memoized and stays mounted while hidden:
+  // a fresh prop each render would re-render the hidden sheet with this screen.
+  const onQuickAddClose = useStableCallback(closeQuickAdd);
+  const onQuickAddOpenFull = useStableCallback(handleQuickAddOpenFull);
+  const onQuickAddCreated = useStableCallback(handleTaskCreated);
 
   // One list now, so one source of zones. The pinned block isn't in this data
   // (it's the list's header) and registers its own 'pinned' zone directly —
@@ -4641,10 +4647,10 @@ export function TodayScreen() {
 
         <QuickAddModal
           visible={quickAddVisible}
-          onClose={closeQuickAdd}
-          onOpenFull={handleQuickAddOpenFull}
+          onClose={onQuickAddClose}
+          onOpenFull={onQuickAddOpenFull}
           context={viewMode}
-          onCreated={handleTaskCreated}
+          onCreated={onQuickAddCreated}
           seed={quickAddSeed}
           seedLabel={quickAddSeedLabel}
           initialType={quickAddType}

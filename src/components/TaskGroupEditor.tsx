@@ -30,6 +30,7 @@ import { PinIcon } from './PinIcon';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { useSheetMount } from '../hooks/useSheetMount';
 import { useSheetSubject } from '../hooks/useSheetSubject';
+import { useStableCallback } from '../hooks/useStableCallback';
 import { SheetHeader } from './SheetHeader';
 import { TaskEditor, type TaskDraft } from './TaskEditor';
 import { QuickAddModal } from './QuickAddModal';
@@ -215,6 +216,20 @@ export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, pro
   const sectionWord = filingProjectId ? 'section' : 'stack';
   const sectionWordCap = filingProjectId ? 'Section' : 'Stack';
 
+  // Stable, because QuickAddModal is memoized and stays mounted once used: a
+  // fresh prop each render would re-render the hidden sheet with this one.
+  const onQuickAddClose = useStableCallback(() => setQuickAddVisible(false));
+  const onQuickAddCreated = useStableCallback((task: Task) => {
+    if (filingProjectId) addExistingToProject(task.id, filingProjectId);
+  });
+  const onQuickAddOpenFull = useStableCallback((draft: Partial<TaskDraft>) => {
+    setQuickAddVisible(false);
+    setEditingTask(null);
+    setEditingDraft(draft);
+  });
+  const groupId = group?.id;
+  const quickAddSeed = useMemo(() => (groupId ? { groupId, category } : undefined), [groupId, category]);
+
   const commitExisting = (taskId: string) => {
     if (!group) return;
     addExistingToGroup(taskId, group.id);
@@ -367,21 +382,15 @@ export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, pro
           */}
           {mountQuickAdd && <QuickAddModal
             visible={quickAddVisible}
-            onClose={() => setQuickAddVisible(false)}
+            onClose={onQuickAddClose}
             context="unscheduled"
-            seed={{ groupId: group.id, category }}
+            seed={quickAddSeed}
             seedLabel={title.trim() || sectionWordCap}
             // Filed at creation rather than only in onCreated, which a burst
             // of "Add another" never calls.
             intoProjectId={filingProjectId}
-            onCreated={task => {
-              if (filingProjectId) addExistingToProject(task.id, filingProjectId);
-            }}
-            onOpenFull={draft => {
-              setQuickAddVisible(false);
-              setEditingTask(null);
-              setEditingDraft(draft);
-            }}
+            onCreated={onQuickAddCreated}
+            onOpenFull={onQuickAddOpenFull}
           />}
         </>
       }

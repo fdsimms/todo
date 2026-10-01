@@ -8344,6 +8344,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   addExistingToProject(taskId, projectId) {
+    // A task created on a project's page is already filed there, and the
+    // page calls this for it anyway: skipping the no-op keeps that add to one
+    // store write rather than two full re-renders of every screen.
+    if (get().tasks.find(t => t.id === taskId)?.projectId === projectId) return;
     get().updateTask(taskId, { projectId });
   },
 
