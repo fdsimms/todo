@@ -5,13 +5,13 @@ import {
   TextInput,
   TouchableOpacity,
   Keyboard,
-  KeyboardAvoidingView,
-  Platform,
+  ScrollView,
   StyleSheet,
   Alert,
 } from 'react-native';
 import { SheetModal } from './SheetModal';
 import { useSheetSubject } from '../hooks/useSheetSubject';
+import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -46,6 +46,10 @@ export function CookbookEditor({ visible, cookbookId: liveCookbookId, onClose }:
   const cookbookId = useSheetSubject(liveCookbookId);
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  // A pageSheet with text fields lifts them with the keyboard hook rather than
+  // KeyboardAvoidingView (CLAUDE.md: the two fight each other). ownsSheet
+  // because this component renders the SheetModal it's called from outside of.
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
 
   const cookbook = useRecipeStore(s => (cookbookId ? s.cookbookById(cookbookId) : undefined));
   const renameCookbook = useRecipeStore(s => s.renameCookbook);
@@ -136,7 +140,7 @@ export function CookbookEditor({ visible, cookbookId: liveCookbookId, onClose }:
 
   return (
     <SheetModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={saveAndClose}>
-      <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <View style={styles.root}>
         <View style={styles.header}>
           <SheetHeaderButton label="Done" onPress={saveAndClose} />
           <Text style={styles.headerTitle}>Edit cookbook</Text>
@@ -150,7 +154,12 @@ export function CookbookEditor({ visible, cookbookId: liveCookbookId, onClose }:
           </TouchableOpacity>
         </View>
 
-        <View style={styles.body}>
+        <ScrollView
+          ref={keyboardScroll.ref}
+          contentContainerStyle={styles.body}
+          keyboardShouldPersistTaps="handled"
+          {...keyboardScroll.props}
+        >
           <Text style={styles.fieldLabel}>TITLE</Text>
           <TextInput
             style={styles.input}
@@ -191,8 +200,8 @@ export function CookbookEditor({ visible, cookbookId: liveCookbookId, onClose }:
               onPress={() => { haptics.tap(); setMergeVisible(true); }}
             />
           </View>
-        </View>
-      </KeyboardAvoidingView>
+        </ScrollView>
+      </View>
 
       {cookbookId && (
         <CookbookMergeSheet

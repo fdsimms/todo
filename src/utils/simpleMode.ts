@@ -390,7 +390,6 @@ export function groceryRowShown(key: string, simpleMode: boolean, set: boolean):
  * (`screenShown`), and loses the button that makes another.
  */
 export const SIMPLE_ADD_MENU_FEATURES: Readonly<Record<string, SimpleFeatureId>> = {
-  chain: 'chains',
   stack: 'stacks',
   template: 'templates',
   import: 'calendarImport',
