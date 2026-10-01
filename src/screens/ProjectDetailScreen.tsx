@@ -1717,39 +1717,45 @@ export function ProjectDetailScreen() {
                       </Text>
                     ))}
                     {activityLine && (
-                      <TouchableOpacity
-                        onPress={() => {
-                          haptics.tap();
-                          (navigation as any).navigate('MainTabs', {
-                            screen: 'Logbook',
-                            params: { projectId, openProjectHistory: Date.now() },
-                          });
-                        }}
-                        disabled={selectionMode}
-                        activeOpacity={interaction.activeOpacity}
-                        accessibilityRole="button"
-                        accessibilityLabel={`${activityLine}. Opens this project's history`}
-                      >
-                        <Text style={styles.summaryText}>
-                          {activityLine}
-                          <Text style={styles.summaryLink}>  History ›</Text>
-                        </Text>
-                      </TouchableOpacity>
+                      <Text style={styles.summaryText}>{activityLine}</Text>
+                    )}
+                    {/* A pill on its own row rather than a tertiary-grey
+                        suffix on the line above, which read as part of the
+                        sentence and gave the tap a thin, wrapping target. */}
+                    {activityLine && !selectionMode && (
+                      <View style={styles.summaryActions}>
+                        <InlineAction
+                          icon="time-outline"
+                          label="History"
+                          variant="neutral"
+                          onPress={() => {
+                            haptics.tap();
+                            (navigation as any).navigate('MainTabs', {
+                              screen: 'Logbook',
+                              params: { projectId, openProjectHistory: Date.now() },
+                            });
+                          }}
+                          accessibilityLabel="Open this project's history"
+                        />
+                      </View>
                     )}
                     {!selectionMode && routinesToCatchUp.length > 0 && (
-                      <TouchableOpacity
-                        onPress={() => { haptics.tap(); endPause(); }}
-                        activeOpacity={interaction.activeOpacity}
-                        accessibilityRole="button"
-                        accessibilityLabel={`${routinesToCatchUp.length} repeating ${routinesToCatchUp.length === 1 ? 'task' : 'tasks'} came due while paused. Choose whether to move them`}
-                      >
+                      <>
                         <Text style={styles.summaryText}>
                           {routinesToCatchUp.length === 1
                             ? '1 repeating task came due while paused.'
                             : `${routinesToCatchUp.length} repeating tasks came due while paused.`}
-                          <Text style={styles.summaryLink}>  Move ›</Text>
                         </Text>
-                      </TouchableOpacity>
+                        <View style={styles.summaryActions}>
+                          <InlineAction
+                            icon="arrow-forward-outline"
+                            label="Move"
+                            variant="neutral"
+                            onPress={() => { haptics.tap(); endPause(); }}
+                            accessibilityLabel={`${routinesToCatchUp.length} repeating ${routinesToCatchUp.length === 1 ? 'task' : 'tasks'} came due while paused. Choose whether to move them`}
+                          />
+                        </View>
+                      </>
                     )}
                     {!selectionMode && (!!pullable || tripAhead || paused) && (
                       <View style={styles.summaryActions}>
@@ -2513,7 +2519,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   infoLinkText: { color: colors.accent, fontSize: font.sm, fontWeight: fontWeight.medium, flexShrink: 1 },
   infoLinkHost: { color: colors.textTertiary, fontSize: font.xs, flexShrink: 1 },
   summaryOverdue: { color: colors.orange },
-  summaryLink: { color: colors.textTertiary, fontWeight: fontWeight.medium },
   summarySoon: { color: colors.text, fontWeight: fontWeight.medium },
   summaryActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   // The same drop slot Today leaves in a stack.
