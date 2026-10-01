@@ -35,6 +35,16 @@ import { generateId } from './id';
  */
 export const MAX_PHOTO_EDGE = 1568;
 
+/**
+ * The high-resolution tier's ceiling, for a page whose type is too small for
+ * the cap above: a cookbook index sets 150 lines in three columns, so at 1568
+ * a whole-page shot leaves each line a couple of dozen pixels tall, and a
+ * slightly soft or sideways photo of one read as nothing at all. Opt-in per
+ * caller (`pickRecipePhoto`'s `maxEdge`), so a recipe import keeps the cheaper
+ * cap the note above argues for.
+ */
+export const DENSE_PAGE_PHOTO_EDGE = 2576;
+
 /** JPEG quality for the downscaled copy. Text on a page survives this easily. */
 const PHOTO_COMPRESS = 0.7;
 
@@ -191,13 +201,13 @@ function discardTempPhoto(uri: string): void {
  * `pickClipboardPhoto` below. Both callers want the same JPEG-at-a-cap output;
  * only how they get a `uri`/`width`/`height` to hand it differs.
  */
-async function encodePickedPhoto(uri: string, width: number, height: number): Promise<
+async function encodePickedPhoto(uri: string, width: number, height: number, maxEdge: number = MAX_PHOTO_EDGE): Promise<
   | { ok: true; base64: string; mediaType: 'image/jpeg'; width: number; height: number }
   | { ok: false; message: string }
 > {
   const { ImageManipulator, SaveFormat } = imageManipulator();
   const context = ImageManipulator.manipulate(uri);
-  const target = photoTargetSize(width, height);
+  const target = photoTargetSize(width, height, maxEdge);
   if (target) context.resize(target);
 
   const rendered = await context.renderAsync();
@@ -244,13 +254,13 @@ async function writeClipboardImageToTempFile(): Promise<{ uri: string; width: nu
 }
 
 /** The clipboard half of `pickRecipePhoto` — see `writeClipboardImageToTempFile`. */
-async function pickClipboardPhoto(): Promise<RecipePhotoResult> {
+async function pickClipboardPhoto(maxEdge: number): Promise<RecipePhotoResult> {
   const pasted = await writeClipboardImageToTempFile();
   if (!pasted) {
     return { status: 'failed', message: 'No image on the clipboard. Copy one, then try pasting.' };
   }
 
-  const encoded = await encodePickedPhoto(pasted.uri, pasted.width, pasted.height);
+  const encoded = await encodePickedPhoto(pasted.uri, pasted.width, pasted.height, maxEdge);
   if (!encoded.ok) return { status: 'failed', message: encoded.message };
 
   return {
@@ -265,10 +275,16 @@ async function pickClipboardPhoto(): Promise<RecipePhotoResult> {
   };
 }
 
-/** Takes, picks, or pastes a photo and returns it sized and encoded for the Messages API. */
-export async function pickRecipePhoto(source: RecipePhotoSource): Promise<RecipePhotoResult> {
+/**
+ * Takes, picks, or pastes a photo and returns it sized and encoded for the
+ * Messages API. `maxEdge` is `DENSE_PAGE_PHOTO_EDGE` for a page of small type.
+ */
+export async function pickRecipePhoto(
+  source: RecipePhotoSource,
+  maxEdge: number = MAX_PHOTO_EDGE,
+): Promise<RecipePhotoResult> {
   try {
-    if (source === 'clipboard') return await pickClipboardPhoto();
+    if (source === 'clipboard') return await pickClipboardPhoto(maxEdge);
 
     const ImagePicker = imagePicker();
 
@@ -297,7 +313,7 @@ export async function pickRecipePhoto(source: RecipePhotoSource): Promise<Recipe
     const asset = result.assets?.[0];
     if (!asset?.uri) return { status: 'failed', message: 'No photo came back from the picker.' };
 
-    const encoded = await encodePickedPhoto(asset.uri, asset.width, asset.height);
+    const encoded = await encodePickedPhoto(asset.uri, asset.width, asset.height, maxEdge);
     if (!encoded.ok) return { status: 'failed', message: encoded.message };
 
     return {

@@ -1953,6 +1953,13 @@ const MAX_RECEIPT_CHARS = 6_000;
 
 /** A dense index page rarely lists more dishes than this; a longer read is clamped rather than dropped. */
 const MAX_INDEX_ENTRIES_PER_PAGE = 200;
+/**
+ * An index page is the longest reply any photo here asks for: 150 dishes is a
+ * normal page, and writing them out takes longer than the upload, the reverse
+ * of what `IMAGE_REQUEST_TIMEOUT_MS` budgets for. A window too short fails the
+ * same way on every retry, so this one is sized to the reply.
+ */
+const INDEX_PAGE_TIMEOUT_MS = 90_000;
 
 /** One dish as a photographed index page lists it. See `CookbookIndexEntry`. */
 export interface ExtractedIndexEntry {
@@ -2008,12 +2015,13 @@ export async function extractCookbookIndex(
     'ingredients: the ingredient or food headings the dish is listed under on this page ("Lentils", "Shallots"), as printed. Only headings that name a food. Never a course, cuisine, occasion or chapter ("Soups", "Vegetarian", "Weeknight"), and never an ingredient you guess from the dish\'s name. A dish listed only under its own name has no ingredients.',
     'Skip everything that isn\'t a dish: techniques and topics ("lentils, cooking, 12", "about beans"), "see" and "see also" cross-references, and page numbers for introductions or essays.',
     'page: the first page number given for the dish, as printed. A range stays a range ("112-115"). Leave it empty if none is printed.',
-    'The same dish may be listed under several headings. List it once for each; that is fine.',
+    'The same dish is often listed under several headings. List it once, with every heading it appears under on this page in its ingredients.',
     continuesHeading
       ? `The previous page ended partway through the heading "${continuesHeading}". Entries at the top of this page that have no heading of their own belong under it.`
       : '',
     'lastHeading: if the last heading on the page (bottom of the last column) is still running when the page ends, give it; otherwise leave it empty.',
-    'If the photo is too blurry, cut off, or is not a cookbook index at all, return no entries rather than guessing.',
+    'The photo may be sideways, upside down or at an angle. Read the text in whatever direction it runs.',
+    'Part of the page may be blurry, in shadow or cut off at an edge. Skip only the lines you can\'t read and list the rest. Return no entries only if none of it can be read, or it is not a cookbook index at all.',
   ].filter(Boolean).join('\n\n');
 
   const data = await callAnthropic({
@@ -2049,7 +2057,7 @@ export async function extractCookbookIndex(
         { type: 'text', text: prompt },
       ],
     }],
-  }, apiKey, model, IMAGE_REQUEST_TIMEOUT_MS);
+  }, apiKey, model, INDEX_PAGE_TIMEOUT_MS);
 
   const toolUse = data.content?.find(c => c.type === 'tool_use');
   const input = toolUse?.input as { entries?: unknown; lastHeading?: unknown } | undefined;
