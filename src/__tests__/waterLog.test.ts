@@ -8,6 +8,7 @@ import {
   waterHelping,
   waterInUnit,
   waterRange,
+  waterTargetRange,
   waterToMl,
   waterTotalMl,
   WATER_MAX_ML,
@@ -148,6 +149,11 @@ describe('the two units', () => {
     expect(waterRange('ml')).toEqual({ min: 250, max: 6000, step: 250, default: 2000 });
     // 2,000 ml is 67.6 fl oz, snapped onto the 8 oz grid.
     expect(waterRange('flOz')).toEqual({ min: 8, max: 200, step: 8, default: 64 });
+  });
+
+  it('lets the daily target reach zero while a logged day keeps its floor', () => {
+    expect(waterTargetRange('ml')).toEqual({ ...waterRange('ml'), min: 0 });
+    expect(waterTargetRange('flOz')).toEqual({ ...waterRange('flOz'), min: 0 });
   });
 
   it('reads a stored volume as whole units of the picked one', () => {

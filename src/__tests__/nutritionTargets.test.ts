@@ -189,9 +189,9 @@ describe('a target of zero', () => {
     expect(targetProgress('caffeineMg', 80, { caffeineMg: 0 })).toBe(1);
   });
 
-  it('lets every nutrient but water step down to it', () => {
+  it('lets every nutrient, water included, step down to it', () => {
     for (const key of NUTRIENT_KEYS) {
-      expect(NUTRITION_TARGET_RANGES[key].min).toBe(key === 'waterMl' ? 250 : 0);
+      expect(NUTRITION_TARGET_RANGES[key].min).toBe(0);
     }
   });
 });

@@ -54,8 +54,12 @@ export type WaterUnit = 'ml' | 'flOz';
 /** How much one press of the day's stepper moves it, in ml. */
 export const WATER_STEP_ML = NUTRITION_TARGET_RANGES.waterMl.step;
 
-/** The smallest and largest a day's water can be stepped to, in ml. */
-export const WATER_MIN_ML = NUTRITION_TARGET_RANGES.waterMl.min;
+/**
+ * The smallest and largest a day's water can be stepped to, in ml. The floor is
+ * one step rather than the target range's own, which reaches zero: a target of
+ * none is a statement, but a logged day starts at "None" and steps up from it.
+ */
+export const WATER_MIN_ML = WATER_STEP_ML;
 export const WATER_MAX_ML = NUTRITION_TARGET_RANGES.waterMl.max;
 
 /**
@@ -164,6 +168,11 @@ export function waterRange(unit: WaterUnit): { min: number; max: number; step: n
       default: Math.round(mlToFlOz(defaultMl) / WATER_STEP_FL_OZ) * WATER_STEP_FL_OZ,
     }
     : { min: WATER_MIN_ML, max: WATER_MAX_ML, step: WATER_STEP_ML, default: defaultMl };
+}
+
+/** `waterRange` for the daily target, which unlike a logged amount may be zero. */
+export function waterTargetRange(unit: WaterUnit): { min: number; max: number; step: number; default: number } {
+  return { ...waterRange(unit), min: 0 };
 }
 
 /**

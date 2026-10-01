@@ -44,8 +44,9 @@ import { NUTRIENT_LABEL } from './foodNutrition';
  * **The floor is zero, and zero is a real target.** "No caffeine" and "no added
  * sugar" are goals somebody has, and a floor above zero made them unsayable:
  * the stepper's minus stopped at 20mg and cleared to "None", which is a
- * different statement. Water keeps its own floor because the water card steps
- * against it and a zero glass count means nothing there.
+ * different statement. Water's is zero too; the Food log's water card, which
+ * steps what was *drunk*, keeps its own floor (`WATER_MIN_ML`) so nothing
+ * there changed.
  *
  * The `default` here is what a stepper opens on when somebody first adds a
  * target for that nutrient. It is **not** a target: nothing is stored until
@@ -80,7 +81,7 @@ export const NUTRITION_TARGET_RANGES: Record<
   ironMg: { min: 0, max: 60, step: 1, default: 18 },
   potassiumMg: { min: 0, max: 8000, step: 100, default: 4700 },
   caffeineMg: { min: 0, max: 1000, step: 10, default: 400 },
-  waterMl: { min: 250, max: 6000, step: 250, default: 2000 },
+  waterMl: { min: 0, max: 6000, step: 250, default: 2000 },
 };
 
 /** What a person has set, keyed by nutrient. Empty is the shipping state. */
