@@ -71,6 +71,8 @@ import { FoodLogEntrySheet } from '../components/FoodLogEntrySheet';
 import { SavedMealsSheet } from '../components/SavedMealsSheet';
 import { NutrientContributorsSheet } from '../components/NutrientContributorsSheet';
 import { NutritionTargetsSheet } from '../components/NutritionTargetsSheet';
+import { CsvExportSheet } from '../components/CsvExportSheet';
+import { foodLogExportCsv, foodLogExportFileName, foodLogExportSummary } from '../utils/foodLogExport';
 import { WhenPicker } from '../components/WhenPicker';
 import { ReorderableList } from '../components/ReorderableList';
 import { SwipeableRow } from '../components/SwipeableRow';
@@ -162,6 +164,8 @@ export function FoodLogScreen() {
   }>();
 
   const entries = useFoodLogStore(useShallow(s => s.entries));
+  const totalCount = useFoodLogStore(s => s.totalCount);
+  const entriesSince = useFoodLogStore(s => s.entriesSince);
   const loadRange = useFoodLogStore(s => s.loadRange);
   const recentEntries = useFoodLogStore(s => s.recentEntries);
   const removeEntry = useFoodLogStore(s => s.removeEntry);
@@ -277,6 +281,7 @@ export function FoodLogScreen() {
   // only from Settings, Kitchen — a page away from the only figures they mean
   // anything against.
   const [targetsOpen, setTargetsOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
 
   const todayKey = dayKeyOf(getCurrentDayStart());
   const isToday = dayKey === todayKey;
@@ -1055,6 +1060,14 @@ export function FoodLogScreen() {
             onPress: () => { haptics.tap(); setTargetsOpen(true); },
             accessibilityLabel: 'Nutrition settings',
           },
+          // Once there's anything to share, the condition the mood and
+          // medication screens' share actions carry. totalCount rather than
+          // this day's entries: the export reaches across the whole history.
+          ...(totalCount > 0 ? [{
+            icon: 'share-outline',
+            onPress: () => { haptics.tap(); setExportOpen(true); },
+            accessibilityLabel: 'Export your food log',
+          } satisfies ScreenHeaderAction] : []),
           // Plain logging moved to the FAB below, same as every other
           // primary-add list screen — selecting is reached by swiping a row.
         ]}
@@ -1343,6 +1356,18 @@ export function FoodLogScreen() {
       <NutritionTargetsSheet
         visible={targetsOpen}
         onClose={() => setTargetsOpen(false)}
+      />
+      <CsvExportSheet
+        visible={exportOpen}
+        onClose={() => setExportOpen(false)}
+        hint={'A spreadsheet file of your entries: the day, the time, the meal, what you '
+          + 'ate and how much, where the figures came from, and each nutrient. A figure that '
+          + 'was never recorded is left blank. Nothing else from the app is included.'}
+        dialogTitle="Share your food log"
+        select={entriesSince}
+        toCsv={foodLogExportCsv}
+        fileName={foodLogExportFileName}
+        summary={foodLogExportSummary}
       />
       {/* The app's own date picker, as CLAUDE.md's note on it says to reach for
           any time a feature asks "what date?". Time of day and Suggest are off:

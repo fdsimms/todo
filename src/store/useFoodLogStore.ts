@@ -223,6 +223,15 @@ interface FoodLogStore {
   /** Replaces `entries` with the inclusive run of logical days between the keys. */
   loadRange: (startKey: string, endKey: string) => void;
   /**
+   * Every entry on or after `fromKey` (every entry at all when null), read
+   * straight from the database and handed back rather than stored.
+   *
+   * For the CSV export, which wants months of rows once and keeps none of
+   * them. Not a fourth window: nothing renders from it, so there is nothing for
+   * another screen's read to clobber.
+   */
+  entriesSince: (fromKey: string | null) => FoodLogEntry[];
+  /**
    * A second window, for a reader that isn't the day view.
    *
    * Kept apart from `entries` rather than widening it, the same split
@@ -537,6 +546,10 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
       rangeStart: startKey,
       rangeEnd: endKey,
     });
+  },
+
+  entriesSince(fromKey) {
+    return dbGetFoodLogEntries(fromKey ?? '0000-01-01', '9999-12-31');
   },
 
   loadWindow(startKey, endKey) {
