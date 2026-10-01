@@ -26,7 +26,8 @@ import {
   symptomKey,
   symptomVocabulary,
 } from '../utils/moodLog';
-import { symptomStats } from '../utils/moodHistory';
+import { symptomStats, logsInDayRange } from '../utils/moodHistory';
+import { moodExportCsv, moodExportFileName, moodExportSummary } from '../utils/moodExport';
 import { foodDayInputs, foodKeyNames } from '../utils/nutritionStats';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useRecipeStore } from '../store/useRecipeStore';
@@ -57,7 +58,7 @@ import { EmptyState } from '../components/EmptyState';
 import { InlineAction } from '../components/InlineAction';
 import { MoodLogSheet } from '../components/MoodLogSheet';
 import { MoodEntryRow } from '../components/MoodEntryRow';
-import { MoodExportSheet } from '../components/MoodExportSheet';
+import { CsvExportSheet } from '../components/CsvExportSheet';
 import { MilestoneSheet } from '../components/MilestoneSheet';
 import { ContrastBars } from '../components/ContrastBars';
 import { capitalize } from '../utils/capitalize';
@@ -922,10 +923,16 @@ export function MoodScreen() {
         onClose={closeSheet}
       />
 
-      <MoodExportSheet
+      <CsvExportSheet
         visible={exportOpen}
-        logs={logs}
         onClose={() => setExportOpen(false)}
+        hint={'A spreadsheet file of your entries: the day, the time, your mood, any symptoms and '
+          + 'their severity, your context tags and your notes. Nothing else from the app is included.'}
+        dialogTitle="Share your mood log"
+        select={from => (from === null ? logs : logsInDayRange(logs, from, null))}
+        toCsv={moodExportCsv}
+        fileName={moodExportFileName}
+        summary={moodExportSummary}
       />
 
       <MilestoneSheet

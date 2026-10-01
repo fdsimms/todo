@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Animated, Alert, ActivityIndicator } from 'react-native';
 import { SheetModal } from './SheetModal';
-import type { MoodLog } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, animation, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -11,8 +10,6 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
 import { SegmentedControl } from './SegmentedControl';
 import { PressableScale } from './PressableScale';
-import { logsInDayRange } from '../utils/moodHistory';
-import { moodExportCsv, moodExportFileName, moodExportSummary } from '../utils/moodExport';
 import {
   writeExportFile, shareCsvFile, discardBackupFile, canShare,
 } from '../utils/backupFile';
@@ -29,7 +26,7 @@ const RANGES: { value: ExportRange; label: string }[] = [
 ];
 
 /**
- * Sharing the mood log as a CSV file.
+ * Sharing a log as a CSV file: the mood log and the food log both use it.
  *
  * A range picker, a line saying what is in the file, and the share sheet. The
  * file is written to the cache and deleted again the moment the share sheet
@@ -48,10 +45,23 @@ const RANGES: { value: ExportRange; label: string }[] = [
  * a file that does not exist until Share is tapped, so this needs no
  * unsaved-changes guard.
  */
-export function MoodExportSheet({ visible, logs, onClose }: {
+export function CsvExportSheet<T>({
+  visible, onClose, hint, dialogTitle, select, toCsv, fileName, summary,
+}: {
   visible: boolean;
-  logs: readonly MoodLog[];
   onClose: () => void;
+  /** What the file holds, in words, above the range picker. */
+  hint: string;
+  /** The share sheet's title ("Share your mood log"). */
+  dialogTitle: string;
+  /**
+   * The rows on or after `fromDayKey`, or every row when it is null. Called
+   * only while the sheet is open, so a caller may read the database here.
+   */
+  select: (fromDayKey: string | null) => readonly T[];
+  toCsv: (rows: readonly T[]) => string;
+  fileName: (exportedAt: Date) => string;
+  summary: (rows: readonly T[]) => string;
 }) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -86,11 +96,15 @@ export function MoodExportSheet({ visible, logs, onClose }: {
   };
 
   const selected = useMemo(() => {
-    if (range === null) return [...logs];
+    if (!visible) return [];
+    if (range === null) return select(null);
     const from = new Date(getCurrentDayStart());
     from.setDate(from.getDate() - (range - 1));
-    return logsInDayRange(logs, dayKeyOf(from), null);
-  }, [logs, range]);
+    return select(dayKeyOf(from));
+    // `select` is usually an inline arrow; re-reading on every parent render
+    // while open is cheap, but keying on it would re-read on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, range]);
 
   const share = async () => {
     if (selected.length === 0 || sharing) return;
@@ -102,8 +116,8 @@ export function MoodExportSheet({ visible, logs, onClose }: {
         Alert.alert('Sharing unavailable', 'This device cannot open a share sheet.');
         return;
       }
-      uri = writeExportFile(moodExportCsv(selected), moodExportFileName(new Date()));
-      await shareCsvFile(uri, 'Share your mood log');
+      uri = writeExportFile(toCsv(selected), fileName(new Date()));
+      await shareCsvFile(uri, dialogTitle);
     } catch {
       Alert.alert('Export failed', 'The file could not be written. Try again.');
     } finally {
@@ -127,11 +141,7 @@ export function MoodExportSheet({ visible, logs, onClose }: {
           />
 
           <View style={styles.body}>
-            <Text style={styles.hint}>
-              A spreadsheet file of your entries: the day, the time, your mood, any symptoms and
-              their severity, your context tags and your notes. Nothing else from the app is
-              included.
-            </Text>
+            <Text style={styles.hint}>{hint}</Text>
 
             <SegmentedControl
               label="Range"
@@ -141,7 +151,7 @@ export function MoodExportSheet({ visible, logs, onClose }: {
               columns={2}
             />
 
-            <Text style={styles.summary}>{moodExportSummary(selected)}</Text>
+            <Text style={styles.summary}>{summary(selected)}</Text>
 
             <PressableScale
               style={[styles.shareButton, selected.length === 0 && styles.shareButtonDisabled]}

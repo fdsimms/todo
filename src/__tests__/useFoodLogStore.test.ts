@@ -159,6 +159,19 @@ describe('initialize', () => {
   });
 });
 
+describe('entriesSince', () => {
+  it('reads from the given day onward, and leaves the loaded window alone', () => {
+    mockRows.push({ id: 'a', dayKey: '2026-03-01' } as never, { id: 'b', dayKey: '2026-04-01' } as never);
+    expect(state().entriesSince('2026-03-15').map(e => e.id)).toEqual(['b']);
+    expect(state().entries).toEqual([]);
+  });
+
+  it('reads the whole history for null', () => {
+    mockRows.push({ id: 'a', dayKey: '2020-01-01' } as never, { id: 'b', dayKey: '2026-04-01' } as never);
+    expect(state().entriesSince(null).map(e => e.id)).toEqual(['a', 'b']);
+  });
+});
+
 /**
  * The notice that Health is refusing meals (#2516).
  *
