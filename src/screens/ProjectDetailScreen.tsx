@@ -804,9 +804,11 @@ export function ProjectDetailScreen() {
   }, [completeGroup, requestComplete, projectId]);
 
   const openAddToSection = (group: TaskGroup) => {
-    // A line is typed where it goes, not in a sheet: the field opens at the
-    // section's foot, as it does under a line on Return.
-    if (isList || group.checklist) {
+    // A checklist line is typed where it goes, not in a sheet: the field opens
+    // at the section's foot, as it does under a line on Return. A list's
+    // section takes the same quick add as everywhere else, seeded with the
+    // section.
+    if (group.checklist && !isList) {
       setExpandedTaskId(null);
       setInsertAfterId(null);
       if (group.collapsed) setGroupCollapsed(group.id, false);
