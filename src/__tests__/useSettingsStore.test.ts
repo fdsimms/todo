@@ -347,6 +347,13 @@ describe('setNutritionTargets', () => {
     expect(useSettingsStore.getState().nutritionTargets).toEqual({ proteinG: 90, calciumMg: 1300 });
   });
 
+  it('stores a target of zero rather than clearing it, and clears only on null', () => {
+    useSettingsStore.getState().setNutritionTarget('caffeineMg', 0);
+    expect(useSettingsStore.getState().nutritionTargets).toEqual({ caffeineMg: 0 });
+    useSettingsStore.getState().setNutritionTarget('caffeineMg', null);
+    expect(useSettingsStore.getState().nutritionTargets).toEqual({});
+  });
+
   it('persists the merged map in a single database write', () => {
     useSettingsStore.getState().setNutritionTargets({ calciumMg: 1300, ironMg: 18 });
     expect(dbSetSetting).toHaveBeenCalledTimes(1);

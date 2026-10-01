@@ -41,6 +41,13 @@ import { NUTRIENT_LABEL } from './foodNutrition';
  * it runs further. Sharing one table would have a rule stepper offering figures
  * nobody meant.
  *
+ * **The floor is zero, and zero is a real target.** "No caffeine" and "no added
+ * sugar" are goals somebody has, and a floor above zero made them unsayable:
+ * the stepper's minus stopped at 20mg and cleared to "None", which is a
+ * different statement. Water's is zero too; the Food log's water card, which
+ * steps what was *drunk*, keeps its own floor (`WATER_MIN_ML`) so nothing
+ * there changed.
+ *
  * The `default` here is what a stepper opens on when somebody first adds a
  * target for that nutrient. It is **not** a target: nothing is stored until
  * they accept it, and the map's own default is empty.
@@ -62,19 +69,19 @@ export const NUTRITION_TARGET_RANGES: Record<
   NutrientKey,
   { min: number; max: number; step: number; default: number }
 > = {
-  calorieKcal: { min: 500, max: 6000, step: 50, default: 2000 },
-  fatG: { min: 10, max: 300, step: 5, default: 70 },
-  satFatG: { min: 5, max: 100, step: 1, default: 20 },
-  carbsG: { min: 20, max: 800, step: 10, default: 250 },
-  fiberG: { min: 5, max: 100, step: 1, default: 30 },
-  sugarG: { min: 5, max: 300, step: 5, default: 50 },
-  proteinG: { min: 10, max: 400, step: 5, default: 60 },
-  sodiumMg: { min: 200, max: 6000, step: 100, default: 2300 },
-  calciumMg: { min: 100, max: 3000, step: 50, default: 1300 },
-  ironMg: { min: 2, max: 60, step: 1, default: 18 },
-  potassiumMg: { min: 500, max: 8000, step: 100, default: 4700 },
-  caffeineMg: { min: 20, max: 1000, step: 10, default: 400 },
-  waterMl: { min: 250, max: 6000, step: 250, default: 2000 },
+  calorieKcal: { min: 0, max: 6000, step: 50, default: 2000 },
+  fatG: { min: 0, max: 300, step: 5, default: 70 },
+  satFatG: { min: 0, max: 100, step: 1, default: 20 },
+  carbsG: { min: 0, max: 800, step: 10, default: 250 },
+  fiberG: { min: 0, max: 100, step: 1, default: 30 },
+  sugarG: { min: 0, max: 300, step: 5, default: 50 },
+  proteinG: { min: 0, max: 400, step: 5, default: 60 },
+  sodiumMg: { min: 0, max: 6000, step: 100, default: 2300 },
+  calciumMg: { min: 0, max: 3000, step: 50, default: 1300 },
+  ironMg: { min: 0, max: 60, step: 1, default: 18 },
+  potassiumMg: { min: 0, max: 8000, step: 100, default: 4700 },
+  caffeineMg: { min: 0, max: 1000, step: 10, default: 400 },
+  waterMl: { min: 0, max: 6000, step: 250, default: 2000 },
 };
 
 /** What a person has set, keyed by nutrient. Empty is the shipping state. */
@@ -84,9 +91,8 @@ export type NutritionTargets = Partial<Record<NutrientKey, number>>;
  * The targets a stored blob actually carries, dropping anything unreadable.
  *
  * Unknown keys go, because this build has no unit for a nutrient it does not
- * know, and a non-positive figure goes with the malformed: a target of zero is
- * not something to aim at, and there is no way to read it that is not either a
- * bug or a scold.
+ * know, and a negative figure goes with the malformed. Zero stays: it is a
+ * target somebody chose ("no caffeine"), not an absence.
  */
 export function parseNutritionTargets(raw: string | null | undefined): NutritionTargets {
   if (!raw) return {};
@@ -96,7 +102,7 @@ export function parseNutritionTargets(raw: string | null | undefined): Nutrition
     const targets: NutritionTargets = {};
     for (const key of NUTRIENT_KEYS) {
       const value = parsed[key];
-      if (typeof value === 'number' && Number.isFinite(value) && value > 0) targets[key] = value;
+      if (typeof value === 'number' && Number.isFinite(value) && value >= 0) targets[key] = value;
     }
     return targets;
   } catch {
@@ -159,7 +165,9 @@ export function targetProgress(
   targets: NutritionTargets,
 ): number {
   const target = targets[key];
-  if (target === undefined || total === undefined || target <= 0) return 0;
+  if (target === undefined || total === undefined) return 0;
+  // A target of zero is met by an empty day and passed by any logged amount.
+  if (target <= 0) return total > 0 ? 1 : 0;
   return Math.min(1, Math.max(0, total / target));
 }
 
@@ -188,7 +196,8 @@ export function targetStatus(
   targets: NutritionTargets,
 ): TargetStatus {
   const target = targets[key];
-  if (target === undefined || target <= 0) return 'under';
+  if (target === undefined) return 'under';
+  if (target <= 0) return (total ?? 0) > 0 ? 'over' : 'met';
   const ratio = (total ?? 0) / target;
   if (ratio < 1 - TARGET_MET_TOLERANCE) return 'under';
   if (ratio > 1 + TARGET_MET_TOLERANCE) return 'over';
