@@ -1,4 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
+import { useStableCallback } from '../hooks/useStableCallback';
 import { View, Text, ScrollView, StyleSheet, Dimensions, TouchableOpacity } from 'react-native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -359,6 +360,11 @@ export function CalendarScreen() {
     setEditorInitialDraft(draft);
     setEditorVisible(true);
   };
+  // Stable, because QuickAddModal is memoized and stays mounted while hidden:
+  // a fresh prop each render would re-render the hidden sheet with this screen.
+  const onQuickAddClose = useStableCallback(() => setQuickAddVisible(false));
+  const onQuickAddOpenFull = useStableCallback(handleQuickAddOpenFull);
+  const quickAddSeed = useMemo(() => ({ dueDate: dayKeyToDate(selectedKey).toISOString() }), [selectedKey]);
 
   const renderRows = (label: string, tasks: Task[]) => {
     if (tasks.length === 0) return null;
@@ -601,9 +607,9 @@ export function CalendarScreen() {
 
       <QuickAddModal
         visible={quickAddVisible}
-        onClose={() => setQuickAddVisible(false)}
-        onOpenFull={handleQuickAddOpenFull}
-        seed={{ dueDate: selectedDate.toISOString() }}
+        onClose={onQuickAddClose}
+        onOpenFull={onQuickAddOpenFull}
+        seed={quickAddSeed}
         seedLabel={format(selectedDate, 'MMM d')}
       />
 

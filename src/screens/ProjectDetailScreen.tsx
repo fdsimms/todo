@@ -53,6 +53,7 @@ import { alphabeticalPageOrder, buildProjectListItems, filterProjectListItems, o
 import { ProjectEditor } from '../components/ProjectEditor';
 import { BulkActionBar } from '../components/BulkActionBar';
 import { QuickAddModal } from '../components/QuickAddModal';
+import { useStableCallback } from '../hooks/useStableCallback';
 import { TemplatePickerSheet } from '../components/TemplatePickerSheet';
 import { ApplyTemplateSheet } from '../components/ApplyTemplateSheet';
 import { TemplateAppliedToast } from '../components/TemplateAppliedToast';
@@ -861,10 +862,22 @@ export function ProjectDetailScreen() {
     setGroupEditorVisible(true);
   }, []);
 
-  const startGroupDrag = (groupId: string, drag: () => void) => {
-    pendingGroupDragRef.current = groupId;
-    drag();
-    pendingGroupDragRef.current = null;
+  // One handler per section, kept while the list's own `drag` for it stays
+  // the same (ReorderableList caches that per row). Built inline, a fresh
+  // arrow defeated TaskGroupHeader's memo, so every header re-rendered on any
+  // change to this screen's state: opening the quick add, a keystroke's
+  // worth of selection, a task added.
+  const groupDragHandlers = useRef(new Map<string, { drag: () => void; handler: () => void }>());
+  const groupDragHandlerFor = (groupId: string, drag: () => void) => {
+    const cached = groupDragHandlers.current.get(groupId);
+    if (cached && cached.drag === drag) return cached.handler;
+    const handler = () => {
+      pendingGroupDragRef.current = groupId;
+      drag();
+      pendingGroupDragRef.current = null;
+    };
+    groupDragHandlers.current.set(groupId, { drag, handler });
+    return handler;
   };
 
   const listTouchStart = React.useRef<{ x: number; y: number } | null>(null);
@@ -1101,6 +1114,14 @@ export function ProjectDetailScreen() {
     setEditorInitialDraft({ ...draft, projectId: project?.id ?? null });
     setEditorVisible(true);
   };
+
+  // The quick add is memoized and mounted the whole time this screen is.
+  // Passed as plain functions, every render of this screen re-rendered the
+  // hidden sheet too, all of its JSX included.
+  const onQuickAddClose = useStableCallback(closeQuickAdd);
+  const onQuickAddOpenFull = useStableCallback(handleQuickAddOpenFull);
+  const onQuickAddCreated = useStableCallback(handleTaskCreated);
+  const onQuickAddResumed = useStableCallback(attachToProject);
 
   // Shared by a loose top-level row and a stacked task rendered inside its
   // group's tray — same capabilities either way (checkbox, swipe actions,
@@ -1940,7 +1961,7 @@ export function ProjectDetailScreen() {
                       onDefer={handleGroupDefer}
                       onSwipeSelect={handleGroupSwipeSelect}
                       onPressEdit={handleGroupPressEdit}
-                      onDrag={!selectionMode && drag ? () => startGroupDrag(group.id, drag) : undefined}
+                      onDrag={!selectionMode && drag ? groupDragHandlerFor(group.id, drag) : undefined}
                     />
                     <TaskGroupBody
                       // A drag still folds it, so its floating card is the
@@ -2333,14 +2354,14 @@ export function ProjectDetailScreen() {
 
         <QuickAddModal
           visible={quickAddVisible}
-          onClose={closeQuickAdd}
-          onOpenFull={handleQuickAddOpenFull}
+          onClose={onQuickAddClose}
+          onOpenFull={onQuickAddOpenFull}
           // Project tasks are picked off over time rather than scheduled for
           // today, so the quick add opens with no due date.
           context="unscheduled"
           intoProjectId={project?.id ?? null}
-          onCreated={handleTaskCreated}
-          onResumed={attachToProject}
+          onCreated={onQuickAddCreated}
+          onResumed={onQuickAddResumed}
           seed={quickAddSeed}
           seedLabel={quickAddSeedLabel}
         />
