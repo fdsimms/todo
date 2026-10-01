@@ -2099,7 +2099,7 @@ interface TaskStore extends UndoHistoryActions {
   bulkUncompleteTasks: (ids: string[]) => void;
   bulkMarkMissed: (ids: string[]) => void;
   /** `skipGeneratedOptOut` has the same meaning as `deleteTask`'s — see its doc comment. */
-  bulkDeleteTasks: (ids: string[], opts?: { skipGeneratedOptOut?: boolean }) => void;
+  bulkDeleteTasks: (ids: string[], opts?: { skipGeneratedOptOut?: boolean; registerUndo?: boolean }) => void;
   clearLogbook: () => void;
   bulkSetPriority: (ids: string[], priority: Priority) => void;
   bulkTogglePin: (ids: string[]) => void;
@@ -2362,6 +2362,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     dbTransaction(() => rolled.forEach(t => get().skipNextRecurrence(t.id)));
     // skipGeneratedOptOut: this runs unattended at startup — a window closing
     // on its own is the app tidying up, not the user declining the source.
+    // registerUndo: false for the same reason, so the first shake of the
+    // session doesn't offer to bring back rows the user never deleted.
     if (doomed.length > 0) {
       // Recorded before the delete, so the titles are still there to snapshot.
       // Only the deleted rows: a recurring occurrence that was rolled forward
@@ -2377,7 +2379,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           taskId: t.id,
         })),
       );
-      get().bulkDeleteTasks(doomed.map(t => t.id), { skipGeneratedOptOut: true });
+      get().bulkDeleteTasks(doomed.map(t => t.id), { skipGeneratedOptOut: true, registerUndo: false });
     }
   },
 
@@ -3441,7 +3443,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     //
     // And not when the app is the one deleting: a reconcile clearing a task
     // whose reason has gone is tidying up, not the source changing its mind
-    // (see dropGeneratedTask, which is the only caller that passes this).
+    // (generatedTaskSync's deleteGeneratedTaskQuietly passes this for both of
+    // its paths: reconcileGeneratedTask's `!wanted` branch and dropGeneratedTask).
     if (!opts.skipGeneratedOptOut) writeGeneratedOptOut(task, false);
 
     get().setLastAction({
@@ -4294,9 +4297,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const patched = get().tasks.flatMap(t => {
       if (!isNegativeTask(t) || t.archived) return [];
       // Vacation protects the run rather than growing it, which is the call
-      // every other streak here makes. Read through isHiddenForVacation so a
-      // category paused for vacation covers its habits too, exactly as it does
-      // for the tasks the quota rollover skips.
+      // every other streak here makes. Read through isWithheld so a category
+      // paused for vacation, or a paused project, covers its habits too,
+      // exactly as it does for the tasks the quota rollover skips.
       const patch = cleanDayPatch(t, todayStart, { paused: isWithheld(t) });
       return patch ? [{ ...t, ...patch }] : [];
     });
@@ -5148,7 +5151,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const plannedEntries = dbGetMealPlanEntries(due.targetWeekStartKey, due.targetWeekEndKey);
     if (mealPlanNudgeSuppressed(due, plannedEntries, settings.mealPlanNudgeSlots)) return;
 
-    // Filed like the other three generators' tasks. Without this the one thing
+    // Filed like every other generator's tasks. Without this the one thing
     // the app writes entirely on its own schedule was also the one with no
     // category, so it landed loose above every section.
     const category = settings.mealPlanNudgeTaskCategory;
@@ -8947,6 +8950,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // See deleteTask's matching call for why this exists at all.
     if (!opts.skipGeneratedOptOut) deletedTopLevel.forEach(t => writeGeneratedOptOut(t, false));
 
+    // An unattended delete (the launch-time expiry sweep) must not sit under
+    // the user's first shake of the session waiting to be reversed: they
+    // didn't just do it. Same reason purgeOldCompletedTasks bypasses this.
+    if (opts.registerUndo === false) return;
     get().setLastAction({
       label: `${ids.length} task${ids.length === 1 ? '' : 's'} deleted`,
       destructive: true,

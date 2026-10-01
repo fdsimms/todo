@@ -434,7 +434,7 @@ export function FoodLogEntrySheet({
   // from goes the moment it stops being that number.
   const [recalledAmount, setRecalledAmount] = useState<string | null>(null);
   // Which question the amount field is asking of a dish. Set from the picked
-  // dish rather than remembered across picks — see `pickDish`.
+  // dish rather than remembered across picks — see `choose`.
   const [dishMeasure, setDishMeasure] = useState<DishMeasure>('servings');
   const [chosenSlot, setChosenSlot] = useState<MealSlot | null>(slot);
   const [weighGrams, setWeighGrams] = useState('');

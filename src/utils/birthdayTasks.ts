@@ -316,7 +316,7 @@ function startOfDayNoon(day: Date): Date {
  * Judged against the wanted set by source id, so a row for last year's birthday
  * is stale the moment the window closes on it, and a row whose person changed
  * their date is stale because the new date has a different `deadline` (see
- * `driftedBirthdayTasks`) rather than because it stopped being wanted.
+ * `birthdayDrift`) rather than because it stopped being wanted.
  */
 export function staleBirthdayTasks<
   T extends Pick<Task, 'generatedKind' | 'generatedSourceId' | 'completed' | 'archived'>

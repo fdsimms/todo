@@ -1,8 +1,9 @@
 /**
- * Multi-level undo/redo, shared by the four stores that keep a history
- * (tasks, groceries, meal plan, leftovers).
+ * Multi-level undo/redo, shared by every store that keeps a history (tasks,
+ * groceries, meal plan, leftovers, people, person groups: the callers of
+ * `undoHistoryActions`).
  *
- * **Four stacks, one history.** Each store owns its own `undoStack` /
+ * **One stack per store, one history.** Each store owns its own `undoStack` /
  * `redoStack` rather than there being a single shared one, which is the shape
  * that was already there for the single-slot `lastAction` it replaces — a
  * store can't reach into another store's state without a cycle, and three of
@@ -123,7 +124,7 @@ export function freshest<T>(candidates: T[], at: (c: T) => number | undefined): 
  * undo history. Within one store that falls out of the push itself, which
  * clears that store's redo stack. Across stores it can't: deleting a task
  * knows nothing about a grocery clear waiting to be redone. Rather than
- * broadcasting a clear to the other three on every action, the stamps answer
+ * broadcasting a clear to every other store on every action, the stamps answer
  * it directly — a redo is still current exactly while nothing has been done
  * since it was undone.
  */
@@ -171,11 +172,11 @@ export interface UndoHistoryState extends UndoHistory {
  *
  * - **`setLastAction(null)` clears the whole history, not just the top.** It
  *   is how a store says "there is nothing safe to undo here" (see
- *   `useMealPlanStore.deleteEntriesForRecipe`), and that verdict covers what
+ *   `deleteGeneratedTaskQuietly` in `generatedTaskSync.ts`), and that verdict covers what
  *   sits under it too: undoing the step below while this one stands would
  *   replay history out of order.
  * - **Registering an action discards the redo branch**, as in any undo
- *   history. That covers this store; `redoIsCurrent` covers the other three.
+ *   history. That covers this store; `redoIsCurrent` covers the others.
  */
 export function undoHistoryActions<S extends UndoHistoryState>(
   set: (partial: Partial<S>) => void,

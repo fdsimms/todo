@@ -201,9 +201,9 @@ export function ProjectCategoriesSheet({ visible, onClose }: Props) {
 
   const rows: Row[] = order.map(name => ({ id: name }));
 
-  // Closing while a rename/new-category field still holds focus is the same
-  // freeze bug fixed elsewhere: the keyboard's own dismiss animation races
-  // the Modal's and strands the touch handler on whatever's underneath.
+  // SheetModal holds the close until the keyboard is gone (see its doc
+  // comment), so this dismiss isn't what prevents the freeze; it only starts
+  // the keyboard moving a beat sooner.
   const close = () => {
     Keyboard.dismiss();
     onClose();

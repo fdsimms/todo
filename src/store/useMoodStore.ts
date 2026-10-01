@@ -52,9 +52,9 @@ interface MoodStore {
      * lands here, under the same `dayResetTime` rule, so a backdated entry
      * counts toward the day it happened on rather than the day it was typed.
      *
-     * No UI passes it yet — the sheet always records now. `demoSeed` uses it
-     * to lay down a fortnight of history, which is what the insights on the
-     * Mood screen need before they will say anything at all.
+     * `MoodLogSheet` passes it for an entry on an earlier day (noon of that
+     * day). `demoSeed` uses it to lay down two weeks of history, which is what
+     * the insights on the Mood screen need before they will say anything.
      */
     at?: Date,
     contextTags?: string[],

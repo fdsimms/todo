@@ -5,9 +5,9 @@ and transformed, and how it is cooked. `docs/arch/groceries.md` owns the
 catalog these lines resolve against.
 
 Moved out of `CLAUDE.md` so it is read when it applies rather than on every
-task. The rules here are settled decisions with the reasoning attached: don't
-re-derive them from the code, and don't re-open one without a reason the note
-doesn't already cover.
+task. The rules here are strong defaults with the reasoning
+attached: read the reason before deviating from one. Where this note and the
+code disagree, the code is what ships, so fix the note.
 
 ---
 
@@ -132,8 +132,10 @@ already allows two things on one dinner, so ad-hoc pairing needs nothing.
 
 - **The two stay two lists sharing one convention**, never one list. An ingredient names something
   you can put in a trolley (`nameKey` is the catalog bridge); a component names a dish. They share
-  `activeIn()` — one generic resolver over anything with an id and a `choiceGroup` — because the
-  *rule* is genuinely the same and writing it twice is how the two would drift.
+  one resolver, `resolveGroupWinners` (`recipeComponents.ts`), because the *rule* is genuinely the
+  same and writing it twice is how the two would drift. A label can be shared across the two lists
+  ("buy rice, or cook this component instead"), and then it resolves as one either/or, ingredients
+  tried first when nothing is chosen.
 - **Two ingredient rows, never one line reading "serrano or jalapeño".** That spelling mints a
   catalog item literally called "serrano or jalapeño": a row that can never match a real purchase,
   never ranks in the catalog, and gets hand-corrected on the list every single time. Separate rows
@@ -168,8 +170,8 @@ already allows two things on one dinner, so ad-hoc pairing needs nothing.
 
 - **The choice is resolved at read time and never written onto the recipe.** `activeComponents`
   picks one option per group, `walk` descends only into that one, and every flatten takes an
-  optional `ComponentResolution`. **Passing none resolves to the defaults**, so an unresolved read
-  is a complete dish and every caller predating this kept working unchanged.
+  optional `ChoiceResolution`. **Passing none resolves to the defaults**, so an unresolved read
+  is a complete dish.
 - **A surface that reads one cooking of a recipe must take that cooking's picks.** Every flatten
   and walk here (`flattenRecipeIngredients`, `cookSteps`, `recipeChoiceGroups`, cost, nutrition)
   accepts a resolution, and leaving it off still type-checks and still renders a complete dish: the
@@ -177,9 +179,12 @@ already allows two things on one dinner, so ad-hoc pairing needs nothing.
   screen had picked. So a new surface that shows a specific cooking (a sheet opened from a recipe
   screen or a planned meal) takes `choices` from whoever opened it and passes them through. Only a
   read about the recipe in general (search, the pantry scorer) may use the defaults.
-- **The default is the group's first component in list order**, not a `defaultComponentId`: an id
-  is a second thing to keep in step with the list and to repair when that component is removed.
+- **The default is the group's first option in list order**, not a `defaultComponentId`: an id
+  is a second thing to keep in step with the list and to repair when that option is removed.
   `makeComponentDefault` moves the link to the front of its group — the promotion *is* a reorder.
+  One refinement: a caller may pass `ChoiceResolution.onHand` (ingredient `nameKey`s in the
+  pantry), and an unresolved group then prefers an on-hand *ingredient* over the first-listed one.
+  It never promotes a component, and an explicit pick always wins.
 - **The pick lives on `MealPlanEntry.recipeChoices`**, because which side you make is a fact about
   a cooking, not about the dish — one recipe, mash on Tuesday and roast on Friday. **One list holds
   both kinds of id** (component links and ingredient lines): every reader asks it the same question,
@@ -193,7 +198,8 @@ already allows two things on one dinner, so ad-hoc pairing needs nothing.
   reason is concrete — two sides that share an ingredient each contribute a line, which
   `classifyPlanned` would merge into one doubled quantity. `scoreRecipeAgainstCatalog` and
   `countLikelyInPantry` resolve to the defaults instead, or the coverage denominator inflates with
-  lines that will never be bought.
+  lines that will never be bought. (`scoreRecipeAgainstCatalog` passes `onHand`, so its defaults
+  prefer what the pantry holds.)
 - **A shared recipe keeps a choice as a choice, and names a whole-dish one in the heading.** The
   share text and the ingredient paste take no `ChoiceResolution` (the sender's picks are tonight's,
   not the recipe's), so an ingredient either/or goes out as one line holding every option ("1
@@ -207,7 +213,7 @@ already allows two things on one dinner, so ad-hoc pairing needs nothing.
 - **An ad-hoc "Add ingredients to list" holds its picks in sheet state and writes nothing** —
   there's no meal for them to be a fact about, and picking the pepper for tonight's shop shouldn't
   edit the recipe. `RecipeToListSheet.initialChoices` seeds them from the entry when the shop is a
-  follow-up to cooking one. The week-level `AddWeekToListSheet` deliberately has no chips of its
+  follow-up to cooking one. The week-level `AddMealsToListSheet` deliberately has no chips of its
   own: it aggregates many recipes, and each entry already carries its own answers.
 
 ## Where a recipe is from (`Cookbook`, `recipeProvenance.ts`)
@@ -704,10 +710,9 @@ reader; the scaler, the converter, the price comparison, the substitute ratio, `
 allowed to is that it's narrow by construction and always reached through a factor the user picked.
 Everything in `mealPlanGroceries.ts`'s header note still holds for every other reader.
 
-Rules 1, 3 and 4 below are `quantity.ts`'s now (the leading amount, the refusals, the rationals).
-What's left in `recipeScale` is the multiplication and the shapes it renders back.
-
-The four rules that make it safe, all enforced in `scaleQuantity`:
+The four rules that make it safe. `scaleQuantity` enforces rule 2 itself; rules 1, 3 and 4 (the
+leading amount, the refusals, the rationals) live in `quantity.ts`, which `recipeScale` reads
+through, so what's left in `recipeScale` is the multiplication and the shapes it renders back:
 
 1. **Only the leading amount is ever touched.** Unit, size clause and container word carry through
    verbatim, apart from pluralising off a closed table.
@@ -763,7 +768,7 @@ The four rules that make it safe, all enforced in `scaleQuantity`:
   size of every later plan of that dish, where a stated household size is one number the person
   chose and can see in Settings.
 - **Factor chips are the floor, a servings stepper is layered on where it can be.** `Recipe.servings`
-  is nullable and plenty of recipes never had one, so the chips (`½× 1× 1½× 2× 3×`) are what's always
+  is nullable and plenty of recipes never had one, so the chips (`RECIPE_SCALE_FACTORS`: ¼× through 3×) are what's always
   available. When a recipe does know its own count, `RecipeScaleChips` also renders a `CountStepper`
   targeting servings directly — the open-ended-number case this app otherwise reaches for a stepper
   over a chip row for (see `CountStepper`'s own doc comment). `recipeScale.factorForServings`/
@@ -853,8 +858,9 @@ amount, and answering that in the unit they already had answers nothing.
   **editable fields deliberately don't convert** (`RecipeIngredientSheet`, `GroceryItemSheet`) and
   neither do the previews of text about to be *saved* (`RecipeExtractSheet`, `RecipeCreateSheet`,
   `GroceryAISheet`, `GroceryAddField`'s live token). A field you're about to write has to show what
-  will be written. The read-only pills are the four that convert: the ingredient row on
-  `RecipeDetailScreen`, both add-to-list sheets, and `GroceryRow`.
+  will be written. Every read-only display converts (grep `convertQuantity` for the current set:
+  the recipe screen's ingredient rows, the add-to-list sheets, `GroceryRow`, cook mode and its
+  recap, the share text, and the step-text amounts among them).
 - **Converted text is always marked `≈`**, because every conversion here rounds (below). One
   character at every render site, rather than a styling change at each one — and it's what stops a
   converted number reading as the recipe's own words. On `RecipeDetailScreen` a converted pill also
@@ -1084,7 +1090,7 @@ cannot have: the context.
   milk is owed that fact when the sauce won't thicken.
 - **It asks; it never writes.** The answer is screen state, gone with the step — the same call
   cook mode already makes about the position and the panel's fold. Nothing rewrites the step,
-  nothing starts a timer off the answer (a parse that *acted* is what `stepDurations` refuses, and
+  nothing starts a timer off the answer (a parse that *acted* is what `stepTimers.ts`'s `parseStepDurations`/`stepDurationOffers` refuse, and
   a model sentence is a weaker source than the recipe's own), and the recipe gains nothing until
   someone presses Keep.
 - **One question, one answer, no transcript.** A scrolling log of turns is the shape this screen
@@ -1124,7 +1130,7 @@ cannot have: the context.
   ordinary note about the step either way. That field commits on blur rather than per keystroke,
   unlike the length stepper next to it, because a press is one discrete value and typed prose is
   not.
-- **`cookHelp` takes Sonnet by default**, the third feature to do so, and for the reason
+- **`cookHelp` takes Sonnet by default** (`aiFeatures.ts` says which others do), for the reason
   `receiptImport` gives: the cost difference per question is a fraction of a cent and the expensive
   failure is a confident wrong answer about whether something is cooked through. It has no
   on-device arm — a free question over a whole ingredient list wants world knowledge and more

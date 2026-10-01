@@ -5,58 +5,32 @@ export type { GeneratedKind };
 /**
  * The one mechanism behind every task this app writes without being asked.
  *
- * Eleven features generate tasks unattended — each meal of the day becomes a
- * task, a perishable grocery becomes "Use up X", a leftover about to go bad
- * becomes "Use up X", an opt-in weekly trigger becomes "Plan meals for…", a
- * project that has gone quiet becomes "Review X", a pantry guess that has run
- * out becomes "Check if you still have X", a task's supply running low
- * becomes "Order more X", (once a day, when tomorrow has anything on it) the
- * calendar becomes "Review tomorrow's calendar", somebody's birthday becomes a
- * task a few days out (optionally with a second, earlier one to get them a
- * gift), and a planned meal the kitchen can't make becomes "Shop for Tue
- * ragu". The first four were each
- * built by copying the last, which is fine twice and had reached four: four
- * nullable back-pointer columns on `Task`, four hand-written "don't pile up"
- * rules, and three near-identical copies of the same three-input opt-out, two
- * of which said so in their own headers (#1524).
- *
- * The fifth is what that refactor was for. `projectReview` needed no
- * column and no reconcile of its own: a registry entry, a rules module
- * (`projectReviewTasks.ts`) and a firing beside the meal-plan nudge's, which is
- * the shape the note below promised. `pantryCheck` is the sixth and cost the
- * same: `pantryCheckTasks.ts`, an entry here, and a firing beside
- * `projectReview`'s — the one column it *did* add is on its source row
- * (`GroceryItem.pantryCheckDeclinedAt`), which is where the opt-out belongs and
- * not part of the mechanism at all. `supplyReorder` is the seventh, sourced
- * from a task rather than a row in another store (see `src/utils/supply.ts`).
- * `birthday` is the ninth. `mealShortfall` is the tenth, and is the first whose
- * source row is one the user edits freely and often, which is why its whole
- * staleness rule is the creation predicate re-run (see
- * `src/utils/mealShortfallTasks.ts`). `birthdayGift` is the eleventh, and costs
- * no new rules module at all — it lives beside `birthday` in
- * `src/utils/birthdayTasks.ts` and reuses everything but the lead setting and
- * the title (see that file's own header).
- * `calendarReview` is the eighth, and it costs the same shape again:
- * `calendarReviewTasks.ts`, an entry here, and a firing beside the other
- * time-based passes. It adds no column at all — its source is tomorrow's day
- * key rather than a row, the position `mealPlanNudge` is already in, so its
- * "don't hand it back" is a settings-level mark (`calendarReviewLastDayKey`)
- * rather than a stamp on anything.
+ * Every entry in `GENERATED_KINDS` below is a feature that writes tasks
+ * unattended: a meal of the day, "Use up X" for a perishable grocery or a
+ * leftover, "Review X" for a quiet project, "Order more X" for a running-low
+ * supply, birthdays, weather and Health rules, and the rest. The first four
+ * were each built by copying the last: four nullable back-pointer columns on
+ * `Task`, four hand-written "don't pile up" rules, and three near-identical
+ * copies of the same three-input opt-out (#1524). This module is what replaced
+ * that, and every generator since has cost a registry entry, a rules module and
+ * a firing in `maintenancePasses.ts` rather than a column and a reconcile of
+ * its own. A source with no row (`calendarReview`, `mealPlanNudge`: tomorrow's
+ * day key) keeps its "don't hand it back" mark in settings instead.
  *
  * What's shared is the *plumbing*, and only the plumbing:
  *
  * - **`Task.generatedKind` + `Task.generatedSourceId`** in place of
  *   `mealEntryId` / `groceryItemId` / `leftoverId`. Two columns instead of one
- *   per generator, and the fifth generator needs neither.
+ *   per generator, and a new generator needs neither.
  * - **`wantsGeneratedTask`** — the tri-state opt-out precedence, written once.
  * - **`liveGeneratedTask` / `hasAnyGeneratedTask`** — "is there already a task
- *   for this source", the question all four had their own answer to.
+ *   for this source", the question each generator used to answer its own way.
  *
  * What is deliberately **not** shared is every rule that makes a generator the
  * generator it is: which sources qualify, what the task is called, which fields
- * the source owns, and when a reconcile runs. Those live in `mealTasks.ts`,
- * `groceryExpiry.ts`, `leftoverTasks.ts` and `mealPlanNudge.ts` exactly as
- * before, and each still has its own tests. A registry that tried to hold them
+ * the source owns, and when a reconcile runs. Those live in each generator's
+ * own module (`groceryExpiry.ts`, `leftoverTasks.ts`, `mealSlotTasks.ts` and the
+ * rest), and each still has its own tests. A registry that tried to hold them
  * too would be the settings-as-config mistake `settingsIndex.ts` warns about,
  * one layer down: an abstraction able to express a time-of-day segment, a lead
  * time in days, a relative deadline and a week-range title is harder to read
@@ -336,7 +310,8 @@ export interface GeneratedKindSpec {
    * title in place, and the "Add subtask" field. What is left in its expanded
    * panel is whatever the kind itself has to show (`calendarReview`'s
    * events), so a notice with nothing to show does not expand at all.
-   * `isNoticeTask` is the read and `TaskItem` is the only caller.
+   * `isNoticeTask` is the read. `TaskItem` calls it, and so does `taskMoves.ts`,
+   * which refuses to bulk-move or deload a notice.
    *
    * True for the two kinds whose task is one question about one day and
    * nothing else: `calendarReview` ("what is on tomorrow") and
@@ -1074,9 +1049,11 @@ export function liveGeneratedTasksOfKind<T extends Pick<Task, 'generatedKind' | 
 /**
  * Whether this source has *any* task on record, live or finished.
  *
- * The wider question, and only cook tasks ask it — deliberately. A meal is one
- * event, so a completed "Cook Tuesday's chilli" means the thing happened and a
- * second task for the same entry would be an invention. A grocery item and a
+ * The wider question, and only the generators whose source is one planned meal
+ * ask it (`blocksOnFinished`: mealShortfall, mealThaw, mealLogNudge, and the
+ * meal slot reading it directly) — deliberately. A meal is one event, so a
+ * completed task about Tuesday's chilli means the thing happened and a second
+ * task for the same entry would be an invention. A grocery item and a
  * leftover are the opposite: a catalog row is bought again and again, and last
  * month's ticked-off "Use up spinach" says nothing about the bag bought this
  * afternoon. Reading the wide set there would mean a staple got exactly one
@@ -1172,8 +1149,8 @@ export function isNoticeTask(task: Pick<Task, 'generatedKind'>): boolean {
  *
  * Grocery and leftover use-up tasks are two independent producers of what a
  * person reads as one kind of nag, so a cap on the pile has to count them
- * together — cook tasks and the meal-plan nudge are exempt: a cook task is
- * one per planned dinner, which the user already chose by planning the meal,
+ * together — meal-slot tasks and the meal-plan nudge are exempt: a meal-slot
+ * task is one per planned meal, which the user already chose by planning the meal,
  * and the nudge is a single weekly stack. Neither floods the way two
  * unrelated expiry clocks can.
  */

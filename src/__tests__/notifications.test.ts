@@ -1460,6 +1460,21 @@ describe('demo mode suppresses scheduling', () => {
     expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
   });
 
+  // docs/arch/away-dates.md leans on this: a demo trip can arm vacation mode,
+  // and the full reschedule that follows must not cancel the real per-task
+  // reminders the device is still holding. The two fixed-id summaries (daily
+  // agenda, trip reminder) are withdrawn rather than left announcing the real
+  // database's counts, and the reschedule on leaving demo mode lays them back.
+  it('schedules nothing and cancels no task reminder on a full reschedule', async () => {
+    setDemoModeActive(true);
+    jest.clearAllMocks();
+    await rescheduleAllReminders([makeTask({ id: 'real', reminderTime: FUTURE })]);
+    expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+    expect(Notifications.cancelAllScheduledNotificationsAsync).not.toHaveBeenCalled();
+    const cancelled = (Notifications.cancelScheduledNotificationAsync as jest.Mock).mock.calls.map(c => c[0]);
+    expect(cancelled).toEqual(['daily-agenda', 'active-trip-reminder']);
+  });
+
   it('resumes scheduling normally once demo mode is cleared', async () => {
     setDemoModeActive(true);
     await scheduleTaskReminder(makeTask({ id: 'during-demo', reminderTime: FUTURE }));

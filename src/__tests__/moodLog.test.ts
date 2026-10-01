@@ -13,6 +13,7 @@ import {
   moodLabel,
   moodLogSummary,
   renamedContextTags,
+  seededContextTags,
   severityLabel,
   symptomKey,
   symptomVocabulary,
@@ -206,6 +207,28 @@ describe('reading a day', () => {
       log({ id: 'b', contextTags: ['vacation', 'Travel'] }),
     ];
     expect(dayContextTags(day, '2026-08-17')).toEqual(['Travel', 'Vacation']);
+  });
+});
+
+describe('seededContextTags', () => {
+  const logs = [
+    log({ id: 'a', dayKey: '2026-08-17', contextTags: ['Sick'] }),
+    log({ id: 'b', dayKey: '2026-08-15', contextTags: ['Travel'] }),
+  ];
+
+  it('offers Vacation and that day\'s earlier tags for an entry today', () => {
+    expect(seededContextTags(logs, '2026-08-17', { isToday: true, vacationMode: true })).toEqual(['Vacation', 'Sick']);
+  });
+
+  // Vacation mode is a fact about now: a backdated entry must not inherit it,
+  // or today's other context, which is what the sheet used to hand it.
+  it('gives a past day only what was logged on that day', () => {
+    expect(seededContextTags(logs, '2026-08-15', { isToday: false, vacationMode: true })).toEqual(['Travel']);
+    expect(seededContextTags(logs, '2026-08-16', { isToday: false, vacationMode: true })).toEqual([]);
+  });
+
+  it('offers nothing for vacation while vacation mode is off', () => {
+    expect(seededContextTags([], '2026-08-17', { isToday: true, vacationMode: false })).toEqual([]);
   });
 });
 

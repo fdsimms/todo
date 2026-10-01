@@ -55,7 +55,7 @@ export function weatherConditionLabel(condition: WeatherCondition): string {
  * from an empty list — the app already knows the obvious answers, and typing
  * "sunny -> Put on sunscreen" from scratch is the trip a shipped default
  * saves. Each still has its own `enabled`, and the generator's own settings
- * toggle (`weatherEnabled`) ships off — see `GENERATED_KIND_SPECS.weather` —
+ * toggle (the `weatherTasks` setting) ships off — see `GENERATED_KIND_SPECS.weather` —
  * so nobody sees a task from these until they turn the feature on.
  */
 export function defaultWeatherRules(): WeatherRule[] {

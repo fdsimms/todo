@@ -243,7 +243,7 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId, onAp
   };
 
   // Slide the sheet away before showing the calendar — rendering both at once
-  // causes touch conflicts (same choreography as DeferModal).
+  // causes touch conflicts.
   const openCalendar = (target: 'start' | 'end') => {
     sheet.slideOut(() => {
       setCalendarTarget(target);

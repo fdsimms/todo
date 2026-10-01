@@ -10920,6 +10920,24 @@ describe('sweepExpiredTasks', () => {
     expect(dbBulkDeleteTasks).not.toHaveBeenCalled();
   });
 
+  // An unattended delete isn't something the user did, so it must not be the
+  // thing their first shake of the session offers to undo.
+  it('does not arm shake-to-undo for the rows it deletes', () => {
+    settingsStoreMock().getState.mockReturnValue({
+      dayResetTime: '00:00',
+      autoCompleteProjectsOnDone: false,
+      autoRemoveExpiredTasks: 0,
+      vacationMode: false,
+    });
+    useTaskStore.setState({
+      lastAction: null,
+      tasks: [makeTask({ id: 'expired', windowStart: '08:00', windowEnd: '13:00' })],
+    });
+    useTaskStore.getState().sweepExpiredTasks();
+    expect(useTaskStore.getState().tasks).toHaveLength(0);
+    expect(useTaskStore.getState().lastAction).toBeNull();
+  });
+
   it('deletes expired tasks when the setting is Immediately, leaving active ones', () => {
     settingsStoreMock().getState.mockReturnValue({
       dayResetTime: '00:00',

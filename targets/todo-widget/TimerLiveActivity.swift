@@ -9,9 +9,8 @@ import SwiftUI
 // tells this what to render. This view has no idea a timer was paused; it
 // only knows the activity for that key stopped existing.
 
-// The Done button. This used to be an AppIntent (CompleteTaskIntent /
-// StopCookingTimerIntent, the same ones the Today widget's checkbox still
-// uses) with openAppWhenRun set, on the assumption that tapping it would
+// The Done button. This used to be an AppIntent (CompleteTaskIntent, the
+// same one the Today widget's checkbox still uses) with openAppWhenRun set, on the assumption that tapping it would
 // both run the intent and bring the app forward the way the widget's
 // checkbox does — it doesn't. Apple's own guidance (confirmed on the
 // developer forums) is that a Live Activity button's intent runs in the

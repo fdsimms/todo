@@ -17,5 +17,15 @@ them source rather than tests. The ten biggest source files:
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.
 
-The suite is **399 test files**, and `npm test` runs all of them in well under a minute.
-`npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
+**Components and screens over 1,000 lines with no `// ====` banners.** Any of these that is
+one component holding most of the file is owed a header map and banners (CLAUDE.md,
+"single-component files"); one with real top-level symbols to grep for is not:
+
+`components/BarcodeScanSheet.tsx`, `components/ProjectEditor.tsx`,
+`components/RecipeEditor.tsx`, `components/RecipeIngredientSheet.tsx`,
+`components/ReorderableList.tsx`, `components/WhenPicker.tsx`, `screens/BackfillScreen.tsx`,
+`screens/KitchenScreen.tsx`, `screens/MoodScreen.tsx`, `screens/ProjectDetailScreen.tsx`,
+`screens/ProjectsScreen.tsx`, `screens/RecipesScreen.tsx`, `screens/StatsScreen.tsx`.
+
+The suite is **399 test files**, and `npm test` runs all of them in about a minute.
+`npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists.

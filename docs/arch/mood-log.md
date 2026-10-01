@@ -10,9 +10,9 @@ Read this before changing anything under `src/utils/moodLog.ts`,
 `src/store/useMedicationStore.ts`, `src/screens/MedicationScreen.tsx` or
 `src/components/MedicationLogSheet.tsx`.
 
-The rules here are settled decisions with the reasoning attached. Don't
-re-derive them from the code, and don't re-open one without a reason this note
-doesn't already cover.
+The rules here are strong defaults with the reasoning
+attached: read the reason before deviating from one. Where this note and the
+code disagree, the code is what ships, so fix the note.
 
 ---
 
@@ -88,14 +88,17 @@ grid — it is a constant, the same kind `MOOD_LEVELS` is, and it never
 overrides what the log itself has accumulated (real usage sorts ahead of it
 in `MoodLogSheet`'s pill ordering).
 
-**The one auto-suggestion, and why it stops at one.** `MoodLogSheet`
-pre-selects "Vacation" when opening a *new* entry while `vacationMode` is on
-— visibly, as an already-picked pill the person can untap before Save, never
-written silently. That is the same "offer, don't decide" posture
+**The auto-suggestions, and why they stop at two.** A *new* entry opens with
+"Vacation" pre-selected while `vacationMode` is on, and with whatever context
+tags an earlier entry that same day already gave (a fourth "Sick" check-in on a
+day you're unwell shouldn't need a fourth tap) — visibly, as already-picked
+pills the person can untap before Save, never written silently
+(`seededContextTags` in `moodLog.ts`). That is the same "offer, don't decide" posture
 `lowMoodDeloadNote` takes below: the app can notice a fact it already tracks,
 but the log stays the user's own record of what they think was going on, not
-an automated inference dressed up as one. It is scoped to exactly one signal
-on purpose. Vacation mode is a clean boolean the app already owns and gets
+an automated inference dressed up as one. Both sources are things the app
+already knows cleanly: what the person themselves said earlier that day, and
+vacation mode, a clean boolean the app already owns and gets
 right on its own terms (see the vacation-mode note in the tasks
 architecture); most other "obvious" candidates are not nearly as clean —
 a missed-task-heavy day, a bad-sleep night from Health — and guessing wrong
@@ -104,11 +107,12 @@ is exactly what `moodInsights.ts`'s association-not-cause rule exists to
 forbid. Widening the source list is a real feature decision each time, not a
 default to reach for.
 
-The suggestion only fires for a *new* entry on **today**. Editing an existing
-row must never retroactively add a tag it didn't say (same reason the Day
-row itself only shows for a new entry), and a backdated entry records how a
-past day went — the app's *current* vacation state says nothing about
-whether last Tuesday was one.
+Only a *new* entry is seeded. Editing an existing row must never retroactively
+add a tag it didn't say (same reason the Day row itself only shows for a new
+entry). **Moving a new entry's Day row re-seeds for that day**, as long as the
+user hasn't touched the tags yet: a backdated entry gets that day's own earlier
+tags and never "Vacation", because the app's *current* vacation state says
+nothing about whether last Tuesday was one.
 
 ## Correcting a tag's text is a rename across the whole log, not an edit of one entry
 
@@ -280,7 +284,7 @@ symptom vocabulary is the clearest case that rule has: it is whatever the user
 has ever typed, so no phone-width scroll row can assume a ceiling for it. The
 chips are multi-select and `ChipFilterSheet` is the shared shell they live in —
 `LogbookFilterSheet` and `RecipeTagFilterSheet` predate it and still carry their
-own copies of the same 150 lines of sheet chrome.
+own copies of the same sheet chrome (#2995).
 
 Two rules on the filtering itself, both in `moodHistory.ts`:
 

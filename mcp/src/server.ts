@@ -67,6 +67,14 @@ const PORT = Number(process.env.PORT ?? 8787);
  */
 const SYNC_THROTTLE_MS = 10_000;
 
+/**
+ * When each replica last synced. Kept outside `buildMcpServer` because that
+ * runs once per HTTP request (the transport is stateless): a `let` inside it
+ * started every request at zero, so every tool call synced and the throttle
+ * above never applied.
+ */
+const lastSyncAtByReplica = new WeakMap<Replica, number>();
+
 function json(value: unknown) {
   return { content: [{ type: 'text' as const, text: JSON.stringify(value, null, 2) }] };
 }
@@ -95,9 +103,8 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
   // on nothing: nothing can have changed in the second between them that the
   // next question will not pick up. A failure is swallowed on purpose — a store
   // that is down should mean slightly stale answers, not no answers.
-  let lastSyncAt = 0;
   const exchange = async (): Promise<void> => {
-    lastSyncAt = Date.now();
+    lastSyncAtByReplica.set(replica, Date.now());
     try {
       await replica.sync();
     } catch (e) {
@@ -106,7 +113,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
   };
 
   const withFresh = async <T>(fn: () => T): Promise<T> => {
-    if (Date.now() - lastSyncAt > SYNC_THROTTLE_MS) await exchange();
+    if (Date.now() - (lastSyncAtByReplica.get(replica) ?? 0) > SYNC_THROTTLE_MS) await exchange();
     replica.refresh();
     return fn();
   };
@@ -499,8 +506,9 @@ async function main(): Promise<void> {
     }
 
     // Stateless: a transport per request, so there is no session table to
-    // outlive a restart and nothing to clean up when a client goes away. The
-    // tools are all reads, so there is no continuity to lose.
+    // outlive a restart and nothing to clean up when a client goes away. No
+    // tool, read or write, depends on anything from an earlier request, so
+    // there is no continuity to lose.
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     res.on('close', () => void transport.close());
 
@@ -510,7 +518,13 @@ async function main(): Promise<void> {
 
   app.listen(PORT, () => {
     console.error(`todo MCP server on :${PORT}, serving ${replica.path}`);
-    if (!process.env.MCP_AUTH_TOKEN) console.error('MCP_AUTH_TOKEN is unset: every MCP request will be refused.');
+    if (!process.env.MCP_AUTH_TOKEN) {
+      console.error(
+        process.env.MCP_WRITE_TOKEN
+          ? 'MCP_AUTH_TOKEN is unset: only callers presenting MCP_WRITE_TOKEN will be served.'
+          : 'MCP_AUTH_TOKEN is unset: every MCP request will be refused.'
+      );
+    }
     if (!process.env.MCP_WRITE_TOKEN) console.error('MCP_WRITE_TOKEN is unset: this server is read-only.');
     if (!process.env.SYNC_STORE_PATH) {
       console.error('SYNC_STORE_PATH is unset: the sync store is not mounted, so the replica cannot be a peer.');

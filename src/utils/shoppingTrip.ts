@@ -188,7 +188,7 @@ export function planTrip(
 ): TripPlan {
   const itemIdsInCatalog = new Set(items.map(i => i.id));
   // The product rule is a fact about the item, so a link can't be judged without
-  // it — see groceryShops.hasWrongBrand.
+  // it — see groceryShops.lacksWantedProduct.
   const itemsById = new Map(items.map(i => [i.id, i]));
   const onList = items.filter(i => i.onList);
   const rank = new Map(onList.map((item, i) => [item.id, i]));

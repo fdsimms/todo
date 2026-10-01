@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { View, Text, TextInput, Alert, StyleSheet } from 'react-native';
 import { format } from 'date-fns/format';
 import { isSameDay } from 'date-fns/isSameDay';
@@ -13,9 +13,9 @@ import {
   SYMPTOM_SEVERITIES,
   contextTagVocabulary,
   contextTagKey,
-  dayContextTags,
   moodLabel,
   renamedContextTags,
+  seededContextTags,
   symptomKey,
   symptomVocabulary,
   withContextTag,
@@ -104,6 +104,8 @@ export function MoodLogSheet({ visible, editing = null, onClose }: Props) {
   // case by a mile, and the only one before this row existed.
   const [day, setDay] = useState<Date>(() => getLogicalToday());
   const [pickerOpen, setPickerOpen] = useState(false);
+  // What a new entry's context tags were seeded with, or null when editing.
+  const seedRef = useRef<string[] | null>(null);
 
   // Reseeds on every open, including a reopen with the same props — a sheet
   // that handed back last night's half-filled form would be recording the
@@ -115,19 +117,21 @@ export function MoodLogSheet({ visible, editing = null, onClose }: Props) {
     // Offered, not decided: a new entry opens with "Vacation" pre-picked
     // while vacation mode is on, exactly as if you had tapped the pill
     // yourself, and it comes right back off with one more tap. Only for a
-    // fresh entry — editing an old one must not silently add a tag to it —
-    // and only vacation mode, the one signal this reads today (see
+    // fresh entry — editing an old one must not silently add a tag to it (see
     // docs/arch/mood-log.md). Same offer for whatever context you already
-    // gave an earlier check-in today: a second entry the same day is usually
+    // gave an earlier check-in that day: a second entry the same day is usually
     // still under the same circumstances, so those tags start picked too,
     // rather than asking you to re-tap "Sick" for the fourth entry of a day
     // you're unwell.
-    let seededTags = vacationMode ? ['Vacation'] : [];
-    if (!editing) {
-      const todayKey = dayKeyOf(getCurrentDayStart());
-      for (const tag of dayContextTags(logs, todayKey)) seededTags = withContextTag(seededTags, tag);
-    }
-    setContextTags(editing?.contextTags ?? seededTags);
+    //
+    // The seed is kept so moving the Day row can redo it for that day (see
+    // pickDay): vacation mode is a fact about today, and an earlier entry's
+    // tags are a fact about its own day.
+    const seed = editing
+      ? null
+      : seededContextTags(logs, dayKeyOf(getCurrentDayStart()), { isToday: true, vacationMode });
+    seedRef.current = seed;
+    setContextTags(editing?.contextTags ?? seed ?? []);
     setNote(editing?.note ?? '');
     setDrafted([]);
     setDraftedContext([]);
@@ -140,6 +144,21 @@ export function MoodLogSheet({ visible, editing = null, onClose }: Props) {
     // through entering.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, editing, vacationMode]);
+
+  // Picking another day re-seeds the context tags for that day, but only while
+  // they are still exactly the seed: once the user has tapped a tag on or off,
+  // the set is theirs and moving the day leaves it alone.
+  const pickDay = (picked: Date) => {
+    setDay(picked);
+    const seed = seedRef.current;
+    if (!seed || contextTags.length !== seed.length || contextTags.some((t, i) => t !== seed[i])) return;
+    const next = seededContextTags(logs, dayKeyOf(picked), {
+      isToday: isSameDay(picked, getLogicalToday()),
+      vacationMode,
+    });
+    seedRef.current = next;
+    setContextTags(next);
+  };
 
   const vocabulary = useMemo(() => symptomVocabulary(logs), [logs]);
   const pillNames = useMemo(() => {
@@ -419,7 +438,7 @@ export function MoodLogSheet({ visible, editing = null, onClose }: Props) {
         allowFuture={false}
         showTimeOfDay={false}
         showSuggest={false}
-        onConfirm={picked => { if (picked) setDay(picked); setPickerOpen(false); }}
+        onConfirm={picked => { if (picked) pickDay(picked); setPickerOpen(false); }}
         onCancel={() => setPickerOpen(false)}
       />
     </EditorSheet>

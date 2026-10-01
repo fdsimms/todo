@@ -2732,7 +2732,7 @@ export interface Task {
   // across the line: **the task owns the title and the duration, the event
   // owns the time.** Dragging the block to a better hour in Apple Calendar is
   // the entire point of putting it there, so nothing here ever rewrites its
-  // start — see syncTimeBlockEvent in timeBlock.ts for exactly what a
+  // start — see timeBlockUpdateFor in timeBlock.ts for exactly what a
   // reconcile touches.
   //
   // Never written except through the system event sheet, which is also the
@@ -4186,7 +4186,7 @@ export interface FoodLogEntry {
    * Its `basis` is always `perServing` here and its figures are the amounts
    * actually eaten, not per 100g: an entry records one helping rather than a
    * food, so scaling has already happened by the time it is stored. See
-   * `buildFoodLogNutrition`.
+   * `helpingNutrition` in `foodLog.ts`.
    */
   nutrition: FoodNutrition;
   /**

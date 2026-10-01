@@ -164,8 +164,8 @@ export function awayStatus(
  *
  * Literal, in the register the rest of the app's rows use: it states when you
  * leave or when you are back, and nothing else. `formatDeadlineDate` does the
- * date, so "Back Tomorrow" capitalises the same way `deadlineLabel`'s "By
- * Tomorrow" already does rather than inventing a second style beside it.
+ * date, so "Back Tomorrow" capitalises the same way the rest of the app's
+ * dates do rather than inventing a second style beside it.
  *
  * A finished trip says nothing. The project is still there to be completed or
  * archived like any other, and a card captioned with a date that has been and

@@ -4,9 +4,9 @@
 
 Read this before touching `src/utils/supply.ts`, the supply half of
 `completeTask`, or the `supplyReorder` generator. Moved out of `CLAUDE.md` so it
-is read when it applies rather than on every task. The rules here are settled
-decisions with the reasoning attached: don't re-derive them from the code, and
-don't re-open one without a reason the note doesn't already cover.
+is read when it applies rather than on every task. The rules here are strong defaults with the reasoning
+attached: read the reason before deviating from one. Where this note and the
+code disagree, the code is what ships, so fix the note.
 
 ---
 
@@ -113,9 +113,10 @@ screen anybody has to visit.
   means "I've dealt with this" and nothing more, exactly the reading
   `pantryCheckTasks` gives one.
 
-**`supplyRefillCount ?? reorderAt + 1` is the linked path's one subtlety.** When
-the user has said what a pack holds, the credit is exact. When they haven't, the
-app credits the least it can that still clears the threshold — enough that the
+**`supplyRefillCount ?? max(1, reorderAt + 1 - supplyCount)` is the linked
+path's one subtlety.** When the user has said what a pack holds, the credit is
+exact. When they haven't, the app tops the count up to one past the threshold,
+the least it can credit that still clears it — enough that the
 buy-it/still-low/buy-it loop can't happen, and never a number it invented about
 a pack it has never seen.
 
@@ -203,13 +204,14 @@ the stamp on a save that only changed the lead time.
 
 ## Rules that are not obvious from the code
 
-- **A supply requires a recurrence** (`canHoldSupply`), and `addTask` enforces
-  it rather than trusting the draft. The count rides onto the successor
+- **A supply requires a recurrence and a top-level task** (`canHoldSupply`), and
+  `newTaskFromDraft` (`taskDraft.ts`, which `addTask` and the MCP write path both
+  call) enforces it rather than trusting the draft. The count rides onto the successor
   `completeTask` spawns, exactly as `recurrenceCount` and the streak do, so a
   task that spawns none has nowhere to put the decrement — it would sit at its
   starting number for ever while the filters were actually being used, a chip
   that lies with no way to tell from looking at it. The editor and quick add
-  both clear it on save, but `addTask` is the door every draft passes through,
+  both clear it on save, but `newTaskFromDraft` is the door every draft passes through,
   including one assembled by a template, an import or a restored backup.
   `NO_RECURRENCE` clears it again when a task becomes a dated series, with the
   rule and for the reason `showStreak` is cleared there.

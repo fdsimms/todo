@@ -135,7 +135,7 @@ const PUSHED_ROUTES = new Set([
   'Settings', 'SettingsGroup', 'TemplateDetail', 'ProjectDetail', 'CategoryDetail',
   // Saved views has no menu row (see NAV_EXTRA_DESTINATIONS): it is opened
   // from Today's filter sheet, and from the drawer's find field, which is why
-  // navigateToTab below has to leave the tab highlight alone for these.
+  // handleDrawerNavigate below has to leave the tab highlight alone for these.
   'SavedViews', 'SavedViewDetail',
   'RecipeDetail', 'PersonDetail', 'CookbookDetail',
   // Reached from the Mood screen rather than from the menu. Both are the mood

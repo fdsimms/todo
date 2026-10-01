@@ -160,7 +160,7 @@ export function CookModeSheet({
   const insets = useSafeAreaInsets();
   // The step view holds the question field, so it has to lift clear of the
   // keyboard — and `automaticallyAdjustKeyboardInsets` is never passed bare
-  // here, for the 30,000pt reason the hook's own doc comment gives.
+  // here, for the reasons the hook's own doc comment gives.
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
   const unitSystem = useSettingsStore(s => s.unitSystem);
   const groceryItems = useGroceryStore(useShallow(s => s.items));
@@ -403,9 +403,9 @@ export function CookModeSheet({
     setRawIndex(Math.max(0, index - 1));
   };
 
-  // Closing while the "Ask about this step" field still has focus races the
-  // keyboard's own dismiss animation against the Modal's and freezes whatever
-  // renders underneath — same bug as the sheets fixed for this elsewhere.
+  // SheetModal holds the close until the keyboard is gone (see its doc
+  // comment), so this dismiss isn't what prevents the freeze; it only starts
+  // the keyboard moving a beat sooner.
   const close = () => {
     Keyboard.dismiss();
     onClose();

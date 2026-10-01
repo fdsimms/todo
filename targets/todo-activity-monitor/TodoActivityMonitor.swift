@@ -123,7 +123,7 @@ class TodoActivityMonitor: DeviceActivityMonitor {
   ///   penalty runs out still wants the apps blocked, and this process cannot
   ///   ask — so the app writes the answer ahead of time and this reads it. An
   ///   absent or unreadable answer counts as "yes, something else wants it"
-  ///   (see `readOtherShieldReason`), leaving the block for the app to lift.
+  ///   (see `ScreenTimeShared.readShieldState`), leaving the block for the app to lift.
   /// - **It is not the only mechanism.** `useAppShieldSync` reconciles on every
   ///   foreground regardless, because `intervalDidEnd` is reported not to fire
   ///   reliably for non-repeating schedules and a schedule's survival across a

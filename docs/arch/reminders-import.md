@@ -5,22 +5,25 @@ that destroys data the user owns somewhere else. The safety rules here are
 load-bearing, not ceremony.
 
 Moved out of `CLAUDE.md` so it is read when it applies rather than on every
-task. The rules here are settled decisions with the reasoning attached: don't
-re-derive them from the code, and don't re-open one without a reason the note
-doesn't already cover.
+task. The rules here are strong defaults with the reasoning
+attached: read the reason before deviating from one. Where this note and the
+code disagree, the code is what ships, so fix the note.
 
 ---
 
 ## Apple Reminders import — voice capture, and the only thing that deletes data elsewhere
 
 "Hey Siri, remind me to buy milk" lands in the Reminders app; `src/utils/remindersImportSync.ts`
-pulls it into the Inbox and deletes the reminder. Going through Reminders rather than owning a
-Siri phrase is deliberate — a phrase has to be anchored on `\(.applicationName)`, and Siri
-cannot reliably hear "dundundun". A custom App Intent was built and reverted for exactly that
-(plus an iOS 16 floor it forced); don't reach for one again without solving the name.
+pulls it into the Inbox and deletes the reminder. This stays the route for plain "remind me"
+capture because it needs no phrase at all: an `AppShortcut` phrase has to be anchored on
+`\(.applicationName)`, and Siri doesn't reliably hear "dundundun". The app does now ship its own
+intents (`AddTaskIntent`, `MarkDisposedIntent` in `modules/todo-widget-bridge/ios/`, see
+`docs/native-targets.md`) for the Action Button, Shortcuts and phrases that name the app; they
+sit beside this rather than replacing it.
 
 Three things about `expo-calendar` that nothing in this repo will tell you, each of which cost a
-read of the published tarball:
+read of the published tarball. They apply to `expo-calendar/legacy`, which is what the app
+imports; the package's newer root export throws on some of these calls instead:
 
 - **`getRemindersAsync` must be called with a null status.** Passing `ReminderStatus.INCOMPLETE`
   makes the JS wrapper throw unless you also give it a date window, and natively that window is
@@ -29,7 +32,7 @@ read of the published tarball:
   come back with everything else, and every "may we touch this" rule lives in
   `importableReminders()` instead. That's why the pure module is mostly filters.
 - **`getDefaultCalendarAsync()` is not the default *reminders* list.** It asks for **calendar**
-  permission (which this app never wants) and returns `defaultCalendarForNewEvents`. There is no
+  permission (a separate grant from Reminders) and returns `defaultCalendarForNewEvents`. There is no
   API for the reminders default, which is why picking a list is the first step of enabling
   rather than a correction to a guess.
 - **Never pass an unvalidated list id.** A stale one reaches `predicateForReminders(in: [])` —
@@ -37,29 +40,18 @@ read of the published tarball:
   device. The drain re-checks the id against a live `getCalendarsAsync(EntityTypes.REMINDER)`
   every time.
 
-And one about config plugins generally, learned here: **leaving a package out of `app.json`'s
-`plugins` does not stop its config plugin running.** Expo autolinks the plugin of any dependency
-shipping an `app.plugin.js`, so `expo-calendar`'s ran unasked and wrote two `NSCalendars*` usage
-strings this app has no business declaring, plus Android `READ_CALENDAR`/`WRITE_CALENDAR`. The
-way to *narrow* a plugin is to list it with options, and the Android half needs
-`android.blockedPermissions`, which the plugin adds unconditionally regardless of its options.
+And two about config plugins generally:
 
-**But `calendarPermission` must stay a real string, and this is the one that bricked the app.**
-`createPermissionsPlugin` treats `false` as a removal, so setting it deleted
-`NSCalendarsUsageDescription`/`NSCalendarsFullAccessUsageDescription` — which reads as exactly
-right, since nothing here ever touches a calendar. It isn't. `CalendarModule`'s `OnCreate`
-registers a `CalendarPermissionsRequester` and initialises a static `EKEventStore` **whether or
-not the app ever calls a calendar API**, and touching EventKit's calendar entity with no usage
-description raises an `NSException` inside module registration.
-
-What that costs is the whole app, not the feature. Expo registers modules in one pass in
-autolinking order, so the throw took out `expo-calendar` *and every module alphabetically after
-it* — font, constants, sqlite, notifications, all of them. Fifteen of twenty modules never
-registered. The app then died on the first `requireNativeModule` the bundle happened to reach,
-which was `ExpoFontLoader` (via `@expo/vector-icons`, which imports `expo-font` on line 1), and
-the black screen that produced is why `index.js` prints the registered-module list on failure —
-**that list is the diagnostic**: a short one means registration aborted, and the first missing
-package alphabetically is the culprit, not the module named in the error.
+- **Leaving a package out of `app.json`'s `plugins` does not stop its config plugin running.**
+  Expo autolinks the plugin of any dependency shipping an `app.plugin.js`. The way to *narrow* a
+  plugin is to list it with options, and on Android to use `android.blockedPermissions`.
+- **`calendarPermission` must stay a real string.** `createPermissionsPlugin` treats `false` as a
+  removal, and `expo-calendar`'s module touches EventKit at registration whether or not the app
+  calls a calendar API, so a missing usage description throws during module registration and
+  takes out every module registered after it: a black screen at launch. (The app uses the
+  calendar for its own features now anyway.) **`index.js` prints the registered-module list on
+  that failure, and that list is the diagnostic**: a short one means registration aborted, and the
+  first missing package alphabetically is the culprit, not the module named in the error.
 
 The safety rules are load-bearing, not ceremony — this is the one feature that destroys data the
 user owns in another app. **Create the task, then delete the reminder**, never the reverse: a
@@ -134,15 +126,10 @@ Six things that are the way they are for a reason:
   is visible and recoverable, groceries quietly vanishing before a shop is neither.
 - **A failed delete keeps its link.** Dropping it would leave a reminder the next pass reads as
   new and adds the row straight back for, which is the one thing this design exists to prevent.
-- **Every `updateReminderAsync` carries the whole title and the whole note**, even when only the
-  tick changed. `saveReminderAsync` assigns `reminder.title = details.title` unconditionally
-  (`CalendarModule.swift`), so a partial update blanks the title of the row it meant to leave
-  alone, and `getReminder(from:)` does the same to `notes`. Before the note was mirrored (#2933),
-  that meant every tick from this side wiped whatever a partner had typed into the reminder's
-  notes. `location` is assigned the same way, and the mirror doesn't own it, so an update sends it
-  back as the pass's own fetch read it rather than mirroring it: the row has nowhere to keep a
-  location, and before this every tick from this side cleared one set in the Reminders app. Any
-  field a future update leaves out needs the same check against that function first.
+- **Every `updateReminderAsync` carries the whole title, note and location**, even when only the
+  tick changed, because expo-calendar's native save assigns each of them unconditionally (the
+  general rule is in CLAUDE.md's Key conventions, beside `rewriteEvent`). The mirror doesn't own
+  `location`, so it sends back what the pass's own fetch read.
 - **The note is diffed on the title's rule, with one difference in the shadow it starts from.**
   A link from before notes were mirrored, and an adopted pair, both start from an empty note
   rather than from either side's, because empty is the one starting point that reads a note on

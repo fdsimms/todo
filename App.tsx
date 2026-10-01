@@ -129,9 +129,9 @@ function AppRoot() {
     // where it does — runStartupSequence just refuses to let a failure halfway
     // down take the app with it.
     runStartupSequence([
-      // initTasks and initSettings ran already, in AppGate above — before this
-      // component even mounted — so the DB is open and settings are loaded by
-      // the time any step below runs.
+      // The task and settings stores' initialize() ran already, in AppGate
+      // above — before this component even mounted — so the DB is open and
+      // settings are loaded by the time any step below runs.
       // The API key, which lives in the keychain rather than the settings table.
       // Async and deliberately not awaited — nothing in the launch sequence below
       // reads it, and the first thing that does is a suggestion the user asks for
@@ -157,7 +157,7 @@ function AppRoot() {
       // awaited; after the purges, so it reads no row they are about to delete.
       ['backfill calendar server ids', () => { void backfillCalendarExternalIds(); }],
       // Read back any cooking step timer that was still counting down when the
-      // app was last closed, and re-arm its alarm (#1712). After initSettings,
+      // app was last closed, and re-arm its alarm (#1712). After useSettingsStore.initialize,
       // which opens the database this reads from; before the permission
       // request below, because rescheduling is idempotent and a permission
       // that's already granted needs no waiting on.

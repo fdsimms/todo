@@ -22,13 +22,13 @@ import { PresentationLevelContext, sheetCovered, subscribeSheetCover } from '../
  *    alone (`RCTScrollView.m` `_keyboardWillChangeFrame:`), so a list the user
  *    isn't even looking at gets a bottom `contentInset`. With
  *    `enableScreens(false)` (see App.tsx — load-bearing, don't revert) a
- *    blurred tab is not detached but parked at `top: 30000` by react-navigation's
- *    `ResourceSavingView`, and the inset is computed from the scroll view's
- *    position in the WINDOW: `MAX(scrollViewBottomY - keyboardTopY, 0)` comes
- *    out around 30,000pt. The keyboard *hiding* recomputes the same 30,000,
- *    so it never clears. Switch to that tab and there are thirty thousand
- *    points of empty scroll range under the content. Passing the screen's own
- *    focus state means a backgrounded list simply doesn't listen.
+ *    blurred tab is not detached: under React Navigation v7 it stays mounted
+ *    at its normal offset, stacked behind the focused one (`ScreenFallback`'s
+ *    plain `View`, `zIndex: -1`). Under v6 it was parked at `top: 30000` by
+ *    `ResourceSavingView`, which turned this into a ~30,000pt inset; v7 removed
+ *    the parking, not the listener, so a backgrounded list still picks up a
+ *    keyboard-height inset it never asked for. Passing the screen's own focus
+ *    state means a backgrounded list simply doesn't listen.
  *
  *    Route focus alone misses one case: a sibling `SheetModal` (quick add, a
  *    raised sheet) presented *over* this screen doesn't blur its route, so a
@@ -69,12 +69,11 @@ import { PresentationLevelContext, sheetCovered, subscribeSheetCover } from '../
  *    longer listening for. What that leaves behind is dead scroll range under
  *    the content, on a screen the user comes back to and can scroll down into
  *    and not easily out of, since (2) only moves the list back inside the range
- *    — it cannot take the range away. Both sizes of it happen: a leftover the
- *    height of the keyboard, and (when a keyboard frame lands in the frame
- *    between react-navigation parking the screen at `top: 30000` and
- *    `useIsFocused` flipping, which is a render later — it rides a focus event
- *    emitted from an effect) the full ~30,000. So the inset is cleared
- *    explicitly, via `contentInset`, whenever this list stops listening.
+ *    — it cannot take the range away. A keyboard frame can land between the
+ *    blur and `useIsFocused` flipping, which is a render later (it rides a
+ *    focus event emitted from an effect), and leave a keyboard-height inset
+ *    behind. So the inset is cleared explicitly, via `contentInset`,
+ *    whenever this list stops listening.
  *
  * The clamp is deliberately not run while the keyboard is up — resting inside
  * the inset is the entire point of it while it's there — and only on a settled

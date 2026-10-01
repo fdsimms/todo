@@ -3389,7 +3389,7 @@ export function TodayScreen() {
 
   // A stack's header inside the pinned block. Deliberately plainer than the
   // main list's 'group' branch: no drag (moving a whole stack's position in
-  // the pinned order isn't wired up — see reorderPinnedItems) and no
+  // the pinned order isn't wired up — see reorderPinnedItems above) and no
   // GroupDropTargetRow (there's nothing here for a dragged task to join).
   // filtered is passed unconditionally: the "N/M done today" tally is
   // computed from the full roster, which would overstate what's actually

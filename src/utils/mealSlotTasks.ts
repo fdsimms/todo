@@ -35,7 +35,7 @@ import type { ChainItem } from '../types';
  * task and writing another underneath it.
  *
  * **A chain is only rewritten while it hasn't been started** (`chainIndex ===
- * 0`, see `mealSlotChainDrift`). Once you've ticked a step the remaining ones
+ * 0`, see `mealSlotDrift`). Once you've ticked a step the remaining ones
  * are yours — a plan change mid-cook updates the title and the link and leaves
  * the steps alone. Rewriting them would have to remap the index onto a
  * different-length list, and there is no honest answer for what step 1 of

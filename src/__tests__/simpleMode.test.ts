@@ -139,7 +139,7 @@ describe('groceryRowShown', () => {
 
 describe('addMenuItemShown', () => {
   it('leaves the whole menu alone while the mode is off', () => {
-    for (const key of ['chain', 'stack', 'template', 'task', 'new', 'existing']) {
+    for (const key of ['stack', 'template', 'import', 'event', 'task', 'new', 'existing']) {
       expect(addMenuItemShown(key, false)).toBe(true);
     }
   });
@@ -152,8 +152,7 @@ describe('addMenuItemShown', () => {
 
   // Today's add button is left offering Task alone, which FabMenu performs on
   // the tap rather than opening a menu around.
-  it('drops the three that start something simplified mode hides', () => {
-    expect(addMenuItemShown('chain', true)).toBe(false);
+  it('drops the items that start something simplified mode hides', () => {
     expect(addMenuItemShown('stack', true)).toBe(false);
     expect(addMenuItemShown('template', true)).toBe(false);
   });

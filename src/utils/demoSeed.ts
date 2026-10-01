@@ -2579,7 +2579,7 @@ function seedTemplates(): void {
   //
   // Its *run* isn't seeded, and can't be: the only thing that could stamp a
   // period key without also firing is checkScheduledTemplates, and the demo
-  // database is swapped in by initTasks rather than by the launch sequence
+  // database is swapped in by useTaskStore.initialize rather than by the launch sequence
   // that calls it. So this one fires for real the next time the app comes to
   // the foreground, which is the honest demonstration anyway.
   const reset = addTemplate('Sunday reset');

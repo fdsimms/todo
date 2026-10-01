@@ -21,7 +21,7 @@ import type { ApplyReport } from './syncMerge';
  * delete one, exactly as `deadlineCalendarSync.ts` does for a deadline.
  *
  * This is a *third* replica of a master that already has two: the entry is
- * the plan, `mealTasks.ts` projects it into a "Make X" task, and this
+ * the plan, `mealSlotTasks.ts` projects it into a "Make X" step, and this
  * projects it into an event. It invents no new rules — the entry owns the
  * title, the day and the slot, and nothing flows back.
  *
@@ -44,7 +44,7 @@ import type { ApplyReport } from './syncMerge';
  * each is.
  *
  * Built off `entry.title` and not the live recipe name, the same call
- * `cookTaskTitle` makes and for the same reason: the entry keeps its own
+ * `mealSlotTasks.ts` makes for its "Make X" step and for the same reason: the entry keeps its own
  * title in step (captured at plan time, rewritten by `bulkReplaceItem`, and by
  * `retitleRecipeEntries` when the recipe itself is renamed), so this needs no
  * recipe lookup and stays free of the recipe store. A leftover
@@ -114,8 +114,7 @@ export async function syncMealEvent(entry: MealPlanEntry): Promise<CalendarEvent
   // No target calendar picked — the event (if one exists) goes away, and
   // there's nothing to link.
   //
-  // `kitchenEnabled` is deliberately *not* read here, the same call
-  // `reconcileCookTask` makes. It gates the settings section instead (see
+  // `kitchenEnabled` is deliberately *not* read here. It gates the settings section instead (see
   // MealCalendarSettings and the `kitchen` flag in settingsIndex), because
   // there is no sweep over the plan anywhere in this feature: reconciling
   // only ever happens on the entry being mutated, so reading the flag here

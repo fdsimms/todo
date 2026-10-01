@@ -18,7 +18,7 @@ import { resolveOffsetDate } from './templateUtils';
  *
  * **A grocery item is not a task and this doesn't make it one.** What's
  * created is a separate ordinary Task pointing back at the item, exactly the
- * master/replica split mealTasks.ts describes: the catalog row keeps its own
+ * master/replica split every generator here shares: the catalog row keeps its own
  * lifecycle, and deleting every use-up task in the app would leave the
  * groceries untouched. Going through a real Task rather than a bespoke nudge
  * is the point — reminders, Today, snoozing, categories and the notification

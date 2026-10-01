@@ -103,8 +103,8 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
   // section's own header comment names as the one people actually have — *what
   // writes tasks into my list* — and it is the part of Settings that grows every
   // time a generator ships, so it wants a door of its own rather than a deeper
-  // scroll. Not `kitchenOnly`: six of the twelve generators have nothing to do
-  // with the kitchen and keep running without it, which is exactly the bug that
+  // scroll. Not `kitchenOnly`: most generators have nothing to do with the
+  // kitchen and keep running without it, which is exactly the bug that
   // hiding them behind the area's gate used to cause.
   { id: 'generated', title: 'Automatic tasks', icon: 'sparkles-outline', tint: 'accent' },
   // Not filed with Reminders & Calendar, even though it is the third thing this

@@ -93,11 +93,11 @@ export function catchUpPasses(): MaintenanceStep[] {
     // Let projects the user opted into auto-scheduling date their own next
     // task if they've run dry. After rolloverQuotas, which can complete and
     // spawn members and so change what a project counts as scheduled; and
-    // after initSettings, since "quiet" is measured in logical days.
+    // after useSettingsStore.initialize, since "quiet" is measured in logical days.
     ['drip stalled projects', () => tasks().dripStalledProjects()],
     // Opt-in weekly nudge to plan the coming week's meals (#1121) — off by
-    // default. After initSettings, since it reads mealPlanNudge* and
-    // weekStartsOn, and after initTasks, whose fan-out creates the meal
+    // default. After useSettingsStore.initialize, since it reads mealPlanNudge* and
+    // weekStartsOn, and after useTaskStore.initialize, whose fan-out creates the meal
     // plan tables it queries directly.
     ['check meal plan nudge', () => tasks().checkMealPlanNudge()],
     // Give quiet projects their "Review X" task, and clear the ones whose
@@ -107,14 +107,14 @@ export function catchUpPasses(): MaintenanceStep[] {
     // task the drip is about to make wrong.
     ['check project review tasks', () => tasks().checkProjectReviewTasks()],
     // Today's meal tasks — one per meal the user says they eat, whose steps
-    // are what's left to decide about it. After initSettings, since the day
-    // it writes for is the *logical* one; after initTasks, whose fan-out
+    // are what's left to decide about it. After useSettingsStore.initialize, since the day
+    // it writes for is the *logical* one; after useTaskStore.initialize, whose fan-out
     // creates the meal plan tables it reads to see what's already planned.
     ['check meal slot tasks', () => tasks().checkMealSlotTasks()],
     // Ask about anything the pantry has quietly stopped vouching for (off by
     // default). Grouped with the two passes above because it shares their
     // trigger — time passing rather than a source mutation — and it reads the
-    // grocery catalog initTasks' fan-out has already loaded.
+    // grocery catalog useTaskStore.initialize's fan-out has already loaded.
     // Before the drip, deliberately: the review offer is what suppresses the
     // per-item questions (see checkPantryCheckTasks), so running it second
     // would let both fire in the same sweep the first time a cupboard goes
@@ -124,7 +124,7 @@ export function catchUpPasses(): MaintenanceStep[] {
     // And anything planned for the next couple of days that the kitchen
     // can't currently make (off by default). Straight after the pass above
     // for the same reason that one sits after checkMealSlotTasks: it reads
-    // both the meal plan and the grocery catalog initTasks' fan-out has
+    // both the meal plan and the grocery catalog useTaskStore.initialize's fan-out has
     // already loaded, and it fires on a meal coming into range, which is time
     // passing rather than a source mutation.
     ['check meal shortfall tasks', () => tasks().checkMealShortfallTasks()],
@@ -175,7 +175,7 @@ export function catchUpPasses(): MaintenanceStep[] {
     // unlocked, which is the whole point of a daily check-in.
     ['check mood tasks', () => tasks().checkMoodTasks()],
     // Beside it, same trigger: which weekend is next rolls over purely by time
-    // passing. After initSettings for the reason the meal pass is — which day
+    // passing. After useSettingsStore.initialize for the reason the meal pass is — which day
     // is Friday is a question about the logical day. It reads the calendar
     // store for the busy half, which no cold-launch step fills in, so like
     // checkCalendarReviewTasks it does its real work on the foreground sweep
@@ -190,8 +190,8 @@ export function catchUpPasses(): MaintenanceStep[] {
     // and moves on rather than waiting on the health daemon.
     ['check weigh-in tasks', () => { void tasks().checkWeighInTasks(); }],
     // Birthdays, which share the same trigger — a date arriving rather than a
-    // source changing — and read the people initTasks' fan-out has loaded.
-    // After initSettings for the same reason the meal pass is: the day a task
+    // source changing — and read the people useTaskStore.initialize's fan-out has loaded.
+    // After useSettingsStore.initialize for the same reason the meal pass is: the day a task
     // lands on is the logical one, and the lead time is a setting.
     ['check birthday tasks', () => tasks().checkBirthdayTasks()],
     // Beside the birthday pass, sharing its trigger and reading the same
@@ -208,7 +208,7 @@ export function catchUpPasses(): MaintenanceStep[] {
     ['check waiting follow-up tasks', () => tasks().checkWaitingFollowUpTasks()],
     // A leftover can age from "fresh" into "soon" purely by time passing too
     // — same trigger as the two passes above, and it reads the leftovers
-    // initTasks' fan-out has already loaded. This used to run only on
+    // useTaskStore.initialize's fan-out has already loaded. This used to run only on
     // foreground (TodayScreen's AppState listener), which never fires for a
     // true cold launch — so a leftover that crossed the threshold while the
     // app was closed sat with no use-up task until the app was backgrounded
@@ -221,7 +221,7 @@ export function catchUpPasses(): MaintenanceStep[] {
     // what gives it the slot once one frees up.
     ['reconcile use-up tasks', () => useGroceryStore.getState().reconcileAllUseUpTasks()],
     // Apply any template whose schedule came due while the app was closed
-    // (#1781). After initSettings, since "due" is measured in logical days
+    // (#1781). After useSettingsStore.initialize, since "due" is measured in logical days
     // and gated on vacationMode; after dripStalledProjects for the same
     // reason that one sits after rolloverQuotas — a run can create tasks a
     // project counts, so the cheaper pass goes first and sees a settled list.

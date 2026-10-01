@@ -195,7 +195,7 @@ export function isWeekendNudgeLeadDay(
  * A stored lead setting read back as a usable one.
  *
  * Its own function rather than a clamp at the setter alone, for the reason
- * `parseGroceryUseUpLeadDays` is: a value can reach this module from a stored
+ * `clampUseUpLeadDays` (`groceryExpiry.ts`) and `parseBirthdayLeadDays` are: a value can reach this module from a stored
  * string or a peer on a different build, and a window of 0 days would be a
  * generator that can never fire rather than one that fires less.
  */
