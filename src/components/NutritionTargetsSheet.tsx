@@ -262,6 +262,7 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
             return (
               <View key={key} style={styles.row}>
                 <Text style={styles.rowLabel}>{NUTRIENT_LABEL[key].label}</Text>
+                <View style={styles.stepperLine}>
                 <CountStepper
                   value={value}
                   onChange={next =>
@@ -285,6 +286,18 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
                       : `${n} ${unit === 'cal' ? 'calories' : unit}`
                   }
                 />
+                {targets[key] !== NUTRITION_TARGET_RANGES[key].default && (
+                  <InlineAction
+                    label="Use Daily Value"
+                    variant="neutral"
+                    onPress={() => {
+                      haptics.tap();
+                      set(key, NUTRITION_TARGET_RANGES[key].default);
+                    }}
+                    accessibilityLabel={`Set ${NUTRIENT_LABEL[key].label} target to the U.S. Daily Value`}
+                  />
+                )}
+                </View>
                 {key === 'calorieKcal' && calorieFollowsGoal && (
                   <Text style={styles.boostHint}>
                     This follows your weight goal. It is worked out again each time the
@@ -552,6 +565,7 @@ function makeStyles(colors: Colors) {
     pinnedRowLast: { borderBottomWidth: 0 },
     pinnedRowLabel: { color: colors.text, fontSize: font.sm },
     dailyValueAction: { alignSelf: 'flex-start' },
+    stepperLine: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.sm },
     row: {
       backgroundColor: colors.bgSecondary,
       borderRadius: radius.md,

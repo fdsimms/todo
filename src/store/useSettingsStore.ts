@@ -3492,12 +3492,12 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
 
   // One key of the map, updated and persisted whole — the shape
   // setMealSlotStepEstimate uses. Unlike that one this *can* remove a key:
-  // "I no longer want a protein target" is a real thing to say, and leaving a
-  // number behind at zero would be a target of zero rather than none.
+  // "I no longer want a protein target" is a real thing to say, and it is null.
+  // Zero is its own answer ("no caffeine") and is stored as one.
   setNutritionTarget(key: NutrientKey, value: number | null) {
     set(state => {
       const next = { ...state.nutritionTargets };
-      if (value === null || !(value > 0)) delete next[key];
+      if (value === null || !(value >= 0)) delete next[key];
       else next[key] = value;
       dbSetSetting('nutritionTargets', serializeNutritionTargets(next));
       return { nutritionTargets: next };
