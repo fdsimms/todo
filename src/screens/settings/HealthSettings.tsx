@@ -470,7 +470,7 @@ export function HealthSettings() {
           gets read. */}
       <SettingsRow
         entryId="weightGoal"
-        icon="flag-outline"
+        icon="target"
         iconColor={weightGoal !== null ? colors.accent : undefined}
         label="Weight goal"
         hint="Set a target weight and a rate, and calculate a daily calorie figure."

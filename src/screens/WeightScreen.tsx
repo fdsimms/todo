@@ -252,7 +252,7 @@ export function WeightScreen() {
         subtitle={latest ? formatWeight(latest.kilograms, unit) : undefined}
         actions={!healthReadEnabled || demoActive ? [] : [
           {
-            icon: 'flag-outline' as const,
+            icon: 'target' as const,
             onPress: openGoal,
             // Tinted while a goal is set, the same way the Daily targets row
             // in Settings marks itself once something is set there.

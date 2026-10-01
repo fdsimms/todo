@@ -109,7 +109,7 @@ export function KitchenSettings() {
             switch for. */}
         <SettingsRow
           entryId="nutritionTargets"
-          icon="flag-outline"
+          icon="target"
           iconColor={targetCount > 0 ? colors.accent : undefined}
           label="Daily targets"
           hint={targetCount === 0

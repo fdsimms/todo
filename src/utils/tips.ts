@@ -829,7 +829,7 @@ export const TIPS: Tip[] = [
     screen: 'foodLog',
     icon: 'flag-outline',
     title: 'Set a daily target for each nutrient',
-    body: 'The flag button at the top chooses which nutrients the day\'s totals show and sets a target for each one, so the totals read against what you are aiming for.',
+    body: 'The target button at the top chooses which nutrients the day\'s totals show and sets a target for each one, so the totals read against what you are aiming for.',
     when: s => s.foodLogEntryCount >= 3,
     keywords: ['goal', 'calories', 'protein', 'macros', 'daily value'],
   },
