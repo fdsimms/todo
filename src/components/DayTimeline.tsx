@@ -131,7 +131,7 @@ export function DayTimeline({
                 accessibilityLabel={`${entry.title} at ${timeLabel}, no time estimate`}
               >
                 <View style={styles.instantDot} />
-                <Text style={styles.instantText} numberOfLines={1}>
+                <Text style={styles.instantText} numberOfLines={2}>
                   {timeLabel}  {entry.title}
                 </Text>
               </TouchableOpacity>
@@ -289,12 +289,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   instant: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: spacing.xs,
   },
   instantDot: {
     width: 6,
     height: 6,
+    // Sits on the first line's centre when the title wraps to a second.
+    marginTop: 5,
     borderRadius: radius.full,
     backgroundColor: colors.accent,
   },
