@@ -15,7 +15,7 @@ export interface CalendarEventDraft {
 /**
  * Turns one extracted event into the fields a fresh task opens with.
  *
- * **The fallback for the one case `eventCreateFieldsFromExtractedEvent` below
+ * **The fallback for the one case `eventImportCreateFields` below
  * refuses: no date was read at all.** A calendar event has to start
  * *somewhere*; a task doesn't, so an extraction with nothing to hang a date on
  * (a confirmation number with no visible date) still becomes something rather

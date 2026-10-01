@@ -8,7 +8,7 @@ import { getCurrentDayStart } from './dateUtils';
 /**
  * Projecting a leftover onto a "Use up X" task in the task list.
  *
- * Same master/replica split as mealTasks.ts and groceryExpiry.ts, and for the
+ * Same master/replica split as mealSlotTasks.ts and groceryExpiry.ts, and for the
  * same reason: LeftoversCard's own history explains why a leftover isn't a
  * Task (a name key, an aisle, a purchase count — none of it applies to a
  * container in the fridge), and none of that changes here. What's created is

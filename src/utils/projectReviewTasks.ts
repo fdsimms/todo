@@ -29,7 +29,7 @@ import { isDismissedToday } from './visibilityUtils';
  * it did for the banner (see `projectPull.ts`'s header on why there is no such
  * column). What is new is that the answer is now *written down as a row*, so
  * the two can drift — a project that stops being quiet leaves a task behind.
- * That is what `partitionProjectReviewTasks` is for, and why the check runs on
+ * That is what `staleProjectReviewTasks` is for, and why the check runs on
  * a foreground sweep rather than only at launch.
  *
  * Three rules worth not re-deriving:

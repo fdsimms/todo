@@ -29,7 +29,7 @@ import {
  *
  * Undo lives in `useTaskStore` alongside every other undoable action, which is
  * why delete and rename are split the way the task-category ones are: the store
- * owns the row write, and `restoreProjectCategory` is the low-level restore the
+ * owns the row write, and `restoreCategory` is the low-level restore the
  * undo entry calls.
  */
 interface ProjectCategoryStore {

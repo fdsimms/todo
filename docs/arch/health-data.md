@@ -21,9 +21,9 @@ allowed to claim rather than about how to get the number; the "Writing exactly
 one thing", "The second write" and "The third write" sections are where the
 concerns are about a writer instead.
 
-The rules here are settled decisions with the reasoning attached. Don't
-re-derive them from the code, and don't re-open one without a reason this note
-doesn't already cover.
+The rules here are strong defaults with the reasoning
+attached: read the reason before deviating from one. Where this note and the
+code disagree, the code is what ships, so fix the note.
 
 ---
 
@@ -138,7 +138,7 @@ rather than a footnote on the reading ones.
 **This shipped as dietary water only, and was generalized later.** The
 feature's shape below — one place it fires from, opt-in per task, one-shot,
 gated separately from reading — was all argued out for water alone; nothing
-about it needed to change to widen from one nutrient to ten; what changed is
+about it needed to change to widen from one nutrient to all of `NutrientKey`; what changed is
 `Task.logWaterMl` (a bare millilitre count) became `Task.logHealthMetric` +
 `Task.logHealthAmount` (which nutrient, and how much of it), and the native
 write (`writeWaterSample`, one hardcoded share type) became
@@ -157,7 +157,7 @@ completion that wasn't real, or a demo session's fiction, would sit in their
 actual Health app forever, survivable only by manual deletion nobody would
 know to go looking for. Every rule below is really one rule, applied
 everywhere it's relevant: writing costs more to get wrong than reading does,
-so it is gated by its own switch and triggered from exactly one place. It is
+so it is gated by its own switch and triggered only by a person's tap. It is
 no longer *asked* for separately — see the next section for why the ask
 merged while the switches didn't.
 
@@ -190,11 +190,10 @@ merged while the switches didn't.
   read row's necessarily vaguer "have you been asked" phrasing.
 - **Granting read access could silently cost write access, for the types the
   two sides share, and this app still cannot reverse it once it has
-  happened.** `readTypes` and `writeTypes` overlap on nine of the app's fifteen
-  HealthKit types — water, body mass, and the eight nutrients
-  `writeNutrientSample` shares with the food-log write (everything except
-  carbs, total fat and the three minerals, which are write-only and never
-  read). Apple's docs say
+  happened.** `readTypes` and `writeTypes` overlap on most of the types the app
+  uses — water, body mass, and every nutrient that is also a health-rule
+  metric; carbs, total fat and the three minerals are write-only and never
+  read (compare the two tables in `TodoHealthBridgeModule.swift`). Apple's docs say
   read and write authorization for one type are independent, but in practice,
   granting the *read* sheet for a type that already had *write* access — as a
   **separate, later** request — could flip that write access to
@@ -240,21 +239,22 @@ merged while the switches didn't.
   somebody's actual Health record, so each one earned its own review rather
   than riding in with whatever the read side happened to be reading that
   month. What *did* turn out to be small was widening which of the
-  already-reviewed ten a task may target, because none of them needed a new
-  type — the review for all ten happened together, for the food-log write
-  (see "The third write" below), before a task could reach any of them.
-- **The write is triggered from exactly one place, opt-in per task, and
-  one-shot.** `Task.logHealthMetric` and `Task.logHealthAmount` (two fields
-  rather than a boolean-plus-amount pair, so "off" and "log 0" can't become
-  two different ways to say nothing happens) are read only by `completeTask`
-  in `useTaskStore.ts`, which calls `logTaskHealthValue`
-  (`src/utils/healthCompletionSync.ts`) the moment a task is marked
-  completed — the exact shape `logTaskCompletionToCalendar` already
-  established for the completion-calendar event beside it, copied
-  deliberately rather than reinvented. Like that one, it is a historical
-  record with no delete-on-uncomplete and no reconciler: nothing calls it
-  from anywhere else, because a caller that looped it into a save or an edit
-  path would write an amount nobody actually logged.
+  already-reviewed nutrients a task may target, because none of them needed a
+  new type — the review for all of them happened together, for the food-log
+  write (see "The third write" below), before a task could reach any of them.
+- **The write fires only on a person's tap, opt-in per task.**
+  `Task.logHealthMetric` and `Task.logHealthAmount` (two fields rather than a
+  boolean-plus-amount pair, so "off" and "log 0" can't become two different
+  ways to say nothing happens) are read by `logTaskHealthValue`
+  (`src/utils/healthCompletionSync.ts`), which runs when a task is completed
+  (`completeTask`, unless a caller passes `skipHealthLog`) and when a quota or
+  rotation unit is logged (`logQuotaUnit`, `logRotationUnit`). **Never from a
+  save, an edit, a sweep or sync**, because a caller that looped it into one of
+  those would write an amount nobody actually logged. Water is the exception
+  that can be taken back: it is written as a food log entry, so un-logging a
+  quota unit removes it (`unlogTaskWaterFromFoodLog`) and `syncWaterQuotaTasks`
+  keeps the two in step. Every other nutrient write is a historical record with
+  no delete-on-uncomplete, the shape `logTaskCompletionToCalendar` has.
 - **`healthBridge()`'s demo-mode gate is sharper for this write than for any
   read it already covered.** The gate's own module comment used to describe
   the worst case a leak could cause as "a true number in a fictional
@@ -275,11 +275,11 @@ merged while the switches didn't.
   trigger the write it describes — the same reasoning that lets
   `demoSeed.ts` seed `logCompletionToCalendar` on a task despite the
   calendar write it names being equally gated.
-- **App Store's Info.plist strings had to change, not just get a second
-  key.** `NSHealthShareUsageDescription` and `NSHealthUpdateUsageDescription`
-  (`app.json`'s `ios.infoPlist`) both used to say, truthfully at the time,
-  that nothing was ever written. Now that something is, both strings say what
-  is actually read and actually written — see `plugins/withHealthKit.js`'s
+- **The Info.plist strings say what is actually read and actually written.**
+  `NSHealthShareUsageDescription` and `NSHealthUpdateUsageDescription`
+  (`app.json`'s `ios.infoPlist`) have to be updated whenever a new kind of
+  write or read ships, the way the update string was when tasks could log
+  nutrients other than water. See `plugins/withHealthKit.js`'s
   own comment for why the update string was already required (App Store
   Connect's Info.plist validator scans for the `requestAuthorization
   (toShare:read:)` selector being linked at all, whether or not anything is
@@ -306,10 +306,11 @@ water, because everywhere it doesn't, the rules above are the rules.
   one. Backwards is allowed, forwards is not — the same asymmetry `MoodLogSheet`
   applies, for the same reason.
 - **Authorization is per type, and that changed an existing signature.**
-  `writeAuthorizationStatus` now takes `"water" | "weight"`, because Health lets
-  somebody allow one and refuse the other in the same sheet and a single
-  "write access" answer would be false for whichever they declined. There are
-  two access rows in Settings and still **one** app-level switch: "may this app
+  `writeAuthorizationStatus` takes a kind (`'water' | 'weight' | 'nutrition'`),
+  because Health lets somebody allow one and refuse another in the same sheet
+  and a single "write access" answer would be false for whichever they
+  declined. There is an access row per kind in Settings and still **one**
+  app-level switch: "may this app
   put samples in my Health record" is asked once, and which types is Health's
   question rather than this app's.
 - **Failures are surfaced rather than swallowed.** `logTaskHealthValue`
@@ -326,7 +327,7 @@ water, because everywhere it doesn't, the rules above are the rules.
 
 ### Reading it back is a separate call, and had to be
 
-`readWeightSeries` is its own native function rather than an eleventh column on
+`readWeightSeries` is its own native function rather than one more column on
 `readDailyHealth`, and the three reasons are all disqualifying on their own:
 
 - **The statistics are the wrong kind.** Every metric the daily read collects is
@@ -351,7 +352,7 @@ disagree average to something between them, which beats a coin flip on which
 source is "best". `bestSum`'s reasoning does not transfer, and copying it here
 would have been cargo cult.
 
-The window is 180 days rather than the readings window's 90. That one is sized
+The window is a year (`WEIGHT_HISTORY_DAYS`) rather than the readings window's 90 days. That one is sized
 to gather enough *paired* days for the mood correlations; weight is drawn
 rather than correlated, and a body moves slowly enough that three months has
 barely any shape in it.
@@ -415,15 +416,15 @@ the kind of claim that kept weight off the read list for years.
 **It is deliberately not a `health` rule.** Everything in the rules half of
 this file is about a reading crossing a threshold somebody wrote down.
 `weighIn` fires on the absence of a reading, so it needs no threshold, has
-nothing to compare, and cannot be wrong about a body. Adding it as an
-eleventh `HealthRuleMetric` would have been the obvious shape and would have
+nothing to compare, and cannot be wrong about a body. Adding it as one more
+`HealthRuleMetric` would have been the obvious shape and would have
 put it back on the wrong side of the line: a rule metric is a thing the app
 judges, and there is no judgement here.
 
 ## The third write: a logged meal
 
-The one that closes the loop. The app has read eight nutrients since the
-`health` generator shipped and written none of them, so the figures its own
+The one that closes the loop. The app read nutrients for the `health`
+generator long before it wrote any, so the figures its own
 rules judge could only ever have come from another app. A food log makes this
 app the one entering them.
 
@@ -437,14 +438,14 @@ writes it to Health, which this app reads back. Nothing about the nature of the
 fact changes when the app recording it changes. What changes is the failure
 mode, and everything below is about that.
 
-### Thirteen write types, and five of them are written and never read
+### Every nutrient is a write type, and five are written and never read
 
-`writeTypes` went from two to twelve in one review. The ten nutrients are one
-capability rather than ten decisions, and they were argued for together. #2430
-added three more — calcium, iron and potassium — and that was its own review,
+`writeTypes` is `nutrientWriteTable` (one entry per `NutrientKey`) plus body
+mass. The nutrients are one capability rather than one decision each, and were
+argued for together; calcium, iron and potassium (#2430) were their own review,
 below.
 
-**Five of the thirteen are written and never read.** Carbohydrate, total fat
+**Five of them are written and never read.** Carbohydrate, total fat
 and the three minerals are not in `readTypes`, no `HealthRuleMetric` watches
 them, and no screen shows them. They are written anyway, and that is a decision made out loud rather than
 by whatever the write loop happened to iterate over: the consumer is not this
@@ -523,14 +524,14 @@ rest of that file is a native call nothing can test.
 
 ### Which nutrients may be written is a second, separate choice
 
-Whether a meal may write *anything* is `healthWriteEnabled`. Which of the
-thirteen it may carry along is `healthWriteNutrients` (`useSettingsStore`,
+Whether a meal may write *anything* is `healthWriteEnabled`. Which nutrients
+it may carry along is `healthWriteNutrients` (`useSettingsStore`,
 parsed by `parseHealthWriteNutrients` in `nutritionTargets.ts`, alongside the
 Food log's own pinned-nutrient selection it's modelled on) — a person managing
 sodium for blood pressure may want that written and calcium left out, or the
 reverse, and the two switches this file already has answer neither question.
 
-**Defaults to all thirteen, so an install that predates the choice keeps
+**Defaults to every nutrient, so an install that predates the choice keeps
 writing exactly what it always did.** A stored empty array is a real, distinct
 choice — "write nothing a meal states" — the same distinction
 `parseFoodLogPinnedNutrients` draws for the card above the fold, and
@@ -572,50 +573,30 @@ looking for. So:
 - **The correlation's own UUID is stored alongside its members'.** Deleting the
   correlation is what retracts the meal; the members are carried so a partial
   save still leaves something to clean up.
-- **The delete tallies its results on a serial queue.** Eleven deletes report
-  back on arbitrary background queues, and getting the count wrong means
+- **The delete tallies its results on a serial queue.** One delete per type
+  reports back on arbitrary background queues, and getting the count wrong means
   telling the app a retraction succeeded when it did not, leaving a sample in a
   medical record.
 
-  `readDailyHealth`'s own ten-way fan-out was counting down on a bare variable
-  and got the same treatment in the same change. It had shipped that way and
-  never been seen to fail, most likely because HealthKit happens to deliver
-  those callbacks serially — but nothing documents that, and the failure it
-  invites is silent in both directions: a lost decrement leaves the promise
-  unresolved for ever, which reads as Health simply never answering, and a
-  doubled one resolves it twice. The queue also supplies the memory ordering
-  the final block needs to see ten arrays written on ten other threads.
+  `readDailyHealth`'s own fan-out (a query per metric) counts down on the
+  same kind of queue. Nothing documents that HealthKit delivers those callbacks
+  serially, and the failure a bare counter invites is silent in both
+  directions: a lost decrement leaves the promise unresolved for ever, which
+  reads as Health simply never answering, and a doubled one resolves it twice.
+  The queue also supplies the memory ordering the final block needs to see
+  arrays written on other threads.
 
-### A correlation, not ten loose samples
+### A correlation, not loose samples
 
 A meal is one thing. `HKCorrelation` of type `.food` is the API for that, and
 it is what makes an entry appear in the Health app as "Chicken burrito" (via
-`HKMetadataKeyFoodType`) rather than as ten unrelated numbers at 12:47.
+`HKMetadataKeyFoodType`) rather than as a dozen unrelated numbers at 12:47.
 
-**Every symbol here was checked against Apple's own SDK headers, not against a
-recollection or a search result.** `developer.apple.com` is unreachable from
-the build sandbox, and the first search result for the initializer was an
-iOS 8.3 API-diff page still describing `NSDate` and `Set<NSObject>` — exactly
-the stale paraphrase CLAUDE.md's note about `GeneratedContent.elements()` warns
-about. The headers in the iOS SDK are the authority, and they are reachable:
-`HKCorrelation.h`, `HKObjectType.h`, `HKObject.h`, `HKHealthStore.h`,
-`HKQuery.h` and `HKMetadata.h` between them settle the initializer, the
-nullable `correlationType(forIdentifier:)`, `UUID`,
-`deleteObjects(of:predicate:withCompletion:)` and
-`predicateForObjects(with:)`. `HealthKit.apinotes` was read too, because it is
-what would rename an argument label out from under a header, and it turns out
-to remap nothing but an error enum.
-
-That left one thing a header cannot settle on its own: whether Swift imports
-`correlationWithType:startDate:endDate:objects:` as `start:`/`end:` or keeps
-the Objective-C spelling. The importer's rule says it prunes them, and
-`HKQuantitySample(type:quantity:start:end:)` in this same file is that rule
-already compiling against an identically shaped factory — but a rule plus a
-precedent is still an inference, and this is a file that cannot be compiled
-from the sandbox. So it was checked against real Swift that does compile
-(`HKCorrelationTests.swift` in Stanford's HealthKitOnFHIR), which constructs
-`HKCorrelation(type:start:end:objects:)` verbatim. Nothing here ships on a
-guess.
+**Every symbol here was checked against Apple's SDK headers and real compiling
+Swift**, not a recollection (`HKCorrelation(type:start:end:objects:)`,
+`correlationType(forIdentifier:)` being nullable, `deleteObjects(of:predicate:withCompletion:)`).
+A change here follows CLAUDE.md's "Verify an unfamiliar API" rule: Apple's
+documentation JSON first, then the headers.
 
 ### The rules it inherits unchanged
 
@@ -862,7 +843,7 @@ Three things about it are worth not re-deriving:
   (`logFoodEntryToHealth`) rather than twice. Every other nutrient a task can
   log (caffeine, protein, …) keeps writing to Health only — there is no
   food-log entry a caffeine task could reuse without becoming a meal, so the
-  original reasoning still holds for the other nine.
+  original reasoning still holds for the rest.
 - **One entry a day, stepped, rather than one per glass.** Eight glasses is
   eight rows in the meal sections the day view exists to show. What that costs
   is that the Health sample is dated at the first glass and carries the day's
@@ -992,20 +973,18 @@ this gets no sleep until somebody taps the access row in Settings, and because a
 refused read and an unasked one look identical, nothing can tell them that is
 why. Weigh that against what the type buys before extending the list again.
 
-**None of the eight nutrients (see below) join this axis.** `MoodDay` carries
-no nutrient fields, and `healthInsight` gains no extra metric for any of them.
-A join against mood asks whether a *pattern* correlates with how somebody
-feels; a nutrient rule here is a person's own medically-set target, checked
-against a number they picked, not a candidate for "no clear pattern" alongside
-steps and sleep. Nothing about adding one is technically hard — it would be
-one more pairing in `healthInsight` — the decision was that none of them
-answers the same question steps and sleep do.
+**The nutrients a health rule reads from Health don't join this axis.**
+`healthInsight` pairs mood only with steps and sleep: a nutrient rule is a
+person's own target checked against a number they picked, not a candidate for
+"no clear pattern". What the person *ate* does join mood, but from the food log
+rather than from Health (`MoodDay.nutrients`/`foodKeys`, `nutrientInsight`),
+under the thin-day rules in `docs/arch/mood-log.md`.
 
 ## The generator, and the line under "Lighten today"
 
-`health` is generator #19 and its own rules live in
-`docs/arch/generated-tasks.md`, which is where a twentieth generator's author
-will look. Only the parts that are about *health* rather than about the
+`health` is one of the generators, and its own rules live in
+`docs/arch/generated-tasks.md`, which is where a new generator's author will
+look. Only the parts that are about *health* rather than about the
 mechanism are here:
 
 - **A missing reading never matches a rule.** The same sentence as everywhere
@@ -1036,16 +1015,16 @@ day. It is gated on the read alone rather than on the generator, because it is a
 line in a menu somebody opened rather than a task — the same argument
 `lowMoodDeloadNote` makes for needing no switch of its own.
 
-**Every shortfall task past steps carries the same note, and only sleep
+**Every sleep and nutrient shortfall task carries the same note, and only sleep
 carries a link too.** `checkHealthTasks` writes the metric's own note
 (`healthTaskNote` in `healthRules.ts`, dispatching to `shortSleepDeloadNote`
-for sleep and `nutrientReadingNote` for every one of the eight nutrients)
+for sleep and `nutrientReadingNote` for every nutrient)
 straight onto the row's own `notes`, so a sleep or nutrient task never reads
 as coming from nowhere the way a bare title would. Only sleep also gets
 `healthTaskLinkUrl`'s `dundundun://deload`, wired to `resetToDeload` in
 `navigationRef.ts`, so tapping "Keep today light" opens the same `DeloadSheet`
-the menu line points at. Steps carries neither field ("Go for a walk" already
-names its own action), and none of the eight nutrients has a comparable sheet
+the menu line points at. Steps and exercise carry neither field ("Go for a
+walk" already names its own action), and none of the nutrients has a comparable sheet
 to open, so they get the note and stop there.
 
 **`nutrientReadingNote` is one function for all eight nutrients, not eight
@@ -1063,8 +1042,8 @@ rendering in `HealthRulesSheet`, so a ninth nutrient is one row in the table
 plus a native read, not four functions to remember to update in step.
 
 **Every nutrient is a shortfall rule with more than one checkpoint a day, and
-that is what `HealthRule.checkpointHour` exists for.** Steps and sleep judge
-from one fixed hour per metric (`HEALTH_METRIC_EARLIEST_HOUR`), because one
+that is what `HealthRule.checkpointHour` exists for.** Steps, sleep and
+exercise judge from one fixed hour per metric (`usesCheckpoint` says which) (`HEALTH_METRIC_EARLIEST_HOUR`), because one
 evening floor is what a step count or a night's sleep needs. A nutrient target
 set by a doctor is routinely phrased as more than one number over a day — "at
 least 2,000mg of sodium by lunch, 4,000mg by dinner" — which is two *rules*,
@@ -1074,9 +1053,9 @@ wants a mid-afternoon one too), every nutrient rule carries its own
 `checkpointHour`, editable in `HealthRulesSheet` for any metric but steps and
 sleep (`usesCheckpoint`, the one gate both the checkpoint stepper and the
 direction control below share, for the identical reason).
-`HEALTH_METRIC_EARLIEST_HOUR`'s entries for the eight nutrients still exist,
-but only as the value a freshly-created rule starts from — steps and sleep
-have no reason to follow, and don't.
+`HEALTH_METRIC_EARLIEST_HOUR`'s entries for the nutrients still exist, but
+only as the value a freshly-created rule starts from — steps, sleep and
+exercise have no reason to follow, and don't.
 
 **A nutrient rule can read its checkpoint the opposite way round, and that is
 the one place this generator stopped being purely a floor.** The file's own
@@ -1088,8 +1067,8 @@ saturated fat" — is a different request the mirror argument never covered: it
 is still a number the user picked and a shortfall against it, just measured
 the other way. `HealthRule.direction` carries the choice, and
 `HEALTH_METRIC_DIRECTION` supplies only the default a freshly-created rule of
-a given metric starts from (a floor for everything, a ceiling for saturated
-fat) — `healthRuleDirection(rule)` always resolves the two together, and
+a given metric starts from (a floor for most, a ceiling for saturated fat,
+sugar and caffeine) — `healthRuleDirection(rule)` always resolves the two together, and
 nothing else reads `rule.direction` raw.
 
 **It's a per-rule choice rather than a per-metric one because a diet goal
@@ -1102,8 +1081,8 @@ real dietary disagreement the app has no business having an opinion on.
 `HEALTH_METRIC_DIRECTION` still supplies a default per metric — a floor for
 most, a ceiling for the three where "don't go above X" is the far more common
 ask (saturated fat, sugar, caffeine) — but it's only the value a freshly
-created rule starts from before the user can change it. Steps and sleep still
-don't get the toggle — "over 3,000 steps" or "over 6 hours asleep" has no case
+created rule starts from before the user can change it. Steps, sleep and
+exercise still don't get the toggle — "over 3,000 steps" or "over 6 hours asleep" has no case
 answering to it, which is the same mirror-argument line `usesCheckpoint`'s
 comment draws for the checkpoint-hour control right next to it in
 `HealthRulesSheet`.
@@ -1396,41 +1375,23 @@ after it. `calorieKcal`'s label ("Calories") already *is* a complete noun, so
 "2,000kcal calories" — the one place the table-driven approach still needed a
 metric-specific branch rather than a uniform composition.
 
-The four things this was built to make possible, in the order they are worth
-doing, none of them started:
+Sleep is read, with the cost of adding a type written down beside
+`readTypes`. A task *may* show its live figure and mark itself ready — as its
+own `TaskKind`, in `isTimerReady`'s shape, never as a completion; see the
+section above for why that shape and no other.
 
-1. ~~A fourth `ContextRow` kind on Today.~~ Built, see above.
-2. ~~`sleepHours` and `steps` on `MoodDay`.~~ Built, see above.
-3. ~~A `health` generator (kind #18).~~ Built, see above.
-4. ~~One line under "Lighten today" for a short night.~~ Built, see above.
+The nutrient rule metrics were added for a specific, medically-motivated
+request rather than as a general widening of what this generator may watch —
+see the sections above for the two lines it does and doesn't cross (which
+metrics are eligible at all, and which way a shortfall may point).
+`HEALTH_METRIC_INFO` is a table rather than a switch per metric for that reason.
 
-Both of the product calls this note used to leave open have been made. Sleep is
-read, with the cost of adding a type written down beside `readTypes`. And a task
-*may* show its live figure and mark itself ready — as its own `TaskKind`, in
-`isTimerReady`'s shape, never as a completion. See the section above for why
-that shape and no other.
-
-The eight nutrients (kind #19's non-steps, non-sleep metrics) are a fifth
-thing this file's earlier "deliberately not built" list didn't anticipate,
-added for a specific, medically-motivated request rather than as a general
-widening of what this generator may watch — see the sections above for the
-reasoning and the two lines (which metrics are eligible at all, and which way
-a shortfall may point) it does and doesn't cross. Sodium and protein and
-saturated fat came first; fiber, sugar, caffeine, water and calories followed
-once the checkpoint-hour and direction mechanisms both already generalized
-past three, which is why `HEALTH_METRIC_INFO` exists as a table rather than
-five more hand-written switch branches.
-
-**None of this bears on `writeTypes`, which is at thirteen and follows a
-stricter version of the same "don't add until earned" rule.** A twelfth read
-metric costs a bigger permission sheet; a further write type costs a real
-sample landing in somebody's actual Health record if anything about it is
-wrong. The jump from two types to twelve was one review, not ten: the ten
-nutrients are one capability (a logged meal) and were argued for together. See
-"Writing what a task names: a logged nutrient", "The second write: body mass"
-and "The third write: a logged meal" above for the arguments in full — they are
-deliberately not summarized here, because collapsing them to a sentence is
-exactly the kind of thing that invites re-deriving them wrong later.
+**Adding a read metric costs a bigger permission sheet, and a write type costs a
+real sample in somebody's Health record if anything about it is wrong**, so
+`writeTypes` follows a stricter version of the same "don't add until earned"
+rule. "Writing what a task names: a logged nutrient", "The second write: body
+mass" and "The third write: a logged meal" above carry the arguments in full;
+read them rather than a summary before adding one.
 
 ## One thing worth knowing before scoping the background half
 
@@ -1440,7 +1401,9 @@ day and never in the background. **A Health read makes no such promise, needs no
 network and touches no location**, so it is the first outside reading in this app
 that a background run could legitimately take. That is what would make "slept
 five hours, so the day is already lighter before you wake up" actually happen
-rather than appearing whenever the app is next opened. It is not wired up: the
-read runs on the same three foreground triggers as the others, and adding it to
-`catchUpPasses()` is a change to make on purpose, with the permission string
+rather than appearing whenever the app is next opened. **The daily snapshot read
+is not wired into the background:** it runs on the same three foreground
+triggers as the others. (`checkWeighInTasks` is already in `catchUpPasses()` and
+reads recent weights there, so a background run does reach Health once.)
+Adding the snapshot is a change to make on purpose, with the permission string
 re-read first.

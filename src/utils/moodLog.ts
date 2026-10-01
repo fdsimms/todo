@@ -268,6 +268,25 @@ export function dayContextTags(logs: readonly MoodLog[], dayKey: string): string
   return [...seen.values()].sort((a, b) => a.localeCompare(b));
 }
 
+/**
+ * The context tags a fresh entry for `dayKey` opens with: "Vacation" while
+ * vacation mode is on, plus whatever an earlier entry that same day already
+ * said. Both are offers the user can tap off.
+ *
+ * Vacation mode is a fact about now, so it seeds only an entry for today. The
+ * sheet re-seeds through this when the Day row moves, which is what stops a
+ * backdated entry inheriting today's circumstances.
+ */
+export function seededContextTags(
+  logs: readonly MoodLog[],
+  dayKey: string,
+  opts: { isToday: boolean; vacationMode: boolean },
+): string[] {
+  let tags: string[] = opts.isToday && opts.vacationMode ? ['Vacation'] : [];
+  for (const tag of dayContextTags(logs, dayKey)) tags = withContextTag(tags, tag);
+  return tags;
+}
+
 /** Whether anything at all was recorded on a day — the "did you log" read. */
 export function hasLogOnDay(logs: readonly MoodLog[], dayKey: string): boolean {
   return logs.some(l => l.dayKey === dayKey);

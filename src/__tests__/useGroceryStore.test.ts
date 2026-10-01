@@ -5056,6 +5056,26 @@ describe('addManyToPantry, acquired', () => {
     expect(useGroceryStore.getState().items[0].onList).toBe(false);
   });
 
+  // setRunningLow adds to the list being looked at, so "running low" tapped
+  // while an away list was open put the row there. Buying it has to take it
+  // back off that one too, or it sits on the away list after it came home.
+  it('takes a running-low row off the away list it was added to, and leaves a hand-added one', () => {
+    const away: GroceryList = { id: 'away', name: 'Airbnb', sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z' };
+    const oil = makeItem({ name: 'Olive oil', runningLowAt: FROZEN_AT });
+    const salt = makeItem({ name: 'Salt', runningLowAt: FROZEN_AT });
+    const entry = (itemId: string, addedAt: string): GroceryListEntry => ({
+      itemId, listId: 'away', checked: false, sortOrder: 1, choiceGroup: null, addedAt,
+    });
+    seed([oil, salt], {
+      lists: [away],
+      listEntries: [entry(oil.id, FROZEN_AT), entry(salt.id, '2026-05-01T09:00:00.000Z')],
+    });
+
+    useGroceryStore.getState().addManyToPantry(['Olive oil', 'Salt'], undefined, undefined, undefined, { acquired: true });
+
+    expect(useGroceryStore.getState().listEntries.map(e => e.itemId)).toEqual([salt.id]);
+  });
+
   it('leaves a row on the list that nobody marked running low', () => {
     const milk = makeItem({ name: 'Milk', onList: true });
     seed([milk]);

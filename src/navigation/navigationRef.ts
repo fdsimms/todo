@@ -41,8 +41,8 @@ function currentRouteName(): string | undefined {
   return navigationRef.isReady() ? navigationRef.getCurrentRoute()?.name : undefined;
 }
 
-// Bare `dundundun://` launches (currently only the Today widget's
-// `.widgetURL`) should always land on the Today tab's Today sub-view, even if
+// Bare `dundundun://` launches (the Today widget's `.widgetURL`, and the
+// timer Live Activity's) should always land on the Today tab's Today sub-view, even if
 // the app was left on Later/Search/Projects when it was backgrounded.
 export function resetToToday(): void {
   runWhenReady(() => {

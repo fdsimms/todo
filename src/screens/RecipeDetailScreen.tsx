@@ -1023,7 +1023,7 @@ export function RecipeDetailScreen() {
     haptics.tap();
   };
 
-  // Same denial copy as useRecipePhotoSource's — iOS only prompts once, so a
+  // iOS only prompts once, so a
   // second tap on either button needs an alert naming the permission or does
   // nothing visible.
   const pickImage = async (source: RecipePhotoSource) => {
@@ -2616,7 +2616,7 @@ export function RecipeDetailScreen() {
         title={pendingPlanScale != null ? `${recipe.name} (${formatScale(pendingPlanScale)})` : recipe.name}
         defaultSlot={earliestUnplannedSlotToday()}
         onPlan={(dateKey, slot) => planRecipe(recipe, dateKey, slot, pendingPlanScale ?? undefined)}
-        // After the dismissal, never before — see PlanRecipeSheet.onPlanned.
+        // After the dismissal, never before — see PlanMealSheet.onPlanned.
         onPlanned={offerPrepTasks}
         onClose={() => { setPlanVisible(false); setPendingPlanScale(null); }}
       />

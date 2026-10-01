@@ -108,7 +108,7 @@ export function unreferencedImageNames(before: Iterable<string>, after: Iterable
  * Applies a payload and then removes the file of any photo it left nothing
  * pointing at: a recipe another device deleted, or one whose photo it
  * replaced or removed. The local paths already do this (`deleteRecipe`,
- * `setRecipeImage`), and without the same here a device receiving photos
+ * `useRecipeStore.setImage`), and without the same here a device receiving photos
  * would keep every one it was ever sent.
  *
  * Only names that were in use *before* the apply are candidates, so a photo

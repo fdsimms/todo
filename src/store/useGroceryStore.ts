@@ -913,9 +913,9 @@ interface GroceryStore extends UndoHistoryActions {
    * one already in the cupboard. A row it finds then drops the three claims a
    * purchase refutes, the same three `finishShopping` clears: the old bag's
    * `frozenAt`, the old jar's `openedAt`, and `runningLowAt`. A running-low
-   * row also comes off the home list, which is the one list `setRunningLow`
-   * reaches into on anyone's behalf: the thing it was on there to buy has just
-   * been bought. Still not a trip, so no purchase count and no use-by day of
+   * row also comes off the home list, and off whichever other list
+   * `setRunningLow` put it on (it adds to the active list, which can be an
+   * away list): the thing it was on there to buy has just been bought. Still not a trip, so no purchase count and no use-by day of
    * its own; a frozen or opened row's `expiresAt` goes with the state that set
    * or suspended it, rather than a stale day coming back to life on the new
    * packet. The use-up task follows the row, and undo puts back the rows, the
@@ -1699,25 +1699,11 @@ function commitAisleOrder(order: string[], used: readonly string[]) {
 // utils/groceryExpiry so jest can reach them.
 //
 // **Reconciling runs on the transitions that change the expiry**, not on every
-// grocery mutation the way a meal's cook task does. A meal moves nights, gets
+// grocery mutation the way a planned meal's tasks do. A meal moves nights, gets
 // re-titled and re-scaled; a use-by date is stamped at the till and then left
 // alone, so renaming an item or refiling its aisle has nothing to say to a
 // task the user may since have dated, filed and annotated.
 
-/**
- * Brings this item's use-up task into line: creates it, updates it, or removes
- * it, depending on what the item now says. The create/update/delete machinery
- * is shared with the other three generators (store/generatedTaskSync, #1524);
- * what's decided here is only what a grocery item wants.
- *
- * **Only a *live* task blocks a new one, and this is where the analogy with
- * cook tasks stops** — hence no `blocksOnFinished`. A meal is one event, so
- * reconcileCookTask deliberately refuses to spawn a second task for it even
- * when the first is completed. A grocery item is a forever-row that gets bought
- * again and again: last month's ticked-off "Use up spinach" is history, and the
- * bag bought this afternoon needs its own. Reading the wider set here would
- * mean a staple got exactly one use-up task, ever.
- */
 /**
  * Top up every supply stocked from one of the items just bought, and hand back
  * what each was on so the trip's undo can put it right.
@@ -1730,9 +1716,10 @@ function commitAisleOrder(order: string[], used: readonly string[]) {
  * nothing: an unrefusable line on the shopping list, which is the same trap
  * `projectsReviewedToday` closes one surface over.
  *
- * **`supplyRefillCount ?? reorderAt + 1` is the whole subtlety.** When the user
- * has said what a pack holds, that's exact. When they haven't, the app credits
- * the least it can that still clears the threshold — enough that the loop above
+ * **`supplyRefillCount ?? max(1, reorderAt + 1 - supplyCount)` is the whole
+ * subtlety.** When the user has said what a pack holds, that's exact. When they
+ * haven't, the app tops the count up to one past the threshold: the least it can
+ * credit that still clears it — enough that the loop above
  * can't happen, and never a number it made up about a pack it has never seen.
  * The editor's hint on the field is what steers anyone who wants it exact.
  */
@@ -1755,6 +1742,20 @@ function restockLinkedSupplies(boughtItemIds: ReadonlySet<string>): Map<string, 
   return before;
 }
 
+/**
+ * Brings this item's use-up task into line: creates it, updates it, or removes
+ * it, depending on what the item now says. The create/update/delete machinery
+ * is shared with every other generator (store/generatedTaskSync, #1524); what's
+ * decided here is only what a grocery item wants.
+ *
+ * **Only a *live* task blocks a new one** — hence no `blocksOnFinished`. That
+ * flag is for a source that is one event (a planned meal: mealShortfall,
+ * mealThaw, mealLogNudge), where a finished task must not be followed by a
+ * second. A grocery item is a forever-row that gets bought again and again:
+ * last month's ticked-off "Use up spinach" is history, and the bag bought this
+ * afternoon needs its own. Reading the wider set here would mean a staple got
+ * exactly one use-up task, ever.
+ */
 function reconcileUseUpTask(item: GroceryItem): void {
   const { groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, useUpTaskCap } =
     useSettingsStore.getState();
@@ -3570,10 +3571,18 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         dbUpdateGroceryItem(fresh);
         set(s => ({ items: s.items.map(i => (i.id === fresh.id ? fresh : i)) }));
         if (item.runningLowAt) {
-          const entry = entryFor(get().listEntries, item.id, null);
-          if (entry) {
-            removedEntries.push(entry);
-            writeMembership({ remove: [{ itemId: item.id, listId: null }] });
+          // The home entry, plus any other list `setRunningLow` put the row
+          // on: it adds to whichever list was being looked at (an away list
+          // included), and stamps that entry's `addedAt` with the same instant
+          // as `runningLowAt`. An entry on another list with any other
+          // `addedAt` was put there by hand and stays.
+          const runningLowAt = item.runningLowAt;
+          const stale = get().listEntries.filter(
+            e => e.itemId === item.id && (e.listId === null || e.addedAt === runningLowAt),
+          );
+          if (stale.length > 0) {
+            removedEntries.push(...stale);
+            writeMembership({ remove: stale.map(e => ({ itemId: e.itemId, listId: e.listId })) });
           }
         }
         // Dropped when there's no live day left, since there is nothing to

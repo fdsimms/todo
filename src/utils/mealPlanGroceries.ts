@@ -229,7 +229,7 @@ export function hasShoppableMeals(
 /**
  * One recipe's ingredients, standing alone rather than flattened out of a
  * week — the source a single-recipe "Add ingredients to list" needs to run
- * through the same classifyPlanned pantry-awareness AddWeekToListSheet gets,
+ * through the same classifyPlanned pantry-awareness AddMealsToListSheet gets,
  * instead of the blind addFromPlan RecipeDetailScreen used before.
  *
  * `recipesById` is what lets a composed recipe bring its components' lines

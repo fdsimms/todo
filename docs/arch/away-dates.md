@@ -10,15 +10,20 @@ with its forecast (`Project.destination`, `services/geocode.ts`,
 `utils/tripForecast.ts`), `createProject`'s options object, and the away
 grocery list binding (`Project.awayListId`, `checkAwayGroceryList`).
 
-Everything designed here is built. What is left is under "Still open" and is
-genuinely undecided rather than merely unstarted.
+**Not built:** the pull-forward half of look ahead ("Look ahead needs both
+directions" below: `buildPushPlan` still only pushes, and a deadline due before
+departure comes back as a dead row), ranking away days last in `deloadPlan` and
+`buildPushPlan` (reader 2 below), and the `awayPrep` generator ("The trip you
+have not booked yet"). Everything else above is built, and what is under "Still
+open" is genuinely undecided.
 
 It is written down because the design outgrew a conversation, and because most
 of the argument is about *fitting* — which existing rule each decision falls out
 of — which is the part that gets re-derived wrongly if it is not recorded.
 
-Read it before building any of it, and before adding a fifth half-implementation
-of "the user is away from home" (see below for the four that already exist).
+Read it before adding another reader of "the user is away from home": the
+section below names the four places that each held part of that idea, and this
+span is what now connects them.
 
 Everything here that says "must" is a constraint the codebase already imposes,
 with the place it imposes it named. Everything under "Still open" is genuinely
@@ -44,17 +49,11 @@ places that share no facts with each other:
 - **Vacation mode** has `vacationStart`/`vacationEnd`, `Task.vacationPause` and
   `Category.hideOnVacation`.
 
-None of them can tell the others when the trip is. The cost is visible in the
-code twice, both times as an apology:
-
-- `LookAheadSheet` has to *ask* when you get back, because `vacationStart` is
-  stamped `new Date()` at switch-on — it records when you went, never when you
-  are going. Only `vacationEnd` can prefill anything.
-- `useTemplateStore.applyTemplate` says of the run's start anchor: *"Its start
-  anchor has nowhere to go now that a project carries one date rather than a
-  range."*
-
-"Nowhere to go" is the field. The design below is that field plus its readers.
+None of them could tell the others when the trip is: `LookAheadSheet` had to
+*ask* when you get back (`vacationStart` is stamped at switch-on, so it records
+when you went, never when you are going), and a template run's start anchor had
+nowhere to land on a project that carried one date. The design below is the
+field they were missing plus its readers.
 
 ---
 
@@ -120,33 +119,25 @@ overline on the grocery screen. Use it.
 
 ### The one discipline
 
-**Never ship the span without at least two readers in the same change.**
-
-`Project` used to carry a `targetStartDate`/`targetEndDate` pair. It was deleted
-and collapsed into the single `deadline` because the start half had, across its
-whole life, exactly one reader — the "From Jun 1" side of a label. Two fields
-where one was decoration read as a schedule the project did not have.
-
-The bar this design has to clear is that bar, not a prohibition on storing a
-range. Departure is load-bearing in a way `targetStartDate` never was: it is
-`lookAhead`'s `cutoff`, and the day you leave is not a day you have. But that is
-only true once something reads it, so storage-first-readers-later is the one
-sequencing that recreates the mistake.
+**A stored date earns its place by having readers.** `Project` once carried a
+`targetStartDate`/`targetEndDate` pair, deleted because the start half only ever
+had one reader (the "From Jun 1" side of a label) and read as a schedule the
+project didn't have. The away span shipped with several readers at once for that
+reason; the same test applies to the next field anyone adds to it.
 
 ---
 
 ## The readers
 
-Ranked by cost. Each is independently shippable; the first two are the minimum
-that clears the bar above.
+Ranked by cost.
 
 1. **Look ahead prefills from it** *(built)*. The sheet stops asking for two dates it could
-   know, and can name the trip. Deletes the apology comment.
+   know, and can name the trip.
 2. **Away days carry a cue in `WhenPicker`** *(built, and in the month grid
    too)*. There is one choke point:
    `buildDayLoads`, consumed by the picker and by the look-ahead sheet's day
-   strip. Once the cue exists, `deloadPlan` and `buildPushPlan` can rank those
-   days last instead of treating them as ordinary. This is where the feature
+   strip. *(Not built:)* `deloadPlan` and `buildPushPlan` ranking those days
+   last instead of treating them as ordinary. This is where the feature
    stops being decoration — and see the rule below, because it is a cue and
    never a refusal.
    - The `dayLoad` rule that "no cue is never *this day is free*" is not in
@@ -202,8 +193,9 @@ planner what you would rather not do, never what you may not do.**
 
 ### Display
 
-`deadlineLabel` in `ProjectsScreen` fed one render site, and the away span goes
-there through `projectCaption` beside it.
+The project card's caption comes from `projectCardCaption` (`src/utils/projectList.ts`), which
+chooses between a pause, the away span (`describeAwaySpan`) and the deadline
+(`describeProjectDeadline`). A pause caption outranks the span.
 
 **The span wins the slot rather than sitting beside the deadline.** For a trip
 the two say nearly the same thing and the span says it better: the date you have
@@ -214,7 +206,7 @@ caption never wears the Overdue prefix — a trip in three days is not late for
 anything.
 
 Copy stays literal, per the user-facing copy rules in `CLAUDE.md`: "Leaves in 6
-days", "Away Nov 3 to Nov 10", "Back Tuesday". Not "6 sleeps".
+days", "Leaves tomorrow", "Away", "Back Tuesday". Not "6 sleeps".
 
 ---
 
@@ -288,6 +280,8 @@ Five hazards, and where each lands.
 
 ## Look ahead needs both directions
 
+*Not built.* This section is the design.
+
 `buildPushPlan` moves the window's work *past* the return, and that is the only
 direction it has. But some of what lands during a trip has to happen **before**
 you go, and the module already knows which:
@@ -352,16 +346,11 @@ sharply: pulling a date-anchored task forward rewrites `dueDate` *and*
 the schedule is measured from. Offer the pull for entries landing once. Leave the
 rest to the push, which handles them correctly today by deferring.
 
-### This is the second caller for the same missing arm
+### The pull-forward arm already exists
 
-`buildPushPlan` sets `mode: 'defer' | 'reschedule'` from `isDateAnchored`, and
-`deloadUpdates` implements exactly those two. Neither can express a pull-forward
-for a date-anchored task; that rule lives inline in `TaskItem.tsx`.
-
-The trip-moving section below needs the same arm. So this is no longer a refactor
-a hypothetical future caller might want — **two readers in this design need it**,
-which is the argument for lifting it into `taskMoves.ts` rather than writing a
-third copy in the look-ahead sheet.
+The pull-forward rule for a date-anchored task is `scheduleMoveUpdates` in
+`taskMoves.ts` (lifted there for the trip move below), so building the look-ahead
+pull is wiring that into `buildPushPlan`, not writing a third copy.
 
 ---
 
@@ -383,26 +372,12 @@ Two facts:
   day across nearby days, look-ahead pushes a window past a return, the bulk bar
   defers. Nothing shifts a set by a delta.
 
-So "the flight moved two days later" is nine manual edits. For a project shape
-that repeats, that is plausibly a bigger share of the pain than setup is.
+It is a pure planner emitting `{ id, updates }[]`, applied under one undo entry.
 
-Structurally it is cheap: a pure planner emitting `{ id, updates }[]`, applied
-under one undo entry. `deloadTasks` already has that signature. `taskMoves.ts` is
-the leaf that owns what moving a task *means*, and its header already names this
-caller.
-
-Three sharp edges, all real.
-
-- **Moving a trip *earlier* is a case `taskMoves` cannot express.**
-  `deloadUpdates` knows push (`deferUntil`) and plain reschedule, nothing else.
-  The pull-forward rule for a date-anchored task — write `dueDate` alongside
-  `recurrenceAnchorDate: task.recurrenceAnchorDate ?? task.dueDate`, and only
-  ever set it once — lives inline in `TaskItem.tsx`. So the *predicate*
-  (`isDateAnchored`) sits in the leaf and the *rule* that consumes it sits in a
-  component. Deload and look-ahead never noticed, because they only ever push
-  outward. A shift needs both directions, and so does look-ahead's pull (see the
-  section above) — two callers, which is the reason to move that rule into the
-  leaf that exists precisely so it cannot drift.
+- **Moving a trip *earlier* uses `scheduleMoveUpdates`' pull-forward**, which
+  writes `dueDate` alongside `recurrenceAnchorDate` for a date-anchored task (see
+  CLAUDE.md's Recurrence section). The trip move never asks whether to keep the
+  grid: it shifts a whole span, and keeping each grid is the point.
 - **It must not go through `deloadTasks`.** Both reasons are in that function's
   own comments. Its undo snapshot is `{ dueDate, deferUntil, postponeCount }`, so
   a patch that also wrote `recurrenceAnchorDate` would survive the undo and
@@ -550,13 +525,11 @@ looser terms than these is a different feature and should say so."* Saying so:
   safe because nobody can aim them: the chain case reuses a date the successor
   was getting regardless, and the supply case is on a *generated* task whose kind
   the generator sets. Here the task is authored by a user, in their own project,
-  so a user chooses the destination. That is genuinely looser and is the thing to
-  argue about if this is ever built.
+  so a user chooses the destination. That is genuinely looser.
 - **What makes it safe anyway: it writes a field, it does not re-date anything.**
-  Setting `awayStart` on a project whose members are already dated raises the
-  *proposal* from the trip-moving section, per-row and untickable. A user-aimable
-  writer that can only ever populate one project field and then ask is a much
-  smaller thing than one that can move nine tasks.
+  It populates one project field (and offers the follow-up prompts below); it
+  never moves a member task. A user-aimable writer that can only set a date and
+  then ask is a much smaller thing than one that can move nine tasks.
 
 **It fills in the start only.** A `'date'` answer records one date and a trip has
 two, and the obvious fix — a range deliverable kind — is a new kind for one caller
@@ -567,8 +540,8 @@ open, nothing writes back), so 28 days later it is gone.
 So the answer writes `awayStart` and leaves `awayEnd` null. That is not a
 degraded state, it is the one the field design already declares legal and
 meaningful: a boundary but not yet a trip, exactly `LookAheadWindow`'s own
-`awayEnd: null` case. The return date arrives later, by hand or from booking the
-flights, and the span completes itself.
+`awayEnd: null` case. The return date arrives later: the "Coming back" prompt
+(`tripDatePrompt` in `completeTask`) asks for it, or it is typed by hand.
 
 ---
 
@@ -589,12 +562,8 @@ nothing in the app plots it and that a real reader is a future thing; a trip is
 that reader. It also gives the template's `{destination}` blank somewhere to live
 between runs.
 
-**The forecast is cheaper than it looks.** `weatherLookup.ts` already calls
-Open-Meteo's `/v1/forecast` with a latitude, a longitude and `timezone=auto`. It
-asks only for `current=`. Pointing it at other coordinates and adding `daily=` is
-a small change to a service that exists and needs no key.
-
-Three rules if it is built.
+`weatherLookup.ts` calls Open-Meteo's `/v1/forecast` (no key) for both today's
+reading and the destination's `daily=` forecast. Three rules hold it:
 
 - **It is a sentence, not a rule.** "Nov 3 to 10 in Tokyo, 4 to 11°C, rain on the
   5th." Not weather-conditioned packing items — that would mean extending template
@@ -662,19 +631,21 @@ new model, and it keeps the plan somewhere the app can already read.
   style with JS supplying start and target, so a days-until countdown is new
   native work for something the line on the project card says just as well.
 - **A "you always forget your charger" generator.** The template is already the
-  memory and editing it after a trip is the mechanism. A twentieth generator to
-  prompt that is a hard sell against the bar the other nineteen cleared.
+  memory and editing it after a trip is the mechanism. A generator to prompt that
+  is a hard sell against the bar the existing ones cleared.
 
 ---
 
 ## The gates
 
-- **Demo mode needs none, and this was checked rather than assumed.** The worry
-  was a demo trip arming vacation, changing what is hidden, and cancelling real
-  reminders through `rescheduleAllReminders`. It cannot: every entry point in
-  `notifications.ts` already refuses in demo mode. Settings live in the settings
-  table, which the demo swaps with everything else. Worth a test pinning it,
-  because "no gate needed" is exactly the claim that ages badly.
+- **Demo mode needs no gate of its own.** The worry was a demo trip arming
+  vacation, changing what is hidden, and cancelling real reminders through
+  `rescheduleAllReminders`. Settings live in the settings table, which the demo
+  swaps with everything else, and in demo mode a full reschedule schedules
+  nothing and cancels no task reminder; it only withdraws the two fixed-id
+  summaries (daily agenda, trip reminder) so they don't announce the real
+  database's counts, and the reschedule on leaving demo lays them back.
+  `notifications.test.ts` ("demo mode suppresses scheduling") pins that.
 - **Simplified mode: a new feature id, gated `set: awayStart !== null`.** Rule 1
   of that mode carries more weight here than usual: it changes what is rendered,
   never what is stored. `featureHidden` hides the editor row and must not touch
@@ -685,9 +656,8 @@ new model, and it keeps the plan somewhere the app can already read.
   because it is a flag whose whole meaning is itself, so missing reads as off.
   Away dates missing means "not a trip", which is true of nearly every project,
   so the walkthrough would ask a dead question on every row.
-- **Demo seed.** The demo's Japan trip is a *task with subtasks*, not a project,
-  so there is no trip project to give dates to. Seeding this means adding one,
-  and per the demo-seed rule that is part of the change rather than a follow-up.
+- **Demo seed.** The Lisbon project in `demoSeed.ts` carries a span, a
+  destination and `awayPauses`.
 
 ---
 
@@ -765,7 +735,7 @@ afterwards the way a user would.
 
 ## Still open
 
-- **Whether an `awayPrep` generated task is worth a twentieth generator.** "Anything
+- **Whether an `awayPrep` generated task is worth a new generator.** "Anything
   to do before Japan?", raised on a lead day, linking into the look-ahead sheet
   scoped to the trip. Structurally identical to `weekendNudge`: a span, a lead
   window, a link to a sheet that already exists. It adds a surface rather than

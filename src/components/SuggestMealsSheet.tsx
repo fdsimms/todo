@@ -507,7 +507,7 @@ export function SuggestMealsSheet({
   // Grouped by the recipe each line is actually written on — the root's own
   // lines first, then each component's under its own name — same convention
   // flattenRecipeIngredients' callers use elsewhere (RecipeToListSheet,
-  // AddWeekToListSheet). Resolved to the defaults: a preview isn't a shop, so
+  // AddMealsToListSheet). Resolved to the defaults: a preview isn't a shop, so
   // there's nothing to pick an alternative for.
   //
   // Within a group, a line carries the section heading it opens, if any — the

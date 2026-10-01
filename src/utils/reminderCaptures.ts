@@ -7,7 +7,7 @@ import { slotForHour } from './mealLog';
  * The extra Reminders lists the app drains, beyond the Inbox and grocery legs
  * that have their own settings rows.
  *
- * Pure, like `healthRules.ts` and `weatherRules.ts` beside it: what a capture
+ * Pure, like `healthRules.ts` and `weatherTasks.ts` beside it: what a capture
  * is, how it reads back off a settings row, which of them a drain may touch,
  * and what each one stamps on the task it creates. The drain itself is
  * `drainTargets`/`drainOnce` in `remindersImportSync.ts`, the UI is

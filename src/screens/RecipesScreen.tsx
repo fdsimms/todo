@@ -524,7 +524,7 @@ export function RecipesScreen() {
   };
 
   // Computed once for the whole box rather than per row render — same
-  // classifyPlanned pass RecipeToListSheet/AddWeekToListSheet already run,
+  // classifyPlanned pass RecipeToListSheet/AddMealsToListSheet already run,
   // just reduced to a count per recipe. Keyed on what a count reads and
   // nothing else (#2922): the box rather than `visible`, so typing a search,
   // sorting or filtering never recounts, and `pantryCatalog` rather than the
@@ -1100,7 +1100,7 @@ export function RecipesScreen() {
         defaultSlot={earliestUnplannedSlotToday()}
         onPlan={(dateKey, slot) =>
           planningRecipe ? planRecipe(planningRecipe, dateKey, slot) : null}
-        // After the dismissal, never before — see PlanRecipeSheet.onPlanned.
+        // After the dismissal, never before — see PlanMealSheet.onPlanned.
         onPlanned={offerPrepTasks}
         onClose={() => setPlanningRecipe(null)}
       />

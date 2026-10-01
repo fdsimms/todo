@@ -11,18 +11,19 @@ Targets are injected at prebuild time by custom config plugins rather than a che
 - **`targets/todo-share/`** — the share extension ("dundundun" in another app's share sheet,
   for a recipe page), added by `plugins/withShareExtension.js`.
 - **`targets/todo-activity-monitor/`** — the DeviceActivity monitor, added by
-  `plugins/withActivityMonitor.js`. Woken when a usage threshold is crossed, and at the end of
-  a penalty block.
+  `plugins/withActivityMonitor.js`. Woken when a usage threshold is crossed, when a scheduled
+  gate window starts (`intervalDidStart`), and at the end of a penalty block (`intervalDidEnd`).
 - **`targets/todo-shield-config/`** and **`targets/todo-shield-action/`** — the screen shown
   when a blocked app is opened, and the button on it, both added by
   `plugins/withShieldExtensions.js`.
 
-Both get the App Group entitlement from `plugins/withAppGroup.js`, and both build their Xcode
-target through **`plugins/lib/nativeTarget.js`**, which is where the sharp edges below actually
-live. **Add a third target by calling `addAppExtensionTarget` too, not by copying a plugin.**
-Every workaround in that file was a failed build cycle to find and every one of them fails
-*late* — at archive or at submission, not at build — so a second copy is a second place the
-seventh one would have to be found again. What belongs in the plugin is only what genuinely
+`plugins/withAppGroup.js` puts the App Group on the main app and exports `APP_GROUP_ID`; each
+extension's plugin writes its own `.entitlements` with that id (`todo-shield-action` deliberately
+has none). Every target builds through **`plugins/lib/nativeTarget.js`**, which is where the sharp
+edges below actually live. **Add a new target by calling `addAppExtensionTarget` too, not by
+copying a plugin.** Every workaround in that file was a failed build cycle to find and every one
+of them fails *late* — at archive or at submission, not at build — so a second copy is a second
+place the next one would have to be found again. What belongs in the plugin is only what genuinely
 differs per extension point: the Info.plist, the entitlements, the frameworks, the deployment
 target, and which sources compile in.
 
@@ -30,11 +31,11 @@ target, and which sources compile in.
 plugin change: it writes `ios/` (gitignored) and you can read the generated `project.pbxproj`
 and Info.plist directly. The `xcode` package mints random UUIDs, so two runs are never
 byte-equal — rewrite each distinct 24-hex-char id to a counter in order of first appearance and
-the two runs compare exactly, which is how the widget target was proved unchanged when its
-plumbing moved into `lib/nativeTarget.js`.
+the two runs compare exactly, which is how to prove a refactor left a target unchanged.
 
 - **A new target must be declared in `app.json`'s
-  `extra.eas.build.experimental.ios.appExtensions`** (name, bundle id, entitlements), or EAS
+  `extra.eas.build.experimental.ios.appExtensions`** (name, bundle id, entitlements, matching the
+  plugin's own `.entitlements`; nothing checks that the two agree), or EAS
   Build's non-interactive credential resolution never discovers it and can't provision it —
   the archive step fails with an opaque signing error.
 - **Signing needs `PBXProject.attributes.TargetAttributes`, not just `buildSettings`.**
@@ -96,26 +97,18 @@ plumbing moved into `lib/nativeTarget.js`.
   "Configuring the runtime behavior of your app intents" states it outright: code in a widget
   extension (or an App Intents extension) runs only in the background. The foreground half is
   not refused loudly — `perform()` still runs and still writes whatever it queued, so the tap
-  looks like it half-worked and the app simply never comes forward. `CompleteTaskIntent` (the
-  Today widget's checkbox) shipped extension-only and hit exactly this, and the first fix for it
-  was the wrong one: `openAppWhenRun` is deprecated in iOS 26 and its doc says setting it true
-  "generates an error if the app intent runs in an app extension", so the obvious reading is
-  that the deprecation broke it and the `@available(iOS 26.0, *) static var supportedModes:
-  IntentModes { .foreground(.immediate) }` replacement is the whole repair. It isn't — it
-  declares the *requirement* to be in the foreground, but if the only target hosting the intent
-  is the extension there is no process that can satisfy it, so nothing changes. Note the second
-  half of that same deprecation note, which is the actual rule: `openAppWhenRun` is still fine
-  "for app intents you run inside your app". The fix is target membership, not the property —
-  `CompleteTaskIntent.swift` now lives in `modules/todo-widget-bridge/ios/` (globbed into the
-  app by the podspec) *and* is listed in `withWidgetExtension.js`'s `SHARED_SWIFT_FILES` so the
-  extension, whose `Button(intent:)` names the type, still compiles it. Both properties are kept:
-  `supportedModes` for iOS 26+, `openAppWhenRun` for older. A file compiled into two targets
-  can't share the widget target's App Group helpers, so it carries its own file-private copy —
-  the convention `AddTaskIntent.swift` already follows. `allowedExecutionTargets` would let you
-  pin execution to `.main` explicitly, but it is **iOS 27+** and so no help for 26 — and EAS's
-  build image doesn't carry the iOS 27 SDK yet, so referencing the type at all fails the build
-  even behind `@available`: that guard controls when code *runs*, not whether the SDK the
-  compiler is targeting has ever heard of the symbol. Wait for the SDK before adding it back.
+  looks like it half-worked and the app simply never comes forward. Neither `openAppWhenRun` nor
+  iOS 26's `supportedModes { .foreground(.immediate) }` fixes it on its own: they declare the
+  requirement, and an extension-only intent has no process that can satisfy it. **The fix is
+  target membership:** `CompleteTaskIntent.swift` lives in `modules/todo-widget-bridge/ios/`
+  (globbed into the app by the podspec) *and* is listed in `withWidgetExtension.js`'s
+  `SHARED_SWIFT_FILES` so the extension, whose `Button(intent:)` names the type, still compiles
+  it. Both properties are kept: `supportedModes` for iOS 26+, `openAppWhenRun` for older. A file
+  compiled into two targets can't share the widget target's App Group helpers, so it carries its
+  own file-private copy, as `AddTaskIntent.swift` does. `allowedExecutionTargets` (iOS 27+) would
+  pin execution to `.main` explicitly, but referencing it at all needs the EAS build image to carry
+  the iOS 27 SDK, even behind `@available` (that guard controls when code *runs*, not whether the
+  compiler's SDK has the symbol). Check the image's Xcode version before adding it.
 - **The custom shield screen is two targets, not one, and the layout is not yours.** A
   `ShieldConfigurationDataSource` (`ManagedSettingsUI`) draws the screen and is *never told
   about a tap*; `ShieldAction` only ever reaches a `ShieldActionDelegate` (`ManagedSettings`),

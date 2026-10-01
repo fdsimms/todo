@@ -131,7 +131,7 @@ export function settingsSummaries(s: SettingsSummaryInput): Record<SettingsGroup
       s.autoCompleteProjectsOnDone && 'Projects auto-complete',
     ) || 'Vacation, expiry, auto-complete',
 
-    // A count rather than a list of names: twelve generators won't fit on a
+    // A count rather than a list of names: two dozen generators won't fit on a
     // line, and "how much of this is the app writing for me" is the question
     // the group exists to answer. Both halves come from `generatedTaskCounts`,
     // so the total shrinks with the kitchen exactly as the rows behind it do.

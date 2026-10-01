@@ -538,8 +538,8 @@ export function MealPlanScreen() {
   const [mealShopVisible, setMealShopVisible] = useState(false);
   // What the suggestion shelf was opened with — the ranked recipes and the
   // nights they may land on, captured at open rather than re-read while it's
-  // up. Held as a snapshot for the same reason `cookedRecipeForList` and
-  // `loggingLeftover` are: accepting a suggestion changes the week, and a
+  // up. Held as a snapshot for the same reason
+  // `loggingLeftover` is: accepting a suggestion changes the week, and a
   // sheet whose contents are recomputed from the week rewrites itself under
   // the finger that just tapped it. Null closes it.
   const [suggesting, setSuggesting] =

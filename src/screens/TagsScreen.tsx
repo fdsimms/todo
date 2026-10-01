@@ -305,8 +305,9 @@ export function TagsScreen() {
         />
 
         {/* Tag detail modal. Rows are TaskItem, whose own inline title/subtask
-            fields can still hold focus when the sheet closes — dismiss the
-            keyboard first, same freeze bug fixed elsewhere. */}
+            fields can still hold focus when the sheet closes. SheetModal holds
+            the close until the keyboard is gone; the dismiss here only starts
+            it moving sooner. */}
         <SheetModal
           visible={selectedTag !== null}
           animationType="slide"

@@ -376,8 +376,8 @@ export function WhenPicker({
     if (pendingRef.current) return;
     pendingRef.current = true;
     // The free-text field can still hold focus when a calendar day or quick
-    // button is tapped — closing without this races the keyboard's own
-    // dismiss animation against the Modal's and freezes whatever's underneath.
+    // button is tapped. SheetModal already holds the close until the keyboard
+    // is gone; this only starts it moving a beat sooner.
     Keyboard.dismiss();
     setPendingKey(key);
     if (date) setDisplayMonth(startOfMonth(date));
@@ -516,9 +516,9 @@ export function WhenPicker({
     }
   };
 
-  // Closing while the free-text field still holds focus is the same freeze
-  // bug fixed elsewhere: the keyboard's own dismiss animation races the
-  // Modal's and strands the touch handler on whatever's underneath.
+  // SheetModal holds the close until the keyboard is gone (see its doc
+  // comment), so this dismiss isn't what prevents the freeze; it only starts
+  // the keyboard moving a beat sooner.
   const cancel = () => {
     Keyboard.dismiss();
     onCancel();

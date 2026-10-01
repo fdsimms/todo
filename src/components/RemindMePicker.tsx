@@ -186,9 +186,9 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
     onConfirm(result, selectedKind, null, selectedAnchor, false);
   };
 
-  // Closing while the natural-language field still holds focus is the same
-  // freeze bug fixed elsewhere: the keyboard's own dismiss animation races
-  // the Modal's and strands the touch handler on whatever's underneath.
+  // SheetModal holds the close until the keyboard is gone (see its doc
+  // comment), so this dismiss isn't what prevents the freeze; it only starts
+  // the keyboard moving a beat sooner.
   const cancel = () => {
     Keyboard.dismiss();
     onCancel();

@@ -14,8 +14,10 @@
  * small enough to read. When that happens, `AuthResult` grows the token's
  * subject and scopes and the callers keep working.
  *
- * The default is refusal. An unset `MCP_AUTH_TOKEN` denies every request rather
- * than allowing every request, because the failure modes are not comparable: a
+ * The default is refusal. An unset token never matches anything, so an unset
+ * `MCP_AUTH_TOKEN` denies every read-token request rather than allowing every
+ * request (a caller holding a configured `MCP_WRITE_TOKEN` is still served, see
+ * `scopeFor`), because the failure modes are not comparable: a
  * server that refuses everything is noticed in one minute, and a server that
  * allows everything is noticed after it has served somebody's entire task
  * history to whoever asked.

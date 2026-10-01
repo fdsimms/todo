@@ -41,8 +41,9 @@ interface Props {
   onSetPriority: (priority: Priority) => void;
   /** Marks every recurring task in the selection missed — a no-op for anything else, same guard as the per-row action. */
   onMarkMissed: () => void;
-  // Grouping is Today/Later-only for now — other screens that bulk-select
-  // tasks (Categories, Inbox, Tags) simply omit this and the action hides.
+  // Optional: a screen that bulk-selects tasks but has no stack to file them
+  // into omits this and the action hides. Today (all four sub-views) and a
+  // project's page pass it.
   onGroup?: (title: string) => void;
   // Pinning is a Today concept, so it's omitted the same way grouping is.
   onTogglePin?: () => void;

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## PR workflow
 
-Once a change is complete and verified (`npx tsc --noEmit && npm test` green, feature manually
+Once a change is complete and verified (`npm run verify` green, feature manually
 exercised where applicable), open a PR automatically — don't wait to be asked. Skip only when
 there's a concrete reason (work is incomplete, checks are red, or the user said to hold off);
 say why instead of opening one silently.
@@ -30,6 +30,8 @@ that needs a fresh CI run to confirm (a flaky-vs-real judgment, a build-only fai
 reproduce locally) still has to push and wait, because there's no other way to see the result.
 The distinction is whether the next fix depends on seeing this one's CI result — if it doesn't,
 don't spend a CI run finding that out.
+
+## Bugs found in passing
 
 If you notice a real bug while working on something else — not a style nit, an actual wrong
 behavior — and the fix is small (a couple of lines, one clear place, no design judgment call),
@@ -85,6 +87,8 @@ it's handled" is exactly the false comfort this rule exists to prevent. This hol
 feels like the obviously right call, and even for a follow-up you noticed yourself rather than one
 the user raised. When they ask directly, just create it and use reasonable defaults for the four
 labels (enhancement / area:app-wide / model:haiku / effort:low) unless they specify otherwise.
+(These are the defaults for a direct "file this" with nothing else said; when you are judging an
+issue's labels yourself, use the scheme below.)
 
 When finishing a task turns up adjacent work you've decided not to do — a related surface, a
 follow-up feature, a design question you scoped out, a sharp edge you noticed along the way —
@@ -108,14 +112,24 @@ times" is its own recurring phrase. Every one of those started the same way: som
 without writing down why, and the next person to touch that code had no way to know the mistake was
 already made. Don't let a fix you land be the next one of those.
 
-When a fix you just made would have been faster, or wouldn't have shipped at all, if a rule like the
-ones in this file had already existed — because the root cause isn't obvious from reading the
+When a fix you just made would have been faster, or wouldn't have shipped at all, if a written rule
+had already existed — because the root cause isn't obvious from reading the
 surrounding code, because it's the kind of thing a sibling component is equally likely to get wrong,
 or because you noticed while fixing it that the same shape already recurs elsewhere in the codebase —
 stop and ask before calling the task done, the same "stop and ask, don't just mention" duty as "Bugs
-found in passing" and "Follow-up and out-of-scope work" above. Offer to add a rule to this file (or
-the relevant `docs/arch/` file), say in one line what it would say, and let the user decide yes/no/
-edit it themselves — don't silently add it and don't silently skip mentioning it. A fix that's purely
+found in passing" and "Follow-up and out-of-scope work" above. Offer to write the rule down, say in
+one line what it would say and where, and let the user decide yes/no/edit it themselves — don't
+silently add it and don't silently skip mentioning it.
+
+**Where it goes is part of the offer, and this file is the last choice.** It is loaded into every
+task, so a rule here costs every task context whether or not it touches that code. Default to the
+narrowest home a future reader will still find: a comment at the site (or on the helper everyone
+calls) for a rule about one function or file; the relevant `docs/arch/` file for a rule about one
+feature; this file only for a rule that cuts across features. Better than any of them, where it fits,
+is making the mistake impossible: a shared helper, or a test that fails the build (the
+`noRawModal.test.ts` shape). Once a rule is enforced that way, the prose shrinks to the rule and the
+name of what enforces it. And write the rule, not the incident: the reason it exists in a sentence,
+not the story of the PR that found it. A fix that's purely
 local (a typo, a one-off logic error with no generalizable cause) needs no offer; the bar is the same
 one this file's own rules clear — would a future agent, reading only the surrounding code and not
 this session's history, plausibly make the same mistake blind.
@@ -203,11 +217,11 @@ npm install          # dependencies; node_modules isn't checked in, so a fresh c
                      # this before tsc or jest will run at all
 npx expo start       # start dev server (scan QR with Expo Go)
 npx tsc --noEmit     # typecheck; ~4s warm, ~20s the first time in a fresh checkout
-npm test             # the whole suite, well under a minute — just run all of it
+npm test             # the whole suite, about a minute
 npm run test:watch   # watch mode
 npm run test:tz      # the suite in UTC+14, UTC-11 and Newfoundland (DST, half-hour offset);
                      # CI runs in UTC, where a UTC/local date mix-up can't fail
-npx jest src/__tests__/dateUtils.test.ts  # single file, if you want the shorter output
+npx jest src/__tests__/dateUtils.test.ts  # one file, for iterating on a change
 npm run docs         # regenerate all three generated docs, then commit them
 npm run verify       # the whole verification loop, below
 ```
@@ -222,27 +236,28 @@ It is one command rather than a chain to retype because the part that gets dropp
 same part: the generators at the end, which is the single most common reason a PR goes red (see
 below). Run `npm run verify`, not a subset of it.
 
-Under a minute together, and `tsc` is incremental (`.tsbuildinfo`, gitignored) so every run after
-the first is a few seconds. There's no reason to skip any of it or to narrow to a single test
-file. All of it is green on `main`; if anything is red, it's you.
+`tsc` is incremental (`.tsbuildinfo`, gitignored), so every run after the first is a few seconds;
+the suite is about a minute. Run one test file while iterating, and the whole loop before you
+commit. All of it is green on `main`; if anything is red, it's you.
 
 **"It's you" still holds when the loop is red before you've touched anything.** Several sessions
 land PRs into this repo close together, and one of them can merge with a break the others'
 verification loops hadn't caught yet — a type left stale by a sibling change, a test asserting a
 shape a merge removed. Running the loop on an unrelated branch and seeing it fail is how that
-surfaces, and the fix is exactly "bugs found in passing" above, not a separate case: small,
-one place, obvious right answer → fix it in the same PR and say so in the description (this
-happened for real — a `main`-red `foodLog.test.ts` type error from a concurrent merge, fixed
-alongside an unrelated one-line doc change, PR #2525). Don't shrug it off as "not my diff" and
+surfaces, and the fix is exactly "Bugs found in passing" above, not a separate case: small,
+one place, obvious right answer → fix it in the same PR and say so in the description. Don't shrug it off as "not my diff" and
 push anyway; a red `main` blocks every branch cut afterward until someone notices and fixes it,
 and "someone" is whoever's loop happens to hit it next. Ambiguous or multi-file → same as any
 other passing-bug call, ask rather than guess or widen the PR.
 
 Don't run `npx expo export` locally to check your work — it's the slowest thing CI does and only
 catches bundle-time breakage (a bad import path, a missing asset, a native config change), so run
-it only when you changed one of those. **CI runs `npx tsc --noEmit`, `npm test`, all three doc checks in `--check` mode, and
-`npx expo export --platform ios` on every PR, and on every push to `main`** — that whole list,
-not just the tests.
+it only when you changed one of those. **CI runs `npx tsc --noEmit`, `npm test`,
+`useDemoStore.test.ts` again under `--randomize`, and all three doc checks in `--check` mode on
+every PR and every push to `main`** — that whole list, not just the tests. `npx expo export
+--platform ios` runs on every push to `main`, and on a PR only when it touches a path that can
+break the bundle (`package*.json`, `app.json`, `eas.json`, `patches/`, `plugins/`, `modules/`,
+`targets/`, `assets/`; the filter is in `.github/workflows/test.yml`).
 
 **The three generated docs are the single most common reason a PR goes red, and the failure is
 entirely avoidable.** `docs/module-map.md`, `docs/screen-map.md` and `docs/repo-stats.md`
@@ -266,56 +281,30 @@ to run that rather than its parts. Concretely:
   first and the map comes out missing that file's line, `git status` looks clean because the map
   matches what you generated, and CI fails on a file you did add. `git add -A` and *then*
   regenerate, or regenerate a second time after staging.
-- **Run the generators (no `--check`) rather than trying to predict whether you're affected.**
-  `npm run docs` runs all three; they are idempotent and take milliseconds, so if nothing changed
-  they rewrite the same bytes and `git status` stays clean. Running them costs nothing and guessing
-  costs a red PR.
-- **Then check `git status` before you commit.** These files are *generated into your working
-  tree*, so the loop passing locally is not the signal — an uncommitted regenerated file looks
-  exactly like a passing run right up until CI compares against what you actually pushed. That is
-  the whole failure mode: the tests were green every single time.
 - **Never hand-edit any of them.** Fix the source and regenerate.
 
-One missed regeneration doesn't stay one red PR, which is why the rule above is worth this much
-space. The checks used to run on pull requests only, so a merge that skipped them left `main`
-itself stale, and every branch cut from `main` afterwards failed a check it hadn't caused — until
-someone regenerated. `main` is checked on push now (see `.github/workflows/test.yml`), so
-staleness surfaces on the merge that caused it. If the doc check fails on a PR that plainly
-touched no exports, pull `main` and regenerate before hunting through your own diff.
+`npm run verify` already runs the generators and ends on `git status`, so the remaining way to get
+this wrong is committing before you look at that output: an uncommitted regenerated file looks
+exactly like a passing run until CI compares against what you pushed. If the doc check fails on a
+PR that plainly touched no exports, pull `main` and regenerate before hunting through your own diff.
 
 **Never resolve a merge conflict in any of them by hand, and don't trust a clean merge of them
-either.** All three are one line per fact — one per module in the map, one per screen or component
-in the screen map, one per statistic in the repo stats — so git merges them line by line and a
-merge of two individually correct generations is not itself a correct generation. A `+N more` counter is a per-line summary, so a
-merge takes one side's number instead of recounting (`db/database.ts` sat at `+122` against an
-actual `+125` for weeks); a newly added module's line is placed next to whichever context each
-side had, so it can land out of the generator's own sort order, which is what put
-`src/utils/focusWindow.ts` above `src/utils/focusSuggest.ts` in a file the generator sorts the
-other way. Neither shows up as a conflict, and `git status` stays clean, because the file is
-committed and unchanged. The fix is always the same: rerun the generator, never edit the file.
+either.** All three are one line per fact, so git merges them line by line, and a merge of two
+correct generations is not itself a correct generation: a `+N more` counter takes one side's
+number instead of recounting, and a new line can land out of the generator's sort order. Neither
+shows up as a conflict. Rerun the generator; never edit the file.
 
 **`.gitattributes` marks all three `merge=union`, and that choice is load-bearing.** Union keeps
-both sides' lines rather than conflicting. For a file that is one line per fact that is usually
-right outright, and where it isn't (both sides rewrote the same `+N more` counter) the result is
-a duplicate line, which the post-merge hook regenerates away and CI catches. Never blocking,
-never silently wrong for long.
+both sides' lines rather than conflicting, and it is built into git, so GitHub's own mergeability
+check applies it too. A custom merge driver (the earlier approach) needs registering per clone,
+which GitHub's servers never do, so every open PR showed a conflict after every merge to `main`.
+Where union is wrong (both sides rewrote one counter) the result is a duplicate line, which the
+post-merge hook regenerates away and CI catches. `CLAUDE.md` is deliberately not union: it is
+prose, where union would duplicate paragraphs.
 
-What it replaced is the cautionary tale. A custom `generated-doc` driver regenerated these
-properly, but a custom driver has to be registered per clone (`scripts/setup-git-hooks.js`, from
-`postinstall`) and **GitHub's servers run no postinstall**. So every open PR showed a conflict in
-these files after every merge to `main`, while the same merge was clean on any developer's
-machine — a merge that succeeds locally was not evidence the PR was mergeable, and the fix each
-time was a manual merge and a wasted CI run per PR. Union is built into git and needs no config,
-so GitHub applies it too. Reproduce the old failure with
-`git -c merge.generated-doc.driver= merge <branch>` if you ever need to see it.
-
-`CLAUDE.md` is deliberately not in that list: it is prose, where union would duplicate paragraphs
-rather than facts. Its generated numbers moved to `docs/repo-stats.md` for exactly that reason.
-
-`npm install` still sets `core.hooksPath` to `.githooks/`, which regenerates after a merge and
-blocks a push whose generated docs are stale. That half is still per-clone and still a safety net
-rather than a guarantee: a clone that never ran `npm install` doesn't have it. CI's `--check`
-steps stay the real gate.
+`npm install` sets `core.hooksPath` to `.githooks/`, which regenerates after a merge and blocks a
+push whose generated docs are stale. That is per-clone and a safety net; CI's `--check` steps are
+the real gate.
 
 There is no ESLint or Prettier config. Match the style of the file you're in; don't reformat
 untouched lines.
@@ -325,8 +314,9 @@ untouched lines.
 Start from this table instead of searching. Most work lands in one of these files.
 
 A row that names a `docs/arch/` file means the reasoning behind that feature lives there, and
-**reading it is not optional before changing that area** — those notes are settled decisions
-with the arguments attached, and the "don't do X" ones exist because X was tried. They sit in
+**reading it is not optional before changing that area** — those notes are strong defaults
+with the arguments attached, and the "don't do X" ones exist because X was tried. Where a note and
+the code disagree, the code is what ships: fix the note in the same PR. They sit in
 their own files rather than here so a task about groceries doesn't cost every other task 20,000
 tokens of context. For anything the table doesn't cover, `docs/module-map.md` lists every module
 in `src/utils`, `src/store`, `src/hooks`, `src/db` and `src/services` with the symbols it
@@ -344,18 +334,18 @@ file: the two maps are indexes, not write-ups.
 | a task row — swipes, checkbox, expansion | `src/components/TaskItem.tsx` |
 | quick-add text parsing (`"pay rent tmrw 5p #home"`) | `src/utils/parseTaskInput.ts`, `parseNaturalDate.ts` |
 | what a template asks before it creates anything | `src/utils/templateQuestions.ts` — see `docs/arch/template-questions.md` |
-| a task the app writes unasked, and the quiet-project offer | `src/utils/generatedTasks.ts` + `src/utils/projectReviewTasks.ts` — see `docs/arch/generated-tasks.md` (twenty-one generators now: `mealThaw` is the newest, `weighIn` the only one that fires on *missing* data, `moodNudge` the only one whose trigger is a trend in the user's own answers rather than a date, a row or a one-off threshold, and `weekendNudge` the only one that asks about a span of days rather than a single one) |
+| a task the app writes unasked, and the quiet-project offer | `src/utils/generatedTasks.ts` (`GENERATED_KINDS` is the list of generators) + `src/utils/projectReviewTasks.ts` — see `docs/arch/generated-tasks.md` |
 | a bare weekend, and the project it offers to fill it from | `src/utils/weekendTasks.ts` + `Project.weekendSource` — see `docs/arch/generated-tasks.md` |
-| a calendar event's title turning into a task, by rule or by tap | `src/utils/eventTasks.ts` (the rules) + `taskFieldsFromEvent` in `src/utils/calendarEventImport.ts` (the fields either path writes) — see `docs/arch/generated-tasks.md`. The second reader of an event title after `calendarHistory.ts`, and it deliberately parses nothing: the user supplies the word and the task, which is what keeps it clear of "a guess is never written down" |
-| adding a calendar event, and who an event is with | `src/utils/eventPeople.ts` + `src/store/useEventPeopleStore.ts` + `presentEventCreate` in `src/utils/calendarSync.ts` — see `docs/arch/people.md`. The event goes through Apple's sheet into whatever calendar the user picks (Google included); the people link is app-only metadata keyed by occurrence, never an attendee, and syncs in `event_people_links`, naming the event by the calendar server's id (`todo-eventkit-bridge`) so it matches on the other phone. Tasks planned around an event (its "+" and "Plan from a template") are the sibling record, `src/utils/eventTaskLinks.ts`, which only ever *offers* to move them when the event moves |
+| a calendar event's title turning into a task, by rule or by tap | `src/utils/eventTasks.ts` (the rules) + `taskFieldsFromEvent` in `src/utils/calendarEventImport.ts` (the fields either path writes) — see `docs/arch/generated-tasks.md`. It deliberately parses nothing: the user supplies the word and the task |
+| adding a calendar event, and who an event is with | `src/utils/eventPeople.ts` + `src/store/useEventPeopleStore.ts` + `presentEventCreate` in `src/utils/calendarSync.ts` — see `docs/arch/people.md`. The people link is app-only metadata keyed by occurrence, never an attendee. Tasks planned around an event are the sibling record, `src/utils/eventTaskLinks.ts` |
 | a weather rule ("sunny -> sunscreen") and the location/forecast read behind it | `src/utils/weatherTasks.ts` + `src/utils/weatherCondition.ts` + `src/store/useWeatherStore.ts` — see `docs/arch/generated-tasks.md` |
 | anything read out of Apple Health | `src/store/useHealthStore.ts` + `src/utils/healthBridge.ts` + `modules/todo-health-bridge/` — see `docs/arch/health-data.md`. Read it first: three of its four rules are about what a reader may *claim*, and the big one is that a refused read and a day with nothing recorded are one answer |
 | writing a logged meal back to Apple Health | `src/utils/healthFoodSync.ts` + `writeFoodSamples`/`deleteHealthSamples` in `modules/todo-health-bridge/` — see `docs/arch/health-data.md`. The only write in the app that can be un-written, which is why it keeps sample ids; absent stays absent, never a zero |
 | a task that reads as ready when Apple Health reaches a number | `src/utils/healthTarget.ts` + the `health` arm of `src/utils/taskKinds.ts` — `timer.ts` with a reading in place of a clock, and it derives *ready* only. Nothing here completes a task, for the reason `docs/arch/health-data.md` gives at length |
 | your weight over time, and recording one | `src/utils/weightLog.ts` + `src/utils/healthWeightSync.ts` + `src/screens/WeightScreen.tsx` — see `docs/arch/health-data.md`. Health is the record and the app keeps no copy; the rule that let weight in at all is that **the app derives nothing from it on its own** (no rule metric, no BMI, no healthy range, no "trending") |
-| a weight goal, the rate it's aimed at, and progress against it | `src/utils/weightGoal.ts` + `src/components/WeightGoalSheet.tsx` — see `docs/arch/health-data.md`. The one thing the weight rule above carves out, and only because the target is **typed in**: nothing proposes one, nothing judges one, nothing generated fires off one, and ahead/behind is said about the user's own pace rather than about them |
-| a calorie target that rises on a day you moved more than usual | `src/utils/activeEnergyBoost.ts` — see `docs/arch/health-data.md`. `waterExerciseBoost.ts` with active calories in place of exercise minutes, and the same three rules: display-time only, off until turned on, and the stored target never touched. The baseline is the whole feature (it is what stops a walk being paid for twice), it floors at zero because a part-day reading would otherwise open every morning below the target, and the macros are deliberately not scaled with it |
-| a daily calorie figure worked out from a body, and the macro split of it | `src/utils/energyBudget.ts` — see `docs/arch/health-data.md`. Mifflin-St Jeor over fields the person typed; it **proposes** and the sheet's button is what writes `nutritionTargets`. The activity half has two bases (`maintenanceKcal`'s multiplier and `measuredMaintenanceKcal`'s reading, sharing `budgetFromMaintenance`) and the sheet opens on the multiplier, since neither is ranked above the other. A missing field yields null, never an average, `MIN_PROPOSED_KCAL` floors the suggestion without capping what the user may set, and `MACRO_PRESETS` names four splits while preselecting none |
+| a weight goal, the rate it's aimed at, and progress against it | `src/utils/weightGoal.ts` + `src/components/WeightGoalSheet.tsx` — see `docs/arch/health-data.md`. The one carve-out from the weight rule above, and only because the target is typed in |
+| a calorie target that rises on a day you moved more than usual | `src/utils/activeEnergyBoost.ts` (the `waterExerciseBoost.ts` shape) — see `docs/arch/health-data.md`. Display-time only; the stored target is never touched |
+| a daily calorie figure worked out from a body, and the macro split of it | `src/utils/energyBudget.ts` — see `docs/arch/health-data.md`. It **proposes**; the sheet's button is what writes `nutritionTargets` |
 | the task asking you to weigh in | `src/utils/weightTasks.ts` — see `docs/arch/generated-tasks.md`. The only generator that fires on *missing* data, and deliberately not part of `health`: that one reacts to a reading, this one asks for one |
 | a meal of the day as a task, and choosing one from Today | `src/utils/mealSlotTasks.ts` — see `docs/arch/generated-tasks.md` |
 | a planned meal you haven't got the ingredients for | `src/utils/mealShortfallTasks.ts` — see `docs/arch/generated-tasks.md` |
@@ -363,14 +353,14 @@ file: the two maps are indexes, not write-ups.
 | date math, recurrence | `src/utils/dateUtils.ts` |
 | a timed task's countdown, and splitting it across subtasks | `src/utils/timer.ts` + `src/utils/timerSegments.ts` — see `docs/arch/timed-tasks.md` |
 | a stock of something that runs down as a task repeats, and ordering more | `src/utils/supply.ts` — see `docs/arch/supplies.md` |
-| a target logged N times a day, its pace ramp, and the same thing counted per week | `src/utils/quotaSchedule.ts` (the span) + `Task.quotaPeriod`. "Three times a week" is a quota with a week-long span, deliberately not a `RecurrenceType`: a recurrence answers "what date is next" and this has no next date to give. Every reader is written against the span, so widening it is the whole feature |
+| a target logged N times a day, its pace ramp, and the same thing counted per week | `src/utils/quotaSchedule.ts` (the span) + `Task.quotaPeriod`. A weekly target is a quota with a week-long span, deliberately not a `RecurrenceType` (see the file's header) |
 | working a queue of tasks one at a time, with breaks | `src/utils/focusPlan.ts` + `src/store/useFocusStore.ts` — see `docs/arch/focus-sessions.md` |
-| what failing a task costs, in blocked apps | `src/utils/penaltyShield.ts` (the rule) + `sweepTaskPenalties`/`logSlip` in `useTaskStore` (the two triggers). The one feature here that does something to somebody for falling short, so read its refusals first: a task the app itself was withholding is never charged, a charge found on a later day is recorded without being served, and `undoSlip` deliberately doesn't refund |
-| apps held until a task is done ("no YouTube before the walk") | `src/utils/appGate.ts` + `Task.gatesApps` — the other direction from the penalty above: a precondition with no length of its own rather than a consequence measured in minutes. Read its two refusals first, since both are what stop it trapping somebody: a gate is live exactly while `isTaskVisible` says its task is, and a negative task can never be one |
-| whether the apps are blocked *right now* | `src/utils/appShield.ts` (the rule) + `src/utils/appShieldReconcile.ts` (the one that reads the stores) — the single arbiter over the focus shield, the penalty and the gate. They drive one system shield, so it ORs them rather than each reconciling alone; two independent syncs was a race where one reason's end cleared the other's block. The reconciler is a plain function rather than only the hook because a background refresh has no React tree and is where a penalty gets charged |
-| a block that starts or ends with the app closed | `scheduleGateWindow`/`schedulePenaltyExpiry` in `todo-screentime-bridge` + `intervalDidStart`/`intervalDidEnd` in `targets/todo-activity-monitor/`. Two one-shot DeviceActivity windows, opposite directions, and the extension may raise one only on the app's written permission (`pendingGateDetail`). Read `gateWindowFor`'s horizon first: a schedule's bounds are clock times, not dates |
+| what failing a task costs, in blocked apps | `src/utils/penaltyShield.ts` (the rule) + `sweepTaskPenalties`/`logSlip` in `useTaskStore` (the two triggers). Read its refusals first: a task the app was withholding is never charged, a charge found on a later day is recorded but not served, and `undoSlip` doesn't refund |
+| apps held until a task is done ("no YouTube before the walk") | `src/utils/appGate.ts` + `Task.gatesApps`. A gate is live exactly while `isTaskVisible` says its task is, and a negative task can never be one |
+| whether the apps are blocked *right now* | `src/utils/appShield.ts` (the rule) + `src/utils/appShieldReconcile.ts` (reads the stores; a plain function so background refresh can call it). The single arbiter over the focus shield, the penalty and the gate: they drive one system shield, so it ORs them |
+| a block that starts or ends with the app closed | `scheduleGateWindow`/`schedulePenaltyExpiry` in `todo-screentime-bridge` + `intervalDidStart`/`intervalDidEnd` in `targets/todo-activity-monitor/`. Read `gateWindowFor`'s horizon first: a schedule's bounds are clock times, not dates |
 | the screen somebody sees when they open a blocked app | `targets/todo-shield-config/` (what it says) + `targets/todo-shield-action/` (its button) — see `docs/native-targets.md`. Two targets for one screen, and the layout is the system's; all that's ours is the words, which come from the App Group because the extension can reach nothing else |
-| a project that knows when you're away, and every reader of that span | `src/utils/awayDates.ts` + `Project.awayStart`/`awayEnd` — see `docs/arch/away-dates.md`. Read it before adding a fifth half-implementation of "the user is away from home"; it names the four that already exist and the one discipline that keeps them in step |
+| a project that knows when you're away, and every reader of that span | `src/utils/awayDates.ts` + `Project.awayStart`/`awayEnd` — see `docs/arch/away-dates.md`. Every "the user is away from home" reader goes through this span; read the doc before adding another |
 | moving a whole trip when its dates change | `src/utils/awayShift.ts` + `src/components/AwayShiftSheet.tsx` — see `docs/arch/away-dates.md`. The offsets are deliberately not stored on the task, and that section says why |
 | where you're going, and the forecast for it | `Project.destination` + `src/services/geocode.ts` + `src/utils/tripForecast.ts` — see `docs/arch/away-dates.md`, including the itinerary boundary it refuses to cross |
 | vacation mode turning itself on for a trip, and the list you shop from while away | `Project.awayPauses`/`checkAwayVacation` + `Project.awayListId`/`checkAwayGroceryList` — see `docs/arch/away-dates.md` |
@@ -387,9 +377,9 @@ file: the two maps are indexes, not write-ups.
 | how you're feeling, and what that looks like against your tasks | `src/utils/moodLog.ts` + `src/utils/moodInsights.ts` + `src/utils/moodTasks.ts` — see `docs/arch/mood-log.md` |
 | reading the mood log back — the whole history, one symptom, or a file for a doctor | `src/utils/moodHistory.ts` + `src/utils/moodExport.ts` — see `docs/arch/mood-log.md` |
 | marking the day something changed (started a medicine, a new job) and comparing mood before/after it | `src/store/useMilestoneStore.ts` + `milestoneMoodContrast` in `src/utils/moodInsights.ts` — see `docs/arch/mood-log.md` |
-| a dose taken, and how often you reach for something | `src/utils/medicationLog.ts` + `Task.medicationName` — see `docs/arch/mood-log.md`. The scheduled half still rides a repeating task, which is what `taskMoodContrasts` reads; this is the as-needed dose that has no task to tick and the amount a completion can't carry. Read its refusal first: there is deliberately no medication↔symptom contrast, because for an as-needed medicine that comparison is reverse-causal by construction |
-| how you're feeling against what you ate | `foodDayInputs` in `src/utils/nutritionStats.ts` + `nutrientInsight`/`foodMoodContrasts` in `src/utils/moodInsights.ts` — see `docs/arch/mood-log.md`. The two rules to read first are both about a day logged too thinly to stand for a day's eating, which is the one gap here that arrives looking like a number rather than a hole |
-| a symptom against what you ate | `symptomFoodContrasts` + `symptomFoodDays` in `src/utils/moodInsights.ts`, rendered on `SymptomDetailScreen` — see `docs/arch/mood-log.md`. The most loaded read in the app: scoped to one symptom on purpose, and it needs a day to carry a *log entry* rather than only a food, since a symptom is a presence and an unlogged day would otherwise count as one without it |
+| a dose taken, and how often you reach for something | `src/utils/medicationLog.ts` + `Task.medicationName` — see `docs/arch/mood-log.md`, including why there is deliberately no medication↔symptom contrast |
+| how you're feeling against what you ate | `foodDayInputs` in `src/utils/nutritionStats.ts` + `nutrientInsight`/`foodMoodContrasts` in `src/utils/moodInsights.ts` — see `docs/arch/mood-log.md`, whose two rules about a too-thinly-logged day come first |
+| a symptom against what you ate | `symptomFoodContrasts` + `symptomFoodDays` in `src/utils/moodInsights.ts`, rendered on `SymptomDetailScreen` — see `docs/arch/mood-log.md`. Scoped to one symptom on purpose |
 | the people you want to keep up with, and their birthdays | `src/store/usePersonStore.ts` + `src/utils/birthdayTasks.ts` — see `docs/arch/people.md` |
 | filling a person in from the contact book | `src/utils/contactsImport.ts` + `src/utils/contactsAccess.ts` — see `docs/arch/people.md` |
 | what demo mode shows | `src/utils/demoSeed.ts` — see Demo data below |
@@ -397,10 +387,10 @@ file: the two maps are indexes, not write-ups.
 | what the widget shows | `src/utils/widgetSync.ts` → `src/utils/widgetBridge.ts` → `modules/todo-widget-bridge` |
 | anything written outside the app's own database (widget, Live Activities, the two queues) | `src/utils/widgetBridge.ts` — the one gate, demo mode included |
 | what the app catches up on because time passed, at launch or in the background | `src/utils/maintenancePasses.ts` — one list, three groups; `src/utils/backgroundRefresh.ts` is the only thing that runs while the app is closed |
-| the record of what the app wrote or deleted unattended | `src/utils/unattendedLedger.ts` + `src/store/useUnattendedStore.ts` + `UnattendedEntry` in `src/types/index.ts`. Four write sites, all choke points: the create and both delete paths in `generatedTaskSync.ts`, plus `sweepExpiredTasks` and `purgeOldCompletedTasks`. Read its three refusals first — it records the *effect* and never the pass (27 idempotent catch-up steps run at every launch, background refresh and foreground return), it records nothing about the user, and a recurrence or quota successor is not an entry. The one table in the app with no "keep forever" answer available to it (`ledgerCutoff`) |
+| the record of what the app wrote or deleted unattended | `src/utils/unattendedLedger.ts` + `src/store/useUnattendedStore.ts` + `UnattendedEntry` in `src/types/index.ts`. Writes come from `generatedTaskSync.ts`, `sweepExpiredTasks`, `purgeOldCompletedTasks` and the two generators that create outside it (`recordGenerated` in `useTaskStore`); grep `recordGenerated`/`recordMany` for the current set. It records the *effect*, never the catch-up pass that ran; nothing about the user; and not a recurrence or quota successor |
 | importing from Apple Reminders (and so voice capture) | `src/utils/remindersImport.ts` (+ `remindersImportSync.ts`) — see `docs/arch/reminders-import.md` |
 | the grocery list and a Reminders list kept in step both ways | `src/utils/groceryReminderMirror.ts` — see `docs/arch/reminders-import.md` |
-| the Face ID app lock, and the cover over the app-switcher snapshot | `src/utils/appLock.ts` + `src/store/useAppLockStore.ts` + `src/components/AppLockGate.tsx` + `modules/todo-privacy-shield/` — see `docs/arch/app-lock.md`. The gate cannot present over an open sheet without `SheetModal`'s `preempts`, and cannot be quick enough for the snapshot even with it, which is what the native module is for |
+| the Face ID app lock, and the cover over the app-switcher snapshot | `src/utils/appLock.ts` + `src/store/useAppLockStore.ts` + `src/components/AppLockGate.tsx` + `modules/todo-privacy-shield/` — see `docs/arch/app-lock.md` |
 | where the Anthropic API key is kept | `src/utils/secureApiKey.ts` — see `docs/arch/app-lock.md` |
 | the grocery list / catalog | `src/store/useGroceryStore.ts` + `src/screens/GroceryScreen.tsx` |
 | a separate list for a week away, and a row in two trolleys at once | `src/utils/groceryLists.ts` + `GroceryListEntry` — see `docs/arch/groceries.md` |
@@ -416,14 +406,14 @@ file: the two maps are indexes, not write-ups.
 | the app asking whether you still have something | `src/utils/pantryCheckTasks.ts` — see `docs/arch/groceries.md` |
 | going through the whole pantry a card at a time | `src/utils/pantryReview.ts` + `src/components/PantryReviewSheet.tsx` — see `docs/arch/groceries.md` |
 | whether a thing got used up or went bad | `src/utils/itemDisposal.ts` — see `docs/arch/groceries.md` |
-| saying that to Siri ("mark bananas as used up") | `modules/todo-widget-bridge/ios/MarkDisposedIntent.swift` + `src/utils/pantryIndex.ts` — see `docs/native-targets.md`. The only intent here whose phrase carries a *value*, which is why it needs an `AppEntity` and so an App Group index to resolve one against: a phrase cannot interpolate a `String`. The mark itself still happens in JS on the next foreground, same queue-and-open-the-app shape the other two intents use |
+| saying that to Siri ("mark bananas as used up") | `modules/todo-widget-bridge/ios/MarkDisposedIntent.swift` + `src/utils/pantryIndex.ts` — see `docs/native-targets.md`. The intent whose phrase carries a value, so it resolves against an App Group index |
 | scanning a barcode into the list | `src/utils/gtin.ts` + `src/services/productLookup.ts` + `src/utils/scanResolve.ts` |
 | how much of a cooked dish ended up on your plate | `Recipe.cookedWeightG` + `src/utils/mealLog.ts` — see `docs/arch/recipes.md`. The plate over the weighed dish is the fraction eaten; servings stay for every dish nobody has weighed |
-| whether a planned meal counts as eaten, in either screen | `src/utils/mealLogCoverage.ts` — the join between the meal plan and the food log, and it is the **(day, slot) pair** rather than `FoodLogEntry.mealPlanEntryId`. That column is stamped on one route into the log out of several, so a lunch typed in by hand left the plan reading unlogged, the nudge asking the next morning and the completion prompt offering again. Read its header before narrowing it back: it derives and never writes, for the reason a dinner holding two dishes gives |
+| whether a planned meal counts as eaten, in either screen | `src/utils/mealLogCoverage.ts`. The join is the **(day, slot) pair**, not `FoodLogEntry.mealPlanEntryId` (which only one route into the log stamps); read its header before narrowing it |
 | writing down what you ate, and a day's totals | `src/utils/foodLog.ts` + `src/store/useFoodLogStore.ts` (+ `src/utils/nutritionTargets.ts` for the figure a total is read against) |
-| correcting an entry rather than deleting and relogging it | `foodLogEntryEdit` in `src/utils/foodLog.ts` (which entries can reopen) + `reviseEntry` in `useFoodLogStore` (the Health retract-then-rewrite) + `editing` on `FoodLogEntrySheet` — see `docs/arch/health-data.md`. An amount is re-measured against the food's own panel, never multiplied out of stored figures that are already one helping's worth. An unfiled database food keeps its panel on the entry (`FoodLogEntry.sourcePanel`) so it reopens too, and an estimate, which has no panel, is scaled instead: more or less of its own figures, in its own count when its words give one ("3 slices" of a 2-slice estimate) and a closed set of shares and multiples when they don't (`estimateAmountPatch` + `estimateCount` + `EstimateAmountSheet`), always of the whole meal as estimated |
-| a glass of water | `src/utils/waterLog.ts` — one entry a day, stepped up and down, rather than one per glass; the day view's card is the only thing that writes it. It is an ordinary food log entry, so the meal write is what puts it in Health and `isWaterEntry` is a derived rule rather than a column. `waterUnit` in settings is display only (ml or fl oz) and is shared with the task editor's own water stepper |
-| saying which catalog row a scanned or logged food is | `CatalogLinkPicker` (the one ranked search every surface reuses) + `scanLinkTarget` in `src/utils/scanResolve.ts` (which of the matcher's two branches a hand-pick belongs to) + `catalogPanelWrite` in `src/utils/foodNutrition.ts` (whether filing a database's figures may overwrite a row's own). An entry's `itemId` is provenance and nothing else: re-pointing one never rewrites `FoodLogEntry.nutrition`, which is a snapshot of the helping |
+| correcting an entry rather than deleting and relogging it | `foodLogEntryEdit` in `src/utils/foodLog.ts` (which entries can reopen) + `reviseEntry` in `useFoodLogStore` (the Health retract-then-rewrite) + `editing` on `FoodLogEntrySheet`; an estimate is scaled through `estimateAmountPatch` + `EstimateAmountSheet` — see `docs/arch/health-data.md`. An amount is re-measured against the food's own panel, never multiplied out of the stored helping |
+| a glass of water | `src/utils/waterLog.ts` — one food log entry a day, stepped up and down; `isWaterEntry` is a derived rule, not a column, and `waterUnit` is display only |
+| saying which catalog row a scanned or logged food is | `CatalogLinkPicker` + `scanLinkTarget` in `src/utils/scanResolve.ts` + `catalogPanelWrite` in `src/utils/foodNutrition.ts`. An entry's `itemId` is provenance only: re-pointing it never rewrites `FoodLogEntry.nutrition` |
 | how much of a scanned package was eaten | `src/utils/scanPortion.ts` — one serving or the whole package, and the package option is withheld rather than guessed when the source stated no pack size |
 | what a food is made of, and reading a label panel out of a barcode source | `src/utils/foodNutrition.ts` (the record) + `src/utils/nutritionParse.ts` (the two sources' units, which disagree) |
 | photographing a nutrition panel no barcode source had | `src/utils/labelOcr.ts` — `receiptOcr.ts`'s row geometry over a label, filling `NutritionPanelSheet`'s existing form rather than writing a record |
@@ -431,8 +421,8 @@ file: the two maps are indexes, not write-ups.
 | finding a plain food ("onion", "butter") in a food database by name | `src/services/foodSearch.ts` + `src/utils/foodSearchMatch.ts` (ranks and refuses; the portion table needs a second request) |
 | turning "2 cups chopped onion" into grams | `src/utils/ingredientGrams.ts` — every weight comes from the food's own portion table, never a global density |
 | a recipe's nutrition estimate, and the row under its cost | `src/utils/recipeNutrition.ts` — `recipeCost.ts` with grams in place of prices, plus a per-nutrient coverage floor. `weekNutrition`/`describeWeekNutrition` are the planned-week pair, splitting one body by noun exactly as `describeRecipeCost`/`describeWeekCost` do |
-| filling in the ingredients a recipe's figures couldn't count | `src/components/RecipeNutritionSheet.tsx` + `recipeNutritionLines`/`nutritionGaps` — the rollup's own walk stopped one step early, so "from 6 of 9 ingredients" and the list of the other three can't describe different lines. Three states, three remedies, and they aren't interchangeable; `weighableLine` (`ingredientGrams.ts`) decides whether a scale would settle a line by re-running the refusal rather than reasoning about it |
-| estimating a whole recipe's nutrition with AI when too few ingredients have catalog figures | `src/utils/recipeNutritionEstimate.ts` + `estimateRecipeNutrition` in `src/services/aiSuggestions.ts` — offered in `RecipeNutritionSheet` only when `recipeNutrition.ts`'s real rollup comes back null; a display-only proposal, never written to the recipe or the catalog, so asking again after an edit is the only way to keep it current |
+| filling in the ingredients a recipe's figures couldn't count | `src/components/RecipeNutritionSheet.tsx` + `recipeNutritionLines`/`nutritionGaps` (the rollup's own walk, so the count and the list can't disagree) + `weighableLine` in `ingredientGrams.ts` |
+| estimating a whole recipe's nutrition with AI when too few ingredients have catalog figures | `src/utils/recipeNutritionEstimate.ts` + `estimateRecipeNutrition` in `src/services/aiSuggestions.ts` — offered only when the real rollup is null, and display-only: never written to the recipe or the catalog |
 | reading a receipt's text on the device before it goes to the model | `src/utils/receiptOcr.ts` + `modules/todo-vision-bridge` |
 | remembering which item a barcode is | `ItemProduct.gtin` + `gtinAliasText` in `src/utils/storeAliases.ts` — see `docs/arch/groceries.md` |
 | what a store's receipt shorthand means | `src/utils/storeAliases.ts` (+ the `remembered` tier in `receiptMatch.ts`) |
@@ -445,7 +435,7 @@ file: the two maps are indexes, not write-ups.
 | "if there's no butter, use margarine" | `src/utils/itemSubs.ts` — see `docs/arch/groceries.md` |
 | "white onion is still onion" | `src/utils/itemVarieties.ts` — see `docs/arch/groceries.md` |
 | "always use oat milk for milk" | `src/utils/standingSwaps.ts` — see `docs/arch/groceries.md` |
-| a cookbook's index, and finding what to cook by ingredient ("Cook with…") | `src/utils/cookbookIndex.ts` + `CookbookIndexEntry` + `src/components/CookWithSheet.tsx` — see `docs/arch/recipes.md`. An index line is deliberately **not a recipe**: its own table, read only by Cook with… and the book's own page, so a 150-dish index never reaches a picker, a count or Backfill. Its "What I have" mode (`findWithPantry`) matches the pantry by key, not by word. Scanning an index page (`CookbookIndexScanSheet`, `extractCookbookIndex`) sends the photo rather than an on-device read, because the columns and indentation are the structure |
+| a cookbook's index, and finding what to cook by ingredient ("Cook with…") | `src/utils/cookbookIndex.ts` + `CookbookIndexEntry` + `src/components/CookWithSheet.tsx` — see `docs/arch/recipes.md`. An index line is deliberately **not a recipe**: its own table, read only by Cook with… and the book's page |
 | one recipe used inside another | `src/utils/recipeComponents.ts` — see `docs/arch/recipes.md` |
 | "serrano or jalapeño", decided at the shelf | `ChoiceResolution.undecided` in `src/utils/recipeComponents.ts` — see `docs/arch/groceries.md` |
 | which heading an ingredient sits under | `src/utils/recipeSections.ts` — see `docs/arch/recipes.md` |
@@ -458,18 +448,18 @@ file: the two maps are indexes, not write-ups.
 | the amount and the swap a step's own sentence implies | `src/utils/stepIngredients.ts` + `src/components/StepText.tsx` — see `docs/arch/recipes.md`. The recipe's own list only, whole words, two closed tables for the shorter name a method actually uses, a name used as a verb takes nothing, and an amount spent over several steps says so |
 | either of a recipe's two timers, from any screen | `src/hooks/useRecipeTimer.ts` — see `docs/arch/recipes.md` |
 | a timer for the cooking step you're on | `src/utils/stepTimers.ts` + `src/store/useStepTimerStore.ts` — see `docs/arch/recipes.md` |
-| a recipe's photo, and getting it to another device | `src/utils/recipePhoto.ts` (the file, and `recipeImageOnDevice`) + `src/utils/recipeImageSync.ts` + `pushImages` in `src/utils/syncEngine.ts` — see `docs/arch/recipes.md`. A row carries only the photo's path; the bytes ride in photo-only payloads after the rows, each photo once per transport by filename, and a photo push that fails is not a failed sync |
+| a recipe's photo, and getting it to another device | `src/utils/recipePhoto.ts` + `src/utils/recipeImageSync.ts` + `pushImages` in `src/utils/syncEngine.ts` — see `docs/arch/recipes.md`. A row carries only the path; a failed photo push is not a failed sync |
 | a recipe page shared in from another app's share sheet | `src/utils/sharedRecipeLinks.ts` + `targets/todo-share/` — see `docs/arch/recipes.md` |
-| a store that fills itself from outside the app, and a read that lands too late | `src/utils/refreshGuard.ts` — the calendar, the weather, Apple Health and Screen Time all await a device read and then write what came back. A generation token per independent read decides whether the answer is still the one being asked for; `clear()` moves it on, which is what stops a revoked read writing its data back after the user switched the feature off |
-| syncing between devices | `src/utils/syncEngine.ts` + `syncMerge.ts` + `cloudKitTransport.ts` + `src/store/useSyncStore.ts`. Two rows naming the same thing (a "Milk" added on each device) fold into one by `src/utils/naturalKeyFold.ts`, whose rules are all idempotent on purpose (read its header before making one a sum). Two transports now, and `runSyncAll` runs them **sequentially** on purpose: they share one database across an `await`, so in parallel one pushes back what the other just applied |
+| a store that fills itself from outside the app, and a read that lands too late | `src/utils/refreshGuard.ts` — a generation token per device read (calendar, weather, Health, Screen Time); `clear()` is what stops a revoked read writing its data back |
+| syncing between devices | `src/utils/syncEngine.ts` + `syncMerge.ts` + `cloudKitTransport.ts` + `src/store/useSyncStore.ts`; duplicates fold in `src/utils/naturalKeyFold.ts` (read its header before making a rule a sum). `runSyncAll` runs the two transports **sequentially** on purpose: they share one database across an `await` |
 | syncing with something that isn't an Apple device | `src/utils/httpSyncTransport.ts` + `mcp/src/syncStore.ts` — see `docs/arch/mcp-server.md`. A payload store the user runs; it never parses a payload, which is what keeps the merge rules on the devices. Configuration is the opt-in (a URL in settings, a token in the keychain, both or neither) |
-| letting Claude read or write the app's data | `mcp/` — see `docs/arch/mcp-server.md`. Its own npm package, deliberately not a dependency of the app; it opens a `todo.db` in Node by putting `mcp/src/expoSqliteShim.ts` in front of `expo-sqlite`, so the whole of `src/db` and `src/utils` runs unchanged. It reads tasks, projects, groceries and the three day-keyed logs, and writes templates, tasks, completions, reschedules and the grocery list behind a second token (`MCP_WRITE_TOKEN`) whose scope is decided per request. Each write moved the app's own core out of a store rather than reimplementing it: `taskDraft.ts`, `taskCompletion.ts`, `groceryAdd.ts`. Nothing is deployed. **weight is structurally unreadable** (HealthKit is the record and there is no table), which is the health model working rather than a gap |
+| letting Claude read or write the app's data | `mcp/` — see `docs/arch/mcp-server.md`. Its own npm package, not an app dependency; `mcp/src/expoSqliteShim.ts` lets `src/db` and `src/utils` run unchanged in Node. Writes sit behind `MCP_WRITE_TOKEN` and reuse the app's own cores (`taskDraft.ts`, `taskCompletion.ts`, `groceryAdd.ts`) rather than reimplementing them |
 | exporting or restoring a backup | `src/utils/backup.ts` + `src/utils/backupFile.ts` |
-| writing tasks to the system calendar | `src/utils/calendarSync.ts` (+ `deadlineCalendarSync.ts`, `mealCalendarSync.ts`). A meal's or a deadline's event is written through `writeAllDayEvent` in `src/utils/calendarEventLink.ts`, which keeps the calendar server's id beside the device's and finds the event by it when a restored backup's device id names nothing (`adoptTimeBlock` in `useTaskStore` does the same for a time block). Deletes go through `deleteLinkedEvent` for the same reason, completion events included, and `calendarIdBackfill.ts` fills the server ids in once at launch without restamping a row for sync |
+| writing tasks to the system calendar | `src/utils/calendarSync.ts` (+ `deadlineCalendarSync.ts`, `mealCalendarSync.ts`). Meal and deadline events go through `writeAllDayEvent` (`src/utils/calendarEventLink.ts`) and deletes through `deleteLinkedEvent`, both of which keep and fall back to the calendar server's id |
 | reading free/busy out of the system calendar | `src/utils/calendarBusy.ts` + `src/store/useCalendarStore.ts` |
 | a running list of things with no date (doctor questions, a wish list) | `Project.kind` in `src/types/index.ts` — a project drawn as a list; the members are ordinary undated tasks |
 | pulling tasks out of a project | `src/utils/projectPull.ts` |
-| what a task is waiting on, and what it blocks | `src/utils/blocking.ts` + `src/utils/blockerRegistry.ts`. A task can wait on several and waits for all of them, so **read its blockers only through `blockerIdsOf` / `liveBlockersOf` / `isBlocked`, and write them only through `blockerFields`**. `blockedById` alone is just the first of the set (`blockedByIds` holds the rest), and a blocker that is done or archived holds nothing: reading the raw pointer is how a row kept saying "After X" with X long finished |
+| what a task is waiting on, and what it blocks | `src/utils/blocking.ts` + `src/utils/blockerRegistry.ts`. A task can wait on several, so **read blockers only through `blockerIdsOf` / `liveBlockersOf` / `isBlocked`, and write them only through `blockerFields`**: `blockedById` alone is just the first, and a finished blocker holds nothing |
 | how loaded a day is, and lightening an overloaded one | `src/utils/dayLoad.ts` + `src/utils/deloadPlan.ts` |
 | what lands before a date, and whether it fits | `src/utils/lookAhead.ts` (+ `src/utils/taskMoves.ts`, shared with `deloadPlan`) |
 | a recurring habit and whether it's on track | `src/utils/rhythms.ts` (+ `rhythmsSettings.ts`) |
@@ -489,37 +479,25 @@ end costs more context than the rest of the task will. Grep for the symbol and r
 surrounding range instead; `docs/module-map.md` says which file owns what.
 
 **`docs/repo-stats.md` has the current figures** — how many test suites there are, which files
-are over 1,000 lines, and the ten biggest source files by name. It is generated from the tree
-and checked in CI, so it is the one place those numbers are worth reading. They used to sit in
-this file as a marked block; see the note on `.gitattributes` above for why they moved.
+are over 1,000 lines, the ten biggest source files by name, and which big components still have no
+map (below). It is generated from the tree and checked in CI, so it is the one place those numbers
+are worth reading.
 
-**The twenty-one single-component files carry their own map.** `TaskEditor.tsx`, `TodayScreen.tsx`,
-`TaskItem.tsx`, `QuickAddModal.tsx`, `MealPlanScreen.tsx`, `RecipeDetailScreen.tsx`,
-`RecipeCreateSheet.tsx`, `GroceryItemSheet.tsx`, `TemplateItemEditor.tsx`, `LogbookScreen.tsx`,
-`GroceryScreen.tsx`, `SuggestMealsSheet.tsx`, `FoodLogEntrySheet.tsx`, `CookModeSheet.tsx`, `EstimateMealSheet.tsx`,
-`ReceiptImportSheet.tsx`, `GroceryAddField.tsx`, `GeneratedTasksSection.tsx`, `GroceryRow.tsx`,
-`FinishShoppingSheet.tsx` and `GroceryAislesSheet.tsx` are
-each one component holding most of the file, so there are almost no top-level symbols to grep
-for — `TaskEditor.tsx` has six in 4,200 lines and `RecipeDetailScreen.tsx` has two in 1,900.
-Each opens with a short header comment saying what's where, and its logic half is divided by
-`// ==== <name> ====` banners; `grep -n '// ===='` on one of them is its table of contents. The
-banners stop at the JSX, because a `//` comment can't go inside a `return (`: past the render
-banner, the landmarks are the props already there (`<EditorGroup label="…">` for a card in the
-task editor). Keep a banner accurate when you move code across it, and add one when a file grows
-a region that isn't any of the ones listed.
+**A single-component file over 1,000 lines carries its own map.** `TaskEditor.tsx`,
+`TodayScreen.tsx`, `TaskItem.tsx` and most of the big sheets and screens are one component holding
+most of the file, so there are almost no top-level symbols to grep for. Each opens with a short
+header comment saying what's where, and its logic half is divided by `// ==== <name> ====`
+banners; `grep -n '// ===='` on one of them is its table of contents. The banners stop at the JSX,
+because a `//` comment can't go inside a `return (`: past the render banner, the landmarks are the
+props already there (`<EditorGroup label="…">` for a card in the task editor). Keep a banner
+accurate when you move code across it, and add one when a file grows a region that isn't listed.
 
-**The list grows when a single-component file crosses 1,000 lines, and that is part of the change
-that pushed it over** rather than a tidy-up for later. `FoodLogEntrySheet.tsx` went from 918 to
-1,076 in one PR and is how this rule got written down: the file that needs the map is precisely
-the one somebody is about to have to grep through, and the moment it is cheap to write one is
-while the person adding the region still knows what the regions are.
-
-The other files over 1,000 lines don't need this and haven't got it: `useTaskStore.ts`,
-`useGroceryStore.ts`, `useSettingsStore.ts` and `useMealPlanStore.ts` each declare a store
-interface that already lists every action in order, `database.ts` has 150 top-level functions,
-`types/index.ts` is one commented type per block, and `demoSeed.ts` is data. A grep already lands
-on a real boundary in all of them.
-
+**Writing the map is part of the change that pushes a file over 1,000 lines**, not a tidy-up for
+later: the moment it is cheap to write is while the person adding the region still knows what the
+regions are. `docs/repo-stats.md` lists the components and screens over the line with no banners,
+so the backlog is visible without a hand-kept list. Files with real top-level structure don't need
+one: the stores each declare an interface listing every action in order, `database.ts` is
+top-level functions, `types/index.ts` is one commented type per block, and `demoSeed.ts` is data.
 
 **Tests mirror source 1:1** — `src/utils/foo.ts` → `src/__tests__/foo.test.ts`, same for
 stores; that's where a new test goes. Only pure logic is tested (`src/utils`, `src/store`,
@@ -528,12 +506,13 @@ no React renderer installed, so there are no component or screen tests. Don't ad
 cover a UI change — verify those by reasoning about the code (and by mocking it, see **Mock a
 visual change** below), and say so plainly rather than implying you ran them.
 
-The 1:1 rule holds for every file in `src/utils`, `src/db`, and the task/grocery stores. One
-store is the deliberate exception and carries no test file: `useTemplateCategoryStore` is a thin
-wrapper over a db read/write with no branching logic of its own to pin down — same reasoning as
-skipping a component test, just for a store instead of a screen. Don't read its absence as a gap
-to fill; add one only if the store grows real logic beyond passing values through, which is what
-happened to `useWidgetCompletionStore` once it started carrying each queued tap's time.
+The rule is for logic. A module with no branching of its own to pin down carries no test file,
+the same reasoning as skipping a component test: a thin wrapper over a db read/write
+(`useTemplateCategoryStore`), over a native API or a hook (`haptics.ts`, `layoutAnimation.ts`,
+`useShakeToUndo.ts`, `widgetSync.ts` and a handful more), or data (`demoSeed.ts`, which
+`useDemoStore.test.ts` covers). Don't read a missing file as a gap to fill; add one when a module
+grows real logic, which is what happened to `useWidgetCompletionStore` once it started carrying
+each queued tap's time.
 
 ## Working style
 
@@ -545,10 +524,10 @@ grinding through them inline. When you already know the file from the table abov
 don't spawn an agent for a one-file lookup. Never hand off the writing: one agent making the
 whole diff is what keeps it coherent.
 
-**Reach for Explore, not a manual read, on the big files the generated block above names.**
+**Reach for Explore, not a manual read, on the big files `docs/repo-stats.md` names.**
 Grepping and reading the surrounding range is still the right move (see above), but for an
 unfamiliar change to `useTaskStore.ts`, `TaskEditor.tsx`, `TodayScreen.tsx`, or any of the others
-that block lists, running that grep-then-read loop through an Explore agent keeps the raw file
+it lists, running that grep-then-read loop through an Explore agent keeps the raw file
 content out of your own context
 — you get the relevant chunk and a citation, not the whole file. Reach for it especially when
 you expect more than one round trip into the same file.
@@ -588,37 +567,29 @@ right".
 **Verify an unfamiliar API instead of guessing it, when verification is possible.** Native code
 under `modules/` can't be compiled or type-checked from this sandbox, so a wrong signature against
 a framework like FoundationModels or AlarmKit doesn't fail fast — it ships and only surfaces days
-later as a red EAS build, with a log that names the broken member but not the fix. That happened
-for real: `TodoFoundationModelsModule.swift` invented `GeneratedContent.elements()`, the build
-failed, and the first attempted fix (`elements(of:)`) was *also* invented rather than checked —
-same mistake twice, because "the compiler will catch it" isn't true here. There usually **is** a
-way to check before writing the call: Apple's developer docs serve a JSON form of any framework
-page at `https://developer.apple.com/tutorials/data/documentation/<framework>/<symbol>.json`
-(fetch it with WebFetch) with real declaration fragments, argument labels and default values —
-that's how the actual fix (`GeneratedContent.Kind.array` via the `kind` property, plus a second
-latent bug in the same file, `LanguageModelSession()` having no no-argument initializer) was
-found. Reach for that before trusting WWDC session notes, a blog post's paraphrase, or memory of
-an older SDK version, and before re-guessing a fix to a guess that just failed. If a symbol
-genuinely isn't documented yet (a fresh beta, an internal API), say so at the call site — the
-way this file's own header comment already tried to — and say so again in the PR description as
-an open risk, rather than presenting an unverified signature as a confirmed fix.
+later as a red EAS build, with a log that names the broken member but not the fix, and a
+re-guessed fix to a guessed call costs another build. There usually **is** a way to check before
+writing the call: Apple's developer docs serve a JSON form of any framework page at
+`https://developer.apple.com/tutorials/data/documentation/<framework>/<symbol>.json` (fetch it
+with WebFetch) with real declaration fragments, argument labels and default values. Reach for that
+before trusting WWDC session notes, a blog post's paraphrase, or memory of an older SDK version.
+If a symbol genuinely isn't documented yet (a fresh beta, an internal API), say so at the call site
+and again in the PR description as an open risk, rather than presenting an unverified signature as
+a confirmed fix.
 
-**A fetched doc page can still be wrong, so don't stop checking once you have one.** The first
-round of verification above got `GeneratedContent.Kind.array` right but still misreported
-`value(_:forProperty:)` as non-throwing and optional-returning; the real declaration throws and
-returns a non-optional value, and only the next EAS build surfaced that — the tool that fetches
-and paraphrases a doc page is itself something that can mishear a signature, not just WWDC notes
-or memory. Two things reduce how often that costs a second round trip: ask for the raw
+**A fetched doc page can still be misread, so don't stop checking once you have one.** The tool
+that fetches and paraphrases a page can blur "throws, returns `T`" into "doesn't throw, returns
+`T?`" (that cost a build in `TodoFoundationModelsModule.swift`). Two things help: ask for the raw
 `declarationFragments`/`fragments` array rather than a plain-English restatement when a call's
-exact throws/optional shape matters, since a paraphrase is exactly where "throws, returns `T`"
-and "doesn't throw, returns `T?`" get blurred into each other; and where a value is genuinely
-best-effort (a field that's fine to skip if absent, same as here), write the read as `try?
+exact throws/optional shape matters; and where a value is genuinely best-effort (a field that's
+fine to skip if absent), write the read as `try?
 expr` rather than `if let expr` — `try? T` and `try? T?` both flatten to the same `T?`, so that
 form tolerates a throws/optional guess being wrong in either direction, where a bare `if let`
 only compiles for one specific combination.
 
 **Stay in scope.** Fix what was asked, in the pattern the surrounding file already uses.
-Adjacent code that looks improvable isn't the task; mention it instead of rewriting it.
+Adjacent code that looks improvable isn't the task; don't rewrite it. If it's a real bug, or a
+follow-up worth doing, ask (see "Bugs found in passing" and "Follow-up and out-of-scope work").
 
 **This file and `docs/arch/` are strong defaults, not settled decisions.** Most carry the
 reasoning that led to them — read it before deviating, since a "don't do X" note usually means X
@@ -659,59 +630,40 @@ decided, and the design system every screen is built from. Individual features a
 
 ### Data flow
 
-```
-SQLite (expo-sqlite, WAL mode)
-  └── src/db/database.ts       — raw db functions (dbGetAllTasks, dbInsertTask, etc.)
-        └── Zustand stores
-              ├── src/store/useTaskStore.ts      — all task operations
-              ├── src/store/useSettingsStore.ts  — user preferences, persisted to settings table
-              └── src/store/useProjectStore.ts   — project CRUD
-                    └── React screens / components
-```
+SQLite (expo-sqlite, WAL mode) → `src/db/database.ts` (raw, synchronous `db*` functions) →
+Zustand stores in `src/store/` (one per area; `docs/module-map.md` lists them) → screens and
+components. Stores are initialized once at app startup (`initialize()` on each store). Mutations
+always write to SQLite first, then update Zustand state.
 
-All database calls are synchronous (expo-sqlite `runSync`/`getAllSync`). There is no backend, and every
-piece of user data lives in a local SQLite file on device. Three things reach the network, and they are
-not equivalent: `src/services/aiSuggestions.ts` posts task titles/notes straight to `api.anthropic.com`
-using a user-supplied API key, and every feature it powers is inert until the user pastes one into
-Settings; `src/services/recipePage.ts` fetches a recipe page the user pasted a link to;
-`src/services/productLookup.ts` asks up to three product databases what a scanned barcode is. **That third one
-needs no key**, so "no key, no traffic" stopped being the whole privacy answer when it
-shipped — it carries its own switch (`productLookupEnabled`) instead. Anything else added on those terms
-needs one too. The recipe page fetch joined it (#2930): a link from a site publishing `schema.org/Recipe`
-now imports with no key (`src/utils/recipePageOffline.ts`), and the switch it answers to is Recipe
-import's own (`aiFeatureConfig.recipeExtraction.enabled`), since turning that off is asking for no recipe
-import at all. It is still only ever a page the user pasted or shared, fetched on their tap.
+There is no backend: every piece of user data lives in a local SQLite file on device. **Every
+network call lives in `src/services/`, plus the two sync transports** (`cloudKitTransport.ts`,
+`httpSyncTransport.ts`), and each answers to a switch the user can turn off. The rule that keeps
+that true: "no key, no traffic" is not a privacy answer on its own, because several calls need no
+key (`productLookup.ts`, `foodSearch.ts`, `recipePage.ts`'s `schema.org/Recipe` path, and the
+Open-Meteo forecast and geocoding in `weatherLookup.ts`/`geocode.ts`). **A new call that needs no
+key ships with its own switch, or rides an existing one that already means "don't do this"**
+(the recipe page answers to Recipe import's own `aiFeatureConfig.recipeExtraction.enabled`). The
+Anthropic key unlocks `aiSuggestions.ts` and nothing else, and every fetch the user didn't trigger
+by a tap is behind a setting that ships off.
 
-A fourth thing runs a model and reaches nothing: `src/services/onDeviceModel.ts` puts a prompt
-through Apple's on-device `SystemLanguageModel` (iOS 26+), in-process, with no key and no
-request. `src/utils/aiRouting.ts` decides which engine answers a feature, and only grocery aisle
-sorting is routed there today. Three rules hold it in place and are written up in that file: a
-feature's own switch outranks it (on-device is a floor under the features, never a way past a
-switch), a key still means Claude (nothing has measured on-device latency for a real batch, and
-quietly making a working feature slower is the one outcome this must not have), and the model's
-~4k-token window is why nothing needing vision or long context can join the list. It is also the
-one integration here that needs no demo-mode gate — nothing leaves the process and no queue is
-consumed, so neither half of the rule below applies. That is pinned by a test rather than left
-to be rediscovered.
-
-Stores are initialized once at app startup (`initialize()` on each store). Mutations always write to SQLite first, then update Zustand state.
+`src/services/onDeviceModel.ts` runs a model and reaches nothing: Apple's on-device
+`SystemLanguageModel` (iOS 26+), in-process, with no key and no request. `src/utils/aiRouting.ts`
+decides which engine answers a feature (`ON_DEVICE_ENGINE` lists the features that can go
+on-device), and `routeForFeature`'s doc comment holds the rules: a feature's own switch outranks
+the floor, and a key means Claude unless the user set that feature's `preferOnDevice`. It needs no
+demo-mode gate, since nothing leaves the process and no queue is consumed.
 
 ### Visibility model
 
-The core differentiator: tasks have multiple reasons to be hidden, checked in `src/utils/visibilityUtils.ts`:
+The core differentiator: a task has many reasons to be hidden, and `src/utils/visibilityUtils.ts` owns all of them. The time gates are `deferUntil`, `timeSegments` (morning/afternoon/evening), a future `dueDate` and the time window; the others are vacation (`vacationPause`, or a category hidden on vacation), a paused project, being held back (blocked, or waiting on a person), expiry, and having no date at all (Inbox, or an undated project task). `isVisibleApartFromVacation` is the one place they are listed in order; read it rather than a summary.
 
-1. `deferUntil` — hidden until a specific day
-2. `timeSegments` — hidden until a time-of-day threshold (morning/afternoon/evening)
-3. `dueDate` — hidden if due on a future day
-4. `vacationPause` + vacation mode — temporarily hidden
-
-`isTaskVisible()` drives the Today screen. `isTaskDeferred()` is just `!isTaskVisible()`. `getVisibleAt()` returns the earliest moment a deferred task surfaces (used to sort the Later screen).
+`isTaskVisible()` drives the Today screen. `isTaskDeferred()` drives Later, and is *not* simply `!isTaskVisible()`: it first drops everything that has no moment to surface (completed, archived, vacation-paused, expired, held back, in a paused project, or undated). `getVisibleAt()` returns the earliest moment a deferred task surfaces (used to sort the Later screen).
 
 **A pass that acts on tasks because a day went by checks `isWithheld`, not `isHiddenForVacation`.** Penalties, negative-habit streaks, quota rollover, expiry, reminders, the widget, pins and the morning check-in all run unattended against the day, and a paused project (`Project.pausedUntil`) holds its tasks back exactly as vacation does. Every one of those passes used to check vacation alone, so a paused project's tasks kept charging penalties, firing reminders and sitting on the widget while hidden everywhere else. `isWithheld` (`visibilityUtils.ts`) covers both, and `getVisibleAt` returns the day a pause ends.
 
 All time comparisons use the configurable `dayResetTime` (default `"00:00"`) to define when the logical day starts — e.g. a 2 AM reset means tasks on a "day" don't surface until 2 AM.
 
-**Expiry needs a window that closes and a day to close it on.** `isTaskExpired()` is the one gate with no way back — `sweepExpiredTasks` deletes what it flags — so it checks both. `effectiveWindowEnd()` ignores a `windowEnd` that isn't after its `windowStart`, because both gates anchor to a single logical day and "22:00–02:00" otherwise compares as past from 02:00 onward: expired before it ever opened. And `windowEnd` is deliberately not a date signal (see `hasNoDateSignal`), so a task carrying only one has no day to be late for — `hasDayArrived()` can't catch that, since with no `dueDate` it's vacuously true. Expiry now demands the same placement `isTaskVisible` does.
+**Expiry needs a window that closes and a day to close it on.** `isTaskExpired()` is the one gate with no way back — `sweepExpiredTasks` (when the user has turned it on) deletes what has stayed expired past its grace (`isTaskSweepable`), rolling a live recurring task forward rather than deleting it — so it checks both. `effectiveWindowEnd()` ignores a `windowEnd` that isn't after its `windowStart`, because both gates anchor to a single logical day and "22:00–02:00" otherwise compares as past from 02:00 onward: expired before it ever opened. And `windowEnd` is deliberately not a date signal (see `hasNoDateSignal`), so a task carrying only one has no day to be late for — `hasDayArrived()` can't catch that, since with no `dueDate` it's vacuously true. Expiry now demands the same placement `isTaskVisible` does.
 
 **Any `HH:MM` placed on a logical day goes through `onLogicalDay` (`visibilityUtils.ts`), never a bare `setHours` on the day start.** A clock time earlier than `dayResetTime` belongs to the small hours at the *end* of that day, so it has to roll onto the next calendar date. Set on the day start's own date instead, "before 1am" under a 4 AM reset closed three hours before its day began: expired, hidden and swept all day. The category schedule found this first, and the per-task window gates repeated it.
 
@@ -724,33 +676,14 @@ All time comparisons use the configurable `dayResetTime` (default `"00:00"`) to 
 **The bug pattern: `new Date()` returns the calendar date, ignorant of `dayResetTime`.** At 1:30 AM on Aug 16 with a 02:00 reset, `new Date()` is Aug 16 but the logical today is still Aug 15. A scheduling decision that reads `new Date()` dates something Aug 16, not Aug 15, landing it one day later than intended.
 
 **The fix: use the helpers in `src/utils/dateUtils.ts`:**
-- `getCurrentDayStart()` — equivalent to `getDayStart(new Date(), dayResetTime)`, returns the midnight-equivalent instant of the current logical day. Use this when you need "today's start".
-- `getLogicalToday()` — returns a Date set to the current logical day, at noon (safe for display). Use when you need a Date in the current logical day that's definitely in the day (not on a boundary).
-- `getLogicalTomorrow()` — equivalent to `addDays(getLogicalToday(), 1)`, returns the next logical day. Use when computing "tomorrow".
-- `getDayStart(date, dayResetTime)` — anchors a date to the boundary of its logical day under the given reset time. Use when you need to normalize a date you already have.
+- `getCurrentDayStart()` — the start instant of the current logical day. Use this for "today's start".
+- `getLogicalToday(dayResetTime?)` — the current logical day as a midnight `Date`. Use for "today" as a date.
+- `getLogicalTomorrow(dayResetTime?)` — `addDays(getLogicalToday(), 1)`. Use for "tomorrow".
+- `getDayStart(date, dayResetTime)` — anchors a date you already have to the start of its logical day.
 
-**`getLogicalNow()` is for day words only.** It is the real instant pulled back a whole day in the grace window, which is right for "tomorrow" and wrong for anything measured on the clock: "in 30 min" typed at 1:30 AM against it landed 23.5 hours in the past, and "3pm" and "tonight" on a day already gone. `parseNaturalDate`, `parseDatePart` and `parseTaskInput` take the real instant as a separate `clockNow` for minutes, hours, "tonight" and a bare clock time; a caller passing `getLogicalNow()` also passes `new Date()` there.
+**`getLogicalNow()` is for day words only.** It is the real instant pulled back a whole day in the grace window, which is right for "tomorrow" and wrong for anything measured on the clock: "in 30 min" typed at 1:30 AM against it lands 23.5 hours in the past. `parseNaturalDate`, `parseDatePart` and `parseTaskInput` take the real instant as a separate `clockNow` for minutes, hours, "tonight" and a bare clock time; a caller passing `getLogicalNow()` also passes `new Date()` there.
 
-**Example of the bug vs the fix:**
-```ts
-// ❌ WRONG: ignores dayResetTime, off by one during grace window
-const today = new Date();
-const tomorrowDate = addDays(today, 1);  // at 1:30 AM with 02:00 reset, this is wrong by one day
-deloadProposal.tomorrow = { date: tomorrowDate, dayLabel: 'Tomorrow', reason: null };
-
-// ✅ RIGHT: respects dayResetTime
-const today = getCurrentDayStart();  // or getLogicalToday()
-const tomorrowDate = getLogicalTomorrow(resetTime);  // or addDays(getCurrentDayStart(), 1)
-deloadProposal.tomorrow = { date: tomorrowDate, dayLabel: 'Tomorrow', reason: null };
-```
-
-**Where to audit during code review:** Any date computation for scheduling purposes — `dueDate`, `deferUntil`, snooze suggestions, project pull dates, use-up task dates, deload plan destinations, or anything else that lands a task on a day. Specifically look for:
-- Bare `new Date()` being used to determine "today" or "tomorrow" for scheduling
-- `addDays(new Date(), n)` instead of computing from a logical day
-- Date comparisons using `new Date()` to establish "before/after today"
-- Default parameters that use `new Date()` for task-dating functions
-
-Search the codebase with `grep -n "new Date()" src/utils/` and check whether the result is a scheduling decision or something else (timestamps, display formatting, or expiry checks all have different rules). Don't assume a file is right because the pattern appears elsewhere in it — `src/utils/dateUtils.ts` itself has many correct uses alongside the one-line-per-function rule (e.g., `isTaskExpired()` deliberately uses bare `Date.now()` to capture the *real* current time, since expiry is about wall-clock seconds, not logical days).
+**In review**, look at any new date computation that lands a task on a day (`dueDate`, `deferUntil`, snooze suggestions, project pulls, use-up dates, deload destinations) for a bare `new Date()` or `addDays(new Date(), n)` standing in for "today", and for a default parameter of `new Date()` on a task-dating function. A bare `new Date()` is right for a timestamp, for display, and for expiry, which is about wall-clock time rather than logical days.
 
 **Never cut a day key out of `toISOString()`.** It is UTC, and every day key in the app (`dayKeyOf`, `getLogicalDayKey`, the `YYYY-MM-DD` columns) is local. The two agree only while the instant being keyed stays on the same calendar date in both, so the mismatch is invisible in CI (which runs in UTC) and across most of the Americas and Europe, and appears only far from Greenwich. `snoozeEngine` keyed its candidate days this way and, in UTC+13/+14, read each day's projected recurring load off the day before it (#2848). A behavioural test can't catch it, because Jest ignores a `process.env.TZ` written at runtime, so `noUtcDayKey.test.ts` bans the pattern in `src/` instead. Use `dayKeyOf` for a calendar date and `getLogicalDayKey` when `dayResetTime` matters. To see a date bug a UTC run hides, run `npm run test:tz`, which runs the suite in three zones chosen to expose one. Test fixtures follow from this: build a local time with `new Date(2026, 7, 12, 9)` or `new Date('2026-08-12T09:00')` (no `Z`), never a `...Z` literal the test then reads back as a local date, and don't switch zones mid-test by writing `process.env.TZ`, which Jest ignores.
 
@@ -760,20 +693,12 @@ Pinning adds a **copy** of a task to a "Pinned Tasks" block at the top of Today.
 stays exactly where it is, in its own category section, with its pin glyph lit. Both rows are live
 and interchangeable — same task, so completing or swiping either does the same thing.
 
-**Never filter pinned tasks out of the main list again.** `listItems` used to do it in one line
-(`filtered.filter(t => !t.pinned)`), with an "Everything else" divider collapsing whatever was
-left, and essentially every problem the feature had came from that:
-
-- Pinning moved every row below the finger, so the second pin in a run was a tap on a row that had
-  just jumped. ~110 lines existed to paper over it — a 3s ceiling timer, five "the run of taps is
-  over" interaction signals, a render-time `prevPinnedCount` check to kill a one-frame flash, and a
-  `todayDragging` hold. All deleted. Don't reintroduce any of it; nothing moves on a pin now, so
-  there is nothing to delay.
-- The pinned layout was a *second list component* (a plain `FlatList`), so the first pin remounted
-  the list and lost its scroll offset — and because that branch never got `visibleGroupItems`,
-  **stacks silently vanished while anything was pinned**. One `ReorderableList` is always mounted now.
-- "Everything else" arrived collapsed, so pinning one task hid the day. The eye button in the pinned
-  header does that now, on request, and defaults to off (`othersHidden`, session-only).
+**Never filter pinned tasks out of the main list, and never render a second list for the pinned
+layout.** Filtering moved every row below the finger on each pin (so the next tap in a run landed
+on a row that had just jumped), and a second list component remounted the list, lost its scroll
+offset and dropped stacks. One `ReorderableList` is always mounted, nothing moves on a pin, and
+the eye button in the pinned header hides everything else on request (`othersHidden`,
+session-only, off by default).
 
 The block is the list's **`ListHeaderComponent`, not rows in its data** — read that prop's note in
 `ReorderableList` before moving it, since a header outside the ScrollView silently offsets the drag
@@ -797,20 +722,17 @@ the block would inherit none.
   screen. Same opt-out the drag overlay's floating copy already used.
 - **Expansion is keyed on the row, not the task** (`renderTaskRow`'s `rowKey`, `pin-<id>` for the
   copy), so tapping one row doesn't also expand its twin halfway down the list. **A pinned stack's
-  tray follows the same rule** (`pinnedGroupOpen`, session-only): it used to share
-  `group.collapsed` with the stack's own tray, so opening either opened both, and the copy growing
-  above the screen pushed every row in view down, which read as the page scrolling as a stack opened.
+  tray follows the same rule** (`pinnedGroupOpen`, session-only), rather than sharing
+  `group.collapsed` with the stack's own tray.
 - **`pinnedTasks()` ignores the *clock* gates on purpose** — a pinned task shows in the block whether
   or not it's due today. So the copy passes `hidesWhenOnPace: false`, and a pinned task that isn't
   visible today has only the one row rather than two. It does **not** ignore the hides that aren't a
-  clock, and the selector spells all three out because it writes its filter by hand rather than
-  reusing `isVisibleApartFromVacation`: completed, archived, vacation-paused and *held back*
-  (`isHeldBack` — waiting on another task or on a person) are all excluded. That last one leaked for
-  a while, and it's the one worth not re-introducing: pinning is an answer to "not yet *today*",
-  which is not an answer to "can't be done yet at all", so a blocked pinned task sat at the top of
-  Today with nothing the user could do about it while its own ordinary row had correctly left the
-  list. `isVisibleApartFromVacation` makes exactly this distinction, putting `isHeldBack` ahead of
-  every time gate.
+  clock, and the selector writes its filter by hand rather than reusing
+  `isVisibleApartFromVacation`, so a new non-clock hide has to be added there too. Today it excludes
+  completed, archived, vacation-paused, *held back* (`isHeldBack` — waiting on another task or on a
+  person) and paused-project tasks. Pinning is an answer to "not yet *today*", not to "can't be done
+  yet at all": a blocked pinned task would sit at the top of Today with nothing the user could do
+  about it.
 - **One exception to that: a pinned daily target unpins itself once logging catches it up to pace.**
   Otherwise it would sit pinned at the top of Today, at quota, until the next unit falls due hours
   later — the exact "hidden until later" state pinning is supposed to override for a task that
@@ -826,17 +748,18 @@ Completing a recurring task creates a new task row with a new `id` and the next 
 There is no rule entity separate from the occurrence holding it, and `dueDate` does double duty: it is both the date this occurrence sits on and the anchor the whole future grid is measured from. That is the deliberate design (materialised rows, same call the Series note makes below), and these four rules are what it costs. They were all shipped as bugs first, so don't undo one by re-deriving it from the code.
 
 - **Moving one occurrence must not rebase the rest, and the two directions need different mechanisms.** Rescheduling a recurring task rebased its entire future: move Tuesday's occurrence to Thursday once and it was a Thursday task for ever. Anything that moves a date-anchored task (`isDateAnchored`, `src/utils/taskMoves.ts`) has to say which of the two it is doing.
-  - **Pushing it out writes `deferUntil`**, a floor laid over the stored date, which is what `getEffectiveTaskDate` exists to render and what the successor drops (`deferUntil: null`). A push must also *hide* the task until then, or the one you moved to Saturday still sits on Today, and that is exactly what a defer is. `deloadPlan` and `lookAhead` always did this; `TaskItem`'s own picker did not, which is the half that was wrong.
-  - **Pulling it forward writes `dueDate` and `recurrenceAnchorDate`.** A defer cannot pull a task in front of its own date, and there is no "un-hide" to pair with the hide: the only way a task surfaces on Wednesday is for its date to *be* Wednesday. So the date moves honestly and the grid keeps its own anchor to step from. **Don't try to unify the two** — that asymmetry is the schema being honest about two different wants, and collapsing it is what made this a bug in the first place (#1953).
+  - **Pushing it out writes `deferUntil`**, a floor laid over the stored date, which is what `getEffectiveTaskDate` exists to render and what the successor drops (`deferUntil: null`). A push must also *hide* the task until then, or the one you moved to Saturday still sits on Today, and that is exactly what a defer is.
+  - **Pulling it forward writes `dueDate` and `recurrenceAnchorDate`.** A defer cannot pull a task in front of its own date, and there is no "un-hide" to pair with the hide: the only way a task surfaces on Wednesday is for its date to *be* Wednesday. So the date moves honestly and the grid keeps its own anchor to step from. **Don't try to unify the two** — that asymmetry is the schema being honest about two different wants. Both live in `scheduleMoveUpdates` (`taskMoves.ts`), which every mover calls.
   - **Whether a pull keeps the grid is the person's call, asked at the moment of moving.** Keeping it is right for "just this once" and surprising for "I'm doing it today now" (a daily task pulled from tomorrow onto today comes back the day after tomorrow), so the row's picker and the bulk bar's When ask through `confirmScheduleMove` (`src/utils/scheduleMovePrompt.ts`) whenever `pullForwardChoice` says the two answers differ. "Count from the new date" is `scheduleMoveUpdates`' `restartSchedule`, a plain reschedule. The trip move (`awayShift`) never asks: it shifts a whole span, and keeping each grid is the point of it.
   - **`recurrenceAnchorDate` is consulted only by the recurrence engine**, which is the whole reason it is a grid anchor rather than a placement override: `getNextDueDate`'s base, `projectOccurrences`' walk, and `recurrenceAnchorDayFor`. Every reader of "what day is this on" — visibility, sorting, the widget, Search, the month grid's own cells — keeps reading the real `dueDate` and needs to know nothing. An occurrence-level date that overrode `dueDate` for placement was the obvious shape and would have put all of them in scope.
   - **The projection walk clears it after the first step** (`stepOccurrence`), or every step recomputes the same next date off the same anchor and the walk stalls on one day.
   - **Any `dueDate` written without it clears it**, which is one rule in `updateTask` rather than a `null` at each re-dating call site (the editor's Date row, `skipNextRecurrence`, the chain step on schedule, the expired sweep). A patch naming the field wins outright, which is both the pull-forward writing the pair together and a whole-snapshot undo restoring what was there. `completeTask`'s successor is built as a row rather than patched, so it drops the anchor explicitly alongside `deferUntil`.
 - **`getNextDueDate` steps the grid; `{ catchUp: true }` walks it to the present.** Off by default because `projectOccurrences` walks this one occurrence at a time to draw a month, and a first step that skipped to today would drop every earlier cell. On for the two callers *placing a real row* — `completeTask`'s successor and `skipNextRecurrence` — because without it, finishing a task five weeks late spawned a successor dated four weeks ago: overdue on arrival, and five more completions (five more tombstones) to work back to the present. It walks the rule's own grid rather than landing on today outright, so a Friday task caught up is still on a Friday. `rolloverQuotas` reached the same conclusion for quota tasks by its own route and keeps it, since a partial day's record has to land on the day it belongs to.
 - **`recurrenceAnchorDay` is what a short month is clamped *from*.** `addMonths` clamps Jan 31 to Feb 28, and with the stored date as the only anchor that clamp fed the next one: Feb 28, Mar 28, Apr 28, for ever, off a single February. Yearly did it to Feb 29. The column holds the day-of-month the grid is anchored to for the picker's "same day as the due date" option (an explicit `recurrenceMonthDay` or `recurrenceWeekOrdinal` already answers this, and `recurrenceFromCompletion` measures from a day rather than a date). It is captured whenever the user *writes* the schedule (`SCHEDULE_FIELDS` in `updateTask`) and deliberately never when the app moves the row itself, which is the entire mechanism: recompute it on an unrelated patch and the successor sitting on Feb 28 hands the drift straight back. Same fix `getNextSeriesDates` already applies to a dated series.
+- **The last occurrence of a counted recurrence says so** in the undo bar (`finishedRecurrence` in `completeTask`), since a schedule ending and a successor going missing otherwise look identical; `docs/arch/supplies.md` has the reasoning.
 - **A multi-week interval counts weeks from the user's own week start.** `weekStartsOn` is a real setting and the weekday walk used to ignore it, so "every 2 weeks on Fri and Sun" split a Monday-start user's pair across two blocks, 9 days apart instead of 2. With `weekStartsOn: 0` the arithmetic is unchanged.
 
-One walk draws every projection (`projectOccurrences` in `src/utils/calendarMonth.ts`, used by the month grid, `lookAhead` and `snoozeEngine`). Don't write a second: the private copy `snoozeEngine` used to keep had none of `canProject`'s refusals, so a `recurrenceFromCompletion` task — whose next date is answered from today however far the cursor moves — folded one day into the set thirty times and called it a schedule.
+One walk draws every projection (`projectOccurrences` in `src/utils/calendarMonth.ts`, used by the month grid, `lookAhead` and `snoozeEngine`). Don't write a second: a private copy misses `canProject`'s refusals (a `recurrenceFromCompletion` task has no projectable future, since its next date is always answered from today).
 
 ### Completed-task retention
 
@@ -845,15 +768,15 @@ Every completion leaves its row behind, so a daily recurring task accumulates on
 - **Archived rows are exempt.** Archiving is an explicit "keep this, out of my way"; the window is for tombstones piling up unasked.
 - **Only top-level rows are ever named.** A completed subtask under a *live* parent is a checked-off step, not history — `dbBulkDeleteTasks`' `parent_id` cascade takes the subtasks of a purged parent, so listing subtasks directly would be the bug, not the feature.
 - **Streaks are safe and that's structural**, not luck: `streakCount`/`streakDate` and their `previous*` snapshot live on the row still running the streak and are never summed back across the chain. The pointers that *do* cross rows (`previousOccurrenceId`, `blockedById`) are resolve-or-shrug at every reader — `canBlock(undefined)` is false, chain walks stop on a missed lookup — and already dangle this way after a manual Logbook delete, so a purge leaves them rather than rewriting rows it isn't deleting.
-- **It must not go through `bulkDeleteTasks`**, which arms shake-to-undo. A purge the user didn't just perform sitting under their first shake of the session is not an undo.
+- **An unattended delete never arms shake-to-undo.** A delete the user didn't just perform, sitting under their first shake of the session, is not an undo. The purge bypasses `bulkDeleteTasks` for this; the expiry sweep passes it `registerUndo: false`. Any new pass that deletes on the app's own behalf does one or the other.
 
 ### Series (`seriesId`) — one task on several dates
 
-A task the user gave more than one date ("walk the neighbour's dog on the 10th and the 15th") is **N real rows sharing a `seriesId`**, each an ordinary one-off with its own `dueDate` and `recurrenceType: 'none'`. It is deliberately not one row holding a list of dates: `dueDate`/`completedAt`/`streakDate` are singular in every visibility, completion and Logbook path, and Later renders real `Task` rows (`laterSections`), so materialising them is the only way all the dates actually appear there. Projected "ghost" rows were the alternative and would have needed a second, non-completable, non-selectable row type through `TaskItem`/`TodayScreen`/`useTaskSelection`.
+A task the user gave more than one date ("walk the neighbour's dog on the 10th and the 15th") is **N real rows sharing a `seriesId`**, each an ordinary one-off with its own `dueDate` and `recurrenceType: 'none'`. It is deliberately not one row holding a list of dates (`dueDate`/`completedAt`/`streakDate` are singular in every visibility, completion and Logbook path), and not projected "ghost" rows, which would need a second, non-completable row type through every list.
 
 **Never reuse `previousOccurrenceId` to link them.** That's the backward completion chain, and `uncompleteTask` deletes whichever row points at the one being uncompleted — un-ticking the 10th would delete the 15th.
 
-- **One entry point**: `applyTaskDates(taskId, dates, repeat?)` creates a series around a task, reconciles an existing one, or dissolves it back to a plain task when the set drops to one date. `addTaskSeries` is the create-from-scratch path. Reconciling never touches completed **or archived** rows — a date that already happened, or that the user filed away, is history and not schedule. (Archived ones used to count as live, so a date edit deleted them.)
+- **One entry point**: `applyTaskDates(taskId, dates, repeat?)` creates a series around a task, reconciles an existing one, or dissolves it back to a plain task when the set drops to one date. `addTaskSeries` is the create-from-scratch path. Reconciling never touches completed **or archived** rows — a date that already happened, or that the user filed away, is history and not schedule.
 - **A series never carries a recurrence rule.** They're two schedules for one task, and the editor will happily save both — so `buildSeriesRow`/`applyTaskDates` strip the rule (`NO_RECURRENCE`) when a set forms. Without that, every row kept the rule and each completed date spawned an extra occupant *of the same series*. For the same reason nothing spawned by `completeTask` inherits `seriesId`: the only way to spawn off a series row is mid-chain, and that lands on a day the set already has.
 - **Repeat is optional and separate from recurrence**: `seriesMonthDays` (empty = happens once) holds day-of-month anchors, `seriesRepeatMonths` the interval. The next set is inserted by `completeTask` only once *every* date in the current one is done, so finishing the 10th doesn't conjure a third row while the 15th is outstanding. `getNextSeriesDates()` rebuilds from the stored day numbers rather than shifting the current dates, so a 31st clamped to the 28th for February comes back as the 31st in March. The interval field isn't exposed in the editor yet — the UI ships a monthly on/off toggle.
 - **Editing** is scoped like a recurrence: `updateTask(..., {scope: 'series'})` fans `CONTENT_FIELDS` out to the set's *later* incomplete dates, re-anchoring `reminderTime` onto each date's own day (it's an absolute instant, and a set shares an hour, not a moment).
@@ -886,9 +809,9 @@ This is the one reader `src/utils/deliverables.ts` was left open for (#1253) and
 
 Two counts exist and they mean different things, so keep them labelled: the roster is *membership* ("8 tasks", shown in the editor), and `isRelevantToGroupToday` filters that to *today's work* ("3/8 today", the badge on the Today row). A member that isn't due today is still a member.
 
-**`TaskGroup.sortOrder` is in the same number space as `Task.sortOrder`** — a stack holds a slot in its category section exactly like a loose task, and `makeCategoryGroups` merges the two by that number. It used to be a per-category 1..M ranking of stacks alone, with stacks always emitted ahead of the section's tasks, which made "task above stack" unrepresentable: the drag animated and the rebuilt layout put the stack back on top. So `resolveDrop` hands out one running rank across tasks *and* stacks, and `reorderWithCategoryUpdates` persists those ranks verbatim rather than renumbering the tasks 1..N — the gaps where the stacks sit are the point. (Group *children* still carry a private within-stack 1..K order, set by `reorderGroupChildren`; that space is unrelated.)
+**`TaskGroup.sortOrder` is in the same number space as `Task.sortOrder`** — a stack holds a slot in its category section exactly like a loose task, and `makeCategoryGroups` merges the two by that number. A separate ranking for stacks would make "task above stack" unrepresentable. So `resolveDrop` hands out one running rank across tasks *and* stacks, and `reorderWithCategoryUpdates` persists those ranks verbatim rather than renumbering the tasks 1..N — the gaps where the stacks sit are the point. (Group *children* still carry a private within-stack 1..K order, set by `reorderGroupChildren`; that space is unrelated.)
 
-**A stack has no completion state of its own — stored, derived, or dismissed.** Today renders one exactly while it has a visible child (`visibleGroupItems` in `TodayScreen`: `children.length > 0`, and `children` comes from `visibleTasks`), so it leaves in the same commit its last row does and returns whenever a member is visible again. Two designs preceded that and both are gone: a `TaskGroup.completedAt` "user dismissed this for today" stamp (the stack sat on Today saying "all 6 done for today" until tapped — an extra tap per stack per day to acknowledge what the finished rows already said), and before that, clearing that stamp on every event that could give the stack live work, which took four call sites and still missed one. The `completed_at` column is still on `task_groups`, unread and never written. **Don't reintroduce a hidden-for-today flag** — riding on `visibleTasks` is what makes the header and its rows leave together, since a just-ticked row stays in `visibleTasks` for the completion hold (`completionHoldIds`) and the header rides that window out with it.
+**A stack has no completion state of its own — stored, derived, or dismissed.** Today renders one exactly while it has a visible child (`visibleGroupItems` in `TodayScreen`: `children.length > 0`, and `children` comes from `visibleTasks`), so it leaves in the same commit its last row does and returns whenever a member is visible again. The `completed_at` column on `task_groups` is left over from a "dismissed for today" stamp that cost a tap per stack per day; it is unread and never written. **Don't reintroduce a hidden-for-today flag** — riding on `visibleTasks` is what makes the header and its rows leave together, since a just-ticked row stays in `visibleTasks` for the completion hold (`completionHoldIds`) and the header rides that window out with it.
 
 **`TaskGroup.onToday` is a presence bit, not that flag coming back.** A stack arriving on Today
 collapses (`syncTodayPresence`, written from `TodayScreen`'s own render of what's on the day), so
@@ -906,57 +829,59 @@ Cascades (`completeGroup`, `deferGroup`, `pinGroup`, `deleteGroup`) are roster-s
 
 ### Projects
 
-**Anything that lists or counts a project's tasks leaves archived rows out.** Archiving means "out of every list", and `projectProgress`, `projectDecisions`, `projectCompletedRows` and `liveProjectSteps` all filter `!t.archived`. The project page's own list didn't, so archived tasks sat there as open rows, "Complete project, archive the rest" left every one of them on screen, and a drag of one snapped back because `reorderProjectItems` (which reads `liveProjectSteps`) never knew it was there. A new reader of a project's members filters it too, and a section's roster needs the same care in the other direction: it can hold tasks filed under other projects, so anything acting on it from a project's page scopes it to `t.projectId === projectId` first.
+**Anything that lists or counts a project's tasks leaves archived rows out.** Archiving means "out of every list", and `projectProgress`, `projectDecisions`, `projectCompletedRows` and `liveProjectSteps` all filter `!t.archived`, and so does the project page's own list (a drag there goes through `reorderProjectItems`, which reads `liveProjectSteps`, so a row it can't see snaps back). A new reader of a project's members filters it too, and a section's roster needs the same care in the other direction: it can hold tasks filed under other projects, so anything acting on it from a project's page scopes it to `t.projectId === projectId` first.
 
 ### Navigation
 
 `src/navigation/AppNavigator.tsx` uses a bottom tab bar with 4 visible tabs (Today, Groceries, Projects, More). Every other screen is registered as a hidden tab and reached via `SideMenuDrawer`, which overlays the full screen and is opened by tapping "More" or by edge-swipe from the left. The Groceries tab drops out (falling back to `tabBarButton: () => null`, same as any drawer-only tab) while `kitchenEnabled` is off in Settings, mirroring the drawer's own "Groceries & Meals" row.
 
-**What the menu contains is `src/utils/navHubs.ts`, not the drawer component.** The drawer draws eight rows; four of them are **hubs** standing in for thirteen destinations. A hub is one menu row plus a `HubPills` row under each member screen's header — the shape `GroceriesHubPills` established for Groceries/Recipes/Meal plan/Pantry, now generalized so the other three are the same code rather than three more copies of it. The hubs are Groceries & Meals, Organize (Categories, Tags, People, Stacks, Templates) and History (Logbook, Stats, Mood, Archived); Tasks, Search, Calendar, Stuck and Tips stand alone.
+**What the menu contains is `src/utils/navHubs.ts`, not the drawer component.** Read it for the
+current rows: some are single destinations and some are **hubs**, one menu row standing in for
+several screens, with a `HubPills` row under each member screen's header to move between them
+(Groceries & Meals, Organize, History and Health are hubs today). Four things follow from that and
+are worth not re-deriving:
 
-Four things follow from that and are worth not re-deriving:
+- **A hub row names its members in a subtitle, built from the members that survived the gates**
+  rather than written out. A row promising Stats while simplified mode has taken Stats away is a
+  lie the user finds out about one tap later.
+- **The drawer has a find field, and it is not optional decoration.** A hub hides several
+  destinations behind one label, and some screens (`NAV_EXTRA_DESTINATIONS`) have no row at all.
+  `menuDestinations` builds the index from the same rows the menu draws, so a screen the menu is
+  hiding is not findable either: a result opening a feature you switched off is a way back into
+  it that the switch didn't intend.
+- **Route sets are derived, not listed twice.** `DRAWER_TABS`, `RESTORABLE_SCREENS` and
+  `KITCHEN_SCREENS` all come off `NAV_MENU_ROWS`/`NAV_HUBS`. Adding a screen to the menu is one
+  edit.
+- **A hub row drops out when every member is gone** (simplified mode, or `kitchenEnabled` off for
+  Groceries & Meals). A member hidden by a feature says so as `screen:` on that feature in
+  `simpleMode.ts`, so one gate answers for the menu row, the pill and the cold-launch restore.
 
-- **A hub row names its members in a subtitle, built from the members that survived the gates** rather than written out. A row promising Stats while simplified mode has taken Stats away is a lie the user finds out about one tap later.
-- **The drawer has a find field, and it is not optional decoration.** A hub hides four or five destinations behind one label, so without it, consolidating the menu would have made "Drift" strictly *harder* to reach than it was as its own row. `menuDestinations` flattens the same rows the menu draws into the index, so a screen the menu is hiding is not findable either — a result opening a feature you switched off is a way back into it that the switch didn't intend.
-- **Route sets are derived, not listed twice.** `DRAWER_TABS`, `RESTORABLE_SCREENS` and `KITCHEN_SCREENS` all come off `NAV_MENU_ROWS`/`NAV_HUBS`. Adding a screen to the menu is one edit.
-- **A hub row drops out when every member is gone**, and simplified mode is the only thing that can do that today. Pantry's disappearance under that mode used to be a hand-written special case in `initialScreenFromSettings` plus a second `featureHidden` call inside the pills; it is now just `screen: 'Kitchen'` on the `pantryTracking` feature, so one gate answers for the menu row, the pill and the cold-launch restore alike.
-
-`StuckScreen` is the merge of what were the Waiting and Drift rows — both were lists of tasks held out of the daily lists, differing only in whether something else or you are holding them, and `DriftScreen` opened by saying it was "the same shape and same reasoning as WaitingScreen". `BackfillScreen` briefly moved to Settings ("Data & reset" → Fill in) as a pushed `RootStack` card, on the reasoning that it fills in empty fields across tasks, categories, projects, people and grocery items rather than being a task list — but that buried a feature people reach for often behind four taps, so it's a standalone menu row again (a hidden tab, same as Stuck and Calendar), shown unconditionally in simplified mode as one of the "lens" screens (see `simpleMode.ts`).
-
-Today, Later, Unscheduled and Inbox are **not** separate screens — they're four `viewMode` sub-views of `TodayScreen`, switched by the pill row under its header, and they share one set of screen state (selection mode, expanded row, quick-add, editor). They're disjoint lenses over the same tasks (`isUnscheduledTask()` excludes inbox tasks, `isTaskVisible()` excludes both), each backed by its own store selector. Keep it that way when adding a fifth: Inbox used to be its own route, and every switch into it had to hand the destination over as a navigation param, which painted a frame of the *previous* sub-view before the param landed. A segmented control shouldn't navigate.
+Today, Later, Unscheduled and Inbox are **not** separate screens — they're four `viewMode` sub-views of `TodayScreen`, switched by the pill row under its header, and they share one set of screen state (selection mode, expanded row, quick-add, editor). They're disjoint lenses over the same tasks (`isUnscheduledTask()` excludes inbox tasks, `isTaskVisible()` excludes both), each backed by its own store selector. Keep it that way when adding a fifth: a sub-view as its own route has to be handed over as a navigation param, which paints a frame of the *previous* sub-view before the param lands. A segmented control shouldn't navigate.
 
 ### Design system
 
-`src/theme/index.ts` exports design tokens (`spacing`, `radius`, `font`, `fontWeight`, `border`, `iconSize`, `animation`, `interaction`) and two color palettes (`darkColors`, `lightColors`). Components consume colors via `useColors()` or `useTheme()` (which also exposes theme-aware `shadows`) from `src/theme/ThemeContext.tsx`. The top-level `colors` export is kept only for non-themed static uses.
+`src/theme/index.ts` exports design tokens (`spacing`, `radius`, `font`, `fontWeight`, `border`, `iconSize`, `animation`, `interaction`, plus `lineHeight`, `checkboxRadius` and the `flattenOverlay` helper) and the color palettes (`darkColors`, `lightColors`, `darkPurpleColors`). Components consume colors via `useColors()` or `useTheme()` (which also exposes theme-aware `shadows`) from `src/theme/ThemeContext.tsx`. The top-level `colors` export is kept only for non-themed static uses.
 
 **The spacing scale has eight steps, not five.** `xs` (4) through `xl` (32) double at each step and
 are the backbone; `xxs` (2), `xsm` (6) and `smd` (12) fill the gaps between 4 and 8, and between 8
-and 16. Those three were added after a sweep found ~980 raw numbers across 183 files — four fifths
-of every spacing value written — clustered almost entirely on exactly those gaps: a scale nobody
-can hit is a scale nobody uses, so the fix was to widen it rather than keep rounding call sites
-onto the nearest wrong value. **The values still *between* the steps (1, 3, 5, 7, 10, 14) are
+and 16, which is where raw numbers had clustered: a scale nobody can hit is a scale nobody uses.
+**The values still *between* the steps (1, 3, 5, 7, 10, 14) are
 deliberately literals and deliberately not rounded onto a token** — they're optical nudges (a
 chevron aligned against a cap height, a border's width taken back out of a padding) where the exact
-number is the point. Radii were left alone in that sweep and are their own question: a
-`borderRadius` is usually geometry (half an element's size, for a circle) rather than a scale step.
-Font sizes got the same treatment in their own pass — see below.
+number is the point. Radii are their own question: a `borderRadius` is usually geometry (half an
+element's size, for a circle) rather than a scale step.
 
-**The font scale bottoms out at `xxs` (11), and nothing goes below it.** The same sweep run over
-type found one job — the caption: a badge count in a 16pt circle, the weekday letter under a chart
-bar, the hint trailing a pill, the chips on a task row — written as 9, 10 *and* 11 across ~26
-sites, none of them reaching for a token because the smallest one (`xs`, 12) was too big for a
-badge. Three sizes for one job is the same drift the spacing gaps were, and 9pt is below what a
-caption should ever be, so the fix was the same: widen the scale rather than keep rounding onto the
-nearest wrong literal. **A container too small to hold 11pt is the container that's wrong** — grow
-the box with `minWidth` + `paddingHorizontal` instead of shrinking the text back down, which is
-what `ScreenHeader`'s badge now does to match the three sibling badges (`HubPills`, Today's
-view-mode pills, `RecipeSourcePicker`'s thumb order) that already did. The one file that keeps
-literal sizes is `ErrorBoundary.tsx`, which sits outside `ThemeProvider` and can't import tokens at
-all; its own comment says so.
+**The font scale bottoms out at `xxs` (11), and nothing goes below it.** That is the caption size
+(a badge count, the weekday letter under a chart bar, the chips on a task row). **A container too
+small to hold 11pt is the container that's wrong** — grow the box with `minWidth` +
+`paddingHorizontal` instead of shrinking the text, the way `ScreenHeader`'s, `HubPills`' and
+Today's view-mode badges do. Literal font sizes are for what the scale isn't for: an emoji glyph
+sized as an icon, a large hero number (a focus countdown, an estimate's total), and
+`ErrorBoundary.tsx`, which sits outside `ThemeProvider` and can't import tokens at all.
 
-**When adding a new element above/below existing ones, give it margin on both sides it needs, not just the side that happened to matter for its own layout.** A recurring mistake here: a new row/bar gets `marginTop` to clear whatever's above it, but no `marginBottom`, so the *next* element — which itself has no `marginTop` — ends up jammed right against it. `TaskEditor`'s field-search bar shipped exactly this way (`marginTop: spacing.md` only), and the group label right below it had no top margin of its own, so the two sat with zero gap between them. Don't assume the neighboring element already accounts for spacing on its side — check it, and default to `spacing.md` (16) between stacked blocks, `spacing.lg` (24) between denser groups, rather than shipping a cramped gap and letting it get caught in review.
+**When adding a new element above/below existing ones, give it margin on both sides it needs, not just the side that happened to matter for its own layout.** A recurring mistake here: a new row/bar gets `marginTop` to clear whatever's above it, but no `marginBottom`, so the *next* element — which itself has no `marginTop` — ends up jammed right against it. Don't assume the neighboring element already accounts for spacing on its side — check it, and default to `spacing.md` (16) between stacked blocks, `spacing.lg` (24) between denser groups, rather than shipping a cramped gap and letting it get caught in review.
 
-**Never put a `numberOfLines={1}` name/title next to one or more action buttons in the same flex row — an identifying piece of text has to win the row, or say the row's own thing on its own line.** `RecipeNutritionSheet`'s "Not in your catalog" row did this: an ingredient name shared a `flexDirection: 'row'` with two `InlineAction` pills, the pills claimed their full label width first, and whatever was left over went to the name — "Monkfruit sweetener" truncated down to "Monkfrui…", the one piece of information the row exists to show. `numberOfLines={1}` is fine; a fixed-width sibling eating the row before the flexible text gets a fair share of it is the bug, and it gets worse as more buttons are added. The fix is the same shape `RecipeNutritionSheet`'s own sibling section ("Not counted") already used two dozen lines above the bug: stack the name on its own full-width row, put the actions in a `flexWrap: 'wrap'` row underneath. If a name truly has to share a row with something else (an icon, a count, a chevron), the something else should be the thing that's short and fixed, never a button whose label can grow, and the name gets `flex: 1` in a row with nothing else claiming width ahead of it. Check this whenever a row pairs a data-derived string (an ingredient, a task title, a store name, anything the user typed or picked) with one or more `InlineAction`/button siblings in the same row.
+**Never put a `numberOfLines={1}` name/title next to one or more action buttons in the same flex row — an identifying piece of text has to win the row, or say the row's own thing on its own line.** The pills claim their full label width first and the name gets what's left ("Monkfruit sweetener" became "Monkfrui…", the one thing the row exists to show). `numberOfLines={1}` is fine; a fixed-width sibling eating the row before the flexible text gets a fair share of it is the bug. Instead, stack the name on its own full-width row, put the actions in a `flexWrap: 'wrap'` row underneath. If a name truly has to share a row with something else (an icon, a count, a chevron), the something else should be the thing that's short and fixed, never a button whose label can grow, and the name gets `flex: 1` in a row with nothing else claiming width ahead of it. Check this whenever a row pairs a data-derived string (an ingredient, a task title, a store name, anything the user typed or picked) with one or more `InlineAction`/button siblings in the same row.
 
 **Never hardcode** hex/rgba colors, shadow styles, spring params, `activeOpacity`, or `delayLongPress`. The tokens to reach for:
 
@@ -968,35 +893,32 @@ all; its own comment says so.
 - `animation.spring.snappy/smooth/bouncy` and `animation.duration.*` — every Animated call
 - `getShadows(isDark)` via `useTheme().shadows` (`card`, `fab`, `sheet`) — every shadow
 - `useSheetHiddenOffset()` (`src/hooks/`) — how far down a bottom sheet's card parks while
-  hidden. Every one of the ~25 sheets used to hardcode a 600/700-ish pair, which doesn't clear
-  a card whose height is data-driven, and re-armed the lower value in the dismiss animation's
-  completion callback — putting the card back on screen until the modal unmounted. Read the
-  hook's doc comment before touching a sheet's open/close animation; the no-re-arm half of the
-  rule lives at the call sites.
+  hidden, never a hardcoded number (a data-driven card can be taller than any guess). Read the
+  hook's doc comment before touching a sheet's open/close animation; the other half of the rule,
+  not re-arming the offset in the dismiss animation's completion callback, lives at the call
+  sites.
 
 **Any `pageSheet` Modal whose `ScrollView` holds a `TextInput` needs `useKeyboardInsetScroll`
 (`src/hooks/`), or the keyboard sits on top of whatever's below the focused field.** A bare
 `<ScrollView>` with no keyboard handling only scrolls when the person does it manually — nothing
 lifts the field, or the rest of the sheet, clear of the keyboard on its own, so a card near the
 bottom (the next item in a batch, a Log/Save button, a hint under the field) renders right behind
-it. This shipped as the same bug in five sheets at once (`ScanPortionSheet`, `FoodLogEntrySheet`,
-`EstimateMealSheet`, `ProductSheet`, `RuleListSheet`) before being fixed in all of them together —
-check for it whenever a new `pageSheet` sheet, or a new field in an existing one, puts a
+it. Check for it whenever a new `pageSheet` sheet, or a new field in an existing one, puts a
 `TextInput` inside a `ScrollView`. Wire it the same way `EditorSheet` does: call
 `useKeyboardInsetScroll<ScrollView>({ ownsSheet: true })`, spread `keyboardScroll.props` onto the
 `ScrollView` and pass `ref={keyboardScroll.ref}`. **`ownsSheet` is not optional in a component that
 renders its own `SheetModal`.** Such a component calls the hook from *outside* that sheet, so
 without the flag the hook's "is a sheet covering this list?" check sees the sheet itself and
-switches keyboard handling off for exactly as long as the sheet is open. That shipped across all
-23 sheets using the hook (the task editor included) for a week after #2794. Leave it off only
-where the hook is called from a screen, or from a component rendered inside a sheet's children. Don't reach for
-`KeyboardAvoidingView` instead — see the hook's own doc comment and the note on `EditorSheet` for
-why the two fight each other; `LogMealPrompt`'s `KeyboardAvoidingView` is the one deliberate
-exception, because its Modal is a small centered card rather than a full scrollable sheet.
+switches keyboard handling off for exactly as long as the sheet is open. Leave it off only where
+the hook is called from a screen, or from a component rendered inside a sheet's children. Don't
+reach for `KeyboardAvoidingView` instead — see the hook's own doc comment and the note on
+`EditorSheet` for why the two fight each other. The exception is a small centered card rather than
+a full scrollable sheet (`LogMealPrompt`, `TripBudgetPrompt`), where `KeyboardAvoidingView` is
+right.
 
 **Never put `lineHeight` on a `TextInput` style.** RN maps it straight onto the iOS paragraph style's `minimumLineHeight`/`maximumLineHeight` with no compensating baseline offset (`RCTTextAttributes.mm`), so the glyphs are drawn a full line height below the top of the line box instead of one ascent below it — the text sits low in the field while the caret stays centered, and the placeholder inherits the same attributes so it looks wrong even when empty. `lineHeight` is fine (and wanted) on `Text`. When an input needs a specific box height to keep a row from resizing between display and edit mode, set `height`/`minHeight` instead.
 
-**A `RefreshControl` whose pull does something other than refresh must end the refresh on an event the UI thread has already mounted, never on a timer.** The pull puts iOS's `UIRefreshControl` into its own refreshing state, and it fires no further `onRefresh` until `refreshing` makes a true→false transition. The Fabric component (`RCTPullToRefreshViewComponentView.mm`) acts only on a prop *diff* against what the UI thread last mounted, and the UI thread mounts the newest commit rather than each one, so a true and a false committed close together (same batch, or a `setTimeout(…, 0)` apart) can reach it as one "no change". The control then stays refreshing for the session: the spinner's space stays reserved and every later pull does nothing. Today's pull-to-search shipped both halves of this: first the same-batch version (073bf52), then the `setTimeout(0)` "fix" for it, which stopped search opening a second time (#2869). It now clears `refreshing` from the quick search sheet's `onShow`, which fires only after the commit carrying the true is on screen; reach for the same kind of signal (a sheet's `onShow`, `onScrollEndDrag`) in any new pull-to-do-something list.
+**A `RefreshControl` whose pull does something other than refresh must end the refresh on an event the UI thread has already mounted, never on a timer.** The pull puts iOS's `UIRefreshControl` into its own refreshing state, and it fires no further `onRefresh` until `refreshing` makes a true→false transition. The Fabric component (`RCTPullToRefreshViewComponentView.mm`) acts only on a prop *diff* against what the UI thread last mounted, and the UI thread mounts the newest commit rather than each one, so a true and a false committed close together (same batch, or a `setTimeout(…, 0)` apart) can reach it as one "no change". The control then stays refreshing for the session: the spinner's space stays reserved and every later pull does nothing. Today's pull-to-search clears `refreshing` from the quick search sheet's `onShow`, which fires only after the commit carrying the true is on screen; reach for the same kind of signal (a sheet's `onShow`, `onScrollEndDrag`) in any new pull-to-do-something list.
 
 **Shared primitives** (use these instead of hand-rolling):
 
@@ -1007,12 +929,9 @@ exception, because its Modal is a small centered card rather than a full scrolla
 - `ScreenHeader` (`src/components/ScreenHeader.tsx`) — every screen's large-title header: title, optional subtitle/overline, 34pt icon actions with badges/active tint/loading, or custom `right` content.
 - `PressableScale` (`src/components/PressableScale.tsx`) — standard press feedback (spring scale + opacity dip) for buttons, chips, FABs, icon buttons. Full-width list rows keep `TouchableOpacity` with `interaction.activeOpacity` — scaling a full row looks wrong.
 - `InlineAction` (`src/components/InlineAction.tsx`) — the small tinted pill that adds a thing to the
-  list or grid it sits under: "New task", "Add subtask", "Add tag", "New" in a category picker. It
-  replaced the bare accent-coloured text these all used to be, which had drifted into three
-  treatments for the same action (bare, dashed-bordered, filled) across five duplicate style
-  objects. Accent text was also doing three unrelated jobs at once — *this is a link* / *this is a
-  button* / *this is the selected value* — so a card holding two of them read as a stack of links
-  floating under the content. **Bare accent text is now only for sheet header buttons (Cancel /
+  list or grid it sits under: "New task", "Add subtask", "Add tag", "New" in a category picker.
+  Accent text can't do this job as well as being a link and a selected value, so a card holding two
+  of them reads as a stack of links. **Bare accent text is now only for sheet header buttons (Cancel /
   Save / Done) and the current-value summaries in `EditorRow` / `CollapsibleField`**; an action gets
   a shape. Use `variant="neutral"` for the quieter half of a pair ("Add existing" beside "New
   task"), and — this is the non-obvious one — for an add button sitting at the end of a row of
@@ -1021,32 +940,26 @@ exception, because its Modal is a small centered card rather than a full scrolla
 - `SheetHeaderButton` (`src/components/SheetHeaderButton.tsx`) — the Cancel / Save / Done / Add text
   button in a sheet header, the second and last home of bare accent text. `role="confirm"` (the
   default) is semibold, `role="cancel"` is regular — weight ranks them, the way iOS ranks nav-bar
-  buttons, and **both are accent**: two of the twelve hand-rolled copies this replaced had drifted
-  to a grey Cancel. `minWidth` reserves matching width on the light side so the title stays
-  optically centered.
+  buttons, and **both are accent** (never a grey Cancel). `minWidth` reserves matching width on
+  the light side so the title stays optically centered.
 - `SheetHeader` (`src/components/SheetHeader.tsx`) — the row that button sits in: Cancel/Back on
-  the left, Save/Done on the right, the title centered between them. `SheetHeaderButton` unified
-  the buttons and left the row around them hand-written in every sheet in the app — about thirty
-  distinct row layouts in about fifteen title styles — so this is that row, written once. 63 sheets
-  use it. The title **always** centers itself (`flex: 1`), which is a small correctness fix over
-  what it replaced: a title that merely sat between two same-width buttons drifted off-centre the
-  moment either label changed length. `left`/`right` take whatever a sheet needs (a button, a
+  the left, Save/Done on the right, the title centered between them, written once. The title
+  **always** centers itself (`flex: 1`), so it stays centered when either label changes length.
+  `left`/`right` take whatever a sheet needs (a button, a
   spacer `View`, or a row of two controls); `icon` adds the sparkle the AI-generated sheets put
   before their titles; `size="lg"` is for the handful whose title reads larger. **`bare` is for a
   sheet built on `EditorSheet`**, whose `headerStyle` already supplies the row — that one passes
   `bare` and keeps its own `header:` style, since several of those differ on padding and border on
-  purpose. The ~20 sheets still hand-rolling a header are the ones whose padding, border or title
+  purpose. The sheets still hand-rolling a header are the ones whose padding, border or title
   shape genuinely differs (a popover card, a left-aligned heading, a title with a subtitle under
   it); forcing those into this shape would be a visual change rather than a deduplication.
 - `disclosureValue(colors)` (`src/theme/textStyles.ts`) — the right-aligned "currently set to" text
-  in `EditorRow`, `CollapsibleField` and the Settings rows. Spread it and add layout on top. It's a
-  shared style rather than four local ones because it had been written as `value` / `summary` /
-  `rowValue` / `anchorValue` in three sizes and two weights, which is most of why a value and a
-  button were hard to tell apart.
+  in `EditorRow`, `CollapsibleField` and the Settings rows. Spread it and add layout on top, rather
+  than writing a local value style, so a value and a button stay distinguishable.
 - `CountStepper` (`src/components/CountStepper.tsx`) — the `− value +` control for a small integer
   (Daily target, in both the editor and quick add; a project's nudge cadence). Reach for it instead of a row of preset chips
   whenever the value is an open-ended number: chips have to pick a granularity *and* a ceiling for
-  everyone, and Daily target's ([2..6, 8, 10, 12]) made 7 unsayable and 20 unreachable. `allowNull`
+  everyone. `allowNull`
   lets − at the floor clear the value, which is how the editor offers "not a quota" without the
   row's × being the only way out. Holding a key repeats after a pause; the arithmetic and the ramp
   are in `src/utils/stepper.ts` (tested), the press handling in the component. When the number needs
@@ -1069,10 +982,7 @@ exception, because its Modal is a small centered card rather than a full scrolla
   `CalendarPicker` out of habit, or because it's what an older screen nearby already does — it's a
   plainer, older component kept alive only for the two things `WhenPicker` doesn't do: `datetime`
   mode (a completion timestamp, not just a day) and `multiple`-date selection (a task's `seriesId`
-  set). If neither applies, it's the wrong component, however many other call sites still use it —
-  this has already shipped wrong (`CalendarPicker` under a decision task's date question, #1502)
-  more than once, and each fix means finding and swapping a call site after the fact instead of
-  writing it right the first time.
+  set). If neither applies, it's the wrong component, however many other call sites still use it.
 - `EmptyState` (`src/components/EmptyState.tsx`) — every empty list: tinted icon circle + title + subtitle + optional CTA, animates in on mount. **When rendering inside a `ScrollView`, the ScrollView must have `flex: 1` and its `contentContainerStyle` must use `flexGrow: 1`**, so the content container expands to fill available space and the centered view can actually center vertically. Without that, the empty state content sits at the top of the sheet — the flex:1 on the centered view has nothing to fill. See `EventImportSheet.tsx` for the pattern.
 - `EmptyNote` (`src/components/EmptyNote.tsx`) — the same idea as `EmptyState`, for a section that
   is empty while the rest of the sheet still has content above and below it ("No stores yet. Name
@@ -1083,8 +993,10 @@ exception, because its Modal is a small centered card rather than a full scrolla
   Its text is `textSecondary` for the reason `EmptyState`'s own subtitle is — this says what's
   missing and how to fix it, which is information, not a dim aside.
 - `PinIcon` (`src/components/PinIcon.tsx`) — the pin glyph everywhere pinning is shown or toggled
-  (task row, bulk bar, editor's Pin row, category pin-all, Pinned Tasks header),
-  and the **one** icon in the app that isn't an Ionicons name. Ionicons has no thumbtack: its `pin`
+  (task row, bulk bar, editor's Pin row, category pin-all, Pinned Tasks header), and one of the
+  two drawn icons in the app (the other is `TargetIcon`, the bullseye for a target the user sets,
+  which `ScreenHeader`, `InlineAction` and `SettingsRow` take as `TARGET_ICON`). Ionicons has no
+  thumbtack: its `pin`
   is a *map* pin — thin needle, round head — which reads as a location rather than "hold this at
   the top" and goes wispy at `iconSize.sm`. So it's drawn, as two `react-native-svg` paths on the
   same 24-unit grid the Ionicons use, and takes `size` from `iconSize` like they do. Keep the
@@ -1095,8 +1007,8 @@ exception, because its Modal is a small centered card rather than a full scrolla
   purpose and stays Ionicons.
 - `SegmentedControl` (`src/components/SegmentedControl.tsx`) — **pick exactly one of a small,
   closed set.** The task's kind, the repeat type, priority, a unit, an anchor: one bounded track
-  of equal segments, the chosen one raised rather than accent-filled. This is the rule the pill
-  had lost — it was doing four unrelated jobs in one styling, and only two of them are pills:
+  of equal segments, the chosen one raised rather than accent-filled. Which control does which
+  job:
 
   | Job | Control |
   |---|---|
@@ -1111,11 +1023,8 @@ exception, because its Modal is a small centered card rather than a full scrolla
   it contains. A weekday row next to one *should* look different — that's the rule working.
   Sets too wide for a line take `columns` (an equal-width grid **inside the same track**, rows
   built by `src/utils/segmentColumns.ts` — ragged wrapping is a row of pills again, just inside
-  a box). Settings gets it through `SettingsSegments`, which is only the padding: the
-  accent-bordered `SettingsPills` that predated this is gone, since two treatments for one job
-  is the drift. Priority is in a track *and* keeps its colour — every segment carries its dot
-  (`SegmentOption.dot`), which shows more than the old fill did, since that only coloured the
-  option you'd already picked. The cases deliberately left as pills (effort, presets beside a
+  a box). Settings gets it through `SettingsSegments`, which is only the padding. Priority is in a
+  track *and* keeps its colour: every segment carries its dot (`SegmentOption.dot`). The cases deliberately left as pills (effort, presets beside a
   free input, list filters, a unit beside a stepper) are listed in the component's own doc
   comment with the reason for each; read it before converting or un-converting one.
 - `PillGroup` (`src/components/PillGroup.tsx`) — a wrapping grid of pills for picking from an
@@ -1127,17 +1036,14 @@ exception, because its Modal is a small centered card rather than a full scrolla
   Creation is one control in two states: below the cap a "+ New {noun}" opening an inline input,
   above it the `Create "…"` the filter's own text implies. The rule and its tests are in
   `src/utils/pillOverflow.ts`; the component owns only layout. Reach for it instead of mapping a
-  list straight into `<TouchableOpacity>` pills whenever the set has no ceiling — that's what
-  had the grocery item sheet rendering ~30 pills across two grids, pushing the name/quantity
-  fields it exists to edit off the first screen.
+  list straight into `<TouchableOpacity>` pills whenever the set has no ceiling, or the pills
+  push the fields the sheet exists to edit off the first screen.
 - `CategoryPicker` (`src/components/CategoryPicker.tsx`) — **the task-category picker, everywhere
   one is chosen.** `CategoryPickerList` is a find-or-add field over every category, one per row;
   `CategoryPickerSheet` is the same list in a bottom sheet for a host with no room of its own
-  (quick add, the bulk bar's Move). Rows, not pills, and no cap: quick add used to show seven and
-  hide the rest behind a "N more" that its own sheet — capped to the space above the keyboard —
-  usually cut off, so picking anything else meant typing a name from memory. Two columns were
-  tried in mock and rejected; "Expiring Groceries" truncates at half width, and a truncated
-  category is one you can't recognise, which is the whole problem. Order is the user's own
+  (quick add, the bulk bar's Move). Rows, not pills, and no cap: a cap behind "N more" in a sheet
+  sized to the space above the keyboard is a cap nobody can get past. One column, because a
+  truncated category name is one you can't recognise. Order is the user's own
   (`reorderCategories`), never re-ranked by recency, and the filter/Enter rules live in
   `src/utils/categoryPicker.ts` with their tests. `value` is optional: omit it where there's no
   single current value to tick (a bulk move across several categories). The Settings rows that
@@ -1147,23 +1053,18 @@ exception, because its Modal is a small centered card rather than a full scrolla
 - `RuleListSheet` (`src/components/RuleListSheet.tsx`) — the sheet a list of user-authored
   "when X, add this task" rules is edited in: one card, one row per rule (title, a secondary line,
   a toggle, a chevron), tap to expand into a control, a title field and a delete row, plus an
-  `InlineAction` to add one and an `EmptyState` when there are none. `WeatherRulesSheet` and
-  `ScreenTimeRulesSheet` are both this, and they shipped as near-identical copies first — sixty
-  lines of styles matched character for character, which is the drift `SheetHeaderButton` and
-  `InlineAction` exist to undo, one level up. **A third rules sheet uses this rather than copying
-  one of them.** What a caller supplies is the two ends: `header` (anything above the list — a
+  `InlineAction` to add one and an `EmptyState` when there are none. Every rules sheet (weather,
+  Screen Time, Health, calendar events, reminder captures) is this; **a new one uses it rather
+  than copying one of them.** What a caller supplies is the two ends: `header` (anything above the list — a
   permission card, a picker) and `renderEditor` (the rule-specific control in the expanded row).
-  `RuleSheetNoticeCard` beside it is the card shape both use for the first of those. It needs no
+  `RuleSheetNoticeCard` beside it is the card shape they use for the first of those. It needs no
   unsaved-changes guard because every edit commits straight through `onChange` as it's made —
   the other valid answer to the pageSheet `onRequestClose` rule below, not a workaround.
 - `ContrastBars` (`src/components/ContrastBars.tsx`) — one "with it against without it"
   comparison, drawn as a pair of bars on one scale. **Every contrast on the Mood screen and the
   symptom page is this** (mood by kind of work, by repeating task, by symptom, by context tag, by
-  what you ate, and a symptom against each food), and a seventh uses it rather than copying one.
-  They were five copies of the same twelve lines first. Two numbers on a line are readable and
-  four are not, which is what forced this: the symptom/food read reports a *rate* per side, so its
-  row said "3 of 6 vs 1 of 9" and working out whether 1-in-11 beats 3-in-4 took a moment, with
-  another to compare it against the row above. The caller passes each side's fraction (0..1) and
+  what you ate, and a symptom against each food), and a new one uses it rather than copying one.
+  Two numbers on a line are readable and four ("3 of 6 vs 1 of 9") are not. The caller passes each side's fraction (0..1) and
   its own text, so the component knows nothing about mood scales or day counts and needs no mode
   flag. Three rules live in it: the figures stay in text because the bar is an aid and the number
   is the record; both bars are one colour, since length is the data and a second colour would rank
@@ -1175,7 +1076,7 @@ exception, because its Modal is a small centered card rather than a full scrolla
   `MOOD BY TIME OF DAY` is deliberately *not* converted: three time buckets are not a with/without
   pair, so it keeps the plain one-line row.
 - `EditorRow` (`src/components/EditorRow.tsx`) — the `icon — label — value ›` row every editor sheet is built from (Date, Deadline, Remind me, Link, …). Pass `expanded` for rows whose controls unfold in place rather than opening a picker, and the chevron becomes up/down.
-- **Filtering by an open-ended set of options (tags, categories) is a bottom sheet with wrapping chips, never a horizontal scrolling chip row.** `LogbookFilterSheet` and `RecipeTagFilterSheet` are the two instances — both replaced a scroll row that had shipped first. A scroll row hides every option past what fits on screen behind a swipe nobody is prompted to make, and a vocabulary the user builds themselves (tags especially) has no ceiling a phone-width row can assume; wrapping puts the whole set on screen at once. The screen itself keeps only a small trigger row: a "Filter"/"Tags" button that opens the sheet, plus whatever's *currently selected* as removable pills (`ActiveFilterPill` in `LogbookScreen`, the `activePill` styles in `RecipesScreen`) — that set stays small by construction, so a scrolling row is still the right shape for it. Don't reach for a horizontal `ScrollView` of chips as the *filter control itself* again; that's the mistake both of these fixed.
+- **Filtering by an open-ended set of options (tags, categories) is a bottom sheet with wrapping chips, never a horizontal scrolling chip row.** `LogbookFilterSheet` and `RecipeTagFilterSheet` are the instances. A scroll row hides every option past what fits on screen behind a swipe nobody is prompted to make, and a vocabulary the user builds themselves (tags especially) has no ceiling a phone-width row can assume; wrapping puts the whole set on screen at once. The screen itself keeps only a small trigger row: a "Filter"/"Tags" button that opens the sheet, plus whatever's *currently selected* as removable pills (`ActiveFilterPill` in `LogbookScreen`, the `activePill` styles in `RecipesScreen`) — that set stays small by construction, so a scrolling row is still the right shape for it. Don't reach for a horizontal `ScrollView` of chips as the *filter control itself*.
 - `SelectionDot` (`src/components/SelectionDot.tsx`) — the circle at a row's **trailing** edge that
   says whether it's picked for a bulk edit: empty ring on every eligible row, accent fill + tick on
   the selected ones. Selection used to be shown by filling in the row's own completion checkbox,
@@ -1190,7 +1091,7 @@ exception, because its Modal is a small centered card rather than a full scrolla
   and registers for painting with `usePaintSelectionRow` (or `PaintSelectionRow` where the row is
   drawn by a render function rather than a component). A second copy of a row on the same screen
   (a pinned task, the Recipes Up Next shelf) passes a null id, or its unmount evicts the real row.
-- `PaintSelectionProvider` (`src/components/PaintSelection.tsx`) — wraps a task list so that, while bulk selecting, a drag down the column of `SelectionDot`s "paints" a run of rows instead of needing a tap each. Screens get it by spreading `paintProps` from `useTaskSelection` and passing `scrollEnabled={!painting}` to the list; rows register themselves from inside `TaskItem`, so nothing else has to change. The touch is claimed **on touch-down in the capture phase** within `PAINT_GUTTER_WIDTH` of the **trailing** edge — a native scroll can't be taken back once it starts dragging, so deciding later would let the list scroll out from under the paint. That's why a drag started right on the dots can't scroll (the deliberate trade), and why every other pixel of the row scrolls exactly as before. The gutter follows the dots: it ran along the leading edge while the checkbox was the selection control, and a gesture that isn't over the thing it changes is the bug that pairing them avoids. Hit-testing math and its tests live in `src/utils/paintSelect.ts` / `paintSelect.test.ts`.
+- `PaintSelectionProvider` (`src/components/PaintSelection.tsx`) — wraps a task list so that, while bulk selecting, a drag down the column of `SelectionDot`s "paints" a run of rows instead of needing a tap each. Screens get it by spreading `paintProps` from `useTaskSelection` and passing `scrollEnabled={!painting}` to the list; rows register themselves from inside `TaskItem`, so nothing else has to change. The touch is claimed **on touch-down in the capture phase** within `PAINT_GUTTER_WIDTH` of the **trailing** edge — a native scroll can't be taken back once it starts dragging, so deciding later would let the list scroll out from under the paint. That's why a drag started right on the dots can't scroll (the deliberate trade), and why every other pixel of the row scrolls exactly as before. The gutter follows the dots: a gesture that isn't over the thing it changes is a bug. Hit-testing math and its tests live in `src/utils/paintSelect.ts` / `paintSelect.test.ts`.
 - `src/utils/haptics.ts` — semantic haptics (`tap`, `success`, `warning`, `error`, `impactLight/Medium/Heavy`). Never import `expo-haptics` directly; pick by meaning so intensities stay consistent.
 - `src/utils/layoutAnimation.ts` — `animateLayout()` immediately before a state change that inserts/removes list rows (complete, delete, add, selection-mode toggle). **Never call it on a drag-reorder commit path** (`ReorderableList.onReorder`, `DraggableFlatList.onDragEnd`) — those drive their own row animations.
 - **Accessibility on icon-only controls isn't a missing primitive, it's an adoption gap** — `PressableScale` already supplies `accessibilityRole="button"`, and every icon-only `TouchableOpacity` (drag handles, delete X's, calendar day cells, month-nav chevrons) needs an explicit `accessibilityLabel` alongside it, following `TaskItem`'s style (e.g. `` `Reorder subtask ${sub.title}` ``). Hand-rolled on/off controls (a `View` toggle knob inside a `Touchable`, not a real `Switch`) need `accessibilityRole="switch"` + `accessibilityState={{ checked }}` too — see the vacation-pause and archive toggles in `TaskEditor`/`ProjectEditor`.
@@ -1220,22 +1121,22 @@ Three decisions worth not re-deriving:
 
 **List rows** use the iOS inset-grouped card treatment app-wide — match the styling in `TaskItem.itemWrapper` (Search/Logbook/Tags/Categories/Projects rows follow the same pattern). Section headers are uppercase `font.xs` semibold **`textSecondary`** with `letterSpacing: 0.8` — every one of them, the editor group labels (`EditorGroup`, `CollapsibleField`) and the Settings section labels included. `textTertiary` measures 2.84:1 on `bgSecondary` in dark, under even the 3:1 large-text bar, and these are the one grey the app repeats on every screen; `textSecondary` is 5.22:1 and was already the other grey in use. Raising the size instead was the alternative and was rejected — it makes the headers louder than the rows they label. `textTertiary` is still right where dimness is the *signal* rather than decoration (`CollapsibleField`'s `summaryEmpty`, which is how a field says it has no value). The one row that is deliberately *not* a card is `TaskGroupHeader` — a stack heads its tasks rather than sitting among them, so it's a transparent caption (see the note on its `band` style; every filled-card version of it read as a *selected* row, because a brighter card surface is what this app uses for pressed and dragged). What ties it to its tasks is enclosure, not resemblance: `TaskGroupTray` puts the header and the child cards in one `bgSunken` region, and the children drop their own margins to sit on its padding. Grouping a header with its rows by giving the header a card-like treatment is the move that keeps failing here — reach for the region instead.
 
-**A selected/active row's background must be opaque, never a translucent tint, on anything that sits inside a `SwipeableRow` or a `ReorderableList`/`SortableList` drag overlay.** `SwipeableRow`'s `selectAction` commits the moment the swipe starts opening (`onSwipeableWillOpen`, not `onSwipeableOpen` — see that component's own doc comment for why), but the row doesn't visually finish closing until the open spring settles and a second, close spring runs after it — a few hundred ms the caller's state change (`selectionMode`/`selected` flipping true) runs well ahead of. If the row's own "selected" style is a translucent color (`colors.accentSubtle`, `colors.accent + '1A'`, …) applied on top of `bgSecondary` instead of replacing it, that translucency doesn't just tint the row — it lets whatever's *behind* the row's own layer bleed through for that whole window: `SwipeableRow`'s still-open panel (an opaque, more saturated color than the intended tint), or a `ReorderableList`/`SortableList` drag overlay (which paints no background of its own at all). The visible bug is the same shape either way: a block of the wrong, too-vivid color sits there for the whole animation and then snaps to the true (dimmer) tint the instant the panel/overlay is actually removed — reading as a transparency glitch, not a slow animation, because the two colors are similar enough that the difference doesn't register as motion. Two real bugs shipped from this, a drag case (`FoodLogRow`'s dragging state, #2504 — fixed by giving `isActive` its own opaque `bgTertiary` style instead of reusing the translucent selected one) and a select case (`FoodLogRow`'s swipe-to-select, the same file, fixed by flattening the tint itself). **Use `flattenOverlay(overlayColor, baseHex)`** (`src/theme/index.ts`) to precompute an opaque equivalent of a translucent token against the row's own resting background (`colors.bgSecondary` for a card row, `colors.bg` for a flat full-bleed one like Logbook's) — it looks identical in the row's normal resting state and stops the bleed-through during the transient window. This has shown up independently in enough list rows (`FoodLogRow` twice, `GroceryRow`, `RecipesScreen`, `LogbookScreen`, `PeopleScreen`, `TemplatesScreen`, `StacksScreen`, `ProjectsScreen`, `MealSlotRow` — all fixed the same way in one pass) that it's worth checking on sight rather than rediscovering per screen: **any row that both (a) sits inside a `SwipeableRow` with a `selectAction`/`whenAction`, or a draggable list, and (b) changes its own background color for a state (selected, active, checked, …) needs that background to be opaque.** `TaskItem` never had this bug because it doesn't tint the row for selection at all — it only fills `SelectionDot` — which is the other valid way to sidestep the whole class of bug, not just a fix for it.
+**A selected/active row's background must be opaque, never a translucent tint, on anything that sits inside a `SwipeableRow` or a `ReorderableList`/`SortableList` drag overlay.** `SwipeableRow`'s `selectAction` commits the moment the swipe starts opening, a few hundred ms before the panel has finished closing, and a drag overlay paints no background of its own. A translucent "selected" color (`colors.accentSubtle`, `colors.accent + '1A'`, …) laid over `bgSecondary` lets whatever is behind the row bleed through for that window, which reads as a block of the wrong, too-vivid color that snaps to the right one when the panel goes. **Use `flattenOverlay(overlayColor, baseHex)`** (`src/theme/index.ts`) to precompute an opaque equivalent against the row's own resting background (`colors.bgSecondary` for a card row, `colors.bg` for a flat full-bleed one like Logbook's), or give a dragging state its own opaque token (`bgTertiary`). Check this on sight for **any row that both (a) sits inside a `SwipeableRow` with a `selectAction`/`whenAction`, or a draggable list, and (b) changes its own background color for a state.** `TaskItem` sidesteps the whole class by not tinting the row for selection at all (it only fills `SelectionDot`), which is the other valid answer.
 
-**A row's `SwipeableRow` must stay mounted through the `selectionMode` toggle too, not just through `enabled` toggles for other reasons.** The `flattenOverlay` fix above patches the tint that shows through while the panel is still closing; it assumes the panel is still there to show through. `GroceryRow`, `RecipesScreen`, `TemplatesScreen`, `TemplateDetailScreen` and `MealSlotRow` instead swapped `<SwipeableRow>…</SwipeableRow>` for a bare `rowBody`/`View` once `selectionMode` flipped true (`selectionMode ? rowBody : (<SwipeableRow>…)`, or an early `if (selectionMode) return rowBody`) — the same anti-pattern `SwipeableRow`'s own doc comment already warns about for `enabled`, just not caught for this particular toggle. Since the row's own select action is what sets `selectionMode` true in the first place, this unmounts the native `Swipeable` view at the exact moment its close spring is running, which doesn't flatten to a wrong tint — it freezes the still-open panel and the row content underneath it for a frame, then snaps to the new (selection-mode) row layout, reading as the swipe glitching rather than sliding shut. `TaskItem` had the identical bug, despite its own comment correctly warning against exactly this for `spotlightDisabled` right above it. The fix is the same one that comment already prescribes: keep `SwipeableRow` mounted unconditionally and pass `enabled={!selectionMode}` (or `enabled={!selectionMode && !alreadyExistingCondition}`) instead of conditionally rendering it — `PeopleScreen`, `ProjectsScreen`, `StacksScreen`, `LogbookScreen` and `FoodLogScreen` already did this correctly and are the reference to copy. Check for the conditional-render form specifically (not just the translucent-tint one) whenever a `SwipeableRow`'s `selectAction` is what flips `selectionMode`.
+**Never conditionally render `SwipeableRow` on any toggle, `selectionMode` included.** Keep it mounted and pass `enabled={!selectionMode && …}` (`GroceryRow`, `MealSlotRow` and `PeopleScreen` are references). A row's own select action is what flips `selectionMode`, so swapping in a bare row at that moment unmounts the native `Swipeable` mid close-spring: the open panel freezes for a frame and snaps, reading as the swipe glitching. `SwipeableRow`'s doc comment says the same for `enabled`.
 
 **Two sibling Modals may never be visible at once — a sheet raised from another sheet either hides the one below it, or is rendered *inside* it.** iOS presents a Modal from `[self reactViewController]` (`UIView+React.m`), the nearest view controller up the responder chain, and a view controller can present only one thing at a time. A Modal rendered as a sibling of an open sheet therefore asks the *root* view controller to present a second sheet while it is already presenting the first, and UIKit refuses: **nothing appears, no error surfaces, and RN has already set its own `_isPresented` flag** (`RCTModalHostViewComponentView.mm` sets it before calling `presentViewController:` and never checks `presentedViewController`), so the flow is left wedged and the screen reads as frozen. A Modal rendered *within* another Modal's children presents from that sheet's own view controller instead, which is presenting nothing, so it works.
 
-That difference is invisible in the JSX and cost a real bug: `c33ed17` made the "What did you eat?" sheet stay open behind Scan and Describe, reasoning that it already "stays open behind its own database search". But `NutritionSearchSheet` is rendered *inside* `FoodLogEntrySheet`'s Modal, while `ScanToLogFlow` and `EstimateMealSheet` are siblings of it in `FoodLogScreen`/`LogMealEntrySheet` — so both buttons silently did nothing and froze the food log. `ScanToLogFlow` had the same shape one level down, since `BarcodeScanSheet` reports through `onApply` without closing itself.
+That difference is invisible in the JSX: a sheet that "already stays open behind" one raised sheet (rendered inside it) can freeze when a second raised sheet is a sibling instead.
 
 - **Nest when the sheet below holds anything typed**, which is the common case for a sheet raised from a form. `FoodLogEntrySheet` takes an `overlays` prop for exactly this: the caller still owns the sheets and their state and passes them through, and only where they render is fixed (inside that sheet's Modal, beside `NutritionSearchSheet`). A hidden sheet's children unmount once it finishes dismissing, so hiding the food log's picker would have handed back an empty search field after a cancelled scan.
 - **Hide when there is nothing to lose**, and it composes: `visible={visible && session === null && panelFor === null}` is how `ScanToLogFlow` stops its scanner sitting under the portion sheet. Keep the *underlying* state set (`addOpen`, `pending`) so cancelling the raised sheet brings you back where you were.
-- **Closing one and opening another in the same commit is fine** and is what the app has always done in ~25 places; it is only holding both visible that fails. `SheetModal` is what makes that true rather than the call sites: an open whose place is taken waits for it (`canShowSheet`, the mirror of `canHideSheet`), so a caller may flip both in one handler. It was *not* true for two days — the one-commit keyboard hold below made every close land late while opens stayed immediate, which left both `visible: true` for a commit and froze the Add button's menu, the log-a-meal prompt and the focus session in turn, each fixed at its own call site before the pattern was spotted. Don't hand-roll a fourth of those.
+- **Closing one and opening another in the same commit is fine** and is what the app has always done in ~25 places; it is only holding both visible that fails. `SheetModal` is what makes that true rather than the call sites: an open whose place is taken waits for it (`canShowSheet`, the mirror of `canHideSheet`), so a caller may flip both in one handler. Don't hand-roll a delay for it.
 - **A sheet is never mounted only while it is open.** A component torn out of the tree can't hold its own close back, so unmounting one that is on screen skips the ordering below entirely and the keyboard race is back. `visible` is always an expression, never a bare `visible` or `visible={true}`; `noUnmountedSheet.test.ts` fails the build on either. A sheet hanging off a list row still shouldn't be mounted before it is first used (an unopened `WhenPicker` subscribes to the whole task list), so mount it lazily and then keep it: `useSheetMount` for one driven by a boolean, `useSheetSubject` for one whose open state is the thing it is about and which needs that thing for the commit it spends fading.
 - **`SheetModal` reports a clash in `__DEV__`** rather than leaving you to discover it on a device: it registers with the view controller it presents from and supplies a fresh one to its own children, so two siblings visible at once `console.error` with both names and the two fixes. Give a sheet that raises another a `name` so the message can identify it. It deliberately does not intervene, since which fix applies depends on whether what is typed underneath has to survive.
-- **A nested pair may not dismiss in the same commit, and `SheetModal` sequences that for you.** Nesting fixed the bug above and bought a second one: UIKit takes a presented view controller down along with its presenter, so closing both at once destroys the inner sheet behind RN's back while it still believes it is presented, and `prepareForRecycle` then clears `_viewController` and `_isPresented` **without dismissing**. That orphans a view controller iOS is still showing and nothing holds a reference to: an empty sheet that cannot be dismissed, reported as the app freezing. It shipped from `EstimateMealSheet.handleLog` firing `onLogged` (closing the picker underneath) and `onClose` (closing itself) together. A sheet now holds its own closing edge while anything is presented from it (`canHideSheet`), woken by `subscribePresentation` when that sheet goes, so the dismissals land in separate commits innermost first. **This is why the registry runs in production, not just `__DEV__`** — don't "optimize" it back behind the flag. Call sites are free to close both at once, and the one thing they owe in return is that **closing a sheet must also close anything nested inside it**: the hold waits for the inner sheet rather than overriding it, so a caller that clears only the outer one leaves it held open. Every path today pairs them (`ScanPortionSheet` and `EstimateMealSheet` both call `onLogged` and `onClose` together, and `ScanToLogFlow` clears `scanOpen` before the portion sheet opens), which is what makes the hold safe.
+- **A nested pair may not dismiss in the same commit, and `SheetModal` sequences that for you.** Nesting fixed the bug above and bought a second one: UIKit takes a presented view controller down along with its presenter, so closing both at once destroys the inner sheet behind RN's back while it still believes it is presented, and `prepareForRecycle` then clears `_viewController` and `_isPresented` **without dismissing**. That orphans a view controller iOS is still showing and nothing holds a reference to: an empty sheet that cannot be dismissed, reported as the app freezing. A sheet now holds its own closing edge while anything is presented from it (`canHideSheet`), woken by `subscribePresentation` when that sheet goes, so the dismissals land in separate commits innermost first. **This is why the registry runs in production, not just `__DEV__`** — don't "optimize" it back behind the flag. Call sites are free to close both at once, and the one thing they owe in return is that **closing a sheet must also close anything nested inside it**: the hold waits for the inner sheet rather than overriding it, so a caller that clears only the outer one leaves it held open. Every path today pairs them (`ScanPortionSheet` and `EstimateMealSheet` both call `onLogged` and `onClose` together, and `ScanToLogFlow` clears `scanOpen` before the portion sheet opens), which is what makes the hold safe.
 
-**A `presentationStyle="pageSheet"` Modal is dismissible by an iOS swipe-down, and that gesture calls the Modal's `onRequestClose` — not whatever the header's Cancel button runs, if the two aren't the same function.** A bare `onRequestClose={onClose}` on a sheet that stages typed or picked state before an explicit Save/Add is a silent-data-loss bug, not a style choice: the swipe bypasses the save path entirely, the same way it does for `EditorSheet`'s own pageSheet-vs-fullScreen tradeoff noted below. This shipped as a bug for four sheets first (#1681/#1682), and turned out to be the default rather than the exception — a sweep of the rest of the app (#2192) found the identical bare-`onClose` `onRequestClose` on fourteen more. **Any new `pageSheet` Modal holding state that isn't committed immediately needs a `handleCancel`, not a bare `onClose`, wired to both `onRequestClose` and the header's Cancel/Back button:**
+**A `presentationStyle="pageSheet"` Modal is dismissible by an iOS swipe-down, and that gesture calls the Modal's `onRequestClose` — not whatever the header's Cancel button runs, if the two aren't the same function.** A bare `onRequestClose={onClose}` on a sheet that stages typed or picked state before an explicit Save/Add is a silent-data-loss bug, not a style choice: the swipe bypasses the save path entirely, the same way it does for `EditorSheet`'s own pageSheet-vs-fullScreen tradeoff noted below. **Any new `pageSheet` Modal holding state that isn't committed immediately needs a `handleCancel`, not a bare `onClose`, wired to both `onRequestClose` and the header's Cancel/Back button:**
 ```tsx
 const handleCancel = () => {
   const dirty = /* differs from what the sheet opened with, or from what's saved */;
@@ -1254,35 +1155,27 @@ Same copy every time, mirroring `TaskEditor`'s own `handleCancel` — don't inve
 
 **Never render `react-native`'s `Modal` directly — use `SheetModal` (`src/components/SheetModal.tsx`), which is the same component with the keyboard guaranteed to be gone before it closes.** Closing a `Modal` while a `TextInput` inside it still holds native keyboard focus races the keyboard's own dismiss animation against the Modal's — the touch handler on whatever renders underneath (usually Today) gets stranded mid-handoff and stops responding to any tap at all, with no crash and no error to point at it. `SheetModal` holds the real `Modal` open for one more commit on the closing edge, dismissing the keyboard first, so the resign-first-responder command is always queued ahead of the dismissal whichever call site set the prop. `noRawModal.test.ts` fails the build on a raw `Modal` anywhere in `src/`, so this is enforced rather than remembered.
 
-**The reason it's a component and not a rule is that the rule kept losing.** For a long time this section said "call `Keyboard.dismiss()` on every path that can close it", and the bug shipped five separate times anyway, every time in a sheet whose *other* close paths were already correct: `FoodLogEntrySheet`/`QuickAddModal` first ("Fix Today freezing after a sheet closes with a focused text field"), then a sweep across 27 more sheets in one commit, then `CookModeSheet`'s "Ask about this step" field — missed by that very sweep despite matching the pattern exactly, reported as "logged a meal via a cook task, now Today is frozen" — then an audit finding nine *more* the sweep had missed (`GroceryAislesSheet`, `RemindMePicker`, `ProjectCategoriesSheet`, `CookbookChecklistSheet`, `ApplyTemplateSheet`, `NutritionSearchSheet`, `WhenPicker`, and the "Add existing task" and tag-detail modals in `ProjectDetailScreen`/`TagsScreen`), and finally `EstimateMealSheet`'s recipe-match row, whose `onPress` handed off to a parent callback that closed the sheet from outside. Five rounds is the evidence that a per-call-site discipline was the wrong shape for this: the bug is invisible in review, typechecks, passes every test, and surfaces only when a real person closes a real sheet with a field focused.
-
-That history is worth keeping for what it says about *which* paths get forgotten, since the same list is what a reviewer should still have in mind:
-
-- **It applies to every `presentationStyle`** (`fullScreen`, `pageSheet`, and `transparent` popovers alike), not just the pageSheet swipe-dismiss case the rule above covers — that one is about data loss on an OS-driven gesture, this one was about a frozen screen on *any* close, including a plain button tap.
-- **The forgotten path is never the Cancel button.** It's `onRequestClose`, a scrim tap (`SheetScrim`), a header back/close icon, a "Done"/"Save"/"Create" action, an `Alert` confirm callback, or a parent-supplied `onConfirm`/`onPick`/`onCreated` whose handler closes the sheet from outside — the parent closing the sheet on success is still this sheet closing, and that's the one `EstimateMealSheet` shipped. `WhenPicker`'s was in its *confirm* paths (tapping a calendar day with the free-text field still focused), not its cancel path.
-- **A call site may still dismiss the keyboard itself and many do**, from before `SheetModal` existed. That's harmless (the keyboard starts moving a touch sooner) and no longer load-bearing, so new code doesn't need it — don't add one, and don't read an existing one as the thing holding the sheet together.
-- **Routing every close through one local `close`/`cancel`/`handleDone` is still good practice** for the *other* reason: the `pageSheet` unsaved-changes guard above needs a single `handleCancel` regardless.
+**It applies to every `presentationStyle` and every close path**, not just Cancel: `onRequestClose`, a scrim tap, a back icon, a Done/Save action, an `Alert` callback, or a parent's `onConfirm` that closes the sheet from outside. That is why it is a component rather than a rule to call `Keyboard.dismiss()` everywhere: the per-call-site version shipped the freeze five times, each in a path nobody thought of as closing. Existing `Keyboard.dismiss()` calls before a close are harmless (the keyboard starts moving a touch sooner) and not load-bearing; don't add new ones. Routing every close through one local `close`/`handleCancel` is still good practice, for the unsaved-changes guard above.
 
 ### Drag and drop — handle with care
 
 `src/components/ReorderableList.tsx` (+ math in `src/utils/reorder.ts`, tests in `reorder.test.ts`) uses JS-driven row animations and a floating drag overlay by deliberate design — see the comments in that file before changing render order, the animation driver, or the PanResponder lifecycle. Safe to touch: overlay styling, autoscroll params, durations, and haptics via `onHoverChange`.
 
-**The `drag` callback it hands each row is cached per row key and must stay that way** (`dragHandlerFor`). Neither list virtualizes, so on Today or Later every row there is is mounted; building the callback inline in the render map — which is what it used to do — gave every row a fresh function identity on every render of the list, and that alone was enough to defeat `React.memo` on `TaskItem`. A screen-state change as small as expanding one row re-rendered all of them. Nothing in the callback needs rebuilding: it resolves the row's index from `dataRef` at call time precisely so it can survive the list changing under it, and it reaches `startDrag`/`keyExtractor` through refs so a cached handler can outlive the render that built it. The row props on the other side of that memo are kept referentially stable on purpose too (see the `useCallback`s around `handleRowPress` in `TodayScreen`, and their comment) — the two halves only pay off together, and half of it is worth nothing: `renderTaskRow` shipped with the stable `handleRowPress` wrapped in a fresh arrow (to pass a *row* key rather than the task id), which put every row on Today back to re-rendering on every store write with the memo still in place and looking like it was working. That's what `TaskItem`'s `rowKey` prop is for — when a row needs to call itself something other than its task's id, it says so with a value, not a closure. `SortableList` caches its `drag` the same way, and has to: its rows on Today are a stack's children, which are `TaskItem`s and so memoized. It built the callback inline until a stack's collapse re-rendered every row inside the tray the animation was about to move.
+**The `drag` callback it hands each row is cached per row key and must stay that way** (`dragHandlerFor`). Neither list virtualizes, so on Today or Later every row there is is mounted; building the callback inline in the render map gives every row a fresh function identity on every render of the list, which alone defeats `React.memo` on `TaskItem`. Nothing in the callback needs rebuilding: it resolves the row's index from `dataRef` at call time precisely so it can survive the list changing under it, and it reaches `startDrag`/`keyExtractor` through refs so a cached handler can outlive the render that built it. The row props on the other side of that memo are kept referentially stable on purpose too (see the `useCallback`s around `handleRowPress` in `TodayScreen`, and their comment) — the two halves only pay off together: one fresh arrow wrapping a stable handler re-renders every row on every store write, with the memo still in place and looking like it works. That's what `TaskItem`'s `rowKey` prop is for — when a row needs to call itself something other than its task's id, it says so with a value, not a closure. `SortableList` caches its `drag` the same way, since its rows on Today are a stack's children, which are `TaskItem`s and so memoized.
 
-`src/components/SortableList.tsx` — the nested list (a stack's children on Today, subtasks, chain steps) — is now **the same design and shares the same math**: rows render in their original order and are displaced by an `Animated` `translateY`, the dragged row becomes an invisible placeholder carrying the drop slot, and a finger-anchored card floats above. Same rule: styling, durations and haptics are safe; render order, the animation driver and the responder lifecycle are not. It used to re-render the rows in swapped order on every hover change instead, which is what made a drag inside a stack snap rather than animate. Two things are deliberately not copied over, because it doesn't own a scroll view: there is no autoscroll and no `measureLayout` calibration (its rows are direct children, so `onLayout`'s `y` *is* the card's anchor), and the card is clamped to the first/last row's slot **unless** the caller passes `onDragOut` — every other caller sits inside a rounded `overflow: hidden` card that would slice the card at the edge. The one caller that does pass it (Today) instead unclips its container for the duration, via `TaskGroupBody`'s `dragging` → `AnimatedCollapsible`'s `clip`.
+`src/components/SortableList.tsx` — the nested list (a stack's children on Today, subtasks, chain steps) — is now **the same design and shares the same math**: rows render in their original order and are displaced by an `Animated` `translateY`, the dragged row becomes an invisible placeholder carrying the drop slot, and a finger-anchored card floats above. Same rule: styling, durations and haptics are safe; render order, the animation driver and the responder lifecycle are not. Two things are deliberately not copied over, because it doesn't own a scroll view: there is no autoscroll and no `measureLayout` calibration (its rows are direct children, so `onLayout`'s `y` *is* the card's anchor), and the card is clamped to the first/last row's slot **unless** the caller passes `onDragOut` — every other caller sits inside a rounded `overflow: hidden` card that would slice the card at the edge. The one caller that does pass it (Today) instead unclips its container for the duration, via `TaskGroupBody`'s `dragging` → `AnimatedCollapsible`'s `clip`.
 
-**A `SortableList` rendered inside a scrollable must turn that scrollable off for the duration of a drag** — pass `onDragStateChange` and wire it to the container's `scrollEnabled` (see `TaskGroupEditor`, or `draggingStackChild` in `TodayScreen`). Without it the drag doesn't happen at all: a native scroll view only stands down for a JS responder that is one of its **ancestors** (`_shouldDisableScrollInteraction` walks `superview`, not the subtree), and `SortableList`'s responder is a descendant — so the scroll claims the touch on the first finger move and the row is put straight back down. `ReorderableList` is immune because it owns the scroll view it drags inside of and sets `scrollEnabled` itself. The inline subtask list in `TaskItem` can't reach its own container, so it re-exposes the flag as the `onSubtaskDragStateChange` prop — **every screen rendering a `TaskItem` has to pass it** (a `useState` setter, so the row's memo still holds) and add it to its list's `scrollEnabled`, or subtask drag is silently dead on that screen.
+**A `SortableList` rendered inside a scrollable must turn that scrollable off for the duration of a drag** — pass `onDragStateChange` and wire it to the container's `scrollEnabled` (see `TaskGroupEditor`, or `draggingStackChildGroupId` in `TodayScreen`). Without it the drag doesn't happen at all: a native scroll view only stands down for a JS responder that is one of its **ancestors** (`_shouldDisableScrollInteraction` walks `superview`, not the subtree), and `SortableList`'s responder is a descendant — so the scroll claims the touch on the first finger move and the row is put straight back down. `ReorderableList` is immune because it owns the scroll view it drags inside of and sets `scrollEnabled` itself. The inline subtask list in `TaskItem` can't reach its own container, so it re-exposes the flag as the `onSubtaskDragStateChange` prop — **every screen rendering a `TaskItem` has to pass it** (a `useState` setter, so the row's memo still holds) and add it to its list's `scrollEnabled`, or subtask drag is silently dead on that screen.
 
 **A drag cannot live inside a `presentationStyle="pageSheet"` Modal, and that's why `EditorSheet`
-is `fullScreen`** (#1182). A page sheet is presented by a `UISheetPresentationController`, which
+is `fullScreen`**. A page sheet is presented by a `UISheetPresentationController`, which
 owns the pull-down dismissal pan — on its *container* view, an ancestor of the modal's content.
 Every RN `Modal` gets its own touch handler on the modal view controller's root view
 (`RCTFabricModalHostViewController`), and that handler **destroys its own in-flight touches** the
 moment it has to arbitrate with a recognizer from outside that view (`RCTSurfaceTouchHandler`:
 `canBePreventedByGestureRecognizer` → `![other.view isDescendantOfView:self.view]` →
 `_cancelTouches`). It's deliberate on RN's part, aimed at native recognizers "like iOS 13 modals
-that can be pulled down". The symptom is unmistakable and cost three inconclusive audits: the row
-lifts, follows the finger for a moment, then snaps back on `onPanResponderTerminate`, in both
+that can be pulled down". The symptom is unmistakable: the row lifts, follows the finger for a moment, then snaps back on `onPanResponderTerminate`, in both
 directions, with nothing else on screen moving — UIKit asks about simultaneous recognition while
 both recognizers are merely *tracking*, so the sheet's pan need never begin.
 
@@ -1290,35 +1183,33 @@ both recognizers are merely *tracking*, so the sheet's pan need never begin.
 is genuinely required (above), but an iOS sheet defers its dismissal pan to the sheet's scroll
 view — so switching it off is also what frees that pan to arbitrate immediately. Scroll on, the
 scroll cancels the touch; scroll off, the sheet does. Inside a page sheet the drag loses both
-ways. A sheet that holds a drag list is `fullScreen` with a `useSafeAreaInsets().top` inset in
-place of the page sheet's own (`EditorSheet`, `CategoryOrderSheet`, `GroceryAislesSheet`); the
-other ~20 page sheets hold no drag and are left alone.
+ways. **Any sheet holding a `SortableList` or `ReorderableList` is `fullScreen`** (or built on
+`EditorSheet`), with a `useSafeAreaInsets().top` inset in place of the page sheet's own
+(`CategoryOrderSheet`, `GroceryAislesSheet` and `ProjectCategoriesSheet` are examples). A sheet
+with no drag stays a page sheet.
 
 Both lists fire the drag-lift haptic themselves (`startDrag`), so callers must not add their own.
 
-**What a drag is aimed at is never screen state.** Today and a project's page both let a dragged task land *on* something (a stack, a section, the Pinned block) rather than between rows, and both used to hold that target in `useState`. Each crossing then re-rendered the whole screen mid-drag: every row's `renderItem` plus every sheet mounted beside the list, the hidden TaskEditor included. That was the stutter dragging a line into a project section. The target goes on a `DropTargetChannel` (`src/components/DropTargetChannel.tsx`), which the highlight subscribes to through `ChannelDropTarget`/`useDropTargetAimed`, and the list is told through `ReorderableList`'s `dropCaptureRef` (`capture(index | 'header' | null)`) rather than the `dropDisabled`/`dropIntoIndex`/`dropIntoHeader` props. The add button's `FabIntentChannel` is the same rule for the other drag. A new drop target follows it too.
+**What a drag is aimed at is never screen state.** Today and a project's page both let a dragged task land *on* something (a stack, a section, the Pinned block) rather than between rows. Holding that target in `useState` re-renders the whole screen on each crossing mid-drag (every row, plus every sheet mounted beside the list), which stutters. The target goes on a `DropTargetChannel` (`src/components/DropTargetChannel.tsx`), which the highlight subscribes to through `ChannelDropTarget`/`useDropTargetAimed`, and the list is told through `ReorderableList`'s `dropCaptureRef` (`capture(index | 'header' | null)`) rather than the `dropDisabled`/`dropIntoIndex`/`dropIntoHeader` props. The add button's `FabIntentChannel` is the same rule for the other drag. A new drop target follows it too.
 
-**A reorder handed only the rows on screen lays them into the slots those rows already hold, and never renumbers them 0..n.** Almost every list here is a filtered view of a larger ordered set: the Projects screen shows Active, Completed or Archived; Today shows a stack's members due today; a project's page is a slice of the one global `Task.sortOrder` space. Numbering the visible subset from zero collides with everything filtered out of it, so the hidden rows come back in whatever order the ties happen to break. `reorderProjects` shipped exactly that and reshuffled the Active list whenever the Archived one was dragged. The three helpers that do it right are `slotUpdates` (`src/utils/projectOrder.ts`), `reorderSubset` (behind `reorderGroupChildren`), and the splice-into-the-full-order pass in `reorderProjects`; reach for one of them rather than a fresh `map((id, i) => ...)`.
+**A reorder handed only the rows on screen lays them into the slots those rows already hold, and never renumbers them 0..n.** Almost every list here is a filtered view of a larger ordered set: the Projects screen shows Active, Completed or Archived; Today shows a stack's members due today; a project's page is a slice of the one global `Task.sortOrder` space. Numbering the visible subset from zero collides with everything filtered out of it, so the hidden rows come back in whatever order the ties happen to break. The three helpers that do it right are `slotUpdates` (`src/utils/projectOrder.ts`), `reorderSubset` (behind `reorderGroupChildren`), and the splice-into-the-full-order pass in `reorderProjects`; reach for one of them rather than a fresh `map((id, i) => ...)`.
 
-**Today's category headers are not draggable, and that isn't an oversight.** Reordering the
-sections used to be a long-press on a header inside the task list, and the floating card never
-lined up with the finger holding it: the drag had to auto-collapse every other section first
-(the headers being reordered are scattered down a list of tasks, so they don't otherwise fit on
-screen together), and `calibrateOverlayBase` was measuring a row the collapse was still moving.
-It's now `CategoryOrderSheet`, off the Today screen's "…" menu — one row per category, moved a
-step at a time (`src/utils/categoryOrder.ts`), which needs no measurement and shows the whole
-order at once. Don't put the gesture back; `resolveCategoryReorder`/`categoryHeaderRange` were
-deleted with it. Task drag on that list is untouched and still goes through `resolveDrop`.
+**Today's category headers are not draggable, and that isn't an oversight.** The headers being
+reordered are scattered down a list of tasks, so a header drag has to collapse every other section
+first and the floating card can't line up with the finger while that collapse is still moving
+rows. Section order is `CategoryOrderSheet`, off the Today screen's "…" menu: one row per
+category, moved a step at a time (`src/utils/categoryOrder.ts`). Don't put the gesture back. Task
+drag on that list is untouched and still goes through `resolveDrop`.
 
 ### Database schema / migrations
 
 `initDatabase()` in `src/db/database.ts` creates tables and runs a list of `ALTER TABLE ADD COLUMN` migrations wrapped in try/catch — they fail silently if the column already exists. When adding a new column, append it to the migrations array rather than modifying the `CREATE TABLE` statement.
 
-**An ALTER whose column already exists is skipped rather than thrown.** `initDatabase` reads each table's real columns once (`PRAGMA table_info`) and passes over any `ADD COLUMN` naming one that is already there, because by the second launch every one of them is a duplicate and a mature install was re-parsing and re-throwing all ~270 of them across the bridge before the first row was read. Only the statement's own text is consulted, so anything that isn't a plain `ADD COLUMN` is run and allowed to fail exactly as it did before. Adding a column still needs nothing but appending to the array.
+**An ALTER whose column already exists is skipped rather than thrown.** `initDatabase` reads each table's real columns once (`PRAGMA table_info`) and passes over any `ADD COLUMN` naming one that is already there, because by the second launch every one of them is a duplicate, and re-parsing and re-throwing hundreds of them across the bridge cost real launch time. Only the statement's own text is consulted, so anything that isn't a plain `ADD COLUMN` is run and allowed to fail exactly as it did before. Adding a column still needs nothing but appending to the array.
 
 A schema version in `PRAGMA user_version` was the other way to do this and is deliberately not what shipped: it skips the loop entirely but has to be kept in step with the schema by hand, and anything that resets the tables without resetting the header (dropping every table to wipe the demo database, say) leaves it stamped and skips every migration on a schema that no longer has those columns. Reading the columns cannot desync from them.
 
-**The one-time backfills further down are each behind a `dbGetSetting('…_done')` flag**, including the five `tasks` backfills that used to be unguarded full scans on every launch. They were a no-op in what they wrote, never in what they cost: none of the columns they test is indexed.
+**Every one-time backfill is behind a `dbGetSetting('…_done')` flag.** An unguarded one is a no-op in what it writes but never in what it costs: a full table scan on every launch, on columns that aren't indexed.
 
 Tags and categories are stored as JSON arrays in each task row (`tags TEXT`, `category TEXT`). Tags are additionally tracked in a `tag_registry` key in the `settings` table, so a tag that exists but is currently unused doesn't disappear. Categories used to work the same way, but now live in their own `categories` table (they carry schedule/vacation fields a string list can't hold) — the `category_registry` setting is legacy, read only by the one-time migration in `initDatabase()` that backfills that table.
 
@@ -1341,32 +1232,27 @@ missing it), its pass-through in `buildDraftsFromTemplate`, and a matching toggl
 
 The Today widget (`targets/todo-widget/`) is injected at prebuild time by custom config plugins rather than a checked-in `ios/` folder — `plugins/withAppGroup.js` (App Group entitlement on the main app) and `plugins/withWidgetExtension.js` (the WidgetKit extension as a whole new Xcode target, built via the raw `xcode` npm package).
 
-**Before adding or changing a native target — Watch app, Live Activity, share extension — read `docs/native-targets.md`.** It lists the six non-obvious requirements this one cost a build cycle each to discover (the EAS `appExtensions` declaration, `TargetAttributes` signing, two outright bugs in the `xcode` package, Info.plist placeholder keys, the bridge module's podspec, the App Group path convention). Nothing else in the repo will tell you about them, and each one fails late — at archive or at submission, not at build.
+**Before adding or changing a native target — Watch app, Live Activity, share extension — read `docs/native-targets.md`.** It lists the non-obvious requirements that each cost a build cycle to discover (the EAS `appExtensions` declaration, `TargetAttributes` signing, two outright bugs in the `xcode` package, Info.plist placeholder keys, the bridge module's podspec, intent target membership, and more). Nothing else in the repo will tell you about them, and each one fails late — at archive or at submission, not at build.
 
-Two fixes that look unrelated to the widget but are load-bearing for *any* second native target existing at all — don't revert them as dead code:
+Three things that look unrelated to the widget but are load-bearing for *any* second native target existing at all — don't revert them as dead code:
 - `enableScreens(false)` near the top of `App.tsx` — works around a `react-native-screens` crash (`RNSTabBarController`) that only reproduces in production builds once the app has more than one native target to build/sign.
-- `ios.buildReactNativeFromSource: true` in the `expo-build-properties` plugin config (`app.json`), plus `patches/react-native+0.86.2.patch` (applied via `patch-package` on `postinstall`) — RN downloads a prebuilt Core binary by default, which bypasses the patch entirely; the patch itself fixes an RN bug where an `NSException` thrown inside a native module call escapes across a dispatch-queue boundary instead of being converted to a JS error, crashing the app. Both were required together — the patch alone has zero effect without also forcing a from-source build. **The patch is named for the exact RN version and has to be re-cut on every RN bump**, because `patch-package` matches on that filename: 0.81 threw `convertNSExceptionToJSError(...)` from the `@catch` and 0.86 plain `@throw`s instead, so the diff context changes even though the bug and the fix don't. Re-cut it by editing `node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModule.mm` and running `npx patch-package react-native`, then delete the old patch file.
+- `ios.buildReactNativeFromSource: true` in the `expo-build-properties` plugin config (`app.json`), plus `patches/react-native+0.86.2.patch` (applied via `patch-package` on `postinstall`) — RN downloads a prebuilt Core binary by default, which bypasses the patch entirely; the patch itself fixes an RN bug where an `NSException` thrown inside a native module call escapes across a dispatch-queue boundary instead of being converted to a JS error, crashing the app. Both were required together — the patch alone has zero effect without also forcing a from-source build. **The patch is named for the exact RN version and has to be re-cut on every RN bump**, because `patch-package` matches on that filename and the diff context moves between versions even when the bug and the fix don't. Re-cut it by editing `node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModule.mm` and running `npx patch-package react-native`, then delete the old patch file.
 - `patches/react-native-gesture-handler+2.32.0.patch` is the other patch in that folder, and it's JS rather than native, so it needs no build setting to take effect. RNGH's legacy `Swipeable` (what `SwipeableRow` wraps) calls `setState` from its row's `onLayout` and its `shouldComponentUpdate` returns `true` unconditionally, so any row whose *height* animates inside one — a stack header folding its summary line — re-rendered the whole swipeable on every frame of the animation. The patch makes `onRowLayout` bail when the width hasn't changed, which is the only thing that handler reads. It touches the TS source (what Metro compiles, via the package's `react-native` field) and both compiled copies under `lib/`, so the diff has three hunks saying the same thing. Same rule as the RN patch: named for the exact version, re-cut on every RNGH bump.
 
 `enableScreens(false)` has a side effect worth knowing before reaching for `freezeOnBlur` on a tab screen: it sends `@react-navigation`'s `ScreenFallback` down its non-native branch instead of the `react-native-screens` implementation, and nothing on that branch forwards `freezeOnBlur`. So a blurred tab screen stays mounted and keeps re-rendering on every store change; `freezeOnBlur` is inert in this app, and there's no escape hatch for it while `enableScreens` stays off.
 
-**What that fallback renders changed with React Navigation v7, and the difference matters.** Under v6 `MaybeScreen` fell back to `@react-navigation/elements`' `ResourceSavingView`, which keeps a blurred child mounted by moving it `FAR_FAR_AWAY` — `top: 30000`. Under v7 (`node_modules/@react-navigation/bottom-tabs/src/views/ScreenFallback.tsx`) it falls back to a plain `View` and nothing is parked off-screen, so a blurred tab screen now sits at its normal offset. `ResourceSavingView` is still exported and still does the 30,000pt trick; bottom tabs just no longer route through it.
-
-That 30,000 is why **`automaticallyAdjustKeyboardInsets` must never be
-passed bare** — use `useKeyboardInsetScroll` (`src/hooks/`), which is already wired into `ReorderableList`
-and every screen-level `FlatList` that had it. RN registers a keyboard listener on *every* mounted
-`RCTScrollView` and gates it on that prop alone, then sizes the inset from the scroll view's position in the
-window — so a blurred tab parked at y=30000 picks up a ~30,000pt bottom `contentInset`, and the keyboard
-*hiding* recomputes the same 30,000 rather than clearing it. Switch to that tab and there's a screenful of
-content above thirty thousand points of nothing. The hook passes the screen's own focus state, so a
-backgrounded list doesn't listen. **v7 removing the parking does not make the hook removable**: the rest of
-it is about RN's own inset behavior, which is unchanged — the per-`RCTScrollView` keyboard listener gated on
-that one prop, and the `keyboardDidHide` re-clamp below, neither of which had anything to do with where the
-screen sat. It also re-clamps on `keyboardDidHide`, because shrinking an inset never
-re-clamps `contentOffset` (RN's own `scrollToOffset:` call short-circuits when the offset didn't change) —
-a list left resting inside an inset that goes away has no scroll range left to get back up. Same failure
-mode as the content-shrink clamp in `ReorderableList.onContentSizeChange`; math and tests in
-`src/utils/scrollClamp.ts`.
+**`automaticallyAdjustKeyboardInsets` must never be passed bare** — use `useKeyboardInsetScroll`
+(`src/hooks/`), which is already wired into `ReorderableList` and every screen-level `FlatList` that
+had it. RN registers a keyboard listener on *every* mounted `RCTScrollView` and gates it on that
+prop alone, so with blurred tabs still mounted (above) a list nobody is looking at picks up a
+keyboard-height `contentInset` it never asked for. The hook passes the screen's own focus state,
+so a backgrounded list doesn't listen. It also re-clamps on `keyboardDidHide`, because shrinking an
+inset never re-clamps `contentOffset` (RN's own `scrollToOffset:` call short-circuits when the
+offset didn't change) — a list left resting inside an inset that goes away has no scroll range
+left to get back up. Same failure mode as the content-shrink clamp in
+`ReorderableList.onContentSizeChange`; math and tests in `src/utils/scrollClamp.ts`. (Under React
+Navigation v6 a blurred tab was also parked at `top: 30000`, which made the stray inset ~30,000pt;
+v7's fallback is a plain `View`, so that magnitude is gone and the rest of the reason isn't.)
 
 **That clamp is judged against the inset the list still has, never against the bare content height.**
 Focus-gating the prop means a list blurred while the keyboard was up never hears the dismissal and keeps
@@ -1412,12 +1298,11 @@ inset is what just went away) — that asymmetry is the whole design, don't coll
   for it**, in the same PR.
 - **A generated task the app removes on its own never writes the user's "never".**
   `deleteTask` stamps the source's opt-out as though the person had swiped the task away, so every
-  app-side delete of a generated row passes `skipOptOut` (`reconcileGeneratedTask` and
-  `dropGeneratedTask` both do). The reconcile used to rely on the source already meaning "no",
-  and a reason that reverses by itself broke that: freezing an item or a leftover reconciled its
-  use-up task away and wrote a permanent "never", so it never came back after thawing. A new
-  path that deletes a generated task goes through one of those two, not a bare `deleteTask`.
-  Only a delete the user performs records a decision.
+  app-side delete of a generated row goes through `deleteGeneratedTaskQuietly`
+  (`generatedTaskSync.ts`), which passes `skipGeneratedOptOut`; `reconcileGeneratedTask` and
+  `dropGeneratedTask` both use it. A reason that reverses by itself (an item frozen, then thawed)
+  must not leave a permanent "never" behind. A new path that deletes a generated task goes through
+  it, not a bare `deleteTask`. Only a delete the user performs records a decision.
 - **Editing a day-keyed rule clears its idempotency mark when the edit changes what the rule
   asks.** `HealthRule` and `WeatherRule` spend `lastFiredDayKey` the first time a rule is judged
   that day, matched or not, so the mark means "this question was answered today". Change the
@@ -1478,4 +1363,4 @@ inset is what just went away) — that asymmetry is the whole design, don't coll
   them. `dbFillTaskCalendarExternalIds` reads `updated_at` first and writes it back after, which
   the trigger lets through. A one-row write that follows a real local edit (a reconcile writing
   back the event id it just got) doesn't need this, since that row genuinely changed here.
-- **Patch notes**: when a change in this PR is user-facing, add a new fragment file to `src/patchNotes/entries/` before opening the PR — one JSON file per entry, `{ "message": "...", "date": "YYYY-MM-DD" }`, named after the change (e.g. `icon-action-buttons.json`). Keep the message short and written for someone who isn't reading the diff. Don't edit `src/utils/patchNotes.ts` or `src/utils/patchNotesData.ts` directly (generated, gitignored). Skip it for internal-only changes (refactors, tests, CI, tooling).
+- **Patch notes**: when a change in this PR is user-facing, add a new fragment file to `src/patchNotes/entries/` before opening the PR — one JSON file per entry, `{ "message": "...", "date": "YYYY-MM-DD" }`, named after the change (e.g. `icon-action-buttons.json`). Keep the message short and written for someone who isn't reading the diff. Don't edit `src/utils/patchNotesData.ts` (generated from the fragments, gitignored). Skip it for internal-only changes (refactors, tests, CI, tooling).

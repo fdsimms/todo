@@ -114,7 +114,7 @@ export function useRowSelection() {
   // spreads it onto the provider wrapping its list.
   const paintProps = useMemo(
     () => ({
-      // Gated here rather than at each of the five screens that spread this:
+      // Gated here rather than at each screen that spreads this:
       // painting is one gesture with one switch behind it, and a list that
       // painted on Tags but not on Today would be the drift the bundle exists
       // to prevent. Off, the dots take a tap each and the column scrolls.

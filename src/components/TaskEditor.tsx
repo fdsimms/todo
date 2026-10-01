@@ -271,8 +271,8 @@ const MAX_COMPLETION_TIMER_MINUTES = 24 * 60;
 const COMPLETION_TIMER_NOTE_MAX_LENGTH = 120;
 // How long a failed task can block apps for. The floor is a quarter-hour
 // because iOS refuses a very short monitored interval (DeviceActivity throws
-// `intervalTooShort`), so a 5-minute block is a promise this could not keep
-// once the native schedule lands. The ceiling is a day: past that it stops
+// `intervalTooShort`), so a 5-minute block is a promise the native schedule
+// (`schedulePenaltyExpiry`) could not keep. The ceiling is a day: past that it stops
 // being a nudge and becomes somebody locked out of their phone by a chore.
 const PENALTY_STEP_MINUTES = 15;
 const PENALTY_MIN_MINUTES = 15;

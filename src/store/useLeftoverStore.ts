@@ -212,7 +212,7 @@ interface LeftoverStore extends UndoHistoryActions {
    * a function of the wall clock: a leftover can age from "fresh" into "soon"
    * purely by time passing, with no leftover mutation to trigger a reconcile.
    *
-   * The launch-time call in `initTasks` is this one. The catch-up and
+   * The launch-time call in `useTaskStore.initialize` is this one. The catch-up and
    * foreground sweeps go through `useGroceryStore.reconcileAllUseUpTasks`
    * instead, which visits these same leftovers interleaved with the grocery
    * items by use-by day, so the shared cap goes to the soonest of both (#2924).
@@ -243,7 +243,7 @@ interface LeftoverStore extends UndoHistoryActions {
 /**
  * Brings this leftover's use-up task into line: creates it, updates it, or
  * removes it, depending on what the leftover now says. The create/update/delete
- * machinery is shared with the other three generators (store/generatedTaskSync,
+ * machinery is shared with every other generator (store/generatedTaskSync,
  * #1524); what's decided here is only what a leftover wants.
  *
  * No `blocksOnFinished`, for the reason groceries don't have it either: a

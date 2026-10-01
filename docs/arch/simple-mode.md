@@ -1,13 +1,14 @@
 # Simplified mode
 
 One switch (`simpleMode`, Settings → Tasks & projects → Feature areas) that takes the app down to
-an ordinary todo/kitchen app by hiding about thirty capabilities at once.
+an ordinary todo/kitchen app by hiding a few dozen capabilities at once (`SIMPLE_FEATURES` is the
+list).
 
 The registry is `src/utils/simpleMode.ts`; the tests that hold it to its promises are
 `src/__tests__/simpleMode.test.ts`. Read the module's own doc comment first — this file is the
 reasoning, that one is the contract.
 
-## Why a switch rather than thirty
+## Why a switch rather than dozens
 
 The app accumulated chains, quotas, timed tasks, blockers, follow-up tasks, deliverables, series,
 stacks, focus sessions, drift, backfill, look-ahead, deload, barcode scanning, receipt import,
@@ -16,10 +17,8 @@ earns its place for whoever uses it. Each costs everybody else a row in a picker
 header, or a line in a menu, and none of them is discoverable enough to be worth that cost to
 someone who wants a list of things to do.
 
-`hideHelpText` and `simpleTaskForm` were the first two answers to this and they are both still
-right, but neither removes a capability: one hides explanations, the other decides which surviving
-rows start on show. This is the third and bluntest, and it composes with both rather than
-replacing them.
+It composes with `hideHelpText` (hides explanations) and `simpleTaskForm` (decides which rows
+start on show), neither of which removes a capability.
 
 ## The two rules
 
@@ -42,24 +41,26 @@ because those rows don't declare one.
 
 The one non-obvious decision. `screenShown` treats two kinds of screen differently:
 
-- **Lenses** (Calendar, Stats, Backfill, Waiting, Drift) go unconditionally. Every task they show
-  is reachable from Today or Search, so hiding them costs nothing however much data exists.
-- **Content screens** (Stacks, Templates) hold objects that live nowhere else. Hiding one while
-  the user has some would strand real data, so each survives for exactly as long as it holds
-  anything. An install with no stacks and no templates loses both rows.
+- **Lenses** (`SIMPLE_HIDDEN_SCREENS`: Calendar, Stats, Stuck and the like) go unconditionally.
+  Every task they show is reachable from Today or Search, so hiding them costs nothing however
+  much data exists.
+- **Content screens** (`SIMPLE_CONTENT_SCREENS`: Stacks, Templates, People, Mood, Medications, Food
+  log) hold objects that live nowhere else. Hiding one while the user has some would strand real
+  data, so each survives for exactly as long as it holds anything (`screenShown`'s
+  `contentCounts`).
 
 `SIMPLE_HIDDEN_SCREENS` and `SIMPLE_CONTENT_SCREENS` are derived from the catalog's own `screen` /
 `contentScreen` fields rather than written out again, so a screen feature cannot be listed in
 Settings and then not gated.
 
 **The navigator's restore guard asks the same question with the same counts.** `initialScreenFromSettings`
-can read the stack and template stores directly: `useTaskStore.initialize()` fans out to both, and
+can read the content stores directly: `useTaskStore.initialize()` fans out to them, and
 `AppGate` runs it and blocks on it before `AppRoot` and the navigator mount at all. Reopening onto a
 screen the menu no longer lists is the failure the `kitchenEnabled` guard beside it already exists to
 prevent.
 
-Pantry isn't a `screenShown` case, because it was never a menu row: its only route in is the hub pill
-row, so it gets its own line in that guard.
+Pantry is a member of a hub rather than a menu row, so it is hidden through its feature's `screen:
+'Kitchen'` like any other, and the same gate answers for the pill and the restore.
 
 ## The lens pills stay
 
@@ -74,9 +75,9 @@ task.
 
 ## The add button offers what is left
 
-Today's add button is a menu of four (Chain, Stack, Template, Task) and a project's is a menu of
-three (Add existing task, Template, New task). Three of Today's four and one of the project's three
-start a capability the mode hides, so `addMenuItemShown` filters them out and Today's button is left
+Today's add button is a menu (`AddTaskFab`'s `ITEMS`) and so is a project's (`ADD_MENU_ITEMS` in
+`ProjectDetailScreen`). An item that starts a capability the mode hides is listed in
+`SIMPLE_ADD_MENU_FEATURES`, and `addMenuItemShown` filters it out, so Today's button is left
 holding Task alone. `FabMenu` performs a lone item on the tap rather than accordioning out to offer
 it, so the button becomes a plain "open quick add" without either caller branching on the count.
 
@@ -118,8 +119,8 @@ this. A tip exists because someone can't see a control; a tip about a control th
 the one thing that file can't afford to be. Each affected tip carries a `feature`, and `tipsFor`
 drops it, exactly the way `SettingsEntry.simple` drops a settings row.
 
-Thirty of the seventy tips go. The kitchen area empties completely and that is correct: all six of
-its tips are about the Pantry screen, which also goes, and `TipsScreen` drops a section with no
+A large share of the tips go (every tip with a `feature`). The kitchen area empties completely and
+that is correct: its tips are about the Pantry screen, which also goes, and `TipsScreen` drops a section with no
 tips in it rather than leaving an empty heading. Every read of the whole set goes through `tipsFor`
 (the screen's list and unread count, the drawer's badge, `TipHost`'s candidates), so a count can
 never name tips the list behind it doesn't show.
