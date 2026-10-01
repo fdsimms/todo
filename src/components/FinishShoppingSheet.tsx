@@ -293,7 +293,6 @@ export function FinishShoppingSheet({
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
 
   const shops = useGroceryStore(useShallow(s => s.shops));
-  const lastShopId = useGroceryStore(s => s.lastShopId);
   const tripShopId = useGroceryStore(s => s.tripShopId);
   const tripStartedAt = useGroceryStore(s => s.tripStartedAt);
   const addShop = useGroceryStore(s => s.addShop);
@@ -324,11 +323,11 @@ export function FinishShoppingSheet({
   const [frozen, setFrozen] = useState<ReadonlySet<string>>(new Set());
 
   // If a trip is running, the store is already known and this stops being a
-  // question — you said where you were on the way in. Falling back to where you
-  // finished last, which is right far more often than it's wrong: most people
-  // shop the same two places.
+  // question — you said where you were on the way in. With no trip running the
+  // default is no store, not where you finished last: a remembered store filed
+  // the next trip against the wrong shop whenever it went unnoticed.
   const activeTrip = resolveActiveTrip(tripShopId, tripStartedAt, shops, new Date());
-  const defaultShopId = activeTrip?.id ?? lastShopId;
+  const defaultShopId = activeTrip?.id ?? null;
 
   // Whether the freezer toggle is offered: only where finishing puts what was
   // bought in the pantry. An away trip records nothing (the store drops
