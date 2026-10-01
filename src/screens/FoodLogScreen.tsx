@@ -1056,7 +1056,7 @@ export function FoodLogScreen() {
             accessibilityLabel: 'Scan a barcode to log',
           } satisfies ScreenHeaderAction] : []),
           {
-            icon: 'flag-outline',
+            icon: 'target',
             onPress: () => { haptics.tap(); setTargetsOpen(true); },
             accessibilityLabel: 'Nutrition settings',
           },

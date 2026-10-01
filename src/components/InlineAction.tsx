@@ -1,6 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, type StyleProp, type ViewStyle } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { TargetIcon, TARGET_ICON } from './TargetIcon';
 import { PressableScale } from './PressableScale';
 import { useTheme } from '../theme/ThemeContext';
 import { font, fontWeight, radius, spacing, type Colors } from '../theme';
@@ -16,7 +17,7 @@ interface Props {
    */
   label?: string;
   onPress: () => void;
-  icon?: keyof typeof Ionicons.glyphMap;
+  icon?: keyof typeof Ionicons.glyphMap | typeof TARGET_ICON;
   /**
    * `accent` is the default and marks the action you'd expect someone to take.
    * `neutral` is the quieter sibling — the second action in a pair ("Add
@@ -98,7 +99,9 @@ export function InlineAction({
       accessibilityLabel={accessibilityLabel ?? label}
       accessibilityState={{ disabled }}
     >
-      {icon && <Ionicons name={icon} size={14} color={fg} />}
+      {icon === TARGET_ICON
+        ? <TargetIcon size={14} color={fg} />
+        : icon && <Ionicons name={icon} size={14} color={fg} />}
       {!!label && <Text style={[styles.label, { color: fg }]}>{label}</Text>}
     </PressableScale>
   );

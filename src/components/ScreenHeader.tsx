@@ -4,9 +4,10 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, lineHeight, iconSize, interaction, type Colors } from '../theme';
 import { PressableScale } from './PressableScale';
+import { TargetIcon, TARGET_ICON } from './TargetIcon';
 
 export interface ScreenHeaderAction {
-  icon: keyof typeof Ionicons.glyphMap;
+  icon: keyof typeof Ionicons.glyphMap | typeof TARGET_ICON;
   onPress: () => void;
   /** Filled accent/orange background for an engaged state. */
   active?: boolean;
@@ -132,7 +133,9 @@ export function ScreenHeader({ title, subtitle, overline, actions, right, onTitl
               {action.loading ? (
                 <ActivityIndicator size="small" color={iconColor} />
               ) : (
-                <Ionicons name={action.icon} size={18} color={iconColor} />
+                action.icon === TARGET_ICON
+                  ? <TargetIcon size={18} color={iconColor} />
+                  : <Ionicons name={action.icon} size={18} color={iconColor} />
               )}
               {action.badgeDot ? (
                 (action.badge ?? 0) > 0 && <View style={styles.badgeDot} />

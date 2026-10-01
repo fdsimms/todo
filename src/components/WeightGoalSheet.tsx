@@ -628,7 +628,7 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
                   </Text>
                 ) : (
                   <InlineAction
-                    icon="flag-outline"
+                    icon="target"
                     label={
                       existingCalorieTarget === undefined
                         ? 'Use as my calorie target'
@@ -681,7 +681,7 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
                         percent={macroPreset.split.fatPct} />
                     </View>
                     <InlineAction
-                      icon="flag-outline"
+                      icon="target"
                       label="Use these as my targets"
                       onPress={applyMacroTargets}
                     />
