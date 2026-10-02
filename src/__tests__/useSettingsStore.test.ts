@@ -1337,6 +1337,27 @@ describe('fabHand', () => {
   });
 });
 
+describe('mapsApp', () => {
+  it('defaults to Apple Maps, so an existing install is unchanged', () => {
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().mapsApp).toBe('apple');
+  });
+
+  it('round-trips a pick', () => {
+    useSettingsStore.getState().setMapsApp('waze');
+    expect(dbSetSetting).toHaveBeenCalledWith('mapsApp', 'waze');
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) => (key === 'mapsApp' ? 'google' : null));
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().mapsApp).toBe('google');
+  });
+
+  it('falls back to Apple Maps for an unknown stored value', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) => (key === 'mapsApp' ? 'bing' : null));
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().mapsApp).toBe('apple');
+  });
+});
+
 describe('hapticsEnabled', () => {
   // Defaults on rather than off, so an install predating the setting doesn't
   // silently lose the haptics it already had.

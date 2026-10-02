@@ -478,12 +478,15 @@ export const TaskItem = React.memo(function TaskItem({
   // Same sanitise-at-render, null-hides-the-button pattern as callUrl/emailUrl
   // above — see maps.ts for why an https: directions link needs no
   // canOpenURL check either, same as TodayEventsSheet's own openDirections.
+  // The maps app is read at tap time rather than subscribed to, so a settings
+  // change doesn't re-render every row on the list.
   const mapsUrl = directionsUrl(task.location);
   const handleDirections = async () => {
-    if (!mapsUrl) return;
+    const url = directionsUrl(task.location, useSettingsStore.getState().mapsApp);
+    if (!url) return;
     haptics.tap();
     try {
-      await Linking.openURL(mapsUrl);
+      await Linking.openURL(url);
     } catch {
       // silently ignore — no toast infra for this row-level action
     }

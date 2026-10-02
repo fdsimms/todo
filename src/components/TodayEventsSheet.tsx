@@ -231,7 +231,7 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById, titl
   };
 
   const openDirections = async (location: string) => {
-    const url = directionsUrl(location);
+    const url = directionsUrl(location, useSettingsStore.getState().mapsApp);
     if (!url) return;
     haptics.tap();
     try {
