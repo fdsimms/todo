@@ -2485,6 +2485,31 @@ function parseExtractedCalendarEvents(raw: unknown): ExtractedCalendarEvent[] {
 }
 
 /**
+ * The nutrients a model-made estimate (a described meal, a whole recipe) may
+ * state, shared so the two can't drift apart: the minerals were once added to
+ * the label reader and left out of both of these.
+ */
+const ESTIMATE_AMOUNTS_SCHEMA = {
+  type: 'object' as const,
+  description: 'Every nutrient you can reasonably approximate, including saturated fat, fiber, sugars and the minerals. Omit only the ones you cannot judge at all, rather than sending zero.',
+  properties: {
+    calorieKcal: { type: 'number', description: 'Calories (kcal)' },
+    fatG: { type: 'number', description: 'Total fat in grams' },
+    satFatG: { type: 'number', description: 'Saturated fat in grams' },
+    carbsG: { type: 'number', description: 'Total carbohydrate in grams' },
+    fiberG: { type: 'number', description: 'Dietary fiber in grams' },
+    sugarG: { type: 'number', description: 'Total sugars in grams' },
+    proteinG: { type: 'number', description: 'Protein in grams' },
+    sodiumMg: { type: 'number', description: 'Sodium in milligrams' },
+    calciumMg: { type: 'number', description: 'Calcium in milligrams' },
+    ironMg: { type: 'number', description: 'Iron in milligrams' },
+    potassiumMg: { type: 'number', description: 'Potassium in milligrams' },
+    caffeineMg: { type: 'number', description: 'Caffeine in milligrams' },
+    waterMl: { type: 'number', description: 'Water in millilitres' },
+  },
+};
+
+/**
  * Reads a description of a meal into nutrition figures to confirm (#2426).
  *
  * **The case no database answers.** FoodData Central holds branded packaged
@@ -2565,31 +2590,14 @@ export async function estimateMealNutrition(
     .map(food => `- "${food.label}" (${food.quantity}): ${JSON.stringify(food.amounts)}`)
     .join('\n');
 
-  const amountsSchema = {
-    type: 'object' as const,
-    description: 'Only the nutrients you have a view on. Omit the rest rather than sending zero.',
-    properties: {
-      calorieKcal: { type: 'number', description: 'Calories (kcal)' },
-      fatG: { type: 'number', description: 'Total fat in grams' },
-      satFatG: { type: 'number', description: 'Saturated fat in grams' },
-      carbsG: { type: 'number', description: 'Total carbohydrate in grams' },
-      fiberG: { type: 'number', description: 'Dietary fiber in grams' },
-      sugarG: { type: 'number', description: 'Total sugars in grams' },
-      proteinG: { type: 'number', description: 'Protein in grams' },
-      sodiumMg: { type: 'number', description: 'Sodium in milligrams' },
-      caffeineMg: { type: 'number', description: 'Caffeine in milligrams' },
-      waterMl: { type: 'number', description: 'Water in millilitres' },
-    },
-  };
-
   const data = await callAnthropic({
     max_tokens: 900,
     system: [
       'You estimate what one described meal contains, for somebody writing it down in a food diary.',
       'Give figures for the whole thing described, as one helping. Do not give per-100g figures.',
       'A line reading "Amount eaten: ..." is the amount the person actually had. Base every figure on exactly that amount and state it in quantity.',
-      'State only the nutrients you actually have a view on. Omit a field entirely rather than guessing a zero: an omitted nutrient reads as unknown, and a zero reads as a measurement that the food contains none.',
-      'When the description names more than one component (separate foods, or an item plus a side), also split the total across a breakdown array, one entry per component named. Each entry states only the nutrients you have a view on for that component, same rule as the total. Skip the breakdown entirely for a single named item, or when you cannot split it sensibly.',
+      'Give a figure for every nutrient you can reasonably approximate for the food, including saturated fat, fiber, sugars and sodium, even when the figure is an approximation. Omit a field only when you cannot judge it at all, and never send a zero to mean unknown: an omitted nutrient reads as unknown, and a zero reads as a measurement that the food contains none.',
+      'When the description names more than one component (separate foods, or an item plus a side), also split the total across a breakdown array, one entry per component named. Each entry states the nutrients you can approximate for that component, same rule as the total. Skip the breakdown entirely for a single named item, or when you cannot split it sensibly.',
       'Set basis to "published" only when you are recalling figures a specific chain or manufacturer publishes, and name them in attribution. Otherwise set it to "typical" and leave attribution empty.',
       ...(offered.length > 0 ? [
         'You may be given figures the user already has, for foods they have logged before, packets in their kitchen, and recipes they have saved. When the description refers to one of them, reason from those figures rather than recalling generic ones for the same food, including when only part of it was eaten or it was eaten alongside something else.',
@@ -2608,7 +2616,7 @@ export async function estimateMealNutrition(
         properties: {
           label: { type: 'string', description: 'What to call this in a food diary, e.g. "Cheeseburger and fries, Five Guys"' },
           quantity: { type: 'string', description: 'The amount these figures are for. Always a concrete, checkable amount: a weight or volume, plus a household measure where one fits, e.g. "150 g (about 1/3 block)" or "1 burger and a regular fries (about 450 g)". Never a bare "1 serving". When the description states an amount, use exactly that.' },
-          amounts: amountsSchema,
+          amounts: ESTIMATE_AMOUNTS_SCHEMA,
           basis: {
             type: 'string',
             enum: offered.length > 0 ? ['published', 'typical', 'own'] : ['published', 'typical'],
@@ -2635,7 +2643,7 @@ export async function estimateMealNutrition(
               type: 'object',
               properties: {
                 label: { type: 'string', description: 'The component in your own words, e.g. "salted butter"' },
-                amounts: amountsSchema,
+                amounts: ESTIMATE_AMOUNTS_SCHEMA,
               },
               required: ['label', 'amounts'],
             },
@@ -2697,23 +2705,6 @@ export async function estimateRecipeNutrition(
     .slice(0, MAX_RECIPE_ESTIMATE_LINES);
   if (lines.length === 0) throw new Error('No estimate returned');
 
-  const amountsSchema = {
-    type: 'object' as const,
-    description: 'Only the nutrients you have a view on. Omit the rest rather than sending zero.',
-    properties: {
-      calorieKcal: { type: 'number', description: 'Calories (kcal)' },
-      fatG: { type: 'number', description: 'Total fat in grams' },
-      satFatG: { type: 'number', description: 'Saturated fat in grams' },
-      carbsG: { type: 'number', description: 'Total carbohydrate in grams' },
-      fiberG: { type: 'number', description: 'Dietary fiber in grams' },
-      sugarG: { type: 'number', description: 'Total sugars in grams' },
-      proteinG: { type: 'number', description: 'Protein in grams' },
-      sodiumMg: { type: 'number', description: 'Sodium in milligrams' },
-      caffeineMg: { type: 'number', description: 'Caffeine in milligrams' },
-      waterMl: { type: 'number', description: 'Water in millilitres' },
-    },
-  };
-
   const servingsLine = servings
     ? `It makes ${servings} serving${servings === 1 ? '' : 's'}.`
     : "It doesn't say how many servings it makes.";
@@ -2724,7 +2715,7 @@ export async function estimateRecipeNutrition(
       'You estimate what a whole home-cooked recipe contains, from its ingredient list, for someone whose own grocery data can\'t total it yet.',
       'Give figures for the whole recipe as written — every ingredient line, at the quantity given — not per serving and not per 100g.',
       'Account for cooking loss and waste where it plainly matters: a marinade mostly poured off, water that boils away, a peel or bone that isn\'t eaten. Otherwise assume the ingredients as listed are what ends up in the dish.',
-      'State only the nutrients you actually have a view on. Omit a field entirely rather than guessing a zero: an omitted nutrient reads as unknown, and a zero reads as a measurement that the dish contains none.',
+      'Give a figure for every nutrient you can reasonably approximate for the dish, including saturated fat, fiber, sugars and sodium, even when the figure is an approximation. Omit a field only when you cannot judge it at all, and never send a zero to mean unknown: an omitted nutrient reads as unknown, and a zero reads as a measurement that the dish contains none.',
       'Set confidence honestly. A short list of plain, easily-quantified ingredients is high; a long or vaguely-quantified list ("a handful of", "to taste") is low.',
       'Never comment on the dish. No opinion about whether it\'s healthy, heavy, large or small, no suggestion about what to change, and no advice of any kind. Return numbers and nothing else.',
     ].join('\n'),
@@ -2734,7 +2725,7 @@ export async function estimateRecipeNutrition(
       input_schema: {
         type: 'object',
         properties: {
-          amounts: amountsSchema,
+          amounts: ESTIMATE_AMOUNTS_SCHEMA,
           confidence: { type: 'string', enum: ['high', 'medium', 'low'], description: 'How sure you are' },
         },
         required: ['amounts', 'confidence'],
