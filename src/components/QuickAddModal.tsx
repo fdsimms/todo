@@ -80,6 +80,8 @@ import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { usePersonGroupStore } from '../store/usePersonGroupStore';
 import { groupMentionTokens } from '../utils/peopleRegistry';
 import { eventMarkerText, parseQuickEvent } from '../utils/quickEvent';
+import { readQuickEventDefaults, writeQuickEventDefaults } from '../utils/quickEventDefaults';
+import { quickEventSaveFields } from '../utils/quickEventSave';
 import { useEventPeopleStore } from '../store/useEventPeopleStore';
 import { isDemoModeActive } from '../utils/demoState';
 import { clampSupplyCount, formatSupplyLeft, MAX_SUPPLY_COUNT } from '../utils/supply';
@@ -1670,10 +1672,11 @@ export const QuickAddModal = React.memo(function QuickAddModal({
 
   // ==== the exits: add, or hand the draft to the full editor ====
   // A line starting "event:" is a calendar event, not a task: the rest goes
-  // through QuickEventSheet's reader and fills Apple's new-event sheet, which
-  // presents on top of this one; this closes only once the event is saved, so
-  // a cancel there comes back to the line. Off in a demo, where the event
-  // would reach the real calendar, so there the line is an ordinary task.
+  // through QuickEventSheet's reader and is saved straight into the calendar
+  // with the calendar, alert and Busy/Free the last event used; this closes
+  // only once it is saved, and a failed save says so and keeps the line. Off in
+  // a demo, where the event would reach the real calendar, so there the line is
+  // an ordinary task.
   const eventText = isDemoModeActive() ? null : eventMarkerText(title);
   const addAsEvent = async (text: string) => {
     haptics.tap();
@@ -1686,11 +1689,33 @@ export const QuickAddModal = React.memo(function QuickAddModal({
       today: getCurrentDayStart(),
       wallClock: new Date(),
     });
-    const saved = await useEventPeopleStore.getState().createEvent(
-      { title: draft.title, start: draft.start, end: draft.end },
+    const remembered = readQuickEventDefaults();
+    const saved = await useEventPeopleStore.getState().saveEvent(
+      quickEventSaveFields({
+        title: draft.title,
+        start: draft.start,
+        end: draft.end,
+        location: draft.location,
+        repeat: draft.repeat,
+        alertMinutes: draft.alertMinutes !== undefined ? draft.alertMinutes : remembered.alertMinutes,
+        availability: remembered.availability,
+        calendarId: remembered.calendarId,
+      }),
       draft.personIds
     );
-    if (saved) dismiss();
+    if (!saved) {
+      Alert.alert(
+        "Couldn't add the event",
+        'Check that this app can add events to your calendar in the Settings app, then try again. The event is still here.'
+      );
+      return;
+    }
+    writeQuickEventDefaults({
+      ...remembered,
+      calendarId: saved.calendarId,
+      alertMinutes: draft.alertMinutes !== undefined ? draft.alertMinutes : remembered.alertMinutes,
+    });
+    dismiss();
   };
 
   const handleAdd = () => {

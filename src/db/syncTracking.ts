@@ -429,6 +429,9 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
  * - `calendarEventPeople` — where who-an-event-is-with lived before it moved
  *   to the synced `event_people_links` table (keyed by the calendar server's
  *   id instead). Read once by the migration and deleted; never synced.
+ * - `quickEventDefaults` — the calendar, alert and Busy/Free the last quick-add
+ *   event was saved with. It holds a calendar id, which names a record on one
+ *   device, so it is wrong on another for `deadlineCalendarId`'s reason.
  * - `calendarEventTasks` — which tasks were planned around each event, keyed
  *   by the EventKit id, so wrong on another device for `calendarHistoryHandled`'s
  *   reason.

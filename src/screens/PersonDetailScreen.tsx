@@ -25,8 +25,9 @@ import type { PersonNote, PersonNoteKind } from '../types';
 import { PERSON_NOTE_KINDS } from '../types';
 import { suggestedHistoryEvents } from '../utils/calendarHistory';
 import { useEventPeopleStore } from '../store/useEventPeopleStore';
-import { defaultNewEventSpan, peopleForEvent, upcomingEventsWith } from '../utils/eventPeople';
+import { peopleForEvent, upcomingEventsWith } from '../utils/eventPeople';
 import { isDemoModeActive } from '../utils/demoState';
+import { QuickEventSheet } from '../components/QuickEventSheet';
 import {
   PERSON_NOTE_HEADINGS,
   describeNoteDay,
@@ -135,7 +136,7 @@ export function PersonDetailScreen() {
   const markHistoryHandled = useCalendarStore(s => s.markHistoryHandled);
   const calendarEvents = useCalendarStore(useShallow(s => s.events));
   const eventLinks = useEventPeopleStore(s => s.links);
-  const createEvent = useEventPeopleStore(s => s.createEvent);
+  const [planningEvent, setPlanningEvent] = useState(false);
   const [showAllSuggestions, setShowAllSuggestions] = useState(false);
   const allNotes = usePersonNoteStore(useShallow(s => s.notes));
   const [noteSheet, setNoteSheet] = useState<{ note: PersonNote | null; kind: PersonNoteKind } | null>(null);
@@ -228,8 +229,8 @@ export function PersonDetailScreen() {
 
   const planSomething = () => {
     haptics.tap();
-    const { start, end } = defaultNewEventSpan(today, today, new Date());
-    void createEvent({ title: `With ${name}`, start, end }, [person.id]);
+    if (isDemoModeActive()) return;
+    setPlanningEvent(true);
   };
 
   const open = (url: string | null) => {
@@ -628,6 +629,11 @@ export function PersonDetailScreen() {
         onSave={saveHistoryEntry}
         onDelete={deleteHistoryEntry}
         onClose={() => { setAddingHistory(false); setEditingHistoryEntry(null); }}
+      />
+      <QuickEventSheet
+        visible={planningEvent}
+        onClose={() => setPlanningEvent(false)}
+        seed={{ title: `With ${name}`, personIds: [person.id] }}
       />
       <PersonNoteSheet
         visible={noteSheet !== null}

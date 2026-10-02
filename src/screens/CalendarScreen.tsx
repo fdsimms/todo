@@ -25,9 +25,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { buildCalendarGrid, weekdayHeaders } from '../utils/calendarGrid';
-import { dayKeyOf, dayKeyToDate, getCurrentDayStart, getDayStart, getLogicalToday } from '../utils/dateUtils';
-import { defaultNewEventSpan } from '../utils/eventPeople';
-import { useEventPeopleStore } from '../store/useEventPeopleStore';
+import { dayKeyOf, dayKeyToDate, getDayStart, getLogicalToday } from '../utils/dateUtils';
 import {
   buildDayBuckets,
   dayDetail,
@@ -51,6 +49,7 @@ import { buildDayTimeline } from '../utils/dayTimeline';
 import { eventsIn } from '../utils/calendarBusy';
 import { entriesForDay } from '../utils/mealPlan';
 import { isDemoModeActive } from '../utils/demoState';
+import { QuickEventSheet } from '../components/QuickEventSheet';
 import { useProjectStore } from '../store/useProjectStore';
 import { useShallow } from 'zustand/react/shallow';
 import { awaySpanOf, type AwaySpan } from '../utils/awayDates';
@@ -97,6 +96,12 @@ const VIEW_MODES: { value: CalendarViewMode; label: string }[] = [
  * That module also owns the one genuinely new idea here: a recurring task's
  * future occurrences aren't rows, so the grid *projects* them — and a
  * projection may be a dot, never a row. See `dayDetail`.
+ *
+ * The component is one function; `grep -n '// ===='` is its table of contents:
+ * stores and screen state, the month (grid, buckets, the selected day's
+ * detail), the selected day's empty state and the month's totals, moving between days and months,
+ * the rows and the editor, then the JSX. The header's "+" opens the quick-add
+ * event card (`QuickEventSheet`) on the selected day.
  */
 export function CalendarScreen() {
   const insets = useSafeAreaInsets();
@@ -104,6 +109,7 @@ export function CalendarScreen() {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
+  // ==== stores and screen state ====
   const allTasks = useTaskStore(s => s.tasks);
   const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
@@ -116,6 +122,7 @@ export function CalendarScreen() {
   // Tapping an event on the day view opens the same sheet Today's event row
   // does, for this day: who it's with, a reminder, a task from it, hiding it.
   const [eventsSheetVisible, setEventsSheetVisible] = useState(false);
+  const [newEventVisible, setNewEventVisible] = useState(false);
   const calendarEvents = useCalendarStore(s => s.events);
   const calendarLoaded = useCalendarStore(s => s.loaded);
   const calendarWindowStart = useCalendarStore(s => s.windowStart);
@@ -144,6 +151,7 @@ export function CalendarScreen() {
 
 
   const projects = useProjectStore(useShallow(s => s.projects));
+  // ==== the month: grid, buckets and the selected day's detail ====
   const days = useMemo(() => buildCalendarGrid(displayMonth, weekStartsOn), [displayMonth, weekStartsOn]);
   /**
    * Every live away span, so a month holding a trip says so.
@@ -260,6 +268,7 @@ export function CalendarScreen() {
     ? Math.round((Date.now() - selectedDayStart.getTime()) / 60000)
     : null;
 
+  // ==== the selected day's empty state and the month's totals ====
   // A day holding an event or a meal is not an empty day, even with no task on
   // it, and one the calendar could not be read for has something to say too.
   const dayEmpty = detail.isEmpty
@@ -269,6 +278,7 @@ export function CalendarScreen() {
     && dayBusyKnown;
   const selectedDate = dayKeyToDate(selectedKey);
 
+  // ==== moving between days and months ====
   /**
    * Paging carries the selection with it, because a detail pane naming a day
    * that's no longer on screen is worse than an arbitrary one: the heading
@@ -313,6 +323,7 @@ export function CalendarScreen() {
     setSelectedKey(key);
   }, []);
 
+  // ==== rows: subtasks, expansion, the editor and quick add ====
   // Every subtask on this screen, grouped once. Each row used to filter the
   // whole task list for its own children inline, which is O(tasks) per row and
   // — worse — handed the memoized row a fresh array on every render.
@@ -404,6 +415,7 @@ export function CalendarScreen() {
     );
   };
 
+  // ==== render. Everything below is JSX ====
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <ScreenHeader
@@ -421,15 +433,14 @@ export function CalendarScreen() {
             onPress: goToToday,
             accessibilityLabel: 'Go to today',
           },
-          // Opens Apple's new-event sheet on the selected day; the calendar
-          // it's saved to (Google included) is picked there. Absent in a demo,
+          // Opens the quick-add event card on the selected day; its calendar
+          // chip picks where it's saved (Google included). Absent in a demo,
           // where it would write to the real calendar.
           ...(isDemoModeActive() ? [] : [{
             icon: 'add' as const,
             onPress: () => {
               haptics.tap();
-              const { start, end } = defaultNewEventSpan(dayKeyToDate(selectedKey), getCurrentDayStart(), new Date());
-              void useEventPeopleStore.getState().createEvent({ title: '', start, end });
+              setNewEventVisible(true);
             },
             accessibilityLabel: `New event on ${format(dayKeyToDate(selectedKey), 'MMMM d')}`,
           }]),
@@ -613,6 +624,11 @@ export function CalendarScreen() {
         seedLabel={format(selectedDate, 'MMM d')}
       />
 
+      <QuickEventSheet
+        visible={newEventVisible}
+        onClose={() => setNewEventVisible(false)}
+        seed={{ day: dayKeyToDate(selectedKey) }}
+      />
       <TodayEventsSheet
         visible={eventsSheetVisible}
         onClose={() => setEventsSheetVisible(false)}

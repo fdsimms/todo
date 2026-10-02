@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   Animated,
   StyleSheet,
+  Alert,
   Keyboard,
   Platform,
   useWindowDimensions,
@@ -23,6 +24,7 @@ import { PressableScale } from './PressableScale';
 import { HighlightedText } from './HighlightedText';
 import { TitleTokenAccessory } from './TitleTokenAccessory';
 import { CalendarPicker } from './CalendarPicker';
+import { EventOptionSheet, type EventOption } from './EventOptionSheet';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, interaction, animation, type Colors } from '../theme';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
@@ -31,7 +33,21 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useEventPeopleStore } from '../store/useEventPeopleStore';
 import { useTitleSelection } from '../hooks/useTitleSelection';
 import { groupMentionTokens } from '../utils/peopleRegistry';
-import { parseQuickEvent } from '../utils/quickEvent';
+import { describeEventRepeat, parseQuickEvent, type EventRecurrence } from '../utils/quickEvent';
+import { defaultNewEventSpan } from '../utils/eventPeople';
+import {
+  readQuickEventDefaults,
+  writeQuickEventDefaults,
+  type EventAvailability,
+} from '../utils/quickEventDefaults';
+import { ALERT_CHOICES, describeAlert, quickEventSaveFields } from '../utils/quickEventSave';
+import {
+  getCalendarPermission,
+  listWritableCalendars,
+  requestCalendarPermission,
+  resolveEventCalendar,
+} from '../utils/calendarSync';
+import type { Calendar as DeviceCalendar } from 'expo-calendar/legacy';
 import {
   findAmbiguousMention,
   getMentionSuggestions,
@@ -43,6 +59,7 @@ import { aimTooltip } from '../utils/tooltipAim';
 import { formatTimeOfDay, getCurrentDayStart, getLogicalNow } from '../utils/dateUtils';
 import { animateLayout } from '../utils/layoutAnimation';
 import { haptics } from '../utils/haptics';
+import { isDemoModeActive } from '../utils/demoState';
 import { TITLE_MAX_LENGTH } from '../types';
 import { TextField } from './TextField';
 
@@ -50,9 +67,21 @@ const EVENT_TOKEN_ACCESSORY_ID = 'quickEventTitleTokenAccessory';
 /** "#" and "!" name a category and a priority, which an event doesn't have. */
 const EVENT_TOKENS = ['@'] as const;
 
+/**
+ * What a caller that already knows something about the event starts the card
+ * with: the day the screen it was opened from is on, a title, and the people
+ * it is with (a person's "Plan something"). All optional, and all editable.
+ */
+export interface QuickEventSeed {
+  day?: Date;
+  title?: string;
+  personIds?: readonly string[];
+}
+
 interface Props {
   visible: boolean;
   onClose: () => void;
+  seed?: QuickEventSeed | null;
 }
 
 /**
@@ -61,10 +90,17 @@ interface Props {
  * reading aids: the schedule phrase and each "@name" highlighted as you type,
  * a tooltip under the phrase to set it or say "not that", the pick-one pills
  * for an "@name" that is ambiguous or still being typed, and the keyboard bar
- * cut down to the one sigil an event reads ("@"). The arrow opens Apple's
- * new-event sheet filled in from it, where the calendar (Google included) is
- * picked and the event is saved; the people named are linked once it is
- * (`useEventPeopleStore.createEvent`).
+ * cut down to the one sigil an event reads ("@"). The check saves the event
+ * straight into the calendar, with no system sheet (`saveEventDirect`); the
+ * people named are linked once it is (`useEventPeopleStore.saveEvent`).
+ *
+ * **The rows Apple's form used to ask for are chips here** (calendar, alert,
+ * Busy/Free) and start as the last saved event left them
+ * (`quickEventDefaults.ts`), so a usual event is a title and a day. A trailing
+ * "at Joe's" and "alert 30m" in the line fill the place and the alert as you
+ * type, and they win over a chip's earlier pick the way a typed day wins over
+ * the date chip's. What can't be set from here at all is invitees and travel
+ * time: EventKit exposes neither to a write.
  *
  * Its own component rather than a mode of `QuickAddModal`: that one builds a
  * task, and nearly all of it (category, tags, priority, chain steps, the
@@ -77,12 +113,10 @@ interface Props {
  * still up uses what it says. Tapping it commits the date to the chip and
  * takes the words out of the title; its ✕ keeps them as title text.
  *
- * The system sheet is presented on top of this one while it is still open, and
- * this one closes only once the event is saved. A cancel there lands back here
- * with the line intact, and presenting from a sheet mid-dismissal is the thing
- * UIKit refuses.
+ * This one closes only once the event is saved. A failed save (calendar
+ * access refused, no writable calendar) says so and leaves the line intact.
  */
-export function QuickEventSheet({ visible, onClose }: Props) {
+export function QuickEventSheet({ visible, onClose, seed }: Props) {
   const colors = useColors();
   const { isDark, shadows } = useTheme();
   const { height: windowHeight } = useWindowDimensions();
@@ -92,7 +126,7 @@ export function QuickEventSheet({ visible, onClose }: Props) {
   const groupTokens = useMemo(() => groupMentionTokens(), [people, groups]);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
   const use24Hour = useSettingsStore(s => s.use24HourTime);
-  const createEvent = useEventPeopleStore(s => s.createEvent);
+  const saveEvent = useEventPeopleStore(s => s.saveEvent);
 
   // ==== sheet-level state (keyboard, open/close animation) ====
   const inputRef = useRef<TextInput>(null);
@@ -148,6 +182,20 @@ export function QuickEventSheet({ visible, onClose }: Props) {
   // Passed to the system sheet as typed. Nothing reads or geocodes it here;
   // it only saves retyping an address into Apple's form.
   const [location, setLocation] = useState('');
+  const [notesOrLink, setNotesOrLink] = useState('');
+  // The chips' own picks. An alert typed in the line wins over `alertPick`,
+  // which wins over the remembered default (see `effectiveAlert`).
+  const [calendarId, setCalendarId] = useState<string | null>(null);
+  const [alertPick, setAlertPick] = useState<number | null | undefined>(undefined);
+  const [alertDefault, setAlertDefault] = useState<number | null>(null);
+  const [availability, setAvailability] = useState<EventAvailability>('busy');
+  const [calendars, setCalendars] = useState<DeviceCalendar[]>([]);
+  const [targetCalendar, setTargetCalendar] = useState<DeviceCalendar | null>(null);
+  // The repeat a schedule phrase read, kept once the phrase's words leave the
+  // line (tapping the tooltip, or picking the date by hand). A live phrase wins.
+  const [repeatPick, setRepeatPick] = useState<EventRecurrence | null>(null);
+  const [calendarPickerVisible, setCalendarPickerVisible] = useState(false);
+  const [alertPickerVisible, setAlertPickerVisible] = useState(false);
   const titleCaret = useTitleSelection(text);
   const [busy, setBusy] = useState(false);
   // A start set by hand (the chip's picker) or by tapping the tooltip. A
@@ -172,14 +220,39 @@ export function QuickEventSheet({ visible, onClose }: Props) {
     setCandidateLayouts(prev => { const next = prev.slice(); next[i] = layout; return next; });
   };
 
+  // ==== calendars: which one the event will go into ====
+  // `ask` is false on open, which only reads when access is already granted: a
+  // sheet opening must not raise a permission prompt. The chip's tap asks.
+  const loadCalendars = async (preferredId: string | null, ask: boolean): Promise<boolean> => {
+    const granted = (await getCalendarPermission()) === 'granted' || (ask && (await requestCalendarPermission()));
+    if (!granted) return false;
+    const writable = await listWritableCalendars();
+    setCalendars(writable);
+    setTargetCalendar((await resolveEventCalendar(writable, preferredId)) ?? null);
+    return true;
+  };
+
   // ==== effects: resetting on open ====
   useEffect(() => {
     if (!visible) return;
-    setText('');
+    const seededText = seed?.title ?? '';
+    setText(seededText);
     setLocation('');
-    titleCaret.resetCaret('');
+    setNotesOrLink('');
+    setRepeatPick(null);
+    const remembered = readQuickEventDefaults();
+    setCalendarId(remembered.calendarId);
+    setAlertDefault(remembered.alertMinutes);
+    setAlertPick(undefined);
+    setAvailability(remembered.availability);
+    setCalendarPickerVisible(false);
+    setAlertPickerVisible(false);
+    void loadCalendars(remembered.calendarId, false);
+    titleCaret.resetCaret(seededText);
     setBusy(false);
-    setStartOverride(null);
+    setStartOverride(
+      seed?.day ? defaultNewEventSpan(seed.day, getCurrentDayStart(), new Date()).start : null
+    );
     setAllDay(false);
     setPickerVisible(false);
     setDismissedSignature(null);
@@ -243,10 +316,10 @@ export function QuickEventSheet({ visible, onClose }: Props) {
         : null;
 
   const highlightRanges = useMemo(() => {
-    const ranges = [...draft.mentionSpans];
+    const ranges = [...draft.mentionSpans, ...draft.clauseSpans];
     if (activeMatch) ranges.push([activeMatch.matchStart, activeMatch.matchEnd]);
     return mergeRanges(ranges);
-  }, [draft.mentionSpans, activeMatch?.matchStart, activeMatch?.matchEnd]);
+  }, [draft.mentionSpans, draft.clauseSpans, activeMatch?.matchStart, activeMatch?.matchEnd]);
   const hasOverlay = highlightRanges.length > 0;
 
   useEffect(() => {
@@ -271,7 +344,16 @@ export function QuickEventSheet({ visible, onClose }: Props) {
   const describeStart = (d: Date) => (allDay ? dayLabel(d) : `${dayLabel(d)}, ${formatTimeOfDay(d, use24Hour)}`);
   const when = describeStart(effectiveStart);
   const whenSet = phrase !== null || startOverride !== null;
-  const namedPeople = people.filter(p => draft.personIds.includes(p.id)).map(displayNameOf);
+  const effectiveRepeat = phrase ? draft.repeat : repeatPick;
+  // The people the line names plus any the opener already knew (a person's page).
+  const allPersonIds = [...new Set([...draft.personIds, ...(seed?.personIds ?? [])])];
+  const namedPeople = people.filter(p => allPersonIds.includes(p.id)).map(displayNameOf);
+  // A place or alert typed in the line is live, the same as a typed day: it
+  // wins over an earlier pick without anyone tapping it.
+  const effectiveLocation = draft.location ?? (location.trim() || null);
+  const effectiveAlert =
+    draft.alertMinutes !== undefined ? draft.alertMinutes : alertPick !== undefined ? alertPick : alertDefault;
+  const alertSet = effectiveAlert !== null;
   const canAdd = draft.title.trim().length > 0 && !busy;
 
   // ==== applying what was read ====
@@ -289,6 +371,7 @@ export function QuickEventSheet({ visible, onClose }: Props) {
     setText(next);
     titleCaret.moveCaret(next);
     setStartOverride(draft.start);
+    setRepeatPick(draft.repeat);
   };
 
   const dismissPhrase = () => {
@@ -323,21 +406,57 @@ export function QuickEventSheet({ visible, onClose }: Props) {
       titleCaret.moveCaret(next);
     }
     setStartOverride(date);
+    if (phrase) setRepeatPick(draft.repeat);
     setPickerVisible(false);
   };
 
-  // ==== the exit: open the calendar's own form ====
+  // ==== the exit: write the event ====
   const next = async () => {
     if (!canAdd) return;
     haptics.tap();
     setBusy(true);
-    const saved = await createEvent(
-      { title: draft.title, start: effectiveStart, end: effectiveEnd, allDay, location: location.trim() || undefined },
-      draft.personIds
+    const saved = await saveEvent(
+      quickEventSaveFields({
+        title: draft.title,
+        start: effectiveStart,
+        end: effectiveEnd,
+        allDay,
+        location: effectiveLocation,
+        notesOrLink,
+        repeat: effectiveRepeat,
+        alertMinutes: effectiveAlert,
+        availability,
+        calendarId: targetCalendar?.id ?? calendarId,
+      }),
+      allPersonIds
     );
     setBusy(false);
-    if (saved) dismiss();
+    // A demo's event is refused on purpose (it would reach the real calendar),
+    // which isn't a failure to explain.
+    if (!saved && isDemoModeActive()) return;
+    if (!saved) {
+      Alert.alert(
+        "Couldn't add the event",
+        'Check that this app can add events to your calendar in the Settings app, then try again. The event is still here.'
+      );
+      return;
+    }
+    writeQuickEventDefaults({ calendarId: saved.calendarId, alertMinutes: effectiveAlert, availability });
+    dismiss();
   };
+
+  const openCalendarPicker = async () => {
+    haptics.tap();
+    Keyboard.dismiss();
+    if (calendars.length === 0) await loadCalendars(calendarId, true);
+    setCalendarPickerVisible(true);
+  };
+
+  const calendarOptions: EventOption[] = calendars.map(c => ({ key: c.id, label: c.title, color: c.color }));
+  const alertOptions: EventOption[] = [
+    { key: 'none', label: describeAlert(null) },
+    ...ALERT_CHOICES.map(m => ({ key: String(m), label: describeAlert(m, allDay) })),
+  ];
 
   // ==== render. Everything below is JSX ====
   return (
@@ -408,9 +527,9 @@ export function QuickEventSheet({ visible, onClose }: Props) {
               onPress={next}
               disabled={!canAdd}
               accessibilityRole="button"
-              accessibilityLabel="Continue to the calendar's event form"
+              accessibilityLabel="Add event"
             >
-              <Ionicons name="arrow-up" size={18} color={colors.onAccent} />
+              <Ionicons name="checkmark" size={18} color={colors.onAccent} />
             </TouchableOpacity>
           </View>
 
@@ -469,10 +588,13 @@ export function QuickEventSheet({ visible, onClose }: Props) {
           <View style={styles.locationRow}>
             <Ionicons name="location-outline" size={iconSize.sm} color={colors.textSecondary} />
             <TextField
-              style={styles.locationInput}
+              style={[styles.locationInput, draft.location !== null && styles.locationInputRead]}
               placeholder="Location"
               placeholderTextColor={colors.textTertiary}
-              value={location}
+              // Read from the line ("at Joe's") the field shows it and the line
+              // is where it is edited, so the two can't hold different places.
+              value={draft.location ?? location}
+              editable={draft.location === null}
               onChangeText={setLocation}
               onSubmitEditing={next}
               returnKeyType="next"
@@ -482,10 +604,44 @@ export function QuickEventSheet({ visible, onClose }: Props) {
             />
           </View>
 
+          <View style={styles.locationRow}>
+            <Ionicons name="document-text-outline" size={iconSize.sm} color={colors.textSecondary} />
+            <TextField
+              style={styles.locationInput}
+              placeholder="Notes or link"
+              placeholderTextColor={colors.textTertiary}
+              value={notesOrLink}
+              onChangeText={setNotesOrLink}
+              onSubmitEditing={next}
+              returnKeyType="done"
+              blurOnSubmit={false}
+              autoCapitalize="none"
+              keyboardAppearance={isDark ? 'dark' : 'light'}
+              accessibilityLabel="Notes or link"
+            />
+          </View>
+
           {namedPeople.length > 0 && (
             <View style={styles.captionRow}>
               <Ionicons name="people-outline" size={13} color={colors.textSecondary} />
               <Text style={styles.captionText} numberOfLines={1}>With {namedPeople.join(', ')}</Text>
+            </View>
+          )}
+
+          {effectiveRepeat && (
+            <View style={styles.captionRow}>
+              <Ionicons name="repeat-outline" size={13} color={colors.textSecondary} />
+              <Text style={styles.captionText} numberOfLines={1}>{describeEventRepeat(effectiveRepeat)}</Text>
+              {!phrase && (
+                <TouchableOpacity
+                  onPress={() => { haptics.tap(); animateLayout(); setRepeatPick(null); }}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Don't repeat"
+                >
+                  <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
+                </TouchableOpacity>
+              )}
             </View>
           )}
 
@@ -515,8 +671,44 @@ export function QuickEventSheet({ visible, onClose }: Props) {
             </TouchableOpacity>
           </View>
 
+          <View style={styles.toolbar}>
+            <TouchableOpacity
+              style={[styles.toolChip, styles.toolChipWide]}
+              onPress={() => { void openCalendarPicker(); }}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="button"
+              accessibilityLabel={`Calendar: ${targetCalendar?.title ?? 'default'}`}
+            >
+              {targetCalendar?.color ? <View style={[styles.calendarDot, { backgroundColor: targetCalendar.color }]} /> : (
+                <Ionicons name="albums-outline" size={iconSize.sm} color={colors.textSecondary} />
+              )}
+              <Text style={styles.toolChipText} numberOfLines={1}>{targetCalendar?.title ?? 'Calendar'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.toolChip, alertSet && styles.toolChipSet]}
+              onPress={() => { haptics.tap(); Keyboard.dismiss(); setAlertPickerVisible(true); }}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="button"
+              accessibilityLabel={`Alert: ${describeAlert(effectiveAlert, allDay)}`}
+            >
+              <Ionicons name={alertSet ? 'notifications' : 'notifications-outline'} size={iconSize.sm} color={alertSet ? colors.accent : colors.textSecondary} />
+              <Text style={[styles.toolChipText, alertSet && styles.toolChipTextSet]} numberOfLines={1}>
+                {describeAlert(effectiveAlert, allDay)}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.toolChip}
+              onPress={() => { haptics.tap(); setAvailability(v => (v === 'busy' ? 'free' : 'busy')); }}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="button"
+              accessibilityLabel={`Show as ${availability === 'busy' ? 'busy' : 'free'}. Tap to change.`}
+            >
+              <Text style={styles.toolChipText}>{availability === 'busy' ? 'Busy' : 'Free'}</Text>
+            </TouchableOpacity>
+          </View>
+
           <Text style={styles.hint}>
-            The arrow opens your calendar's event form with this filled in. Pick the calendar and save there.
+            Saves to your calendar. End the line with "at (place)" and "alert 30m" to fill those in.
           </Text>
         </Animated.View>
       </View>
@@ -534,6 +726,36 @@ export function QuickEventSheet({ visible, onClose }: Props) {
         title={allDay ? 'Date' : 'Date & time'}
         onConfirm={pickStart}
         onCancel={() => setPickerVisible(false)}
+      />
+      <EventOptionSheet
+        visible={calendarPickerVisible}
+        title="Calendar"
+        options={calendarOptions}
+        selectedKey={targetCalendar?.id ?? null}
+        emptyText="No calendar on this device can be added to. Turn on calendar access, or add a calendar you can edit, in the Settings app."
+        onSelect={id => {
+          setCalendarId(id);
+          setTargetCalendar(calendars.find(c => c.id === id) ?? null);
+        }}
+        onClose={() => setCalendarPickerVisible(false)}
+      />
+      <EventOptionSheet
+        visible={alertPickerVisible}
+        title="Alert"
+        options={alertOptions}
+        selectedKey={effectiveAlert === null ? 'none' : String(effectiveAlert)}
+        onSelect={key => {
+          // A typed "alert 30m" would outrank the pick, so a pick takes it out
+          // of the line rather than being dropped.
+          if (draft.alertMinutes !== undefined) {
+            const alertSpan = draft.clauseSpans[draft.clauseSpans.length - 1];
+            const next = withTrailingSpace(text.slice(0, alertSpan[0]).trimEnd());
+            setText(next);
+            titleCaret.moveCaret(next);
+          }
+          setAlertPick(key === 'none' ? null : Number(key));
+        }}
+        onClose={() => setAlertPickerVisible(false)}
       />
     </SheetModal>
   );
@@ -631,6 +853,8 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     marginBottom: spacing.sm,
   },
   locationInput: { flex: 1, fontSize: font.sm, color: colors.text, paddingVertical: spacing.xs },
+  locationInputRead: { color: colors.accent },
+  calendarDot: { width: 10, height: 10, borderRadius: 5 },
   captionRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginBottom: spacing.sm },
   captionText: { flex: 1, color: colors.textSecondary, fontSize: font.xs },
   toolbar: { flexDirection: 'row', gap: spacing.xs, marginBottom: spacing.sm },
@@ -644,7 +868,7 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     borderRadius: radius.full,
     backgroundColor: colors.bgTertiary,
   },
-  // The date is the one value that needs the room; All day keeps its width.
+  // The date (and the calendar's name) take the room; the other chips keep their width.
   toolChipWide: { flex: 1 },
   toolChipSet: { backgroundColor: colors.accentSubtle },
   toolChipText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium, flexShrink: 1 },
