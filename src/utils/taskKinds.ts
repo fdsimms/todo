@@ -1,4 +1,4 @@
-import type { ChainItem, Effort, RecurrenceType, RotationItem } from '../types';
+import type { ChainItem, Effort, QuotaPeriod, RecurrenceType, RotationItem } from '../types';
 import { MIN_ROTATION_ITEMS } from './rotation';
 import type { HealthMetric } from './moodInsights';
 import { formatDuration, minutesToEffort } from './effort';
@@ -235,6 +235,8 @@ export interface TypeValues {
   timedMinutes: number | null;
   targetCount: number | null;
   targetUnit: string | null;
+  /** The stretch a target counts across. Omitted reads as 'day'. */
+  quotaPeriod?: QuotaPeriod;
   healthMetric: HealthMetric | null;
   healthTarget: number | null;
   chainItems: ChainItem[];
@@ -257,6 +259,11 @@ export function typeSummary(type: TaskKind, v: TypeValues): string | null {
         ? `Counts down ${formatDuration(v.timedMinutes)} once you start it.`
         : 'Counts down a set time once you start it.';
     case 'target':
+      if (v.quotaPeriod === 'week') {
+        return v.targetCount != null
+          ? `Log it ${formatQuotaTarget(v.targetCount, v.targetUnit)} a week, on any days. Repeats weekly, and only shows up when you fall behind.`
+          : 'Log it several times a week, on any days. Repeats weekly, and only shows up when you fall behind.';
+      }
       return v.targetCount != null
         ? `Log it ${formatQuotaTarget(v.targetCount, v.targetUnit)} a day. Repeats daily, and only shows up when you fall behind.`
         : 'Log it several times a day. Repeats daily, and only shows up when you fall behind.';
@@ -311,6 +318,11 @@ export interface BakedFields {
   recurrenceType: RecurrenceType;
   effort: Effort;
   estimatedMinutes: number | null;
+  /**
+   * Set by Target only. Absent everywhere else, so a caller that doesn't track
+   * the period (the editor's kind switch) never has it overwritten.
+   */
+  quotaPeriod?: QuotaPeriod;
 }
 
 /**
@@ -368,7 +380,13 @@ export function bakedFields(type: TaskKind, v: TypeValues): BakedFields {
         ...base,
         targetCount: v.targetCount,
         targetUnit: normalizeTargetUnit(v.targetUnit),
-        recurrenceType: v.recurrenceType === 'none' ? 'daily' : v.recurrenceType,
+        quotaPeriod: v.quotaPeriod ?? 'day',
+        // A weekly target is always on a weekly repeat, which is what spawns
+        // next week's occupant: on a daily one it would restart at 0 every
+        // morning (see enableRecurrence in TaskEditor).
+        recurrenceType: v.quotaPeriod === 'week'
+          ? 'weekly'
+          : v.recurrenceType === 'none' ? 'daily' : v.recurrenceType,
       };
     case 'health':
       return { ...base, healthMetric: v.healthMetric, healthTarget: v.healthTarget };

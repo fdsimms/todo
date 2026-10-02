@@ -39,7 +39,7 @@ import { categoryLabel } from '../utils/categoryLabel';
 import { CategoryPickerSheet } from './CategoryPicker';
 import { ProjectPickerSheet } from './ProjectPickerSheet';
 import { useShallow } from 'zustand/react/shallow';
-import type { Priority, Effort, TimeOfDay, RecurrenceType, Task, ChainItem } from '../types';
+import type { Priority, Effort, TimeOfDay, RecurrenceType, Task, ChainItem, QuotaPeriod } from '../types';
 import { PRIORITY_COLORS, EFFORT_LABELS, TITLE_MAX_LENGTH } from '../types';
 import { generateId } from '../utils/id';
 import {
@@ -73,7 +73,7 @@ import { TitleTokenAccessory } from './TitleTokenAccessory';
 import { HighlightedText } from './HighlightedText';
 import { suggestTitles } from '../utils/titleSuggestions';
 import { findArchivedMatch } from '../utils/archiveMatch';
-import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, parseDurationInput, parseSupplyInput, parseTargetInput, parseCategoryAndTagsInput, parsePriorityInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, applyMentionOverrides, withTrailingSpace, type ParsedCategoryAndTags, type MentionSuggestionCandidate } from '../utils/parseTaskInput';
+import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, parseDurationInput, parseSupplyInput, parseTargetInput, stripRemindPrefix, parseCategoryAndTagsInput, parsePriorityInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, applyMentionOverrides, withTrailingSpace, type ParsedCategoryAndTags, type ParsedTaskInput, type MentionSuggestionCandidate } from '../utils/parseTaskInput';
 import { mergeRanges } from '../utils/ranges';
 import { aimTooltip } from '../utils/tooltipAim';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
@@ -184,6 +184,16 @@ interface ToolChipDescriptor {
 /** The type row's labels and icons. Order is fixed: plain first, then the modes. */
 
 /** Known app name for a link scheme, else the raw URL. */
+/**
+ * The title "remind me to … at 4pm" leaves once the schedule phrase and the
+ * request are both gone, or null when the request doesn't apply: without a
+ * clock time there's no moment to remind at, so the words stay in the title
+ * (see stripRemindPrefix).
+ */
+function remindsFromTitle(parsed: ParsedTaskInput): string | null {
+  return parsed.schedule.explicitClockTime ? stripRemindPrefix(parsed.cleanTitle) : null;
+}
+
 function linkLabel(url: string): string {
   return KNOWN_LINK_APPS.find(app => app.scheme === url)?.name ?? url;
 }
@@ -391,6 +401,10 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   // No field of its own in this sheet — see the seed prop's doc comment.
   const [windowStart, setWindowStart] = useState<string | null>(null);
   const [windowEnd, setWindowEnd] = useState<string | null>(null);
+  // "after 3pm" off the schedule tooltip. Kept apart from the seed's window
+  // above, which only applies while its chip is active: this one is the
+  // title's, and lasts until another schedule phrase replaces it.
+  const [titleWindowStart, setTitleWindowStart] = useState<string | null>(null);
   const [tags, setTags] = useState<string[]>([]);
   // Manual picks off the ambiguous-"@name" tooltip, keyed by lowercased token
   // text — see applyAmbiguousCandidate and applyMentionOverrides.
@@ -426,6 +440,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   const [customTimedText, setCustomTimedText] = useState('');
   const [targetCount, setTargetCount] = useState<number | null>(null);
   const [targetUnit, setTargetUnit] = useState('');
+  const [quotaPeriod, setQuotaPeriod] = useState<QuotaPeriod>('day');
   const [chainItems, setChainItems] = useState<ChainItem[]>([]);
   const [newStepTitle, setNewStepTitle] = useState('');
   const [customLinkText, setCustomLinkText] = useState('');
@@ -526,6 +541,8 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     setTimedMinutes(initialType === 'timed' ? DEFAULT_TIMED_MINUTES : null);
     setCustomTimedText('');
     setTargetCount(initialType === 'target' ? DEFAULT_TARGET_COUNT : null);
+    setQuotaPeriod('day');
+    setTitleWindowStart(null);
     setChainItems([]);
     setNewStepTitle('');
     setCustomLinkText('');
@@ -850,20 +867,30 @@ export const QuickAddModal = React.memo(function QuickAddModal({
       ? parseSupplyInput(title) : null),
     [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, chainParsed, linkParsed, phoneParsed, emailParsed, durationParsed, recurrenceType]
   );
-  // "drink water 8 times a day" — a daily target. Last in the chain, behind
-  // supply, so every phrase above still wins the one slot.
+  // "drink water 8 times a day" — a daily target, or "run 3 times a week", a
+  // weekly one. Last in the chain, behind supply, so every phrase above still
+  // wins the one slot.
   //
   // Same type gate as durationParsed: accepting it switches the sheet into
   // Target, so it's only offered from the plain type. And only while the
-  // repeat is unset or daily, because a target resets by repeating daily: on
-  // a sheet already set to "every week" (from "3 times every week"), a daily
-  // target of 3 isn't what was said.
-  const targetParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !chainParsed && !linkParsed && !phoneParsed && !emailParsed
-      && !durationParsed && !supplyParsed && type === 'task' && (recurrenceType === 'none' || recurrenceType === 'daily') && title.trim()
-      ? parseTargetInput(title) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, chainParsed, linkParsed, phoneParsed, emailParsed, durationParsed, supplyParsed, type, recurrenceType]
-  );
+  // repeat is unset or matches a period a target can count across: a target
+  // resets by repeating, so on a sheet set to "every 2 weeks" or "every
+  // monday" there's no reading of "3 times" that the repeat wouldn't undo.
+  //
+  // A bare "3 times" on a weekly repeat ("3 times" then "every week" accepted
+  // first) is three a week; "3 times a week" on a daily repeat is refused
+  // rather than letting either half overrule the other.
+  const targetParsed = useMemo(() => {
+    if (parsed || categoryTagsParsed || ambiguousMention || mentionSuggestion || priorityParsed || chainParsed || linkParsed || phoneParsed || emailParsed
+      || durationParsed || supplyParsed || type !== 'task' || !title.trim()) return null;
+    const plainWeekly = recurrenceType === 'weekly' && recurrenceInterval === 1 && recurrenceDays.length === 0;
+    if (recurrenceType !== 'none' && recurrenceType !== 'daily' && !plainWeekly) return null;
+    if (recurrenceType === 'daily' && recurrenceInterval !== 1) return null;
+    const result = parseTargetInput(title);
+    if (!result) return null;
+    if (result.period === 'week' && recurrenceType === 'daily') return null;
+    return plainWeekly ? { ...result, period: 'week' as const } : result;
+  }, [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, chainParsed, linkParsed, phoneParsed, emailParsed, durationParsed, supplyParsed, type, recurrenceType, recurrenceInterval, recurrenceDays]);
   const rawMatch = parsed
     ? { matchStart: parsed.matchStart, matchedText: parsed.matchedText }
     : categoryTagsParsed
@@ -995,11 +1022,13 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     if (!parsed) return;
     haptics.success();
     animateLayout();
-    const nextTitle = withTrailingSpace(parsed.cleanTitle);
+    const remindTitle = remindsFromTitle(parsed);
+    const nextTitle = withTrailingSpace(remindTitle ?? parsed.cleanTitle);
     setTitle(nextTitle);
     titleCaret.moveCaret(nextTitle);
     setDueDate(parsed.schedule.dueDate);
     setDeadline(parsed.schedule.deadline ?? null);
+    setTitleWindowStart(parsed.schedule.windowStart ?? null);
     setTimeSegments(parsed.schedule.timeSegments);
     setRecurrenceType(parsed.schedule.recurrenceType);
     setRecurrenceInterval(parsed.schedule.recurrenceInterval);
@@ -1014,7 +1043,15 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     // morning/afternoon/evening bucket (see ParsedSchedule.explicitClockTime).
     // Surface it as something to accept rather than silently scheduling a
     // notification for it.
-    if (parsed.schedule.explicitClockTime && !reminderTime) {
+    //
+    // "remind me to … at 4pm" already chose, so that one is set rather than
+    // offered (the tooltip says so before it's tapped).
+    if (parsed.schedule.explicitClockTime && remindTitle) {
+      const at = new Date(parsed.schedule.dueDate);
+      at.setHours(parsed.schedule.explicitClockTime.h, parsed.schedule.explicitClockTime.m, 0, 0);
+      setReminderTime(at);
+      setReminderOffer(null);
+    } else if (parsed.schedule.explicitClockTime && !reminderTime) {
       const suggested = new Date(parsed.schedule.dueDate);
       suggested.setHours(parsed.schedule.explicitClockTime.h, parsed.schedule.explicitClockTime.m, 0, 0);
       setReminderOffer(suggested);
@@ -1187,10 +1224,10 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     setSupplyUnit(supplyParsed.unit ?? '');
   };
 
-  // Same as applyDuration: typing "8 times a day" is describing a daily
-  // target, so accepting it switches the sheet into Target with the count set
-  // and the repeat on (a target resets by repeating daily, as resetForm does
-  // when the sheet opens straight into Target).
+  // Same as applyDuration: typing "8 times a day" is describing a target, so
+  // accepting it switches the sheet into Target with the count set and the
+  // repeat on (a target resets by repeating, daily or weekly to match its
+  // period, as resetForm does when the sheet opens straight into Target).
   const applyTarget = () => {
     if (!targetParsed) return;
     haptics.success();
@@ -1200,7 +1237,8 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     titleCaret.moveCaret(nextTitle);
     setType('target');
     setTargetCount(targetParsed.count);
-    setRecurrenceType('daily');
+    setQuotaPeriod(targetParsed.period);
+    setRecurrenceType(targetParsed.period === 'week' ? 'weekly' : 'daily');
   };
 
   // Whichever single tooltip is currently up, applied — shared by the
@@ -1265,6 +1303,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     timedMinutes,
     targetCount,
     targetUnit,
+    quotaPeriod,
     // Always null here: quick add has no Health kind to pick. The kind picker
     // deliberately lives in the editor (see taskKinds.ts), and a sheet whose
     // job is capturing a title in two taps is the wrong place to ask which
@@ -1387,6 +1426,8 @@ export const QuickAddModal = React.memo(function QuickAddModal({
       ...(seedActive && seed?.groupId ? { groupId: seed.groupId } : {}),
       ...(seedActive && seed?.pinned ? { pinned: true } : {}),
       ...(seedActive && seed?.windowStart ? { windowStart: seed.windowStart, windowEnd: seed.windowEnd ?? null } : {}),
+      // After the seed's, so the title's own "after 3pm" wins over a drop.
+      ...(titleWindowStart ? { windowStart: titleWindowStart } : {}),
     // skipTitleRules: this sheet already resolved them, a keystroke at a time
     // and visibly — re-running them here would put back a category the ✕ on
     // the rule caption just took off.
@@ -1492,7 +1533,9 @@ export const QuickAddModal = React.memo(function QuickAddModal({
       priority,
       ...baked,
       dueDate,
+      deadline,
       timeSegments,
+      windowStart: titleWindowStart,
       reminderTime,
       tags: resolveTags(),
       personIds,
@@ -2034,7 +2077,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                       />
                       <Text style={styles.tooltipText} numberOfLines={1} ellipsizeMode="tail">
                         {parsed
-                          ? describeSchedule(parsed.schedule, getLogicalNow(dayResetTime))
+                          ? `${describeSchedule(parsed.schedule, getLogicalNow(dayResetTime))}${remindsFromTitle(parsed) ? ' · Reminder' : ''}`
                           : categoryTagsParsed
                             ? categoryTagsLabel(categoryTagsParsed, categories)
                             : priorityParsed
@@ -2051,7 +2094,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                                         ? `Timer · ${formatDuration(durationParsed.minutes)}`
                                         : supplyParsed
                                           ? `Supply · ${formatSupplyLeft(supplyParsed.count, supplyParsed.unit)}`
-                                          : `Daily target · ${formatQuotaTarget(targetParsed!.count, null)}`}
+                                          : `${targetParsed!.period === 'week' ? 'Weekly' : 'Daily'} target · ${formatQuotaTarget(targetParsed!.count, null)}`}
                       </Text>
                       <View style={styles.tooltipDot} />
                       <Text style={styles.tooltipHint}>Tap to set</Text>
@@ -2199,8 +2242,8 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                   max={MAX_TARGET_COUNT}
                   // No clearing here: in this mode the target is the task.
                   format={n => `${n}×`}
-                  label="Daily target"
-                  describeValue={n => `${n} ${targetUnit.trim() || 'times'} a day`}
+                  label={quotaPeriod === 'week' ? 'Weekly target' : 'Daily target'}
+                  describeValue={n => `${n} ${targetUnit.trim() || 'times'} a ${quotaPeriod}`}
                 />
                 {/* Optional: what the count counts, so "5/12 8oz glasses" can
                     be read off the row without the title spelling it out. */}
@@ -2215,7 +2258,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                   accessibilityLabel="Unit for the daily target, optional"
                   keyboardAppearance={isDark ? 'dark' : 'light'}
                 />
-                <Text style={styles.targetStepperCaption}>a day</Text>
+                <Text style={styles.targetStepperCaption}>a {quotaPeriod}</Text>
               </View>
             </View>
           )}

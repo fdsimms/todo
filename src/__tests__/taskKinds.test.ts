@@ -90,6 +90,22 @@ describe('bakedFields', () => {
     expect(f.recurrenceType).toBe('weekly');
   });
 
+  it('counts a target per day unless told otherwise', () => {
+    expect(bakedFields('target', values({ targetCount: 8 })).quotaPeriod).toBe('day');
+  });
+
+  it('puts a weekly target on a weekly repeat, whatever the sheet held', () => {
+    const f = bakedFields('target', values({ targetCount: 3, quotaPeriod: 'week' }));
+    expect(f.quotaPeriod).toBe('week');
+    expect(f.recurrenceType).toBe('weekly');
+    expect(bakedFields('target', values({ targetCount: 3, quotaPeriod: 'week', recurrenceType: 'daily' })).recurrenceType).toBe('weekly');
+  });
+
+  it('leaves the period out for every other kind', () => {
+    expect(bakedFields('task', values({ quotaPeriod: 'week' })).quotaPeriod).toBeUndefined();
+    expect(bakedFields('timed', values({ quotaPeriod: 'week' })).quotaPeriod).toBeUndefined();
+  });
+
   it('turns the chain on and starts it at the first step', () => {
     const items = [step('a'), step('b')];
     const f = bakedFields('chain', values({ chainItems: items }));
@@ -147,6 +163,12 @@ describe('typeSummary', () => {
     const s = typeSummary('target', values({ targetCount: 8 }))!;
     expect(s).toContain('8×');
     expect(s).toContain('fall behind');
+  });
+
+  it('says a week for a weekly target', () => {
+    const s = typeSummary('target', values({ targetCount: 3, quotaPeriod: 'week' }))!;
+    expect(s).toContain('3× a week');
+    expect(s).toContain('Repeats weekly');
   });
 
   it('names the unit in place of the × once one is typed', () => {

@@ -1,4 +1,4 @@
-import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, detectContactIntent, parseDurationInput, parseSupplyInput, parseTargetInput, parseCategoryAndTagsInput, parsePriorityInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, getEditorMentionSuggestions, applyMentionOverrides, parseFromCompletionSuffix, type ParsedSchedule } from '../utils/parseTaskInput';
+import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, detectContactIntent, parseDurationInput, parseSupplyInput, parseTargetInput, stripRemindPrefix, parseCategoryAndTagsInput, parsePriorityInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, getEditorMentionSuggestions, applyMentionOverrides, parseFromCompletionSuffix, type ParsedSchedule } from '../utils/parseTaskInput';
 
 // Tuesday, June 10 2025, 10:00 AM — same anchor as parseNaturalDate.test.ts
 const NOW = new Date(2025, 5, 10, 10, 0, 0);
@@ -1245,10 +1245,22 @@ describe('parseTargetInput', () => {
     expect(parseTaskInput(target.cleanTitle, NOW)!.schedule.recurrenceType).toBe('daily');
   });
 
-  it('refuses a count spread over a longer period, which is not a daily target', () => {
-    expect(parseTargetInput('run 3 times a week')).toBeNull();
+  it('reads a count per week as a weekly target', () => {
+    expect(parseTargetInput('run 3 times a week')).toMatchObject({ count: 3, period: 'week', cleanTitle: 'run' });
+    expect(parseTargetInput('water plants twice weekly')).toMatchObject({ count: 2, period: 'week', cleanTitle: 'water plants' });
+    expect(parseTargetInput('swim 4x per week')).toMatchObject({ count: 4, period: 'week', cleanTitle: 'swim' });
+  });
+
+  it('reads anything else as per day', () => {
+    expect(parseTargetInput('drink water 8 times')?.period).toBe('day');
+    expect(parseTargetInput('drink water 8 times a day')?.period).toBe('day');
+    expect(parseTargetInput('drink water 8 times daily')?.period).toBe('day');
+  });
+
+  it('refuses a count over a period a target cannot have', () => {
     expect(parseTargetInput('call mom 2 times per month')).toBeNull();
-    expect(parseTargetInput('water plants twice weekly')).toBeNull();
+    expect(parseTargetInput('donate blood 4 times a year')).toBeNull();
+    expect(parseTargetInput('water plants twice monthly')).toBeNull();
   });
 
   it('refuses the recurrence end condition "for N times"', () => {
@@ -1625,5 +1637,97 @@ describe('applyMentionOverrides', () => {
     const matched = matchPersonMentions('call @mom about @sam', people); // only "mom" resolves
     const r = applyMentionOverrides('call @mom about @sam', matched, { sam: 'a' });
     expect(r.map(m => m.personId)).toEqual(['c', 'a']);
+  });
+});
+
+describe('stripRemindPrefix', () => {
+  it('drops the request and keeps the task', () => {
+    expect(stripRemindPrefix('remind me to call mom')).toBe('call mom');
+    expect(stripRemindPrefix('Remind me about the dentist')).toBe('the dentist');
+    expect(stripRemindPrefix("don't forget to water plants")).toBe('water plants');
+    expect(stripRemindPrefix('dont forget to water plants')).toBe('water plants');
+    expect(stripRemindPrefix('reminder: pay rent')).toBe('pay rent');
+  });
+
+  it('leaves a title that only mentions reminding alone', () => {
+    expect(stripRemindPrefix('call mom')).toBeNull();
+    expect(stripRemindPrefix('set up a reminder for rent')).toBeNull();
+    expect(stripRemindPrefix('remindme to call')).toBeNull();
+  });
+
+  it('refuses when nothing would be left', () => {
+    expect(stripRemindPrefix('remind me to ')).toBeNull();
+  });
+
+  it('composes with the schedule parse that names the moment', () => {
+    const r = parseTaskInput('remind me to call mom at 4pm', NOW)!;
+    expect(r.schedule.explicitClockTime).toEqual({ h: 16, m: 0 });
+    expect(stripRemindPrefix(r.cleanTitle)).toBe('call mom');
+  });
+});
+
+describe('parseTaskInput time windows', () => {
+  it('reads "after 3pm" as a window start, with no deadline', () => {
+    const r = parseTaskInput('call the bank after 3pm', NOW)!;
+    expect(r.cleanTitle).toBe('call the bank');
+    expect(r.matchedText).toBe('after 3pm');
+    expect(r.schedule.windowStart).toBe('15:00');
+    expect(r.schedule.deadline).toBeUndefined();
+    expect(r.schedule.timeSegments).toEqual(['afternoon']);
+  });
+
+  it('carries a date alongside the window start', () => {
+    const r = parseTaskInput('call the bank after 3pm tomorrow', NOW)!;
+    expect(r.schedule.windowStart).toBe('15:00');
+    expect(r.schedule.dueDate.getDate()).toBe(NOW.getDate() + 1);
+  });
+
+  it('leaves "after" with no clock time in the title', () => {
+    expect(parseTaskInput('go for a walk after work', NOW)).toBeNull();
+    const r = parseTaskInput('pay rent after friday', NOW);
+    expect(r?.schedule.windowStart).toBeUndefined();
+  });
+
+  it('reads "before 5pm" as a deadline, never a window end', () => {
+    const r = parseTaskInput('pay rent before 5pm', NOW)!;
+    expect(r.cleanTitle).toBe('pay rent');
+    expect(r.matchedText).toBe('before 5pm');
+    expect(r.schedule.deadline).toBeDefined();
+    expect(r.schedule.windowStart).toBeUndefined();
+    expect(r.schedule.explicitClockTime).toEqual({ h: 17, m: 0 });
+  });
+
+  it('reads "before friday" like "by friday"', () => {
+    const r = parseTaskInput('return library books before friday', NOW)!;
+    expect(r.cleanTitle).toBe('return library books');
+    expect(r.schedule.deadline).toBeDefined();
+  });
+
+  it('reads "between 2 and 4pm" as a window start and a deadline at the end', () => {
+    const r = parseTaskInput('call the bank between 2 and 4pm', NOW)!;
+    expect(r.cleanTitle).toBe('call the bank');
+    expect(r.matchedText).toBe('between 2 and 4pm');
+    expect(r.schedule.windowStart).toBe('14:00');
+    expect(r.schedule.deadline).toBeDefined();
+    expect(r.schedule.explicitClockTime).toEqual({ h: 16, m: 0 });
+  });
+
+  it('borrows the start\'s half of the day from whichever reading comes first', () => {
+    expect(parseTaskInput('call between 11 and 1pm', NOW)!.schedule.windowStart).toBe('11:00');
+    expect(parseTaskInput('call between 9 and 11am', NOW)!.schedule.windowStart).toBe('09:00');
+    expect(parseTaskInput('call between 9am and 5pm', NOW)!.schedule.windowStart).toBe('09:00');
+    expect(parseTaskInput('call between 14:00 and 16:30', NOW)!.schedule.windowStart).toBe('14:00');
+    expect(parseTaskInput('call between 2:30 to 4pm tomorrow', NOW)!.schedule.windowStart).toBe('14:30');
+  });
+
+  it('refuses a "between" whose start is not before its end', () => {
+    expect(parseTaskInput('call between 5pm and 3pm', NOW)?.schedule.windowStart).toBeUndefined();
+  });
+
+  it('says so in the label', () => {
+    const r = parseTaskInput('call the bank after 3pm', NOW)!;
+    expect(describeSchedule(r.schedule, NOW)).toBe('Today · After 3 PM');
+    const b = parseTaskInput('call the bank between 2:30 and 4pm', NOW)!;
+    expect(describeSchedule(b.schedule, NOW)).toBe('Today · Deadline · After 2:30 PM');
   });
 });
