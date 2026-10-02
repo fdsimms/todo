@@ -11,6 +11,9 @@ import { MEAL_SLOT_LABELS, type MealPlanEntry } from '../types';
 const HOUR_HEIGHT = 56;
 /** A block never draws shorter than this, however few minutes it covers. */
 const MIN_BLOCK_HEIGHT = 22;
+/** Trimmed off the bottom of every block so two that abut (one ends as the
+ *  next starts) read as two cards instead of one merged shape. */
+const BLOCK_GAP = 2;
 const GUTTER_WIDTH = 52;
 
 interface Props {
@@ -145,7 +148,7 @@ export function DayTimeline({
                 styles.entry,
                 styles.block,
                 isTask ? styles.blockTask : styles.blockEvent,
-                { ...position, height: Math.max(MIN_BLOCK_HEIGHT, rawHeight) },
+                { ...position, height: Math.max(MIN_BLOCK_HEIGHT, rawHeight - BLOCK_GAP) },
               ]}
               activeOpacity={interaction.activeOpacity}
               disabled={!pressable}
