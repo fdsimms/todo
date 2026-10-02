@@ -8,7 +8,7 @@ import {
   dbGetSetting,
   dbSetSetting,
 } from '../db/database';
-import { presentEventCreate, readTimeBlockEvent } from '../utils/calendarSync';
+import { presentEventCreate, readTimeBlockEvent, saveEventDirect } from '../utils/calendarSync';
 import { isDemoModeActive } from '../utils/demoState';
 import { useCalendarStore } from '../store/useCalendarStore';
 import type { BusyEvent } from '../utils/calendarBusy';
@@ -34,6 +34,7 @@ jest.mock('../db/database', () => ({
 jest.mock('../utils/calendarSync', () => ({
   presentEventCreate: jest.fn(),
   readTimeBlockEvent: jest.fn(),
+  saveEventDirect: jest.fn(),
 }));
 jest.mock('../utils/demoState', () => ({ isDemoModeActive: jest.fn().mockReturnValue(false) }));
 jest.mock('../store/useCalendarStore', () => {
@@ -187,6 +188,39 @@ describe('createEvent', () => {
     (presentEventCreate as jest.Mock).mockResolvedValue({ saved: true, deleted: false, eventId: 'new' });
     (readTimeBlockEvent as jest.Mock).mockResolvedValue(null);
     await expect(useEventPeopleStore.getState().createEvent(fields, ['p1'])).resolves.toBe(true);
+    expect(mockTable).toEqual([]);
+  });
+});
+
+describe('saveEvent', () => {
+  const saveFields = { title: 'Dinner', start: new Date(2099, 0, 10, 18), end: new Date(2099, 0, 10, 19) };
+
+  it('does nothing in demo mode, so no event reaches the real calendar', async () => {
+    (isDemoModeActive as jest.Mock).mockReturnValue(true);
+    await expect(useEventPeopleStore.getState().saveEvent(saveFields, ['p1'])).resolves.toBeNull();
+    expect(saveEventDirect).not.toHaveBeenCalled();
+  });
+
+  it('links nobody and refreshes nothing when the write fails', async () => {
+    (saveEventDirect as jest.Mock).mockResolvedValue(null);
+    await expect(useEventPeopleStore.getState().saveEvent(saveFields, ['p1'])).resolves.toBeNull();
+    expect(mockTable).toEqual([]);
+    expect(useCalendarStore.getState().refresh).not.toHaveBeenCalled();
+  });
+
+  it('links the event at the span it wrote, under its server id, with no read back', async () => {
+    (saveEventDirect as jest.Mock).mockResolvedValue({ id: 'new', calendarId: 'cal1' });
+    mockExternalIds.mockResolvedValue({ new: 'google-new' });
+    await expect(useEventPeopleStore.getState().saveEvent(saveFields, ['p1'])).resolves.toEqual({ id: 'new', calendarId: 'cal1' });
+    expect(readTimeBlockEvent).not.toHaveBeenCalled();
+    expect(mockTable).toHaveLength(1);
+    expect(mockTable[0].eventKey).toBe(`google-new#${saveFields.start.toISOString()}`);
+    expect(useCalendarStore.getState().refresh).toHaveBeenCalled();
+  });
+
+  it('saves without linking when nobody was named', async () => {
+    (saveEventDirect as jest.Mock).mockResolvedValue({ id: 'new', calendarId: 'cal1' });
+    await expect(useEventPeopleStore.getState().saveEvent(saveFields)).resolves.not.toBeNull();
     expect(mockTable).toEqual([]);
   });
 });

@@ -1,4 +1,4 @@
-import { eventMarkerText, parseQuickEvent } from '../utils/quickEvent';
+import { alertRelativeOffset, eventMarkerText, parseAlertClause, parseQuickEvent } from '../utils/quickEvent';
 import { findAmbiguousMention } from '../utils/parseTaskInput';
 
 jest.mock('../store/useSettingsStore', () => ({
@@ -89,6 +89,89 @@ describe('parseQuickEvent, for the quick-add sheet', () => {
     });
     expect(picked.personIds).toEqual(['s2']);
     expect(picked.title).toBe('coffee with Sam');
+  });
+});
+
+describe('parseQuickEvent, location and alert clauses', () => {
+  it('reads a place and an alert after the schedule phrase', () => {
+    const line = "lunch w/ @dustin fri 12p at Joe's alert 30m";
+    const draft = parseQuickEvent(line, opts);
+    expect(draft.title).toBe('lunch w/ Dustin');
+    expect(draft.location).toBe("Joe's");
+    expect(draft.alertMinutes).toBe(30);
+    expect(draft.start).toEqual(new Date(2026, 9, 2, 12, 0));
+    expect(draft.personIds).toEqual(['p1']);
+    expect(draft.clauseSpans.map(([a, b]) => line.slice(a, b))).toEqual(["at Joe's", 'alert 30m']);
+  });
+
+  it('keeps the clauses when the schedule phrase is taken out of the line', () => {
+    const draft = parseQuickEvent("lunch fri 12p at Joe's alert 30m", opts);
+    expect(draft.phrase?.lineWithout).toBe("lunch at Joe's alert 30m");
+  });
+
+  it('reads a place with no schedule phrase', () => {
+    const draft = parseQuickEvent('coffee at Blue Bottle', opts);
+    expect(draft.title).toBe('coffee');
+    expect(draft.location).toBe('Blue Bottle');
+    expect(draft.scheduled).toBe(false);
+  });
+
+  it('does not take a time for a place', () => {
+    const draft = parseQuickEvent('dentist at 3pm', opts);
+    expect(draft.location).toBeNull();
+    expect(draft.start).toEqual(new Date(2026, 8, 25, 15, 0));
+    expect(draft.title).toBe('dentist');
+  });
+
+  it('leaves a place followed by a time in the title', () => {
+    const draft = parseQuickEvent("lunch at Joe's fri 12p", opts);
+    expect(draft.location).toBeNull();
+    expect(draft.title).toBe("lunch at Joe's");
+    expect(draft.start).toEqual(new Date(2026, 9, 2, 12, 0));
+  });
+
+  it('reports no alert when none is typed, and null for "alert none"', () => {
+    expect(parseQuickEvent('coffee', opts).alertMinutes).toBeUndefined();
+    expect(parseQuickEvent('coffee alert none', opts).alertMinutes).toBeNull();
+  });
+
+  it('keeps the word alert in a title when it is not a clause', () => {
+    const draft = parseQuickEvent('alert the neighbors', opts);
+    expect(draft.title).toBe('alert the neighbors');
+    expect(draft.alertMinutes).toBeUndefined();
+  });
+});
+
+describe('parseAlertClause', () => {
+  it.each([
+    ['x alert 30m', 30],
+    ['x alert 30 min', 30],
+    ['x alert 1h', 60],
+    ['x alert 2 hours', 120],
+    ['x alert 1d', 1440],
+    ['x alert 2 days', 2880],
+    ['x alert 15', 15],
+    ['x alert 0', 0],
+    ['x alert none', null],
+    ['x alert off', null],
+  ])('reads %s', (line, minutes) => {
+    expect(parseAlertClause(line)?.minutes).toBe(minutes);
+  });
+
+  it('only reads a suffix', () => {
+    expect(parseAlertClause('alert 30m dinner')).toBeNull();
+  });
+});
+
+describe('alertRelativeOffset', () => {
+  it('counts back from the start of a timed event', () => {
+    expect(alertRelativeOffset(30, false)).toBe(-30);
+    expect(alertRelativeOffset(0, false)).toBe(0);
+  });
+
+  it('counts back from 9:00 on an all-day event', () => {
+    expect(alertRelativeOffset(0, true)).toBe(540);
+    expect(alertRelativeOffset(60, true)).toBe(480);
   });
 });
 

@@ -651,6 +651,85 @@ export async function presentEventCreate(fields: {
   }
 }
 
+/** What a quick-add event is saved with, with no system sheet in between. */
+export interface EventSaveFields {
+  title: string;
+  start: Date;
+  end: Date;
+  allDay?: boolean;
+  location?: string;
+  notes?: string;
+  url?: string;
+  alarms?: Alarm[];
+  availability?: 'busy' | 'free';
+  /** The calendar to write to. A missing or stale id falls back to the default. */
+  calendarId?: string | null;
+}
+
+/**
+ * The calendar a quick-add event goes into: the one asked for when it is still
+ * writable, else the device's default calendar when that is, else the first
+ * writable one. Shared with the quick-add card so the calendar chip names the
+ * calendar the save will actually use, never one it would silently replace.
+ */
+export async function resolveEventCalendar(
+  writable: readonly DeviceCalendar[],
+  preferredId: string | null | undefined
+): Promise<DeviceCalendar | undefined> {
+  const preferred = writable.find(c => c.id === preferredId);
+  if (preferred) return preferred;
+  const fallback = await calendar().getDefaultCalendarAsync().catch(() => null);
+  return writable.find(c => c.id === fallback?.id) ?? writable[0];
+}
+
+/**
+ * Writes a new event straight into a calendar, the one write in this file
+ * that a person asked for and did not watch happen in Apple's sheet. Quick add
+ * uses it because the sheet was the thing being cut: the calendar, alert and
+ * Busy/Free rows it asked for are chips on quick add now (remembered in
+ * `quickEventDefaults.ts`), so what is saved is exactly what the card showed.
+ *
+ * Returns the event's id and the calendar it went into (so the caller can
+ * remember the one actually used), or null on any failure, including calendar
+ * access being refused. This asks for access itself, since a person tapping Add
+ * is the deliberate ask the permission needs.
+ *
+ * **The calendar falls back rather than failing.** A remembered id can name a
+ * calendar that has since been removed or made read-only, and an event that
+ * didn't save for that reason would be the worst outcome for a quick capture:
+ * the device's default calendar (when writable), then the first writable one.
+ *
+ * Nothing here deletes or rewrites; the "never deletes a time block" rule above
+ * holds for this path too.
+ */
+export async function saveEventDirect(
+  fields: EventSaveFields
+): Promise<{ id: string; calendarId: string } | null> {
+  if (Platform.OS !== 'ios') return null;
+  try {
+    if (!(await requestCalendarPermission())) return null;
+    const target = await resolveEventCalendar(await listWritableCalendars(), fields.calendarId);
+    if (!target) return null;
+    const id = await calendar().createEventAsync(target.id, {
+      title: fields.title,
+      startDate: fields.start,
+      endDate: fields.end,
+      allDay: fields.allDay === true,
+      ...(fields.location ? { location: fields.location } : {}),
+      ...(fields.notes ? { notes: fields.notes } : {}),
+      ...(fields.url ? { url: fields.url } : {}),
+      ...(fields.alarms ? { alarms: fields.alarms } : {}),
+      availability:
+        fields.availability === 'free'
+          ? calendar().Availability.FREE
+          : calendar().Availability.BUSY,
+    });
+    return id ? { id, calendarId: target.id } : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Presents the system sheet for an event that already exists, so the user can
  * move, resize or delete it.

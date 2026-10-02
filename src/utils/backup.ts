@@ -61,7 +61,7 @@ export const REDACTED_SETTING_KEYS = ['anthropicApiKey'];
  */
 const DEVICE_ID_SETTING_KEYS = [
   'calendarIds', 'deadlineCalendarId', 'completionCalendarId', 'mealCalendarId', 'calendarHistoryHandled',
-  'calendarEventPeople', 'calendarEventTasks',
+  'calendarEventPeople', 'calendarEventTasks', 'quickEventDefaults',
 ];
 const DEVICE_ID_SETTING_PREFIXES = ['remindersImport', 'groceryImport'];
 

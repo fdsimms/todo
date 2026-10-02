@@ -41,7 +41,57 @@ export interface QuickEventDraft {
   phrase: { start: number; text: string; lineWithout: string } | null;
   /** Each resolved "@name" span in the line, for highlighting. */
   mentionSpans: [number, number][];
+  /** The place read from a trailing "at Joe's", or null when the line names none. */
+  location: string | null;
+  /**
+   * The alert read from a trailing "alert 30m", as minutes before the start
+   * (0 is at the start). Null is "alert none"; undefined is "no alert clause
+   * typed", which leaves the remembered default alone.
+   */
+  alertMinutes: number | null | undefined;
+  /** The location and alert clauses in the line, for highlighting. */
+  clauseSpans: [number, number][];
 }
+
+// "alert 30m", "alert 1 hour", "alert 2d", "alert none". A suffix, like the
+// schedule phrase, so a word "alert" inside a title is left alone.
+const ALERT_CLAUSE = /\s+alert\s+(?:(\d{1,4})\s*(m|min|mins|minutes?|h|hrs?|hours?|d|days?)?|none|off)\s*$/i;
+
+/** Minutes a unit word stands for. A bare number is minutes. */
+function unitMinutes(unit: string | undefined): number {
+  const u = (unit ?? 'm').toLowerCase();
+  if (u.startsWith('h')) return 60;
+  if (u.startsWith('d')) return 1440;
+  return 1;
+}
+
+/**
+ * Reads a trailing alert clause. `start` is where its leading space begins, so
+ * `input.slice(0, start)` is the line without it.
+ */
+export function parseAlertClause(
+  input: string
+): { start: number; minutes: number | null } | null {
+  const m = ALERT_CLAUSE.exec(input);
+  if (!m) return null;
+  if (m[1] === undefined) return { start: m.index, minutes: null };
+  return { start: m.index, minutes: Number(m[1]) * unitMinutes(m[2]) };
+}
+
+const ALL_DAY_ALERT_HOUR = 9;
+
+/**
+ * EventKit's `relativeOffset` for "N minutes before". A timed event counts
+ * back from its start. An all-day event starts at midnight, where an alert is
+ * useless, so it counts back from 9:00 that morning, the time Calendar's own
+ * "On day of event" uses.
+ */
+export function alertRelativeOffset(minutes: number, allDay: boolean): number {
+  return (allDay ? ALL_DAY_ALERT_HOUR * 60 : 0) - minutes;
+}
+
+// " at Joe's", where the clause runs to the end of what is left.
+const LOCATION_CLAUSE = /\s+at\s+(\S.*)$/i;
 
 /** A representative hour for a day-part word with no clock time. */
 const DAY_PART_HOUR: Record<TimeOfDay, number> = {
@@ -76,10 +126,32 @@ export function parseQuickEvent(
     mentionOverrides?: Record<string, string>;
   }
 ): QuickEventDraft {
-  const parsed = opts.ignoreSchedule ? null : parseTaskInput(input, opts.now, opts.wallClock);
+  // Peel the trailing clauses right to left (alert, then place) so what is
+  // left ends in the schedule phrase `parseTaskInput` needs. Every index below
+  // is into `body`, a prefix of `input`, so it is also an index into `input`.
+  const alertClause = parseAlertClause(input);
+  const afterAlert = alertClause ? input.slice(0, alertClause.start) : input;
+  let body = afterAlert;
+  let location: string | null = null;
+  let locationStart: number | null = null;
+  const locationMatch = LOCATION_CLAUSE.exec(afterAlert);
+  if (locationMatch) {
+    const place = locationMatch[1].trim().replace(/[\s,;.]+$/, '');
+    // "at 3pm" and "at the park tomorrow" end in a schedule phrase, so they
+    // are the time, not the place. Put the place last: "lunch fri 12p at Joe's".
+    const endsInTime =
+      !opts.ignoreSchedule && parseTaskInput(`x ${place}`, opts.now, opts.wallClock) !== null;
+    if (place && !endsInTime) {
+      location = place;
+      locationStart = locationMatch.index;
+      body = afterAlert.slice(0, locationMatch.index);
+    }
+  }
+
+  const parsed = opts.ignoreSchedule ? null : parseTaskInput(body, opts.now, opts.wallClock);
   const mentions = applyMentionOverrides(
-    input,
-    matchPersonMentions(input, [...opts.people], [...(opts.groups ?? [])]),
+    body,
+    matchPersonMentions(body, [...opts.people], [...(opts.groups ?? [])]),
     opts.mentionOverrides ?? {}
   );
   const personIds = [...new Set(mentions.map(m => m.personId))];
@@ -99,13 +171,13 @@ export function parseQuickEvent(
   }
   for (const [k, ids] of bySpan) {
     const [start, end] = k.split(':').map(Number);
-    const token = input.slice(start + 1, end);
+    const token = body.slice(start + 1, end);
     // One person: their name. A group: the word typed, since it names several.
     const name = ids.length === 1 ? opts.nameOf(ids[0]) ?? token : token;
     spans.push({ start, end, text: name });
   }
   spans.sort((a, b) => b.start - a.start);
-  let title = input;
+  let title = body;
   for (const span of spans) {
     title = title.slice(0, span.start) + span.text + title.slice(span.end);
   }
@@ -125,12 +197,34 @@ export function parseQuickEvent(
     start = defaultNewEventSpan(schedule?.dueDate ?? opts.today, opts.today, opts.wallClock).start;
   }
 
+  // Taking the schedule phrase out of the line must leave the clauses that
+  // followed it, or accepting the date would silently drop the place and alert.
+  const clausesFrom = locationStart ?? alertClause?.start ?? null;
+  const clauses = clausesFrom === null ? '' : input.slice(clausesFrom);
   const phrase = parsed
-    ? { start: parsed.matchStart, text: parsed.matchedText, lineWithout: parsed.cleanTitle }
+    ? { start: parsed.matchStart, text: parsed.matchedText, lineWithout: parsed.cleanTitle + clauses }
     : null;
   const mentionSpans = [...bySpan.keys()].map(k => k.split(':').map(Number) as [number, number]);
+  const clauseSpans: [number, number][] = [];
+  if (locationStart !== null) {
+    clauseSpans.push([locationStart + (/^\s*/.exec(afterAlert.slice(locationStart))?.[0].length ?? 0), afterAlert.length]);
+  }
+  if (alertClause) {
+    clauseSpans.push([alertClause.start + (/^\s*/.exec(input.slice(alertClause.start))?.[0].length ?? 0), input.length]);
+  }
 
-  return { title, start, end: addHours(start, 1), personIds, scheduled: !!schedule, phrase, mentionSpans };
+  return {
+    title,
+    start,
+    end: addHours(start, 1),
+    personIds,
+    scheduled: !!schedule,
+    phrase,
+    mentionSpans,
+    location,
+    alertMinutes: alertClause ? alertClause.minutes : undefined,
+    clauseSpans,
+  };
 }
 
 /**

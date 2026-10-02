@@ -12,7 +12,7 @@ them source rather than tests. The ten biggest source files:
 `components/TaskEditor.tsx` (6.9k), `store/useGroceryStore.ts` (5.8k),
 `screens/TodayScreen.tsx` (5.2k), `components/TaskItem.tsx` (5.0k),
 `utils/demoSeed.ts` (4.8k), `store/useSettingsStore.ts` (4.7k),
-`components/QuickAddModal.tsx` (3.9k).
+`components/QuickAddModal.tsx` (4.0k).
 
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.
@@ -27,5 +27,5 @@ one component holding most of the file is owed a header map and banners (CLAUDE.
 `screens/KitchenScreen.tsx`, `screens/MoodScreen.tsx`, `screens/ProjectDetailScreen.tsx`,
 `screens/ProjectsScreen.tsx`, `screens/RecipesScreen.tsx`, `screens/StatsScreen.tsx`.
 
-The suite is **407 test files**, and `npm test` runs all of them in about a minute.
+The suite is **409 test files**, and `npm test` runs all of them in about a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists.

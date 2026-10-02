@@ -10,7 +10,12 @@ import {
   staleEventPeopleIds,
 } from '../utils/eventPeople';
 import type { EventPeopleLink } from '../types';
-import { presentEventCreate, readTimeBlockEvent } from '../utils/calendarSync';
+import {
+  presentEventCreate,
+  readTimeBlockEvent,
+  saveEventDirect,
+  type EventSaveFields,
+} from '../utils/calendarSync';
 import { isDemoModeActive } from '../utils/demoState';
 import { generateId } from '../utils/id';
 import {
@@ -76,6 +81,16 @@ interface EventPeopleState {
     fields: { title: string; start: Date; end: Date; allDay?: boolean; location?: string },
     personIds?: readonly string[]
   ) => Promise<boolean>;
+  /**
+   * Writes the event straight into the calendar, with no system sheet, and
+   * links it to `personIds`. Resolves the id and calendar it went into, or null
+   * when nothing was saved (access refused, no writable calendar, demo mode).
+   * Off in demo mode for `createEvent`'s reason.
+   */
+  saveEvent: (
+    fields: EventSaveFields,
+    personIds?: readonly string[]
+  ) => Promise<{ id: string; calendarId: string } | null>;
 }
 
 export const useEventPeopleStore = create<EventPeopleState>((set, get) => ({
@@ -159,5 +174,30 @@ export const useEventPeopleStore = create<EventPeopleState>((set, get) => ({
     // without waiting for the next foreground.
     void useCalendarStore.getState().refresh();
     return true;
+  },
+
+  saveEvent: async (fields, personIds = []) => {
+    if (isDemoModeActive()) return null;
+    const saved = await saveEventDirect(fields);
+    if (!saved) return null;
+
+    if (personIds.length > 0) {
+      // The span is what was just written, so there is nothing to read back
+      // (`createEvent` reads because its sheet let the user move the event).
+      // The server id is resolved first so the link is keyed the way the
+      // other device will look for it.
+      await get().resolveExternalIds([{ id: saved.id }]);
+      get().setPeople(
+        {
+          id: saved.id,
+          start: fields.start.toISOString(),
+          end: fields.end.toISOString(),
+          title: fields.title,
+        },
+        personIds
+      );
+    }
+    void useCalendarStore.getState().refresh();
+    return saved;
   },
 }));

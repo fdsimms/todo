@@ -14,7 +14,7 @@ export type AddTaskType = 'stack' | 'template' | 'import' | 'event' | 'task';
 // own kind picker instead of a FAB entry of its own.
 //
 // "Event" is the one entry that adds no task: a one-line event
-// (`QuickEventSheet`) that fills Apple's new-event sheet. It sits beside Task because a plan for
+// (`QuickEventSheet`) saved straight into the calendar. It sits beside Task because a plan for
 // today is a Today thing whichever list it ends up in.
 const ITEMS: FabMenuItem[] = [
   { key: 'stack', label: 'Stack', icon: 'layers' },
