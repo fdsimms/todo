@@ -3934,13 +3934,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   }
                   hint={
                     healthWriteEnabled
-                      ? isWater
-                        ? targetCount !== null
-                          ? 'Adds to today’s water in the food log, and writes it to Apple Health, each time you log a unit toward the daily target.'
-                          : 'Adds to today’s water in the food log, and writes it to Apple Health, each time you complete this task.'
-                        : targetCount !== null
-                          ? 'Writes one sample to Apple Health each time you log a unit toward the daily target.'
-                          : 'Writes one sample to Apple Health each time you complete this task.'
+                      ? targetCount !== null
+                        ? `Adds to today’s ${isWater ? 'water' : NUTRIENT_LABEL[logHealthMetric ?? 'waterMl'].label.toLowerCase()} in the food log, and writes it to Apple Health, each time you log a unit toward the daily target.`
+                        : `Adds to today’s ${isWater ? 'water' : NUTRIENT_LABEL[logHealthMetric ?? 'waterMl'].label.toLowerCase()} in the food log, and writes it to Apple Health, each time you complete this task.`
                       : 'Turn on writing to Health in Settings › Health first'
                   }
                   expanded={healthWriteEnabled && fieldOpen('logHealthValue')}

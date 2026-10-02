@@ -437,6 +437,21 @@ describe('foodDayInputs', () => {
     expect(foodDayInputs([entry('2026-09-08'), water('2026-09-08')])).toEqual([]);
   });
 
+  it('adds a nutrient a task logged on its own to the day total, without making it a meal', () => {
+    // `entry` reads a null slot as the default one, so the slot is cleared after.
+    const sodium = (dayKey: string, mg: number): FoodLogEntry => ({
+      ...entry(dayKey, { label: 'Sodium', amounts: { sodiumMg: mg }, hour: 12 }),
+      slot: null,
+    });
+    const meals = fullDay('2026-09-08', { amounts: { calorieKcal: 300, sodiumMg: 400 } });
+    const [row] = foodDayInputs([...meals, sodium('2026-09-08', 500)]);
+    expect(row.nutrients.sodiumMg).toBe(1300);
+    expect(row.nutrients.calorieKcal).toBe(600);
+    expect(row.labels).toEqual(['porridge']);
+    // Not a second meal: breakfast plus a supplement is still breakfast alone.
+    expect(foodDayInputs([entry('2026-09-08'), sodium('2026-09-08', 500)])).toEqual([]);
+  });
+
   it('pools every unslotted entry into one bucket, so two snacks are not two meals', () => {
     expect(foodDayInputs([
       entry('2026-09-08', { slot: null, hour: 11 }),

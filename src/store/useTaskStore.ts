@@ -277,7 +277,7 @@ import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders, sched
 import { syncDeadlineEvent, taskEventsAfterSync, deadlineEventLink, deleteDeadlineEvent } from '../utils/deadlineCalendarSync';
 import type { ApplyReport } from '../utils/syncMerge';
 import { logTaskCompletionToCalendar, completionEventLink, deleteCompletionEvent } from '../utils/completionCalendarSync';
-import { logTaskHealthValue, unlogTaskWaterFromFoodLog } from '../utils/healthCompletionSync';
+import { logTaskHealthValue, unlogTaskNutrientFromFoodLog } from '../utils/healthCompletionSync';
 import { waterTotalMl } from '../utils/waterLog';
 import { followedWaterTargetCount } from '../utils/waterTargetUnits';
 import {
@@ -4532,15 +4532,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // The unit being taken back is the dose that unit recorded, and only that
     // one — the day's earlier doses were still taken.
     if (medicationFor(task)) useMedicationStore.getState().removeLatestLogForTask(id);
-    // Same reasoning, for water: the tap this undoes had logged one unit into
-    // the food log (logQuotaUnit's own logTaskHealthValue call), and leaving
-    // that in place would have syncWaterQuotaTasks read the unchanged total
-    // back and immediately bump progressCount up again on the next food-log
-    // write — undoing this undo. Set after progressCount above, so that sync
-    // (triggered synchronously from within this call) reads the count this
-    // line just wrote rather than the one from before the tap was undone.
-    if (task.logHealthMetric === 'waterMl' && task.logHealthAmount) {
-      unlogTaskWaterFromFoodLog(task.logHealthAmount, new Date());
+    // Same reasoning, for a logged nutrient: the tap this undoes had logged
+    // one unit into the food log (logQuotaUnit's own logTaskHealthValue call).
+    // For water, leaving that in place would have syncWaterQuotaTasks read the
+    // unchanged total back and immediately bump progressCount up again on the
+    // next food-log write, undoing this undo. Set after progressCount above, so
+    // that sync (triggered synchronously from within this call) reads the count
+    // this line just wrote rather than the one from before the tap was undone.
+    if (task.logHealthMetric && task.logHealthAmount) {
+      unlogTaskNutrientFromFoodLog(task.logHealthMetric, task.logHealthAmount, new Date());
     }
   },
 

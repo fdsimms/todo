@@ -1,7 +1,7 @@
 import { isStreakAtRecord } from '../utils/streakRecord';
 import { registerPausedProjectSource } from '../utils/projectPause';
 import { dayKeyOf, getCurrentDayStart } from '../utils/dateUtils';
-import { logTaskHealthValue, unlogTaskWaterFromFoodLog } from '../utils/healthCompletionSync';
+import { logTaskHealthValue, unlogTaskNutrientFromFoodLog } from '../utils/healthCompletionSync';
 import { useTaskStore } from '../store/useTaskStore';
 import { useWidgetCompletionStore } from '../store/useWidgetCompletionStore';
 import { useMedicationStore } from '../store/useMedicationStore';
@@ -323,7 +323,7 @@ jest.mock('../utils/completionCalendarSync', () => ({
 
 jest.mock('../utils/healthCompletionSync', () => ({
   logTaskHealthValue: jest.fn().mockResolvedValue(false),
-  unlogTaskWaterFromFoodLog: jest.fn(),
+  unlogTaskNutrientFromFoodLog: jest.fn(),
 }));
 
 jest.mock('../utils/calendarSync', () => ({
@@ -12560,18 +12560,18 @@ describe('quota tasks', () => {
       expect(useTaskStore.getState().tasks[0].progressCount).toBe(0);
     });
 
-    it('takes the unit back off the food log too, for a water task', () => {
+    it('takes the unit back off the food log too, for a task that logs a nutrient', () => {
       useTaskStore.setState({
         tasks: [quota({ progressCount: 4, logHealthMetric: 'waterMl', logHealthAmount: 250 })],
       });
       useTaskStore.getState().unlogQuotaUnit('water');
-      expect(unlogTaskWaterFromFoodLog).toHaveBeenCalledWith(250, expect.any(Date));
+      expect(unlogTaskNutrientFromFoodLog).toHaveBeenCalledWith('waterMl', 250, expect.any(Date));
     });
 
     it('does not touch the food log for a plain quota task', () => {
       useTaskStore.setState({ tasks: [quota({ progressCount: 4 })] });
       useTaskStore.getState().unlogQuotaUnit('water');
-      expect(unlogTaskWaterFromFoodLog).not.toHaveBeenCalled();
+      expect(unlogTaskNutrientFromFoodLog).not.toHaveBeenCalled();
     });
   });
 
