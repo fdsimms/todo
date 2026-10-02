@@ -131,9 +131,10 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   // suggestions below — see medicationVocabulary for why this is derived
   // rather than a registry.
   const medicationLogs = useMedicationStore(useShallow(s => s.logs));
+  const archivedMedications = useMedicationStore(useShallow(s => s.archived));
   const medicationSuggestions = useMemo(
-    () => medicationVocabulary(medicationLogs),
-    [medicationLogs]
+    () => medicationVocabulary(medicationLogs, archivedMedications),
+    [medicationLogs, archivedMedications]
   );
 
   // ==== local state: the draft, one piece of state per field ====

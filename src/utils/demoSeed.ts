@@ -2430,6 +2430,18 @@ function seedAsNeededDoses(today: Date): void {
       at: setHours(subDays(today, back), 15),
     });
   }
+  // A finished course, archived, so the Archived section on the Medications
+  // screen has a row and "What you take" shows only what is still current.
+  for (const back of [29, 28, 27]) {
+    addLog({
+      name: 'Amoxicillin',
+      amount: 500,
+      unit: 'mg',
+      asNeeded: false,
+      at: setHours(subDays(today, back), 9),
+    });
+  }
+  useMedicationStore.getState().archiveMedication('Amoxicillin');
 }
 
 /**

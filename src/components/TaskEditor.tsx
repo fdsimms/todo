@@ -354,9 +354,10 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   // suggestions below — see medicationVocabulary for why this is derived
   // rather than a registry.
   const medicationLogs = useMedicationStore(useShallow(s => s.logs));
+  const archivedMedications = useMedicationStore(useShallow(s => s.archived));
   const medicationSuggestions = useMemo(
-    () => medicationVocabulary(medicationLogs),
-    [medicationLogs]
+    () => medicationVocabulary(medicationLogs, archivedMedications),
+    [medicationLogs, archivedMedications]
   );
   // Archived people are out of the picker but never stripped off a task that
   // already names them: filing somebody away is about the list, not about
