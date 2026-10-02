@@ -4,6 +4,7 @@ import type { EventTaskRule, Task } from '../types';
 import { generatedSourceOf } from './generatedTasks';
 import { pluralKeyVariants } from './groceryPlural';
 import { generateId } from './id';
+import { parseRuleEstimate } from './ruleEstimate';
 import { MIN_SIMILAR_LENGTH, isSingleTransposition, withinOneEdit } from './textSimilar';
 
 /**
@@ -139,6 +140,7 @@ export function parseEventRules(raw: string | null | undefined): EventTaskRule[]
       title,
       leadDays,
       enabled: r.enabled !== false,
+      ...parseRuleEstimate(r),
     });
   }
   return out;

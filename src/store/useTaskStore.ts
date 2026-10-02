@@ -157,7 +157,8 @@ import { buildCompletion, completionSettings } from '../utils/taskCompletion';
 import { derivedId, spawnSeed } from '../utils/syncIds';
 import { reorderSubset } from '../utils/reorder';
 import { liveProjectSteps, slotUpdates } from '../utils/projectOrder';
-import { applyMeasuredTime } from '../utils/effort';
+import { applyMeasuredTime, draftHasEstimate, rememberedEstimate } from '../utils/effort';
+import { ruleEstimateDraft, withRuleEstimate } from '../utils/ruleEstimate';
 import { chainStepDatedByAnswer, deliverableDate, deliverableKindFor, isTentativeAnswer } from '../utils/deliverables';
 import { totalMinutes } from '../utils/recipeUtils';
 import { normalizeTargetUnit } from '../utils/quotaUnit';
@@ -232,7 +233,10 @@ import {
   driftingTasks,
   type DriftEntry,
 } from '../utils/postpone';
-import { followUpTaskRule, advanceFollowUpTaskTally, followUpTaskSuppressedBy, canHoldFollowUpTask } from '../utils/followUpTask';
+import {
+  followUpTaskRule, advanceFollowUpTaskTally, followUpTaskSuppressedBy, canHoldFollowUpTask,
+  emptyFollowUpTaskDraft, followUpTaskDraftIsEmpty,
+} from '../utils/followUpTask';
 import type { FollowUpTaskSuppression } from '../utils/followUpTask';
 import { normalizeTitle } from '../utils/taskInstances';
 import { resolveTitleRules, titleRuleBacklog } from '../utils/titleRules';
@@ -306,6 +310,7 @@ import {
   weatherWindowFor,
   describeWeatherWindow,
   weatherTaskTitle,
+  weatherRuleIdOf,
   WEATHER_AHEAD_FROM_HOUR,
   WEATHER_LINK_URL,
 } from '../utils/weatherTasks';
@@ -318,7 +323,7 @@ import {
 import { taskFieldsFromEvent } from '../utils/calendarEventImport';
 import { useScreenTimeStore } from './useScreenTimeStore';
 import { useHealthStore } from './useHealthStore';
-import { screenTimeSourceId, parseScreenTimeSourceId, crossingWantsTask } from '../utils/screenTimeRules';
+import { screenTimeSourceId, parseScreenTimeSourceId, crossingWantsTask, screenTimeRuleIdOf } from '../utils/screenTimeRules';
 import {
   healthSourceId,
   parseHealthSourceId,
@@ -327,6 +332,7 @@ import {
   ruleCanBeJudgedYet,
   ruleShortfallToday,
   healthTaskLinkUrl,
+  healthRuleIdOf,
 } from '../utils/healthRules';
 import { isTimedTask, timerElapsed } from '../utils/timer';
 import { apportionedMinutes, segmentMinutesOf } from '../utils/timerSegments';
@@ -2133,6 +2139,58 @@ interface TaskStore extends UndoHistoryActions {
   tasksByTag: (tag: string) => Task[];
 }
 
+/**
+ * Carry an estimate edited on an app-written task back to whatever writes the
+ * next one, so it is there the next time rather than dying with this row.
+ *
+ * A follow-up task writes into its rule's draft on the live row holding the
+ * rule (`followUpTaskSourceId`; a stale pointer, or a completed row, writes
+ * nothing). A weather, Screen Time, Health or calendar-event task writes onto
+ * its rule (`ruleEstimate.ts`). Every other generated task has no source to
+ * hold it and is covered by title instead (`rememberedEstimate`).
+ */
+function writeEstimateToSource(task: Task): void {
+  const estimate = { estimatedMinutes: task.estimatedMinutes, effort: task.effort };
+  if (task.followUpTaskSourceId) {
+    const store = useTaskStore.getState();
+    const source = store.tasks.find(t => t.id === task.followUpTaskSourceId);
+    if (source && !source.completed && followUpTaskRule(source)) {
+      const draft = source.followUpTaskDraft ?? emptyFollowUpTaskDraft();
+      if (draft.estimatedMinutes !== estimate.estimatedMinutes || draft.effort !== estimate.effort) {
+        const next = { ...draft, ...estimate };
+        store.updateTask(source.id, { followUpTaskDraft: followUpTaskDraftIsEmpty(next) ? null : next });
+      }
+    }
+  }
+  const settings = useSettingsStore.getState();
+  switch (task.generatedKind) {
+    case 'weather': {
+      const ruleId = weatherRuleIdOf(task);
+      const next = ruleId ? withRuleEstimate(settings.weatherRules, ruleId, estimate) : null;
+      if (next) settings.setWeatherRules(next);
+      break;
+    }
+    case 'screenTime': {
+      const ruleId = screenTimeRuleIdOf(task);
+      const next = ruleId ? withRuleEstimate(settings.screenTimeRules, ruleId, estimate) : null;
+      if (next) settings.setScreenTimeRules(next);
+      break;
+    }
+    case 'health': {
+      const ruleId = healthRuleIdOf(task);
+      const next = ruleId ? withRuleEstimate(settings.healthRules, ruleId, estimate) : null;
+      if (next) settings.setHealthRules(next);
+      break;
+    }
+    case 'eventTask': {
+      const ruleId = eventTaskRuleIdOf(task);
+      const next = ruleId ? withRuleEstimate(settings.eventRules, ruleId, estimate) : null;
+      if (next) settings.setEventRules(next);
+      break;
+    }
+  }
+}
+
 export const useTaskStore = create<TaskStore>((set, get) => ({
   tasks: [],
   tagRegistry: [],
@@ -2496,8 +2554,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   addTask(draft, id, options) {
     const now = new Date().toISOString();
     const maxOrder = get().tasks.reduce((m, t) => Math.max(m, t.sortOrder), 0);
+    // A generated task is a fresh row each time, so an estimate somebody set
+    // or timed on the last one is carried over by title (rememberedEstimate).
+    const remembered = draft.generatedKind && draft.title && !draftHasEstimate(draft)
+      ? rememberedEstimate(draft.title, get().tasks)
+      : null;
     const task = newTaskFromDraft(
-      applyTitleRulesToDraft(draft, options), now, maxOrder + 1, true, id, options?.skipCategoryDefault);
+      applyTitleRulesToDraft(remembered ? { ...draft, ...remembered } : draft, options),
+      now, maxOrder + 1, true, id, options?.skipCategoryDefault);
     dbInsertTask(task);
     set(s => ({ tasks: [...s.tasks, task] }));
     scheduleTaskReminder(task);
@@ -3312,6 +3376,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // tapped the grocery item.
     const releasedItemId = current && edited ? supplyRestockReleasesItem(current, edited, dayResetTime) : null;
     if (releasedItemId) useGroceryStore.getState().setRunningLow(releasedItemId, false, { registerUndo: false });
+    // Compared on the values rather than on the patch's keys, since an undo
+    // and a whole-row write both name these fields without changing them.
+    if (current && edited && (edited.generatedKind || edited.followUpTaskSourceId)
+      && (current.estimatedMinutes !== edited.estimatedMinutes || current.effort !== edited.effort)) {
+      writeEstimateToSource(edited);
+    }
     if (scope === 'series' && edited?.seriesId) {
       const fanOut: Partial<Task> = {};
       for (const key of CONTENT_FIELDS) {
@@ -6522,6 +6592,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           dueDate: due.toISOString(),
           category: settings.weatherTaskCategory,
           linkUrl: WEATHER_LINK_URL,
+          ...ruleEstimateDraft(rule),
           ...generatedBy('weather', sourceId),
         }),
       });
@@ -6664,6 +6735,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           // matched it.
           title: match.rule.title,
           category: settings.eventTaskCategory,
+          ...ruleEstimateDraft(match.rule),
           ...generatedBy('eventTask', match.sourceId),
         }),
       });
@@ -6746,6 +6818,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           title: rule.title,
           dueDate: dueDate.toISOString(),
           category: settings.screenTimeTaskCategory,
+          ...ruleEstimateDraft(rule),
           ...generatedBy('screenTime', sourceId),
         }),
       });
@@ -6860,6 +6933,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
             dueDate: dueDate.toISOString(),
             category: settings.healthTaskCategory,
             linkUrl: healthTaskLinkUrl(rule.metric),
+            ...ruleEstimateDraft(rule),
             ...generatedBy('health', sourceId),
           }),
         });

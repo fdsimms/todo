@@ -1,6 +1,7 @@
 import { format } from 'date-fns/format';
 import type { HealthNutrientMetric, HealthRule, HealthRuleMetric, Task } from '../types';
 import { generateId } from './id';
+import { parseRuleEstimate } from './ruleEstimate';
 import { generatedSourceOf } from './generatedTasks';
 
 /**
@@ -530,6 +531,7 @@ export function parseHealthRules(raw: string | null | undefined): HealthRule[] {
       title: rule.title.slice(0, HEALTH_RULE_TITLE_MAX_LENGTH),
       enabled: rule.enabled !== false,
       lastFiredDayKey: typeof rule.lastFiredDayKey === 'string' ? rule.lastFiredDayKey : null,
+      ...parseRuleEstimate(rule),
     }];
   });
 }

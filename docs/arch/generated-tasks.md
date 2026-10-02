@@ -647,6 +647,23 @@ one. Those three rules and the reasoning behind them are in
   - **There is no row cap**: unlike a shortfall it isn't competing for shelf space, and the window
     already bounds it.
 
+## An estimate set on one carries to the next
+
+Every generated task (and every follow-up task) is a fresh one-off row, so an
+estimate set or timed on one used to die with it. Two things carry it now, and
+both only ever fill a draft that names no estimate of its own:
+
+- **By title**, for every generator: `addTask` fills a draft carrying a
+  `generatedKind` from the newest task with the same title (`rememberedEstimate`
+  in `effort.ts`), and so does the follow-up row in `buildCompletion`. A task
+  somebody typed is never filled this way.
+- **On the source**, where one exists: editing the estimate on a follow-up task
+  writes it into its rule's draft, and on a weather, Screen Time, Health or
+  calendar-event task writes it onto the rule (`ruleEstimate.ts`). This is what
+  covers a weather task, whose title carries the forecast and so never matches
+  itself. The write-back compares values, not the patch's keys, because an
+  undo snapshot names both fields without changing them.
+
 ## Vacation mode: which of them stand down
 
 `GeneratedKindSpec.pausedOnVacation` is every generator's answer, required the way `kitchen` is

@@ -5570,6 +5570,49 @@ describe('checkWeatherTasks', () => {
     expect(task.category).toBe('Weather');
   });
 
+  it('starts the task with the estimate stored on its rule', () => {
+    useSettingsStore.getState.mockReturnValue(settings({
+      weatherRules: [{ ...rainyRule, estimatedMinutes: 1, effort: 1 }],
+    }));
+    useWeatherStore.getState.mockReturnValue({ snapshot: snapshot({ weatherCode: 61 }), snapshotDayKey: TODAY_KEY });
+
+    useTaskStore.getState().checkWeatherTasks();
+
+    const [task] = weatherTasks();
+    expect(task.estimatedMinutes).toBe(1);
+    expect(task.effort).toBe(1);
+  });
+
+  // The task is a fresh row each time the rule fires, so an estimate set on it
+  // has to land on the rule or the next one starts unestimated again.
+  it('writes an estimate edited on the task back onto its rule', () => {
+    const current = settings();
+    useSettingsStore.getState.mockReturnValue(current);
+    useWeatherStore.getState.mockReturnValue({ snapshot: snapshot({ weatherCode: 61 }), snapshotDayKey: TODAY_KEY });
+    useTaskStore.getState().checkWeatherTasks();
+    const [task] = weatherTasks();
+    // The pass saves the rules itself, to mark the day considered.
+    current.setWeatherRules.mockClear();
+
+    useTaskStore.getState().updateTask(task.id, { estimatedMinutes: 2, effort: 1 });
+
+    expect(current.setWeatherRules).toHaveBeenCalledWith([{ ...rainyRule, estimatedMinutes: 2, effort: 1 }]);
+  });
+
+  it('leaves the rule alone when a write names the estimate without changing it', () => {
+    const current = settings();
+    useSettingsStore.getState.mockReturnValue(current);
+    useWeatherStore.getState.mockReturnValue({ snapshot: snapshot({ weatherCode: 61 }), snapshotDayKey: TODAY_KEY });
+    useTaskStore.getState().checkWeatherTasks();
+    const [task] = weatherTasks();
+    // The pass saves the rules itself, to mark the day considered.
+    current.setWeatherRules.mockClear();
+
+    useTaskStore.getState().updateTask(task.id, { ...task, notes: 'undo snapshot' });
+
+    expect(current.setWeatherRules).not.toHaveBeenCalled();
+  });
+
   // The whole point of unioning against today's day-level forecast: a dry
   // reading at the moment of the fetch (typically the first open of the day)
   // must not be the only chance the rule gets to fire, or rain that starts
@@ -16657,6 +16700,78 @@ describe('updateTask: the followUp task draft', () => {
 
     useTaskStore.getState().updateTask('practice', { followUpTaskDraft: null });
     expect(useTaskStore.getState().tasks[0].followUpTaskDraft).toBeNull();
+  });
+});
+
+// A generated or follow-up task is a fresh row every time, so an estimate set
+// on one used to die with it. These are the two ways it now carries over.
+describe('remembered estimates on app-written tasks', () => {
+  const rowOf = (id: string) => useTaskStore.getState().tasks.find(t => t.id === id)!;
+
+  it('starts a generated task with the estimate of the last one with its title', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'old', title: 'Put a new towel out', completed: true,
+        completedAt: '2026-08-01T09:00:00.000Z', estimatedMinutes: 1, effort: 1,
+        generatedKind: 'pantryCheck',
+      })],
+    });
+
+    const added = useTaskStore.getState().addTask({ title: 'Put a new towel out', generatedKind: 'pantryCheck' });
+
+    expect(added.estimatedMinutes).toBe(1);
+    expect(added.effort).toBe(1);
+  });
+
+  it('leaves a task somebody typed exactly as typed', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'old', title: 'Put a new towel out', estimatedMinutes: 1, effort: 1 })],
+    });
+
+    const added = useTaskStore.getState().addTask({ title: 'Put a new towel out' });
+
+    expect(added.estimatedMinutes).toBeNull();
+  });
+
+  it('writes an estimate edited on a follow-up task into the rule that adds it', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'laundry', recurrenceType: 'weekly', followUpTaskEveryN: 2, followUpTaskTitle: 'Put a new towel out' }),
+        makeTask({ id: 'towel', title: 'Put a new towel out', followUpTaskSourceId: 'laundry', followUpTaskSourceTitle: 'Laundry' }),
+      ],
+    });
+
+    useTaskStore.getState().updateTask('towel', { estimatedMinutes: 1, effort: 1 });
+
+    expect(rowOf('laundry').followUpTaskDraft).toEqual({ ...emptyFollowUpTaskDraft(), estimatedMinutes: 1, effort: 1 });
+  });
+
+  it('starts a follow-up with no estimate on its rule from the last one with its title', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'laundry', recurrenceType: 'weekly', followUpTaskEveryN: 2, followUpTaskTally: 1, followUpTaskTitle: 'Put a new towel out' }),
+        makeTask({ id: 'old-towel', title: 'Put a new towel out', completed: true, completedAt: '2026-08-01T09:00:00.000Z', estimatedMinutes: 1, effort: 1 }),
+      ],
+    });
+
+    useTaskStore.getState().completeTask('laundry');
+
+    const added = useTaskStore.getState().tasks.find(t => t.title === 'Put a new towel out' && !t.completed)!;
+    expect(added.estimatedMinutes).toBe(1);
+    expect(added.effort).toBe(1);
+  });
+
+  it('writes nothing through a source pointer that has gone stale', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'laundry', recurrenceType: 'weekly', completed: true, followUpTaskEveryN: 2, followUpTaskTitle: 'Put a new towel out' }),
+        makeTask({ id: 'towel', title: 'Put a new towel out', followUpTaskSourceId: 'laundry', followUpTaskSourceTitle: 'Laundry' }),
+      ],
+    });
+
+    useTaskStore.getState().updateTask('towel', { estimatedMinutes: 1, effort: 1 });
+
+    expect(rowOf('laundry').followUpTaskDraft).toBeNull();
   });
 });
 

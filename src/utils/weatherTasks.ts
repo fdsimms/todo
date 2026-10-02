@@ -3,6 +3,7 @@ import type { WeatherHour } from '../services/weatherLookup';
 import { classifyWeather, conditionNoun } from './weatherCondition';
 import { generatedSourceOf } from './generatedTasks';
 import { generateId } from './id';
+import { parseRuleEstimate } from './ruleEstimate';
 import { KNOWN_LINK_APPS } from '../constants/linkApps';
 
 /**
@@ -115,6 +116,7 @@ export function parseWeatherRules(raw: string | null | undefined): WeatherRule[]
       // Absent in every rule stored before the day-ahead pass existed, which
       // reads as "never fired ahead" and costs that rule one evening.
       lastAheadDayKey: typeof r.lastAheadDayKey === 'string' ? r.lastAheadDayKey : null,
+      ...parseRuleEstimate(r),
     });
   }
   return out;

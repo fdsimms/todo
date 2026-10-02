@@ -1,6 +1,7 @@
 import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatClockDuration,
   formatDuration, formatStopwatch, applyMeasuredTime, measuredTimeAppliesTo, measuredTimeDiffersEnough,
-  measuredTimeWorthSuggesting, sumEstimatedMinutes, estimatedMinutesFor } from '../utils/effort';
+  measuredTimeWorthSuggesting, sumEstimatedMinutes, estimatedMinutesFor, rememberedEstimate,
+  draftHasEstimate } from '../utils/effort';
 import type { ChainItem, Effort } from '../types';
 
 const step = (title: string, estimatedMinutes: number | null = null): ChainItem =>
@@ -327,5 +328,56 @@ describe('measuredTimeDiffersEnough', () => {
 
   it('treats an exact match as nothing to offer', () => {
     expect(measuredTimeDiffersEnough(30, 30)).toBe(false);
+  });
+});
+
+describe('rememberedEstimate', () => {
+  const row = (title: string, over: Partial<Parameters<typeof rememberedEstimate>[1][number]> = {}) => ({
+    title, parentId: null, estimatedMinutes: null as number | null, effort: 0 as Effort,
+    completedAt: null as string | null, createdAt: '2026-01-01T00:00:00.000Z',
+    chainEnabled: false, chainItems: [] as ChainItem[], chainIndex: 0, ...over,
+  });
+
+  it('reads the estimate off a task with the same title, ignoring case and spacing', () => {
+    expect(rememberedEstimate('put a  new towel out', [row('Put a new towel out', { estimatedMinutes: 1, effort: 1 })]))
+      .toEqual({ estimatedMinutes: 1, effort: 1 });
+  });
+
+  it('takes the newest when several carry one', () => {
+    const tasks = [
+      row('Towel', { estimatedMinutes: 25, effort: 3, completedAt: '2026-03-01T00:00:00.000Z' }),
+      row('Towel', { estimatedMinutes: 1, effort: 1, completedAt: '2026-04-01T00:00:00.000Z' }),
+    ];
+    expect(rememberedEstimate('Towel', tasks)).toEqual({ estimatedMinutes: 1, effort: 1 });
+  });
+
+  it('skips rows with nothing set, subtasks and chain rows', () => {
+    const tasks = [
+      row('Towel'),
+      row('Towel', { parentId: 'p', estimatedMinutes: 5 }),
+      row('Towel', { estimatedMinutes: 60, chainEnabled: true, chainItems: [step('a'), step('b')] }),
+    ];
+    expect(rememberedEstimate('Towel', tasks)).toBeNull();
+  });
+
+  it('carries an effort bucket with no minutes', () => {
+    expect(rememberedEstimate('Towel', [row('Towel', { effort: 1 })])).toEqual({ estimatedMinutes: null, effort: 1 });
+  });
+});
+
+describe('draftHasEstimate', () => {
+  it('is true for either half and false for neither', () => {
+    expect(draftHasEstimate({ estimatedMinutes: 5 })).toBe(true);
+    expect(draftHasEstimate({ effort: 2 })).toBe(true);
+    expect(draftHasEstimate({ estimatedMinutes: null, effort: 0 })).toBe(false);
+    expect(draftHasEstimate({})).toBe(false);
+  });
+});
+
+describe('measuredTimeWorthSuggesting on app-written one-offs', () => {
+  it('offers the correction for a generated task and a follow-up', () => {
+    expect(measuredTimeWorthSuggesting({ recurrenceType: 'none', generatedKind: 'weather' })).toBe(true);
+    expect(measuredTimeWorthSuggesting({ recurrenceType: 'none', followUpTaskSourceTitle: 'Laundry' })).toBe(true);
+    expect(measuredTimeWorthSuggesting({ recurrenceType: 'none' })).toBe(false);
   });
 });
