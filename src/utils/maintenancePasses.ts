@@ -90,6 +90,10 @@ export function catchUpPasses(): MaintenanceStep[] {
     // out its whole day instead of auto-completing at target, so it needs
     // its own end-of-day close — see sweepOvershootQuotas in useTaskStore.ts.
     ['sweep overshoot quotas', () => tasks().sweepOvershootQuotas()],
+    // A water task following the food log's target starts the new day on the
+    // count it finished yesterday with. After the rollover above, which is what
+    // creates today's occurrence; see Task.followWaterTarget.
+    ['sync water quotas', () => tasks().syncWaterQuotaTasks()],
     // Let projects the user opted into auto-scheduling date their own next
     // task if they've run dry. After rolloverQuotas, which can complete and
     // spawn members and so change what a project counts as scheduled; and

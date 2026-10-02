@@ -567,8 +567,8 @@ describe('describeFoodLogEntry', () => {
       quantity: '1.89 L',
       nutrition: panel({ source: 'manual', amounts: { waterMl: 1893 } }),
     });
-    expect(describeFoodLogEntry(water, '64 fl oz')).toBe('64 fl oz · typed in');
-    expect(describeFoodLogEntry(water)).toBe('1.89 L · typed in');
+    expect(describeFoodLogEntry(water, '64 fl oz')).toBe('64 fl oz');
+    expect(describeFoodLogEntry(water)).toBe('1.89 L');
   });
 });
 

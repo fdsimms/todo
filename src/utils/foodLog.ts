@@ -1,6 +1,7 @@
 import type { FoodLogEntry, FoodNutrition, MealPlanEntry, MealSlot, NutrientKey, SavedMealItem } from '../types';
 import { MEAL_SLOTS, NUTRIENT_KEYS } from '../types';
 import { aisleForName } from './groceryAisles';
+import { isWaterEntry } from './waterLog';
 import { gramsForLine, hasKnownDensity, panelMultiplier } from './ingredientGrams';
 import { formatQuantityAmount, inflectUnit, parseQuantity, rationalToNumber } from './quantity';
 import { measureParsedQuantity, unitBase } from './unitConvert';
@@ -733,6 +734,9 @@ export function nutrientContributions(
  * person's own transcription and a dish estimated from its ingredients are four
  * different claims, and the row is the only place a person can tell them apart.
  *
+ * The day's water names no source (see the check below), since its figure
+ * isn't a claim about a panel.
+ *
  * `quantity` stands in for the stored words when the row has a better way to
  * say them: the day's water entry is written in millilitres and shown in the
  * unit the person picked (`waterEntryQuantity`).
@@ -742,7 +746,11 @@ export function describeFoodLogEntry(entry: FoodLogEntry, quantity: string = ent
   const parts: string[] = [];
   if (quantity.trim()) parts.push(quantity.trim());
   if (calories !== undefined) parts.push(`${Math.round(calories)} cal`);
-  parts.push(SOURCE_WORDS[entry.nutrition.source]);
+  // The day's water carries no provenance. Its `manual` source only records
+  // that no label or database was asked, and "typed in" read as a claim about
+  // how this row got here: a glass logged from a task, a stepper press or a
+  // bottle all land in the same row, and the row can't tell them apart.
+  if (!isWaterEntry(entry)) parts.push(SOURCE_WORDS[entry.nutrition.source]);
   return parts.join(' · ');
 }
 
