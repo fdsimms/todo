@@ -271,6 +271,8 @@ jest.mock('../store/useSettingsStore', () => ({
       // completion tests further down this file — defaulting it off here
       // would silently disable every one of them.
       mealLogPrompt: true,
+      // Read by syncWaterQuotaTasks for a water task that follows the food log's target.
+      nutritionTargets: {}, waterExerciseBoost: null,
       setMealCookTaskCategory: jest.fn(), setGroceryUseUpTaskCategory: jest.fn(),
       setLeftoverUseUpTaskCategory: jest.fn(), setCalendarEventCategory: jest.fn(),
       setCollapsedCategories: jest.fn(),
@@ -406,7 +408,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   allowOvershoot: false,
   quotaIntervalMinutes: null,
   quotaReminders: false,
-  quotaStartedAt: null, quotaAlwaysVisible: false, quotaPeriod: 'day',
+  quotaStartedAt: null, quotaAlwaysVisible: false, followWaterTarget: false, quotaPeriod: 'day',
   rotationEnabled: false,
   rotationItems: [],
   rotationLog: [],
@@ -574,6 +576,7 @@ beforeEach(() => {
     newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
     mealCookTaskCategory: null, groceryUseUpTaskCategory: null, leftoverUseUpTaskCategory: null,
     calendarEventCategory: null, collapsedCategories: [], titleRules: [],
+    nutritionTargets: {}, waterExerciseBoost: null,
     setMealCookTaskCategory: jest.fn(), setGroceryUseUpTaskCategory: jest.fn(),
     setLeftoverUseUpTaskCategory: jest.fn(), setCalendarEventCategory: jest.fn(),
     setCollapsedCategories: jest.fn(),
@@ -12717,6 +12720,133 @@ describe('quota tasks', () => {
       useTaskStore.getState().syncWaterQuotaTasks();
       expect(useTaskStore.getState().tasks[0].progressCount).toBe(1);
     });
+
+    describe('following the water target', () => {
+      const getState = useSettingsStore.getState as unknown as jest.Mock;
+      // The shared reset above re-arms the mock before each test, so there is
+      // nothing to put back for settings.
+      const withSettings = (extra: Record<string, unknown>) =>
+        getState.mockReturnValue({ ...getState(), ...extra });
+      const setExercise = (exerciseMinutes: number | null) =>
+        useHealthStore.setState({
+          today: { dayKey: dayKeyOf(getCurrentDayStart()), exerciseMinutes } as never,
+        });
+      const target = () => useTaskStore.getState().tasks.find(t => t.id === 'water')!.targetCount;
+
+      afterEach(() => {
+        useHealthStore.setState({ today: null });
+      });
+
+      it('counts the food log\'s target in the task\'s own unit', () => {
+        withSettings({ nutritionTargets: { waterMl: 2500 } });
+        useTaskStore.setState({ tasks: [waterQuota({ followWaterTarget: true })] });
+        useTaskStore.getState().syncWaterQuotaTasks();
+        expect(target()).toBe(10);
+      });
+
+      it('adds the exercise boost once today\'s minutes clear its threshold', () => {
+        withSettings({
+          nutritionTargets: { waterMl: 2000 },
+          waterExerciseBoost: { minExerciseMinutes: 30, boostMl: 500 },
+        });
+        setExercise(45);
+        useTaskStore.setState({ tasks: [waterQuota({ followWaterTarget: true })] });
+        useTaskStore.getState().syncWaterQuotaTasks();
+        expect(target()).toBe(10);
+      });
+
+      it('keeps the boosted count while no reading for today has arrived', () => {
+        withSettings({
+          nutritionTargets: { waterMl: 2000 },
+          waterExerciseBoost: { minExerciseMinutes: 30, boostMl: 500 },
+        });
+        useTaskStore.setState({ tasks: [waterQuota({ followWaterTarget: true, targetCount: 10, progressCount: 8 })] });
+        (dbGetFoodLogEntries as jest.Mock).mockReturnValue([waterEntry(2000)]);
+        useTaskStore.getState().syncWaterQuotaTasks();
+        // Recomputed against the base target, this would be 8 of 8 and complete.
+        const task = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
+        expect(task.targetCount).toBe(10);
+        expect(task.completed).toBe(false);
+      });
+
+      it('judges progress against the new count, not the old one', () => {
+        withSettings({ nutritionTargets: { waterMl: 2500 } });
+        useTaskStore.setState({ tasks: [waterQuota({ followWaterTarget: true, progressCount: 7 })] });
+        (dbGetFoodLogEntries as jest.Mock).mockReturnValue([waterEntry(2000)]); // 8 glasses
+        useTaskStore.getState().syncWaterQuotaTasks();
+        const task = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
+        expect(task.targetCount).toBe(10);
+        expect(task.progressCount).toBe(8);
+        expect(task.completed).toBe(false);
+      });
+
+      describe('the shortfall task', () => {
+        const finished = () => waterQuota({
+          followWaterTarget: true, completed: true, progressCount: 8,
+          completedAt: new Date().toISOString(),
+        });
+        const shortfallTasks = () =>
+          useTaskStore.getState().tasks.filter(t => t.generatedKind === 'waterShortfall');
+        const on = {
+          waterShortfallTasks: true, waterShortfallTaskCategory: 'Health', waterUnit: 'ml', vacationMode: false,
+        };
+
+        it('writes one for the water still owed once the followed task is done', () => {
+          withSettings({ ...on, nutritionTargets: { waterMl: 2500 } });
+          useTaskStore.setState({ tasks: [finished()] });
+          (dbGetFoodLogEntries as jest.Mock).mockReturnValue([waterEntry(2000)]);
+          useTaskStore.getState().syncWaterQuotaTasks();
+          expect(shortfallTasks()).toHaveLength(1);
+          expect(shortfallTasks()[0].title).toBe('Drink 500 ml more water');
+          // Completing it logs the water it asks for.
+          expect(shortfallTasks()[0].logHealthMetric).toBe('waterMl');
+          expect(shortfallTasks()[0].logHealthAmount).toBe(500);
+        });
+
+        it('writes nothing while the setting is off', () => {
+          withSettings({ ...on, waterShortfallTasks: false, nutritionTargets: { waterMl: 2500 } });
+          useTaskStore.setState({ tasks: [finished()] });
+          (dbGetFoodLogEntries as jest.Mock).mockReturnValue([waterEntry(2000)]);
+          useTaskStore.getState().syncWaterQuotaTasks();
+          expect(shortfallTasks()).toHaveLength(0);
+        });
+
+        it('writes nothing when today\'s total already meets the target', () => {
+          withSettings({ ...on, nutritionTargets: { waterMl: 2000 } });
+          useTaskStore.setState({ tasks: [finished()] });
+          (dbGetFoodLogEntries as jest.Mock).mockReturnValue([waterEntry(2000)]);
+          useTaskStore.getState().syncWaterQuotaTasks();
+          expect(shortfallTasks()).toHaveLength(0);
+        });
+
+        it('writes nothing while the followed task is still open', () => {
+          withSettings({ ...on, nutritionTargets: { waterMl: 2500 } });
+          useTaskStore.setState({ tasks: [waterQuota({ followWaterTarget: true, progressCount: 8 })] });
+          (dbGetFoodLogEntries as jest.Mock).mockReturnValue([waterEntry(2000)]);
+          useTaskStore.getState().syncWaterQuotaTasks();
+          expect(shortfallTasks()).toHaveLength(0);
+        });
+
+        it('does not write one back the day it was deleted', () => {
+          withSettings({
+            ...on,
+            nutritionTargets: { waterMl: 2500 },
+            waterShortfallDeclinedDayKey: dayKeyOf(getCurrentDayStart()),
+          });
+          useTaskStore.setState({ tasks: [finished()] });
+          (dbGetFoodLogEntries as jest.Mock).mockReturnValue([waterEntry(2000)]);
+          useTaskStore.getState().syncWaterQuotaTasks();
+          expect(shortfallTasks()).toHaveLength(0);
+        });
+      });
+
+      it('leaves the count alone when the task does not follow', () => {
+        withSettings({ nutritionTargets: { waterMl: 2500 } });
+        useTaskStore.setState({ tasks: [waterQuota()] });
+        useTaskStore.getState().syncWaterQuotaTasks();
+        expect(target()).toBe(8);
+      });
+    });
   });
 
   // At 10:00 of an 08:00–22:00 day, 2 of 8 are owed: a task sitting at 1 is on
@@ -13180,7 +13310,7 @@ describe('quota tasks', () => {
           allowOvershoot: true,
           quotaIntervalMinutes: null,
           quotaReminders: false,
-          quotaStartedAt: null, quotaAlwaysVisible: false,
+          quotaStartedAt: null, quotaAlwaysVisible: false, followWaterTarget: false,
           progressCount: 5,
           dueDate: new Date(2025, 5, 9, 12, 0, 0).toISOString(),
         })],
@@ -13434,7 +13564,7 @@ describe('quota tasks', () => {
           allowOvershoot: true,
           quotaIntervalMinutes: null,
           quotaReminders: false,
-          quotaStartedAt: null, quotaAlwaysVisible: false,
+          quotaStartedAt: null, quotaAlwaysVisible: false, followWaterTarget: false,
           progressCount: 5,
           streakCount: 3,
           streakDate: new Date(2025, 5, 9).toISOString(),
@@ -13458,7 +13588,7 @@ describe('quota tasks', () => {
           allowOvershoot: true,
           quotaIntervalMinutes: null,
           quotaReminders: false,
-          quotaStartedAt: null, quotaAlwaysVisible: false,
+          quotaStartedAt: null, quotaAlwaysVisible: false, followWaterTarget: false,
           progressCount: 5,
           recurrenceFromCompletion: true,
           dueDate: new Date(2025, 5, 9, 12, 0, 0).toISOString(),
@@ -13478,7 +13608,7 @@ describe('quota tasks', () => {
           allowOvershoot: true,
           quotaIntervalMinutes: null,
           quotaReminders: false,
-          quotaStartedAt: null, quotaAlwaysVisible: false,
+          quotaStartedAt: null, quotaAlwaysVisible: false, followWaterTarget: false,
           progressCount: 13, // past the target of 8
           dueDate: new Date(2025, 5, 9, 12, 0, 0).toISOString(),
         })],
@@ -13496,7 +13626,7 @@ describe('quota tasks', () => {
           allowOvershoot: true,
           quotaIntervalMinutes: null,
           quotaReminders: false,
-          quotaStartedAt: null, quotaAlwaysVisible: false,
+          quotaStartedAt: null, quotaAlwaysVisible: false, followWaterTarget: false,
           progressCount: 0,
           dueDate: new Date(2025, 5, 9, 12, 0, 0).toISOString(),
         })],
@@ -13528,7 +13658,7 @@ describe('quota tasks', () => {
           allowOvershoot: true,
           quotaIntervalMinutes: null,
           quotaReminders: false,
-          quotaStartedAt: null, quotaAlwaysVisible: false,
+          quotaStartedAt: null, quotaAlwaysVisible: false, followWaterTarget: false,
           progressCount: 5,
           dueDate: new Date(2025, 5, 9, 12, 0, 0).toISOString(),
         })],
@@ -13556,7 +13686,7 @@ describe('quota tasks', () => {
           allowOvershoot: true,
           quotaIntervalMinutes: null,
           quotaReminders: false,
-          quotaStartedAt: null, quotaAlwaysVisible: false,
+          quotaStartedAt: null, quotaAlwaysVisible: false, followWaterTarget: false,
           category: 'Work',
           progressCount: 5,
           streakCount: 12,

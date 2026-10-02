@@ -1912,7 +1912,15 @@ export type GeneratedKind =
   // kind fires *because* a reading crossed a rule the user wrote, and this one
   // fires because there is no reading at all. Asking for data and reacting to
   // it are two different permissions, so they are two different switches.
-  | 'weighIn';
+  | 'weighIn'
+  // A water task that follows the food log's target (Task.followWaterTarget),
+  // finished for the day before the target rose, becomes a one-off task for
+  // what is still owed — see src/utils/waterShortfallTasks.ts. Its source id is
+  // the day key it was raised on, the same "square on the calendar, not a row"
+  // position weighIn is in. What stops a deleted one coming straight back is
+  // waterShortfallDeclinedDayKey, and a completed one blocks a second through
+  // `blocksOnFinished`.
+  | 'waterShortfall';
 
 export interface Task {
   id: string;
@@ -2179,6 +2187,15 @@ export interface Task {
   // behavior is switched off. Off by default, so an existing quota task
   // keeps hiding on pace exactly as it always has.
   quotaAlwaysVisible: boolean;
+  // Opt-in, and only meaningful on a daily target that logs water
+  // (`logHealthMetric: 'waterMl'`): `targetCount` is then derived each day from
+  // the food log's own water target (plus the exercise boost, when today
+  // qualifies) divided by `logHealthAmount`, instead of being a fixed number.
+  // The task still stores a real `targetCount`, so every reader of a quota
+  // (pace, progress, completion, Stats) needs no second path; what this adds
+  // is a writer, `syncWaterQuotaTasks`. See `followedWaterTargetCount` in
+  // src/utils/waterTargetUnits.ts. Off by default.
+  followWaterTarget: boolean;
 
   /**
    * The stretch of time the target is counted over: one logical day (every

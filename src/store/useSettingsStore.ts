@@ -1484,6 +1484,16 @@ interface SettingsStore {
   // settings for the same reason. Written by writeGeneratedOptOut's weighIn
   // case, never by the pass clearing an unanswered request.
   weighInDeclinedDayKey: string | null;
+  // Opt-in, off by default: a one-off task for the water still owed once a water
+  // task that follows the food log's target has already been finished for the
+  // day and exercise then raised the target. See src/utils/waterShortfallTasks.ts.
+  waterShortfallTasks: boolean;
+  waterShortfallTaskCategory: string | null;
+  // The logical day a shortfall task was last deleted on. Without it a deleted
+  // one would be written again on the next food log change the same day, since
+  // the target is still above the total. Written by writeGeneratedOptOut's
+  // waterShortfall case, held for that day only.
+  waterShortfallDeclinedDayKey: string | null;
   // The opt-in "plan meals for the week" nudge (#1121) — a real Task,
   // auto-created once a week, off by default so an existing install sees no
   // new task until this is turned on. See src/utils/mealPlanNudge.ts for the
@@ -1789,6 +1799,9 @@ interface SettingsStore {
   setWeighInEveryDays: (days: number) => void;
   setWeighInLastDayKey: (dayKey: string | null) => void;
   setWeighInDeclinedDayKey: (dayKey: string | null) => void;
+  setWaterShortfallTasks: (on: boolean) => void;
+  setWaterShortfallTaskCategory: (category: string | null) => void;
+  setWaterShortfallDeclinedDayKey: (dayKey: string | null) => void;
   setDefaultProjectNudgeCadenceDays: (days: number) => void;
   setMealPlanNudgeEnabled: (on: boolean) => void;
   setMealPlanNudgeIgnoresVacation: (on: boolean) => void;
@@ -2397,6 +2410,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   weekendNudgePlanThreshold: WEEKEND_NUDGE_PLAN_THRESHOLD_DEFAULT,
   weekendNudgeLastWeekendKey: null,
   weighInTasks: false,
+  waterShortfallTasks: false,
+  waterShortfallTaskCategory: null,
+  waterShortfallDeclinedDayKey: null,
   weighInTaskCategory: null,
   weighInEveryDays: DEFAULT_WEIGH_IN_EVERY_DAYS,
   weighInLastDayKey: null,
@@ -2818,6 +2834,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       : WEEKEND_NUDGE_PLAN_THRESHOLD_DEFAULT;
     const weekendNudgeLastWeekendKey = dbGetSetting('weekendNudgeLastWeekendKey') || null;
     const weighInTasks = dbGetSetting('weighInTasks') === 'true';
+    const waterShortfallTasks = dbGetSetting('waterShortfallTasks') === 'true';
+    const waterShortfallTaskCategory = dbGetSetting('waterShortfallTaskCategory') || null;
+    const waterShortfallDeclinedDayKey = dbGetSetting('waterShortfallDeclinedDayKey') || null;
     const weighInTaskCategory = dbGetSetting('weighInTaskCategory') || null;
     // Clamped on read as well as on write, for the reason the weekend lead
     // above is: a value can arrive from a peer on a different build, and the
@@ -3120,6 +3139,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       waitingFollowUpTaskCategory,
       waitingFollowUpTasks,
       waterExerciseBoost,
+      waterShortfallDeclinedDayKey,
+      waterShortfallTaskCategory,
+      waterShortfallTasks,
       waterUnit,
       weatherRules,
       weatherTaskCategory,
@@ -3787,6 +3809,21 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setWeighInDeclinedDayKey(dayKey: string | null) {
     dbSetSetting('weighInDeclinedDayKey', dayKey ?? '');
     set({ weighInDeclinedDayKey: dayKey });
+  },
+
+  setWaterShortfallTasks(on: boolean) {
+    dbSetSetting('waterShortfallTasks', String(on));
+    set({ waterShortfallTasks: on });
+  },
+
+  setWaterShortfallTaskCategory(category: string | null) {
+    dbSetSetting('waterShortfallTaskCategory', category ?? '');
+    set({ waterShortfallTaskCategory: category });
+  },
+
+  setWaterShortfallDeclinedDayKey(dayKey: string | null) {
+    dbSetSetting('waterShortfallDeclinedDayKey', dayKey ?? '');
+    set({ waterShortfallDeclinedDayKey: dayKey });
   },
 
   setAutoRemoveExpiredTasks(days: ExpiredTaskGraceDays) {
