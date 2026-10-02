@@ -388,4 +388,20 @@ describe('parseNaturalDate', () => {
       expect([d.getMonth(), d.getDate()]).toEqual([7, 16]);
     });
   });
+
+  describe('unmarked clock that already passed today', () => {
+    it('reads "today at 5:30" at 10am as 5:30 PM', () => {
+      const d = parse('today at 5:30')!;
+      expect([d.getHours(), d.getMinutes()]).toEqual([17, 30]);
+    });
+
+    it('keeps an unmarked clock still ahead today as typed', () => {
+      expect(parse('today at 11:30')!.getHours()).toBe(11);
+    });
+
+    it('leaves an explicit am alone, and other days alone', () => {
+      expect(parse('today at 5:30am')!.getHours()).toBe(5);
+      expect(parse('tomorrow at 5:30')!.getHours()).toBe(5);
+    });
+  });
 });
