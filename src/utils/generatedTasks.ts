@@ -1026,6 +1026,16 @@ export type GeneratedEnabledFlags =
   & { healthReadEnabled: boolean; healthWriteEnabled: boolean; calendarReadEnabled: boolean };
 
 /**
+ * The generators whose pass refuses to run while "Read my calendar" is off,
+ * and so whose switch must read off with it (`generatorSwitchedOn`) and say
+ * why when tapped (Settings' `blockedBy`). One list for both because the two
+ * were hand-written apart, and eventTask was missing from each.
+ * `generatedTasks.test.ts` reads `useTaskStore.ts` and fails if a pass gains
+ * or loses that refusal without this list following.
+ */
+export const CALENDAR_READ_KINDS: readonly GeneratedKind[] = ['calendarReview', 'eventTask', 'travel'];
+
+/**
  * Whether this generator is switched on, counting the read it depends on.
  *
  * Five of them need the app to be allowed into a source before their own key
@@ -1038,13 +1048,7 @@ export type GeneratedEnabledFlags =
 export function generatorSwitchedOn(kind: GeneratedKind, flags: GeneratedEnabledFlags): boolean {
   if (!flags[GENERATED_KIND_SPECS[kind].enabledKey]) return false;
   if (kind === 'health') return flags.healthReadEnabled;
-  // The three that read the calendar window, and all three passes refuse to run
-  // without it (`checkCalendarReviewTasks`, `checkEventTasks`,
-  // `checkTravelTasks`). eventTask was missing here for a while, so its switch
-  // read "on" over a closed read while writing nothing.
-  if (kind === 'calendarReview' || kind === 'eventTask' || kind === 'travel') {
-    return flags.calendarReadEnabled;
-  }
+  if (CALENDAR_READ_KINDS.includes(kind)) return flags.calendarReadEnabled;
   // Both Health switches, the same pair `checkWeighInTasks` refuses to run
   // without: the read to see whether a weight is already in, the write because
   // the weight is recorded there. With either off the row read "on" and the

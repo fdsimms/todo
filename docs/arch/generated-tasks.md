@@ -1096,7 +1096,9 @@ It ships off, does not pause on vacation (an event on the calendar is happening 
 demo mode like the other calendar readers, and is gated on `calendarReadEnabled`. That last gate
 turned up a bug: `generatorSwitchedOn` gated `calendarReview` on the calendar read but not
 `eventTask`, whose pass also refuses without it, so its switch read "on" over a closed read while
-writing nothing. Both are gated now.
+writing nothing. Both are gated now through `CALENDAR_READ_KINDS`, the one list both the switch and
+Settings' `blockedBy` read, and `generatedTasks.test.ts` fails if a pass's calendar refusal and that
+list disagree.
 
 ## `weekendNudge` — the one that asks about a *span*
 

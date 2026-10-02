@@ -8,6 +8,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { categoryLabel } from '../../utils/categoryLabel';
 import { haptics } from '../../utils/haptics';
 import {
+  CALENDAR_READ_KINDS,
   generatorSwitchedOn,
   listedGeneratedKinds,
   type GeneratedKind,
@@ -234,7 +235,7 @@ export function GeneratedTasksSection() {
     if (kind === 'health' && !s.healthReadEnabled) {
       return { setting: 'Read Apple Health', screen: 'Health' };
     }
-    if ((kind === 'calendarReview' || kind === 'eventTask' || kind === 'travel') && !s.calendarReadEnabled) {
+    if (CALENDAR_READ_KINDS.includes(kind) && !s.calendarReadEnabled) {
       return { setting: 'Read my calendar', screen: 'Calendar' };
     }
     // The weigh-in needs both Health switches — see generatorSwitchedOn.

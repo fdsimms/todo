@@ -1,3 +1,5 @@
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import {
   GENERATED_KINDS,
   GENERATED_KIND_LIST,
@@ -6,6 +8,7 @@ import {
   generatedSourceOf,
   generatedTaskCountOf,
   generatorPausedForVacation,
+  CALENDAR_READ_KINDS,
   generatorSwitchedOn,
   hasAnyGeneratedTask,
   isNoticeTask,
@@ -460,6 +463,29 @@ describe('generatorSwitchedOn', () => {
     expect(generatorSwitchedOn('weighIn', flags({ healthReadEnabled: false }))).toBe(false);
     expect(generatorSwitchedOn('weighIn', flags({ healthWriteEnabled: false }))).toBe(false);
     expect(generatorSwitchedOn('weighIn', flags())).toBe(true);
+  });
+
+  it('needs the calendar read for every kind whose pass refuses without it', () => {
+    for (const kind of CALENDAR_READ_KINDS) {
+      expect(generatorSwitchedOn(kind, flags({ calendarReadEnabled: false }))).toBe(false);
+      expect(generatorSwitchedOn(kind, flags())).toBe(true);
+    }
+  });
+
+  it('lists exactly the kinds whose pass refuses without the calendar read', () => {
+    // Reads the store's source rather than running it, the way
+    // settingsEntryWiring.test.ts reads the settings JSX: what matters is which
+    // passes return early on `!settings.calendarReadEnabled`, and a pass that
+    // gains or loses that refusal must take CALENDAR_READ_KINDS with it, or the
+    // switch reads "on" over a pass that does nothing (eventTask did, for a while).
+    const source = readFileSync(join(__dirname, '..', 'store', 'useTaskStore.ts'), 'utf8');
+    const methods = source.split(/\n  (?:async )?(?=check\w+\(\) \{)/).slice(1);
+    const gated = new Set<string>();
+    for (const body of methods) {
+      if (!body.includes('if (!settings.calendarReadEnabled) return;')) continue;
+      for (const m of body.matchAll(/generatedBy\('(\w+)'|kind: '(\w+)'/g)) gated.add(m[1] ?? m[2]);
+    }
+    expect([...gated].sort()).toEqual([...CALENDAR_READ_KINDS].sort());
   });
 
   it('leaves the other generators alone when a read is off', () => {
