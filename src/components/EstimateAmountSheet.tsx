@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { KeyboardAvoidingView, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { CardSheet, useCardSheet } from './CardSheet';
 import type { FoodLogEntry } from '../types';
 import { useColors } from '../theme/ThemeContext';
-import { font, fontWeight, spacing, type Colors } from '../theme';
+import { font, fontWeight, interaction, radius, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import {
   ESTIMATE_AMOUNTS,
@@ -43,6 +43,39 @@ export const ESTIMATE_AMOUNT_OPTIONS: SegmentOption<number | null>[] = ESTIMATE_
   accessibilityLabel: a.spoken,
 }));
 
+type AmountUnit = 'grams' | 'percent';
+
+const UNIT_OPTIONS: SegmentOption<AmountUnit>[] = [
+  { value: 'grams', label: 'g', accessibilityLabel: 'Grams' },
+  { value: 'percent', label: '%', accessibilityLabel: 'Percent of the meal' },
+];
+
+/**
+ * The multiple of the whole meal a typed amount means, or null when it isn't a
+ * number or is outside what `estimateAmountPatch` accepts. Grams are divided by
+ * the meal's own stated weight, so the unit is offered only when there is one.
+ */
+function factorFromTyped(text: string, unit: AmountUnit, wholeGrams: number | null): number | null {
+  const n = parseFloat(text.replace(',', '.'));
+  if (!Number.isFinite(n) || n <= 0) return null;
+  const factor = unit === 'grams' ? (wholeGrams ? n / wholeGrams : null) : n / 100;
+  if (factor === null || factor > MAX_ESTIMATE_MULTIPLE + 1e-9) return null;
+  return factor;
+}
+
+/** A multiple of the whole written in the field's unit, with no trailing dust. */
+function amountText(factor: number, unit: AmountUnit, wholeGrams: number | null): string {
+  const n = unit === 'grams' && wholeGrams ? factor * wholeGrams : factor * 100;
+  return String(Math.round(n * 10) / 10);
+}
+
+function amountRefusal(unit: AmountUnit, wholeGrams: number | null): string {
+  const max = MAX_ESTIMATE_MULTIPLE;
+  return unit === 'grams' && wholeGrams
+    ? `Enter an amount above 0 g, up to ${Math.round(wholeGrams * max).toLocaleString()} g.`
+    : `Enter a percent above 0, up to ${(max * 100).toLocaleString()}.`;
+}
+
 /**
  * "Change amount": how much of an estimated meal was actually eaten, less or
  * more than the model was told about.
@@ -58,18 +91,16 @@ export const ESTIMATE_AMOUNT_OPTIONS: SegmentOption<number | null>[] = ESTIMATE_
  * asked as "How many slices" on a `CountStepper` opened on the count logged
  * now, because that is the question the person is answering. Words that count
  * nothing, or count only part of the meal ("1 burger and a regular fries"), get
- * a closed set in a `SegmentedControl` instead: the shares, the whole, and a
- * few multiples of it, since an estimate is not made more exact by saying 0.47
- * of it. Which one is `estimateCount`'s call, made on the whole as first
- * estimated, so an entry never switches question between one change and the
+ * a typed amount instead (grams when the meal's own weight is stated, else a
+ * percent), with the common shares as chips that fill the field. Which one is
+ * `estimateCount`'s call, made on the whole as first estimated, so an entry never switches question between one change and the
  * next. Every choice is taken of that whole, so the count the model described,
  * or All, is always the way back.
  *
  * A bottom card rather than a page sheet, like the chain step sheets: one
  * question, and a scrim tap losing the choice costs one tap to make again, so
- * there is no unsaved-changes guard to need. `KeyboardAvoidingView` because
- * the stepper's digits open a number pad, the carve-out `LogMealPrompt` and
- * `ChainStepMedicationSheet` already hold for a small bottom-anchored card.
+ * there is no unsaved-changes guard to need. The number pad opens for the
+ * stepper's digits and the typed amount alike.
  */
 export function EstimateAmountSheet({ visible, entry, onSave, onClose }: Props) {
   const colors = useColors();
@@ -84,10 +115,17 @@ export function EstimateAmountSheet({ visible, entry, onSave, onClose }: Props) 
   const [count, setCount] = useState(1);
   /** The chosen multiple of the whole, when they don't. */
   const [factor, setFactor] = useState<number | null>(1);
+  /** What was typed in the amount field, or null while the field shows the chosen multiple. */
+  const [typed, setTyped] = useState<string | null>(null);
+  const [unit, setUnit] = useState<AmountUnit>('percent');
+
+  const wholeGrams = whole?.servingGrams && whole.servingGrams > 0 ? whole.servingGrams : null;
 
   useEffect(() => {
     if (!visible) return;
     setFactor(entry ? currentEstimateFactor(entry) : null);
+    setTyped(null);
+    setUnit(wholeGrams ? 'grams' : 'percent');
     if (counted) setCount((entry && currentEstimateCount(entry)) ?? counted.count);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, entry?.id]);
@@ -98,7 +136,20 @@ export function EstimateAmountSheet({ visible, entry, onSave, onClose }: Props) 
     });
   };
 
-  const chosen = counted ? count / counted.count : factor;
+  const typedFactor = typed === null ? null : factorFromTyped(typed, unit, wholeGrams);
+  const chosen = counted ? count / counted.count : typed !== null ? typedFactor : factor;
+  const fieldText = typed ?? (factor === null ? '' : amountText(factor, unit, wholeGrams));
+  const pickUnit = (next: AmountUnit) => {
+    // Keep the amount the person has now, restated in the new unit.
+    if (chosen !== null) setFactor(chosen);
+    setTyped(null);
+    setUnit(next);
+  };
+  const pickShare = (value: number) => {
+    haptics.tap();
+    setFactor(value);
+    setTyped(null);
+  };
   const patch = entry && chosen !== null ? estimateAmountPatch(entry, chosen) : null;
   const unchanged = !patch || (!!entry && estimateAmountUnchanged(entry, patch));
 
@@ -155,13 +206,52 @@ export function EstimateAmountSheet({ visible, entry, onSave, onClose }: Props) 
               </Text>
             </View>
           ) : (
-            <SegmentedControl
-              options={ESTIMATE_AMOUNT_OPTIONS}
-              value={factor}
-              onChange={setFactor}
-              columns={3}
-              label={question}
-            />
+            <View style={styles.amountBlock}>
+              <View style={styles.amountRow}>
+                <TextInput
+                  style={styles.amountInput}
+                  value={fieldText}
+                  onChangeText={text => { setTyped(text); }}
+                  keyboardType="decimal-pad"
+                  returnKeyType="done"
+                  selectTextOnFocus
+                  placeholder="e.g. 150"
+                  placeholderTextColor={colors.textTertiary}
+                  accessibilityLabel={`${question}, in ${unit === 'grams' ? 'grams' : 'percent of the meal'}`}
+                />
+                {wholeGrams ? (
+                  <SegmentedControl
+                    options={UNIT_OPTIONS}
+                    value={unit}
+                    onChange={pickUnit}
+                    label="Unit"
+                  />
+                ) : (
+                  <Text style={styles.unitText}>% of the meal</Text>
+                )}
+              </View>
+              <View style={styles.shareRow}>
+                {ESTIMATE_AMOUNTS.map(a => {
+                  const on = chosen !== null && typed === null && Math.abs(chosen - a.value) < 1e-9;
+                  return (
+                    <TouchableOpacity
+                      key={a.label}
+                      style={[styles.share, on && styles.shareOn]}
+                      onPress={() => pickShare(a.value)}
+                      activeOpacity={interaction.activeOpacity}
+                      accessibilityRole="button"
+                      accessibilityLabel={a.spoken}
+                      accessibilityState={{ selected: on }}
+                    >
+                      <Text style={[styles.shareText, on && styles.shareTextOn]}>{a.label}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              {typed !== null && typedFactor === null && typed.trim() !== '' && (
+                <Text style={styles.error}>{amountRefusal(unit, wholeGrams)}</Text>
+              )}
+            </View>
           )}
           {!!patch && (
             <View style={styles.previewBlock}>
@@ -216,6 +306,33 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingBottom: spacing.sm,
   },
   body: { paddingHorizontal: spacing.md, gap: spacing.sm },
+  amountBlock: { gap: spacing.smd },
+  amountRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.smd },
+  amountInput: {
+    flex: 1,
+    color: colors.text,
+    fontSize: font.lg,
+    backgroundColor: colors.bgTertiary,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.smd,
+    // Height rather than lineHeight, see the TextInput note in CLAUDE.md.
+    height: 44,
+  },
+  unitText: { color: colors.textSecondary, fontSize: font.md },
+  shareRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xsm },
+  share: {
+    minWidth: 48,
+    height: 36,
+    paddingHorizontal: spacing.smd,
+    borderRadius: radius.sm,
+    backgroundColor: colors.bgTertiary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  shareOn: { backgroundColor: colors.accent },
+  shareText: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
+  shareTextOn: { color: colors.onAccent },
+  error: { color: colors.textSecondary, fontSize: font.xs },
   countRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.smd },
   countNoun: { flex: 1, color: colors.text, fontSize: font.md },
   previewBlock: { gap: spacing.xxs, marginTop: spacing.xs },
