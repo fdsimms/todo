@@ -20,6 +20,13 @@ sits stranded on a branch nobody looks at. When it's merged, cut a fresh branch 
 that same situation recurring mid-task, not a one-off. When it's *not* merged yet, push the fix to
 the existing branch and PR as usual; don't open a new one just because a build failed once.
 
+**Target every PR at `main`; never base one on another PR's branch.** GitHub merges a PR into
+whatever base it names, so a PR stacked on a sibling's branch merges into that branch once the
+sibling has already landed, and its work never reaches `main`, with nothing on screen to say so.
+When work depends on an unmerged PR, branch from that PR's branch but still open the new PR against
+`main`, and say in its description which PR has to merge first (its diff shrinks to its own
+commits once that one lands).
+
 **Batch pushes instead of pushing after every individual fix.** This repo is private, on a
 plan with a fixed monthly GitHub Actions minutes allowance, and each push re-runs the whole
 `test.yml` pipeline. When several review comments or CI failures land close together (a batch
