@@ -148,3 +148,8 @@ export function useSettingsFocusFlash(entryId?: string): {
     highlight,
   };
 }
+
+/** The raw focus context, for a section that has to decide what to mount from it. */
+export function useSettingsFocus(): SettingsFocusValue {
+  return useContext(SettingsFocusContext);
+}

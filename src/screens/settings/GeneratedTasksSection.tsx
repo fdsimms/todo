@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { Alert, StyleSheet, View } from 'react-native';
+import { Alert, StyleSheet, TouchableOpacity, View } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSettingsStore, type WeekStart } from '../../store/useSettingsStore';
 import { useTaskStore } from '../../store/useTaskStore';
 import { useCalendarStore } from '../../store/useCalendarStore';
@@ -43,7 +44,7 @@ import { MEAL_PLAN_NUDGE_SLOTS } from '../../utils/mealPlanNudge';
 import { dateToHHMM, hhmmToDate } from '../../utils/clockTime';
 import { formatHHMM } from '../../utils/dateUtils';
 import { useColors } from '../../theme/ThemeContext';
-import { spacing, type Colors } from '../../theme';
+import { interaction, spacing, type Colors } from '../../theme';
 import { CountStepper } from '../../components/CountStepper';
 import {
   DEFAULT_BIRTHDAY_LEAD_DAYS,
@@ -69,6 +70,7 @@ import { HealthRulesSheet } from '../../components/HealthRulesSheet';
 import { PillGroup, type PillGroupOption } from '../../components/PillGroup';
 import { type SegmentOption } from '../../components/SegmentedControl';
 import { makeSettingsStyles } from './settingsStyles';
+import { useSettingsFocus } from './SettingsFocus';
 
 // Map of this file (one component holding most of it; `grep -n '// ===='` is
 // the table of contents):
@@ -177,6 +179,21 @@ export function GeneratedTasksSection() {
   // `{kitchenEnabled && …}` block, so switching the area off took all twelve
   // rows away while six of the generators behind them kept writing tasks.
   const listed = useMemo(() => listedGeneratedKinds(s.kitchenEnabled), [s.kitchenEnabled]);
+  // A generator's own controls fold away behind a chevron on its row, so the
+  // page is a list of names rather than forty controls. Closed by default; a
+  // visit that came from search opens them all, since the matched row may be
+  // inside any one of them and has to be mounted to be scrolled to.
+  const { focusedEntryId } = useSettingsFocus();
+  const [openKinds, setOpenKinds] = useState<Set<GeneratedKind>>(() => new Set());
+  const isOpen = (kind: GeneratedKind): boolean => focusedEntryId !== null || openKinds.has(kind);
+  const toggleOpen = (kind: GeneratedKind): void => {
+    haptics.tap();
+    setOpenKinds(prev => {
+      const next = new Set(prev);
+      if (next.has(kind)) next.delete(kind); else next.add(kind);
+      return next;
+    });
+  };
   const [timePickerOpen, setTimePickerOpen] = useState(false);
   const [pickerDate, setPickerDate] = useState<Date>(() => hhmmToDate(s.mealPlanNudgeTime));
   const [weatherRulesVisible, setWeatherRulesVisible] = useState(false);
@@ -1078,6 +1095,7 @@ export function GeneratedTasksSection() {
       <View style={sectionStyles.groupBreak} />
       {listed.map((spec, i) => {
         const on = enabledOf(spec.kind);
+        const open = on && isOpen(spec.kind);
         return (
           <React.Fragment key={spec.kind}>
             {/* A band, not the hairline the rows inside a generator use. With
@@ -1099,9 +1117,25 @@ export function GeneratedTasksSection() {
               hint={hintFor(spec)}
               toggle={on}
               onPress={() => toggle(spec.kind)}
+              trailing={on ? (
+                <TouchableOpacity
+                  onPress={() => toggleOpen(spec.kind)}
+                  activeOpacity={interaction.activeOpacity}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${open ? 'Hide' : 'Show'} ${spec.label} options`}
+                  accessibilityState={{ expanded: open }}
+                >
+                  <Ionicons
+                    name={open ? 'chevron-up' : 'chevron-down'}
+                    size={16}
+                    color={colors.textSecondary}
+                  />
+                </TouchableOpacity>
+              ) : undefined}
             />
-            {on && extrasFor(spec.kind)}
-            {on && spec.categorized && (
+            {open && extrasFor(spec.kind)}
+            {open && spec.categorized && (
               <>
                 <View style={styles.sep} />
                 <SettingsRow
