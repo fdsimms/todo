@@ -16,6 +16,8 @@ interface TodoEventKitBridgeNativeModule {
   isAvailable(): boolean;
   externalIdentifiers(localIds: string[]): Promise<Record<string, string>>;
   eventsWithExternalIdentifier(externalId: string): Promise<unknown>;
+  searchPlaces?(query: string): Promise<unknown>;
+  setStructuredLocation?(eventId: string, title: string, latitude: number, longitude: number): Promise<boolean>;
 }
 
 // requireNativeModule throws when the module isn't linked (Android, web,
@@ -81,5 +83,45 @@ export async function eventsWithExternalIdentifier(externalId: string): Promise<
   } catch (error) {
     console.warn('[todo-eventkit-bridge] native lookup failed; treating it as no match', error);
     return [];
+  }
+}
+
+/**
+ * Apple Maps' places for a typed query, as the native call returns them (each
+ * `{ name?, address?, latitude, longitude }`). Left unparsed here: the shape is
+ * checked by `parsePlaceResults` in src/utils/places.ts, where it can be
+ * tested. Empty when the module is missing, the build predates this function,
+ * or the call fails. It sends the query to Apple, so it is only ever called
+ * through `searchPlaces` in src/services/placeSearch.ts, behind its setting.
+ */
+export async function searchPlacesRaw(query: string): Promise<unknown[]> {
+  if (!nativeModule || typeof nativeModule.searchPlaces !== 'function') return [];
+  try {
+    const result = await nativeModule.searchPlaces(query);
+    return Array.isArray(result) ? result : [];
+  } catch (error) {
+    console.warn('[todo-eventkit-bridge] place search failed', error);
+    return [];
+  }
+}
+
+/**
+ * Gives a saved event a structured location (title plus coordinate), so
+ * Calendar can draw its map and estimate travel time. False when the module is
+ * missing, the build predates this function, or the write fails; the event
+ * itself is already saved either way.
+ */
+export async function setStructuredLocation(
+  eventId: string,
+  title: string,
+  latitude: number,
+  longitude: number
+): Promise<boolean> {
+  if (!nativeModule || typeof nativeModule.setStructuredLocation !== 'function') return false;
+  try {
+    return (await nativeModule.setStructuredLocation(eventId, title, latitude, longitude)) === true;
+  } catch (error) {
+    console.warn('[todo-eventkit-bridge] structured location write failed', error);
+    return false;
   }
 }

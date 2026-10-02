@@ -1358,6 +1358,21 @@ describe('mapsApp', () => {
   });
 });
 
+describe('placeSuggestionsEnabled', () => {
+  it('is off by default, so nothing is sent to Apple until someone turns it on', () => {
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().placeSuggestionsEnabled).toBe(false);
+  });
+
+  it('round-trips on', () => {
+    useSettingsStore.getState().setPlaceSuggestionsEnabled(true);
+    expect(dbSetSetting).toHaveBeenCalledWith('placeSuggestionsEnabled', 'true');
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) => (key === 'placeSuggestionsEnabled' ? 'true' : null));
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().placeSuggestionsEnabled).toBe(true);
+  });
+});
+
 describe('hapticsEnabled', () => {
   // Defaults on rather than off, so an install predating the setting doesn't
   // silently lose the haptics it already had.

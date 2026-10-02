@@ -264,6 +264,12 @@ interface SettingsStore {
   weekStartsOn: WeekStart;
   fabHand: FabHand;
   mapsApp: MapsApp;
+  // Whether typing an event's location asks Apple Maps for matching places
+  // (src/services/placeSearch.ts). Off by default: it sends what is typed to
+  // Apple, needs no key, and runs as you type rather than on a tap, which is
+  // the case CLAUDE.md's Data flow rule says ships behind its own switch.
+  // Device-local, like the other network opt-ins.
+  placeSuggestionsEnabled: boolean;
   hapticsEnabled: boolean;
   // The accelerometer-driven "shake to undo" gesture (src/utils/useShakeToUndo.ts).
   // On by default, like hapticsEnabled, so an existing install keeps the
@@ -1654,6 +1660,7 @@ interface SettingsStore {
   setWeekStartsOn: (day: WeekStart) => void;
   setFabHand: (hand: FabHand) => void;
   setMapsApp: (app: MapsApp) => void;
+  setPlaceSuggestionsEnabled: (on: boolean) => void;
   setHapticsEnabled: (on: boolean) => void;
   setShakeToUndoEnabled: (on: boolean) => void;
   setConfirmBeforeDeleting: (on: boolean) => void;
@@ -1894,6 +1901,7 @@ const DEFAULT_SETTINGS = {
   weekStartsOn: 0 as WeekStart,
   fabHand: 'right' as FabHand,
   mapsApp: 'apple' as MapsApp,
+  placeSuggestionsEnabled: false,
   hapticsEnabled: true,
   shakeToUndoEnabled: true,
   confirmBeforeDeleting: true,
@@ -2290,6 +2298,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   weekStartsOn: 0,
   fabHand: 'right',
   mapsApp: 'apple',
+  placeSuggestionsEnabled: false,
   hapticsEnabled: true,
   shakeToUndoEnabled: true,
   confirmBeforeDeleting: true,
@@ -2535,6 +2544,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const fabHand: FabHand = dbGetSetting('fabHand') === 'left' ? 'left' : 'right';
     const storedMapsApp = dbGetSetting('mapsApp');
     const mapsApp: MapsApp = MAPS_APPS.find(a => a === storedMapsApp) ?? 'apple';
+    const placeSuggestionsEnabled = dbGetSetting('placeSuggestionsEnabled') === 'true';
     // Defaults on rather than off, so an install that predates the setting
     // keeps the haptics it already had.
     const hapticsEnabled = dbGetSetting('hapticsEnabled') !== 'false';
@@ -3172,6 +3182,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       penaltyShieldEnabled,
       penaltyShieldReason,
       penaltyShieldUntil,
+      placeSuggestionsEnabled,
       postponeCheckEnabled,
       postponeCheckThreshold,
       productLookupEnabled,
@@ -3377,6 +3388,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setMapsApp(app: MapsApp) {
     dbSetSetting('mapsApp', app);
     set({ mapsApp: app });
+  },
+
+  setPlaceSuggestionsEnabled(on: boolean) {
+    dbSetSetting('placeSuggestionsEnabled', on ? 'true' : 'false');
+    set({ placeSuggestionsEnabled: on });
   },
 
   setHapticsEnabled(on: boolean) {
