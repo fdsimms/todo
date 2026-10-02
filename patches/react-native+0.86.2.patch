@@ -1,3 +1,21 @@
+diff --git a/node_modules/react-native/React/Fabric/Mounting/ComponentViews/TextInput/RCTTextInputComponentView.mm b/node_modules/react-native/React/Fabric/Mounting/ComponentViews/TextInput/RCTTextInputComponentView.mm
+index 917dc6d..9cb123d 100644
+--- a/node_modules/react-native/React/Fabric/Mounting/ComponentViews/TextInput/RCTTextInputComponentView.mm
++++ b/node_modules/react-native/React/Fabric/Mounting/ComponentViews/TextInput/RCTTextInputComponentView.mm
+@@ -304,7 +304,12 @@ static NSSet<NSNumber *> *returnKeyTypesSet;
+     _backedTextInputView.tintColor = RCTUIColorFromSharedColor(newTextInputProps.selectionColor);
+   }
+ 
+-  if (newTextInputProps.inputAccessoryViewID != oldTextInputProps.inputAccessoryViewID) {
++  // A recycled view keeps its previous `_props` but `prepareForRecycle` clears
++  // the backing view's `inputAccessoryViewID`, so reusing it for a field with
++  // the same ID compared equal and never restored it: the field could no longer
++  // be found by its InputAccessoryView and the bar silently went missing.
++  if (newTextInputProps.inputAccessoryViewID != oldTextInputProps.inputAccessoryViewID ||
++      (!newTextInputProps.inputAccessoryViewID.empty() && _backedTextInputView.inputAccessoryViewID == nil)) {
+     _backedTextInputView.inputAccessoryViewID = RCTNSStringFromString(newTextInputProps.inputAccessoryViewID);
+   }
+ 
 diff --git a/node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModule.mm b/node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModule.mm
 index 516ae35..8d5d9ea 100644
 --- a/node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModule.mm
