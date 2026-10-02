@@ -174,7 +174,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/mealThawTasks.ts` — MEAL_THAW_LEAD_DAYS, MAX_MEAL_THAW_TASKS, mealThawTitle, mealThawEntryId, isWithinThawWindow, FrozenForMeal, frozenForMeal, mealThawLinkUrl, MealThawWant, wantedMealThaws, +1 more
 - `src/utils/measuredHeight.ts` — HEIGHT_EPSILON, nextMeasuredHeight
 - `src/utils/medicationExport.ts` — MEDICATION_EXPORT_COLUMNS, medicationExportCsv, medicationExportFileName, medicationExportSummary
-- `src/utils/medicationLog.ts` — DOSE_UNITS, MIN_TREND_DOSES, MedicationDose, MedicationSource, medicationFor, medicationKey, medicationVocabulary, logsOnDay, dosesOnDay, hasDoseOnDay, +8 more
+- `src/utils/medicationLog.ts` — DOSE_UNITS, MIN_TREND_DOSES, MedicationDose, MedicationSource, medicationFor, medicationKey, medicationVocabulary, ARCHIVED_MEDICATIONS_SETTING_KEY, parseArchivedMedications, logsOnDay, +10 more
 - `src/utils/missed.ts` — isMissed, isRealCompletion, MostMissedGroup, mostMissed
 - `src/utils/moodExport.ts` — MOOD_EXPORT_COLUMNS, csvCell, moodExportCsv, moodExportFileName, moodExportSummary
 - `src/utils/moodHistory.ts` — MoodFilter, EMPTY_MOOD_FILTER, isMoodFilterActive, toggleFilterValue, filterMoodLogs, MoodLogDay, groupLogsByDay, SymptomStat, symptomStats, symptomStatFor, +4 more

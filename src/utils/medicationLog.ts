@@ -155,11 +155,16 @@ export function medicationKey(name: string): string {
  * set of things that have been taken. Nothing to migrate, nothing to prune,
  * and something taken once two years ago drops off the suggestions by itself.
  */
-export function medicationVocabulary(logs: readonly MedicationLog[]): string[] {
+export function medicationVocabulary(
+  logs: readonly MedicationLog[],
+  archived: readonly string[] = [],
+): string[] {
   const counts = new Map<string, { name: string; count: number }>();
   for (const log of logs) {
     const key = medicationKey(log.name);
-    if (!key) continue;
+    // An archived medication is one you said you no longer take, so it stops
+    // being offered as a pill. Its doses stay in the log and the export.
+    if (!key || archived.includes(key)) continue;
     const seen = counts.get(key);
     if (seen) seen.count++;
     else counts.set(key, { name: log.name.trim(), count: 1 });
@@ -167,6 +172,30 @@ export function medicationVocabulary(logs: readonly MedicationLog[]): string[] {
   return [...counts.values()]
     .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
     .map(e => e.name);
+}
+
+/** The settings key the archived list is stored under (synced, see `SYNCED_SETTING_KEYS`). */
+export const ARCHIVED_MEDICATIONS_SETTING_KEY = 'medication_archived';
+
+/**
+ * Read the stored archived list back, tolerating anything that isn't one.
+ *
+ * Stored as medication keys rather than a flag on a dose: a medication has no
+ * row of its own (see `medicationVocabulary`), so the only thing that can be
+ * archived is the name. Archiving hides it from the "what you take" tally and
+ * the suggestions and deletes nothing; a new dose of it brings it back
+ * (`useMedicationStore.addLog`), so a scheduled task still ticking away can't
+ * leave a medicine archived while it is being recorded.
+ */
+export function parseArchivedMedications(raw: string | null): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return [...new Set(parsed.filter((k): k is string => typeof k === 'string' && k !== ''))];
+  } catch {
+    return [];
+  }
 }
 
 /** Every dose on one logical day, oldest first — the order a day reads in. */

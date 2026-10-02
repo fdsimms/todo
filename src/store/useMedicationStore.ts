@@ -6,9 +6,16 @@ import {
   dbUpdateMedicationLog,
   dbDeleteMedicationLog,
   dbDeleteMedicationLogsForTask,
+  dbGetSetting,
+  dbSetSetting,
 } from '../db/database';
 import { generateId } from '../utils/id';
 import { dayKeyOf, getCurrentDayStart, getDayStart } from '../utils/dateUtils';
+import {
+  ARCHIVED_MEDICATIONS_SETTING_KEY,
+  medicationKey,
+  parseArchivedMedications,
+} from '../utils/medicationLog';
 
 /**
  * The medication log — see `src/utils/medicationLog.ts` for every rule,
@@ -62,8 +69,14 @@ export type MedicationLogPatch =
 
 interface MedicationStore {
   logs: MedicationLog[];
+  /** `medicationKey`s you have archived. A set of names, not a flag on a dose. */
+  archived: string[];
   initialized: boolean;
   initialize: () => void;
+  /** Move a medication out of "what you take". Deletes no doses. */
+  archiveMedication: (name: string) => void;
+  /** Put an archived medication back. */
+  unarchiveMedication: (name: string) => void;
   addLog: (input: DoseInput) => MedicationLog | null;
   updateLog: (id: string, patch: MedicationLogPatch) => void;
   removeLog: (id: string) => void;
@@ -85,10 +98,27 @@ interface MedicationStore {
 
 export const useMedicationStore = create<MedicationStore>((set, get) => ({
   logs: [],
+  archived: [],
   initialized: false,
 
   initialize() {
-    set({ logs: dbGetAllMedicationLogs(), initialized: true });
+    set({
+      logs: dbGetAllMedicationLogs(),
+      archived: parseArchivedMedications(dbGetSetting(ARCHIVED_MEDICATIONS_SETTING_KEY)),
+      initialized: true,
+    });
+  },
+
+  archiveMedication(name) {
+    const key = medicationKey(name);
+    if (!key || get().archived.includes(key)) return;
+    writeArchived(set, [...get().archived, key]);
+  },
+
+  unarchiveMedication(name) {
+    const key = medicationKey(name);
+    if (!get().archived.includes(key)) return;
+    writeArchived(set, get().archived.filter(k => k !== key));
   },
 
   addLog(input) {
@@ -116,6 +146,10 @@ export const useMedicationStore = create<MedicationStore>((set, get) => ({
       note: input.note?.trim() || null,
     };
     dbInsertMedicationLog(log);
+    // A dose of an archived medication means you are taking it again, whether
+    // a person recorded it or a scheduled task's completion did. Restoring it
+    // here is what keeps "archived" from hiding something still being logged.
+    get().unarchiveMedication(name);
     // Newest first, matching what dbGetAllMedicationLogs hands back on the
     // next launch — a list that reorders itself on relaunch is the usual way
     // one of these drifts.
@@ -133,6 +167,8 @@ export const useMedicationStore = create<MedicationStore>((set, get) => ({
       // there would be nothing left to say which medicine the row is about.
       if (!name) return;
       next.name = name;
+      // Renaming a dose onto an archived medication is recording it again.
+      get().unarchiveMedication(name);
     }
     if (patch.amount !== undefined || patch.unit !== undefined) {
       const { amount, unit } = cleanDose(next.amount, next.unit);
@@ -166,6 +202,14 @@ export const useMedicationStore = create<MedicationStore>((set, get) => ({
     get().removeLog(latest.id);
   },
 }));
+
+function writeArchived(
+  set: (partial: { archived: string[] }) => void,
+  archived: string[],
+): void {
+  dbSetSetting(ARCHIVED_MEDICATIONS_SETTING_KEY, JSON.stringify(archived));
+  set({ archived });
+}
 
 /**
  * Keep an amount and its unit together, or drop both.

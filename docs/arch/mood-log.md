@@ -443,6 +443,18 @@ still cannot know is whether a quiet fortnight was one of not needing it or
 one of not recording it, which is why the copy says recorded rather than
 taken.
 
+### Archiving a medication you stopped
+
+A medication has no row, so what is archived is the **name**: `medication_archived`
+holds `medicationKey`s (a synced setting) and `useMedicationStore.archived` reads
+them. Archiving leaves "What you take" and the suggestions and deletes nothing:
+the doses stay in Recent, in `medicationStats` and in the export, which is the
+whole record. **Recording another dose restores it** (`addLog`, and `updateLog`
+when a rename lands on it), so no date comparison is needed and a scheduled
+task that keeps completing can't leave a medicine archived while it is still
+being logged. Don't add a separate restore step to any other write path: it
+goes through `addLog`.
+
 ### A chain step records its own dose
 
 `ChainItem.medicationName` is the third field on the pattern

@@ -14,6 +14,7 @@ import {
   medicationLogSummary,
   medicationStats,
   medicationVocabulary,
+  parseArchivedMedications,
   type MedicationSource,
 } from '../utils/medicationLog';
 
@@ -71,6 +72,23 @@ describe('medicationVocabulary', () => {
 
   it('ignores a blank name rather than producing an empty pill', () => {
     expect(medicationVocabulary([dose({ name: '   ' })])).toEqual([]);
+  });
+
+  it('leaves out an archived medication but keeps the rest', () => {
+    const logs = [dose({ name: 'Sertraline' }), dose({ name: 'Ibuprofen' })];
+    expect(medicationVocabulary(logs, ['sertraline'])).toEqual(['Ibuprofen']);
+  });
+});
+
+describe('parseArchivedMedications', () => {
+  it('reads a stored list and drops duplicates and non-strings', () => {
+    expect(parseArchivedMedications('["a","a",3,"","b"]')).toEqual(['a', 'b']);
+  });
+
+  it('treats a missing, malformed or non-list value as nothing archived', () => {
+    expect(parseArchivedMedications(null)).toEqual([]);
+    expect(parseArchivedMedications('{oops')).toEqual([]);
+    expect(parseArchivedMedications('{"a":1}')).toEqual([]);
   });
 });
 

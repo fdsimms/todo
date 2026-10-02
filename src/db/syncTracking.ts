@@ -389,6 +389,9 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'grocery_aisle_order',
   'grocery_aisle_hidden',
   'grocery_aisle_overrides',
+  // Which medications you have archived. A statement about what you take, and
+  // a device without it would list a medicine you stopped on the other one.
+  'medication_archived',
 
   // Vacation mode is a statement about the person, not the device.
   'vacationMode',

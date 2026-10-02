@@ -60,12 +60,17 @@ export function MedicationScreen() {
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
   const logs = useMedicationStore(s => s.logs);
+  const archived = useMedicationStore(s => s.archived);
+  const archiveMedication = useMedicationStore(s => s.archiveMedication);
+  const unarchiveMedication = useMedicationStore(s => s.unarchiveMedication);
 
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editing, setEditing] = useState<MedicationLog | null>(null);
   const [sharing, setSharing] = useState(false);
 
-  const stats = useMemo(() => medicationStats(logs), [logs]);
+  const allStats = useMemo(() => medicationStats(logs), [logs]);
+  const stats = useMemo(() => allStats.filter(s => !archived.includes(s.key)), [allStats, archived]);
+  const archivedStats = useMemo(() => allStats.filter(s => archived.includes(s.key)), [allStats, archived]);
   const recent = useMemo(() => logs.slice(0, RECENT_LIMIT), [logs]);
   const today = useMemo(() => dayKeyOf(getCurrentDayStart()), []);
 
@@ -110,6 +115,23 @@ export function MedicationScreen() {
     }
   };
 
+  const confirmArchive = (stat: MedicationStat) => {
+    haptics.tap();
+    Alert.alert(
+      stat.name,
+      'Archiving moves it out of What you take and the suggestions. Its doses stay in your log and export, and recording another dose brings it back.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Archive', onPress: () => archiveMedication(stat.name) },
+      ],
+    );
+  };
+
+  const restore = (stat: MedicationStat) => {
+    haptics.tap();
+    unarchiveMedication(stat.name);
+  };
+
   const openNew = () => { haptics.tap(); setEditing(null); setSheetOpen(true); };
   const openEdit = (log: MedicationLog) => { haptics.tap(); setEditing(log); setSheetOpen(true); };
   const closeSheet = () => { setSheetOpen(false); setEditing(null); };
@@ -118,7 +140,7 @@ export function MedicationScreen() {
     <>
       <ScreenHeader
         title="Medications"
-        subtitle={stats.length > 0 ? `${stats.length} recorded` : undefined}
+        subtitle={allStats.length > 0 ? `${stats.length} ${archivedStats.length > 0 ? 'current' : 'recorded'}` : undefined}
         actions={[
           // Only once there is something to share, the same condition the mood
           // screen's own share action carries.
@@ -165,6 +187,11 @@ export function MedicationScreen() {
       >
         <Text style={styles.sectionTitle}>WHAT YOU TAKE</Text>
         <View style={styles.card}>
+          {stats.length === 0 && (
+            <Text style={styles.emptyNote}>
+              Everything is archived. Record a dose to bring a medication back.
+            </Text>
+          )}
           {stats.map((stat, index) => (
             <MedicationRow
               key={stat.key}
@@ -174,9 +201,33 @@ export function MedicationScreen() {
               first={index === 0}
               styles={styles}
               colors={colors}
+              actionLabel={`Archive ${stat.name}`}
+              onPress={() => confirmArchive(stat)}
             />
           ))}
         </View>
+
+        {archivedStats.length > 0 && (
+          <>
+            <Text style={styles.sectionTitle}>ARCHIVED</Text>
+            <View style={styles.card}>
+              {archivedStats.map((stat, index) => (
+                <MedicationRow
+                  key={stat.key}
+                  stat={stat}
+                  today={today}
+                  logs={logs}
+                  first={index === 0}
+                  styles={styles}
+                  colors={colors}
+                  trailing="Restore"
+                  actionLabel={`Restore ${stat.name}`}
+                  onPress={() => restore(stat)}
+                />
+              ))}
+            </View>
+          </>
+        )}
 
         <Text style={styles.sectionTitle}>RECENT</Text>
         <View style={styles.card}>
@@ -223,7 +274,7 @@ export function MedicationScreen() {
  * fortnight of forgetting.
  */
 function MedicationRow({
-  stat, today, logs, first, styles, colors,
+  stat, today, logs, first, styles, colors, onPress, actionLabel, trailing,
 }: {
   stat: MedicationStat;
   today: string;
@@ -231,14 +282,28 @@ function MedicationRow({
   first: boolean;
   styles: ReturnType<typeof makeStyles>;
   colors: Colors;
+  onPress: () => void;
+  actionLabel: string;
+  /** Text at the row's trailing edge, in place of the as-needed badge. */
+  trailing?: string;
 }) {
-  const trend = stat.asNeeded ? frequencyTrend(logs, stat.key, today, TREND_DAYS) : null;
+  // An archived medication is not one you are taking now, so its use is not
+  // being compared against anything.
+  const trend = stat.asNeeded && !trailing ? frequencyTrend(logs, stat.key, today, TREND_DAYS) : null;
 
   return (
-    <View style={[styles.medRow, first && styles.firstRow]}>
+    <TouchableOpacity
+      style={[styles.medRow, first && styles.firstRow]}
+      activeOpacity={interaction.activeOpacity}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={actionLabel}
+    >
       <View style={styles.medHeader}>
         <Text style={styles.medName} numberOfLines={1}>{stat.name}</Text>
-        {stat.asNeeded && (
+        {trailing ? (
+          <Text style={[styles.medBadge, { color: colors.accent }]}>{trailing.toUpperCase()}</Text>
+        ) : stat.asNeeded && (
           <Text style={styles.medBadge}>AS NEEDED</Text>
         )}
       </View>
@@ -254,7 +319,7 @@ function MedicationRow({
           {trend.recent} in the last {trend.days} days, against {trend.previous} the {trend.days} before.
         </Text>
       )}
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -294,6 +359,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontWeight: fontWeight.semibold,
     letterSpacing: 0.6,
     color: colors.textSecondary,
+  },
+  emptyNote: {
+    fontSize: font.sm,
+    color: colors.textSecondary,
+    paddingVertical: spacing.md,
   },
   medMeta: {
     fontSize: font.sm,

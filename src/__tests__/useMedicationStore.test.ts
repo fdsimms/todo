@@ -5,6 +5,8 @@ import {
   dbUpdateMedicationLog,
   dbDeleteMedicationLog,
   dbDeleteMedicationLogsForTask,
+  dbGetSetting,
+  dbSetSetting,
 } from '../db/database';
 
 jest.mock('../db/database', () => ({
@@ -13,6 +15,8 @@ jest.mock('../db/database', () => ({
   dbUpdateMedicationLog: jest.fn(),
   dbDeleteMedicationLog: jest.fn(),
   dbDeleteMedicationLogsForTask: jest.fn(),
+  dbGetSetting: jest.fn(() => null),
+  dbSetSetting: jest.fn(),
 }));
 
 jest.mock('../utils/dateUtils', () => ({
@@ -26,7 +30,7 @@ jest.mock('../utils/dateUtils', () => ({
 
 beforeEach(() => {
   jest.clearAllMocks();
-  useMedicationStore.setState({ logs: [], initialized: false });
+  useMedicationStore.setState({ logs: [], archived: [], initialized: false });
 });
 
 const state = () => useMedicationStore.getState();
@@ -36,6 +40,62 @@ describe('initialize', () => {
     state().initialize();
     expect(dbGetAllMedicationLogs).toHaveBeenCalled();
     expect(state().initialized).toBe(true);
+  });
+
+  it('loads the archived list', () => {
+    (dbGetSetting as jest.Mock).mockReturnValueOnce('["valtrex"]');
+    state().initialize();
+    expect(state().archived).toEqual(['valtrex']);
+  });
+});
+
+describe('archiving', () => {
+  it('stores the match key and persists it', () => {
+    state().archiveMedication('  Valtrex ');
+    expect(state().archived).toEqual(['valtrex']);
+    expect(dbSetSetting).toHaveBeenCalledWith('medication_archived', '["valtrex"]');
+  });
+
+  it('archives a name once', () => {
+    state().archiveMedication('Valtrex');
+    state().archiveMedication('valtrex');
+    expect(state().archived).toEqual(['valtrex']);
+    expect(dbSetSetting).toHaveBeenCalledTimes(1);
+  });
+
+  it('restores a medication, and ignores one that was not archived', () => {
+    state().archiveMedication('Valtrex');
+    state().unarchiveMedication('VALTREX');
+    expect(state().archived).toEqual([]);
+    (dbSetSetting as jest.Mock).mockClear();
+    state().unarchiveMedication('Ibuprofen');
+    expect(dbSetSetting).not.toHaveBeenCalled();
+  });
+
+  it('deletes no doses', () => {
+    state().addLog({ name: 'Valtrex' });
+    state().archiveMedication('Valtrex');
+    expect(state().logs).toHaveLength(1);
+    expect(dbDeleteMedicationLog).not.toHaveBeenCalled();
+  });
+
+  it('brings a medication back when another dose of it is recorded', () => {
+    state().archiveMedication('Valtrex');
+    state().addLog({ name: 'valtrex', at: new Date(2026, 8, 1, 9) });
+    expect(state().archived).toEqual([]);
+  });
+
+  it('leaves other archived medications alone when one is recorded', () => {
+    state().archiveMedication('Valtrex');
+    state().addLog({ name: 'Ibuprofen' });
+    expect(state().archived).toEqual(['valtrex']);
+  });
+
+  it('brings a medication back when a dose is renamed onto it', () => {
+    const log = state().addLog({ name: 'Valtrex dose' })!;
+    state().archiveMedication('Valtrex');
+    state().updateLog(log.id, { name: 'Valtrex' });
+    expect(state().archived).toEqual([]);
   });
 });
 
