@@ -181,6 +181,10 @@ export interface TaskDraft {
   timeSegments: TimeOfDay[];
   /** `"HH:MM"`, carried over when quick add parses "after 3pm". */
   windowStart?: string | null;
+  /** What it waits on, carried over when quick add parses "after <another task>". */
+  blockerIds?: string[];
+  /** Carried over when quick add parses "pack: socks, charger". */
+  subtaskTitles?: string[];
   tags: string[];
   /** Who the task involves, carried over when quick add parses "@dustin" (#2045). */
   personIds?: string[];
@@ -926,7 +930,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setPhoneNumber(initialDraft?.phoneNumber ?? null);
       setEmailAddress(initialDraft?.emailAddress ?? null);
       setLocation(initialDraft?.location ?? null);
-      setBlockerIds([]);
+      setBlockerIds(initialDraft?.blockerIds ?? []);
       setShowBlockers(false);
       setWaitingOnPersonId(null);
       setFollowUpOn(null);
@@ -946,7 +950,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     setShowEmailField(false); setEmailText(task?.emailAddress ?? initialDraft?.emailAddress ?? '');
     setShowLocationField(false); setLocationText(task?.location ?? initialDraft?.location ?? '');
     setPickerMode('none'); setShowWhenPicker(false); setShowDeadlinePicker(false); setShowEndDatePicker(false); setPickerDate(new Date()); setWindowPickerMode('none'); setNewTag(''); setAddingTag(false);
-    setNewSubtaskTitle(''); setPendingSubtaskIndex(null); setDraftSubtasks([]);
+    setNewSubtaskTitle(''); setPendingSubtaskIndex(null); setDraftSubtasks(task ? [] : (initialDraft?.subtaskTitles ?? []).map(title => ({ id: generateId(), title, completed: false, timedMinutes: null })));
     setNewChainItemTitle(''); setAddingChainItem(false);
     setOpenFields({}); setShowTimeOfDay(false); setShowTimeWindow(false);
     setCustomEffortOpen(false); setCustomEffortText(''); setCustomEffortUnit('min');
@@ -1054,7 +1058,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       phoneNumber: task ? (task.phoneNumber ?? null) : (initialDraft?.phoneNumber ?? null),
       emailAddress: task ? (task.emailAddress ?? null) : (initialDraft?.emailAddress ?? null),
       location: task ? (task.location ?? null) : (initialDraft?.location ?? null),
-      blockerIds: task ? blockerIdsOf(task) : [],
+      blockerIds: task ? blockerIdsOf(task) : (initialDraft?.blockerIds ?? []),
       waitingOnPersonId: task?.waitingOnPersonId ?? null,
       followUpOn: task?.followUpOn ?? null,
       deliverableKind: task?.deliverableKind ?? null,

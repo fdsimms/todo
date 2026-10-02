@@ -1395,6 +1395,181 @@ export function parseCategoryAndTagsInput(
   };
 }
 
+export interface ParsedProject {
+  projectId: string;
+  /** The project's own title, for the tooltip. */
+  title: string;
+  /** Input minus the matched "+word" token, whitespace collapsed and trimmed. */
+  cleanTitle: string;
+  matchStart: number;
+  matchEnd: number;
+}
+
+// "+" immediately followed by a word that starts with a letter, not itself
+// preceded by a word character or another "+": "+trip" and "+japan-trip", but
+// not "+1", "2+2" or "C++". "#" is category-or-tag and "@" is a person (see
+// PERSON_TOKEN_PATTERN), so this is the third and last sigil.
+const PROJECT_TOKEN_PATTERN = /(?<![\w+])\+([a-z][\w-]*)/gi;
+
+/** A title with case, spaces and punctuation gone: "Japan Trip!" → "japantrip". */
+function projectKey(text: string): string {
+  return text.toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
+/**
+ * Pulls a "+project" token out of a quick-add title, so "book hotel +japan"
+ * files the task under "Japan Trip".
+ *
+ * Matched the way "#" matches a category, and for the same reason (the
+ * tooltip can fire mid-word): an exact name first, spaces and punctuation
+ * ignored so "+japantrip" and "+japan-trip" both find "Japan Trip"; then an
+ * unambiguous prefix of the whole name; then an unambiguous prefix of any one
+ * word in it, so "+trip" finds "Japan Trip" too. Each tier needs exactly one
+ * project, and a prefix needs three characters. Two candidates means keep
+ * typing, never a guess. Only the first "+word" that resolves counts: a task
+ * has one project.
+ *
+ * `projects` is the live set the caller wants offered (archived and finished
+ * ones left out), passed in to keep this module store-free.
+ */
+export function parseProjectInput(input: string, projects: { id: string; title: string }[]): ParsedProject | null {
+  for (const m of input.matchAll(PROJECT_TOKEN_PATTERN)) {
+    if (m.index === undefined) continue;
+    const token = projectKey(m[1]);
+    if (!token) continue;
+    const exact = projects.filter(p => projectKey(p.title) === token);
+    let hit = exact.length === 1 ? exact[0] : null;
+    if (!hit && exact.length === 0 && token.length >= MIN_CATEGORY_PREFIX_LENGTH) {
+      const whole = projects.filter(p => projectKey(p.title).startsWith(token));
+      if (whole.length === 1) hit = whole[0];
+      else if (whole.length === 0) {
+        const word = projects.filter(p => p.title.toLowerCase().split(/[^a-z0-9]+/).some(w => w.startsWith(token)));
+        if (word.length === 1) hit = word[0];
+      }
+    }
+    if (!hit) continue;
+    const matchStart = m.index;
+    const matchEnd = matchStart + m[0].length;
+    const cleanTitle = (input.slice(0, matchStart) + input.slice(matchEnd)).replace(/\s+/g, ' ').trim();
+    return { projectId: hit.id, title: hit.title, cleanTitle, matchStart, matchEnd };
+  }
+  return null;
+}
+
+export interface ParsedWaitingOn {
+  /** The task this one would wait on. */
+  taskId: string;
+  /** Its title as stored, for the tooltip. */
+  title: string;
+  /** Input minus "after …", trailing punctuation trimmed. */
+  cleanTitle: string;
+  matchStart: number;
+  matchEnd: number;
+}
+
+// Words that carry nothing about which task is meant, on either side: "after
+// the taxes are done" names the same task as "after taxes".
+const WAITING_STOPWORDS = new Set([
+  'a', 'an', 'the', 'my', 'our', 'to', 'for', 'from', 'of', 'with', 'on', 'in', 'at', 'and',
+  'is', 'are', 'its', "it's", 'done', 'finished', 'complete', 'completed', 'i', 'we',
+]);
+
+function waitingWords(text: string): string[] {
+  return text.toLowerCase()
+    // "W-2" and "W2" are one word, and so are "e-mail" and "email".
+    .replace(/(\w)[-'’](\w)/g, '$1$2')
+    .split(/[^a-z0-9]+/)
+    .filter(w => w && !WAITING_STOPWORDS.has(w));
+}
+
+/**
+ * "file taxes after get W-2" → waits on the task "Get W-2 from employer".
+ *
+ * Fuzzy, but only as far as it can stay sure, because what it sets holds the
+ * task back until the other one is done, which is costly to get silently
+ * wrong. A candidate matches when **every** word after "after" starts a
+ * different word of its title (order free, so "after w2 get" works too), and
+ * those words cover **at least half** of the title's own words. Exactly one
+ * candidate has to match: two means the phrase didn't pick one, and nothing
+ * is offered. Filler on both sides ("the", "my", "is done") is ignored.
+ *
+ * The half rule is what keeps "go for a walk after work" from naming "Finish
+ * work report" (one word of three). A clock time, a date or "completion" never
+ * reaches here: the schedule tooltip claims those first.
+ *
+ * `candidates` are the tasks the caller is willing to wait on (live, top
+ * level), passed in to keep this module store-free.
+ */
+export function parseWaitingOnInput(input: string, candidates: { id: string; title: string }[]): ParsedWaitingOn | null {
+  const re = /\bafter\s+/gi;
+  let last: RegExpExecArray | null = null;
+  for (let m = re.exec(input); m; m = re.exec(input)) last = m;
+  if (!last) return null;
+
+  const cleanTitle = input.slice(0, last.index).replace(/[\s,;:\-–—]+$/, '');
+  if (!cleanTitle) return null;
+  const phrase = waitingWords(input.slice(last.index + last[0].length));
+  if (phrase.length === 0 || phrase.some(w => w.length < 2 && !/^\d$/.test(w))) return null;
+
+  const matches = candidates.filter(c => {
+    const words = waitingWords(c.title);
+    if (words.length === 0) return false;
+    const used = new Set<number>();
+    for (const w of phrase) {
+      // Prefer an exact word, then the first unused word it starts.
+      let i = words.findIndex((t, j) => !used.has(j) && t === w);
+      if (i < 0) i = words.findIndex((t, j) => !used.has(j) && t.startsWith(w));
+      if (i < 0) return false;
+      used.add(i);
+    }
+    return used.size * 2 >= words.length;
+  });
+  if (matches.length !== 1) return null;
+
+  return {
+    taskId: matches[0].id,
+    title: matches[0].title,
+    cleanTitle,
+    matchStart: last.index,
+    matchEnd: input.trimEnd().length,
+  };
+}
+
+export interface ParsedSubtasks {
+  /** Each item, in the order typed. Always 2+. */
+  subtasks: string[];
+  /** What came before the colon: the parent task's title. */
+  cleanTitle: string;
+  matchStart: number;
+  matchEnd: number;
+}
+
+/** Longer than this and an "item" is a sentence, not a step. */
+const SUBTASK_MAX_LENGTH = 60;
+
+/**
+ * "pack: socks, charger, passport" → a task titled "pack" with three
+ * subtasks. The same idea as "->" making chain steps, for things done in any
+ * order rather than one after another.
+ *
+ * Needs a colon followed by a space ("3:30" and "https:" don't qualify), then
+ * two or more items separated by commas, with an optional "and" before the
+ * last. One item ("Re: invoice") isn't a list. An empty item, or one long
+ * enough to be a sentence, refuses the lot rather than guessing which part
+ * was meant, the same call `parseChainInput` makes.
+ */
+export function parseSubtasksInput(input: string): ParsedSubtasks | null {
+  const colon = input.match(/:\s+/);
+  if (!colon || colon.index === undefined) return null;
+  const cleanTitle = input.slice(0, colon.index).trim();
+  if (!cleanTitle) return null;
+  const rest = input.slice(colon.index + colon[0].length).trim();
+  if (!rest.includes(',')) return null;
+  const items = rest.split(/\s*,\s*(?:and\s+|&\s*)?|\s+(?:and|&)\s+(?=[^,]*$)/).map(i => i.trim());
+  if (items.length < 2 || items.some(i => !i || i.length > SUBTASK_MAX_LENGTH)) return null;
+  return { subtasks: items, cleanTitle, matchStart: colon.index, matchEnd: input.trimEnd().length };
+}
+
 export interface ParsedPriority {
   priority: Priority;
   /** Input minus the matched "!word" token, whitespace collapsed and trimmed. */

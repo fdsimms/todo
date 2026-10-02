@@ -1,4 +1,4 @@
-import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, detectContactIntent, parseDurationInput, parseSupplyInput, parseTargetInput, parseEstimateInput, stripRemindPrefix, parseCategoryAndTagsInput, parsePriorityInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, getEditorMentionSuggestions, applyMentionOverrides, parseFromCompletionSuffix, type ParsedSchedule } from '../utils/parseTaskInput';
+import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, detectContactIntent, parseDurationInput, parseSupplyInput, parseTargetInput, parseEstimateInput, parseProjectInput, parseWaitingOnInput, parseSubtasksInput, stripRemindPrefix, parseCategoryAndTagsInput, parsePriorityInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, getEditorMentionSuggestions, applyMentionOverrides, parseFromCompletionSuffix, type ParsedSchedule } from '../utils/parseTaskInput';
 
 // Tuesday, June 10 2025, 10:00 AM — same anchor as parseNaturalDate.test.ts
 const NOW = new Date(2025, 5, 10, 10, 0, 0);
@@ -1853,5 +1853,119 @@ describe('parseEstimateInput', () => {
     expect(parseEstimateInput('read ~0 min')).toBeNull();
     expect(parseEstimateInput('hike ~30 hours')).toBeNull();
     expect(parseEstimateInput('~30m')).toBeNull();
+  });
+});
+
+describe('parseProjectInput', () => {
+  const projects = [
+    { id: 'p1', title: 'Japan Trip' },
+    { id: 'p2', title: 'Kitchen Remodel' },
+    { id: 'p3', title: 'Kitchen Garden' },
+    { id: 'p4', title: 'Taxes' },
+  ];
+
+  it('matches a whole name, ignoring case, spaces and punctuation', () => {
+    expect(parseProjectInput('book hotel +japantrip', projects)).toMatchObject({ projectId: 'p1', cleanTitle: 'book hotel' });
+    expect(parseProjectInput('book hotel +Japan-Trip', projects)?.projectId).toBe('p1');
+    expect(parseProjectInput('+taxes find receipts', projects)).toMatchObject({ projectId: 'p4', cleanTitle: 'find receipts' });
+  });
+
+  it('matches an unambiguous prefix of the name, or of one word in it', () => {
+    expect(parseProjectInput('book hotel +jap', projects)?.projectId).toBe('p1');
+    expect(parseProjectInput('book hotel +trip', projects)?.projectId).toBe('p1');
+    expect(parseProjectInput('buy tiles +remod', projects)?.projectId).toBe('p2');
+  });
+
+  it('refuses a prefix two projects share, and one too short to guess from', () => {
+    expect(parseProjectInput('buy tiles +kitchen', projects)).toBeNull();
+    expect(parseProjectInput('book hotel +ja', projects)).toBeNull();
+  });
+
+  it('marks where the token sat', () => {
+    const r = parseProjectInput('book +jap hotel', projects)!;
+    expect('book +jap hotel'.slice(r.matchStart, r.matchEnd)).toBe('+jap');
+    expect(r.cleanTitle).toBe('book hotel');
+  });
+
+  it('does not read a plus that is not a sigil', () => {
+    expect(parseProjectInput('learn C++ basics', [{ id: 'x', title: 'Basics' }])).toBeNull();
+    expect(parseProjectInput('reply +1 to taxes', projects)).toBeNull();
+    expect(parseProjectInput('2+taxes', projects)).toBeNull();
+  });
+
+  it('skips an unknown token and keeps looking', () => {
+    expect(parseProjectInput('+nothing book hotel +japan', projects)?.projectId).toBe('p1');
+  });
+});
+
+describe('parseWaitingOnInput', () => {
+  const tasks = [
+    { id: 't1', title: 'Get W-2 from employer' },
+    { id: 't2', title: 'Finish work report' },
+    { id: 't3', title: 'Call mom' },
+    { id: 't4', title: 'Call dentist' },
+    { id: 't5', title: 'Book flights' },
+  ];
+
+  it('finds a task from the words after "after"', () => {
+    expect(parseWaitingOnInput('file taxes after get W-2', tasks)).toMatchObject({ taskId: 't1', cleanTitle: 'file taxes' });
+    expect(parseWaitingOnInput('file taxes after get w2', tasks)?.taskId).toBe('t1');
+    expect(parseWaitingOnInput('book hotel after flights', tasks)?.taskId).toBe('t5');
+  });
+
+  it('takes prefixes and any order, and ignores filler', () => {
+    expect(parseWaitingOnInput('book hotel after the flights are booked', tasks)).toBeNull();
+    expect(parseWaitingOnInput('book hotel after the flights are done', tasks)?.taskId).toBe('t5');
+    expect(parseWaitingOnInput('book hotel after fli boo', tasks)?.taskId).toBe('t5');
+    expect(parseWaitingOnInput('file taxes after w2 get', tasks)?.taskId).toBe('t1');
+  });
+
+  it('needs every word to land, and at least half the title covered', () => {
+    expect(parseWaitingOnInput('go for a walk after work', tasks)).toBeNull();
+    expect(parseWaitingOnInput('file taxes after w2', tasks)).toBeNull();
+    expect(parseWaitingOnInput('file taxes after get the forms', tasks)).toBeNull();
+  });
+
+  it('offers nothing when two tasks match', () => {
+    expect(parseWaitingOnInput('send card after call', tasks)).toBeNull();
+    expect(parseWaitingOnInput('send card after call mom', tasks)?.taskId).toBe('t3');
+  });
+
+  it('covers from "after" to the end of the title', () => {
+    const r = parseWaitingOnInput('send card after call mom', tasks)!;
+    expect('send card after call mom'.slice(r.matchStart, r.matchEnd)).toBe('after call mom');
+  });
+
+  it('needs a title before it and a phrase after it', () => {
+    expect(parseWaitingOnInput('after call mom', tasks)).toBeNull();
+    expect(parseWaitingOnInput('send card after', tasks)).toBeNull();
+    expect(parseWaitingOnInput('send card after the', tasks)).toBeNull();
+  });
+});
+
+describe('parseSubtasksInput', () => {
+  it('splits a colon list into subtasks', () => {
+    expect(parseSubtasksInput('pack: socks, charger, passport')).toMatchObject({
+      cleanTitle: 'pack', subtasks: ['socks', 'charger', 'passport'],
+    });
+  });
+
+  it('takes "and" before the last item, with or without the comma', () => {
+    expect(parseSubtasksInput('pack: socks, charger and passport')?.subtasks).toEqual(['socks', 'charger', 'passport']);
+    expect(parseSubtasksInput('pack: socks, charger, and passport')?.subtasks).toEqual(['socks', 'charger', 'passport']);
+  });
+
+  it('marks from the colon to the end', () => {
+    const r = parseSubtasksInput('pack: socks, charger')!;
+    expect('pack: socks, charger'.slice(r.matchStart, r.matchEnd)).toBe(': socks, charger');
+  });
+
+  it('refuses what is not a list', () => {
+    expect(parseSubtasksInput('Re: invoice')).toBeNull();
+    expect(parseSubtasksInput('meet at 3:30, bring notes')).toBeNull();
+    expect(parseSubtasksInput('read https://x.com/a,b')).toBeNull();
+    expect(parseSubtasksInput(': socks, charger')).toBeNull();
+    expect(parseSubtasksInput('pack: socks,, charger')).toBeNull();
+    expect(parseSubtasksInput(`pack: socks, ${'x'.repeat(61)}`)).toBeNull();
   });
 });
