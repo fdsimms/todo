@@ -145,6 +145,9 @@ export function QuickEventSheet({ visible, onClose }: Props) {
 
   // ==== the draft ====
   const [text, setText] = useState('');
+  // Passed to the system sheet as typed. Nothing reads or geocodes it here;
+  // it only saves retyping an address into Apple's form.
+  const [location, setLocation] = useState('');
   const titleCaret = useTitleSelection(text);
   const [busy, setBusy] = useState(false);
   // A start set by hand (the chip's picker) or by tapping the tooltip. A
@@ -173,6 +176,7 @@ export function QuickEventSheet({ visible, onClose }: Props) {
   useEffect(() => {
     if (!visible) return;
     setText('');
+    setLocation('');
     titleCaret.resetCaret('');
     setBusy(false);
     setStartOverride(null);
@@ -328,7 +332,7 @@ export function QuickEventSheet({ visible, onClose }: Props) {
     haptics.tap();
     setBusy(true);
     const saved = await createEvent(
-      { title: draft.title, start: effectiveStart, end: effectiveEnd, allDay },
+      { title: draft.title, start: effectiveStart, end: effectiveEnd, allDay, location: location.trim() || undefined },
       draft.personIds
     );
     setBusy(false);
@@ -461,6 +465,22 @@ export function QuickEventSheet({ visible, onClose }: Props) {
               </View>
             </Animated.View>
           )}
+
+          <View style={styles.locationRow}>
+            <Ionicons name="location-outline" size={iconSize.sm} color={colors.textSecondary} />
+            <TextField
+              style={styles.locationInput}
+              placeholder="Location"
+              placeholderTextColor={colors.textTertiary}
+              value={location}
+              onChangeText={setLocation}
+              onSubmitEditing={next}
+              returnKeyType="next"
+              blurOnSubmit={false}
+              keyboardAppearance={isDark ? 'dark' : 'light'}
+              accessibilityLabel="Location"
+            />
+          </View>
 
           {namedPeople.length > 0 && (
             <View style={styles.captionRow}>
@@ -600,6 +620,17 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
   tooltipText: { color: colors.onAccent, fontSize: font.sm, fontWeight: fontWeight.semibold, flexShrink: 1 },
   tooltipDot: { width: 3, height: 3, borderRadius: 1.5, backgroundColor: colors.onAccent, opacity: 0.6 },
   tooltipHint: { color: colors.onAccent, fontSize: font.xs, fontWeight: fontWeight.medium, opacity: 0.75 },
+  locationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xsm,
+    paddingHorizontal: 10,
+    minHeight: interaction.pillHeight,
+    borderRadius: radius.md,
+    backgroundColor: colors.bgTertiary,
+    marginBottom: spacing.sm,
+  },
+  locationInput: { flex: 1, fontSize: font.sm, color: colors.text, paddingVertical: spacing.xs },
   captionRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginBottom: spacing.sm },
   captionText: { flex: 1, color: colors.textSecondary, fontSize: font.xs },
   toolbar: { flexDirection: 'row', gap: spacing.xs, marginBottom: spacing.sm },
