@@ -29,6 +29,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { formatDeadlineDate } from '../utils/dateUtils';
 import { findArchivedMatch } from '../utils/archiveMatch';
 import { TITLE_MAX_LENGTH, type Project } from '../types';
+import { TextField } from './TextField';
 
 /** The in-progress project the quick-add hands off to the full editor. */
 export interface ProjectDraft {
@@ -353,7 +354,7 @@ export function QuickAddProjectModal({
 
           {/* Name input row */}
           <View style={styles.row}>
-            <TextInput
+            <TextField
               ref={inputRef}
               style={styles.input}
               placeholder="New project…"

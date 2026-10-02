@@ -36,6 +36,7 @@ import { InlineAction } from './InlineAction';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { useFilterField } from '../hooks/useFilterField';
+import { TextField } from './TextField';
 
 interface Props {
   visible: boolean;
@@ -512,7 +513,7 @@ export function SubstituteSheet({ visible, itemId: liveItemId, editingSubItemId 
               <Text style={styles.ratioFieldLabel} numberOfLines={1}>{picked.name}</Text>
             </View>
             <View style={styles.ratioRow}>
-              <TextInput
+              <TextField
                 style={[styles.input, styles.ratioInput]}
                 value={ratioFrom}
                 onChangeText={setRatioFrom}
@@ -522,7 +523,7 @@ export function SubstituteSheet({ visible, itemId: liveItemId, editingSubItemId 
                 accessibilityLabel={`Amount of ${item.name} this ratio is written for`}
               />
               <Ionicons name="arrow-forward" size={iconSize.sm} color={colors.textTertiary} />
-              <TextInput
+              <TextField
                 style={[styles.input, styles.ratioInput]}
                 value={ratioTo}
                 onChangeText={setRatioTo}
@@ -535,7 +536,7 @@ export function SubstituteSheet({ visible, itemId: liveItemId, editingSubItemId 
             <Text style={styles.hint}>{ratioHint}</Text>
 
             <Text style={styles.label}>NOTE</Text>
-            <TextInput
+            <TextField
               style={styles.input}
               value={note}
               onChangeText={setNote}

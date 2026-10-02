@@ -4,7 +4,6 @@ import {
   Keyboard,
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
@@ -28,6 +27,7 @@ import { parseEventText } from '../utils/eventTextParse';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { getLogicalToday } from '../utils/dateUtils';
 import { haptics } from '../utils/haptics';
+import { TextField } from './TextField';
 
 type InputMode = 'paste' | 'photo';
 
@@ -322,7 +322,7 @@ export function EventImportSheet({ visible, onClose, onImported }: Props) {
         )}
 
         {mode === 'paste' ? (
-          <TextInput
+          <TextField
             style={styles.pasteInput}
             value={text}
             onChangeText={setText}

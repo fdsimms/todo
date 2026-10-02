@@ -44,6 +44,7 @@ import { formatTimeOfDay, getCurrentDayStart, getLogicalNow } from '../utils/dat
 import { animateLayout } from '../utils/layoutAnimation';
 import { haptics } from '../utils/haptics';
 import { TITLE_MAX_LENGTH } from '../types';
+import { TextField } from './TextField';
 
 const EVENT_TOKEN_ACCESSORY_ID = 'quickEventTitleTokenAccessory';
 /** "#" and "!" name a category and a priority, which an event doesn't have. */
@@ -365,7 +366,7 @@ export function QuickEventSheet({ visible, onClose }: Props) {
                   pointerEvents="none"
                 />
               )}
-              <TextInput
+              <TextField
                 ref={inputRef}
                 style={[styles.input, hasOverlay && styles.inputHidden]}
                 placeholder="New event…"

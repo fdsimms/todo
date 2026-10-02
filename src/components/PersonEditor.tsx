@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Platform, View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { Platform, View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { Person } from '../types';
 import { TITLE_MAX_LENGTH } from '../types';
@@ -33,6 +33,7 @@ import {
 } from '../utils/nudgeCadence';
 import { personHistory } from '../utils/personHistory';
 import { describeObservedCadence, observedCadenceDays } from '../utils/reachOutTasks';
+import { TextField } from './TextField';
 
 interface Props {
   visible: boolean;
@@ -250,7 +251,7 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
         </>
       }
     >
-      <TextInput
+      <TextField
         style={styles.titleInput}
         value={name}
         onChangeText={setName}
@@ -258,7 +259,7 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
         placeholderTextColor={colors.textTertiary}
         maxLength={TITLE_MAX_LENGTH}
       />
-      <TextInput
+      <TextField
         style={styles.notesInput}
         value={notes}
         onChangeText={setNotes}
@@ -394,7 +395,7 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
         <View style={styles.sep} />
         <View style={styles.fieldRow}>
           <Text style={styles.fieldLabelWide}>Ask about</Text>
-          <TextInput
+          <TextField
             style={styles.fieldInput}
             value={askAbout}
             onChangeText={setAskAbout}
@@ -424,7 +425,7 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
       <View style={styles.sectionCard}>
         <View style={styles.fieldRow}>
           <Text style={styles.fieldLabel}>Location</Text>
-          <TextInput
+          <TextField
             style={styles.fieldInput}
             value={location}
             onChangeText={setLocation}
@@ -442,7 +443,7 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
       <View style={styles.sectionCard}>
         <View style={styles.fieldRow}>
           <Text style={styles.fieldLabel}>Phone</Text>
-          <TextInput
+          <TextField
             style={styles.fieldInput}
             value={phoneNumber}
             // Formatted as typed but stored verbatim, the decision
@@ -458,7 +459,7 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
         <View style={styles.sep} />
         <View style={styles.fieldRow}>
           <Text style={styles.fieldLabel}>Email</Text>
-          <TextInput
+          <TextField
             style={styles.fieldInput}
             value={email}
             onChangeText={setEmail}
@@ -471,7 +472,7 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
         <View style={styles.sep} />
         <View style={styles.fieldRow}>
           <Text style={styles.fieldLabel}>Link</Text>
-          <TextInput
+          <TextField
             style={styles.fieldInput}
             value={linkUrl}
             onChangeText={setLinkUrl}
@@ -489,7 +490,7 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
       <View style={styles.sectionCard}>
         <View style={styles.fieldRow}>
           <Text style={styles.fieldLabel}>Nickname</Text>
-          <TextInput
+          <TextField
             style={styles.fieldInput}
             value={nickname}
             onChangeText={setNickname}

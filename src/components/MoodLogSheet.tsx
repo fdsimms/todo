@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { View, Text, TextInput, Alert, StyleSheet } from 'react-native';
+import { View, Text, Alert, StyleSheet } from 'react-native';
 import { format } from 'date-fns/format';
 import { isSameDay } from 'date-fns/isSameDay';
 import type { LoggedSymptom, MoodLevel, MoodLog, SymptomSeverity } from '../types';
@@ -34,6 +34,7 @@ import { SegmentedControl } from './SegmentedControl';
 import { PillGroup } from './PillGroup';
 import { EditorRow } from './EditorRow';
 import { WhenPicker } from './WhenPicker';
+import { TextField } from './TextField';
 
 const NOTE_MAX_LENGTH = 500;
 
@@ -416,7 +417,7 @@ export function MoodLogSheet({ visible, editing = null, onClose }: Props) {
 
       <View style={styles.card}>
         <Text style={styles.groupLabel}>NOTES</Text>
-        <TextInput
+        <TextField
           style={styles.noteInput}
           value={note}
           onChangeText={setNote}

@@ -1,6 +1,10 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  StyleSheet, Text, TextInput, View, type StyleProp, type ViewStyle,
+  StyleSheet,
+  Text,
+  View,
+  type StyleProp,
+  type ViewStyle,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { PressableScale } from './PressableScale';
@@ -10,6 +14,7 @@ import { haptics } from '../utils/haptics';
 import {
   canStep, clampCount, holdRepeatDelay, stepCount, type StepRange,
 } from '../utils/stepper';
+import { TextField } from './TextField';
 
 interface Props {
   value: number | null;
@@ -203,7 +208,7 @@ export function CountStepper({
     <View style={[styles.wrap, style]}>
       {key(-step, 'remove', 'Decrease')}
       {editing ? (
-        <TextInput
+        <TextField
           style={styles.valueInput}
           value={draft}
           onChangeText={setDraft}

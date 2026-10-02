@@ -4,7 +4,6 @@ import {
   Keyboard,
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
@@ -42,6 +41,7 @@ import { InlineAction } from './InlineAction';
 import { EmptyState } from './EmptyState';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { haptics } from '../utils/haptics';
+import { TextField } from './TextField';
 
 /**
  * A row Save can commit, in the order the days are handed out. The two the
@@ -780,7 +780,7 @@ export function SuggestMealsSheet({
         )}
 
         {!generating && (
-          <TextInput
+          <TextField
             style={styles.hintInput}
             value={hints}
             onChangeText={setHints}

@@ -3,7 +3,6 @@ import {
   Keyboard,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -15,6 +14,7 @@ import { spacing, radius, font, fontWeight, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { KNOWN_LINK_APPS, linkAppsFor } from '../constants/linkApps';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { TextField } from './TextField';
 
 /**
  * The minimum a list item has to carry to have a link button, satisfied by
@@ -140,7 +140,7 @@ export function ChainStepLinkSheet({
           </View>
           <View style={styles.customRow}>
             <Ionicons name="globe-outline" size={16} color={colors.textSecondary} />
-            <TextInput
+            <TextField
               style={styles.customInput}
               value={customText}
               onChangeText={setCustomText}

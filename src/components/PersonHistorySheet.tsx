@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import { EditorSheet } from './EditorSheet';
@@ -11,6 +11,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { confirmDelete } from '../utils/confirmDelete';
+import { TextField } from './TextField';
 
 /** The fields of a `HistoryEntry` this sheet actually needs. */
 export interface EditableHistoryEntry {
@@ -113,7 +114,7 @@ export function PersonHistorySheet({ visible, personName, entry, onSave, onDelet
         />
       }
     >
-      <TextInput
+      <TextField
         style={styles.textInput}
         value={title}
         onChangeText={setTitle}

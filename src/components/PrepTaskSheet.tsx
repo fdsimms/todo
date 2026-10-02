@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, TextInput, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import type { RecipePrepTask } from '../types';
 import { TITLE_MAX_LENGTH } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
@@ -11,6 +11,7 @@ import { CountStepper } from './CountStepper';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorSheet } from './EditorSheet';
+import { TextField } from './TextField';
 
 interface Props {
   visible: boolean;
@@ -85,7 +86,7 @@ export function PrepTaskSheet({ visible, recipeId, prepTask, onClose }: Props) {
     >
       <View style={styles.sectionCard}>
         <Text style={styles.groupLabel}>What to do</Text>
-        <TextInput
+        <TextField
           style={styles.input}
           value={title}
           onChangeText={setTitle}

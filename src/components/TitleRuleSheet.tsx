@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { Effort, Priority, TitleRule, TitleRuleMatch } from '../types';
 import { EFFORT_LABELS, PRIORITY_LABELS } from '../types';
@@ -25,6 +25,7 @@ import { InlineAction } from './InlineAction';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorSheet } from './EditorSheet';
+import { TextField } from './TextField';
 
 type FieldKey = 'category' | 'project' | 'tags' | 'priority' | 'effort' | 'link';
 
@@ -200,7 +201,7 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
                 <Ionicons name="close" size={12} color={colors.accent} />
               </TouchableOpacity>
             ))}
-            <TextInput
+            <TextField
               style={styles.keywordInput}
               value={keywordInput}
               onChangeText={setKeywordInput}
@@ -313,7 +314,7 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
               </TouchableOpacity>
             ))}
             {addingTag ? (
-              <TextInput
+              <TextField
                 autoFocus
                 style={styles.tagInput}
                 value={newTag}
@@ -423,7 +424,7 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
           </View>
           <View style={styles.linkCustomRow}>
             <Ionicons name="globe-outline" size={16} color={colors.textSecondary} />
-            <TextInput
+            <TextField
               style={styles.linkCustomInput}
               value={customLinkText}
               onChangeText={setCustomLinkText}

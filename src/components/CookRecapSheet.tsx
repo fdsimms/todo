@@ -34,6 +34,7 @@ import { ScrollEdgeFade } from './ScrollEdgeFade';
 import { SheetScrim } from './SheetScrim';
 import { haptics } from '../utils/haptics';
 import { useMeasuredTextWidth } from '../hooks/useMeasuredTextWidth';
+import { TextField } from './TextField';
 
 const CHECKBOX_SIZE = 22;
 
@@ -465,7 +466,7 @@ export function CookRecapSheet({
                     >
                       {weightText || 'e.g. 1450'}
                     </Text>
-                    <TextInput
+                    <TextField
                       style={[styles.weightInput, { width: weightTextWidth.width || undefined }]}
                       value={weightText}
                       onChangeText={setWeightText}

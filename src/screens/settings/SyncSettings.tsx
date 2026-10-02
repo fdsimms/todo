@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { TextInput, View } from 'react-native';
+import { View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSyncStore } from '../../store/useSyncStore';
 import { useColors } from '../../theme/ThemeContext';
@@ -8,6 +8,7 @@ import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
 import { makeSettingsStyles } from './settingsStyles';
 import { describeLastSynced } from '../../utils/syncStatus';
+import { TextField } from '../../components/TextField';
 
 /**
  * Turning sync on, and saying honestly what it has done.
@@ -108,7 +109,7 @@ export function SyncSettings() {
         label="Sync server"
         hint="A server you run, so something that isn't an Apple device can sync with this app. It keeps a full copy of your data. Both this and the token are needed."
       >
-        <TextInput
+        <TextField
           style={[styles.apiKeyInput, { color: colors.text, borderBottomColor: colors.separator }]}
           value={urlDraft}
           onChangeText={setUrlDraft}
@@ -132,7 +133,7 @@ export function SyncSettings() {
         label="Sync server token"
         hint={hasServerToken ? 'Saved. Type a new one to replace it.' : 'The token your sync server was set up with.'}
       >
-        <TextInput
+        <TextField
           style={[styles.apiKeyInput, { color: colors.text, borderBottomColor: colors.separator }]}
           value={tokenDraft}
           onChangeText={setTokenDraft}

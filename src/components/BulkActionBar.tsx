@@ -4,7 +4,6 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  TextInput,
   ScrollView,
   Animated,
 } from 'react-native';
@@ -19,6 +18,7 @@ import { useBulkBarEntrance } from '../hooks/useBulkBarEntrance';
 import { PRIORITY_LABELS, PRIORITY_COLORS, type Priority, type TimeOfDay } from '../types';
 import { tagColor } from '../utils/tagColor';
 import { CategoryPickerSheet } from './CategoryPicker';
+import { TextField } from './TextField';
 
 interface Props {
   selectedCount: number;
@@ -416,7 +416,7 @@ export function BulkActionBar({
               </ScrollView>
             )}
             <View style={styles.tagInputRow}>
-              <TextInput
+              <TextField
                 style={styles.tagInput}
                 placeholder="New tag…"
                 placeholderTextColor={colors.textTertiary}
@@ -447,7 +447,7 @@ export function BulkActionBar({
               </TouchableOpacity>
             </View>
             <View style={styles.tagInputRow}>
-              <TextInput
+              <TextField
                 style={styles.tagInput}
                 placeholder="e.g. Take supplements"
                 placeholderTextColor={colors.textTertiary}

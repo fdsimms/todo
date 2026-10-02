@@ -5,7 +5,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -27,6 +26,7 @@ import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessor
 import { SegmentedControl } from './SegmentedControl';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { TextField } from './TextField';
 
 /** "1.5" not "1.5000000000000002", and "2" not "2.0". */
 function formatServings(n: number): string {
@@ -297,7 +297,7 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
                   {servingSize && <Text style={styles.servingSize}>{servingSize}</Text>}
                 </View>
                 <View style={usingPills ? styles.inputRow : undefined}>
-                  <TextInput
+                  <TextField
                     style={usingPills ? styles.inputWithSuffix : styles.input}
                     value={usingPills ? (amountNumbers[food.key] ?? '') : answer}
                     onChangeText={text => {
@@ -434,7 +434,7 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
                       <Text style={styles.weighHeaderLabel}>{`Weight (${weighUnitLabel})`}</Text>
                     </View>
                     <View style={styles.weighRow}>
-                      <TextInput
+                      <TextField
                         style={styles.weighInput}
                         value={weighGrams[food.key] ?? ''}
                         onChangeText={text => setWeighGrams(g => ({ ...g, [food.key]: text }))}

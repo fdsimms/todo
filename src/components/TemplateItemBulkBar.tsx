@@ -1,11 +1,12 @@
 import React, { useState, useMemo } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, TextInput, Animated } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { PressableScale } from './PressableScale';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, font, radius, border, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { useBulkBarEntrance } from '../hooks/useBulkBarEntrance';
+import { TextField } from './TextField';
 
 interface Props {
   selectedCount: number;
@@ -76,7 +77,7 @@ export function TemplateItemBulkBar({ selectedCount, onDelete, onGroup, onCancel
               <Text style={[styles.applyBtnText, !groupTitle.trim() && styles.applyBtnTextDisabled]}>Apply</Text>
             </TouchableOpacity>
           </View>
-          <TextInput
+          <TextField
             style={styles.groupInput}
             value={groupTitle}
             onChangeText={setGroupTitle}

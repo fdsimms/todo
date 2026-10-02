@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useShallow } from 'zustand/react/shallow';
 import type { EventTaskRule } from '../types';
 import { useCalendarStore } from '../store/useCalendarStore';
@@ -23,6 +23,7 @@ import {
 } from '../utils/eventTasks';
 import { CountStepper } from './CountStepper';
 import { RuleListSheet } from './RuleListSheet';
+import { TextField } from './TextField';
 
 interface Props {
   visible: boolean;
@@ -208,7 +209,7 @@ function MatchEditor({
         </View>
       )}
       {!atLimit && (
-        <TextInput
+        <TextField
           style={[styles.matchInput, matches.length > 0 && styles.matchInputSpaced]}
           value={draft}
           onChangeText={setDraft}

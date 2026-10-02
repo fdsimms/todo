@@ -3,7 +3,6 @@ import {
   Platform,
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   Animated,
   PanResponder,
@@ -48,6 +47,7 @@ import {
 } from '../utils/leftovers';
 import { useScrollEdgeFade } from '../hooks/useScrollEdgeFade';
 import { useSheetMotion } from '../hooks/useSheetMotion';
+import { TextField } from './TextField';
 
 /** Kept clear above the sheet so its first row never slides under the status bar. */
 const TOP_INSET = 72;
@@ -491,7 +491,7 @@ export function LeftoverSheet({
               </View>
             </>
           ) : (
-            <TextInput
+            <TextField
               style={styles.titleInput}
               value={title}
               onChangeText={setTitle}
@@ -605,7 +605,7 @@ export function LeftoverSheet({
                 </Text>
               </View>
               <View style={styles.weightField}>
-                <TextInput
+                <TextField
                   style={styles.weightInput}
                   value={weightText}
                   onChangeText={setWeightText}

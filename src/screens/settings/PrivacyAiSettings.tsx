@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { View, TextInput, Alert, AppState, type ScrollView } from 'react-native';
+import { View, Alert, AppState, type ScrollView } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { dbClearGtinLookups, dbCountGtinLookups } from '../../db/database';
 import { useSettingsStore } from '../../store/useSettingsStore';
@@ -15,6 +15,7 @@ import { makeSettingsStyles } from './settingsStyles';
 import { AI_MODEL_OPTIONS, aiFeaturesFor } from '../../utils/aiFeatures';
 import { describeOnDeviceAvailability } from '../../services/onDeviceModel';
 import { useOnDeviceAvailability } from '../../hooks/useOnDeviceAi';
+import { TextField } from '../../components/TextField';
 
 interface Props {
   /** The host screen's scroll view, so focusing the key field can reveal it. */
@@ -211,7 +212,7 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
           label="Anthropic API key"
           hint="Required for any of the features below to work."
         >
-          <TextInput
+          <TextField
             style={[styles.apiKeyInput, { color: colors.text, borderBottomColor: colors.separator }]}
             value={apiKeyDraft}
             onChangeText={setApiKeyDraft}
@@ -366,7 +367,7 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
                 label="FoodData Central key"
                 hint="Needed to search for a food by name. Get a free key by signing up at api.data.gov. This is the USDA's own food database, and it is also asked first for a scanned barcode."
               >
-                <TextInput
+                <TextField
                   style={[styles.apiKeyInput, { color: colors.text, borderBottomColor: colors.separator }]}
                   value={fdcDraft}
                   onChangeText={setFdcDraft}
@@ -390,7 +391,7 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
                 label="Go-UPC key"
                 hint="Optional and paid. Asked only for barcodes the two free databases don't know."
               >
-                <TextInput
+                <TextField
                   style={[styles.apiKeyInput, { color: colors.text, borderBottomColor: colors.separator }]}
                   value={goUpcDraft}
                   onChangeText={setGoUpcDraft}

@@ -15,7 +15,6 @@ import {
   Platform,
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   ScrollView,
   StyleSheet,
@@ -107,6 +106,7 @@ import {
   GROCERY_QUANTITY_MAX_LENGTH,
   isPortionBox,
 } from '../types';
+import { TextField } from './TextField';
 
 /** "10000.00" — the widest thing GROCERY_PRICE_MINOR_MAX allows. */
 const PRICE_INPUT_MAX_LENGTH = 8;
@@ -1679,7 +1679,7 @@ export function GroceryItemSheet({
           {nameVisible && (
           <>
           <Text style={styles.label}>NAME</Text>
-          <TextInput
+          <TextField
             style={[styles.input, !!nameError && styles.inputError]}
             value={name}
             onChangeText={t => {
@@ -1782,7 +1782,7 @@ export function GroceryItemSheet({
           {quantityVisible && (
           <>
           <Text style={styles.label}>QUANTITY</Text>
-          <TextInput
+          <TextField
             style={styles.input}
             value={quantity}
             onChangeText={setQuantityText}
@@ -1814,7 +1814,7 @@ export function GroceryItemSheet({
           )}
           <View style={styles.priceField}>
             <Text style={styles.priceSymbol}>{currencySymbol}</Text>
-            <TextInput
+            <TextField
               style={styles.priceInput}
               value={price}
               onChangeText={text =>
@@ -1878,7 +1878,7 @@ export function GroceryItemSheet({
           {noteVisible && (
           <>
           <Text style={styles.label}>NOTE</Text>
-          <TextInput
+          <TextField
             style={styles.input}
             value={note}
             onChangeText={setNoteText}

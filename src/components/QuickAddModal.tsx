@@ -98,6 +98,7 @@ import { SheetScrim } from './SheetScrim';
 import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
 import { ORDINAL_OPTIONS } from '../utils/recurrenceLabels';
 import { ordinal } from '../utils/ordinal';
+import { TextField } from './TextField';
 
 const TITLE_TOKEN_ACCESSORY_ID = 'quickAddTitleTokenAccessory';
 
@@ -1856,7 +1857,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                   pointerEvents="none"
                 />
               )}
-              <TextInput
+              <TextField
                 ref={inputRef}
                 style={[styles.input, hasOverlay && styles.inputHidden]}
                 placeholder="New task…"
@@ -2173,7 +2174,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                     </TouchableOpacity>
                   );
                 })}
-                <TextInput
+                <TextField
                   style={styles.inlineCustomInput}
                   value={customTimedText}
                   onChangeText={applyCustomTimed}
@@ -2203,7 +2204,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                 />
                 {/* Optional: what the count counts, so "5/12 8oz glasses" can
                     be read off the row without the title spelling it out. */}
-                <TextInput
+                <TextField
                   style={styles.targetUnitInput}
                   value={targetUnit}
                   onChangeText={setTargetUnit}
@@ -2245,7 +2246,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                 <View style={styles.stepDot}>
                   <Text style={styles.stepDotText}>{chainItems.length + 1}</Text>
                 </View>
-                <TextInput
+                <TextField
                   style={styles.stepInput}
                   value={newStepTitle}
                   onChangeText={setNewStepTitle}
@@ -2501,7 +2502,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                   describeValue={n => (n === null ? 'not a supply' : formatSupplyLeft(n, supplyUnit))}
                 />
                 {supplyCount !== null && (
-                  <TextInput
+                  <TextField
                     style={styles.targetUnitInput}
                     value={supplyUnit}
                     onChangeText={setSupplyUnit}
@@ -2546,7 +2547,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                 })}
               </View>
               <View style={styles.effortCustomRow}>
-                <TextInput
+                <TextField
                   style={styles.effortCustomInput}
                   value={customEffortText}
                   onChangeText={applyCustomEffort}
@@ -2582,7 +2583,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
               )}
               {/* Tag input */}
               <View style={styles.tagInputRow}>
-                <TextInput
+                <TextField
                   ref={tagInputRef}
                   style={styles.tagInput}
                   placeholder="Add tag…"
@@ -2657,7 +2658,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
               </ScrollView>
               <View style={styles.linkCustomRow}>
                 <Ionicons name="globe-outline" size={16} color={colors.textSecondary} />
-                <TextInput
+                <TextField
                   style={styles.linkCustomInput}
                   value={customLinkText}
                   onChangeText={setCustomLinkText}
@@ -2690,7 +2691,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
             <View style={styles.panel}>
               <View style={styles.linkCustomRow}>
                 <Ionicons name="call-outline" size={16} color={colors.textSecondary} />
-                <TextInput
+                <TextField
                   style={styles.linkCustomInput}
                   value={phoneText}
                   onChangeText={t => setPhoneText(formatPhoneInput(t))}
@@ -2737,7 +2738,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
             <View style={styles.panel}>
               <View style={styles.linkCustomRow}>
                 <Ionicons name="mail-outline" size={16} color={colors.textSecondary} />
-                <TextInput
+                <TextField
                   style={styles.linkCustomInput}
                   value={emailText}
                   onChangeText={setEmailText}

@@ -36,6 +36,7 @@ import { TaskEditor, type TaskDraft } from './TaskEditor';
 import { QuickAddModal } from './QuickAddModal';
 import { useFilterField } from '../hooks/useFilterField';
 import { useScrollFieldIntoView } from '../hooks/useKeyboardInsetScroll';
+import { TextField } from './TextField';
 
 /** Editor sections that collapse to a one-line summary of their current value. */
 type FieldKey = 'category' | 'tags' | 'project';
@@ -423,7 +424,7 @@ export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, pro
         />
       }
     >
-      <TextInput
+      <TextField
         ref={titleInputRef}
         style={styles.titleInput}
         value={title}
@@ -435,7 +436,7 @@ export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, pro
         // A new one's name is what the sheet was opened to type.
         autoFocus={!!isNew}
       />
-      <TextInput
+      <TextField
         style={styles.notesInput}
         value={notes}
         onChangeText={setNotes}
@@ -550,7 +551,7 @@ export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, pro
               </TouchableOpacity>
             ))}
             {addingTag ? (
-              <TextInput
+              <TextField
                 autoFocus
                 style={styles.tagInput}
                 value={newTag}

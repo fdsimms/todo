@@ -2,7 +2,6 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   ScrollView,
   Keyboard,
@@ -35,6 +34,7 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { InlineTimePicker } from '../screens/settings/InlineTimePicker';
 import type { TimeOfDay } from '../types';
+import { TextField } from './TextField';
 
 const DEFAULT_DAYS = [1, 2, 3, 4, 5];
 const DEFAULT_START = '09:00';
@@ -293,7 +293,7 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
                 <Ionicons name="happy-outline" size={26} color={colors.textTertiary} />
               )}
             </PressableScale>
-            <TextInput
+            <TextField
               style={styles.nameInput}
               value={name}
               onChangeText={setName}

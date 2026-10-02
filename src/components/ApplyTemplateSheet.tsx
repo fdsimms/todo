@@ -3,7 +3,6 @@ import {
   Keyboard,
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   ScrollView,
   Animated,
@@ -59,6 +58,7 @@ import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import type { Task, TaskTemplate, TemplateContainer, TemplateItem, TemplateQuestion, Person } from '../types';
 import { useSheetMotion } from '../hooks/useSheetMotion';
 import { useKeyboardLift } from '../hooks/useKeyboardLift';
+import { TextField } from './TextField';
 
 interface Props {
   visible: boolean;
@@ -486,7 +486,7 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId, onAp
               tasks, exactly as before it existed. */}
           {showRunField && (
             <View style={styles.runBlock}>
-              <TextInput
+              <TextField
                 style={styles.runInput}
                 value={runName}
                 onChangeText={setRunName}
@@ -534,7 +534,7 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId, onAp
               {placeholderNames.map(name => (
                 <View key={name} style={styles.blankRow}>
                   <Text style={styles.blankLabel} numberOfLines={1}>{name}</Text>
-                  <TextInput
+                  <TextField
                     style={styles.blankInput}
                     value={placeholderValues[name] ?? ''}
                     onChangeText={text => setPlaceholderValues(prev => ({ ...prev, [name]: text }))}
@@ -701,7 +701,7 @@ function QuestionRow({
           })}
         />
       ) : (
-        <TextInput
+        <TextField
           style={styles.blankInput}
           value={value}
           onChangeText={onChange}

@@ -2,7 +2,6 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   StyleSheet,
 } from 'react-native';
@@ -33,6 +32,7 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
 import { EditorSheet } from './EditorSheet';
 import { TemplateQuestionSheet } from './TemplateQuestionSheet';
+import { TextField } from './TextField';
 
 interface Props {
   visible: boolean;
@@ -168,7 +168,7 @@ export function TemplateEditor({ visible, template, onClose }: Props) {
         />
       }
     >
-      <TextInput
+      <TextField
         style={styles.titleInput}
         value={name}
         onChangeText={setName}
@@ -203,7 +203,7 @@ export function TemplateEditor({ visible, template, onClose }: Props) {
               </TouchableOpacity>
             ))}
             {addingCategory ? (
-              <TextInput
+              <TextField
                 autoFocus
                 style={styles.tagInput}
                 value={newCategory}

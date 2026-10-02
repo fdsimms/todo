@@ -2,7 +2,6 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   StyleSheet,
   Alert,
@@ -47,6 +46,7 @@ import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessor
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
 import { EditorSheet } from './EditorSheet';
+import { TextField } from './TextField';
 
 interface Props {
   visible: boolean;
@@ -361,7 +361,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
       }
     >
       <NumberPadAccessory />
-      <TextInput
+      <TextField
         style={styles.titleInput}
         value={name}
         onChangeText={setName}
@@ -441,7 +441,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
           onClear={recipeYield.trim() ? () => { setRecipeYieldDraft(''); setYieldOpen(false); } : undefined}
         />
         {yieldOpen && (
-          <TextInput
+          <TextField
             style={styles.urlInput}
             value={recipeYield}
             onChangeText={setRecipeYieldDraft}
@@ -467,7 +467,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
             : undefined}
         />
         {cookedWeightOpen && (
-          <TextInput
+          <TextField
             style={styles.urlInput}
             value={cookedWeight}
             onChangeText={setCookedWeightDraft}
@@ -587,7 +587,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
               </TouchableOpacity>
             ))}
             {addingTag ? (
-              <TextInput
+              <TextField
                 autoFocus
                 style={styles.tagInput}
                 value={newTag}
@@ -691,7 +691,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
           onClear={author.trim() ? () => { setAuthorDraft(''); setAuthorOpen(false); } : undefined}
         />
         {authorOpen && (
-          <TextInput
+          <TextField
             style={styles.urlInput}
             value={author}
             onChangeText={setAuthorDraft}
@@ -756,7 +756,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
           </View>
         )}
         {sourceOpen && (
-          <TextInput
+          <TextField
             style={styles.urlInput}
             value={source}
             onChangeText={setSourceDraft}
@@ -771,7 +771,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
         {sourceOpen && sourceType === 'cookbook' && (
           <View style={styles.pageRow}>
             <Text style={styles.pageLabel}>Page</Text>
-            <TextInput
+            <TextField
               style={styles.pageInput}
               value={sourcePage}
               onChangeText={setSourcePageDraft}
@@ -817,7 +817,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
           onClear={url.trim() ? () => { setUrl(''); setLinkOpen(false); } : undefined}
         />
         {linkOpen && (
-          <TextInput
+          <TextField
             style={styles.urlInput}
             value={url}
             onChangeText={setUrl}
@@ -836,7 +836,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
 
       <View style={styles.sectionCard}>
         <Text style={styles.groupLabel}>Notes</Text>
-        <TextInput
+        <TextField
           style={styles.notesInput}
           value={notes}
           onChangeText={setNotesDraft}

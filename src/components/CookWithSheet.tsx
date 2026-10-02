@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, TextInput, ScrollView, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
@@ -19,6 +19,7 @@ import {
   cleanIndexIngredients, describeIndexLocation, findWithIngredients, findWithPantry, mentionsIngredient,
   pantryIngredients, splitIngredientText, type FinderEntryHit,
 } from '../utils/cookbookIndex';
+import { TextField } from './TextField';
 
 /** Which question the sheet is asking: about words you type, or about the pantry. */
 export type CookWithMode = 'pick' | 'have';
@@ -206,7 +207,7 @@ export function CookWithSheet({ visible, onClose, onOpenRecipe, onOpenCookbook, 
             )
           ) : (
           <>
-          <TextInput
+          <TextField
             style={[styles.input, styles.inputSpaced]}
             value={typed}
             onChangeText={handleChange}

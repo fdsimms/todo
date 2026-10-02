@@ -71,6 +71,7 @@ import { EditorSheet } from './EditorSheet';
 import { NumberPadAccessory } from './NumberPadAccessory';
 import { CountStepper } from './CountStepper';
 import { capitalize } from '../utils/capitalize';
+import { TextField } from './TextField';
 
 // Ceilings for the two steppers whose hand-rolled versions had none. Both sit
 // well past any real value; CountStepper needs a bound to disable its + key
@@ -584,7 +585,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
         </>
       }
     >
-      <TextInput
+      <TextField
         style={styles.titleInput}
         value={title}
         onChangeText={setTitle}
@@ -593,7 +594,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
         maxLength={TITLE_MAX_LENGTH}
         multiline blurOnSubmit
       />
-      <TextInput
+      <TextField
         style={styles.notesInput}
         value={notes}
         onChangeText={setNotes}
@@ -627,7 +628,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
               </TouchableOpacity>
             ))}
             {addingBlank ? (
-              <TextInput
+              <TextField
                 autoFocus
                 style={styles.blankInput}
                 value={newBlank}
@@ -1024,7 +1025,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             describeValue={n => (n === null ? 'off' : formatDuration(n))}
           />
           {completionTimerMinutes !== null && (
-            <TextInput
+            <TextField
               style={[styles.fieldBox, styles.medicationAmountInput]}
               value={completionTimerNote ?? ''}
               onChangeText={text => setCompletionTimerNote(text || null)}
@@ -1053,7 +1054,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           expanded={fieldOpen('medication')}
           onToggle={() => toggleField('medication')}
         >
-          <TextInput
+          <TextField
             style={styles.fieldBox}
             value={medicationName ?? ''}
             onChangeText={text => setMedicationName(text || null)}
@@ -1082,7 +1083,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           )}
           {medicationName !== null && (
             <>
-              <TextInput
+              <TextField
                 style={[styles.fieldBox, styles.medicationAmountInput]}
                 value={medicationAmount}
                 onChangeText={setMedicationAmount}
@@ -1400,7 +1401,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                   <View style={styles.chainItemDot}>
                     <Text style={styles.chainItemDotText}>{chainItems.length + 1}</Text>
                   </View>
-                  <TextInput
+                  <TextField
                     ref={chainInputRef}
                     autoFocus
                     style={styles.chainInput}
@@ -1502,7 +1503,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                 >
                   <Ionicons name="reorder-two-outline" size={16} color={colors.textTertiary} />
                 </TouchableOpacity>
-                <TextInput
+                <TextField
                   style={styles.chainInput}
                   value={rotationItem.title}
                   onChangeText={text => setRotationItems(prev => prev.map(
@@ -1530,7 +1531,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             {addingRotationItem ? (
               <View style={styles.chainItemRow}>
                 <Ionicons name="reorder-two-outline" size={16} color={colors.bgQuaternary} />
-                <TextInput
+                <TextField
                   autoFocus
                   style={styles.chainInput}
                   value={newRotationItemTitle}
@@ -1593,7 +1594,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           />
         </CollapsibleField>
         {deliverableKind === 'choice' && (
-          <TextInput
+          <TextField
             style={[styles.fieldBox, styles.deliverableOptionsInput]}
             value={deliverableOptionsText}
             onChangeText={setDeliverableOptionsText}
@@ -1673,7 +1674,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           />
           {addingSubtask ? (
             <View style={styles.chainInputRow}>
-              <TextInput
+              <TextField
                 ref={subtaskInputRef}
                 autoFocus
                 style={styles.chainInput}
@@ -1764,7 +1765,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
               </TouchableOpacity>
             ))}
             {addingTag ? (
-              <TextInput
+              <TextField
                 autoFocus
                 style={styles.tagInput}
                 value={newTag}
@@ -1804,7 +1805,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           expanded={fieldOpen('link')}
           onToggle={() => toggleField('link')}
         >
-          <TextInput
+          <TextField
             style={[styles.fieldBox, styles.deliverableOptionsInput]}
             value={linkText}
             onChangeText={setLinkText}

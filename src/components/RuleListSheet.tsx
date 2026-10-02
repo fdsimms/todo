@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Keyboard, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Keyboard, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -14,6 +14,7 @@ import { EmptyState } from './EmptyState';
 import { InlineAction } from './InlineAction';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { TextField } from './TextField';
 
 /** Same constraint EmptyState puts on its own icon. */
 type IoniconName = keyof typeof Ionicons.glyphMap;
@@ -299,7 +300,7 @@ export function RuleListSheet<T extends EditableRule>({
                         )}
                         {renderEditor(rule, patch => update(rule.id, patch))}
                         <Text style={[styles.editorLabel, styles.editorLabelSpaced]}>Add this task</Text>
-                        <TextInput
+                        <TextField
                           style={styles.titleInput}
                           value={rule.title}
                           onChangeText={text => update(rule.id, { title: text.slice(0, titleMaxLength) } as Partial<T>)}

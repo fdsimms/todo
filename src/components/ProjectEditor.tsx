@@ -2,7 +2,6 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   StyleSheet,
   Alert,
@@ -62,6 +61,7 @@ import {
   withCadenceUnit,
   type NudgeMode,
 } from '../utils/nudgeCadence';
+import { TextField } from './TextField';
 
 const NUDGE_MODE_OPTIONS: SegmentOption<NudgeMode>[] = NUDGE_MODES.map(mode => ({
   value: mode,
@@ -702,7 +702,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
         </>
       }
     >
-      <TextInput
+      <TextField
         style={styles.titleInput}
         value={title}
         onChangeText={setTitle}
@@ -714,7 +714,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
         // naming it is the one thing it can't be saved without.
         autoFocus={isNew && !project.title}
       />
-      <TextInput
+      <TextField
         style={styles.notesInput}
         value={notes}
         onChangeText={setNotes}
@@ -784,7 +784,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
         {awayStart && (
           <View style={styles.destinationRow}>
             <Ionicons name="location-outline" size={18} color={colors.textSecondary} />
-            <TextInput
+            <TextField
               style={styles.destinationInput}
               value={destination}
               onChangeText={setDestination}
@@ -962,7 +962,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
         {links.length > 0 && <View style={styles.sep} />}
         <View style={styles.linkRow}>
           <Ionicons name="add" size={18} color={colors.textTertiary} />
-          <TextInput
+          <TextField
             style={styles.linkInput}
             value={linkDraft}
             onChangeText={setLinkDraft}

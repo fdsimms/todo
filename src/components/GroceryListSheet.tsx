@@ -33,6 +33,7 @@ import { confirmDelete } from '../utils/confirmDelete';
 import { useSheetMotion } from '../hooks/useSheetMotion';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { listPickerRows } from '../utils/groceryLists';
+import { TextField } from './TextField';
 
 /** Kept clear above the lifted sheet so its title never slides under the status bar. */
 const TOP_INSET = 72;
@@ -203,7 +204,7 @@ export function GroceryListSheet({ visible, onClose }: Props) {
                   />
 
                   {editing ? (
-                    <TextInput
+                    <TextField
                       style={styles.renameInput}
                       value={editingName}
                       onChangeText={setEditingName}
@@ -272,7 +273,7 @@ export function GroceryListSheet({ visible, onClose }: Props) {
           </ScrollView>
 
           <View style={styles.addWrap}>
-            <TextInput
+            <TextField
               ref={newNameInputRef}
               style={styles.addInput}
               value={newName}

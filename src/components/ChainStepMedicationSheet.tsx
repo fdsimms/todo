@@ -4,7 +4,6 @@ import {
   KeyboardAvoidingView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import { CardSheet, useCardSheet } from './CardSheet';
@@ -18,6 +17,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { PillGroup } from './PillGroup';
 import { SegmentedControl } from './SegmentedControl';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { TextField } from './TextField';
 
 const NAME_MAX_LENGTH = 60;
 
@@ -120,7 +120,7 @@ export function ChainStepMedicationSheet({
 
         <Text style={styles.label}>Log a dose</Text>
         <View style={styles.body}>
-          <TextInput
+          <TextField
             style={styles.fieldBox}
             value={name}
             onChangeText={setName}
@@ -156,7 +156,7 @@ export function ChainStepMedicationSheet({
 
           {name.trim().length > 0 && (
             <>
-              <TextInput
+              <TextField
                 style={styles.fieldBox}
                 value={amount}
                 onChangeText={setAmount}

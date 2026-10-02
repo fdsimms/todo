@@ -1,11 +1,17 @@
 import React, { useMemo, useState } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, StyleSheet,
-  type StyleProp, type TextStyle, type TextInputProps,
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  type StyleProp,
+  type TextStyle,
+  type TextInputProps,
 } from 'react-native';
 import { useColors } from '../theme/ThemeContext';
 import { radius, border, interaction, type Colors } from '../theme';
 import { useRegisterPendingEdit, type PendingEdits } from '../hooks/usePendingEdits';
+import { TextField } from './TextField';
 
 // Not off `spacing`: these sit inside a line of running text rather than
 // between blocks, so the box wants to be tight to its own glyphs — a chip
@@ -112,7 +118,7 @@ export function InlineEditableText({
 
   if (editing) {
     return (
-      <TextInput
+      <TextField
         style={[styles.input, inputStyle, chipWidth ? { width: Math.max(chipWidth, 56) } : null]}
         value={draft}
         onChangeText={setDraft}

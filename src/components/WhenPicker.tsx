@@ -4,7 +4,6 @@ import {
   Keyboard,
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   StyleSheet,
   Dimensions,
@@ -46,6 +45,7 @@ import { reachOutPersonId, offerDeclinedRecently } from '../utils/reachOutTasks'
 import { PostponeCheckBanner, type PostponeCheckAction } from './PostponeCheckBanner';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetScrim } from './SheetScrim';
+import { TextField } from './TextField';
 
 // Placeholder fields the snooze engine doesn't consider — only the ones it
 // actually reads (title/notes/tags/category/priority/effort) get overridden
@@ -615,7 +615,7 @@ export function WhenPicker({
           {nlEnabled && (
             <>
               <View style={styles.nlSection}>
-                <TextInput
+                <TextField
                   style={styles.nlInput}
                   value={nlText}
                   onChangeText={onNlChange}

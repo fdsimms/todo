@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import type { MedicationLog } from '../types';
@@ -16,6 +16,7 @@ import { spacing, radius, font, fontWeight, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { getLogicalToday } from '../utils/dateUtils';
 import { DOSE_UNITS, medicationKey, medicationVocabulary } from '../utils/medicationLog';
+import { TextField } from './TextField';
 
 const NAME_MAX_LENGTH = 60;
 const NOTE_MAX_LENGTH = 200;
@@ -211,7 +212,7 @@ export function MedicationLogSheet({ visible, log, onClose }: Props) {
         <Text style={styles.hint}>
           Optional. Leave it blank to record only that you took it.
         </Text>
-        <TextInput
+        <TextField
           style={styles.amountInput}
           value={amount}
           onChangeText={setAmount}
@@ -259,7 +260,7 @@ export function MedicationLogSheet({ visible, log, onClose }: Props) {
 
       <View style={styles.card}>
         <Text style={styles.groupLabel}>NOTES</Text>
-        <TextInput
+        <TextField
           style={styles.noteInput}
           value={note}
           onChangeText={setNote}

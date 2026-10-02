@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
+import { ActivityIndicator, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
 import { NUTRIENT_KEYS, type FoodNutrition, type NutrientKey } from '../types';
@@ -30,6 +30,7 @@ import { NutritionSearchSheet, navigateToFoodSearchSettings } from './NutritionS
 import { RecipeIngredientSheet } from './RecipeIngredientSheet';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
+import { TextField } from './TextField';
 
 /**
  * A dish's whole nutrition panel, and the ingredients it couldn't count.
@@ -527,7 +528,7 @@ export function RecipeNutritionSheet({ visible, reading, recipeName, servings, o
 
                 {weighingId === line.id && weighing ? (
                   <View style={styles.weighRow}>
-                    <TextInput
+                    <TextField
                       style={styles.weighInput}
                       value={weighGrams}
                       onChangeText={setWeighGrams}

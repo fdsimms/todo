@@ -3,7 +3,6 @@ import {
   View,
   Text,
   TouchableOpacity,
-  TextInput,
   FlatList,
   Keyboard,
   StyleSheet,
@@ -100,6 +99,7 @@ import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
 import { useSheetSubject } from '../hooks/useSheetSubject';
 import { useFilterField } from '../hooks/useFilterField';
 import { useLogicalDayKey } from '../hooks/useLogicalDayKey';
+import { TextField } from '../components/TextField';
 
 type RootStackParamList = {
   // addLine: opened from a list card's "+", so the add field takes focus.
@@ -249,7 +249,7 @@ function NewLineField({
   };
   return (
     <View style={styles.newLineRow}>
-      <TextInput
+      <TextField
         style={styles.newLineInput}
         value={text}
         onChangeText={change}

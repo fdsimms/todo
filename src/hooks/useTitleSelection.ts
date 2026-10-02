@@ -35,8 +35,12 @@ import { caretAtEnd, clampSelection, spliceAtSelection, type TextSelection } fro
  * never rendered, and `selection` is `undefined` for all ordinary typing. It
  * is defined for exactly one render, when {@link TitleSelection.moveCaret} or
  * {@link TitleSelection.insertToken} deliberately places the caret, and is
- * dropped again in the effect below — RN's own sync runs in a layout effect,
- * so the push has already gone out by the time the value is cleared.
+ * dropped again in the effect below — the push goes out from a layout effect,
+ * so it has already gone by the time the value is cleared.
+ *
+ * Both fields are `TextField`s now, which applies `selection` itself (with the
+ * text, in one command) rather than handing it to `TextInput`; the one-shot
+ * shape is still what keeps ordinary typing from ever sending a caret.
  */
 export type TitleSelection = {
   /** Pass to the `TextInput`. `undefined` except on a render that moves the caret. */

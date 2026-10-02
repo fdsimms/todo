@@ -3,7 +3,6 @@ import {
   Keyboard,
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   Animated,
   PanResponder,
@@ -31,6 +30,7 @@ import { ScrollEdgeFade } from './ScrollEdgeFade';
 import { SheetScrim } from './SheetScrim';
 import { useScrollEdgeFade } from '../hooks/useScrollEdgeFade';
 import { useSheetMotion } from '../hooks/useSheetMotion';
+import { TextField } from './TextField';
 
 interface Props {
   visible: boolean;
@@ -305,7 +305,7 @@ export function MealEntrySheet({
           keyboardShouldPersistTaps="handled"
         >
           {editingTitle ? (
-            <TextInput
+            <TextField
               style={styles.sheetTitleInput}
               value={draftTitle}
               onChangeText={setDraftTitle}

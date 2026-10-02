@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, FlatList, StyleSheet, Platform, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, FlatList, StyleSheet, Platform, Alert, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useNavigation } from '@react-navigation/native';
@@ -86,6 +86,7 @@ import {
   EFFORT_LABELS, GROCERY_NAME_MAX_LENGTH,
   type Effort, type FoodNutrition, type Person, type ReminderKind, type Task,
 } from '../types';
+import { TextField } from '../components/TextField';
 
 const FIELD_ICONS: Record<BackfillFieldId, keyof typeof Ionicons.glyphMap> = {
   estimate: 'time-outline',
@@ -2283,7 +2284,7 @@ export function BackfillScreen() {
 
             {active.id === 'askAbout' && (
               <View style={styles.askAboutRow}>
-                <TextInput
+                <TextField
                   style={styles.askAboutInput}
                   value={askAboutText}
                   onChangeText={setAskAboutText}
@@ -2309,7 +2310,7 @@ export function BackfillScreen() {
 
             {active.id === 'location' && (
               <View style={styles.askAboutRow}>
-                <TextInput
+                <TextField
                   style={styles.askAboutInput}
                   value={locationText}
                   onChangeText={setLocationText}
@@ -2785,7 +2786,7 @@ export function BackfillScreen() {
                 </>
               )}
               <View style={styles.askAboutRow}>
-                <TextInput
+                <TextField
                   style={styles.askAboutInput}
                   value={renameText}
                   onChangeText={text => setRenameText(text.slice(0, GROCERY_NAME_MAX_LENGTH))}
@@ -3118,7 +3119,7 @@ function FieldControl({
         </View>
         {customOpen && (
           <View style={styles.customRow}>
-            <TextInput
+            <TextField
               style={styles.customInput}
               value={customText}
               onChangeText={onCustomTextChange}
