@@ -21,9 +21,10 @@ import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, animation, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { useRecipeStore } from '../store/useRecipeStore';
-import { rankRecipes, describeRecipe, cleanRecipeName, sortRecipesForDisplay } from '../utils/recipeUtils';
+import { rankRecipes, describeRecipe, cleanRecipeName, sharedRecipeNameKeys, sortRecipesForDisplay } from '../utils/recipeUtils';
 import { RECIPE_NAME_MAX_LENGTH } from '../types';
-import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
+import { useSheetMotion } from '../hooks/useSheetMotion';
+import { useFilterField } from '../hooks/useFilterField';
 
 export interface MealReplacement {
   recipeId: string | null;
@@ -34,6 +35,13 @@ interface Props {
   visible: boolean;
   /** How many entries this replaces — drives the sheet's title and hint. */
   count: number;
+  /**
+   * Overrides the title and hint the count would give. Set when the sheet is
+   * opened on one meal from its own sheet rather than on a selection, where
+   * "every selected meal" names something the user never did (#2911).
+   */
+  title?: string;
+  hint?: string;
   onReplace: (replacement: MealReplacement) => void;
   onClose: () => void;
 }
@@ -48,6 +56,11 @@ const MAX_ROWS = 30;
  * across every occurrence in one pass instead of opening each planned meal
  * to fix it by hand.
  *
+ * It is also the one planned meal's own swap, off MealEntrySheet's "Replace
+ * meal" row (#2911): the same `bulkReplaceItem` with a list of one, so the
+ * night keeps its slot, its per-meal flags and its servings. Removing it and
+ * planning again, which was the only way before, lost all three.
+ *
  * Deliberately not RecipePickerSheet cut down: that sheet answers "what's for
  * dinner", so it carries a slot row and a fridge section neither question
  * this one asks — a bulk replacement doesn't touch which slot an entry sits
@@ -55,13 +68,15 @@ const MAX_ROWS = 30;
  * container is a stranger idea than the issue this shipped for (#1110) asked
  * for. Recipe-or-typed-text only, same search-and-list shape.
  */
-export function MealReplaceItemSheet({ visible, count, onReplace, onClose }: Props) {
+export function MealReplaceItemSheet({ visible, count, title, hint, onReplace, onClose }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const recipes = useRecipeStore(useShallow(s => s.recipes));
-  const [query, setQuery] = useState('');
+  // Recipes another recipe shares a name with lead their subtitle with the book.
+  const sharedNames = useMemo(() => sharedRecipeNameKeys(recipes), [recipes]);
+  const { query, clear: clearQuery, props: filterField, inputRef: searchInputRef } = useFilterField();
   const typed = cleanRecipeName(query);
 
   const matches = useMemo(() => {
@@ -76,10 +91,8 @@ export function MealReplaceItemSheet({ visible, count, onReplace, onClose }: Pro
   const showFreeText =
     !!typed && !matches.some(r => r.name.toLowerCase() === typed.toLowerCase());
 
-  const hiddenY = useSheetHiddenOffset();
-
-  const translateY = useRef(new Animated.Value(hiddenY)).current;
-  const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const sheet = useSheetMotion(visible);
+  const { translateY, backdropOpacity } = sheet;
   const keyboardOffset = useRef(new Animated.Value(0)).current;
 
   // Without this, the card stays pinned to the physical bottom of the
@@ -104,23 +117,18 @@ export function MealReplaceItemSheet({ visible, count, onReplace, onClose }: Pro
 
   useEffect(() => {
     if (!visible) return;
-    setQuery('');
-    translateY.setValue(hiddenY);
-    backdropOpacity.setValue(0);
+    clearQuery();
     keyboardOffset.setValue(0);
-    Animated.parallel([
-      Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
-    ]).start();
+    sheet.show();
+    // Same fix as QuickSearchModal's own field: the sheet stays mounted
+    // across opens, so nothing else focuses this one.
+    searchInputRef.current?.focus();
   }, [visible]);
 
   const dismiss = (after?: () => void) => {
     Keyboard.dismiss();
-    Animated.parallel([
-      Animated.spring(translateY, { toValue: hiddenY, ...animation.spring.sheetDismiss, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
-    ]).start(() => {
-      // No re-arming setValue here — see useSheetHiddenOffset.
+    sheet.hide(() => {
+      // No re-arming setValue here — see useSheetMotion.
       onClose();
       after?.();
     });
@@ -135,7 +143,7 @@ export function MealReplaceItemSheet({ visible, count, onReplace, onClose }: Pro
       },
       onPanResponderRelease: (_, { dy, vy }) => {
         if (dy > 80 || vy > 1.2) dismiss();
-        else Animated.spring(translateY, { toValue: 0, ...animation.spring.snappy, useNativeDriver: true }).start();
+        else sheet.restore();
       },
     })
   ).current;
@@ -155,23 +163,22 @@ export function MealReplaceItemSheet({ visible, count, onReplace, onClose }: Pro
       </Animated.View>
       <SheetScrim onPress={() => dismiss()} />
 
-      <Animated.View style={[styles.sheetOuter, { transform: [{ translateY: Animated.add(translateY, keyboardOffset) }] }]}>
+      <Animated.View onLayout={sheet.onCardLayout} style={[styles.sheetOuter, { transform: [{ translateY: Animated.add(translateY, keyboardOffset) }] }]}>
         <View style={styles.handleArea} {...panResponder.panHandlers}>
           <View style={styles.handle} />
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.sheetTitle}>Replace {countLabel}</Text>
+          <Text style={styles.sheetTitle} numberOfLines={2}>{title ?? `Replace ${countLabel}`}</Text>
           <Text style={styles.sheetHint}>
-            Pick a recipe, or type a new name. It replaces the item on every selected meal.
+            {hint ?? 'Pick a recipe, or type a new name. It replaces the item on every selected meal.'}
           </Text>
 
           <View style={styles.searchWrap}>
             <Ionicons name="search" size={15} color={colors.textTertiary} />
             <TextInput
               style={styles.searchInput}
-              value={query}
-              onChangeText={setQuery}
+              {...filterField}
               placeholder="Search recipes, or type a name"
               placeholderTextColor={colors.textTertiary}
               autoCorrect={false}
@@ -221,14 +228,14 @@ export function MealReplaceItemSheet({ visible, count, onReplace, onClose }: Pro
                     onPress={() => pick(recipe.id, recipe.name)}
                     activeOpacity={interaction.activeOpacity}
                     accessibilityRole="button"
-                    accessibilityLabel={`Replace with ${recipe.name}. ${describeRecipe(recipe)}`}
+                    accessibilityLabel={`Replace with ${recipe.name}. ${describeRecipe(recipe, null, { sharedName: sharedNames.has(recipe.nameKey) })}`}
                   >
                     <View style={[styles.rowIcon, { backgroundColor: colors.accentSubtle }]}>
                       <Ionicons name="restaurant-outline" size={16} color={colors.accent} />
                     </View>
                     <View style={styles.rowInfo}>
                       <Text style={styles.rowName} numberOfLines={1}>{recipe.name}</Text>
-                      <Text style={styles.rowHint} numberOfLines={1}>{describeRecipe(recipe)}</Text>
+                      <Text style={styles.rowHint} numberOfLines={1}>{describeRecipe(recipe, null, { sharedName: sharedNames.has(recipe.nameKey) })}</Text>
                     </View>
                     {recipe.vote === 'loved' && <Ionicons name="thumbs-up" size={13} color={colors.orange} />}
                   </TouchableOpacity>

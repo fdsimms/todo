@@ -62,6 +62,41 @@ export function awayNoonIso(date: Date): string {
 }
 
 /**
+ * The Leaving date a date answer gives a project, or null to leave it alone.
+ *
+ * "Pick dates for Lisbon" answered with the 14th: the task opted in
+ * (`Task.deliverableSetsAway`), so the trip leaves on the 14th. Only ever
+ * fills an empty Leaving date, never moves one somebody set, and refuses a
+ * day after an existing Coming back rather than write a span that ends before
+ * it starts.
+ */
+export function departureFromAnswer(
+  project: Pick<Project, 'awayStart' | 'awayEnd'>,
+  answer: Date | null,
+): string | null {
+  if (!answer || project.awayStart) return null;
+  if (project.awayEnd && getDayStart(answer).getTime() > getDayStart(new Date(project.awayEnd)).getTime()) return null;
+  return awayNoonIso(answer);
+}
+
+/**
+ * The Leaving date to offer moving to, when a project already has one and a
+ * date answer (re-answered, or edited later) names a different day. Null when
+ * there's nothing to move: no answer, no Leaving date yet (that's
+ * departureFromAnswer's to fill), the same day, or a day after Coming back.
+ * Offered, never written on its own: this is a date somebody set.
+ */
+export function departureMoveFromAnswer(
+  project: Pick<Project, 'awayStart' | 'awayEnd'>,
+  answer: Date | null,
+): string | null {
+  if (!answer || !project.awayStart) return null;
+  if (getDayStart(answer).getTime() === getDayStart(new Date(project.awayStart)).getTime()) return null;
+  if (project.awayEnd && getDayStart(answer).getTime() > getDayStart(new Date(project.awayEnd)).getTime()) return null;
+  return awayNoonIso(answer);
+}
+
+/**
  * The span this project actually has, or null if it has none.
  *
  * An `awayEnd` without an `awayStart` is dropped rather than promoted: on its
@@ -129,8 +164,8 @@ export function awayStatus(
  *
  * Literal, in the register the rest of the app's rows use: it states when you
  * leave or when you are back, and nothing else. `formatDeadlineDate` does the
- * date, so "Back Tomorrow" capitalises the same way `deadlineLabel`'s "By
- * Tomorrow" already does rather than inventing a second style beside it.
+ * date, so "Back Tomorrow" capitalises the same way the rest of the app's
+ * dates do rather than inventing a second style beside it.
  *
  * A finished trip says nothing. The project is still there to be completed or
  * archived like any other, and a card captioned with a date that has been and

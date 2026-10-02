@@ -3,6 +3,7 @@ import {
   TITLE_MAX_LENGTH,
   GROCERY_NAME_MAX_LENGTH,
   GROCERY_QUANTITY_MAX_LENGTH,
+  RECIPE_INGREDIENT_QUANTITY_MAX_LENGTH,
   RECIPE_NAME_MAX_LENGTH,
   RECIPE_PAGE_MAX_LENGTH,
   RECIPE_SECTION_MAX_LENGTH,
@@ -27,7 +28,7 @@ import {
   clampCookAnswer, COOK_QUESTION_MAX_LENGTH, type CookQuestionContext,
 } from '../utils/cookQuestions';
 import {
-  ESTIMATE_DESCRIPTION_MAX_LENGTH, MAX_CONTEXT_FOODS, MAX_ESTIMATE_QUESTIONS, readNutritionEstimate,
+  ESTIMATE_REQUEST_MAX_LENGTH, MAX_CONTEXT_FOODS, MAX_ESTIMATE_QUESTIONS, readNutritionEstimate,
   type EstimateContextFood, type NutritionEstimate, type RawNutritionEstimate,
 } from '../utils/nutritionEstimate';
 import {
@@ -42,6 +43,7 @@ import { amountFromPrintedText, type LabelColumn, type LabelReading } from '../u
 import { NUTRIENT_LABEL } from '../utils/foodNutrition';
 import { clampKeepDays } from '../utils/leftovers';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { isDemoModeActive } from '../utils/demoState';
 import { getLogicalToday, dayKeyOf } from '../utils/dateUtils';
 import type { AiFeatureId, AiModelId } from '../utils/aiFeatures';
 import { routeForFeature, type AiRoute } from '../utils/aiRouting';
@@ -68,6 +70,16 @@ const IMAGE_REQUEST_TIMEOUT_MS = 40_000;
  * prefill the base already covers happens once for the whole request.
  */
 const ADDITIONAL_IMAGE_TIMEOUT_MS = 15_000;
+/**
+ * For a text request whose *reply* is long: a whole recipe written back out,
+ * with its shopping list, method and prep tasks. The image budget above treats
+ * the upload as the slow part, but for these the output dominates, and a
+ * reply of a couple of thousand tokens routinely outlasts the ordinary 15s on
+ * the larger models. Same figure as the image budget, which already allows for
+ * a reply of this size. "Try again" re-sends the identical request, so a
+ * window that is too short fails the same way every time.
+ */
+const LONG_REPLY_TIMEOUT_MS = 40_000;
 
 interface AnthropicResponse {
   stop_reason?: string;
@@ -98,6 +110,12 @@ async function callAnthropic(
   model: AiModelId,
   timeoutMs: number = REQUEST_TIMEOUT_MS,
 ): Promise<AnthropicResponse> {
+  // The one request every AI feature makes, so the one place demo mode is
+  // refused. Entering a demo doesn't reload settings, so the owner's real key
+  // is still in memory: the seed's own groceries used to send an aisle
+  // request billed to it, and so did anything the person holding the phone
+  // tried. Throwing here is the same failure every caller already handles.
+  if (isDemoModeActive()) throw new Error('AI features are off in demo mode.');
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   let response: Response;
@@ -148,6 +166,14 @@ export function describeAIError(error: unknown): string {
   if (message === 'Response was truncated') return 'The response was cut off. Try again.';
   if (message === 'No estimate returned') {
     return 'That description could not be read into figures. Try naming the dish and the place.';
+  }
+  // Neither of these is the network, and the fallthrough below sends
+  // somebody to check a connection that was fine. Demo mode refuses every
+  // request on purpose (see `callAnthropic`); the other two are a reply that
+  // came back with nothing usable in it, or with JSON that didn't parse.
+  if (message === 'AI features are off in demo mode.') return 'AI features are off in demo mode.';
+  if (message === 'No suggestions returned' || message === 'No answer returned' || error instanceof SyntaxError) {
+    return 'Nothing usable came back. Try again.';
   }
   return 'Network request failed. Check your connection.';
 }
@@ -797,7 +823,16 @@ export interface RecipeGroceryItem {
   excludeFromShoppingList?: boolean;
 }
 
-/** Same validation `suggestRecipeGroceries` always applied, now shared with extractRecipe. */
+/**
+ * Same validation `suggestRecipeGroceries` always applied, now shared with
+ * extractRecipe and draftMealRecipe. Every caller's `quantity` lands on
+ * `RecipeIngredient.quantity`, never on `GroceryItem.quantity` directly — so
+ * this clamps to `RECIPE_INGREDIENT_QUANTITY_MAX_LENGTH`, not
+ * `GROCERY_QUANTITY_MAX_LENGTH`, which is too tight for the parenthetical
+ * source count the schema's own prompt asks the model to append (see
+ * `groceryItemsSchema`'s "quantity" description) and used to cut one off
+ * mid-unit ("1 packet (1/4 ounce, 7 g)" truncated to "1 packet (1/4 ounce, 7 g").
+ */
 function parseExtractedItems(
   raw: unknown,
   availableAisles: string[],
@@ -808,7 +843,10 @@ function parseExtractedItems(
       optional?: unknown; excludeFromShoppingList?: unknown;
     }
   > | undefined;
-  if (!items) return [];
+  // Not an array, rather than absent: a reply carrying an object or a string
+  // here otherwise threw a TypeError in the loop below, which surfaced as
+  // "Network request failed".
+  if (!Array.isArray(items)) return [];
 
   const seen = new Set<string>();
   const result: RecipeGroceryItem[] = [];
@@ -824,7 +862,7 @@ function parseExtractedItems(
     result.push({
       name,
       quantity: typeof item.quantity === 'string'
-        ? item.quantity.trim().slice(0, GROCERY_QUANTITY_MAX_LENGTH)
+        ? item.quantity.trim().slice(0, RECIPE_INGREDIENT_QUANTITY_MAX_LENGTH)
         : '',
       aisle: canonicalAisle(item.aisle, availableAisles) ?? OTHER_AISLE,
       // The model's field is named "component" (see sharedRecipeInstructions)
@@ -921,7 +959,7 @@ function groceryItemsSchema(availableAisles: string[], description: string) {
         },
         quantity: {
           type: 'string',
-          description: 'The recipe\'s own amount, as written, with any prep instruction moved to the "prep" field instead — "4 cloves", "2 cups", "1 tbsp", "2 tsp" — not a converted purchasable size ("1 bulb" for "4 cloves" is wrong). Abbreviate tablespoon/teaspoon as "tbsp"/"tsp". If the recipe gives a parenthetical source count for the amount — "(from about 2 limes)", "(1 medium onion)" — append it after the amount, e.g. "3 oz (from about 2 limes)". Empty string if the recipe does not say.',
+          description: `The recipe's own amount, as written, with any prep instruction moved to the "prep" field instead — "4 cloves", "2 cups", "1 tbsp", "2 tsp" — not a converted purchasable size ("1 bulb" for "4 cloves" is wrong). Abbreviate tablespoon/teaspoon as "tbsp"/"tsp". If the recipe gives a parenthetical source count for the amount — "(from about 2 limes)", "(1 medium onion)" — append it after the amount, e.g. "3 oz (from about 2 limes)". Under ${RECIPE_INGREDIENT_QUANTITY_MAX_LENGTH} characters. Empty string if the recipe does not say.`,
         },
         aisle: {
           type: 'string',
@@ -971,7 +1009,8 @@ function parseExtractedSteps(raw: unknown): string[] {
 
 function parseExtractedPrepTasks(raw: unknown): ExtractedPrepTask[] {
   const items = raw as Array<{ title?: unknown; daysAhead?: unknown }> | undefined;
-  if (!items) return [];
+  // Not an array rather than absent, for the reason parseExtractedItems gives.
+  if (!Array.isArray(items)) return [];
   const result: ExtractedPrepTask[] = [];
   for (const item of items) {
     if (typeof item?.title !== 'string') continue;
@@ -1199,7 +1238,9 @@ export async function extractRecipe(
         multiPhoto
           ? `These are ${images.length} photos of the same recipe, in reading order — for example a cookbook page and the page it continues onto after a page turn. Read them together as one continuous recipe and extract it: its name, how many it serves (or what it makes, if that's how the source states it — "2 loaves", "3 cups", "2 dozen cookies"), its total prep/cook time, and ${foundLine}.`
           : `This is a photo of a recipe — a cookbook page, a recipe card, a handwritten note, or a screen. Read it and extract the recipe: its name, how many it serves (or what it makes, if that's how the source states it — "2 loaves", "3 cups", "2 dozen cookies"), its total prep/cook time, and ${foundLine}.`,
-        `${pageFurniture} If the ${multiPhoto ? 'photos show' : 'page shows'} more than one recipe, extract only the most prominent one — the one whose title and ingredient list are most complete — and never merge ingredients across recipes. Ingredient lists are often set in two columns; read down each column rather than across.`,
+        multiPhoto
+          ? `${pageFurniture} If any single photo shows more than one recipe on the page (for example a facing-page recipe next to the one you were asked to read), ignore the other recipe and extract only the one that continues across the photos you were given — never merge ingredients across recipes. A photo that is mostly or entirely method text with a short or absent ingredient list is still part of the same recipe if it continues the method from an earlier photo; never drop it, or the steps or prep tasks on it, for looking ingredient-light. Ingredient lists are often set in two columns; read down each column rather than across.`
+          : `${pageFurniture} If the page shows more than one recipe, extract only the most prominent one — the one whose title and ingredient list are most complete — and never merge ingredients across recipes. Ingredient lists are often set in two columns; read down each column rather than across.`,
         ...sharedRecipeInstructions(availableAisles),
         ...(includeSource ? sourceInstructions() : []),
         ...(includeReferences ? referenceInstructions() : []),
@@ -1333,7 +1374,10 @@ export async function extractRecipe(
     }],
     tool_choice: { type: 'tool', name: 'extract_recipe' },
     messages: [{ role: 'user', content }],
-  }, apiKey, model, images ? IMAGE_REQUEST_TIMEOUT_MS + (images.length - 1) * ADDITIONAL_IMAGE_TIMEOUT_MS : undefined);
+  }, apiKey, model, images
+    ? IMAGE_REQUEST_TIMEOUT_MS + (images.length - 1) * ADDITIONAL_IMAGE_TIMEOUT_MS
+    // A pasted or fetched recipe is text, but the reply is the whole recipe.
+    : LONG_REPLY_TIMEOUT_MS);
 
   const toolUse = data.content?.find(c => c.type === 'tool_use');
   const input = toolUse?.input as {
@@ -1647,7 +1691,7 @@ export async function draftMealRecipe(
         'If the name is too vague to cook at all, return an empty ingredient list and an empty method rather than guessing at a dish.',
       ].join('\n\n'),
     }],
-  }, apiKey, model);
+  }, apiKey, model, LONG_REPLY_TIMEOUT_MS);
 
   const toolUse = data.content?.find(c => c.type === 'tool_use');
   const input = toolUse?.input as {
@@ -1907,6 +1951,143 @@ export interface ExtractedReceipt {
  */
 const MAX_RECEIPT_CHARS = 6_000;
 
+/** A dense index page rarely lists more dishes than this; a longer read is clamped rather than dropped. */
+const MAX_INDEX_ENTRIES_PER_PAGE = 200;
+/**
+ * An index page is the longest reply any photo here asks for: 150 dishes is a
+ * normal page, and writing them out takes longer than the upload, the reverse
+ * of what `IMAGE_REQUEST_TIMEOUT_MS` budgets for. A window too short fails the
+ * same way on every retry, so this one is sized to the reply.
+ */
+const INDEX_PAGE_TIMEOUT_MS = 90_000;
+
+/** One dish as a photographed index page lists it. See `CookbookIndexEntry`. */
+export interface ExtractedIndexEntry {
+  title: string;
+  /** As printed ("142", "112-115"), or null when the line gave none. */
+  page: string | null;
+  /** The ingredient headings it was listed under on this page, as printed. */
+  ingredients: string[];
+}
+
+export interface ExtractedIndexPage {
+  entries: ExtractedIndexEntry[];
+  /**
+   * The ingredient heading still open at the foot of the page, when its
+   * entries run on past the bottom. Handed to the next page's read as
+   * `continuesHeading`, so the entries at the top of that page, which print no
+   * heading of their own, are still filed under it.
+   */
+  lastHeading: string | null;
+}
+
+/**
+ * Reads one photographed page of a cookbook's index into its dishes, for
+ * `CookbookIndexScanSheet` to fill the book's index from.
+ *
+ * The photo goes to the model itself rather than an on-device text read first,
+ * the order `extractReceipt` prefers. An index is set in two or three columns
+ * and nests its sub-entries under a heading by indentation alone ("Lentils /
+ *   braised, with shallots, 142"), and row-grouping Vision's fragments by
+ * height splices the columns together and drops the indentation, which is the
+ * whole structure. Reading the image keeps both.
+ *
+ * Most of the prompt is what *isn't* a dish: a technique or topic reference
+ * ("lentils, cooking, 12"), a "see also", a chapter heading. And an ingredient
+ * is only a heading the dish is filed under, never a guess from its name: the
+ * index printing it is the claim, which is what keeps these words honest
+ * enough to search by.
+ *
+ * **It extracts; it never decides.** Nothing is written until the sheet's
+ * review has been confirmed, the rule `extractReceipt` follows.
+ */
+export async function extractCookbookIndex(
+  image: RecipeImage,
+  continuesHeading: string | null,
+): Promise<ExtractedIndexPage> {
+  const { apiKey, model } = requireFeature('cookbookIndex');
+  const empty: ExtractedIndexPage = { entries: [], lastHeading: null };
+  if (!image.base64) return empty;
+
+  const prompt = [
+    'This is a photo of one page of a cookbook\'s index. List every dish (recipe) it indexes, with its page and the ingredient headings it is listed under.',
+    'An index nests sub-entries under a heading by indentation, often in two or three columns. Read each column top to bottom. A sub-entry like "braised, with crispy shallots, 142" under the heading "Lentils" is the dish "Braised lentils with crispy shallots". Give each dish its full name as a cook would say it, rebuilt from the heading and the sub-entry. If the dish also appears under its own name elsewhere on the page, use that name.',
+    'ingredients: the ingredient or food headings the dish is listed under on this page ("Lentils", "Shallots"), as printed. Only headings that name a food. Never a course, cuisine, occasion or chapter ("Soups", "Vegetarian", "Weeknight"), and never an ingredient you guess from the dish\'s name. A dish listed only under its own name has no ingredients.',
+    'Skip everything that isn\'t a dish: techniques and topics ("lentils, cooking, 12", "about beans"), "see" and "see also" cross-references, and page numbers for introductions or essays.',
+    'page: the first page number given for the dish, as printed. A range stays a range ("112-115"). Leave it empty if none is printed.',
+    'The same dish is often listed under several headings. List it once, with every heading it appears under on this page in its ingredients.',
+    continuesHeading
+      ? `The previous page ended partway through the heading "${continuesHeading}". Entries at the top of this page that have no heading of their own belong under it.`
+      : '',
+    'lastHeading: if the last heading on the page (bottom of the last column) is still running when the page ends, give it; otherwise leave it empty.',
+    'The photo may be sideways, upside down or at an angle. Read the text in whatever direction it runs.',
+    'Part of the page may be blurry, in shadow or cut off at an edge. Skip only the lines you can\'t read and list the rest. Return no entries only if none of it can be read, or it is not a cookbook index at all.',
+  ].filter(Boolean).join('\n\n');
+
+  const data = await callAnthropic({
+    max_tokens: 8000,
+    tools: [{
+      name: 'extract_cookbook_index',
+      description: 'Extract the dishes a cookbook index page lists, with pages and ingredient headings',
+      input_schema: {
+        type: 'object',
+        properties: {
+          entries: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                title: { type: 'string', description: `The dish's full name. Under ${RECIPE_NAME_MAX_LENGTH} characters.` },
+                page: { type: 'string', description: 'The page as printed, or an empty string.' },
+                ingredients: { type: 'array', items: { type: 'string' } },
+              },
+              required: ['title', 'page', 'ingredients'],
+            },
+          },
+          lastHeading: { type: 'string', description: 'The heading still running at the foot of the page, or an empty string.' },
+        },
+        required: ['entries', 'lastHeading'],
+      },
+    }],
+    tool_choice: { type: 'tool', name: 'extract_cookbook_index' },
+    messages: [{
+      role: 'user',
+      content: [
+        { type: 'image', source: { type: 'base64', media_type: image.mediaType, data: image.base64 } },
+        { type: 'text', text: prompt },
+      ],
+    }],
+  }, apiKey, model, INDEX_PAGE_TIMEOUT_MS);
+
+  const toolUse = data.content?.find(c => c.type === 'tool_use');
+  const input = toolUse?.input as { entries?: unknown; lastHeading?: unknown } | undefined;
+  if (!input) throw new Error('No suggestions returned');
+  return parseIndexPage(input);
+}
+
+/** The model's answer, with anything malformed dropped rather than trusted. Exported for its tests. */
+export function parseIndexPage(input: { entries?: unknown; lastHeading?: unknown }): ExtractedIndexPage {
+  const entries: ExtractedIndexEntry[] = [];
+  if (Array.isArray(input.entries)) {
+    for (const raw of input.entries) {
+      if (!raw || typeof raw !== 'object') continue;
+      const r = raw as { title?: unknown; page?: unknown; ingredients?: unknown };
+      const title = typeof r.title === 'string' ? r.title.trim().replace(/\s+/g, ' ').slice(0, RECIPE_NAME_MAX_LENGTH).trim() : '';
+      if (!title) continue;
+      const page = typeof r.page === 'string' && r.page.trim() ? r.page.trim() : null;
+      const ingredients = Array.isArray(r.ingredients)
+        ? r.ingredients.filter((w): w is string => typeof w === 'string' && w.trim().length > 0).map(w => w.trim())
+        : [];
+      entries.push({ title, page, ingredients });
+      if (entries.length >= MAX_INDEX_ENTRIES_PER_PAGE) break;
+    }
+  }
+  const lastHeading = typeof input.lastHeading === 'string' && input.lastHeading.trim()
+    ? input.lastHeading.trim()
+    : null;
+  return { entries, lastHeading };
+}
+
 /**
  * Reads a store receipt into the store's name and the lines it charged for,
  * from a photo or from text already read off one.
@@ -2045,8 +2226,11 @@ export async function extractReceipt(source: string | RecipeImage): Promise<Extr
           ]
         : prompt,
     }],
-    // Only an upload needs the longer window; text is an ordinary request.
-  }, apiKey, model, image ? IMAGE_REQUEST_TIMEOUT_MS : undefined);
+    // The longer window either way. It was image-only, on the reasoning that
+    // only an upload is slow, but what a receipt costs is the reply: every
+    // line it charged for, written back out. Read on the device first and
+    // sent as text, a long receipt's reply outlasted the ordinary window.
+  }, apiKey, model, IMAGE_REQUEST_TIMEOUT_MS);
 
   const toolUse = data.content?.find(c => c.type === 'tool_use');
   const input = toolUse?.input as {
@@ -2072,10 +2256,26 @@ export async function extractReceipt(source: string | RecipeImage): Promise<Extr
  * through a real calendar date before anything downstream trusts it as one.
  */
 function parseReceiptDate(raw: string): string | null {
+  return parseModelDayKey(raw);
+}
+
+/**
+ * A model's `YYYY-MM-DD` if it names a day that exists, else null. Shared by
+ * the receipt's date and a calendar event's, which are the two places a model
+ * hands back a day for the app to file something on.
+ *
+ * A date that doesn't exist ("2026-02-30") is rolled over by Date rather than
+ * refused, so a shape check and a NaN check alone would have filed it on
+ * March 2. It's only a real date if it reads back as the day, month and year
+ * it was written as.
+ */
+function parseModelDayKey(raw: string): string | null {
   const trimmed = raw.trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return null;
   const parsed = new Date(`${trimmed}T00:00:00`);
-  return Number.isNaN(parsed.getTime()) ? null : trimmed;
+  const [y, m, d] = trimmed.split('-').map(Number);
+  if (parsed.getFullYear() !== y || parsed.getMonth() !== m - 1 || parsed.getDate() !== d) return null;
+  return trimmed;
 }
 
 /**
@@ -2111,125 +2311,6 @@ function parseReceiptLines(raw: unknown): ReceiptLine[] {
     });
   }
   return result.slice(0, MAX_RECEIPT_LINES);
-}
-
-/** A cookbook rarely lists more titles than this; a longer read is clamped rather than dropped. */
-const MAX_COOKBOOK_TITLES = 120;
-/** Mirrors MAX_RECEIPT_CHARS — a table of contents is rarely longer than a receipt's printed rows. */
-const MAX_COOKBOOK_TOC_CHARS = 6_000;
-
-export interface ExtractedCookbookChecklist {
-  /** The book's own title, read off the same page when it's printed there. Empty when it isn't. */
-  cookbookTitle: string;
-  /** Every recipe title the contents page lists, in printed order. */
-  titles: string[];
-}
-
-/**
- * Reads a cookbook's table of contents — pasted OCR text or a photo of the
- * page — into a list of recipe titles, for `CookbookChecklistSheet` to build a
- * checklist project from.
- *
- * Same split as `extractReceipt`: on-device Vision reads the page for free
- * (`src/utils/cookbookOcr.ts`), and what reaches here is usually the printed
- * rows rather than the photo. The prompt spends most of its length on what
- * *isn't* a recipe title, because a contents page is mostly not one:
- * section headers ("Breakfast", "Soups & Stews"), the introduction and index,
- * and — the one a page number invites — the page number itself.
- *
- * **It extracts; it never decides.** Nothing here creates the checklist or its
- * project — the sheet does that once the user has reviewed and edited every
- * title, the same confirm-before-write rule `extractReceipt` follows.
- */
-export async function extractCookbookChecklist(
-  source: string | RecipeImage,
-): Promise<ExtractedCookbookChecklist> {
-  const { apiKey, model } = requireFeature('cookbookChecklist');
-
-  const empty: ExtractedCookbookChecklist = { cookbookTitle: '', titles: [] };
-  const image = typeof source === 'string' ? null : source;
-  const text = typeof source === 'string' ? source.trim().slice(0, MAX_COOKBOOK_TOC_CHARS) : '';
-  if (image ? !image.base64 : !text) return empty;
-
-  const shared = [
-    'List only recipe titles — the names of individual dishes a cook would look up and make. Skip section and chapter headings ("Breakfast", "Soups & Stews", "Weeknight Dinners"), the book\'s own title and subtitle, the author\'s name, an introduction or foreword, an index, and page numbers.',
-    'Give each title exactly as printed, without the page number or the dots/spaces leading up to it. Keep the book\'s own capitalization and punctuation.',
-    'If the page also states the book\'s own title (a running head, a cover line), give it in cookbookTitle. Leave it empty if the page only lists recipes with nothing naming the book itself.',
-  ];
-
-  const prompt = image
-    ? [
-        'This is a photo of a cookbook\'s table of contents. Read it and extract the book\'s title, if stated, and every recipe title it lists.',
-        ...shared,
-        'If the photo is too blurry, too dark, cut off, or is not a table of contents at all, return an empty title and an empty list rather than guessing.',
-      ].join('\n\n')
-    : [
-        'Below is the text of a cookbook\'s table of contents, read off a photo of it by on-device text recognition. Extract the book\'s title, if stated, and every recipe title it lists.',
-        'One printed row per line, in the order they were printed. The recognition is good but not perfect and does not correct what it reads: expect confusions between similar characters (0 and O, 1 and l, 5 and S), split or joined words, and the occasional dropped character. Read through that the way you would read a smudged page rather than treating a garbled row as a different title than the one it plainly is.',
-        ...shared,
-        'If this is not a table of contents, or too little of it came through to tell what\'s listed, return an empty title and an empty list rather than guessing.',
-        `Table of contents:\n${text}`,
-      ].join('\n\n');
-
-  const data = await callAnthropic({
-    max_tokens: 4000,
-    tools: [{
-      name: 'extract_cookbook_checklist',
-      description: 'Extract a cookbook\'s title and the recipe titles listed in its table of contents',
-      input_schema: {
-        type: 'object',
-        properties: {
-          cookbookTitle: {
-            type: 'string',
-            description: 'The cookbook\'s own title, if the page states it. Empty string otherwise.',
-          },
-          titles: {
-            type: 'array',
-            description: 'Every recipe title the contents page lists, in printed order.',
-            items: {
-              type: 'string',
-              description: `A single recipe title, as printed, with no page number. Under ${RECIPE_NAME_MAX_LENGTH} characters.`,
-            },
-          },
-        },
-        required: ['cookbookTitle', 'titles'],
-      },
-    }],
-    tool_choice: { type: 'tool', name: 'extract_cookbook_checklist' },
-    messages: [{
-      role: 'user',
-      content: image
-        ? [
-            {
-              type: 'image',
-              source: { type: 'base64', media_type: image.mediaType, data: image.base64 },
-            },
-            { type: 'text', text: prompt },
-          ]
-        : prompt,
-    }],
-  }, apiKey, model, image ? IMAGE_REQUEST_TIMEOUT_MS : undefined);
-
-  const toolUse = data.content?.find(c => c.type === 'tool_use');
-  const input = toolUse?.input as { cookbookTitle?: unknown; titles?: unknown } | undefined;
-  if (!input) throw new Error('No suggestions returned');
-
-  const titles: string[] = [];
-  if (Array.isArray(input.titles)) {
-    for (const raw of input.titles) {
-      if (typeof raw !== 'string') continue;
-      const title = raw.trim().slice(0, RECIPE_NAME_MAX_LENGTH);
-      if (title) titles.push(title);
-      if (titles.length >= MAX_COOKBOOK_TITLES) break;
-    }
-  }
-
-  return {
-    cookbookTitle: typeof input.cookbookTitle === 'string'
-      ? input.cookbookTitle.trim().slice(0, RECIPE_NAME_MAX_LENGTH)
-      : '',
-    titles,
-  };
 }
 
 const MAX_CALENDAR_EVENTS = 20;
@@ -2355,16 +2436,12 @@ export async function extractCalendarEvents(source: string | RecipeImage): Promi
 }
 
 /**
- * Validates the model's date string into a real `YYYY-MM-DD`, or null — same
- * check parseReceiptDate makes above, and for the same reason: a model can
- * return well-formed-looking nonsense ("2026-13-40").
+ * Validates the model's date string into a real `YYYY-MM-DD`, or null — the
+ * same check parseReceiptDate makes above, and for the same reason: a model
+ * can return well-formed-looking nonsense ("2026-13-40", "2026-02-30").
  */
 function parseExtractedEventDate(raw: unknown): string | null {
-  if (typeof raw !== 'string') return null;
-  const trimmed = raw.trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return null;
-  const parsed = new Date(`${trimmed}T00:00:00`);
-  return Number.isNaN(parsed.getTime()) ? null : trimmed;
+  return typeof raw === 'string' ? parseModelDayKey(raw) : null;
 }
 
 /** Validates the model's time string into a real 24-hour `HH:MM`, or null. */
@@ -2472,7 +2549,9 @@ export async function estimateMealNutrition(
 ): Promise<NutritionEstimate> {
   const { apiKey, model } = requireFeature('nutritionEstimate');
 
-  const asked = description.trim().slice(0, ESTIMATE_DESCRIPTION_MAX_LENGTH);
+  // Capped at the refined length rather than the description's own: the
+  // answers ride on the end of it (`refineDescription`).
+  const asked = description.trim().slice(0, ESTIMATE_REQUEST_MAX_LENGTH);
   if (!asked) throw new Error('No estimate returned');
 
   // Named foods with their figures, for a description that refers to one of
@@ -2506,6 +2585,7 @@ export async function estimateMealNutrition(
     system: [
       'You estimate what one described meal contains, for somebody writing it down in a food diary.',
       'Give figures for the whole thing described, as one helping. Do not give per-100g figures.',
+      'A line reading "Amount eaten: ..." is the amount the person actually had. Base every figure on exactly that amount and state it in quantity.',
       'State only the nutrients you actually have a view on. Omit a field entirely rather than guessing a zero: an omitted nutrient reads as unknown, and a zero reads as a measurement that the food contains none.',
       'When the description names more than one component (separate foods, or an item plus a side), also split the total across a breakdown array, one entry per component named. Each entry states only the nutrients you have a view on for that component, same rule as the total. Skip the breakdown entirely for a single named item, or when you cannot split it sensibly.',
       'Set basis to "published" only when you are recalling figures a specific chain or manufacturer publishes, and name them in attribution. Otherwise set it to "typical" and leave attribution empty.',
@@ -2525,7 +2605,7 @@ export async function estimateMealNutrition(
         type: 'object',
         properties: {
           label: { type: 'string', description: 'What to call this in a food diary, e.g. "Cheeseburger and fries, Five Guys"' },
-          quantity: { type: 'string', description: 'The amount these figures are for, in words, e.g. "1 burger and a regular fries"' },
+          quantity: { type: 'string', description: 'The amount these figures are for. Always a concrete, checkable amount: a weight or volume, plus a household measure where one fits, e.g. "150 g (about 1/3 block)" or "1 burger and a regular fries (about 450 g)". Never a bare "1 serving". When the description states an amount, use exactly that.' },
           amounts: amountsSchema,
           basis: {
             type: 'string',

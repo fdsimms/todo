@@ -151,6 +151,11 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
       ? calendarIds.filter(id => !vacationHiddenCalendarIds.includes(id))
       : calendarIds;
     if (!calendarReadEnabled || readIds.length === 0 || Platform.OS !== 'ios') {
+      // Same rule `clear()` follows: this write must invalidate the guard too,
+      // or a normal refresh already in flight (started before this branch ran)
+      // has no way to know it's now stale, and its late result overwrites this
+      // intentional clear with whatever it read before the read was cleared.
+      windowGuard.invalidate();
       set({
         events: [], perCalendar: {}, calendarsById: {},
         windowStart: null, windowEnd: null, loaded: false,

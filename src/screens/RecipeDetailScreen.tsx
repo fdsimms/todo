@@ -31,9 +31,11 @@ import { useShallow } from 'zustand/react/shallow';
 import type { RecipeIngredient, RecipePrepTask, RecipeStep } from '../types';
 import { GROCERY_NAME_MAX_LENGTH, RECIPE_SECTION_MAX_LENGTH, RECIPE_STEP_NOTE_MAX_LENGTH, TITLE_MAX_LENGTH } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
+import { useSyncStore } from '../store/useSyncStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useFoodLogStore } from '../store/useFoodLogStore';
+import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useRowSelection } from '../hooks/useRowSelection';
 import { DetailHeader } from '../components/DetailHeader';
 import { EmptyState } from '../components/EmptyState';
@@ -43,6 +45,9 @@ import { StepText } from '../components/StepText';
 import { CountStepper } from '../components/CountStepper';
 import { PressableScale } from '../components/PressableScale';
 import { SortableList, type SortableRenderItem } from '../components/SortableList';
+import { SwipeableRow } from '../components/SwipeableRow';
+import { SelectionDot } from '../components/SelectionDot';
+import { PaintSelectionProvider, PaintSelectionRow } from '../components/PaintSelection';
 import { IngredientCatalogMatchSheet } from '../components/IngredientCatalogMatchSheet';
 import { RecipeNutritionSheet } from '../components/RecipeNutritionSheet';
 import {
@@ -55,6 +60,8 @@ import { RecipeEditor } from '../components/RecipeEditor';
 import { RecipeIngredientSheet } from '../components/RecipeIngredientSheet';
 import { PrepTaskSheet } from '../components/PrepTaskSheet';
 import { RecipeToListSheet } from '../components/RecipeToListSheet';
+import { OverlapPickerSheet } from '../components/OverlapPickerSheet';
+import { useOverlapPicker } from '../hooks/useOverlapPicker';
 import { PlanMealSheet } from '../components/PlanMealSheet';
 import { RecipeExtractSheet } from '../components/RecipeExtractSheet';
 import { RecipeComponentPicker } from '../components/RecipeComponentPicker';
@@ -62,23 +69,32 @@ import { ComponentChoiceSheet } from '../components/ComponentChoiceSheet';
 import { usePlanMeal } from '../hooks/usePlanMeal';
 import { useRecipeTimer } from '../hooks/useRecipeTimer';
 import { useStepTimers } from '../hooks/useStepTimers';
+import { useAiRoute } from '../hooks/useOnDeviceAi';
 import { RecipeTimerRow } from '../components/RecipeTimerRow';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from '../components/NumberPadAccessory';
 import { CookModeSheet } from '../components/CookModeSheet';
-import { cookSteps } from '../utils/cookMode';
+import { cookSteps, stepsFromNotes } from '../utils/cookMode';
 import { MAX_STEP_TIMER_SECONDS, formatStepDuration, parseStepDurations, stepDurationOffers } from '../utils/stepTimers';
 import { featureHidden, featureShown } from '../utils/simpleMode';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, lineHeight, radius, iconSize, interaction, type Colors } from '../theme';
+import { spacing, font, fontWeight, lineHeight, radius, iconSize, interaction, flattenOverlay, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
-import { pickRecipeImage, resolveRecipeImagePath, type RecipePhotoSource } from '../utils/recipePhoto';
-import { describeRecipe, totalMinutes } from '../utils/recipeUtils';
+import { pickRecipeImage, recipeImageOnDevice, resolveRecipeImagePath, type RecipePhotoSource } from '../utils/recipePhoto';
+import {
+  blockedIngredientNote,
+  describeRecipe,
+  duplicateIngredientIn,
+  ingredientsFromText,
+  makeIngredient,
+  totalMinutes,
+} from '../utils/recipeUtils';
 import { buildIngredientsText, buildRecipeShareText } from '../utils/shareText';
 import { allSectionsOf, sectionsFromMergedOrder, type SectionListEntry } from '../utils/recipeSections';
 import { PillGroup } from '../components/PillGroup';
 import { describeUnscaled, formatScale, normalizeScale, scaleQuantity } from '../utils/recipeScale';
 import { convertQuantity } from '../utils/unitConvert';
+import { ingredientWeightText, weightLookups as buildWeightLookups } from '../utils/lineWeight';
 import { RecipeScaleChips } from '../components/RecipeScaleChips';
 import { RecipeChoiceChips } from '../components/RecipeChoiceChips';
 import { tagColor } from '../utils/tagColor';
@@ -97,6 +113,7 @@ import { applyStandingSwap, describeStandingSwap, standingSwapMap } from '../uti
 import { annotateSteps, stepIngredientLines, type StepSegment } from '../utils/stepIngredients';
 import { describeRecipeCost, estimateRecipeCost } from '../utils/recipeCost';
 import { describeCookedWeight } from '../utils/mealLog';
+import { plannedEntryForRecipe } from '../utils/foodLog';
 import {
   describeNutritionCoverage,
   describeRecipeNutrition,
@@ -107,12 +124,24 @@ import { splitAlternativeNames, splitGroceryLines } from '../utils/groceryParse'
 import { dayKeyOf, getCurrentDayStart } from '../utils/dateUtils';
 
 type RootStackParamList = {
-  RecipeDetail: { recipeId: string };
+  /**
+   * `choices` seeds the either/or picks when the screen is opened from a
+   * planned meal (MealPlanEntry.recipeChoices), so cooking the Tuesday mash
+   * reads as the mash rather than the recipe's default. `scale` does the
+   * same for MealPlanEntry.recipeScale. Seed only: nothing picked here is
+   * written back to the entry.
+   */
+  RecipeDetail: { recipeId: string; choices?: string[]; scale?: number; openCookMode?: number };
 };
 
 /** One row of the merged list the ingredients SortableList drags over — see mergedIngredientRows. */
 type MergedIngredientRow =
   | { kind: 'ingredient'; id: string; ingredient: RecipeIngredient }
+  | { kind: 'heading'; id: string; name: string; empty: boolean };
+
+/** The same merged shape, one field over — see mergedStepRows. */
+type MergedStepRow =
+  | { kind: 'step'; id: string; step: RecipeStep; number: number }
   | { kind: 'heading'; id: string; name: string; empty: boolean };
 
 export function RecipeDetailScreen() {
@@ -143,12 +172,16 @@ export function RecipeDetailScreen() {
   const updateStep = useRecipeStore(s => s.updateStep);
   const removeStep = useRecipeStore(s => s.removeStep);
   const reorderSteps = useRecipeStore(s => s.reorderSteps);
+  const addEmptyStepSection = useRecipeStore(s => s.addEmptyStepSection);
+  const removeEmptyStepSection = useRecipeStore(s => s.removeEmptyStepSection);
   const setStepTimerSeconds = useRecipeStore(s => s.setStepTimerSeconds);
   const setStepNote = useRecipeStore(s => s.setStepNote);
   const setImage = useRecipeStore(s => s.setImage);
   const addComponent = useRecipeStore(s => s.addComponent);
   const removeComponent = useRecipeStore(s => s.removeComponent);
-  const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
+  // The route rather than the bare key, so turning Recipe import off in
+  // Settings takes the sparkle away instead of leaving it to apologise.
+  const recipeImportRoute = useAiRoute('recipeExtraction');
   const unitSystem = useSettingsStore(s => s.unitSystem);
   const currencySymbol = useSettingsStore(s => s.currencySymbol);
   const simpleMode = useSettingsStore(s => s.simpleMode);
@@ -176,9 +209,16 @@ export function RecipeDetailScreen() {
     () => (recipe ? resolveComponents(recipe, recipesById) : []),
     [recipe, recipesById]
   );
+  // ==== the resolved recipe: components, counts, cost, the scaled lines ====
+  // The two lookups each row's weight caption and the shared text read
+  // (lineWeight.ts), built once per catalog change rather than once per row.
+  const weightLookups = useMemo(
+    () => buildWeightLookups(groceryItems, itemProducts),
+    [groceryItems, itemProducts],
+  );
+
   // What the grocery add is actually going to offer — the recipe's own lines
   // plus every component's, which is the number the footer button gates on.
-  // ==== the resolved recipe: components, counts, cost, the scaled lines ====
   const shoppableCount = useMemo(
     () => (recipe ? flattenRecipeIngredients(recipe, recipesById).length : 0),
     [recipe, recipesById]
@@ -199,7 +239,9 @@ export function RecipeDetailScreen() {
   // the recipe, and the lasting form of the same fact lives on the meal that
   // was planned (MealPlanEntry.recipeScale). It does travel into the add-to-list
   // sheet, which is the one place the number turns into something bought.
-  const [scale, setScale] = useState(1);
+  // Seeded from a planned meal's own scale when one opened this, and reset
+  // with the picks below when the route params change.
+  const [scale, setScale] = useState(() => route.params.scale ?? 1);
 
   // Which alternative the cost and nutrition estimates below are for, when the
   // recipe poses an either/or — "sourdough" and "baguette" don't share a
@@ -210,7 +252,20 @@ export function RecipeDetailScreen() {
   // edit to the recipe, and the lasting form of a real pick lives on
   // MealPlanEntry.recipeChoices. Starts empty, which is every group on its
   // default — same contract RecipeToListSheet's own `choices` keeps.
-  const [choices, setChoices] = useState<string[]>([]);
+  //
+  // Seeded from the route when a planned meal opened this (see the param's
+  // doc comment), and reseeded whenever the params change — a same-route
+  // navigate to another recipe swaps them in place, and one recipe's picks
+  // are meaningless ids on the next. Shared with cook mode rather than copied
+  // into it, so a pick made at the stove is the one the cost, nutrition and
+  // "Log to food log" read afterwards.
+  const [choices, setChoices] = useState<string[]>(() => route.params.choices ?? []);
+  const [choicesSeed, setChoicesSeed] = useState(route.params);
+  if (choicesSeed !== route.params) {
+    setChoicesSeed(route.params);
+    setChoices(route.params.choices ?? []);
+    setScale(route.params.scale ?? 1);
+  }
   // Live, not persisted — see recipeComponents.ts's ChoiceResolution.onHand.
   const choiceResolution = useMemo(
     () => ({ chosen: choices, onHand: onHandNameKeys(groceryItems, new Date(), itemProducts) }),
@@ -310,6 +365,9 @@ export function RecipeDetailScreen() {
 
   // ==== local state (drafts, the sheets this screen opens) ====
   const [draft, setDraft] = useState('');
+  // What the add field says when a line it was given is already in the recipe
+  // (blockedIngredientNote), until the draft is next edited or submitted.
+  const [addNote, setAddNote] = useState<string | null>(null);
   // What new ingredients are filed under, until changed or cleared — the add
   // field's own equivalent of RecipeIngredientSheet's Section field, and its
   // picker works the same way (same PillGroup, same onCreate): it used to be
@@ -319,6 +377,16 @@ export function RecipeDetailScreen() {
   // find. Re-filing a row that already exists is the sheet's job, or a drag.
   const [sectionDraft, setSectionDraft] = useState('');
   const [pickingImage, setPickingImage] = useState(false);
+  // Whether the photo's file is here to draw (#2704). A synced recipe carries
+  // its photo's path before the photo itself arrives, and a path to nothing
+  // draws an empty box with no error. Re-checked when a sync brings photos in,
+  // which can happen with no change to this recipe's row at all.
+  const recipeImagesVersion = useSyncStore(s => s.recipeImagesVersion);
+  const photoOnDevice = useMemo(
+    () => recipeImageOnDevice(recipe?.imagePath),
+    // recipeImagesVersion isn't read inside: it is only the re-check trigger.
+    [recipe?.imagePath, recipeImagesVersion]
+  );
   const draftInputRef = useRef<TextInput>(null);
   const [prepDraft, setPrepDraft] = useState('');
   // One field does both jobs — add and edit — rather than a second sheet like
@@ -326,6 +394,9 @@ export function RecipeDetailScreen() {
   // outweigh what it's editing. editingStepId null means the field is
   // building a new step; set, it's replacing that step's text on submit.
   const [stepDraft, setStepDraft] = useState('');
+  // Same picker-over-existing-headings convention as sectionDraft above, for
+  // RecipeStep.section instead of RecipeIngredient.section.
+  const [stepSectionDraft, setStepSectionDraft] = useState('');
   const [editingStepId, setEditingStepId] = useState<string | null>(null);
   // The note for the step being edited, held as a draft rather than written on
   // every keystroke: the length stepper beside it writes straight through
@@ -342,9 +413,26 @@ export function RecipeDetailScreen() {
   // Cleared on every close, confirmed or cancelled, so a later plain "Plan"
   // never inherits a scale left over from an earlier scaled shop.
   const [pendingPlanScale, setPendingPlanScale] = useState<number | null>(null);
-  const { planRecipe, offerPrepTasks, earliestUnplannedSlotToday } = usePlanMeal();
+  const { planRecipe, offerPrepTasks, earliestUnplannedSlotToday, cookRecipeNow } = usePlanMeal();
+  const { overlap, openOverlap, closeOverlap, handOffOverlap } = useOverlapPicker();
   const [extractVisible, setExtractVisible] = useState(false);
   const [cookModeVisible, setCookModeVisible] = useState(false);
+  /**
+   * `openCookMode` (route.params) is CookingBar's and the More tab's
+   * cook-timer dot's way back in — resetToRecipeDetail's second param, the
+   * same stamped-and-compare handoff resetToGroceries's openFinish uses. A
+   * request that arrives before `cookableCount`/`simpleMode` are known to
+   * allow the button at all is answered the same way the button itself
+   * would be: nothing opens, and the stamp is still marked handled so it
+   * doesn't fire again on the next render once those are known.
+   */
+  const openCookModeStamp = route.params.openCookMode;
+  const [handledCookModeStamp, setHandledCookModeStamp] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    if (openCookModeStamp === undefined || openCookModeStamp === handledCookModeStamp) return;
+    setHandledCookModeStamp(openCookModeStamp);
+    if (cookableCount > 0 && !featureHidden('cookMode', simpleMode)) setCookModeVisible(true);
+  }, [openCookModeStamp, handledCookModeStamp, cookableCount, simpleMode]);
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
   const [componentPickerVisible, setComponentPickerVisible] = useState(false);
   const [choiceComponent, setChoiceComponent] = useState<ResolvedComponent | null>(null);
@@ -374,9 +462,12 @@ export function RecipeDetailScreen() {
 
   // Bulk-selecting ingredients — same plain useRowSelection every non-task list
   // in the app reuses (Templates, Grocery), plus the ingredient-specific "Move
-  // to Aisle" / delete actions below. Entered from a header button rather than
-  // a swipe or long press: both of a row's own gestures are already spoken for
-  // (tap opens the edit sheet, long press starts a reorder drag).
+  // to Aisle" / delete actions below. Entered by swiping a row, same entry
+  // point Grocery and the task lists use (#1378) — the row's own long press is
+  // still free for reorder, since SortableList's responder stays inert until
+  // `drag()` is actually called and doesn't compete with the swipe gesture.
+  // A drag down the column of selection dots paints a run of lines (#2944's
+  // treatment), through the PaintSelectionProvider around the scroll view.
   const {
     selectionMode,
     selectedIds,
@@ -385,6 +476,8 @@ export function RecipeDetailScreen() {
     exitSelection,
     selectAll,
     deselectAll,
+    painting,
+    paintProps,
   } = useRowSelection();
 
   // Both timers, wired up — the clock, the derivation and the store calls all
@@ -410,8 +503,8 @@ export function RecipeDetailScreen() {
   // — built here rather than at press time so the copy and share actions can
   // both gate themselves on it being non-empty (see shareText.ts).
   const ingredientsText = useMemo(
-    () => (recipe ? buildIngredientsText(recipe, recipesById, { scale, unitSystem }) : ''),
-    [recipe, recipesById, scale, unitSystem]
+    () => (recipe ? buildIngredientsText(recipe, recipesById, { scale, unitSystem, weights: weightLookups }) : ''),
+    [recipe, recipesById, scale, unitSystem, weightLookups]
   );
 
   const { copied: copiedIngredients, copy: copyIngredients } = useCopyToClipboard();
@@ -452,6 +545,40 @@ export function RecipeDetailScreen() {
   // already exists.
   const allSections = useMemo(
     () => allSectionsOf(recipe?.ingredients ?? [], recipe?.emptySections ?? []),
+    [recipe]
+  );
+
+  // The method, plus one marker per heading — the same merge ingredients get
+  // above, for RecipeStep.section/Recipe.emptyStepSections instead. `number`
+  // is stamped here rather than read off SortableList's own displayIndex,
+  // because a heading occupies a slot in the merged list too: "Step 3" has to
+  // count steps only, skipping the headings between them.
+  const mergedStepRows = useMemo(() => {
+    const rows: MergedStepRow[] = [];
+    let prevSection: string | null = null;
+    let number = 0;
+    for (const step of recipe?.steps ?? []) {
+      const section = step.section ?? null;
+      if (section && section !== prevSection) {
+        rows.push({ kind: 'heading', id: `heading:${section}`, name: section, empty: false });
+      }
+      number += 1;
+      rows.push({ kind: 'step', id: step.id, step, number });
+      prevSection = section;
+    }
+    for (const name of recipe?.emptyStepSections ?? []) {
+      rows.push({ kind: 'heading', id: `heading:${name}`, name, empty: true });
+    }
+    return rows;
+  }, [recipe]);
+
+  const [hoveredStepRowId, setHoveredStepRowId] = useState<string | null>(null);
+
+  const allStepSections = useMemo(
+    () => allSectionsOf(
+      (recipe?.steps ?? []).map(s => ({ id: s.id, section: s.section ?? null })),
+      recipe?.emptyStepSections ?? []
+    ),
     [recipe]
   );
 
@@ -609,10 +736,23 @@ export function RecipeDetailScreen() {
     // handles both — splitGroceryLines tells them apart.
     const isPaste = splitGroceryLines(text).length > 1;
     const before = new Set(recipe.ingredients.map(i => i.id));
+    // The rows that will refuse a line, read before the write with the same
+    // test the store's merge applies (ingredientDedupeKey), so the field can
+    // name them. A refused add used to empty the field and buzz, which read
+    // as the line having gone in somewhere (#2917).
+    const candidates = isPaste
+      ? ingredientsFromText(text, section)
+      : [makeIngredient(text, section)].filter((i): i is NonNullable<typeof i> => i !== null);
+    const blocked = candidates
+      .map(candidate => duplicateIngredientIn(recipe.ingredients, candidate))
+      .filter((row): row is NonNullable<typeof row> => row !== null);
     const added = isPaste
       ? addIngredientsFromText(recipe.id, text, section)
       : (addIngredient(recipe.id, text, section) ? 1 : 0);
-    setDraft('');
+    // Nothing went in: keep what was typed, so a second heading or a changed
+    // prep is one edit away rather than a retype.
+    if (added > 0) setDraft('');
+    setAddNote(blockedIngredientNote(blocked, added));
     if (added > 0) haptics.tap();
     else haptics.warning();
     // Only a paste gets the banner. Adding one line at a time already shows
@@ -743,7 +883,7 @@ export function RecipeDetailScreen() {
   // share sheet) is not an error and needs no handling.
   const handleShare = () => {
     haptics.tap();
-    const message = buildRecipeShareText(recipe, recipesById, { scale, unitSystem });
+    const message = buildRecipeShareText(recipe, recipesById, { scale, unitSystem, weights: weightLookups });
     Share.share({ message }).catch(() => {});
   };
 
@@ -754,17 +894,54 @@ export function RecipeDetailScreen() {
   // free. There's no meal-plan entry behind this, so mealPlanEntryId is
   // null: nothing here is "cooked" or "missed", it's just a dish someone
   // wants logged from the page they're looking at.
+  // "Made it" in the header. Log as cooked is the cooking half: rating,
+  // leftovers, pantry ticks and restock, the same post-cook sheet a planned
+  // meal's "Mark cooked" raises (CookRecap, mounted globally), and it needs no
+  // nutrition figures. Add to food log is gated on nutrition actually being
+  // computable (the read showNutritionRow uses): without it LogMealPrompt
+  // would open only to clear itself with nothing to show. Always a menu, even
+  // with one option, because the menu is where each verb says what it will
+  // ask, and Log as cooked moves `lastCookedAt`, which steers suggestions for
+  // weeks: a stray tap on the header shouldn't be enough.
+  const handleMadeIt = () => {
+    haptics.tap();
+    const canLogFood = !!nutritionReading?.nutrition;
+    Alert.alert(
+      `Log ${recipe.name}`,
+      canLogFood
+        ? 'Log as cooked asks for a rating, any leftovers and the ingredients you used up. Add to food log records what you ate.'
+        : 'Log as cooked asks for a rating, any leftovers and the ingredients you used up.',
+      [
+        { text: 'Log as cooked', onPress: () => cookRecipeNow(recipe) },
+        ...(canLogFood ? [{ text: 'Add to food log', onPress: handleLogToFoodLog }] : []),
+        { text: 'Cancel', style: 'cancel' as const },
+      ],
+    );
+  };
+
   const handleLogToFoodLog = () => {
     haptics.tap();
+    const dayKey = dayKeyOf(getCurrentDayStart());
+    // Today's planned entry for this dish, when there is exactly one nobody
+    // has logged yet: its meal and its link, so the plan reads as logged and
+    // the Eat step doesn't offer it again. Read when tapped rather than
+    // subscribed to, since it only matters at this moment.
+    const planned = plannedEntryForRecipe(
+      useMealPlanStore.getState().entriesForDayLive(dayKey),
+      useFoodLogStore.getState().recentEntries(dayKey, dayKey),
+      recipe.id,
+    );
     setPendingMealLog({
       label: recipe.name,
-      slot: null,
-      dayKey: dayKeyOf(getCurrentDayStart()),
+      slot: planned?.slot ?? null,
+      dayKey,
       recipeId: recipe.id,
-      mealPlanEntryId: null,
+      mealPlanEntryId: planned?.id ?? null,
       scale,
       choices,
       grams: null,
+      // Somebody tapped to log this, rather than the app offering it.
+      asked: true,
     });
   };
 
@@ -805,8 +982,18 @@ export function RecipeDetailScreen() {
       setNoteDraft('');
       haptics.tap();
     } else {
-      const added = addStep(recipe.id, stepDraft);
-      if (added) haptics.tap();
+      // A pasted method becomes one step per line (or per paragraph), the way
+      // the ingredient field already splits a pasted list: in one step it was
+      // a single wall of text that cook mode then showed as one screen. Same
+      // splitter cook mode uses for a recipe's notes, so its two rules (blank
+      // lines win, and no line break means one step) hold here too. Editing
+      // an existing step never splits: that is a correction to one step.
+      const section = stepSectionDraft.trim() || null;
+      const parts = stepsFromNotes(stepDraft);
+      const added = parts.length > 1
+        ? parts.filter(part => addStep(recipe.id, part, section)).length
+        : (addStep(recipe.id, stepDraft, section) ? 1 : 0);
+      if (added > 0) haptics.tap();
       else haptics.warning();
     }
     setStepDraft('');
@@ -836,7 +1023,7 @@ export function RecipeDetailScreen() {
     haptics.tap();
   };
 
-  // Same denial copy as useRecipePhotoSource's — iOS only prompts once, so a
+  // iOS only prompts once, so a
   // second tap on either button needs an alert naming the permission or does
   // nothing visible.
   const pickImage = async (source: RecipePhotoSource) => {
@@ -892,6 +1079,11 @@ export function RecipeDetailScreen() {
     setHoveredRowId(index === null ? null : mergedIngredientRows[index]?.id ?? null);
   };
 
+  // Same hover tracking, for the merged step list's own empty headings.
+  const handleStepHoverChange = (index: number | null) => {
+    setHoveredStepRowId(index === null ? null : mergedStepRows[index]?.id ?? null);
+  };
+
   // Persisted on the ingredient itself (dismissedCatalogSuggestion /
   // dismissedSplitSuggestion), not session state — a "not now" here used to
   // reset the moment the screen unmounted, which made the pill feel
@@ -938,6 +1130,11 @@ export function RecipeDetailScreen() {
     const scaledResult = scaleQuantity(line.quantity, scale);
     const convertedResult = convertQuantity(scaledResult.text, unitSystem);
     const scaledQuantity = convertedResult.text;
+    // What the line weighs, when its food's own portion table can say — for
+    // cooking by the scale. Read off the scaled line before conversion, since
+    // a converted amount is already rounded, and off the swapped line's name,
+    // since that's the food actually going in.
+    const weightText = ingredientWeightText(line, scaledResult.text, weightLookups, unitSystem);
     const scaledHere = scaledResult.scaled
       || convertedResult.converted
       // A ratio'd swap is the app's number too — the same tint, for the same
@@ -990,6 +1187,25 @@ export function RecipeDetailScreen() {
             </Text>
           </View>
         )}
+        {/* Same entry point Grocery and the task lists use: swipe left to enter
+            bulk selection with this ingredient pre-selected. Stays mounted
+            through the selectionMode toggle (enabled turns the gesture off
+            without unmounting it — see SwipeableRow's own doc comment on why
+            that matters) and coexists with the row's long-press-to-reorder
+            drag, since SortableList's own responder stays inert until drag()
+            is actually called. */}
+        <SwipeableRow
+          enabled={!selectionMode && !isDragging}
+          selectAction={{
+            onSelect: () => enterSelectionMode(ingredient.id),
+            accessibilityLabel: `Select ${ingredient.name}`,
+          }}
+        >
+        {/* Registered with the screen's PaintSelectionProvider so a drag down
+            the column of dots picks up this line. Not SortableList's floating
+            copy (`isDragging`), which would claim this line's id and evict it
+            on unmount. */}
+        <PaintSelectionRow rowId={isDragging ? null : ingredient.id}>
         <TouchableOpacity
           style={[
             styles.ingredient,
@@ -1011,24 +1227,19 @@ export function RecipeDetailScreen() {
           accessibilityRole={selectionMode ? 'checkbox' : 'button'}
           accessibilityState={selectionMode ? { checked: selected } : undefined}
           accessibilityLabel={
-            [ingredient.section, line.name, swapNote, scaledQuantity, ingredient.prep,
+            [ingredient.section, line.name, swapNote, scaledQuantity,
+             weightText && `about ${weightText.slice(1)}`, ingredient.prep,
              ingredient.purpose && `for ${ingredient.purpose}`,
              ingredient.optional && 'optional',
-             ingredient.excludeFromShoppingList && 'not on your shopping list',
              choiceGroup && (isChoiceDefault ? `usual choice for ${choiceGroup}` : `alternative for ${choiceGroup}`)]
               .filter(Boolean).join(', ')
           }
           accessibilityHint={selectionMode ? 'Double tap to select' : 'Double tap to edit. Long press to reorder.'}
         >
-          {selectionMode && (
-            <View style={styles.ingredientSelect}>
-              <Ionicons
-                name={selected ? 'checkmark-circle' : 'ellipse-outline'}
-                size={22}
-                color={selected ? colors.accent : colors.textTertiary}
-              />
-            </View>
-          )}
+          {/* Selection is the SelectionDot at the row's other end, where the
+              remove × was, the split every other selectable list makes
+              (#2944). A check leading the line read as an ingredient ticked
+              off, and pushed every name sideways. */}
           <View style={styles.ingredientText}>
             <Text style={styles.ingredientName}>{line.name}</Text>
             {/* Directly under the name it replaced, in the same tint the
@@ -1038,11 +1249,9 @@ export function RecipeDetailScreen() {
             {!!swapNote && (
               <Text style={styles.swapNote} numberOfLines={1}>{swapNote}</Text>
             )}
-            {(!!ingredient.prep || !!ingredient.purpose || !!ingredient.optional
-              || !!ingredient.excludeFromShoppingList) && (
+            {(!!ingredient.prep || !!ingredient.purpose || !!ingredient.optional) && (
               <Text style={styles.ingredientPrep}>
-                {[ingredient.prep, ingredient.purpose && `for ${ingredient.purpose}`, ingredient.optional && 'optional',
-                  ingredient.excludeFromShoppingList && 'not on your list']
+                {[ingredient.prep, ingredient.purpose && `for ${ingredient.purpose}`, ingredient.optional && 'optional']
                   .filter(Boolean).join(' · ')}
               </Text>
             )}
@@ -1118,13 +1327,22 @@ export function RecipeDetailScreen() {
             )}
           </View>
           {!!scaledQuantity && (
-            <View style={[styles.qtyPill, scaledHere && styles.qtyPillScaled]}>
-              <Text
-                style={[styles.qtyText, scaledHere && styles.qtyTextScaled]}
-                numberOfLines={1}
-              >
-                {scaledQuantity}
-              </Text>
+            <View style={styles.qtyColumn}>
+              <View style={[styles.qtyPill, scaledHere && styles.qtyPillScaled]}>
+                <Text
+                  style={[styles.qtyText, scaledHere && styles.qtyTextScaled]}
+                  numberOfLines={1}
+                >
+                  {scaledQuantity}
+                </Text>
+              </View>
+              {/* Under the pill rather than inside it: the pill is the
+                  recipe's amount (or the app's conversion of it), and this is
+                  a second measurement of the same thing. Only present when
+                  the food's own portion table can say it. */}
+              {!!weightText && (
+                <Text style={styles.qtyWeight} numberOfLines={1}>{weightText}</Text>
+              )}
             </View>
           )}
           {!selectionMode && (
@@ -1137,7 +1355,15 @@ export function RecipeDetailScreen() {
               <Ionicons name="close" size={iconSize.sm} color={colors.textTertiary} />
             </TouchableOpacity>
           )}
+          {/* In the slot the × gives up while selecting, so nothing moves
+              aside for it. On every line, picked or not: the empty rings are
+              what say selection is on. */}
+          {selectionMode && (
+            <SelectionDot selected={selected} onPress={() => toggleSelection(ingredient.id)} />
+          )}
         </TouchableOpacity>
+        </PaintSelectionRow>
+        </SwipeableRow>
         {/* A component sharing this ingredient's choice group folds in right
             here, after the group's last ingredient option — not in its own
             block at the bottom of the card (see trailingComponents below).
@@ -1255,7 +1481,12 @@ export function RecipeDetailScreen() {
             // Same-route navigate, exactly as TemplateDetailScreen opens a nested
             // template: it swaps this screen's params rather than stacking a
             // second copy, so Back still means "back to the library".
-            (navigation as any).navigate('RecipeDetail', { recipeId: target.id });
+            //
+            // At the scale this page is showing, since a component scales with
+            // the dish around it everywhere else (the list, the cost, the
+            // nutrition): opened at 1× from a doubled dish, its amounts were
+            // half of what the cooking in front of the person needed.
+            (navigation as any).navigate('RecipeDetail', { recipeId: target.id, scale });
           }}
           // Long press is free on these rows (unlike an ingredient's, which
           // drags) and is where making this an either/or lives.
@@ -1347,12 +1578,23 @@ export function RecipeDetailScreen() {
     return offer ? formatStepDuration(offer.seconds) : null;
   };
 
-  const renderStep = (step: RecipeStep, displayIndex: number, drag: () => void) => (
+  // `isActive` is SortableList's floating drag copy, which paints no background
+  // of its own: without the opaque fill the lifted step was see-through, same
+  // as the ingredient rows' `isDragging` above.
+  //
+  // `stepNumber` is `mergedStepRows`' own count, not a position within
+  // whatever list is actually being dragged over — a heading between two
+  // steps occupies a slot in that list too, and "Step 3" has to skip it.
+  const renderStep = (step: RecipeStep, stepNumber: number, drag: () => void, isActive?: boolean) => (
     <View
       key={step.id}
-      style={[styles.ingredient, editingStepId === step.id && styles.stepEditing]}
+      style={[
+        styles.ingredient,
+        editingStepId === step.id && styles.stepEditing,
+        isActive && styles.ingredientDragging,
+      ]}
     >
-      <Text style={styles.stepNumber}>{displayIndex + 1}</Text>
+      <Text style={styles.stepNumber}>{stepNumber}</Text>
       <TouchableOpacity
         style={styles.ingredientText}
         activeOpacity={interaction.activeOpacity}
@@ -1387,7 +1629,7 @@ export function RecipeDetailScreen() {
         delayLongPress={interaction.delayLongPress}
         hitSlop={10}
         accessibilityRole="button"
-        accessibilityLabel={`Reorder step ${displayIndex + 1}`}
+        accessibilityLabel={`Reorder step ${stepNumber}`}
       >
         <Ionicons name="reorder-three" size={iconSize.sm} color={colors.textTertiary} />
       </TouchableOpacity>
@@ -1395,12 +1637,77 @@ export function RecipeDetailScreen() {
         onPress={() => confirmRemoveStep(step)}
         hitSlop={10}
         accessibilityRole="button"
-        accessibilityLabel={`Remove step ${displayIndex + 1}`}
+        accessibilityLabel={`Remove step ${stepNumber}`}
       >
         <Ionicons name="close" size={iconSize.sm} color={colors.textTertiary} />
       </TouchableOpacity>
     </View>
   );
+
+  // Same heading row as the ingredients grid's renderHeadingRow — a populated
+  // caption or a declared-empty drop target — reused verbatim except for what
+  // an empty one hands the tap: the step draft's section picker rather than
+  // the ingredient one's, and removeEmptyStepSection rather than
+  // removeEmptySection.
+  const renderStepHeadingRow = (row: Extract<MergedStepRow, { kind: 'heading' }>, isFirst: boolean) => {
+    if (!row.empty) {
+      return (
+        <View style={styles.ingredientSectionHeaderWrap}>
+          {!isFirst && <View style={styles.ingredientSectionDivider} />}
+          <Text style={styles.ingredientSectionHeader}>{row.name}</Text>
+        </View>
+      );
+    }
+    const isTarget = hoveredStepRowId === row.id;
+    return (
+      <View style={[styles.emptySectionRow, isTarget && styles.emptySectionRowTarget]}>
+        <TouchableOpacity
+          style={styles.emptySectionBody}
+          activeOpacity={interaction.activeOpacity}
+          onPress={() => {
+            haptics.tap();
+            setStepSectionDraft(row.name);
+            stepInputRef.current?.focus();
+          }}
+          accessibilityRole="button"
+          accessibilityLabel={`${row.name}, no steps yet`}
+          accessibilityHint="Double tap to start adding steps under this heading, or drag a step here"
+        >
+          <Text style={[styles.emptySectionTitle, isTarget && styles.emptySectionTitleTarget]}>
+            {row.name}
+          </Text>
+          <Text style={[styles.emptySectionHint, isTarget && styles.emptySectionHintTarget]}>
+            {isTarget ? 'Drop here' : 'Nothing here yet. Drag a step here'}
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => { haptics.tap(); animateLayout(); removeEmptyStepSection(recipe.id, row.name); }}
+          hitSlop={10}
+          accessibilityRole="button"
+          accessibilityLabel={`Remove ${row.name} heading`}
+        >
+          <Ionicons name="close" size={iconSize.sm} color={isTarget ? colors.accent : colors.textTertiary} />
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
+  const renderMergedStepRow: SortableRenderItem<MergedStepRow> = (row, displayIndex, drag, isDragging) =>
+    row.kind === 'heading'
+      ? renderStepHeadingRow(row, displayIndex === 0)
+      : renderStep(row.step, row.number, drag, isDragging);
+
+  // Same one-write reorder as handleMergedReorder, for steps instead of
+  // ingredients.
+  const handleMergedStepReorder = (rows: MergedStepRow[]) => {
+    const entries: SectionListEntry[] = rows.map(row =>
+      row.kind === 'heading' ? { kind: 'heading', name: row.name } : { kind: 'row', id: row.id }
+    );
+    const sectionById = sectionsFromMergedOrder(entries);
+    const ids = rows.filter((r): r is Extract<MergedStepRow, { kind: 'step' }> => r.kind === 'step')
+      .map(r => r.id);
+    reorderSteps(recipe.id, ids, sectionById);
+  };
 
   // ==== render. Everything below is JSX ====
   return (
@@ -1410,21 +1717,7 @@ export function RecipeDetailScreen() {
         onBack={() => navigation.goBack()}
         actions={
           <View style={styles.headerActions}>
-            {recipe.ingredients.length > 0 && (
-              <TouchableOpacity
-                onPress={() => { haptics.tap(); selectionMode ? exitSelection() : enterSelectionMode(); }}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel={selectionMode ? 'Done selecting' : 'Select ingredients'}
-              >
-                <Ionicons
-                  name={selectionMode ? 'checkmark-circle' : 'checkmark-circle-outline'}
-                  size={iconSize.md}
-                  color={selectionMode ? colors.accent : colors.textSecondary}
-                />
-              </TouchableOpacity>
-            )}
-            {!selectionMode && !!anthropicApiKey && (
+            {!selectionMode && recipeImportRoute !== 'unavailable' && (
               <TouchableOpacity
                 onPress={() => { haptics.tap(); setExtractVisible(true); }}
                 hitSlop={8}
@@ -1451,19 +1744,16 @@ export function RecipeDetailScreen() {
                 />
               </TouchableOpacity>
             )}
-            {/* Gated on nutrition actually being computable (same read
-                showNutritionRow above uses) rather than always shown: without
-                it, tapping this would raise LogMealPrompt only for the prompt
-                to immediately clear itself with nothing to show. */}
-            {!selectionMode && !!nutritionReading?.nutrition && (
-              <TouchableOpacity
-                onPress={handleLogToFoodLog}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel={`Log ${recipe.name} to the food log`}
-              >
-                <Ionicons name="restaurant-outline" size={iconSize.md} color={colors.textSecondary} />
-              </TouchableOpacity>
+            {/* Both ways of recording a cooking, behind one labelled control
+                (see handleMadeIt). They were a flame and a plate glyph in a
+                row of seven, with nothing on screen to say which was which. */}
+            {!selectionMode && (
+              <InlineAction
+                icon="flame-outline"
+                label="Made it"
+                accessibilityLabel={`Log ${recipe.name} as cooked or to the food log`}
+                onPress={handleMadeIt}
+              />
             )}
             {!selectionMode && (
               <TouchableOpacity
@@ -1499,14 +1789,20 @@ export function RecipeDetailScreen() {
         }
       />
 
+      {/* Around the whole scroll view, since the ingredient card is one block
+          inside it: while selecting, a drag started on the trailing edge
+          paints rather than scrolls, the trade every selectable list makes. */}
+      <PaintSelectionProvider {...paintProps}>
       <ScrollView
         ref={keyboardScroll.ref}
-        scrollEnabled={!dragging}
+        // Same while a paint gesture owns the touch: iOS has to be told
+        // directly (see PaintSelectionProvider).
+        scrollEnabled={!dragging && !painting}
         contentContainerStyle={styles.scroll}
         keyboardShouldPersistTaps="handled"
         {...keyboardScroll.props}
       >
-        {recipe.imagePath ? (
+        {recipe.imagePath && photoOnDevice ? (
           <TouchableOpacity
             style={styles.hero}
             activeOpacity={interaction.activeOpacity}
@@ -1521,6 +1817,24 @@ export function RecipeDetailScreen() {
               resizeMode="cover"
               accessibilityIgnoresInvertColors
             />
+          </TouchableOpacity>
+        ) : recipe.imagePath && !pickingImage ? (
+          // The recipe has a photo and this device hasn't got it (#2704):
+          // taken on another device and not synced here yet, or lost from this
+          // install. Said, rather than drawn as the blank hero it used to be,
+          // and shorter than a photo so it doesn't read as one failing to load.
+          // Tapping still offers everything the photo hero does.
+          <TouchableOpacity
+            style={styles.heroMissing}
+            activeOpacity={interaction.activeOpacity}
+            onPress={openImagePicker}
+            accessibilityRole="button"
+            accessibilityLabel="Recipe photo isn't on this device"
+            accessibilityHint="Double tap to replace or remove it."
+          >
+            <Ionicons name="image-outline" size={iconSize.md} color={colors.textTertiary} />
+            <Text style={styles.heroMissingTitle}>Photo isn't on this device</Text>
+            <Text style={styles.heroMissingText}>It comes over when the device that took it syncs.</Text>
           </TouchableOpacity>
         ) : pickingImage ? (
           <View style={styles.heroEmptyRow}>
@@ -1908,7 +2222,7 @@ export function RecipeDetailScreen() {
             ref={draftInputRef}
             style={styles.addInput}
             value={draft}
-            onChangeText={setDraft}
+            onChangeText={text => { setDraft(text); if (addNote) setAddNote(null); }}
             onSubmitEditing={submitDraft}
             placeholder="Add an ingredient"
             placeholderTextColor={colors.textTertiary}
@@ -1925,14 +2239,32 @@ export function RecipeDetailScreen() {
             disabled={!draft.trim()}
           />
         </View>
+        {!!addNote && (
+          <Text style={styles.addNote} accessibilityLiveRegion="polite">{addNote}</Text>
+        )}
         <Text style={styles.inputHint}>
           Quantity and unit go first, e.g. “2 cups flour”. Add a comma for prep, e.g.
           “garlic, minced”
         </Text>
 
+        {/* Sits at the end of what the recipe is made of, because that list is
+            exactly what the comparison runs on. */}
+        {recipe.ingredients.length > 0 && (
+          <View style={styles.addRow}>
+            <InlineAction
+              label="Cook something with this"
+              icon="git-merge-outline"
+              variant="neutral"
+              surface="page"
+              onPress={() => openOverlap(recipe)}
+              accessibilityLabel={`Find recipes that share ingredients with ${recipe.name}`}
+            />
+          </View>
+        )}
+
         <Text style={styles.sectionLabel}>Steps</Text>
 
-        {recipe.steps.length === 0 ? (
+        {mergedStepRows.length === 0 ? (
           <Text style={styles.hint}>
             Write the method as steps instead of one block of notes, and it stays legible
             when the recipe's scaled or shown in a different unit. The notes field still works if you'd
@@ -1941,12 +2273,52 @@ export function RecipeDetailScreen() {
         ) : (
           <View style={styles.card}>
             <SortableList
-              data={recipe.steps}
-              onReorder={reordered => reorderSteps(recipe.id, reordered.map(s => s.id))}
+              data={mergedStepRows}
+              onReorder={handleMergedStepReorder}
               onDragStateChange={setDragging}
-              renderItem={renderStep}
+              onHoverChange={handleStepHoverChange}
+              renderItem={renderMergedStepRow}
             />
           </View>
+        )}
+
+        {/* Which heading new steps below file under — same picker-not-free-text
+            convention as the ingredients one above, for RecipeStep.section. */}
+        <View style={styles.sectionPickerWrap}>
+          <Text style={styles.inputHint}>New steps below go under:</Text>
+          <PillGroup
+            noun="section"
+            surface="page"
+            filterPlaceholder="Find or name a section…"
+            createMaxLength={RECIPE_SECTION_MAX_LENGTH}
+            onCreate={name => {
+              const cleaned = name.trim();
+              if (allStepSections.includes(cleaned)) return 'Already a heading on this recipe.';
+              if (!addEmptyStepSection(recipe.id, name)) return 'That isn’t a usable section name.';
+              haptics.success();
+              setStepSectionDraft(cleaned.slice(0, RECIPE_SECTION_MAX_LENGTH));
+            }}
+            options={[
+              {
+                key: '__none__',
+                label: 'No section',
+                pinned: true,
+                selected: !stepSectionDraft,
+                onPress: () => { haptics.tap(); setStepSectionDraft(''); },
+              },
+              ...allStepSections.map(name => ({
+                key: name,
+                label: name,
+                selected: stepSectionDraft === name,
+                onPress: () => { haptics.tap(); setStepSectionDraft(name); },
+              })),
+            ]}
+          />
+        </View>
+        {allStepSections.length > 0 && (
+          <Text style={styles.inputHint}>
+            Drag a step under a heading to move it there.
+          </Text>
         )}
 
         <View style={styles.addRow}>
@@ -2116,6 +2488,7 @@ export function RecipeDetailScreen() {
           <View style={{ height: insets.bottom + spacing.sm + bulkBarHeight + spacing.sm }} />
         )}
       </ScrollView>
+      </PaintSelectionProvider>
 
       {/* Hidden while selecting: the bulk bar floats where it does, and adding
           to the list isn't something you're doing mid-selection anyway. */}
@@ -2176,6 +2549,7 @@ export function RecipeDetailScreen() {
           totalCount={recipe.ingredients.length}
           category={{
             title: 'Move to Aisle',
+            noun: 'an aisle',
             options: aisleOrder,
             onSet: handleBulkSetAisle,
             onCreate: name => addAisle(name),
@@ -2242,7 +2616,7 @@ export function RecipeDetailScreen() {
         title={pendingPlanScale != null ? `${recipe.name} (${formatScale(pendingPlanScale)})` : recipe.name}
         defaultSlot={earliestUnplannedSlotToday()}
         onPlan={(dateKey, slot) => planRecipe(recipe, dateKey, slot, pendingPlanScale ?? undefined)}
-        // After the dismissal, never before — see PlanRecipeSheet.onPlanned.
+        // After the dismissal, never before — see PlanMealSheet.onPlanned.
         onPlanned={offerPrepTasks}
         onClose={() => { setPlanVisible(false); setPendingPlanScale(null); }}
       />
@@ -2256,6 +2630,20 @@ export function RecipeDetailScreen() {
         onClose={() => setAddToListVisible(false)}
       />
 
+      {/* Discovery only — this screen has no week, so picks go to the meal
+          plan rather than landing on a night here. See useOverlapPicker. */}
+      <OverlapPickerSheet
+        visible={overlap !== null}
+        matches={overlap?.matches ?? []}
+        seedLabel={overlap?.seedLabel ?? recipe.name}
+        onHandOff={handOffOverlap}
+        onOpenRecipe={other => {
+          closeOverlap();
+          (navigation as any).navigate('RecipeDetail', { recipeId: other.id });
+        }}
+        onClose={closeOverlap}
+      />
+
       <RecipeExtractSheet
         visible={extractVisible}
         recipe={recipe}
@@ -2263,14 +2651,20 @@ export function RecipeDetailScreen() {
       />
 
       {/* The scale travels in, the way it does into the add-to-list sheet — a
-          halved recipe has to read halved mid-step too. Nothing travels back:
-          cook mode writes nothing but the timer the recipe already owns. */}
+          halved recipe has to read halved mid-step too. The either/or picks
+          are shared both ways: cook mode is where most of them actually get
+          made, and a pick made there has to still be the pick back here.
+          Neither is written to the recipe. */}
       <CookModeSheet
         visible={cookModeVisible}
         recipe={recipe}
         recipesById={recipesById}
         scale={scale}
+        choices={choices}
+        onChoicesChange={setChoices}
         onClose={() => setCookModeVisible(false)}
+        onLogCooked={() => cookRecipeNow(recipe)}
+        onLogFood={nutritionReading?.nutrition ? handleLogToFoodLog : undefined}
       />
 
       <ComponentChoiceSheet
@@ -2325,6 +2719,29 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   heroImage: {
     width: '100%',
     height: '100%',
+  },
+  heroMissing: {
+    minHeight: 96,
+    borderRadius: radius.md,
+    backgroundColor: colors.bgSecondary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.smd,
+  },
+  heroMissingTitle: {
+    color: colors.textSecondary,
+    fontSize: font.sm,
+    fontWeight: fontWeight.semibold,
+    textAlign: 'center',
+  },
+  // textSecondary rather than the dimmer tertiary: this says why the photo
+  // isn't here, which is information, not an aside (EmptyNote's reasoning).
+  heroMissingText: {
+    color: colors.textSecondary,
+    fontSize: font.xs,
+    textAlign: 'center',
   },
   // Matches InlineAction's own minHeight, so the "Add a photo" pill doesn't
   // jump in height for the moment it's swapped for a spinner mid-pick.
@@ -2512,13 +2929,18 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgTertiary,
   },
   ingredientSelected: {
-    backgroundColor: colors.accent + '1A',
+    // Flattened rather than a plain translucent tint: the row now sits inside
+    // a SwipeableRow, whose still-closing panel would otherwise bleed through
+    // for the width of the close animation — see the design-system note on
+    // opaque selected-row backgrounds.
+    backgroundColor: flattenOverlay(colors.accent + '1A', colors.bgSecondary),
   },
   // The row currently loaded into the add/edit field below — same tint
   // `ingredientSelected` uses, so "this is the one you're changing" reads the
   // same way selection already does on this screen.
   stepEditing: {
-    backgroundColor: colors.accent + '1A',
+    // Flattened so it stays opaque when the step is dragged mid-edit.
+    backgroundColor: flattenOverlay(colors.accent + '1A', colors.bgSecondary),
   },
   // Fixed width so a run of 1–20 doesn't shift the text beside it as the
   // digit count grows; right-aligned so the numbers themselves stay flush
@@ -2580,10 +3002,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   // Sits at the row's top edge rather than centered, matching the row's own
   // flex-start alignment — see the note on `ingredient` above.
-  ingredientSelect: {
-    width: 22,
-    height: 22,
-  },
   ingredientText: {
     flex: 1,
     gap: 1,
@@ -2765,8 +3183,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // The badge that marks a component row where it's embedded in the
   // Ingredients card — same restaurant-outline glyph RecipeComponentPicker
   // uses for "this represents a recipe", shrunk to sit inline in a row this
-  // dense. Sits at the row's top edge like ingredientSelect, for the same
-  // flex-start reason.
+  // dense. Sits at the row's top edge like the ingredient row's own controls,
+  // for the same flex-start reason.
   componentMarker: {
     width: 20,
     height: 20,
@@ -2796,6 +3214,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.xs,
   },
   qtyTextScaled: { color: colors.accent, fontWeight: fontWeight.medium },
+  qtyColumn: { alignItems: 'flex-end' },
+  qtyWeight: {
+    color: colors.textSecondary,
+    fontSize: font.xxs,
+    marginTop: spacing.xxs,
+    paddingHorizontal: spacing.sm,
+  },
   scaleRow: { marginTop: spacing.xs, marginBottom: spacing.sm },
   choiceRow: { gap: spacing.sm, marginBottom: spacing.sm },
   scaleNote: {
@@ -2816,6 +3241,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   inputHint: {
     color: colors.textTertiary,
+    fontSize: font.xs,
+    marginTop: spacing.xs,
+  },
+  // textSecondary rather than the hint's grey: it says why the line didn't go
+  // in and what to do instead, which is information rather than an aside.
+  addNote: {
+    color: colors.textSecondary,
     fontSize: font.xs,
     marginTop: spacing.xs,
   },

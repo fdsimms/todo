@@ -15,14 +15,25 @@ import {
   isSyncableDatabase,
 } from '../db/database';
 import type { SyncLocal } from './syncEngine';
+import {
+  applyWithRecipeImages,
+  readRecipeImageForSync,
+  recipeImageNames,
+  writeRecipeImageFromSync,
+} from './recipeImageSync';
 
 export function databaseSyncLocal(): SyncLocal {
   return {
     deviceId: dbGetDeviceId,
     isSyncable: isSyncableDatabase,
     changesSince: dbSyncChangesSince,
-    apply: dbApplySyncChanges,
+    // Wrapped so a recipe photo a peer stopped pointing at loses its file too
+    // (#2704); the rows themselves are applied exactly as before.
+    apply: (payload, transport) => applyWithRecipeImages(payload, transport, dbApplySyncChanges),
     getCursor: dbGetSyncCursor,
     setCursor: dbSetSyncCursor,
+    imageNames: recipeImageNames,
+    readImage: readRecipeImageForSync,
+    writeImage: writeRecipeImageFromSync,
   };
 }

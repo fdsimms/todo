@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { FoodLogEntry, FoodNutrition, MealSlot } from '../types';
+import type { FoodLogEntry, FoodNutrition, MealPlanEntry, MealSlot } from '../types';
 import { NUTRIENT_KEYS } from '../types';
 import {
   dbBulkDeleteFoodLogEntries,
@@ -16,6 +16,8 @@ import { generateId } from '../utils/id';
 import { dayKeyOf, getCurrentDayStart, getLogicalDayKey } from '../utils/dateUtils';
 import { logFoodEntryToHealth, retractFoodEntryFromHealth, type FoodWriteResult } from '../utils/healthFoodSync';
 import { useSettingsStore } from './useSettingsStore';
+import { useHealthStore } from './useHealthStore';
+import { useTaskStore } from './useTaskStore';
 
 /**
  * The food log — what was eaten, and when.
@@ -80,6 +82,11 @@ export interface FoodLogDraft {
   productId?: string | null;
   mealPlanEntryId?: string | null;
   /**
+   * The panel the helping was measured against, for a food no catalog row
+   * holds. See `FoodLogEntry.sourcePanel`; null or absent for anything linked.
+   */
+  sourcePanel?: FoodNutrition | null;
+  /**
    * The moment being recorded, defaulting to now.
    *
    * An entry is a record of a moment and the moment is not always the one you
@@ -130,6 +137,18 @@ export interface PendingMealLog {
    * is the ordinary case.
    */
   grams: number | null;
+  /**
+   * True when a person tapped to log this meal (the food log's "Planned for
+   * today" row, the meal plan's "Log this meal") rather than the app offering
+   * it on a meal's finish.
+   *
+   * It decides what happens when the recipe turns out to have no figures to
+   * measure it by. Unasked, the prompt quietly doesn't come up, which is what
+   * the setting promises. Asked, doing nothing reads as a broken button, so
+   * the prompt hands the meal to the search sheet instead — the same answer
+   * a meal with no recipe gets.
+   */
+  asked?: boolean;
 }
 
 /**
@@ -170,7 +189,11 @@ export type FoodLogPatch = Partial<
     // `recipeId` is patchable for `reviseEntry`'s sake alone: correcting an
     // entry can also correct what was eaten, and a dish re-picked as a food
     // would otherwise keep pointing at the recipe it is no longer about.
-    'label' | 'quantity' | 'grams' | 'nutrition' | 'slot' | 'sortOrder' | 'itemId' | 'productId' | 'recipeId'
+    // `sourcePanel` rides with a correction for the same reason: re-measured
+    // against a row or re-picked as another food, the panel it kept describes
+    // how the helping used to be measured, not how it is now.
+    | 'label' | 'quantity' | 'grams' | 'nutrition' | 'sourcePanel' | 'slot' | 'sortOrder'
+    | 'itemId' | 'productId' | 'recipeId'
   >
 >;
 
@@ -199,6 +222,15 @@ interface FoodLogStore {
   initialize: () => void;
   /** Replaces `entries` with the inclusive run of logical days between the keys. */
   loadRange: (startKey: string, endKey: string) => void;
+  /**
+   * Every entry on or after `fromKey` (every entry at all when null), read
+   * straight from the database and handed back rather than stored.
+   *
+   * For the CSV export, which wants months of rows once and keeps none of
+   * them. Not a fourth window: nothing renders from it, so there is nothing for
+   * another screen's read to clobber.
+   */
+  entriesSince: (fromKey: string | null) => FoodLogEntry[];
   /**
    * A second window, for a reader that isn't the day view.
    *
@@ -340,6 +372,27 @@ interface FoodLogStore {
   setPendingManualMealLog: (pending: PendingManualMealLog | null) => void;
 
   /**
+   * Raise the offer to log a planned meal — the auto-computed prompt for a
+   * recipe-backed one, the search sheet for anything else.
+   *
+   * Lives here rather than beside its first caller because it is now raised
+   * from two very different places, and both want the identical offer: a meal
+   * slot chain's "Eat" step being ticked (`useTaskStore`, which is where this
+   * used to be a module-local function), and a tap on a planned meal that the
+   * food log can see hasn't been logged yet (`FoodLogScreen`). It only ever
+   * writes the two pending fields above, which is exactly what this store owns.
+   *
+   * **It does not check `mealLogPrompt` and must not.** That setting is the
+   * ceiling on the app *volunteering* an offer, which is the unattended
+   * caller's question to ask (`wantsMealLogPrompt`, `mealLog.ts`) — a person
+   * tapping a planned meal has asked for it outright, and a switch meaning
+   * "stop interrupting me" was never meant to answer that.
+   *
+   * `asked` says which of the two it is — see `PendingMealLog.asked`.
+   */
+  offerMealLog: (entry: MealPlanEntry, opts?: { asked?: boolean }) => void;
+
+  /**
    * True when Health has just refused a meal and the person has not been told.
    *
    * Watched by `HealthWriteRefusedNotice` (mounted in AppNavigator beside
@@ -360,6 +413,20 @@ interface FoodLogStore {
 type FoodLogSet = (
   partial: Partial<FoodLogStore> | ((s: FoodLogStore) => Partial<FoodLogStore>),
 ) => void;
+
+/**
+ * Reconciles the water-quota tasks against today's food log total, once a
+ * write has actually landed — the log-to-task half of the connection
+ * `logHealthMetric: 'waterMl'` makes. See `syncWaterQuotaTasks`'s own doc
+ * comment in `useTaskStore.ts` for what it does; this is only the choke
+ * point that calls it. Skipped for anything backdated, which cannot change
+ * what today's own total is, the same gate the Health re-read above it uses
+ * and for the same reason.
+ */
+function syncWaterQuotaTasksIfToday(dayKey: string): void {
+  if (dayKey !== dayKeyOf(getCurrentDayStart())) return;
+  useTaskStore.getState().syncWaterQuotaTasks();
+}
 
 /**
  * Files what Health said about one entry: its sample ids, or the one refusal
@@ -395,7 +462,20 @@ function recordHealthWrite(entry: FoodLogEntry, result: FoodWriteResult, set: Fo
   if (result.outcome !== 'written') return;
   if (settings.healthFoodWriteRefusalSeen) settings.setHealthFoodWriteRefusalSeen(false);
 
-  dbUpdateFoodLogEntry({ ...entry, healthSampleIds: result.sampleIds });
+  // The row as it stands now, not as it stood when the write set off. The
+  // write is a round trip to HealthKit, and the entry can be deleted, moved
+  // (a re-date is a delete and a fresh row) or corrected before it comes back.
+  // Stamping the snapshot wrote the old figures back over a correction and
+  // left a moved or deleted entry's samples in Health with nothing pointing at
+  // them. So a row that is gone, or whose figures are no longer what was just
+  // written, takes the samples back out instead: whatever changed it has
+  // already sent Health its own write.
+  const fresh = dbGetFoodLogEntry(entry.id);
+  if (!fresh || healthFiguresDiffer(entry, fresh)) {
+    void retractFoodEntryFromHealth(result.sampleIds);
+    return;
+  }
+  dbUpdateFoodLogEntry({ ...fresh, healthSampleIds: result.sampleIds });
   const stamp = (e: FoodLogEntry) =>
     (e.id === entry.id ? { ...e, healthSampleIds: result.sampleIds } : e);
   set(s => ({
@@ -403,6 +483,20 @@ function recordHealthWrite(entry: FoodLogEntry, result: FoodWriteResult, set: Fo
     windowEntries: s.windowEntries.map(stamp),
     insightEntries: s.insightEntries.map(stamp),
   }));
+
+  // A nutrient sample landing in Health just now is the one thing that can
+  // make a health rule newly true, and nothing else prompts a re-read:
+  // `useHealthSync` only refreshes the in-memory reading `checkHealthTasks`
+  // judges against on mount, a settings change, or the app coming back to
+  // the foreground — so a session spent entirely inside this app's own food
+  // log (open it, log breakfast, lunch and dinner, never background it)
+  // never sees today's total move and the rule is never re-judged. Skipped
+  // for a backdated entry, which cannot change what today's own reading is.
+  if (entry.dayKey === dayKeyOf(getCurrentDayStart())) {
+    void useHealthStore.getState().refresh().then(() => {
+      useTaskStore.getState().checkHealthTasks();
+    });
+  }
 }
 
 /**
@@ -415,6 +509,17 @@ function recordHealthWrite(entry: FoodLogEntry, result: FoodWriteResult, set: Fo
 function healthFiguresDiffer(before: FoodLogEntry, after: FoodLogEntry): boolean {
   if (before.label !== after.label) return true;
   return NUTRIENT_KEYS.some(key => before.nutrition.amounts[key] !== after.nutrition.amounts[key]);
+}
+
+/**
+ * Whether a re-read of a window came back with exactly the rows already held.
+ * The rows carry no updated stamp, so this compares contents; a row built in
+ * memory with its keys in another order merely reads as changed, which costs
+ * the re-render this exists to skip and nothing worse.
+ */
+export function sameEntries(held: FoodLogEntry[], read: FoodLogEntry[]): boolean {
+  if (held.length !== read.length) return false;
+  return held.every((e, i) => e === read[i] || JSON.stringify(e) === JSON.stringify(read[i]));
 }
 
 export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
@@ -454,12 +559,17 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
     });
   },
 
+  entriesSince(fromKey) {
+    return dbGetFoodLogEntries(fromKey ?? '0000-01-01', '9999-12-31');
+  },
+
   loadWindow(startKey, endKey) {
-    set({
-      windowEntries: dbGetFoodLogEntries(startKey, endKey),
-      windowStart: startKey,
-      windowEnd: endKey,
-    });
+    const entries = dbGetFoodLogEntries(startKey, endKey);
+    const s = get();
+    // Called on every focus of Stats; a fresh array of identical rows would
+    // re-render the whole screen for nothing (see sameEntries).
+    if (s.windowStart === startKey && s.windowEnd === endKey && sameEntries(s.windowEntries, entries)) return;
+    set({ windowEntries: entries, windowStart: startKey, windowEnd: endKey });
   },
 
   recentEntries(startKey, endKey) {
@@ -467,11 +577,11 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
   },
 
   loadInsightWindow(startKey, endKey) {
-    set({
-      insightEntries: dbGetFoodLogEntries(startKey, endKey),
-      insightStart: startKey,
-      insightEnd: endKey,
-    });
+    const entries = dbGetFoodLogEntries(startKey, endKey);
+    const s = get();
+    // Called on every focus of Mood, for loadWindow's reason.
+    if (s.insightStart === startKey && s.insightEnd === endKey && sameEntries(s.insightEntries, entries)) return;
+    set({ insightEntries: entries, insightStart: startKey, insightEnd: endKey });
   },
 
   addEntry(draft) {
@@ -510,6 +620,7 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
       quantity: draft.quantity.trim(),
       grams: draft.grams,
       nutrition: draft.nutrition,
+      sourcePanel: draft.sourcePanel ?? null,
       // Empty at insert and filled in by the Health write below once it comes
       // back, rather than awaited: this action is synchronous because every
       // caller uses the entry it returns to close a sheet, and a meal must land
@@ -553,6 +664,7 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
     // nothing, so there is nothing to retract" means. It does need *saying*,
     // for the one outcome a person can act on — see `recordHealthWrite`.
     void logFoodEntryToHealth(entry).then(result => recordHealthWrite(entry, result, set));
+    syncWaterQuotaTasksIfToday(entry.dayKey);
 
     return entry;
   },
@@ -613,6 +725,8 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
     // record for a field it never saw.
     if (!rewrites) return;
 
+    syncWaterQuotaTasksIfToday(updated.dayKey);
+
     const stale = current.healthSampleIds;
     void (async () => {
       // In that order, and the write happens either way. A retract that fails
@@ -633,22 +747,60 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
     set({ pendingManualMealLog: pending });
   },
 
+  offerMealLog(entry, opts) {
+    if (entry.recipeId) {
+      set({
+        pendingManualMealLog: null,
+        pendingMealLog: {
+          label: entry.title,
+          slot: entry.slot,
+          dayKey: entry.date,
+          recipeId: entry.recipeId,
+          mealPlanEntryId: entry.id,
+          scale: entry.recipeScale,
+          choices: entry.recipeChoices,
+          // A meal cooked tonight has nothing weighed yet — the prompt asks.
+          // Only a container that was weighed on the way into the fridge
+          // arrives with a figure (see finishLeftover).
+          grams: null,
+          asked: opts?.asked === true,
+        },
+      });
+      return;
+    }
+    // Cleared in the same commit rather than left standing: the two prompts
+    // are separate global mounts and only one of them may be showing at a
+    // time (see `PendingManualMealLog`), which is a rule a second offer
+    // raised over the first would otherwise break.
+    set({
+      pendingMealLog: null,
+      pendingManualMealLog: {
+        label: entry.title,
+        slot: entry.slot,
+        dayKey: entry.date,
+        mealPlanEntryId: entry.id,
+      },
+    });
+  },
+
   setPendingHealthWriteRefusal(pending) {
     set({ pendingHealthWriteRefusal: pending });
   },
 
   removeEntry(id) {
-    // Read before the delete, since the ids are on the row that is about to go.
-    // A meal removed from the log has to be removed from Health too: an entry
-    // logged against the wrong picker and left in a medical record is the
-    // permanent-false-fact case this whole feature is arranged around. Nothing
-    // is awaited and nothing is undone on failure — the row is gone either way,
-    // and Health's own record is something the person can delete there.
+    // Read before the delete, since the ids (and the day) are on the row
+    // that is about to go. A meal removed from the log has to be removed
+    // from Health too: an entry logged against the wrong picker and left in
+    // a medical record is the permanent-false-fact case this whole feature
+    // is arranged around. Nothing is awaited and nothing is undone on
+    // failure — the row is gone either way, and Health's own record is
+    // something the person can delete there.
     // Read from the database rather than from the loaded arrays, for the same
     // reason the write above does not go through `updateEntry`: a backdated
     // entry outside the window on screen is an ordinary row, and finding it
     // only when it happens to be loaded would strand its samples.
-    const written = dbGetFoodLogEntry(id)?.healthSampleIds ?? [];
+    const removed = dbGetFoodLogEntry(id);
+    const written = removed?.healthSampleIds ?? [];
     if (written.length > 0) void retractFoodEntryFromHealth(written);
 
     dbDeleteFoodLogEntry(id);
@@ -660,6 +812,7 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
       // count negative and make the screen vanish while it still holds entries.
       totalCount: Math.max(0, s.totalCount - 1),
     }));
+    if (removed) syncWaterQuotaTasksIfToday(removed.dayKey);
   },
 
   removeEntries(ids) {
@@ -669,8 +822,8 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
     // from the log has to be removed from Health too, and read from the
     // database rather than the loaded arrays so a backdated entry outside
     // the window on screen doesn't strand its samples.
-    const written = ids
-      .flatMap(id => dbGetFoodLogEntry(id)?.healthSampleIds ?? []);
+    const removed = ids.map(id => dbGetFoodLogEntry(id)).filter((e): e is FoodLogEntry => e !== null);
+    const written = removed.flatMap(e => e.healthSampleIds);
     if (written.length > 0) void retractFoodEntryFromHealth(written);
 
     dbBulkDeleteFoodLogEntries(ids);
@@ -680,6 +833,8 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
       insightEntries: s.insightEntries.filter(e => !idSet.has(e.id)),
       totalCount: Math.max(0, s.totalCount - idSet.size),
     }));
+    const todayKey = dayKeyOf(getCurrentDayStart());
+    if (removed.some(e => e.dayKey === todayKey)) useTaskStore.getState().syncWaterQuotaTasks();
   },
 
   moveEntries(ids, slot) {
@@ -725,6 +880,8 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
       quantity: current.quantity,
       grams: current.grams,
       nutrition: current.nutrition,
+      // The same food, so the same panel to correct it against later.
+      sourcePanel: current.sourcePanel ?? null,
       slot: current.slot,
       recipeId: current.recipeId,
       itemId: current.itemId,
@@ -742,6 +899,8 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
       quantity: current.quantity,
       grams: current.grams,
       nutrition: current.nutrition,
+      // The same food, so the same panel to correct it against later.
+      sourcePanel: current.sourcePanel ?? null,
       slot: current.slot,
       recipeId: current.recipeId,
       itemId: current.itemId,

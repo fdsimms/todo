@@ -42,6 +42,8 @@ export interface SerializedTask {
   chainStep?: string;
   /** The question this task asks when it is completed, if it asks one. */
   asksOnCompletion?: string;
+  /** The answers a Yes/No or Pick one question offers; complete_task takes one of these. */
+  answerOptions?: string[];
   /**
    * The answer recorded against this occurrence, where one was given.
    *
@@ -93,6 +95,10 @@ export function serializeTask(replica: Replica, task: Task): SerializedTask {
     estimatedMinutes: replica.estimatedMinutes(task) ?? undefined,
     chainStep: step?.title,
     asksOnCompletion: replica.deliverableKind(task) ?? undefined,
+    answerOptions: (() => {
+      const offered = replica.deliverableOptions(task);
+      return offered.length > 0 ? offered : undefined;
+    })(),
     answer: task.deliverableValue ?? undefined,
     recurring: task.recurrenceType !== 'none' ? true : undefined,
     pinned: task.pinned ? true : undefined,

@@ -1,5 +1,5 @@
 // Cook mode: mise en place, then the method one step at a time. One component
-// of ~1,000 lines, so grep a landmark below rather than reading it start to
+// of ~1,300 lines, so grep a landmark below rather than reading it start to
 // finish:
 //
 //   ==== <name> ====        the section banners through the logic half
@@ -9,7 +9,7 @@
 // The design argument is in the doc comment on CookModeSheet itself: nothing
 // here writes to the recipe, and the whole screen is built around hands that
 // are wet and a phone that's asleep.
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Keyboard,
@@ -45,19 +45,23 @@ import { NumberPadAccessory } from './NumberPadAccessory';
 import { StepTimerRow } from './StepTimerRow';
 import { StepText } from './StepText';
 import { InlineAction } from './InlineAction';
+import { RecipeChoiceChips } from './RecipeChoiceChips';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, lineHeight, radius, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { clampStepIndex, cookSteps, describeStepPosition } from '../utils/cookMode';
-import { formatStepDuration, stepDurationOffers } from '../utils/stepTimers';
-import { flattenRecipeIngredients } from '../utils/recipeComponents';
+import { formatStepDuration, stepDurationOffers, stepTimerExcerpt } from '../utils/stepTimers';
+import {
+  applyChoice, choiceGroupKey, flattenRecipeIngredients, recipeChoiceGroups, type ChoiceGroup,
+} from '../utils/recipeComponents';
 import { ingredientHeadings } from '../utils/recipeSections';
 import { annotateSteps, stepIngredientLines } from '../utils/stepIngredients';
 import { describeStandingSwap, standingSwapMap } from '../utils/standingSwaps';
 import { onHandNameKeys } from '../utils/grocerySuggest';
 import { formatScale, isUnscaled, scaleQuantity } from '../utils/recipeScale';
 import { convertQuantity } from '../utils/unitConvert';
+import { ingredientWeightText, weightLookups as buildWeightLookups } from '../utils/lineWeight';
 
 interface Props {
   visible: boolean;
@@ -70,7 +74,29 @@ interface Props {
    * an edit to the recipe (see MealPlanEntry.recipeScale for where it does last).
    */
   scale: number;
+  /**
+   * The either/or picks this cooking is for — MealPlanEntry.recipeChoices'
+   * shape, owned by the screen that opened this. Shared rather than copied in:
+   * the moment "serrano or jalapeño" actually gets answered is usually this
+   * one, standing at the counter, and the answer has to still be there on the
+   * recipe screen afterwards (its cost, nutrition and food-log reads). Like
+   * `scale`, never written onto the recipe.
+   */
+  choices: readonly string[];
+  onChoicesChange: (choices: string[]) => void;
   onClose: () => void;
+  /**
+   * The end screen's offer: the recipe screen's `cookRecipeNow`, which raises
+   * the post-cook sheet (rating, leftovers, what got used up). Called after
+   * this sheet has been told to close, so the two never sit visible at once.
+   */
+  onLogCooked: () => void;
+  /**
+   * The end screen's second offer, the recipe screen's food-log prompt.
+   * Omitted when the recipe's nutrition can't be worked out, and the offer
+   * goes with it (the same gate the recipe screen's own entry point has).
+   */
+  onLogFood?: () => void;
 }
 
 /**
@@ -103,9 +129,13 @@ interface Props {
  *   chip nobody presses.
  * - **Nothing here writes to the recipe.** Position and the ingredient panel's
  *   fold are screen state, gone when the modal closes; finishing the last step
- *   closes it and logs nothing, because logging the cook time is the timer's
- *   own ✓ and an app that banked a time nobody confirmed would be inventing
- *   one. A step timer is the one thing started here that outlives the sheet,
+ *   logs nothing, because logging the cook time is the timer's own ✓ and an
+ *   app that banked a time nobody confirmed would be inventing one. What it
+ *   does instead is *offer*: Done on the last step opens an end screen with
+ *   Log as cooked (the recipe screen's own `cookRecipeNow`, whose sheet asks
+ *   rather than writes) and, where nutrition is known, the food log. Closing
+ *   there straight away used to leave the cook on the recipe screen with the
+ *   rating and leftovers behind an unlabelled header icon. A step timer is the one thing started here that outlives the sheet,
  *   and it is stored beside the recipe rather than on it — a countdown someone
  *   set for tonight's pan is not an edit to the dish, the same call `scale`
  *   makes.
@@ -121,17 +151,26 @@ interface Props {
  * ingredient lines, and a step whose wording the matcher can't place silently
  * keeps its own words.
  */
-export function CookModeSheet({ visible, recipe, recipesById, scale, onClose }: Props) {
+export function CookModeSheet({
+  visible, recipe, recipesById, scale, choices, onChoicesChange, onClose, onLogCooked, onLogFood,
+}: Props) {
   // ==== store bindings and derived data: the method, the ingredients ====
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
   // The step view holds the question field, so it has to lift clear of the
   // keyboard — and `automaticallyAdjustKeyboardInsets` is never passed bare
-  // here, for the 30,000pt reason the hook's own doc comment gives.
-  const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
+  // here, for the reasons the hook's own doc comment gives.
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
   const unitSystem = useSettingsStore(s => s.unitSystem);
   const groceryItems = useGroceryStore(useShallow(s => s.items));
+  const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
+  // What each line weighs, where its food's portion table can say
+  // (lineWeight.ts) — the same caption the recipe page puts under a pill.
+  const weightLookups = useMemo(
+    () => buildWeightLookups(groceryItems, itemProducts),
+    [groceryItems, itemProducts],
+  );
   const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
 
   // Only while this is actually up: the sheet stays mounted behind the recipe
@@ -151,15 +190,40 @@ export function CookModeSheet({ visible, recipe, recipesById, scale, onClose }: 
   );
   // Live, not persisted — see recipeComponents.ts's ChoiceResolution.onHand.
   const onHand = useMemo(() => onHandNameKeys(groceryItems, new Date()), [groceryItems]);
+  const resolution = useMemo(() => ({ chosen: choices, onHand }), [choices, onHand]);
 
+  // The method follows the picks too: "mash or roast" is a choice between two
+  // components, and each brings its own steps. `clampStepIndex` below is what
+  // keeps a position valid if a pick shortens the method under the cook.
   const steps = useMemo(
-    () => cookSteps(recipe, recipesById),
-    [recipe, recipesById]
+    () => cookSteps(recipe, recipesById, resolution),
+    [recipe, recipesById, resolution]
   );
   const ingredients = useMemo(
-    () => flattenRecipeIngredients(recipe, recipesById, { onHand }, standingSwaps),
-    [recipe, recipesById, standingSwaps, onHand]
+    () => flattenRecipeIngredients(recipe, recipesById, resolution, standingSwaps),
+    [recipe, recipesById, standingSwaps, resolution]
   );
+  // Every either/or this cooking poses, answered here rather than beforehand:
+  // the old shape made you pick on the recipe screen *before* opening cook
+  // mode, and a cook who forgot had to back out, pick, and start again.
+  // Mise en place shows them all, since that's where the gathering happens.
+  const choiceGroups = useMemo(
+    () => recipeChoiceGroups(recipe, recipesById, resolution),
+    [recipe, recipesById, resolution]
+  );
+  // Mid-step, only the ingredient ones. Swapping the pepper halfway through
+  // changes one line; swapping the mash for the roast potatoes swaps out a
+  // whole dish's method under the step being read, which is a decision for the
+  // mise en place screen (one Back from step 1) rather than for a fold in the
+  // footer.
+  const ingredientChoiceGroups = useMemo(
+    () => choiceGroups.filter(group => group.kind === 'ingredient'),
+    [choiceGroups]
+  );
+  const pick = (group: ChoiceGroup, optionId: string) => {
+    animateLayout();
+    onChoicesChange(applyChoice(choices, group, optionId));
+  };
   // Which headings each line opens: the component's name where one starts, and
   // the recipe's own section label where one does. Both are inferred from the
   // flat list rather than stored on it — see ingredientHeadings.
@@ -174,6 +238,10 @@ export function CookModeSheet({ visible, recipe, recipesById, scale, onClose }: 
   // -1 is the mise en place screen, ahead of step 0 — screen state like the
   // step position itself, reset the same way on close.
   const [rawIndex, setRawIndex] = useState(0);
+  // Past the last step: the end screen, which offers the post-cook sheet
+  // rather than closing on the cook. Screen state like the position, and
+  // reset the same way on close.
+  const [finished, setFinished] = useState(false);
   const [ingredientsOpen, setIngredientsOpen] = useState(false);
   // One question at a time, about the step on screen, and none of it outlives
   // that step: the answer is screen state like the position and the panel's
@@ -190,7 +258,10 @@ export function CookModeSheet({ visible, recipe, recipesById, scale, onClose }: 
   // time is what keeps a stale index off the end of it.
   const atMise = rawIndex === -1;
   const index = atMise ? -1 : clampStepIndex(rawIndex, steps.length);
-  const step = index >= 0 ? steps[index] : null;
+  // A method edited down to nothing behind the end screen drops back to the
+  // empty state rather than offering to log a method that isn't there.
+  const atEnd = finished && steps.length > 0;
+  const step = index >= 0 && !atEnd ? steps[index] : null;
 
   // ==== effects: resetting on close, clearing the ask panel per step ====
   // Back to the top for the next open — the mise en place screen where there's
@@ -202,6 +273,7 @@ export function CookModeSheet({ visible, recipe, recipesById, scale, onClose }: 
   useEffect(() => {
     if (!visible) {
       setRawIndex(hasIngredients ? -1 : 0);
+      setFinished(false);
       setIngredientsOpen(false);
     }
   }, [visible, hasIngredients]);
@@ -210,6 +282,10 @@ export function CookModeSheet({ visible, recipe, recipesById, scale, onClose }: 
   // step takes it with it — including a half-typed question, which on the next
   // step would be a question about something else.
   const stepId = step?.id ?? null;
+  // The step on screen right now, for an answer that comes back after the
+  // cook has already moved on — see `ask`.
+  const stepIdRef = useRef(stepId);
+  stepIdRef.current = stepId;
   useEffect(() => {
     setAskOpen(false);
     setQuestion('');
@@ -267,8 +343,16 @@ export function CookModeSheet({ visible, recipe, recipesById, scale, onClose }: 
     setAsking(true);
     setAskError(null);
     setAnswer(null);
+    // The step reset above clears the panel when the cook moves on, but a
+    // request already in flight outlived it: its answer landed on the next
+    // step, under that step's own Keep button, and kept as a note there it
+    // was filed against a sentence it wasn't about. A reply for a step that
+    // is no longer on screen is dropped instead.
+    const askedOn = stepId;
+    const stillHere = () => stepIdRef.current === askedOn;
     try {
       const reply = await askCookQuestion(context, asked);
+      if (!stillHere()) return;
       setAnswer(reply);
       haptics.success();
       // An answer arriving under a kept note, under the step, can land below
@@ -277,23 +361,39 @@ export function CookModeSheet({ visible, recipe, recipesById, scale, onClose }: 
       // reason: the row has to be laid out before it can be scrolled to.
       setTimeout(() => keyboardScroll.ref.current?.scrollToEnd({ animated: true }), 100);
     } catch (e) {
+      if (!stillHere()) return;
       setAskError(describeAIError(e));
       haptics.error();
     } finally {
-      setAsking(false);
+      // The step reset already cleared `asking` for a step left behind, and
+      // may since have started a request of its own on the new one.
+      if (stillHere()) setAsking(false);
     }
-  }, [asking, recipe.name, steps, index, ingredients, scale, unitSystem, keyboardScroll.ref]);
+  }, [asking, recipe.name, steps, index, ingredients, scale, unitSystem, keyboardScroll.ref, stepId]);
 
-  // ==== navigation: mise en place, then step to step ====
+  // ==== navigation: mise en place, step to step, then the end screen ====
   const atLast = index >= 0 && index === steps.length - 1;
 
   const startCooking = () => {
     haptics.tap();
+    // Starting the cook timer here (rather than leaving it to a second tap on
+    // RecipeTimerRow) is the indicator that a cook is actually underway: the
+    // elapsed stopwatch and progress bar start moving the moment mise en
+    // place is left behind. Only when nothing's running or paused yet — a
+    // cook who already started or logged the timer isn't reset by leaving
+    // mise en place a second time (Back then Start Cooking again).
+    if (!cookTimer.inProgress) cookTimer.onToggle();
     setRawIndex(0);
   };
 
   const goBack = () => {
     haptics.tap();
+    // Off the end screen, back onto the last step: a Done pressed a step
+    // early is undone where it was pressed.
+    if (atEnd) {
+      setFinished(false);
+      return;
+    }
     // Step 1's Back returns to the mise en place screen when there was one to
     // leave, rather than sitting disabled at the start of the method.
     if (index === 0 && hasIngredients) {
@@ -303,9 +403,9 @@ export function CookModeSheet({ visible, recipe, recipesById, scale, onClose }: 
     setRawIndex(Math.max(0, index - 1));
   };
 
-  // Closing while the "Ask about this step" field still has focus races the
-  // keyboard's own dismiss animation against the Modal's and freezes whatever
-  // renders underneath — same bug as the sheets fixed for this elsewhere.
+  // SheetModal holds the close until the keyboard is gone (see its doc
+  // comment), so this dismiss isn't what prevents the freeze; it only starts
+  // the keyboard moving a beat sooner.
   const close = () => {
     Keyboard.dismiss();
     onClose();
@@ -317,12 +417,27 @@ export function CookModeSheet({ visible, recipe, recipesById, scale, onClose }: 
       // done — same distinction TaskItem/TaskCheckbox draw for a chain's
       // last task, borrowed here for a recipe's last step.
       haptics.chainFinish();
-      close();
+      setFinished(true);
       return;
     }
     haptics.tap();
     setRawIndex(index + 1);
   };
+
+  // Both offers close cook mode *and* raise a sheet mounted beside it (the
+  // recap and the food-log prompt live in AppNavigator). Closing first, in the
+  // same handler, is what keeps them from being two siblings visible at once:
+  // SheetModal holds the new one back until this one is gone.
+  const logCooked = () => {
+    haptics.success();
+    close();
+    onLogCooked();
+  };
+  const logFood = onLogFood && (() => {
+    haptics.tap();
+    close();
+    onLogFood();
+  });
 
   // ==== render. Everything below is JSX ====
   return (
@@ -353,6 +468,20 @@ export function CookModeSheet({ visible, recipe, recipesById, scale, onClose }: 
             <Text style={styles.miseSubtitle}>
               Everything this recipe needs, before you start cooking.
             </Text>
+            {/* Where the recipe offers a choice, it's made here, as the
+                ingredients are gathered — the list below follows the pick. */}
+            {choiceGroups.length > 0 && (
+              <View style={styles.choices}>
+                {choiceGroups.map(group => (
+                  <RecipeChoiceChips
+                    key={choiceGroupKey(group.recipe.id, group.label)}
+                    group={group}
+                    activeOptionId={group.active.id}
+                    onPick={optionId => pick(group, optionId)}
+                  />
+                ))}
+              </View>
+            )}
             <View style={styles.miseCard}>
               {ingredients.map((flat, position) => {
                 // Same scale-then-convert pipeline the panel below runs, and
@@ -361,13 +490,19 @@ export function CookModeSheet({ visible, recipe, recipesById, scale, onClose }: 
                 const scaled = scaleQuantity(flat.ingredient.quantity, scale);
                 const converted = convertQuantity(scaled.text, unitSystem);
                 const marked = scaled.scaled || converted.converted || !!flat.swappedFrom;
-                const previous = ingredients[position - 1];
-                const heading =
-                  flat.depth > 0 && previous?.recipe.id !== flat.recipe.id ? flat.recipe.name : null;
+                const weight = ingredientWeightText(flat.ingredient, scaled.text, weightLookups, unitSystem);
+                // The same headings the mid-step panel draws (`headings`,
+                // from `ingredientHeadings`): a component's name where one
+                // starts and the recipe's own section label where one does.
+                // This screen worked its own out and only ever had the first,
+                // so "For the sauce" vanished from the one list meant for
+                // gathering things by section.
+                const heading = headings[position];
                 const last = position === ingredients.length - 1;
                 return (
                   <View key={`${flat.recipe.id}:${flat.ingredient.id}`}>
-                    {!!heading && <Text style={styles.miseHeading}>{heading}</Text>}
+                    {heading.dish && <Text style={styles.miseHeading}>{flat.recipe.name}</Text>}
+                    {!!heading.section && <Text style={styles.miseHeading}>{heading.section}</Text>}
                     <View style={[styles.miseRow, last && styles.miseRowLast]}>
                       <View style={styles.miseRowText}>
                         <Text style={styles.miseName}>{flat.ingredient.name}</Text>
@@ -381,19 +516,48 @@ export function CookModeSheet({ visible, recipe, recipesById, scale, onClose }: 
                         )}
                       </View>
                       {!!converted.text && (
-                        <View style={[styles.miseQtyPill, marked && styles.miseQtyPillMarked]}>
-                          <Text
-                            style={[styles.miseQtyText, marked && styles.miseQtyTextMarked]}
-                            numberOfLines={1}
-                          >
-                            {converted.text}
-                          </Text>
+                        <View style={styles.qtyColumn}>
+                          <View style={[styles.miseQtyPill, marked && styles.miseQtyPillMarked]}>
+                            <Text
+                              style={[styles.miseQtyText, marked && styles.miseQtyTextMarked]}
+                              numberOfLines={1}
+                            >
+                              {converted.text}
+                            </Text>
+                          </View>
+                          {!!weight && (
+                            <Text style={styles.miseWeight} numberOfLines={1}>{weight}</Text>
+                          )}
                         </View>
                       )}
                     </View>
                   </View>
                 );
               })}
+            </View>
+          </ScrollView>
+        ) : atEnd ? (
+          <ScrollView style={styles.stepScrollView} contentContainerStyle={styles.stepScroll}>
+            <Text style={styles.miseTitle}>All steps done</Text>
+            <Text style={styles.miseSubtitle}>
+              Log it as cooked to rate it, note any leftovers and check off the ingredients you used up.
+              Nothing is logged until you choose to.
+            </Text>
+            <View style={styles.endActions}>
+              {logFood && (
+                <InlineAction
+                  icon="restaurant-outline"
+                  label="Add to food log"
+                  accessibilityLabel={`Add ${recipe.name} to the food log`}
+                  onPress={logFood}
+                />
+              )}
+              <InlineAction
+                label="Close without logging"
+                variant="neutral"
+                surface="page"
+                onPress={() => { haptics.tap(); close(); }}
+              />
             </View>
           </ScrollView>
         ) : step === null ? (
@@ -426,6 +590,13 @@ export function CookModeSheet({ visible, recipe, recipesById, scale, onClose }: 
                   <Text style={styles.attributionText} numberOfLines={1}>{step.recipe.name}</Text>
                 </View>
               )}
+              {/* The method heading this step opens, read out loud the same
+                  way the recipe screen draws it as a caption above the row —
+                  a cook working from this screen alone should still see
+                  "For the sauce" land where the sauce steps start. */}
+              {!!step.section && (
+                <Text style={styles.sectionCaption}>{step.section}</Text>
+              )}
               {/* The recipe's own sentence, with the amount this cooking needs
                   and any standing swap named where the ingredient is. The
                   ingredient panel below holds the same two facts, and folded
@@ -457,6 +628,10 @@ export function CookModeSheet({ visible, recipe, recipesById, scale, onClose }: 
                         recipeName: recipe.name,
                         stepId: step.id,
                         stepLabel: describeStepPosition(index, steps.length),
+                        // The words the row is known by in the footer, since
+                        // "Step 2 of 12" beside "Step 5 of 12" doesn't say
+                        // which one is the rice.
+                        stepExcerpt: stepTimerExcerpt(step.text, offer.start),
                         durationSeconds: offer.seconds,
                       })}
                     />
@@ -583,6 +758,19 @@ export function CookModeSheet({ visible, recipe, recipesById, scale, onClose }: 
               </TouchableOpacity>
               {ingredientsOpen && (
                 <ScrollView style={styles.panelList} nestedScrollEnabled>
+                  {ingredientChoiceGroups.length > 0 && (
+                    <View style={[styles.choices, styles.panelChoices]}>
+                      {ingredientChoiceGroups.map(group => (
+                        <RecipeChoiceChips
+                          key={choiceGroupKey(group.recipe.id, group.label)}
+                          group={group}
+                          activeOptionId={group.active.id}
+                          onPick={optionId => pick(group, optionId)}
+                          surface="card"
+                        />
+                      ))}
+                    </View>
+                  )}
                   {ingredients.map((flat, position) => {
                     // Scaled first, then converted: the multiplication is exact
                     // and the conversion rounds, so rounding last is the only
@@ -592,6 +780,7 @@ export function CookModeSheet({ visible, recipe, recipesById, scale, onClose }: 
                     const scaled = scaleQuantity(flat.ingredient.quantity, scale);
                     const converted = convertQuantity(scaled.text, unitSystem);
                     const marked = scaled.scaled || converted.converted || !!flat.swappedFrom;
+                    const weight = ingredientWeightText(flat.ingredient, scaled.text, weightLookups, unitSystem);
                     const heading = headings[position];
                     // A hairline above a section the way the recipe screen
                     // draws one, except at the top of the list and except
@@ -620,10 +809,15 @@ export function CookModeSheet({ visible, recipe, recipesById, scale, onClose }: 
                             )}
                           </View>
                           {!!converted.text && (
-                            <View style={[styles.qtyPill, marked && styles.qtyPillMarked]}>
-                              <Text style={[styles.qtyText, marked && styles.qtyTextMarked]} numberOfLines={1}>
-                                {converted.text}
-                              </Text>
+                            <View style={styles.qtyColumn}>
+                              <View style={[styles.qtyPill, marked && styles.qtyPillMarked]}>
+                                <Text style={[styles.qtyText, marked && styles.qtyTextMarked]} numberOfLines={1}>
+                                  {converted.text}
+                                </Text>
+                              </View>
+                              {!!weight && (
+                                <Text style={styles.qtyWeight} numberOfLines={1}>{weight}</Text>
+                              )}
                             </View>
                           )}
                         </View>
@@ -687,6 +881,30 @@ export function CookModeSheet({ visible, recipe, recipesById, scale, onClose }: 
                 <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.onAccent} />
               </TouchableOpacity>
             </View>
+          ) : atEnd ? (
+            <View style={styles.controls}>
+              <TouchableOpacity
+                style={styles.control}
+                activeOpacity={interaction.activeOpacity}
+                onPress={goBack}
+                accessibilityRole="button"
+                accessibilityLabel="Back to the last step"
+              >
+                <Ionicons name="chevron-back" size={iconSize.sm} color={colors.accent} />
+                <Text style={styles.controlText}>Back</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.controlPrimary}
+                activeOpacity={interaction.activeOpacity}
+                onPress={logCooked}
+                accessibilityRole="button"
+                accessibilityLabel={`Log ${recipe.name} as cooked`}
+                accessibilityHint="Asks for a rating, any leftovers and the ingredients you used up"
+              >
+                <Ionicons name="flame-outline" size={iconSize.sm} color={colors.onAccent} />
+                <Text style={styles.controlPrimaryText}>Log as cooked</Text>
+              </TouchableOpacity>
+            </View>
           ) : step !== null && (
             <View style={styles.controls}>
               <TouchableOpacity
@@ -705,7 +923,7 @@ export function CookModeSheet({ visible, recipe, recipesById, scale, onClose }: 
                 activeOpacity={interaction.activeOpacity}
                 onPress={goNext}
                 accessibilityRole="button"
-                accessibilityLabel={atLast ? 'Finish cooking and leave cook mode' : 'Next step'}
+                accessibilityLabel={atLast ? 'Finish the last step' : 'Next step'}
               >
                 <Text style={styles.controlPrimaryText}>{atLast ? 'Done' : 'Next'}</Text>
                 <Ionicons
@@ -741,10 +959,13 @@ function ScreenAwake() {
 }
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
-  // Three rows of StepTimerRow plus the card's own padding. A fourth is a
-  // scroll rather than more height, so the tray can't grow without bound.
+  // Two rows of StepTimerRow (about 89pt each since its controls went to
+  // 44pt and its step excerpt got a line of its own) and the controls of a
+  // third, so that row is still usable and the stack visibly scrolls. Past
+  // that is a scroll rather than more height, so the tray can't grow without
+  // bound and push the step text off the screen it exists for.
   stepTimerStack: {
-    maxHeight: 210,
+    maxHeight: 236,
     flexGrow: 0,
   },
   offers: {
@@ -886,6 +1107,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textTertiary,
     fontSize: font.xs,
   },
+  // Same section-header treatment as every other list in the app — see the
+  // note on section headers in CLAUDE.md's design system section.
+  sectionCaption: {
+    color: colors.textSecondary,
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
   // Everything below the step, pinned: the panel, the timer and the controls
   // stay put while a long step scrolls above them.
   tray: {
@@ -969,6 +1199,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.sm,
   },
   qtyTextMarked: { color: colors.accent, fontWeight: fontWeight.medium },
+  // The line's weight under its pill (lineWeight.ts), same treatment as the
+  // recipe page's.
+  qtyColumn: { alignItems: 'flex-end' },
+  qtyWeight: {
+    color: colors.textSecondary,
+    fontSize: font.xs,
+    marginTop: spacing.xxs,
+    paddingHorizontal: spacing.sm,
+  },
   // The mise en place screen: the same ingredient list the tray's collapsed
   // panel shows mid-step, but this is the one place it's the main event —
   // bigger type, one row per line with a divider, meant to be read from
@@ -984,6 +1223,23 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     lineHeight: lineHeight.md,
     marginTop: spacing.xs,
     marginBottom: spacing.lg,
+  },
+  // The end screen's quieter offers, under its explanation. The primary one
+  // (Log as cooked) is the footer button, where Next was.
+  endActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  // One block per either/or, above the list it changes. The mise en place
+  // subtitle already leaves `spacing.lg` above; this leaves the same below.
+  choices: {
+    gap: spacing.md,
+    marginBottom: spacing.lg,
+  },
+  // Inside the ingredient panel the list follows directly, so a smaller gap.
+  panelChoices: {
+    marginBottom: spacing.sm,
   },
   miseCard: {
     backgroundColor: colors.bgSecondary,
@@ -1039,6 +1295,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontWeight: fontWeight.medium,
   },
   miseQtyTextMarked: { color: colors.accent },
+  miseWeight: {
+    color: colors.textSecondary,
+    fontSize: font.sm,
+    marginTop: spacing.xxs,
+    paddingHorizontal: spacing.sm,
+  },
   timerCard: {
     backgroundColor: colors.bgSecondary,
     borderRadius: radius.md,

@@ -1,0 +1,4 @@
+{
+  "message": "Fixed stacks flickering when you expand or collapse them. The list below could jump by the stack's height for a frame, and near the bottom of a list it could leave you scrolled somewhere else.",
+  "date": "2026-09-20"
+}

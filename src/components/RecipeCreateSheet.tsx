@@ -1,5 +1,5 @@
 // Builds a whole new recipe out of a photo or a paste — the Recipes screen's
-// import entry. One component of ~1,020 lines, so grep a landmark rather than
+// import entry. One component of ~1,350 lines, so grep a landmark rather than
 // reading it start to finish:
 //
 //   ==== <name> ====        the section banners through the logic half
@@ -50,11 +50,14 @@ import {
   extractRecipe, type ExtractedRecipe, type RecipeGroceryItem, type ExtractedPrepTask,
 } from '../services/aiSuggestions';
 import { describeImportError, isRetryableImportError } from '../services/recipePage';
+import { normalizeRecipeUrl, recipeImportedFrom } from '../utils/recipeUrl';
+import { recipeFromPageOffline } from '../utils/recipePageOffline';
 import {
-  normalizeIngredient, cleanRecipeName, formatServingsRange, parseServingsRange,
+  alreadyInRecipeNote, blockedReviewRows,
+  normalizeIngredient, cleanRecipeName, cleanRecipeSource, cookbookKey, formatServingsRange,
+  parseServingsRange, recipeInBook,
 } from '../utils/recipeUtils';
 import { describeKeepDays } from '../utils/leftovers';
-import { groceryNameKey } from '../utils/groceryParse';
 import { sourceFieldsFor, sourcePlanFor } from '../utils/recipeProvenance';
 import { aisleForName } from '../utils/groceryAisles';
 import { sectionsOf } from '../utils/recipeSections';
@@ -101,6 +104,13 @@ interface Props {
    * the source the recipe ended up with.
    */
   onCreated: (recipeId: string, sourceUrl: string | null) => void;
+  /**
+   * No Anthropic key (and Recipe import left on): only the link tab, and a
+   * page is read from its own structured data rather than by the model
+   * (`recipeFromPageOffline`). A page that publishes none is refused with a
+   * message naming the key, since nothing else here could read it.
+   */
+  keyless?: boolean;
 }
 
 /**
@@ -133,6 +143,13 @@ interface Props {
  * a cookbook clipping has a source just as much as a web page does, it's just
  * not one the app can read off the input.
  *
+ * **With no key it is a link import and nothing else** (`keyless`, #2930). A
+ * page publishing `schema.org/Recipe` is built into the same `ExtractedRecipe`
+ * by `recipeFromPageOffline` instead of the model, so the review list below is
+ * one sheet either way; a page that publishes none is refused with a message
+ * naming the key rather than guessed at. Paste and photo have no keyless
+ * reading, so the picker shows the link field alone.
+ *
  * **The method and the prep tasks are reviewable rows, not a footnote** (#1618).
  * They used to be written to the new recipe unconditionally, announced only by
  * a sentence in the intro saying how many of each had been found — so the one
@@ -143,7 +160,7 @@ interface Props {
  * of the user's own for them to land on top of.
  */
 export function RecipeCreateSheet({
-  visible, initialMode = 'photo', initialUrl = null, onClose, onCreated,
+  visible, initialMode = 'photo', initialUrl = null, onClose, onCreated, keyless = false,
 }: Props) {
   // ==== store bindings ====
   const colors = useColors();
@@ -154,6 +171,7 @@ export function RecipeCreateSheet({
   const addToPantry = useGroceryStore(s => s.addToPantry);
   const recipes = useRecipeStore(useShallow(s => s.recipes));
   const addRecipe = useRecipeStore(s => s.addRecipe);
+  const ensureCookbook = useRecipeStore(s => s.ensureCookbook);
   const setServings = useRecipeStore(s => s.setServings);
   const setRecipeYield = useRecipeStore(s => s.setRecipeYield);
   const setEstimatedMinutes = useRecipeStore(s => s.setEstimatedMinutes);
@@ -163,7 +181,6 @@ export function RecipeCreateSheet({
   const setAuthor = useRecipeStore(s => s.setAuthor);
   const setSourceType = useRecipeStore(s => s.setSourceType);
   const setSourcePage = useRecipeStore(s => s.setSourcePage);
-  const linkNewCookbook = useRecipeStore(s => s.linkNewCookbook);
   const setMealType = useRecipeStore(s => s.setMealType);
   const setTags = useRecipeStore(s => s.setTags);
   const addStep = useRecipeStore(s => s.addStep);
@@ -218,11 +235,24 @@ export function RecipeCreateSheet({
   const [siteName, setSiteName] = useState('');
   const [sourceAuthor, setSourceAuthor] = useState('');
   const [sourcePageText, setSourcePageText] = useState('');
+  // Only ever read when there's no fetched page — a link's URL comes from
+  // the page and stays authoritative (see the comment by sourcePlanFor
+  // below). A photo or paste import has nothing to prefill this with; it's
+  // blank until the user types one in.
+  const [sourceUrlText, setSourceUrlText] = useState('');
+  /**
+   * The address the user said to import again although a recipe already came
+   * from it, or null. Set only by the "Import anyway" answer in `run`, and it
+   * lifts the "You already imported this link" block (`urlDuplicate`) for that one
+   * address: asking before the fetch and then refusing to save after it would
+   * spend a page fetch and a paid extraction on a recipe that can't be kept.
+   */
+  const [repeatLinkOk, setRepeatLinkOk] = useState<string | null>(null);
   // What the source *is* — inferred, not picked. A link is a website by
   // construction; a photo is whatever the page looked like to the model.
   const [importedSourceType, setImportedSourceType] = useState<RecipeSourceType | null>(null);
   const edits = usePendingEdits();
-  const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
   // Whichever add-menu item opened it — "Paste text", "From a link" and "From
   // a photo" all land here, and each opens on its own tab rather than making
   // that tap feel ignored. Every other tab is still one tap away.
@@ -243,6 +273,16 @@ export function RecipeCreateSheet({
   const covered = useMemo(
     () => coveredIngredients(ingredients, candidates, acceptedKeys),
     [ingredients, candidates, acceptedKeys],
+  );
+  // A line Create would drop as a repeat of an earlier one (same heading, prep
+  // and purpose), mapped to the row it repeats, so the review can say so on
+  // the row rather than showing both ticked and saving one (#2917). The same
+  // test the store's merge applies, run over what's actually going in.
+  const blocked = useMemo(
+    () => blockedReviewRows(
+      ingredients.map((row, i) => (accepted.has(i) && !covered.has(i) ? normalizeIngredient(row) : null)),
+    ),
+    [ingredients, accepted, covered],
   );
 
   // Every heading the Section picker can offer, for a recipe that doesn't
@@ -287,6 +327,8 @@ export function RecipeCreateSheet({
     setLeftoverKeepDaysText('');
     setSiteName('');
     setSourceAuthor('');
+    setSourceUrlText('');
+    setRepeatLinkOk(null);
     resetInput();
     resetComponents();
   }, [resetInput, resetComponents]);
@@ -312,21 +354,44 @@ export function RecipeCreateSheet({
   // set any earlier.
   useEffect(() => {
     if (!visible) return;
-    setMode(initialMode);
+    // A keyless import can only read a link, and `resolveSource` reads
+    // whichever mode is set, so the mode has to *be* link rather than only
+    // look like it.
+    setMode(keyless ? 'link' : initialMode);
     // Only when there is one — the add menu's two items open with an empty
     // field, and clearing it here would fight the reset that just ran.
     if (initialUrl) setUrl(initialUrl);
-  }, [visible, initialMode, initialUrl, setMode, setUrl]);
+  }, [visible, initialMode, initialUrl, keyless, setMode, setUrl]);
 
   // ==== running the extraction ====
-  const run = useCallback(async () => {
+  const extract = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       // A link is fetched first; a paste and a photo resolve to themselves.
       const resolved = await resolveSource();
       if (!resolved) return;
-      const result = await extractRecipe(resolved.source, [...aisleOrder]);
+      // No key: the page's own structured data, read with no model at all.
+      // The same `ExtractedRecipe` shape comes back, so everything below and
+      // the whole review list is the same sheet either way.
+      const result = keyless
+        ? (resolved.page
+            ? recipeFromPageOffline(
+                resolved.page,
+                name => rememberedAisleFor(name) ?? aisleForName(name) ?? 'Other',
+              )
+            : null)
+        : await extractRecipe(resolved.source, [...aisleOrder]);
+      if (!result) {
+        if (visibleRef.current) {
+          setError(
+            'This page doesn’t list its recipe in a format the app can read on its own. '
+            + 'Add an Anthropic API key in Settings to import it.',
+          );
+          setCanRetry(false);
+        }
+        return;
+      }
       // Canceled while the request was in flight: don't repopulate a sheet
       // the user already discarded — it would silently reappear filled in
       // the next time this sheet opens.
@@ -370,7 +435,44 @@ export function RecipeCreateSheet({
     } finally {
       setLoading(false);
     }
-  }, [resolveSource, aisleOrder]);
+  }, [resolveSource, aisleOrder, keyless, rememberedAisleFor]);
+
+  // A link already in the recipe box is recognised from the address alone,
+  // before anything is fetched: `sourceUrl` is `normalizeRecipeUrl` of the
+  // typed text, so the page fetch and the paid extraction aren't needed to
+  // know. A re-shared page from Safari is the usual way here.
+  const run = useCallback(() => {
+    const existing = input.usingLink ? recipeImportedFrom(recipes, input.url) : null;
+    const address = normalizeRecipeUrl(input.url);
+    if (!existing || !address || address === repeatLinkOk) {
+      void extract();
+      return;
+    }
+    Alert.alert(
+      'You already have this recipe',
+      `You imported this link as “${existing.name}”.`,
+      [
+        {
+          text: 'Open it',
+          // Same way out as the card below: the shared page counts as dealt
+          // with, so the address goes back to the caller to drop from its queue.
+          onPress: () => {
+            Keyboard.dismiss();
+            onClose();
+            onCreated(existing.id, address);
+          },
+        },
+        {
+          text: 'Import anyway',
+          onPress: () => {
+            setRepeatLinkOk(address);
+            void extract();
+          },
+        },
+        { text: 'Cancel', style: 'cancel' },
+      ],
+    );
+  }, [input.usingLink, input.url, recipes, repeatLinkOk, extract, onClose, onCreated]);
 
   // ==== ingredient review: toggling, editing, marking already-have ====
   const toggle = (index: number) => {
@@ -416,20 +518,33 @@ export function RecipeCreateSheet({
   // ==== name entry and duplicate detection ====
   // Checked as they type rather than on tap, so the way out ("Open it", or just
   // keep typing) is visible before the button they'd reach for is disabled.
+  //
+  // A name is unique per book, not across the box, so the question is asked of
+  // the book the Source row says this is headed for: a "Lentil Soup" read off
+  // a page of Plenty is only a duplicate if Plenty already has one. A book the
+  // shelf doesn't hold yet can't have a clash in it.
   const cleaned = cleanRecipeName(name);
+  const cookbooks = useRecipeStore(useShallow(s => s.cookbooks));
   const duplicate = useMemo(() => {
     if (!cleaned) return null;
-    const key = groceryNameKey(cleaned);
-    return recipes.find(r => r.nameKey === key) ?? null;
-  }, [cleaned, recipes]);
+    const planned = applySource
+      ? sourcePlanFor(null, { source: siteName, author: sourceAuthor, page: '', sourceType: importedSourceType }).cookbook
+      : null;
+    if (!planned) return recipeInBook(recipes, cleaned, null);
+    const key = cookbookKey(cleanRecipeSource(planned.title), cleanRecipeSource(planned.author ?? '') || null);
+    const book = cookbooks.find(c => c.titleKey === key);
+    return book ? recipeInBook(recipes, cleaned, book.id) : null;
+  }, [cleaned, recipes, cookbooks, applySource, siteName, sourceAuthor, importedSourceType]);
 
   // A link already imported once is the same "already have this" case as a
-  // repeated name, just keyed on sourceUrl instead of nameKey.
+  // repeated name, just keyed on sourceUrl instead of nameKey. Answered by the
+  // same function `run` asks before the fetch, and waived for an address the
+  // user already chose to import again there (`repeatLinkOk`).
   const urlDuplicate = useMemo(() => {
     const url = input.page?.url;
-    if (!url) return null;
-    return recipes.find(r => r.sourceUrl === url) ?? null;
-  }, [input.page, recipes]);
+    if (!url || url === repeatLinkOk) return null;
+    return recipeImportedFrom(recipes, url);
+  }, [input.page, recipes, repeatLinkOk]);
 
   // ==== steps and prep-task review ====
   const toggleIn = (
@@ -464,14 +579,6 @@ export function RecipeCreateSheet({
   // ==== creating the recipe ====
   const handleCreate = () => {
     if (!extracted || !cleaned || duplicate || urlDuplicate) return;
-    const recipe = addRecipe(cleaned);
-    if (!recipe) {
-      // The store refused a name the live check said was free — the box changed
-      // under a sheet left open. Land them on the recipe they were after.
-      const existing = recipes.find(r => r.nameKey === groceryNameKey(cleaned));
-      if (existing) { Keyboard.dismiss(); onClose(); onCreated(existing.id, input.page?.url ?? null); }
-      return;
-    }
     // Tapping Create can beat a field's own blur, so every value below is read
     // through the pending-edit registry rather than straight off state a draft
     // hasn't landed in yet (same race TaskEditor's resolveX functions guard
@@ -479,6 +586,33 @@ export function RecipeCreateSheet({
     // instead of committing).
     const pending = edits.resolveAll();
     const pendingText = (key: string, fallback: string) => pending.get(key) ?? fallback;
+    // A link's URL comes from the page and isn't editable; the rest are,
+    // whether they arrived pre-filled from structured markup, were read off a
+    // photographed page, or were typed in by hand over a paste's blank fields.
+    // A photo or paste import has no page to read one off, so its URL is
+    // whatever was typed into the Link row (blank, same as before, if nothing
+    // was).
+    const { page } = input;
+    const plan = applySource
+      ? sourcePlanFor(page?.url ?? (pendingText('source:url', sourceUrlText).trim() || null), {
+          source: pendingText('source:site', siteName),
+          author: pendingText('source:author', sourceAuthor),
+          page: pendingText('source:page', sourcePageText),
+          sourceType: importedSourceType,
+        })
+      : null;
+    // The book before the recipe, because the recipe's name is only refused
+    // within its book. Find-or-create: a book read off a photo is
+    // overwhelmingly one already on the shelf from the last recipe out of it.
+    const book = plan?.cookbook ? ensureCookbook(plan.cookbook.title, plan.cookbook.author) : null;
+    const recipe = addRecipe(cleaned, book?.id ?? null);
+    if (!recipe) {
+      // The store refused a name the live check said was free — the box changed
+      // under a sheet left open. Land them on the recipe they were after.
+      const existing = recipeInBook(useRecipeStore.getState().recipes, cleaned, book?.id ?? null);
+      if (existing) { Keyboard.dismiss(); onClose(); onCreated(existing.id, input.page?.url ?? null); }
+      return;
+    }
     const resolvedIngredients = ingredients.map((row, i) => {
       const itemName = pending.get(`ingredient:${i}:name`);
       const quantity = pending.get(`ingredient:${i}:quantity`);
@@ -523,21 +657,9 @@ export function RecipeCreateSheet({
         if (!Number.isNaN(keepDays)) setLeftoverKeepDays(recipe.id, keepDays);
       }
     }
-    // A link's URL comes from the page and isn't editable; the rest are,
-    // whether they arrived pre-filled from structured markup, were read off a
-    // photographed page, or were typed in by hand over a paste's blank fields.
-    const { page } = input;
-    if (applySource) {
-      const plan = sourcePlanFor(page?.url ?? null, {
-        source: pendingText('source:site', siteName),
-        author: pendingText('source:author', sourceAuthor),
-        page: pendingText('source:page', sourcePageText),
-        sourceType: importedSourceType,
-      });
+    if (plan) {
       if (plan.url) setSourceUrl(recipe.id, plan.url);
-      // Find-or-create beats setSource here: a book read off a photo is
-      // overwhelmingly one already on the shelf from the last recipe out of it.
-      if (plan.cookbook) linkNewCookbook(recipe.id, plan.cookbook.title, plan.cookbook.author);
+      // The book was linked by addRecipe above.
       if (plan.sourceType) setSourceType(recipe.id, plan.sourceType);
       if (plan.source) setSource(recipe.id, plan.source);
       if (plan.author) setAuthor(recipe.id, plan.author);
@@ -625,8 +747,10 @@ export function RecipeCreateSheet({
   const prepTasksMeta = prepTasksRowMeta(acceptedPrepTasks.size, prepTasks.length, false);
 
   // The URL is what identifies the page, so it stays on the row even though
-  // the two editable fields sit above it.
-  const sourceMeta = input.page?.url ?? '';
+  // the two editable fields sit above it. A fetched page's URL wins; a photo
+  // or paste import has none to show until the user types one into the row
+  // below, which is where this falls back to.
+  const sourceMeta = input.page?.url ?? sourceUrlText;
 
 
   // A deterministic failure — a mistyped address, a site that refuses us, a page
@@ -709,7 +833,10 @@ export function RecipeCreateSheet({
           {...keyboardScroll.props}
         >
           <RecipeSourcePicker
-            intro="Open a recipe link, photograph a cookbook page, or paste a recipe, and it’ll be added to your recipe box: name, servings and all."
+            intro={keyless
+              ? 'Open a recipe link and it’ll be added to your recipe box. Without an Anthropic API key this works for pages that list the recipe in a standard format, which most recipe sites do.'
+              : 'Open a recipe link, photograph a cookbook page, or paste a recipe, and it’ll be added to your recipe box: name, servings and all.'}
+            linkOnly={keyless}
             mode={input.mode}
             onChangeMode={input.setMode}
             text={input.text}
@@ -736,16 +863,21 @@ export function RecipeCreateSheet({
     if (ingredients.length === 0 && !extracted.name) {
       return (
         <View style={styles.centered}>
+          {/* A search icon, not a check: nothing succeeded here. And every
+              kind of input gets a way back to it, the one the error branch
+              above already offers, rather than only the photo path: a link or
+              a paste that found nothing left the sheet with no button at all
+              and Cancel as the only way out, losing what was typed. */}
           <EmptyState
-            icon="checkmark-circle-outline"
+            icon="search-outline"
             title="Nothing found"
             subtitle={input.usingPhoto
               ? `Nothing readable turned up in ${input.photos.length > 1 ? 'those photos' : 'that photo'}. Try again in better light, or paste the text instead.`
               : input.usingLink
               ? 'No recipe turned up on that page. Copy the recipe from it and paste it instead.'
               : 'No recipe turned up in that text.'}
-            actionLabel={input.usingPhoto ? 'Try another photo' : undefined}
-            onAction={input.usingPhoto ? () => { setExtracted(null); input.clearPhoto(); } : undefined}
+            actionLabel={input.usingPhoto ? 'Try another photo' : backLabel}
+            onAction={input.usingPhoto ? () => { setExtracted(null); input.clearPhoto(); } : goBack}
           />
         </View>
       );
@@ -772,7 +904,9 @@ export function RecipeCreateSheet({
           {!!duplicate && (
             <View style={styles.dupeRow}>
               <Text style={styles.dupeText} numberOfLines={2}>
-                You already have a recipe called “{duplicate.name}”.
+                {duplicate.cookbookId && duplicate.source
+                  ? `${duplicate.source} already has a recipe called “${duplicate.name}”.`
+                  : `You already have a recipe called “${duplicate.name}”.`}
               </Text>
               <InlineAction
                 label="Open it"
@@ -967,6 +1101,27 @@ export function RecipeCreateSheet({
               </>
             )}
           </View>
+          {/* A link import's URL comes from the page it fetched and isn't
+              editable (see the comment by sourcePlanFor below) — this is
+              only for the two imports that never had a page to read one off. */}
+          {!input.page && (
+            <View style={styles.detailFields}>
+              <Text style={styles.detailSep}>Link</Text>
+              <InlineEditableText
+                edits={edits}
+                editKey="source:url"
+                value={sourceUrlText}
+                onCommit={setSourceUrlText}
+                allowEmpty
+                textStyle={styles.detailValue}
+                placeholder="e.g. example.com/chili-recipe"
+                accessibilityLabel="source URL"
+                numberOfLines={1}
+                autoCapitalize="none"
+                keyboardType="url"
+              />
+            </View>
+          )}
         </ImportApplyRow>
 
         <ImportApplyRow
@@ -1030,6 +1185,17 @@ export function RecipeCreateSheet({
                 maxLength={RECIPE_TAG_MAX_LENGTH}
                 returnKeyType="done"
                 autoCapitalize="none"
+                // autoFocus alone doesn't reposition the scroll view here —
+                // no keyboard height change fires while the Name field (or
+                // another row) already had focus, the one case
+                // automaticallyAdjustKeyboardInsets can't cover (see
+                // useScrollFieldIntoView's doc comment) — so without this
+                // the field can mount behind the keyboard.
+                onFocus={e => {
+                  if (typeof e.nativeEvent.target === 'number') {
+                    keyboardScroll.focusInput(e.nativeEvent.target);
+                  }
+                }}
                 accessibilityLabel="New tag name"
               />
             ) : (
@@ -1063,13 +1229,14 @@ export function RecipeCreateSheet({
           const prevSection = i > 0 ? ingredients[i - 1].section : null;
           const sectionHeader = row.section && row.section !== prevSection ? row.section : null;
           const coveredBy = covered.get(i);
+          const blockedBy = blocked.get(i);
           return (
             <ExtractedIngredientRow
               key={`${row.name}-${i}`}
               row={row}
               edits={edits}
               index={i}
-              checked={accepted.has(i) && !coveredBy}
+              checked={accepted.has(i) && !coveredBy && !blockedBy}
               onToggle={() => toggle(i)}
               onEditName={name => editIngredient(i, { name })}
               onEditQuantity={quantity => editIngredient(i, { quantity })}
@@ -1078,7 +1245,11 @@ export function RecipeCreateSheet({
               existingSections={existingSections}
               catalogItems={groceryItems}
               sectionHeader={sectionHeader}
-              note={coveredBy ? `made from the ${coveredBy} recipe` : null}
+              note={
+                coveredBy ? `made from the ${coveredBy} recipe`
+                  : blockedBy ? alreadyInRecipeNote(blockedBy)
+                  : null
+              }
             />
           );
         })}
@@ -1091,7 +1262,9 @@ export function RecipeCreateSheet({
       <View style={styles.root}>
         <SheetHeader
           title="Import a recipe"
-          icon="sparkles"
+          // The sparkle marks a sheet the model answers, and a keyless import
+          // reads the page's own data instead.
+          icon={keyless ? undefined : 'sparkles'}
           left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={72} />}
           right={
             <SheetHeaderButton

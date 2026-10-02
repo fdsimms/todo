@@ -1,0 +1,4 @@
+{
+  "message": "Fixed several project bugs. Archiving or completing a project from its editor now keeps the other changes you made, and no longer deletes a project you'd just named. Picking a trip date no longer resets the trip's other fields. Archived tasks no longer show on a project's page, and an overdue project's card no longer reads \"Overdue · By 3d overdue\".",
+  "date": "2026-09-27"
+}

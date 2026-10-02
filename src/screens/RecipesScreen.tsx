@@ -14,9 +14,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
-import type { Recipe, RecipeMealType } from '../types';
+import type { GroceryItem, Recipe, RecipeMealType } from '../types';
 import { RECIPE_MEAL_TYPES, RECIPE_MEAL_TYPE_LABELS } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
+import { useSyncStore } from '../store/useSyncStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useRowSelection } from '../hooks/useRowSelection';
 import { ScreenHeader } from '../components/ScreenHeader';
@@ -29,9 +30,11 @@ import { EmptyState } from '../components/EmptyState';
 import { QuickAddNameSheet } from '../components/QuickAddNameSheet';
 import { RecipeCreateSheet } from '../components/RecipeCreateSheet';
 import { InventRecipeSheet } from '../components/InventRecipeSheet';
-import { CookbookChecklistSheet } from '../components/CookbookChecklistSheet';
 import type { RecipeInputMode } from '../components/RecipeSourcePicker';
 import { RecipeTagFilterSheet } from '../components/RecipeTagFilterSheet';
+import { OverlapPickerSheet } from '../components/OverlapPickerSheet';
+import { useOverlapPicker } from '../hooks/useOverlapPicker';
+import { CookWithSheet } from '../components/CookWithSheet';
 import { RecipeSortFilterSheet } from '../components/RecipeSortFilterSheet';
 import { FabMenu, FAB_SIZE, type FabDragHandlers, type FabMenuItem } from '../components/Fab';
 import {
@@ -47,6 +50,8 @@ import { ListBulkBar } from '../components/ListBulkBar';
 import { ReorderableList } from '../components/ReorderableList';
 import { SortableList } from '../components/SortableList';
 import { SwipeableRow } from '../components/SwipeableRow';
+import { SelectionDot } from '../components/SelectionDot';
+import { PaintSelectionProvider, usePaintSelectionRow } from '../components/PaintSelection';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { PlanMealSheet } from '../components/PlanMealSheet';
 import { usePlanMeal } from '../hooks/usePlanMeal';
@@ -58,25 +63,27 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { resolveActiveTrip } from '../utils/activeTrip';
 import { resetToGroceries } from '../navigation/navigationRef';
 import {
-  cleanRecipeName,
-  countLikelyInPantry,
-  type LikelyInPantryCount,
+  countLikelyInPantryByRecipe,
   describeCookHistory,
   describeRecipe,
   flattenRecipeMealTypeSections,
   groupRecipesByMealType,
   rankRecipes,
+  recipeInBook,
   recipeListItemKey,
   recipeSectionKey,
   resolveRecipeMealTypeDrop,
+  samePantryCatalog,
+  sharedRecipeNameKeys,
   sortRecipesBy,
   type RecipeListItem,
 } from '../utils/recipeUtils';
-import { recipeMap } from '../utils/recipeComponents';
-import { resolveRecipeImagePath } from '../utils/recipePhoto';
+import { recipeMap, recipesUsing } from '../utils/recipeComponents';
+import { recipeImageOnDevice, resolveRecipeImagePath } from '../utils/recipePhoto';
 import { allRecipeTags, filterRecipesByTags, formatTagList, recipeTagCounts } from '../utils/recipeTags';
 import { tagColor } from '../utils/tagColor';
-import { groceryNameKey } from '../utils/groceryParse';
+import { useFilterField } from '../hooks/useFilterField';
+import { useAiRoute } from '../hooks/useOnDeviceAi';
 
 /**
  * The recipe box.
@@ -144,8 +151,9 @@ function recipeDropLabel(intent: FabDropIntent | null): string | null {
 
 // The add button, naming what a release right now would do — mirrors
 // AddProjectFabWithDropLabel (ProjectsScreen.tsx). Always a FabMenu: with no
-// Anthropic key the import options drop out of `addMenuItems` below, leaving
-// "New recipe" alone, and FabMenu performs a lone item on the tap rather than
+// Anthropic key the paste and photo imports drop out of `addMenuItems` below
+// (and with Recipe import off, the link one too, leaving "New recipe" alone),
+// and FabMenu performs a lone item on the tap rather than
 // accordioning out to offer it — so there's no separate plain-Fab variant to
 // keep matching this one's bottom/drag/dragHint/accessibilityLabel by hand.
 function AddRecipeFabMenuWithDropLabel({
@@ -158,6 +166,23 @@ function AddRecipeFabMenuWithDropLabel({
   return <FabMenu {...props} dragLabel={label} />;
 }
 
+/**
+ * A grocery store selector for the catalog that keeps handing back the
+ * previous array while `samePantryCatalog` says nothing a pantry count reads
+ * has changed. zustand's own `useShallow` with that comparison in place of a
+ * shallow one, and the same shape: the ref is the selector's memory between
+ * renders.
+ */
+function usePantryCatalog() {
+  const prev = useRef<GroceryItem[] | null>(null);
+  return (state: { items: GroceryItem[] }): GroceryItem[] => {
+    const next = state.items;
+    if (prev.current !== null && samePantryCatalog(prev.current, next)) return prev.current;
+    prev.current = next;
+    return next;
+  };
+}
+
 export function RecipesScreen() {
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
@@ -166,6 +191,8 @@ export function RecipesScreen() {
   const navigation = useNavigation<any>();
 
   const recipes = useRecipeStore(useShallow(s => s.recipes));
+  // Recipes another recipe shares a name with lead their subtitle with the book.
+  const sharedNames = useMemo(() => sharedRecipeNameKeys(recipes), [recipes]);
   const addRecipe = useRecipeStore(s => s.addRecipe);
   const bulkDeleteRecipes = useRecipeStore(s => s.bulkDeleteRecipes);
   const bulkSetVote = useRecipeStore(s => s.bulkSetVote);
@@ -178,7 +205,17 @@ export function RecipesScreen() {
   // below has to stand down while the shelf itself is being dragged, or the
   // drag never starts at all.
   const [upNextDragging, setUpNextDragging] = useState(false);
-  const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
+  const recipeImportEnabled = useSettingsStore(s => s.aiFeatureConfig.recipeExtraction.enabled);
+  const canImport = useAiRoute('recipeExtraction') !== 'unavailable';
+  // No key, with Recipe import left on (recipe extraction has no on-device
+  // engine, so that is the only way its route is unavailable while the switch
+  // is on). A link still imports then: a page publishing schema.org/Recipe is
+  // read from its own data with no model (recipePageOffline.ts). Paste and
+  // photo have no such floor and stay behind the key. Recipe import's switch
+  // still governs it, since that is the user asking for no recipe import at
+  // all, and it is also the switch the page fetch answers to.
+  const keylessLinkImport = !canImport && recipeImportEnabled;
+  const canInvent = useAiRoute('mealIdeas') !== 'unavailable';
   const recipeSort = useSettingsStore(s => s.recipeSortOption);
   const setRecipeSort = useSettingsStore(s => s.setRecipeSortOption);
   const recipeLovedOnly = useSettingsStore(s => s.recipeLovedOnly);
@@ -208,7 +245,10 @@ export function RecipesScreen() {
       return next;
     });
   }, [setCollapsedSections]);
-  const groceryItems = useGroceryStore(useShallow(s => s.items));
+  // The catalog as far as the pantry counts below can tell: it holds its last
+  // value through a change that can't move a count (a check-off), so their
+  // memo holds too. See samePantryCatalog.
+  const pantryCatalog = useGroceryStore(usePantryCatalog());
   const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
   const shops = useGroceryStore(useShallow(s => s.shops));
   const tripShopId = useGroceryStore(s => s.tripShopId);
@@ -226,15 +266,15 @@ export function RecipesScreen() {
   const { planRecipe, offerPrepTasks, earliestUnplannedSlotToday } = usePlanMeal();
   // The recipe whose day is being picked; null closes the sheet.
   const [planningRecipe, setPlanningRecipe] = useState<Recipe | null>(null);
-  const [query, setQuery] = useState('');
+  const { query, props: filterField } = useFilterField();
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [tagFilterVisible, setTagFilterVisible] = useState(false);
   const [sortFilterVisible, setSortFilterVisible] = useState(false);
+  const [cookWithVisible, setCookWithVisible] = useState(false);
   const [addVisible, setAddVisible] = useState(false);
   const [importVisible, setImportVisible] = useState(false);
   const [importMode, setImportMode] = useState<RecipeInputMode>('photo');
   const [inventVisible, setInventVisible] = useState(false);
-  const [cookbookChecklistVisible, setCookbookChecklistVisible] = useState(false);
   // The shared page the import sheet was opened for, if it was opened from the
   // banner rather than the add menu. Deliberately not cleared when the sheet
   // closes: `RecipeCreateSheet` calls `onClose` before `onCreated`, so clearing
@@ -256,6 +296,8 @@ export function RecipesScreen() {
     exitSelection,
     selectAll,
     deselectAll,
+    painting,
+    paintProps,
   } = useRowSelection();
 
   // Bottom-up: "New recipe" ends up closest to the button, so the plain add is
@@ -269,15 +311,26 @@ export function RecipesScreen() {
   // plain-Fab variant this used to need removable. Invent sits furthest from
   // the thumb: unlike the three imports it has nothing to read from, so it's
   // the one most likely to need a moment's thought before tapping.
-  const addMenuItems = useMemo<FabMenuItem[]>(() => (anthropicApiKey ? [
-    { key: 'invent', label: 'Invent a recipe', icon: 'sparkles-outline' },
-    { key: 'paste', label: 'Paste text', icon: 'clipboard-outline' },
-    { key: 'link', label: 'From a link', icon: 'link-outline' },
-    { key: 'import', label: 'From a photo', icon: 'camera-outline' },
-    { key: 'name', label: 'New recipe', icon: 'add-circle-outline' },
-  ] : [
-    { key: 'name', label: 'New recipe', icon: 'add-circle-outline' },
-  ]), [anthropicApiKey]);
+  //
+  // Each half follows its own feature's route rather than the bare key:
+  // Invent is Meal ideas and the imports are Recipe import, and a key holder
+  // who turned either off in Settings loses those items rather than being
+  // offered a sheet that can only say the feature is off.
+  const addMenuItems = useMemo<FabMenuItem[]>(() => {
+    const list: FabMenuItem[] = [];
+    if (canInvent) list.push({ key: 'invent', label: 'Invent a recipe', icon: 'sparkles-outline' });
+    if (canImport) {
+      list.push(
+        { key: 'paste', label: 'Paste text', icon: 'clipboard-outline' },
+        { key: 'link', label: 'From a link', icon: 'link-outline' },
+        { key: 'import', label: 'From a photo', icon: 'camera-outline' },
+      );
+    } else if (keylessLinkImport) {
+      list.push({ key: 'link', label: 'From a link', icon: 'link-outline' });
+    }
+    list.push({ key: 'name', label: 'New recipe', icon: 'add-circle-outline' });
+    return list;
+  }, [canInvent, canImport, keylessLinkImport]);
 
   const handleAddMenuSelect = useCallback((key: string) => {
     // All three import items open the one sheet, on their own tab — see
@@ -335,7 +388,11 @@ export function RecipesScreen() {
   );
   const tagFiltering = activeTags.length > 0;
   const filtering = tagFiltering || recipeLovedOnly;
-  const activeFilterCount = (recipeSort !== 'default' ? 1 : 0) + (recipeLovedOnly ? 1 : 0);
+  // Every narrowing the list is under, tags included: those are set from the
+  // Tags button under the search field rather than from the sheet this badge
+  // opens, but a badge that ignored them read as "nothing filtered" over a
+  // list that was.
+  const activeFilterCount = (recipeSort !== 'default' ? 1 : 0) + (recipeLovedOnly ? 1 : 0) + activeTags.length;
 
   const visible = useMemo(() => {
     // Filter, then rank — the same order GroceryCatalogSheet's store filter uses.
@@ -466,19 +523,27 @@ export function RecipesScreen() {
     },
   };
 
-  // Computed once for the visible list rather than per row render — same
-  // classifyPlanned pass RecipeToListSheet/AddWeekToListSheet already run,
-  // just reduced to a count per recipe.
-  const pantryCounts = useMemo(() => {
-    const now = new Date();
-    const byId = recipeMap(recipes);
-    const map = new Map<string, LikelyInPantryCount>();
-    for (const recipe of visible) {
-      const count = countLikelyInPantry(recipe, groceryItems, now, byId, itemSubs);
-      if (count !== null) map.set(recipe.id, count);
-    }
+  // Computed once for the whole box rather than per row render — same
+  // classifyPlanned pass RecipeToListSheet/AddMealsToListSheet already run,
+  // just reduced to a count per recipe. Keyed on what a count reads and
+  // nothing else (#2922): the box rather than `visible`, so typing a search,
+  // sorting or filtering never recounts, and `pantryCatalog` rather than the
+  // raw items, so neither does checking a grocery item off.
+  const pantryCounts = useMemo(
+    () => countLikelyInPantryByRecipe(recipes, pantryCatalog, new Date(), recipeMap(recipes), itemSubs),
+    [recipes, pantryCatalog, itemSubs]
+  );
+
+  // Each row's subtitle, worked out once per recipe rather than twice per row
+  // render (the spoken label and the meta line both read it), and handed to
+  // the row as a plain string (#2922). A string compares by value, so a
+  // recount that leaves a recipe's own count where it was gives its row the
+  // same prop it had.
+  const rowDescriptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const recipe of recipes) map.set(recipe.id, describeRecipe(recipe, pantryCounts.get(recipe.id), { sharedName: sharedNames.has(recipe.nameKey) }));
     return map;
-  }, [visible, recipes, groceryItems, itemSubs]);
+  }, [recipes, pantryCounts, sharedNames]);
 
   // "Love"/"Unlove" flips direction based on the selection itself, the
   // same way the grocery bulk bar's Check/Uncheck does — a selection that's
@@ -515,10 +580,24 @@ export function RecipesScreen() {
     const ids = Array.from(selectedIds);
     const count = ids.length;
     const plural = count === 1 ? 'recipe' : 'recipes';
+    // The warning a single delete gives (RecipeEditor.handleDelete), for the
+    // recipes outside the selection that use one inside it as a component:
+    // they go on showing it as missing, and the bulk bar used to say nothing.
+    const selected = new Set(ids);
+    const usedBy = [...new Map(
+      ids.flatMap(id => recipesUsing(recipes, id))
+        .filter(r => !selected.has(r.id))
+        .map(r => [r.id, r] as const),
+    ).values()];
+    const componentNote = usedBy.length === 0
+      ? ''
+      : usedBy.length === 1
+        ? ` ${count === 1 ? 'It\'s' : 'Some are'} used as a component of “${usedBy[0].name}”, which will show ${count === 1 ? 'it' : 'them'} as missing until you remove ${count === 1 ? 'it' : 'them'} there.`
+        : ` ${count === 1 ? 'It\'s' : 'Some are'} used as components of ${usedBy.length} other recipes (${usedBy.map(r => r.name).join(', ')}), which will show ${count === 1 ? 'it' : 'them'} as missing until you remove ${count === 1 ? 'it' : 'them'} there.`;
     haptics.warning();
     confirmDelete({
       title: `Delete ${count} ${plural}?`,
-      message: `You're about to delete ${count} ${plural}. Anything already on your grocery list stays there. This can't be undone.`,
+      message: `You're about to delete ${count} ${plural}. Anything already on your grocery list stays there.${componentNote} This can't be undone.`,
       onConfirm: () => {
         animateLayout();
         bulkDeleteRecipes(ids);
@@ -527,10 +606,12 @@ export function RecipesScreen() {
     });
   };
 
-  const openRecipe = (recipe: Recipe) => {
+  const openRecipe = useCallback((recipe: Recipe) => {
     haptics.tap();
     navigation.navigate('RecipeDetail', { recipeId: recipe.id });
-  };
+  }, [navigation]);
+
+  const { overlap, openOverlap, closeOverlap, handOffOverlap } = useOverlapPicker();
 
   const createRecipe = (name: string) => {
     setAddVisible(false);
@@ -543,124 +624,73 @@ export function RecipesScreen() {
       navigation.navigate('RecipeDetail', { recipeId: recipe.id });
       return;
     }
-    // The only way addRecipe refuses a non-empty name is one already in the
-    // box. Opening the recipe they already have beats an error — it's where
-    // they were trying to get.
-    const key = groceryNameKey(cleanRecipeName(name));
-    const existing = recipes.find(r => r.nameKey === key);
+    // The only way addRecipe refuses a non-empty name is one already filed
+    // under no book, which is where this one was going. Opening the recipe
+    // they already have beats an error — it's where they were trying to get.
+    const existing = recipeInBook(recipes, name, null);
     if (existing) openRecipe(existing);
   };
 
-  // Icon-only because the row is already dense; the spoken label carries the
-  // meaning. Deliberately a button rather than a long-press: the row's
-  // long-press is already the drag-to-reorder handle. It's not on the swipe
-  // panel either — that's select-only (#1378), same contract as every other
-  // SwipeableRow in the app.
-  const planButton = (recipe: Recipe) => (
-    <TouchableOpacity
-      style={styles.planButton}
-      onPress={() => { haptics.tap(); setPlanningRecipe(recipe); }}
-      activeOpacity={interaction.activeOpacity}
-      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-      accessibilityRole="button"
-      accessibilityLabel={`Plan ${recipe.name} onto a day`}
-    >
-      <Ionicons name="calendar-outline" size={iconSize.md} color={colors.accent} />
-    </TouchableOpacity>
-  );
+  // The row's handlers. Stable, and each takes the recipe (or its id) it acts
+  // on, so one function serves every row and `RecipeRow`'s memo holds through
+  // a render of the screen (#2922) — see the row's own note.
+  const handlePlanRecipe = useCallback((recipe: Recipe) => {
+    haptics.tap();
+    setPlanningRecipe(recipe);
+  }, []);
 
-  // Icon-only, same treatment as planButton beside it — a button rather than
-  // a long-press for the same reason: the row's long-press is already the
-  // drag-to-reorder handle, and it's off the swipe panel because that's
-  // select-only (#1378). Always shown, not just on shelf rows, since this is
-  // the one control that puts a recipe on the shelf in the first place.
-  const upNextButton = (recipe: Recipe) => (
-    <TouchableOpacity
-      style={styles.planButton}
-      onPress={() => { haptics.tap(); setUpNext(recipe.id, !recipe.upNext); }}
-      activeOpacity={interaction.activeOpacity}
-      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-      accessibilityRole="button"
-      accessibilityLabel={recipe.upNext ? `Remove ${recipe.name} from Up Next` : `Add ${recipe.name} to Up Next`}
-    >
-      <Ionicons
-        name={recipe.upNext ? 'bookmark' : 'bookmark-outline'}
-        size={iconSize.md}
-        color={recipe.upNext ? colors.accent : colors.textTertiary}
-      />
-    </TouchableOpacity>
-  );
+  const handleToggleUpNext = useCallback((recipe: Recipe) => {
+    haptics.tap();
+    setUpNext(recipe.id, !recipe.upNext);
+  }, [setUpNext]);
 
-  const renderRecipe = ({ item: recipe, drag, isActive }: { item: Recipe; drag?: () => void; isActive?: boolean }) => {
-    const selected = selectedIds.has(recipe.id);
-    const rowBody = (
-      <TouchableOpacity
-        style={[styles.row, selectionMode && selected && styles.rowSelected]}
-        onPress={() => (selectionMode ? toggleSelection(recipe.id) : openRecipe(recipe))}
-        onLongPress={selectionMode ? undefined : drag}
-        activeOpacity={interaction.activeOpacity}
-        accessibilityRole={selectionMode ? 'checkbox' : 'button'}
-        accessibilityState={selectionMode ? { checked: selected } : undefined}
-        accessibilityLabel={`${recipe.name}. ${describeRecipe(recipe, pantryCounts.get(recipe.id))}`}
-        accessibilityHint={selectionMode ? 'Double tap to select recipe' : 'Double tap to open this recipe.'}
-      >
-        {selectionMode ? (
-          // Takes the icon tile's place rather than sitting beside it, so every
-          // row shifts by the same amount and the names stay in one column.
-          <View style={styles.select}>
-            <Ionicons
-              name={selected ? 'checkmark-circle' : 'ellipse-outline'}
-              size={24}
-              color={selected ? colors.accent : colors.textTertiary}
-            />
-          </View>
-        ) : recipe.imagePath ? (
-          <Image source={{ uri: resolveRecipeImagePath(recipe.imagePath) ?? undefined }} style={styles.thumb} />
-        ) : (
-          <View style={[styles.icon, { backgroundColor: colors.accentSubtle }]}>
-            <Ionicons name="restaurant-outline" size={18} color={colors.accent} />
-          </View>
-        )}
-        <View style={styles.info}>
-          <Text style={styles.name} numberOfLines={2}>{recipe.name}</Text>
-          <Text style={styles.meta} numberOfLines={1}>
-            {[describeRecipe(recipe, pantryCounts.get(recipe.id)), describeCookHistory(recipe)].filter(Boolean).join(' · ')}
-          </Text>
-        </View>
-        {recipe.vote === 'loved' && (
-          <Ionicons name="thumbs-up" size={iconSize.sm} color={colors.orange} />
-        )}
-        {!selectionMode && upNextButton(recipe)}
-        {!selectionMode && planButton(recipe)}
-        {!selectionMode && (
-          <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
-        )}
-      </TouchableOpacity>
-    );
-    return (
-      <View style={[styles.itemWrapper, isActive && styles.itemWrapperActive]}>
-        {/* SwipeableRow stays mounted through the selectionMode toggle rather
-            than swapping for a bare rowBody — swapping it unmounts the panel
-            mid-close-animation (the very moment its own select action just
-            fired), which is what read as the swipe panel freezing instead of
-            sliding shut. `enabled` turns the gesture off without disturbing
-            the mount, same as every other list's row. */}
-        <SwipeableRow
-          enabled={!isActive && !selectionMode}
-          selectAction={{
-            onSelect: () => enterSelectionMode(recipe.id),
-            accessibilityLabel: `Select ${recipe.name}`,
-          }}
-        >
-          {rowBody}
-        </SwipeableRow>
-      </View>
-    );
-  };
+  // `openOverlap` is rebuilt whenever the grocery catalog changes, since it
+  // ranks against it, and a check-off changes the catalog. Handed to the rows
+  // directly, every check-off would re-render every row, so they get this
+  // stable wrapper instead, reading the current one at the tap.
+  const openOverlapRef = useRef(openOverlap);
+  openOverlapRef.current = openOverlap;
+  const handleCookTogether = useCallback((recipe: Recipe) => openOverlapRef.current(recipe), []);
+
+  // One row, for all three lists that draw one: the grouped box, the flat box
+  // and the Up Next shelf. `duplicateRow` is the shelf's copy of a recipe that
+  // also has its ordinary row in the box below (see the prop's note on
+  // RecipeRow). Everything passed is a value or one of the stable handlers
+  // above, never an arrow bound to this recipe.
+  const recipeRow = useCallback((recipe: Recipe, drag?: () => void, isActive = false, duplicateRow = false) => (
+    <RecipeRow
+      recipe={recipe}
+      // The fallback covers the one commit a just-deleted recipe can still
+      // sit in `draggableData` before its effect catches up with the store.
+      description={rowDescriptions.get(recipe.id) ?? describeRecipe(recipe, pantryCounts.get(recipe.id), { sharedName: sharedNames.has(recipe.nameKey) })}
+      colors={colors}
+      styles={styles}
+      drag={drag}
+      isActive={isActive}
+      duplicateRow={duplicateRow}
+      selectionMode={selectionMode}
+      selected={selectedIds.has(recipe.id)}
+      onOpen={openRecipe}
+      onToggleSelect={toggleSelection}
+      onSwipeSelect={enterSelectionMode}
+      onPlan={handlePlanRecipe}
+      onToggleUpNext={handleToggleUpNext}
+      onCookTogether={handleCookTogether}
+    />
+  ), [
+    rowDescriptions, pantryCounts, colors, styles, selectionMode, selectedIds, openRecipe, toggleSelection,
+    enterSelectionMode, handlePlanRecipe, handleToggleUpNext, handleCookTogether,
+  ]);
+
+  // The flat view's renderItem. The FlatList still calls it for every row in
+  // its window whenever the screen renders (its header is rebuilt each time,
+  // and it re-wraps renderItem on each of its own renders), so it's the row's
+  // memo that saves the work there, as it is in the grouped box.
+  const renderFlatRecipe = useCallback(({ item }: { item: Recipe }) => recipeRow(item), [recipeRow]);
 
   /**
    * A small, hand-ordered queue of recipes you want to try but haven't put
-   * on a day yet — the bullpen `upNextButton` above adds to and `reorderUpNextRecipes`
+   * on a day yet — the bullpen a row's bookmark button adds to and `reorderUpNextRecipes`
    * reorders. Rendered as the main list's own `ListHeaderComponent` rather than
    * a section of the data it drags (same call the Pinned Tasks block on Today
    * makes, and the same reason: it's its own number space, `upNextOrder`, so
@@ -680,8 +710,7 @@ export function RecipesScreen() {
         onReorder={next => reorderUpNextRecipes(next.map(r => r.id))}
         onDragStateChange={setUpNextDragging}
         placeholderStyle={styles.dropSlot}
-        renderItem={(recipe, _displayIndex, drag, isActive) =>
-          renderRecipe({ item: recipe, drag, isActive })}
+        renderItem={(recipe, _displayIndex, drag, isActive) => recipeRow(recipe, drag, isActive, true)}
       />
     </View>
   );
@@ -717,19 +746,18 @@ export function RecipesScreen() {
       <HubPills hub="kitchen" active="Recipes" />
       <TipHost screen="recipes" />
       <View style={styles.cookbookLinksRow}>
-        {/* A checklist of what's *in* a book rather than a recipe kept from
-            one — see CookbookChecklistSheet. Sits beside the shelf link
-            rather than in the add menu below, since every item there ends in
-            a full Recipe and this one deliberately doesn't. */}
+        {/* The ingredient finder, beside the shelf it searches: it reads the
+            recipes here and the cookbooks' indexes, which show nowhere else
+            (see CookbookIndexEntry). */}
         <TouchableOpacity
           style={styles.cookbooksLink}
-          onPress={() => { haptics.tap(); setCookbookChecklistVisible(true); }}
+          onPress={() => { haptics.tap(); setCookWithVisible(true); }}
           activeOpacity={interaction.activeOpacity}
           accessibilityRole="button"
-          accessibilityLabel="Scan a cookbook"
+          accessibilityLabel="Find recipes by ingredient"
         >
-          <Ionicons name="camera-outline" size={13} color={colors.textTertiary} />
-          <Text style={styles.cookbooksLinkText}>Scan a cookbook</Text>
+          <Ionicons name="search-outline" size={13} color={colors.textTertiary} />
+          <Text style={styles.cookbooksLinkText}>Cook with…</Text>
         </TouchableOpacity>
         {/* A shelf for recipes rather than a fifth Kitchen-hub tab: it isn't a
             working surface the way Groceries/Recipes/Meal plan/Pantry are, so
@@ -755,12 +783,14 @@ export function RecipesScreen() {
           onClear={handleClearTrip}
         />
       )}
-      {/* Gated on the key for the same reason the add button's import menu is,
-          below: without one there is no import to offer, and this banner would
-          otherwise be the only route into a sheet that can only end at "No API
-          key". The queue is persisted, so a page shared before a key is added
-          isn't lost — it turns up once there's something to import it with. */}
-      {!selectionMode && !!anthropicApiKey && !!sharedUrl && (
+      {/* Gated the way the add button's link import is: with a key, or
+          without one while Recipe import is left on, since a page publishing
+          schema.org/Recipe imports with no key (the sheet reads it keyless,
+          and says a key is needed only for a page that doesn't). Turned off,
+          it goes, since the user asked for no recipe import. The queue is
+          persisted either way, so a page shared while it's off turns up
+          importable once it's back on. */}
+      {!selectionMode && !!sharedUrl && (canImport || keylessLinkImport) && (
         <SharedLinkBanner
           url={sharedUrl}
           remaining={sharedUrls.length - 1}
@@ -784,8 +814,7 @@ export function RecipesScreen() {
             <Ionicons name="search" size={iconSize.sm} color={colors.textTertiary} />
             <TextInput
               style={styles.searchInput}
-              value={query}
-              onChangeText={setQuery}
+              {...filterField}
               placeholder="Search recipes and ingredients"
               placeholderTextColor={colors.textTertiary}
               autoCapitalize="none"
@@ -823,7 +852,7 @@ export function RecipesScreen() {
               >
                 <Ionicons name="funnel-outline" size={13} color={colors.text} />
                 <Text style={styles.filterButtonText}>
-                  {filtering ? `Tags (${activeTags.length})` : 'Tags'}
+                  {tagFiltering ? `Tags (${activeTags.length})` : 'Tags'}
                 </Text>
                 <Ionicons name="chevron-down" size={12} color={colors.textTertiary} />
               </TouchableOpacity>
@@ -868,6 +897,9 @@ export function RecipesScreen() {
               bottomOffset={tabBarHeight}
             />
           ) : grouped ? (
+            // A drag down the column of selection dots picks up a run of
+            // recipes (#2944), as on every other selectable list.
+            <PaintSelectionProvider {...paintProps}>
             <FabDropZoneProvider
               ref={dropZonesRef}
               onIntentChange={fabIntentChannel.publish}
@@ -876,12 +908,14 @@ export function RecipesScreen() {
               <ReorderableList
                 data={visibleDraggableData}
                 keyExtractor={recipeListItemKey}
+                scrollToTop={{ bottom: insets.bottom + tabBarHeight + spacing.md }}
                 // The user can't scroll during an add-button drag (the
                 // button's responder has the touch); the drag scrolls it
                 // instead, through scrollControl above. Same reasoning for a
                 // shelf drag — see onDragStateChange on the SortableList in
-                // upNextBlock.
-                scrollEnabled={!fabDragging && !upNextDragging}
+                // upNextBlock. Same while a paint gesture owns the touch: iOS
+                // has to be told directly (see PaintSelectionProvider).
+                scrollEnabled={!fabDragging && !upNextDragging && !painting}
                 scrollControlRef={scrollControl}
                 ListHeaderComponent={upNextBlock}
                 renderItem={({ item, drag, isActive }) => {
@@ -908,7 +942,7 @@ export function RecipesScreen() {
                       </View>
                       <Text style={styles.sectionHeaderCount}>{sectionCounts.get(item.mealType ?? '') ?? 0}</Text>
                     </TouchableOpacity>
-                  ) : renderRecipe({ item: item.recipe, drag: selectionMode ? undefined : drag, isActive });
+                  ) : recipeRow(item.recipe, drag, isActive);
                   return <FabDropZone zone={zone}>{row}</FabDropZone>;
                 }}
                 onHoverChange={haptics.dragTick}
@@ -937,19 +971,22 @@ export function RecipesScreen() {
                 }
               />
             </FabDropZoneProvider>
+            </PaintSelectionProvider>
           ) : (
+            <PaintSelectionProvider {...paintProps}>
             <FlatList
               data={visible}
               keyExtractor={r => r.id}
-              renderItem={renderRecipe}
+              renderItem={renderFlatRecipe}
               keyboardShouldPersistTaps="handled"
-              scrollEnabled={!upNextDragging}
+              scrollEnabled={!upNextDragging && !painting}
               ListHeaderComponent={upNextBlock}
               contentContainerStyle={styles.list}
               ListFooterComponent={
                 <View style={{ height: selectionMode ? selectionListPadding : tabBarHeight + FAB_SIZE + spacing.xl }} />
               }
             />
+            </PaintSelectionProvider>
           )}
         </>
       )}
@@ -974,6 +1011,7 @@ export function RecipesScreen() {
           totalCount={visible.length}
           category={{
             title: 'Move to Meal Type',
+            noun: 'a meal type',
             options: RECIPE_MEAL_TYPES.map(t => RECIPE_MEAL_TYPE_LABELS[t]),
             onSet: handleBulkSetMealType,
             allowNone: true,
@@ -1009,17 +1047,13 @@ export function RecipesScreen() {
         initialUrl={importUrl}
         onClose={() => setImportVisible(false)}
         onCreated={handleCreated}
+        keyless={!canImport}
       />
 
       <InventRecipeSheet
         visible={inventVisible}
         onClose={() => setInventVisible(false)}
         onCreated={recipeId => handleCreated(recipeId, null)}
-      />
-
-      <CookbookChecklistSheet
-        visible={cookbookChecklistVisible}
-        onClose={() => setCookbookChecklistVisible(false)}
       />
 
       <RecipeTagFilterSheet
@@ -1031,6 +1065,26 @@ export function RecipesScreen() {
         onChange={next => { animateLayout(); setSelectedTags(next); }}
       />
 
+      {/* Discovery only — this screen has no week to land picks on, so they
+          go to the meal plan. See useOverlapPicker. */}
+      <OverlapPickerSheet
+        visible={overlap !== null}
+        matches={overlap?.matches ?? []}
+        seedLabel={overlap?.seedLabel ?? ''}
+        onHandOff={handOffOverlap}
+        onOpenRecipe={other => {
+          closeOverlap();
+          openRecipe(other);
+        }}
+        onClose={closeOverlap}
+      />
+
+      <CookWithSheet
+        visible={cookWithVisible}
+        onClose={() => setCookWithVisible(false)}
+        onOpenRecipe={id => { setCookWithVisible(false); navigation.navigate('RecipeDetail', { recipeId: id }); }}
+        onOpenCookbook={id => { setCookWithVisible(false); navigation.navigate('CookbookDetail', { cookbookId: id }); }}
+      />
       <RecipeSortFilterSheet
         visible={sortFilterVisible}
         onClose={() => setSortFilterVisible(false)}
@@ -1046,13 +1100,201 @@ export function RecipesScreen() {
         defaultSlot={earliestUnplannedSlotToday()}
         onPlan={(dateKey, slot) =>
           planningRecipe ? planRecipe(planningRecipe, dateKey, slot) : null}
-        // After the dismissal, never before — see PlanRecipeSheet.onPlanned.
+        // After the dismissal, never before — see PlanMealSheet.onPlanned.
         onPlanned={offerPrepTasks}
         onClose={() => setPlanningRecipe(null)}
       />
     </View>
   );
 }
+
+/**
+ * One recipe in the box, or its copy on the Up Next shelf. Swipe left enters
+ * bulk selection, the same contract as every other SwipeableRow in the app
+ * (#1378); long press drags wherever the list it's in hands it a `drag` (the
+ * grouped box, to re-tag a meal type, and the shelf, to reorder it).
+ *
+ * Memoized, and every handler takes the recipe (or its id) it acts on rather
+ * than the screen binding an arrow per row, so a render of the screen
+ * re-renders only the rows whose own props moved (#2922). It matters most in
+ * the grouped box, a ReorderableList, which keeps every recipe mounted: a
+ * sheet opening, a grocery check-off or one row's selection used to re-render
+ * all of them. The subtitle arrives as a string for the same reason (see
+ * `rowDescriptions` on the screen), and ProjectRow and TemplateRow follow the
+ * same rule.
+ */
+const RecipeRow = React.memo(function RecipeRow({
+  recipe, description, colors, styles, drag, isActive, duplicateRow, selectionMode, selected,
+  onOpen, onToggleSelect, onSwipeSelect, onPlan, onToggleUpNext, onCookTogether,
+}: {
+  recipe: Recipe;
+  /** describeRecipe's subtitle, pantry counts included; read by both the spoken label and the meta line. */
+  description: string;
+  colors: Colors;
+  styles: ReturnType<typeof makeStyles>;
+  /** The list's cached drag starter for this row; ignored while selecting. */
+  drag?: () => void;
+  /** The drag overlay's floating copy. */
+  isActive: boolean;
+  /**
+   * The Up Next shelf's copy of a recipe that also has its ordinary row in
+   * the box below. All it changes is that the copy stays out of the paint
+   * registry, which is keyed by recipe id: the shelf unmounts as selection
+   * starts, and its copy leaving would evict the real row, the reason
+   * TaskItem's pinned copy passes the same flag. A value rather than a
+   * different handler, so both rows share every function.
+   */
+  duplicateRow: boolean;
+  selectionMode: boolean;
+  selected: boolean;
+  onOpen: (recipe: Recipe) => void;
+  onToggleSelect: (recipeId: string) => void;
+  onSwipeSelect: (recipeId: string) => void;
+  onPlan: (recipe: Recipe) => void;
+  onToggleUpNext: (recipe: Recipe) => void;
+  onCookTogether: (recipe: Recipe) => void;
+}) {
+  // Registered with the screen's PaintSelectionProvider so a drag down the
+  // column of dots picks up this row. Not the drag overlay's copy, which
+  // would claim this row's id and evict it on unmount, nor the shelf's.
+  const paintRef = usePaintSelectionRow(isActive || duplicateRow ? null : recipe.id);
+  // Whether the photo's file is here (#2704), re-checked when a sync brings
+  // photos in. One file check per row per change, not per render.
+  const recipeImagesVersion = useSyncStore(s => s.recipeImagesVersion);
+  const photoOnDevice = useMemo(
+    () => recipeImageOnDevice(recipe.imagePath),
+    // recipeImagesVersion isn't read inside: it is only the re-check trigger.
+    [recipe.imagePath, recipeImagesVersion]
+  );
+  // Bound once per row rather than once per render of the list above it.
+  const toggleSelect = () => onToggleSelect(recipe.id);
+
+  const rowBody = (
+    <TouchableOpacity
+      style={[styles.row, selectionMode && selected && styles.rowSelected]}
+      onPress={() => (selectionMode ? toggleSelect() : onOpen(recipe))}
+      onLongPress={selectionMode ? undefined : drag}
+      activeOpacity={interaction.activeOpacity}
+      accessibilityRole={selectionMode ? 'checkbox' : 'button'}
+      accessibilityState={selectionMode ? { checked: selected } : undefined}
+      accessibilityLabel={`${recipe.name}. ${description}`}
+      accessibilityHint={selectionMode ? 'Double tap to select recipe' : 'Double tap to open this recipe.'}
+    >
+      {/* The photo or tile stays put while selecting. Selection is the
+          SelectionDot at the other end of the row, the split every other
+          selectable list makes (#2944): a check filling the tile's place
+          read as a recipe marked done rather than one picked. */}
+      {recipe.imagePath && photoOnDevice ? (
+        <Image source={{ uri: resolveRecipeImagePath(recipe.imagePath) ?? undefined }} style={styles.thumb} />
+      ) : recipe.imagePath ? (
+        // A photo this device hasn't got yet (#2704): a photo glyph on the
+        // thumb's own ground, so it neither draws as an empty square nor
+        // passes for a recipe with no photo at all.
+        <View style={[styles.icon, { backgroundColor: colors.bgSunken }]}>
+          <Ionicons name="image-outline" size={18} color={colors.textTertiary} />
+        </View>
+      ) : (
+        <View style={[styles.icon, { backgroundColor: colors.accentSubtle }]}>
+          <Ionicons name="restaurant-outline" size={18} color={colors.accent} />
+        </View>
+      )}
+      <View style={styles.info}>
+        <Text style={styles.name} numberOfLines={2}>{recipe.name}</Text>
+        <Text style={styles.meta} numberOfLines={1}>
+          {[description, describeCookHistory(recipe)].filter(Boolean).join(' · ')}
+        </Text>
+      </View>
+      {recipe.vote === 'loved' && (
+        <Ionicons name="thumbs-up" size={iconSize.sm} color={colors.orange} />
+      )}
+      {/* The third of the row's icon buttons, and the quietest of them:
+          tertiary until tapped, where Plan is accent. A button rather than a
+          swipe because both of SwipeableRow's slots are spoken for and "cook
+          alongside" is not the time-shaped action `whenAction` is reserved
+          for; and not a long-press, which is the drag handle, for the same
+          reason the other two aren't. */}
+      {!selectionMode && (
+        <TouchableOpacity
+          style={styles.planButton}
+          onPress={() => onCookTogether(recipe)}
+          activeOpacity={interaction.activeOpacity}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel={`Find recipes that share ingredients with ${recipe.name}`}
+        >
+          <Ionicons name="git-merge-outline" size={iconSize.md} color={colors.textTertiary} />
+        </TouchableOpacity>
+      )}
+      {/* Icon-only, same treatment as Plan beside it, and a button rather
+          than a long-press for the same reason: the row's long-press is
+          already the drag handle, and it's off the swipe panel because that's
+          select-only (#1378). Always shown, not just on shelf rows, since this
+          is the one control that puts a recipe on the shelf in the first
+          place. */}
+      {!selectionMode && (
+        <TouchableOpacity
+          style={styles.planButton}
+          onPress={() => onToggleUpNext(recipe)}
+          activeOpacity={interaction.activeOpacity}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel={recipe.upNext ? `Remove ${recipe.name} from Up Next` : `Add ${recipe.name} to Up Next`}
+        >
+          <Ionicons
+            name={recipe.upNext ? 'bookmark' : 'bookmark-outline'}
+            size={iconSize.md}
+            color={recipe.upNext ? colors.accent : colors.textTertiary}
+          />
+        </TouchableOpacity>
+      )}
+      {/* Icon-only because the row is already dense; the spoken label carries
+          the meaning. Deliberately a button rather than a long-press: the
+          row's long-press is already the drag handle. It's not on the swipe
+          panel either, which is select-only (#1378), same contract as every
+          other SwipeableRow in the app. */}
+      {!selectionMode && (
+        <TouchableOpacity
+          style={styles.planButton}
+          onPress={() => onPlan(recipe)}
+          activeOpacity={interaction.activeOpacity}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel={`Plan ${recipe.name} onto a day`}
+        >
+          <Ionicons name="calendar-outline" size={iconSize.md} color={colors.accent} />
+        </TouchableOpacity>
+      )}
+      {!selectionMode && (
+        <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+      )}
+      {/* In the slot the three buttons and the chevron give up while
+          selecting, so nothing moves aside for it. On every row, picked or
+          not: the empty rings are what say selection is on. */}
+      {selectionMode && (
+        <SelectionDot selected={selected} onPress={toggleSelect} />
+      )}
+    </TouchableOpacity>
+  );
+  return (
+    <View ref={paintRef} style={[styles.itemWrapper, isActive && styles.itemWrapperActive]}>
+      {/* SwipeableRow stays mounted through the selectionMode toggle rather
+          than swapping for a bare rowBody — swapping it unmounts the panel
+          mid-close-animation (the very moment its own select action just
+          fired), which is what read as the swipe panel freezing instead of
+          sliding shut. `enabled` turns the gesture off without disturbing
+          the mount, same as every other list's row. */}
+      <SwipeableRow
+        enabled={!isActive && !selectionMode}
+        selectAction={{
+          onSelect: () => onSwipeSelect(recipe.id),
+          accessibilityLabel: `Select ${recipe.name}`,
+        }}
+      >
+        {rowBody}
+      </SwipeableRow>
+    </View>
+  );
+});
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   container: {
@@ -1061,8 +1303,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   cookbookLinksRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-end',
     alignItems: 'center',
+    gap: spacing.md,
     marginHorizontal: spacing.md,
     marginTop: spacing.xs,
   },
@@ -1248,14 +1491,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: radius.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  // Same footprint as the icon tile it replaces, so entering selection mode
-  // doesn't move the row's text.
-  select: {
-    width: 36,
-    height: 36,
     alignItems: 'center',
     justifyContent: 'center',
   },

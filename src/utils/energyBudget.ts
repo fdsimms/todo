@@ -11,14 +11,20 @@
  * here fills a field in, nothing is stored until it is accepted, and a profile
  * missing any part of itself produces null rather than a guess.
  *
- * **It proposes; it never writes.** `WeightGoalSheet` shows the figure with its
- * own arithmetic printed beside it and a button that copies it into the
- * `calorieKcal` entry of `nutritionTargets`. Nothing calls `setNutritionTarget`
- * on this module's behalf, nothing re-applies it when a weight changes, and the
- * copied number is thereafter an ordinary target the person can edit or clear
- * in `NutritionTargetsSheet` like any other. The alternative — a target that
- * silently tracks a formula — is a figure nobody chose driving the food log,
- * which is the exact thing `nutritionTargets`' own note rules out.
+ * **This module itself still only proposes; it never writes.** `calorieBudget`
+ * and `budgetFromMaintenance` are pure arithmetic — nothing here calls
+ * `setNutritionTarget`, and a copied number is thereafter an ordinary target
+ * the person can edit or clear in `NutritionTargetsSheet` like any other.
+ *
+ * **The plain calorie figure this produces is, by request, kept in step with
+ * the goal automatically** — `WeightGoalSheet`'s Save writes it, and
+ * `useSettingsStore.syncWeightGoalCalorieTarget` (via `autoCalorieTargetKcal`
+ * in `weightGoal.ts`) re-applies it on a body-profile edit or a fresh
+ * weigh-in, so it doesn't go stale the moment the sheet isn't open. That is a
+ * deliberate, narrow exception to "a figure nobody chose driving the food
+ * log": it is scoped to the one number the person already asked to have
+ * tracked (they set the goal), it never touches macros, and it never invents
+ * a target where there wasn't a goal to derive one from.
  *
  * **The estimate is an estimate and the copy has to say so.** Mifflin-St Jeor
  * is a population regression: it is the standard predictive equation and it is
@@ -156,6 +162,12 @@ export function maintenanceKcal(
 }
 
 /**
+ * The share of a day's energy spent digesting food (the thermic effect of
+ * food), by the conventional figure of about a tenth of intake.
+ */
+export const DIGESTION_SHARE = 0.1;
+
+/**
  * The same figure with Apple Health's own measurement in place of the
  * multiplier: resting energy plus the active energy a typical recent day of
  * this person's actually recorded.
@@ -169,15 +181,19 @@ export function maintenanceKcal(
  * desk has the reverse, and a figure that looks measured is worse than one
  * that looks estimated, because nothing about it says how little it saw.
  *
- * **It reads slightly low against the multipliers and the reason is stated
- * rather than corrected.** The Harris-Benedict factors fold in the energy
- * spent digesting food (about a tenth of intake) along with movement, and
- * HealthKit's active energy is movement only: it is defined as energy above
- * resting, which is exactly what makes it addable to a resting figure in the
- * first place. Multiplying it up to cover the difference would be inventing a
- * second population constant to bolt onto a measurement, which is the thing
- * this path exists to avoid. The sheet says the estimate is an estimate, the
- * same way it does for the other one.
+ * **It counts digestion as a tenth of the total, the same as the multipliers
+ * do.** HealthKit's active energy is movement only (energy above resting,
+ * which is what makes it addable to a resting figure at all), where the
+ * Harris-Benedict factors also fold in the energy spent digesting food. Left
+ * out, this path read a couple of hundred calories low against the other one
+ * for no reason a person could see, so the two answered different questions.
+ * This used to be refused on the grounds that a second population constant
+ * would spoil a measurement, and that argument doesn't survive the resting
+ * half: it is Mifflin-St Jeor, already a population formula, so the figure was
+ * never a pure measurement to spoil. Digestion is conventionally about a
+ * tenth of what somebody eats, and holding a weight means eating what you
+ * burn, so it is a tenth of maintenance: `(resting + active) / (1 - share)`.
+ * The sheet prints that part as its own figure rather than folding it in.
  *
  * Null on the same terms as `maintenanceKcal` — an incomplete profile — and
  * additionally when there is no activity figure to use.
@@ -193,7 +209,7 @@ export function measuredMaintenanceKcal(
   if (activeEnergyKcal === null || !Number.isFinite(activeEnergyKcal) || activeEnergyKcal < 0) {
     return null;
   }
-  return resting + activeEnergyKcal;
+  return (resting + activeEnergyKcal) / (1 - DIGESTION_SHARE);
 }
 
 /**

@@ -20,7 +20,8 @@ import { spacing, radius, font, fontWeight, border, animation, interaction, type
 import { haptics } from '../utils/haptics';
 import { EMOJI_GROUPS, searchEmoji } from '../utils/emojiCatalog';
 import { firstEmoji } from '../utils/emojiInput';
-import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
+import { useSheetMotion } from '../hooks/useSheetMotion';
+import { useFilterField } from '../hooks/useFilterField';
 
 interface Props {
   visible: boolean;
@@ -53,17 +54,15 @@ export function EmojiPickerSheet({ visible, value, title = 'Choose an emoji', hi
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
-  const [query, setQuery] = useState('');
+  const { query, clear: clearQuery, props: filterField } = useFilterField();
   const [groupIndex, setGroupIndex] = useState(0);
   const keyboardInputRef = useRef<TextInput>(null);
 
   const results = useMemo(() => (query.trim() ? searchEmoji(query) : null), [query]);
   const shown = results ?? EMOJI_GROUPS[groupIndex].entries;
 
-  const hiddenY = useSheetHiddenOffset();
-
-  const translateY = useRef(new Animated.Value(hiddenY)).current;
-  const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const sheet = useSheetMotion(visible);
+  const { translateY, backdropOpacity } = sheet;
   // The sheet lifts as a whole so the grid stays visible while the search field
   // (or the keyboard fallback) has focus.
   const keyboardOffset = useRef(new Animated.Value(0)).current;
@@ -86,24 +85,16 @@ export function EmojiPickerSheet({ visible, value, title = 'Choose an emoji', hi
 
   useEffect(() => {
     if (!visible) return;
-    setQuery('');
+    clearQuery();
     setGroupIndex(0);
-    translateY.setValue(hiddenY);
-    backdropOpacity.setValue(0);
     keyboardOffset.setValue(0);
-    Animated.parallel([
-      Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
-    ]).start();
+    sheet.show();
   }, [visible]);
 
   const dismiss = (after?: () => void) => {
     Keyboard.dismiss();
-    Animated.parallel([
-      Animated.spring(translateY, { toValue: hiddenY, ...animation.spring.sheetDismiss, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
-    ]).start(() => {
-      // No re-arming setValue here — see useSheetHiddenOffset.
+    sheet.hide(() => {
+      // No re-arming setValue here — see useSheetMotion.
       onClose();
       after?.();
     });
@@ -120,7 +111,7 @@ export function EmojiPickerSheet({ visible, value, title = 'Choose an emoji', hi
         if (dy > 80 || vy > 1.2) {
           dismiss();
         } else {
-          Animated.spring(translateY, { toValue: 0, ...animation.spring.snappy, useNativeDriver: true }).start();
+          sheet.restore();
         }
       },
     })
@@ -145,6 +136,7 @@ export function EmojiPickerSheet({ visible, value, title = 'Choose an emoji', hi
       <SheetScrim onPress={() => dismiss()} />
 
       <Animated.View
+        onLayout={sheet.onCardLayout}
         style={[styles.sheetOuter, { transform: [{ translateY: Animated.add(translateY, keyboardOffset) }] }]}
       >
         <View style={styles.handleArea} {...panResponder.panHandlers}>
@@ -174,8 +166,7 @@ export function EmojiPickerSheet({ visible, value, title = 'Choose an emoji', hi
             <Ionicons name="search" size={15} color={colors.textTertiary} />
             <TextInput
               style={styles.searchInput}
-              value={query}
-              onChangeText={setQuery}
+              {...filterField}
               placeholder="Search emoji"
               placeholderTextColor={colors.textTertiary}
               autoCorrect={false}
@@ -186,7 +177,7 @@ export function EmojiPickerSheet({ visible, value, title = 'Choose an emoji', hi
             />
             {!!query && (
               <TouchableOpacity
-                onPress={() => setQuery('')}
+                onPress={() => clearQuery()}
                 hitSlop={8}
                 accessibilityRole="button"
                 accessibilityLabel="Clear search"

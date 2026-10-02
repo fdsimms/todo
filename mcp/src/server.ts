@@ -67,6 +67,14 @@ const PORT = Number(process.env.PORT ?? 8787);
  */
 const SYNC_THROTTLE_MS = 10_000;
 
+/**
+ * When each replica last synced. Kept outside `buildMcpServer` because that
+ * runs once per HTTP request (the transport is stateless): a `let` inside it
+ * started every request at zero, so every tool call synced and the throttle
+ * above never applied.
+ */
+const lastSyncAtByReplica = new WeakMap<Replica, number>();
+
 function json(value: unknown) {
   return { content: [{ type: 'text' as const, text: JSON.stringify(value, null, 2) }] };
 }
@@ -95,9 +103,8 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
   // on nothing: nothing can have changed in the second between them that the
   // next question will not pick up. A failure is swallowed on purpose — a store
   // that is down should mean slightly stale answers, not no answers.
-  let lastSyncAt = 0;
   const exchange = async (): Promise<void> => {
-    lastSyncAt = Date.now();
+    lastSyncAtByReplica.set(replica, Date.now());
     try {
       await replica.sync();
     } catch (e) {
@@ -106,7 +113,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
   };
 
   const withFresh = async <T>(fn: () => T): Promise<T> => {
-    if (Date.now() - lastSyncAt > SYNC_THROTTLE_MS) await exchange();
+    if (Date.now() - (lastSyncAtByReplica.get(replica) ?? 0) > SYNC_THROTTLE_MS) await exchange();
     replica.refresh();
     return fn();
   };
@@ -165,7 +172,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'list_grocery_items',
-    'The grocery list. Pass onListOnly: false to search the whole catalog instead.',
+    'The home grocery list, with whether each item is checked off there. This is the list the grocery write tools act on. An item only on a separate list (a trip\'s list, say) is not included. Pass onListOnly: false to search the whole catalog instead.',
     { onListOnly: z.boolean().optional() },
     async input => json(await withFresh(() => listGroceryItems(replica, input)))
   );
@@ -275,8 +282,10 @@ function registerWriteTools(
       // Without this no task created here could ever ask a question, which
       // makes complete_task's whole answer path unreachable for anything but a
       // task the user made in the app.
-      deliverableKind: z.enum(['text', 'date', 'number']).nullable().optional()
+      deliverableKind: z.enum(['text', 'date', 'number', 'yesno', 'choice']).nullable().optional()
         .describe('Makes completing this task ask for an answer of that kind, recorded on the row.'),
+      deliverableOptions: z.array(z.string()).optional()
+        .describe("The options a 'choice' question offers, e.g. ['Yes', 'No', 'Maybe']. Ignored for other kinds."),
     },
     async input => {
       try {
@@ -372,7 +381,7 @@ function registerWriteTools(
 
   server.tool(
     'add_grocery_item',
-    "Put something on the grocery list. A name the user has bought before re-lists the shelf item they already have, keeping its aisle, its history and its pantry state, rather than creating a second one. Singular and plural resolve to the same item. The result says which of those happened.",
+    "Put something on the home grocery list. A name the user has bought before re-lists the shelf item they already have, keeping its aisle, its history and its pantry state, rather than creating a second one. Singular and plural resolve to the same item. The result says which of those happened.",
     {
       name: z.string().min(1).describe('What to add. A leading amount is split off, so "2 gal milk" files milk with a quantity of 2 gal.'),
       quantity: z.string().nullable().optional().describe('Stated separately instead of being parsed out of the name.'),
@@ -389,7 +398,7 @@ function registerWriteTools(
 
   server.tool(
     'check_off_grocery_item',
-    'Tick something off in the trolley, or un-tick it with checked: false. Takes the item id from list_grocery_items.',
+    'Check something off on the home grocery list, or un-check it with checked: false. Takes the item id from list_grocery_items.',
     { id: z.string().min(1), checked: z.boolean().optional().describe('Defaults to true.') },
     async ({ id, checked }) => {
       try {
@@ -402,7 +411,7 @@ function registerWriteTools(
 
   server.tool(
     'remove_from_grocery_list',
-    'Take something off the list without deleting it. The shelf item stays in the catalog with its aisle, purchase history, prices and substitutes, so adding it again brings all of that back. There is deliberately no tool that deletes one.',
+    'Take something off the home grocery list without deleting it. The shelf item stays in the catalog with its aisle, purchase history, prices and substitutes, so adding it again brings all of that back. There is deliberately no tool that deletes one.',
     { id: z.string().min(1) },
     async ({ id }) => {
       try {
@@ -497,8 +506,9 @@ async function main(): Promise<void> {
     }
 
     // Stateless: a transport per request, so there is no session table to
-    // outlive a restart and nothing to clean up when a client goes away. The
-    // tools are all reads, so there is no continuity to lose.
+    // outlive a restart and nothing to clean up when a client goes away. No
+    // tool, read or write, depends on anything from an earlier request, so
+    // there is no continuity to lose.
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     res.on('close', () => void transport.close());
 
@@ -508,7 +518,13 @@ async function main(): Promise<void> {
 
   app.listen(PORT, () => {
     console.error(`todo MCP server on :${PORT}, serving ${replica.path}`);
-    if (!process.env.MCP_AUTH_TOKEN) console.error('MCP_AUTH_TOKEN is unset: every MCP request will be refused.');
+    if (!process.env.MCP_AUTH_TOKEN) {
+      console.error(
+        process.env.MCP_WRITE_TOKEN
+          ? 'MCP_AUTH_TOKEN is unset: only callers presenting MCP_WRITE_TOKEN will be served.'
+          : 'MCP_AUTH_TOKEN is unset: every MCP request will be refused.'
+      );
+    }
     if (!process.env.MCP_WRITE_TOKEN) console.error('MCP_WRITE_TOKEN is unset: this server is read-only.');
     if (!process.env.SYNC_STORE_PATH) {
       console.error('SYNC_STORE_PATH is unset: the sync store is not mounted, so the replica cannot be a peer.');

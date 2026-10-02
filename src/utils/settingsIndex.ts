@@ -103,8 +103,8 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
   // section's own header comment names as the one people actually have — *what
   // writes tasks into my list* — and it is the part of Settings that grows every
   // time a generator ships, so it wants a door of its own rather than a deeper
-  // scroll. Not `kitchenOnly`: six of the twelve generators have nothing to do
-  // with the kitchen and keep running without it, which is exactly the bug that
+  // scroll. Not `kitchenOnly`: most generators have nothing to do with the
+  // kitchen and keep running without it, which is exactly the bug that
   // hiding them behind the area's gate used to cause.
   { id: 'generated', title: 'Automatic tasks', icon: 'sparkles-outline', tint: 'accent' },
   // Not filed with Reminders & Calendar, even though it is the third thing this
@@ -236,11 +236,11 @@ const AI_FEATURE_KEYWORDS: Record<AiFeatureId, string[]> = {
     'claude', 'model', 'nutrition panel', 'nutrition facts', 'calories', 'barcode',
     'product', 'curved', 'glare', 'blurry',
   ],
-  cookbookChecklist: [
-    'claude', 'model', 'table of contents', 'recipes',
-  ],
   recipeNutritionEstimate: [
     'claude', 'model', 'calories', 'ingredients', 'guess',
+  ],
+  cookbookIndex: [
+    'claude', 'model', 'scan', 'camera', 'pages', 'cook with',
   ],
 };
 
@@ -281,6 +281,8 @@ const GENERATED_KEYWORDS: Record<GeneratedKind, string[]> = {
   mealPlanNudge: ['meal plan', 'weekly', 'nudge', 'remind', 'planning', 'generated', 'automatic'],
   mealShortfall: ['ingredients', 'missing', 'meal plan', 'grocery', 'buy', 'short', 'generated',
     'automatic'],
+  mealThaw: ['frozen', 'thaw', 'defrost', 'fridge', 'meal plan', 'ingredients', 'generated',
+    'automatic'],
   mealLogNudge: ['food log', 'nutrition', 'ate', 'eaten', 'meal plan', 'nudge', 'generated',
     'automatic'],
   projectReview: ['stalled', 'stale', 'nudge', 'pull', 'idle', 'abandoned', 'generated', 'automatic'],
@@ -310,11 +312,6 @@ const GENERATED_KEYWORDS: Record<GeneratedKind, string[]> = {
   // the index searches on its own.
   weekendNudge: ['saturday', 'sunday', 'friday', 'bare', 'free', 'plans',
     'planning', 'project', 'generated', 'automatic'],
-  // No 'weekly' or 'review': both are already in this generator's own label.
-  // The rest are what somebody looking for it would actually type, which is
-  // rarely the feature's name — it is the pile they want dealt with.
-  weeklyReview: ['inbox', 'stuck', 'slipped', 'overdue', 'plan the week', 'planning',
-    'tidy up', 'catch up', 'sunday', 'generated', 'automatic'],
   weather: ['sunny', 'rainy', 'snowy', 'cold', 'hot', 'sunscreen', 'umbrella', 'coat', 'forecast',
     'location', 'temperature', 'generated', 'automatic'],
   eventTask: ['meeting', 'appointment', 'flight', 'travel', 'title', 'rule', 'rules', 'match',
@@ -328,6 +325,8 @@ const GENERATED_KEYWORDS: Record<GeneratedKind, string[]> = {
   // actually types, and neither is in the label.
   weighIn: ['scale', 'scales', 'weight', 'body', 'mass', 'kg', 'lb', 'pounds',
     'health', 'track', 'log', 'generated', 'automatic'],
+  waterShortfall: ['hydration', 'drink', 'target', 'exercise', 'health', 'food log',
+    'generated', 'automatic'],
 };
 
 /**
@@ -718,6 +717,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['birthday', 'days before', 'lead', 'early', 'notice', 'warning'] },
   { id: 'weekendNudgeLeadDays', groupId: 'generated', label: 'Show the task', section: 'Nudge for an empty weekend',
     keywords: ['weekend', 'thursday', 'friday', 'days before', 'lead', 'early', 'notice', 'warning'] },
+  { id: 'weekendNudgePlanThreshold', groupId: 'generated', label: 'How much counts as open', section: 'Nudge for an empty weekend',
+    keywords: ['weekend', 'threshold', 'bare', 'already planned', 'movie'] },
   { id: 'weighInEveryDays', groupId: 'generated', label: 'Ask after', section: 'Ask for a weigh-in',
     keywords: ['weight', 'weigh', 'scale', 'days', 'how often', 'cadence', 'gap', 'interval'] },
   { id: 'birthdayGiftLeadDays', groupId: 'generated', label: 'Show the task', section: 'Birthday gift reminders',
@@ -726,6 +727,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['meal plan', 'weekday', 'day', 'time', 'when', 'nudge'], kitchen: true },
   { id: 'mealPlanNudgeIgnoresVacation', groupId: 'generated', label: 'Also during vacation', section: 'Plan meals for the week',
     keywords: ['meal plan', 'away', 'trip', 'pause'], kitchen: true },
+  { id: 'mealPlanNudgeSlots', groupId: 'generated', label: 'Meals to plan for', section: 'Plan meals for the week',
+    keywords: ['meal plan', 'breakfast', 'lunch', 'dinner', 'snack', 'which meals', 'only dinner'], kitchen: true },
   { id: 'calendarReviewTimeSegment', groupId: 'generated', label: 'Show the task', section: 'Review tomorrow\'s calendar',
     keywords: ['morning', 'afternoon', 'evening', 'night', 'time of day', 'hold back', 'when'] },
   { id: 'moodLogTimeSegments', groupId: 'generated', label: 'Show the task', section: 'Daily mood check-in',
@@ -758,9 +761,12 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { id: 'productLookupEnabled', groupId: 'privacyAi', label: 'Look up food databases', section: 'Barcode lookups',
     keywords: ['upc', 'ean', 'gtin', 'open food facts', 'pantry', 'unpack', 'network', 'privacy',
       'nutrition', 'calories', 'usda', 'food data central', 'search food'],
-    kitchen: true, simple: true },
+    kitchen: true },
+  // Not `simple`, unlike the two below: searching a food by name survives
+  // simplified mode and needs both of these, and a failed search sends you
+  // here. The scanner-only rows go with the scanner.
   { id: 'fdcApiKey', requires: 'productLookupEnabled', groupId: 'privacyAi', label: 'FoodData Central key', section: 'Barcode lookups',
-    keywords: ['usda', 'api', 'barcode', 'scan', 'branded', 'nutrition'], kitchen: true, simple: true },
+    keywords: ['usda', 'api', 'barcode', 'scan', 'branded', 'nutrition', 'search food', 'api.data.gov'], kitchen: true },
   { id: 'goUpcApiKey', requires: 'productLookupEnabled', groupId: 'privacyAi', label: 'Go-UPC key', section: 'Barcode lookups',
     keywords: ['api', 'barcode', 'scan', 'paid', 'fallback'], kitchen: true, simple: true },
   { id: 'clearGtinLookups', requires: 'productLookupEnabled', groupId: 'privacyAi', label: 'Forget saved barcodes', section: 'Barcode lookups',
@@ -780,6 +786,11 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['food log', 'calories', 'nutrition', 'diary', 'eaten', 'leftovers', 'prompt'] },
   { id: 'nutritionTargets', groupId: 'kitchen', label: 'Daily targets', section: 'Meals on Today',
     keywords: ['calories', 'protein', 'goal', 'nutrition', 'food log', 'macros', 'aim'] },
+  // Simplified mode takes scaling away, and this row with it unless one is set.
+  { id: 'householdServings', groupId: 'kitchen', label: 'Usually cooking for', section: 'Meal plan',
+    keywords: ['household', 'family', 'people', 'servings', 'serves', 'portions', 'scale', 'batch',
+      'double', 'how many', 'default'],
+    simple: true },
   { id: 'tripLiveActivity', iosOnly: true, groupId: 'kitchen', label: 'Live Activity while shopping', section: 'Shopping trip',
     keywords: ['lock screen', 'dynamic island', 'store', 'trip', 'grocery', 'elapsed', 'timer'],
     simple: true },

@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   ScrollView,
   Animated,
+  useWindowDimensions,
   PanResponder,
   StyleSheet,
 } from 'react-native';
@@ -56,7 +57,8 @@ import { PillGroup } from './PillGroup';
 import { SheetScrim } from './SheetScrim';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import type { Task, TaskTemplate, TemplateContainer, TemplateItem, TemplateQuestion, Person } from '../types';
-import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
+import { useSheetMotion } from '../hooks/useSheetMotion';
+import { useKeyboardLift } from '../hooks/useKeyboardLift';
 
 interface Props {
   visible: boolean;
@@ -66,10 +68,22 @@ interface Props {
   projectId?: string;
   /** Fires once the sheet has finished dismissing, with every task the apply created (empty if the run had nothing selected). Lets a caller jump straight to the first one rather than leaving it to be found. */
   onApplied?: (tasks: Task[]) => void;
+  /**
+   * Anchor dates to open with, ahead of a target project's away span. A
+   * calendar event's first and last day, when a template is planned around one.
+   */
+  initialAnchors?: TemplateAnchors;
+  /** What to name the run to begin with (the event's title). */
+  initialRunName?: string;
+  /**
+   * People every created task is with, on top of any a 'people' question
+   * names: whoever the event is linked to.
+   */
+  extraPersonIds?: readonly string[];
 }
 
 /** Sub-label for a checklist row: live dates when its anchor is set, offset labels otherwise. */
-function itemSublabel(item: TemplateItem, anchors: TemplateAnchors): string | null {
+function itemSublabel(item: TemplateItem, anchors: TemplateAnchors, away = false): string | null {
   const parts: string[] = [];
   const anchor = item.anchor === 'end' ? anchors.end : anchors.start;
   const due = resolveOffsetDate(anchor, item.dueOffsetDays);
@@ -88,7 +102,7 @@ function itemSublabel(item: TemplateItem, anchors: TemplateAnchors): string | nu
     parts.push(item.timeSegments.join(', '));
   }
   if ((item.dueOffsetDays !== null || item.deferOffsetDays !== null) && !anchor) {
-    parts.push(`from ${anchorLabel(item.anchor).toLowerCase()}`);
+    parts.push(`from ${anchorLabel(item.anchor, away).toLowerCase()}`);
   }
   return parts.length > 0 ? parts.join(' · ') : null;
 }
@@ -112,7 +126,7 @@ function runNameHint(container: TemplateContainer, upgraded: boolean, hasPlaceho
  * unchecked, including whole nested-template blocks; a conditioned one starts
  * on what the answers say), then create them all as real tasks.
  */
-export function ApplyTemplateSheet({ visible, template, onClose, projectId, onApplied }: Props) {
+export function ApplyTemplateSheet({ visible, template, onClose, projectId, onApplied, initialAnchors, initialRunName, extraPersonIds }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -163,10 +177,14 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId, onAp
   // way MealEntrySheet's guest picker omits itself rather than showing empty.
   const visibleQuestions = questions.filter(q => q.kind !== 'people' || people.length > 0);
 
-  const hiddenY = useSheetHiddenOffset();
-
-  const translateY = useRef(new Animated.Value(hiddenY)).current;
-  const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const sheet = useSheetMotion(visible);
+  const { translateY, backdropOpacity } = sheet;
+  // The run name, the questions and the blanks all sit above the item list,
+  // in a card anchored to the bottom of the screen, so the keyboard covered
+  // the very field it opened for. The card rides up with it instead, and the
+  // item list gives up height (`flexShrink` below) to keep it on screen.
+  const keyboard = useKeyboardLift(visible);
+  const { height: windowHeight } = useWindowDimensions();
 
   useEffect(() => {
     if (visible && template) {
@@ -186,26 +204,20 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId, onAp
       // being typed twice. This direction needs no nomination on the template —
       // the project declared itself by having a span.
       const span = targetProject ? awaySpanOf(targetProject) : null;
-      setStartAnchor(span?.start ?? null);
-      setEndAnchor(span?.end ?? null);
+      setStartAnchor(initialAnchors?.start ?? span?.start ?? null);
+      // Short of a trip, a project's deadline is its end date: a party's
+      // "N days before" items count back from the party, which the project
+      // already knows. It used to be typed in a second time here.
+      setEndAnchor(
+        initialAnchors?.end
+          ?? span?.end
+          ?? (!template.anchorsAreAway && targetProject?.deadline ? new Date(targetProject.deadline) : null),
+      );
       setCalendarTarget(null);
-      setRunName('');
+      setRunName(initialRunName ?? '');
       setPlaceholderValues({});
       setTypedAnswers({});
-      translateY.setValue(hiddenY);
-      backdropOpacity.setValue(0);
-      Animated.parallel([
-        Animated.spring(translateY, {
-          toValue: 0,
-          ...animation.spring.smooth,
-          useNativeDriver: true,
-        }),
-        Animated.timing(backdropOpacity, {
-          toValue: 1,
-          duration: animation.duration.sheetBackdropIn,
-          useNativeDriver: true,
-        }),
-      ]).start();
+      sheet.show();
     }
   }, [visible, template]);
 
@@ -223,43 +235,24 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId, onAp
 
   const dismiss = (onDismissed?: () => void) => {
     Keyboard.dismiss();
-    Animated.parallel([
-      Animated.spring(translateY, {
-        toValue: hiddenY,
-        ...animation.spring.sheetDismiss,
-        useNativeDriver: true,
-      }),
-      Animated.timing(backdropOpacity, {
-        toValue: 0,
-        duration: animation.duration.sheetBackdropOut,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      // No re-arming setValue here — see useSheetHiddenOffset.
+    sheet.hide(() => {
+      // No re-arming setValue here — see useSheetMotion.
       onClose();
       onDismissed?.();
     });
   };
 
   // Slide the sheet away before showing the calendar — rendering both at once
-  // causes touch conflicts (same choreography as DeferModal).
+  // causes touch conflicts.
   const openCalendar = (target: 'start' | 'end') => {
-    Animated.spring(translateY, {
-      toValue: hiddenY,
-      ...animation.spring.sheetDismiss,
-      useNativeDriver: true,
-    }).start(() => {
+    sheet.slideOut(() => {
       setCalendarTarget(target);
     });
   };
 
   const restoreSheet = () => {
     setCalendarTarget(null);
-    Animated.spring(translateY, {
-      toValue: 0,
-      ...animation.spring.smooth,
-      useNativeDriver: true,
-    }).start();
+    sheet.slideIn();
   };
 
   const panResponder = useRef(
@@ -273,11 +266,7 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId, onAp
         if (dy > 80 || vy > 1.2) {
           dismiss();
         } else {
-          Animated.spring(translateY, {
-            toValue: 0,
-            ...animation.spring.snappy,
-            useNativeDriver: true,
-          }).start();
+          sheet.restore();
         }
       },
     })
@@ -351,7 +340,7 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId, onAp
       runName,
       placeholders: { ...placeholderValues, ...answerValues },
       targetProjectId: projectId,
-      personIds: personIdsForAnswers(questions, answers),
+      personIds: [...new Set([...(extraPersonIds ?? []), ...personIdsForAnswers(questions, answers)])],
     });
     // Waits for the sheet to be fully gone — a caller opening the task editor
     // straight off this callback would stack two Modals mid-animation, the
@@ -432,7 +421,7 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId, onAp
     }
 
     const checked = selectedIds.has(node.item.id);
-    const sublabel = itemSublabel(node.item, anchors);
+    const sublabel = itemSublabel(node.item, anchors, template?.anchorsAreAway ?? false);
     // Shown substituted so the checklist is a live preview of the titles that
     // will actually be created, blanks and all.
     const title = substitutePlaceholders(node.item.title, values);
@@ -477,7 +466,14 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId, onAp
       </Animated.View>
       <SheetScrim onPress={() => dismiss()} />
 
-      <Animated.View style={[styles.sheetOuter, { transform: [{ translateY }] }]}>
+      <Animated.View
+        onLayout={sheet.onCardLayout}
+        style={[
+          styles.sheetOuter,
+          keyboard.height > 0 && { maxHeight: windowHeight - keyboard.height - KEYBOARD_TOP_INSET },
+          { transform: [{ translateY: Animated.add(translateY, keyboard.offset) }] },
+        ]}
+      >
         <View style={styles.handleArea} {...panResponder.panHandlers}>
           <View style={styles.handle} />
         </View>
@@ -745,6 +741,9 @@ function AnchorRow({
   );
 }
 
+/** Room kept above the card while the keyboard has lifted it, same as `RecipePickerSheet`'s. */
+const KEYBOARD_TOP_INSET = 72;
+
 const makeStyles = (colors: Colors) => StyleSheet.create({
   backdropDim: {
     backgroundColor: colors.backdrop,
@@ -773,6 +772,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.lg,
     overflow: 'hidden',
     marginBottom: spacing.sm,
+    flexShrink: 1,
   },
   sheetTitle: {
     color: colors.text,
@@ -862,6 +862,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   itemList: {
     maxHeight: 320,
+    flexShrink: 1,
   },
   itemRow: {
     flexDirection: 'row',

@@ -54,6 +54,41 @@ export interface SyncPayload extends SyncChangeSet {
   format: number;
   /** Which device produced this, so a device can ignore its own echo. */
   deviceId: string;
+  /**
+   * Recipe photos, as base64 JPEG keyed by the filename `Recipe.imagePath`
+   * ends in (#2704). A row carries only the path, which names a file on the
+   * device that took the photo, so the bytes travel here, in payloads of
+   * their own that `runSync` pushes after the rows (`buildImagePayload`).
+   * Absent on every other payload.
+   *
+   * Optional rather than a format bump, for the reason `SYNC_FORMAT` gives: a
+   * build from before this reads the payload, finds no tables and no
+   * deletions in it, and applies nothing, which is the right answer for a
+   * device that has nowhere to put the bytes anyway.
+   */
+  images?: Record<string, string>;
+}
+
+/**
+ * The longest base64 string one photo may arrive as: about 7.5 MB of JPEG.
+ * `pickRecipeImage` saves at most 2000px at 0.7 quality, which lands well
+ * under a megabyte, so anything this size is not a photo the app took, and is
+ * refused rather than written to disk.
+ */
+export const MAX_SYNC_IMAGE_CHARS = 10_000_000;
+
+/**
+ * A photo's name as it may arrive off the wire: a bare filename, the shape
+ * `pickRecipeImage` mints (`<id>.jpg`). Anything with a path separator, a
+ * leading dot or a character outside that set is refused, since the name
+ * becomes a file written into this device's own recipe-images directory.
+ */
+export function isSyncImageName(name: unknown): name is string {
+  return typeof name === 'string'
+    && name.length > 0
+    && name.length <= 128
+    && !name.startsWith('.')
+    && /^[A-Za-z0-9._-]+$/.test(name);
 }
 
 export type ParsedPayload =
@@ -66,6 +101,20 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
 
 export function buildPayload(changes: SyncChangeSet, deviceId: string): SyncPayload {
   return { format: SYNC_FORMAT, deviceId, ...changes };
+}
+
+/**
+ * A payload carrying photos and no rows (#2704). It covers the same window as
+ * the rows pushed just before it, so a store that orders or prunes by it
+ * treats the two alike, and it has no tables and no deletions, so applying it
+ * writes nothing to the database on any build.
+ */
+export function buildImagePayload(
+  images: Record<string, string>,
+  window: Pick<SyncChangeSet, 'since' | 'until'>,
+  deviceId: string
+): SyncPayload {
+  return { format: SYNC_FORMAT, deviceId, since: window.since, until: window.until, tables: {}, deletions: [], images };
 }
 
 export function serializePayload(payload: SyncPayload): string {
@@ -126,6 +175,18 @@ export function parsePayload(text: string): ParsedPayload {
     }
   }
 
+  // Held to the same standard as the rows: a photo is a file this device will
+  // write, named by the sender, so a bad name or a value that isn't a string
+  // rejects the payload rather than being skipped past.
+  if (raw.images !== undefined) {
+    if (!isPlainObject(raw.images)) return { ok: false, error: "That update's photos are damaged." };
+    for (const [name, data] of Object.entries(raw.images)) {
+      if (!isSyncImageName(name) || typeof data !== 'string' || data === '' || data.length > MAX_SYNC_IMAGE_CHARS) {
+        return { ok: false, error: "That update's photos are damaged." };
+      }
+    }
+  }
+
   return { ok: true, payload: raw as unknown as SyncPayload };
 }
 
@@ -163,6 +224,29 @@ export function remoteDeletionWins(localUpdatedAt: string | null, deletedAt: str
   return localUpdatedAt <= deletedAt;
 }
 
+/**
+ * A planned meal an apply deleted that held a calendar event on this device,
+ * read off the row before the delete.
+ */
+export interface RemovedMealEvent {
+  eventId: string;
+  /**
+   * The calendar server's id beside it, or null when the row had none, so the
+   * delete can still find the event when the local id names nothing here (a
+   * backup restored on a new phone). See `deleteLinkedEvent`.
+   */
+  externalId: string | null;
+  /** The meal's day key, which is how the reconcile tells a removal from the horizon purge. */
+  date: string;
+}
+
+/** A deadline event read off a task row an apply deleted. `RemovedMealEvent` without the day. */
+export interface RemovedTaskEvent {
+  eventId: string;
+  /** The calendar server's id beside it, or null when the row had none. */
+  externalId: string | null;
+}
+
 /** What an apply did, for the sync log and for tests. */
 export interface ApplyReport {
   inserted: number;
@@ -171,10 +255,47 @@ export interface ApplyReport {
   deleted: number;
   /** Deletions ignored because the local row had a later edit. */
   deletionsRefused: number;
+  /**
+   * Every planned meal the apply wrote (inserted or updated), by id, for the
+   * meal calendar reconcile that runs after a sync (#2950). A meal's event
+   * belongs to the device that wrote it (`SYNC_DEVICE_LOCAL_COLUMNS`), so a
+   * peer's move or rename reaches that event only through this.
+   */
+  mealEntryIds: string[];
+  /**
+   * The events of the planned meals the apply deleted. The event id is a
+   * device-local column, so once the row is gone nothing else holds it: read
+   * here, before the delete, or the event stays on the calendar for good.
+   */
+  removedMealEvents: RemovedMealEvent[];
+  /**
+   * Every task the apply wrote (inserted or updated), by id, for the same kind
+   * of reconcile. A task's deadline event, time block and completion event are
+   * this device's too (`SYNC_DEVICE_LOCAL_COLUMNS`), so a peer's rename, new
+   * deadline, completion or uncomplete reaches them only through this.
+   */
+  taskIds: string[];
+  /**
+   * The deadline events of the tasks the apply deleted, read before the delete
+   * for the reason `removedMealEvents` is. Only the deadline event: the app
+   * never deletes a time block (`Task.timeBlockEventId`), and a completion
+   * event is a record of what happened rather than a mirror of the row.
+   */
+  removedTaskEvents: RemovedTaskEvent[];
 }
 
 export function emptyApplyReport(): ApplyReport {
-  return { inserted: 0, updated: 0, skipped: 0, deleted: 0, deletionsRefused: 0 };
+  return {
+    inserted: 0,
+    updated: 0,
+    skipped: 0,
+    deleted: 0,
+    deletionsRefused: 0,
+    mealEntryIds: [],
+    removedMealEvents: [],
+    taskIds: [],
+    removedTaskEvents: [],
+  };
 }
 
 /** One line for the sync log: "12 added, 3 updated, 1 removed". */

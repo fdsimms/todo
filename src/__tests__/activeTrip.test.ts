@@ -22,6 +22,7 @@ function makeShop(name: string, overrides: Partial<Shop> = {}): Shop {
     excludeFromSuggestions: false,
     receiptStyle: 'itemized' as const,
     aisles: null,
+    aisleOrder: null,
     ...overrides,
   };
 }
@@ -321,6 +322,7 @@ describe('tripMarkerFor', () => {
       expiresAt: null,
       frozenAt: null,
       openedAt: null,
+      isPortion: false,
       createdAt: '2026-01-01T00:00:00.000Z',
     }];
     const strict = item('milk', { preferredProductId: GOOD_CULTURE, productStrict: true });
@@ -363,7 +365,7 @@ describe('tripMarkerFor', () => {
         id: 'p-store', itemId: 'milk', brand: 'Store brand', variant: null,
         productKey: 'store brand|', rating: null, nutrition: null, note: '',
         purchaseCount: 0, lastPurchasedAt: null, gtin: null,
-        onHandUntil: null, expiresAt: null, frozenAt: null, openedAt: null, createdAt: '2026-02-01T00:00:00.000Z',
+        onHandUntil: null, expiresAt: null, frozenAt: null, openedAt: null, isPortion: false, createdAt: '2026-02-01T00:00:00.000Z',
       }];
       const links = [link('milk', safeway.id, 3, NO_PRODUCT)];
       expect(tripMarkerFor(strict, links, shops, safeway, [], [], withStore)).toEqual({
@@ -382,7 +384,7 @@ describe('tripMarkerFor', () => {
         id: 'p-store', itemId: 'milk', brand: 'Store brand', variant: null,
         productKey: 'store brand|', rating: 'avoid' as const, nutrition: null, note: '',
         purchaseCount: 0, lastPurchasedAt: null, gtin: null,
-        onHandUntil: null, expiresAt: null, frozenAt: null, openedAt: null, createdAt: '2026-02-01T00:00:00.000Z',
+        onHandUntil: null, expiresAt: null, frozenAt: null, openedAt: null, isPortion: false, createdAt: '2026-02-01T00:00:00.000Z',
       }];
       const links = [link('milk', safeway.id, 3, NO_PRODUCT)];
       expect(tripMarkerFor(strict, links, shops, safeway, [], [], withAvoided)?.alternativeProduct)
@@ -396,7 +398,7 @@ describe('tripMarkerFor', () => {
         id: 'p-store', itemId: 'milk', brand: 'Store brand', variant: null,
         productKey: 'store brand|', rating: null, nutrition: null, note: '',
         purchaseCount: 0, lastPurchasedAt: null, gtin: null,
-        onHandUntil: null, expiresAt: null, frozenAt: null, openedAt: null, createdAt: '2026-02-01T00:00:00.000Z',
+        onHandUntil: null, expiresAt: null, frozenAt: null, openedAt: null, isPortion: false, createdAt: '2026-02-01T00:00:00.000Z',
       }];
       const bothMissing = {
         unavailableProductIds: {

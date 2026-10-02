@@ -1,4 +1,5 @@
 import { addDays } from 'date-fns/addDays';
+import { format } from 'date-fns/format';
 import { buildDeloadPlan, deloadUpdates } from '../utils/deloadPlan';
 import type { Task } from '../types';
 import type { BusyEvent } from '../utils/calendarBusy';
@@ -37,6 +38,7 @@ const BASE: Task = {
   recurrenceInterval: 1,
   recurrenceDays: [],
   recurrenceMonthDay: null,
+  recurrenceMonth: null,
   recurrenceWeekOrdinal: null,
   recurrenceAnchorDay: null,
   recurrenceAnchorDate: null,
@@ -55,8 +57,13 @@ const BASE: Task = {
   allowOvershoot: false,
   quotaIntervalMinutes: null,
   quotaReminders: false,
-  quotaStartedAt: null, quotaAlwaysVisible: false,
+  quotaStartedAt: null, quotaAlwaysVisible: false, followWaterTarget: false,
   quotaPeriod: 'day',
+  rotationEnabled: false,
+  rotationItems: [],
+  rotationLog: [],
+  rotationPeriodStart: null,
+  rotationLastDone: {},
   progressCount: 0,
   tags: [],
   sortOrder: 0,
@@ -85,7 +92,7 @@ const BASE: Task = {
   streakRequiresWindow: false,
   reminderTime: null,
   reminderKind: 'notification',
-  reminderOffsetDays: null, reminderTimeAnchor: 'wallClock', reminderUtcOffsetMinutes: null,
+  reminderOffsetDays: null, reminderTracksVisibility: false, reminderTimeAnchor: 'wallClock', reminderUtcOffsetMinutes: null,
   parentId: null,
   groupId: null,
   projectId: null,
@@ -101,6 +108,7 @@ const BASE: Task = {
   followUpTaskTally: 0,
   previousFollowUpTaskTally: 0,
   followUpTaskSourceTitle: null,
+  followUpTaskSourceId: null,
   vacationPause: false, excludeFromSuggestions: false,
   timerStartedAt: null,
   timedMinutes: null,
@@ -141,7 +149,7 @@ function makeTask(overrides: Partial<Task>): Task {
 }
 
 function isoDate(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  return format(d, 'yyyy-MM-dd');
 }
 
 let busySeq = 0;

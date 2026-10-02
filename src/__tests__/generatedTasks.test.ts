@@ -200,17 +200,33 @@ describe('generatedSourceOf', () => {
 
 describe('generatedBy', () => {
   it('stamps both fields together', () => {
-    expect(generatedBy('mealCook', 'm-1')).toEqual({
-      generatedKind: 'mealCook',
-      generatedSourceId: 'm-1',
+    expect(generatedBy('birthday', 'p-1#2026')).toEqual({
+      generatedKind: 'birthday',
+      generatedSourceId: 'p-1#2026',
     });
   });
 
   it('defaults the source to null, for a generator projected from no row', () => {
-    expect(generatedBy('mealPlanNudge')).toEqual({
-      generatedKind: 'mealPlanNudge',
+    expect(generatedBy('calendarReview')).toEqual({
+      generatedKind: 'calendarReview',
       generatedSourceId: null,
     });
+  });
+
+  it('pauses the row on vacation for every kind that stands down for it', () => {
+    // The pass gate only stops new rows, and several of these write days
+    // ahead, so a row written before a trip used to sit on Today during it.
+    for (const kind of Object.keys(GENERATED_KIND_SPECS) as GeneratedKind[]) {
+      const draft = generatedBy(kind, 'x');
+      if (GENERATED_KIND_SPECS[kind].pausedOnVacation) {
+        expect(draft.vacationPause).toBe(true);
+      } else {
+        // No key at all rather than `false`, so a draft's own default stands.
+        expect('vacationPause' in draft).toBe(false);
+      }
+    }
+    expect(generatedBy('mealSlot', '2026-08-22#lunch').vacationPause).toBe(true);
+    expect(generatedBy('birthday', 'p-1#2026').vacationPause).toBeUndefined();
   });
 });
 
@@ -332,7 +348,7 @@ describe('the registry', () => {
     // one task written entirely on the app's own schedule landed loose at the
     // top of Today however the other three were filed.
     expect(GENERATED_KIND_LIST.filter(s => s.categorized).map(s => s.kind))
-      .toEqual(['mealSlot', 'groceryUseUp', 'pantryCheck', 'pantryReview', 'leftoverUseUp', 'mealPlanNudge', 'mealShortfall', 'mealLogNudge', 'projectReview', 'supplyReorder', 'calendarReview', 'birthday', 'birthdayGift', 'reachOut', 'waitingFollowUp', 'weather', 'screenTime', 'health', 'eventTask', 'travel', 'moodLog', 'moodNudge', 'weekendNudge', 'weighIn', 'weeklyReview']);
+      .toEqual(['groceryUseUp', 'pantryCheck', 'pantryReview', 'leftoverUseUp', 'mealSlot', 'mealPlanNudge', 'mealShortfall', 'mealThaw', 'mealLogNudge', 'projectReview', 'supplyReorder', 'calendarReview', 'birthday', 'birthdayGift', 'reachOut', 'waitingFollowUp', 'weather', 'screenTime', 'health', 'eventTask', 'travel', 'moodLog', 'moodNudge', 'weekendNudge', 'weighIn', 'waterShortfall']);
   });
 
   it('marks exactly the two day-shaped questions and the leave reminder as notices', () => {
@@ -423,6 +439,7 @@ describe('generatorSwitchedOn', () => {
   const flags = (over: Record<string, boolean> = {}) => ({
     ...Object.fromEntries(GENERATED_KIND_LIST.map(sp => [sp.enabledKey, true])),
     healthReadEnabled: true,
+    healthWriteEnabled: true,
     calendarReadEnabled: true,
     ...over,
   } as Parameters<typeof generatorSwitchedOn>[1]);
@@ -437,8 +454,16 @@ describe('generatorSwitchedOn', () => {
     expect(generatorSwitchedOn('calendarReview', flags({ calendarReadEnabled: false }))).toBe(false);
   });
 
+  it('needs both Health switches for the weigh-in, which reads and writes one', () => {
+    // Its pass refuses to run without either, so a row reading "on" with one
+    // of them off promised a task that never came.
+    expect(generatorSwitchedOn('weighIn', flags({ healthReadEnabled: false }))).toBe(false);
+    expect(generatorSwitchedOn('weighIn', flags({ healthWriteEnabled: false }))).toBe(false);
+    expect(generatorSwitchedOn('weighIn', flags())).toBe(true);
+  });
+
   it('leaves the other generators alone when a read is off', () => {
-    const noReads = flags({ healthReadEnabled: false, calendarReadEnabled: false });
+    const noReads = flags({ healthReadEnabled: false, healthWriteEnabled: false, calendarReadEnabled: false });
     expect(generatorSwitchedOn('birthday', noReads)).toBe(true);
     expect(generatorSwitchedOn('weather', noReads)).toBe(true);
   });

@@ -27,6 +27,7 @@ import { ActiveTripBanner } from '../components/ActiveTripBanner';
 import { InlineAction } from '../components/InlineAction';
 import { PeriodNav } from '../components/PeriodNav';
 import { MealDragCard, MealSlotRow } from '../components/MealSlotRow';
+import { describeSlotLog, mealDayCoverage, type SlotCoverage } from '../utils/mealLogCoverage';
 import { MealEntrySheet } from '../components/MealEntrySheet';
 import { RecipePickerSheet, type MealPick } from '../components/RecipePickerSheet';
 import { mealSlotSourceId } from '../utils/mealSlotTasks';
@@ -34,10 +35,12 @@ import { AddMealsToListSheet } from '../components/AddMealsToListSheet';
 import { RecipeToListSheet } from '../components/RecipeToListSheet';
 import { PrepTasksReviewSheet } from '../components/PrepTasksReviewSheet';
 import { SuggestMealsSheet } from '../components/SuggestMealsSheet';
+import { OverlapPickerSheet } from '../components/OverlapPickerSheet';
 import { WhenPicker } from '../components/WhenPicker';
 import { MealReplaceItemSheet, type MealReplacement } from '../components/MealReplaceItemSheet';
 import { ListBulkBar } from '../components/ListBulkBar';
 import { useRowSelection } from '../hooks/useRowSelection';
+import { useSheetSubject } from '../hooks/useSheetSubject';
 import { usePlanMeal } from '../hooks/usePlanMeal';
 import {
   FabDropZone,
@@ -47,6 +50,7 @@ import {
   type FabDropZonesHandle,
   type FabIntentChannel,
 } from '../components/FabDropZones';
+import { PaintSelectionProvider } from '../components/PaintSelection';
 import { type DragScroller, type DropZone, type FabDropIntent } from '../utils/fabDrop';
 import { useDragToDay, type DayDragHandlers } from '../hooks/useDragToDay';
 import { useMealPlanStore } from '../store/useMealPlanStore';
@@ -69,17 +73,19 @@ import {
 } from '../utils/leftovers';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useAiRoute } from '../hooks/useOnDeviceAi';
 import { useTaskStore } from '../store/useTaskStore';
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, lineHeight, radius, border, animation, interaction, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { featureShown, screenShown } from '../utils/simpleMode';
 import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
 import { resolveActiveTrip } from '../utils/activeTrip';
 import { resetToGroceries } from '../navigation/navigationRef';
 import { buildWeekDays } from '../utils/calendarGrid';
-import { dayKeyOf, dayKeyToDate } from '../utils/dateUtils';
+import { dayKeyOf, dayKeyToDate, getLogicalToday } from '../utils/dateUtils';
 import {
   resolvePrepTaskDraft,
   suggestRecipesForEmptyNight,
@@ -104,21 +110,33 @@ import {
   describeWeekRange,
   earliestUnplannedSlot,
   entriesForDay,
+  daysWithMeal,
+  isKeyInRange,
   recipeIndex,
+  recipeNamedLike,
   slotLabel,
+  slotPlural,
   titleForEntry,
 } from '../utils/mealPlan';
 import { liveGeneratedTask } from '../utils/generatedTasks';
 import { buildWeekPlanShareText } from '../utils/shareText';
 import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
 import {
+  collectPlannedIngredients,
+  describeLeftBehind,
   hasShoppableMeals,
 } from '../utils/mealPlanGroceries';
+import {
+  overlapSeedFromPlanned,
+  rankOverlapRecipes,
+  type OverlapMatch,
+} from '../utils/recipeOverlap';
 import { decidableNights, weekNights } from '../utils/weekPlan';
 import { standingSwapMap } from '../utils/standingSwaps';
 import { onHandNameKeys } from '../utils/grocerySuggest';
 import { describeWeekCost, estimateWeekCost } from '../utils/recipeCost';
 import { describeWeekNutrition, weekNutrition } from '../utils/recipeNutrition';
+import { targetedNutrients } from '../utils/nutritionTargets';
 
 /**
  * Tints a day section while a drag is aimed at it — the same "arm on the way
@@ -318,24 +336,33 @@ export function MealPlanScreen() {
 
   const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
   // #1063's gate. Without a key the suggestion sheet is exactly the offline
-  // one it has always been — the ranking below is deliberately ungated.
-  const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
+  // one it has always been — the ranking below is deliberately ungated. The
+  // route rather than the bare key, so turning Meal ideas off in Settings
+  // takes the Invent half away too instead of leaving it to apologise.
+  const mealIdeasRoute = useAiRoute('mealIdeas');
   const currencySymbol = useSettingsStore(s => s.currencySymbol);
   const mealSlotsEnabled = useSettingsStore(useShallow(s => s.mealSlotsEnabled));
+  // Whether somebody has set a daily nutrition target: one of the two signs
+  // (with a food log entry) that they track food at all. See the week
+  // nutrition line below.
+  const hasNutritionTargets = useSettingsStore(s => targetedNutrients(s.nutritionTargets).length > 0);
+  const simpleMode = useSettingsStore(s => s.simpleMode);
   // ==== local state (the week anchor, sheets, bulk selection, the fridge) ====
   // Any date inside the week on screen. Paging moves the anchor, never the days.
-  const [anchor, setAnchor] = useState(() => new Date());
+  const [anchor, setAnchor] = useState(() => getLogicalToday());
 
   const days = useMemo(() => buildWeekDays(anchor, weekStartsOn), [anchor, weekStartsOn]);
   const range = useMemo(() => dayKeyRange(days), [days]);
 
   const entries = useMealPlanStore(useShallow(s => s.entries));
-  // Real "today," independent of which week is on screen — decides which of
-  // this week's days fold into the "Previous days" section below
+  // The *logical* today, independent of which week is on screen, so this
+  // screen agrees with Today and the meal tasks during the grace window before
+  // dayResetTime (at 1:30 AM, last night's dinner is still tonight's). Decides
+  // which of this week's days fold into the "Previous days" section below
   // (previousDaysInfo). Not gated on `days` finding a match the way the old
   // hero card's `todayDay` was: a past week is entirely previous days, a
   // future week has none, and both fall out of the same key compare.
-  const todayKey = dayKeyOf(new Date());
+  const todayKey = dayKeyOf(getLogicalToday());
   const loadRange = useMealPlanStore(s => s.loadRange);
   const planMeal = useMealPlanStore(s => s.planMeal);
   const moveEntry = useMealPlanStore(s => s.moveEntry);
@@ -350,8 +377,14 @@ export function MealPlanScreen() {
   const bulkDeleteEntries = useMealPlanStore(s => s.bulkDeleteEntries);
   const bulkMoveEntries = useMealPlanStore(s => s.bulkMoveEntries);
   const bulkReplaceItem = useMealPlanStore(s => s.bulkReplaceItem);
+  const saveEntryAsRecipe = useMealPlanStore(s => s.saveEntryAsRecipe);
   const bulkSetCooked = useMealPlanStore(s => s.bulkSetCooked);
   const copyWeek = useMealPlanStore(s => s.copyWeek);
+  const slotsToCopyFrom = useMealPlanStore(s => s.slotsToCopyFrom);
+  const copySlotFromWeek = useMealPlanStore(s => s.copySlotFromWeek);
+  const copyEntryTo = useMealPlanStore(s => s.copyEntryTo);
+  const listRowsLeftBy = useMealPlanStore(s => s.listRowsLeftBy);
+  const takeOffLists = useGroceryStore(s => s.takeOffLists);
   const findPlannedWeekBefore = useMealPlanStore(s => s.findPlannedWeekBefore);
 
   const recipes = useRecipeStore(useShallow(s => s.recipes));
@@ -436,6 +469,48 @@ export function MealPlanScreen() {
     [selected, recentFoodLogEntries]
   );
   /**
+   * What the food log has in the week on screen, and the per-day coverage
+   * derived from it — what puts "Logged 640 cal" on a planned meal's row.
+   *
+   * Read straight from SQLite for `loggedEntry`'s own reason (the store's
+   * loaded window follows the Food Log screen, not this one), and re-read on
+   * two signals rather than by subscribing to that window: `totalCount`, which
+   * moves on every add and delete anywhere in the app, and a focus nonce, which
+   * catches the rest — a row re-filed into another meal from the day view
+   * changes which slots are covered without changing how many rows exist.
+   * Subscribing to `entries` instead would re-render this whole screen every
+   * time the food log's own day view changed, which it does not need to.
+   */
+  const foodLogCount = useFoodLogStore(s => s.totalCount);
+  const offerMealLog = useFoodLogStore(s => s.offerMealLog);
+  const [foodLogNonce, setFoodLogNonce] = useState(0);
+  useFocusEffect(useCallback(() => { setFoodLogNonce(n => n + 1); }, []));
+  const weekFoodLog = useMemo(
+    () => (range ? recentFoodLogEntries(range.startKey, range.endKey) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [range?.startKey, range?.endKey, recentFoodLogEntries, foodLogCount, foodLogNonce]
+  );
+  const coverageByDay = useMemo(() => {
+    const byDay = new Map<string, Map<MealSlot, SlotCoverage>>();
+    for (const day of days) {
+      const key = dayKeyOf(day);
+      byDay.set(key, mealDayCoverage(entries, weekFoodLog, key));
+    }
+    return byDay;
+  }, [days, entries, weekFoodLog]);
+  /**
+   * The row "View in food log" opens: the entry linked to this meal outright,
+   * or else the first thing logged in its slot that day. The second is the
+   * (day, slot) reading that already puts "Logged" on the meal's row
+   * (`mealLogCoverage.ts`), so a lunch typed straight into the food log read
+   * as logged here with no way through to what was logged.
+   */
+  const viewEntry = useMemo(
+    () => loggedEntry
+      ?? (selected ? coverageByDay.get(selected.date)?.get(selected.slot)?.logged[0] ?? null : null),
+    [loggedEntry, selected, coverageByDay]
+  );
+  /**
    * What an "add these to the list" tap asked for — the whole week, or one
    * day. Three scopes exist (a meal, a day, a week) and the other two share
    * one sheet, so what varies is held as data at the tap: the range the sheet
@@ -463,8 +538,8 @@ export function MealPlanScreen() {
   const [mealShopVisible, setMealShopVisible] = useState(false);
   // What the suggestion shelf was opened with — the ranked recipes and the
   // nights they may land on, captured at open rather than re-read while it's
-  // up. Held as a snapshot for the same reason `cookedRecipeForList` and
-  // `loggingLeftover` are: accepting a suggestion changes the week, and a
+  // up. Held as a snapshot for the same reason
+  // `loggingLeftover` is: accepting a suggestion changes the week, and a
   // sheet whose contents are recomputed from the week rewrites itself under
   // the finger that just tapped it. Null closes it.
   const [suggesting, setSuggesting] =
@@ -473,6 +548,17 @@ export function MealPlanScreen() {
       cookAgainRecipes: Recipe[];
       leftovers: Leftover[];
       days: Date[];
+    } | null>(null);
+  // "Cook these together" — recipes sharing ingredients with what's already on
+  // the week. A snapshot for the same reason `suggesting` is one: planning a
+  // pick changes the week the ranking was computed from, and a list that
+  // recomputed would resort under the finger that just tapped it.
+  const [overlap, setOverlap] =
+    useState<{
+      matches: OverlapMatch[];
+      seedLabel: string;
+      days: Date[];
+      initialSelected: string[];
     } | null>(null);
   // Per-day collapse, local-only — folding one away is just less to scroll
   // past, not a decision worth persisting. Days before today are already
@@ -503,13 +589,15 @@ export function MealPlanScreen() {
   // Plain useRowSelection, the same as RecipesScreen/TemplatesScreen use for
   // their non-task rows — no recurrence-aware delete flow to borrow from
   // useTaskSelection (a meal plan entry never repeats; recurrence lives on
-  // Task, not MealPlanEntry), and no PaintSelectionProvider: painting exists
-  // to save taps down one long column of checkboxes, and this list is the
-  // opposite shape — a handful of entries a piece, broken into seven
-  // collapsible day sections rather than one flat scroll. A drag through a
-  // collapsed day's header, or across the gap between two day cards, has no
-  // obvious answer for what it should paint, so the tap-per-row toggle every
-  // other non-task list already settled on is the one used here too.
+  // Task, not MealPlanEntry).
+  //
+  // Painting is on here too (#2944's treatment, carried to the meal rows): a
+  // drag down the column of selection dots picks up a run of meals. The day
+  // headers and the gaps between day cards are answered the way the grocery
+  // list's aisle headers already are: a drag passing over one paints nothing
+  // there and carries on into the next day's meals (rowIdsBetween fills in
+  // every row between two it lands on). A collapsed day renders no rows, so
+  // it has nothing to paint and nothing registered.
   const {
     selectionMode,
     selectedIds,
@@ -518,13 +606,27 @@ export function MealPlanScreen() {
     exitSelection,
     selectAll,
     deselectAll,
+    painting,
+    paintProps,
   } = useRowSelection();
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
   const [bulkMoveVisible, setBulkMoveVisible] = useState(false);
   // The entry whose date is being picked outside this week (#1364) — held by
   // id, since MealEntrySheet has closed by the time the calendar is up.
   const [movingFurtherId, setMovingFurtherId] = useState<string | null>(null);
+  // The entry being copied to a date outside this week (#2913), off the sheet's
+  // Also on row, held by id for movingFurtherId's reason. It shares that one's
+  // WhenPicker rather than mounting a second (an unopened WhenPicker still
+  // subscribes to the whole task list), so `furtherMode` is which of the two
+  // the picker is asking, held past the close so its title doesn't flip to
+  // "Move to" for the commit it spends fading out.
+  const [copyingFurtherId, setCopyingFurtherId] = useState<string | null>(null);
+  const furtherMode = useSheetSubject(copyingFurtherId ? 'copy' : movingFurtherId ? 'move' : null);
   const [bulkReplaceVisible, setBulkReplaceVisible] = useState(false);
+  // The one entry being swapped from its own sheet (#2911), held by id for
+  // movingFurtherId's reason. Shares MealReplaceItemSheet with the bulk bar's
+  // Replace; this being set is what makes it a replace of one.
+  const [replacingId, setReplacingId] = useState<string | null>(null);
 
   const toggleDayCollapse = (key: string) => {
     haptics.tap();
@@ -797,7 +899,7 @@ export function MealPlanScreen() {
       next.delete(focusDay);
       return next;
     });
-    if (focusDay < dayKeyOf(new Date())) setPreviousDaysExpanded(true);
+    if (focusDay < dayKeyOf(getLogicalToday())) setPreviousDaysExpanded(true);
     pendingFocusRef.current = focusDay;
     // The other half of an unanswered meal task's link: land on the day, then
     // open the picker on the slot it named. Set here rather than in its own
@@ -838,7 +940,7 @@ export function MealPlanScreen() {
     flatListRef.current?.scrollToIndex({ index, viewPosition: 0, animated: true });
   }, [days]);
 
-  const onThisWeek = isSameWeek(anchor, new Date(), { weekStartsOn });
+  const onThisWeek = isSameWeek(anchor, getLogicalToday(), { weekStartsOn });
 
   // `days` at the moment the screen was last focused (or paged), read by the
   // focus effect below without making it re-fire on every page(). Kept as a
@@ -869,9 +971,9 @@ export function MealPlanScreen() {
   // through `daysRef` keeps the check honest without retriggering it.
   useFocusEffect(
     useCallback(() => {
-      const thisWeekStart = buildWeekDays(new Date(), weekStartsOn)[0];
+      const thisWeekStart = buildWeekDays(getLogicalToday(), weekStartsOn)[0];
       if (isBefore(daysRef.current[0], thisWeekStart)) {
-        setAnchor(new Date());
+        setAnchor(getLogicalToday());
         setCollapsedDays(new Set());
         setPreviousDaysExpanded(false);
       }
@@ -1005,6 +1107,45 @@ export function MealPlanScreen() {
     // gets it via FinishLeftoverPrompt without asking twice.
   };
 
+  /**
+   * "Take its ingredients off the list?" after meals are removed or given a
+   * different recipe (#2912). `gone` is the meals as they were before the
+   * change, and this runs after it, so a recipe the change left planned
+   * somewhere still counts as wanted.
+   *
+   * **An offer, never a silent removal.** The rows are the person's list, and
+   * a meal coming off the plan says nothing certain about whether they still
+   * want tortillas; what the app does know is that nothing planned needs them,
+   * which is what the message says. Which rows qualify is narrow on purpose
+   * (see `rowsLeftBehind`), so this stays quiet unless the list really holds
+   * a gone meal's shopping. Taking them off has its own undo, in the undo bar.
+   *
+   * Not raised by the picker's unplan, which is a pick being corrected inside
+   * the sheet it was made in, moments after the list could have heard of it.
+   */
+  const offerListCleanup = (gone: MealPlanEntry[]) => {
+    const rows = listRowsLeftBy(gone);
+    if (rows.length === 0) return;
+    const count = rows.length;
+    const items = count === 1 ? 'item' : 'items';
+    const what = gone.length === 1 ? titleForEntry(gone[0], recipesById) : 'those meals';
+    Alert.alert(
+      `Take ${count} ${items} off the list?`,
+      `${describeLeftBehind(rows)} ${count === 1 ? 'was' : 'were'} added for ${what}, and nothing else on the plan needs ${count === 1 ? 'it' : 'them'}.`,
+      [
+        { text: 'Keep', style: 'cancel' },
+        {
+          text: 'Take off',
+          style: 'destructive',
+          onPress: () => {
+            takeOffLists(rows, `Took ${count} ${items} off the list`);
+            haptics.success();
+          },
+        },
+      ],
+    );
+  };
+
   // ——— Bulk selection actions (#1110) ——————————————————————————————————
 
   const selectedIdList = useMemo(() => Array.from(selectedIds), [selectedIds]);
@@ -1048,10 +1189,48 @@ export function MealPlanScreen() {
   };
 
   const handleBulkReplace = (replacement: MealReplacement) => {
+    const before = entries.filter(e => selectedIds.has(e.id));
     bulkReplaceItem(selectedIdList, replacement);
     setBulkReplaceVisible(false);
     haptics.success();
     exitSelection();
+    offerListCleanup(before);
+  };
+
+  /**
+   * One meal's own swap (#2911): the bulk replace with a list of one, so it
+   * keeps what the bulk one keeps (the slot, the per-meal answers, the
+   * servings) and registers the same undo. Takes the id rather than reading
+   * `replacingId`, which the sheet has cleared by the time it calls back.
+   */
+  const replaceOne = (id: string, replacement: MealReplacement) => {
+    const before = entries.find(e => e.id === id);
+    bulkReplaceItem([id], replacement);
+    haptics.success();
+    if (before) offerListCleanup([before]);
+  };
+  const replacing = replacingId ? entries.find(e => e.id === replacingId) ?? null : null;
+
+  /**
+   * Typed text rather than a recipe or a container: the meals whose sheet
+   * offers the title's pencil, "Choose a recipe" and "Save as a new recipe"
+   * (#2929). A meal whose recipe was deleted reads as its typed title and
+   * counts, the way it renames like one.
+   */
+  const isTypedEntry = (entry: MealPlanEntry) =>
+    !entry.leftoverId && !(entry.recipeId && recipesById.has(entry.recipeId));
+
+  /**
+   * "Save as a new recipe" (#2929). A recipe made here has only a name, so it
+   * opens on its page to be filled in, the way the Recipes screen's own "New
+   * recipe" does. One that was already there ("Use your Tacos recipe") is
+   * what the meal meant, so the plan stays on screen.
+   */
+  const saveAsRecipe = (id: string) => {
+    const result = saveEntryAsRecipe(id);
+    if (!result) return;
+    haptics.success();
+    if (result.created) navigation.navigate('RecipeDetail', { recipeId: result.recipe.id });
   };
 
   const handleBulkDelete = () => {
@@ -1063,9 +1242,11 @@ export function MealPlanScreen() {
       message: `You're about to take ${count} ${plural} off the plan. This can't be undone.`,
       confirmLabel: 'Remove',
       onConfirm: () => {
+        const before = entries.filter(e => selectedIds.has(e.id));
         animateLayout();
         bulkDeleteEntries(selectedIdList);
         exitSelection();
+        offerListCleanup(before);
       },
     });
   };
@@ -1114,7 +1295,7 @@ export function MealPlanScreen() {
    * plenty of meals get eaten without the badge ever being tapped.
    */
   const couldHaveLeftovers = (entry: MealPlanEntry) =>
-    !!entry.cookedAt || entry.date <= dayKeyOf(new Date());
+    !!entry.cookedAt || entry.date <= dayKeyOf(getLogicalToday());
 
   /**
    * What a row says about the either/or this meal answers. Empty for the many
@@ -1142,6 +1323,12 @@ export function MealPlanScreen() {
     // Whether this day has anything a shop could find — the same gate the
     // week's own pill is behind, read over one day instead of seven.
     const shoppable = hasShoppableMeals(dayEntries, recipesById, { startKey: key, endKey: key });
+    // What the food log has to say about this day, one lookup per row below.
+    // Deliberately no day-level "2 of 3 logged" line here: every row already
+    // says whether its own meal was logged, so a tally under them would only
+    // restate what the reader can see. That line earns its place on the food
+    // log's day view instead, where the plan isn't on screen at all.
+    const dayCoverage = coverageByDay.get(key);
     // Folded into the "Previous days" header rendered by the first previous
     // day below — every other previous day renders nothing of its own while
     // that section is collapsed.
@@ -1333,6 +1520,7 @@ export function MealPlanScreen() {
                               title={titleForEntry(entry, recipesById)}
                               hasRecipe={!!entry.recipeId && recipesById.has(entry.recipeId)}
                               choices={describeEntryChoices(entry)}
+                              loggedText={describeSlotLog(dayCoverage?.get(entry.slot))}
                               onPress={() => {
                                 if (selectionMode) toggleSelection(entry.id);
                                 else { haptics.tap(); setSelectedId(entry.id); }
@@ -1408,7 +1596,7 @@ export function MealPlanScreen() {
   // The week as the deciding lens reads it: what's on each day, which nights
   // have no dinner, and which of those have already gone past.
   const nights = useMemo(
-    () => weekNights(entries, days, dayKeyOf(new Date())),
+    () => weekNights(entries, days, dayKeyOf(getLogicalToday())),
     [entries, days]
   );
 
@@ -1423,6 +1611,54 @@ export function MealPlanScreen() {
   // thing to want and is exactly what the day list's own + button is for; a
   // shelf offering to *plan* one is just wrong about which way time runs.
   const openDinnerDays = useMemo(() => decidableNights(nights), [nights]);
+
+  /**
+   * Open "Cook these together" against the visible week.
+   *
+   * The seed comes from `collectPlannedIngredients`, the same enumeration
+   * "Add week to list" shops from, so the two can never disagree about what
+   * the week calls for. `alsoInclude` is the handoff from the Recipes side —
+   * recipes the user already picked, kept in the list even where they share
+   * nothing with this particular week, because a choice already made isn't
+   * this screen's to quietly drop.
+   */
+  const openOverlap = useCallback((alsoInclude: readonly string[] = []) => {
+    if (!range) return;
+    const planned = collectPlannedIngredients(entries, recipesById, range, standingSwaps, onHand);
+    const seed = overlapSeedFromPlanned(planned, groceryItems);
+    const keep = new Set(alsoInclude);
+    const matches = rankOverlapRecipes(
+      seed, recipes, recipesById, groceryItems, standingSwaps, keep
+    );
+    setOverlap({
+      matches,
+      seedLabel: "this week's meals",
+      days: openDinnerDays,
+      initialSelected: matches.filter(m => keep.has(m.recipe.id)).map(m => m.recipe.id),
+    });
+  }, [range, entries, recipesById, standingSwaps, onHand, groceryItems, recipes, openDinnerDays]);
+
+  /**
+   * The handoff from the Recipes side, which has recipes to plan but no week
+   * to plan them on: it navigates here with the ids and this opens the sheet
+   * against the week this screen is actually showing.
+   *
+   * Stamped rather than watched, the same idiom `focusStamp` above uses, so
+   * carrying the same pair over twice still opens it. Declared after
+   * `openOverlap` because the dependency array is evaluated during render.
+   */
+  const overlapRecipeIds: string[] | undefined = route.params?.overlapRecipeIds;
+  const overlapStamp: number | undefined = route.params?.overlapStamp;
+  const [handledOverlap, setHandledOverlap] = useState<number | null>(null);
+  useEffect(() => {
+    if (overlapStamp === undefined || overlapStamp === handledOverlap) return;
+    // Not marked handled until there is a week to rank against: `openOverlap`
+    // refuses without a range, and marking first would spend the stamp on a
+    // render that opened nothing.
+    if (!range) return;
+    setHandledOverlap(overlapStamp);
+    openOverlap(overlapRecipeIds ?? []);
+  }, [overlapStamp, handledOverlap, overlapRecipeIds, openOverlap, range]);
 
   // Offline "what can I make from what I've got", ranked over the recipe box
   // and the grocery catalog.
@@ -1484,7 +1720,7 @@ export function MealPlanScreen() {
   // for an acceptance to land.
   const canSuggestMeals = openDinnerDays.length > 0
     && (mealSuggestions.length > 0 || cookAgainSuggestions.length > 0
-      || fridgeSuggestions.length > 0 || !!anthropicApiKey);
+      || fridgeSuggestions.length > 0 || mealIdeasRoute !== 'unavailable');
 
   // Context for the AI half of that sheet (#1063), so an invented idea isn't
   // something already on the week or something cooked last Tuesday. Both are
@@ -1532,9 +1768,12 @@ export function MealPlanScreen() {
   // Empty for a week with nothing planned, which is what the header action's
   // disabled state gates on — see buildWeekPlanShareText.
   const weekShareText = useMemo(
-    () => buildWeekPlanShareText(days, entries, recipesById),
-    [days, entries, recipesById]
+    () => buildWeekPlanShareText(days, entries, recipesById, { thisWeek: onThisWeek }),
+    [days, entries, recipesById, onThisWeek]
   );
+  // What the copy and share buttons say they act on, in the same words the
+  // text itself opens with: "this week" only while it is this week.
+  const weekMealsLabel = onThisWeek ? 'this week’s meals' : `the meals for ${describeWeekRange(days)}`;
   // Copied as it is shared, day headings and all: unlike a list of
   // ingredients or groceries, nothing is waiting to parse this — it goes in a
   // note or a message, where the headings are what make it readable.
@@ -1554,25 +1793,27 @@ export function MealPlanScreen() {
       // Straight into Food log's own add sheet rather than just the screen —
       // the tap is "I ate something", not "take me to my diary". See the
       // stamped-param handoff in FoodLogScreen (same shape as resetToMood's).
-      {
+      // Offered exactly while the menu offers the screen, so simplified mode
+      // can't be walked past from here into a Food log it hides.
+      ...(screenShown('FoodLog', simpleMode, { stacks: 0, templates: 0, foodLog: foodLogCount }) ? [{
         icon: 'nutrition-outline',
         onPress: () => {
           haptics.tap();
           navigation.navigate('FoodLog', { openAdd: Date.now() });
         },
         accessibilityLabel: 'Log food',
-      },
+      } satisfies ScreenHeaderAction] : []),
       {
         icon: copiedWeek ? 'checkmark' : 'copy-outline',
         onPress: () => copyWeekText(weekShareText),
         disabled: !weekShareText,
-        accessibilityLabel: 'Copy this week’s meals as plain text',
+        accessibilityLabel: `Copy ${weekMealsLabel} as plain text`,
       },
       {
         icon: 'share-outline',
         onPress: handleShareWeek,
         disabled: !weekShareText,
-        accessibilityLabel: 'Share this week’s meals',
+        accessibilityLabel: `Share ${weekMealsLabel}`,
       },
     ];
     // Only offered once there's somewhere to come back from, so the header
@@ -1584,7 +1825,7 @@ export function MealPlanScreen() {
           haptics.tap();
           if (selectionMode) exitSelection();
           animateLayout();
-          setAnchor(new Date());
+          setAnchor(getLogicalToday());
           setCollapsedDays(new Set());
           setPreviousDaysExpanded(false);
         },
@@ -1592,34 +1833,99 @@ export function MealPlanScreen() {
       });
     }
     return actions;
-  }, [onThisWeek, selectionMode, page, exitSelection, weekStartsOn, handleShareWeek, weekShareText, copiedWeek, copyWeekText, navigation]);
+  }, [onThisWeek, selectionMode, page, exitSelection, weekStartsOn, handleShareWeek, weekShareText, weekMealsLabel, copiedWeek, copyWeekText, navigation, simpleMode, foodLogCount]);
+
+  // A week that has already ended is a record rather than a plan, so the
+  // partly-planned offer below isn't made into one. Paging back through
+  // history would otherwise find it on nearly every week.
+  const weekIsOver = !!range && range.endKey < todayKey;
 
   /**
-   * The week a "copy" would take from, and only while this one is empty.
-   *
-   * **Offered into an empty week and no other**, which is what keeps the whole
-   * feature free of a merge question: no "does it replace or add alongside",
-   * no double-booked Tuesday, no confirm dialog explaining which. A week with
-   * anything in it is a week the user is already working on.
+   * The week either copy offer takes from: the most recent one before this
+   * with anything planned in it. Looked for while this week is empty (the
+   * whole-week offer) or still running (the slot offer, below).
    *
    * Searched rather than assumed — a fortnightly cook, or anyone back from a
    * holiday, has an empty week directly behind them and nothing to copy from
    * it (see findPlannedWeekBefore).
    */
-  const copySourceKey = useMemo(
-    () => (range && entries.length === 0 ? findPlannedWeekBefore(range.startKey, COPY_LOOKBACK_WEEKS) : null),
-    [range?.startKey, entries.length, findPlannedWeekBefore]
+  const copyFromKey = useMemo(
+    () => (range && (entries.length === 0 || !weekIsOver)
+      ? findPlannedWeekBefore(range.startKey, COPY_LOOKBACK_WEEKS)
+      : null),
+    [range?.startKey, entries.length, weekIsOver, findPlannedWeekBefore]
+  );
+
+  /**
+   * The week a whole-week copy would take from, and only while this one is
+   * empty.
+   *
+   * **Offered into an empty week and no other**, which is what keeps the whole
+   * feature free of a merge question: no "does it replace or add alongside",
+   * no double-booked Tuesday, no confirm dialog explaining which. A week with
+   * anything in it is a week the user is already working on, and gets the
+   * narrower slot offer instead (`slotCopyOffers`).
+   */
+  const copySourceKey = entries.length === 0 ? copyFromKey : null;
+
+  /**
+   * The slots of `copyFromKey` a partly planned week could take one at a time
+   * (#2913): "Copy lunches from Jul 27 – Aug 2" for a household that planned
+   * dinners first and lunches second, which the whole-week offer never reaches
+   * because the week stopped being empty with the first dinner.
+   *
+   * Only ever made to a week that has something in it, so the two offers are
+   * never on one week together, and only into a slot this week has nothing in
+   * at all: `slotsToCopy` is the rule, and says why that keeps the merge
+   * question away just as the whole-week offer's empty week does.
+   */
+  const slotCopyOffers = useMemo(
+    () => (range && copyFromKey && entries.length > 0 && !weekIsOver
+      ? slotsToCopyFrom(copyFromKey, range.startKey)
+      : []),
+    [range?.startKey, copyFromKey, entries, weekIsOver, slotsToCopyFrom]
   );
 
   const copySourceLabel = useMemo(
-    () => copySourceKey ? describeWeekRange(buildWeekDays(dayKeyToDate(copySourceKey), weekStartsOn)) : '',
-    [copySourceKey, weekStartsOn]
+    () => copyFromKey ? describeWeekRange(buildWeekDays(dayKeyToDate(copyFromKey), weekStartsOn)) : '',
+    [copyFromKey, weekStartsOn]
   );
 
   const handleCopyWeek = () => {
     if (!copySourceKey || !range) return;
     animateLayout();
     const n = copyWeek(copySourceKey, range.startKey);
+    if (n > 0) haptics.success();
+  };
+
+  /**
+   * "Also on" past the week's seven chips (#2913). The chips refuse a day that
+   * already has this meal by not taking the tap; the calendar reaches any day,
+   * so the refusal is `copyEntryTo`'s and this says so. A copy landing outside
+   * the week on screen changes nothing in view, so that is said too, the way
+   * adding prep tasks is.
+   */
+  const copyToDate = (id: string, dayKey: string) => {
+    const source = entries.find(e => e.id === id);
+    if (!source) return;
+    const onScreen = !!range && isKeyInRange(dayKey, range.startKey, range.endKey);
+    if (onScreen) animateLayout();
+    const copied = copyEntryTo(id, [dayKey]) > 0;
+    const title = titleForEntry(source, recipesById);
+    const slot = slotLabel(source.slot).toLowerCase();
+    const day = format(dayKeyToDate(dayKey), 'EEEE, MMMM d');
+    if (!copied) {
+      Alert.alert('Already planned', `${title} is already ${slot} on ${day}.`);
+      return;
+    }
+    haptics.success();
+    if (!onScreen) Alert.alert('Meal copied', `${title} is also planned for ${slot} on ${day}.`);
+  };
+
+  const handleCopySlot = (slot: MealSlot) => {
+    if (!copyFromKey || !range) return;
+    animateLayout();
+    const n = copySlotFromWeek(copyFromKey, range.startKey, slot);
     if (n > 0) haptics.success();
   };
 
@@ -1635,9 +1941,17 @@ export function MealPlanScreen() {
   // per-nutrient coverage floor in recipeNutrition.ts — the common case for a
   // library whose ingredients mostly have no nutrition on them yet, exactly as
   // the cost line above answers nothing for a lightly priced one.
+  //
+  // Shown only to somebody who tracks food: a nutrition target set, or
+  // anything in the food log. A scanned barcode fills figures in whether or
+  // not anyone wants them, and someone who plans dinners without counting
+  // them should not have calories read out on the plan.
+  const showsWeekNutrition = hasNutritionTargets || foodLogCount > 0;
   const weekNutritionEstimate = useMemo(
-    () => (range ? weekNutrition(entries, recipesById, groceryItems, range, itemProducts, standingSwaps) : null),
-    [entries, recipesById, groceryItems, range, itemProducts, standingSwaps]
+    () => (range && showsWeekNutrition
+      ? weekNutrition(entries, recipesById, groceryItems, range, itemProducts, standingSwaps)
+      : null),
+    [entries, recipesById, groceryItems, range, itemProducts, standingSwaps, showsWeekNutrition]
   );
   const subtitle = [
     describeWeekPlan(entries),
@@ -1668,6 +1982,8 @@ export function MealPlanScreen() {
         />
       )}
 
+      {/* Outside the drop zones, the way ProjectsScreen nests the same two. */}
+      <PaintSelectionProvider {...paintProps}>
       <FabDropZoneProvider
         ref={dropZonesRef}
         onIntentChange={fabIntentChannel.publish}
@@ -1684,7 +2000,9 @@ export function MealPlanScreen() {
           // wired up above — that responder is a *descendant* of this list,
           // so the native scroll would otherwise take the touch on the first
           // finger move (same reason SortableList's callers switch it off).
-          scrollEnabled={!dragging}
+          // Same while a paint gesture owns the touch: iOS has to be told
+          // directly (see PaintSelectionProvider).
+          scrollEnabled={!dragging && !painting}
           onScroll={e => { scrollOffsetRef.current = e.nativeEvent.contentOffset.y; }}
           scrollEventThrottle={16}
           onLayout={e => { viewportHeightRef.current = e.nativeEvent.layout.height; }}
@@ -1776,6 +2094,26 @@ export function MealPlanScreen() {
                     />
                   </View>
                 )}
+                {/* The same place and pill as the whole-week copy, which is
+                    never on screen with it (see slotCopyOffers), but quieter:
+                    in a week already being planned it's a shortcut rather
+                    than the obvious next step. One pill per slot, so taking
+                    the lunches never takes the breakfasts too. */}
+                {slotCopyOffers.length > 0 && (
+                  <View style={styles.weekActions}>
+                    {slotCopyOffers.map(slot => (
+                      <InlineAction
+                        key={slot}
+                        label={`Copy ${slotPlural(slot)} from ${copySourceLabel}`}
+                        icon="copy-outline"
+                        variant="neutral"
+                        surface="page"
+                        onPress={() => handleCopySlot(slot)}
+                        accessibilityLabel={`Copy the ${slotPlural(slot)} from ${copySourceLabel} onto this week`}
+                      />
+                    ))}
+                  </View>
+                )}
                 {(hasPlannableEntries || canSuggestMeals) && (
                   <View style={styles.weekActions}>
                     {hasPlannableEntries && (
@@ -1808,6 +2146,19 @@ export function MealPlanScreen() {
                         accessibilityLabel="Suggest meals from your recipe box and grocery catalog"
                       />
                     )}
+                    {hasPlannableEntries && openDinnerDays.length > 0 && (
+                      <InlineAction
+                        label="Cook together"
+                        icon="git-merge-outline"
+                        variant="neutral"
+                        surface="page"
+                        onPress={() => {
+                          haptics.tap();
+                          openOverlap();
+                        }}
+                        accessibilityLabel="Find recipes that share ingredients with this week's meals"
+                      />
+                    )}
                   </View>
                 )}
               </>
@@ -1824,6 +2175,7 @@ export function MealPlanScreen() {
           }
         />
       </FabDropZoneProvider>
+      </PaintSelectionProvider>
 
       {/*
         The container in flight, over everything else on the screen. Always
@@ -1923,11 +2275,28 @@ export function MealPlanScreen() {
         onCancel={() => setBulkMoveVisible(false)}
       />
 
+      {/*
+        Two callers, never both at once: the bulk bar only exists in selection
+        mode, and a meal's own sheet only opens outside it. `replacingId` is
+        what makes this a replace of one.
+      */}
       <MealReplaceItemSheet
-        visible={bulkReplaceVisible}
-        count={selectedIds.size}
-        onReplace={handleBulkReplace}
-        onClose={() => setBulkReplaceVisible(false)}
+        visible={bulkReplaceVisible || replacingId !== null}
+        count={replacingId ? 1 : selectedIds.size}
+        title={replacing ? (isTypedEntry(replacing) ? 'Choose a recipe' : 'Replace meal') : undefined}
+        hint={replacing
+          ? isTypedEntry(replacing)
+            ? `Pick the recipe for ${replacing.title}, or type a new name.`
+            : `Pick a recipe, or type a new name, to have instead of ${titleForEntry(replacing, recipesById)}.`
+          : undefined}
+        onReplace={replacement => {
+          if (replacingId) replaceOne(replacingId, replacement);
+          else handleBulkReplace(replacement);
+        }}
+        onClose={() => {
+          setBulkReplaceVisible(false);
+          setReplacingId(null);
+        }}
       />
 
       <RecipePickerSheet
@@ -1949,14 +2318,15 @@ export function MealPlanScreen() {
       />
 
       {/*
-        The way past the sheet's seven day chips. It opens after that sheet has
-        gone — two modals can't be up at once — and lands on the same
-        WhenPicker the bulk move uses, natural language included.
+        The way past the sheet's seven day chips, for Move to and for Also on
+        alike. It opens after that sheet has gone — two modals can't be up at
+        once — and lands on the same WhenPicker the bulk move uses, natural
+        language included.
       */}
       <WhenPicker
-        visible={movingFurtherId !== null}
+        visible={movingFurtherId !== null || copyingFurtherId !== null}
         value={null}
-        title="Move to"
+        title={furtherMode === 'copy' ? 'Also on' : 'Move to'}
         showTimeOfDay={false}
         showSuggest={false}
         nlEnabled
@@ -1965,9 +2335,14 @@ export function MealPlanScreen() {
             animateLayout();
             moveEntry(movingFurtherId, { date: dayKeyOf(date) });
           }
+          if (copyingFurtherId && date) copyToDate(copyingFurtherId, dayKeyOf(date));
           setMovingFurtherId(null);
+          setCopyingFurtherId(null);
         }}
-        onCancel={() => setMovingFurtherId(null)}
+        onCancel={() => {
+          setMovingFurtherId(null);
+          setCopyingFurtherId(null);
+        }}
       />
 
       <MealEntrySheet
@@ -1977,14 +2352,27 @@ export function MealPlanScreen() {
         weekDays={days}
         onMove={to => selected && moveEntry(selected.id, to)}
         onMoveFurther={selected ? () => setMovingFurtherId(selected.id) : undefined}
+        onCopyTo={selected && !selected.leftoverId ? date => copyEntryTo(selected.id, [date]) : undefined}
+        onCopyFurther={selected && !selected.leftoverId ? () => setCopyingFurtherId(selected.id) : undefined}
+        copiedDays={selected ? daysWithMeal(entries, selected) : undefined}
+        onReplace={selected && !isTypedEntry(selected) ? () => setReplacingId(selected.id) : undefined}
+        onChooseRecipe={selected && isTypedEntry(selected) ? () => setReplacingId(selected.id) : undefined}
+        onSaveAsRecipe={selected && isTypedEntry(selected) ? () => saveAsRecipe(selected.id) : undefined}
+        matchingRecipeName={selected && isTypedEntry(selected)
+          ? recipeNamedLike(selected.title, recipes)?.name ?? null
+          : null}
         onRemove={() => {
           if (!selected) return;
           animateLayout();
           removeEntry(selected.id);
           setSelectedId(null);
+          offerListCleanup([selected]);
         }}
         onRename={
-          selected && !selected.recipeId && !selected.leftoverId
+          // A meal whose recipe was deleted reads as its typed title and gets
+          // the free-text pencil on its row, so it renames like one too (the
+          // store clears the dead pointer as it does).
+          selected && isTypedEntry(selected)
             ? newTitle => renameEntry(selected.id, newTitle)
             : undefined
         }
@@ -1997,7 +2385,10 @@ export function MealPlanScreen() {
           );
         }}
         onScale={
+          // Simplified mode takes the chips away unless this meal is already
+          // scaled, the rule RecipeDetail's own chips follow.
           selected?.recipeId && recipesById.has(selected.recipeId)
+            && featureShown('recipeScaling', simpleMode, selected.recipeScale !== 1)
             ? factor => selected && setRecipeScale(selected.id, factor)
             : undefined
         }
@@ -2005,15 +2396,30 @@ export function MealPlanScreen() {
         baseServingsMax={selectedRecipe?.servingsMax}
         onSetCooked={selected ? cooked => setCooked(selected, cooked) : undefined}
         onViewFoodLogEntry={
-          loggedEntry
+          viewEntry
             ? () => navigation.navigate('FoodLog', {
-                openEntry: { dayKey: loggedEntry.dayKey, entryId: loggedEntry.id, nonce: Date.now() },
+                openEntry: { dayKey: viewEntry.dayKey, entryId: viewEntry.id, nonce: Date.now() },
               })
+            : undefined
+        }
+        onLogMeal={
+          // Offered only while this meal's slot has nothing in it — the same
+          // reading the completion prompt and the nudge task now use, so the
+          // sheet can't invite a second log of a dinner already recorded.
+          selected && (coverageByDay.get(selected.date)?.get(selected.slot)?.logged.length ?? 0) === 0
+            ? () => offerMealLog(selected, { asked: true })
             : undefined
         }
         onOpenRecipe={
           selected?.recipeId && recipesById.has(selected.recipeId)
-            ? () => navigation.navigate('RecipeDetail', { recipeId: selected.recipeId })
+            // The meal's own picks and scale travel with it, so cooking from
+            // here opens on the side and amount this night is having (see
+            // RecipeDetail's `choices` and `scale` params).
+            ? () => navigation.navigate('RecipeDetail', {
+                recipeId: selected.recipeId,
+                choices: selected.recipeChoices,
+                scale: selected.recipeScale,
+              })
             : undefined
         }
         onAddToList={
@@ -2073,7 +2479,7 @@ export function MealPlanScreen() {
         leftovers={suggesting?.leftovers ?? []}
         pantryByRecipeId={suggestionPantryCoverage}
         openDays={suggesting?.days ?? []}
-        aiIdeasEnabled={!!anthropicApiKey}
+        aiIdeasEnabled={mealIdeasRoute !== 'unavailable'}
         plannedTitles={plannedMealTitles}
         recentTitles={recentMealTitles}
         expiringItemHints={expiringMealHints}
@@ -2081,6 +2487,22 @@ export function MealPlanScreen() {
         onPlan={planSuggestion}
         onPlanLeftover={planLeftoverSuggestion}
         onClose={() => setSuggesting(null)}
+      />
+
+      {/*
+        Never open at the same time as SuggestMealsSheet above: two sibling
+        Modals visible at once present from the same view controller and the
+        second one silently fails (see SheetModal). Nothing sets both — each
+        InlineAction clears its own state only — but that's the rule to keep.
+      */}
+      <OverlapPickerSheet
+        visible={overlap !== null}
+        matches={overlap?.matches ?? []}
+        seedLabel={overlap?.seedLabel ?? "this week's meals"}
+        openDays={overlap?.days ?? []}
+        initialSelected={overlap?.initialSelected}
+        onPlan={planSuggestion}
+        onClose={() => setOverlap(null)}
       />
 
       {/*

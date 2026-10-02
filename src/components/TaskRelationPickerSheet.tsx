@@ -30,7 +30,8 @@ import { canBeBlockedBy, canBeBlockerOf, resolverFor, sortByBlockerAffinity, typ
 import { displayTitleFor } from '../utils/visibilityUtils';
 import { categoryLabel } from '../utils/categoryLabel';
 import type { Task } from '../types';
-import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
+import { useSheetMotion } from '../hooks/useSheetMotion';
+import { useFilterField } from '../hooks/useFilterField';
 
 /**
  * Which end of the relationship is being filled in: the task being edited is
@@ -79,7 +80,7 @@ const COPY: Record<TaskRelation, {
 }> = {
   waitingOn: {
     title: 'Waiting on',
-    hint: 'This task stays out of your lists until the one you pick is done.',
+    hint: 'This task stays out of your lists until the tasks you pick are done.',
     emptyTitle: 'Nothing to wait on',
     emptySub: 'Tasks that would end up waiting on each other are left out.',
     action: title => `Wait on ${title}`,
@@ -91,7 +92,7 @@ const COPY: Record<TaskRelation, {
     // Says why the list is short rather than leaving it a mystery: a task
     // waits on one thing at a time, so anything already waiting on another
     // task is set from that task's own editor instead.
-    emptySub: 'A task can wait on only one thing, so tasks already waiting on something else are left out.',
+    emptySub: 'Tasks that would end up waiting on each other are left out.',
     action: title => `Block ${title}`,
   },
 };
@@ -120,7 +121,7 @@ export function TaskRelationPickerSheet({ visible, onClose, relation, taskId, co
   const groups = useTaskGroupStore(useShallow(s => s.groups));
   const projects = useProjectStore(useShallow(s => s.projects));
   const categories = useCategoryStore(useShallow(s => s.categories));
-  const [query, setQuery] = useState('');
+  const { query, clear: clearQuery, props: filterField } = useFilterField();
 
   const ctx: BlockerContext = context ?? {};
   const copy = COPY[relation];
@@ -168,10 +169,8 @@ export function TaskRelationPickerSheet({ visible, onClose, relation, taskId, co
     return parts.length ? parts.join(' · ') : null;
   };
 
-  const hiddenY = useSheetHiddenOffset();
-
-  const translateY = useRef(new Animated.Value(hiddenY)).current;
-  const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const sheet = useSheetMotion(visible);
+  const { translateY, backdropOpacity } = sheet;
   /**
    * The sheet is bottom-anchored, so with a short list the whole thing — rows
    * and Cancel both — sits behind the keyboard the search field just raised.
@@ -202,41 +201,17 @@ export function TaskRelationPickerSheet({ visible, onClose, relation, taskId, co
 
   useEffect(() => {
     if (visible) {
-      setQuery('');
-      translateY.setValue(hiddenY);
-      backdropOpacity.setValue(0);
+      clearQuery();
       keyboardOffset.setValue(0);
       setKeyboardHeight(0);
-      Animated.parallel([
-        Animated.spring(translateY, {
-          toValue: 0,
-          ...animation.spring.smooth,
-          useNativeDriver: true,
-        }),
-        Animated.timing(backdropOpacity, {
-          toValue: 1,
-          duration: animation.duration.sheetBackdropIn,
-          useNativeDriver: true,
-        }),
-      ]).start();
+      sheet.show();
     }
   }, [visible]);
 
   const dismiss = (after?: () => void) => {
     Keyboard.dismiss();
-    Animated.parallel([
-      Animated.spring(translateY, {
-        toValue: hiddenY,
-        ...animation.spring.sheetDismiss,
-        useNativeDriver: true,
-      }),
-      Animated.timing(backdropOpacity, {
-        toValue: 0,
-        duration: animation.duration.sheetBackdropOut,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      // No re-arming setValue here — see useSheetHiddenOffset.
+    sheet.hide(() => {
+      // No re-arming setValue here — see useSheetMotion.
       onClose();
       after?.();
     });
@@ -277,6 +252,7 @@ export function TaskRelationPickerSheet({ visible, onClose, relation, taskId, co
       <SheetScrim onPress={() => dismiss()} />
 
       <Animated.View
+        onLayout={sheet.onCardLayout}
         style={[
           styles.sheetOuter,
           // Capped against what's left above the keyboard; the card and its list
@@ -298,8 +274,7 @@ export function TaskRelationPickerSheet({ visible, onClose, relation, taskId, co
             <Ionicons name="search" size={15} color={colors.textTertiary} />
             <TextInput
               style={styles.searchInput}
-              value={query}
-              onChangeText={setQuery}
+              {...filterField}
               placeholder="Search tasks"
               placeholderTextColor={colors.textTertiary}
               autoCorrect={false}

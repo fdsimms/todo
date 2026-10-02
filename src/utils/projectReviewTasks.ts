@@ -2,7 +2,7 @@ import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import type { Project, Task } from '../types';
 import { getCurrentDayStart, getDayStart } from './dateUtils';
 import { generatedSourceOf, liveGeneratedTasksOfKind } from './generatedTasks';
-import { MAX_PULLED_PROJECTS, type ProjectStall } from './projectPull';
+import { MAX_PULLED_PROJECTS, isRoutine, type ProjectStall } from './projectPull';
 import { isDismissedToday } from './visibilityUtils';
 
 /**
@@ -29,7 +29,7 @@ import { isDismissedToday } from './visibilityUtils';
  * it did for the banner (see `projectPull.ts`'s header on why there is no such
  * column). What is new is that the answer is now *written down as a row*, so
  * the two can drift — a project that stops being quiet leaves a task behind.
- * That is what `partitionProjectReviewTasks` is for, and why the check runs on
+ * That is what `staleProjectReviewTasks` is for, and why the check runs on
  * a foreground sweep rather than only at launch.
  *
  * Three rules worth not re-deriving:
@@ -67,8 +67,11 @@ export const PROJECT_REVIEW_LINK_URL = 'dundundun://projects';
  * already established for this scheme. Falls back to the bare link for an empty
  * id, so a malformed call can't mint a URL that scopes to nothing.
  */
-export function projectReviewLinkUrl(projectId: string): string {
-  return projectId ? `${PROJECT_REVIEW_LINK_URL}?pull=${projectId}` : PROJECT_REVIEW_LINK_URL;
+export function projectReviewLinkUrl(projectId: string, onDayKey?: string | null): string {
+  if (!projectId) return PROJECT_REVIEW_LINK_URL;
+  // `on` asks the sheet to land what it pulls on that day rather than today:
+  // the weekend nudge's link, whose whole point is a free Saturday.
+  return `${PROJECT_REVIEW_LINK_URL}?pull=${projectId}${onDayKey ? `&on=${onDayKey}` : ''}`;
 }
 
 /**
@@ -115,12 +118,19 @@ export function projectReviewTitle(project: Pick<Project, 'title'>): string {
  * was written). This is the one line of it that renders.
  */
 export function projectQuietDays(
-  project: Pick<Project, 'createdAt'> | null | undefined,
-  members: readonly Pick<Task, 'completedAt'>[]
+  project: Pick<Project, 'createdAt' | 'reviewedAt'> | null | undefined,
+  members: readonly (Pick<Task, 'completedAt'> & Partial<Pick<Task, 'recurrenceType'>>)[]
 ): number | null {
   if (!project) return null;
   let latest = project.createdAt;
+  // A review counts, as it does in lastTouchedAt: that is what decided this
+  // project was quiet, and without it the chip on a project marked reviewed
+  // two weeks ago went on counting from its creation.
+  if (project.reviewedAt && project.reviewedAt > latest) latest = project.reviewedAt;
   for (const t of members) {
+    // Routines don't count, as in lastTouchedAt: the chip has to say what the
+    // stall that wrote this task saw.
+    if (isRoutine(t)) continue;
     if (t.completedAt && t.completedAt > latest) latest = t.completedAt;
   }
   // Calendar days across the logical day boundary, never a millisecond

@@ -54,8 +54,12 @@ export type WaterUnit = 'ml' | 'flOz';
 /** How much one press of the day's stepper moves it, in ml. */
 export const WATER_STEP_ML = NUTRITION_TARGET_RANGES.waterMl.step;
 
-/** The smallest and largest a day's water can be stepped to, in ml. */
-export const WATER_MIN_ML = NUTRITION_TARGET_RANGES.waterMl.min;
+/**
+ * The smallest and largest a day's water can be stepped to, in ml. The floor is
+ * one step rather than the target range's own, which reaches zero: a target of
+ * none is a statement, but a logged day starts at "None" and steps up from it.
+ */
+export const WATER_MIN_ML = WATER_STEP_ML;
 export const WATER_MAX_ML = NUTRITION_TARGET_RANGES.waterMl.max;
 
 /**
@@ -148,11 +152,27 @@ export function describeWater(ml: number, unit: WaterUnit): string {
   return `${Math.round(mlToFlOz(ml))} fl oz`;
 }
 
-/** What a stepper in `unit` steps by and between. */
-export function waterRange(unit: WaterUnit): { min: number; max: number; step: number } {
+/**
+ * What a stepper in `unit` steps by and between, and where it starts from
+ * empty. The ounce default is the millilitre one snapped onto the ounce grid
+ * (2,000 ml is 67.6 fl oz, so 64), since a start off the grid would step off
+ * it on the first press.
+ */
+export function waterRange(unit: WaterUnit): { min: number; max: number; step: number; default: number } {
+  const defaultMl = NUTRITION_TARGET_RANGES.waterMl.default;
   return unit === 'flOz'
-    ? { min: WATER_MIN_FL_OZ, max: WATER_MAX_FL_OZ, step: WATER_STEP_FL_OZ }
-    : { min: WATER_MIN_ML, max: WATER_MAX_ML, step: WATER_STEP_ML };
+    ? {
+      min: WATER_MIN_FL_OZ,
+      max: WATER_MAX_FL_OZ,
+      step: WATER_STEP_FL_OZ,
+      default: Math.round(mlToFlOz(defaultMl) / WATER_STEP_FL_OZ) * WATER_STEP_FL_OZ,
+    }
+    : { min: WATER_MIN_ML, max: WATER_MAX_ML, step: WATER_STEP_ML, default: defaultMl };
+}
+
+/** `waterRange` for the daily target, which unlike a logged amount may be zero. */
+export function waterTargetRange(unit: WaterUnit): { min: number; max: number; step: number; default: number } {
+  return { ...waterRange(unit), min: 0 };
 }
 
 /**
@@ -173,6 +193,23 @@ export function waterInUnit(ml: number | null, unit: WaterUnit): number | null {
 export function waterToMl(value: number | null, unit: WaterUnit): number {
   if (value === null || !Number.isFinite(value) || value <= 0) return 0;
   return unit === 'flOz' ? Math.round(flOzToMl(value)) : Math.round(value);
+}
+
+/**
+ * The amount a food log row shows for `entry`: the day's water entry in the
+ * picked unit, anything else in its own stored words.
+ *
+ * The water entry's `quantity` is written once in millilitres (`waterHelping`),
+ * so read raw it said "1.89 L" on the row while the card above it, stepped in
+ * ounces, said "64 fl oz" about the same water. Read from the stated volume
+ * rather than by rewriting the stored words, since `waterUnit` is display only.
+ * A bottle logged as a catalog food keeps its own words: it is not the water
+ * entry (`isWaterEntry`), and its quantity is what was picked.
+ */
+export function waterEntryQuantity(entry: FoodLogEntry, unit: WaterUnit): string {
+  if (!isWaterEntry(entry)) return entry.quantity;
+  const ml = entry.nutrition.amounts.waterMl;
+  return typeof ml === 'number' && Number.isFinite(ml) ? describeWater(ml, unit) : entry.quantity;
 }
 
 /**

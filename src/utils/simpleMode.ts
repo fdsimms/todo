@@ -88,7 +88,6 @@ export type SimpleFeatureId =
   | 'unscheduledLens'
   | 'paintSelect'
   | 'savedViews'
-  | 'weeklyReview'
   // The kitchen's deep end. The list, the catalog, aisles, recipes and the
   // meal plan all stay — this is the machinery underneath them.
   | 'barcodeScanning'
@@ -200,7 +199,6 @@ export const SIMPLE_FEATURES: readonly SimpleFeature[] = [
   // that one to match. `featureShown`'s `set` arm carries the usual rule:
   // somebody who already kept a view keeps the way back to it.
   { id: 'savedViews', label: 'Saved views', area: 'today' },
-  { id: 'weeklyReview', label: 'The weekly review', area: 'today' },
 
   { id: 'barcodeScanning', label: 'Barcode scanning', area: 'kitchen' },
   { id: 'receiptImport', label: 'Receipt scanning', area: 'kitchen' },
@@ -324,6 +322,7 @@ export const SIMPLE_EDITOR_ROW_FEATURES: Readonly<Record<string, SimpleFeatureId
   waitingOn: 'blocking',
   blocks: 'blocking',
   followUpTask: 'followUpTasks',
+  followUpSource: 'followUpTasks',
   deliverable: 'deliverables',
   stack: 'stacks',
   effort: 'effortRating',
@@ -391,10 +390,12 @@ export function groceryRowShown(key: string, simpleMode: boolean, set: boolean):
  * (`screenShown`), and loses the button that makes another.
  */
 export const SIMPLE_ADD_MENU_FEATURES: Readonly<Record<string, SimpleFeatureId>> = {
-  chain: 'chains',
   stack: 'stacks',
   template: 'templates',
   import: 'calendarImport',
+  // With the Calendar screen, so simplified mode keeps the button a plain
+  // "open quick add" rather than growing a two-item menu around it.
+  event: 'calendarScreen',
 };
 
 /** Does an add-button menu item render? */

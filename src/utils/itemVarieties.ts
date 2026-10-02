@@ -1,5 +1,6 @@
-import type { GroceryItem } from '../types';
+import type { GroceryItem, ItemProduct } from '../types';
 import { probablyHaveReason } from './grocerySuggest';
+import { pluralKeyVariants, resolvePluralKey } from './groceryPlural';
 
 /**
  * Varieties — "white onion is a kind of onion" (`GroceryItem.varietyOfKey`).
@@ -44,7 +45,79 @@ export function varietyIndex(
     if (group) group.push(item);
     else index.set(item.varietyOfKey, [item]);
   }
+  if (index.size > 0) addPluralSpellings(index, items);
   return index;
+}
+
+/**
+ * Indexes each declared generic under its other spelling too (#2941), so
+ * "White onions counts as onions" answers a line saying "1 onion" as well as
+ * one saying "onions". Every reader of the index (`classifyPlanned`,
+ * `matchIngredientToCatalog`, `catalogCoverage`) looks a line up by its exact
+ * key, and the Variety of field can only suggest the item's own trailing words,
+ * so a plural-named item could only ever declare a plural generic. Doing it
+ * here, once, is what keeps those three readers from each growing a fallback
+ * that could disagree with the others. groceries.md's "Singular and plural are
+ * one row" is the rule being kept.
+ *
+ * Two keys one plural apart are paired only when each is the *other's only*
+ * plural among the keys in play (every catalog row and every declared
+ * generic), which is `resolvePluralKey`'s ambiguity refusal applied from both
+ * ends: a catalog holding "leaf" and "leave" says nothing about which one
+ * "leaves" meant. And never when both are catalog rows, because two rows one
+ * letter apart are two things the user kept apart, and a declaration made
+ * against one of them isn't about the other. When both spellings are declared
+ * generics ("White onions" → onions, "Red onion" → onion), each key gets the
+ * whole family, in catalog order.
+ *
+ * A spelling nothing holds (the "onion" of a line, when no row or declaration
+ * says "onion") is added only when the declared generic is its only variant in
+ * play. The garbage forms the plural table generates ("onionses") can land in
+ * the index this way, and are harmless: nothing is ever looked up by them.
+ */
+function addPluralSpellings(
+  index: Map<string, GroceryItem[]>,
+  items: readonly GroceryItem[]
+): void {
+  const catalogKeys = new Set<string>();
+  const order = new Map<string, number>();
+  items.forEach((item, i) => {
+    catalogKeys.add(item.nameKey);
+    if (!order.has(item.id)) order.set(item.id, i);
+  });
+  const declared = [...index.entries()];
+  const known = new Set<string>([...catalogKeys, ...index.keys()]);
+
+  // The one key in play that `key` is a plural of, or null when none or
+  // several are.
+  const soleVariant = (key: string): string | null => {
+    let found: string | null = null;
+    for (const variant of pluralKeyVariants(key)) {
+      if (!known.has(variant)) continue;
+      if (found) return null;
+      found = variant;
+    }
+    return found;
+  };
+
+  for (const [key, group] of declared) {
+    for (const variant of pluralKeyVariants(key)) {
+      if (!known.has(variant)) {
+        if (soleVariant(variant) === key && !index.has(variant)) index.set(variant, group);
+        continue;
+      }
+      if (catalogKeys.has(key) && catalogKeys.has(variant)) continue;
+      if (soleVariant(key) !== variant || soleVariant(variant) !== key) continue;
+      // Each pair is reached once from each declared end; merging from the
+      // exact groups keeps the second visit a no-op rather than a double.
+      const other = declared.find(([k]) => k === variant)?.[1] ?? [];
+      const family = [...group, ...other].sort(
+        (a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0)
+      );
+      index.set(key, family);
+      index.set(variant, family);
+    }
+  }
 }
 
 /** The empty index, for callers with nothing declared — saves an allocation per render. */
@@ -72,11 +145,16 @@ export const NO_VARIETIES: ReadonlyMap<string, GroceryItem[]> = new Map();
  * would answer a generic line while you plan for a rental, and the sheet would
  * leave it unticked. Null falls back to the row's own `onList`/`checked`, the
  * home list, which is what every reader that isn't adding to a list means.
+ *
+ * `products` are the boxes, handed on to `probablyHaveReason` so a variety whose
+ * only claim is a frozen or "Got it" packet answers here as it does in the
+ * Pantry. Empty by default, which is the item-only read every caller had first.
  */
 export function coveringVariety(
   candidates: readonly GroceryItem[] | undefined,
   now: Date,
-  inTrolley: ReadonlyMap<string, boolean> | null = null
+  inTrolley: ReadonlyMap<string, boolean> | null = null,
+  products: readonly ItemProduct[] = []
 ): GroceryItem | null {
   if (!candidates || candidates.length === 0) return null;
   let staple: GroceryItem | null = null;
@@ -91,7 +169,7 @@ export function coveringVariety(
       continue;
     }
     if (item.isStaple) { staple = staple ?? item; continue; }
-    if (!onHand && probablyHaveReason(item, now)) onHand = item;
+    if (!onHand && probablyHaveReason(item, now, products)) onHand = item;
   }
   return inCart ?? staple ?? onHand;
 }
@@ -118,10 +196,16 @@ export function familyOnHand(
 ): GroceryItem[] {
   if (!item.varietyOfKey || item.varietyOfKey === item.nameKey) return [];
   const family: GroceryItem[] = [];
-  const parent = byKey.get(item.varietyOfKey);
+  // The generic's own row, spelled either way: "White onions" declaring
+  // "onions" has the Onion row as its parent, the way `catalogItemForKey`
+  // would resolve it.
+  const pluralParent = byKey.has(item.varietyOfKey)
+    ? null
+    : resolvePluralKey(item.varietyOfKey, byKey.keys());
+  const parent = byKey.get(pluralParent ?? item.varietyOfKey);
   if (parent && parent.id !== item.id) family.push(parent);
   for (const sibling of index.get(item.varietyOfKey) ?? []) {
-    if (sibling.id !== item.id) family.push(sibling);
+    if (sibling.id !== item.id && sibling.id !== parent?.id) family.push(sibling);
   }
   return family.filter(member => probablyHaveReason(member, now) !== null);
 }
@@ -150,7 +234,11 @@ export function varietyOfferFor(
   item: GroceryItem | null
 ): GroceryItem | null {
   if (!lineKey || !item || item.varietyOfKey) return null;
-  return item.nameKey.endsWith(` ${lineKey}`) ? item : null;
+  // The line's own plural counts as its whole key: "onion" turning up White
+  // onions is the same shape, and since the index answers either spelling of a
+  // declared generic (`varietyIndex`), declaring "onion" covers both.
+  const spellings = [lineKey, ...pluralKeyVariants(lineKey)];
+  return spellings.some(key => item.nameKey.endsWith(` ${key}`)) ? item : null;
 }
 
 /**

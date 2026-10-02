@@ -12,12 +12,14 @@ import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeBlurView } from './SafeBlurView';
 import { useColors, useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, lineHeight, border, animation, interaction, iconSize, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, lineHeight, border, interaction, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import {
   buildProjectPullPlan,
   describePullEmpty,
+  describeQuietReason,
+  MAX_PULLED_PROJECTS,
   projectPullUpdates,
   suggestPullDate,
   type ProjectPullProposal,
@@ -29,7 +31,10 @@ import { liveGeneratedTask } from '../utils/generatedTasks';
 import { WhenPicker } from './WhenPicker';
 import { SheetScrim } from './SheetScrim';
 import type { Task } from '../types';
-import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
+import { useSheetMotion } from '../hooks/useSheetMotion';
+import { displayTitleFor } from '../utils/visibilityUtils';
+import { describeCadence } from '../utils/nudgeCadence';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface Props {
   visible: boolean;
@@ -41,6 +46,12 @@ interface Props {
    * not an invitation to browse every stalled project on the board.
    */
   scopeProjectIds?: readonly string[];
+  /**
+   * A day (`YYYY-MM-DD`) every pull lands on instead of the sheet's own
+   * choice. Set by the weekend nudge's link, which is about that Saturday: its
+   * pulls used to land on today, a Thursday.
+   */
+  landOnDayKey?: string | null;
   /**
    * Opens the named project's own detail screen — wired up so a review task's
    * "nothing to pull" moment still has somewhere to go look. Only rendered
@@ -77,10 +88,11 @@ interface Props {
  * doesn't (outside the expanded case, which has no need for it), so it gets
  * its own visible affordance instead of a third gesture.
  */
-export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, onOpenProject, onClose }: Props) {
+export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, landOnDayKey, onOpenProject, onClose }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const insets = useSafeAreaInsets();
 
   const allTasks = useTaskStore(s => s.tasks);
   const projects = useProjectStore(s => s.projects);
@@ -137,34 +149,36 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, onOpen
     return new Set(result.proposals.filter(p => p.selected).map(p => p.candidates[0].id));
   };
 
-  const hiddenY = useSheetHiddenOffset();
+  const sheet = useSheetMotion(visible);
+  const { translateY, backdropOpacity } = sheet;
 
-  const translateY = useRef(new Animated.Value(hiddenY)).current;
-  const backdropOpacity = useRef(new Animated.Value(0)).current;
+  // Raised by tapping "+N more waiting"; back to the calm default on each open.
+  const [limit, setLimit] = useState(MAX_PULLED_PROJECTS);
+  const showAllProjects = () => {
+    haptics.tap();
+    animateLayout();
+    const next = buildProjectPullPlan(projects, allTasks, todaysTasks, scopeProjectIds, landOnDayKey, Number.MAX_SAFE_INTEGER);
+    setLimit(Number.MAX_SAFE_INTEGER);
+    setPlan(next);
+    setSelectedIds(initialSelectedIds(next));
+  };
 
   useEffect(() => {
     if (!visible) return;
-    const next = buildProjectPullPlan(projects, allTasks, todaysTasks, scopeProjectIds);
+    setLimit(MAX_PULLED_PROJECTS);
+    const next = buildProjectPullPlan(projects, allTasks, todaysTasks, scopeProjectIds, landOnDayKey, limit);
     setPlan(next);
     setSelectedIds(initialSelectedIds(next));
     setCandidateIndex({});
     setOverrides({});
     setPickerTarget(null);
-    translateY.setValue(hiddenY);
-    backdropOpacity.setValue(0);
-    Animated.parallel([
-      Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
-    ]).start();
+    sheet.show();
     // Keyed on `visible` alone — deliberately not on the store, same as DeloadSheet.
   }, [visible]);
 
   const dismiss = () => {
-    Animated.parallel([
-      Animated.spring(translateY, { toValue: hiddenY, ...animation.spring.sheetDismiss, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
-    ]).start(() => {
-      // No re-arming setValue here — see useSheetHiddenOffset.
+    sheet.hide(() => {
+      // No re-arming setValue here — see useSheetMotion.
       onClose();
     });
   };
@@ -173,16 +187,12 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, onOpen
   // once causes touch conflicts (same choreography as DeloadSheet).
   const openPicker = (proposal: ProjectPullProposal, task: Task) => {
     haptics.tap();
-    Animated.spring(translateY, {
-      toValue: hiddenY,
-      ...animation.spring.sheetDismiss,
-      useNativeDriver: true,
-    }).start(() => setPickerTarget({ proposal, task }));
+    sheet.slideOut(() => setPickerTarget({ proposal, task }));
   };
 
   const restoreSheet = () => {
     setPickerTarget(null);
-    Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }).start();
+    sheet.slideIn();
   };
 
   const panResponder = useRef(
@@ -194,7 +204,7 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, onOpen
       },
       onPanResponderRelease: (_, { dy, vy }) => {
         if (dy > 80 || vy > 1.2) dismiss();
-        else Animated.spring(translateY, { toValue: 0, ...animation.spring.snappy, useNativeDriver: true }).start();
+        else sheet.restore();
       },
     })
   ).current;
@@ -220,7 +230,7 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, onOpen
     const override = overrides[task.id];
     if (override) return { date: override, dayLabel: null, reason: 'moved by hand' };
     if (task.id === p.candidates[0].id) return p.suggestion;
-    return suggestPullDate(task, allTasks, todaysTasks, p.quietDays);
+    return suggestPullDate(task, allTasks, todaysTasks, p.quietDays, landOnDayKey);
   };
 
   const toggle = (taskId: string) => {
@@ -316,7 +326,7 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, onOpen
     haptics.tap();
     forgivVacationStreaks();
     setVacationMode(false);
-    const next = buildProjectPullPlan(projects, allTasks, todaysTasks, scopeProjectIds);
+    const next = buildProjectPullPlan(projects, allTasks, todaysTasks, scopeProjectIds, landOnDayKey, limit);
     setPlan(next);
     setSelectedIds(initialSelectedIds(next));
   };
@@ -340,7 +350,7 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, onOpen
         activeOpacity={interaction.activeOpacity}
         accessibilityRole="checkbox"
         accessibilityState={{ checked }}
-        accessibilityLabel={`${task.title}, from ${p.project.title}, quiet ${p.quietDays} days, schedule for ${dayLabel}`}
+        accessibilityLabel={`${displayTitleFor(task)}, from ${p.project.title}${p.quietDays > 0 ? `, ${describeQuietReason(p.quietDays)}` : ''}, schedule for ${dayLabel}`}
         accessibilityHint="Long press to pick a different day"
       >
         <Ionicons
@@ -353,7 +363,7 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, onOpen
             {p.project.title.toUpperCase()}
           </Text>
           <Text style={[styles.rowTitle, !checked && styles.rowTitleUnchecked]} numberOfLines={1}>
-            {task.title}
+            {displayTitleFor(task)}
           </Text>
           <Text style={styles.rowSub} numberOfLines={1}>
             <Text style={styles.rowDest}>{dayLabel}</Text>
@@ -401,7 +411,7 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, onOpen
         activeOpacity={interaction.activeOpacity}
         accessibilityRole="checkbox"
         accessibilityState={{ checked }}
-        accessibilityLabel={`${task.title}, from ${p.project.title}, schedule for ${dayLabel}`}
+        accessibilityLabel={`${displayTitleFor(task)}, from ${p.project.title}, schedule for ${dayLabel}`}
         accessibilityHint="Long press to pick a different day"
       >
         <Ionicons
@@ -411,7 +421,7 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, onOpen
         />
         <View style={styles.rowContent}>
           <Text style={[styles.rowTitle, !checked && styles.rowTitleUnchecked]} numberOfLines={1}>
-            {task.title}
+            {displayTitleFor(task)}
           </Text>
           <Text style={styles.rowSub} numberOfLines={1}>
             <Text style={styles.rowDest}>{dayLabel}</Text>
@@ -430,7 +440,10 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, onOpen
       </Animated.View>
       <SheetScrim onPress={dismiss} />
 
-      <Animated.View style={[styles.sheetOuter, { transform: [{ translateY }] }]}>
+      <Animated.View
+        onLayout={sheet.onCardLayout}
+        style={[styles.sheetOuter, { paddingBottom: insets.bottom + spacing.sm, transform: [{ translateY }] }]}
+      >
         <View style={styles.handleArea} {...panResponder.panHandlers}>
           <View style={styles.handle} />
         </View>
@@ -439,7 +452,15 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, onOpen
           <View style={styles.header}>
             <Text style={styles.sheetTitle}>Pull from projects</Text>
             {plan.overflowCount > 0 && (
-              <Text style={styles.overflow}>+{plan.overflowCount} more waiting</Text>
+              <TouchableOpacity
+                onPress={showAllProjects}
+                hitSlop={8}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel={`Show ${plan.overflowCount} more waiting projects`}
+              >
+                <Text style={styles.overflow}>+{plan.overflowCount} more waiting</Text>
+              </TouchableOpacity>
             )}
           </View>
 
@@ -482,6 +503,7 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, onOpen
             </Text>
           )}
 
+          {plan.proposals.length > 0 && (
           <ScrollView style={styles.list} bounces={false}>
             {expand
               ? plan.proposals[0].candidates.map((c, i) => (
@@ -497,7 +519,12 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, onOpen
                   </React.Fragment>
                 ))}
           </ScrollView>
+          )}
 
+          {/* Only when there is something to pull: with no proposals the
+              list is empty and a disabled "Nothing selected" under the
+              explanation was one more thing saying no. */}
+          {plan.proposals.length > 0 && (
           <TouchableOpacity
             style={[styles.applyBtn, selected.length === 0 && styles.applyBtnDisabled]}
             onPress={handleApply}
@@ -512,6 +539,7 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, onOpen
                 : `Pull in ${selected.length} task${selected.length === 1 ? '' : 's'}`}
             </Text>
           </TouchableOpacity>
+          )}
 
           {reviewTaskId && (
             <TouchableOpacity
@@ -521,7 +549,13 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, onOpen
               accessibilityRole="button"
               accessibilityLabel="Nothing to pull, mark this project reviewed"
             >
-              <Text style={styles.skipBtnText}>Nothing to pull, mark reviewed</Text>
+              <Text style={styles.skipBtnText}>
+                {/* Says what marking reviewed does: the quiet clock restarts,
+                    so the next review task is a full cadence away. */}
+                {scopedProject && scopedProject.nudgeCadenceDays > 0
+                  ? `Nothing to pull, ask again in ${describeCadence(scopedProject.nudgeCadenceDays)}`
+                  : 'Nothing to pull, mark reviewed'}
+              </Text>
             </TouchableOpacity>
           )}
         </View>
@@ -537,7 +571,7 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, onOpen
         title="Schedule for"
         showTimeOfDay={false}
         taskId={pickerTarget?.task.id}
-        taskTitle={pickerTarget?.task.title}
+        taskTitle={pickerTarget ? displayTitleFor(pickerTarget.task) : undefined}
         taskNotes={pickerTarget?.task.notes}
         taskTags={pickerTarget?.task.tags}
         taskCategory={pickerTarget?.task.category}
@@ -569,7 +603,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     right: 0,
     bottom: 0,
     paddingHorizontal: spacing.md,
-    paddingBottom: 34,
   },
   handleArea: { alignItems: 'center', paddingTop: spacing.sm, paddingBottom: spacing.sm },
   handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: colors.bgQuaternary },

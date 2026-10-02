@@ -7,7 +7,7 @@
 //
 // Filtering by tag or category is a bottom sheet, not a scrolling chip row; see
 // the note on LogbookFilterSheet in CLAUDE.md before changing the filter control.
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -20,7 +20,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import { isSameDay } from 'date-fns/isSameDay';
@@ -39,6 +39,8 @@ import { SearchField } from '../components/SearchField';
 import { SegmentedControl, type SegmentOption } from '../components/SegmentedControl';
 import { EmptyState } from '../components/EmptyState';
 import { LogbookEntryMenu } from '../components/LogbookEntryMenu';
+import type { CardAnchor } from '../components/CardSheet';
+import { RotationWeekSheet } from '../components/RotationWeekSheet';
 import { SimpleBulkBar } from '../components/SimpleBulkBar';
 import { SwipeableRow } from '../components/SwipeableRow';
 import { PaintSelectionProvider, usePaintSelectionRow } from '../components/PaintSelection';
@@ -72,9 +74,11 @@ import { matchPersonMentions } from '../utils/parseTaskInput';
 import { HighlightedText } from '../components/HighlightedText';
 import { formatQuotaProgress } from '../utils/quotaUnit';
 import { asksOnCompletion, deliverableKindFor, formatTaskDeliverable } from '../utils/deliverables';
+import { isRotationTask } from '../utils/rotation';
 import { DeliverablePromptSheet } from '../components/DeliverablePromptSheet';
 import { sectionListCellLayout } from '../utils/sectionListLayout';
 import type { Task } from '../types';
+import { useFilterField } from '../hooks/useFilterField';
 
 interface LogbookSection {
   title: string;
@@ -205,6 +209,10 @@ export function LogbookScreen() {
   const clearLogbook = useTaskStore(s => s.clearLogbook);
   const getCategoryByName = useCategoryStore(s => s.getCategoryByName);
   const projects = useProjectStore(s => s.projects);
+  const openProject = useCallback(
+    (projectId: string) => navigation.navigate('ProjectDetail', { projectId }),
+    [navigation],
+  );
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -252,6 +260,13 @@ export function LogbookScreen() {
   );
 
   const [menuTask, setMenuTask] = useState<Task | null>(null);
+  const [menuAnchor, setMenuAnchor] = useState<CardAnchor | null>(null);
+  // A row's "…" hands over where it was tapped so the menu opens from it; the
+  // swipe action has no point to give and gets the centered card.
+  const openMenu = useCallback((task: Task, anchor?: CardAnchor) => {
+    setMenuAnchor(anchor ?? null);
+    setMenuTask(task);
+  }, []);
   // The entry whose answer is being corrected. Read back off the live list by
   // id when rendering, so the sheet re-seeds from the store rather than from a
   // snapshot taken when the menu was opened.
@@ -263,10 +278,38 @@ export function LogbookScreen() {
   // Held so the sheet can close through `visible` rather than by leaving
   // the tree while still on screen. See useSheetSubject.
   const shownAnswerTask = useSheetSubject(answerTask);
-  const [query, setQuery] = useState('');
+  // The entry whose finished week is being read back, same id-then-hold shape
+  // as the answer sheet above it.
+  const [weekTaskId, setWeekTaskId] = useState<string | null>(null);
+  const weekTask = weekTaskId !== null
+    ? completedTasks.find(t => t.id === weekTaskId) ?? null
+    : null;
+  const shownWeekTask = useSheetSubject(weekTask);
+  const searchFilter = useFilterField();
+  const query = searchFilter.query;
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [selectedPerson, setSelectedPerson] = useState<string | null>(null);
+  const [selectedProject, setSelectedProject] = useState<string | null>(null);
+  // A project's page opens this filtered to it ("See history"), stamped like
+  // the other one-shot params so a second visit with the same project still
+  // applies.
+  const route = useRoute<any>();
+  const [handledProjectParam, setHandledProjectParam] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    const stamp = route.params?.openProjectHistory as number | undefined;
+    if (stamp === undefined || stamp === handledProjectParam) return;
+    setHandledProjectParam(stamp);
+    setSelectedProject((route.params?.projectId as string | undefined) ?? null);
+    // "See history" means that project's history, all of it: a category, tag
+    // or person left set from an earlier visit narrowed it to part of one, or
+    // to nothing, with no sign why. The cooking lens holds no tasks at all.
+    setSelectedCategory(null);
+    setSelectedTag(null);
+    setSelectedPerson(null);
+    searchFilter.clear();
+    setLens('tasks');
+  }, [route.params?.openProjectHistory, route.params?.projectId, handledProjectParam]);
   const people = usePersonStore(useShallow(s => s.people));
   const [filterVisible, setFilterVisible] = useState(false);
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
@@ -312,6 +355,16 @@ export function LogbookScreen() {
 
   // Archived people stay filterable: a row that names somebody is history, and
   // filing them away is about the list rather than about what you did together.
+  // Only projects something in the logbook is filed under, like the category
+  // and tag options above.
+  const projectChipItems = useMemo(() => {
+    const used = new Set(completedTasks.map(t => t.projectId).filter((id): id is string => !!id));
+    return projects
+      .filter(p => used.has(p.id))
+      .sort((a, b) => a.title.localeCompare(b.title))
+      .map(p => ({ key: p.id, label: p.title }));
+  }, [completedTasks, projects]);
+
   const peopleChipItems = useMemo(
     () => people.map(p => ({ key: p.id, label: displayNameOf(p) })),
     [people]
@@ -325,9 +378,10 @@ export function LogbookScreen() {
     if (selectedCategory) tasks = tasks.filter(t => t.category === selectedCategory);
     if (selectedTag) tasks = tasks.filter(t => t.tags.includes(selectedTag));
     if (selectedPerson) tasks = tasks.filter(t => t.personIds.includes(selectedPerson));
+    if (selectedProject) tasks = tasks.filter(t => t.projectId === selectedProject);
     if (debouncedQuery.trim()) tasks = fuzzySearch(tasks, debouncedQuery).map(r => r.task);
     return tasks;
-  }, [completedTasks, selectedCategory, selectedTag, selectedPerson, debouncedQuery]);
+  }, [completedTasks, selectedCategory, selectedTag, selectedPerson, selectedProject, debouncedQuery]);
 
   // The category and tag filters are task vocabulary and don't reach this lens
   // (see LogbookLens), so the query is all that narrows it.
@@ -339,7 +393,7 @@ export function LogbookScreen() {
   const isFiltered =
     activeLens === 'cooking'
       ? query.trim().length > 0
-      : query.trim().length > 0 || selectedCategory !== null || selectedTag !== null || selectedPerson !== null;
+      : query.trim().length > 0 || selectedCategory !== null || selectedTag !== null || selectedPerson !== null || selectedProject !== null;
 
   // The floating tab bar (see AppNavigator's absolutely-positioned
   // tabBarStyle) covers whatever's behind it rather than pushing content up,
@@ -490,8 +544,7 @@ export function LogbookScreen() {
         <SearchField
           style={styles.searchBar}
           placeholder="Search cooking"
-          value={query}
-          onChangeText={setQuery}
+          field={searchFilter}
         />
       )}
 
@@ -500,8 +553,7 @@ export function LogbookScreen() {
           <SearchField
             style={styles.searchBar}
             placeholder="Search the Logbook"
-            value={query}
-            onChangeText={setQuery}
+            field={searchFilter}
           />
           {(categoryChipItems.length > 0 || tagChipItems.length > 0) && (
             <ScrollView
@@ -546,6 +598,31 @@ export function LogbookScreen() {
                   onRemove={() => {
                     animateLayout();
                     setSelectedTag(null);
+                  }}
+                  styles={styles}
+                />
+              )}
+              {/* The person filter had no pill of its own, so a person picked
+                  in the sheet narrowed the list with nothing on screen saying
+                  so. */}
+              {selectedPerson && (
+                <ActiveFilterPill
+                  label={peopleChipItems.find(p => p.key === selectedPerson)?.label ?? 'Person'}
+                  color={colors.accent}
+                  onRemove={() => {
+                    animateLayout();
+                    setSelectedPerson(null);
+                  }}
+                  styles={styles}
+                />
+              )}
+              {selectedProject && (
+                <ActiveFilterPill
+                  label={projectChipItems.find(p => p.key === selectedProject)?.label ?? 'Project'}
+                  color={colors.accent}
+                  onRemove={() => {
+                    animateLayout();
+                    setSelectedProject(null);
                   }}
                   styles={styles}
                 />
@@ -651,6 +728,7 @@ export function LogbookScreen() {
                   : null
               }
               projectTitle={item.projectId ? projectNamesById.get(item.projectId) ?? null : null}
+              onOpenProject={openProject}
               styles={styles}
               colors={colors}
               selectionMode={selectionMode}
@@ -658,7 +736,7 @@ export function LogbookScreen() {
               onToggleSelect={toggleSelection}
               onEnterSelection={enterSelectionMode}
               onUncomplete={uncompleteTask}
-              onOpenMenu={setMenuTask}
+              onOpenMenu={openMenu}
             />
           );
         }}
@@ -730,12 +808,21 @@ export function LogbookScreen() {
           setTimeout(() => setAnswerTaskId(id), animation.duration.slow);
         } : undefined}
         hasAnswer={menuTask?.deliverableValue != null}
+        onShowWeek={menuTask && isRotationTask(menuTask) ? () => {
+          const id = menuTask.id;
+          setMenuTask(null);
+          // Staggered like the answer prompt above, and for the same reason:
+          // closing one native Modal and presenting another in the same tick
+          // can deadlock the iOS modal transition.
+          setTimeout(() => setWeekTaskId(id), animation.duration.slow);
+        } : undefined}
         onDelete={() => {
           const task = menuTask;
           setMenuTask(null);
           if (task) handleDeleteEntry(task);
         }}
         onClose={() => setMenuTask(null)}
+        anchor={menuAnchor}
       />
 
       {shownAnswerTask && (
@@ -751,6 +838,14 @@ export function LogbookScreen() {
         />
       )}
 
+      {shownWeekTask && (
+        <RotationWeekSheet
+          visible={weekTask !== null}
+          task={shownWeekTask}
+          onClose={() => setWeekTaskId(null)}
+        />
+      )}
+
       <LogbookFilterSheet
         visible={filterVisible}
         onClose={() => setFilterVisible(false)}
@@ -763,6 +858,9 @@ export function LogbookScreen() {
         people={peopleChipItems}
         selectedPerson={selectedPerson}
         onSelectPerson={setSelectedPerson}
+        projects={projectChipItems}
+        selectedProject={selectedProject}
+        onSelectProject={setSelectedProject}
       />
     </View>
   );
@@ -774,6 +872,8 @@ interface RowProps {
   categoryLabel: string | null;
   /** The task's project title, or null when it isn't filed under one. */
   projectTitle: string | null;
+  /** Opens the project from its chip. Stable, so the memo holds. */
+  onOpenProject: (projectId: string) => void;
   styles: ReturnType<typeof makeStyles>;
   colors: Colors;
   selectionMode: boolean;
@@ -781,7 +881,7 @@ interface RowProps {
   onToggleSelect: (id: string) => void;
   onEnterSelection: (initial: string) => void;
   onUncomplete: (id: string) => void;
-  onOpenMenu: (task: Task) => void;
+  onOpenMenu: (task: Task, anchor?: CardAnchor) => void;
 }
 
 // One Logbook entry. A component rather than an inline renderItem so it can
@@ -796,6 +896,7 @@ const LogbookRow = React.memo(function LogbookRow({
   task,
   categoryLabel,
   projectTitle,
+  onOpenProject,
   styles,
   colors,
   selectionMode,
@@ -808,6 +909,11 @@ const LogbookRow = React.memo(function LogbookRow({
   const paintRef = usePaintSelectionRow(task.id);
   const partial = isQuotaPartial(task);
   const answer = formatTaskDeliverable(task);
+  // Distinct members covered, not ledger entries: a member logged twice is one
+  // language, which is the same rule the count on the live row follows.
+  const rotationResult = isRotationTask(task)
+    ? `${new Set(task.rotationLog.map(e => e.itemId)).size} of ${task.rotationItems.length}`
+    : null;
   // A miss outranks a partial in the glyph: a quota task marked missed is both,
   // and "you didn't do this" is the more important of the two things to say.
   const missed = isMissed(task);
@@ -938,11 +1044,19 @@ const LogbookRow = React.memo(function LogbookRow({
                 <Text style={styles.categoryChipText} numberOfLines={1}>{categoryLabel}</Text>
               </View>
             )}
-            {projectTitle && (
-              <View style={styles.categoryChip}>
+            {projectTitle && task.projectId && (
+              <TouchableOpacity
+                style={styles.categoryChip}
+                onPress={() => onOpenProject(task.projectId!)}
+                disabled={selectionMode}
+                hitSlop={6}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel={`Open ${projectTitle}`}
+              >
                 <Ionicons name="briefcase-outline" size={iconSize.xs} color={colors.textTertiary} />
                 <Text style={styles.categoryChipText} numberOfLines={1}>{projectTitle}</Text>
-              </View>
+              </TouchableOpacity>
             )}
             {task.actualMinutes != null && (
               <Text style={styles.taskTime}>· {formatDuration(task.actualMinutes)}</Text>
@@ -969,6 +1083,17 @@ const LogbookRow = React.memo(function LogbookRow({
                 reason. Deliberately *not* in the pill: a tinted pill is the
                 app saying "here's what you decided", and an empty one would
                 make a claim the row can't back. */}
+            {/* A rotation has no answer to show but does have a result, and
+                the slot is free — `asksOnCompletion` is false for one unless
+                it *also* carries a question. Says the count rather than
+                listing the members: five names do not fit on a line, and this
+                is the row hinting that there is a week to look at (⋯ → Show
+                the Week) rather than trying to be that week. */}
+            {rotationResult !== null && (
+              <View style={styles.answerPill}>
+                <Text style={styles.answer} numberOfLines={1}>{rotationResult}</Text>
+              </View>
+            )}
             {asksOnCompletion(task) && (
               answer !== null ? (
                 <View style={styles.answerPill}>
@@ -988,7 +1113,7 @@ const LogbookRow = React.memo(function LogbookRow({
         ) : (
           <TouchableOpacity
             style={styles.menuButton}
-            onPress={() => onOpenMenu(task)}
+            onPress={e => onOpenMenu(task, { x: e.nativeEvent.pageX, y: e.nativeEvent.pageY })}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             accessibilityRole="button"
             accessibilityLabel={`More options for ${task.title}`}

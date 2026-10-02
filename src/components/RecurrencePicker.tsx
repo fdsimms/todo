@@ -5,7 +5,7 @@ import { format } from 'date-fns/format';
 import type { RecurrenceType } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { border, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
-import { ORDINAL_OPTIONS, recurrenceUnitLabel } from '../utils/recurrenceLabels';
+import { ORDINAL_OPTIONS, MONTH_ABBREVIATIONS, recurrenceUnitLabel } from '../utils/recurrenceLabels';
 import { WeekdaySelector } from './WeekdaySelector';
 import { CountStepper } from './CountStepper';
 import { SegmentedControl } from './SegmentedControl';
@@ -14,6 +14,7 @@ import { ordinal } from '../utils/ordinal';
 
 export const RECURRENCE_LABELS: Record<RecurrenceType, string> = {
   none: 'Never',
+  hours: 'Hours',
   daily: 'Daily',
   weekly: 'Weekly',
   monthly: 'Monthly',
@@ -66,6 +67,11 @@ interface Props {
   onChangeMonthDay: (day: number | null) => void;
   /** Value to seed `recurrenceMonthDay` with the first time "On a day" is picked (TaskEditor seeds from the due date; TemplateItemEditor has none, so uses 1). */
   seedMonthDay: () => number;
+  /** Month (1-12) a yearly rule is pinned to. Null = whatever month the due date falls in. Ignored for every other `recurrenceType`. */
+  recurrenceMonth: number | null;
+  onChangeMonth: (month: number | null) => void;
+  /** Value to seed `recurrenceMonth` with the first time "On a month" is picked (TaskEditor seeds from the due date; TemplateItemEditor has none, so uses January). */
+  seedMonth: () => number;
   recurrenceFromCompletion: boolean;
   onChangeFromCompletion: (fromCompletion: boolean) => void;
   recurrenceCount: number | null;
@@ -86,10 +92,21 @@ interface Props {
   onSelectEndCount: () => void;
   /** "On date" end option — omit to fall back to the plain Never/After-N toggle (TemplateItemEditor). */
   endDate?: EndDateProps;
+
+  /**
+   * What `getNextDueDate()` returns for the rule as currently configured —
+   * TaskEditor only, since TemplateItemEditor has no due date to anchor a
+   * schedule to. Rendered under the On schedule / After completion pills so
+   * the choice reads as an actual date rather than an abstract mechanism.
+   */
+  previewNextDate?: Date | null;
 }
 
 /** The monthly day-anchor modes, as one closed set the picker can switch on. */
 type MonthAnchor = 'dueDate' | 'monthDay' | 'lastDay' | 'weekday';
+
+/** The yearly month-anchor modes: pinned to a fixed month, or riding the due date's. */
+type YearMonthAnchor = 'dueDate' | 'month';
 
 /**
  * One labelled block of the rule. Every block but the first states its own
@@ -113,10 +130,17 @@ function Group({
 /**
  * The recurrence rule picker shared by TaskEditor and TemplateItemEditor:
  * daily/weekly/monthly/yearly type pills, the "Every N <unit>" interval
- * stepper, the weekly weekday selector, the monthly sub-picker (same day as
- * due date / on a day / last day / on a weekday), the day-of-month stepper,
- * the on-schedule/after-completion pills, and the ends never/date/count
- * pills with the occurrence-count stepper.
+ * stepper, the weekly weekday selector, the monthly/yearly "on which day"
+ * sub-picker (same day as due date / on a day / last day / on a weekday),
+ * the day-of-month stepper, the on-schedule/after-completion pills, and the
+ * ends never/date/count pills with the occurrence-count stepper.
+ *
+ * Yearly shares the monthly sub-picker's day options rather than getting its
+ * own, minus "on a weekday" — the engine (`getNextYearDayOccurrence`) has no
+ * notion of a week-ordinal anchor, so there's nothing for that option to
+ * mean here. It also gets an "In which month" group above the day picker,
+ * which monthly has no equivalent of: only a yearly rule has a month of its
+ * own to pin independently of the due date's.
  *
  * Those are six independent settings, so the controls are cut into labelled
  * groups separated by hairlines rather than run together as one column of
@@ -136,6 +160,7 @@ export function RecurrencePicker({
   recurrenceInterval, onChangeInterval,
   recurrenceDays, onChangeDays,
   recurrenceMonthDay, onChangeMonthDay, seedMonthDay,
+  recurrenceMonth, onChangeMonth, seedMonth,
   recurrenceFromCompletion, onChangeFromCompletion,
   recurrenceCount, onChangeCount,
   countUnitLabel = (count) => (count === 1 ? 'time' : 'times'),
@@ -144,6 +169,7 @@ export function RecurrencePicker({
   afterCountLabel = 'After',
   onSelectEndNever, onSelectEndCount,
   endDate,
+  previewNextDate,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -153,8 +179,29 @@ export function RecurrencePicker({
 
   const monthDaySelected = recurrenceMonthDay !== null && recurrenceMonthDay > 0;
 
+  // Week-ordinal anchoring ("2nd Tuesday") only exists in the recurrence
+  // engine for monthly (getNextYearDayOccurrence has no notion of it), so a
+  // yearly rule never offers or reads that option even if a prior monthly
+  // choice left weekOrdinal.value set behind the scenes.
+  const showWeekdayOption = recurrenceType === 'monthly' && !!weekOrdinal;
+
+  // Sub-day recurrence only means anything measured from the moment you
+  // check the task off — there's no calendar grid for "every 8 hours" to
+  // sit on, so switching to it forces the On schedule/After completion
+  // choice below rather than leaving a toggle that would otherwise do
+  // nothing (see RecurrenceType's own doc comment on 'hours'). Daily gets
+  // the same nudge for a different reason: most daily tasks are habits
+  // ("drink water", "stretch") where what matters is that a day passed
+  // since the last one, not that today's date matches a grid — so picking
+  // Daily defaults to After completion, same as Hours. Either default is
+  // just a starting point; the pills below still let it be switched back.
+  const handleTypeChange = (type: RecurrenceType) => {
+    if ((type === 'hours' || type === 'daily') && !recurrenceFromCompletion) onChangeFromCompletion(true);
+    onChangeType(type);
+  };
+
   const monthAnchor: MonthAnchor =
-    weekOrdinal?.value != null ? 'weekday'
+    showWeekdayOption && weekOrdinal?.value != null ? 'weekday'
       : recurrenceMonthDay === -1 ? 'lastDay'
         : monthDaySelected ? 'monthDay'
           : 'dueDate';
@@ -174,11 +221,18 @@ export function RecurrencePicker({
         onChangeMonthDay(-1);
         break;
       case 'weekday':
+        if (!showWeekdayOption) break;
         onChangeMonthDay(null);
         weekOrdinal?.onChange(weekOrdinal.value ?? 1);
         if (recurrenceDays.length === 0 && weekOrdinal) onChangeDays([weekOrdinal.seedWeekday()]);
         break;
     }
+  };
+
+  const yearMonthAnchor: YearMonthAnchor = recurrenceMonth !== null ? 'month' : 'dueDate';
+
+  const selectYearMonthAnchor = (anchor: YearMonthAnchor) => {
+    onChangeMonth(anchor === 'month' ? (recurrenceMonth ?? seedMonth()) : null);
   };
 
   return (
@@ -187,8 +241,8 @@ export function RecurrencePicker({
         <SegmentedControl
           label="Repeats"
           value={recurrenceType}
-          onChange={onChangeType}
-          options={(['daily', 'weekly', 'monthly', 'yearly'] as RecurrenceType[])
+          onChange={handleTypeChange}
+          options={(['hours', 'daily', 'weekly', 'monthly', 'yearly'] as RecurrenceType[])
             .map(type => ({ value: type, label: RECURRENCE_LABELS[type] }))}
         />
         <View style={styles.stepperRow}>
@@ -202,6 +256,11 @@ export function RecurrencePicker({
           />
           <Text style={styles.stepperLabel}>{recurrenceUnitLabel(recurrenceType, recurrenceInterval)}</Text>
         </View>
+        {recurrenceType === 'hours' && (
+          <Text style={styles.groupHint}>
+            Hidden until this many hours after you check it off, not on a fixed calendar day.
+          </Text>
+        )}
       </Group>
 
       {recurrenceType === 'weekly' && (
@@ -210,8 +269,42 @@ export function RecurrencePicker({
         </Group>
       )}
 
-      {recurrenceType === 'monthly' && (
-        <Group label="On which day" styles={styles}>
+      {recurrenceType === 'yearly' && (
+        <Group label="In which month" styles={styles}>
+          <SegmentedControl
+            label="In which month"
+            value={yearMonthAnchor}
+            onChange={selectYearMonthAnchor}
+            // Two columns: "Same month as due date" has no one-row spelling that
+            // isn't confusable with "On a month".
+            columns={2}
+            options={[
+              { value: 'dueDate' as YearMonthAnchor, label: 'Same month as due date' },
+              { value: 'month' as YearMonthAnchor, label: 'On a month' },
+            ]}
+          />
+          {recurrenceMonth !== null && (
+            <View style={styles.controlSpaced}>
+              <SegmentedControl
+                label="Month"
+                value={recurrenceMonth}
+                onChange={onChangeMonth}
+                columns={4}
+                options={MONTH_ABBREVIATIONS.map((label, i) => ({ value: i + 1, label }))}
+              />
+            </View>
+          )}
+        </Group>
+      )}
+
+      {(recurrenceType === 'monthly' || recurrenceType === 'yearly') && (
+        <Group
+          label="On which day"
+          hint={recurrenceType === 'yearly' && recurrenceMonth === null
+            ? 'The month stays whatever month the due date falls in; this only sets the day within it.'
+            : undefined}
+          styles={styles}
+        >
           <SegmentedControl
             label="On which day"
             value={monthAnchor}
@@ -223,7 +316,7 @@ export function RecurrencePicker({
               { value: 'dueDate' as MonthAnchor, label: 'Same day as due date' },
               { value: 'monthDay' as MonthAnchor, label: 'On a day' },
               { value: 'lastDay' as MonthAnchor, label: 'Last day' },
-              ...(weekOrdinal ? [{ value: 'weekday' as MonthAnchor, label: 'On a weekday' }] : []),
+              ...(showWeekdayOption ? [{ value: 'weekday' as MonthAnchor, label: 'On a weekday' }] : []),
             ]}
           />
           {monthDaySelected && (
@@ -239,7 +332,7 @@ export function RecurrencePicker({
               />
             </View>
           )}
-          {weekOrdinal && weekOrdinal.value !== null && (
+          {showWeekdayOption && weekOrdinal && weekOrdinal.value !== null && (
             <>
               <View style={styles.controlSpaced}>
                 <SegmentedControl
@@ -261,21 +354,30 @@ export function RecurrencePicker({
         </Group>
       )}
 
-      <Group
-        label="Next due date"
-        hint="After completion counts from the day you check it off, so a late task moves the whole schedule."
-        styles={styles}
-      >
-        <SegmentedControl
+      {recurrenceType !== 'hours' && (
+        <Group
           label="Next due date"
-          value={recurrenceFromCompletion}
-          onChange={onChangeFromCompletion}
-          options={[
-            { value: false, label: 'On schedule' },
-            { value: true, label: 'After completion' },
-          ]}
-        />
-      </Group>
+          hint="After completion counts from the day you check it off, so a late task moves the whole schedule."
+          styles={styles}
+        >
+          <SegmentedControl
+            label="Next due date"
+            value={recurrenceFromCompletion}
+            onChange={onChangeFromCompletion}
+            options={[
+              { value: false, label: 'On schedule' },
+              { value: true, label: 'After completion' },
+            ]}
+          />
+          {!!previewNextDate && (
+            <Text style={styles.previewText}>
+              {recurrenceFromCompletion
+                ? `If checked off today, falls on ${format(previewNextDate, 'EEEE, MMMM d, yyyy')}.`
+                : `Falls on ${format(previewNextDate, 'EEEE, MMMM d, yyyy')}.`}
+            </Text>
+          )}
+        </Group>
+      )}
 
       <Group label="Ends" styles={styles}>
         <SegmentedControl
@@ -342,6 +444,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   groupHint: {
     color: colors.textTertiary, fontSize: font.xs, lineHeight: 16, marginTop: spacing.sm,
+  },
+  previewText: {
+    color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.sm,
   },
   controlSpaced: { marginTop: spacing.sm + 2 },
   stepperRow: {

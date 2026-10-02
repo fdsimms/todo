@@ -2,8 +2,13 @@ import { useWindowDimensions } from 'react-native';
 
 /**
  * How far down to translate a bottom sheet's card to park it off screen, for
- * the ~a dozen sheets built from the same `sheetOuter` + `translateY` +
- * backdrop shape.
+ * the sheets built from the same `sheetOuter` + `translateY` + backdrop shape.
+ *
+ * Read through `useSheetMotion` now, which parks the card here only until it
+ * has measured it and then travels the card's own height instead: a whole
+ * window of travel is what made those sheets feel slow to open and, worse,
+ * slow to give control back on close. This is the fallback that clears any
+ * card, so it stays the window.
  *
  * It has to be derived from the window, not guessed. These cards are
  * bottom-anchored and their height is data-driven — capped only by

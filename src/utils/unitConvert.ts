@@ -241,9 +241,12 @@ function renderUs(base: number, dimension: Dimension): string | null {
   if (base <= 0) return null;
 
   if (dimension === 'mass') {
-    const useOunces = base < GRAMS_PER_POUND;
+    // Decided on the rounded figure, not the raw one: 450 g is 15.9 oz, which
+    // snaps to 16 and would read "16 oz" rather than "1 lb".
+    const ounces = renderUsAmount(base / GRAMS_PER_OUNCE, 'mass');
+    const useOunces = base < GRAMS_PER_POUND && ounces.value < 16;
     const unit = useOunces ? 'oz' : 'lb';
-    const amount = renderUsAmount(base / (useOunces ? GRAMS_PER_OUNCE : GRAMS_PER_POUND), 'mass');
+    const amount = useOunces ? ounces : renderUsAmount(base / GRAMS_PER_POUND, 'mass');
     if (amount.value <= 0) return null;
     return `${amount.text} ${inflectUnit(unit, amount.value)}`;
   }
@@ -326,6 +329,24 @@ export interface ConvertedQuantity {
 }
 
 /** One quantity, with no `≈` of its own — see convertQuantity for the marker. */
+/**
+ * A second amount straight after the first one's unit, in the same dimension
+ * and system: the " 8 oz" of "1 lb 8 oz", the " 2 tbsp" of "1 cup 2 tbsp".
+ * Both halves are one measurement, so the second is added to the first rather
+ * than left as trailing prose, which measured "1 lb 8 oz" as one pound and
+ * converted it to "≈450 g 8 oz". Null when the trailing text is anything else.
+ */
+function compoundTail(first: KnownUnit, trailing: string): { base: number; trailing: string } | null {
+  if (!/^\s+\S/.test(trailing)) return null;
+  const q = parseQuantity(trailing.trim());
+  if (q.amount === null || q.container || q.rangeMax || !q.unit) return null;
+  const known = KNOWN_UNITS[q.unit];
+  if (!known || known.dimension !== first.dimension || known.system !== first.system) return null;
+  const value = rationalToNumber(q.amount);
+  if (value <= 0) return null;
+  return { base: value * known.base, trailing: q.trailing };
+}
+
 function convertOne(part: string, target: 'metric' | 'us'): ConvertedQuantity {
   const q = parseQuantity(part);
   const unchanged: ConvertedQuantity = { text: q.raw, converted: false };
@@ -346,21 +367,25 @@ function convertOne(part: string, target: 'metric' | 'us'): ConvertedQuantity {
   const known = KNOWN_UNITS[q.unit];
   if (!known) return unchanged;
 
+  const tail = compoundTail(known, q.trailing);
+
   if (known.system === target) {
+    if (tail) return unchanged;
     if (target !== 'us' || known.dimension !== 'volume') return unchanged;
     const stepped = stepDownUsVolume(q.amount, q.unit);
     if (!stepped) return unchanged;
     return { text: `${stepped.text} ${stepped.unit}${q.trailing}`, converted: true };
   }
 
+  const base = value * known.base + (tail?.base ?? 0);
   const rendered = target === 'metric'
-    ? renderMetric(value * known.base, known.dimension)
-    : renderUs(value * known.base, known.dimension);
+    ? renderMetric(base, known.dimension)
+    : renderUs(base, known.dimension);
   if (!rendered) return unchanged;
 
   // Whatever followed the unit is prose — a size clause ("1 cup, packed"), a
   // prep note — and carries through untouched, exactly as scaling carries it.
-  return { text: `${rendered}${q.trailing}`, converted: true };
+  return { text: `${rendered}${tail ? tail.trailing : q.trailing}`, converted: true };
 }
 
 export interface MeasuredQuantity {
@@ -422,7 +447,8 @@ export function measureParsedQuantity(q: Quantity): MeasuredQuantity | null {
   if (!q.unit) return null;
   const known = KNOWN_UNITS[q.unit];
   if (!known) return null;
-  return { base: value * known.base, dimension: known.dimension, system: known.system };
+  const tail = compoundTail(known, q.trailing);
+  return { base: value * known.base + (tail?.base ?? 0), dimension: known.dimension, system: known.system };
 }
 
 /**
@@ -511,6 +537,33 @@ const UNIT_FAMILIES: Record<string, string> = {
   'mass:us': 'weight, like oz or lbs',
   'mass:metric': 'weight, like g or kg',
 };
+
+/**
+ * A weight in grams, written in `system` for someone reading a kitchen scale
+ * and marked `≈` — "≈125 g", "≈4 1/2 oz".
+ *
+ * For a figure the app worked out rather than one a recipe wrote (a line's
+ * weight read off its food's portion table, `lineWeight.ts`), so there is no
+ * "as written" to preserve: `asWritten` answers in grams, which is what a
+ * scale reads by default.
+ *
+ * **Whole grams, not `roundMetric`'s steps.** Those steps are for restating a
+ * recipe's own measure the way a chart prints it; this is a number somebody
+ * pours to on a scale that reads in grams, and a cup they weighed at 125 g
+ * coming back as "≈130 g" would be the app misquoting their own measurement.
+ * The US side keeps `renderUs`, which already snaps to what a scale in ounces
+ * shows. Null when it rounds to nothing.
+ */
+export function formatScaleWeight(grams: number, system: UnitSystem): string | null {
+  if (!(grams > 0)) return null;
+  if (system === 'us') {
+    const rendered = renderUs(grams, 'mass');
+    return rendered ? `≈${rendered}` : null;
+  }
+  const rounded = grams < 1000 ? Math.round(grams) : Math.round(grams / 10) * 10;
+  if (rounded <= 0) return null;
+  return rounded >= 1000 ? `≈${trimNumber(rounded / 1000)} kg` : `≈${rounded} g`;
+}
 
 export function describeUnitFamily(unit: string): string | null {
   const known = KNOWN_UNITS[unitKey(unit)];

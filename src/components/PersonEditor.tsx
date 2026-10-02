@@ -21,6 +21,7 @@ import { birthdayInYear, hasBirthday } from '../utils/birthdayTasks';
 import { useTaskStore } from '../store/useTaskStore';
 import { useShallow } from 'zustand/react/shallow';
 import { CountStepper } from './CountStepper';
+import { SegmentedControl } from './SegmentedControl';
 import {
   describeCadence,
   toCadenceParts,
@@ -81,6 +82,7 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
   const liveArchived = usePersonStore(s => s.people.find(p => p.id === person?.id)?.archived);
 
   const [name, setName] = useState('');
+  const [kind, setKind] = useState<Person['kind']>('individual');
   const [nickname, setNickname] = useState('');
   const [notes, setNotes] = useState('');
   const [birthdayMonth, setBirthdayMonth] = useState<number | null>(null);
@@ -112,6 +114,7 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
   useEffect(() => {
     if (!person || !visible) return;
     setName(person.name);
+    setKind(person.kind);
     setNickname(person.nickname);
     setNotes(person.notes);
     setBirthdayMonth(person.birthdayMonth);
@@ -133,11 +136,16 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
 
   const saveAndClose = () => {
     const trimmedName = name.trim();
-    const nudgeOptIn = cadenceDays > 0;
+    // A business gets no check-ins at all (see docs/arch/people.md,
+    // "Businesses don't get check-ins") — forced off here rather than only
+    // hidden in the form below, so a person switched to Business with a
+    // cadence already running doesn't keep quietly nudging.
+    const nudgeOptIn = kind === 'individual' && cadenceDays > 0;
     updatePerson(person.id, {
       // An empty name would leave an unidentifiable row, so the previous one
       // stands — the same refusal the other editors make about their titles.
       name: trimmedName || person.name,
+      kind,
       nickname: nickname.trim(),
       notes: notes.trim(),
       birthdayMonth,
@@ -148,7 +156,7 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
       phoneNumber: phoneNumber.trim() || null,
       email: email.trim() || null,
       linkUrl: linkUrl.trim() || null,
-      cadenceDays,
+      cadenceDays: kind === 'individual' ? cadenceDays : 0,
       // The opt-in is the cadence: there is no separate switch to forget to
       // flip, and clearing the cadence is how somebody stops being nudged.
       nudgeOptIn,
@@ -157,7 +165,7 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
       // again later starts a fresh wait rather than reading as still running
       // from the first time. See Person.cadenceSetAt.
       cadenceSetAt: nudgeOptIn ? (person.nudgeOptIn ? person.cadenceSetAt : new Date().toISOString()) : null,
-      askAbout: askAbout.trim(),
+      askAbout: kind === 'individual' ? askAbout.trim() : '',
       location: location.trim() || null,
     });
     onClose();
@@ -259,6 +267,18 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
         multiline
       />
 
+      <View style={styles.sectionCard}>
+        <SegmentedControl
+          label="Type"
+          value={kind}
+          onChange={next => { haptics.tap(); setKind(next); }}
+          options={[
+            { value: 'individual', label: 'Person' },
+            { value: 'business', label: 'Business' },
+          ]}
+        />
+      </View>
+
       <Text style={styles.groupLabel}>BIRTHDAY</Text>
       <View style={styles.sectionCard}>
         <EditorRow
@@ -309,6 +329,8 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
         )}
       </View>
 
+      {kind === 'individual' && (
+      <>
       <Text style={styles.groupLabel}>KEEPING IN TOUCH</Text>
       <View style={styles.sectionCard}>
         <View style={styles.optionRow}>
@@ -384,6 +406,8 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
           When this is filled in, the reminder says to ask about it instead of just saying to catch up.
         </Text>
       </View>
+      </>
+      )}
 
       <Text style={styles.groupLabel}>GROUP</Text>
       <View style={styles.sectionCard}>

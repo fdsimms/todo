@@ -4,9 +4,9 @@ The calendar screen, and the one place in the app that draws an occurrence
 which has no database row.
 
 Moved out of `CLAUDE.md` so it is read when it applies rather than on every
-task. The rules here are settled decisions with the reasoning attached: don't
-re-derive them from the code, and don't re-open one without a reason the note
-doesn't already cover.
+task. The rules here are strong defaults with the reasoning
+attached: read the reason before deviating from one. Where this note and the
+code disagree, the code is what ships, so fix the note.
 
 ---
 
@@ -43,8 +43,9 @@ exist, which is why the whole feature is a util plus a screen.
   restating the arithmetic — the sign is the whole meaning of that field. A *fixed* `deadline`
   doesn't carry forward, so it has nothing to project.
 - **Placement, not visibility.** A task shows on its day whether or not it's actionable there —
-  vacation-paused, blocked, behind a time segment. The grid answers "what date is this on", the
-  same call `pinnedTasks()` makes; `isTaskVisible` is Today's question. `windowStart`/`windowEnd`
+  vacation-paused, blocked, behind a time segment. The grid answers "what date is this on";
+  `isTaskVisible` is Today's question. (Pinning is the opposite call: `pinnedTasks()` ignores the
+  clock gates but does drop blocked, vacation-paused and paused-project tasks.) `windowStart`/`windowEnd`
   are correspondingly *not* a fourth signal: they're clock times within a day, with no cell to
   land in.
 - **The reset time deliberately doesn't reach the bucketing.** `getTaskDayStart` only moves the

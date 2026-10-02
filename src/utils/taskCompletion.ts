@@ -46,7 +46,7 @@ import {
   getDeadlineFromMonthDay,
   getReminderOffsetDate,
 } from './dateUtils';
-import { isRecurrenceNotYetDue, isQuotaTask, quotaRidesOutTheDay, isCompletionOnTime, hasNoDateSignal } from './visibilityUtils';
+import { isRecurrenceNotYetDue, isQuotaTask, quotaRidesOutTheDay, isCompletionOnTime, hasNoDateSignal, getVisibleAt } from './visibilityUtils';
 import { isNegativeTask } from './negativeHabits';
 import { nextStreakRecord } from './streakRecord';
 import {
@@ -61,12 +61,37 @@ import { parseMealSlotSource, mealSlotStepTimeSegments } from './mealSlotTasks';
 import { derivedId, spawnSeed } from './syncIds';
 import { newTaskFromDraft, buildSeriesRow } from './taskDraft';
 
-/** The four things a caller can say about a completion. Identical to `completeTask`'s. */
+/** The five things a caller can say about a completion. Identical to `completeTask`'s. */
 export interface CompletionOptions {
   missed?: boolean;
+  /**
+   * Ends a mid-chain miss at the step it's called on, rather than advancing
+   * to the next one — the escape hatch `markMissed`'s ordinary mid-chain
+   * behavior (see the note on `atChainEnd` below) doesn't cover. That
+   * default is right for a chain of independent steps (a morning routine:
+   * missing "Exercise" doesn't strand "Shower"), and wrong for one whose
+   * later steps depend on an earlier one's outcome (meal-slot's Choose →
+   * Prepare → Eat: missing "Choose" leaves nothing to prepare). Rather than
+   * pick one behavior for every chain, this lets the caller say which one a
+   * given miss means. Ignored when `missed` isn't set, and inert on a task
+   * that isn't mid-chain (forcing `atChainEnd` early changes nothing once
+   * the step already was the end).
+   */
+  missChain?: boolean;
   deliverableValue?: string | null;
   neutral?: boolean;
   completedAt?: string;
+  /**
+   * Confirmed override for an `'hours'` recurrence's own not-yet-due lock
+   * (see `completionRefusal`). Ignored for every other recurrence type: a
+   * calendar-grid recurrence (daily/weekly/monthly/yearly) completed early
+   * would generate its next occurrence off today instead of its own day, and
+   * that isn't something a caller should be able to opt back into. `'hours'`
+   * has no such grid — its next occurrence is always measured from the
+   * moment it's actually logged (see nextDeferUntil below) — so an early log
+   * costs nothing the lock is there to protect.
+   */
+  logEarly?: boolean;
 }
 
 /**
@@ -130,15 +155,20 @@ export interface CompletionRows {
  * - A **recurring task shown early** in Later cannot be completed ahead of
  *   schedule: doing so would generate the next occurrence off today instead of
  *   the task's real day. Non-recurring tasks have no such math, so early
- *   completion is fine for them.
+ *   completion is fine for them. The one exception is `'hours'`, whose own
+ *   lock a caller can confirm past with `options.logEarly` — see
+ *   `CompletionOptions.logEarly`.
  */
-export function completionRefusal(task: Task): string | null {
+export function completionRefusal(task: Task, options?: CompletionOptions): string | null {
   if (task.completed) return 'That task is already completed.';
   if (isNegativeTask(task)) {
     return 'That task is a habit you are avoiding rather than one you finish, so it has no completion. Record a slip against it instead.';
   }
   if (isRecurrenceNotYetDue(task)) {
-    return 'That recurring task is not due yet, and completing it early would schedule the next occurrence off today rather than off its own day.';
+    if (task.recurrenceType === 'hours' && options?.logEarly) return null;
+    return task.recurrenceType === 'hours'
+      ? `That task isn't ready yet. It unlocks ${task.recurrenceInterval} hour${task.recurrenceInterval === 1 ? '' : 's'} after you last checked it off.`
+      : 'That recurring task is not due yet, and completing it early would schedule the next occurrence off today rather than off its own day.';
   }
   return null;
 }
@@ -154,28 +184,40 @@ export function buildCompletion(
   options: CompletionOptions | undefined,
   context: CompletionContext,
 ): CompletionRows | null {
-  if (completionRefusal(task) !== null) return null;
+  if (completionRefusal(task, options) !== null) return null;
 
   const { dayResetTime, vacationMode, now, allTasks, subtasks } = context;
   const missed = options?.missed ?? false;
   const neutral = options?.neutral ?? false;
   const id = task.id;
-  // The morning check-in is the one caller that completes a task after the
-  // fact — "yes, I did this last night" — and wants the record to say so
-  // rather than reading as done at whatever moment the user got around to
-  // answering. Everything else here (the successor's createdAt/seenAt, the
+  // Two callers complete a task after the fact and want the record to say
+  // so: the morning check-in ("yes, I did this last night") and a queued
+  // widget/notification/Live Activity tap, which lands whenever the app next
+  // gets to it (see useWidgetCompletionStore). Everything else here (the successor's createdAt/seenAt, the
   // streak's getCurrentDayStart() calls) stays keyed to the real moment; only
-  // the completed row's own timestamps move.
+  // the completed row's own timestamps move, plus the date a
+  // repeat-after-completion successor is measured from (see getNextDueDate).
   const completedAt = options?.completedAt ? new Date(options.completedAt) : now;
 
   const recurs = task.recurrenceType !== 'none';
+  // 'hours' has no calendar grid: it never gets a dueDate, and its "next
+  // occurrence" is a precise deferUntil measured from this completion's own
+  // instant (`now`, not `completedAt` — see the comment above) rather than
+  // from getNextDueDate's day-truncated approximation. See the effectiveDue
+  // and nextDeferUntil computations below.
+  const isHoursRecurrence = task.recurrenceType === 'hours';
   const chainAdvances = task.chainEnabled && task.chainItems.length > 0;
-  // A miss never walks forward into the next step — that would read as
-  // having done Step 2 the moment Step 1 was marked missed. It ends the
-  // whole chain attempt on the spot, same as reaching the real last step,
-  // so the run's own bookkeeping (streak, recurrenceCount) treats a
-  // mid-chain miss as a missed cycle rather than a free pass through it.
-  const atChainEnd = chainAdvances && (missed || task.chainIndex >= task.chainItems.length - 1);
+  // A mid-chain miss records that step as missed and walks forward into the
+  // next one anyway, the same as completing it does — a chain is a routine
+  // whose steps you work through regardless of whether each one landed, and
+  // treating a single missed step as ending the whole run would strand every
+  // later step for the day just because one of them wasn't done. Only a miss
+  // on the real last step ends the run, same as completing it would — unless
+  // the caller says this particular miss *is* the end (`missChain`, for a
+  // chain whose later steps can't stand on their own without the one that
+  // was just missed).
+  const atChainEnd =
+    chainAdvances && (!!options?.missChain || task.chainIndex >= task.chainItems.length - 1);
   // A chain is a singly linked list of steps: completing one immediately
   // creates the next, with no schedule needed, and it simply ends after
   // the last step. Repeat changes only what happens at that last step —
@@ -348,7 +390,7 @@ export function buildCompletion(
     // catchUp: this is placing a real row, and a successor dated before
     // today is one the user has to complete again to get rid of. See
     // getNextDueDate.
-    const nextDue = recurs && datesBySchedule ? getNextDueDate(task, dayResetTime, { catchUp: true }) : null;
+    const nextDue = recurs && datesBySchedule ? getNextDueDate(task, dayResetTime, { catchUp: true, completedAt }) : null;
     // Skip the spawn only when we actually consulted the schedule and it
     // says the series has ended — a mid-chain step never consults it, so
     // it always spawns regardless of recurrenceEndDate/recurrenceCount.
@@ -406,20 +448,20 @@ export function buildCompletion(
       const answeredDue = !atChainEnd && chainStepDatedByAnswer(task)
         ? deliverableDate(options?.deliverableValue)
         : null;
-      const effectiveDue = answeredDue ?? nextDue ?? midChainDue;
-      let nextReminderTime: string | null = effective.reminderTime;
-      let nextReminderUtcOffsetMinutes: number | null = effective.reminderUtcOffsetMinutes;
-      if (effectiveDue && effective.reminderTime) {
-        const original = new Date(effective.reminderTime);
-        const next = new Date(
-          effective.reminderOffsetDays !== null
-            ? getReminderOffsetDate(effectiveDue, effective.reminderOffsetDays)
-            : effectiveDue
-        );
-        next.setHours(original.getHours(), original.getMinutes(), 0, 0);
-        nextReminderTime = next.toISOString();
-        nextReminderUtcOffsetMinutes = next.getTimezoneOffset();
-      }
+      // nextDue's *nullity* still answers "has the series ended"
+      // (recurrenceEndDate/recurrenceCount, checked inside getNextDueDate) —
+      // that part is exact regardless of type. Its *value* is only an
+      // approximation for 'hours' (see getNextDueDate's own comment on that
+      // branch), so it's excluded here and the real placement comes from
+      // nextDeferUntil below instead.
+      const effectiveDue = answeredDue ?? (isHoursRecurrence ? null : nextDue) ?? midChainDue;
+      // The exact instant the next occurrence unlocks, measured from this
+      // completion's own moment rather than getNextDueDate's day-truncated
+      // approximation — null when there's no next occurrence to unlock
+      // (series ended) or a chain step answered/mid-chain-dated it instead.
+      const nextDeferUntil = isHoursRecurrence && !effectiveDue && nextDue !== null
+        ? new Date(now.getTime() + task.recurrenceInterval * 60 * 60 * 1000).toISOString()
+        : null;
       const nextChainIndex = chainAdvances
         ? (atChainEnd ? 0 : task.chainIndex + 1)
         : task.chainIndex;
@@ -440,6 +482,47 @@ export function buildCompletion(
       const nextTimeSegments = mealSlotSource
         ? mealSlotStepTimeSegments(mealSlotSource.slot, nextChainIndex, task.chainItems.length)
         : effective.timeSegments;
+      // Computed above the reminder block (moved ahead of it, along with
+      // nextChainIndex/mealSlotSource) because a visibility-tracking
+      // reminder needs the successor's own resulting timeSegments to resolve
+      // through getVisibleAt, and nextTimeSegments didn't exist yet at this
+      // point before that mode existed.
+      let nextReminderTime: string | null = effective.reminderTime;
+      let nextReminderUtcOffsetMinutes: number | null = effective.reminderUtcOffsetMinutes;
+      if (effective.reminderTime && effective.reminderTracksVisibility) {
+        // Resolved through getVisibleAt against the successor's own resulting
+        // placement — never a hand-rolled date calc, per the dayResetTime
+        // grace-window rule (CLAUDE.md). Same shape as the two branches
+        // below, just reading the answer off the function that already
+        // orders the Later screen instead of an offset/deferral formula.
+        const visibleAtTask: Task = {
+          ...effective,
+          dueDate: effectiveDue ? effectiveDue.toISOString() : null,
+          deferUntil: nextDeferUntil,
+          timeSegments: nextTimeSegments,
+        };
+        const next = getVisibleAt(visibleAtTask);
+        nextReminderTime = next.toISOString();
+        nextReminderUtcOffsetMinutes = next.getTimezoneOffset();
+      } else if (effectiveDue && effective.reminderTime) {
+        const original = new Date(effective.reminderTime);
+        const next = new Date(
+          effective.reminderOffsetDays !== null
+            ? getReminderOffsetDate(effectiveDue, effective.reminderOffsetDays)
+            : effectiveDue
+        );
+        next.setHours(original.getHours(), original.getMinutes(), 0, 0);
+        nextReminderTime = next.toISOString();
+        nextReminderUtcOffsetMinutes = next.getTimezoneOffset();
+      } else if (nextDeferUntil && effective.reminderTime) {
+        // A reminder on an 'hours' task is a request to be told when the next
+        // dose unlocks, not a fixed clock time — so it rides the deferral
+        // forward instead of staying put the way a plain reminderOffsetDays
+        // reminder would (there is no day to offset from here).
+        const next = new Date(nextDeferUntil);
+        nextReminderTime = next.toISOString();
+        nextReminderUtcOffsetMinutes = next.getTimezoneOffset();
+      }
       // A fixed deadline is a one-off target date and doesn't carry to the next
       // occurrence. A relative deadline (deadlineOffsetDays or deadlineMonthDay
       // set — mutually exclusive) recomputes against the new dueDate instead,
@@ -478,7 +561,12 @@ export function buildCompletion(
         seenAt: now.toISOString(),
         dueDate: effectiveDue ? effectiveDue.toISOString() : null,
         deadline: nextDeadline,
-        deferUntil: null,
+        // null for every type but 'hours': a normal successor's deferUntil
+        // said where *the occurrence just completed* sat (see the
+        // recurrenceAnchorDate comment just below) and isn't a fact about the
+        // new row. An 'hours' successor has no dueDate to carry that role
+        // instead, so its deferUntil (nextDeferUntil) *is* its placement.
+        deferUntil: nextDeferUntil,
         // Dropped alongside the defer, and for the same reason: both say
         // where *the occurrence just completed* actually sat, and neither is
         // a fact about the one taking its place. The successor's own dueDate
@@ -489,6 +577,15 @@ export function buildCompletion(
         timeSegments: nextTimeSegments,
         pinned: chainStepStaysPinned, // stays pinned through an immediate chain step; resets otherwise
         progressCount: 0, // a quota starts the new day empty
+        // The ledger is per-period, so it does not ride `...effective` onto the
+        // next one. `activeRotationLog` would ignore a stale stamp anyway
+        // (that is what makes a missed week self-clean), but leaving one on a
+        // fresh row means a direct reader of `rotationLog` sees last week's
+        // picks, and the rule here is that per-occurrence state resets
+        // explicitly. `rotationItems` is configuration and `rotationLastDone`
+        // is history across every period, so both carry.
+        rotationLog: [],
+        rotationPeriodStart: null,
         // ...and starts it from the window again. A run begun by hand at
         // 10:30 is a statement about this morning, not about the schedule
         // (see Task.quotaStartedAt), so it rides no successor.
@@ -498,6 +595,10 @@ export function buildCompletion(
         // and it's what turns a recurring decision task's Logbook into the
         // log of its answers rather than one answer copied forward for ever.
         deliverableValue: null,
+        // A follow-up day belongs to the occurrence whose wait it named. The
+        // wait itself carries, but last time's day has passed, and carried
+        // forward it made the new occurrence ask for its follow-up at once.
+        followUpOn: null,
         // The pushes belong to the occurrence that was pushed. postponeMuted
         // deliberately isn't reset here — it rides through on ...effective,
         // because "stop asking about this one" is a statement about the task,
@@ -608,17 +709,21 @@ export function buildCompletion(
         // Never carried forward: the old occurrence's device event still
         // shows the old deadline, and this is a fresh row with a fresh
         // deadline (nextDeadline above) that needs its own event, created
-        // by the store's reconcile.
+        // by the store's reconcile. Its server id goes too, or the fresh row
+        // could find the old occurrence's event by it (#2950).
         calendarEventId: null,
+        calendarEventExternalId: null,
         // Nor this: the old occurrence's completion event logged that
         // occurrence's completion, not this fresh one's — which hasn't
         // happened yet.
         completionCalendarEventId: null,
+        completionCalendarEventExternalId: null,
         // Nor this: last Tuesday's block was time spent on last Tuesday's
         // occurrence. The next one starts unblocked, and asking for a slot
         // is a decision the user makes per occurrence — there is no
         // reconcile here to create one, deliberately.
         timeBlockEventId: null,
+        timeBlockExternalId: null,
       };
 
       // Subtasks belong to the series, not a single occurrence — carry them
@@ -677,6 +782,8 @@ export function buildCompletion(
       // undefined, not 0, when there's no draft: 0 is a real answer here
       // and would override a configured new-task default.
       priority: spec?.priority,
+      // An estimate edited on an earlier follow-up is written back into this
+      // draft (writeEstimateToSource), which is how the next one starts with it.
       effort: spec?.effort,
       estimatedMinutes: spec?.estimatedMinutes ?? null,
       timeSegments: spec?.timeSegments ?? [],
@@ -690,6 +797,11 @@ export function buildCompletion(
       // with it, and the tally goes back with the restored row.
       previousOccurrenceId: task.id,
       followUpTaskSourceTitle: task.title,
+      // The successor's id, not the completed row's — see the field note on
+      // Task.followUpTaskSourceId. With no successor (a one-off's last cycle,
+      // or a series that just ran out) there's nothing live to point at, so
+      // the editor's shortcut simply won't find a parent to resolve.
+      followUpTaskSourceId: nextTask?.id ?? null,
     }, now.toISOString(), maxOrder + 1);
     // Derived for the same reason the occurrence above is: one milestone
     // task per completion, however many devices saw that completion.

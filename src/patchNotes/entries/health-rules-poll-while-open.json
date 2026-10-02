@@ -1,0 +1,4 @@
+{
+  "message": "Fixed health rules (sodium, protein, and the rest) staying silent all afternoon if you left the app open past their checkpoint hour without logging anything or switching apps — they're now rechecked periodically while Today is open, not just when you log a meal or background the app.",
+  "date": "2026-09-25"
+}

@@ -1,5 +1,6 @@
 import type { Project, Task, TaskGroup } from '../types';
 import { displayTitleFor } from './visibilityUtils';
+import { formatTaskDeliverable } from './deliverables';
 import { mergeRanges, scoreSubstring } from './ranges';
 
 // Re-exported so the existing call sites (and their tests) keep importing them
@@ -54,6 +55,10 @@ export function fuzzySearch(
     // that, not the parent's task.title, or the highlight would land on text
     // the row isn't even showing.
     const displayTitle = displayTitleFor(task);
+    // A recorded answer, as it reads on the row ("matte white", "Oct 12"), so
+    // the doctor's answer or the tile that was picked can be found by what it
+    // said rather than only by the question that asked for it.
+    const answer = task.deliverableValue !== null ? formatTaskDeliverable(task) ?? '' : '';
 
     for (const word of words) {
       const titleResult = scoreSubstring(displayTitle, word);
@@ -61,6 +66,7 @@ export function fuzzySearch(
       const tagScore = task.tags.some(t => t.toLowerCase().includes(word.toLowerCase())) ? 30 : 0;
       const categoryResult = task.category ? scoreSubstring(task.category, word) : { score: 0, ranges: [] };
       const projectResult = projectName ? scoreSubstring(projectName, word) : { score: 0, ranges: [] };
+      const answerScore = answer ? scoreSubstring(answer, word).score : 0;
       // Weaker, unhighlighted fallback for a keyword that only matches a
       // non-active step's text — the active step is already covered above.
       const chainScore = task.chainItems.reduce(
@@ -75,6 +81,7 @@ export function fuzzySearch(
         categoryResult.score * 0.5 +
         projectResult.score * 0.5 +
         chainScore * 0.5 +
+        answerScore * 0.5 +
         tagScore;
 
       if (titleResult.ranges.length > 0) {

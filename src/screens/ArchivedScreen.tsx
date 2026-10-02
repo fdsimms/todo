@@ -24,6 +24,7 @@ import { displayTitleFor } from '../utils/visibilityUtils';
 import { describeTaskRecurrence } from '../utils/recurrenceLabels';
 import { useRowSelection } from '../hooks/useRowSelection';
 import type { Task } from '../types';
+import { useFilterField } from '../hooks/useFilterField';
 
 // A quiet, out-of-the-way home for recurring tasks paused indefinitely (see
 // archiveTask/unarchiveTask in useTaskStore) — reached only via the side
@@ -48,7 +49,8 @@ export function ArchivedScreen() {
 
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [editorVisible, setEditorVisible] = useState(false);
-  const [query, setQuery] = useState('');
+  const searchFilter = useFilterField();
+  const query = searchFilter.query;
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
 
   const {
@@ -170,8 +172,7 @@ export function ArchivedScreen() {
         <SearchField
           style={styles.searchBar}
           placeholder="Search archived"
-          value={query}
-          onChangeText={setQuery}
+          field={searchFilter}
         />
       )}
 

@@ -2,7 +2,11 @@ import {
   useProjectStore,
   projectProgress,
   projectDecisions,
+  projectCompletedRows,
   isProjectPastWindow,
+  projectAnswerTallies,
+  describeAnswerTally,
+  answerTallyParts,
 } from '../store/useProjectStore';
 import { DEFAULT_NUDGE_CADENCE_DAYS } from '../types';
 import { formatDeadlineDate } from '../utils/dateUtils';
@@ -52,6 +56,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   recurrenceInterval: 1,
   recurrenceDays: [],
   recurrenceMonthDay: null,
+  recurrenceMonth: null,
   recurrenceWeekOrdinal: null,
   recurrenceAnchorDay: null,
   recurrenceAnchorDate: null,
@@ -70,8 +75,13 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   allowOvershoot: false,
   quotaIntervalMinutes: null,
   quotaReminders: false,
-  quotaStartedAt: null, quotaAlwaysVisible: false,
+  quotaStartedAt: null, quotaAlwaysVisible: false, followWaterTarget: false,
   quotaPeriod: 'day',
+  rotationEnabled: false,
+  rotationItems: [],
+  rotationLog: [],
+  rotationPeriodStart: null,
+  rotationLastDone: {},
   progressCount: 0,
   tags: [],
   category: null,
@@ -104,7 +114,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   projectId: null,
   reminderTime: null,
   reminderKind: 'notification',
-  reminderOffsetDays: null, reminderTimeAnchor: 'wallClock', reminderUtcOffsetMinutes: null,
+  reminderOffsetDays: null, reminderTracksVisibility: false, reminderTimeAnchor: 'wallClock', reminderUtcOffsetMinutes: null,
   chainEnabled: false,
   chainIndex: 0,
   chainItems: [],
@@ -116,6 +126,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   followUpTaskTally: 0,
   previousFollowUpTaskTally: 0,
   followUpTaskSourceTitle: null,
+  followUpTaskSourceId: null,
   vacationPause: false, excludeFromSuggestions: false,
   timerStartedAt: null,
   timedMinutes: null,
@@ -181,6 +192,11 @@ const makeProject = (overrides: Partial<Project> = {}): Project => ({
   destination: null,
   awayListId: null,
   awayListDeclinedFor: null,
+  pausedUntil: null,
+  personIds: [],
+  links: [],
+  inOrder: false,
+  showChecked: false,
   ...overrides,
 });
 
@@ -323,6 +339,30 @@ describe('projectProgress', () => {
 });
 
 // ─── projectDecisions ───────────────────────────────────────────────────────
+
+describe('projectCompletedRows', () => {
+  // A daily member leaves a completed row per day; the section lists the member
+  // once, at its latest completion, matching what progress counts.
+  it('lists a finished repeating member once, at its most recent completion, newest first', () => {
+    const tasks = [
+      makeTask({ id: 'r1', projectId: 'p1', completed: true, completedAt: '2025-01-01T09:00:00.000Z' }),
+      makeTask({ id: 'r2', projectId: 'p1', completed: true, completedAt: '2025-01-02T09:00:00.000Z', previousOccurrenceId: 'r1' }),
+      makeTask({ id: 'once', projectId: 'p1', completed: true, completedAt: '2025-01-03T09:00:00.000Z' }),
+      makeTask({ id: 'filed', projectId: 'p1', completed: true, completedAt: '2025-01-04T09:00:00.000Z', archived: true }),
+      makeTask({ id: 'other', projectId: 'p2', completed: true, completedAt: '2025-01-05T09:00:00.000Z' }),
+    ];
+    expect(projectCompletedRows('p1', tasks).map(t => t.id)).toEqual(['once', 'r2']);
+  });
+
+  // Still repeating: it's among the open tasks, so it isn't listed as done.
+  it('leaves out a member that still has an open row', () => {
+    const tasks = [
+      makeTask({ id: 'r1', projectId: 'p1', completed: true, completedAt: '2025-01-01T09:00:00.000Z' }),
+      makeTask({ id: 'r2', projectId: 'p1', completed: false, previousOccurrenceId: 'r1' }),
+    ];
+    expect(projectCompletedRows('p1', tasks)).toEqual([]);
+  });
+});
 
 describe('projectDecisions', () => {
   const decision = (overrides: Partial<Task> = {}): Task => makeTask({
@@ -559,7 +599,8 @@ describe('createProject / updateProject / getProjectById', () => {
     const project = useProjectStore.getState().createProject('Kitchen remodel');
     expect(project.nudgeCadenceDays).toBe(DEFAULT_NUDGE_CADENCE_DAYS);
     expect(project.autoSchedule).toBe(false);
-    expect(project.nudgeOptIn).toBe(false);
+    // "When I ask": in the Pull sheet when it's opened, never brought up unasked.
+    expect(nudgeModeOf(project)).toBe('on-ask');
   });
 
   // The Settings default used to seed the cadence beside a hardcoded
@@ -579,11 +620,14 @@ describe('createProject / updateProject / getProjectById', () => {
       expect(nudgeModeOf(project)).toBe('scheduled');
     });
 
-    it('leaves a new project out of nudges entirely when the default is Never', () => {
+    // Never also kept a new project out of the Pull sheet the person opens
+    // themselves, so a fresh install's sheet excluded every project.
+    it('makes a new project answer the Pull sheet, and nothing more, when no cadence is set', () => {
       useSettingsStore.setState({ defaultProjectNudgeCadenceDays: 0 });
       const project = useProjectStore.getState().createProject('Gift ideas');
-      expect(project.nudgeOptIn).toBe(false);
-      expect(nudgeModeOf(project)).toBe('never');
+      expect(project.nudgeOptIn).toBe(true);
+      expect(project.nudgeCadenceDays).toBe(0);
+      expect(nudgeModeOf(project)).toBe('on-ask');
     });
   });
 
@@ -732,6 +776,24 @@ describe('reorderProjects', () => {
     expect(ids).toEqual(['b', 'a']);
     expect(dbBatchUpdateProjectSortOrders).toHaveBeenCalled();
   });
+
+  // The screen passes only the list on show. Numbering that subset 0..n-1 left
+  // it colliding with the projects filtered out of view.
+  it('lays a filtered subset into the slots it already held, leaving the rest in place', () => {
+    useProjectStore.setState({
+      projects: [
+        makeProject({ id: 'a', sortOrder: 0 }),
+        makeProject({ id: 'x', sortOrder: 1, archived: true }),
+        makeProject({ id: 'b', sortOrder: 2 }),
+        makeProject({ id: 'y', sortOrder: 3, archived: true }),
+        makeProject({ id: 'c', sortOrder: 4 }),
+      ],
+    });
+    useProjectStore.getState().reorderProjects(['c', 'a', 'b']);
+    const projects = useProjectStore.getState().projects;
+    expect(projects.map(p => p.id)).toEqual(['c', 'x', 'a', 'y', 'b']);
+    expect(new Set(projects.map(p => p.sortOrder)).size).toBe(5);
+  });
 });
 
 describe('reorderProjectsWithCategoryUpdates', () => {
@@ -767,6 +829,14 @@ describe('removeProjectRow / restoreProject', () => {
     useProjectStore.getState().restoreProject(project);
     expect(dbInsertProject).toHaveBeenCalledWith(project);
     expect(useProjectStore.getState().projects).toContainEqual(project);
+  });
+
+  it('puts a restored project back in its place rather than at the end', () => {
+    useProjectStore.setState({
+      projects: [makeProject({ id: 'a', sortOrder: 0 }), makeProject({ id: 'c', sortOrder: 2 })],
+    });
+    useProjectStore.getState().restoreProject(makeProject({ id: 'b', sortOrder: 1 }));
+    expect(useProjectStore.getState().projects.map(p => p.id)).toEqual(['a', 'b', 'c']);
   });
 });
 
@@ -807,5 +877,76 @@ describe('kind', () => {
       expect.objectContaining({ done: 1, total: 2 })
     );
     expect(list.kind).toBe('list');
+  });
+});
+
+describe('projectAnswerTallies', () => {
+  const guest = (id: string, overrides: Partial<Task> = {}): Task => makeTask({
+    id,
+    title: id,
+    projectId: 'p1',
+    deliverableKind: 'choice',
+    deliverableOptions: ['Yes', 'No', 'Maybe'],
+    ...overrides,
+  });
+
+  it('counts each answer, and the guests still to reply', () => {
+    const tasks = [
+      guest('a', { completed: true, completedAt: '2025-01-01T09:00:00.000Z', deliverableValue: 'Yes' }),
+      guest('b', { completed: true, completedAt: '2025-01-01T09:00:00.000Z', deliverableValue: 'yes' }),
+      guest('c', { completed: true, completedAt: '2025-01-01T09:00:00.000Z', deliverableValue: 'No' }),
+      guest('d'),
+      guest('e'),
+    ];
+    const [tally] = projectAnswerTallies('p1', tasks);
+    expect(tally).toEqual(expect.objectContaining({ options: ['Yes', 'No', 'Maybe'], counts: [2, 1, 0], waiting: 2, unanswered: 0 }));
+    expect(describeAnswerTally(tally)).toBe('2 Yes, 1 No, 2 waiting');
+  });
+
+  it('says who is behind each count, for tapping one', () => {
+    const tasks = [
+      guest('a', { title: 'Sam', completed: true, completedAt: '2025-01-01T09:00:00.000Z', deliverableValue: 'Yes' }),
+      guest('b', { title: 'Alex' }),
+    ];
+    expect(answerTallyParts(projectAnswerTallies('p1', tasks)[0])).toEqual([
+      { label: '1 Yes', names: ['Sam'] },
+      { label: '1 waiting', names: ['Alex'] },
+    ]);
+  });
+
+  it('keeps guests out of the project\'s progress, the tally counts them', () => {
+    const tasks = [
+      guest('a', { completed: true, completedAt: '2025-01-01T09:00:00.000Z', deliverableValue: 'Yes' }),
+      guest('b'),
+      makeTask({ id: 'cake', projectId: 'p1' } as Partial<Task>),
+    ];
+    expect(projectProgress('p1', tasks)).toEqual({ done: 0, total: 1 });
+  });
+
+  it('counts a completion without an answer apart from the ones still waiting', () => {
+    const tasks = [guest('a', { completed: true }), guest('b')];
+    expect(describeAnswerTally(projectAnswerTallies('p1', tasks)[0])).toBe('1 waiting, 1 no answer');
+  });
+
+  it('keeps different questions apart, and a Yes/No counts with its own two options', () => {
+    const tasks = [
+      guest('a'), guest('b'),
+      makeTask({ id: 'q1', projectId: 'p1', deliverableKind: 'yesno', completed: true, deliverableValue: 'No' }),
+      makeTask({ id: 'q2', projectId: 'p1', deliverableKind: 'yesno' }),
+    ];
+    const tallies = projectAnswerTallies('p1', tasks);
+    expect(tallies.map(t => t.options)).toEqual([['Yes', 'No', 'Maybe'], ['Yes', 'No']]);
+  });
+
+  it('is not a tally for a single question, another project, or an archived row', () => {
+    expect(projectAnswerTallies('p1', [guest('a')])).toEqual([]);
+    expect(projectAnswerTallies('p1', [guest('a', { projectId: 'p2' }), guest('b', { projectId: 'p2' })])).toEqual([]);
+    expect(projectAnswerTallies('p1', [guest('a'), guest('b', { archived: true })])).toEqual([]);
+  });
+
+  it('ignores a pick-one with fewer than two options, which asks as text', () => {
+    expect(projectAnswerTallies('p1', [
+      guest('a', { deliverableOptions: ['Yes'] }), guest('b', { deliverableOptions: ['Yes'] }),
+    ])).toEqual([]);
   });
 });

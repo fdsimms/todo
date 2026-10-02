@@ -4,9 +4,14 @@ import {
   describeCatalogRecall,
   describeRecall,
   describedGrams,
+  descriptionClauses,
   rankRecallCandidates,
   recallFoods,
+  measuresByWeight,
+  recallAmountAsk,
+  recallMeasuringPanel,
   recallWeight,
+  recalledHelping,
   type RecallableItem,
   type RecallableProduct,
   type RecalledFood,
@@ -219,6 +224,265 @@ describe('recallFoods', () => {
   it('finds nothing in an empty log', () => {
     expect(recallFoods([], 'anything at all')).toEqual([]);
   });
+
+  it('carries the panel the most recent logging kept, and none from one that kept nothing', () => {
+    // #2914: the panel is what lets the entry logged from this be corrected.
+    const kept = panel({ basis: 'per100g', servingGrams: null, servingText: null, source: 'fdc', sourceId: '171077' });
+    const found = recallFoods([
+      entry({ label: 'Roast chicken', atISO: '2026-04-01T08:00:00.000Z' }),
+      entry({ label: 'Roast chicken', atISO: '2026-04-05T08:00:00.000Z', sourcePanel: kept }),
+    ], 'roast chicken');
+    expect(found[0].sourcePanel).toEqual(kept);
+
+    const older = recallFoods([
+      entry({ label: 'Roast chicken', atISO: '2026-04-05T08:00:00.000Z', sourcePanel: kept }),
+      entry({ label: 'Roast chicken', atISO: '2026-04-09T08:00:00.000Z' }),
+    ], 'roast chicken');
+    // The most recent logging kept nothing, and what it kept is what comes back.
+    expect(older[0].sourcePanel).toBeNull();
+  });
+});
+
+describe('logging a recalled food again (#2914)', () => {
+  const now = new Date('2026-04-10T12:00:00');
+
+  /** The database's own record: per 100 g, with a portion row. */
+  const chicken: FoodNutrition = {
+    basis: 'per100g',
+    servingGrams: null,
+    servingText: null,
+    amounts: { calorieKcal: 165, proteinG: 31 },
+    portions: [{ amount: 1, label: 'breast', grams: 172 }],
+    source: 'fdc',
+    sourceId: '171077',
+    recordedAt: '2026-04-02T00:00:00.000Z',
+  };
+
+  /**
+   * One helping of it as an entry stores it. The figures here are deliberately
+   * not 200 g of the panel above, so a test can tell which of the two a new
+   * weight was measured against.
+   */
+  const helping: FoodNutrition = {
+    basis: 'perServing',
+    servingGrams: 200,
+    servingText: '200g',
+    amounts: { calorieKcal: 400, proteinG: 70 },
+    portions: [],
+    source: 'fdc',
+    sourceId: '171077',
+    recordedAt: '2026-04-02T00:00:00.000Z',
+  };
+
+  function unfiled(overrides: Partial<FoodLogEntry> = {}): RecalledFood {
+    return recallFoods([entry({
+      label: 'Chicken breast, roasted',
+      quantity: '200g',
+      grams: 200,
+      nutrition: helping,
+      sourcePanel: chicken,
+      ...overrides,
+    })], 'chicken breast')[0];
+  }
+
+  /** A described meal cut to half, keeping the whole it is half of. */
+  const wholeEstimate: FoodNutrition = {
+    basis: 'perServing',
+    servingGrams: 600,
+    servingText: '1 burrito',
+    amounts: { calorieKcal: 1000, proteinG: 40 },
+    portions: [],
+    source: 'estimated',
+    sourceId: null,
+    recordedAt: '2026-04-02T00:00:00.000Z',
+  };
+  const halfEstimate: FoodNutrition = {
+    ...wholeEstimate,
+    servingGrams: 300,
+    servingText: 'half of 1 burrito',
+    amounts: { calorieKcal: 500, proteinG: 20 },
+  };
+
+  function estimate(): RecalledFood {
+    return recallFoods([entry({
+      label: 'Chicken burrito',
+      quantity: 'half of 1 burrito',
+      grams: 300,
+      nutrition: halfEstimate,
+      sourcePanel: wholeEstimate,
+    })], 'chicken burrito')[0];
+  }
+
+  it('logs the same helping with the same kept panel when the amount is left alone', () => {
+    // Leaving the panel behind was the bug: the copy could only be renamed.
+    const again = recalledHelping(unfiled(), null, now);
+    expect(again).toEqual({ quantity: '200g', grams: 200, nutrition: helping, sourcePanel: chicken });
+  });
+
+  it('carries an estimate\'s whole verbatim too, so the copy is still the same amount of it', () => {
+    const again = recalledHelping(estimate(), null, now)!;
+    expect(again.nutrition).toBe(halfEstimate);
+    expect(again.sourcePanel).toBe(wholeEstimate);
+  });
+
+  it('measures a new weight against the kept panel, not the stored helping', () => {
+    const again = recalledHelping(unfiled(), { grams: 170 }, now)!;
+    // 170 g of 165 kcal and 31 g protein per 100 g. Multiplied out of the
+    // stored helping it would have been 340 kcal and 59.5 g.
+    expect(again.nutrition.amounts).toEqual({ calorieKcal: 280.5, proteinG: 52.7 });
+    expect(again.grams).toBe(170);
+    expect(again.quantity).toBe('170g');
+    expect(again.nutrition.servingText).toBe('170g');
+    // The claim it was measured under is the database's, and the new entry
+    // keeps the panel it was measured against so it can be corrected again.
+    expect(again.nutrition.source).toBe('fdc');
+    expect(again.nutrition.sourceId).toBe('171077');
+    expect(again.sourcePanel).toBe(chicken);
+  });
+
+  it('scales a weight against an estimate\'s whole, when the whole recorded one, and keeps it', () => {
+    const food = estimate();
+    const again = recalledHelping(food, { grams: 150 }, now)!;
+    // A quarter of the 600 g burrito the model described, taken of its
+    // figures rather than of the half last logged.
+    expect(again.nutrition.amounts).toEqual({ calorieKcal: 250, proteinG: 10 });
+    expect(again.grams).toBe(150);
+    expect(again.quantity).toBe('1/4 burrito');
+    expect(again.nutrition.source).toBe('estimated');
+    // Kept, so the new entry can be changed again and All still means the
+    // meal the model described.
+    expect(again.sourcePanel).toBe(wholeEstimate);
+  });
+
+  it('measures a linked food against its helping, the order foodLogEntryEdit keeps', () => {
+    const food = unfiled({ itemId: 'item-chicken' });
+    expect(recallMeasuringPanel(food)).toBe(helping);
+    const again = recalledHelping(food, { grams: 100 }, now)!;
+    expect(again.nutrition.amounts.calorieKcal).toBe(200);
+    expect(again.sourcePanel).toBeNull();
+  });
+
+  it('measures a food that kept nothing against its helping, as before', () => {
+    const food = unfiled({ sourcePanel: null });
+    expect(recallMeasuringPanel(food)).toBe(helping);
+    const again = recalledHelping(food, { grams: 100 }, now)!;
+    expect(again.nutrition.amounts.calorieKcal).toBe(200);
+    expect(again.sourcePanel).toBeNull();
+  });
+
+  it('refuses a weight it cannot measure rather than logging the recorded helping', () => {
+    // A drink's panel is per 100 ml, and a weight in grams says nothing about
+    // a volume without a density the app deliberately has not got. This used
+    // to log the 200 g helping with the typed 250 thrown away unsaid.
+    const drink: FoodNutrition = { ...chicken, basis: 'per100ml', portions: [] };
+    const food = unfiled({ sourcePanel: drink });
+    expect(recalledHelping(food, { grams: 250 }, now)).toBeNull();
+    // A multiple is an estimate's correction, not a database food's.
+    expect(recalledHelping(unfiled(), { factor: 2 }, now)).toBeNull();
+  });
+
+  describe('an estimate recalled at a new amount', () => {
+    /** "2 slices" as the model described it: no weight, a count in its words. */
+    const twoSlices: FoodNutrition = {
+      basis: 'perServing',
+      servingGrams: null,
+      servingText: '2 slices',
+      amounts: { calorieKcal: 600, proteinG: 26 },
+      portions: [],
+      source: 'estimated',
+      sourceId: null,
+      recordedAt: '2026-04-02T19:00:00.000Z',
+    };
+    const threeSlices: FoodNutrition = {
+      ...twoSlices,
+      servingText: '3 slices',
+      amounts: { calorieKcal: 900, proteinG: 39 },
+    };
+
+    /** Last logged at 3 slices, keeping the 2-slice whole. */
+    function pizza(): RecalledFood {
+      return recallFoods([entry({
+        label: 'Pepperoni pizza',
+        quantity: '3 slices',
+        grams: null,
+        nutrition: threeSlices,
+        sourcePanel: twoSlices,
+      })], 'pepperoni pizza')[0];
+    }
+
+    /** Logged once as estimated and never changed, so it kept nothing. */
+    function burger(): RecalledFood {
+      return recallFoods([entry({
+        label: 'Cheeseburger and fries',
+        quantity: '1 burger and a regular fries',
+        grams: null,
+        nutrition: {
+          ...twoSlices,
+          servingText: '1 burger and a regular fries',
+          amounts: { calorieKcal: 1250, proteinG: 45 },
+        },
+      })], 'cheeseburger')[0];
+    }
+
+    it('asks for a count in the estimate\'s own unit, opened on the count last logged', () => {
+      const ask = recallAmountAsk(pizza());
+      expect(ask.kind).toBe('count');
+      if (ask.kind !== 'count') return;
+      expect(ask.count.count).toBe(2);
+      expect(ask.count.noun).toBe('slices');
+      expect(ask.opensAt).toBe(3);
+    });
+
+    it('scales off the whole at a new count, and keeps the whole for next time', () => {
+      // Four slices of the two-slice meal, not four-thirds of the three logged.
+      const again = recalledHelping(pizza(), { factor: 4 / 2 }, now)!;
+      expect(again.nutrition.amounts).toEqual({ calorieKcal: 1200, proteinG: 52 });
+      expect(again.quantity).toBe('4 slices');
+      expect(again.grams).toBeNull();
+      expect(again.nutrition.source).toBe('estimated');
+      expect(again.sourcePanel).toBe(twoSlices);
+      // And at the count the model described, the whole comes back exactly.
+      expect(recalledHelping(pizza(), { factor: 1 }, now)!.nutrition).toBe(twoSlices);
+    });
+
+    it('refuses a weight for an estimate that never had one', () => {
+      // The report: 110 typed into "Amount to log … g" for "2 slices" logged
+      // the whole previous helping. There is nothing to measure it against.
+      expect(recalledHelping(pizza(), { grams: 110 }, now)).toBeNull();
+    });
+
+    it('offers the closed set for words with no count, opened on the amount last logged', () => {
+      expect(recallAmountAsk(burger())).toEqual({ kind: 'multiple', opensAt: 1 });
+      const twice = recalledHelping(burger(), { factor: 2 }, now)!;
+      expect(twice.nutrition.amounts).toEqual({ calorieKcal: 2500, proteinG: 90 });
+      expect(twice.quantity).toBe('twice 1 burger and a regular fries');
+      // It kept nothing before, so the whole it is twice of is kept now.
+      expect(twice.sourcePanel?.amounts.calorieKcal).toBe(1250);
+      expect(twice.sourcePanel?.servingText).toBe('1 burger and a regular fries');
+    });
+  });
+
+  describe('which amount the step asks for', () => {
+    it('asks for grams only where a weight can be measured', () => {
+      expect(recallAmountAsk(unfiled())).toEqual({ kind: 'weight' });
+      expect(recallAmountAsk(unfiled({ itemId: 'item-chicken' }))).toEqual({ kind: 'weight' });
+    });
+
+    it('asks for nothing where a typed weight would be ignored', () => {
+      const drink: FoodNutrition = { ...chicken, basis: 'per100ml', portions: [] };
+      expect(recallAmountAsk(unfiled({ sourcePanel: drink }))).toEqual({ kind: 'none' });
+      // A linked helping recorded as a serving with no weight.
+      const serving: FoodNutrition = { ...helping, servingGrams: null, servingText: '1 serving' };
+      expect(recallAmountAsk(unfiled({ itemId: 'item-a', nutrition: serving, grams: null }))).toEqual({ kind: 'none' });
+    });
+  });
+
+  it('knows which panels can be measured at a weight', () => {
+    expect(measuresByWeight(chicken)).toBe(true);
+    expect(measuresByWeight(helping)).toBe(true);
+    expect(measuresByWeight({ ...helping, servingGrams: null })).toBe(false);
+    expect(measuresByWeight({ ...chicken, basis: 'per100ml', portions: [] })).toBe(false);
+  });
 });
 
 describe('rankRecallCandidates', () => {
@@ -293,6 +557,13 @@ describe('catalogRecallFoods', () => {
     );
     expect(found.map(f => f.label)).toEqual(['Yogurt, Good Culture low fat', 'Yogurt']);
   });
+
+  // A portion carries no panel, so it would fall through to the item's and
+  // offer the item twice under one name (#2925).
+  it('leaves out a frozen portion, which is the item again rather than a packet of it', () => {
+    const portion = catalogProduct({ id: 'p-portion', brand: null, variant: null, nutrition: null, isPortion: true });
+    expect(catalogRecallFoods([catalogItem()], [portion]).map(f => f.key)).toEqual(['i:i1']);
+  });
 });
 
 describe('describeCatalogRecall', () => {
@@ -347,5 +618,23 @@ describe('describedGrams', () => {
 
   it('does not mistake a serving count for a weight', () => {
     expect(describedGrams('2 servings of beans')).toBeNull();
+  });
+});
+
+describe('descriptionClauses', () => {
+  it('splits a multi-food description on the comma', () => {
+    expect(descriptionClauses('31 g baguette, 25g peach jam')).toEqual(['31 g baguette', '25g peach jam']);
+  });
+
+  it('trims each clause and drops empty ones', () => {
+    expect(descriptionClauses(' chicken tacos ,  , rice ')).toEqual(['chicken tacos', 'rice']);
+  });
+
+  it('returns the whole description as one clause with no comma', () => {
+    expect(descriptionClauses('cheeseburger and fries')).toEqual(['cheeseburger and fries']);
+  });
+
+  it('returns nothing for a blank description', () => {
+    expect(descriptionClauses('  ')).toEqual([]);
   });
 });

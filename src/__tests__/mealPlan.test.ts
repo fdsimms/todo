@@ -3,6 +3,7 @@ import {
   cleanMealTitle,
   cookEntryForRecipe,
   dayKeyRange,
+  daysWithMeal,
   daysWithoutMeal,
   describeAddedToList,
   describeWeekPlan,
@@ -11,19 +12,27 @@ import {
   entriesForDay,
   entriesForSlot,
   isKeyInRange,
+  mealCopyDraft,
   mealPlanPurgeCutoffKey,
+  mealTitleOffPlan,
   nextSortOrder,
   recipeIndex,
+  recipeIsGone,
+  recipeNamedLike,
   resolveBulkMoveTargets,
   selectTodayMealEntries,
+  slotCopyDrafts,
   slotLabel,
+  slotPlural,
   slotRank,
+  slotsToCopy,
   sortMealEntries,
   shiftDayKey,
   titleForEntry,
   upcomingDays,
   weekCopyDrafts,
 } from '../utils/mealPlan';
+import { recipeNameKey } from '../utils/recipeUtils';
 
 // mealPlan reaches dateUtils for dayKeyOf, which reaches the settings store for
 // dayResetTime — which nothing here needs, since a day key is a calendar day
@@ -80,6 +89,7 @@ function recipe(id: string, name: string): Recipe {
     tags: [],
     ingredients: [],
     emptySections: [],
+    emptyStepSections: [],
     components: [],
     prepTasks: [],
     steps: [],
@@ -399,6 +409,118 @@ describe('weekCopyDrafts', () => {
   });
 });
 
+describe('mealCopyDraft', () => {
+  it('puts one meal on another day carrying what a week copy carries (#2913)', () => {
+    const lunch = entry('2026-08-03', 'lunch', {
+      recipeId: 'r1', title: 'Pasta salad', recipeChoices: ['c1'], recipeScale: 2,
+      cookTask: false, shopTask: false, logMeal: true, cookedAt: '2026-08-03T12:00:00.000Z',
+    });
+
+    expect(mealCopyDraft(lunch, '2026-08-05')).toEqual({
+      date: '2026-08-05', slot: 'lunch', recipeId: 'r1', title: 'Pasta salad',
+      sortOrder: lunch.sortOrder, cookedAt: null, leftoverId: null,
+      recipeChoices: ['c1'], recipeScale: 2, cookTask: false, shopTask: false, logMeal: true,
+    });
+  });
+
+  it('refuses a leftover night, which one container cannot supply twice', () => {
+    expect(mealCopyDraft(entry('2026-08-03', 'dinner', { leftoverId: 'lo-1' }), '2026-08-04')).toBeNull();
+  });
+});
+
+describe('daysWithMeal', () => {
+  it("is the meal's own day plus every day holding the same recipe in the same slot (#2913)", () => {
+    const monday = entry('2026-08-03', 'lunch', { recipeId: 'r1' });
+    const entries = [
+      monday,
+      entry('2026-08-04', 'lunch', { recipeId: 'r1' }),
+      entry('2026-08-05', 'dinner', { recipeId: 'r1' }), // another slot
+      entry('2026-08-06', 'lunch', { recipeId: 'r2' }), // another recipe
+    ];
+    expect([...daysWithMeal(entries, monday)].sort()).toEqual(['2026-08-03', '2026-08-04']);
+  });
+
+  it('matches a typed meal by its title, ignoring case and spacing', () => {
+    const monday = entry('2026-08-03', 'lunch', { title: 'Kids lunch' });
+    const entries = [
+      monday,
+      entry('2026-08-04', 'lunch', { title: '  kids   LUNCH ' }),
+      entry('2026-08-05', 'lunch', { title: 'Kids lunch', recipeId: 'r1' }), // a recipe, not the typed meal
+    ];
+    expect([...daysWithMeal(entries, monday)].sort()).toEqual(['2026-08-03', '2026-08-04']);
+  });
+
+  it('is only its own day for a leftover night', () => {
+    const night = entry('2026-08-03', 'dinner', { leftoverId: 'lo-1', title: 'Chili' });
+    const entries = [night, entry('2026-08-04', 'dinner', { leftoverId: 'lo-1', title: 'Chili' })];
+    expect([...daysWithMeal(entries, night)]).toEqual(['2026-08-03']);
+  });
+});
+
+describe('slotsToCopy', () => {
+  // Last week: lunches and dinners, and a breakfast that was only a leftover.
+  const lastWeek = [
+    entry('2026-08-03', 'lunch', { title: 'Pasta salad' }),
+    entry('2026-08-04', 'lunch', { title: 'Wraps' }),
+    entry('2026-08-03', 'dinner', { title: 'Ragù' }),
+    entry('2026-08-05', 'breakfast', { title: 'Leftover frittata', leftoverId: 'lo-1' }),
+  ];
+
+  it('offers a slot this week has nothing in, even with other meals planned (#2913)', () => {
+    const thisWeek = [entry('2026-08-10', 'dinner', { title: 'Tacos' })];
+    expect(slotsToCopy(lastWeek, thisWeek)).toEqual(['lunch']);
+  });
+
+  it('offers nothing for a slot the week already has anything in, one meal included', () => {
+    const thisWeek = [
+      entry('2026-08-10', 'dinner', { title: 'Tacos' }),
+      entry('2026-08-12', 'lunch', { title: 'Soup' }),
+    ];
+    expect(slotsToCopy(lastWeek, thisWeek)).toEqual([]);
+  });
+
+  it('counts a leftover night as filling the slot on this side', () => {
+    const thisWeek = [entry('2026-08-11', 'lunch', { title: 'Chili', leftoverId: 'lo-2' })];
+    expect(slotsToCopy(lastWeek, thisWeek)).toEqual(['dinner']);
+  });
+
+  it("doesn't offer a slot whose only meals were leftover nights, which a copy drops", () => {
+    expect(slotsToCopy(lastWeek, [entry('2026-08-10', 'snack')])).not.toContain('breakfast');
+  });
+
+  it('lists the slots in the order a day is read', () => {
+    const source = [
+      entry('2026-08-03', 'snack'),
+      entry('2026-08-03', 'lunch'),
+      entry('2026-08-03', 'breakfast'),
+    ];
+    expect(slotsToCopy(source, [entry('2026-08-10', 'dinner')])).toEqual(['breakfast', 'lunch', 'snack']);
+  });
+});
+
+describe('slotCopyDrafts', () => {
+  it("shifts only that slot's meals, carrying what a week copy carries (#2913)", () => {
+    const drafts = slotCopyDrafts([
+      entry('2026-08-03', 'lunch', { title: 'Pasta salad', recipeId: 'r1', recipeScale: 2, sortOrder: 2 }),
+      entry('2026-08-03', 'dinner', { title: 'Ragù' }),
+      entry('2026-08-04', 'lunch', { title: 'Leftover chili', leftoverId: 'lo-1' }),
+      entry('2026-08-05', 'lunch', { title: 'Wraps', cookedAt: '2026-08-05T12:00:00.000Z' }),
+    ], 'lunch', 7);
+
+    expect(drafts.map(d => [d.date, d.slot, d.title, d.recipeScale, d.sortOrder, d.cookedAt])).toEqual([
+      ['2026-08-10', 'lunch', 'Pasta salad', 2, 2, null],
+      ['2026-08-12', 'lunch', 'Wraps', 1, 1, null],
+    ]);
+  });
+});
+
+describe('slotPlural', () => {
+  it('counts each slot the way a person would say it', () => {
+    expect(['breakfast', 'lunch', 'dinner', 'snack'].map(s => slotPlural(s as MealSlot)))
+      .toEqual(['breakfasts', 'lunches', 'dinners', 'snacks']);
+  });
+});
+
 describe('daysWithoutMeal', () => {
   // Local dates, not UTC parses — dayKeyOf reads the local calendar day.
   const week = [
@@ -526,6 +648,85 @@ describe('titleForEntry', () => {
   it('uses the typed title for a free-text meal', () => {
     const planned = entry('2026-08-05', 'dinner', { recipeId: null, title: 'Leftovers' });
     expect(titleForEntry(planned, index)).toBe('Leftovers');
+  });
+});
+
+describe('recipeIsGone', () => {
+  const loaded = { initialized: true, recipes: [recipe('r1', 'Chili')] };
+
+  it('is true for a pointer the loaded list has no recipe for', () => {
+    expect(recipeIsGone(entry('2026-08-05', 'dinner', { recipeId: 'deleted' }), loaded)).toBe(true);
+  });
+
+  it('is false while the recipe is there, and for a meal with no recipe at all', () => {
+    expect(recipeIsGone(entry('2026-08-05', 'dinner', { recipeId: 'r1' }), loaded)).toBe(false);
+    expect(recipeIsGone(entry('2026-08-05', 'dinner', { recipeId: null }), loaded)).toBe(false);
+  });
+
+  it('says nothing is gone until the list has loaded', () => {
+    // An empty list before the store has loaded is not evidence about any
+    // recipe, and every reader of this acts on a "yes".
+    const unloaded = { initialized: false, recipes: [] };
+    expect(recipeIsGone(entry('2026-08-05', 'dinner', { recipeId: 'r1' }), unloaded)).toBe(false);
+  });
+});
+
+describe('recipeNamedLike', () => {
+  // The nameKey addRecipe stores, so the helper is checked against the same
+  // key the store would refuse a second recipe on.
+  const named = (id: string, name: string, cookbookId: string | null = null) =>
+    ({ id, name, nameKey: recipeNameKey(name), cookbookId });
+
+  it('finds the recipe a typed meal is named after, whatever the case and spacing (#2929)', () => {
+    const tacos = named('r-tacos', 'Tacos');
+    expect(recipeNamedLike('  tacos ', [named('r-soup', 'Soup'), tacos])).toBe(tacos);
+  });
+
+  it('agrees with the store about names that differ only by accents and punctuation', () => {
+    // addRecipe refuses "pho ga" once "Phở gà!" exists, so the sheet must
+    // offer that recipe rather than a new one the store won't make.
+    const pho = named('r-pho', 'Phở gà!');
+    expect(recipeNamedLike('pho ga', [pho])).toBe(pho);
+  });
+
+  it('finds a cookbook recipe when it is the only one called that', () => {
+    const soup = named('r-soup', 'Lentil soup', 'b-six');
+    expect(recipeNamedLike('lentil soup', [soup])).toBe(soup);
+  });
+
+  it('answers with the bookless recipe when books share the name too', () => {
+    // That's the one addRecipe would refuse a second bookless copy of.
+    const mine = named('r-mine', 'Lentil soup');
+    const six = named('r-six', 'Lentil soup', 'b-six');
+    expect(recipeNamedLike('Lentil soup', [six, mine])).toBe(mine);
+  });
+
+  it('is null when only two books share the name, rather than picking one', () => {
+    const six = named('r-six', 'Lentil soup', 'b-six');
+    const plenty = named('r-plenty', 'Lentil soup', 'b-plenty');
+    expect(recipeNamedLike('Lentil soup', [six, plenty])).toBeNull();
+  });
+
+  it('is null when nothing is called that, or the title is blank', () => {
+    expect(recipeNamedLike('Pho', [named('r-tacos', 'Tacos')])).toBeNull();
+    expect(recipeNamedLike('   ', [named('r-tacos', 'Tacos')])).toBeNull();
+  });
+});
+
+describe('mealTitleOffPlan', () => {
+  // A leftover is planned under its dish's own name, and the snowflake that
+  // marks it on the plan row doesn't travel to a calendar or a text.
+  it('says a leftover night is leftovers, keeping the name as typed', () => {
+    expect(mealTitleOffPlan({ leftoverId: 'lo-1' }, "Grandma's chili")).toBe("Grandma's chili (leftovers)");
+  });
+
+  it('leaves a title that already says so alone', () => {
+    expect(mealTitleOffPlan({ leftoverId: 'lo-1' }, 'Leftover chicken stir-fry')).toBe('Leftover chicken stir-fry');
+    expect(mealTitleOffPlan({ leftoverId: 'lo-1' }, 'Soup leftovers')).toBe('Soup leftovers');
+  });
+
+  it('leaves a meal that is not a leftover alone', () => {
+    expect(mealTitleOffPlan({ leftoverId: null }, 'Chicken stir-fry')).toBe('Chicken stir-fry');
   });
 });
 

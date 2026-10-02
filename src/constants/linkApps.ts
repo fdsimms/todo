@@ -19,6 +19,11 @@ export const KNOWN_LINK_APPS: LinkApp[] = [
   // it opens the list, which is how groceries reach Today without a grocery
   // item ever having to pretend to be a task.
   { name: 'Groceries', scheme: 'dundundun://groceries', icon: 'cart-outline', sfSymbol: 'cart.fill', kitchen: true },
+  // weather:// is undocumented by Apple and takes no location or query
+  // parameters — it opens the Weather app to whatever it was last showing,
+  // not necessarily the place a weather task's own reading came from. Still
+  // one tap closer to the full forecast than the rule's own one-line title.
+  { name: 'Weather', scheme: 'weather://', icon: 'partly-sunny-outline', sfSymbol: 'cloud.sun.fill' },
   { name: 'Duolingo', scheme: 'duolingo://', icon: 'school-outline', sfSymbol: 'graduationcap.fill' },
   { name: 'Spotify', scheme: 'spotify://', icon: 'musical-notes-outline', sfSymbol: 'music.note' },
   { name: 'YouTube', scheme: 'youtube://', icon: 'logo-youtube', sfSymbol: 'play.rectangle.fill' },
@@ -41,9 +46,30 @@ export function linkAppsFor(kitchenEnabled: boolean): LinkApp[] {
   return kitchenEnabled ? KNOWN_LINK_APPS : KNOWN_LINK_APPS.filter(a => !a.kitchen);
 }
 
+/**
+ * The known app a stored link belongs to, or null for a custom URL.
+ *
+ * An exact match, plus one allowance: this app's own link carrying a query,
+ * which is how one stop of a planned trip names its store
+ * (`dundundun://groceries?shop=<id>`, #2938). That task still opens the
+ * Groceries screen, so the editor's Link row should still say "Groceries"
+ * rather than print the URL. A third-party scheme gets no such allowance:
+ * `spotify://?x` is somebody's custom link, not the chip.
+ */
+export function knownLinkAppFor(url: string | null | undefined): LinkApp | null {
+  if (!url) return null;
+  return (
+    KNOWN_LINK_APPS.find(
+      app =>
+        app.scheme === url ||
+        (app.scheme.startsWith('dundundun://') && url.startsWith(`${app.scheme}?`))
+    ) ?? null
+  );
+}
+
 /** Known app name for a link scheme, else the raw URL — what a settings row or a caption names it. */
 export function linkAppLabel(url: string): string {
-  return KNOWN_LINK_APPS.find(app => app.scheme === url)?.name ?? url;
+  return knownLinkAppFor(url)?.name ?? url;
 }
 
 /** What the link reads need: the task's own link, plus its chain position. */

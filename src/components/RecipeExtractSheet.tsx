@@ -26,7 +26,7 @@ import {
 } from '../services/aiSuggestions';
 import { describeImportError, isRetryableImportError } from '../services/recipePage';
 import {
-  normalizeIngredient, formatServingsRange, parseServingsRange,
+  alreadyInRecipeNote, blockedReviewRows, normalizeIngredient, formatServingsRange, parseServingsRange,
   recipeHasMethod, recipeHasPrepTasks, recipeHasAttribution,
 } from '../utils/recipeUtils';
 import { describeKeepDays } from '../utils/leftovers';
@@ -149,11 +149,15 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   const [siteName, setSiteName] = useState('');
   const [sourceAuthor, setSourceAuthor] = useState('');
   const [sourcePageText, setSourcePageText] = useState('');
+  // Only ever read when there's no fetched page — a link's URL is
+  // authoritative (see the comment by sourceMeta below). A photo or paste
+  // re-extraction has nothing to prefill this with; it's blank until typed.
+  const [sourceUrlText, setSourceUrlText] = useState('');
   // What the source *is* — inferred, not picked. A link is a website by
   // construction; a photo is whatever the page looked like to the model.
   const [importedSourceType, setImportedSourceType] = useState<RecipeSourceType | null>(null);
   const edits = usePendingEdits();
-  const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
   const input = useRecipeImportSource('paste', 'read a recipe off a page', MAX_RECIPE_PHOTOS);
   const { resolveSource, reset: resetInput } = input;
 
@@ -170,6 +174,18 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   const covered = useMemo(
     () => coveredIngredients(ingredients, candidates, acceptedKeys),
     [ingredients, candidates, acceptedKeys],
+  );
+  // A line Add would drop as a repeat, of one this recipe already has or of an
+  // earlier row here (same heading, prep and purpose), mapped to the row it
+  // repeats, so the review can say so on the row rather than showing it ticked
+  // and never adding it (#2917). The same test the store's merge applies, run
+  // over what's actually going in.
+  const blocked = useMemo(
+    () => blockedReviewRows(
+      ingredients.map((row, i) => (accepted.has(i) && !covered.has(i) ? normalizeIngredient(row) : null)),
+      recipe?.ingredients ?? [],
+    ),
+    [ingredients, accepted, covered, recipe],
   );
 
   // Every heading the Section picker can offer: this recipe's own (including
@@ -205,6 +221,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
     setSiteName('');
     setSourceAuthor('');
     setSourcePageText('');
+    setSourceUrlText('');
     setImportedSourceType(null);
     resetInput();
     resetComponents();
@@ -409,7 +426,8 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
     // photographed page, or were typed in by hand over a paste's blank fields.
     const page = input.page;
     if (applySource) {
-      const plan = sourcePlanFor(page?.url ?? null, {
+      const typedUrl = pendingText('source:url', sourceUrlText).trim();
+      const plan = sourcePlanFor(page?.url ?? (typedUrl || null), {
         source: pendingText('source:site', siteName),
         author: pendingText('source:author', sourceAuthor),
         page: pendingText('source:page', sourcePageText),
@@ -506,14 +524,16 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   // The URL is what identifies the page, so it stays on the row even though
   // the two editable fields sit above it.
   //
-  // Only a link import ever writes a new URL (see the `if (applySource)`
-  // block below) — a paste or photo has none to offer, so ticking the box
-  // for one of those leaves whatever link the recipe already had untouched
-  // even as it overwrites the source and author. "Replaces what's there" is
-  // only true without qualification when this import came from a link.
-  const keepsExistingLink = !input.page && !!recipe?.sourceUrl;
+  // A link import always writes a new URL (see the `if (applySource)` block
+  // below); a paste or photo only does when something's been typed into the
+  // Link row, so ticking the box for one of those with that row left blank
+  // leaves whatever link the recipe already had untouched even as it
+  // overwrites the source and author. "Replaces what's there" is only true
+  // without qualification when this import came from a link or a typed URL.
+  const typedUrl = sourceUrlText.trim();
+  const keepsExistingLink = !input.page && !typedUrl && !!recipe?.sourceUrl;
   const sourceMeta = [
-    input.page?.url,
+    input.page?.url ?? (typedUrl || null),
     recipeHasAttribution(recipe)
       ? (keepsExistingLink ? 'replaces the source and author, not the link' : 'replaces what’s there')
       : null,
@@ -639,7 +659,12 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
     }
 
     return (
-      <ScrollView contentContainerStyle={styles.list} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        ref={keyboardScroll.ref}
+        contentContainerStyle={styles.list}
+        keyboardShouldPersistTaps="handled"
+        {...keyboardScroll.props}
+      >
         <Text style={styles.intro}>
           Uncheck anything you don't want added. Tap any line to change it before it's added.
         </Text>
@@ -802,6 +827,28 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
               </>
             )}
           </View>
+          {/* A link import's URL comes from the page it fetched and isn't
+              editable — this is only for the two imports that never had a
+              page to read one off. Left blank, the recipe's existing link
+              (if any) stays untouched; see the comment by sourceMeta above. */}
+          {!input.page && (
+            <View style={styles.detailFields}>
+              <Text style={styles.detailSep}>Link</Text>
+              <InlineEditableText
+                edits={edits}
+                editKey="source:url"
+                value={sourceUrlText}
+                onCommit={setSourceUrlText}
+                allowEmpty
+                textStyle={styles.detailValue}
+                placeholder="e.g. example.com/chili-recipe"
+                accessibilityLabel="source URL"
+                numberOfLines={1}
+                autoCapitalize="none"
+                keyboardType="url"
+              />
+            </View>
+          )}
         </ImportApplyRow>
 
         {renderReferences()}
@@ -813,13 +860,14 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
           const prevSection = i > 0 ? ingredients[i - 1].section : null;
           const sectionHeader = row.section && row.section !== prevSection ? row.section : null;
           const coveredBy = covered.get(i);
+          const blockedBy = blocked.get(i);
           return (
             <ExtractedIngredientRow
               key={`${row.name}-${i}`}
               row={row}
               edits={edits}
               index={i}
-              checked={accepted.has(i) && !coveredBy}
+              checked={accepted.has(i) && !coveredBy && !blockedBy}
               onToggle={() => toggle(i)}
               onEditName={name => editIngredient(i, { name })}
               onEditQuantity={quantity => editIngredient(i, { quantity })}
@@ -828,7 +876,11 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
               existingSections={existingSections}
               catalogItems={groceryItems}
               sectionHeader={sectionHeader}
-              note={coveredBy ? `made from the ${coveredBy} recipe` : null}
+              note={
+                coveredBy ? `made from the ${coveredBy} recipe`
+                  : blockedBy ? alreadyInRecipeNote(blockedBy)
+                  : null
+              }
             />
           );
         })}

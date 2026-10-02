@@ -1,7 +1,9 @@
 import {
   cookingWindow,
   hasCookingData,
+  lastDaysOf,
   leftoverHistoryIn,
+  leftoversFinishedIn,
   mealCookCounts,
   mostCookedRecipes,
   type CookingWindow,
@@ -89,6 +91,7 @@ function recipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
     tags: [],
     ingredients: [],
     emptySections: [],
+    emptyStepSections: [],
     components: [],
     prepTasks: [],
     steps: [],
@@ -136,6 +139,28 @@ describe('cookingWindow', () => {
 
   it('never builds a backwards window from a nonsense span', () => {
     expect(cookingWindow(TODAY, 0).startKey).toBe('2026-08-13');
+  });
+});
+
+describe('lastDaysOf', () => {
+  it('takes the last week of a month, ending where the month ends', () => {
+    // Stats reads a month of the food log and shows either the month or its
+    // last week (#2916), narrowing the rows it already has.
+    expect(lastDaysOf(WINDOW, 7)).toEqual({
+      startKey: '2026-08-07',
+      endKey: '2026-08-13',
+      todayKey: '2026-08-13',
+    });
+    expect(mealCookCounts([], lastDaysOf(WINDOW, 7)).days).toBe(7);
+  });
+
+  it('is the same window when asked for all of it, and never wider', () => {
+    expect(lastDaysOf(WINDOW, 30)).toEqual(WINDOW);
+    expect(lastDaysOf(WINDOW, 90)).toEqual(WINDOW);
+  });
+
+  it('never narrows below a single day', () => {
+    expect(lastDaysOf(WINDOW, 0).startKey).toBe('2026-08-13');
   });
 });
 
@@ -190,6 +215,29 @@ describe('mealCookCounts', () => {
     );
     expect(counts.daysCooked).toBe(2);
     expect(counts.planned).toBe(2);
+  });
+
+  it('does not count a meal eaten from leftovers as cooking', () => {
+    // Chili from the fridge card on Wednesday, ticked because it was eaten.
+    // It is not a day cooked, and not a planned meal that was or wasn't cooked.
+    const counts = mealCookCounts(
+      [
+        cooked('2026-08-10', { leftoverId: 'lo-1', title: 'Chili (leftovers)' }),
+        entry('2026-08-11', { leftoverId: 'lo-2' }),
+        cooked('2026-08-12', { recipeId: 'r-1' }),
+      ],
+      WINDOW
+    );
+    expect(counts.daysCooked).toBe(1);
+    expect(counts.planned).toBe(1);
+    expect(counts.plannedCooked).toBe(1);
+  });
+
+  it('keeps a free-text meal, since its fields do not say whether it was cooked', () => {
+    const counts = mealCookCounts([cooked('2026-08-12', { title: 'Takeout' })], WINDOW);
+    expect(counts.daysCooked).toBe(1);
+    expect(counts.planned).toBe(1);
+    expect(counts.plannedCooked).toBe(1);
   });
 
   it('buckets by the plan day, not by when it was actually cooked', () => {
@@ -252,6 +300,13 @@ describe('leftoverHistoryIn', () => {
       WINDOW
     );
     expect(history).toEqual({ eaten: 0, tossed: 0 });
+  });
+
+  it('keys a container finished before dayResetTime to the day it belongs to', () => {
+    // 00:30 on Aug 14 under a 4 AM reset is still the window's last day, Aug 13.
+    const late = leftover({ finishedAt: new Date(2026, 7, 14, 0, 30).toISOString(), outcome: 'eaten' });
+    expect(leftoversFinishedIn([late], WINDOW, '04:00')).toHaveLength(1);
+    expect(leftoversFinishedIn([late], WINDOW, '00:00')).toHaveLength(0);
   });
 
   it('counts an outcome-less closed row as eaten, matching outcomeCounts', () => {

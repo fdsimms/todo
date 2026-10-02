@@ -40,6 +40,7 @@ const BASE: Task = {
   recurrenceInterval: 1,
   recurrenceDays: [],
   recurrenceMonthDay: null,
+  recurrenceMonth: null,
   recurrenceWeekOrdinal: null,
   recurrenceAnchorDay: null,
   recurrenceAnchorDate: null,
@@ -58,8 +59,13 @@ const BASE: Task = {
   allowOvershoot: false,
   quotaIntervalMinutes: null,
   quotaReminders: false,
-  quotaStartedAt: null, quotaAlwaysVisible: false,
+  quotaStartedAt: null, quotaAlwaysVisible: false, followWaterTarget: false,
   quotaPeriod: 'day',
+  rotationEnabled: false,
+  rotationItems: [],
+  rotationLog: [],
+  rotationPeriodStart: null,
+  rotationLastDone: {},
   progressCount: 0,
   tags: [],
   sortOrder: 0,
@@ -88,7 +94,7 @@ const BASE: Task = {
   streakRequiresWindow: false,
   reminderTime: null,
   reminderKind: 'notification',
-  reminderOffsetDays: null, reminderTimeAnchor: 'wallClock', reminderUtcOffsetMinutes: null,
+  reminderOffsetDays: null, reminderTracksVisibility: false, reminderTimeAnchor: 'wallClock', reminderUtcOffsetMinutes: null,
   parentId: null,
   groupId: null,
   projectId: null,
@@ -104,6 +110,7 @@ const BASE: Task = {
   followUpTaskTally: 0,
   previousFollowUpTaskTally: 0,
   followUpTaskSourceTitle: null,
+  followUpTaskSourceId: null,
   vacationPause: false, excludeFromSuggestions: false,
   timerStartedAt: null,
   timedMinutes: null,
@@ -144,7 +151,7 @@ function makeTask(overrides: Partial<Task>): Task {
 }
 
 function isoDate(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  return format(d, 'yyyy-MM-dd');
 }
 
 let busySeq = 0;
@@ -419,6 +426,51 @@ describe('computeSnoozeSuggestion', () => {
       expect(result.date.getDate()).toBe(11);
       expect(result.date.getMonth()).toBe(5);
       expect(result.dayLabel).toBe('Tomorrow');
+    });
+
+    it('counts a task stored at midnight on the day it names, not the day before', () => {
+      // Quick add's "Tomorrow" stores local midnight. With a 02:00 reset,
+      // getDayStart would roll that back onto today and leave tomorrow looking
+      // empty, so the suggestion landed on the day that was actually full.
+      settingsState.dayResetTime = '02:00';
+      jest.useFakeTimers();
+      jest.setSystemTime(new Date(2025, 5, 11, 10, 0, 0));
+
+      const task = makeTask({ id: 'snooze-me' });
+      const tomorrowMidnight = new Date(2025, 5, 12, 0, 0, 0).toISOString();
+      const load = Array.from({ length: 5 }, (_, i) => makeTask({ id: `load-${i}`, dueDate: tomorrowMidnight }));
+      const result = computeSnoozeSuggestion(task, [task, ...load]);
+
+      expect(result.date.getDate()).not.toBe(12);
+    });
+  });
+
+  describe('time zone', () => {
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('lands projected recurring load on its local day', () => {
+      // Candidates sit at local noon, which in UTC+14 is 22:00 the previous
+      // UTC day. Keyed by toISOString, each day read the load projected for the
+      // day before it, so tomorrow's recurrence looked like an empty day.
+      // Only discriminating when the suite runs far east of UTC
+      // (`TZ=Pacific/Kiritimati npx jest snoozeEngine`); Jest's sandbox ignores
+      // a runtime `process.env.TZ`, which is why noUtcDayKey.test.ts exists.
+      jest.useFakeTimers();
+      jest.setSystemTime(new Date(2025, 5, 11, 10, 0, 0));
+
+      // Every two days from yesterday: projections land on D+1, D+3, D+5, D+7.
+      const everyOther = makeTask({
+        id: 'every-other',
+        recurrenceType: 'daily',
+        recurrenceInterval: 2,
+        dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
+      });
+      const task = makeTask({ id: 'snooze-me' });
+      const result = computeSnoozeSuggestion(task, [task, everyOther]);
+
+      expect(result.date.getDate()).toBe(13);
     });
   });
 });

@@ -167,6 +167,11 @@ struct TodoTodayWidgetEntryView: View {
             WidgetHeaderShortcut(symbolName: "fork.knife", label: "Meal plan", destination: mealPlanURL),
             WidgetHeaderShortcut(symbolName: "face.smiling", label: "Mood", destination: moodURL),
             WidgetHeaderShortcut(symbolName: "fork.knife.circle", label: "Food log", destination: foodLogURL),
+            // Opens QuickEventSheet — a separate glyph from the "+" add
+            // button, since that one adds a *task* and this adds a calendar
+            // event (see AddTaskFab's own "Event" row, its own entry beside
+            // "Task" rather than a variant of it).
+            WidgetHeaderShortcut(symbolName: "calendar.badge.plus", label: "Add event", destination: addEventURL),
         ]
     }
 

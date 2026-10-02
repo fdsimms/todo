@@ -139,6 +139,25 @@ export function withoutContextTag(tags: readonly string[], name: string): string
 }
 
 /**
+ * Replace one context tag's text with another, within a single entry's set.
+ *
+ * Renaming onto a name the entry already carries under a different spelling
+ * merges the two rather than leaving a duplicate — the same rule
+ * `withContextTag` already applies to an ordinary add. Leaves the set alone
+ * if it doesn't carry `oldName` at all, so a caller can run this over every
+ * entry without checking first.
+ */
+export function renamedContextTags(
+  tags: readonly string[],
+  oldName: string,
+  newName: string,
+): string[] {
+  const oldKey = contextTagKey(oldName);
+  if (!tags.some(t => contextTagKey(t) === oldKey)) return [...tags];
+  return withContextTag(tags.filter(t => contextTagKey(t) !== oldKey), newName);
+}
+
+/**
  * Every symptom name you have ever logged, most-used first, then alphabetical.
  *
  * **Derived on read rather than stored**, which is the one place this feature
@@ -247,6 +266,25 @@ export function dayContextTags(logs: readonly MoodLog[], dayKey: string): string
     }
   }
   return [...seen.values()].sort((a, b) => a.localeCompare(b));
+}
+
+/**
+ * The context tags a fresh entry for `dayKey` opens with: "Vacation" while
+ * vacation mode is on, plus whatever an earlier entry that same day already
+ * said. Both are offers the user can tap off.
+ *
+ * Vacation mode is a fact about now, so it seeds only an entry for today. The
+ * sheet re-seeds through this when the Day row moves, which is what stops a
+ * backdated entry inheriting today's circumstances.
+ */
+export function seededContextTags(
+  logs: readonly MoodLog[],
+  dayKey: string,
+  opts: { isToday: boolean; vacationMode: boolean },
+): string[] {
+  let tags: string[] = opts.isToday && opts.vacationMode ? ['Vacation'] : [];
+  for (const tag of dayContextTags(logs, dayKey)) tags = withContextTag(tags, tag);
+  return tags;
 }
 
 /** Whether anything at all was recorded on a day — the "did you log" read. */

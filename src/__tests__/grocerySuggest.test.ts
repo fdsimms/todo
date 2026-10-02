@@ -13,11 +13,22 @@ import {
   pantryEntries,
   productHaveReason,
   onHandNameKeys,
+  outlivesItemOutOfIt,
 } from '../utils/grocerySuggest';
 import { groceryNameKey } from '../utils/groceryParse';
-import { FROZEN_REASON, RUNNING_LOW_REASON, type GroceryItem, type ItemProduct } from '../types';
+import {
+  FROZEN_REASON,
+  PORTION_PRODUCT_KEY,
+  RUNNING_LOW_REASON,
+  THAWED_PORTION_REASON,
+  type GroceryItem,
+  type ItemProduct,
+} from '../types';
 
-const NOW = new Date('2026-08-07T12:00:00.000Z');
+/** A local wall-clock time as the ISO instant the app stores, so the suite reads the same in any zone. */
+const localIso = (local: string) => new Date(local).toISOString();
+
+const NOW = new Date(localIso('2026-08-07T12:00'));
 /** No item carries a product, sub, shop link or alias — see linkCounts. */
 const NO_LINKS: ReadonlyMap<string, number> = new Map<string, number>();
 
@@ -42,6 +53,7 @@ function makeProduct(overrides: Partial<ItemProduct> & { itemId: string }): Item
     expiresAt: null,
     frozenAt: null,
     openedAt: null,
+    isPortion: false,
     createdAt: daysAgo(120),
     ...overrides,
   };
@@ -786,6 +798,90 @@ describe('probablyHaveReason with boxes', () => {
     const item = makeItem({ name: 'Bread', onHandUntil: daysAgo(-5) });
     const frozen = makeProduct({ itemId: item.id, frozenAt: daysAgo(9) });
     expect(probablyHaveReason(item, NOW, [frozen])).toBe('marked as on hand');
+  });
+});
+
+// ─── a split pack: the frozen portion (#2925) ───────────────────────────────
+
+describe('frozen portions', () => {
+  /** "Freeze some" on this item: the unnamed box `freezePortion` writes. */
+  const portion = (itemId: string, overrides: Partial<ItemProduct> = {}) =>
+    makeProduct({ itemId, productKey: PORTION_PRODUCT_KEY, isPortion: true, frozenAt: daysAgo(3), ...overrides });
+  /** Chicken bought three days ago and counting down, the half left out. */
+  const chicken = (overrides: Partial<GroceryItem> = {}) =>
+    makeItem({ name: 'Chicken thighs', purchaseCount: 1, createdAt: daysAgo(30), lastPurchasedAt: daysAgo(3), ...overrides });
+
+  it('shows the frozen half beside the half still counting down', () => {
+    const item = chicken();
+    const entries = pantryEntries([item], NOW, [portion(item.id)]);
+    expect(entries.map(e => [e.product?.isPortion ?? false, e.reason])).toEqual([
+      [false, 'bought once · last on Aug 4'],
+      [true, FROZEN_REASON],
+    ]);
+  });
+
+  it('answers with the half still out while there is one, and the freezer after', () => {
+    // A named box outranks the purchase guess; a portion is split off the rest
+    // on purpose, so the rest answers first. Otherwise a meal planned from the
+    // half left out would be told to thaw the other half.
+    const item = chicken();
+    expect(probablyHaveReason(item, NOW, [portion(item.id)])).toBe('bought once · last on Aug 4');
+
+    const lapsed = chicken({ lastPurchasedAt: daysAgo(60) });
+    expect(probablyHaveReason(lapsed, NOW, [portion(lapsed.id)])).toBe(FROZEN_REASON);
+  });
+
+  it('keeps the frozen half when the rest is marked out of it', () => {
+    // The issue's second failure: "Out of it" on the fresh half used to take
+    // the frozen half out of the pantry with it.
+    const item = chicken({ onHandUntil: OUT_OF_IT_UNTIL });
+    const frozen = portion(item.id);
+
+    expect(probablyHaveReason(item, NOW, [frozen])).toBe(FROZEN_REASON);
+    const entries = pantryEntries([item], NOW, [frozen]);
+    expect(entries).toHaveLength(1);
+    expect(entries[0].product!.id).toBe(frozen.id);
+    expect(entries[0].reason).toBe(FROZEN_REASON);
+  });
+
+  it('still lets the item\'s "Out of it" empty the pantry of every named box beside it', () => {
+    const item = chicken({ onHandUntil: OUT_OF_IT_UNTIL });
+    const frozen = portion(item.id);
+    const brand = makeProduct({ itemId: item.id, brand: 'Bell & Evans', frozenAt: daysAgo(9) });
+
+    const entries = pantryEntries([item], NOW, [brand, frozen]);
+    expect(entries.map(e => e.product?.id)).toEqual([frozen.id]);
+  });
+
+  it('lets the item\'s "Out of it" take a thawed portion with the rest', () => {
+    // Out of the freezer it's more of the item in the fridge again.
+    const item = chicken({ onHandUntil: OUT_OF_IT_UNTIL });
+    const thawed = portion(item.id, { frozenAt: null, onHandUntil: daysAgo(-10) });
+    expect(probablyHaveReason(item, NOW, [thawed])).toBeNull();
+    expect(pantryEntries([item], NOW, [thawed])).toEqual([]);
+  });
+
+  it('is not rescued by the freezer once the portion itself is marked out', () => {
+    const item = chicken({ onHandUntil: OUT_OF_IT_UNTIL });
+    const gone = portion(item.id, { onHandUntil: OUT_OF_IT_UNTIL });
+    expect(probablyHaveReason(item, NOW, [gone])).toBeNull();
+  });
+
+  it('says a thawed portion is out of the freezer rather than marked on hand', () => {
+    const thawed = portion('i1', { frozenAt: null, onHandUntil: daysAgo(-10) });
+    expect(productHaveReason(thawed, NOW)).toBe(THAWED_PORTION_REASON);
+  });
+
+  it('lets a thawed portion lapse like any other claim', () => {
+    const lapsed = portion('i1', { frozenAt: null, onHandUntil: daysAgo(2) });
+    expect(productHaveReason(lapsed, NOW)).toBeNull();
+  });
+
+  it('only a frozen, unmarked portion outlives the item\'s "Out of it"', () => {
+    expect(outlivesItemOutOfIt(portion('i1'), NOW)).toBe(true);
+    expect(outlivesItemOutOfIt(portion('i1', { frozenAt: null, onHandUntil: daysAgo(-3) }), NOW)).toBe(false);
+    expect(outlivesItemOutOfIt(portion('i1', { onHandUntil: OUT_OF_IT_UNTIL }), NOW)).toBe(false);
+    expect(outlivesItemOutOfIt(makeProduct({ itemId: 'i1', brand: 'Beyond', frozenAt: daysAgo(3) }), NOW)).toBe(false);
   });
 });
 

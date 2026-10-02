@@ -7,6 +7,7 @@ import {
   createPresentationLevel,
   mustYieldSheet,
   nextSheetVisibility,
+  PresentationLevelContext,
   registerPresentation,
   releasePresentation,
   releasePresentationClaim,
@@ -33,14 +34,6 @@ type Props = React.ComponentProps<typeof Modal> & {
    */
   preempts?: boolean;
 };
-
-/**
- * One presenting view controller's worth of sheets. The default stands for the
- * root view controller, which is what a Modal rendered in the ordinary screen
- * tree presents from; each `SheetModal` supplies a fresh one to its own
- * children, since a Modal nested inside it presents from *its* controller.
- */
-const PresentationLevelContext = React.createContext<PresentationLevel>(createPresentationLevel());
 
 /**
  * `Modal`, with the keyboard guaranteed to be gone before it closes.
@@ -285,7 +278,7 @@ export function SheetModal({ visible = true, children, name, preempts = false, .
   // mistake, and which fix applies differs per call site.
   useEffect(() => {
     if (!shown) return;
-    const clash = registerPresentation(parentLevel, id, name ?? rest.testID ?? 'an unnamed sheet');
+    const clash = registerPresentation(parentLevel, id, name ?? rest.testID ?? 'an unnamed sheet', ownLevel);
     if (clash) {
       // The gate above reads the level during render and registration happens
       // here, after the commit — so two sheets opened in the *same* commit
@@ -299,7 +292,7 @@ export function SheetModal({ visible = true, children, name, preempts = false, .
       return;
     }
     return () => releasePresentation(parentLevel, id);
-  }, [shown, parentLevel, id, name, rest.testID]);
+  }, [shown, parentLevel, ownLevel, id, name, rest.testID]);
 
   return (
     <Modal visible={shown} {...rest}>

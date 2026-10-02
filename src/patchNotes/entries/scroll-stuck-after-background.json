@@ -1,0 +1,4 @@
+{
+  "message": "Fixed a rare case where scrolling on Today could get stuck disabled after switching away from the app mid-drag and coming back",
+  "date": "2026-09-25"
+}

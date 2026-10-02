@@ -102,6 +102,9 @@ export interface PersonName {
   id: string;
   name: string;
   nickname: string;
+  /** See `parseTaskInput.ts`'s `PersonToken.kind` — a business skips the
+   * first-word guess below, the same reason it skips it there. */
+  kind?: 'individual' | 'business';
 }
 
 /** One past event that named somebody, offered rather than asserted. */
@@ -164,7 +167,9 @@ function escapeRegExp(value: string): string {
  * The same three `matchPersonMentions` builds — full name, nickname, and the first
  * word of the name so "Dustin Reyes" answers to "Dustin". Full names are how
  * people arrive from a contact card, and nobody writes a surname into their own
- * calendar.
+ * calendar. The first-word guess is skipped for a business, the same reason
+ * `matchPersonMentions` skips it: a company name's first word isn't a first
+ * name, and "Eye Q" would otherwise answer to "eye" in any event mentioning it.
  */
 function nameTokensOf(person: PersonName): string[] {
   const tokens: string[] = [];
@@ -175,8 +180,10 @@ function nameTokensOf(person: PersonName): string[] {
   };
   add(person.name);
   add(person.nickname);
-  const first = person.name.trim().split(/\s+/)[0];
-  if (first) add(first);
+  if (person.kind !== 'business') {
+    const first = person.name.trim().split(/\s+/)[0];
+    if (first) add(first);
+  }
   return tokens;
 }
 
@@ -249,12 +256,19 @@ export function peopleNamedInTitle(title: string, people: readonly PersonName[])
  * `handled` covers both answers at once, and that is deliberate: accepted and
  * dismissed both mean "don't ask about this again", so there is one record and
  * nothing to keep in step.
+ *
+ * `linkedPeople` is who the user said an event was with (`eventPeople.ts`).
+ * Those people are offered the event even when its title never names them,
+ * which is the point of linking. **It is still an offer, not a record**: a
+ * link says who a plan was with, and only the user knows whether it happened.
+ * The four refusals above apply to a linked event exactly as to a named one.
  */
 export function suggestedHistoryEvents(
   events: readonly BusyEvent[],
   people: readonly PersonName[],
   handled: Readonly<HandledHistoryEvents>,
-  now: Date
+  now: Date,
+  linkedPeople?: (event: BusyEvent) => readonly string[]
 ): HistorySuggestion[] {
   const at = now.getTime();
   const floor = pastWindowStart(now).getTime();
@@ -273,6 +287,9 @@ export function suggestedHistoryEvents(
     if (key in handled) continue;
 
     const personIds = peopleNamedInTitle(title, people);
+    for (const id of linkedPeople?.(event) ?? []) {
+      if (!personIds.includes(id)) personIds.push(id);
+    }
     if (personIds.length === 0) continue;
 
     out.push({ key, eventId: event.id, title, at: event.start, personIds });

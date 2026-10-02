@@ -2,6 +2,7 @@ import type { Recipe } from '../types';
 import type { ExtractedRecipeReference, RecipeGroceryItem } from '../services/aiSuggestions';
 import { groceryNameKey } from './groceryParse';
 import { recipeMap, wouldCreateRecipeCycle } from './recipeComponents';
+import { recipeByName } from './recipeUtils';
 
 /**
  * Turning "…and there's a salsa verde on page 45" into something the import
@@ -97,7 +98,10 @@ export function importableReferences(
     if (!key || seen.has(key)) continue;
     if (parent && key === parent.nameKey) continue;
 
-    const match = recipes.find(r => r.nameKey === key) ?? null;
+    // The parent's own book first: "see page 45" is page 45 of the book the
+    // parent came out of. Two other books sharing the name and nothing to
+    // choose between them is no match rather than a guess.
+    const match = recipeByName(recipes, reference.name, parent ? parent.cookbookId : undefined);
     if (parent && match) {
       if (match.id === parent.id) continue;
       if (parent.components.some(c => c.recipeId === match.id)) continue;

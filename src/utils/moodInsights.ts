@@ -115,9 +115,9 @@ export interface MoodDay {
    */
   nutrients: Partial<Record<NutrientKey, number>> | null;
   /**
-   * The foods logged that day, lowercased for matching. Empty whenever
-   * `nutrients` is null, for the reason `FoodDayInput.labels` gives: an
-   * absence only means something on a day that was fully logged.
+   * The foods logged that day, keyed as `FoodDayInput.labels` keys them. Empty
+   * whenever `nutrients` is null, for the reason that field gives: an absence
+   * only means something on a day that was fully logged.
    */
   foodKeys: string[];
 }
@@ -186,7 +186,9 @@ export interface FoodDayInput {
   /** The day's totals. Only nutrients every entry that day stated. */
   nutrients: Partial<Record<NutrientKey, number>>;
   /**
-   * What was eaten, lowercased for matching.
+   * What was eaten, as `foodKeyResolver` keys it: `item:<id>` or
+   * `recipe:<id>` for a linked entry, the lowercased label for anything else.
+   * A caller names them for display through `foodKeyNames`.
    *
    * Present only on a day that earned a row, which is what makes "the days you
    * didn't eat it" a real group: on a thinly logged day an absent food may
@@ -862,7 +864,7 @@ export function healthInsight(
  *   still a day of self-report, and a person who logs more carefully when they
  *   feel better has a correlation here that is about their logging.
  *
- * Which is the whole reason `NUTRIENT_INSIGHT_KEYS` is four long: this is the
+ * Which is the whole reason `NUTRIENT_INSIGHT_KEYS` is two long: this is the
  * axis where a wide search would most easily find something to say.
  */
 export function nutrientInsight(
@@ -1067,10 +1069,11 @@ export function nutrientFindings(days: readonly MoodDay[]): { key: string; text:
  * every symptom tracker that asks it makes you keep a whole separate food diary
  * to answer it, next to the log you were already keeping.
  *
- * Grouped by the entry's own label, which is `mostLoggedFoods`' choice and made
- * for its reason: `itemId` and `recipeId` are null for anything typed in, so
- * keying on them would silently drop every hand-entered food and misreport what
- * somebody eats.
+ * Grouped by what each entry is (`foodKeyResolver` in `nutritionStats.ts`): a
+ * linked entry by its catalog row or recipe, so a box of bread and plain bread
+ * are one food, and an unlinked one by its label, since `itemId` and
+ * `recipeId` are null for anything typed in and keying only on them would
+ * silently drop every hand-entered food.
  *
  * Two gates, and the second is the one that makes the answer mean anything:
  *
@@ -1278,6 +1281,32 @@ export function metricAverage(
     .map(d => axisValue(d, metric))
     .filter((v): v is number => v !== null);
   return values.length > 0 ? mean(values) : null;
+}
+
+/**
+ * A nutrient's average a day, for the Mood screen's EATING card, or null.
+ *
+ * **Stats' rule rather than the pairing rule.** The food axis keeps today,
+ * because pairing a half-eaten day against its mood is fine once it has reached
+ * two meals (see `foodDayInputs`). An *average* is the case `nutritionStats.ts`
+ * refuses today for: a partial day drags every average down, so on somebody's
+ * first afternoon of logging this read "900 calories a day" off breakfast and
+ * lunch. So today is dropped here, as it is on Stats.
+ *
+ * **And nothing below `MIN_PAIRED_DAYS` days**, the same floor every read on
+ * this screen answers to. A figure off two or three days is a figure about those
+ * days, and beside the insights it would read as one about the person.
+ */
+export function finishedDaysAverage(
+  days: readonly MoodDay[],
+  metric: NutrientKey,
+  todayKey: string,
+): number | null {
+  const values = days
+    .filter(d => d.dayKey < todayKey)
+    .map(d => axisValue(d, metric))
+    .filter((v): v is number => v !== null);
+  return values.length >= MIN_PAIRED_DAYS ? mean(values) : null;
 }
 
 export interface TimeOfDayMood {

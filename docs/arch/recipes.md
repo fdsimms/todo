@@ -5,9 +5,9 @@ and transformed, and how it is cooked. `docs/arch/groceries.md` owns the
 catalog these lines resolve against.
 
 Moved out of `CLAUDE.md` so it is read when it applies rather than on every
-task. The rules here are settled decisions with the reasoning attached: don't
-re-derive them from the code, and don't re-open one without a reason the note
-doesn't already cover.
+task. The rules here are strong defaults with the reasoning
+attached: read the reason before deviating from one. Where this note and the
+code disagree, the code is what ships, so fix the note.
 
 ---
 
@@ -28,8 +28,8 @@ opens the ordinary `RecipeCreateSheet` on its link tab with the address already 
   keychain, so fetching, extracting and writing a recipe row are all things only the app can
   do. It also can't open the app: `NSExtensionContext.open(_:)` isn't available to this
   extension point, which is why the hand-off is a queue rather than a launch.
-- **A shared page waits for a tap; it does not import itself.** The import is a page fetch plus
-  an Anthropic call billed to the user's own key, and spending that unasked — for something
+- **A shared page waits for a tap; it does not import itself.** The import is a page fetch plus,
+  with a key, an Anthropic call billed to it, and spending that unasked — for something
   shared in a supermarket aisle three days ago, possibly several at once — is a decision nobody
   made. It also means a failure is reported in the sheet that caused it rather than after the
   fact.
@@ -46,13 +46,41 @@ opens the ordinary `RecipeCreateSheet` on its link tab with the address already 
 - **One banner at a time, oldest first.** Addresses are canonicalised through
   `normalizeRecipeUrl` on the way in, so the queue holds exactly what the import would accept
   and a re-share collapses onto the entry already there rather than jumping the line.
-- **The banner is gated on `anthropicApiKey`, the same as the add button's import menu.**
-  Without a key there is no import to offer, and this would otherwise be the one route into a
-  sheet that can only end at "No API key". The extension keeps queueing either way — it's a
-  separate process and knows nothing about the keychain — and the queue persists, so a page
-  shared before a key is added turns up once there's something to import it with rather than
-  being dropped. The key lives in the keychain rather than the `settings` table, so this reads
-  the same inside demo mode as outside it.
+- **The banner follows the add button's link import**, so it offers Import only when an import
+  can actually run: with a key through `useAiRoute('recipeExtraction')`, and without one while
+  Recipe import's own switch is on. Gated on the bare key, a key holder who had turned the feature
+  off was offered a sheet that could only say so, and switched off it still goes, since that user
+  asked for no recipe import. The queue persists either way, so a page shared while it's off
+  turns up importable once it's back on.
+- **Without a key it offers Import all the same** (#2930). It used to swap Import for "Add API
+  key", back when every link import needed the model. A page publishing `schema.org/Recipe` now
+  imports with no key at all (`recipePageOffline.ts`, below), which is most recipe sites and so
+  most shares; one that doesn't is refused in the sheet with a message naming the key, which is a
+  better place to learn it than a banner guessing before the page has been fetched. The
+  extension still confirms every share with "Open dundundun to import the recipe", because it's a
+  separate process and can't read the keychain to know better.
+- **A link imports without a key; a paste and a photo don't** (`recipePageOffline.ts`). Most of a
+  recipe page never needed the model: a page that publishes `schema.org/Recipe` states its title,
+  method, yield, time and attribution as data, and its ingredient lines are exactly what the
+  keyless parser behind "paste ingredients into a recipe" reads (`ingredientsFromText`). So with no
+  key (and Recipe import on) the add menu offers "From a link" alone and `RecipeCreateSheet` opens
+  on the link field only (`keyless`, `RecipeSourcePicker`'s `linkOnly`), building the same
+  `ExtractedRecipe` the model would have returned so the review list is one sheet either way. It
+  is honestly worse on the ingredients (no shop-label naming, no sections, no optional or water
+  flags) and every row is reviewed before anything is written. It **refuses rather than guesses**:
+  a page with no structured recipe, or one listing no ingredients, is refused with a message
+  naming the key, because reading a recipe out of stripped page text is the model's job and a
+  guess at it here is how a sidebar ends up in the ingredient list (the same reason
+  `parseRecipePage` never takes a method from page text). Paste and photo have no such floor and
+  stay behind the key. The fetch answers to Recipe import's switch, which is the "its own switch"
+  CLAUDE.md asks of a keyless network reach, and `fetchRecipePage` already refuses in demo mode.
+- **A link already in the recipe box is recognised before anything is fetched.** `sourceUrl` is
+  `normalizeRecipeUrl` of the address, a pure function of what was typed, so `recipeImportedFrom`
+  (`recipeUrl.ts`) can answer from the address alone. `RecipeCreateSheet` asks it before the
+  page fetch and offers Open it / Import anyway, and asks it again once the page is in hand for
+  the card under the name. Both ask the same function so they can't disagree, and Import anyway
+  waives the second for that one address: asking first and then refusing to save would spend a
+  page fetch and a paid extraction on a recipe that can't be kept.
 
 ---
 
@@ -104,8 +132,10 @@ already allows two things on one dinner, so ad-hoc pairing needs nothing.
 
 - **The two stay two lists sharing one convention**, never one list. An ingredient names something
   you can put in a trolley (`nameKey` is the catalog bridge); a component names a dish. They share
-  `activeIn()` — one generic resolver over anything with an id and a `choiceGroup` — because the
-  *rule* is genuinely the same and writing it twice is how the two would drift.
+  one resolver, `resolveGroupWinners` (`recipeComponents.ts`), because the *rule* is genuinely the
+  same and writing it twice is how the two would drift. A label can be shared across the two lists
+  ("buy rice, or cook this component instead"), and then it resolves as one either/or, ingredients
+  tried first when nothing is chosen.
 - **Two ingredient rows, never one line reading "serrano or jalapeño".** That spelling mints a
   catalog item literally called "serrano or jalapeño": a row that can never match a real purchase,
   never ranks in the catalog, and gets hand-corrected on the list every single time. Separate rows
@@ -140,11 +170,21 @@ already allows two things on one dinner, so ad-hoc pairing needs nothing.
 
 - **The choice is resolved at read time and never written onto the recipe.** `activeComponents`
   picks one option per group, `walk` descends only into that one, and every flatten takes an
-  optional `ComponentResolution`. **Passing none resolves to the defaults**, so an unresolved read
-  is a complete dish and every caller predating this kept working unchanged.
-- **The default is the group's first component in list order**, not a `defaultComponentId`: an id
-  is a second thing to keep in step with the list and to repair when that component is removed.
+  optional `ChoiceResolution`. **Passing none resolves to the defaults**, so an unresolved read
+  is a complete dish.
+- **A surface that reads one cooking of a recipe must take that cooking's picks.** Every flatten
+  and walk here (`flattenRecipeIngredients`, `cookSteps`, `recipeChoiceGroups`, cost, nutrition)
+  accepts a resolution, and leaving it off still type-checks and still renders a complete dish: the
+  default one. That is how cook mode shipped cooking the first option no matter what the recipe
+  screen had picked. So a new surface that shows a specific cooking (a sheet opened from a recipe
+  screen or a planned meal) takes `choices` from whoever opened it and passes them through. Only a
+  read about the recipe in general (search, the pantry scorer) may use the defaults.
+- **The default is the group's first option in list order**, not a `defaultComponentId`: an id
+  is a second thing to keep in step with the list and to repair when that option is removed.
   `makeComponentDefault` moves the link to the front of its group — the promotion *is* a reorder.
+  One refinement: a caller may pass `ChoiceResolution.onHand` (ingredient `nameKey`s in the
+  pantry), and an unresolved group then prefers an on-hand *ingredient* over the first-listed one.
+  It never promotes a component, and an explicit pick always wins.
 - **The pick lives on `MealPlanEntry.recipeChoices`**, because which side you make is a fact about
   a cooking, not about the dish — one recipe, mash on Tuesday and roast on Friday. **One list holds
   both kinds of id** (component links and ingredient lines): every reader asks it the same question,
@@ -158,13 +198,22 @@ already allows two things on one dinner, so ad-hoc pairing needs nothing.
   reason is concrete — two sides that share an ingredient each contribute a line, which
   `classifyPlanned` would merge into one doubled quantity. `scoreRecipeAgainstCatalog` and
   `countLikelyInPantry` resolve to the defaults instead, or the coverage denominator inflates with
-  lines that will never be bought.
+  lines that will never be bought. (`scoreRecipeAgainstCatalog` passes `onHand`, so its defaults
+  prefer what the pantry holds.)
+- **A shared recipe keeps a choice as a choice, and names a whole-dish one in the heading.** The
+  share text and the ingredient paste take no `ChoiceResolution` (the sender's picks are tonight's,
+  not the recipe's), so an ingredient either/or goes out as one line holding every option ("1
+  serrano or 2 jalapeños", #2948). A choice between components still sends only the default
+  dish's lines, since both in full would read as two dishes to shop for, but the share names the
+  others in that dish's heading: "For the Mash (or Rice):". It reads which link brought each dish
+  in off `cookedDishes`' `via`, the same walk the flatten takes, rather than a second walk of its
+  own. The paste has no headings, so it sends the default's lines alone.
 - **The cycle check deliberately ignores choices** (`reachableRecipeIds` walks every option): a loop
   down an unchosen branch is still a loop, and becomes live the moment someone picks that option.
 - **An ad-hoc "Add ingredients to list" holds its picks in sheet state and writes nothing** —
   there's no meal for them to be a fact about, and picking the pepper for tonight's shop shouldn't
   edit the recipe. `RecipeToListSheet.initialChoices` seeds them from the entry when the shop is a
-  follow-up to cooking one. The week-level `AddWeekToListSheet` deliberately has no chips of its
+  follow-up to cooking one. The week-level `AddMealsToListSheet` deliberately has no chips of its
   own: it aggregates many recipes, and each entry already carries its own answers.
 
 ## Where a recipe is from (`Cookbook`, `recipeProvenance.ts`)
@@ -202,7 +251,39 @@ for a book, a `cookbookId` pointing at a real `Cookbook` row holding the title a
 - **`titleKey` is keyed on title *and* author.** "Dinner" is a Melissa Clark book and also a Meera
   Sodha one; a shelf that can hold only one of them is a worse bug than the near-duplicate a
   compound key lets through.
-- **The page stays on the recipe.** A book has many pages and this recipe is on one of them.
+- **The page stays on the recipe, and goes when the recipe changes books.** A book has many pages
+  and this recipe is on one of them, which is also why a link to a *different* book clears it
+  (`pageAfterCookbookLink`): page 42 of Plenty is not page 42 of Jerusalem, and a moved recipe used
+  to keep it, listed at 42 in its new book and credited "Jerusalem, p. 42". "Different" is the same
+  test the confirm below asks on (`cookbookLinkEffect`, anything but `'none'`), so the store and
+  the confirm can't disagree, and the confirm says the page goes. It lives in the two link actions
+  rather than in `mirrorOf`, because a rename or a merge re-mirrors a recipe onto what is still
+  its own book. A recipe naming no book keeps its page when one is linked: that is a page read off
+  a photo, waiting for its book.
+- **A recipe's name is unique per book, not across the box.** Six Seasons and Plenty can each
+  have a "Lentil Soup", and they are two recipes. `recipeInBook` (`recipeUtils.ts`) is the rule,
+  and `addRecipe` takes the book the recipe is headed for so it can ask it; an import finds or
+  creates the book first (`ensureCookbook`) for the same reason. **The database deliberately
+  doesn't enforce it.** The unique index on `name_key` was dropped rather than widened to
+  `(name_key, cookbook_id)`, because a composite index would let every write that moves a recipe
+  between books fail (linking, the unlink a retyped source does, deleting or merging a book), and
+  sync's natural-key fold would merge two books' recipes into one and delete the other. So
+  recipes don't fold on name any more (`NATURAL_KEYS`), and those moves can leave two same-named
+  recipes in one place, which is allowed. The cost is that the same recipe added on two devices
+  before they sync arrives twice, which a person can see and delete. A lookup that has only a
+  name and no book (a typed meal on the plan, a component a page mentions) goes through
+  `recipeByName`, which asks the preferred book first, then takes a sole match, then the bookless
+  one, and otherwise returns null rather than picking between two books.
+- **A book's page lists its recipes in page order** (`recipesInCookbook`, `cookbookRecipes.ts`),
+  since every row already says "Page N" and that is how a cookbook is browsed. Roman front
+  matter comes before the body, a page nobody could read as a number after it, and a recipe with
+  no page last, each broken by name.
+- **"Link a recipe" asks before it rewrites an attribution.** The mirror above means linking is a
+  write of `source`/`author`/`sourceType`, and there is no undo for it, so a recipe filed under
+  another book (a move) or crediting a different source (a website, another author) is confirmed
+  first (`cookbookLinkEffect`). A recipe with no attribution, or one that already names this book,
+  links on the tap as before. Each picker row says where the recipe is now, and the picker says
+  when its 30-row cap is hiding the rest rather than letting the cap pass for the whole box.
 
 The import side is `sourceFieldsFor`/`sourcePlanFor` (`recipeProvenance.ts`), shared by both
 import sheets rather than hand-copied into each, since they are the same sheet twice over.
@@ -227,6 +308,74 @@ import sheets rather than hand-copied into each, since they are the same sheet t
   photo is overwhelmingly one already on the shelf from the last recipe out of it. A cookbook with
   no title stays a plain classification — a `Cookbook` row with an empty title is one nobody can
   pick.
+
+## A cookbook's index, and Cook with… (`cookbookIndex.ts`, `CookbookIndexEntry`)
+
+A book's index is its dishes by name, page and the ingredients it lists them under ("Lentils:
+braised, with shallots, 142"). The app keeps it so "what can I make with lentils?" can be answered
+from the books on the shelf as well as from the recipes typed up. Cook with… (`CookWithSheet`)
+asks that question, and `findWithIngredients` answers it.
+
+- **An index line is not a recipe, and that is the whole design.** It was first planned as a
+  recipe with its ingredients left empty, and rejected before shipping: every surface that lists
+  the box (the plan-a-meal and component pickers, "From a recipe" on Groceries, the Backfill
+  queues, the recipe count, the cookbook link picker) would have shown 150 dishes nobody can shop
+  for, plan from or fill servings in for, and each would have needed its own filter to keep them
+  out. A table of its own (`cookbook_index_entries`) keeps them out by construction, since none of
+  those surfaces read it. **Two places do: Cook with… and the book's own page**, where lines are
+  added and corrected. A new reader of the index should be a third on purpose, never a list that
+  happens to include it.
+- **The ingredients are the index's words, not recipe lines.** They are the dish's main things
+  and never its whole list, and every reader of `Recipe.ingredients` (coverage, shopping, cost,
+  nutrition, shortfall tasks) assumes a whole list. That is also why `recipeFromIndexEntry`, which
+  makes a real recipe to cook a line from, writes the name, book and page and **no lines**. The
+  words are stored as printed rather than as grocery keys, so a catalog rename never rewrites
+  them; the key is worked out at read time.
+- **Matching is whole words, tolerant of a plural** (`mentionsIngredient`, through
+  `pluralKeyVariants`). Not a substring, which `rankRecipes` uses, because every result here
+  claims to *use* the thing and "egg" turning up aubergine dishes would be plainly wrong. It does
+  let "cream" find "ice cream", which `useUpRecipes` refuses: that one suggests cooking something
+  unasked, and this answers a search somebody typed. A line is matched on its title as well as its
+  ingredients, since a title-only index says what a dish uses in its name and nowhere else. A
+  typed-up recipe is matched on its flattened lines with every option counted, and not its name.
+- **"What I have" asks the pantry, and matches by key rather than by word** (`pantryIngredients`,
+  `findWithPantry`). The asking set is every row `probablyHaveReason` vouches for, the app's one
+  answer to "do I have this" (see "The kitchen" in `docs/arch/groceries.md`), less staples, which
+  are in nearly every dish and would put whatever uses the most salt on top. A recipe line or an
+  index ingredient counts when it names the same catalog item, singular or plural, and a variety
+  answers for its generic (white onion for onion), the join `useUpRecipes` makes. Whole-word
+  matching suits a word somebody typed; applied to the whole pantry it would let butter claim
+  peanut butter. An index line's title isn't read here for the same reason. Results rank by how
+  many things you have that a dish uses and **never by how much of the dish you have**:
+  `probablyHaveReason` returning null means the app doesn't know, not that you're out, the
+  refusal `useUpRecipes` already makes. The Pantry screen opens the sheet in this mode.
+- **A line whose recipe is typed up drops out of the results.** The recipe (same book, same name,
+  `recipeInBook`) is the better answer and shows under yours when it matches. One made from the
+  line but still empty keeps the line in the results, and opening it opens that recipe.
+- **Scanning a page sends the photo, not an on-device read of it** (`extractCookbookIndex`,
+  `CookbookIndexScanSheet`). Every other photo reader here tries Vision first to save the request,
+  and the removed table-of-contents scanner did too. An index can't: it is set in two or three
+  columns and nests each sub-entry under its heading by indentation alone, and grouping Vision's
+  fragments into rows by height splices the columns together and throws the indentation away,
+  which is the whole of what an index says. So scanning needs a key, and without one the sheet
+  says so and points at adding lines by hand. Pages are read in order, each told the heading the
+  last one ended under (`lastHeading`), since a heading's entries run on from one page to the
+  next with the heading printed only once. The model is asked only for ingredients the index
+  *files* a dish under, never ones guessed from its name, which is what keeps the words honest
+  enough to search by. The photo goes up at the high-resolution tier (`DENSE_PAGE_PHOTO_EDGE`),
+  not the recipe cap, because index type is small, and the prompt reads past a sideways or partly
+  blurry shot rather than returning nothing: an all-or-nothing read of a dense page came back
+  empty on a page that was mostly legible.
+- **A scan is merged before it's shown, and shown before it's written.** `mergeIndexDrafts`
+  folds a dish listed under several headings into one line (keyed as `indexEntryInBook` keys the
+  book's own lines) and marks one the book already has, which `applyIndexDrafts` adds to rather
+  than duplicating (`mergedIndexLine` decides what that adds, for both the review's count and the
+  write). A wrong book or a bad photo is a hundred lines at once, so the write returns what
+  `undoIndexImport` needs, and the book's page offers Undo until you leave it.
+- **The index goes with its book; recipes don't.** `dbDeleteCookbook` unlinks recipes and keeps
+  them (a recipe naming a book that's gone is still a recipe) but deletes the book's index lines,
+  since "page 142" of nothing names nothing. A merge moves the loser's lines to the survivor
+  *before* that delete, folding a dish both books listed into the survivor's line.
 
 ## More than one photo for a page turn (`recipePhoto.ts`, `extractRecipe`)
 
@@ -265,6 +414,51 @@ normalized to a one-entry array internally, so nothing about the single-photo pa
   read has nothing worth combining with and "try again" should mean exactly that. That distinction
   is carried in a plain ref (`photosRef`/`statesRef`) rather than component state, because nothing
   there needs a render just to remember the last status.
+
+## A recipe's photo on another device (`recipeImageSync.ts`, `pushImages` in `syncEngine.ts`)
+
+A recipe row carries its photo as `image_path`, a `file://` path into the document directory of
+the device that took it. Sync moves rows, so for a long time the other device got a path to
+nothing, and `<Image>` fails on that with no error: the hero drew its own empty background and
+nobody could tell a photo was missing (#2704). Backup already solved the same problem by carrying
+the bytes beside the rows (`Backup.images`), and sync now does the same.
+
+- **The bytes ride in payloads of their own, after the rows.** `buildImagePayload` makes a payload
+  with no tables and no deletions and an `images` map of base64 keyed by filename. A build from
+  before this parses it, finds nothing to apply, and applies nothing, which is why it is an optional
+  field rather than a `SYNC_FORMAT` bump. Photos are batched up to `IMAGE_PAYLOAD_BUDGET_CHARS` per
+  payload, since the self-hosted store takes 32 MB a request and a phone on cellular pulls each
+  payload whole.
+- **Each photo goes to a transport once, by filename.** `pickRecipeImage` mints a fresh name per
+  photo and never reuses one, so the name is the photo's identity, and the names a transport already
+  has sit under a device-local cursor key (`imagesSentKey`, under the `syncCursor:` prefix, which
+  neither sync nor backup carries). That is what stops a photo being re-sent every time its recipe
+  is edited, and it is also why every photo taken before this existed went on the first sync after
+  it, with no separate backfill. A photo that came *from* a transport counts as one it has, so it is
+  never echoed back there, and it is still relayed to the other one, the rule rows follow.
+- **A photo push that fails is not a failed sync.** The rows went, and a store that refuses photo
+  payloads outright must not stop this device pulling, so `pushImages` failing sets `imageProblem`
+  rather than `status: 'failed'`, and the photos go again next time. The settings line names it.
+- **A photo arrives whether or not its row is here yet**, and is never written over a file of the
+  same name, which can only be the same photo. A store need not return payloads in push order, and
+  a photo refused for arriving early would never be offered again.
+- **Applying a peer's delete or replacement removes the old file** (`applyWithRecipeImages`), which
+  the local paths already did (`deleteRecipe`, `setRecipeImage`). Only names in use *before* the
+  apply are candidates, so a photo just taken here, whose file is written before its row, is never
+  one of them, and a name another recipe still points at (a duplicate keeps its original's path)
+  stays.
+- **A photo that isn't here says so.** `recipeImageOnDevice` is what the recipe hero and the list
+  thumbnail check before drawing one: the hero becomes a short "Photo isn't on this device" card
+  that still opens the photo menu, and the thumbnail shows a photo glyph instead of an empty square.
+  A photo can arrive in a sync that changes no row, so `useSyncStore.recipeImagesVersion` is bumped
+  when one does and both screens re-check on it.
+- **The rule that a stored path is never trusted is unchanged.** `resolveRecipeImagePath` still
+  re-derives the path from the filename against this install's own directory; this is about the
+  bytes, not the path.
+
+The file half never throws: a photo that can't be read or written costs that photo, never the sync,
+and the MCP replica runs the same adapter (`databaseSyncLocal`) in Node, where expo-file-system is
+not there to load at all.
 
 ## Component recipes read off a photo (`recipeImportComponents.ts`)
 
@@ -384,6 +578,41 @@ choosable before anything's filed under it.
   about. **A recipe boundary resets the section walk**: two recipes' section labels are separate
   vocabularies that happen to collide, so a component opening with "Sauce" under a root whose last
   line was also "Sauce" gets its own heading rather than reading as a continuation.
+- **The same ingredient under two headings is two rows** (`ingredientDedupeKey`, #2917). The add
+  paths (import, paste, the add field) used to drop any line whose catalog key the recipe already
+  had, so carnitas with garlic under "For the marinade" and again under "For the sauce" lost the
+  sauce's garlic on import, with both rows shown ticked in the review. The dedupe is now keyed on
+  the catalog key plus section, prep and purpose, the three fields that say which *use* a line is;
+  "flour" and "flour for dusting" are two lines as well. The amount is left out on purpose: a new
+  amount under the same heading is as likely a correction as a second use, and the add field names
+  the row that blocked it instead of guessing. Two rows sharing a key was already a shape every
+  reader handles, because a composed recipe produces it: `classifyPlanned` sums them, cost and
+  nutrition are per line, and `stepIngredients` gives a name two lines share no amount.
+- **An import review says which rows won't go in, before the tap** (`blockedReviewRows`). With the
+  amount out of the key, "3 tbsp olive oil" and "2 tbsp olive oil" under one heading are still one
+  line, so the second is dropped on Create. The review shows it unticked with the add field's own
+  wording (`alreadyInRecipeNote`) naming the row it repeats, the same way a row a component covers
+  is unticked with a note. It walks the ticked rows through the store's own test in the store's
+  own order, so what it names is exactly what `mergeIngredients` drops, and unticking the first row
+  frees the second. `RecipeExtractSheet` runs it against the recipe's existing rows as well, since
+  a line the recipe already has is dropped by the same merge.
+
+**`RecipeStep.section`/`Recipe.emptyStepSections` are the same model, one field over — "For the
+sauce", "For the tofu" as headings over the method instead of the ingredient list.** Every helper
+above (`sectionsOf`, `allSectionsOf`, `sectionsFromMergedOrder`, `parseEmptySections`) is generic
+over `{ id, section }` and is reused verbatim rather than duplicated; `RecipeDetailScreen` builds
+its own merged step+heading list (`mergedStepRows`) the same way it does for ingredients, and
+`useRecipeStore`'s `addEmptyStepSection`/`removeEmptyStepSection`/`reorderSteps` mirror
+`addEmptySection`/`removeEmptySection`/`reorderIngredients` exactly, `save()` reconciling
+`emptyStepSections` against `steps` the same way it does `emptySections` against `ingredients`.
+Two differences, both because `RecipeStep` predates this field and already follows the
+absent-not-null convention `timerSeconds`/`note` use: `section` is `string | undefined` rather
+than `RecipeIngredient`'s mandatory `string | null`, so `withStepSection` (`useRecipeStore.ts`)
+drops the key entirely on clear rather than writing `null`; and a step's own numbering
+(`mergedStepRows`' `number`) is stamped during the merge rather than read off `SortableList`'s
+`displayIndex`, since a heading occupies a slot in that list too and "Step 3" has to count steps
+only. `cookSteps` (`cookMode.ts`) carries the same one-pass inference into cook mode, resetting at
+every dish boundary for the same reason `ingredientHeadings` does.
 
 ## Linking an ingredient to an existing item (`CatalogLinkPicker.tsx`)
 
@@ -484,10 +713,9 @@ reader; the scaler, the converter, the price comparison, the substitute ratio, `
 allowed to is that it's narrow by construction and always reached through a factor the user picked.
 Everything in `mealPlanGroceries.ts`'s header note still holds for every other reader.
 
-Rules 1, 3 and 4 below are `quantity.ts`'s now (the leading amount, the refusals, the rationals).
-What's left in `recipeScale` is the multiplication and the shapes it renders back.
-
-The four rules that make it safe, all enforced in `scaleQuantity`:
+The four rules that make it safe. `scaleQuantity` enforces rule 2 itself; rules 1, 3 and 4 (the
+leading amount, the refusals, the rationals) live in `quantity.ts`, which `recipeScale` reads
+through, so what's left in `recipeScale` is the multiplication and the shapes it renders back:
 
 1. **Only the leading amount is ever touched.** Unit, size clause and container word carry through
    verbatim, apart from pluralising off a closed table.
@@ -508,6 +736,14 @@ The four rules that make it safe, all enforced in `scaleQuantity`:
   what you buy. Halving it refuses outright, having no expression in that notation. Both container
   shapes are recognised by `parseQuantity` (`Quantity.container`) rather than by each reader, so the
   parser and the scaler can't come to disagree about what a container line is.
+- **A scaled string is for reading and shopping; anything summing it measures the line as written and
+  multiplies by the factor** (#2918). The notation above is lossy by design: a `14 oz can` at 1.5x is
+  left as one can, `1 lb 2 oz` isn't scaled at all, and doubled cans read as a count rather than a
+  weight. Cost and nutrition, for one recipe and for a planned week alike, relate the unscaled line
+  and multiply after, which is exact wherever scaling works and right where it refuses. A planned
+  row carries what they need as `PlannedIngredient.unscaled`, since its own `quantity` is the list's
+  text. A counted sized container ("2 14 oz cans") is read as count times size by both
+  (`measureLineAmount`), so a recipe written that way relates to a price or a panel by weight.
 - **Plural is `> 1`, not `!= 1`** — "1/2 cup", "1 1/2 cups". A unit that isn't in `UNIT_PLURALS`
   passes through uninflected ("2 bulb"), which is the same trade `groceryParse`'s unit whitelist
   makes: slightly wrong grammar in the user's own word beats "2 pinchs".
@@ -516,9 +752,26 @@ The four rules that make it safe, all enforced in `scaleQuantity`:
   it as a component); the recipe screen and the add-to-list sheets hold it in view/sheet state and
   write nothing. **Never store it on `Recipe`.** `bulkReplaceItem` deliberately keeps the scale while
   resetting `recipeChoices` — a choice group belongs to the recipe that defined it, but "feeding
-  eight on Sunday" survives a swap of what's being cooked.
+  eight on Sunday" survives a swap of what's being cooked. What it keeps is the **servings**, not
+  the multiplier (`rescaleForRecipe`): 2× a pasta that serves 2 is four servings, which is 1× of a
+  soup that serves 4, and carrying the 2× over unchanged made it eight. Where either recipe states no
+  servings the factor is kept. A meal that was never scaled names no head count either, so the new
+  recipe starts where planning it fresh would: the household size below when one is set, as written
+  otherwise. (Before the household size existed this read "the factor is kept" for that case too,
+  which is still what happens with it unset.)
+- **A household size is where a planned recipe starts, never what it is** (`householdServings`,
+  "Usually cooking for", #2910). `planMeal` turns it into the new meal's factor through the recipe's
+  own servings (`householdScale`), so a household of four planning a recipe for two gets 2× without
+  a trip into the meal's sheet. It is **0, not set, by default**, which keeps "a plan is allowed not
+  to have answered how much you're making" the default answer. It stays as written wherever there is
+  no head count to divide by (no servings stated) or nothing to change (the household falls inside
+  the recipe's stated range), and it is per meal from then on: changing the setting rescales nothing
+  already planned, and the meal's own chips and stepper still change it. A per-recipe "last time you
+  made this for N" was the other option and was rejected: one party night would silently set the
+  size of every later plan of that dish, where a stated household size is one number the person
+  chose and can see in Settings.
 - **Factor chips are the floor, a servings stepper is layered on where it can be.** `Recipe.servings`
-  is nullable and plenty of recipes never had one, so the chips (`½× 1× 1½× 2× 3×`) are what's always
+  is nullable and plenty of recipes never had one, so the chips (`RECIPE_SCALE_FACTORS`: ¼× through 3×) are what's always
   available. When a recipe does know its own count, `RecipeScaleChips` also renders a `CountStepper`
   targeting servings directly — the open-ended-number case this app otherwise reaches for a stepper
   over a chip row for (see `CountStepper`'s own doc comment). `recipeScale.factorForServings`/
@@ -608,8 +861,9 @@ amount, and answering that in the unit they already had answers nothing.
   **editable fields deliberately don't convert** (`RecipeIngredientSheet`, `GroceryItemSheet`) and
   neither do the previews of text about to be *saved* (`RecipeExtractSheet`, `RecipeCreateSheet`,
   `GroceryAISheet`, `GroceryAddField`'s live token). A field you're about to write has to show what
-  will be written. The read-only pills are the four that convert: the ingredient row on
-  `RecipeDetailScreen`, both add-to-list sheets, and `GroceryRow`.
+  will be written. Every read-only display converts (grep `convertQuantity` for the current set:
+  the recipe screen's ingredient rows, the add-to-list sheets, `GroceryRow`, cook mode and its
+  recap, the share text, and the step-text amounts among them).
 - **Converted text is always marked `≈`**, because every conversion here rounds (below). One
   character at every render site, rather than a styling change at each one — and it's what stops a
   converted number reading as the recipe's own words. On `RecipeDetailScreen` a converted pill also
@@ -644,6 +898,29 @@ amount, and answering that in the unit they already had answers nothing.
   it's still the app re-expressing an amount the recipe didn't say. Bounded to under a whole unit
   on purpose — "2.4 cups" stays in cups, since spreading it as "2 cups + 6 2/5 tbsp" is a mixed-unit
   feature this doesn't attempt.
+
+## A line's weight beside its measure (`lineWeight.ts`)
+
+A recipe line written in cups, spoons or pieces shows a weight under its quantity pill on
+`RecipeDetailScreen` and in both of `CookModeSheet`'s ingredient lists ("4 tbsp" over "≈57 g")
+whenever the ingredient's catalog food can say what that measure weighs. The shared recipe and the
+copied ingredients carry it too, in parentheses after the name ("4 tbsp butter (≈57 g),
+softened"), so what's sent matches the page; `shareText.ts` takes the lookups as an option
+(`weights`) rather than reading a store. Every surface calls `ingredientWeightText` with the scaled
+amount *before* unit conversion, since weighing an already-rounded figure compounds the rounding.
+
+- **Only from the food's own portion table**, through `gramsForLine`, the same function the
+  nutrition rollup uses. No global density, and every refusal it makes (a chopped cup vs a sliced
+  cup with no prep to pick, a bare count against small/medium/large) is a missing caption here. A
+  portion the user weighed themselves (`FoodPortion.custom`, the "weigh it" remedy) counts the same
+  as a stated one, so weighing a spoonful once puts a weight on every recipe using that food.
+- **No caption for a line already written as a weight, or for a range.** `gramsForLine` takes a
+  range's low end, which is right for a calorie count and wrong for a caption that reads as the
+  whole line's weight.
+- **Whole grams, not `roundMetric`'s steps** (`formatScaleWeight`). The steps are for restating a
+  recipe's measure the way a chart prints it; this is a number somebody pours to, and a cup they
+  weighed at 125 g must not read back as "≈130 g". A `us` reader gets ounces and pounds.
+- **Display only.** Nothing is written to the recipe, same posture as unit conversion above.
 
 ## Cook mode (`cookMode.ts`) — the method one step at a time
 
@@ -686,13 +963,37 @@ ingredient panel's fold die with the modal.
   and logging one. It takes an undefined recipe so a screen can call it above its own "the row is
   gone" guard — and `CookModeSheet` passes `visible ? recipe : undefined`, since a modal mounted
   invisible must not hold a once-a-second interval open.
+- **The either/or picks are made here, not before.** Cook mode used to resolve every group to its
+  default and ignore the recipe screen's chips, so the only way to cook the jalapeño version was to
+  remember to pick it before pressing Cook, and forgetting meant backing out and starting over.
+  `CookModeSheet` now takes the screen's `choices` and hands every pick back (`onChoicesChange`),
+  one state rather than a copy, so what's picked at the stove is still the pick for the cost,
+  nutrition and food-log reads afterwards. Mise en place shows every group above the list it
+  changes; the mid-step ingredient panel shows only the ingredient groups, because swapping a
+  *component* rewrites the method under the step being read, and that belongs one Back away on the
+  mise en place screen. `cookSteps` gets the same resolution, so a component pick changes the steps
+  too. Opening a recipe from a planned meal seeds the screen from `MealPlanEntry.recipeChoices`
+  (the `choices` route param), and its scale from `recipeScale` (`scale`), whether it was opened
+  from the Meal Plan screen or from the meal's own task on Today (whose link names the entry and
+  resolves it when tapped, `plannedRecipeParams`); nothing picked on the recipe screen or in cook
+  mode is written back to the entry.
 - **Quantities are the panel's, never the step's.** The ingredient panel runs the same
   scale-then-convert pipeline the recipe row does (exact multiplication first, rounding conversion
   second), so a halved recipe reads correctly mid-step. Nothing parses an amount back *out* of a
   sentence: what a step says about an ingredient it names comes from that ingredient's own line,
   through the same pipeline — see Ingredient references below.
-- **Nothing is ticked off by itself.** Finishing the last step closes the sheet and logs nothing —
-  logging a cook time is the timer's own ✓, the same call `timer.ts` makes about a countdown.
+- **Nothing is ticked off by itself, but finishing offers.** Done on the last step logs nothing —
+  logging a cook time is the timer's own ✓, the same call `timer.ts` makes about a countdown. It
+  used to close the sheet as well, which left the cook back on the recipe screen with the rating,
+  leftovers and pantry questions behind an unlabelled flame in the header. So it now opens an end
+  screen (Back returns to the last step) whose primary button is **Log as cooked**, the same
+  `cookRecipeNow` the recipe screen runs, with Add to food log beside it where the recipe's
+  nutrition is known. Both are offers a person taps, never a write on Done, and both close cook
+  mode in the same handler that raises their sheet, so the recap and the food-log prompt (mounted
+  in `AppNavigator`) are never siblings of a visible cook mode. On the recipe screen the same two
+  verbs sit behind one labelled "Made it" control rather than two glyphs; it is a menu even when
+  only one of them applies, because `lastCookedAt` steers suggestions for weeks and a stray tap on
+  a header icon shouldn't move it.
 - **`useKeepAwake` is called from inside the Modal's content** (`ScreenAwake`), not at the top of
   the sheet: the sheet stays mounted with `visible` false, and a lock taken there would hold the
   phone awake for the rest of the session. `expo-keep-awake` was already in the tree as one of
@@ -792,7 +1093,7 @@ cannot have: the context.
   milk is owed that fact when the sauce won't thicken.
 - **It asks; it never writes.** The answer is screen state, gone with the step — the same call
   cook mode already makes about the position and the panel's fold. Nothing rewrites the step,
-  nothing starts a timer off the answer (a parse that *acted* is what `stepDurations` refuses, and
+  nothing starts a timer off the answer (a parse that *acted* is what `stepTimers.ts`'s `parseStepDurations`/`stepDurationOffers` refuse, and
   a model sentence is a weaker source than the recipe's own), and the recipe gains nothing until
   someone presses Keep.
 - **One question, one answer, no transcript.** A scrolling log of turns is the shape this screen
@@ -832,7 +1133,7 @@ cannot have: the context.
   ordinary note about the step either way. That field commits on blur rather than per keystroke,
   unlike the length stepper next to it, because a press is one discrete value and typed prose is
   not.
-- **`cookHelp` takes Sonnet by default**, the third feature to do so, and for the reason
+- **`cookHelp` takes Sonnet by default** (`aiFeatures.ts` says which others do), for the reason
   `receiptImport` gives: the cost difference per question is a fraction of a cent and the expensive
   failure is a confident wrong answer about whether something is cooked through. It has no
   on-device arm — a free question over a whole ingredient list wants world knowledge and more
@@ -889,6 +1190,27 @@ through a locked phone, and outlives the sheet.
   timer belongs to the footer: pressing Next must not take a running countdown off screen, and Pause
   has to be reachable without navigating back to the step that started it. The recipe screen shows
   the same rows on its timer card, since closing cook mode mid-timer is the ordinary thing to do.
+- **A row is sized for a knuckle and named by the step's own words.** Every control on
+  `StepTimerRow` is at least 44pt, with no `hitSlop` reaching into a neighbour, and Cancel sits a
+  wider gap from Pause and asks first while the timer still has time left (`stepTimerCancelPrompt`;
+  dismissing one that has rung stays one tap, since nothing is lost). The countdown is `font.lg`.
+  Two rows labelled "Step 2 of 12" and "Step 5 of 12" made the cook remember which step was the
+  rice, so a timer now stores `stepExcerpt` when it starts: the clause of the step holding the
+  duration, cut at a word (`stepTimerExcerpt`). It is the recipe's own words, never a summary, and
+  it gets a full-width line of its own under the controls, since squeezed beside three 44pt
+  buttons it came out as "Simmer the r…". It is stored rather than derived for the reason
+  `stepLabel` is: the row reads without the recipe and survives an edit to the step.
+- **The recipe's own prep and cook rows got the same sizes**, since they share the card and the
+  cook mode footer with the step rows. `RecipeTimerRow`'s controls are 44pt with no `hitSlop`, its
+  clock is `font.lg` with the state after it (`recipeTimerClock`), and Reset asks first while there
+  is time on it (`recipeTimerResetPrompt`), because what it throws away is a time that was about to
+  be logged, overrun included. Two things differ from the step row on purpose. Reset sits furthest
+  from the primary button rather than beyond it, because a recipe timer has an idle state the step
+  row lacks: keeping the primary at the trailing edge in every state is what makes Start become
+  Pause under the same finger, where the step row's order would move it a slot in the moment a
+  cook began. And an idle row says what starting it would do ("Cook for 45m") at `font.md`, a step
+  under the clock, since most recipes are never timed and two idle rows at clock size would shout
+  on every one of them.
 - **A rung timer sinks to the bottom of the stack rather than jumping to the top.** It's the one row
   that wants dealing with, which argues for the top — but the stack is what a thumb aims at with
   hands full, and a row that jumps as it rings moves Pause out from under a finger already on its

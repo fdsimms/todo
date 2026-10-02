@@ -15,6 +15,7 @@ import { EmptyState } from './EmptyState';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
 import type { GroceryItem } from '../types';
+import { useFilterField } from '../hooks/useFilterField';
 
 interface Props {
   visible: boolean;
@@ -58,14 +59,14 @@ export function MergeItemSheet({ visible, itemId, initialPickedId, onClose, onMe
 
   const item = items.find(i => i.id === itemId) ?? null;
 
-  const [query, setQuery] = useState('');
+  const { query, clear: clearQuery, props: filterField } = useFilterField();
   const [pickedId, setPickedId] = useState<string | null>(null);
 
   // The sheet stays mounted with `visible` toggling, so a fresh open has to
   // reseed state rather than relying on a mount-time default.
   useEffect(() => {
     if (visible) {
-      setQuery('');
+      clearQuery();
       setPickedId(initialPickedId ?? null);
     }
   }, [visible, initialPickedId]);
@@ -85,7 +86,7 @@ export function MergeItemSheet({ visible, itemId, initialPickedId, onClose, onMe
   }, [items, item, typed, typedKey]);
 
   const reset = () => {
-    setQuery('');
+    clearQuery();
     setPickedId(null);
   };
 
@@ -183,8 +184,7 @@ export function MergeItemSheet({ visible, itemId, initialPickedId, onClose, onMe
               <Ionicons name="search" size={iconSize.sm} color={colors.textTertiary} />
               <TextInput
                 style={styles.search}
-                value={query}
-                onChangeText={setQuery}
+                {...filterField}
                 placeholder="Find an item…"
                 placeholderTextColor={colors.textTertiary}
                 autoCorrect={false}

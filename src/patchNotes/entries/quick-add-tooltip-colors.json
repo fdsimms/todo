@@ -1,0 +1,4 @@
+{
+  "message": "Fixed a color mismatch in the quick-add parse tooltip: the arrow was a slightly different blue than the bubble, and the line next to the ✕ button rendered too dark.",
+  "date": "2026-09-28"
+}

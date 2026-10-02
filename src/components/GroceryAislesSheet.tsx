@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import {
   Keyboard,
   View,
@@ -32,10 +32,18 @@ import { PillGroup } from './PillGroup';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { EmptyState } from './EmptyState';
 import { OTHER_AISLE, isNonFoodAisle } from '../utils/groceryAisles';
-import { describeShopAisles, itemCountsByShop } from '../utils/groceryShops';
+import {
+  describeOwnAisleOrders,
+  describeShopAisles,
+  describeShopDelete,
+  itemCountsByShop,
+  NO_STORE_LABEL,
+  shopWalkOrder,
+} from '../utils/groceryShops';
+import { resolveActiveTrip } from '../utils/activeTrip';
 import { haptics } from '../utils/haptics';
 import { confirmDelete } from '../utils/confirmDelete';
-import { AISLE_NAME_MAX_LENGTH, SHOP_NAME_MAX_LENGTH, type Shop } from '../types';
+import { AISLE_NAME_MAX_LENGTH, SHOP_NAME_MAX_LENGTH, type GroceryGroupBy, type Shop } from '../types';
 
 interface Props {
   visible: boolean;
@@ -59,6 +67,20 @@ const TAB_OPTIONS: SegmentOption<Tab>[] = [
   { value: 'stores', label: 'Stores' },
   { value: 'groupBy', label: 'Group by' },
 ];
+
+// Map of this file (one component holding most of it, and its three tabs;
+// `grep -n '// ===='` is the table of contents of the main one):
+//   bindings       theme, and every store value and action the tabs use
+//   state          the tab, the add and rename drafts, the open store range,
+//                  and the focus each tab takes when it opens
+//   stores         adding, renaming and deleting a store
+//   trip           the store being arranged during a trip (#2938): its walk,
+//                  the reorder that writes it, and "Use the usual order"
+//   aisles         the counts, renaming, deleting and adding an aisle
+//   render         Done, then the sheet: the tab control, StoresTab or
+//                  GroupByTab, or the Aisles tab inline (the trip card, the
+//                  intro and the draggable walk with Other pinned under it)
+// Below the component: StoresTab, GroupByTab, then styles.
 
 /**
  * Where things are, and how the list itself is organized: the order you walk
@@ -91,8 +113,19 @@ const TAB_OPTIONS: SegmentOption<Tab>[] = [
  * 'Other' is pinned last and can't be dragged — it's the catch-all every
  * unrecognised item falls into, and a catch-all in the middle of a walk order
  * is never what anyone meant.
+ *
+ * **During a trip the Aisles tab arranges that store's walk, not the usual
+ * one** (#2938, `Shop.aisleOrder`). Standing in the store is the one moment
+ * anybody knows its layout, and it is the order the list is following right
+ * then, so it is the order a drag here should change. A card above the rows
+ * says so, and carries the way back ("Use the usual order") once the store
+ * has an order of its own. Rename, delete and the non-food flag stay about
+ * the aisle itself and apply at every store, which the tab also says. With no
+ * trip running the tab arranges the usual order, and names any store that
+ * keeps its own so a reorder that "didn't take" there isn't a mystery.
  */
 export function GroceryAislesSheet({ visible, onClose }: Props) {
+  // ==== bindings ====
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -115,9 +148,13 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
   const deleteShop = useGroceryStore(s => s.deleteShop);
   const setShopExcludedFromSuggestions = useGroceryStore(s => s.setShopExcludedFromSuggestions);
   const setShopAisles = useGroceryStore(s => s.setShopAisles);
+  const setShopAisleOrder = useGroceryStore(s => s.setShopAisleOrder);
+  const tripShopId = useGroceryStore(s => s.tripShopId);
+  const tripStartedAt = useGroceryStore(s => s.tripStartedAt);
   const groceryGroupBy = useGroceryStore(s => s.groceryGroupBy);
   const setGroceryGroupBy = useGroceryStore(s => s.setGroceryGroupBy);
 
+  // ==== state ====
   const [tab, setTab] = useState<Tab>('aisles');
   const [newAisle, setNewAisle] = useState('');
   const [newShop, setNewShop] = useState('');
@@ -133,6 +170,9 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
   // is only where the user is in the form. See StoresTabProps.scopedDrafts.
   const [rangeShopId, setRangeShopId] = useState<string | null>(null);
   const [scopedDrafts, setScopedDrafts] = useState<ReadonlySet<string>>(() => new Set());
+
+  const newAisleInputRef = useRef<TextInput>(null);
+  const newShopInputRef = useRef<TextInput>(null);
 
   useEffect(() => {
     if (visible) {
@@ -150,6 +190,25 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
     }
   }, [visible]);
 
+  // Fires on open (tab is forced to 'aisles' above) and on every manual tab
+  // switch. Unlike the rename fields above (which remount fresh because
+  // they're conditional on `editing`), this sheet stays mounted across opens,
+  // so a bare `autoFocus` on the add fields would only ever fire once.
+  //
+  // The aisles tab focuses its add field only while it has no aisles yet.
+  // With a list to reorder, which is what the sheet is usually opened for,
+  // the keyboard came up over the bottom half of it and the list scrolled to
+  // the field in its footer. Read at the moment of opening rather than kept
+  // in the deps, so adding the first aisle doesn't pull focus back.
+  const hasAisleRows = aisleOrder.some(a => a !== OTHER_AISLE);
+  useEffect(() => {
+    if (!visible) return;
+    if (tab === 'aisles') {
+      if (!hasAisleRows) newAisleInputRef.current?.focus();
+    } else if (tab === 'stores') newShopInputRef.current?.focus();
+  }, [visible, tab]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ==== stores ====
   const shopCounts = useMemo(() => itemCountsByShop(items, itemShops), [items, itemShops]);
 
   const handleAddShop = () => {
@@ -175,12 +234,11 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
   };
 
   const confirmDeleteShop = (id: string, name: string) => {
-    const count = shopCounts.get(id) ?? 0;
+    // Read at the tap: the aliases and the trip matter to this message only.
+    const { storeAliases, tripShopId } = useGroceryStore.getState();
     confirmDelete({
       title: `Delete ${name}?`,
-      message: count > 0
-        ? `${count} ${count === 1 ? 'item is' : 'items are'} recorded as coming from here. Deleting the store forgets that. The items themselves stay. This can’t be undone.`
-        : 'Nothing is recorded against this store yet.',
+      message: describeShopDelete(id, items, itemShops, storeAliases, tripShopId),
       onConfirm: () => {
         deleteShop(id);
         haptics.warning();
@@ -188,10 +246,46 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
     });
   };
 
-  // 'Other' rides along at the bottom outside the draggable set, so a drag can
-  // never land something below it.
-  const draggable = useMemo(() => aisleOrder.filter(a => a !== OTHER_AISLE), [aisleOrder]);
+  // ==== trip ====
+  // The store you're standing in, if you've said: while there, the Aisles tab
+  // arranges its walk rather than the usual one (#2938). Only a trip
+  // resolveActiveTrip still honors, and re-read on every open (`visible` in the
+  // deps), so a trip that aged out while the sheet was closed isn't arranged.
+  const tripShop = useMemo(
+    () => (visible ? resolveActiveTrip(tripShopId, tripStartedAt, shops, new Date()) : null),
+    [visible, tripShopId, tripStartedAt, shops]
+  );
+  const ownOrders = useMemo(() => describeOwnAisleOrders(shops), [shops]);
 
+  // 'Other' rides along at the bottom outside the draggable set, so a drag can
+  // never land something below it. During a trip this is the store's own walk
+  // (shopWalkOrder, so an aisle it was never arranged with still has a row).
+  const draggable = useMemo(
+    () =>
+      shopWalkOrder(tripShop?.aisleOrder ?? null, aisleOrder).filter(a => a !== OTHER_AISLE),
+    [tripShop, aisleOrder]
+  );
+
+  const handleReorder = (reordered: string[]) => {
+    if (tripShop) setShopAisleOrder(tripShop.id, reordered);
+    else setAisleOrder(reordered);
+  };
+
+  const confirmUsualOrder = () => {
+    if (!tripShop) return;
+    const { id, name } = tripShop;
+    confirmDelete({
+      title: `Use the usual order at ${name}?`,
+      message: `The order you set for ${name} is removed, and the list follows the usual order there.`,
+      confirmLabel: 'Use usual order',
+      onConfirm: () => {
+        setShopAisleOrder(id, null);
+        haptics.success();
+      },
+    });
+  };
+
+  // ==== aisles ====
   // On the active list, like every other count the Groceries tab shows.
   const listRows = useMemo(
     () => itemsOnList(items, listEntries, activeListId),
@@ -230,10 +324,19 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
     // there's nothing to celebrate. `aisleOrder` is the pre-call snapshot.
     const created = addAisle(newAisle);
     if (!created) return;
-    if (!aisleOrder.includes(created)) haptics.success();
+    if (!aisleOrder.includes(created)) {
+      haptics.success();
+      // Arranging a store, a new aisle goes where the field is: at the bottom
+      // of the walk on screen. Left to shopWalkOrder it would sit after the
+      // usual order's last aisle, which in this store's walk can be anywhere.
+      // A store still on the usual order needs nothing, since that already is
+      // the bottom.
+      if (tripShop?.aisleOrder) setShopAisleOrder(tripShop.id, [...draggable, created]);
+    }
     setNewAisle('');
   };
 
+  // ==== render ====
   // Both renames commit on blur, but tapping Done can beat that blur — flush
   // whichever one is mid-edit instead of dropping it, same fix as
   // GroceryItemSheet's Done button.
@@ -281,6 +384,7 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
             shopCounts={shopCounts}
             newShop={newShop}
             setNewShop={setNewShop}
+            newShopInputRef={newShopInputRef}
             onAdd={handleAddShop}
             editingShopId={editingShopId}
             editingName={editingName}
@@ -336,11 +440,44 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
           />
         ) : (
         <>
-        <Text style={styles.intro}>
-          Hold a row and drag it into the order you walk your store. Your list follows the same
-          order. Tap a name to rename it. Mark an aisle not food to keep it out of nutrition and
-          food log prompts.
-        </Text>
+        {tripShop ? (
+          <>
+            <View style={styles.tripCard}>
+              <View style={styles.tripCardHead}>
+                <Ionicons name="storefront-outline" size={iconSize.sm} color={colors.accent} />
+                <Text style={styles.tripCardTitle} numberOfLines={2}>
+                  Order at {tripShop.name}
+                </Text>
+              </View>
+              <Text style={styles.tripCardText}>
+                {tripShop.aisleOrder
+                  ? 'You\u2019re shopping here, so the list follows this order. Dragging below changes it for this store only.'
+                  : 'You\u2019re shopping here, so dragging below changes the order for this store only. Until you move something, it follows the usual order.'}
+              </Text>
+              {tripShop.aisleOrder && (
+                <InlineAction
+                  label="Use the usual order"
+                  icon="refresh"
+                  variant="neutral"
+                  surface="card"
+                  onPress={confirmUsualOrder}
+                  accessibilityLabel={`Use the usual order at ${tripShop.name}`}
+                  style={styles.tripCardAction}
+                />
+              )}
+            </View>
+            <Text style={styles.intro}>
+              Tap a name to rename it. Mark an aisle not food to keep it out of nutrition and food
+              log prompts. Both apply at every store.
+            </Text>
+          </>
+        ) : (
+          <Text style={styles.intro}>
+            Hold a row and drag it into the order you walk your store. Your list follows the same
+            order. Tap a name to rename it. Mark an aisle not food to keep it out of nutrition and
+            food log prompts.{ownOrders ? ` ${ownOrders}` : ''}
+          </Text>
+        )}
 
         <ReorderableList
           data={draggable}
@@ -351,7 +488,7 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
           // and unthrottled ticks run together into one long buzz. The lift
           // itself is fired by ReorderableList.
           onHoverChange={haptics.dragTick}
-          onReorder={reordered => setAisleOrder(reordered)}
+          onReorder={handleReorder}
           renderItem={({ item: aisle, drag, isActive }) => {
             const count = countFor(aisle);
             const editing = aisle === editingAisle;
@@ -443,6 +580,7 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
 
               <View style={styles.addWrap}>
                 <TextInput
+                  ref={newAisleInputRef}
                   style={styles.addInput}
                   value={newAisle}
                   onChangeText={setNewAisle}
@@ -482,6 +620,7 @@ interface StoresTabProps {
   shopCounts: Map<string, number>;
   newShop: string;
   setNewShop: (s: string) => void;
+  newShopInputRef: React.RefObject<TextInput | null>;
   onAdd: () => void;
   editingShopId: string | null;
   editingName: string;
@@ -522,6 +661,7 @@ function StoresTab({
   shopCounts,
   newShop,
   setNewShop,
+  newShopInputRef,
   onAdd,
   editingShopId,
   editingName,
@@ -716,6 +856,7 @@ function StoresTab({
         ListFooterComponent={
           <View style={styles.addWrap}>
             <TextInput
+              ref={newShopInputRef}
               style={styles.addInput}
               value={newShop}
               onChangeText={setNewShop}
@@ -746,15 +887,19 @@ function StoresTab({
 
 interface GroupByTabProps {
   styles: ReturnType<typeof makeStyles>;
-  groupBy: 'aisle' | 'recipe';
-  onChange: (groupBy: 'aisle' | 'recipe') => void;
+  groupBy: GroceryGroupBy;
+  onChange: (groupBy: GroceryGroupBy) => void;
 }
 
 /**
- * Aisle vs. recipe grouping (#1717) — a closed two-way choice, so
+ * Aisle, recipe or store grouping (#1717, #2938) — a closed choice, so
  * SegmentedControl rather than another draggable list. Wrapped in a card:
  * the control's own track is bgTertiary, which is close to invisible sitting
  * directly on this sheet's bg (see SegmentedControl's doc comment).
+ *
+ * The store hint names the away-list exception because it is the one place
+ * the choice is not honored: GroceryScreen shows an away list by aisle
+ * whatever is picked here, since every store on record is one near home.
  */
 function GroupByTab({ styles, groupBy, onChange }: GroupByTabProps) {
   return (
@@ -770,12 +915,15 @@ function GroupByTab({ styles, groupBy, onChange }: GroupByTabProps) {
           options={[
             { value: 'aisle', label: 'Aisle' },
             { value: 'recipe', label: 'Recipe' },
+            { value: 'store', label: 'Store' },
           ]}
         />
         <Text style={styles.groupByHint}>
           {groupBy === 'recipe'
             ? 'Items are grouped by the recipe they were added from. Anything typed by hand, or added from more than one recipe at once, is under "No recipe."'
-            : 'Items are grouped by aisle, in the walk order set on the Aisles tab.'}
+            : groupBy === 'store'
+              ? `Items are grouped by the store you usually buy them at, or the one store you\u2019ve linked them to. Each store keeps its own aisle order if it has one, or your usual order. Anything else is under "${NO_STORE_LABEL}." Away lists stay grouped by aisle.`
+              : 'Items are grouped by aisle, in the walk order set on the Aisles tab. A store with its own order uses it while you\u2019re shopping there.'}
         </Text>
       </View>
     </>
@@ -883,5 +1031,27 @@ function makeStyles(colors: Colors) {
       gap: spacing.sm,
     },
     groupByHint: { fontSize: font.sm, color: colors.textTertiary },
+    // The store being arranged, above its walk. A card on the sheet's bg like
+    // the Group by one, spaced on both sides: the tab control above has no
+    // bottom margin and the intro below only its own top padding.
+    tripCard: {
+      backgroundColor: colors.bgSecondary,
+      borderRadius: radius.md,
+      padding: spacing.md,
+      marginHorizontal: spacing.md,
+      marginTop: spacing.md,
+      gap: spacing.sm,
+    },
+    tripCardHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+    tripCardTitle: {
+      flexShrink: 1,
+      fontSize: font.md,
+      fontWeight: fontWeight.semibold,
+      color: colors.text,
+    },
+    // textSecondary rather than the intro's tertiary: this says which walk a
+    // drag changes, which is information, not an aside.
+    tripCardText: { fontSize: font.sm, color: colors.textSecondary, lineHeight: 19 },
+    tripCardAction: { alignSelf: 'flex-start', marginTop: spacing.xxs },
   });
 }

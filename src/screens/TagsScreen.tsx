@@ -39,6 +39,7 @@ import {
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { confirmBulkSetWhen } from '../utils/scheduleMovePrompt';
 import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
 import { tagColor } from '../utils/tagColor';
@@ -60,7 +61,6 @@ export function TagsScreen() {
   const bulkCompleteTasks = useTaskStore(s => s.bulkCompleteTasks);
   const bulkMarkMissed = useTaskStore(s => s.bulkMarkMissed);
   const bulkSetPriority = useTaskStore(s => s.bulkSetPriority);
-  const bulkSetWhen = useTaskStore(s => s.bulkSetWhen);
   const bulkSetCategory = useTaskStore(s => s.bulkSetCategory);
   const bulkAddTags = useTaskStore(s => s.bulkAddTags);
   const colors = useColors();
@@ -305,8 +305,9 @@ export function TagsScreen() {
         />
 
         {/* Tag detail modal. Rows are TaskItem, whose own inline title/subtask
-            fields can still hold focus when the sheet closes — dismiss the
-            keyboard first, same freeze bug fixed elsewhere. */}
+            fields can still hold focus when the sheet closes. SheetModal holds
+            the close until the keyboard is gone; the dismiss here only starts
+            it moving sooner. */}
         <SheetModal
           visible={selectedTag !== null}
           animationType="slide"
@@ -392,7 +393,7 @@ export function TagsScreen() {
                 onComplete={handleBulkComplete}
                 completableCount={completableCount}
                 onDelete={handleBulkDelete}
-                onSetWhen={(date, segs) => { bulkSetWhen(Array.from(selectedIds), date, segs); exitSelection(); }}
+                onSetWhen={(date, segs) => confirmBulkSetWhen(Array.from(selectedIds), date, segs, exitSelection)}
                 onSetCategory={category => { bulkSetCategory(Array.from(selectedIds), category); exitSelection(); }}
                 onAddTags={tags => { bulkAddTags(Array.from(selectedIds), tags); exitSelection(); }}
                 onSetPriority={p => { bulkSetPriority(Array.from(selectedIds), p); exitSelection(); }}

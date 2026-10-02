@@ -3,7 +3,7 @@ import { Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
-import { useRoute } from '@react-navigation/native';
+import { useFocusEffect, useRoute } from '@react-navigation/native';
 import { useShallow } from 'zustand/react/shallow';
 import { addDays } from 'date-fns/addDays';
 import { format } from 'date-fns/format';
@@ -11,26 +11,38 @@ import { useColors } from '../theme/ThemeContext';
 import { flattenOverlay, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { MEAL_SLOTS, MEAL_SLOT_ICONS, MEAL_SLOT_LABELS, type FoodLogEntry, type MealSlot } from '../types';
 import { useFoodLogStore } from '../store/useFoodLogStore';
+import { useMealPlanStore } from '../store/useMealPlanStore';
+import {
+  describeDayCoverage,
+  describePlannedSlot,
+  unloggedPlannedSlots,
+  type SlotCoverage,
+} from '../utils/mealLogCoverage';
 import { useSavedMealsStore } from '../store/useSavedMealsStore';
-import { dayKeyOf, dayKeyToDate, getCurrentDayStart } from '../utils/dateUtils';
+import { dayKeyOf, dayKeyToDate, getCurrentDayStart, getLogicalDayKey, getLogicalToday } from '../utils/dateUtils';
 import { slotForHour } from '../utils/mealLog';
 import {
   describeFoodLogEntry,
   foodLogEntryEdit,
   foodLogSections,
   foodLogTotals,
+  logInstantFor,
   resolveFoodLogDrop,
+  wholeEstimate,
   type FoodLogListItem,
 } from '../utils/foodLog';
 import {
   describeWater,
   describeWaterDay,
+  isWaterEntry,
   waterEntryOf,
+  waterEntryQuantity,
   waterHelping,
   waterInUnit,
   waterRange,
   waterToMl,
   waterTotalMl,
+  type WaterUnit,
 } from '../utils/waterLog';
 import { NUTRIENT_LABEL } from '../utils/foodNutrition';
 import { AnimatedCollapsible } from '../components/AnimatedCollapsible';
@@ -42,19 +54,25 @@ import { useHealthStore } from '../store/useHealthStore';
 import { NUTRIENT_KEYS, type NutrientKey } from '../types';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
+import { featureHidden } from '../utils/simpleMode';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { CatalogLinkSheet } from '../components/CatalogLinkSheet';
+import { EstimateAmountSheet } from '../components/EstimateAmountSheet';
 import { ScanToLogFlow } from '../components/ScanToLogFlow';
 import { EstimateMealSheet } from '../components/EstimateMealSheet';
 import { useAiRoute } from '../hooks/useOnDeviceAi';
 import { EmptyState } from '../components/EmptyState';
+import { EmptyNote } from '../components/EmptyNote';
 import { HubPills } from '../components/HubPills';
+import { TipHost } from '../components/TipHost';
 import { InlineAction } from '../components/InlineAction';
 import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeader';
 import { FoodLogEntrySheet } from '../components/FoodLogEntrySheet';
 import { SavedMealsSheet } from '../components/SavedMealsSheet';
 import { NutrientContributorsSheet } from '../components/NutrientContributorsSheet';
 import { NutritionTargetsSheet } from '../components/NutritionTargetsSheet';
+import { CsvExportSheet } from '../components/CsvExportSheet';
+import { foodLogExportCsv, foodLogExportFileName, foodLogExportSummary } from '../utils/foodLogExport';
 import { WhenPicker } from '../components/WhenPicker';
 import { ReorderableList } from '../components/ReorderableList';
 import { SwipeableRow } from '../components/SwipeableRow';
@@ -117,6 +135,11 @@ function atTimeOf(entry: FoodLogEntry, day: Date): Date {
   const source = new Date(entry.atISO);
   const at = new Date(day);
   at.setHours(source.getHours(), source.getMinutes(), source.getSeconds(), source.getMilliseconds());
+  // A time before the day reset (a 12:40 AM snack under a 3 AM reset) sits in
+  // the small hours at the *end* of the chosen day, so it rolls onto the next
+  // calendar date — the rule `onLogicalDay` applies to every HH:MM. Set on the
+  // chosen date itself, it keyed under the day before the one picked.
+  if (getLogicalDayKey(at) !== dayKeyOf(day)) at.setDate(at.getDate() + 1);
   return at;
 }
 
@@ -141,6 +164,8 @@ export function FoodLogScreen() {
   }>();
 
   const entries = useFoodLogStore(useShallow(s => s.entries));
+  const totalCount = useFoodLogStore(s => s.totalCount);
+  const entriesSince = useFoodLogStore(s => s.entriesSince);
   const loadRange = useFoodLogStore(s => s.loadRange);
   const recentEntries = useFoodLogStore(s => s.recentEntries);
   const removeEntry = useFoodLogStore(s => s.removeEntry);
@@ -163,9 +188,20 @@ export function FoodLogScreen() {
   const waterUnit = useSettingsStore(s => s.waterUnit);
   const setWaterUnit = useSettingsStore(s => s.setWaterUnit);
   const waterExerciseBoost = useSettingsStore(useShallow(s => s.waterExerciseBoost));
-  const exerciseMinutesToday = useHealthStore(s => s.today?.exerciseMinutes ?? null);
+  // Both scan entry points (the header action and the entry sheet's Scan
+  // button) go in simplified mode, the gate GroceryScreen and KitchenScreen
+  // already put on theirs.
+  const simpleMode = useSettingsStore(s => s.simpleMode);
+  const scanShown = !featureHidden('barcodeScanning', simpleMode);
+  // Only a reading for the logical today counts. `today` is a snapshot that
+  // outlives the day reset until the next refresh, so read raw, the first
+  // minutes of a new day boosted its targets from yesterday's workout — the
+  // day-key check HealthSettings and Today already make.
+  const exerciseMinutesToday = useHealthStore(s =>
+    (s.today?.dayKey === dayKeyOf(getCurrentDayStart()) ? s.today.exerciseMinutes ?? null : null));
   const activeEnergyBoost = useSettingsStore(useShallow(s => s.activeEnergyBoost));
-  const activeEnergyToday = useHealthStore(s => s.today?.activeEnergyKcal ?? null);
+  const activeEnergyToday = useHealthStore(s =>
+    (s.today?.dayKey === dayKeyOf(getCurrentDayStart()) ? s.today.activeEnergyKcal ?? null : null));
   // Only for the catalog picker below; the scan flow keeps its own reads.
   const items = useGroceryStore(useShallow(s => s.items));
   const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
@@ -173,6 +209,15 @@ export function FoodLogScreen() {
   // rule `aiRouting.ts` states. This feature has no on-device engine, so the
   // route is 'claude' or 'unavailable' and nothing renders for the second.
   const estimateRoute = useAiRoute('nutritionEstimate');
+  // Searching a food database by name needs lookups on and a FoodData Central
+  // key, the same pair the entry sheet's own search checks. Read here only to
+  // decide whether the empty state may name the search as a way in.
+  const canSearchFoods = useSettingsStore(s => s.productLookupEnabled && !!s.fdcApiKey);
+  const entriesForDayLive = useMealPlanStore(s => s.entriesForDayLive);
+  const offerMealLog = useFoodLogStore(s => s.offerMealLog);
+  // A count rather than the array, so planning a meal re-reads the day without
+  // this screen re-rendering every time the Meal Plan screen pages a week.
+  const mealPlanCount = useMealPlanStore(s => s.entries.length);
 
   const [dayKey, setDayKey] = useState(() => dayKeyOf(getCurrentDayStart()));
   const [addingSlot, setAddingSlot] = useState<MealSlot | null>(null);
@@ -208,6 +253,12 @@ export function FoodLogScreen() {
   const [redatingEntry, setRedatingEntry] = useState<FoodLogEntry | null>(null);
   /** The entry being copied onto another day, opening the "Duplicate to" picker on it. */
   const [duplicatingEntry, setDuplicatingEntry] = useState<FoodLogEntry | null>(null);
+  /**
+   * The estimated entry whose amount is being changed, opening "Change
+   * amount" on it. See `estimateAmountPatch` for why an estimate gets this and
+   * not the editor.
+   */
+  const [amountEntry, setAmountEntry] = useState<FoodLogEntry | null>(null);
   // Plain useRowSelection, same as Templates/Projects/People: there is
   // nothing recurrence- or meal-plan-aware to reuse useTaskSelection's delete
   // flow for, only a confirm.
@@ -230,19 +281,17 @@ export function FoodLogScreen() {
   // only from Settings, Kitchen — a page away from the only figures they mean
   // anything against.
   const [targetsOpen, setTargetsOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
 
   const todayKey = dayKeyOf(getCurrentDayStart());
   const isToday = dayKey === todayKey;
   const dayDate = dayKeyToDate(dayKey);
   // The instant a new entry is stamped with. Today logs at the real moment;
-  // another day logs at midday, which is inside that logical day whichever way
-  // the reset time falls. Same reasoning `getLogicalToday` uses for noon.
-  const loggingAt = useMemo(() => {
-    if (isToday) return new Date();
-    const noon = new Date(dayDate);
-    noon.setHours(12, 0, 0, 0);
-    return noon;
-  }, [isToday, dayDate]);
+  // another day logs at midday — see `logInstantFor`, which the after-meal
+  // prompt and the planned meal's search sheet share. Worked out every render
+  // rather than memoized on the day: the screen stays mounted for hours, and a
+  // memo would stamp this evening's dinner with the moment the day was opened.
+  const loggingAt = logInstantFor(dayKey, todayKey);
 
   // Which meal to open the entry sheet on when nothing else picked one for it
   // (the FAB, the empty state, Meal plan's "Log food"). A guess rather than a
@@ -276,7 +325,57 @@ export function FoodLogScreen() {
     if (found) setEditingEntry(found);
   }, [route.params?.openEntry, handledOpenEntry, recentEntries]);
 
+  // The screen is a hidden tab and stays mounted for the life of the session,
+  // so stepping to another day and then leaving without stepping back would
+  // otherwise leave it stranded there on the next visit. Every arrival lands
+  // on today, except the one caller that names a specific day to open
+  // (`openEntry`, e.g. Meal plan's "View in food log") — that request is still
+  // pending its own effect above the first time focus fires for it.
+  useFocusEffect(
+    useCallback(() => {
+      const pendingEntry = route.params?.openEntry;
+      if (pendingEntry && pendingEntry.nonce !== handledOpenEntry) return;
+      setDayKey(dayKeyOf(getCurrentDayStart()));
+    }, [route.params?.openEntry, handledOpenEntry]),
+  );
+
+  // The other half of the day-plan read below: `mealPlanCount` misses a meal
+  // planned into a week the meal plan store wasn't holding, and coming back to
+  // this screen is exactly when that would show.
+  const [planNonce, setPlanNonce] = useState(0);
+  useFocusEffect(useCallback(() => { setPlanNonce(n => n + 1); }, []));
+
   const dayEntries = useMemo(() => entries.filter(e => e.dayKey === dayKey), [entries, dayKey]);
+  /**
+   * What the meal plan says this day was meant to be, and which of those meals
+   * the log has nothing for.
+   *
+   * The other half of the join `mealLogCoverage.ts` describes: the meal plan
+   * now shows which of its meals were logged, and this shows which of the
+   * day's planned meals still aren't. Read live rather than out of the meal
+   * plan store's loaded window, which follows whichever week the Meal Plan
+   * screen last had open and is routinely not this day — `entriesForDayLive`
+   * exists to make exactly that call.
+   *
+   * `mealPlanCount` is in the deps as the same kind of cheap change signal the
+   * Meal Plan screen reads the food log through: planning a meal elsewhere
+   * moves it, and a day key alone would leave this stale until the day
+   * changed. `planNonce` covers what it can't — see just above.
+   */
+  const dayPlan = useMemo(
+    () => entriesForDayLive(dayKey),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [dayKey, entriesForDayLive, mealPlanCount, planNonce],
+  );
+  const plannedOpen = useMemo(
+    () => unloggedPlannedSlots(dayPlan, dayEntries, dayKey),
+    [dayPlan, dayEntries, dayKey],
+  );
+  const plannedSummary = useMemo(
+    () => describeDayCoverage(dayPlan, dayEntries, dayKey),
+    [dayPlan, dayEntries, dayKey],
+  );
+
   const sections = useMemo(() => foodLogSections(dayEntries), [dayEntries]);
   // Keyed once rather than searched per header row: `renderItem` ran a `find`
   // over the sections for every header it drew.
@@ -413,6 +512,12 @@ export function FoodLogScreen() {
       foodLogEntryEdit(entry)
         ? { text: 'Edit', onPress: () => setEditingEntry(entry) }
         : { text: 'Rename', onPress: () => handleRename(entry) },
+      // A described meal has no panel for Edit to re-measure against, but
+      // more or less of what the model stated needs none. See
+      // `estimateAmountPatch`.
+      ...(wholeEstimate(entry)
+        ? [{ text: 'Change amount…', onPress: () => setAmountEntry(entry) }]
+        : []),
       {
         text: 'Move to meal',
         onPress: () => Alert.alert('Move to meal', undefined, [
@@ -421,12 +526,12 @@ export function FoodLogScreen() {
         ]),
       },
       {
-        text: entry.itemId ? 'File as a different item' : 'File as an item',
+        text: entry.itemId ? 'Link to a different grocery item' : 'Link to a grocery item',
         onPress: () => setLinkingEntry(entry),
       },
       ...(entry.itemId
         ? [{
-          text: 'Stop filing it as an item',
+          text: 'Remove the grocery item link',
           onPress: () => {
             // The box goes with the row: a product is one of an item's boxes,
             // so an entry pointing at a box and not at the item is a pointer
@@ -633,17 +738,291 @@ export function FoodLogScreen() {
   // bar — same arithmetic every other bulk-selecting list uses.
   const selectionListPadding = tabBarHeight + spacing.sm + bulkBarHeight + spacing.sm;
 
-  // Every nutrient the day actually stated, and the ones the card leads with —
-  // foodLogPinnedNutrients, chosen in the Nutrition sheet (defaults to
-  // calories and protein). Absent stays absent in both — see foodLogTotals.
+  // Every nutrient the day actually stated, plus any the person set a target
+  // for — a target is something to aim at for the whole day, so it belongs
+  // on the card before anything is logged against it, not only after.
+  // shownKeys is what the card leads with: foodLogPinnedNutrients, chosen in
+  // the Nutrition sheet (defaults to calories and protein).
   //
   // Water is dropped here because the card below it says the same figure
   // against the same target and can be pressed. Left in, it read twice on
   // every day anybody drank anything, once as a row nothing could act on.
-  const statedKeys = NUTRIENT_KEYS.filter(k => k !== 'waterMl' && totals.total[k] !== undefined);
+  const availableKeys = NUTRIENT_KEYS.filter(
+    k => k !== 'waterMl' && (totals.total[k] !== undefined || effectiveTargets[k] !== undefined),
+  );
   const shownKeys = allNutrients
-    ? statedKeys
-    : statedKeys.filter(k => foodLogPinnedNutrients.includes(k));
+    ? availableKeys
+    : availableKeys.filter(k => foodLogPinnedNutrients.includes(k));
+
+  /**
+   * The day's planned meals with nothing logged against them, and a tap that
+   * raises the meal's own offer to log it.
+   *
+   * **The same offer ticking the meal's "Eat" step raises** — `offerMealLog`
+   * in the food log store, which is where it moved to when this became its
+   * second caller. So a planned recipe gets the prompt that can measure it and
+   * anything else gets the search sheet prefilled with the meal's name, and
+   * either way the entry it writes carries `mealPlanEntryId` for free. Writing
+   * a second, plainer path in from here would have been a third way to log a
+   * planned meal that recorded less than the two that already existed.
+   *
+   * **Unlike the unattended offer, this ignores `mealLogPrompt`** — see the
+   * store action's own note. That switch stops the app interrupting; it was
+   * never meant to answer somebody tapping the thing.
+   *
+   * The whole row is the button, with a chevron as its only trailing element,
+   * rather than a name beside a "Log" pill: the name is data-derived and would
+   * lose the row to a fixed-width sibling (CLAUDE.md's rule about exactly
+   * that), and a row that opens something is the shape the rest of the app
+   * already uses for it.
+   */
+  const handleLogPlanned = useCallback(
+    (coverage: SlotCoverage) => {
+      const planned = coverage.planned[0];
+      if (!planned) return;
+      haptics.tap();
+      offerMealLog(planned, { asked: true });
+    },
+    [offerMealLog],
+  );
+
+  /**
+   * "Planned for today" — the meals the plan has an answer for and the log
+   * doesn't, plus how much of the day's plan is dealt with.
+   *
+   * Rendered in both branches below (inside the list's header on a day with
+   * entries, above the empty state on a day without), because the day with
+   * nothing logged is the one this most exists for and that is exactly the day
+   * the list isn't drawn at all.
+   */
+  const plannedCard = plannedOpen.length === 0 ? null : (
+    <View style={styles.plannedCard}>
+      <View style={styles.plannedHeader}>
+        <Text style={styles.plannedTitle}>{isToday ? 'Planned for today' : 'Planned that day'}</Text>
+        {!!plannedSummary && <Text style={styles.plannedSummary}>{plannedSummary}</Text>}
+      </View>
+      {plannedOpen.map(coverage => (
+        <TouchableOpacity
+          key={coverage.slot}
+          style={styles.plannedRow}
+          activeOpacity={interaction.activeOpacity}
+          onPress={() => handleLogPlanned(coverage)}
+          accessibilityRole="button"
+          accessibilityLabel={`Log ${describePlannedSlot(coverage)}`}
+          accessibilityHint="Double tap to log this planned meal."
+        >
+          <Ionicons
+            name={MEAL_SLOT_ICONS[coverage.slot] as keyof typeof Ionicons.glyphMap}
+            size={iconSize.sm}
+            color={colors.textSecondary}
+          />
+          <Text style={styles.plannedRowText} numberOfLines={1}>{describePlannedSlot(coverage)}</Text>
+          <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+
+  /**
+   * Water is its own card because it is the one figure on this
+   * screen you add to rather than read. It had a unit, a target
+   * range, a targets-sheet row and a parser arm and no way at all
+   * to log a glass, so the bar sat at zero all day (#2515).
+   *
+   * A stepper rather than a row of glass-size pills, which is
+   * `CountStepper`'s own argument: pills have to pick a size and a
+   * ceiling for everyone, and half a bottle is then unsayable. −
+   * at the floor clears the day, which is the undo.
+   *
+   * Rendered in both branches below, like `plannedCard`: a day with nothing
+   * logged yet is exactly the day somebody opens this to add a first glass,
+   * and the list (whose header this used to live in) isn't drawn on it.
+   */
+  const waterCard = (
+    <View style={styles.waterCard}>
+      <View style={styles.waterRow}>
+        <Ionicons name="water-outline" size={iconSize.sm} color={colors.textSecondary} />
+        <Text style={styles.waterLabel}>Water</Text>
+        {/* Two pills rather than a `SegmentedControl`: a unit beside
+            a stepper is one of the cases that component's own doc
+            comment lists as deliberately staying pills. */}
+        {(['ml', 'flOz'] as const).map(u => (
+          <TouchableOpacity
+            key={u}
+            style={[styles.waterUnit, waterUnit === u && styles.waterUnitOn]}
+            activeOpacity={interaction.activeOpacity}
+            onPress={() => { haptics.tap(); commitWater(); setWaterUnit(u); }}
+            accessibilityRole="button"
+            accessibilityState={{ selected: waterUnit === u }}
+            accessibilityLabel={u === 'ml' ? 'Show water in milliliters' : 'Show water in fluid ounces'}
+          >
+            <Text style={[styles.waterUnitText, waterUnit === u && styles.waterUnitTextOn]}>
+              {u === 'ml' ? 'ml' : 'fl oz'}
+            </Text>
+          </TouchableOpacity>
+        ))}
+        <CountStepper
+          value={waterInUnit(shownWaterMl, waterUnit)}
+          onChange={handleWaterChange}
+          min={waterBounds.min}
+          max={waterBounds.max}
+          step={waterBounds.step}
+          allowNull
+          emptyLabel="None"
+          format={n => describeWater(waterToMl(n, waterUnit), waterUnit)}
+          label="Water"
+          describeValue={n => (n === null
+            ? 'No water logged'
+            : describeWater(waterToMl(n, waterUnit), waterUnit))}
+        />
+      </View>
+      {/* Written by `describeWaterDay` rather than
+          `describeAgainstTarget`, so both halves come out in the same
+          shape the stepper above uses — see its note. It withholds on
+          a day with no water, and when the stepper has already said
+          the figure. */}
+      {waterLine !== null && <Text style={styles.waterTarget}>{waterLine}</Text>}
+      {appliedWaterBoostMl !== null && (
+        <Text style={styles.waterTarget}>
+          +{describeWater(appliedWaterBoostMl, waterUnit)} for {exerciseMinutesToday} min of exercise today
+        </Text>
+      )}
+      {effectiveWaterTarget !== undefined && shownDayWaterMl > 0 && (
+        <View style={styles.targetTrack}>
+          <View
+            style={[
+              styles.targetFill,
+              {
+                width: `${targetProgress('waterMl', shownDayWaterMl, waterTargets) * 100}%`,
+                backgroundColor: targetStatusColor(
+                  targetStatus('waterMl', shownDayWaterMl, waterTargets),
+                  colors,
+                ),
+              },
+            ]}
+          />
+        </View>
+      )}
+    </View>
+  );
+
+  // A nutrient's day total as its totals row words it, target included, so the
+  // contributors sheet can head its list with the same figure it was opened on.
+  const totalText = (key: NutrientKey): string =>
+    describeAgainstTarget(key, totals.total[key], effectiveTargets)
+      ?? `${Math.round(totals.total[key] as number).toLocaleString()}${NUTRIENT_LABEL[key].unit === 'cal' ? '' : NUTRIENT_LABEL[key].unit}`;
+
+  // What the log is, then the ways in this install actually has (#2928). Only
+  // the ones that would work are named: a search with no key or a scan
+  // simplified mode took away is a way in that isn't there.
+  const emptyWaysIn = [
+    'pick a food that has nutrition on it',
+    ...(scanShown ? ['scan a package'] : []),
+    ...(canSearchFoods ? ['search a food database'] : []),
+    ...(estimateRoute !== 'unavailable' ? ['describe a meal'] : []),
+  ];
+  const emptySubtitle = "Write down what you ate and see the day's totals. You can "
+    + (emptyWaysIn.length === 1
+      ? emptyWaysIn[0]
+      : `${emptyWaysIn.slice(0, -1).join(', ')} or ${emptyWaysIn[emptyWaysIn.length - 1]}`)
+    + '.';
+
+  // Shown whenever there's something to say — a stated nutrient or a target
+  // for one — regardless of whether the day has any entries yet. Withheld
+  // (in favor of the note or nothing below) only when there's neither, same
+  // as it always was for a day of unlinked entries.
+  const totalsCard = availableKeys.length === 0 ? (
+    dayEntries.length > 0 && !dayEntries.every(isWaterEntry) ? (
+      // availableKeys is empty whenever every one of the day's entries was
+      // logged with no nutrition and no target is set — a card with nothing
+      // in it read as a rendering glitch rather than a state. A day holding
+      // only the water row says nothing here, since the water card is its
+      // total.
+      <View style={styles.totalsEmptyNote}>
+        <EmptyNote icon="stats-chart-outline">
+          {`None of ${isToday ? "today's" : "this day's"} entries have nutrition on them yet. Link one to a food with nutrition to see totals here.`}
+        </EmptyNote>
+      </View>
+    ) : null
+  ) : (
+    <View style={styles.totalsCard}>
+      {shownKeys.map(key => (
+        <View key={key} style={styles.totalBlock}>
+        <TouchableOpacity
+          style={styles.totalRow}
+          activeOpacity={interaction.activeOpacity}
+          onPress={() => { haptics.tap(); setContributorsKey(key); }}
+          accessibilityRole="button"
+          accessibilityLabel={`See which entries contributed to ${NUTRIENT_LABEL[key].label.toLowerCase()}`}
+        >
+          <Text style={styles.totalLabel}>{NUTRIENT_LABEL[key].label}</Text>
+          <View style={styles.totalRight}>
+            {/* The target, when there is one, and nothing suggested
+                when there isn't — see nutritionTargets.ts. Reported
+                flat beside the figure rather than as a percentage or
+                a verdict: counts, never a score.
+
+                `describeAgainstTarget` writes both halves rather than
+                this file writing one and that module the other: the
+                hand-rolled pair here rounded the total with
+                `Math.round` and the target with `toLocaleString`, so
+                a heavy day read "1840 of 2,000 cal" — two number
+                formats on one line. */}
+            <Text style={styles.totalValue}>{totalText(key)}</Text>
+          </View>
+        </TouchableOpacity>
+        {/* Colored by distance from the target, never by direction:
+            whether being over a target is good or bad is not knowable
+            (somebody tracking protein wants to reach it, somebody
+            tracking sodium wants to stay under it), so `under` and
+            `over` get different but equally neutral colors and only
+            `met` — landing on the number chosen — gets green. See
+            `targetStatus`. */}
+        {effectiveTargets[key] !== undefined && (
+          <View style={styles.targetTrack}>
+            <View
+              style={[
+                styles.targetFill,
+                {
+                  width: `${targetProgress(key, totals.total[key], effectiveTargets) * 100}%`,
+                  backgroundColor: targetStatusColor(
+                    targetStatus(key, totals.total[key], effectiveTargets),
+                    colors,
+                  ),
+                },
+              ]}
+            />
+          </View>
+        )}
+        {/* Said out loud rather than folded silently into the figure
+            above: a target that moved is one the person should be
+            able to account for, which is the same reason
+            `WeightGoalSheet` prints its arithmetic beside its answer.
+            The reading is quoted too, so a figure that looks wrong
+            can be traced to the number it came from rather than to
+            this app. */}
+        {key === 'calorieKcal' && appliedActiveEnergyKcal > 0 && (
+          <Text style={styles.boostNote}>
+            +{appliedActiveEnergyKcal.toLocaleString()} cal from{' '}
+            {Math.round(activeEnergyToday as number).toLocaleString()} active calories in
+            Apple Health
+          </Text>
+        )}
+        </View>
+      ))}
+      {/* Withheld when expanding would add nothing. The list is
+          filtered to nutrients the day actually stated or has a target
+          for, so on a day of calories-and-protein-only entries the
+          toggle used to sit there doing visibly nothing when tapped. */}
+      {(allNutrients || availableKeys.length > shownKeys.length) && (
+        <InlineAction
+          label={allNutrients ? 'Show less' : 'Show every nutrient'}
+          variant="neutral"
+          onPress={() => { haptics.tap(); animateLayout(); setAllNutrients(v => !v); }}
+        />
+      )}
+    </View>
+  );
 
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
@@ -662,26 +1041,39 @@ export function FoodLogScreen() {
           // sparkles means "calls api.anthropic.com, needs a key" app-wide —
           // see the note in GroceryCatalogSheet on why a local heuristic uses
           // color-wand instead.
+          // Both of these render inside FoodLogEntrySheet's own Modal (see the
+          // note on `overlays` at its call site below), so they need that
+          // sheet's Modal presented too, or they have no view controller to
+          // present from and silently do nothing.
           ...(estimateRoute !== 'unavailable' ? [{
             icon: 'sparkles-outline',
-            onPress: () => { haptics.tap(); setAddingSlot(null); setEstimateSeed(''); setEstimateOpen(true); },
+            onPress: () => { haptics.tap(); setAddingSlot(guessedSlot); setEstimateSeed(''); setAddOpen(true); setEstimateOpen(true); },
             accessibilityLabel: 'Estimate a meal from a description',
           } satisfies ScreenHeaderAction] : []),
-          {
+          ...(scanShown ? [{
             icon: 'barcode-outline',
-            onPress: () => { haptics.tap(); setAddingSlot(null); setScanOpen(true); },
+            onPress: () => { haptics.tap(); setAddingSlot(guessedSlot); setAddOpen(true); setScanOpen(true); },
             accessibilityLabel: 'Scan a barcode to log',
-          },
+          } satisfies ScreenHeaderAction] : []),
           {
-            icon: 'flag-outline',
+            icon: 'target',
             onPress: () => { haptics.tap(); setTargetsOpen(true); },
             accessibilityLabel: 'Nutrition settings',
           },
+          // Once there's anything to share, the condition the mood and
+          // medication screens' share actions carry. totalCount rather than
+          // this day's entries: the export reaches across the whole history.
+          ...(totalCount > 0 ? [{
+            icon: 'share-outline',
+            onPress: () => { haptics.tap(); setExportOpen(true); },
+            accessibilityLabel: 'Export your food log',
+          } satisfies ScreenHeaderAction] : []),
           // Plain logging moved to the FAB below, same as every other
           // primary-add list screen — selecting is reached by swiping a row.
         ]}
       />
       <HubPills hub="kitchen" active="FoodLog" />
+      <TipHost screen="foodLog" />
 
       <View style={styles.dayNav}>
         <TouchableOpacity
@@ -732,14 +1124,21 @@ export function FoodLogScreen() {
       </View>
 
       {dayEntries.length === 0 ? (
+        <>
+        <View style={styles.plannedAlone}>
+          {plannedCard}
+          {totalsCard}
+          {waterCard}
+        </View>
         <EmptyState
           icon="restaurant-outline"
           title={isToday ? 'Nothing logged today' : 'Nothing logged that day'}
-          subtitle="A food can be logged once it has nutrition on it, so its figures are the food's own rather than a guess."
+          subtitle={emptySubtitle}
           actionLabel="Log something"
           onAction={() => { haptics.tap(); setAddingSlot(guessedSlot); setAddOpen(true); }}
           bottomOffset={tabBarHeight}
         />
+        </>
       ) : (
         <PaintSelectionProvider {...paintProps}>
           <ReorderableList
@@ -747,6 +1146,7 @@ export function FoodLogScreen() {
             keyExtractor={item =>
               item.type === 'entry' ? `entry-${item.entry.id}` : `${item.type}-${item.slot ?? 'none'}`
             }
+            scrollToTop={{ bottom: tabBarHeight + spacing.md }}
             // A paint gesture owns the touch for its duration, same reason
             // every other selectable list turns scrolling off for one.
             scrollEnabled={!painting}
@@ -756,161 +1156,9 @@ export function FoodLogScreen() {
             onReorder={handleReorder}
             ListHeaderComponent={
               <>
-              <View style={styles.totalsCard}>
-                {shownKeys.map(key => (
-                  <View key={key} style={styles.totalBlock}>
-                  <TouchableOpacity
-                    style={styles.totalRow}
-                    activeOpacity={interaction.activeOpacity}
-                    onPress={() => { haptics.tap(); setContributorsKey(key); }}
-                    accessibilityRole="button"
-                    accessibilityLabel={`See which entries contributed to ${NUTRIENT_LABEL[key].label.toLowerCase()}`}
-                  >
-                    <Text style={styles.totalLabel}>{NUTRIENT_LABEL[key].label}</Text>
-                    <View style={styles.totalRight}>
-                      {/* The target, when there is one, and nothing suggested
-                          when there isn't — see nutritionTargets.ts. Reported
-                          flat beside the figure rather than as a percentage or
-                          a verdict: counts, never a score.
-
-                          `describeAgainstTarget` writes both halves rather than
-                          this file writing one and that module the other: the
-                          hand-rolled pair here rounded the total with
-                          `Math.round` and the target with `toLocaleString`, so
-                          a heavy day read "1840 of 2,000 cal" — two number
-                          formats on one line. */}
-                      <Text style={styles.totalValue}>
-                        {describeAgainstTarget(key, totals.total[key], effectiveTargets)
-                          ?? `${Math.round(totals.total[key] as number).toLocaleString()}${NUTRIENT_LABEL[key].unit === 'cal' ? '' : NUTRIENT_LABEL[key].unit}`}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-                  {/* Colored by distance from the target, never by direction:
-                      whether being over a target is good or bad is not knowable
-                      (somebody tracking protein wants to reach it, somebody
-                      tracking sodium wants to stay under it), so `under` and
-                      `over` get different but equally neutral colors and only
-                      `met` — landing on the number chosen — gets green. See
-                      `targetStatus`. */}
-                  {effectiveTargets[key] !== undefined && (
-                    <View style={styles.targetTrack}>
-                      <View
-                        style={[
-                          styles.targetFill,
-                          {
-                            width: `${targetProgress(key, totals.total[key], effectiveTargets) * 100}%`,
-                            backgroundColor: targetStatusColor(
-                              targetStatus(key, totals.total[key], effectiveTargets),
-                              colors,
-                            ),
-                          },
-                        ]}
-                      />
-                    </View>
-                  )}
-                  {/* Said out loud rather than folded silently into the figure
-                      above: a target that moved is one the person should be
-                      able to account for, which is the same reason
-                      `WeightGoalSheet` prints its arithmetic beside its answer.
-                      The reading is quoted too, so a figure that looks wrong
-                      can be traced to the number it came from rather than to
-                      this app. */}
-                  {key === 'calorieKcal' && appliedActiveEnergyKcal > 0 && (
-                    <Text style={styles.boostNote}>
-                      +{appliedActiveEnergyKcal.toLocaleString()} cal from{' '}
-                      {Math.round(activeEnergyToday as number).toLocaleString()} active calories in
-                      Apple Health
-                    </Text>
-                  )}
-                  </View>
-                ))}
-                {/* Withheld when expanding would add nothing. The list is
-                    filtered to nutrients the day actually stated, so on a day
-                    of calories-and-protein-only entries the toggle used to sit
-                    there doing visibly nothing when tapped. */}
-                {(allNutrients || statedKeys.length > shownKeys.length) && (
-                  <InlineAction
-                    label={allNutrients ? 'Show less' : 'Show every nutrient'}
-                    variant="neutral"
-                    onPress={() => { haptics.tap(); animateLayout(); setAllNutrients(v => !v); }}
-                  />
-                )}
-              </View>
-
-              {/* Water is its own card because it is the one figure on this
-                  screen you add to rather than read. It had a unit, a target
-                  range, a targets-sheet row and a parser arm and no way at all
-                  to log a glass, so the bar sat at zero all day (#2515).
-
-                  A stepper rather than a row of glass-size pills, which is
-                  `CountStepper`'s own argument: pills have to pick a size and a
-                  ceiling for everyone, and half a bottle is then unsayable. −
-                  at the floor clears the day, which is the undo. */}
-              <View style={styles.waterCard}>
-                <View style={styles.waterRow}>
-                  <Ionicons name="water-outline" size={iconSize.sm} color={colors.textSecondary} />
-                  <Text style={styles.waterLabel}>Water</Text>
-                  {/* Two pills rather than a `SegmentedControl`: a unit beside
-                      a stepper is one of the cases that component's own doc
-                      comment lists as deliberately staying pills. */}
-                  {(['ml', 'flOz'] as const).map(u => (
-                    <TouchableOpacity
-                      key={u}
-                      style={[styles.waterUnit, waterUnit === u && styles.waterUnitOn]}
-                      activeOpacity={interaction.activeOpacity}
-                      onPress={() => { haptics.tap(); commitWater(); setWaterUnit(u); }}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: waterUnit === u }}
-                      accessibilityLabel={u === 'ml' ? 'Show water in milliliters' : 'Show water in fluid ounces'}
-                    >
-                      <Text style={[styles.waterUnitText, waterUnit === u && styles.waterUnitTextOn]}>
-                        {u === 'ml' ? 'ml' : 'fl oz'}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                  <CountStepper
-                    value={waterInUnit(shownWaterMl, waterUnit)}
-                    onChange={handleWaterChange}
-                    min={waterBounds.min}
-                    max={waterBounds.max}
-                    step={waterBounds.step}
-                    allowNull
-                    emptyLabel="None"
-                    format={n => describeWater(waterToMl(n, waterUnit), waterUnit)}
-                    label="Water"
-                    describeValue={n => (n === null
-                      ? 'No water logged'
-                      : describeWater(waterToMl(n, waterUnit), waterUnit))}
-                  />
-                </View>
-                {/* Written by `describeWaterDay` rather than
-                    `describeAgainstTarget`, so both halves come out in the same
-                    shape the stepper above uses — see its note. It withholds on
-                    a day with no water, and when the stepper has already said
-                    the figure. */}
-                {waterLine !== null && <Text style={styles.waterTarget}>{waterLine}</Text>}
-                {appliedWaterBoostMl !== null && (
-                  <Text style={styles.waterTarget}>
-                    +{describeWater(appliedWaterBoostMl, waterUnit)} today — {exerciseMinutesToday} min of exercise logged
-                  </Text>
-                )}
-                {effectiveWaterTarget !== undefined && shownDayWaterMl > 0 && (
-                  <View style={styles.targetTrack}>
-                    <View
-                      style={[
-                        styles.targetFill,
-                        {
-                          width: `${targetProgress('waterMl', shownDayWaterMl, waterTargets) * 100}%`,
-                          backgroundColor: targetStatusColor(
-                            targetStatus('waterMl', shownDayWaterMl, waterTargets),
-                            colors,
-                          ),
-                        },
-                      ]}
-                    />
-                  </View>
-                )}
-              </View>
+              {plannedCard}
+              {totalsCard}
+              {waterCard}
               </>
             }
             ListFooterComponent={
@@ -950,6 +1198,7 @@ export function FoodLogScreen() {
                   drag={selectionMode ? undefined : drag}
                   styles={styles}
                   colors={colors}
+                  waterUnit={waterUnit}
                   onToggleSelect={toggleSelection}
                   onSwipeSelect={enterSelectionMode}
                   onOpenMenu={handleOpenMenu}
@@ -976,6 +1225,7 @@ export function FoodLogScreen() {
           totalCount={dayEntries.length}
           category={{
             title: 'Move to Meal',
+            noun: 'a meal',
             options: mealSlotOptions,
             onSet: handleBulkMove,
           }}
@@ -999,7 +1249,7 @@ export function FoodLogScreen() {
         allowBurst
         onClose={() => { setAddOpen(false); setSeedRecipeId(null); }}
         onEstimate={estimateRoute !== 'unavailable' ? query => { setEstimateSeed(query); setEstimateOpen(true); } : undefined}
-        onScan={() => setScanOpen(true)}
+        onScan={scanShown ? () => setScanOpen(true) : undefined}
         onSavedMeal={savedMeals.length > 0 ? () => setSavedMealsOpen(true) : undefined}
         // Inside that sheet's own Modal, not beside it: as siblings these
         // presented from the root view controller, which was already
@@ -1083,15 +1333,41 @@ export function FoodLogScreen() {
           setLinkingEntry(null);
         }}
       />
+      {/* Through reviseEntry, since the figures change and Health holds them:
+          the old samples come out and the new amount goes in. */}
+      <EstimateAmountSheet
+        visible={amountEntry !== null}
+        entry={amountEntry}
+        onSave={patch => {
+          if (amountEntry) reviseEntry(amountEntry.id, patch);
+        }}
+        onClose={() => setAmountEntry(null)}
+      />
       <NutrientContributorsSheet
         visible={contributorsKey !== null}
         nutrientKey={contributorsKey}
         entries={dayEntries}
+        total={contributorsKey && totals.total[contributorsKey] !== undefined ? totalText(contributorsKey) : null}
+        // Closes this sheet and opens the editor in one commit. They are
+        // siblings, and `SheetModal` holds the open until the close has landed.
+        onEdit={entry => { setContributorsKey(null); setEditingEntry(entry); }}
         onClose={() => setContributorsKey(null)}
       />
       <NutritionTargetsSheet
         visible={targetsOpen}
         onClose={() => setTargetsOpen(false)}
+      />
+      <CsvExportSheet
+        visible={exportOpen}
+        onClose={() => setExportOpen(false)}
+        hint={'A spreadsheet file of your entries: the day, the time, the meal, what you '
+          + 'ate and how much, where the figures came from, and each nutrient. A figure that '
+          + 'was never recorded is left blank. Nothing else from the app is included.'}
+        dialogTitle="Share your food log"
+        select={entriesSince}
+        toCsv={foodLogExportCsv}
+        fileName={foodLogExportFileName}
+        summary={foodLogExportSummary}
       />
       {/* The app's own date picker, as CLAUDE.md's note on it says to reach for
           any time a feature asks "what date?". Time of day and Suggest are off:
@@ -1135,7 +1411,7 @@ export function FoodLogScreen() {
       />
       <WhenPicker
         visible={duplicatingEntry !== null}
-        value={new Date()}
+        value={getLogicalToday()}
         title="Duplicate to"
         showTimeOfDay={false}
         showSuggest={false}
@@ -1181,6 +1457,43 @@ function makeStyles(colors: Colors) {
     dayNavDateText: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
     dayNavBackText: { color: colors.accent, fontSize: font.xs, marginTop: spacing.xxs },
     scrollContent: { flexGrow: 1, paddingHorizontal: spacing.md },
+    // Same card shape as the totals and water cards it sits above, since it is
+    // the same kind of thing: a block about the day, ahead of the day's rows.
+    plannedCard: {
+      backgroundColor: colors.bgSecondary,
+      borderRadius: radius.md,
+      padding: spacing.md,
+      gap: spacing.xs,
+      marginBottom: spacing.md,
+    },
+    // The card is the only one on screen when the day is empty, so it needs the
+    // side gutter the list's own contentContainerStyle would otherwise give it.
+    plannedAlone: { paddingHorizontal: spacing.md, paddingTop: spacing.sm },
+    plannedHeader: {
+      flexDirection: 'row',
+      alignItems: 'baseline',
+      justifyContent: 'space-between',
+      gap: spacing.sm,
+      marginBottom: spacing.xxs,
+    },
+    plannedTitle: {
+      color: colors.textSecondary,
+      fontSize: font.xs,
+      fontWeight: fontWeight.semibold,
+      letterSpacing: 0.8,
+      textTransform: 'uppercase',
+    },
+    plannedSummary: { color: colors.textSecondary, fontSize: font.xs },
+    plannedRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      paddingVertical: spacing.xs,
+    },
+    // `flex: 1` with nothing else in the row claiming width ahead of it — the
+    // icon and the chevron are both fixed and short. See CLAUDE.md on why a
+    // button here would eat the meal's name instead.
+    plannedRowText: { flex: 1, color: colors.text, fontSize: font.sm },
     totalsCard: {
       backgroundColor: colors.bgSecondary,
       borderRadius: radius.md,
@@ -1190,6 +1503,7 @@ function makeStyles(colors: Colors) {
       // Two cards in one block sit a step closer than a block sits to the list.
       marginBottom: spacing.md,
     },
+    totalsEmptyNote: { marginBottom: spacing.md },
     waterCard: {
       backgroundColor: colors.bgSecondary,
       borderRadius: radius.md,
@@ -1297,7 +1611,7 @@ function makeStyles(colors: Colors) {
  * way, so expanding never fights it.
  */
 const FoodLogRow = React.memo(function FoodLogRow({
-  entry, isActive, selectionMode, selected, drag, styles, colors, onToggleSelect, onSwipeSelect, onOpenMenu,
+  entry, isActive, selectionMode, selected, drag, styles, colors, waterUnit, onToggleSelect, onSwipeSelect, onOpenMenu,
 }: {
   entry: FoodLogEntry;
   isActive: boolean;
@@ -1306,6 +1620,9 @@ const FoodLogRow = React.memo(function FoodLogRow({
   drag?: () => void;
   styles: ReturnType<typeof makeStyles>;
   colors: Colors;
+  // A string from settings, so it keeps the memo stable: the day's water entry
+  // reads in the unit its card above is stepped in (`waterEntryQuantity`).
+  waterUnit: WaterUnit;
   // Each takes what it acts on rather than being closed over it, so the screen
   // can hand every row the same stable function and the memo above holds. An
   // inline arrow per row is a fresh identity per render and defeats it, which
@@ -1320,6 +1637,7 @@ const FoodLogRow = React.memo(function FoodLogRow({
   const toggleSelect = () => onToggleSelect(entry.id);
   const toggleExpand = () => { haptics.tap(); setExpanded(e => !e); };
   const statedKeys = NUTRIENT_KEYS.filter(key => entry.nutrition.amounts[key] !== undefined);
+  const meta = describeFoodLogEntry(entry, waterEntryQuantity(entry, waterUnit));
   const rowBody = (
     <View
       ref={paintRef}
@@ -1338,12 +1656,12 @@ const FoodLogRow = React.memo(function FoodLogRow({
           delayLongPress={interaction.delayLongPress}
           accessibilityRole={selectionMode ? 'checkbox' : undefined}
           accessibilityState={selectionMode ? { checked: selected } : { expanded }}
-          accessibilityLabel={`${entry.label}. ${describeFoodLogEntry(entry)}`}
+          accessibilityLabel={`${entry.label}. ${meta}`}
           accessibilityHint={selectionMode ? undefined : (expanded ? 'Hides nutrients' : 'Shows nutrients')}
         >
           <View style={styles.entryText}>
             <Text style={styles.entryTitle}>{entry.label}</Text>
-            <Text style={styles.entryMeta}>{describeFoodLogEntry(entry)}</Text>
+            <Text style={styles.entryMeta}>{meta}</Text>
           </View>
         </TouchableOpacity>
         {selectionMode ? (

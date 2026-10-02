@@ -6,7 +6,7 @@ import {
   spacing, radius, font, fontWeight, border, iconSize, interaction, checkboxRadius,
   type Colors,
 } from '../theme';
-import { GROCERY_NAME_MAX_LENGTH, GROCERY_QUANTITY_MAX_LENGTH, RECIPE_SECTION_MAX_LENGTH } from '../types';
+import { GROCERY_NAME_MAX_LENGTH, RECIPE_INGREDIENT_QUANTITY_MAX_LENGTH, RECIPE_SECTION_MAX_LENGTH } from '../types';
 import type { GroceryItem } from '../types';
 import type { RecipeGroceryItem } from '../services/aiSuggestions';
 import { InlineEditableText } from './InlineEditableText';
@@ -47,9 +47,12 @@ interface Props {
   sectionHeader?: string | null;
   /**
    * Why this row arrived unticked, when something other than the user unticked
-   * it — currently only "the recipe it names is being added as a component"
-   * (see `coveredIngredients`). A row that unticks itself with no explanation
-   * reads as a bug, and the explanation only fits under the name.
+   * it: "the recipe it names is being added as a component" (see
+   * `coveredIngredients`), or "a line above, or one the recipe already has, is
+   * this same line" (see `blockedReviewRows`). A row that unticks itself with
+   * no explanation reads as a bug, and the explanation only fits under the
+   * name. Shown in full rather than cut to two lines like the aisle, since the
+   * second one names the row it repeats and says what to do.
    */
   note?: string | null;
 }
@@ -137,7 +140,7 @@ export function ExtractedIngredientRow({
             maxLength={GROCERY_NAME_MAX_LENGTH}
             numberOfLines={1}
           />
-          <Text style={note ? styles.note : styles.meta} numberOfLines={2}>
+          <Text style={note ? styles.note : styles.meta} numberOfLines={note ? undefined : 2}>
             {note || row.aisle}
           </Text>
         </View>
@@ -152,7 +155,7 @@ export function ExtractedIngredientRow({
               allowEmpty
               textStyle={styles.qtyText}
               accessibilityLabel={`quantity, ${row.quantity}`}
-              maxLength={GROCERY_QUANTITY_MAX_LENGTH}
+              maxLength={RECIPE_INGREDIENT_QUANTITY_MAX_LENGTH}
               numberOfLines={1}
             />
           </View>

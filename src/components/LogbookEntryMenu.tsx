@@ -3,17 +3,14 @@ import {
   View,
   Text,
   TouchableOpacity,
-  Animated,
   StyleSheet,
 } from 'react-native';
-import { SheetModal } from './SheetModal';
+import { CardSheet, useCardSheet, type CardAnchor } from './CardSheet';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, animation, interaction, border, type Colors } from '../theme';
+import { spacing, font, fontWeight, animation, interaction, border, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { CalendarPicker } from './CalendarPicker';
-import { SheetScrim } from './SheetScrim';
-import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
 
 interface Props {
   visible: boolean;
@@ -29,13 +26,21 @@ interface Props {
   onEditAnswer?: () => void;
   /** Whether this entry was completed *with* an answer — the row's wording. */
   hasAnswer?: boolean;
+  /**
+   * Opens the week a rotation entry covered (see RotationWeekSheet). Omitted
+   * for every other entry — a rotation is one Logbook row per week rather than
+   * per pick, so this is the only route to what that week actually held.
+   */
+  onShowWeek?: () => void;
   /** Deletes the entry outright. The caller confirms — see LogbookScreen. */
   onDelete: () => void;
   onClose: () => void;
+  /** Where the row's "…" was tapped, so the menu opens from it; null centers it. */
+  anchor?: CardAnchor | null;
 }
 
 /**
- * Bottom action sheet for a Logbook entry: marking it incomplete, editing the
+ * Popover menu for a Logbook entry: marking it incomplete, editing the
  * completion date/time via CalendarPicker, or deleting it.
  *
  * Delete sits in its own card below the others, iOS-style: it's the one
@@ -43,16 +48,13 @@ interface Props {
  * away from "Mark Incomplete".
  */
 export function LogbookEntryMenu({
-  visible, value, onMarkIncomplete, onChangeDate, onEditAnswer, hasAnswer = false, onDelete, onClose,
+  visible, value, onMarkIncomplete, onChangeDate, onEditAnswer, hasAnswer = false, onShowWeek, onDelete, onClose, anchor,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [showCalendar, setShowCalendar] = useState(false);
 
-  const hiddenY = useSheetHiddenOffset();
-
-  const translateY = useRef(new Animated.Value(hiddenY)).current;
-  const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const card = useCardSheet();
   const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -62,12 +64,6 @@ export function LogbookEntryMenu({
         closeTimeoutRef.current = null;
       }
       setShowCalendar(false);
-      translateY.setValue(hiddenY);
-      backdropOpacity.setValue(0);
-      Animated.parallel([
-        Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
-        Animated.timing(backdropOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
-      ]).start();
     }
   }, [visible]);
 
@@ -77,15 +73,7 @@ export function LogbookEntryMenu({
     };
   }, []);
 
-  const closeThen = (cb: () => void) => {
-    Animated.parallel([
-      Animated.spring(translateY, { toValue: hiddenY, ...animation.spring.bouncy, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
-    ]).start(() => {
-      // No re-arming setValue here — see useSheetHiddenOffset.
-      cb();
-    });
-  };
+  const closeThen = (cb: () => void) => card.close(cb);
 
   const dismiss = () => closeThen(onClose);
 
@@ -99,103 +87,108 @@ export function LogbookEntryMenu({
     closeThen(onDelete);
   };
 
+  // The menu steps out of the way rather than closing: the calendar is nested
+  // in this card's Modal (see below), so the card hides while it's up and the
+  // calendar's own confirm/cancel is what finally closes the pair.
   const openCalendar = () => {
     haptics.tap();
-    Animated.spring(translateY, { toValue: hiddenY, ...animation.spring.bouncy, useNativeDriver: true }).start(() => {
-      setShowCalendar(true);
-    });
+    setShowCalendar(true);
   };
 
   return (
-    <SheetModal visible={visible} animationType="none" transparent onRequestClose={dismiss}>
-      <Animated.View style={[StyleSheet.absoluteFill, styles.backdropDim, { opacity: backdropOpacity }]} pointerEvents="none" />
-      <SheetScrim onPress={dismiss} />
-
-      <Animated.View style={[styles.sheetOuter, { transform: [{ translateY }] }]}>
-        <View style={styles.optionsCard}>
-          <TouchableOpacity style={styles.optionRow} onPress={markIncomplete} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
-            <Ionicons name="arrow-undo-outline" size={18} color={colors.accent} />
-            <Text style={styles.optionLabel}>Mark Incomplete</Text>
-          </TouchableOpacity>
-          <View style={styles.inlineSep} />
-          <TouchableOpacity style={styles.optionRow} onPress={openCalendar} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
-            <Ionicons name="calendar-outline" size={18} color={colors.accent} />
-            <Text style={styles.optionLabel}>Change completion date</Text>
-          </TouchableOpacity>
-          {onEditAnswer && (
-            <>
-              <View style={styles.inlineSep} />
-              <TouchableOpacity
-                style={styles.optionRow}
-                onPress={() => { haptics.tap(); closeThen(onEditAnswer); }}
-                activeOpacity={interaction.activeOpacity}
-                accessibilityRole="button"
-              >
-                <Ionicons name="help" size={18} color={colors.accent} />
-                <Text style={styles.optionLabel}>{hasAnswer ? 'Edit Answer' : 'Add Answer'}</Text>
-              </TouchableOpacity>
-            </>
-          )}
-        </View>
-
-        <View style={styles.optionsCard}>
-          <TouchableOpacity
-            style={styles.optionRow}
-            onPress={deleteEntry}
-            activeOpacity={interaction.activeOpacity}
-            accessibilityRole="button"
-            accessibilityLabel="Delete entry"
-          >
-            <Ionicons name="trash-outline" size={18} color={colors.red} />
-            <Text style={[styles.optionLabel, styles.destructiveLabel]}>Delete Entry</Text>
-          </TouchableOpacity>
-        </View>
-
-        <TouchableOpacity style={styles.cancelCard} onPress={dismiss} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
-          <Text style={styles.cancelLabel}>Cancel</Text>
+    <CardSheet
+      name="LogbookEntryMenu"
+      visible={visible}
+      controller={card}
+      onRequestClose={dismiss}
+      anchor={anchor}
+      popoverWidth={280}
+      scrimLabel="Close menu"
+      cardStyle={showCalendar ? styles.steppedAside : undefined}
+      overlays={
+        <CalendarPicker
+          visible={showCalendar}
+          value={value}
+          mode="datetime"
+          title="Completion date"
+          onConfirm={date => {
+            // Close the pageSheet first and let its dismiss animation finish
+            // before hiding the outer sheet Modal — closing both native Modals
+            // in the same tick can deadlock the iOS modal transition and
+            // freeze the app.
+            setShowCalendar(false);
+            closeTimeoutRef.current = setTimeout(() => onChangeDate(date), animation.duration.slow);
+          }}
+          onCancel={() => {
+            setShowCalendar(false);
+            closeTimeoutRef.current = setTimeout(() => onClose(), animation.duration.slow);
+          }}
+        />
+      }
+    >
+      <View style={styles.optionsCard}>
+        <TouchableOpacity style={styles.optionRow} onPress={markIncomplete} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
+          <Ionicons name="arrow-undo-outline" size={18} color={colors.accent} />
+          <Text style={styles.optionLabel}>Mark Incomplete</Text>
         </TouchableOpacity>
-      </Animated.View>
+        <View style={styles.inlineSep} />
+        <TouchableOpacity style={styles.optionRow} onPress={openCalendar} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
+          <Ionicons name="calendar-outline" size={18} color={colors.accent} />
+          <Text style={styles.optionLabel}>Change completion date</Text>
+        </TouchableOpacity>
+        {onEditAnswer && (
+          <>
+            <View style={styles.inlineSep} />
+            <TouchableOpacity
+              style={styles.optionRow}
+              onPress={() => { haptics.tap(); closeThen(onEditAnswer); }}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="button"
+            >
+              <Ionicons name="help" size={18} color={colors.accent} />
+              <Text style={styles.optionLabel}>{hasAnswer ? 'Edit Answer' : 'Add Answer'}</Text>
+            </TouchableOpacity>
+          </>
+        )}
+        {onShowWeek && (
+          <>
+            <View style={styles.inlineSep} />
+            <TouchableOpacity
+              style={styles.optionRow}
+              onPress={() => { haptics.tap(); closeThen(onShowWeek); }}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="button"
+            >
+              <Ionicons name="repeat-outline" size={18} color={colors.accent} />
+              <Text style={styles.optionLabel}>Show the Week</Text>
+            </TouchableOpacity>
+          </>
+        )}
+      </View>
 
-      <CalendarPicker
-        visible={showCalendar}
-        value={value}
-        mode="datetime"
-        title="Completion date"
-        onConfirm={date => {
-          // Close the pageSheet first and let its dismiss animation finish
-          // before hiding the outer sheet Modal — closing both native Modals
-          // in the same tick can deadlock the iOS modal transition and
-          // freeze the app.
-          setShowCalendar(false);
-          closeTimeoutRef.current = setTimeout(() => onChangeDate(date), animation.duration.slow);
-        }}
-        onCancel={() => {
-          setShowCalendar(false);
-          closeTimeoutRef.current = setTimeout(() => onClose(), animation.duration.slow);
-        }}
-      />
-    </SheetModal>
+      <View style={[styles.optionsCard, styles.destructiveGroup]}>
+        <TouchableOpacity
+          style={styles.optionRow}
+          onPress={deleteEntry}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole="button"
+          accessibilityLabel="Delete entry"
+        >
+          <Ionicons name="trash-outline" size={18} color={colors.red} />
+          <Text style={[styles.optionLabel, styles.destructiveLabel]}>Delete Entry</Text>
+        </TouchableOpacity>
+      </View>
+    </CardSheet>
   );
 }
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
-  backdropDim: {
-    backgroundColor: colors.backdrop,
-  },
-  sheetOuter: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    paddingHorizontal: spacing.md,
-    paddingBottom: 34,
-  },
-  optionsCard: {
-    backgroundColor: colors.bgSecondary,
-    borderRadius: radius.lg,
-    overflow: 'hidden',
-    marginBottom: spacing.sm,
-  },
+  optionsCard: {},
+  // Delete keeps its own group below the others, iOS-style; the band is the
+  // menu's group break, drawn in the screen colour.
+  destructiveGroup: { borderTopWidth: spacing.xsm, borderTopColor: colors.bg },
+  // Hidden rather than closed while the calendar is up; see openCalendar.
+  steppedAside: { opacity: 0 },
   optionRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -216,16 +209,5 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     height: border.hairline,
     backgroundColor: colors.separator,
     marginLeft: spacing.md,
-  },
-  cancelCard: {
-    backgroundColor: colors.bgSecondary,
-    borderRadius: radius.lg,
-    paddingVertical: 18,
-    alignItems: 'center',
-  },
-  cancelLabel: {
-    color: colors.text,
-    fontSize: font.md,
-    fontWeight: fontWeight.semibold,
   },
 });

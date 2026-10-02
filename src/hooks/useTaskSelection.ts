@@ -53,21 +53,26 @@ export function useTaskSelection(allTasks: Task[]) {
       .map(id => allTasks.find(t => t.id === id))
       .filter((t): t is Task => !!t);
     const wholeSelectionMissable = restIds.length === 0;
-    const allRecurring = wholeSelectionMissable && missableTasks.every(isLiveRecurring);
-    const allMealPlan = wholeSelectionMissable && !allRecurring && missableTasks.every(isMissableMealPlanTask);
+    // The message has to reflect which reason(s) are actually in the missable
+    // set, not just whether the selection also has non-missable tasks along
+    // for the ride — a recurring task selected next to an ordinary one has no
+    // meal-plan task in it at all, and saying "repeat or came from your meal
+    // plan" in that case is just wrong, not merely hedged.
+    const hasRecurring = missableTasks.some(isLiveRecurring);
+    const hasMealPlan = missableTasks.some(isMissableMealPlanTask);
 
     let message: string;
     let deleteLabel: string;
-    if (allRecurring) {
-      message = count === 1
+    if (hasRecurring && !hasMealPlan) {
+      message = missableTasks.length === 1
         ? 'This task repeats. Mark just this one missed, or delete it and stop it repeating?'
         : 'These tasks repeat. Mark them missed instead, or delete them and stop them repeating?';
-      deleteLabel = 'Delete and stop repeating';
-    } else if (allMealPlan) {
-      message = count === 1
+      deleteLabel = wholeSelectionMissable ? 'Delete and stop repeating' : 'Delete anyway';
+    } else if (hasMealPlan && !hasRecurring) {
+      message = missableTasks.length === 1
         ? 'This came from your meal plan. Mark it missed to keep a record, or delete it outright?'
         : 'These came from your meal plan. Mark them missed to keep a record, or delete them outright?';
-      deleteLabel = 'Delete';
+      deleteLabel = wholeSelectionMissable ? 'Delete' : 'Delete anyway';
     } else {
       message = 'Some selected tasks repeat or came from your meal plan. Mark those missed, or delete your whole selection anyway?';
       deleteLabel = 'Delete anyway';

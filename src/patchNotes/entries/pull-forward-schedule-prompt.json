@@ -1,0 +1,4 @@
+{
+  "message": "When you move a repeating task to an earlier day, the app now asks whether the next one should stay on its usual day or count from the new date. Before, it always kept the usual day, so a daily task moved from tomorrow to today skipped a day",
+  "date": "2026-09-23"
+}

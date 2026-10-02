@@ -36,6 +36,7 @@ import {
   getDeadlineFromOffset,
   getDeadlineFromMonthDay,
 } from './dateUtils';
+import { getVisibleAt } from './visibilityUtils';
 import { canHoldFollowUpTask } from './followUpTask';
 import { normalizeTargetUnit } from './quotaUnit';
 import { canHoldSupply, clampSupplyReorderAt, DEFAULT_SUPPLY_REORDER_AT } from './supply';
@@ -216,6 +217,7 @@ export function newTaskFromDraft(
     recurrenceInterval: draft.recurrenceInterval ?? 1,
     recurrenceDays: draft.recurrenceDays ?? [],
     recurrenceMonthDay: draft.recurrenceMonthDay ?? null,
+    recurrenceMonth: draft.recurrenceMonth ?? null,
     recurrenceWeekOrdinal: draft.recurrenceWeekOrdinal ?? null,
     recurrenceAnchorDay: null,
     recurrenceAnchorDate: null,
@@ -229,7 +231,13 @@ export function newTaskFromDraft(
     quotaIntervalMinutes: draft.quotaIntervalMinutes ?? null,
     quotaReminders: draft.quotaReminders ?? false,
     quotaAlwaysVisible: draft.quotaAlwaysVisible ?? false,
+    followWaterTarget: draft.followWaterTarget ?? false,
     quotaPeriod: draft.quotaPeriod ?? 'day',
+    rotationEnabled: draft.rotationEnabled ?? false,
+    rotationItems: draft.rotationItems ?? [],
+    rotationLog: [],
+    rotationPeriodStart: null,
+    rotationLastDone: {},
     // Never seeded from a draft: a run is started by tapping "start now" on a
     // task that exists, so a row arriving already mid-run would be claiming a
     // morning nobody had yet.
@@ -318,6 +326,7 @@ export function newTaskFromDraft(
     reminderTime: draft.reminderTime ?? null,
     reminderKind: draft.reminderKind ?? 'notification',
     reminderOffsetDays: draft.reminderOffsetDays ?? null,
+    reminderTracksVisibility: draft.reminderTracksVisibility ?? false,
     reminderTimeAnchor: draft.reminderTimeAnchor ?? 'wallClock',
     reminderUtcOffsetMinutes: draft.reminderUtcOffsetMinutes ?? captureReminderOffset(draft.reminderTime ?? null),
     chainEnabled: draft.chainEnabled ?? false,
@@ -386,11 +395,15 @@ export function newTaskFromDraft(
     phoneNumber: draft.phoneNumber ?? null,
     emailAddress: draft.emailAddress ?? null,
     location: draft.location ?? null,
-    blockedById: draft.blockedById ?? null,
+    blockedById: draft.blockedById ?? draft.blockedByIds?.[0] ?? null,
+    blockedByIds: draft.blockedById ? (draft.blockedByIds ?? []) : (draft.blockedByIds ?? []).slice(1),
     waitingOnPersonId: null,
     waitingOnPersonSince: null,
     waitingFollowUpDeclinedAt: null,
+    followUpOn: null,
     deliverableKind: draft.deliverableKind ?? null,
+    deliverableOptions: draft.deliverableOptions ?? [],
+    deliverableSetsAway: draft.deliverableSetsAway ?? false,
     // Never read off the draft: the question carries, the answer doesn't. A
     // template or a duplicate that arrived holding someone else's answer would
     // read as a decision already made.
@@ -404,6 +417,7 @@ export function newTaskFromDraft(
     followUpTaskTally: 0,
     previousFollowUpTaskTally: 0,
     followUpTaskSourceTitle: draft.followUpTaskSourceTitle ?? null,
+    followUpTaskSourceId: draft.followUpTaskSourceId ?? null,
   };
   // Captured here rather than defaulted to null in the literal above: a task
   // created with a monthly rule and a due date on the 31st has to carry the
@@ -421,14 +435,30 @@ export function newTaskFromDraft(
  * one. Also recaptures `reminderUtcOffsetMinutes` for the moved instant, since
  * a reminder re-anchored onto a different day may cross a DST boundary and
  * land under a different UTC offset than the one its source row had (#1205).
+ *
+ * `visibilityContext`, when given, is the resulting row's own shape (dueDate,
+ * deferUntil, timeSegments, etc. as they'll actually end up) for a
+ * `Task.reminderTracksVisibility` reminder — resolved through `getVisibleAt`
+ * instead of `date`/`offsetDays`, per the dayResetTime grace-window rule
+ * (CLAUDE.md: no hand-rolled date calc for a scheduling decision). Callers
+ * only pass it when the reminder actually tracks visibility; `date` and
+ * `offsetDays` are untouched otherwise, so the offset behaviour this already
+ * had can't drift.
  */
 export function reanchorReminder(
   reminderTime: string | null,
   date: Date,
-  offsetDays: number | null = null
+  offsetDays: number | null = null,
+  visibilityContext?: Task | null
 ): { reminderTime: string | null; reminderUtcOffsetMinutes: number | null } {
   if (!reminderTime) return { reminderTime: null, reminderUtcOffsetMinutes: null };
   const original = new Date(reminderTime);
+  if (visibilityContext) {
+    // getVisibleAt already gives the exact moment to fire at — nothing left
+    // to set the time-of-day onto, unlike the offset branch below.
+    const next = getVisibleAt(visibilityContext);
+    return { reminderTime: next.toISOString(), reminderUtcOffsetMinutes: next.getTimezoneOffset() };
+  }
   const next = new Date(offsetDays !== null ? getReminderOffsetDate(date, offsetDays) : date);
   next.setHours(original.getHours(), original.getMinutes(), 0, 0);
   return { reminderTime: next.toISOString(), reminderUtcOffsetMinutes: next.getTimezoneOffset() };
@@ -436,7 +466,7 @@ export function reanchorReminder(
 
 type RecurrenceFields = Pick<
   Task,
-  | 'recurrenceType' | 'recurrenceInterval' | 'recurrenceDays' | 'recurrenceMonthDay'
+  | 'recurrenceType' | 'recurrenceInterval' | 'recurrenceDays' | 'recurrenceMonthDay' | 'recurrenceMonth'
   | 'recurrenceWeekOrdinal' | 'recurrenceAnchorDay' | 'recurrenceAnchorDate'
   | 'recurrenceEndDate' | 'recurrenceCount'
   | 'recurrenceFromCompletion' | 'showStreak' | 'streakRequiresWindow'
@@ -461,6 +491,7 @@ export const NO_RECURRENCE: RecurrenceFields = {
   recurrenceInterval: 1,
   recurrenceDays: [],
   recurrenceMonthDay: null,
+  recurrenceMonth: null,
   recurrenceWeekOrdinal: null,
   recurrenceAnchorDay: null,
   recurrenceAnchorDate: null,
@@ -504,7 +535,16 @@ export function buildSeriesRow(
 ): Task {
   const now = new Date().toISOString();
   const base = newTaskFromDraft(source, now, 0, seedFromCategory);
-  return {
+  // Built once and reused for reanchorReminder's visibility context below,
+  // rather than duplicated: it's exactly the row's resulting shape (minus
+  // the reminder fields, patched on last), which is what getVisibleAt needs
+  // to resolve a reminderTracksVisibility reminder against. A series row's
+  // timeSegments aren't reset the way deferUntil is (see NO_RECURRENCE's own
+  // doc comment — nothing there clears them), so a visibility-tracking
+  // reminder can still resolve through them; a row left with nothing to be
+  // hidden by falls to getVisibleAt's own "now" fallback, which is the
+  // correct degenerate case rather than one to special-case away.
+  const rowShape: Task = {
     ...base,
     ...NO_RECURRENCE,
     dueDate: date.toISOString(),
@@ -527,6 +567,14 @@ export function buildSeriesRow(
         : base.deadlineMonthDay !== null
           ? getDeadlineFromMonthDay(date, base.deadlineMonthDay).toISOString()
           : base.deadline,
-    ...reanchorReminder(base.reminderTime, date, base.reminderOffsetDays),
+  };
+  return {
+    ...rowShape,
+    ...reanchorReminder(
+      base.reminderTime,
+      date,
+      base.reminderOffsetDays,
+      base.reminderTracksVisibility ? rowShape : null
+    ),
   };
 }

@@ -32,6 +32,7 @@ const mockTaskState = {
   checkAwayVacation: mockRecord('checkAwayVacation'),
   rolloverQuotas: mockRecord('rolloverQuotas'),
   sweepOvershootQuotas: mockRecord('sweepOvershootQuotas'),
+  syncWaterQuotaTasks: mockRecord('syncWaterQuotaTasks'),
   dripStalledProjects: mockRecord('dripStalledProjects'),
   checkMealPlanNudge: mockRecord('checkMealPlanNudge'),
   checkProjectReviewTasks: mockRecord('checkProjectReviewTasks'),
@@ -39,6 +40,7 @@ const mockTaskState = {
   checkPantryReviewTasks: mockRecord('checkPantryReviewTasks'),
   checkPantryCheckTasks: mockRecord('checkPantryCheckTasks'),
   checkMealShortfallTasks: mockRecord('checkMealShortfallTasks'),
+  checkMealThawTasks: mockRecord('checkMealThawTasks'),
   checkMealLogNudgeTasks: mockRecord('checkMealLogNudgeTasks'),
   checkCalendarReviewTasks: mockRecord('checkCalendarReviewTasks'),
   checkWeatherTasks: mockRecord('checkWeatherTasks'),
@@ -54,15 +56,20 @@ const mockTaskState = {
   // during the pass is this call itself, and that's the only part this file
   // is testing.
   checkWeighInTasks: mockRecord('checkWeighInTasks'),
-  checkWeeklyReviewTasks: mockRecord('checkWeeklyReviewTasks'),
   checkBirthdayTasks: mockRecord('checkBirthdayTasks'),
   checkBirthdayGiftTasks: mockRecord('checkBirthdayGiftTasks'),
   checkReachOutTasks: mockRecord('checkReachOutTasks'),
   checkWaitingFollowUpTasks: mockRecord('checkWaitingFollowUpTasks'),
+  sweepExpiredCompletionTimers: mockRecord('sweepExpiredCompletionTimers'),
   sweepTaskPenalties: mockRecord('sweepTaskPenalties'),
   purgeOldCompletedTasks: mockRecord('purgeOldCompletedTasks'),
+  reconcileSyncedEvents: (applied: unknown) => {
+    mockCalls.push('reconcileSyncedTaskEvents');
+    mockTaskReconciledWith = applied;
+  },
   tasks: [] as unknown[],
 };
+let mockTaskReconciledWith: unknown = null;
 const mockSettingsState = { initialized: true, initialize: mockRecord('initializeSettings') };
 const mockSyncState = {
   initialize: mockRecord('initializeSync'),
@@ -78,13 +85,21 @@ jest.mock('../store/useSettingsStore', () => ({
 jest.mock('../store/useTemplateStore', () => ({
   useTemplateStore: { getState: () => ({ checkScheduledTemplates: mockRecord('checkScheduledTemplates') }) },
 }));
+let mockReconciledWith: unknown = null;
 jest.mock('../store/useMealPlanStore', () => ({
-  useMealPlanStore: { getState: () => ({ purgeOldEntries: mockRecord('purgeOldMealPlanEntries') }) },
+  useMealPlanStore: {
+    getState: () => ({
+      purgeOldEntries: mockRecord('purgeOldMealPlanEntries'),
+      reconcileSyncedEvents: (applied: unknown) => {
+        mockCalls.push('reconcileSyncedMealEvents');
+        mockReconciledWith = applied;
+      },
+    }),
+  },
 }));
 jest.mock('../store/useLeftoverStore', () => ({
   useLeftoverStore: {
     getState: () => ({
-      reconcileAllLeftoverTasks: mockRecord('reconcileAllLeftoverTasks'),
       purgeOldLeftovers: mockRecord('purgeOldLeftovers'),
     }),
   },
@@ -94,6 +109,7 @@ jest.mock('../store/useGroceryStore', () => ({
     getState: () => ({
       tripShopId: null, tripStartedAt: null, shops: [],
       checkAwayGroceryList: mockRecord('checkAwayGroceryList'),
+      reconcileAllUseUpTasks: mockRecord('reconcileAllUseUpTasks'),
     }),
   },
 }));
@@ -108,9 +124,18 @@ jest.mock('../store/useUnattendedStore', () => ({
     getState: () => ({ purgeOldEntries: mockRecord('purgeOldEntries') }),
   },
 }));
-jest.mock('../store/useSyncStore', () => ({
-  useSyncStore: { getState: () => mockSyncState },
-}));
+// Captured rather than dropped: this module is where the reload is registered,
+// and what it runs after a sync is part of what it owns. Held inside the mock
+// because the registration runs at import, ahead of this file's own `let`s.
+type SyncReload = (applied: unknown) => void;
+jest.mock('../store/useSyncStore', () => {
+  const registered: { reload: SyncReload | null } = { reload: null };
+  return {
+    useSyncStore: { getState: () => mockSyncState },
+    registerSyncReload: (reload: SyncReload) => { registered.reload = reload; },
+    mockRegistered: registered,
+  };
+});
 jest.mock('../utils/notifications', () => ({
   rescheduleAllReminders: () => { mockCalls.push('rescheduleAllReminders'); },
 }));
@@ -155,17 +180,18 @@ describe('runBackgroundRefresh', () => {
     // hand-written expectation here is exactly how that would stop being true.
     const passNames = [
       'checkVacationExpiry', 'checkAwayVacation', 'checkAwayGroceryList',
-      'rolloverQuotas', 'sweepOvershootQuotas',
+      'rolloverQuotas', 'sweepOvershootQuotas', 'syncWaterQuotaTasks',
       'dripStalledProjects',
       'checkMealPlanNudge', 'checkProjectReviewTasks', 'checkMealSlotTasks',
       'checkPantryReviewTasks', 'checkPantryCheckTasks', 'checkMealShortfallTasks',
-      'checkMealLogNudgeTasks',
+      'checkMealThawTasks', 'checkMealLogNudgeTasks',
       'checkCalendarReviewTasks', 'checkWeatherTasks', 'checkEventTasks',
       'checkTravelTasks', 'checkScreenTimeTasks', 'checkHealthTasks',
       'checkMoodTasks', 'checkWeekendNudgeTasks', 'checkWeighInTasks',
       'checkBirthdayTasks', 'checkBirthdayGiftTasks', 'checkReachOutTasks',
       'checkWaitingFollowUpTasks',
-      'reconcileAllLeftoverTasks', 'checkScheduledTemplates', 'checkWeeklyReviewTasks',
+      'reconcileAllUseUpTasks', 'checkScheduledTemplates',
+      'sweepExpiredCompletionTimers',
       'sweepTaskPenalties',
     ];
     expect(expected).toHaveLength(passNames.length);
@@ -300,6 +326,26 @@ describe('the background task executor', () => {
     setDemoModeActive(true);
     await executor()();
     expect(mockCalls).toEqual([]);
+  });
+});
+
+describe('the reload after a sync', () => {
+  // #2950: a meal's calendar event is this device's, so the reload is also
+  // where a peer's move or removal reaches it. After the stores re-read, so the
+  // reconcile sees the synced rows and writes any new link over fresh state.
+  // A task's deadline event and time block are the same shape, and are
+  // reconciled from the same report after the same re-read.
+  it('re-reads the stores, then reconciles task and meal events with what was applied', () => {
+    const applied = { mealEntryIds: ['m1'], removedMealEvents: [], taskIds: ['t1'], removedTaskEvents: [] };
+
+    const { mockRegistered } = jest.requireMock<{ mockRegistered: { reload: SyncReload } }>('../store/useSyncStore');
+    mockRegistered.reload(applied);
+
+    expect(mockCalls).toEqual([
+      'initialize', 'initializeSettings', 'reconcileSyncedTaskEvents', 'reconcileSyncedMealEvents',
+    ]);
+    expect(mockTaskReconciledWith).toBe(applied);
+    expect(mockReconciledWith).toBe(applied);
   });
 });
 

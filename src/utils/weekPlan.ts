@@ -19,10 +19,12 @@ import { entriesForDay } from './mealPlan';
  * want and exactly what the per-day + button is for.
  *
  * `todayKey` is a parameter rather than a read of the clock, matching
- * `selectTodayMealEntries` — and it is a plain calendar day key, deliberately
- * not `dayResetTime`-aware, because a `MealPlanEntry.date` is a calendar day
- * by construction (see the field's own note) and the rest of this feature
- * already compares against `dayKeyOf(new Date())`.
+ * `selectTodayMealEntries`. The caller passes the *logical* today
+ * (`dayKeyOf(getLogicalToday())`), as the rest of the feature does: a
+ * `MealPlanEntry.date` is a calendar day by construction (see the field's own
+ * note), but which of those days counts as today follows `dayResetTime`, or
+ * at 1:30 AM last night's dinner reads as past here while Today and the meal
+ * tasks still treat it as tonight's.
  */
 
 /** One day of the week, as the deciding surface reads it. */

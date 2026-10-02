@@ -1,11 +1,12 @@
 import { create } from 'zustand';
 import { addDays } from 'date-fns/addDays';
-import type { Task, TaskDraft, Priority, TimeOfDay, TitleRule, Person, QuotaPeriod, Polarity, MealPlanEntry } from '../types';
+import type { Task, TaskDraft, Priority, TimeOfDay, TitleRule, Person, QuotaPeriod, Polarity, MealPlanEntry, FoodLogEntry } from '../types';
 import {
   initDatabase,
   dbGetAllTasks,
   dbInsertTask,
   dbUpdateTask,
+  dbFillTaskCalendarExternalIds,
   dbDeleteTask,
   dbDeleteSubtasks,
   dbClearAllPins,
@@ -30,7 +31,9 @@ import {
   dbGetFoodLogEntries,
 } from '../db/database';
 import { useSettingsStore } from './useSettingsStore';
-import { useCategoryStore, ensureCalendarEventCategory, ensureHealthCategory, ensureGeneratedTaskCategories, ensureGeneratedTaskCategory } from './useCategoryStore';
+import { useWidgetCompletionStore } from './useWidgetCompletionStore';
+import { useCategoryStore, ensureCalendarEventCategory, ensureHealthCategory, ensureGeneratedTaskCategories, ensureGeneratedTaskCategory, renameGeneratedCategorySettings } from './useCategoryStore';
+import { renameInFollowUpDraft, renameInReminderCaptures, renameInSeriesDefaults, renameInTitleRules, renameInViewClauses } from '../utils/categoryRename';
 import { useTemplateStore } from './useTemplateStore';
 import { useTaskGroupStore } from './useTaskGroupStore';
 import { useSavedViewStore } from './useSavedViewStore';
@@ -38,16 +41,19 @@ import { useFocusStore } from './useFocusStore';
 import { useUnattendedStore } from './useUnattendedStore';
 import { useProjectStore, projectProgress } from './useProjectStore';
 import { useProjectCategoryStore } from './useProjectCategoryStore';
+import { projectBlueprint } from '../utils/projectTemplate';
 import { useTemplateCategoryStore } from './useTemplateCategoryStore';
 import { listedAnywhere } from '../utils/groceryLists';
 import { useGroceryStore } from './useGroceryStore';
 import { useEventReminderStore } from './useEventReminderStore';
 import { useHiddenEventsStore } from './useHiddenEventsStore';
+import { useEventPeopleStore } from './useEventPeopleStore';
+import { useEventTaskLinkStore } from './useEventTaskLinkStore';
 import { useRecipeStore } from './useRecipeStore';
 import { useMealPlanStore } from './useMealPlanStore';
 import { useLeftoverStore } from './useLeftoverStore';
 import { isLiveLeftover } from '../utils/leftovers';
-import { dripCandidate, findProjectStalls, projectPullUpdates } from '../utils/projectPull';
+import { dripCandidate, findProjectStalls, nextPullCandidate, projectPullUpdates } from '../utils/projectPull';
 import {
   projectReviewLinkUrl,
   projectReviewProjectId,
@@ -71,18 +77,23 @@ import {
   wantsPantryReview,
 } from '../utils/pantryReviewTasks';
 import {
+  MAX_MEAL_SHORTFALL_TASKS,
   mealShortfallEntryId,
   mealShortfallLinkUrl,
   staleMealShortfallTasks,
   wantedMealShortfalls,
 } from '../utils/mealShortfallTasks';
+import { mealThawEntryId, staleMealThawTasks, wantedMealThaws } from '../utils/mealThawTasks';
 import {
   MEAL_LOG_NUDGE_LOOKBACK_DAYS,
+  isMealLogged,
   mealLogNudgeEntryId,
   mealLogNudgeLinkUrl,
   staleMealLogNudgeTasks,
   wantedMealLogNudges,
+  type MealLogRecord,
 } from '../utils/mealLogNudgeTasks';
+import { loggedMealSlotKeys } from '../utils/mealLogCoverage';
 import { standingSwapMap } from '../utils/standingSwaps';
 import {
   dueMealPlanNudge,
@@ -94,7 +105,6 @@ import {
 // reason: the reference is inside an action body, by which time both modules
 // have finished loading.
 import { deleteGeneratedTaskQuietly, dropGeneratedTask, reconcileGeneratedTask } from './generatedTaskSync';
-import { reviewWeekKey, slippedTasks, stuckPile, wantsWeeklyReview, WEEKLY_REVIEW_URL } from '../utils/weeklyReview';
 import { generatedBy, generatedSourceOf, generatedTaskCountOf, generatorPausedForVacation, hasAnyGeneratedTask, liveGeneratedTask, liveGeneratedTasksOfKind } from '../utils/generatedTasks';
 import { featureHidden } from '../utils/simpleMode';
 import { CALENDAR_REVIEW_TITLE, calendarReviewDayKey, wantsCalendarReview } from '../utils/calendarReviewTasks';
@@ -105,6 +115,7 @@ import {
   clampWeighInEveryDays,
   wantsWeighIn,
   weighInDayKey,
+  weighInDeclineHolds,
   weighInNotes,
 } from '../utils/weightTasks';
 import { buildMoodDays, lowMoodRun } from '../utils/moodInsights';
@@ -117,7 +128,7 @@ import {
   weekendNudgeLinkUrl,
   weekendNudgeNotes,
   weekendNudgeWeekendKey,
-  weekendPlanCount,
+  weekendPlanTitles,
   weekendSourceProjects,
 } from '../utils/weekendTasks';
 import { buildDayBuckets } from '../utils/calendarMonth';
@@ -133,7 +144,7 @@ import { medicationFor } from '../utils/medicationLog';
 import { eventsIn } from '../utils/calendarBusy';
 import { isDemoModeActive } from '../utils/demoState';
 import type { MealSlot, Project, TaskGroup, WeatherCondition, WeatherRule } from '../types';
-import { awayPauseDriver, isProjectAwayNow } from '../utils/awayDates';
+import { awayPauseDriver, departureFromAnswer, departureMoveFromAnswer, isProjectAwayNow } from '../utils/awayDates';
 import { generateId } from '../utils/id';
 import {
   applyTitleRulesToDraft,
@@ -146,8 +157,11 @@ import { buildCompletion, completionSettings } from '../utils/taskCompletion';
 import { derivedId, spawnSeed } from '../utils/syncIds';
 import { reorderSubset } from '../utils/reorder';
 import { liveProjectSteps, slotUpdates } from '../utils/projectOrder';
-import { applyMeasuredTime } from '../utils/effort';
-import { chainStepDatedByAnswer, deliverableDate, deliverableKindFor } from '../utils/deliverables';
+import { applyMeasuredTime, draftHasEstimate } from '../utils/effort';
+import {
+  ruleEstimateDraft, withRuleEstimate, withGeneratorEstimate, holdsKindEstimate,
+} from '../utils/ruleEstimate';
+import { chainStepDatedByAnswer, deliverableDate, deliverableKindFor, isTentativeAnswer } from '../utils/deliverables';
 import { totalMinutes } from '../utils/recipeUtils';
 import { normalizeTargetUnit } from '../utils/quotaUnit';
 import {
@@ -161,17 +175,19 @@ import {
   staleSupplyReorderTasks,
   suppliesWantingList,
   supplyReorderSourceId,
+  supplyRestockReleasesItem,
   wantedSupplyReorders,
 } from '../utils/supply';
-import { getNextDueDate, getCurrentDayStart, getLogicalToday, getLogicalTomorrow, getTaskDayStart, getEffectiveTaskDate, dayKeyOf, dayKeyToDate, getDeadlineFromOffset, getDeadlineFromMonthDay, getReminderOffsetDate, getStreakOutcome, getNextSeriesDates, recurrenceAnchorDayFor, captureReminderOffset, reanchorReminderToWallClock } from '../utils/dateUtils';
+import { getNextDueDate, getCurrentDayStart, getLogicalDayKey, getLogicalToday, getLogicalTomorrow, getTaskDayStart, getEffectiveTaskDate, dayKeyOf, dayKeyToDate, getDeadlineFromOffset, getDeadlineFromMonthDay, getReminderOffsetDate, getStreakOutcome, getNextSeriesDates, recurrenceAnchorDayFor, captureReminderOffset, reanchorReminderToWallClock } from '../utils/dateUtils';
 import { entriesForSlot, shiftDayKey } from '../utils/mealPlan';
-import { MEAL_SLOT_TASK_DAYS, completesMealSlot, mealSlotSourceId, mealSlotStepTimeSegments, mealSlotTaskDraft, parseMealSlotSource } from '../utils/mealSlotTasks';
+import { MEAL_SLOT_TASK_DAYS, completesMealSlot, mealSlotSourceId, mealSlotStepTimeSegments, mealSlotTaskDraft, parseMealSlotSource, slotEntryForTask, staleMealSlotTasks } from '../utils/mealSlotTasks';
 import { wantsMealLogPrompt } from '../utils/mealLog';
 import { quotaRunSpan, quotaTargetForInterval, quotaDueTimesAfter, isQuotaRunOver, quotaWeekStart } from '../utils/quotaSchedule';
+import { isRotationTask, rotationCoversNew, rotationPick, rotationUnpick } from '../utils/rotation';
 import { MIN_TARGET_COUNT, MAX_TARGET_COUNT, taskKindOf } from '../utils/taskKinds';
 import { nextStreakRecord } from '../utils/streakRecord';
 import { isNegativeTask, slipPatch, undoSlipPatch, cleanDayPatch } from '../utils/negativeHabits';
-import { creditShieldUntil, extendShieldUntil, penaltyChargeFor, penaltyCreditFor, slipPenaltyUntil } from '../utils/penaltyShield';
+import { creditShieldUntil, extendShieldUntil, penaltyChargeFor, penaltyCreditFor, slipPenaltyUntil, uncreditShieldUntil } from '../utils/penaltyShield';
 // One name per line, deliberately, and not to be re-joined. See the note
 // on the settings load in useSettingsStore.ts: this is a list every new
 // visibility helper is added to, so one line is a guaranteed conflict.
@@ -182,6 +198,8 @@ import {
   isUpcomingToday,
   isHeldBack,
   isHiddenForVacation,
+  isWithheld,
+  isInPausedProject,
   isVisibleApartFromVacation,
   isTaskExpired,
   isTaskSweepable,
@@ -204,6 +222,8 @@ import {
   currentTimeSegment,
   timeSegmentThreshold,
   displayTitleFor,
+  getVisibleAt,
+  beginVisibleAtPass,
 } from '../utils/visibilityUtils';
 import { retentionCutoff, selectPurgeableTaskIds } from '../utils/retention';
 import { categoryLabel } from '../utils/categoryLabel';
@@ -215,11 +235,14 @@ import {
   driftingTasks,
   type DriftEntry,
 } from '../utils/postpone';
-import { followUpTaskRule, advanceFollowUpTaskTally, followUpTaskSuppressedBy, canHoldFollowUpTask } from '../utils/followUpTask';
+import {
+  followUpTaskRule, advanceFollowUpTaskTally, followUpTaskSuppressedBy, canHoldFollowUpTask,
+  emptyFollowUpTaskDraft, followUpTaskDraftIsEmpty,
+} from '../utils/followUpTask';
 import type { FollowUpTaskSuppression } from '../utils/followUpTask';
 import { normalizeTitle } from '../utils/taskInstances';
 import { resolveTitleRules, titleRuleBacklog } from '../utils/titleRules';
-import { registerTaskSource } from '../utils/blockerRegistry';
+import { registerTaskSource, resolveBlocker } from '../utils/blockerRegistry';
 import { registerPersonTaskSource } from '../utils/peopleRegistry';
 import {
   birthdayDrift,
@@ -248,24 +271,41 @@ import { usePersonStore } from './usePersonStore';
 import { usePersonGroupStore } from './usePersonGroupStore';
 import { usePersonNoteStore } from './usePersonNoteStore';
 import { giftIdeasText } from '../utils/personNotes';
-import { resolveBlocksEdit, waitingOn, canWaitOn } from '../utils/blocking';
+import { resolveBlocksEdit, waitingOn, canWaitOn, blockerFields, blockerIdsOf, blockerOf } from '../utils/blocking';
 import {
   waitingFollowUpTaskId,
   wantedWaitingFollowUps,
+  MAX_WAITING_FOLLOW_UP_TASKS,
   waitingFollowUpsHandledRecently,
   staleWaitingFollowUpTasks,
 } from '../utils/waitingFollowUpTasks';
 import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders, scheduleTimerAlarm, cancelTimerAlarm, scheduleQuotaNudges, cancelQuotaNudges, cancelCompletionTimer } from '../utils/notifications';
-import { syncDeadlineEvent } from '../utils/deadlineCalendarSync';
-import { logTaskCompletionToCalendar } from '../utils/completionCalendarSync';
-import { logTaskHealthValue } from '../utils/healthCompletionSync';
+import { syncDeadlineEvent, taskEventsAfterSync, deadlineEventLink, deleteDeadlineEvent } from '../utils/deadlineCalendarSync';
+import type { ApplyReport } from '../utils/syncMerge';
+import { logTaskCompletionToCalendar, completionEventLink, deleteCompletionEvent } from '../utils/completionCalendarSync';
+import { logTaskHealthValue, unlogTaskNutrientFromFoodLog } from '../utils/healthCompletionSync';
+import { waterTotalMl } from '../utils/waterLog';
+import { followedWaterTargetCount } from '../utils/waterTargetUnits';
 import {
-  deleteCalendarEvent,
+  followedWaterTaskDoneOn, waterShortfallMl, waterShortfallTitle, WATER_SHORTFALL_NOTES,
+} from '../utils/waterShortfallTasks';
+import { effectiveWaterTargetMl } from '../utils/waterExerciseBoost';
+import {
+  getCalendarPermission,
   presentTimeBlockCreate,
   presentTimeBlockEdit,
   readTimeBlockEvent,
   updateTimeBlockEvent,
+  type TimeBlockEvent,
 } from '../utils/calendarSync';
+import {
+  NO_EVENT_LINK,
+  adoptableTimeBlockId,
+  eventsWithExternalId,
+  filledExternalId,
+  readExternalEventId,
+  type CalendarEventLink,
+} from '../utils/calendarEventLink';
 import { timeBlockFieldsFor, timeBlockUpdateFor } from '../utils/timeBlock';
 import { useCalendarStore } from './useCalendarStore';
 import { useWeatherStore } from './useWeatherStore';
@@ -277,7 +317,9 @@ import {
   weatherWindowFor,
   describeWeatherWindow,
   weatherTaskTitle,
+  weatherRuleIdOf,
   WEATHER_AHEAD_FROM_HOUR,
+  WEATHER_LINK_URL,
 } from '../utils/weatherTasks';
 import {
   eventTaskRuleIdOf,
@@ -297,7 +339,7 @@ import { dateToHHMM } from '../utils/clockTime';
 import { useTransitStore } from './useTransitStore';
 import { useScreenTimeStore } from './useScreenTimeStore';
 import { useHealthStore } from './useHealthStore';
-import { screenTimeSourceId, parseScreenTimeSourceId, crossingWantsTask } from '../utils/screenTimeRules';
+import { screenTimeSourceId, parseScreenTimeSourceId, crossingWantsTask, screenTimeRuleIdOf } from '../utils/screenTimeRules';
 import {
   healthSourceId,
   parseHealthSourceId,
@@ -306,6 +348,7 @@ import {
   ruleCanBeJudgedYet,
   ruleShortfallToday,
   healthTaskLinkUrl,
+  healthRuleIdOf,
 } from '../utils/healthRules';
 import { isTimedTask, timerElapsed } from '../utils/timer';
 import { apportionedMinutes, segmentMinutesOf } from '../utils/timerSegments';
@@ -324,16 +367,23 @@ import {
 // isLiveRecurring / CLAUDE.md recurrence docs for why).
 export const CONTENT_FIELDS: (keyof Task)[] = [
   'title', 'notes', 'tags', 'category', 'priority', 'effort',
-  'estimatedMinutes', 'timedMinutes', 'healthMetric', 'healthTarget', 'windowStart', 'windowEnd', 'timeSegments', 'reminderTime', 'reminderKind', 'reminderOffsetDays', 'linkUrl', 'phoneNumber', 'emailAddress', 'location', 'completionTimerMinutes', 'completionTimerNote',
+  'estimatedMinutes', 'timedMinutes', 'healthMetric', 'healthTarget', 'windowStart', 'windowEnd', 'timeSegments', 'reminderTime', 'reminderKind', 'reminderOffsetDays', 'reminderTracksVisibility', 'linkUrl', 'phoneNumber', 'emailAddress', 'location', 'completionTimerMinutes', 'completionTimerNote',
   // The question, not the answer — `deliverableValue` is per-occurrence data
   // like progressCount and is deliberately absent, or a scope:'occurrence'
   // edit would capture one date's answer as the default for every date after.
   'deliverableKind',
+  // The rest of the question, which travels with it: a Pick one's options,
+  // and whether a date answer sets the trip's Leaving date. Left off, a set's
+  // later dates took the kind with no options and asked in free text.
+  'deliverableOptions',
+  'deliverableSetsAway',
   // Grouped with the other visibility gates (windowStart, timeSegments) rather
   // than the recurrence rule: "this occurrence waits on that one-off errand" is
   // a normal thing to want, and without this a scope:'occurrence' edit would
   // quietly become the template for every occurrence after it.
   'blockedById',
+  // The rest of the set, for the same reason: see Task.blockedByIds.
+  'blockedByIds',
   // Deliberately NOT here: postponeCount / postponeMuted. A scope:'occurrence'
   // edit captures every content field into seriesDefaults, which is applied on
   // top of the row that spawns the next occurrence — so listing them would hand
@@ -382,6 +432,55 @@ function chargePenaltyShield(until: Date, reason: string): void {
  * end of the block, and a credit that shortens the block without ending it has
  * not changed whose block it is.
  */
+/**
+ * An occurrence's reminder moved onto a new due date: the same clock time on
+ * the new day (or the same offset before it), or, for a reminder that tracks
+ * visibility, the moment the moved row becomes visible. The rule
+ * buildCompletion applies to a successor, for the two paths that re-date a row
+ * outside a completion: skipping one, and a daily target's rollover.
+ */
+function reminderOnto(effective: Task, due: Date, overrides: Partial<Task> = {}): Pick<Task, 'reminderTime' | 'reminderUtcOffsetMinutes'> {
+  if (!effective.reminderTime) {
+    return { reminderTime: effective.reminderTime, reminderUtcOffsetMinutes: effective.reminderUtcOffsetMinutes };
+  }
+  if (effective.reminderTracksVisibility) {
+    const next = getVisibleAt({ ...effective, ...overrides, dueDate: due.toISOString(), deferUntil: null });
+    return { reminderTime: next.toISOString(), reminderUtcOffsetMinutes: next.getTimezoneOffset() };
+  }
+  const original = new Date(effective.reminderTime);
+  const next = new Date(
+    effective.reminderOffsetDays !== null ? getReminderOffsetDate(due, effective.reminderOffsetDays) : due
+  );
+  next.setHours(original.getHours(), original.getMinutes(), 0, 0);
+  return { reminderTime: next.toISOString(), reminderUtcOffsetMinutes: next.getTimezoneOffset() };
+}
+
+/**
+ * A relative deadline recomputed against a new due date, as buildCompletion
+ * does for a successor. A fixed deadline is a one-off date, so it's returned
+ * unchanged here: re-dating the same row doesn't make it stop applying.
+ */
+function deadlineOnto(effective: Task, due: Date): string | null {
+  if (effective.deadlineOffsetDays !== null) return getDeadlineFromOffset(due, effective.deadlineOffsetDays).toISOString();
+  if (effective.deadlineMonthDay !== null) return getDeadlineFromMonthDay(due, effective.deadlineMonthDay).toISOString();
+  return effective.deadline;
+}
+
+/**
+ * Gives back to the block what completing `task` took off it, when unticking
+ * undoes that completion. Without it, tick-then-untick shortened a block with
+ * the task still undone.
+ */
+function uncreditPenaltyShield(task: Task, now: Date): void {
+  if (task.penaltyCreditedAt === null || task.penaltyMinutes === null) return;
+  const settings = useSettingsStore.getState();
+  if (!settings.penaltyShieldEnabled) return;
+  const next = uncreditShieldUntil(settings.penaltyShieldUntil, task.penaltyMinutes, task.penaltyCreditedAt, now);
+  if (next !== settings.penaltyShieldUntil) {
+    settings.setPenaltyShieldUntil(next, settings.penaltyShieldReason ?? displayTitleFor(task));
+  }
+}
+
 function creditPenaltyShield(task: Task, now: Date): string | null {
   const settings = useSettingsStore.getState();
   if (!settings.penaltyShieldEnabled) return null;
@@ -446,8 +545,8 @@ function backfillRecurrenceAnchors(tasks: Task[]): void {
  * forget — same shape as every `scheduleTaskReminder(...)` call in this
  * file: the write is async and best-effort, so nothing here awaits it.
  *
- * Only patches the task if the resulting id actually changed (most calls are
- * a no-op — most saves don't touch the deadline), and only if the task is
+ * Only patches the task if the resulting link actually changed (most calls
+ * are a no-op — most saves don't touch the deadline), and only if the task is
  * still around by the time the device write finishes; one deleted mid-write
  * has nothing left to patch. `syncDeadlineEvent` (deadlineCalendarSync.ts)
  * owns the decision of what the device event should look like; this is only
@@ -456,11 +555,14 @@ function backfillRecurrenceAnchors(tasks: Task[]): void {
  */
 function reconcileDeadlineEvent(task: Task): void {
   syncDeadlineEvent(task)
-    .then(calendarEventId => {
-      if (calendarEventId === task.calendarEventId) return;
+    .then(link => {
+      if (
+        link.eventId === task.calendarEventId &&
+        link.externalId === (task.calendarEventExternalId ?? null)
+      ) return;
       const current = useTaskStore.getState().tasks.find(t => t.id === task.id);
       if (!current) return;
-      const updated = { ...current, calendarEventId };
+      const updated = { ...current, calendarEventId: link.eventId, calendarEventExternalId: link.externalId };
       dbUpdateTask(updated);
       useTaskStore.setState(s => ({ tasks: s.tasks.map(t => (t.id === task.id ? updated : t)) }));
     })
@@ -484,11 +586,14 @@ function reconcileDeadlineEvent(task: Task): void {
  */
 function logCompletionEvent(task: Task, completedAt: Date): void {
   logTaskCompletionToCalendar(task, completedAt)
-    .then(completionCalendarEventId => {
+    .then(async completionCalendarEventId => {
       if (!completionCalendarEventId) return;
+      // The server id beside it, so reopening the task on a phone this backup is
+      // restored to can still find the event to delete (#2950).
+      const completionCalendarEventExternalId = await readExternalEventId(completionCalendarEventId);
       const current = useTaskStore.getState().tasks.find(t => t.id === task.id);
       if (!current) return;
-      const updated = { ...current, completionCalendarEventId };
+      const updated = { ...current, completionCalendarEventId, completionCalendarEventExternalId };
       dbUpdateTask(updated);
       useTaskStore.setState(s => ({ tasks: s.tasks.map(t => (t.id === task.id ? updated : t)) }));
     })
@@ -584,6 +689,28 @@ function writeGeneratedOptOut(task: Task, value: false | null): void {
     // growing-record path generatedTasks.ts warns about.
     case 'mealSlot':
       return;
+    // A settings stamp rather than a row one, since a day key names no row,
+    // and one that expires: deleting "Record your weight" means "not this
+    // time", so it holds for weighInEveryDays from today (weighInDeclineHolds)
+    // and no longer. Without it the request came back the next morning, since
+    // the window still had no reading in it. The pass's own clearing of a
+    // request whose day has gone drops it rather than deleting, so an ignored
+    // request never lands here.
+    //
+    // `value === null` is the undo path, and restores what the delete found: a
+    // stamp already sitting there was old enough to have let this request be
+    // written, so clearing it changes nothing the reader can see.
+    case 'weighIn':
+      useSettingsStore.getState()
+        .setWeighInDeclinedDayKey(value === false ? dayKeyOf(getCurrentDayStart()) : null);
+      return;
+    // A settings stamp for the same reason weighIn's is, and a shorter one: the
+    // task is about today's water, so deleting it means "not today". `null` is
+    // the undo path and clears what the delete wrote.
+    case 'waterShortfall':
+      useSettingsStore.getState()
+        .setWaterShortfallDeclinedDayKey(value === false ? dayKeyOf(getCurrentDayStart()) : null);
+      return;
     // A stamp, not a `false`, and the one generator whose opt-out expires. The
     // fields a project could carry a permanent "no" on are nudgeOptIn and
     // nudgeCadenceDays, and both mean "never chase me about this again" — far
@@ -610,6 +737,12 @@ function writeGeneratedOptOut(task: Task, value: false | null): void {
     // property generatedTasks.ts asks a per-source opt-out to have.
     case 'mealShortfall':
       useMealPlanStore.getState().setShopTask(sourceId, value);
+      return;
+    // The same permanent-for-this-meal `false` shopTask gets, for the same
+    // reason: a meal on the 22nd happens once, and "I'm not thawing anything
+    // for this one" is an answer about that night alone.
+    case 'mealThaw':
+      useMealPlanStore.getState().setThawTask(sourceId, value);
       return;
     // The same field the completion-time log prompt's "Don't ask for this
     // meal" already writes — see mealLogNudgeTasks.ts. Declining either one
@@ -735,30 +868,29 @@ function writeGeneratedOptOut(task: Task, value: false | null): void {
  * check the same per-meal "no" first, because both are the same offer with
  * two different ways of answering "how much".
  */
-function offerMealLog(loggable: MealPlanEntry): void {
+function offerMealLog(loggable: MealPlanEntry, asked = false): void {
   if (!wantsMealLogPrompt(loggable, useSettingsStore.getState().mealLogPrompt)) return;
-  if (loggable.recipeId) {
-    useFoodLogStore.getState().setPendingMealLog({
-      label: loggable.title,
-      slot: loggable.slot,
-      dayKey: loggable.date,
-      recipeId: loggable.recipeId,
-      mealPlanEntryId: loggable.id,
-      scale: loggable.recipeScale,
-      choices: loggable.recipeChoices,
-      // A meal cooked tonight has nothing weighed yet — the prompt asks.
-      // Only a container that was weighed on the way into the fridge arrives
-      // with a figure (see finishLeftover).
-      grams: null,
-    });
-  } else {
-    useFoodLogStore.getState().setPendingManualMealLog({
-      label: loggable.title,
-      slot: loggable.slot,
-      dayKey: loggable.date,
-      mealPlanEntryId: loggable.id,
-    });
-  }
+  // Already logged, so there is nothing to offer. The meal's own square is not
+  // the only way food gets into that slot (`mealLogCoverage.ts` says why the
+  // join is the slot rather than `mealPlanEntryId`), and offering to log a
+  // lunch somebody typed in an hour ago is the same wrong question the nudge
+  // task used to ask the next morning — just sooner.
+  const logged = dbGetFoodLogEntries(loggable.date, loggable.date);
+  if (isMealLogged(loggable, mealLogRecord(logged))) return;
+  useFoodLogStore.getState().offerMealLog(loggable, { asked });
+}
+
+/**
+ * The two readings of "logged" a window of food log entries supports, for the
+ * generator and the completion offer alike — see `MealLogRecord`.
+ */
+function mealLogRecord(entries: readonly FoodLogEntry[]): MealLogRecord {
+  return {
+    entryIds: new Set(
+      entries.map(e => e.mealPlanEntryId).filter((id): id is string => id !== null)
+    ),
+    slotKeys: loggedMealSlotKeys(entries),
+  };
 }
 
 /**
@@ -786,7 +918,17 @@ function mealSlotEntryId(task: Task): string | null {
  * whole span — the meals already planned in it are what decide each task's
  * steps (see mealSlotChain).
  */
-function writeMealSlotTasks(fromKey: string, toKey: string, slots: readonly MealSlot[]): void {
+function writeMealSlotTasks(
+  fromKey: string,
+  toKey: string,
+  slots: readonly MealSlot[],
+  /**
+   * Whether each row written goes in the unattended ledger: true from the
+   * daily pass, false from the Settings backfill, which is a person turning a
+   * switch on and watching the rows arrive.
+   */
+  record: boolean,
+): void {
   const entries = dbGetMealPlanEntries(fromKey, toKey);
   // Ensured here as well as at startup for checkProjectReviewTasks' reason:
   // this generator ships on, so nobody flips the switch that would otherwise
@@ -794,7 +936,7 @@ function writeMealSlotTasks(fromKey: string, toKey: string, slots: readonly Meal
   // above every section.
   ensureGeneratedTaskCategory('mealSlot');
   const category = useSettingsStore.getState().mealCookTaskCategory;
-  const recipes = useRecipeStore.getState().recipes;
+  const library = useRecipeStore.getState();
 
   for (let dayKey = fromKey; dayKey <= toKey; dayKey = shiftDayKey(dayKey, 1)) {
     for (const slot of slots) {
@@ -818,26 +960,106 @@ function writeMealSlotTasks(fromKey: string, toKey: string, slots: readonly Meal
       // Already cooked before the pass ran — there is nothing left to do and
       // nothing to ask.
       if (entry?.cookedAt) continue;
-      const recipe = entry?.recipeId ? recipes.find(r => r.id === entry.recipeId) : undefined;
-      useTaskStore.getState().addTask(
+      // A meal whose recipe was deleted is written as the typed meal it now
+      // reads as, rather than "Make X" linking to a recipe that's gone.
+      const planned = slotEntryForTask(entry, library);
+      const recipe = planned?.recipeId ? library.recipes.find(r => r.id === planned.recipeId) : undefined;
+      const created = useTaskStore.getState().addTask(
         mealSlotTaskDraft(
-          dayKey, slot, entry, category, recipe ? totalMinutes(recipe) : null,
+          dayKey, slot, planned, category, recipe ? totalMinutes(recipe) : null,
           useSettingsStore.getState().mealSlotStepEstimates
         ),
         derivedId(spawnSeed.generated('mealSlot', sourceId, generatedTaskCountOf(tasks, 'mealSlot', sourceId))),
         { skipCategoryDefault: true, skipTitleRules: true },
       );
+      // Written straight through addTask rather than reconcileGeneratedTask,
+      // so the ledger entry that path records has to be made here — see the
+      // note on the one in generatedTaskSync.ts.
+      if (record) useUnattendedStore.getState().recordGenerated('created', created);
     }
   }
 }
 
-/** Points a task at its time block, if the task is still around to write to. */
-function setTimeBlockEventId(taskId: string, value: string | null): void {
+/**
+ * Points a task at its time block and the calendar server's id for it
+ * (#2950), if the task is still around to write to. Answers whether the task
+ * now holds that link.
+ *
+ * `from`, when given, is the block the caller read before an await, and the
+ * write only lands while the task still points at it: an answer about one
+ * block can't be written over the next one the user made meanwhile.
+ */
+function setTimeBlockLink(taskId: string, link: CalendarEventLink, from?: string | null): boolean {
   const current = useTaskStore.getState().tasks.find(t => t.id === taskId);
-  if (!current || current.timeBlockEventId === value) return;
-  const updated = { ...current, timeBlockEventId: value };
+  if (!current) return false;
+  if (from !== undefined && current.timeBlockEventId !== from) return false;
+  if (current.timeBlockEventId === link.eventId && (current.timeBlockExternalId ?? null) === link.externalId) {
+    return true;
+  }
+  const updated = { ...current, timeBlockEventId: link.eventId, timeBlockExternalId: link.externalId };
   dbUpdateTask(updated);
   useTaskStore.setState(s => ({ tasks: s.tasks.map(t => (t.id === taskId ? updated : t)) }));
+  return true;
+}
+
+/**
+ * Finds a task's block again by the calendar server's id when the id the task
+ * holds no longer resolves, points the task at it, and returns it; null leaves
+ * the caller to drop the pointer as it always has (#2950).
+ *
+ * The case this is for is a backup restored on a new phone. The old phone's
+ * local id names nothing here, while the block itself came down from the
+ * calendar account under the same server id. A block is never recreated (it
+ * is time the user set aside, through the system sheet), so without this the
+ * task would simply forget it: the reconcile and the editor's "On your
+ * calendar" row both drop a pointer they can't open. `adoptableTimeBlockId`
+ * decides when one event is safely the block, and it answers only for exactly
+ * one.
+ */
+async function adoptTimeBlock(task: Task): Promise<{ eventId: string; event: TimeBlockEvent } | null> {
+  const from = task.timeBlockEventId;
+  const externalId = task.timeBlockExternalId ?? null;
+  if (!from || !externalId) return null;
+  const adopted = adoptableTimeBlockId(await eventsWithExternalId(externalId));
+  if (!adopted || adopted === from) return null;
+  const event = await readTimeBlockEvent(adopted);
+  if (!event) return null;
+  if (!setTimeBlockLink(task.id, { eventId: adopted, externalId }, from)) return null;
+  return { eventId: adopted, event };
+}
+
+/**
+ * Keeps the server id of a block the task points at, read in the background:
+ * one made before the id was kept, or whose id the read straight after the
+ * sheet didn't get. Written only while the task still points at that block.
+ */
+function recordTimeBlockExternalId(taskId: string, eventId: string): void {
+  readExternalEventId(eventId)
+    .then(externalId => {
+      if (externalId) setTimeBlockLink(taskId, { eventId, externalId }, eventId);
+    })
+    .catch(() => {});
+}
+
+/**
+ * Opens the system edit sheet on a task's block and says what came of it:
+ * `'deleted'` (the user deleted it there, and the task's pointer went with it),
+ * `'kept'` (saved, or closed with the event still there) or `'gone'` (there was
+ * no event under that id to open).
+ */
+async function editTimeBlock(taskId: string, eventId: string): Promise<'deleted' | 'kept' | 'gone'> {
+  const result = await presentTimeBlockEdit(eventId);
+  if (result.deleted) {
+    setTimeBlockLink(taskId, NO_EVENT_LINK);
+    return 'deleted';
+  }
+  if (result.saved) return 'kept';
+
+  // Nothing came back: either the user closed the sheet without changing
+  // anything, or it never opened. Only one of those is worth acting on, so
+  // ask whether the event is actually still there before assuming the
+  // worst — `presentTimeBlockEdit` deliberately doesn't guess (see there).
+  return (await readTimeBlockEvent(eventId)) ? 'kept' : 'gone';
 }
 
 /**
@@ -855,19 +1077,24 @@ function setTimeBlockEventId(taskId: string, value: string | null): void {
  * opposite of the deadline mirror's resolve-or-shrug-then-recreate, and
  * deliberately so: a deadline event nobody asked for individually can be
  * re-minted silently, but a block the user deleted in their calendar was
- * deleted on purpose.
+ * deleted on purpose. Before dropping it, though, the block is looked for by
+ * the calendar server's id (`adoptTimeBlock`, #2950): an id that stopped
+ * resolving because a backup was restored on a new phone is not a block the
+ * user deleted.
  */
 function reconcileTimeBlockEvent(task: Task): void {
   const eventId = task.timeBlockEventId;
   if (!eventId) return;
   readTimeBlockEvent(eventId)
     .then(async event => {
-      if (!event) {
-        setTimeBlockEventId(task.id, null);
+      const block = event ? { eventId, event } : await adoptTimeBlock(task);
+      if (!block) {
+        setTimeBlockLink(task.id, NO_EVENT_LINK, eventId);
         return;
       }
-      const update = timeBlockUpdateFor(task, event);
-      if (update) await updateTimeBlockEvent(eventId, update);
+      if (event && !task.timeBlockExternalId) recordTimeBlockExternalId(task.id, eventId);
+      const update = timeBlockUpdateFor(task, block.event);
+      if (update) await updateTimeBlockEvent(block.eventId, update);
     })
     .catch(() => {});
 }
@@ -887,6 +1114,7 @@ const SCHEDULE_FIELDS = [
   'dueDate',
   'recurrenceType',
   'recurrenceMonthDay',
+  'recurrenceMonth',
   'recurrenceWeekOrdinal',
   'recurrenceFromCompletion',
 ] as const;
@@ -900,6 +1128,11 @@ const SCHEDULE_FIELDS = [
 // minute of every day.
 const QUOTA_SPAN_FIELDS = ['windowStart', 'windowEnd', 'quotaIntervalMinutes', 'quotaStartedAt'] as const;
 
+// Editing the set is editing the target, the same way editing the span is —
+// so it joins QUOTA_SPAN_FIELDS in triggering a re-derive rather than needing
+// its own handling in updateTask.
+const ROTATION_TARGET_FIELDS = ['rotationItems'] as const;
+
 /**
  * `targetCount` for a task whose cadence is stored as an interval, or the
  * count it already had when it isn't.
@@ -911,7 +1144,12 @@ const QUOTA_SPAN_FIELDS = ['windowStart', 'windowEnd', 'quotaIntervalMinutes', '
  */
 export function derivedTargetCount(task: Pick<Task,
   'windowStart' | 'windowEnd' | 'quotaStartedAt' | 'quotaIntervalMinutes' | 'targetCount'
->): number | null {
+> & Partial<Pick<Task, 'rotationItems'>>): number | null {
+  // A rotation's target is how many named things are in it, full stop — there
+  // is nothing to type and nothing that could disagree with the set. It is
+  // checked ahead of the interval because the two are not a combination the
+  // editor offers and the set is the more specific claim.
+  if (isRotationTask(task)) return task.rotationItems!.length;
   if (task.quotaIntervalMinutes == null) return task.targetCount;
   const { activeHoursStart, activeHoursEnd } = useSettingsStore.getState();
   const span = quotaRunSpan({
@@ -1221,6 +1459,34 @@ interface TaskStore extends UndoHistoryActions {
   lastAction: UndoableAction | null;
   undoStack: UndoableAction[];
   redoStack: UndoableAction[];
+  /**
+   * Tasks a completion just freed that have no day to go to: the last thing
+   * each waited on is done, but an undated task goes nowhere on its own, so
+   * "ready" would otherwise be invisible. ReadyOfferBar reads this and offers
+   * a day; `at` tells a fresh offer from the one already shown. Session-only.
+   */
+  readyOffer: { taskIds: string[]; at: number } | null;
+  /**
+   * A question about a trip's dates that a date answer raised (see
+   * `deliverableSetsAway`): ask for Coming back once Leaving has just been
+   * filled, or offer to move a Leaving date a new answer disagrees with.
+   * TripDatePrompt asks it; `at` tells a fresh one from the one shown.
+   */
+  tripDatePrompt:
+    | { kind: 'return'; projectId: string; at: number }
+    | { kind: 'moveLeaving'; projectId: string; awayStart: string; at: number }
+    | null;
+  clearTripDatePrompt: () => void;
+  clearReadyOffer: () => void;
+  /** Dates every task in the offer on `date`, undoably, and clears it. */
+  placeReadyTasks: (date: Date) => void;
+  /**
+   * Moves each repeating task to its next day on or after today, keeping its
+   * grid (`getNextDueDate`'s catch-up), or to today for one counted from
+   * completion. What a project coming off a pause offers its overdue
+   * routines (overdueRoutines). One undo step.
+   */
+  redateRoutines: (taskIds: string[]) => void;
   // Ids of tasks completed within the last COMPLETION_HOLD_MS — see
   // withHeldCompletions above.
   completionHoldIds: string[];
@@ -1244,6 +1510,29 @@ interface TaskStore extends UndoHistoryActions {
   sweepExpiredTasks: () => void;
   /** Deletes completions older than the retention window; returns how many went. */
   purgeOldCompletedTasks: () => number;
+  /**
+   * Brings this device's task calendar events in line with what a sync just
+   * applied (#2950): the deadline event of each changed task that holds one is
+   * rewritten (or deleted) through the same reconcile a local edit runs, its
+   * time block gets the task's title and length, the completion event of a
+   * task another device reopened is deleted and unlinked as a local uncomplete
+   * would, and the deadline event of each task another device deleted is
+   * deleted here. Which tasks, and why one with no event of this device's is
+   * left alone, is `taskEventsAfterSync`'s call; this does the device writes,
+   * fire-and-forget like every other deadline and time block reconcile.
+   *
+   * Called after the stores reload from the sync (`registerSyncReload`), so
+   * the rows it reads and any link it writes back are the synced ones.
+   */
+  reconcileSyncedEvents: (applied: Pick<ApplyReport, 'taskIds' | 'removedTaskEvents'>) => void;
+  /**
+   * Fills in the calendar server id beside each of a task's device event ids
+   * (deadline event, time block, completion event) that `found` names and the
+   * task has none for yet, in the database and in memory, without restamping
+   * the rows for sync (`dbFillTaskCalendarExternalIds` says why). The write
+   * half of the one-time launch backfill (`backfillCalendarExternalIds`).
+   */
+  fillCalendarExternalIds: (found: Readonly<Record<string, string>>) => void;
   /**
    * `id` is for the app's own unattended generators only — a person's task
    * always gets a fresh `generateId()`. Passing a `derivedId` (see syncIds.ts)
@@ -1375,7 +1664,35 @@ interface TaskStore extends UndoHistoryActions {
    * exclusive with `missed` in practice (nothing passes both); `missed`
    * still wins if it somehow were, since a miss is the more specific claim.
    */
-  completeTask: (id: string, options?: { missed?: boolean; deliverableValue?: string | null; neutral?: boolean; completedAt?: string }) => void;
+  completeTask: (id: string, options?: {
+    missed?: boolean;
+    /** See CompletionOptions.missChain (taskCompletion.ts) — ends a mid-chain miss here rather than advancing to the next step. */
+    missChain?: boolean;
+    deliverableValue?: string | null;
+    neutral?: boolean;
+    completedAt?: string;
+    logEarly?: boolean;
+    /**
+     * The row animated its own transition to the successor's look before
+     * calling this (see TaskItem's runCompletion and chainStepAdvancesInPlace)
+     * — so the usual completion hold, which keeps a just-ticked row's slot
+     * open for a batched collapse, would only fight that: it'd mask this row
+     * back to its real (pre-transition) content for the rest of the hold
+     * window, undoing the crossfade the moment it lands. Skipping the hold
+     * lets the old id disappear and the new one take its place in the same
+     * commit, which is invisible precisely because the row already looks
+     * like the successor by the time this fires.
+     */
+    chainStepInPlace?: boolean;
+    /**
+     * Internal — set by syncWaterQuotaTasks when a water-quota task is
+     * completed because the food log's own total reached its target, rather
+     * than by a tap on the task. The amount is already sitting in the food
+     * log (that's what triggered this), so the usual logHealthMetric write
+     * this call would otherwise make is skipped rather than double-added.
+     */
+    skipHealthLog?: boolean;
+  }) => void;
   uncompleteTask: (id: string) => void;
   /**
    * Writes (or clears) the answer on an already-completed task — the Logbook's
@@ -1396,8 +1713,13 @@ interface TaskStore extends UndoHistoryActions {
    *
    * Recurring only, like the skip it replaces. "I didn't do this" needs a next
    * occurrence to move on to; on a one-off it would just be a delete.
+   *
+   * `wholeChain` forwards to `completeTask`'s `missChain` — for a mid-chain
+   * step whose later steps depend on this one (meal-slot's Choose → Prepare
+   * → Eat), ending the routine here instead of advancing into a step that
+   * now has nothing to act on.
    */
-  markMissed: (id: string) => void;
+  markMissed: (id: string, options?: { wholeChain?: boolean }) => void;
   /**
    * Report a slip against a negative habit — the tap that says "I smoked".
    *
@@ -1443,6 +1765,39 @@ interface TaskStore extends UndoHistoryActions {
   rolloverNegativeStreaks: () => void;
   logQuotaUnit: (id: string) => void;
   unlogQuotaUnit: (id: string) => void;
+  /**
+   * Reconciles every daily water-quota task's `progressCount` to what the
+   * food log's own water total for today actually says, completing a task
+   * outright once that total reaches its target.
+   *
+   * The log-to-task half of the connection `logHealthMetric: 'waterMl'`
+   * makes — see the note on `logTaskHealthValue` in `healthCompletionSync.ts`
+   * for the whole picture and why the two directions can't both write to the
+   * food log in the same pass. Called by `useFoodLogStore` after any add,
+   * revision or delete that touches today's water, so a glass logged through
+   * the day view's stepper (or a bottled water logged as food) catches the
+   * task up exactly as tapping it would have — including finishing it, with
+   * no further tap needed, once the log alone carries it past the target.
+   *
+   * Scoped to `quotaPeriod === 'day'` tasks that don't ride out the day
+   * (`quotaRidesOutTheDay`): a weekly target's relevant total isn't "today's
+   * food log", and an overshoot or interval quota's target isn't a finish
+   * line to begin with, so both are left to log purely from taps, as before.
+   */
+  syncWaterQuotaTasks: () => void;
+  /**
+   * Write one pick into a rotation's ledger without completing anything, and
+   * report whether the set is now covered.
+   *
+   * Separate from `logRotationUnit` so the row can record the pick *first* and
+   * then drive its own completion animation — the same divert `handleQuotaTap`
+   * makes at target, except that a rotation's closing pick has to land in the
+   * ledger before the week closes over it.
+   */
+  recordRotationPick: (id: string, itemId: string) => boolean;
+  /** Log one pick against a rotation, completing the task if it covers the set. */
+  logRotationUnit: (id: string, itemId: string) => void;
+  unlogRotationUnit: (id: string) => void;
   /** Keeps a back-on-pace daily target on Today until releaseQuotaHold. */
   holdQuotaOnToday: (id: string) => void;
   releaseQuotaHold: (id: string) => void;
@@ -1568,6 +1923,12 @@ interface TaskStore extends UndoHistoryActions {
    */
   checkMealShortfallTasks: () => void;
   /**
+   * Give every meal planned for today or tomorrow that uses something only on
+   * hand frozen a "Take X out of the freezer" task, and clear the ones whose
+   * meal or freezer has since changed. See src/utils/mealThawTasks.ts.
+   */
+  checkMealThawTasks: () => void;
+  /**
    * Give every planned meal a few days in the past with nothing logged
    * against it a "Log X" task, and clear the ones whose meal has since been
    * logged, told not to ask, deleted, or has fallen out of the window. See
@@ -1602,11 +1963,6 @@ interface TaskStore extends UndoHistoryActions {
   checkMoodTasks: () => void;
   /** The bare-weekend offer — see src/utils/weekendTasks.ts. */
   checkWeekendNudgeTasks: () => void;
-  /**
-   * Offer a weekly review — one pass over the inbox, what is stuck, what
-   * slipped and the week ahead. See src/utils/weeklyReview.ts.
-   */
-  checkWeeklyReviewTasks: () => void;
   /**
    * The weigh-in request — see src/utils/weightTasks.ts. The one generator pass
    * that takes a Health read of its own rather than judging a snapshot, so the
@@ -1660,6 +2016,8 @@ interface TaskStore extends UndoHistoryActions {
   startCompletionTimer: (id: string) => void;
   /** Ends a completion timer's Live Activity early without touching its still-pending notification. */
   dismissCompletionTimer: (id: string) => void;
+  /** Dismisses any completion timer whose countdown has already reached zero — see maintenancePasses.ts. */
+  sweepExpiredCompletionTimers: () => void;
   // Timed tasks only: pause banks the running segment without logging it, so
   // the countdown can be resumed later; reset throws the banked time away.
   pauseTimer: (id: string) => void;
@@ -1739,6 +2097,8 @@ interface TaskStore extends UndoHistoryActions {
   removeFromProject: (taskId: string) => void;
   /** Unfiles a selection from whatever project each is in, as one undo entry. */
   bulkRemoveFromProject: (taskIds: string[]) => void;
+  /** Files the selection under another project, as one undo entry. */
+  bulkMoveToProject: (taskIds: string[], projectId: string) => void;
   deleteProject: (projectId: string, opts: { cascade: boolean }) => void;
   // Archive/restore a project through here rather than through useProjectStore
   // directly — these are the ones that register an undo entry.
@@ -1751,6 +2111,13 @@ interface TaskStore extends UndoHistoryActions {
   // this, the same way it asks before a cascading delete.
   completeProject: (projectId: string, opts: { archiveRemaining: boolean }) => void;
   uncompleteProject: (projectId: string) => void;
+  /**
+   * A new project with this one's tasks and sections, every task open again
+   * and every date cleared, for doing the same thing another time (next
+   * year's party, the next trip). The original is left as it was. Returns the
+   * new project, or null when the id names nothing.
+   */
+  startFreshFromProject: (projectId: string) => Project | null;
   // Bulk selection on the Projects screen. One undo entry covers the whole
   // batch — see the note on bulkDeleteProjects.
   bulkDeleteProjects: (projectIds: string[], opts: { cascade: boolean }) => void;
@@ -1772,12 +2139,12 @@ interface TaskStore extends UndoHistoryActions {
   bulkUncompleteTasks: (ids: string[]) => void;
   bulkMarkMissed: (ids: string[]) => void;
   /** `skipGeneratedOptOut` has the same meaning as `deleteTask`'s — see its doc comment. */
-  bulkDeleteTasks: (ids: string[], opts?: { skipGeneratedOptOut?: boolean }) => void;
+  bulkDeleteTasks: (ids: string[], opts?: { skipGeneratedOptOut?: boolean; registerUndo?: boolean }) => void;
   clearLogbook: () => void;
   bulkSetPriority: (ids: string[], priority: Priority) => void;
   bulkTogglePin: (ids: string[]) => void;
   bulkDefer: (ids: string[], until: Date) => void;
-  bulkSetWhen: (ids: string[], date: Date | null, timeSegments: TimeOfDay[]) => void;
+  bulkSetWhen: (ids: string[], date: Date | null, timeSegments: TimeOfDay[], options?: { restartSchedules?: boolean; scope?: 'occurrence' | 'series' }) => void;
   bulkSetCategory: (ids: string[], category: string | null) => void;
   bulkAddTags: (ids: string[], tags: string[]) => void;
   addTag: (tag: string) => void;
@@ -1806,6 +2173,147 @@ interface TaskStore extends UndoHistoryActions {
   tasksByTag: (tag: string) => Task[];
 }
 
+/**
+ * The row holding the follow-up rule that wrote `task`, now.
+ *
+ * `followUpTaskSourceId` names the successor that was live when the follow-up
+ * landed, and goes stale once that row is completed in turn. Each completion's
+ * successor points back at it through `previousOccurrenceId`, so the walk
+ * steps forward along those until it reaches a row still open. A follow-up
+ * task points back the same way, which is why rows carrying
+ * `followUpTaskSourceTitle` are passed over. Null when the chain ends (the
+ * rule's task stopped repeating, or a purge took a link).
+ */
+function liveFollowUpSource(task: Task, tasks: readonly Task[]): Task | null {
+  let row = tasks.find(t => t.id === task.followUpTaskSourceId);
+  for (let steps = 0; row && row.completed && steps < 1000; steps++) {
+    const prev: Task = row;
+    row = tasks.find(t => t.previousOccurrenceId === prev.id && !t.followUpTaskSourceTitle);
+  }
+  return row && !row.completed && followUpTaskRule(row) ? row : null;
+}
+
+/**
+ * Carry an estimate edited on an app-written task back to the generator that
+ * writes the next one, so it is there next time rather than dying with this
+ * row. Where each kind of generator keeps it is in `ruleEstimate.ts`.
+ */
+function writeEstimateToSource(task: Task): void {
+  const estimate = { estimatedMinutes: task.estimatedMinutes, effort: task.effort };
+  if (task.followUpTaskSourceId) {
+    const store = useTaskStore.getState();
+    const source = liveFollowUpSource(task, store.tasks);
+    if (source) {
+      const draft = source.followUpTaskDraft ?? emptyFollowUpTaskDraft();
+      if (draft.estimatedMinutes !== estimate.estimatedMinutes || draft.effort !== estimate.effort) {
+        const next = { ...draft, ...estimate };
+        store.updateTask(source.id, { followUpTaskDraft: followUpTaskDraftIsEmpty(next) ? null : next });
+      }
+    }
+  }
+  const settings = useSettingsStore.getState();
+  switch (task.generatedKind) {
+    case 'weather': {
+      const ruleId = weatherRuleIdOf(task);
+      const next = ruleId ? withRuleEstimate(settings.weatherRules, ruleId, estimate) : null;
+      if (next) settings.setWeatherRules(next);
+      break;
+    }
+    case 'screenTime': {
+      const ruleId = screenTimeRuleIdOf(task);
+      const next = ruleId ? withRuleEstimate(settings.screenTimeRules, ruleId, estimate) : null;
+      if (next) settings.setScreenTimeRules(next);
+      break;
+    }
+    case 'health': {
+      const ruleId = healthRuleIdOf(task);
+      const next = ruleId ? withRuleEstimate(settings.healthRules, ruleId, estimate) : null;
+      if (next) settings.setHealthRules(next);
+      break;
+    }
+    case 'eventTask': {
+      const ruleId = eventTaskRuleIdOf(task);
+      const next = ruleId ? withRuleEstimate(settings.eventRules, ruleId, estimate) : null;
+      if (next) settings.setEventRules(next);
+      break;
+    }
+    default: {
+      if (!task.generatedKind || !holdsKindEstimate(task.generatedKind)) break;
+      const next = withGeneratorEstimate(settings.generatorEstimates ?? {}, task.generatedKind, estimate);
+      if (next) settings.setGeneratorEstimates(next);
+    }
+  }
+}
+
+/**
+ * The `waterShortfall` generator's whole pass: a one-off task for the water
+ * still owed, once the daily water task that follows the food log's target was
+ * finished before the target rose. See `src/utils/waterShortfallTasks.ts`.
+ *
+ * Runs at the end of `syncWaterQuotaTasks`, the one place already called
+ * whenever today's water total, the target or today's exercise changes, rather
+ * than on a clock of its own.
+ */
+function reconcileWaterShortfall(args: {
+  todayKey: string;
+  totalMl: number;
+  exerciseReadToday: boolean;
+  exerciseMinutes: number | null;
+  tasks: Task[];
+}): void {
+  const settings = useSettingsStore.getState();
+  if (!settings.waterShortfallTasks || !settings.waterShortfallTaskCategory) return;
+  if (generatorPausedForVacation('waterShortfall', settings.vacationMode)) return;
+  // A configured boost with no reading for today can't say what the target is,
+  // and a target that is unknown is not a target that is lower. Same refusal
+  // followedWaterTargetCount makes: leave whatever is there alone.
+  if (settings.waterExerciseBoost && !args.exerciseReadToday) return;
+
+  const targetMl = effectiveWaterTargetMl(
+    settings.nutritionTargets.waterMl, args.exerciseMinutes, settings.waterExerciseBoost,
+  );
+  const owedMl = waterShortfallMl(targetMl, args.totalMl);
+  const wanted =
+    owedMl !== null &&
+    followedWaterTaskDoneOn(args.tasks, args.todayKey) &&
+    settings.waterShortfallDeclinedDayKey !== args.todayKey;
+
+  const dueDate = getCurrentDayStart();
+  dueDate.setHours(12, 0, 0, 0);
+
+  // A request from a day that has gone is dropped rather than deleted quietly
+  // with an opt-out: nobody declined it, the day just ended.
+  liveGeneratedTasksOfKind(args.tasks, 'waterShortfall')
+    .filter(t => t.generatedSourceId !== args.todayKey)
+    .forEach(t => dropGeneratedTask('waterShortfall', t.generatedSourceId));
+
+  reconcileGeneratedTask({
+    kind: 'waterShortfall',
+    sourceId: args.todayKey,
+    wanted,
+    // A completed one blocks a second today, which is what stops completing it
+    // (and logging only part of what it asked for) from asking again.
+    blocksOnFinished: true,
+    drift: existing => {
+      if (owedMl === null) return null;
+      const title = waterShortfallTitle(owedMl, settings.waterUnit);
+      if (existing.title === title && existing.logHealthAmount === owedMl) return null;
+      return { title, logHealthAmount: owedMl };
+    },
+    draft: () => ({
+      title: waterShortfallTitle(owedMl ?? 0, settings.waterUnit),
+      notes: WATER_SHORTFALL_NOTES,
+      dueDate: dueDate.toISOString(),
+      category: settings.waterShortfallTaskCategory,
+      // Completing it logs the water it asked for, through the same path the
+      // daily task uses, so the food log and the target both move.
+      logHealthMetric: 'waterMl',
+      logHealthAmount: owedMl ?? undefined,
+      ...generatedBy('waterShortfall', args.todayKey),
+    }),
+  });
+}
+
 export const useTaskStore = create<TaskStore>((set, get) => ({
   tasks: [],
   tagRegistry: [],
@@ -1813,6 +2321,45 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   lastAction: null,
   undoStack: [],
   redoStack: [],
+  readyOffer: null,
+  tripDatePrompt: null,
+  clearTripDatePrompt() {
+    set({ tripDatePrompt: null });
+  },
+  clearReadyOffer() {
+    set({ readyOffer: null });
+  },
+  redateRoutines(taskIds) {
+    const resetTime = useSettingsStore.getState().dayResetTime;
+    const today = getLogicalToday(resetTime);
+    const snapshots = get().tasks.filter(t => taskIds.includes(t.id) && !t.completed).map(t => ({ ...t }));
+    if (snapshots.length === 0) return;
+    for (const task of snapshots) {
+      const next = task.recurrenceFromCompletion ? today : getNextDueDate(task, resetTime, { catchUp: true });
+      if (!next) continue;
+      get().updateTask(task.id, { dueDate: next.toISOString(), deferUntil: null }, { skipPostponeCount: true });
+    }
+    get().setLastAction({
+      label: snapshots.length === 1 ? 'Routine moved' : `${snapshots.length} routines moved`,
+      undo: () => snapshots.forEach(snapshot => get().updateTask(snapshot.id, snapshot)),
+    });
+  },
+  placeReadyTasks(date) {
+    const offer = get().readyOffer;
+    set({ readyOffer: null });
+    if (!offer) return;
+    const snapshots = get().tasks.filter(t => offer.taskIds.includes(t.id) && !t.completed).map(t => ({ ...t }));
+    if (snapshots.length === 0) return;
+    const day = new Date(date);
+    day.setHours(12, 0, 0, 0);
+    for (const task of snapshots) {
+      get().updateTask(task.id, { dueDate: day.toISOString() }, { markSeenOnBecomeVisible: true });
+    }
+    get().setLastAction({
+      label: snapshots.length === 1 ? 'Task scheduled' : `${snapshots.length} tasks scheduled`,
+      undo: () => snapshots.forEach(snapshot => get().updateTask(snapshot.id, snapshot)),
+    });
+  },
   ...undoHistoryActions(set, get),
   completionHoldIds: [],
   completionCollapseIds: [],
@@ -1923,6 +2470,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // in one database (real or demo) is meaningless once the file underneath
     // has changed.
     useHiddenEventsStore.getState().initialize();
+    // Same again: who an event is with names demo people in a demo database.
+    useEventPeopleStore.getState().initialize();
+    useEventTaskLinkStore.getState().initialize();
     const tasks = dbGetAllTasks();
     backfillRecurrenceAnchors(tasks);
     const tagRegistry = dbGetTagRegistry();
@@ -1993,6 +2543,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     dbTransaction(() => rolled.forEach(t => get().skipNextRecurrence(t.id)));
     // skipGeneratedOptOut: this runs unattended at startup — a window closing
     // on its own is the app tidying up, not the user declining the source.
+    // registerUndo: false for the same reason, so the first shake of the
+    // session doesn't offer to bring back rows the user never deleted.
     if (doomed.length > 0) {
       // Recorded before the delete, so the titles are still there to snapshot.
       // Only the deleted rows: a recurring occurrence that was rolled forward
@@ -2008,7 +2560,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           taskId: t.id,
         })),
       );
-      get().bulkDeleteTasks(doomed.map(t => t.id), { skipGeneratedOptOut: true });
+      get().bulkDeleteTasks(doomed.map(t => t.id), { skipGeneratedOptOut: true, registerUndo: false });
     }
   },
 
@@ -2038,7 +2590,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // about tasks and is what the caller reports.
     useFocusStore.getState().purgeHistoryBefore(cutoff);
 
-    const ids = selectPurgeableTaskIds(get().tasks, cutoff);
+    const listIds = new Set(useProjectStore.getState().projects.filter(p => p.kind === 'list').map(p => p.id));
+    const ids = selectPurgeableTaskIds(get().tasks, cutoff, listIds);
     if (ids.length === 0) return 0;
     const idSet = new Set(ids);
 
@@ -2057,11 +2610,82 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     return ids.length;
   },
 
+  reconcileSyncedEvents(applied) {
+    const find = (id: string) => get().tasks.find(t => t.id === id) ?? null;
+    const plan = taskEventsAfterSync(applied, find);
+    if (
+      plan.deadlines.length === 0 &&
+      plan.timeBlocks.length === 0 &&
+      plan.uncompleted.length === 0 &&
+      plan.remove.length === 0
+    ) return;
+    // Only with calendar access, for the meal reconcile's reason. Without it
+    // the deadline move fails, the fallback creates nothing and returns null,
+    // and that null written over the link orphans an event this device can no
+    // longer name; a time block reads back as null and loses its pointer the
+    // same way. This runs unasked, over every task another device touched, so
+    // it skips instead, and the task's next local reconcile once access is back
+    // puts its events right.
+    void getCalendarPermission()
+      .then(permission => {
+        if (permission !== 'granted') return;
+        // Re-read after the await: the row may have moved on, or gone. A link
+        // cleared meanwhile is not recreated here, for the reason the rule
+        // gives for a task that never had one.
+        for (const task of plan.deadlines) {
+          const current = find(task.id);
+          if (current?.calendarEventId) reconcileDeadlineEvent(current);
+        }
+        for (const task of plan.timeBlocks) {
+          const current = find(task.id);
+          if (current) reconcileTimeBlockEvent(current);
+        }
+        // Reopened on another device, so the completion this device's event
+        // recorded didn't happen: the same delete and unlink `uncompleteTask`
+        // runs. Only while the row still says so, since it may have been
+        // completed again, or reopened here, while the permission was read.
+        for (const task of plan.uncompleted) {
+          const current = find(task.id);
+          if (!current || current.completed || !current.completionCalendarEventId) continue;
+          void deleteCompletionEvent(completionEventLink(current));
+          const updated = { ...current, completionCalendarEventId: null, completionCalendarEventExternalId: null };
+          dbUpdateTask(updated);
+          set(s => ({ tasks: s.tasks.map(t => (t.id === updated.id ? updated : t)) }));
+        }
+        for (const link of plan.remove) void deleteDeadlineEvent(link);
+      })
+      .catch(() => {});
+  },
+
+  fillCalendarExternalIds(found) {
+    const written = new Set(dbFillTaskCalendarExternalIds(found));
+    if (written.size === 0) return;
+    set(s => ({
+      tasks: s.tasks.map(t => (written.has(t.id)
+        ? {
+            ...t,
+            calendarEventExternalId: filledExternalId(t.calendarEventId, t.calendarEventExternalId, found),
+            timeBlockExternalId: filledExternalId(t.timeBlockEventId, t.timeBlockExternalId, found),
+            completionCalendarEventExternalId: filledExternalId(
+              t.completionCalendarEventId, t.completionCalendarEventExternalId, found
+            ),
+          }
+        : t)),
+    }));
+  },
+
   addTask(draft, id, options) {
     const now = new Date().toISOString();
     const maxOrder = get().tasks.reduce((m, t) => Math.max(m, t.sortOrder), 0);
+    // A generated task is a fresh row each time, so it starts from the
+    // estimate its generator keeps (ruleEstimate.ts). A rule's own estimate
+    // is already on the draft; this is the per-kind one.
+    const kindEstimate = draft.generatedKind && !draftHasEstimate(draft) && holdsKindEstimate(draft.generatedKind)
+      ? useSettingsStore.getState().generatorEstimates?.[draft.generatedKind] ?? null
+      : null;
     const task = newTaskFromDraft(
-      applyTitleRulesToDraft(draft, options), now, maxOrder + 1, true, id, options?.skipCategoryDefault);
+      applyTitleRulesToDraft(kindEstimate ? { ...draft, ...kindEstimate } : draft, options),
+      now, maxOrder + 1, true, id, options?.skipCategoryDefault);
     dbInsertTask(task);
     set(s => ({ tasks: [...s.tasks, task] }));
     scheduleTaskReminder(task);
@@ -2122,15 +2746,25 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // content field, so a waiter that belongs to a dated series has to fan out
     // to that set's later dates exactly as it does when set from its own
     // editor.
+    // Each write adds or removes this one blocker and keeps whatever else the
+    // row waits on: a task can wait on several now (Task.blockedByIds).
+    const without = (id: string) => {
+      const row = get().tasks.find(t => t.id === id);
+      return row ? blockerFields(blockerIdsOf(row).filter(b => b !== blockerId)) : blockerFields([]);
+    };
+    const withIt = (id: string) => {
+      const row = get().tasks.find(t => t.id === id);
+      return blockerFields([...(row ? blockerIdsOf(row) : []), blockerId]);
+    };
     const { unlink } = resolveBlocksEdit(blockerId, taskIds, get().tasks);
-    unlink.forEach(id => get().updateTask(id, { blockedById: null }));
+    unlink.forEach(id => get().updateTask(id, without(id)));
     // Recomputed against what the releases left behind rather than decided up
     // front, and that's the whole reason for the second call: releasing one
     // date of a dated set fans the release out to the set's later dates, which
     // may be rows this edit is keeping. Deciding both passes from the state
     // before either ran would drop those on the floor.
     const { link } = resolveBlocksEdit(blockerId, taskIds, get().tasks);
-    link.forEach(id => get().updateTask(id, { blockedById: blockerId }));
+    link.forEach(id => get().updateTask(id, withIt(id)));
   },
 
   applyTaskDates(taskId, dates, repeat) {
@@ -2165,7 +2799,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         dbDeleteTask(t.id);
         cancelTaskReminder(t.id);
         cancelQuotaNudges(t.id);
-        if (t.calendarEventId) deleteCalendarEvent(t.calendarEventId);
+        if (t.calendarEventId) void deleteDeadlineEvent(deadlineEventLink(t));
       });
       unfiled.forEach(dbUpdateTask);
 
@@ -2194,8 +2828,19 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const seriesId = anchor.seriesId ?? generateId();
     const anchorDay = anchor.dueDate ? calendarDayKey(new Date(anchor.dueDate)) : null;
     const anchorKept = anchorDay !== null && sorted.some(d => calendarDayKey(d) === anchorDay);
+    // Repointed onto a wanted date no other open row of the set already holds.
+    // Always taking the earliest could land it on a sibling's date, and the
+    // reconcile below then kept one and deleted the other: editing the 10th's
+    // dates to {15th, 20th} deleted the 15th that was already there, with its
+    // notes and subtasks.
+    const heldByOthers = new Set(
+      (anchor.seriesId ? get().seriesRowsOf(anchor.seriesId) : [])
+        .filter(t => t.id !== taskId && !t.completed && !t.archived && t.dueDate)
+        .map(t => calendarDayKey(new Date(t.dueDate!)))
+    );
+    const repointTo = sorted.find(d => !heldByOthers.has(calendarDayKey(d))) ?? sorted[0];
     get().updateTask(taskId, {
-      dueDate: anchorKept ? anchor.dueDate : sorted[0].toISOString(),
+      dueDate: anchorKept ? anchor.dueDate : repointTo.toISOString(),
       seriesId,
       seriesMonthDays: monthDays,
       seriesRepeatMonths: repeatMonths,
@@ -2223,7 +2868,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // for. Excluded from `live` here, they're neither deleted nor counted, and
     // a kept date gets a real row of its own alongside them.
     const wanted = new Map(sorted.map(d => [calendarDayKey(d), d]));
-    const live = rows.filter(t => !t.completed && !t.archived);
+    // A row whose own date was dropped goes last, so if every wanted date was
+    // already held (see repointTo above) it's the one left over, not a sibling
+    // that still had its date.
+    const live = rows
+      .filter(t => !t.completed && !t.archived)
+      .sort((a, b) => (anchorKept ? 0 : Number(a.id === taskId) - Number(b.id === taskId)));
 
     const kept: Task[] = [];
     const removed: Task[] = [];
@@ -2260,7 +2910,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       cancelQuotaNudges(t.id);
       // The row is gone for good, not archived — nothing will ever revisit
       // it to notice a dangling event, so clean it up now, same as deleteTask.
-      if (t.calendarEventId) deleteCalendarEvent(t.calendarEventId);
+      if (t.calendarEventId) void deleteDeadlineEvent(deadlineEventLink(t));
     });
     added.forEach(t => {
       dbInsertTask(t);
@@ -2355,14 +3005,18 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // deadlineOnCalendar (the preference) carries via ...original, same as
       // every other setting on the copy, but the device event does not —
       // two tasks pointing at one event means editing either one's deadline
-      // silently drags the other's calendar entry with it.
+      // silently drags the other's calendar entry with it. Nor its server id,
+      // which would let the copy find the original's event again (#2950).
       calendarEventId: null,
+      calendarEventExternalId: null,
       // logCompletionToCalendar carries via ...original the same way, but a
       // copy is a fresh, uncompleted task — it hasn't logged anything yet.
       completionCalendarEventId: null,
+      completionCalendarEventExternalId: null,
       // Same reasoning, and the copy has no claim on the original's slot
       // anyway — the block was time set aside for one piece of work.
       timeBlockEventId: null,
+      timeBlockExternalId: null,
     };
     const copy: Task = {
       ...original,
@@ -2420,23 +3074,22 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Already has one — this is the edit sheet, and the only place in the app
     // a block can be deleted.
     if (task.timeBlockEventId) {
-      const result = await presentTimeBlockEdit(task.timeBlockEventId);
-      if (result.deleted) {
-        setTimeBlockEventId(id, null);
-        return false;
-      }
-      if (result.saved) return true;
+      const outcome = await editTimeBlock(id, task.timeBlockEventId);
+      if (outcome !== 'gone') return outcome === 'kept';
 
-      // Nothing came back: either the user closed the sheet without changing
-      // anything, or it never opened. Only one of those is worth acting on, so
-      // ask whether the event is actually still there before assuming the
-      // worst — `presentTimeBlockEdit` deliberately doesn't guess (see there).
-      if (await readTimeBlockEvent(task.timeBlockEventId)) return true;
+      // Not there under its own id. A backup restored on a new phone looks
+      // exactly like this, with the block still on the calendar under the
+      // server's id, so look for it by that before giving up on it (#2950).
+      const adopted = await adoptTimeBlock(task);
+      if (adopted) {
+        const again = await editTimeBlock(id, adopted.eventId);
+        if (again !== 'gone') return again === 'kept';
+      }
 
       // Genuinely gone — deleted from the Calendar app, or on a calendar that
       // was removed from the device. Drop the stale pointer and fall through
       // to offering a fresh block, so the tap that found the rot also fixes it.
-      setTimeBlockEventId(id, null);
+      setTimeBlockLink(id, NO_EVENT_LINK);
     }
 
     const { activeHoursStart, activeHoursEnd } = useSettingsStore.getState();
@@ -2455,7 +3108,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // would be worse than admitting we have none, so the pointer stays null
     // and the action offers to create another.
     if (!result.saved || !result.eventId) return false;
-    setTimeBlockEventId(id, result.eventId);
+    setTimeBlockLink(id, { eventId: result.eventId, externalId: null });
+    // And the server's id for it, so a backup restored on a new phone can find
+    // the block again (#2950). In the background: the sheet is closed and the
+    // block is made whether or not the read answers.
+    recordTimeBlockExternalId(id, result.eventId);
     return true;
   },
 
@@ -2557,6 +3214,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
               // Sam" nudge on the strength of a swipe made about "waiting on
               // Alex".
               waitingFollowUpDeclinedAt: null,
+              // Same for the day to chase it: it was about the old wait.
+              ...('followUpOn' in updates ? {} : { followUpOn: null }),
             }
           : undefined;
 
@@ -2696,7 +3355,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         // naming targetCount itself wins outright, so a whole-snapshot undo
         // restores the count it recorded rather than recomputing a new one
         // against a span that has since moved.
-        ...(!('targetCount' in updates) && QUOTA_SPAN_FIELDS.some(f => f in updates)
+        ...(!('targetCount' in updates)
+          && (QUOTA_SPAN_FIELDS.some(f => f in updates) || ROTATION_TARGET_FIELDS.some(f => f in updates))
           ? { targetCount: derivedTargetCount({ ...t, ...updates }) }
           : {}),
         // Changing polarity restarts the run, because the two polarities count
@@ -2768,6 +3428,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         'reminderTime' in updates ||
         'reminderKind' in updates ||
         'reminderOffsetDays' in updates ||
+        'reminderTracksVisibility' in updates ||
         'completed' in updates ||
         'archived' in updates ||
         'title' in updates ||
@@ -2784,6 +3445,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // stored instant, a run is a whole schedule.
       if (
         QUOTA_SPAN_FIELDS.some(f => f in updates) ||
+        ROTATION_TARGET_FIELDS.some(f => f in updates) ||
         'quotaReminders' in updates ||
         'targetCount' in updates ||
         'vacationPause' in updates ||
@@ -2830,6 +3492,20 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Only CONTENT_FIELDS: dueDate and the series' own fields are per-row or
     // per-set and would flatten the whole schedule onto one day.
     const edited = get().tasks.find(t => t.id === id);
+    // A restock that satisfies a linked supply takes back the "running low" the
+    // supply put on its grocery item, so the next time it runs down it asks
+    // again rather than reading as already handled (#2935). See
+    // supplyRestockReleasesItem. registerUndo: false because it adds nothing
+    // to a list: clearing the flag leaves the row wherever it is, and nobody
+    // tapped the grocery item.
+    const releasedItemId = current && edited ? supplyRestockReleasesItem(current, edited, dayResetTime) : null;
+    if (releasedItemId) useGroceryStore.getState().setRunningLow(releasedItemId, false, { registerUndo: false });
+    // Compared on the values rather than on the patch's keys, since an undo
+    // and a whole-row write both name these fields without changing them.
+    if (current && edited && (edited.generatedKind || edited.followUpTaskSourceId)
+      && (current.estimatedMinutes !== edited.estimatedMinutes || current.effort !== edited.effort)) {
+      writeEstimateToSource(edited);
+    }
     if (scope === 'series' && edited?.seriesId) {
       const fanOut: Partial<Task> = {};
       for (const key of CONTENT_FIELDS) {
@@ -2856,7 +3532,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
               ? reanchorReminder(
                   fanOut.reminderTime ?? null,
                   new Date(t.dueDate!),
-                  'reminderOffsetDays' in fanOut ? fanOut.reminderOffsetDays ?? null : t.reminderOffsetDays
+                  'reminderOffsetDays' in fanOut ? fanOut.reminderOffsetDays ?? null : t.reminderOffsetDays,
+                  ('reminderTracksVisibility' in fanOut ? fanOut.reminderTracksVisibility ?? false : t.reminderTracksVisibility)
+                    ? { ...t, ...fanOut }
+                    : null
                 )
               : {}),
             // A set shares one blocker, but no row can wait on itself. Picking
@@ -2866,8 +3545,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
             // anything the user does to another task. wouldCycle() guards the
             // picker against exactly this; the fan-out doesn't go through it,
             // so it re-checks here and leaves that one row's blocker alone.
-            ...('blockedById' in fanOut && fanOut.blockedById === t.id
-              ? { blockedById: t.blockedById }
+            ...(('blockedById' in fanOut || 'blockedByIds' in fanOut) && blockerIdsOf({
+              blockedById: 'blockedById' in fanOut ? fanOut.blockedById ?? null : t.blockedById,
+              blockedByIds: 'blockedByIds' in fanOut ? fanOut.blockedByIds : t.blockedByIds,
+            }).includes(t.id)
+              ? blockerFields(blockerIdsOf({
+                  blockedById: 'blockedById' in fanOut ? fanOut.blockedById ?? null : t.blockedById,
+                  blockedByIds: 'blockedByIds' in fanOut ? fanOut.blockedByIds : t.blockedByIds,
+                }).filter(id => id !== t.id))
               : {}),
           }));
           patched.forEach(t => {
@@ -2926,13 +3611,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     dbDeleteSubtasks(id);
     dbDeleteTask(id);
     cancelTaskReminder(id);
+    if (task.quotaReminders) cancelQuotaNudges(id);
     cancelCompletionTimer(id);
     if (task.timerStartedAt !== null) cancelTimerAlarm(id);
     // Fire-and-forget, same as every other calendar/notification side effect
     // here. Not restored on undo below — deleting a device event isn't
     // reversible, so an undone delete gets a fresh event on its next
     // reconcile rather than a promise this can't keep.
-    if (task.calendarEventId) deleteCalendarEvent(task.calendarEventId);
+    if (task.calendarEventId) void deleteDeadlineEvent(deadlineEventLink(task));
     set(s => ({ tasks: s.tasks.filter(t => t.id !== id && t.parentId !== id) }));
 
     // Deleting a generated task is the user saying this source doesn't need
@@ -2951,16 +3637,21 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     //
     // And not when the app is the one deleting: a reconcile clearing a task
     // whose reason has gone is tidying up, not the source changing its mind
-    // (see dropGeneratedTask, which is the only caller that passes this).
+    // (generatedTaskSync's deleteGeneratedTaskQuietly passes this for both of
+    // its paths: reconcileGeneratedTask's `!wanted` branch and dropGeneratedTask).
     if (!opts.skipGeneratedOptOut) writeGeneratedOptOut(task, false);
 
     get().setLastAction({
-      label: 'Task deleted',
+      // A list's rows are lines, and the page they were deleted from says so.
+      label: task.projectId && useProjectStore.getState().projects.some(p => p.id === task.projectId && p.kind === 'list')
+        ? 'Line deleted'
+        : 'Task deleted',
       destructive: true,
       redo: () => get().deleteTask(id, opts),
       undo: () => {
         dbInsertTask(task);
         scheduleTaskReminder(task);
+        scheduleQuotaNudges(task);
         // The device event was deleted above and isn't coming back under the
         // same id — this writes a fresh one and repoints calendarEventId at
         // it, rather than leaving the restored task pointing at nothing
@@ -2980,7 +3671,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     });
   },
 
-  markMissed(id) {
+  markMissed(id, options) {
     const task = get().tasks.find(t => t.id === id);
     if (!task || task.completed) return;
     // A meal-plan task is recurring in every way a user would recognize —
@@ -3002,7 +3693,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       get().skipNextRecurrence(id);
       return;
     }
-    get().completeTask(id, { missed: true });
+    get().completeTask(id, { missed: true, missChain: options?.wholeChain });
   },
 
   completeTask(id, options) {
@@ -3032,7 +3723,21 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // day) can't be completed ahead of schedule — doing so would generate the
     // next occurrence off today instead of the task's real day. Non-recurring
     // tasks have no such next-occurrence math, so early completion is fine.
-    if (isRecurrenceNotYetDue(task)) return;
+    // An 'hours' recurrence is the one exception: it has no calendar grid to
+    // knock off schedule (its next occurrence is always measured from the
+    // moment it's actually logged — see taskCompletion.ts's nextDeferUntil),
+    // so a caller can confirm past its lock with logEarly.
+    if (isRecurrenceNotYetDue(task) && !(task.recurrenceType === 'hours' && options?.logEarly)) return;
+    // "Maybe" to a pick-one question is recorded but doesn't finish the task:
+    // the guest hasn't decided, so the row stays to be answered again, and the
+    // tally counts it as Maybe meanwhile. Here rather than in the prompt so
+    // every path that answers (the bulk queue, the focus session) agrees.
+    if (!missed && deliverableKindFor(task) === 'choice' && isTentativeAnswer(options?.deliverableValue)) {
+      const snapshot = { ...task };
+      get().updateTask(id, { deliverableValue: options!.deliverableValue!.trim() }, { skipPostponeCount: true });
+      get().setLastAction({ label: `Answered ${options!.deliverableValue!.trim()}`, undo: () => get().updateTask(snapshot.id, snapshot) });
+      return;
+    }
 
     // If a timer is still running — or a countdown was paused with time banked
     // on it — stop it first so the session's time is saved.
@@ -3042,12 +3747,21 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     }
 
     const now = new Date();
-    // The morning check-in is the one caller that completes a task after the
-    // fact — "yes, I did this last night" — and wants the record to say so
-    // rather than reading as done at whatever moment the user got around to
-    // answering. Everything else this function writes (the successor's
-    // createdAt/seenAt, the streak's getCurrentDayStart() calls) stays keyed
-    // to the real moment; only the completed row's own timestamps move.
+    // A widget, notification or Live Activity tap reaches this some time after
+    // it happened, and its own moment is the completion's. Claimed here rather
+    // than passed down because four paths finish one of those (the row's
+    // animation, the question sheet, the direct call for a row not on Today,
+    // and the answer-first queue), and this is the one they all pour into.
+    if (options?.completedAt === undefined && !missed) {
+      const tappedAt = useWidgetCompletionStore.getState().claimTappedAt(id);
+      if (tappedAt) options = { ...options, completedAt: tappedAt };
+    }
+    // The morning check-in and a queued tap complete a task after the fact
+    // and want the record to say so. Everything else this function writes
+    // (the successor's createdAt/seenAt, the streak's getCurrentDayStart()
+    // calls) stays keyed to the real moment; only the completed row's own
+    // timestamps move, and the date a repeat-after-completion successor is
+    // measured from (see buildCompletion).
     const completedAt = options?.completedAt ? new Date(options.completedAt) : now;
     const { dayResetTime } = useSettingsStore.getState();
 
@@ -3086,10 +3800,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Opt-in and one-shot, unlike the reconcile above — only fired when the
     // task actually asked for it.
     if (task.logCompletionToCalendar) logCompletionEvent(completed, completedAt);
-    // Same shape as the calendar log one line up: opt-in, one-shot, fire and
-    // forget. See logTaskHealthValue's own comment for why there is no
-    // write-back id to store and no undo on uncomplete.
-    if (task.logHealthMetric) void logTaskHealthValue(completed);
     // Opt-in like the two above, but deliberately *not* one-shot: this writes
     // into the app's own record rather than somebody else's database, and
     // uncompleteTask takes it back (see Task.medicationName). Nothing is asked
@@ -3113,10 +3823,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     }
 
     cancelTaskReminder(id);
+    // A target's own nudges too, which cancelTaskReminder doesn't reach: met
+    // for the day, it went on saying "one is due now" until evening.
+    if (task.quotaReminders) cancelQuotaNudges(id);
 
     if (nextTask) {
       dbInsertTask(nextTask);
       scheduleTaskReminder(nextTask);
+      scheduleQuotaNudges(nextTask);
       reconcileDeadlineEvent(nextTask);
     }
     nextSubtasks.forEach(sub => {
@@ -3139,12 +3853,29 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         ...(followUpTask ? [followUpTask] : []),
         ...followUpSubtasks,
       ],
-      completionHoldIds: [...s.completionHoldIds, id],
+      // See the option's own doc comment: a row that already animated its own
+      // transition to the successor's look has nothing left for the hold to
+      // protect, and masking it back to its pre-transition content for the
+      // rest of the window would undo that crossfade the moment it lands.
+      completionHoldIds: options?.chainStepInPlace ? s.completionHoldIds : [...s.completionHoldIds, id],
       // A daily target that completes mid-hold hands over to the completion
       // hold, which masks it as incomplete for its own window. Leaving it in
       // both would keep the finished row on Today past that.
       quotaHoldIds: s.quotaHoldIds.filter(x => x !== id),
     }));
+
+    // Same shape as the calendar log above: opt-in, one-shot, fire and
+    // forget. See logTaskHealthValue's own comment for why there is no
+    // write-back id to store and no undo on uncomplete. Placed after the
+    // set() above (moved there deliberately) rather than beside the calendar
+    // log it mirrors: a water write reads back through
+    // syncWaterQuotaTasks (useFoodLogStore's addEntry/reviseEntry calls it
+    // synchronously), and that reads get().tasks — which has to already show
+    // this task as completed, or the sync would find the pre-completion row
+    // still incomplete and try to complete it a second time. skipHealthLog is
+    // for that same sync: a completion it already drove from the food log's
+    // own total needs no second write of the amount that got it there.
+    if (task.logHealthMetric && !options?.skipHealthLog) void logTaskHealthValue(completed);
 
     // Opt-in convenience only (autoCompleteProjectsOnDone, default off) —
     // finishing a project never happens automatically otherwise; the user
@@ -3168,7 +3899,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (!missed && task.projectId && useSettingsStore.getState().autoCompleteProjectsOnDone) {
       const progress = projectProgress(task.projectId, get().tasks);
       const project = useProjectStore.getState().getProjectById(task.projectId);
-      if (progress.total > 0 && progress.done === progress.total && project && !project.completed && !project.archived) {
+      // Never an ongoing one (Project.ongoing): a running list has no finish
+      // line, and every other "you're done" path already refuses it.
+      if (progress.total > 0 && progress.done === progress.total && project && !project.completed && !project.archived && !project.ongoing) {
         useProjectStore.getState().applyProjectCompleted(task.projectId, true);
         autoCompletedProjectId = task.projectId;
       }
@@ -3251,7 +3984,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       const loggableEntryId = cookedEntryId ?? logNudgeEntryId;
       const loggable = loggableEntryId ? dbGetMealPlanEntry(loggableEntryId) : null;
       if (loggable) {
-        offerMealLog(loggable);
+        // A "Log dinner" nudge ticked is a request to log it, so a recipe with
+        // no figures goes on to the search sheet rather than completing with
+        // nothing opened (see PendingMealLog.asked). The Eat step is the app
+        // volunteering, and stays quiet for one.
+        offerMealLog(loggable, !cookedEntryId);
       } else if (task.logMealSlot) {
         // An arbitrary task ("Log breakfast", "Pack lunch") opted into the
         // same offer, but names no recipe and no meal-plan entry — so it
@@ -3313,11 +4050,20 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // stamps the decline instead: a tick means "I've dealt with this" and
     // nothing more, exactly the reading `pantryCheckTasks` gives one, and the
     // stamp lapses by itself the moment a real restock raises the count.
+    // What the restock below overwrote on its source, for this completion's
+    // undo: unticking the reorder reopened it but left the supply topped up,
+    // so completing it again added the same order a second time.
+    let restockBefore: { id: string; supplyCount: number | null; supplyDeclinedAtCount: number | null } | null = null;
     if (!missed) {
       const restockTaskId = supplyReorderSourceId(task);
       if (restockTaskId) {
         const source = get().tasks.find(t => t.id === restockTaskId);
         if (source && source.supplyCount !== null) {
+          restockBefore = {
+            id: restockTaskId,
+            supplyCount: source.supplyCount,
+            supplyDeclinedAtCount: source.supplyDeclinedAtCount,
+          };
           const answered = completed.deliverableValue;
           const bought = answered === null ? null : Number(answered);
           const restocked = restockedSupplyCount(source.supplyCount, bought);
@@ -3333,6 +4079,41 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           );
         }
       }
+    }
+
+    // A date answer that opted into being the trip's departure fills the
+    // project's empty Leaving date. See departureFromAnswer. Remembered for
+    // this completion's undo, which empties it again.
+    let departureSet: { projectId: string; awayStart: string } | null = null;
+    if (!missed && task.deliverableSetsAway && task.projectId && deliverableKindFor(task) === 'date') {
+      const project = useProjectStore.getState().projects.find(p => p.id === task.projectId);
+      const awayStart = project ? departureFromAnswer(project, deliverableDate(completed.deliverableValue)) : null;
+      if (project && awayStart) {
+        useProjectStore.getState().updateProject(project.id, { awayStart });
+        departureSet = { projectId: project.id, awayStart };
+        // "Pick dates" is both ends: with the leaving day in, ask for the
+        // coming-back day while the dates are in mind (TripDatePrompt).
+        if (!project.awayEnd) set({ tripDatePrompt: { kind: 'return', projectId: project.id, at: Date.now() } });
+      } else if (project) {
+        // A trip that already has a Leaving date isn't moved by an answer on
+        // its own; a different day is offered instead.
+        const moveTo = departureMoveFromAnswer(project, deliverableDate(completed.deliverableValue));
+        if (moveTo) set({ tripDatePrompt: { kind: 'moveLeaving', projectId: project.id, awayStart: moveTo, at: Date.now() } });
+      }
+    }
+
+    // The tasks this was the last thing holding back, if they have no day of
+    // their own: ready now, but an undated task goes nowhere by itself, so
+    // nothing on screen would say so. ReadyOfferBar offers them a day. Not for
+    // a miss or an unattended completion, which nobody is watching.
+    if (!missed && !neutral) {
+      const freed = get().tasks.filter(t =>
+        !t.completed && !t.archived && !t.parentId &&
+        blockerIdsOf(t).includes(id) &&
+        !isHeldBack(t) && !isInPausedProject(t) &&
+        t.dueDate == null && t.deferUntil == null
+      );
+      if (freed.length > 0) set({ readyOffer: { taskIds: freed.map(t => t.id), at: Date.now() } });
     }
 
     // Spending the second-to-last filter is the moment the offer to order more
@@ -3425,6 +4206,18 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         // uncompleteTask's own sync finds nothing to do.
         undoMealCooked?.();
         get().uncompleteTask(id);
+        if (restockBefore) {
+          const { id: sourceId, ...supply } = restockBefore;
+          get().updateTask(sourceId, supply, { skipPostponeCount: true });
+        }
+        // Only while the project still holds the date this completion wrote:
+        // one moved by hand since then is the person's, not this answer's.
+        if (departureSet) {
+          const project = useProjectStore.getState().projects.find(p => p.id === departureSet!.projectId);
+          if (project?.awayStart === departureSet.awayStart) {
+            useProjectStore.getState().updateProject(project.id, { awayStart: null });
+          }
+        }
       },
     });
   },
@@ -3463,19 +4256,33 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // Un-completing means the completion the event logged didn't actually
       // happen, so there's nothing left for it to record.
       completionCalendarEventId: null,
+      completionCalendarEventExternalId: null,
       // The completion timer this task's own completion may have started no
       // longer means anything once that completion is undone — cleared
       // alongside cancelCompletionTimer below, which ends its Live Activity.
       completionTimerStartedAt: null,
+      // The credit goes back with the completion that earned it (below), so
+      // the row is creditable again when it's actually done.
+      penaltyCreditedAt: null,
     };
-    if (task.completionCalendarEventId) deleteCalendarEvent(task.completionCalendarEventId);
+    uncreditPenaltyShield(task, new Date());
+    if (task.completionCalendarEventId) void deleteCompletionEvent(completionEventLink(task));
     // The dose this completion recorded goes with it. Unlike the Apple Health
     // write, which is one-shot because a sample is a historical record in
     // somebody else's database, this is the app's own record of what went into
     // a person — and a task ticked by mistake means the dose was not taken.
     // Leaving it behind would put a phantom dose in the one log whose whole
     // job is to be accurate. See Task.medicationName.
-    if (medicationFor(task)) useMedicationStore.getState().removeLogsForTask(id);
+    //
+    // For a daily target only the last dose goes, the one this completion
+    // logged: the earlier ones were logged unit by unit and stay, as the
+    // progress count (target - 1, above) says they should. Removing every
+    // log for the task wiped the whole day's doses on one uncheck.
+    if (medicationFor(task)) {
+      const medication = useMedicationStore.getState();
+      if (isQuotaTask(task) && !isMissed(task)) medication.removeLatestLogForTask(id);
+      else medication.removeLogsForTask(id);
+    }
     dbUpdateTask(updated);
     // Reopened, so a deadline it still carries is live again.
     reconcileDeadlineEvent(updated);
@@ -3600,6 +4407,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       label: value === null ? 'Answer cleared' : 'Answer saved',
       undo: () => get().setDeliverableValue(id, previous),
     });
+    // An answered "Pick dates" edited later still speaks for the trip, the
+    // same way completing it did: offered as a move, never written unasked.
+    if (task.completed && task.deliverableSetsAway && task.projectId && deliverableKindFor(task) === 'date') {
+      const project = useProjectStore.getState().projects.find(p => p.id === task.projectId);
+      const moveTo = project ? departureMoveFromAnswer(project, deliverableDate(value)) : null;
+      if (project && moveTo) set({ tripDatePrompt: { kind: 'moveLeaving', projectId: project.id, awayStart: moveTo, at: Date.now() } });
+    }
   },
 
   logSlip(id) {
@@ -3651,7 +4465,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         // Charging for either would be punishing somebody for the app's own
         // gate — see penaltyChargeFor, where this is a required argument
         // rather than a default precisely so it has to be answered here.
-        excused: isHeldBack(task) || isHiddenForVacation(task),
+        excused: isHeldBack(task) || isWithheld(task),
       });
       if (!charge) continue;
       charged.push({ ...task, penaltyFiredAt: charge.firedAt });
@@ -3677,10 +4491,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const patched = get().tasks.flatMap(t => {
       if (!isNegativeTask(t) || t.archived) return [];
       // Vacation protects the run rather than growing it, which is the call
-      // every other streak here makes. Read through isHiddenForVacation so a
-      // category paused for vacation covers its habits too, exactly as it does
-      // for the tasks the quota rollover skips.
-      const patch = cleanDayPatch(t, todayStart, { paused: isHiddenForVacation(t) });
+      // every other streak here makes. Read through isWithheld so a category
+      // paused for vacation, or a paused project, covers its habits too,
+      // exactly as it does for the tasks the quota rollover skips.
+      const patch = cleanDayPatch(t, todayStart, { paused: isWithheld(t) });
       return patch ? [{ ...t, ...patch }] : [];
     });
     if (patched.length === 0) return;
@@ -3734,6 +4548,94 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     }
   },
 
+  /**
+   * The rotation counterpart of `logQuotaUnit`: same counting, but the caller
+   * says *which* member, and the ledger records it.
+   *
+   * Two things differ from the quota path and both are the feature rather than
+   * an inconsistency. It writes the ledger and *then* hands off to
+   * `completeTask`, where the quota path completes instead of bumping — a
+   * rotation's last pick has to land in the ledger before the week closes, or
+   * the closed row's record is missing the pick that closed it. And a repeat
+   * (a member already down this period) logs without moving `progressCount`,
+   * because the week is about coverage; listening to Spanish twice is a real
+   * thing to do and refusing to record it would be the app arguing with you,
+   * but it is not one of the five.
+   */
+  recordRotationPick(id, itemId) {
+    const task = get().tasks.find(t => t.id === id);
+    if (!task || task.completed || !isRotationTask(task) || !isQuotaTask(task)) return false;
+    const { weekStartsOn } = useSettingsStore.getState();
+    const dayStart = getCurrentDayStart();
+    const covers = rotationCoversNew(task, itemId, dayStart, weekStartsOn);
+    const patch = rotationPick(task, itemId, new Date(), dayStart, weekStartsOn);
+    if (!patch) return false;
+    // A repeat logs without moving the count: the week is about coverage, and
+    // a second Spanish is a real listen but not a sixth language.
+    const progressCount = covers ? task.progressCount + 1 : task.progressCount;
+    const updated = { ...task, ...patch, progressCount };
+    dbUpdateTask(updated);
+    set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
+    return covers && progressCount >= task.targetCount!;
+  },
+
+  logRotationUnit(id, itemId) {
+    const task = get().tasks.find(t => t.id === id);
+    if (!task || task.completed || !isRotationTask(task) || !isQuotaTask(task)) return;
+    const covered = get().recordRotationPick(id, itemId);
+    const updated = get().tasks.find(t => t.id === id);
+    if (!updated) return;
+    if (covered) {
+      // The set is covered, so the period is done and the recurrence spawns
+      // next week's. completeTask reads the row back out of the store, which
+      // recordRotationPick has already updated, so it closes over the full
+      // ledger rather than over one pick short of it.
+      get().completeTask(id);
+      return;
+    }
+    // Only on the branch that doesn't complete, for the reason logQuotaUnit
+    // gives: completeTask logs these itself, and doing both counts one pick
+    // twice.
+    if (task.logHealthMetric) void logTaskHealthValue(updated);
+    const unitDose = medicationFor(task);
+    if (unitDose) {
+      useMedicationStore.getState().addLog({ ...unitDose, taskId: id });
+    }
+    get().setLastAction({
+      label: 'Logged',
+      undo: () => get().unlogRotationUnit(id),
+    });
+    if (updated.pinned && isQuotaOnPace(updated)) {
+      schedulePaceUnpin(id);
+    }
+  },
+
+  /**
+   * Takes the most recent pick back — what a long-press on the meter does.
+   *
+   * `progressCount` only falls when the pick being removed was the one
+   * covering that member, which is the mirror of the repeat rule above: undoing
+   * a second Spanish leaves Spanish covered, because the first one still
+   * counts.
+   */
+  unlogRotationUnit(id) {
+    const task = get().tasks.find(t => t.id === id);
+    if (!task || !isRotationTask(task)) return;
+    const { weekStartsOn } = useSettingsStore.getState();
+    const dayStart = getCurrentDayStart();
+    const patch = rotationUnpick(task, dayStart, weekStartsOn);
+    if (!patch) return;
+    const dropped = (task.rotationLog ?? [])[task.rotationLog.length - 1];
+    const stillCovered = patch.rotationLog.some(e => e.itemId === dropped.itemId);
+    const updated = {
+      ...task,
+      ...patch,
+      progressCount: stillCovered ? task.progressCount : Math.max(0, task.progressCount - 1),
+    };
+    dbUpdateTask(updated);
+    set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
+  },
+
   unlogQuotaUnit(id) {
     const task = get().tasks.find(t => t.id === id);
     if (!task || !isQuotaTask(task) || task.progressCount === 0) return;
@@ -3743,6 +4645,88 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // The unit being taken back is the dose that unit recorded, and only that
     // one — the day's earlier doses were still taken.
     if (medicationFor(task)) useMedicationStore.getState().removeLatestLogForTask(id);
+    // Same reasoning, for a logged nutrient: the tap this undoes had logged
+    // one unit into the food log (logQuotaUnit's own logTaskHealthValue call).
+    // For water, leaving that in place would have syncWaterQuotaTasks read the
+    // unchanged total back and immediately bump progressCount up again on the
+    // next food-log write, undoing this undo. Set after progressCount above, so
+    // that sync (triggered synchronously from within this call) reads the count
+    // this line just wrote rather than the one from before the tap was undone.
+    if (task.logHealthMetric && task.logHealthAmount) {
+      unlogTaskNutrientFromFoodLog(task.logHealthMetric, task.logHealthAmount, new Date());
+    }
+  },
+
+  syncWaterQuotaTasks() {
+    const dayResetTime = useSettingsStore.getState().dayResetTime;
+    const todayStart = getCurrentDayStart();
+    const todayKey = dayKeyOf(todayStart);
+    const totalMl = waterTotalMl(dbGetFoodLogEntries(todayKey, todayKey));
+    // What the followed target is judged against. The reading counts only for
+    // the logical today: `today` outlives the day reset until the next refresh.
+    const { nutritionTargets, waterExerciseBoost } = useSettingsStore.getState();
+    const healthToday = useHealthStore.getState().today;
+    const exerciseReadToday = healthToday?.dayKey === todayKey;
+    const exerciseMinutes = exerciseReadToday ? healthToday?.exerciseMinutes ?? null : null;
+
+    for (const task of get().tasks) {
+      if (
+        !isQuotaTask(task) ||
+        task.completed ||
+        task.archived ||
+        task.logHealthMetric !== 'waterMl' ||
+        !task.logHealthAmount ||
+        task.logHealthAmount <= 0 ||
+        task.quotaPeriod !== 'day' ||
+        quotaRidesOutTheDay(task)
+      ) {
+        continue;
+      }
+      // Only the occurrence actually on today's board — a task deferred to a
+      // later day still holds whatever progressCount its last real day left
+      // it with, and today's water total has nothing to say about that.
+      const effectiveDate = getEffectiveTaskDate(task, dayResetTime);
+      if (!effectiveDate || +getTaskDayStart(new Date(effectiveDate), dayResetTime) !== +todayStart) {
+        continue;
+      }
+
+      // A task following the food log's water target takes its count from it
+      // first, so progress below is judged against today's target and not
+      // yesterday's. Only an occurrence still open gets here (the guard above),
+      // which is the point: a day already completed keeps the count it
+      // finished against.
+      const followed = followedWaterTargetCount(
+        task, nutritionTargets.waterMl, exerciseMinutes, waterExerciseBoost, exerciseReadToday,
+      );
+      const current = followed !== null && followed !== task.targetCount
+        ? { ...task, targetCount: followed }
+        : task;
+      if (current !== task) {
+        dbUpdateTask(current);
+        set(s => ({ tasks: s.tasks.map(t => (t.id === task.id ? current : t)) }));
+      }
+
+      const units = Math.min(current.targetCount!, Math.floor(totalMl / current.logHealthAmount!));
+      if (units === current.progressCount) continue;
+
+      if (units >= current.targetCount!) {
+        // buildCompletion stamps progressCount to targetCount on its own —
+        // see taskCompletion.ts — so there's nothing to write here first.
+        // skipHealthLog: the amount that got the log to this total is
+        // already there; completeTask's own logHealthMetric write would add
+        // it a second time.
+        get().completeTask(task.id, { skipHealthLog: true });
+      } else {
+        const updated = { ...current, progressCount: units };
+        dbUpdateTask(updated);
+        set(s => ({ tasks: s.tasks.map(t => (t.id === task.id ? updated : t)) }));
+      }
+    }
+
+    reconcileWaterShortfall({
+      todayKey, totalMl, exerciseReadToday, exerciseMinutes,
+      tasks: get().tasks,
+    });
   },
 
   holdQuotaOnToday(id) {
@@ -3795,7 +4779,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // rather than being closed out and silently re-spawned as a habit.
       t.recurrenceType !== 'none' &&
       // Vacation-paused tasks are protected from streak loss by design.
-      !isHiddenForVacation(t) &&
+      !isWithheld(t) &&
       // allowOvershoot tasks get their own sweep (sweepOvershootQuotas, below)
       // that goes through completeTask so an overshot count survives — this
       // manual close always writes progressCount as-is but forces
@@ -3814,7 +4798,17 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // has six days left to run on the morning after it was spawned, and the
       // day test would close it out short every single night. See
       // Task.quotaPeriod, and periodStartOf just below for the two readings.
-      periodStartOf(new Date(t.dueDate), t.quotaPeriod) < periodStartOf(todayStart, t.quotaPeriod)
+      //
+      // getEffectiveTaskDate rather than the raw dueDate: a quota task pushed
+      // out with deferUntil is hidden until that later day (isTaskVisible),
+      // so its stored dueDate reads as overdue every launch in between even
+      // though the user moved it forward on purpose. Without this, the row
+      // got closed as a shortfall (breaking its streak) and a fresh successor
+      // spawned for today — reappearing on Today despite having just been
+      // rescheduled later, and duplicating it once the deferred date itself
+      // arrived and rolled over a second time.
+      periodStartOf(new Date(getEffectiveTaskDate(t, dayResetTime)!), t.quotaPeriod) <
+        periodStartOf(todayStart, t.quotaPeriod)
     );
     if (stale.length === 0) return;
 
@@ -3894,6 +4888,22 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         timerStartedAt: null,
         previousOccurrenceId: task.id,
         seriesDefaults: null,
+        // The rest of what buildCompletion resets on a successor, which this
+        // row had been spreading forward from the day it replaces. Left as
+        // they were, yesterday's reminder time was in the past and never fired
+        // again, and a repeat count never ran down however many days fell short.
+        ...reminderOnto(effective, nextDue),
+        deadline: deadlineOnto({ ...effective, deadline: null }, nextDue),
+        recurrenceCount: task.recurrenceCount !== null ? task.recurrenceCount - 1 : null,
+        recurrenceAnchorDate: null,
+        deliverableValue: null,
+        rotationLog: [],
+        rotationPeriodStart: null,
+        quotaStartedAt: null,
+        calendarEventId: null,
+        calendarEventExternalId: null,
+        completionCalendarEventId: null,
+        completionCalendarEventExternalId: null,
       });
     }
 
@@ -3906,24 +4916,49 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       spawned.forEach(dbInsertTask);
     });
     spawned.forEach(scheduleTaskReminder);
+    // The day's nudges belong to the row that just closed; the new day's come
+    // from its successor.
+    closed.forEach(t => { if (t.quotaReminders) cancelQuotaNudges(t.id); });
+    spawned.forEach(t => { scheduleQuotaNudges(t); });
     const closedById = new Map(closed.map(t => [t.id, t]));
     set(s => ({
       tasks: [...s.tasks.map(t => closedById.get(t.id) ?? t), ...spawned],
     }));
   },
 
+  // Folded into one loop rather than split into a sibling function: both
+  // halves are "does this live task's reminderTime need correcting", they
+  // share the same completed/archived guard and the same batching/reschedule
+  // tail, and a task could in principle need both checks run (though
+  // reminderTracksVisibility wins when both apply — see below).
   reanchorWallClockReminders() {
     const updated: Task[] = [];
+    const pass = beginVisibleAtPass();
     for (const task of get().tasks) {
-      if (
-        task.reminderTimeAnchor !== 'wallClock' ||
-        task.reminderTime === null ||
-        task.reminderUtcOffsetMinutes === null ||
-        task.completed ||
-        task.archived
-      ) {
+      if (task.reminderTime === null || task.completed || task.archived) continue;
+
+      // A visibility-tracking reminder's whole point is that getVisibleAt's
+      // own answer moves on its own as time passes — a deferUntil date
+      // arrives, a time-of-day segment threshold passes — unlike an offset
+      // reminder, which only changes when dueDate itself moves (handled at
+      // the write sites: completeTask, skipNextRecurrence, updateTask's
+      // series fan-out). So this is the one periodic recompute it needs, and
+      // it takes priority over the wall-clock check below: there's no
+      // reading of "stay at this wall-clock time" for a reminder that isn't
+      // fixed to a clock time to begin with.
+      if (task.reminderTracksVisibility) {
+        const next = getVisibleAt(task, pass);
+        const nextIso = next.toISOString();
+        if (nextIso === task.reminderTime) continue;
+        updated.push({
+          ...task,
+          reminderTime: nextIso,
+          reminderUtcOffsetMinutes: next.getTimezoneOffset(),
+        });
         continue;
       }
+
+      if (task.reminderTimeAnchor !== 'wallClock' || task.reminderUtcOffsetMinutes === null) continue;
       const reanchored = reanchorReminderToWallClock(task.reminderTime, task.reminderUtcOffsetMinutes);
       // The device hasn't actually moved zones since this was last captured —
       // nothing to write.
@@ -3931,9 +4966,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       updated.push({
         ...task,
         reminderTime: reanchored,
-        // The offset now in effect here, correct going forward until the
-        // device moves again.
-        reminderUtcOffsetMinutes: new Date().getTimezoneOffset(),
+        // The offset in effect here *at the reminder*, not now — every other
+        // write captures it that way, and it's what the next pass subtracts.
+        // Stamping today's offset on a reminder across a DST change from today
+        // made the next pass read it as another zone move and shift it an
+        // hour, again on every launch.
+        reminderUtcOffsetMinutes: new Date(reanchored).getTimezoneOffset(),
       });
     }
     if (updated.length === 0) return;
@@ -3990,7 +5028,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       !t.completed &&
       !t.archived &&
       t.progressCount > 0 &&
-      !isHiddenForVacation(t) &&
+      !isWithheld(t) &&
       t.dueDate !== null &&
       // Weekly targets are deliberately out of scope for the overshoot and
       // interval kinds (see Task.quotaPeriod), and this is the guard rather
@@ -4002,9 +5040,17 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     );
     // neutral on a day the task's own category schedule didn't cover — see
     // #2201, isCategoryScheduledDay, and rolloverQuotas' own note above.
-    stale.forEach(t => get().completeTask(t.id, {
-      neutral: !isCategoryScheduledDay(t.category, getTaskDayStart(new Date(t.dueDate!), dayResetTime)),
-    }));
+    //
+    // Stamped at the end of its own day, as rolloverQuotas stamps a partial:
+    // the tally is a record of that day, and a repeat-after-completion
+    // successor measured from the sweep's own moment skipped a day.
+    stale.forEach(t => {
+      const ownDayStart = getTaskDayStart(new Date(t.dueDate!), dayResetTime);
+      get().completeTask(t.id, {
+        neutral: !isCategoryScheduledDay(t.category, ownDayStart),
+        completedAt: new Date(+addDays(ownDayStart, 1) - 1).toISOString(),
+      });
+    });
   },
 
   startQuotaRun(id) {
@@ -4031,7 +5077,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // Same protection from streak loss vacation gives everywhere else, and
       // it matters more here: a paused task is one whose run was never
       // supposed to happen.
-      if (isHiddenForVacation(t)) return false;
+      if (isWithheld(t)) return false;
       if (t.dueDate === null) return false;
       const taskDay = getTaskDayStart(new Date(t.dueDate), dayResetTime);
       // A run from an earlier day is over by definition, whatever the clock
@@ -4324,9 +5370,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (current.length > 0) return;
 
     const plannedEntries = dbGetMealPlanEntries(due.targetWeekStartKey, due.targetWeekEndKey);
-    if (mealPlanNudgeSuppressed(due, plannedEntries)) return;
+    if (mealPlanNudgeSuppressed(due, plannedEntries, settings.mealPlanNudgeSlots)) return;
 
-    // Filed like the other three generators' tasks. Without this the one thing
+    // Filed like every other generator's tasks. Without this the one thing
     // the app writes entirely on its own schedule was also the one with no
     // category, so it landed loose above every section.
     const category = settings.mealPlanNudgeTaskCategory;
@@ -4367,6 +5413,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         category,
         groupId: group.id,
         ...generatedBy('mealPlanNudge', day.dayKey),
+        // After the spread, which pauses the row on vacation like every kind
+        // that stands down for it: with "Also during vacation" on, these rows
+        // are written during a trip on purpose, so hiding them would undo it.
+        vacationPause: !settings.mealPlanNudgeIgnoresVacation,
         // skipTitleRules for the reason generatedTaskSync passes it: "Plan
         // meals for Monday" is a title the app wrote, and this generator has
         // its own "File them under" setting (mealPlanNudgeTaskCategory). A
@@ -4376,7 +5426,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         'mealPlanNudge',
         day.dayKey,
         generatedTaskCountOf(get().tasks, 'mealPlanNudge', day.dayKey)
-      )), { skipTitleRules: true });
+        // skipCategoryDefault too, for the reason generatedTaskSync passes
+        // it: a "File them under: None" here meant none, and without the flag
+        // addTask filed the rows under the new-task default category instead.
+      )), { skipTitleRules: true, skipCategoryDefault: true });
+      // An unattended create like any other generator's, so it belongs in the
+      // ledger; this path doesn't go through reconcileGeneratedTask, which is
+      // where the others are recorded.
+      useUnattendedStore.getState().recordGenerated('created', task);
       // The stack's own 1..K order, which is a separate number space from the
       // list order addTask just stamped (see reorderGroupChildren). Set the way
       // groupTasks sets it, so the rows read down the week.
@@ -4735,7 +5792,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Work the app invents on the strength of a wait dragging on, not
     // sunscreen — see GeneratedKindSpec.pausedOnVacation.
     if (generatorPausedForVacation('waitingFollowUp', settings.vacationMode)) return;
-    if (!settings.waitingFollowUpTasks) return;
+    // The setting gates the app asking unasked. A wait with its own follow-up
+    // day (Task.followUpOn) was asked for, so it runs either way; with the
+    // setting off, those are the only ones wanted.
 
     const tasks = get().tasks;
     const people = usePersonStore.getState().people;
@@ -4744,7 +5803,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Anything already ticked off or archived recently is left alone rather
     // than handed straight back — see waitingFollowUpsHandledRecently.
     const handled = waitingFollowUpsHandledRecently(tasks, today);
-    const wanted = wantedWaitingFollowUps(tasks, people, today, handled);
+    const wanted = wantedWaitingFollowUps(
+      tasks, people, today, handled, MAX_WAITING_FOLLOW_UP_TASKS, settings.waitingFollowUpTasks,
+    );
 
     // Clear first, create second, and never the reverse — the same ordering
     // checkProjectReviewTasks and checkReachOutTasks run on: the stale set
@@ -4789,6 +5850,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           // actually doing the thing.
           phoneNumber: want.phoneNumber,
           category,
+          // Filed where the wait is: chasing the contractor is part of the
+          // kitchen, and belongs on its page beside the task it's about.
+          projectId: want.projectId,
           // No personIds, for the reason the birthday and reachOut tasks
           // carry none: a task naming somebody is the record that something
           // happened with them, and ticking this off would otherwise reset a
@@ -4827,6 +5891,22 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // recording anything, so the trigger declined here fires for real the
     // first time the app is opened after vacation ends.
     if (generatorPausedForVacation('mealSlot', settings.vacationMode)) return;
+
+    // The *logical* day, not the calendar one: at 1am with a 2am reset the meal
+    // tasks that belong on screen are still yesterday's, and dayKeyOf(new Date())
+    // would open the window a day early. See CLAUDE.md on the grace window.
+    const today = dayKeyOf(getLogicalToday());
+
+    // Clear first, and ahead of the switch and kitchen gates below: those stop
+    // this pass *writing*, and a row about a meal that has already gone by is
+    // stale whether or not the generator is still on. Only rows nobody started
+    // or moved go (see staleMealSlotTasks). dropGeneratedTask writes no opt-out,
+    // and a slot has nothing to write one on anyway, so the mark alone still
+    // keeps a dropped day from being written again.
+    staleMealSlotTasks(get().tasks, today).forEach(task =>
+      dropGeneratedTask('mealSlot', task.generatedSourceId)
+    );
+
     // The same gate checkPantryCheckTasks takes, and for the same reason —
     // which that one's comment claimed was unique to it, back when it was. This
     // pass fires on time passing rather than on a purchase or an edit, so with
@@ -4839,10 +5919,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (!settings.kitchenEnabled) return;
     if (!settings.mealCookTasks || settings.mealSlotsEnabled.length === 0) return;
 
-    // The *logical* day, not the calendar one: at 1am with a 2am reset the meal
-    // tasks that belong on screen are still yesterday's, and dayKeyOf(new Date())
-    // would open the window a day early. See CLAUDE.md on the grace window.
-    const today = dayKeyOf(getLogicalToday());
     const horizonEnd = shiftDayKey(today, MEAL_SLOT_TASK_DAYS - 1);
     const mark = settings.mealSlotTasksWrittenThroughDayKey;
     // A mark behind today means the app has been closed for a while: pick up
@@ -4851,7 +5927,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const from = mark && mark >= today ? shiftDayKey(mark, 1) : today;
     if (from > horizonEnd) return;
 
-    writeMealSlotTasks(from, horizonEnd, settings.mealSlotsEnabled);
+    writeMealSlotTasks(from, horizonEnd, settings.mealSlotsEnabled, true);
     settings.setMealSlotTasksWrittenThroughDayKey(horizonEnd);
     // No setLastAction, same reasoning as checkMealPlanNudge above.
   },
@@ -4883,7 +5959,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Nothing written yet, or nothing still ahead of us: the ordinary pass has
     // the whole window to do and will pick these up with everything else.
     if (!mark || mark < today) return;
-    writeMealSlotTasks(today, mark, slots);
+    writeMealSlotTasks(today, mark, slots, false);
   },
 
   checkPantryCheckTasks() {
@@ -4893,18 +5969,26 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // recording anything, so the trigger declined here fires for real the
     // first time the app is opened after vacation ends.
     if (generatorPausedForVacation('pantryCheck', settings.vacationMode)) return;
-    if (!settings.pantryCheckTasks) return;
-    // The whole grocery area can be switched off (kitchenEnabled), and this
-    // generator fires on time passing rather than on a purchase or an edit — so
-    // without this gate it would be a hidden feature still writing rows onto
-    // Today. This used to say "unlike every other grocery generator", which
-    // stopped being true the moment mealSlot arrived firing on the same trigger
-    // — and that stale claim is most of why mealSlot shipped without the gate.
-    // Which generators need one is `GeneratedKindSpec.kitchen` now, rather than
-    // a sentence here that goes out of date silently.
-    if (!settings.kitchenEnabled) return;
-
+    // The switch and the whole grocery area (kitchenEnabled) gate *creating*
+    // only, and are checked below the clear rather than here. This generator
+    // fires on time passing rather than on a purchase or an edit — so without
+    // the gate it would be a hidden feature still writing rows onto Today. This
+    // used to say "unlike every other grocery generator", which stopped being
+    // true the moment mealSlot arrived firing on the same trigger — and that
+    // stale claim is most of why mealSlot shipped without the gate. Which
+    // generators need one is `GeneratedKindSpec.kitchen` now, rather than a
+    // sentence here that goes out of date silently.
+    //
+    // But returning above the clear froze every row already written: an item
+    // bought again or deleted after the switch went off left its "Check if you
+    // still have X" on Today until somebody deleted it by hand. Off means stop
+    // asking, not stop tidying up, the same line reconcileGeneratedTask draws
+    // for vacation. With nothing live there is nothing to clear, so an off
+    // switch still costs nothing.
+    const creating = settings.pantryCheckTasks && settings.kitchenEnabled;
     const tasks = get().tasks;
+    if (!creating && liveGeneratedTasksOfKind(tasks, 'pantryCheck').length === 0) return;
+
     const { items, listEntries } = useGroceryStore.getState();
     // Every trolley, not just the one at home: a row already on the Airbnb list
     // is shopping you are on your way to do, so asking whether you still have it
@@ -4931,6 +6015,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // app's own tidying up.
     const stale = stalePantryCheckTasks(tasks, items, now, listed);
     stale.forEach(task => dropGeneratedTask('pantryCheck', pantryCheckItemId(task)));
+    if (!creating) return;
 
     // One review row already asks about the whole cupboard, so the drip stands
     // down rather than adding three more questions about individual shelves of
@@ -4986,14 +6071,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // recording anything, so the trigger declined here fires for real the
     // first time the app is opened after vacation ends.
     if (generatorPausedForVacation('pantryReview', settings.vacationMode)) return;
-    if (!settings.pantryReviewTasks) return;
-    // The same kitchenEnabled gate checkPantryCheckTasks takes directly above,
-    // for the same reason: this fires on time passing rather than on a purchase
-    // or an edit, so without it this would be the one part of a switched-off
-    // feature still writing rows onto Today.
-    if (!settings.kitchenEnabled) return;
-
+    // The switch and the same kitchenEnabled gate checkPantryCheckTasks takes
+    // directly above, for the same reason: this fires on time passing rather
+    // than on a purchase or an edit, so without it this would be the one part
+    // of a switched-off feature still writing rows onto Today. Checked below
+    // the clear for that pass's reason too: off stops the offer, and a row
+    // whose deck has since emptied still goes.
+    const creating = settings.pantryReviewTasks && settings.kitchenEnabled;
     const tasks = get().tasks;
+    if (!creating && liveGeneratedTasksOfKind(tasks, 'pantryReview').length === 0) return;
+
     const grocery = useGroceryStore.getState();
     // Bare `new Date()` on purpose, the call checkPantryCheckTasks makes and
     // for its reason: a pantry window is real elapsed days from a till receipt
@@ -5009,6 +6096,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     stalePantryReviewTasks(tasks, deck).forEach(task =>
       dropGeneratedTask('pantryReview', pantryReviewDayKey(task))
     );
+    // Before the mark below, which is spent only on a day the offer could
+    // actually have been made.
+    if (!creating) return;
 
     // The day boundary is the user's own here, unlike the deck's window above:
     // this is "have I offered this today", which is a question about their
@@ -5081,14 +6171,17 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // recording anything, so the trigger declined here fires for real the
     // first time the app is opened after vacation ends.
     if (generatorPausedForVacation('mealShortfall', settings.vacationMode)) return;
-    if (!settings.mealShortfallTasks) return;
     // The whole grocery area can be switched off, and this generator reads the
     // catalog to decide what's missing — without this gate it would be part of
     // a hidden feature still writing rows onto Today. Same gate
-    // checkPantryCheckTasks takes, and for the same reason.
-    if (!settings.kitchenEnabled) return;
-
+    // checkPantryCheckTasks takes, for the same reason, and below the clear for
+    // that pass's reason as well: a "Shop for Ragu" whose meal was dropped from
+    // the plan after the switch went off otherwise stayed on Today naming a
+    // meal that no longer existed.
+    const creating = settings.mealShortfallTasks && settings.kitchenEnabled;
     const tasks = get().tasks;
+    if (!creating && liveGeneratedTasksOfKind(tasks, 'mealShortfall').length === 0) return;
+
     const leadDays = settings.mealShortfallLeadDays;
     // The *logical* today: this decides which meals are close enough to shop
     // for, which is a scheduling decision, and at 1am with a 2am reset the
@@ -5111,7 +6204,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     );
     const recipes = useRecipeStore.getState().recipes;
     const recipesById = new Map(recipes.map(r => [r.id, r]));
-    const { items, itemSubs } = useGroceryStore.getState();
+    // The boxes too, so a packet frozen or marked "Got it" counts as having it
+    // here the way it does in the Pantry (see classifyPlanned's `products`).
+    const { items, itemSubs, itemProducts } = useGroceryStore.getState();
     const swaps = standingSwapMap(itemSubs, items);
 
     // Clear first, create second, and never the reverse — the ordering
@@ -5125,12 +6220,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // stamp shopTask: false on a meal the user never turned down, and so
     // suppress the offer for ever on the strength of the app's own tidying up.
     const stale = staleMealShortfallTasks(
-      tasks, entries, recipesById, items, itemSubs, swaps, todayKey, now, leadDays
+      tasks, entries, recipesById, items, itemSubs, swaps, todayKey, now, leadDays, itemProducts
     );
     stale.forEach(task => dropGeneratedTask('mealShortfall', mealShortfallEntryId(task)));
+    if (!creating) return;
 
     const wanted = wantedMealShortfalls(
-      entries, recipesById, items, itemSubs, swaps, todayKey, now, leadDays
+      entries, recipesById, items, itemSubs, swaps, todayKey, now, leadDays,
+      MAX_MEAL_SHORTFALL_TASKS, itemProducts
     );
     if (wanted.length === 0) return;
 
@@ -5178,6 +6275,81 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   /**
+   * Raise a "Take X out of the freezer" task for a meal today or tomorrow that
+   * uses something only on hand frozen, and clear the ones whose reason has
+   * gone (#2926). `checkMealShortfallTasks` with a different question: the
+   * same entries, catalog and classification, the same clear-then-create order
+   * and the same reasons for each gate. See src/utils/mealThawTasks.ts.
+   */
+  checkMealThawTasks() {
+    const settings = useSettingsStore.getState();
+    if (generatorPausedForVacation('mealThaw', settings.vacationMode)) return;
+    // Refuse to create without the switch or the kitchen, never to clear: a
+    // row naming a meal since dropped goes either way.
+    const creating = settings.mealThawTasks && settings.kitchenEnabled;
+    const tasks = get().tasks;
+    if (!creating && liveGeneratedTasksOfKind(tasks, 'mealThaw').length === 0) return;
+
+    // Logical today, for the grace-window reason checkMealShortfallTasks gives.
+    const todayKey = dayKeyOf(getLogicalToday());
+    const now = new Date();
+    // One day wider on each side than the window (today and tomorrow), for
+    // checkMealShortfallTasks' reason: a meal that has just moved out has to
+    // be read at its new date rather than looking deleted.
+    const entries = dbGetMealPlanEntries(shiftDayKey(todayKey, -1), shiftDayKey(todayKey, 2));
+    const recipesById = new Map(useRecipeStore.getState().recipes.map(r => [r.id, r]));
+    const { leftovers } = useLeftoverStore.getState();
+    const { items, itemSubs, itemProducts } = useGroceryStore.getState();
+    const swaps = standingSwapMap(itemSubs, items);
+
+    // Clear first, then create, and through dropGeneratedTask so the app's own
+    // tidying up never stamps thawTask: false on a meal nobody declined.
+    staleMealThawTasks(
+      tasks, entries, recipesById, leftovers, items, itemSubs, swaps, todayKey, now, itemProducts
+    ).forEach(task => dropGeneratedTask('mealThaw', mealThawEntryId(task)));
+    if (!creating) return;
+
+    const wanted = wantedMealThaws(
+      entries, recipesById, leftovers, items, itemSubs, swaps, todayKey, now, undefined, itemProducts
+    );
+    if (wanted.length === 0) return;
+
+    ensureGeneratedTaskCategory('mealThaw');
+    const category = useSettingsStore.getState().mealThawTaskCategory;
+    // Noon today, the landing every other unattended writer picks: the window
+    // is only today and tomorrow, so today *is* the day to do it.
+    const dueDate = getCurrentDayStart();
+    dueDate.setHours(12, 0, 0, 0);
+
+    wanted.forEach(want => {
+      reconcileGeneratedTask({
+        kind: 'mealThaw',
+        sourceId: want.entryId,
+        wanted: true,
+        // A meal is one event: having taken the chicken out for Thursday, a
+        // second row asking again would be an invention.
+        blocksOnFinished: true,
+        // The title and the link follow what's frozen (a second item frozen,
+        // one thawed); the date never does, so a deferral stands.
+        drift: existing => {
+          const updates: Partial<Task> = {};
+          if (existing.title !== want.title) updates.title = want.title;
+          if (existing.linkUrl !== want.linkUrl) updates.linkUrl = want.linkUrl;
+          return Object.keys(updates).length > 0 ? updates : null;
+        },
+        draft: () => ({
+          title: want.title,
+          dueDate: dueDate.toISOString(),
+          linkUrl: want.linkUrl,
+          category,
+          ...generatedBy('mealThaw', want.entryId),
+        }),
+      });
+    });
+    // No setLastAction, same reasoning as checkMealPlanNudge above.
+  },
+
+  /**
    * Give every planned meal a few days in the past with nothing logged
    * against it a "Log X" task. See src/utils/mealLogNudgeTasks.ts for the
    * window, the cap, and why `cookedAt` is never consulted.
@@ -5189,10 +6361,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   checkMealLogNudgeTasks() {
     const settings = useSettingsStore.getState();
     if (generatorPausedForVacation('mealLogNudge', settings.vacationMode)) return;
-    if (!settings.mealLogNudgeTasks) return;
-    if (!settings.kitchenEnabled) return;
-
+    // The switch and the kitchen gate stop creating only, below the clear, for
+    // checkPantryCheckTasks' reason: a row for a meal since logged or deleted
+    // goes whether or not the generator is still on.
+    const creating = settings.mealLogNudgeTasks && settings.kitchenEnabled;
     const tasks = get().tasks;
+    if (!creating && liveGeneratedTasksOfKind(tasks, 'mealLogNudge').length === 0) return;
+
     const todayKey = dayKeyOf(getLogicalToday());
     // One day wider on the near edge, for the reason checkMealShortfallTasks
     // reads one day wider on each of its own: a task whose entry has moved is
@@ -5200,20 +6375,17 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // this set.
     const windowStart = shiftDayKey(todayKey, -MEAL_LOG_NUDGE_LOOKBACK_DAYS - 1);
     const entries = dbGetMealPlanEntries(windowStart, todayKey);
-    const loggedEntryIds = new Set(
-      dbGetFoodLogEntries(windowStart, todayKey)
-        .map(e => e.mealPlanEntryId)
-        .filter((id): id is string => id !== null)
-    );
+    const logged = mealLogRecord(dbGetFoodLogEntries(windowStart, todayKey));
 
     // Clear first, create second, the same ordering every generator here
     // runs on: the stale set includes the row for a meal just logged from
     // this very task, and a create pass running first would be deciding
     // against a list that still held it.
-    const stale = staleMealLogNudgeTasks(tasks, entries, loggedEntryIds, todayKey);
+    const stale = staleMealLogNudgeTasks(tasks, entries, logged, todayKey);
     stale.forEach(task => dropGeneratedTask('mealLogNudge', mealLogNudgeEntryId(task)));
+    if (!creating) return;
 
-    const wanted = wantedMealLogNudges(entries, loggedEntryIds, todayKey);
+    const wanted = wantedMealLogNudges(entries, logged, todayKey);
     if (wanted.length === 0) return;
 
     ensureGeneratedTaskCategory('mealLogNudge');
@@ -5266,7 +6438,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // user's next shake would be labelled as something they had just done and
       // point at an item they may never have opened. Same reason the completed
       // task purge doesn't route through bulkDeleteTasks.
-      lowIds.forEach(itemId => grocery.setRunningLow(itemId, true, { registerUndo: false }));
+      // listId: null — the home list, the one the supply is restocked from.
+      // The active list may be an away one (checkAwayGroceryList switches to
+      // it), and a supply flagged low there is never restocked by that trip
+      // and, already flagged, never reaches the home list after it.
+      lowIds.forEach(itemId => grocery.setRunningLow(itemId, true, { registerUndo: false, listId: null }));
     }
 
     if (!settings.supplyReorderTasks) return;
@@ -5282,10 +6458,20 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // stamp supplyDeclinedAtCount on a task the user never turned down, and so
     // silence the offer until the *next* restock on the strength of the app's
     // own tidying up.
-    const stale = staleSupplyReorderTasks(tasks, dayResetTime);
+    // The rows a supply's grocery link can act through: every live catalog row
+    // with the kitchen on, none with it off. A link outside that set asks
+    // through a reorder task instead (see supplyLinkActs), or a supply whose
+    // item was deleted would ask nowhere at all. Undefined, meaning "trust
+    // every link", until the grocery store has loaded: an empty catalog
+    // mid-launch is not every item having been deleted.
+    const grocery = useGroceryStore.getState();
+    const actingItemIds = !settings.kitchenEnabled
+      ? new Set<string>()
+      : grocery.initialized ? new Set(grocery.items.map(i => i.id)) : undefined;
+    const stale = staleSupplyReorderTasks(tasks, dayResetTime, actingItemIds);
     stale.forEach(task => dropGeneratedTask('supplyReorder', supplyReorderSourceId(task)));
 
-    const wanted = wantedSupplyReorders(get().tasks, dayResetTime);
+    const wanted = wantedSupplyReorders(get().tasks, dayResetTime, undefined, actingItemIds);
     if (wanted.length === 0) return;
 
     // Noon today, the landing every other unattended writer picks: an offer
@@ -5556,6 +6742,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           title,
           dueDate: due.toISOString(),
           category: settings.weatherTaskCategory,
+          linkUrl: WEATHER_LINK_URL,
+          ...ruleEstimateDraft(rule),
           ...generatedBy('weather', sourceId),
         }),
       });
@@ -5698,6 +6886,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           // matched it.
           title: match.rule.title,
           category: settings.eventTaskCategory,
+          ...ruleEstimateDraft(match.rule),
           ...generatedBy('eventTask', match.sourceId),
         }),
       });
@@ -5711,7 +6900,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   /**
-   * The twenty-fourth generator — see `src/utils/travelTasks.ts`. Structurally
+   * Leave-by reminders — see `src/utils/travelTasks.ts`. Structurally
    * `checkEventTasks`, whose occurrence key and handled record it shares, and
    * it departs from it in two places, both because this row has to stay true
    * to something that moves after it is written.
@@ -5884,6 +7073,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           title: rule.title,
           dueDate: dueDate.toISOString(),
           category: settings.screenTimeTaskCategory,
+          ...ruleEstimateDraft(rule),
           ...generatedBy('screenTime', sourceId),
         }),
       });
@@ -5998,6 +7188,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
             dueDate: dueDate.toISOString(),
             category: settings.healthTaskCategory,
             linkUrl: healthTaskLinkUrl(rule.metric),
+            ...ruleEstimateDraft(rule),
             ...generatedBy('health', sourceId),
           }),
         });
@@ -6167,77 +7358,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
    * the sweep that follows somebody acting on the row would find its own
    * leftover and do nothing.
    */
-  // The twenty-first generator, and the only one that watches what the other
-  // twenty leave behind rather than watching a thing of its own. Everything it
-  // asks about already existed and already nudged on its own schedule; what
-  // was missing was walking them once, in an order. See weeklyReview.ts.
-  checkWeeklyReviewTasks() {
-    const settings = useSettingsStore.getState();
-    // Work the app invents, and vacation mode is the deliberate "hide work from
-    // me". Skipped without recording the week key, so a review declined here is
-    // offered for real the first launch after vacation ends.
-    if (generatorPausedForVacation('weeklyReview', settings.vacationMode)) return;
-    // The pass refuses as well as the settings row disappearing, which is the
-    // half that matters: a generator whose switch is hidden but which keeps
-    // writing is the "stranded behind a gate" bug five of them shipped with,
-    // and simplified mode takes away the Stuck screen and the Unscheduled lens
-    // that two of this review's own stages are about.
-    if (featureHidden('weeklyReview', settings.simpleMode)) return;
-    if (!settings.weeklyReviewTasks || !settings.weeklyReviewTaskCategory) return;
-
-    const tasks = get().tasks;
-    const weekKey = reviewWeekKey(new Date(), settings.weekStartsOn, settings.dayResetTime);
-
-    // The three piles it is worth offering *for*. The two `look` stages are
-    // deliberately not consulted here: a week that is merely busy is not a
-    // reason to write a task, and weeklyReviewWorthOffering says so.
-    const input = {
-      inbox: get().inboxTasks(),
-      stuck: stuckPile(get().waitingTasks(), get().driftingTaskList()),
-      slipped: slippedTasks(tasks, isHeldBack, new Date(), settings.dayResetTime),
-      heavyDays: 0,
-      openNights: 0,
-    };
-
-    // A live row whose week has rolled over is this week's business no longer.
-    // dropGeneratedTask rather than deleteGeneratedTaskQuietly, like
-    // projectReview's clear: the app tidying up after itself is not the user
-    // declining anything.
-    for (const task of liveGeneratedTasksOfKind(tasks, 'weeklyReview')) {
-      if (task.generatedSourceId !== weekKey) dropGeneratedTask('weeklyReview', task.generatedSourceId);
-    }
-
-    if (!wantsWeeklyReview(weekKey, settings.weeklyReviewLastWeekKey, input)) return;
-    // Marked before the row is written, the order every period-keyed generator
-    // uses: with no source row to stamp a decline onto, this mark is the only
-    // thing between a review swiped away on Tuesday and an identical one on
-    // Wednesday's first foreground sweep.
-    settings.setWeeklyReviewLastWeekKey(weekKey);
-
-    const dueDate = getCurrentDayStart();
-    dueDate.setHours(12, 0, 0, 0);
-
-    reconcileGeneratedTask({
-      kind: 'weeklyReview',
-      sourceId: weekKey,
-      wanted: true,
-      // Nothing about this row drifts: its title is fixed and its date is the
-      // day it was written. Returning null is how a caller says "leave it
-      // alone", which also means a review pushed to tomorrow stays there.
-      drift: () => null,
-      draft: () => ({
-        title: 'Review the week',
-        notes: 'The inbox, what is stuck, what slipped, and the week ahead, in one pass.',
-        category: settings.weeklyReviewTaskCategory,
-        dueDate: dueDate.toISOString(),
-        generatedKind: 'weeklyReview',
-        generatedSourceId: weekKey,
-        // The row that offers to walk the week opens the thing that walks it.
-        linkUrl: WEEKLY_REVIEW_URL,
-      }),
-    });
-  },
-
   checkWeekendNudgeTasks() {
     const settings = useSettingsStore.getState();
     // Work the app invents, and vacation mode is the deliberate "hide work
@@ -6278,7 +7398,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         assumedTaskMinutes: assumedMinutesFor(tasks),
       },
     );
-    const bare = isWeekendBare(window, loads, weekendPlanCount(window, buckets, taskById));
+    const planTitles = weekendPlanTitles(window, buckets, taskById);
+    const bare = isWeekendBare(window, loads, planTitles.length, settings.weekendNudgePlanThreshold);
 
     // dropGeneratedTask rather than deleteGeneratedTaskQuietly, like
     // projectReview's clear: this is the app tidying up after itself, and
@@ -6307,12 +7428,19 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // through `dripCandidate` rather than by picking a member off the project,
     // so the task quoted here is the same one the pull sheet the row links to
     // will offer first.
-    const nominated = weekendSourceProjects(useProjectStore.getState().projects)[0] ?? null;
+    // The first nominated project that has something to offer, in the user's
+    // own order; only the first was ever tried, so one with nothing pullable
+    // hid the rest.
+    const sources = weekendSourceProjects(useProjectStore.getState().projects, getLogicalDayKey(new Date(), settings.dayResetTime));
+    const nominated = sources.find(p => nextPullCandidate(p, tasks) !== null) ?? sources[0] ?? null;
     const suggestion = nominated
       ? {
           projectId: nominated.id,
           projectTitle: nominated.title,
-          candidateTitle: dripCandidate(nominated, tasks)?.title ?? null,
+          candidateTitle: (() => {
+            const next = nextPullCandidate(nominated, tasks);
+            return next ? displayTitleFor(next) : null;
+          })(),
         }
       : null;
 
@@ -6329,10 +7457,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       drift: () => null,
       draft: () => ({
         title: WEEKEND_NUDGE_TITLE,
-        notes: weekendNudgeNotes(suggestion),
+        notes: weekendNudgeNotes(planTitles, suggestion),
         dueDate: dueDate.toISOString(),
         category: settings.weekendNudgeTaskCategory,
-        linkUrl: weekendNudgeLinkUrl(suggestion?.projectId ?? null),
+        linkUrl: weekendNudgeLinkUrl(suggestion?.projectId ?? null, window.saturdayKey),
         ...generatedBy('weekendNudge', window.saturdayKey),
       }),
     });
@@ -6381,13 +7509,22 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // clear-first-create-second ordering every day-keyed generator uses. An
     // unanswered request is a question about a window that has moved on, not a
     // task still owed.
+    //
+    // Dropped rather than deleted quietly: the quiet delete writes the opt-out,
+    // which for this kind is the decline stamp below, and a request nobody
+    // answered has not been declined.
     liveGeneratedTasksOfKind(get().tasks, 'weighIn')
       .filter(task => weighInDayKey(task) !== todayKey)
-      .forEach(task => deleteGeneratedTaskQuietly(task.id));
+      .forEach(task => dropGeneratedTask('weighIn', task.generatedSourceId));
 
     if (settings.weighInLastDayKey === todayKey) return;
 
     const everyDays = clampWeighInEveryDays(settings.weighInEveryDays);
+    // A deleted request holds for the window from the day it was deleted on,
+    // rather than until tomorrow. Checked before the read, which it makes
+    // unnecessary, and without spending the mark, which has nothing to say
+    // about a day nobody asked about.
+    if (weighInDeclineHolds(settings.weighInDeclinedDayKey, todayKey, everyDays)) return;
     const points = await useHealthStore.getState().readRecentWeights(everyDays);
     // **Null is not an empty window.** It means there was no way to ask at all
     // (not iOS, no Health, demo mode), which is evidence of nothing — and
@@ -6490,24 +7627,19 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         get().updateTask(id, { ...contentReset, chainIndex: task.chainIndex + 1 });
         return;
       }
-      let stepReminderTime: string | null = effective.reminderTime;
-      let stepReminderUtcOffsetMinutes: number | null = effective.reminderUtcOffsetMinutes;
-      if (effective.reminderTime) {
-        const original = new Date(effective.reminderTime);
-        const next = new Date(
-          effective.reminderOffsetDays !== null ? getReminderOffsetDate(stepDue, effective.reminderOffsetDays) : stepDue
-        );
-        next.setHours(original.getHours(), original.getMinutes(), 0, 0);
-        stepReminderTime = next.toISOString();
-        stepReminderUtcOffsetMinutes = next.getTimezoneOffset();
-      }
+      // Same shape as completeTask's successor: see reminderOnto.
+      const stepReminder = reminderOnto(effective, stepDue, contentReset);
       get().updateTask(id, {
         ...contentReset,
         chainIndex: task.chainIndex + 1,
         dueDate: stepDue.toISOString(),
         deferUntil: null,
-        reminderTime: stepReminderTime,
-        reminderUtcOffsetMinutes: stepReminderUtcOffsetMinutes,
+        ...stepReminder,
+        deadline: deadlineOnto(effective, stepDue),
+        // Named so updateTask doesn't re-derive it from the date this skip
+        // lands on: the app moving a row must never re-anchor the grid, or a
+        // task on the 31st skipped through February stays on the 28th.
+        recurrenceAnchorDay: task.recurrenceAnchorDay,
         // Same as completeTask's successor: this step is landing on a new
         // day, so it starts that day with no pushes against it yet — the
         // count belongs to the occurrence that was skipped, not the one
@@ -6524,24 +7656,17 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // than on the day after they expired.
     const nextDue = getNextDueDate(task, dayResetTime, { catchUp: true });
     if (!nextDue) return;
-    let nextReminderTime: string | null = effective.reminderTime;
-    let nextReminderUtcOffsetMinutes: number | null = effective.reminderUtcOffsetMinutes;
-    if (effective.reminderTime) {
-      const original = new Date(effective.reminderTime);
-      const next = new Date(
-        effective.reminderOffsetDays !== null ? getReminderOffsetDate(nextDue, effective.reminderOffsetDays) : nextDue
-      );
-      next.setHours(original.getHours(), original.getMinutes(), 0, 0);
-      nextReminderTime = next.toISOString();
-      nextReminderUtcOffsetMinutes = next.getTimezoneOffset();
-    }
+    const nextReminder = reminderOnto(effective, nextDue, contentReset);
     const nextChainIndex = chainAdvances ? 0 : task.chainIndex;
     get().updateTask(id, {
       ...contentReset,
       dueDate: nextDue.toISOString(),
       deferUntil: null,
-      reminderTime: nextReminderTime,
-      reminderUtcOffsetMinutes: nextReminderUtcOffsetMinutes,
+      ...nextReminder,
+      // A relative deadline follows the date, as it does on completion; see
+      // the chain-step branch above for the anchor day.
+      deadline: deadlineOnto(effective, nextDue),
+      recurrenceAnchorDay: task.recurrenceAnchorDay,
       chainIndex: nextChainIndex,
       recurrenceCount: task.recurrenceCount !== null ? task.recurrenceCount - 1 : null,
       // Same as completeTask's successor: rolling forward to the next
@@ -6721,6 +7846,28 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     get().updateTask(id, { completionTimerStartedAt: null });
   },
 
+  // The Done button and the notification tap (notificationTapSync.ts) both
+  // dismiss the Live Activity, but either needs the user to actually see and
+  // act on one of them — swipe the notification away unread, or never tap
+  // the Lock Screen button, and completionTimerStartedAt is never cleared.
+  // liveActivity.ts renders the countdown by comparing "now" to a fixed
+  // target every time it runs, so a run left undismissed doesn't grow
+  // incorrect, it just sits at 0:00 forever with nothing left to trigger a
+  // resync — buildTimerRuns only runs off a task/recipe/settings write, not a
+  // clock. This is that clock: same shape as sweepExpiredTasks, run at launch
+  // and in the background (see catchUpPasses in maintenancePasses.ts) so a
+  // countdown nobody acknowledged still clears on its own.
+  sweepExpiredCompletionTimers() {
+    const now = Date.now();
+    const expired = get().tasks.filter(t => {
+      if (t.completionTimerStartedAt === null || t.archived) return false;
+      const targetEndMs =
+        new Date(t.completionTimerStartedAt).getTime() + (t.completionTimerMinutes ?? 0) * 60000;
+      return now >= targetEndMs;
+    });
+    expired.forEach(t => get().dismissCompletionTimer(t.id));
+  },
+
   pauseTimer(id) {
     const task = get().tasks.find(t => t.id === id);
     if (!task || task.timerStartedAt === null) return;
@@ -6830,6 +7977,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       recurrenceInterval: 1,
       recurrenceDays: [],
       recurrenceMonthDay: null,
+      recurrenceMonth: null,
       recurrenceWeekOrdinal: null,
       recurrenceAnchorDay: null,
     recurrenceAnchorDate: null,
@@ -6884,10 +8032,17 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       quotaReminders: false,
       quotaStartedAt: null,
       quotaAlwaysVisible: false,
+      followWaterTarget: false,
       quotaPeriod: 'day',
+      rotationEnabled: false,
+      rotationItems: [],
+      rotationLog: [],
+      rotationPeriodStart: null,
+      rotationLastDone: {},
       reminderTime: null,
       reminderKind: 'notification',
       reminderOffsetDays: null,
+      reminderTracksVisibility: false,
       reminderTimeAnchor: 'wallClock',
       reminderUtcOffsetMinutes: null,
       chainEnabled: false,
@@ -6901,6 +8056,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       followUpTaskTally: 0,
       previousFollowUpTaskTally: 0,
       followUpTaskSourceTitle: null,
+      followUpTaskSourceId: null,
       vacationPause: false,
       excludeFromSuggestions: false,
       timerStartedAt: null,
@@ -7039,6 +8195,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       recurrenceInterval: 1,
       recurrenceDays: [],
       recurrenceMonthDay: null,
+      recurrenceMonth: null,
       recurrenceWeekOrdinal: null,
       recurrenceAnchorDay: null,
     recurrenceAnchorDate: null,
@@ -7093,10 +8250,17 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       quotaReminders: false,
       quotaStartedAt: null,
       quotaAlwaysVisible: false,
+      followWaterTarget: false,
       quotaPeriod: 'day',
+      rotationEnabled: false,
+      rotationItems: [],
+      rotationLog: [],
+      rotationPeriodStart: null,
+      rotationLastDone: {},
       reminderTime: null,
       reminderKind: 'notification',
       reminderOffsetDays: null,
+      reminderTracksVisibility: false,
       reminderTimeAnchor: 'wallClock',
       reminderUtcOffsetMinutes: null,
       chainEnabled: false,
@@ -7110,6 +8274,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       followUpTaskTally: 0,
       previousFollowUpTaskTally: 0,
       followUpTaskSourceTitle: null,
+      followUpTaskSourceId: null,
       vacationPause: false,
       excludeFromSuggestions: false,
       timerStartedAt: null,
@@ -7288,22 +8453,33 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   // per-child (see skipNextRecurrence), and cascading it across children on
   // different cadences would desync them unpredictably.
   completeGroup(groupId, options) {
+    // Same as uncompleteGroup: the one entry for the batch replaces each
+    // child's own, or the stack is left holding a shake per child that undoes
+    // nothing once the batch entry has.
+    const historyBefore = get().undoStack;
     const children = get().groupRosterOf(groupId);
     const skip = new Set(options?.skipIds ?? []);
     const completedIds: string[] = [];
+    // Each child's own undo, which knows what its completion touched (a meal
+    // marked cooked, a project it finished) — a bare uncompleteTask doesn't.
+    const undos: Array<() => void> = [];
     dbTransaction(() => {
       children.forEach(child => {
         if (child.completed || skip.has(child.id)) return;
         get().completeTask(child.id);
-        if (get().tasks.find(t => t.id === child.id)?.completed) completedIds.push(child.id);
+        if (get().tasks.find(t => t.id === child.id)?.completed) {
+          completedIds.push(child.id);
+          const action = get().lastAction;
+          if (action) undos.push(action.undo);
+        }
       });
     });
     if (completedIds.length === 0) return;
     get().setLastAction({
       label: `${completedIds.length} task${completedIds.length === 1 ? '' : 's'} completed`,
       redo: () => get().completeGroup(groupId, options),
-      undo: () => completedIds.forEach(id => get().uncompleteTask(id)),
-    });
+      undo: () => [...undos].reverse().forEach(fn => fn()),
+    }, { replacing: historyBefore });
   },
 
   uncompleteGroup(groupId) {
@@ -7499,6 +8675,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   addExistingToProject(taskId, projectId) {
+    // A task created on a project's page is already filed there, and the
+    // page calls this for it anyway: skipping the no-op keeps that add to one
+    // store write rather than two full re-renders of every screen.
+    if (get().tasks.find(t => t.id === taskId)?.projectId === projectId) return;
     get().updateTask(taskId, { projectId });
   },
 
@@ -7523,6 +8703,24 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     });
     get().setLastAction({
       label: `${previous.length} task${previous.length === 1 ? '' : 's'} removed from project`,
+      undo: () => previous.forEach(p => get().updateTask(p.id, { projectId: p.projectId })),
+    });
+  },
+
+  // The same shape as bulkRemoveFromProject, pointed at another project rather
+  // than at none: each task's own previous project is what undo restores.
+  bulkMoveToProject(taskIds, projectId) {
+    const idSet = new Set(taskIds);
+    const previous = get().tasks
+      .filter(t => idSet.has(t.id) && t.projectId !== projectId)
+      .map(t => ({ id: t.id, projectId: t.projectId }));
+    if (previous.length === 0) return;
+    dbTransaction(() => {
+      previous.forEach(p => get().updateTask(p.id, { projectId }));
+    });
+    const title = useProjectStore.getState().getProjectById(projectId)?.title;
+    get().setLastAction({
+      label: `${previous.length} task${previous.length === 1 ? '' : 's'} moved${title ? ` to ${title}` : ''}`,
       undo: () => previous.forEach(p => get().updateTask(p.id, { projectId: p.projectId })),
     });
   },
@@ -7585,6 +8783,115 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         undos.forEach(fn => fn());
       },
     }, { replacing: historyBefore });
+  },
+
+  startFreshFromProject(projectId) {
+    const source = useProjectStore.getState().getProjectById(projectId);
+    if (!source) return null;
+    const historyBefore = get().undoStack;
+    const blueprint = projectBlueprint(projectId, get().tasks, useTaskGroupStore.getState().groups);
+    const projectStore = useProjectStore.getState();
+    const created = projectStore.createProject(source.title, { category: source.category, kind: source.kind });
+    // The settings the person chose carry over; its dates and its done-ness
+    // don't, since those were about the last time.
+    projectStore.updateProject(created.id, {
+      notes: source.notes,
+      defaultTaskCategory: source.defaultTaskCategory,
+      ongoing: source.ongoing,
+      nudgeOptIn: source.nudgeOptIn,
+      nudgeCadenceDays: source.nudgeCadenceDays,
+      autoSchedule: source.autoSchedule,
+      weekendSource: source.weekendSource,
+      destination: source.destination,
+      personIds: source.personIds,
+      links: source.links,
+      inOrder: source.inOrder,
+      showChecked: source.showChecked,
+    });
+
+    const sectionFor = new Map<string, string>();
+    const checklistSections = new Set(
+      useTaskGroupStore.getState().groups.filter(g => g.checklist).map(g => g.id),
+    );
+    dbTransaction(() => {
+      for (const section of blueprint.sections) {
+        const copy = useTaskGroupStore.getState().createGroup(section.title, null, created.id);
+        if (checklistSections.has(section.id)) useTaskGroupStore.getState().updateGroup(copy.id, { checklist: true });
+        sectionFor.set(section.id, copy.id);
+      }
+      const order: string[] = [];
+      const childrenOf = new Map<string, string[]>();
+      const copyOf = new Map<string, string>();
+      for (const { task, sectionId, subtasks } of blueprint.entries) {
+        const groupId = sectionId ? sectionFor.get(sectionId) ?? null : null;
+        const copy = get().addTask({
+          title: task.title,
+          notes: task.notes,
+          tags: task.tags,
+          category: task.category,
+          priority: task.priority,
+          effort: task.effort,
+          estimatedMinutes: task.estimatedMinutes,
+          timeSegments: task.timeSegments,
+          recurrenceType: task.recurrenceType,
+          recurrenceInterval: task.recurrenceInterval,
+          recurrenceDays: task.recurrenceDays,
+          recurrenceMonthDay: task.recurrenceMonthDay,
+          recurrenceMonth: task.recurrenceMonth,
+          recurrenceFromCompletion: task.recurrenceFromCompletion,
+          chainEnabled: task.chainEnabled,
+          chainItems: task.chainItems,
+          // The whole question, not just its kind: a guest's Yes/No/Maybe
+          // copied without its options asked in free text and fell out of
+          // the tally.
+          deliverableKind: task.deliverableKind,
+          deliverableOptions: task.deliverableOptions ?? [],
+          deliverableSetsAway: task.deliverableSetsAway ?? false,
+          windowStart: task.windowStart,
+          windowEnd: task.windowEnd,
+          linkUrl: task.linkUrl,
+          vacationPause: task.vacationPause,
+          excludeFromSuggestions: task.excludeFromSuggestions,
+          projectId: created.id,
+          groupId,
+          // Last time's dates belong to last time, so one-offs start undated.
+          // A repeating task starts today instead: undated, a project task is
+          // on no list, and Pull never offers a routine, so it was stranded.
+          dueDate: task.recurrenceType !== 'none' ? getLogicalToday().toISOString() : null,
+        }, undefined, { skipTitleRules: true, skipCategoryDefault: true });
+        copyOf.set(task.id, copy.id);
+        subtasks.forEach(title => get().addSubtask(copy.id, title));
+        if (groupId) {
+          if (!childrenOf.has(groupId)) { childrenOf.set(groupId, []); order.push(groupId); }
+          childrenOf.get(groupId)!.push(copy.id);
+        } else {
+          order.push(copy.id);
+        }
+      }
+      // What each copy waits on, pointed at the copies: "Send invitations"
+      // waits on this year's venue and guest list, not last year's done ones.
+      // A blocker outside the project isn't carried, since it was about then.
+      for (const { task } of blueprint.entries) {
+        const mapped = blockerIdsOf(task).map(id => copyOf.get(id)).filter((id): id is string => !!id);
+        if (mapped.length > 0) get().updateTask(copyOf.get(task.id)!, blockerFields(mapped));
+      }
+      // Sections with nothing in them keep their place at the end.
+      for (const id of sectionFor.values()) if (!childrenOf.has(id)) order.push(id);
+      get().reorderProjectItems(created.id, order);
+      for (const [groupId, ids] of childrenOf) get().reorderGroupChildren(groupId, ids);
+    });
+
+    get().setLastAction({
+      label: 'Project copied',
+      undo: () => {
+        get().deleteProject(created.id, { cascade: true });
+        // deleteProject unfiles a project's stacks rather than deleting them,
+        // which is right for one the person built; these were only ever this
+        // copy's, and left behind they were empty stacks with no page.
+        for (const id of sectionFor.values()) useTaskGroupStore.getState().removeGroupRow(id);
+      },
+    }, { replacing: historyBefore });
+    return useProjectStore.getState().getProjectById(created.id) ?? created;
   },
 
   uncompleteProject(projectId) {
@@ -7759,7 +9066,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   checkVacationExpiry() {
     const { vacationMode, vacationEnd, setVacationMode } = useSettingsStore.getState();
     if (!vacationMode || !vacationEnd) return;
-    if (new Date() < new Date(vacationEnd)) return;
+    // Compared as logical days, not instants: a trip's awayEnd is stored at noon
+    // of the return day, and the return day isn't away from its own reset on.
+    if (getCurrentDayStart() < getTaskDayStart(new Date(vacationEnd))) return;
     get().forgivVacationStreaks();
     setVacationMode(false);
   },
@@ -7938,6 +9247,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (undos.length === 0) return;
     get().setLastAction({
       label: `${undos.length} task${undos.length === 1 ? '' : 's'} uncompleted`,
+      // Several at once is a list's "Uncheck all", and checking thirty lines
+      // back off by hand is what a stray tap there would cost, so the Undo bar
+      // offers it. One line is a tap to put back.
+      destructive: undos.length > 1,
       redo: () => get().bulkUncompleteTasks(ids),
       undo: () => undos.forEach(u => u()),
     }, { replacing: historyBefore });
@@ -7959,6 +9272,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       if (idSet.has(t.id) && t.reminderTime) cancelTaskReminder(t.id);
       if (idSet.has(t.id) && t.quotaReminders) cancelQuotaNudges(t.id);
       if (idSet.has(t.id) && t.timerStartedAt !== null) cancelTimerAlarm(t.id);
+      // What deleteTask does for one row, which this path had skipped: the
+      // deadline's event stayed on the device calendar, and a completion
+      // timer kept counting down for a task that no longer existed.
+      if (idSet.has(t.id)) cancelCompletionTimer(t.id);
+      if (idSet.has(t.id) && t.calendarEventId) void deleteDeadlineEvent(deadlineEventLink(t));
     });
     set(s => ({
       tasks: s.tasks.filter(t => !idSet.has(t.id) && (t.parentId === null || !idSet.has(t.parentId))),
@@ -7967,6 +9285,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // See deleteTask's matching call for why this exists at all.
     if (!opts.skipGeneratedOptOut) deletedTopLevel.forEach(t => writeGeneratedOptOut(t, false));
 
+    // An unattended delete (the launch-time expiry sweep) must not sit under
+    // the user's first shake of the session waiting to be reversed: they
+    // didn't just do it. Same reason purgeOldCompletedTasks bypasses this.
+    if (opts.registerUndo === false) return;
     get().setLastAction({
       label: `${ids.length} task${ids.length === 1 ? '' : 's'} deleted`,
       destructive: true,
@@ -7975,6 +9297,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         deleted.forEach(t => {
           dbInsertTask(t);
           scheduleTaskReminder(t);
+          scheduleQuotaNudges(t);
+          // A fresh event, as deleteTask's undo writes: the old one is gone.
+          reconcileDeadlineEvent(t);
         });
         set(s => ({ tasks: [...s.tasks, ...deleted] }));
         if (!opts.skipGeneratedOptOut) deletedTopLevel.forEach(t => writeGeneratedOptOut(t, null));
@@ -8110,8 +9435,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
    *
    * Wrapped in one transaction, the shape `applyGroupCategory` already uses for
    * a per-row cascade. The selection is whatever a person tapped, so N is small.
+   *
+   * `restartSchedules` is the answer to confirmScheduleMove: a repeating row
+   * pulled forward then counts its schedule from the new date rather than
+   * keeping its grid (see pullForwardChoice). `scope: 'occurrence'` is the
+   * answer to confirmSegmentScope: the new time of day stays on these rows and
+   * the repeats after them keep the old one.
    */
-  bulkSetWhen(ids, date, timeSegments) {
+  bulkSetWhen(ids, date, timeSegments, options) {
     if (ids.length === 0) return;
     const dayResetTime = useSettingsStore.getState().dayResetTime;
     const snapshots = ids
@@ -8131,7 +9462,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         get().updateTask(
           snapshot.id,
           {
-            ...scheduleMoveUpdates(snapshot, date, dayResetTime),
+            ...scheduleMoveUpdates(snapshot, date, dayResetTime, { restartSchedule: options?.restartSchedules }),
             timeSegments,
             ...(moved ? { pinned: false } : {}),
           },
@@ -8140,14 +9471,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           // engine writers of these same fields want the opposite (see
           // transitionedIntoNew); the row's own picker makes the same claim for
           // the same reason, and this is the same gesture.
-          { markSeenOnBecomeVisible: true },
+          { markSeenOnBecomeVisible: true, ...(options?.scope === 'occurrence' ? { scope: 'occurrence' as const } : {}) },
         );
       });
     });
     if (snapshots.length > 0) {
       get().setLastAction({
         label: snapshots.length === 1 ? 'Task rescheduled' : `${snapshots.length} tasks rescheduled`,
-        redo: () => get().bulkSetWhen(ids, date, timeSegments),
+        redo: () => get().bulkSetWhen(ids, date, timeSegments, options),
         undo: () => snapshots.forEach(snapshot => get().updateTask(snapshot.id, snapshot)),
       });
     }
@@ -8211,7 +9542,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Keyed on whichever wait holds the task, so equal keys arrive adjacent and
     // the screen only has to break the runs apart. The blocker task wins when
     // both are set, matching how the screen files it.
-    const waitKey = (t: Task) => t.blockedById ?? t.waitingOnPersonId ?? '';
+    // With several blockers, the first one still open is the one it's filed under.
+    const waitKey = (t: Task) => blockerOf(t, resolveBlocker)?.id ?? t.blockedById ?? t.waitingOnPersonId ?? '';
     return get().tasks
       .filter(isWaitingTask)
       .sort((a, b) => waitKey(a).localeCompare(waitKey(b)) || a.sortOrder - b.sortOrder);
@@ -8272,8 +9604,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // another task, or on a person, sat at the top of Today with nothing the
       // user could do about it while its own ordinary row had correctly left.
       // It comes back the moment the blocker clears, exactly as that row does.
+      // A paused project's task is the other non-clock hide: the pause is the
+      // person saying "not until then", which pinning doesn't answer.
       .filter(t => !t.parentId && t.pinned && !t.completed && !t.archived
-        && !isHeldBack(t) && !(vacationMode && t.vacationPause))
+        && !isHeldBack(t) && !(vacationMode && t.vacationPause) && !isInPausedProject(t))
       // sortOrder breaks ties rather than being the sort: every row starts at
       // pinnedOrder 0, so an install that has never dragged a pin (or upgraded
       // into the column) reads exactly as it did before. See Task.pinnedOrder.
@@ -8437,9 +9771,33 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const renamed = useCategoryStore.getState().renameCategory(name, newName);
     if (!renamed) return false;
     const trimmed = newName.trim();
+    // category itself was renamed in SQL by the category store. The two JSON
+    // columns that can also carry a name (a series' shared defaults, a
+    // follow-up's draft) are rewritten here and written back row by row.
+    const jsonRenamed: Task[] = [];
     set(s => ({
-      tasks: s.tasks.map(t => t.category === name ? { ...t, category: trimmed } : t),
+      tasks: s.tasks.map(t => {
+        const seriesDefaults = renameInSeriesDefaults(t.seriesDefaults, name, trimmed);
+        const followUpTaskDraft = renameInFollowUpDraft(t.followUpTaskDraft, name, trimmed);
+        const category = t.category === name ? trimmed : t.category;
+        if (category === t.category && seriesDefaults === t.seriesDefaults && followUpTaskDraft === t.followUpTaskDraft) {
+          return t;
+        }
+        const next = { ...t, category, seriesDefaults, followUpTaskDraft };
+        if (seriesDefaults !== t.seriesDefaults || followUpTaskDraft !== t.followUpTaskDraft) jsonRenamed.push(next);
+        return next;
+      }),
     }));
+    for (const t of jsonRenamed) dbUpdateTask(t);
+    useProjectStore.setState(s => ({
+      projects: s.projects.map(p =>
+        p.defaultTaskCategory === name ? { ...p, defaultTaskCategory: trimmed } : p),
+    }));
+    const views = useSavedViewStore.getState();
+    for (const v of views.views) {
+      const clauses = renameInViewClauses(v.clauses, name, trimmed);
+      if (clauses !== v.clauses) views.updateView(v.id, { clauses });
+    }
     useTaskGroupStore.setState(s => ({
       groups: s.groups.map(g => g.category === name ? { ...g, category: trimmed } : g),
     }));
@@ -8455,11 +9813,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // The next generated task then landed in a category that no longer
     // existed — which allCategories() promptly resurrects as a phantom
     // section, so the rename appeared to half-undo itself.
+    renameGeneratedCategorySettings(name, trimmed);
     const settings = useSettingsStore.getState();
-    if (settings.mealCookTaskCategory === name) settings.setMealCookTaskCategory(trimmed);
-    if (settings.groceryUseUpTaskCategory === name) settings.setGroceryUseUpTaskCategory(trimmed);
-    if (settings.leftoverUseUpTaskCategory === name) settings.setLeftoverUseUpTaskCategory(trimmed);
     if (settings.calendarEventCategory === name) settings.setCalendarEventCategory(trimmed);
+    if (settings.healthCategory === name) settings.setHealthCategory(trimmed);
+    if (settings.newTaskDefaults.category === name) settings.setNewTaskDefaults({ category: trimmed });
+    const titleRules = renameInTitleRules(settings.titleRules, name, trimmed);
+    if (titleRules !== settings.titleRules) settings.setTitleRules(titleRules);
+    const captures = renameInReminderCaptures(settings.reminderCaptures, name, trimmed);
+    if (captures !== settings.reminderCaptures) settings.setReminderCaptures(captures);
     if (settings.collapsedCategories.includes(name)) {
       settings.setCollapsedCategories(
         settings.collapsedCategories.map(c => (c === name ? trimmed : c)),

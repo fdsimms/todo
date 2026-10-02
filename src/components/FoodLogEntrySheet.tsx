@@ -1,5 +1,5 @@
 // The food log's entry sheet: pick a food, a box of one or a cooked dish, say
-// how much, and save it as a helping. One component of ~1,500 lines, so grep a
+// how much, and save it as a helping. One component of ~1,900 lines, so grep a
 // landmark rather than reading it start to finish:
 //
 //   ==== <name> ====        the section banners through the logic half
@@ -27,7 +27,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useShallow } from 'zustand/react/shallow';
 import { useColors } from '../theme/ThemeContext';
 import { border, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
-import { MEAL_SLOTS, MEAL_SLOT_LABELS, type FoodLogEntry, type FoodNutrition, type GroceryItem, type MealSlot } from '../types';
+import { MEAL_SLOTS, MEAL_SLOT_LABELS, isPortionBox, type FoodLogEntry, type FoodNutrition, type GroceryItem, type MealSlot } from '../types';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useFoodLogStore, type FoodLogDraft } from '../store/useFoodLogStore';
@@ -38,23 +38,32 @@ import {
   amountHint,
   combineFoodNutrition,
   composeFoodAmount,
+  describeFoodLogEntry,
   foodLogEntryEdit,
   foodUnitOptionsFor,
   helpingNutrition,
   matchMealPlanEntry,
   parseFoodAmount,
+  recallAmount,
   recipeHelpingNutrition,
   scalePanelToAmount,
 } from '../utils/foodLog';
 import { cookedDishGrams, mealHelping, servingGrams, weighedHelping } from '../utils/mealLog';
 import { perServing, recipeNutrition, recipeNutritionLines, type NutritionLine } from '../utils/recipeNutrition';
+import { standingSwapMap } from '../utils/standingSwaps';
 import { describeProduct } from '../utils/groceryProduct';
 import { isNonFoodAisle } from '../utils/groceryAisles';
 import { groceryNameKey } from '../utils/groceryParse';
 import { dayKeyOf, getCurrentDayStart, getLogicalDayKey } from '../utils/dateUtils';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { foodLogRecency, rankByRecency } from '../utils/foodLogRecents';
+import {
+  foodLastAmounts,
+  foodLogRecency,
+  helpingAgain,
+  rankByRecency,
+  recentUnlinkedHelpings,
+} from '../utils/foodLogRecents';
 import { haptics } from '../utils/haptics';
 import { weighableLine } from '../utils/ingredientGrams';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
@@ -65,6 +74,7 @@ import { NutritionSearchSheet, navigateToFoodSearchSettings } from './NutritionS
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { useFilterField } from '../hooks/useFilterField';
 
 /**
  * Writing down something eaten.
@@ -127,6 +137,14 @@ import { SheetHeaderButton } from './SheetHeaderButton';
  * measured the original, rather than multiplied out of figures that are
  * already one helping's worth. `foodLogEntryEdit` decides which entries can
  * come back at all and what their amount field opens on.
+ *
+ * **A food with no row is offered again as the helping it was** (#2914). The
+ * list can only offer rows, so an estimate or a database food nobody filed
+ * was a second request or a second search every time it was eaten. The ones
+ * logged lately sit above the list (`recentUnlinkedHelpings`) and log on the
+ * tap as Duplicate does, the same figures under the same claim. That keeps the
+ * rule above rather than bending it: nothing is measured, because nothing new
+ * is being said about how much.
  */
 
 interface Props {
@@ -141,11 +159,14 @@ interface Props {
    * instead of inserting one. The row keeps its id, so its place in the day
    * and the meal plan square it points back at both survive the correction.
    *
-   * A caller offers this only for an entry `foodLogEntryEdit` accepts. The one
-   * case that still opens unseeded is a food whose catalog row or recipe has
-   * since been deleted: the list has nothing to pick, so the search field
-   * opens on the entry's own name and whatever is chosen replaces it. That is
-   * the honest answer for a food the app no longer has.
+   * A caller offers this only for an entry `foodLogEntryEdit` accepts. A food
+   * a database answered and nobody filed has no row on the list, so it reopens
+   * on the panel it kept (`FoodLogEntry.sourcePanel`), built into a candidate
+   * the way a fresh database pick is. The one case that still opens unseeded
+   * is a food whose catalog row or recipe has since been deleted: the list has
+   * nothing to pick, so the search field opens on the entry's own name and
+   * whatever is chosen replaces it. That is the honest answer for a food the
+   * app no longer has.
    */
   editing?: FoodLogEntry | null;
   /** The logical day being logged, so a backdated entry lands where it is shown. */
@@ -321,6 +342,31 @@ interface Candidate {
   dishServings: number | null;
 }
 
+/**
+ * A food a database answered, as a candidate: its panel and nothing filed.
+ *
+ * One builder for the two ways one arrives, a fresh pick from the database
+ * search and an entry reopened on the panel it kept, so a correction measures
+ * against exactly the candidate the original was logged from.
+ */
+function databaseCandidate(key: string, label: string, panel: FoodNutrition): Candidate {
+  return {
+    key,
+    label,
+    detail: 'From a food database',
+    kind: 'food',
+    panel,
+    recipeId: null,
+    itemId: null,
+    productId: null,
+    panelItemId: null,
+    fromDatabase: true,
+    servingPanel: null,
+    cookedGrams: null,
+    dishServings: null,
+  };
+}
+
 export function FoodLogEntrySheet({
   visible, slot, at, seedRecipeId, initialQuery, mealPlanEntryId, editing, allowBurst, onClose, onEstimate, onScan, onSavedMeal, onDeclineMeal,
   overlays,
@@ -331,9 +377,8 @@ export function FoodLogEntrySheet({
   // Lifts the amount field (which autofocuses, so the keyboard is already up
   // when this half renders) clear of the keyboard instead of leaving it to a
   // plain ScrollView — same mechanism as every other keyboard-heavy sheet.
-  const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
   // The search field, refocused after a burst save — see handleSave.
-  const queryInputRef = useRef<TextInput>(null);
   // Set by handleSave's burst branch, consumed by the effect below once the
   // search field it wants to focus has actually mounted.
   const pendingBurstFocus = useRef(false);
@@ -343,6 +388,16 @@ export function FoodLogEntrySheet({
   const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
   const nonFoodAisles = useGroceryStore(useShallow(s => s.nonFoodAisles));
   const recipes = useRecipeStore(useShallow(s => s.recipes));
+  // Every recipe, not just the one being logged: a composed dish measures its
+  // components through this map, and `recipeNutrition`'s default (a map of the
+  // outer recipe alone) silently dropped everything they contribute. The same
+  // map `LogMealPrompt` passes, so the figures a recipe logs with and the ones
+  // an edit re-measures it against come off one rollup.
+  const recipesById = useMemo(() => new Map(recipes.map(r => [r.id, r])), [recipes]);
+  // "Always use oat milk for milk", so a dish logs as the recipe page's
+  // nutrition row reads it rather than as written. See standingSwaps.ts.
+  const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
+  const swaps = useMemo(() => standingSwapMap(itemSubs, items), [itemSubs, items]);
   const addEntry = useFoodLogStore(s => s.addEntry);
   const reviseEntry = useFoodLogStore(s => s.reviseEntry);
   const setItemNutrition = useGroceryStore(s => s.setItemNutrition);
@@ -350,6 +405,11 @@ export function FoodLogEntrySheet({
   const ensureCatalogItem = useGroceryStore(s => s.ensureCatalogItem);
   const recentEntries = useFoodLogStore(s => s.recentEntries);
   const keepOpenAfterFoodLog = useSettingsStore(s => s.keepOpenAfterFoodLog);
+  // Searching a food database by name needs a FoodData Central key, and the
+  // empty list below is where a newcomer with no foods reaches for that search
+  // first. Said there rather than after a search fails.
+  const productLookupEnabled = useSettingsStore(s => s.productLookupEnabled);
+  const hasFdcKey = useSettingsStore(s => !!s.fdcApiKey);
   const setKeepOpenAfterFoodLog = useSettingsStore(s => s.setKeepOpenAfterFoodLog);
 
   // Whether this save should stay open for another food instead of closing —
@@ -358,7 +418,8 @@ export function FoodLogEntrySheet({
   const burstMode = !!allowBurst && !editing && keepOpenAfterFoodLog;
 
   // ==== local state (what is picked, how much, and which extra form is open) ====
-  const [query, setQuery] = useState('');
+  const searchFilter = useFilterField();
+  const query = searchFilter.query;
   const [picked, setPicked] = useState<Candidate | null>(null);
   const [amount, setAmount] = useState('');
   // The split view of `amount` a food with a matched unit renders as: a unit
@@ -367,11 +428,15 @@ export function FoodLogEntrySheet({
   // (see its own doc comment) doesn't lose what was actually typed or saved.
   const [amountUnit, setAmountUnit] = useState<string | null>(null);
   const [amountNumber, setAmountNumber] = useState('');
+  // The amount `choose` filled in from the last time this food was logged, or
+  // null when it opened on the ordinary default. Compared against `amount`
+  // rather than cleared on edit, so the hint that says where the number came
+  // from goes the moment it stops being that number.
+  const [recalledAmount, setRecalledAmount] = useState<string | null>(null);
   // Which question the amount field is asking of a dish. Set from the picked
-  // dish rather than remembered across picks — see `pickDish`.
+  // dish rather than remembered across picks — see `choose`.
   const [dishMeasure, setDishMeasure] = useState<DishMeasure>('servings');
   const [chosenSlot, setChosenSlot] = useState<MealSlot | null>(slot);
-  const [weighing, setWeighing] = useState(false);
   const [weighGrams, setWeighGrams] = useState('');
   const [dbSearchOpen, setDbSearchOpen] = useState(false);
   /** Whether the "which item is this" picker is open under a database food. */
@@ -386,11 +451,12 @@ export function FoodLogEntrySheet({
 
   useEffect(() => {
     if (!visible) return;
-    setQuery(initialQuery ?? '');
+    searchFilter.seed(initialQuery ?? '');
     setPicked(null);
     setAmount('');
     setAmountUnit(null);
     setAmountNumber('');
+    setRecalledAmount(null);
     setChosenSlot(slot);
     setDbSearchOpen(false);
     setCatalogPickOpen(false);
@@ -403,14 +469,13 @@ export function FoodLogEntrySheet({
   useEffect(() => {
     if (!pendingBurstFocus.current) return;
     pendingBurstFocus.current = false;
-    queryInputRef.current?.focus();
+    searchFilter.inputRef.current?.focus();
   }, [picked]);
 
-  // Closes the "weigh it" form whenever the picked food or its panel changes
-  // out from under it — including right after a weighed portion is saved,
-  // which is also when it should close.
+  // Clears whatever was typed into the weight field whenever the picked food
+  // or its panel changes out from under it — including right after a
+  // weighed portion is saved, which is also when it should clear.
   useEffect(() => {
-    setWeighing(false);
     setWeighGrams('');
     setCatalogPickOpen(false);
   }, [picked]);
@@ -429,7 +494,9 @@ export function FoodLogEntrySheet({
   const candidates = useMemo<Candidate[]>(() => {
     const out: Candidate[] = [];
     for (const product of itemProducts) {
-      if (!product.nutrition) continue;
+      // A frozen portion is some of an item rather than a brand of it; the
+      // item's own row below already offers it. See ItemProduct.isPortion.
+      if (!product.nutrition || isPortionBox(product)) continue;
       const item = items.find(i => i.id === product.itemId);
       if (!item || isNonFoodAisle(item.aisle, nonFoodAisles)) continue;
       out.push({
@@ -469,7 +536,7 @@ export function FoodLogEntrySheet({
       });
     }
     for (const recipe of recipes) {
-      const dish = recipeNutrition(recipe, items, itemProducts);
+      const dish = recipeNutrition(recipe, items, itemProducts, recipesById, undefined, 1, swaps);
       if (!dish) continue;
       const serving = recipeHelpingNutrition(perServing(dish), 1);
       // Scale 1: this sheet logs the recipe as written rather than one night's
@@ -501,7 +568,7 @@ export function FoodLogEntrySheet({
       });
     }
     return out;
-  }, [items, itemProducts, recipes, nonFoodAisles]);
+  }, [items, itemProducts, recipes, nonFoodAisles, swaps]);
 
   // After the reset above, and off `candidates` rather than the recipe store,
   // so a dish that has no figures is left unpicked rather than opening onto a
@@ -526,13 +593,35 @@ export function FoodLogEntrySheet({
    * for a dish that has been weighed, servings for one that hasn't. The weight
    * field opens empty because there is nothing sensible to pre-fill — a plate
    * has to be weighed — while a servings count opens at one.
+   *
+   * **Unless it has been logged before**, and then it opens on the amount it
+   * was last logged in (`foodLastAmounts`), re-measured against the panel it
+   * has now by `recallAmount`. The same yogurt at the same 250 g every morning
+   * was a food found in one tap and an amount retyped every time. The number
+   * is still only a starting point: Save measures it like anything typed, and
+   * an old amount the food can no longer measure opens on the default above
+   * rather than on a refusal.
    */
   const choose = (candidate: Candidate) => {
     setPicked(candidate);
     const weigh = candidate.kind === 'dish' && candidate.cookedGrams !== null;
+    const options = candidate.kind === 'food' && candidate.panel ? foodUnitOptionsFor(candidate.panel) : [];
+    const recalled = recallAmount(
+      lastAmounts.get(candidate.key),
+      candidate.kind === 'food' && candidate.panel
+        ? { kind: 'food', panel: candidate.panel, name: candidate.label }
+        : { kind: 'dish', weighed: weigh, served: !!candidate.servingPanel },
+    );
+    setRecalledAmount(recalled?.amount ?? null);
+    if (recalled) {
+      setDishMeasure(recalled.dishMeasure ?? (weigh ? 'weight' : 'servings'));
+      setAmount(recalled.amount);
+      setAmountUnit(recalled.unitKey);
+      setAmountNumber(recalled.number);
+      return;
+    }
     setDishMeasure(weigh ? 'weight' : 'servings');
     setAmount(candidate.kind === 'dish' && !weigh ? '1' : '');
-    const options = candidate.kind === 'food' && candidate.panel ? foodUnitOptionsFor(candidate.panel) : [];
     setAmountUnit(options[0]?.key ?? null);
     setAmountNumber('');
   };
@@ -551,9 +640,17 @@ export function FoodLogEntrySheet({
    * anything weekly.
    */
   const [recency, setRecency] = useState(() => foodLogRecency([]));
+  // Read off the same snapshot, for the amount `choose` opens a food on.
+  const [lastAmounts, setLastAmounts] = useState(() => foodLastAmounts([]));
+  // And the snapshot itself, for the earlier helpings offered above the list:
+  // the foods logged under no row, which `recency` cannot promote.
+  const [recentLog, setRecentLog] = useState<FoodLogEntry[]>([]);
   const refreshRecency = () => {
     const today = getCurrentDayStart();
-    setRecency(foodLogRecency(recentEntries(dayKeyOf(subDays(today, 90)), dayKeyOf(today))));
+    const entries = recentEntries(dayKeyOf(subDays(today, 90)), dayKeyOf(today));
+    setRecency(foodLogRecency(entries));
+    setLastAmounts(foodLastAmounts(entries));
+    setRecentLog(entries);
   };
   useEffect(() => {
     if (!visible) return;
@@ -580,11 +677,19 @@ export function FoodLogEntrySheet({
     // file and `foodLog.ts` need not agree on a string format. Most specific
     // first, the order `foodLogEntryEdit` reads them in; the last arm rules
     // out a box, whose row is the one above it.
-    const candidate = candidates.find(c => (
-      editing.recipeId ? c.recipeId === editing.recipeId
-        : editing.productId ? c.productId === editing.productId
-          : c.itemId === editing.itemId && c.productId === null
-    ));
+    //
+    // An entry linked to nothing has no row to find, and matching its null
+    // links against the list would land on a dish (whose item and product are
+    // null too). A database food that kept its panel is rebuilt from it
+    // instead, which is the candidate it was logged from.
+    const linked = !!(editing.recipeId || editing.productId || editing.itemId);
+    const candidate = !linked
+      ? (editing.sourcePanel ? databaseCandidate(`kept:${editing.id}`, editing.label, editing.sourcePanel) : undefined)
+      : candidates.find(c => (
+        editing.recipeId ? c.recipeId === editing.recipeId
+          : editing.productId ? c.productId === editing.productId
+            : c.itemId === editing.itemId && c.productId === null
+      ));
 
     // Recorded either way, so a food that could not be seeded is attempted
     // once rather than on every catalog write while the sheet sits open.
@@ -600,11 +705,12 @@ export function FoodLogEntrySheet({
       // The catalog row or the recipe is gone, so there is nothing to reopen
       // on. Opening the search on the entry's own name is all this can offer,
       // and is still the delete and the retype it replaces, minus the delete.
-      setQuery(editing.label);
+      searchFilter.seed(editing.label);
       return;
     }
     setPicked(candidate);
     setAmount(plan.amount);
+    setRecalledAmount(null);
     if (plan.dishMeasure) setDishMeasure(plan.dishMeasure);
     const options = candidate.kind === 'food' && candidate.panel ? foodUnitOptionsFor(candidate.panel) : [];
     const parsed = options.length > 0 ? parseFoodAmount(plan.amount, options) : null;
@@ -626,6 +732,16 @@ export function FoodLogEntrySheet({
     return ranked.filter(c => groceryNameKey(c.label).includes(key)).slice(0, 40);
   }, [candidates, query, recency]);
 
+  // Earlier helpings of foods with no row (an estimate, a database food nobody
+  // filed), offered above the list to log again as they were, since the list
+  // itself can only offer rows. Narrowed by the same search. Not offered while
+  // correcting an entry: that replaces one helping, and logging another from
+  // there would add a second.
+  const helpings = useMemo(
+    () => (editing ? [] : recentUnlinkedHelpings(recentLog, query)),
+    [editing, recentLog, query],
+  );
+
   // The dish's own lines with no fixed amount to count them by — a serving
   // suggestion like "1 baguette, warmed, for serving" rather than an
   // ingredient nobody's weighed yet. Excludes anything `weighableLine` could
@@ -639,11 +755,13 @@ export function FoodLogEntrySheet({
     if (!picked || picked.kind !== 'dish') return [];
     const recipe = recipes.find(r => r.id === picked.recipeId);
     if (!recipe) return [];
-    return recipeNutritionLines(recipe, items, itemProducts).filter(line => {
+    // The same map and swaps the dish's own rollup below measures with, so the
+    // lines asked about here are lines of the dish being logged.
+    return recipeNutritionLines(recipe, items, itemProducts, recipesById, undefined, 1, swaps).filter(line => {
       if (line.state !== 'unmeasured' || !line.nutrition || !line.item) return false;
       return weighableLine(line.quantity, line.prep, line.nutrition, line.item.name) === null;
     });
-  }, [picked, recipes, items, itemProducts]);
+  }, [picked, recipes, recipesById, items, itemProducts, swaps]);
 
   const varyingResolved = useMemo(
     () => varyingLines.map(line => {
@@ -669,7 +787,7 @@ export function FoodLogEntrySheet({
       // into a crash rather than a Save that quietly stays disabled.
       const recipe = recipes.find(r => r.id === picked.recipeId);
       if (!recipe) return null;
-      const dish = recipeNutrition(recipe, items, itemProducts);
+      const dish = recipeNutrition(recipe, items, itemProducts, recipesById, undefined, 1, swaps);
       if (!dish) return null;
       const figures = {
         total: dish.total,
@@ -697,7 +815,7 @@ export function FoodLogEntrySheet({
     }
     if (!picked.panel) return null;
     return scalePanelToAmount(picked.panel, amount, null, undefined, picked.label);
-  }, [picked, amount, dishMeasure, recipes, items, itemProducts, varyingResolved]);
+  }, [picked, amount, dishMeasure, recipes, items, itemProducts, varyingResolved, swaps]);
 
   // What's actually offered to weigh, which `weighableLine` decides rather
   // than the shape of the typed amount alone.
@@ -710,8 +828,14 @@ export function FoodLogEntrySheet({
   // makes worse. `scalePanelToAmount` refuses on `panelMultiplier`, and that
   // helper re-runs the same refusal against the row it would write, so an
   // offer is one that actually settles the amount.
+  //
+  // `built` alone can't gate this any more: a per-100ml panel answers a
+  // volume amount's calories from its own volume math with no weight
+  // involved, so `built` comes back non-null while `built.grams` is still
+  // null. That's still a gap `weighableLine` will offer to close.
   const weighable = useMemo(() => {
-    if (!picked || picked.kind !== 'food' || !picked.panel || built || !amount.trim()) return null;
+    if (!picked || picked.kind !== 'food' || !picked.panel || !amount.trim()) return null;
+    if (built && built.grams !== null) return null;
     return weighableLine(amount, null, picked.panel, picked.label);
   }, [picked, built, amount]);
 
@@ -751,6 +875,19 @@ export function FoodLogEntrySheet({
     return foodUnitOptionsFor(picked.panel);
   }, [picked]);
 
+  // The weight field itself is shown as soon as a per-100ml food's unit pill
+  // is picked — before an amount is even typed — so the option to save a
+  // weight is never hidden behind typing something first. Only `weighable`
+  // (which needs a typed, unresolved amount) decides whether Save can
+  // actually be pressed. Scoped to the pill flow, same as `weighable`'s own
+  // per-100ml volume case: a free-typed amount names no unit until it's
+  // parsed, so there's nothing to head the field with in advance.
+  const weighUnitLabel = picked?.kind === 'food' && picked.panel?.basis === 'per100ml'
+    && foodUnitOptions.length > 0 && amountUnit !== 'other'
+    ? foodUnitOptions.find(o => o.key === amountUnit)?.label ?? null
+    : null;
+  const showWeighField = !!weighUnitLabel && (!built || built.grams === null);
+
   const handleSaveWeighedPortion = () => {
     if (!picked || !picked.panel || !weighable) return;
     const grams = Number(weighGrams.trim().replace(',', '.'));
@@ -765,6 +902,7 @@ export function FoodLogEntrySheet({
     else if (picked.panelItemId) setItemNutrition(picked.panelItemId, updated);
     else { haptics.error(); return; }
     setPicked({ ...picked, panel: updated });
+    setWeighGrams('');
     haptics.success();
   };
 
@@ -832,18 +970,117 @@ export function FoodLogEntrySheet({
     );
   };
 
-  /** Filing it under its own name, minting the row when there isn't one. */
+  /**
+   * Filing it as a new catalog row, minting the row when there isn't one.
+   *
+   * **The name is asked for first, opening on the database's own** (#2914). A
+   * database names a food the way a database does ("Chicken, broilers or
+   * fryers, breast, meat only, cooked, roasted"), and filing used to make that
+   * the row's name in the grocery catalog with no chance to shorten it, which
+   * is then the name it is searched for and listed under from here on. Only
+   * the catalog row takes the typed name: this entry keeps the description it
+   * was found under, the same as filing it against "Something I already have"
+   * does. A blank name files nothing, the way the app's renames treat a blank.
+   */
   const fileAsNewItem = () => {
     if (!picked) return;
-    // `ensureCatalogItem` rather than `addByName`, the same restraint
-    // `FoodLogScreen`'s scan handler takes: eating something is not a plan to
-    // buy it, so a row minted here arrives off the list.
-    const item = ensureCatalogItem(picked.label);
-    if (!item) { haptics.error(); return; }
-    fileInCatalog(item);
+    const described = picked.label;
+    Alert.prompt(
+      'Add as a new item',
+      'The name it will have in your grocery catalog. It is not added to your shopping list.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Add',
+          onPress: (text?: string) => {
+            const name = (text ?? '').trim();
+            if (!name) return;
+            // `ensureCatalogItem` rather than `addByName`, the same restraint
+            // `FoodLogScreen`'s scan handler takes: eating something is not a
+            // plan to buy it, so a row minted here arrives off the list.
+            const item = ensureCatalogItem(name);
+            if (!item) { haptics.error(); return; }
+            fileInCatalog(item);
+          },
+        },
+      ],
+      'plain-text',
+      described,
+    );
   };
 
   // ==== actions: saving, picking from the database, leaving ====
+  /**
+   * Writes a new entry, with the planned meal it probably answers. Shared by
+   * Save and by logging an earlier helping again, so the two can't disagree
+   * about which meal plan square a lunch fills. False when the store refused.
+   */
+  const logNew = (measurement: Omit<FoodLogDraft, 'mealPlanEntryId' | 'at'>): boolean => {
+    // A caller that already knows the planned meal (`LogMealEntrySheet`,
+    // the estimate sheet's offer) says so via the prop; a plain manual log
+    // has none, so it gets one last chance at `matchMealPlanEntry` before
+    // settling for null — see that function's doc comment for why this
+    // stays a guess rather than something the store attempts on every save.
+    const resolvedMealPlanEntryId = mealPlanEntryId ?? (() => {
+      const dayKey = getLogicalDayKey(at);
+      const dayPlan = useMealPlanStore.getState().entriesForDayLive(dayKey);
+      if (dayPlan.length === 0) return null;
+      const alreadyLinked = new Set(
+        recentEntries(dayKey, dayKey)
+          .map(e => e.mealPlanEntryId)
+          .filter((id): id is string => id != null),
+      );
+      const match = matchMealPlanEntry(dayPlan, alreadyLinked, {
+        slot: measurement.slot ?? null,
+        recipeId: measurement.recipeId ?? null,
+      });
+      return match?.id ?? null;
+    })();
+    const draft: FoodLogDraft = { ...measurement, mealPlanEntryId: resolvedMealPlanEntryId, at };
+    if (!addEntry(draft)) {
+      haptics.error();
+      return false;
+    }
+    return true;
+  };
+
+  /**
+   * What happens once a save has landed: close, or with "Add another" on,
+   * stay for the next food.
+   *
+   * `chosenSlot` is deliberately left alone in a burst — a burst is usually
+   * one meal's worth of things — and everything else resets the same way the
+   * `visible` effect above seeds a fresh open. `refreshRecency` retakes the
+   * snapshot `recency`'s own doc comment argues for, since this is the one
+   * path where something did happen while the sheet stayed open.
+   *
+   * From the amount half, the search field doesn't exist yet to focus: `picked`
+   * is still truthy, so the JSX is still on the amount-entry branch and
+   * `searchFilter.inputRef` points at nothing. `pendingBurstFocus` hands the
+   * actual `.focus()` to the effect above, which fires once the reset has
+   * committed and the search field has mounted in its place. From the list
+   * half (an earlier helping logged again) the field is already there, and
+   * `seed` carries its focus across on its own.
+   */
+  const afterSave = (label: string) => {
+    haptics.success();
+    if (burstMode) {
+      setBurstAdded(prev => [...prev, label]);
+      searchFilter.seed(initialQuery ?? '');
+      if (picked) pendingBurstFocus.current = true;
+      setPicked(null);
+      setAmount('');
+      setAmountUnit(null);
+      setAmountNumber('');
+      setRecalledAmount(null);
+      setDbSearchOpen(false);
+      refreshRecency();
+      return;
+    }
+    Keyboard.dismiss();
+    onClose();
+  };
+
   const handleSave = () => {
     if (!picked || !built) return;
     const answeredExtras = varyingResolved.filter(r => r.resolved).map(r => r.line.name);
@@ -858,6 +1095,12 @@ export function FoodLogEntrySheet({
       quantity,
       grams: built.grams,
       nutrition: built.nutrition,
+      // The database's own panel, kept on the entry while no catalog row holds
+      // it, so the amount can be corrected later (see FoodLogEntry.sourcePanel).
+      // Null for everything else, which on a correction also clears one that
+      // no longer describes how the helping was measured: it was re-measured
+      // against a row, or it is a different food now.
+      sourcePanel: picked.fromDatabase && picked.itemId === null ? picked.panel : null,
       slot: chosenSlot,
       recipeId: picked.recipeId,
       itemId: picked.itemId,
@@ -870,82 +1113,39 @@ export function FoodLogEntrySheet({
       // so its position in the day and the meal plan square it points back at
       // both survive the correction.
       reviseEntry(editing.id, measurement);
-    } else {
-      // A caller that already knows the planned meal (`LogMealEntrySheet`,
-      // the estimate sheet's offer) says so via the prop; a plain manual log
-      // has none, so it gets one last chance at `matchMealPlanEntry` before
-      // settling for null — see that function's doc comment for why this
-      // stays a guess rather than something the store attempts on every save.
-      const resolvedMealPlanEntryId = mealPlanEntryId ?? (() => {
-        const dayKey = getLogicalDayKey(at);
-        const dayPlan = useMealPlanStore.getState().entriesForDayLive(dayKey);
-        if (dayPlan.length === 0) return null;
-        const alreadyLinked = new Set(
-          recentEntries(dayKey, dayKey)
-            .map(e => e.mealPlanEntryId)
-            .filter((id): id is string => id != null),
-        );
-        const match = matchMealPlanEntry(dayPlan, alreadyLinked, {
-          slot: chosenSlot,
-          recipeId: measurement.recipeId,
-        });
-        return match?.id ?? null;
-      })();
-      const draft: FoodLogDraft = { ...measurement, mealPlanEntryId: resolvedMealPlanEntryId, at };
-      if (!addEntry(draft)) {
-        haptics.error();
-        return;
-      }
-    }
-    haptics.success();
-    // "Add another": file it and stay, ready for the next food, instead of
-    // closing. `chosenSlot` is deliberately left alone — a burst is usually
-    // one meal's worth of things — everything else resets the same way the
-    // `visible` effect above seeds a fresh open. `refreshRecency` retakes the
-    // snapshot `recency`'s own doc comment argues for, since this is the one
-    // path where something did happen while the sheet stayed open.
-    //
-    // The search field doesn't exist yet to focus: this runs while `picked`
-    // is still truthy, so the JSX is still on the amount-entry branch and
-    // `queryInputRef` points at nothing. `pendingBurstFocus` hands the actual
-    // `.focus()` to the effect below, which fires once the reset below has
-    // committed and the search field has mounted in its place.
-    if (burstMode) {
-      setBurstAdded(prev => [...prev, picked.label]);
-      setQuery(initialQuery ?? '');
-      setPicked(null);
-      setAmount('');
-      setAmountUnit(null);
-      setAmountNumber('');
-      setDbSearchOpen(false);
-      refreshRecency();
-      pendingBurstFocus.current = true;
+    } else if (!logNew(measurement)) {
       return;
     }
-    Keyboard.dismiss();
-    onClose();
+    afterSave(picked.label);
+  };
+
+  /**
+   * An earlier helping of something linked to no row, logged again as it was
+   * (#2914). The same figures under the same claim, and the panel it kept if
+   * it kept one, the way `duplicateEntry` copies an entry; see
+   * `recentUnlinkedHelpings` for why these are offered at all. It lands in the
+   * meal the sheet was opened for, or the one it was eaten at last time when
+   * the sheet names none, the call the estimate sheet's recall makes.
+   */
+  const logHelpingAgain = (entry: FoodLogEntry) => {
+    const again = helpingAgain(entry);
+    const logged = logNew({
+      ...again,
+      slot: chosenSlot ?? entry.slot,
+      recipeId: null,
+      itemId: null,
+      productId: null,
+    });
+    if (logged) afterSave(again.label);
   };
 
   // Nothing here has a `GroceryItem` or `ItemProduct` behind it, so there is
   // no row to attach the panel to — the candidate carries it directly, same
   // as a picked dish carries `servingPanel` rather than pointing at one.
   const handleDbPick = (nutrition: FoodNutrition, description: string) => {
-    setPicked({
-      key: `db:${description}`,
-      label: description,
-      detail: 'From a food database',
-      kind: 'food',
-      panel: nutrition,
-      recipeId: null,
-      itemId: null,
-      productId: null,
-      panelItemId: null,
-      fromDatabase: true,
-      servingPanel: null,
-      cookedGrams: null,
-      dishServings: null,
-    });
+    setPicked(databaseCandidate(`db:${description}`, description, nutrition));
     setAmount('');
+    setRecalledAmount(null);
     const options = foodUnitOptionsFor(nutrition);
     setAmountUnit(options[0]?.key ?? null);
     setAmountNumber('');
@@ -1050,44 +1250,63 @@ export function FoodLogEntrySheet({
                 />
               </View>
             )}
-            <TextInput
-              style={styles.input}
-              value={picked.kind === 'food' && foodUnitOptions.length > 0 && amountUnit !== 'other' ? amountNumber : amount}
-              onChangeText={text => {
-                if (picked.kind === 'food' && foodUnitOptions.length > 0 && amountUnit !== 'other') {
-                  setAmountNumber(text);
-                  setAmount(composeFoodAmount(text, foodUnitOptions.find(o => o.key === amountUnit)));
-                } else {
-                  setAmount(text);
-                }
-              }}
-              placeholder={
-                picked.kind === 'dish'
-                  ? (dishMeasure === 'weight' ? 'e.g. 320 (grams)' : 'e.g. 1.5')
-                  : foodUnitOptions.length > 0 && amountUnit !== 'other'
-                    ? 'Amount'
-                    : `e.g. ${picked.panel ? amountExample(picked.panel) : '100g'}`
-              }
-              placeholderTextColor={colors.textTertiary}
-              autoFocus
-              keyboardType={
-                picked.kind === 'dish' || (foodUnitOptions.length > 0 && amountUnit !== 'other')
-                  ? 'decimal-pad' : 'default'
-              }
-              // The number pad has no return key, so without this there is no
-              // way off it — the same accessory the weigh field below already
-              // passes. Omitted for the free-text field, whose amount is
-              // typed words ("1 cup", "250 ml") on the ordinary keyboard.
-              inputAccessoryViewID={
-                picked.kind === 'dish' || (foodUnitOptions.length > 0 && amountUnit !== 'other')
-                  ? NUMBER_PAD_ACCESSORY_ID : undefined
-              }
-              accessibilityLabel={
-                picked.kind === 'dish' && dishMeasure === 'weight'
-                  ? 'Weight on your plate in grams'
-                  : 'How much you ate'
-              }
-            />
+            {(() => {
+              const usingFoodUnitPills = picked.kind === 'food' && foodUnitOptions.length > 0 && amountUnit !== 'other';
+              const selectedFoodUnit = usingFoodUnitPills ? foodUnitOptions.find(o => o.key === amountUnit) : undefined;
+              return (
+                <View style={usingFoodUnitPills ? styles.inputRow : undefined}>
+                  <TextInput
+                    style={usingFoodUnitPills ? styles.inputWithSuffix : styles.input}
+                    value={usingFoodUnitPills ? amountNumber : amount}
+                    onChangeText={text => {
+                      if (usingFoodUnitPills) {
+                        setAmountNumber(text);
+                        setAmount(composeFoodAmount(text, selectedFoodUnit));
+                      } else {
+                        setAmount(text);
+                      }
+                    }}
+                    placeholder={
+                      picked.kind === 'dish'
+                        ? (dishMeasure === 'weight' ? 'e.g. 320 (grams)' : 'e.g. 1.5')
+                        : usingFoodUnitPills
+                          ? 'Amount'
+                          : `e.g. ${picked.panel ? amountExample(picked.panel) : '100g'}`
+                    }
+                    placeholderTextColor={colors.textTertiary}
+                    autoFocus
+                    // An amount filled in from last time is selected on
+                    // arrival, so typing a different one replaces it rather
+                    // than appending to it ("250" becoming "250200").
+                    selectTextOnFocus={recalledAmount !== null && amount === recalledAmount}
+                    keyboardType={
+                      picked.kind === 'dish' || usingFoodUnitPills
+                        ? 'decimal-pad' : 'default'
+                    }
+                    // The number pad has no return key, so without this there is no
+                    // way off it — the same accessory the weigh field below already
+                    // passes. Omitted for the free-text field, whose amount is
+                    // typed words ("1 cup", "250 ml") on the ordinary keyboard.
+                    inputAccessoryViewID={
+                      picked.kind === 'dish' || usingFoodUnitPills
+                        ? NUMBER_PAD_ACCESSORY_ID : undefined
+                    }
+                    accessibilityLabel={
+                      picked.kind === 'dish' && dishMeasure === 'weight'
+                        ? 'Weight on your plate in grams'
+                        : 'How much you ate'
+                    }
+                  />
+                  {/* The placeholder alone only names the unit before anything
+                      is typed — it's gone the moment a number is, which is
+                      exactly when a "servings" vs. "g" mix-up would matter.
+                      This sits outside the placeholder so it stays visible. */}
+                  {usingFoodUnitPills && selectedFoodUnit && (
+                    <Text style={styles.inputSuffix}>{selectedFoodUnit.label}</Text>
+                  )}
+                </View>
+              );
+            })()}
             {picked.kind === 'food' && foodUnitOptions.length > 0 && (
               <View style={styles.portionChips}>
                 {foodUnitOptions.map(option => {
@@ -1132,6 +1351,9 @@ export function FoodLogEntrySheet({
               </View>
             )}
             <Text style={styles.hint}>
+              {/* Says where a number nobody typed came from, and only while
+                  the field still holds it. */}
+              {recalledAmount !== null && amount === recalledAmount ? 'Filled in from the last time you logged this. ' : ''}
               {picked.kind === 'dish'
                 ? dishWeightHint
                 : foodUnitOptions.length > 0 && amountUnit !== 'other'
@@ -1139,7 +1361,7 @@ export function FoodLogEntrySheet({
                   : picked.panel
                     ? `${amountHint(picked.panel)}${
                       picked.panel.basis === 'per100ml'
-                        ? ''
+                        ? ' Type an amount by volume and you can weigh it once to add its weight.'
                         : ' Type an amount by volume or count and you can weigh it once to add it.'
                     }`
                     : 'A weight, like 100g.'}
@@ -1157,21 +1379,12 @@ export function FoodLogEntrySheet({
               </Text>
             )}
 
-            {!!weighable && !weighing && (
-              <InlineAction
-                label={`Weigh ${amount.trim()} and save for next time`}
-                icon="scale-outline"
-                variant="neutral"
-                onPress={() => { haptics.tap(); setWeighing(true); }}
-                style={styles.weighAction}
-              />
-            )}
-
-            {!!weighable && weighing && (
+            {showWeighField && (
               <View style={styles.weighForm}>
-                <Text style={styles.weighLabel}>
-                  {`How many grams did ${amount.trim()} of this actually weigh?`}
-                </Text>
+                <View style={styles.weighHeader}>
+                  <Ionicons name="scale-outline" size={14} color={colors.textSecondary} />
+                  <Text style={styles.weighHeaderLabel}>{`Weight (${weighUnitLabel})`}</Text>
+                </View>
                 <View style={styles.weighRow}>
                   <TextInput
                     style={styles.weighInput}
@@ -1181,18 +1394,29 @@ export function FoodLogEntrySheet({
                     placeholderTextColor={colors.textTertiary}
                     keyboardType="decimal-pad"
                     inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
-                    accessibilityLabel="Weight in grams"
+                    // This field can be focused while the amount field's
+                    // keyboard is already up, which is the one case
+                    // `automaticallyAdjustKeyboardInsets` can't cover — see
+                    // `useScrollFieldIntoView`'s doc comment. Without this
+                    // the row can render entirely behind the keyboard with
+                    // no way to reach it.
+                    onFocus={e => {
+                      if (typeof e.nativeEvent.target === 'number') {
+                        keyboardScroll.focusInput(e.nativeEvent.target);
+                      }
+                    }}
+                    accessibilityLabel={`Weight in grams, ${weighUnitLabel}`}
                   />
                   <Text style={styles.weighUnit}>g</Text>
                   <InlineAction
                     label="Save"
                     onPress={handleSaveWeighedPortion}
-                    disabled={!weighGrams.trim()}
+                    disabled={!weighable || !weighGrams.trim()}
                     haptic
                   />
                 </View>
                 <Text style={styles.weighHint}>
-                  Remembered against this food, so the next time you log it, {amount.trim()} resolves on its own.
+                  Weigh it and enter the total weight. The app remembers it for next time.
                 </Text>
               </View>
             )}
@@ -1202,6 +1426,9 @@ export function FoodLogEntrySheet({
                 {built.nutrition.amounts.calorieKcal !== undefined
                   ? `${Math.round(built.nutrition.amounts.calorieKcal)} cal`
                   : 'No calories stated'}
+                {built.nutrition.amounts.proteinG !== undefined
+                  ? `, ${Math.round(built.nutrition.amounts.proteinG)} g protein`
+                  : ''}
                 {built.grams !== null ? `, ${built.grams} g` : ''}
               </Text>
             )}
@@ -1210,7 +1437,7 @@ export function FoodLogEntrySheet({
                 drinks, off for anything syrupy or creamy. See
                 `scalePanelToAmount`'s beverage fallback. */}
             {!!built?.approximate && (
-              <Text style={styles.hint}>Approximate — no manufacturer serving data.</Text>
+              <Text style={styles.hint}>Approximate: no manufacturer serving data.</Text>
             )}
 
             {unfiled && (
@@ -1223,7 +1450,7 @@ export function FoodLogEntrySheet({
                 </Text>
                 <View style={styles.fileRow}>
                   <InlineAction
-                    label={`Add “${picked.label}”`}
+                    label="Add as a new item"
                     icon="add"
                     onPress={() => { haptics.tap(); fileAsNewItem(); }}
                   />
@@ -1294,10 +1521,9 @@ export function FoodLogEntrySheet({
             <View style={styles.searchRow}>
               <Ionicons name="search" size={iconSize.sm} color={colors.textTertiary} />
               <TextInput
-                ref={queryInputRef}
+                key={searchFilter.fieldKey}
+                {...searchFilter.props}
                 style={styles.searchInput}
-                value={query}
-                onChangeText={setQuery}
                 placeholder="Search foods and recipes"
                 placeholderTextColor={colors.textTertiary}
                 autoCorrect={false}
@@ -1377,17 +1603,62 @@ export function FoodLogEntrySheet({
               keyExtractor={c => c.key}
               renderItem={renderRow}
               keyboardShouldPersistTaps="handled"
+              ListHeaderComponent={helpings.length > 0 ? (
+                <View>
+                  <Text style={[styles.label, styles.helpingsLabel]}>LOG THE SAME AGAIN</Text>
+                  {helpings.map(entry => (
+                    <TouchableOpacity
+                      key={entry.id}
+                      style={styles.row}
+                      activeOpacity={interaction.activeOpacity}
+                      onPress={() => logHelpingAgain(entry)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Log ${entry.label} again, ${describeFoodLogEntry(entry)}`}
+                    >
+                      <View style={styles.rowText}>
+                        <Text style={styles.rowTitle}>{entry.label}</Text>
+                        <Text style={styles.rowMeta}>{describeFoodLogEntry(entry)}</Text>
+                      </View>
+                      {/* A plus rather than the list's chevron: this row logs on
+                          the tap, where a row below opens the amount first. */}
+                      <Ionicons name="add-circle-outline" size={iconSize.md} color={colors.accent} />
+                    </TouchableOpacity>
+                  ))}
+                  {results.length > 0 && (
+                    <Text style={[styles.label, styles.listLabel]}>FOODS AND RECIPES</Text>
+                  )}
+                </View>
+              ) : null}
               ListEmptyComponent={
                 <EmptyState
                   icon="nutrition-outline"
-                  title={candidates.length === 0 ? 'Nothing has figures yet' : 'No matching food'}
+                  // Said about the catalog when logged-before rows are showing
+                  // above, so it doesn't claim there is nothing to log while
+                  // offering something to log.
+                  title={candidates.length === 0
+                    ? (helpings.length > 0 ? 'Nothing in your catalog has figures yet' : 'Nothing has figures yet')
+                    : (helpings.length > 0 ? 'Nothing in your catalog matches' : 'No matching food')}
                   subtitle={
-                    candidates.length === 0
-                      ? 'A food can be logged once it has nutrition on it. Search a food database below, or open a grocery item to attach nutrition to it there.'
-                      : 'Only foods and recipes with nutrition on them can be logged. Search a food database instead, or open a grocery item to attach nutrition to it there.'
+                    (candidates.length === 0
+                      ? 'A food can be logged once it has nutrition on it.'
+                      : 'Only foods and recipes with nutrition on them can be logged.')
+                    + (hasFdcKey
+                      ? (candidates.length === 0
+                        ? ' Search a food database below, or open a grocery item to attach nutrition to it there.'
+                        : ' Search a food database instead, or open a grocery item to attach nutrition to it there.')
+                      // Without a key the search can only fail, so the next
+                      // step is the key, not the search.
+                      : ' Searching a food database by name needs a free FoodData Central key, which you can add in Settings. You can also open a grocery item to add its nutrition there.')
                   }
-                  actionLabel="Search a food database"
-                  onAction={() => { haptics.tap(); setDbSearchOpen(true); }}
+                  actionLabel={hasFdcKey ? 'Search a food database' : 'Add a food database key'}
+                  onAction={() => {
+                    haptics.tap();
+                    if (hasFdcKey) { setDbSearchOpen(true); return; }
+                    // The key row is shown only while lookups are on, so with
+                    // them off this lands on the switch that brings it back.
+                    const entryId = productLookupEnabled ? 'fdcApiKey' : 'productLookupEnabled';
+                    requestClose(() => { onClose(); navigateToFoodSearchSettings(navigation, entryId); });
+                  }}
                 />
               }
             />
@@ -1469,6 +1740,25 @@ function makeStyles(colors: Colors) {
       paddingVertical: spacing.sm,
       marginTop: spacing.xs,
     },
+    inputRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.bgSecondary,
+      borderRadius: radius.md,
+      paddingHorizontal: spacing.md,
+      marginTop: spacing.xs,
+    },
+    inputWithSuffix: {
+      flex: 1,
+      paddingVertical: spacing.sm,
+      color: colors.text,
+      fontSize: font.md,
+    },
+    inputSuffix: {
+      color: colors.textSecondary,
+      fontSize: font.md,
+      marginLeft: spacing.xs,
+    },
     hint: { color: colors.textSecondary, fontSize: font.xs, lineHeight: 16, marginTop: spacing.xs },
     error: { color: colors.red, fontSize: font.sm, lineHeight: 18, marginTop: spacing.sm },
     preview: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.semibold, marginTop: spacing.sm },
@@ -1476,7 +1766,6 @@ function makeStyles(colors: Colors) {
     // which can be a database description several words long.
     fileRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.sm },
     filedNote: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.md },
-    weighAction: { alignSelf: 'flex-start', marginTop: spacing.sm },
     weighForm: {
       marginTop: spacing.sm,
       padding: spacing.sm,
@@ -1484,7 +1773,8 @@ function makeStyles(colors: Colors) {
       borderRadius: radius.md,
       gap: spacing.xs,
     },
-    weighLabel: { color: colors.text, fontSize: font.sm, lineHeight: 18 },
+    weighHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+    weighHeaderLabel: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.medium },
     weighRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
     weighInput: {
       flex: 1,
@@ -1597,5 +1887,10 @@ function makeStyles(colors: Colors) {
     rowText: { flex: 1, gap: spacing.xxs },
     rowTitle: { color: colors.text, fontSize: font.md },
     rowMeta: { color: colors.textSecondary, fontSize: font.sm },
+    // The section labels above and inside the list's own rows, which keep
+    // spacing.sm between themselves; a label takes that below it and a block
+    // gap above when it starts the second group.
+    helpingsLabel: { marginBottom: spacing.sm },
+    listLabel: { marginTop: spacing.md, marginBottom: spacing.sm },
   });
 }

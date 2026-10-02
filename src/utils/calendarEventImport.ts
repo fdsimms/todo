@@ -1,3 +1,5 @@
+import { addDays } from 'date-fns/addDays';
+import { addHours } from 'date-fns/addHours';
 import type { ExtractedCalendarEvent } from '../services/aiSuggestions';
 import type { BusyEvent } from './calendarBusy';
 
@@ -12,6 +14,13 @@ export interface CalendarEventDraft {
 
 /**
  * Turns one extracted event into the fields a fresh task opens with.
+ *
+ * **The fallback for the one case `eventImportCreateFields` below
+ * refuses: no date was read at all.** A calendar event has to start
+ * *somewhere*; a task doesn't, so an extraction with nothing to hang a date on
+ * (a confirmation number with no visible date) still becomes something rather
+ * than being dropped. `EventImportSheet`'s caller tries the event path first
+ * and only reaches for this when that comes back null.
  *
  * Every number here — year, month, day, hour, minute — comes straight off
  * what the model read from the page, never off the device clock, so this
@@ -48,6 +57,72 @@ function parseTimeParts(raw: string): { hh: number; mm: number } | null {
   const match = /^(\d{2}):(\d{2})$/.exec(raw);
   if (!match) return null;
   return { hh: Number(match[1]), mm: Number(match[2]) };
+}
+
+/** The default span given to an imported event with a clock time but no stated end. */
+const EVENT_IMPORT_DEFAULT_DURATION_HOURS = 1;
+
+/** The fields `presentEventCreate` opens with, for one extracted event. */
+export interface EventImportCreateFields {
+  title: string;
+  start: Date;
+  end: Date;
+  allDay: boolean;
+  location?: string;
+  notes?: string;
+  alarms?: { relativeOffset: number }[];
+}
+
+/**
+ * Turns one extracted event into the fields a real calendar event opens with
+ * — the counterpart of `draftFromExtractedEvent` above, and the path
+ * `EventImportSheet`'s caller reaches for first: a flight or a dentist
+ * appointment read off a confirmation is a calendar event, not a task, and
+ * putting it on the calendar is also what lets `eventTasks.ts`'s own rules
+ * ("flight" → pack a bag) fire against it later.
+ *
+ * **Returns null when no date was read.** An event needs a real start; a
+ * confirmation with no legible date has nothing to hang one on, and the
+ * caller falls back to `draftFromExtractedEvent` in that one case rather than
+ * inventing a day.
+ *
+ * **`allDay` mirrors whether a time was read, and decides the span with it.**
+ * A time-of-day reading gets a real clock start and a one-hour span — nothing
+ * in an `ExtractedCalendarEvent` says how long something lasts, and an hour is
+ * the same default `quickEvent.ts` gives a hand-typed event. No time read
+ * means the source didn't say one (an all-day thing like "Dad's birthday"),
+ * so the event spans the whole day rather than opening at a fabricated hour —
+ * midnight-to-midnight would otherwise show as a 12:00am appointment.
+ *
+ * **`alarms` is set only when a time was read, firing at the event's own
+ * start.** That's the same condition under which `draftFromExtractedEvent`
+ * would have set `reminderTime` and so scheduled a task notification — this
+ * is its replacement, riding with the calendar item instead of the app's own
+ * notification queue. The user still sees and can change it in Apple's own
+ * Alert row before saving, same as any event they create by hand.
+ *
+ * Every number comes straight off what the model read, never off the device
+ * clock — see `draftFromExtractedEvent`'s note on why that's not a
+ * `dayResetTime` scheduling decision.
+ */
+export function eventImportCreateFields(event: ExtractedCalendarEvent): EventImportCreateFields | null {
+  const dateParts = event.date ? parseDateParts(event.date) : null;
+  if (!dateParts) return null;
+  const timeParts = event.time ? parseTimeParts(event.time) : null;
+  const allDay = !timeParts;
+  const start = timeParts
+    ? new Date(dateParts.y, dateParts.m - 1, dateParts.d, timeParts.hh, timeParts.mm, 0, 0)
+    : new Date(dateParts.y, dateParts.m - 1, dateParts.d, 0, 0, 0, 0);
+  const end = allDay ? addDays(start, 1) : addHours(start, EVENT_IMPORT_DEFAULT_DURATION_HOURS);
+  return {
+    title: event.title,
+    start,
+    end,
+    allDay,
+    location: event.location || undefined,
+    notes: event.notes || undefined,
+    alarms: timeParts ? [{ relativeOffset: 0 }] : undefined,
+  };
 }
 
 /**

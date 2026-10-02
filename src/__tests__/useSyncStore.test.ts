@@ -1,4 +1,4 @@
-import { useSyncStore, isSyncSupported } from '../store/useSyncStore';
+import { registerSyncReload, useSyncStore, isSyncSupported } from '../store/useSyncStore';
 import { dbGetSetting, dbSetSetting } from '../db/database';
 import { cloudKitTransport, cloudKitUnavailableReason, isCloudKitSyncAvailable } from '../utils/cloudKitTransport';
 import { databaseSyncLocal } from '../utils/syncLocal';
@@ -44,6 +44,8 @@ const okResult = (overrides: Partial<ReturnType<typeof emptyApplyReport>> = {}) 
   pushed: true,
   applied: { ...emptyApplyReport(), ...overrides },
   unreadable: 0,
+  imagesSent: 0,
+  imagesReceived: 0,
 });
 
 /** One transport's run, as runSyncAll hands them back. */
@@ -69,6 +71,7 @@ beforeEach(() => {
     lastSyncedAt: null,
     problem: null,
     lastSummary: null,
+    recipeImagesVersion: 0,
     serverUrl: '',
     hasServerToken: false,
   });
@@ -144,6 +147,58 @@ describe('syncNow', () => {
     expect(runSyncAll).not.toHaveBeenCalled();
   });
 
+  it('runs once when a second call lands while the transports are still being read', async () => {
+    // The foreground hook syncs on mount and again on 'active'; both used to
+    // pass the phase check during the keychain read and run the loop twice.
+    (runSyncAll as jest.Mock).mockResolvedValue(runs(okResult()));
+    withServer();
+
+    const [first, second] = await Promise.all([
+      useSyncStore.getState().syncNow(),
+      useSyncStore.getState().syncNow(),
+    ]);
+
+    expect(runSyncAll).toHaveBeenCalledTimes(1);
+    expect([first, second].filter(r => r === null)).toHaveLength(1);
+
+    // And the claim is released, so the next sync runs.
+    await useSyncStore.getState().syncNow();
+    expect(runSyncAll).toHaveBeenCalledTimes(2);
+  });
+
+  it('re-reads the stores after a sync that wrote something, and only then', async () => {
+    const reload = jest.fn();
+    registerSyncReload(reload);
+    useSyncStore.setState({ enabled: true });
+
+    (runSyncAll as jest.Mock).mockResolvedValue(runs(okResult()));
+    await useSyncStore.getState().syncNow();
+    expect(reload).not.toHaveBeenCalled();
+
+    (runSyncAll as jest.Mock).mockResolvedValue(runs(okResult({ updated: 1 })));
+    await useSyncStore.getState().syncNow();
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  // #2950: the meal calendar reconcile hangs off the reload and needs to know
+  // which meals changed, across every transport that ran.
+  it('hands the reload what the sync applied', async () => {
+    const reload = jest.fn();
+    registerSyncReload(reload);
+    useSyncStore.setState({ enabled: true });
+
+    (runSyncAll as jest.Mock).mockResolvedValue(runs(
+      okResult({ updated: 1, mealEntryIds: ['m1'] }),
+      okResult({ deleted: 1, removedMealEvents: [{ eventId: 'evt-2', externalId: null, date: '2026-08-13' }] }),
+    ));
+    await useSyncStore.getState().syncNow();
+
+    expect(reload).toHaveBeenCalledWith(expect.objectContaining({
+      mealEntryIds: ['m1'],
+      removedMealEvents: [{ eventId: 'evt-2', externalId: null, date: '2026-08-13' }],
+    }));
+  });
+
   it('records the summary and clears any problem on a clean result', async () => {
     (runSyncAll as jest.Mock).mockResolvedValue(runs(okResult({ inserted: 3, updated: 1 })));
     useSyncStore.setState({ enabled: true, problem: 'Sync failed.' });
@@ -161,6 +216,34 @@ describe('syncNow', () => {
     useSyncStore.setState({ enabled: true });
     await useSyncStore.getState().syncNow();
     expect(useSyncStore.getState().problem).toBe('Some changes need a newer version of the app.');
+  });
+
+  // #2704: a photo can arrive in a sync that changes no row, so the recipe
+  // screens are told separately, and without a reload of every store.
+  it('tells the recipe screens when photos arrived, without reloading the stores for them', async () => {
+    const reload = jest.fn();
+    registerSyncReload(reload);
+    (runSyncAll as jest.Mock).mockResolvedValue(runs({ ...okResult(), imagesReceived: 2 }));
+    useSyncStore.setState({ enabled: true });
+
+    await useSyncStore.getState().syncNow();
+    expect(useSyncStore.getState().recipeImagesVersion).toBe(1);
+    expect(reload).not.toHaveBeenCalled();
+
+    (runSyncAll as jest.Mock).mockResolvedValue(runs(okResult()));
+    await useSyncStore.getState().syncNow();
+    expect(useSyncStore.getState().recipeImagesVersion).toBe(1);
+  });
+
+  it('names photos that did not send, without calling a sync whose rows went a failure', async () => {
+    (runSyncAll as jest.Mock).mockResolvedValue(runs({ ...okResult(), imageProblem: 'Payload too large' }));
+    useSyncStore.setState({ enabled: true });
+    const result = await useSyncStore.getState().syncNow();
+    expect(result?.ok).toBe(true);
+    expect(dbSetSetting).toHaveBeenCalledWith('syncLastSyncedAt', expect.any(String));
+    expect(useSyncStore.getState().problem).toBe(
+      "Some recipe photos didn't send (cloudkit: Payload too large). They go again with the next sync."
+    );
   });
 
   it('records a failure reason and leaves lastSyncedAt untouched', async () => {

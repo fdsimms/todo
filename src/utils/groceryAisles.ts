@@ -185,6 +185,7 @@ export const AISLE_LEXICON: Record<string, string> = {
   'canned pineapple': 'Canned & Jarred', 'canned tomatoes': 'Canned & Jarred',
   'chickpeas': 'Canned & Jarred', 'coconut milk': 'Canned & Jarred',
   'crushed tomatoes': 'Canned & Jarred', 'diced tomatoes': 'Canned & Jarred',
+  'crushed pineapple': 'Canned & Jarred',
   'garbanzo beans': 'Canned & Jarred',
   'kidney beans': 'Canned & Jarred', jam: 'Canned & Jarred', jelly: 'Canned & Jarred',
   'marinara sauce': 'Canned & Jarred', marmalade: 'Canned & Jarred',
@@ -237,6 +238,9 @@ export const AISLE_LEXICON: Record<string, string> = {
   // plain "onion" (Produce) before ever reaching a spice — same override
   // pattern "garlic powder" above has always needed.
   'onion powder': 'Baking & Spices',
+  // The flakes, not a bell pepper. Also one of splitPrep's LEADING_PREP_PRODUCTS,
+  // each of which has an exact entry here so the whole name is what's filed.
+  'crushed red pepper': 'Baking & Spices',
   oregano: 'Baking & Spices', paprika: 'Baking & Spices', pepper: 'Baking & Spices',
   salt: 'Baking & Spices', sugar: 'Baking & Spices', turmeric: 'Baking & Spices',
   vanilla: 'Baking & Spices', yeast: 'Baking & Spices',

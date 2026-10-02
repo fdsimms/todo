@@ -104,6 +104,15 @@ describe('peopleNamedInTitle', () => {
     expect(peopleNamedInTitle('Dinner w/ Priya', [dustin, ansley])).toEqual([]);
   });
 
+  // A business's name isn't "first name, last name" — matching its first word
+  // would read "Eye Q" as though "Eye" were somebody's given name in any event
+  // mentioning it. See docs/arch/people.md, "Businesses don't get check-ins".
+  it('does not match the first word of a business name', () => {
+    const eyeQ: PersonName = { id: 'p9', name: 'Eye Q', nickname: '', kind: 'business' };
+    expect(peopleNamedInTitle('Eye appointment', [eyeQ])).toEqual([]);
+    expect(peopleNamedInTitle('Eye Q appointment', [eyeQ])).toEqual(['p9']);
+  });
+
   it('handles an empty title and an empty list', () => {
     expect(peopleNamedInTitle('', [dustin])).toEqual([]);
     expect(peopleNamedInTitle('Dinner w/ Dustin', [])).toEqual([]);
@@ -158,6 +167,34 @@ describe('suggestedHistoryEvents', () => {
 
   it('offers nothing when no name matched', () => {
     expect(suggestedHistoryEvents([event({ title: 'Dentist' })], people, {}, now)).toEqual([]);
+  });
+
+  describe('linked people', () => {
+    it('offers a linked event to its people even when the title names nobody', () => {
+      const out = suggestedHistoryEvents([event({ title: 'Dinner' })], people, {}, now, () => ['p2']);
+      expect(out).toHaveLength(1);
+      expect(out[0].personIds).toEqual(['p2']);
+    });
+
+    it('adds linked people to the ones the title named, without repeating anybody', () => {
+      const out = suggestedHistoryEvents([event()], people, {}, now, () => ['p1', 'p2']);
+      expect(out[0].personIds).toEqual(['p1', 'p2']);
+    });
+
+    it('still refuses a linked event that has not finished', () => {
+      const later = event({ title: 'Dinner', start: '2026-08-25T11:00:00.000Z', end: '2026-08-25T13:00:00.000Z' });
+      expect(suggestedHistoryEvents([later], people, {}, now, () => ['p2'])).toEqual([]);
+    });
+
+    it('still refuses a linked all-day event', () => {
+      expect(suggestedHistoryEvents([event({ title: 'Trip', allDay: true })], people, {}, now, () => ['p2'])).toEqual([]);
+    });
+
+    it('still honours an answered event', () => {
+      const e = event({ title: 'Dinner' });
+      const handled = { [historyEventKey(e)]: '2026-08-20' };
+      expect(suggestedHistoryEvents([e], people, handled, now, () => ['p2'])).toEqual([]);
+    });
   });
 
   it('skips an event that has not finished', () => {

@@ -84,8 +84,32 @@ export function ScanToLogFlow({ visible, slot, at, mealPlanEntryId, onClose, onL
    * the person hit the wall: a barcode that carried no figures is discovered
    * while logging, and sending them off to find the catalog row is how a
    * two-tap fix becomes an errand.
+   *
+   * `itemId` is null for a row `BarcodeScanSheet`'s own "Photograph the label"
+   * action opened this for — a name typed against a barcode nothing matched,
+   * with no catalog row minted yet. The alternative was minting one the
+   * moment the camera button is tapped, which leaves an empty, nutrition-less
+   * item behind every time someone backs out of the photo instead of taking
+   * it. Waiting until `onSave` actually fires means a cancelled photo costs
+   * nothing.
+   *
+   * It carries the slot, day and plan link for the same reason `session`
+   * does: the "Add its label" offer is made after `onClose` has already told
+   * the caller the scan is over, so by the time the panel is saved the props
+   * have dropped the meal it was for. Read from props at save time, a planned
+   * dinner rescued this way was logged with no slot, on the wrong day when
+   * the caller's was another one, and with no link back to the plan.
    */
-  const [panelFor, setPanelFor] = useState<{ itemId: string; productId: string | null; name: string } | null>(null);
+  const [panelFor, setPanelFor] = useState<
+    {
+      itemId: string | null;
+      productId: string | null;
+      name: string;
+      slot: MealSlot | null;
+      at: Date;
+      mealPlanEntryId: string | null;
+    } | null
+  >(null);
 
   /**
    * A scan session, confirmed. Resolved to catalog rows, then handed on.
@@ -194,15 +218,20 @@ export function ScanToLogFlow({ visible, slot, at, mealPlanEntryId, onClose, onL
       const rest = unpanelled.length - 1;
       Alert.alert(
         'No nutrition on it yet',
-        `A food can be logged once its figures are the food's own rather than a guess.${
-          first ? ` You can read them off the packet for ${first.name}${
-            rest > 0 ? `, then the other ${rest === 1 ? 'one' : `${rest}`} the same way` : ''
+        `${unpanelled.length > 1 ? 'These foods have' : 'This food has'} no nutrition facts yet, so there is nothing to log.${
+          first ? ` Add them from the package label for ${first.name}${
+            rest > 0 ? `, then the other ${rest === 1 ? 'one' : `${rest}`} the same way` : ' to log it'
           }.` : ''
         }`,
         first
           ? [
             { text: 'Not now', style: 'cancel' },
-            { text: 'Add its label', onPress: () => setPanelFor(first) },
+            {
+              text: 'Add its label',
+              // The props as they were when the scan was confirmed — the
+              // closure outlives `onClose` above, the props don't.
+              onPress: () => setPanelFor({ ...first, slot, at, mealPlanEntryId: mealPlanEntryId ?? null }),
+            },
           ]
           : undefined,
       );
@@ -225,6 +254,9 @@ export function ScanToLogFlow({ visible, slot, at, mealPlanEntryId, onClose, onL
         context="log"
         onClose={onClose}
         onApply={handleScanApply}
+        onPhotographLabel={name => setPanelFor({
+          itemId: null, productId: null, name, slot, at, mealPlanEntryId: mealPlanEntryId ?? null,
+        })}
       />
       <ScanPortionSheet
         visible={session !== null}
@@ -242,12 +274,40 @@ export function ScanToLogFlow({ visible, slot, at, mealPlanEntryId, onClose, onL
         onClose={() => setPanelFor(null)}
         onSave={panel => {
           if (!panelFor) return;
-          // Onto the box when the scan named one, onto the catalog row when it
-          // didn't — the same precedence `nutritionFor` reads them back in, so
-          // a specific packet's figures never become every future helping of
-          // the generic food's.
-          if (panelFor.productId) setProductNutrition(panelFor.productId, panel);
-          else setItemNutrition(panelFor.itemId, panel);
+          // No item yet means the photo came straight off the not-found row:
+          // mint the catalog row now, the same name-keyed lookup every other
+          // typed-name path in this app uses, so a name that already exists
+          // resolves to it rather than duplicating it.
+          let itemId = panelFor.itemId;
+          const productId = panelFor.productId;
+          if (!itemId) {
+            const item = ensureCatalogItem(panelFor.name);
+            if (!item) return;
+            itemId = item.id;
+            setItemNutrition(itemId, panel);
+          } else if (productId) {
+            // Onto the box when the scan named one, onto the catalog row when
+            // it didn't — the same precedence `nutritionFor` reads them back
+            // in, so a specific packet's figures never become every future
+            // helping of the generic food's.
+            setProductNutrition(productId, panel);
+          } else {
+            setItemNutrition(itemId, panel);
+          }
+          // A blank panel has nothing to log — same refusal `handleScanApply`
+          // above already makes for a barcode that resolved to no figures.
+          if (!panel) return;
+          // Otherwise the panel just typed in is exactly what a resolved
+          // barcode would have handed `ScanPortionSheet` — so it goes there
+          // too, rather than leaving `BarcodeScanSheet` to reopen with
+          // nothing logged and the figures just typed sitting unused on the
+          // catalog row.
+          setSession({
+            foods: [{ key: productId ?? itemId, label: panelFor.name, panel, packSize: null, itemId, productId }],
+            slot: panelFor.slot,
+            at: panelFor.at,
+            mealPlanEntryId: panelFor.mealPlanEntryId,
+          });
         }}
       />
     </>

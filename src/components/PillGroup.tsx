@@ -6,6 +6,8 @@ import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors }
 import { InlineAction } from './InlineAction';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
+import { useScrollFieldIntoView } from '../hooks/useKeyboardInsetScroll';
+import { useFilterField } from '../hooks/useFilterField';
 import {
   resolvePillOverflow,
   resolvePillSubmit,
@@ -30,6 +32,9 @@ export interface PillGroupOption extends OverflowPill {
    */
   negative?: boolean;
   accessibilityLabel?: string;
+  accessibilityHint?: string;
+  /** Opt in per option; a grid with none of its options carrying this has no long-press at all. */
+  onLongPress?: () => void;
   onPress: () => void;
 }
 
@@ -99,11 +104,18 @@ export function PillGroup({
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors, surface), [colors, surface]);
+  // The "+ New {noun}" field opens (and the filter field can gain focus)
+  // while a keyboard is already up from another field on the sheet — see the
+  // hook's doc comment for why `automaticallyAdjustKeyboardInsets` alone
+  // misses exactly that case.
+  const scrollIntoView = useScrollFieldIntoView();
 
-  const [query, setQuery] = useState('');
+  const filterField = useFilterField();
+  const query = filterField.query;
   const [showAll, setShowAll] = useState(false);
   const [adding, setAdding] = useState(false);
-  const [draft, setDraft] = useState('');
+  const draftField = useFilterField();
+  const draft = draftField.query;
   const [error, setError] = useState<string | null>(null);
 
   const overflow = useMemo(
@@ -124,10 +136,15 @@ export function PillGroup({
   // A filterable grid types into the filter; a small one types into the inline
   // input the "+ New" button opens. One draft either way, so the submit and
   // error paths below don't have to care which mode they're in.
+  // Two uncontrolled fields rather than one, because the two roles are two
+  // mutually exclusive TextInputs and an uncontrolled field is only ever the
+  // one that is mounted. `active` is whichever that is; the rest of the file
+  // goes on seeing a single `text`/`setText` pair as before.
+  const active = filterable ? filterField : draftField;
   const text = filterable ? query : draft;
   const setText = (t: string) => {
     if (error) setError(null);
-    (filterable ? setQuery : setDraft)(t);
+    active.setQuery(t);
   };
 
   const trimmed = text.trim();
@@ -142,8 +159,8 @@ export function PillGroup({
       return;
     }
     animateLayout();
-    setQuery('');
-    setDraft('');
+    filterField.clear();
+    draftField.clear();
     setAdding(false);
   };
 
@@ -161,13 +178,16 @@ export function PillGroup({
 
   const field = (placeholder: string, extra: object, autoFocus = false, onBlur?: () => void) => (
     <TextInput
+      {...active.props}
       style={[styles.field, extra, !!error && styles.fieldError]}
-      value={text}
+      // After the spread: this field clears its error banner before it mirrors
+      // anything, so the wrapper owns the change event rather than the hook.
       onChangeText={setText}
       placeholder={placeholder}
       placeholderTextColor={colors.textTertiary}
       returnKeyType="done"
       onSubmitEditing={handleSubmit}
+      onFocus={scrollIntoView}
       onBlur={onBlur}
       autoFocus={autoFocus}
       autoCorrect={false}
@@ -206,20 +226,39 @@ export function PillGroup({
             ]}
             activeOpacity={interaction.activeOpacity}
             onPress={option.onPress}
+            onLongPress={option.onLongPress}
+            delayLongPress={option.onLongPress ? interaction.delayLongPress : undefined}
             accessibilityRole="button"
             accessibilityState={{ selected: !!option.selected && !option.negative }}
             accessibilityLabel={option.accessibilityLabel ?? option.label}
+            accessibilityHint={option.accessibilityHint}
           >
-            <Text
-              style={[
-                styles.pillText,
-                option.selected && !option.negative && styles.pillTextActive,
-                option.negative && styles.pillTextNegative,
-              ]}
-            >
-              {option.label}
-              {option.suffix}
-            </Text>
+            {/* The pill is sized by an invisible copy of its label at the
+                selected weight, with the real label laid over it. Selecting
+                a pill bolds its text, and without the reserved width that made
+                it grow a few points, which was enough to reflow the wrap and
+                shuffle every pill after it on each tap. */}
+            <View>
+              <Text
+                style={[styles.pillText, styles.pillTextSizer]}
+                accessibilityElementsHidden
+                importantForAccessibility="no-hide-descendants"
+              >
+                {option.label}
+                {option.suffix}
+              </Text>
+              <Text
+                style={[
+                  styles.pillText,
+                  styles.pillTextOverlay,
+                  option.selected && !option.negative && styles.pillTextActive,
+                  option.negative && styles.pillTextNegative,
+                ]}
+              >
+                {option.label}
+                {option.suffix}
+              </Text>
+            </View>
           </TouchableOpacity>
         ))}
 
@@ -339,6 +378,8 @@ const makeStyles = (colors: Colors, surface: Surface) => {
     pillNegative: { backgroundColor: colors.red + '1A' },
     pillText: { fontSize: font.sm, color: colors.text },
     pillTextActive: { color: colors.onAccent, fontWeight: fontWeight.semibold },
+    pillTextSizer: { fontWeight: fontWeight.semibold, opacity: 0 },
+    pillTextOverlay: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, textAlign: 'center' },
     pillTextNegative: { color: colors.red, textDecorationLine: 'line-through' },
     morePill: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
     // Weighted, so the disclosure doesn't read as one more option in the grid

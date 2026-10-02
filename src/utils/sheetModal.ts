@@ -19,6 +19,8 @@
  * two already agree and nothing happens, which is every render but the two
  * that matter.
  */
+import { createContext } from 'react';
+
 export interface SheetVisibilityStep {
   /** What to hand the real `Modal` next. */
   shown: boolean;
@@ -60,6 +62,12 @@ export function nextSheetVisibility(visible: boolean, shown: boolean): SheetVisi
 export interface PresentationLevel {
   /** Presented sheet id to the label it registered under. */
   readonly presented: Map<string, string>;
+  /**
+   * Presented sheet id to the level that sheet's own children present from,
+   * so a list inside a sheet can tell when something is raised above it
+   * (`sheetCovered`). Only the sheets that passed one to `registerPresentation`.
+   */
+  readonly own: Map<string, PresentationLevel>;
   /** Ids that outrank everything else here. See `claimPresentation`. */
   readonly claims: Set<string>;
   /** Notified whenever either of those changes. See `subscribePresentation`. */
@@ -67,8 +75,20 @@ export interface PresentationLevel {
 }
 
 export function createPresentationLevel(): PresentationLevel {
-  return { presented: new Map(), claims: new Set(), listeners: new Set() };
+  return { presented: new Map(), own: new Map(), claims: new Set(), listeners: new Set() };
 }
+
+/**
+ * One presenting view controller's worth of sheets. The default stands for the
+ * root view controller, which is what a Modal rendered in the ordinary screen
+ * tree presents from; each `SheetModal` supplies a fresh one to its own
+ * children, since a Modal nested inside it presents from *its* controller.
+ *
+ * Defined here rather than in `SheetModal.tsx` so `useKeyboardInsetScroll` can
+ * read the same level a screen's sheets register against, without importing a
+ * component module.
+ */
+export const PresentationLevelContext = createContext<PresentationLevel>(createPresentationLevel());
 
 /**
  * Watches a level, so the sheet that owns it can tell when the sheet presented
@@ -206,10 +226,12 @@ export function registerPresentation(
   level: PresentationLevel,
   id: string,
   label: string,
+  own?: PresentationLevel,
 ): string | null {
   const others = [...level.presented.entries()].filter(([key]) => key !== id);
   const had = level.presented.has(id);
   level.presented.set(id, label);
+  if (own) level.own.set(id, own);
   if (!had) notify(level);
   if (others.length === 0) return null;
   const already = others.map(([, name]) => name).join(', ');
@@ -225,5 +247,42 @@ export function registerPresentation(
 }
 
 export function releasePresentation(level: PresentationLevel, id: string): void {
+  level.own.delete(id);
   if (level.presented.delete(id)) notify(level);
+}
+
+/**
+ * Whether a sheet presented from `level` has something presented from it in
+ * turn, i.e. whether the sheet a list sits in is covered.
+ *
+ * This is the question a list inside a sheet has to ask, and it is not
+ * `level.presented.size > 0`: the component that renders a `SheetModal` sits
+ * *outside* it, so the level it reads from context is the one its own sheet
+ * registers with. Asking whether anything is presented there answers "is my
+ * own sheet open", which is true exactly while the list is on screen. That is
+ * how every sheet's keyboard handling switched itself off the moment the sheet
+ * opened, and fields in them sat behind the keyboard.
+ */
+export function sheetCovered(level: PresentationLevel): boolean {
+  for (const own of level.own.values()) if (own.presented.size > 0) return true;
+  return false;
+}
+
+/**
+ * `subscribePresentation`, extended to the own levels of whatever is presented
+ * from `level`, so `sheetCovered` can be re-read when a sheet opens on top of
+ * one presented here. Returns the unsubscribe.
+ */
+export function subscribeSheetCover(level: PresentationLevel, fn: () => void): () => void {
+  let inner: (() => void)[] = [];
+  const resubscribe = () => {
+    for (const off of inner) off();
+    inner = [...level.own.values()].map(own => subscribePresentation(own, fn));
+  };
+  resubscribe();
+  const outer = subscribePresentation(level, () => { resubscribe(); fn(); });
+  return () => {
+    outer();
+    for (const off of inner) off();
+  };
 }

@@ -11,6 +11,7 @@ import {
   SOFT_DELOAD_BLOCKERS,
   deloadBlockerFor,
   isDateAnchored,
+  pullForwardChoice,
   scheduleMoveUpdates,
 } from '../utils/taskMoves';
 
@@ -36,6 +37,7 @@ const BASE: Task = {
   recurrenceInterval: 1,
   recurrenceDays: [],
   recurrenceMonthDay: null,
+  recurrenceMonth: null,
   recurrenceWeekOrdinal: null,
   recurrenceAnchorDay: null,
   recurrenceAnchorDate: null,
@@ -54,8 +56,13 @@ const BASE: Task = {
   allowOvershoot: false,
   quotaIntervalMinutes: null,
   quotaReminders: false,
-  quotaStartedAt: null, quotaAlwaysVisible: false,
+  quotaStartedAt: null, quotaAlwaysVisible: false, followWaterTarget: false,
   quotaPeriod: 'day',
+  rotationEnabled: false,
+  rotationItems: [],
+  rotationLog: [],
+  rotationPeriodStart: null,
+  rotationLastDone: {},
   progressCount: 0,
   tags: [],
   sortOrder: 0,
@@ -84,7 +91,7 @@ const BASE: Task = {
   streakRequiresWindow: false,
   reminderTime: null,
   reminderKind: 'notification',
-  reminderOffsetDays: null, reminderTimeAnchor: 'wallClock', reminderUtcOffsetMinutes: null,
+  reminderOffsetDays: null, reminderTracksVisibility: false, reminderTimeAnchor: 'wallClock', reminderUtcOffsetMinutes: null,
   parentId: null,
   groupId: null,
   projectId: null,
@@ -100,6 +107,7 @@ const BASE: Task = {
   followUpTaskTally: 0,
   previousFollowUpTaskTally: 0,
   followUpTaskSourceTitle: null,
+  followUpTaskSourceId: null,
   vacationPause: false, excludeFromSuggestions: false,
   timerStartedAt: null,
   timedMinutes: null,
@@ -270,10 +278,79 @@ describe('scheduleMoveUpdates', () => {
     expect(scheduleMoveUpdates(task, at(2026, 6, 6)).recurrenceAnchorDate).toBe(first);
   });
 
+  it('restarts the schedule from a pulled-forward date when asked to', () => {
+    // A plain reschedule: no anchor, so updateTask treats the new date as the
+    // schedule and clears any earlier one.
+    const updates = scheduleMoveUpdates(anchored(), at(2026, 6, 6), undefined, { restartSchedule: true });
+    expect(updates).toEqual({ dueDate: at(2026, 6, 6).toISOString(), deferUntil: null });
+  });
+
+  it('ignores restartSchedule for a push and for a series member', () => {
+    expect(scheduleMoveUpdates(anchored(), at(2026, 6, 14), undefined, { restartSchedule: true }))
+      .toEqual({ deferUntil: at(2026, 6, 14).toISOString() });
+    const member = task({ dueDate: at(2026, 6, 10).toISOString(), seriesId: 's1' });
+    expect(scheduleMoveUpdates(member, at(2026, 6, 6), undefined, { restartSchedule: true }).recurrenceAnchorDate)
+      .toBe(member.dueDate);
+  });
+
   it('clears a stale defer when the destination is the stored day', () => {
     const task = anchored({ deferUntil: at(2026, 6, 20).toISOString() });
     const updates = scheduleMoveUpdates(task, at(2026, 6, 10));
     expect(updates.deferUntil).toBeNull();
     expect(updates.dueDate).toBe(at(2026, 6, 10).toISOString());
+  });
+
+  it('keeps a pulled-forward task\'s grid when its own day is picked again', () => {
+    // Pulled from the 12th to the 10th, then the 10th picked again (a time
+    // of day, or bulk When → Today). Leaving the anchor out let updateTask
+    // clear it, and the occurrence done early came back on the 12th.
+    const task = anchored({ recurrenceAnchorDate: at(2026, 6, 12).toISOString() });
+    const updates = scheduleMoveUpdates(task, at(2026, 6, 10));
+    expect(updates.recurrenceAnchorDate).toBe(at(2026, 6, 12).toISOString());
+  });
+});
+
+describe('pullForwardChoice', () => {
+  const at = (y: number, m: number, d: number) => new Date(y, m - 1, d, 12, 0, 0, 0);
+  const daily = (over: Partial<Task> = {}): Task =>
+    task({ dueDate: at(2026, 6, 10).toISOString(), recurrenceType: 'daily', recurrenceInterval: 1, ...over });
+  const dayOf = (d: Date | undefined) => d?.toDateString();
+
+  it('offers both next dates for a daily task pulled onto the day before', () => {
+    // Keeping the grid puts the next one the day after tomorrow, which is the
+    // surprise this exists to ask about.
+    const choice = pullForwardChoice(daily(), at(2026, 6, 9));
+    expect(dayOf(choice?.keepNext)).toBe(at(2026, 6, 11).toDateString());
+    expect(dayOf(choice?.restartNext)).toBe(at(2026, 6, 10).toDateString());
+  });
+
+  it('asks about a weekday rule when the answers differ', () => {
+    // Mon and Fri, due Fri Jun 12, pulled to Thu Jun 11.
+    const choice = pullForwardChoice(
+      daily({ recurrenceType: 'weekly', recurrenceDays: [1, 5], dueDate: at(2026, 6, 12).toISOString() }),
+      at(2026, 6, 11),
+    );
+    expect(dayOf(choice?.keepNext)).toBe(at(2026, 6, 15).toDateString());
+    expect(dayOf(choice?.restartNext)).toBe(at(2026, 6, 12).toDateString());
+  });
+
+  it('asks nothing when it is not a pull', () => {
+    expect(pullForwardChoice(daily(), at(2026, 6, 12))).toBeNull();
+    expect(pullForwardChoice(daily(), at(2026, 6, 10))).toBeNull();
+    expect(pullForwardChoice(daily(), null)).toBeNull();
+  });
+
+  it('asks nothing of a task with no grid to keep', () => {
+    expect(pullForwardChoice(task({ dueDate: at(2026, 6, 10).toISOString() }), at(2026, 6, 9))).toBeNull();
+    expect(pullForwardChoice(task({ dueDate: at(2026, 6, 10).toISOString(), seriesId: 's1' }), at(2026, 6, 9))).toBeNull();
+    expect(pullForwardChoice(daily({ recurrenceFromCompletion: true }), at(2026, 6, 9))).toBeNull();
+    expect(pullForwardChoice(daily({ recurrenceType: 'hours' }), at(2026, 6, 9))).toBeNull();
+  });
+
+  it('asks nothing when both answers land on the same day', () => {
+    // Fridays, but sitting on Wed Jun 10 (off its own grid): pulled to Tue
+    // Jun 9, the next one is Fri Jun 12 either way.
+    const fridays = daily({ recurrenceType: 'weekly', recurrenceDays: [5] });
+    expect(pullForwardChoice(fridays, at(2026, 6, 9))).toBeNull();
   });
 });

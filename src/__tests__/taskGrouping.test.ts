@@ -7,6 +7,7 @@ import {
   laterSections,
   laterDropZones,
   laterDaySections,
+  limitTodayItems,
   laterVisibleOrder,
   laterTodaySections,
   categorySpan,
@@ -18,7 +19,7 @@ import {
   type CategoryListItem,
   type TodayListItem,
 } from '../utils/taskGrouping';
-import type { Task, TaskGroup } from '../types';
+import type { ContextRow, Task, TaskGroup } from '../types';
 
 const mockSettingsState = {
   dayResetTime: '00:00',
@@ -80,6 +81,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   recurrenceInterval: 1,
   recurrenceDays: [],
   recurrenceMonthDay: null,
+  recurrenceMonth: null,
   recurrenceWeekOrdinal: null,
   recurrenceAnchorDay: null,
   recurrenceAnchorDate: null,
@@ -98,8 +100,13 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   allowOvershoot: false,
   quotaIntervalMinutes: null,
   quotaReminders: false,
-  quotaStartedAt: null, quotaAlwaysVisible: false,
+  quotaStartedAt: null, quotaAlwaysVisible: false, followWaterTarget: false,
   quotaPeriod: 'day',
+  rotationEnabled: false,
+  rotationItems: [],
+  rotationLog: [],
+  rotationPeriodStart: null,
+  rotationLastDone: {},
   progressCount: 0,
   tags: [],
   category: null,
@@ -132,7 +139,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   projectId: null,
   reminderTime: null,
   reminderKind: 'notification',
-  reminderOffsetDays: null, reminderTimeAnchor: 'wallClock', reminderUtcOffsetMinutes: null,
+  reminderOffsetDays: null, reminderTracksVisibility: false, reminderTimeAnchor: 'wallClock', reminderUtcOffsetMinutes: null,
   chainEnabled: false,
   chainIndex: 0,
   chainItems: [],
@@ -144,6 +151,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   followUpTaskTally: 0,
   previousFollowUpTaskTally: 0,
   followUpTaskSourceTitle: null,
+  followUpTaskSourceId: null,
   vacationPause: false, excludeFromSuggestions: false,
   timerStartedAt: null,
   timedMinutes: null,
@@ -1200,5 +1208,53 @@ describe('sectionTasksByLabel', () => {
     ]);
     expect(sections.get('work')).toEqual([]);
     expect(sections.get('home')?.map(t => t.id)).toEqual(['h1']);
+  });
+});
+
+describe('limitTodayItems', () => {
+  const header = (label: string): TodayListItem => ({ type: 'header', label });
+  const task = (id: string): TodayListItem => ({ type: 'task', task: makeTask({ id }) });
+  const group = (id: string, childCount: number): TodayListItem => ({
+    type: 'group',
+    group: makeGroup({ id }),
+    children: Array.from({ length: childCount }, (_, i) => makeTask({ id: `${id}-${i}` })),
+  });
+  const context = (id: string): TodayListItem => ({
+    type: 'context',
+    row: { id, kind: 'event', title: 'Standup' } as unknown as ContextRow,
+  });
+
+  it('returns the same array when there is no budget', () => {
+    const items = [header('Work'), task('a'), task('b')];
+    expect(limitTodayItems(items)).toBe(items);
+  });
+
+  it('returns the same array when the list fits the budget', () => {
+    const items = [header('Work'), task('a'), task('b')];
+    expect(limitTodayItems(items, 2)).toBe(items);
+  });
+
+  it('cuts at the first row after the budget is spent, header included', () => {
+    const items = [header('Work'), task('a'), task('b'), header('Home'), task('c')];
+    expect(limitTodayItems(items, 2)).toEqual([header('Work'), task('a'), task('b')]);
+  });
+
+  // Headers and context rows mount nothing heavy, so they never eat into the
+  // budget: a list of collapsed sections still surfaces its real rows.
+  it('does not count headers or context rows', () => {
+    const items = [header('Work'), context('e1'), header('Home'), context('e2'), task('a'), task('b'), task('c')];
+    expect(limitTodayItems(items, 2)).toEqual(items.slice(0, 6));
+  });
+
+  // A stack mounts one TaskItem per visible child, so it costs that many —
+  // and it is always included whole rather than cut mid-tray.
+  it('counts a stack as its visible children and keeps it whole', () => {
+    const items = [task('a'), group('g', 5), task('b')];
+    expect(limitTodayItems(items, 2)).toEqual([task('a'), group('g', 5)]);
+  });
+
+  it('counts an empty stack as one row', () => {
+    const items = [group('g', 0), task('a')];
+    expect(limitTodayItems(items, 1)).toEqual([group('g', 0)]);
   });
 });

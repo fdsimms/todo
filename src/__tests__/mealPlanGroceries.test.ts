@@ -1,6 +1,6 @@
-import type { GroceryItem, MealPlanEntry, Recipe, RecipeIngredient } from '../types';
+import type { GroceryItem, GroceryListEntry, ItemProduct, MealPlanEntry, Recipe, RecipeIngredient } from '../types';
 import { groceryNameKey } from '../utils/groceryParse';
-import { choiceGroupKey } from '../utils/recipeComponents';
+import { choiceGroupKey, makeComponent } from '../utils/recipeComponents';
 import {
   collectPlannedIngredients,
   hasShoppableMeals,
@@ -9,9 +9,13 @@ import {
   mergeQuantities,
   describeQuantities,
   classifyPlanned,
+  plannedCatalogIndex,
   restockRows,
   consumedRows,
   groupBySourceRecipe,
+  mealCreditIds,
+  rowsLeftBehind,
+  describeLeftBehind,
   type ClassifiedIngredient,
 } from '../utils/mealPlanGroceries';
 
@@ -61,6 +65,7 @@ function recipe(name: string, ingredients: RecipeIngredient[]): Recipe {
     tags: [],
     ingredients,
     emptySections: [],
+    emptyStepSections: [],
     components: [],
     prepTasks: [],
     steps: [],
@@ -241,6 +246,23 @@ describe('collectPlannedIngredients', () => {
       ['Thu Ragù', '2'],
       ['Thu Ragù', 'a pinch'],
     ]);
+  });
+
+  it('carries the line as written and its scale on a scaled entry only', () => {
+    // The scaled text is shopping notation, which cost and nutrition can't
+    // multiply out of: a "14 oz can" at 1.5x stays one can.
+    const chili = recipe('Chili', [ing('Black beans', { quantity: '14 oz can' })]);
+    const recipesById = new Map([[chili.id, chili]]);
+    const entries = [
+      entry('2026-08-11', chili.id, { recipeScale: 1.5 }),
+      entry('2026-08-13', chili.id),
+    ];
+
+    const [scaled, plain] = collectPlannedIngredients(entries, recipesById, RANGE);
+
+    expect(scaled.quantity).toBe('14 oz can');
+    expect(scaled.unscaled).toEqual({ quantity: '14 oz can', factor: 1.5 });
+    expect('unscaled' in plain).toBe(false);
   });
 
   it('skips a free-text meal — it has no ingredient list', () => {
@@ -681,6 +703,35 @@ describe('describeQuantities', () => {
 describe('classifyPlanned', () => {
   const now = new Date(2026, 7, 12);
 
+  // #2922: the recipe box classifies every recipe against one catalog, so it
+  // builds the catalog's lookups once and hands them in.
+  describe('with a prebuilt catalog index', () => {
+    const catalog = [
+      item({ name: 'Serrano peppers', onList: true }),
+      item({ name: 'Salt', isStaple: true }),
+      item({ name: 'White onion', varietyOfKey: 'onion', lastPurchasedAt: new Date(2026, 7, 10).toISOString() }),
+      item({ name: 'Butter', lastPurchasedAt: new Date(2026, 5, 1).toISOString() }),
+    ];
+    const planned = [
+      { name: 'serrano pepper', nameKey: 'serrano pepper', quantity: '2', aisle: null, source: 'Tue Stir-fry' },
+      { name: 'salt', nameKey: 'salt', quantity: '', aisle: null, source: 'Tue Stir-fry' },
+      { name: 'onion', nameKey: 'onion', quantity: '1', aisle: null, source: 'Thu Soup' },
+      { name: 'butter', nameKey: 'butter', quantity: '2 tbsp', aisle: null, source: 'Thu Soup' },
+      { name: 'saffron', nameKey: 'saffron', quantity: '1 pinch', aisle: null, source: 'Fri Paella' },
+    ];
+
+    it('classifies exactly as building the lookups itself does', () => {
+      expect(classifyPlanned(planned, catalog, now, [], null, [], plannedCatalogIndex(catalog)))
+        .toEqual(classifyPlanned(planned, catalog, now));
+    });
+
+    it('ignores an index built from some other catalog rather than answering from it', () => {
+      const stale = plannedCatalogIndex([item({ name: 'Saffron', isStaple: true })]);
+      expect(classifyPlanned(planned, catalog, now, [], null, [], stale))
+        .toEqual(classifyPlanned(planned, catalog, now));
+    });
+  });
+
   it('classifies a name with no catalog row as needToBuy', () => {
     const planned = [{ name: 'Saffron', nameKey: 'saffron', quantity: '1 pinch', aisle: null, source: 'Tue Paella' }];
     const rows = classifyPlanned(planned, [], now);
@@ -718,6 +769,38 @@ describe('classifyPlanned', () => {
     // variety pass beside it, so the order is the catalog key's group first.
     expect(rows[0].sources).toEqual(expect.arrayContaining(['Tue Stir-fry', 'Thu Salsa']));
     expect(rows[0].sources).toHaveLength(2);
+  });
+
+  it('merges a singular and a plural line the catalog has never seen', () => {
+    // "onion" in one recipe and "onions" in another are one thing to buy
+    // whether or not the catalog has met it yet; they used to be two rows.
+    const planned = [
+      { name: 'onion', nameKey: 'onion', quantity: '1', aisle: null, source: 'Tue Chili' },
+      { name: 'onions', nameKey: 'onions', quantity: '2', aisle: null, source: 'Thu Soup' },
+    ];
+    const rows = classifyPlanned(planned, [], now);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].sources).toEqual(expect.arrayContaining(['Tue Chili', 'Thu Soup']));
+  });
+
+  it('keeps an item wanted outright out of an either/or that also names it', () => {
+    // Dinner needs jalapeños outright; lunch offers "jalapeño or serrano".
+    // Joined to the choice, picking serrano at the shelf took off the
+    // jalapeños dinner needed.
+    const planned = [
+      { name: 'jalapeño', nameKey: 'jalapeno', quantity: '2', aisle: null, source: 'Tue Tacos', choiceGroup: 'r-lunch:Pepper' },
+      { name: 'jalapeño', nameKey: 'jalapeno', quantity: '1', aisle: null, source: 'Wed Chili', choiceGroup: null },
+    ];
+    const rows = classifyPlanned(planned, [], now);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].choiceGroup).toBeNull();
+  });
+
+  it('keeps the choice when every contributor offers the item as an option', () => {
+    const planned = [
+      { name: 'jalapeño', nameKey: 'jalapeno', quantity: '2', aisle: null, source: 'Tue Tacos', choiceGroup: 'r-lunch:Pepper' },
+    ];
+    expect(classifyPlanned(planned, [], now)[0].choiceGroup).toBe('r-lunch:Pepper');
   });
 
   it('leaves a line alone when the catalog has nothing a plural apart', () => {
@@ -977,6 +1060,48 @@ describe('classifyPlanned', () => {
     expect(classifyPlanned(planned, [], now)[0].quantity).toBe('×3');
   });
 
+  // A box (ItemProduct) frozen or marked "Got it" on its own keeps its item in
+  // the Pantry after the item's own purchase window lapses. The plan has to read
+  // it the same way, or the add sheet ticks a packet sitting in the freezer.
+  describe('boxes', () => {
+    const box = (itemId: string, overrides: Partial<ItemProduct> = {}): ItemProduct => ({
+      id: `p-${++seq}`, itemId, brand: 'Beyond', variant: null, productKey: 'beyond|',
+      rating: null, nutrition: null, note: '', purchaseCount: 0, lastPurchasedAt: null,
+      gtin: null, onHandUntil: null, expiresAt: null, frozenAt: null, openedAt: null,
+      isPortion: false, createdAt: '2026-01-01T00:00:00.000Z',
+      ...overrides,
+    });
+    const plannedBeef = [
+      { name: 'Vegan ground beef', nameKey: 'vegan ground beef', quantity: '1 lb', aisle: null, source: 'Mon Tacos' },
+    ];
+
+    it('counts an item whose only claim is a frozen box as probably had', () => {
+      const beef = item({ name: 'Vegan ground beef' });
+      const frozen = box(beef.id, { frozenAt: new Date(2026, 6, 18).toISOString() });
+
+      expect(classifyPlanned(plannedBeef, [beef], now, [], null, [frozen])[0].category).toBe('probablyHave');
+      // Without the boxes it falls back to the item alone, which has nothing.
+      expect(classifyPlanned(plannedBeef, [beef], now)[0].category).toBe('needToBuy');
+    });
+
+    it('ignores another item\'s boxes', () => {
+      const beef = item({ name: 'Vegan ground beef' });
+      const frozen = box('someone-else', { frozenAt: new Date(2026, 6, 18).toISOString() });
+
+      expect(classifyPlanned(plannedBeef, [beef], now, [], null, [frozen])[0].category).toBe('needToBuy');
+    });
+
+    it('lets a variety answered only by a box cover the generic line', () => {
+      const white = item({ name: 'White onion', varietyOfKey: 'onion' });
+      const gotIt = box(white.id, { onHandUntil: new Date(2026, 8, 1).toISOString() });
+      const planned = [{ name: 'onion', nameKey: 'onion', quantity: '1', aisle: null, source: 'Tue Ragù' }];
+
+      const row = classifyPlanned(planned, [white], now, [], null, [gotIt])[0];
+      expect(row.nameKey).toBe('white onion');
+      expect(row.category).toBe('probablyHave');
+    });
+  });
+
   // Varieties (GroceryItem.varietyOfKey) — a generic line covered by a
   // declared variety becomes that variety's row, so every downstream read and
   // write lands on a real catalog row. See itemVarieties.ts.
@@ -1012,6 +1137,16 @@ describe('classifyPlanned', () => {
       expect(row.nameKey).toBe('onion');
       expect(row.category).toBe('probablyHave');
       expect(row.swappedFrom).toBeNull();
+    });
+
+    it('re-files a line spelled the other way from the declared generic (#2941)', () => {
+      // "White onions" can only offer "onions" as its generic, and "1 large
+      // onion" is the same ask.
+      const whites = item({ name: 'White onions', varietyOfKey: 'onions', onHandUntil: onHandDate });
+      const row = classifyPlanned(plannedOnion, [whites], now)[0];
+      expect(row.nameKey).toBe('white onions');
+      expect(row.category).toBe('probablyHave');
+      expect(row.swappedFrom).toBe('onion');
     });
 
     it('leaves the ask an honest needToBuy when no variety answers', () => {
@@ -1264,5 +1399,110 @@ describe('consumedRows', () => {
     expect([...consumed, ...restock].sort()).toEqual(
       classified.filter(r => r.known).map(r => r.nameKey).sort()
     );
+  });
+});
+
+describe('mealCreditIds', () => {
+  it("is the meal's recipe and every recipe inside it (#2912)", () => {
+    const salsa = recipe('Salsa', []);
+    const beans = recipe('Beans', []);
+    const tacos = { ...recipe('Tacos', []), components: [makeComponent(salsa), makeComponent(beans, 'Side')] };
+    const byId = new Map([tacos, salsa, beans].map(r => [r.id, r]));
+
+    expect([...mealCreditIds(tacos.id, byId)].sort()).toEqual([beans.id, salsa.id, tacos.id].sort());
+  });
+
+  it('is just the id for a recipe that has since been deleted', () => {
+    expect([...mealCreditIds('gone', new Map())]).toEqual(['gone']);
+  });
+});
+
+describe('rowsLeftBehind', () => {
+  const home = (i: GroceryItem, checked = false): GroceryListEntry => ({
+    itemId: i.id, listId: null, checked, sortOrder: 0, choiceGroup: null, addedAt: i.createdAt,
+  });
+  const credited = (name: string, recipeId: string, overrides: Partial<GroceryItem> = {}) =>
+    item({ name, sourceRecipeId: recipeId, sourceRecipeTitle: 'Tacos', quantity: '8', quantityFromRecipe: true, ...overrides });
+
+  it('offers the unticked rows only the gone recipe put on the list (#2912)', () => {
+    const tortillas = credited('Tortillas', 'r-tacos');
+    const seasoning = credited('Taco seasoning', 'r-tacos', { quantity: null, quantityFromRecipe: false });
+    const milk = item({ name: 'Milk' });
+    const rows = rowsLeftBehind({
+      goneRecipeIds: new Set(['r-tacos']),
+      neededRecipeIds: new Set(),
+      items: [tortillas, seasoning, milk],
+      listEntries: [home(tortillas), home(seasoning), home(milk)],
+    });
+
+    expect(rows).toEqual([
+      { itemId: tortillas.id, listId: null, name: 'Tortillas' },
+      { itemId: seasoning.id, listId: null, name: 'Taco seasoning' },
+    ]);
+  });
+
+  it('keeps a row a recipe still planned is credited with', () => {
+    // The salsa is a component of both the tacos that went and the nachos
+    // still on Friday.
+    const salsa = credited('Tomatoes', 'r-salsa');
+    expect(rowsLeftBehind({
+      goneRecipeIds: new Set(['r-tacos', 'r-salsa']),
+      neededRecipeIds: new Set(['r-nachos', 'r-salsa']),
+      items: [salsa],
+      listEntries: [home(salsa)],
+    })).toEqual([]);
+  });
+
+  it('keeps a row in the cart, in two trolleys, or with an amount typed by hand', () => {
+    const ticked = credited('Tortillas', 'r-tacos');
+    const twoLists = credited('Cheese', 'r-tacos');
+    const typed = credited('Limes', 'r-tacos', { quantity: '6', quantityFromRecipe: false });
+    const rows = rowsLeftBehind({
+      goneRecipeIds: new Set(['r-tacos']),
+      neededRecipeIds: new Set(),
+      items: [ticked, twoLists, typed],
+      listEntries: [
+        home(ticked, true),
+        home(twoLists), { ...home(twoLists), listId: 'airbnb' },
+        home(typed),
+      ],
+    });
+
+    expect(rows).toEqual([]);
+  });
+
+  it('names the trolley a row is in, so the offer takes it off that one', () => {
+    const tortillas = credited('Tortillas', 'r-tacos');
+    const rows = rowsLeftBehind({
+      goneRecipeIds: new Set(['r-tacos']),
+      neededRecipeIds: new Set(),
+      items: [tortillas],
+      listEntries: [{ ...home(tortillas), listId: 'airbnb' }],
+    });
+
+    expect(rows).toEqual([{ itemId: tortillas.id, listId: 'airbnb', name: 'Tortillas' }]);
+  });
+
+  it('offers nothing off the list, or with no credit to match', () => {
+    const parked = credited('Tortillas', 'r-tacos');
+    const uncredited = item({ name: 'Rice' });
+    expect(rowsLeftBehind({
+      goneRecipeIds: new Set(['r-tacos']),
+      neededRecipeIds: new Set(),
+      items: [parked, uncredited],
+      listEntries: [home(uncredited)],
+    })).toEqual([]);
+  });
+});
+
+describe('describeLeftBehind', () => {
+  const row = (name: string) => ({ itemId: name, listId: null, name });
+
+  it('names up to three, and counts the rest', () => {
+    expect(describeLeftBehind([row('Tortillas')])).toBe('Tortillas');
+    expect(describeLeftBehind([row('Tortillas'), row('Salsa')])).toBe('Tortillas and Salsa');
+    expect(describeLeftBehind([row('Tortillas'), row('Salsa'), row('Limes')])).toBe('Tortillas, Salsa and Limes');
+    expect(describeLeftBehind([row('Tortillas'), row('Salsa'), row('Limes'), row('Cheese')]))
+      .toBe('Tortillas, Salsa and 2 more');
   });
 });

@@ -1,4 +1,4 @@
-import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, detectContactIntent, parseDurationInput, parseSupplyInput, parseCategoryAndTagsInput, parsePriorityInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, getEditorMentionSuggestions, applyMentionOverrides, parseFromCompletionSuffix, type ParsedSchedule } from '../utils/parseTaskInput';
+import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, detectContactIntent, parseDurationInput, parseSupplyInput, parseCategoryAndTagsInput, parsePriorityInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, getEditorMentionSuggestions, applyMentionOverrides, parseFromCompletionSuffix, type ParsedSchedule } from '../utils/parseTaskInput';
 
 // Tuesday, June 10 2025, 10:00 AM — same anchor as parseNaturalDate.test.ts
 const NOW = new Date(2025, 5, 10, 10, 0, 0);
@@ -290,6 +290,28 @@ describe('parseTaskInput — recurrence', () => {
     expectDay(r.schedule.dueDate, 2025, 5, 10); // anchors today
   });
 
+  it('parses "every N hours" as sub-day recurrence, measured from completion', () => {
+    const r = parseTaskInput('take zaltrex every 8 hours', NOW)!;
+    expect(r.cleanTitle).toBe('take zaltrex');
+    expect(r.schedule.recurrenceType).toBe('hours');
+    expect(r.schedule.recurrenceInterval).toBe(8);
+    expect(r.schedule.recurrenceFromCompletion).toBe(true);
+  });
+
+  it('parses "every hour"', () => {
+    const r = parseTaskInput('check the kiln every hour', NOW)!;
+    expect(r.schedule.recurrenceType).toBe('hours');
+    expect(r.schedule.recurrenceInterval).toBe(1);
+    expect(r.schedule.recurrenceFromCompletion).toBe(true);
+  });
+
+  it('parses "every other hour"', () => {
+    const r = parseTaskInput('water the seedlings every other hour', NOW)!;
+    expect(r.schedule.recurrenceType).toBe('hours');
+    expect(r.schedule.recurrenceInterval).toBe(2);
+    expect(r.schedule.recurrenceFromCompletion).toBe(true);
+  });
+
   it('parses a weekday list with "every"', () => {
     const r = parseTaskInput('gym every mon and wed', NOW)!;
     expect(r.schedule.recurrenceType).toBe('weekly');
@@ -496,6 +518,34 @@ describe('parseTaskInput — recurrence', () => {
     expect(r.schedule.recurrenceFromCompletion).toBe(true);
   });
 
+  it('maps the "ac" shorthand to recurrenceFromCompletion, same as "after completion"', () => {
+    const r = parseTaskInput('stretch every week ac', NOW)!;
+    expect(r.cleanTitle).toBe('stretch');
+    expect(r.schedule.recurrenceType).toBe('weekly');
+    expect(r.schedule.recurrenceFromCompletion).toBe(true);
+  });
+
+  it('defaults a bare daily/every-N-days phrase to recurrenceFromCompletion', () => {
+    const r = parseTaskInput('drink water daily', NOW)!;
+    expect(r.schedule.recurrenceType).toBe('daily');
+    expect(r.schedule.recurrenceFromCompletion).toBe(true);
+
+    const r2 = parseTaskInput('water plants every 3 days', NOW)!;
+    expect(r2.schedule.recurrenceFromCompletion).toBe(true);
+  });
+
+  it('keeps a fixed schedule for a daily phrase with an explicit clock time', () => {
+    const r = parseTaskInput('take pill every day at 9am', NOW)!;
+    expect(r.schedule.recurrenceType).toBe('daily');
+    expect(r.schedule.recurrenceFromCompletion).toBeFalsy();
+  });
+
+  it('does not default recurrenceFromCompletion for non-daily bare recurrences', () => {
+    const r = parseTaskInput('gym weekly', NOW)!;
+    expect(r.schedule.recurrenceType).toBe('weekly');
+    expect(r.schedule.recurrenceFromCompletion).toBeFalsy();
+  });
+
   it('maps an "until <date>" clause to recurrenceEndDate', () => {
     const r = parseTaskInput('gym every monday until december', NOW)!;
     expect(r.schedule.recurrenceType).toBe('weekly');
@@ -518,10 +568,18 @@ describe('parseTaskInput — recurrence', () => {
     expect(r2.schedule.recurrenceCount).toBe(5);
   });
 
-  it('maps a "for N days/weeks/months" duration clause to recurrenceEndDate', () => {
+  it('counts "in 2 hours" from the real instant in the grace window', () => {
+    // 01:30 on Aug 16 under a 02:00 reset: logical now is a day back, and
+    // the reminder lands on the real Aug 16, not 23 hours in the past.
+    const r = parseTaskInput('call the pharmacy in 2 hours', new Date(2025, 7, 15, 1, 30), new Date(2025, 7, 16, 1, 30))!;
+    expectDay(r.schedule.dueDate, 2025, 7, 16);
+  });
+
+    it('maps a "for N days/weeks/months" duration clause to recurrenceEndDate', () => {
     const r = parseTaskInput('take antibiotics daily for 10 days', NOW)!;
     expect(r.schedule.recurrenceType).toBe('daily');
-    expectDay(new Date(r.schedule.recurrenceEndDate!), 2025, 5, 20);
+    // Inclusive end, so the 10th through the 19th: ten doses, not eleven.
+    expectDay(new Date(r.schedule.recurrenceEndDate!), 2025, 5, 19);
   });
 
   it('treats a bare "for N days" with no frequency word as an implied daily repeat', () => {
@@ -530,13 +588,13 @@ describe('parseTaskInput — recurrence', () => {
     expect(r.schedule.recurrenceType).toBe('daily');
     expect(r.schedule.recurrenceInterval).toBe(1);
     expectDay(r.schedule.dueDate, 2025, 5, 10);
-    expectDay(new Date(r.schedule.recurrenceEndDate!), 2025, 5, 13);
+    expectDay(new Date(r.schedule.recurrenceEndDate!), 2025, 5, 12);
   });
 
   it('accepts a digit count for the same bare duration clause', () => {
     const r = parseTaskInput('take vitamin d for 10 days', NOW)!;
     expect(r.schedule.recurrenceType).toBe('daily');
-    expectDay(new Date(r.schedule.recurrenceEndDate!), 2025, 5, 20);
+    expectDay(new Date(r.schedule.recurrenceEndDate!), 2025, 5, 19);
   });
 
   it('does not imply a repeat from a bare "for N times" with no frequency word', () => {
@@ -582,6 +640,9 @@ describe('describeSchedule', () => {
     expect(describeSchedule({ ...base, recurrenceType: 'monthly', recurrenceWeekOrdinal: -1, recurrenceDays: [5] }, NOW)).toBe('Every last Friday');
     expect(describeSchedule({ ...base, recurrenceType: 'yearly', dueDate: new Date(2025, 8, 15) }, NOW)).toBe('Every Sep 15');
     expect(describeSchedule({ ...base, recurrenceType: 'yearly', recurrenceInterval: 2 }, NOW)).toBe('Every 2 years');
+    expect(describeSchedule({ ...base, recurrenceType: 'hours', recurrenceInterval: 1 }, NOW)).toBe('Every hour');
+    expect(describeSchedule({ ...base, recurrenceType: 'hours', recurrenceInterval: 2 }, NOW)).toBe('Every other hour');
+    expect(describeSchedule({ ...base, recurrenceType: 'hours', recurrenceInterval: 8 }, NOW)).toBe('Every 8 hours');
   });
 
   it('appends the time segment', () => {
@@ -814,6 +875,45 @@ describe('parseDurationInput', () => {
 
   it('is case insensitive', () => {
     expect(parseDurationInput('Meditate For 20 Minutes')?.minutes).toBe(20);
+  });
+});
+
+describe('parseChainInput', () => {
+  it('splits on "->" into one step per segment', () => {
+    const result = parseChainInput('call mom -> buy milk -> walk the dog')!;
+    expect(result.steps.map(s => s.title)).toEqual(['call mom', 'buy milk', 'walk the dog']);
+  });
+
+  it('tolerates missing spaces around the arrow', () => {
+    const result = parseChainInput('call mom->buy milk')!;
+    expect(result.steps.map(s => s.title)).toEqual(['call mom', 'buy milk']);
+  });
+
+  it('pulls a duration phrase into the step it appears in, not the others', () => {
+    const result = parseChainInput('call the vet for 10 min -> drop off the package')!;
+    expect(result.steps[0]).toMatchObject({ title: 'call the vet', estimatedMinutes: 10, linkUrl: null });
+    expect(result.steps[1]).toMatchObject({ title: 'drop off the package', estimatedMinutes: null, linkUrl: null });
+  });
+
+  it('pulls a link into the step it appears in', () => {
+    const result = parseChainInput('read the doc https://example.com/spec -> review it')!;
+    expect(result.steps[0]).toMatchObject({ title: 'read the doc', linkUrl: 'https://example.com/spec' });
+    expect(result.steps[1]).toMatchObject({ title: 'review it', linkUrl: null });
+  });
+
+  it('returns null with no arrow, or only one segment', () => {
+    expect(parseChainInput('buy milk')).toBeNull();
+    expect(parseChainInput('')).toBeNull();
+  });
+
+  it('refuses a doubled or trailing arrow rather than dropping a step', () => {
+    expect(parseChainInput('call mom -> -> walk the dog')).toBeNull();
+    expect(parseChainInput('call mom -> buy milk ->')).toBeNull();
+  });
+
+  it('refuses a step that is only a duration or link phrase with no title of its own', () => {
+    expect(parseChainInput('call mom -> for 10 min')).toBeNull();
+    expect(parseChainInput('call mom -> https://example.com')).toBeNull();
   });
 });
 
@@ -1131,6 +1231,29 @@ describe('matchPersonMentions', () => {
     expect(matchPersonMentions('coffee @ansley', PEOPLE).map(m => m.personId)).toEqual(['p2']);
   });
 
+  // A business's name isn't "first name, last name" — matching its first word
+  // would read "Eye Q" as though "Eye" were somebody's given name. See
+  // docs/arch/people.md, "Businesses don't get check-ins".
+  it('does not match the first word of a business name', () => {
+    const withBusiness = [...PEOPLE, { id: 'p4', name: 'Eye Q', nickname: '', kind: 'business' as const }];
+    expect(matchPersonMentions('call @eye about the appointment', withBusiness)).toEqual([]);
+  });
+
+  it('matches a multi-word name typed in full after the @', () => {
+    const withBusiness = [...PEOPLE, { id: 'p4', name: 'Eye Q', nickname: '', kind: 'business' as const }];
+    const title = 'call @Eye Q about the appointment';
+    const [m] = matchPersonMentions(title, withBusiness);
+    expect(m.personId).toBe('p4');
+    expect(title.slice(m.start, m.end)).toBe('@Eye Q');
+    // Only at a word boundary, so a longer word doesn't count.
+    expect(matchPersonMentions('call @Eye Quinn', withBusiness)).toEqual([]);
+  });
+
+  it('still matches a business by its full name or nickname', () => {
+    const withBusiness = [...PEOPLE, { id: 'p4', name: 'EyeQ', nickname: 'the optometrist', kind: 'business' as const }];
+    expect(matchPersonMentions('call @eyeq about the appointment', withBusiness).map(m => m.personId)).toEqual(['p4']);
+  });
+
   it('is case insensitive', () => {
     expect(matchPersonMentions('call @Mom', PEOPLE).map(m => m.personId)).toEqual(['p3']);
   });
@@ -1303,7 +1426,7 @@ describe('getMentionSuggestions', () => {
   it('narrows as more of the name is typed', () => {
     const r = getMentionSuggestions('respond to @lu', people);
     expect(r?.candidates.map(c => c.name)).toEqual(['Luke Harmon']);
-    expect(r?.candidates[0].resolveKey).toBe('Luke');
+    expect(r?.candidates[0].resolveKey).toBe('Luke Harmon');
   });
 
   it('resolves to a nickname over the first name when one is set', () => {

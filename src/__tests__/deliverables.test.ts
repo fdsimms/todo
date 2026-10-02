@@ -8,6 +8,10 @@ import {
   formatDeliverableValue,
   formatTaskDeliverable,
   normalizeDeliverableValue,
+  deliverableOptionsFor,
+  isTentativeAnswer,
+  parseDeliverableOptions,
+  DELIVERABLE_OPTIONS_MAX,
 } from '../utils/deliverables';
 
 // "Book haircut" asks for the appointment date and hands it to "Get haircut";
@@ -202,5 +206,60 @@ describe('deliverableMeta', () => {
       expect(meta.label).toBeTruthy();
       expect(meta.hint).toBeTruthy();
     }
+  });
+});
+
+describe('parseDeliverableOptions', () => {
+  it('splits on commas and new lines, trimming and dropping blanks and repeats', () => {
+    expect(parseDeliverableOptions('Yes, No,, maybe\nyes\n  Maybe ')).toEqual(['Yes', 'No', 'maybe']);
+  });
+
+  it('keeps at most the cap', () => {
+    const many = Array.from({ length: 20 }, (_, i) => `Option ${i}`).join(', ');
+    expect(parseDeliverableOptions(many)).toHaveLength(DELIVERABLE_OPTIONS_MAX);
+  });
+});
+
+describe('isTentativeAnswer', () => {
+  it('reads Maybe and its kin as not yet, and a real answer as one', () => {
+    expect(isTentativeAnswer('Maybe')).toBe(true);
+    expect(isTentativeAnswer(' not sure ')).toBe(true);
+    expect(isTentativeAnswer('Yes')).toBe(false);
+    expect(isTentativeAnswer('Maybe later')).toBe(false);
+    expect(isTentativeAnswer(null)).toBe(false);
+  });
+});
+
+describe('deliverableOptionsFor', () => {
+  it('offers Yes and No for a yes/no question', () => {
+    expect(deliverableOptionsFor({ deliverableKind: 'yesno' })).toEqual(['Yes', 'No']);
+  });
+
+  it('offers a pick-one question its own options', () => {
+    expect(deliverableOptionsFor({ deliverableKind: 'choice', deliverableOptions: ['Chicken', 'Fish'] }))
+      .toEqual(['Chicken', 'Fish']);
+  });
+
+  it('offers nothing for a pick-one with fewer than two options, or any other kind', () => {
+    expect(deliverableOptionsFor({ deliverableKind: 'choice', deliverableOptions: ['Chicken'] })).toEqual([]);
+    expect(deliverableOptionsFor({ deliverableKind: 'text', deliverableOptions: ['A', 'B'] })).toEqual([]);
+    expect(deliverableOptionsFor({ deliverableKind: null })).toEqual([]);
+  });
+
+  it('follows the active chain step, which may ask yes/no of its own', () => {
+    const chain = [
+      { id: 'a', title: 'Ask', estimatedMinutes: null, deliverableKind: 'yesno' as const, deliverableDatesNextStep: false },
+      { id: 'b', title: 'Do', estimatedMinutes: null, deliverableKind: null, deliverableDatesNextStep: false },
+    ];
+    expect(deliverableOptionsFor({ deliverableKind: null, chainEnabled: true, chainIndex: 0, chainItems: chain }))
+      .toEqual(['Yes', 'No']);
+  });
+});
+
+describe('the pick-from-a-set kinds', () => {
+  it('store the chosen option as typed and show it as is', () => {
+    expect(normalizeDeliverableValue('choice', '  Maybe ')).toBe('Maybe');
+    expect(normalizeDeliverableValue('yesno', 'Yes')).toBe('Yes');
+    expect(formatDeliverableValue('choice', 'Maybe')).toBe('Maybe');
   });
 });

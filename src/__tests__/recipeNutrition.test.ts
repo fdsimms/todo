@@ -60,6 +60,7 @@ function recipe(name: string, ingredients: RecipeIngredient[], overrides: Partia
     tags: [],
     ingredients,
     emptySections: [],
+    emptyStepSections: [],
     components: [],
     prepTasks: [],
     steps: [],
@@ -401,6 +402,22 @@ describe('perServing', () => {
     expect(perServing(doubled)!.calorieKcal).toBe(100);
   });
 
+  it('does not move for a canned line whose scaled text reads differently (#2918)', () => {
+    // "14 oz can" can't be written at 1.5x, so its scaled text stays "14 oz
+    // can", and at 2x it becomes "2 14 oz cans". Measuring those strings
+    // counted one can at 1.5x and none at 2x.
+    const chili = recipe('Chili', [ing('Black beans', { quantity: '14 oz can' })], { servings: 4 });
+    const beans = [item({ name: 'Black beans', nutrition: panel() })];
+    const at = (scale: number) => recipeNutrition(chili, beans, [], undefined, undefined, scale)!;
+
+    const once = perServing(at(1))!.calorieKcal!;
+    expect(at(1).total.calorieKcal).toBeCloseTo(396.9, 1);
+    expect(at(1.5).total.calorieKcal).toBeCloseTo(595.3, 1);
+    expect(at(2).total.calorieKcal).toBeCloseTo(793.8, 1);
+    expect(perServing(at(1.5))!.calorieKcal).toBeCloseTo(once, 1);
+    expect(perServing(at(2))!.calorieKcal).toBeCloseTo(once, 1);
+  });
+
   it('never invents a servings count', () => {
     // Cronometer's own worst behaviour is confidently dividing by a number
     // nobody entered.
@@ -503,6 +520,19 @@ describe('weekNutrition', () => {
     const recipesById = new Map([[roast.id, roast]]);
     const entries = [entry('2026-08-10', roast.id, { recipeScale: 2 })];
     expect(weekNutrition(entries, recipesById, catalog(), RANGE)!.total.calorieKcal).toBe(800);
+  });
+
+  it('counts a scaled entry\'s canned line at its scale, not its shopping text (#2918)', () => {
+    // The planned row's quantity is what the list shows: "14 oz can" at 1.5x
+    // (unwritable, so left alone) would count one can.
+    const chili = recipe('Chili', [ing('Black beans', { quantity: '14 oz can' })]);
+    const recipesById = new Map([[chili.id, chili]]);
+    const beans = [item({ name: 'Black beans', nutrition: panel() })];
+    const at = (recipeScale: number) =>
+      weekNutrition([entry('2026-08-10', chili.id, { recipeScale })], recipesById, beans, RANGE)!;
+    expect(at(1).total.calorieKcal).toBeCloseTo(396.9, 1);
+    expect(at(1.5).total.calorieKcal).toBeCloseTo(595.3, 1);
+    expect(at(2).total.calorieKcal).toBeCloseTo(793.8, 1);
   });
 
   it('excludes a cooked entry, same as collectPlannedIngredients', () => {
@@ -655,6 +685,24 @@ describe('recipeNutritionLines', () => {
     const catalog = [item({ name: 'Onion', nutrition: panel() })];
     expect(recipeNutritionLines(dish, catalog, [], undefined, undefined, 2)[0].quantity)
       .toBe('4 cups');
+  });
+
+  it('keeps a can that counted at 1x counted at 2x, shown in the scaled words (#2918)', () => {
+    const dish = recipe('Chili', [ing('Black beans', { quantity: '14 oz can' })]);
+    const catalog = [item({ name: 'Black beans', nutrition: panel() })];
+    const [line] = recipeNutritionLines(dish, catalog, [], undefined, undefined, 2);
+    expect(line.state).toBe('covered');
+    expect(line.quantity).toBe('2 14 oz cans');
+    expect(line.multiplier).toBeCloseTo(7.938, 3);
+    expect(nutritionGaps([line]).fillable).toHaveLength(0);
+  });
+
+  it('weighs a staple against the scaled amount, not the written one', () => {
+    // 60 g of a staple is a dash; doubled it is 120 g, past the bulk line.
+    const dish = recipe('Bread', [ing('Sugar', { quantity: '60 g' })]);
+    const catalog = [item({ name: 'Sugar', isStaple: true, nutrition: panel() })];
+    expect(recipeNutritionLines(dish, catalog)).toHaveLength(0);
+    expect(recipeNutritionLines(dish, catalog, [], undefined, undefined, 2)).toHaveLength(1);
   });
 
   it('reports the panel it actually read, so a correction lands on that row', () => {

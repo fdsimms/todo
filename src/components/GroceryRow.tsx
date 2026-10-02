@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { Platform, View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
+import { Platform, View, Text, TextInput, TouchableOpacity, StyleSheet, useWindowDimensions } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import {
@@ -18,12 +18,14 @@ import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { GROCERY_NAME_MAX_LENGTH, type GroceryItem, type ItemProduct } from '../types';
 import { SwipeableRow } from './SwipeableRow';
-import { InlineAction } from './InlineAction';
+import { SelectionDot } from './SelectionDot';
+import { usePaintSelectionRow } from './PaintSelection';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { convertQuantity } from '../utils/unitConvert';
 import { describeProduct, RATING_LABELS } from '../utils/groceryProduct';
 import { formatPrice, formatPriceInput, parsePriceInput, priceToInput } from '../utils/groceryPrice';
 import { groceryNameKey } from '../utils/groceryParse';
+import { groceryRowNameSpace, quantityFitsBesideName } from '../utils/groceryRowQuantity';
 import { haptics } from '../utils/haptics';
 
 // Matches GroceryItemSheet's own price field — "10000.00" is the longest a
@@ -120,8 +122,12 @@ interface Props {
    * `storeMarker`, and for the same reason: this row is memoised, and reading
    * itemShops here would re-render every row on any store write. Present
    * (possibly `null`, meaning no price known yet) only while a trip is
-   * running and this row is checked; absent otherwise, which is what hides
-   * the chip below entirely.
+   * running; absent otherwise, which is what hides the chip below entirely.
+   *
+   * Only ever this store's own price or one typed during this trip, never a
+   * price from another store (see `tripPriceFor`): it is what the field opens
+   * holding, and an unlabelled Costco number in a field at Aldi reads as
+   * Aldi's (#2936).
    */
   tripPriceMinor?: number | null;
   /**
@@ -159,6 +165,18 @@ interface Props {
  * on a shopping-list line, and the panel this component used to worry about
  * revealing as a no-op is simply never rendered when `whenAction` is omitted.
  */
+// Map of this file (one component holding most of it; `grep -n '// ===='` is
+// the table of contents):
+//   bindings       theme, stores, the displayed quantity and where it sits
+//   rename state   the inline rename's draft and its refusal message
+//   trip price     the price field's draft, opening it, committing it
+//   label          the accessibility label, in the captions' order
+//   rename         opening, editing and committing the inline rename
+//   render         the checkbox; the tap zone (name, captions, a quantity
+//                  moved under the name, the trip price line, a quantity
+//                  beside the name, the price icon); the trailing icons; then
+//                  the card and its OR seam
+// Below the component: styles.
 export const GroceryRow = React.memo(function GroceryRow({
   item,
   product: preferredProduct,
@@ -181,17 +199,47 @@ export const GroceryRow = React.memo(function GroceryRow({
   tripPriceRecorded = false,
   onSetTripPrice,
 }: Props) {
+  // ==== bindings: theme, stores, the displayed quantity and where it sits ====
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const renameItem = useGroceryStore(s => s.renameItem);
+  // Registers the card with the screen's PaintSelectionProvider, so a drag
+  // down the column of selection dots picks up this row (#2944). Not the
+  // floating drag copy, which would claim this row's id and evict it on
+  // unmount. A no-op on a screen with no provider.
+  const paintRowRef = usePaintSelectionRow(isActive ? null : item.id);
   const unitSystem = useSettingsStore(s => s.unitSystem);
   const currencySymbol = useSettingsStore(s => s.currencySymbol);
+  const { width: windowWidth } = useWindowDimensions();
 
   // The row is read-only text, so it shows the amount in the reader's units.
   // The item sheet's field deliberately doesn't — that one is editable, and an
   // editable field has to show what's stored.
   const shownQuantity = convertQuantity(item.quantity ?? '', unitSystem).text;
+  // A short quantity sits in the pill beside the name; a long one ("2 x 14 oz
+  // cans, drained") gets a line of its own under it, so the name keeps the
+  // row (#2946). So does one that would leave a long name too little room
+  // beside it ("Fire-roasted diced tomatoes" next to "2 x 400 ml" during a
+  // trip). See groceryRowQuantity.ts for where both lines are drawn and why.
+  //
+  // The space is counted as the row stands outside selection mode, and with
+  // the trip's price icon for the whole trip, even once a price is recorded
+  // and the icon gives way to the price's own line: otherwise selecting, or
+  // typing a price, would move the quantity back beside the name under the
+  // finger. The committed name, not the rename draft, so typing doesn't
+  // either.
+  const quantityBesideName =
+    !!shownQuantity &&
+    quantityFitsBesideName(shownQuantity, {
+      name: item.name,
+      space: groceryRowNameSpace(windowWidth, {
+        tripRunning: !!onSetTripPrice,
+        substitutesIcon: !!onOpenSubstitutes,
+      }),
+    });
+  const quantityUnderName = !!shownQuantity && !quantityBesideName;
 
+  // ==== rename state ====
   // Tapping the name/quantity/star area used to toggle checked, same as the
   // rest of the row. Issue #1222: that's the only way in, so it now swaps the
   // name into an inline TextInput instead — the checkbox (its own zone below)
@@ -212,12 +260,18 @@ export const GroceryRow = React.memo(function GroceryRow({
   // nothing more until the text changes.
   const refusedName = useRef<string | null>(null);
 
+  // ==== trip price: state, opening and committing the field ====
   // The trip price chip's own inline edit, same shape as renaming above:
   // tapping the chip swaps it for a TextInput, blurring or submitting
   // commits. Kept in this row rather than lifted to the screen because it's
   // purely a transient "am I mid-edit" flag with no bearing on any other row.
   const [pricingActive, setPricingActive] = useState(false);
   const [draftPrice, setDraftPrice] = useState('');
+
+  // The trip price chip is on this row at all, and whether it has a price of
+  // this trip's to show — which decides where on the row it sits (#2946).
+  const tripPriceShown = !!onSetTripPrice && !selectionMode;
+  const priceRecorded = tripPriceRecorded && tripPriceMinor != null;
 
   const startPricing = () => {
     setDraftPrice(tripPriceMinor != null ? priceToInput(tripPriceMinor) : '');
@@ -239,6 +293,7 @@ export const GroceryRow = React.memo(function GroceryRow({
     if (parsed !== null && parsed !== tripPriceMinor) onSetTripPrice?.(item.id, parsed);
   };
 
+  // ==== label: what the row announces ====
   // Brand and variant name one product, so they compose into one caption line
   // rather than taking one each — a fifth treatment on a row that can already
   // be four captions tall is past what's readable while walking. See
@@ -261,6 +316,7 @@ export const GroceryRow = React.memo(function GroceryRow({
     item.checked ? ', in cart' : '',
   ].join('');
 
+  // ==== rename: open, edit, commit ====
   const startRename = () => {
     if (selectionMode) {
       onSelect?.(item.id);
@@ -317,6 +373,7 @@ export const GroceryRow = React.memo(function GroceryRow({
     setNameError(null);
   };
 
+  // ==== render. Everything below is JSX ====
   const rowBody = (
     <View
       style={[
@@ -338,13 +395,15 @@ export const GroceryRow = React.memo(function GroceryRow({
             : drag ? 'Long press to move to another aisle' : 'Long press to edit'
         }
       >
-        <View
-          style={[
-            styles.checkbox,
-            selectionMode ? selected && styles.checkboxSelected : item.checked && styles.checkboxChecked,
-          ]}
-        >
-          {(selectionMode ? selected : item.checked) && (
+        {/* Cart state, always, selecting or not. This used to fill accent
+            with a tick for a *selected* row, which read as checked off (and
+            hid the green of the rows really in the cart for as long as
+            selection lasted). Selection is the SelectionDot at the other end
+            of the row, the same split every other selectable list makes
+            (#2944). The touch target still selects while selecting, and its
+            accessibility state follows: the dot is not its own element. */}
+        <View style={[styles.checkbox, item.checked && styles.checkboxChecked]}>
+          {item.checked && (
             <Ionicons name="checkmark" size={iconSize.sm} color={colors.onAccent} />
           )}
         </View>
@@ -426,6 +485,36 @@ export const GroceryRow = React.memo(function GroceryRow({
               </Text>
             </View>
           )}
+          {/* A quantity too long for the pill beside the name, on its own line
+              instead (#2946). The same pill, so it reads as the same field a
+              short quantity shows at the end of the row, only left-aligned and
+              given the text column's width rather than the side pill's 90pt.
+              Beside the name it took that full 90pt, wrapped, and still cut
+              the quantity off, while the name got about 80pt of a 390pt row
+              during a trip. A shorter quantity comes here too when the name
+              beside it is too long to share the row, which is what cut
+              "Fire-roasted diced tomatoes" beside "2 x 400 ml" during a trip.
+              Right after the brand, so the order on screen
+              stays the order `label` reads out (name, product, quantity).
+              Inside the tap zone like the side pill, so tapping it renames and
+              holding it drags, exactly as before. */}
+          {quantityUnderName && (
+            <View
+              style={[
+                styles.qtyPill,
+                styles.qtyPillUnder,
+                item.checked && styles.qtyPillChecked,
+                item.checked && styles.qtyPillUnderChecked,
+              ]}
+            >
+              <Text
+                style={[styles.qtyText, styles.qtyTextUnder, item.checked && styles.qtyTextChecked]}
+                numberOfLines={2}
+              >
+                {shownQuantity}
+              </Text>
+            </View>
+          )}
           {!!item.note && (
             <Text style={styles.note} numberOfLines={1}>
               {item.note}
@@ -479,83 +568,107 @@ export const GroceryRow = React.memo(function GroceryRow({
           {!!alternatives && !choicePosition && (
             <Text style={styles.alternatives} numberOfLines={1}>{alternatives}</Text>
           )}
+          {/* The trip price once there's one to show, or while it's being
+              typed: its own line under the name rather than beside it (#2946).
+              Present only while a trip is running (see onSetTripPrice) and
+              not while selecting. Two of the chip's three states, same shape
+              as the inline rename above: recorded (a pill, tap to correct it)
+              and mid-edit (a TextInput swapped in for it). The idle state is
+              the icon at the end of the row, below, since a line per row for
+              an empty price would make every row taller for the whole trip.
+              The recorded pill is the one state worth a word: it's the only
+              thing on the row a trip asked the user to do. */}
+          {tripPriceShown && (pricingActive || priceRecorded) && (
+            <View style={styles.tripPriceLine}>
+              {pricingActive ? (
+                <View style={styles.priceField}>
+                  <Text style={styles.priceSymbol}>{currencySymbol}</Text>
+                  <TextInput
+                    style={styles.priceInput}
+                    value={draftPrice}
+                    onChangeText={text => setDraftPrice(formatPriceInput(text))}
+                    onBlur={commitPrice}
+                    onSubmitEditing={commitPrice}
+                    autoFocus
+                    keyboardType="number-pad"
+                    returnKeyType="done"
+                    inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
+                    // Names the field rather than showing a formatted number.
+                    // Placeholder text is textTertiary, the same grey a hint uses,
+                    // so "0.00" sitting in a price box reads as a price already
+                    // saved rather than as an empty field.
+                    placeholder="Price"
+                    placeholderTextColor={colors.textTertiary}
+                    maxLength={PRICE_INPUT_MAX_LENGTH}
+                    accessibilityLabel={`Price for ${item.name}`}
+                  />
+                  {/* Mounted by the row rather than by the grocery screen, because
+                      the field it belongs to is the row's own: pricingActive is
+                      this row's transient mid-edit flag, and only one row is ever
+                      in it (committing on blur is what ends the last one). The
+                      screen would have to be told which row is editing to do the
+                      same job. Several mounted copies are safe anyway — see
+                      NumberPadAccessory. */}
+                  <NumberPadAccessory />
+                </View>
+              ) : (
+                <TouchableOpacity
+                  onPress={startPricing}
+                  hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Price ${formatPrice(tripPriceMinor!, currencySymbol)}. Double tap to change it.`}
+                >
+                  <View style={styles.pricedPill}>
+                    <Text style={styles.pricedPillText} numberOfLines={1}>
+                      {formatPrice(tripPriceMinor!, currencySymbol)}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
         </View>
 
-        {!!shownQuantity && (
+        {quantityBesideName && (
           <View style={[styles.qtyPill, item.checked && styles.qtyPillChecked]}>
-            {/* Two lines, capped by width rather than by lines: a quantity
-                carrying a recipe's prep instructions ("cut into ¼-inch-thick
-                rounds") is long enough that a wide, single-line pill starves
-                the name beside it down to a sliver. Same treatment
-                RecipeToListSheet's own quantity pill uses for the same
-                reason. */}
+            {/* Short quantities beside names that leave room for them only
+                now: a long one (a recipe's prep instructions, "cut into
+                ¼-inch-thick rounds"), or one beside a long name, goes on its
+                own line under the name instead, see `qtyPillUnder` (#2946). What
+                stays here fits one line of the capped pill, so the two lines
+                are a backstop for unusually wide glyphs rather than the
+                layout. */}
             <Text style={[styles.qtyText, item.checked && styles.qtyTextChecked]} numberOfLines={2}>
               {shownQuantity}
             </Text>
           </View>
         )}
 
-        {/* Present only while a trip is running and this row is checked — see
-            onSetTripPrice's doc comment. Hidden while selecting, same as the
-            trailing icons below: a tap here has to select the row, not open
-            an edit. Three states, same shape as the inline rename above:
-            nothing recorded yet (an InlineAction, "add a thing" to this row),
-            recorded (a plain pill, tap to correct it), and mid-edit (a
-            TextInput swapped in for either). */}
-        {!!onSetTripPrice && !selectionMode && (
-          pricingActive ? (
-            <View style={styles.priceField}>
-              <Text style={styles.priceSymbol}>{currencySymbol}</Text>
-              <TextInput
-                style={styles.priceInput}
-                value={draftPrice}
-                onChangeText={text => setDraftPrice(formatPriceInput(text))}
-                onBlur={commitPrice}
-                onSubmitEditing={commitPrice}
-                autoFocus
-                keyboardType="number-pad"
-                returnKeyType="done"
-                inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
-                // Names the field rather than showing a formatted number.
-                // Placeholder text is textTertiary, the same grey a hint uses,
-                // so "0.00" sitting in a price box reads as a price already
-                // saved rather than as an empty field.
-                placeholder="Price"
-                placeholderTextColor={colors.textTertiary}
-                maxLength={PRICE_INPUT_MAX_LENGTH}
-                accessibilityLabel={`Price for ${item.name}`}
-              />
-              {/* Mounted by the row rather than by the grocery screen, because
-                  the field it belongs to is the row's own: pricingActive is
-                  this row's transient mid-edit flag, and only one row is ever
-                  in it (committing on blur is what ends the last one). The
-                  screen would have to be told which row is editing to do the
-                  same job. Several mounted copies are safe anyway — see
-                  NumberPadAccessory. */}
-              <NumberPadAccessory />
-            </View>
-          ) : tripPriceRecorded && tripPriceMinor != null ? (
-            <TouchableOpacity
-              onPress={startPricing}
-              hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
-              accessibilityRole="button"
-              accessibilityLabel={`Price ${formatPrice(tripPriceMinor, currencySymbol)}. Double tap to change it.`}
-            >
-              <View style={styles.pricedPill}>
-                <Text style={styles.pricedPillText} numberOfLines={1}>
-                  {formatPrice(tripPriceMinor, currencySymbol)}
-                </Text>
-              </View>
-            </TouchableOpacity>
-          ) : (
-            <InlineAction
-              icon="pricetag-outline"
-              label="Price"
-              variant="neutral"
-              onPress={startPricing}
-              accessibilityLabel={`Add a price for ${item.name}`}
-            />
-          )
+        {/* The trip price's idle state, and the only one left beside the name:
+            a bare icon on a fixed, narrow box, the short fixed kind of thing
+            that may share a row with a name. Its recorded pill and the field
+            that edits it live on their own line under the name (see
+            `tripPriceLine` above), because a price is a label that grows, and
+            beside a long quantity it left the name 40pt of a 390pt row
+            (#2946). Hidden while selecting, same as the trailing icons below:
+            a tap here has to select the row, not open an edit.
+
+            The bare icon is deliberately not an InlineAction. It sits on
+            every row while a trip is live, not just the ones already in the
+            cart, so a labeled pill beside every item would be the row-level
+            noise this was built to avoid. */}
+        {tripPriceShown && !pricingActive && !priceRecorded && (
+          <TouchableOpacity
+            style={styles.priceIconButton}
+            onPress={startPricing}
+            // Out to a 40x44 target around the narrow box, a little less on
+            // the right where the swap icon's own slop begins.
+            hitSlop={{ top: 6, bottom: 6, left: 12, right: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel={`Add a price for ${item.name}`}
+          >
+            <Ionicons name="pricetag-outline" size={iconSize.md} color={colors.textTertiary} />
+          </TouchableOpacity>
         )}
       </TouchableOpacity>
 
@@ -591,11 +704,19 @@ export const GroceryRow = React.memo(function GroceryRow({
           <Ionicons name="ellipsis-horizontal" size={iconSize.sm} color={colors.textTertiary} />
         </TouchableOpacity>
       )}
+
+      {/* In the slot the swap and ellipsis icons give up while selecting, so
+          nothing moves aside for it. On every row, picked or not: the empty
+          rings are what say selection is on before anything is picked. */}
+      {selectionMode && (
+        <SelectionDot selected={selected} onPress={() => onSelect?.(item.id)} />
+      )}
     </View>
   );
 
   return (
     <View
+      ref={paintRowRef}
       style={[
         styles.itemWrapper,
         item.checked && styles.itemWrapperChecked,
@@ -710,6 +831,9 @@ function makeStyles(colors: Colors) {
       borderRadius: radius.full,
       overflow: 'hidden',
     },
+    // groceryRowNameSpace (groceryRowQuantity.ts) counts this padding and gap,
+    // the card's margin, the checkbox and the icons beside the tap zone, to
+    // work out what the name has left. Change one and change it there too.
     row: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -747,10 +871,6 @@ function makeStyles(colors: Colors) {
       backgroundColor: colors.green,
       borderColor: colors.green,
       opacity: 0.7,
-    },
-    checkboxSelected: {
-      backgroundColor: colors.accentFill,
-      borderColor: colors.accent,
     },
     tapZone: {
       flex: 1,
@@ -850,6 +970,26 @@ function makeStyles(colors: Colors) {
     qtyPillChecked: {
       backgroundColor: 'transparent',
     },
+    // A quantity's own line under the name (#2946), for one too long for the
+    // side pill or beside a name too long to share the row: qtyPill above,
+    // sized to its text and left-aligned under the name, and as wide as the
+    // text column rather than the side pill's 90pt. A step below the line
+    // above it, the same gap the trip price line takes.
+    qtyPillUnder: {
+      alignSelf: 'flex-start',
+      maxWidth: '100%',
+      marginTop: spacing.xs,
+    },
+    // In the cart the pill loses its fill (qtyPillChecked), and with no fill
+    // its padding would leave the text indented from the name above it.
+    qtyPillUnderChecked: {
+      paddingHorizontal: 0,
+    },
+    // Left, where the side pill centres its two lines: under the name the
+    // text lines up with the name's own left edge.
+    qtyTextUnder: {
+      textAlign: 'left',
+    },
     // Centred for the two-line case: the pill takes the width of its longest
     // line, so this only moves the shorter one and is a no-op on the
     // single-line pills, which size to their own text.
@@ -872,6 +1012,9 @@ function makeStyles(colors: Colors) {
       borderRadius: radius.sm,
       paddingHorizontal: spacing.sm,
       paddingVertical: 3,
+      // The quantity pill's own cap. On its own line now, so this is a
+      // backstop for a long currency symbol rather than what saves the name.
+      maxWidth: 90,
     },
     pricedPillText: {
       fontSize: font.sm,
@@ -903,6 +1046,25 @@ function makeStyles(colors: Colors) {
       padding: 0,
       height: font.sm + 6,
       minWidth: 44,
+    },
+    // The idle state, before anything is typed — bare, no fill and no label,
+    // since this now sits on every unchecked row for the duration of a trip
+    // rather than only the ones already checked off. A pill here would be
+    // exactly the per-row noise a trip-wide affordance has to avoid.
+    //
+    // The box is the glyph's own width, not a 32pt square: every point of it
+    // comes out of the name beside it, and hitSlop gives the touch back.
+    priceIconButton: {
+      width: iconSize.md,
+      height: 32,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    // The line under the name that holds a recorded trip price or its field.
+    // Left-aligned with the name, a step below the captions above it.
+    tripPriceLine: {
+      flexDirection: 'row',
+      marginTop: spacing.xs,
     },
   });
 }

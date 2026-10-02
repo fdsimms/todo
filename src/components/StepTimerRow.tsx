@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { Alert, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { StepTimer } from '../types';
 import { ProgressBar } from './ProgressBar';
@@ -9,6 +9,7 @@ import {
   formatStepTimerClock,
   isStepTimerReady,
   isStepTimerRunning,
+  stepTimerCancelPrompt,
   stepTimerProgress,
   stepTimerRemaining,
 } from '../utils/stepTimers';
@@ -49,6 +50,18 @@ interface Props {
  *
  * A rung timer turns orange and says so rather than jumping to the top of the
  * stack: see `sortStepTimers` for why moving it would be the wrong kindness.
+ *
+ * **Sized for a knuckle, not a fingertip** (#2920), and `RecipeTimerRow` has
+ * since taken the same sizes, so the rows in one card still match. These rows are
+ * reached for mid-cook with the hands full, often two or three at once, so:
+ * every control is at least 44pt with no `hitSlop` reaching into its
+ * neighbour's; Cancel sits a wider gap away from Pause and asks first while
+ * there is time left to lose (`stepTimerCancelPrompt`); the countdown is
+ * `font.lg`; and a full-width line under the controls names the step by its
+ * own words (`stepExcerpt`) ahead of "Step 5 of 12", so two rows say which
+ * pan is which.
+ * Pause and Resume are glyphs rather than words to make that room, with the
+ * state spelled out after the clock ("12:30 paused").
  */
 export function StepTimerRow({ timer, now, hideRecipeName, onToggle, onAddTime, onRestart, onRemove }: Props) {
   const colors = useColors();
@@ -58,87 +71,110 @@ export function StepTimerRow({ timer, now, hideRecipeName, onToggle, onAddTime, 
   const ready = isStepTimerReady(timer, now);
   const remaining = stepTimerRemaining(timer, now);
 
-  const clock = ready
-    ? `Time's up · ${formatStepTimerClock(-remaining)} over`
-    : running
-      ? `${formatStepTimerClock(remaining)} left`
-      : `Paused · ${formatStepTimerClock(remaining)} left`;
+  // The number big, the state small after it: "12:30 left", "12:30 paused",
+  // "0:45 over" (the last in orange, with "Time's up" leading the line below).
+  const clock = formatStepTimerClock(ready ? -remaining : remaining);
+  const state = ready ? 'over' : running ? 'left' : 'paused';
 
-  const context = [hideRecipeName ? '' : timer.recipeName, timer.stepLabel].filter(Boolean).join(' · ');
+  const context = [hideRecipeName ? '' : timer.recipeName, timer.stepExcerpt, timer.stepLabel]
+    .filter(Boolean)
+    .join(' · ');
+  const name = timer.stepLabel || 'step';
+
+  // Asks while there's time left to lose; a rung timer is only being dismissed.
+  const handleRemove = () => {
+    const prompt = stepTimerCancelPrompt(timer, Date.now());
+    if (!prompt) { onRemove(); return; }
+    Alert.alert(prompt.title, prompt.message, [
+      { text: 'Keep it', style: 'cancel' },
+      { text: 'Cancel timer', style: 'destructive', onPress: onRemove },
+    ]);
+  };
 
   return (
     <View style={styles.row}>
       <View style={styles.headerLine}>
         <Ionicons
           name={ready ? 'alarm' : 'timer-outline'}
-          size={16}
+          size={18}
           color={ready ? colors.orange : colors.accent}
         />
-        <View style={styles.labels}>
-          <Text style={[styles.clock, ready && styles.clockReady]} numberOfLines={1}>{clock}</Text>
-          {!!context && <Text style={styles.context} numberOfLines={1}>{context}</Text>}
-        </View>
+        <Text
+          style={styles.labels}
+          numberOfLines={1}
+          accessibilityLabel={ready ? `Time's up, ${clock} over` : `${clock} ${state}`}
+        >
+          <Text style={[styles.clock, ready && styles.clockReady]}>{clock}</Text>
+          <Text style={[styles.clockState, ready && styles.clockStateReady]}> {state}</Text>
+        </Text>
 
         <TouchableOpacity
           onPress={onAddTime}
-          hitSlop={8}
           style={styles.secondaryBtn}
+          activeOpacity={interaction.activeOpacity}
           accessibilityRole="button"
-          accessibilityLabel={`Add a minute to the ${timer.stepLabel || 'step'} timer`}
+          accessibilityLabel={`Add a minute to the ${name} timer`}
         >
           <Text style={styles.secondaryBtnText}>+1m</Text>
         </TouchableOpacity>
 
         {ready ? (
-          <>
-            <TouchableOpacity
-              style={styles.primaryBtn}
-              activeOpacity={interaction.activeOpacity}
-              onPress={onRestart}
-              accessibilityRole="button"
-              accessibilityLabel={`Start the ${timer.stepLabel || 'step'} timer again`}
-            >
-              <Ionicons name="refresh" size={12} color={colors.onAccent} />
-              <Text style={styles.primaryBtnText}>Again</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={onRemove}
-              hitSlop={8}
-              style={styles.secondaryBtn}
-              accessibilityRole="button"
-              accessibilityLabel={`Dismiss the ${timer.stepLabel || 'step'} timer`}
-            >
-              <Ionicons name="checkmark" size={iconSize.sm} color={colors.textSecondary} />
-            </TouchableOpacity>
-          </>
+          <TouchableOpacity
+            style={[styles.primaryBtn, styles.primaryBtnWide]}
+            activeOpacity={interaction.activeOpacity}
+            onPress={onRestart}
+            accessibilityRole="button"
+            accessibilityLabel={`Start the ${name} timer again`}
+          >
+            <Ionicons name="refresh" size={14} color={colors.onAccent} />
+            <Text style={styles.primaryBtnText}>Again</Text>
+          </TouchableOpacity>
         ) : (
-          <>
-            <TouchableOpacity
-              style={[styles.primaryBtn, running && styles.primaryBtnRunning]}
-              activeOpacity={interaction.activeOpacity}
-              onPress={onToggle}
-              accessibilityRole="button"
-              accessibilityLabel={`${running ? 'Pause' : 'Resume'} the ${timer.stepLabel || 'step'} timer`}
-            >
-              <Ionicons name={running ? 'pause' : 'play'} size={12} color={colors.onAccent} />
-              <Text style={styles.primaryBtnText}>{running ? 'Pause' : 'Resume'}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={onRemove}
-              hitSlop={8}
-              style={styles.secondaryBtn}
-              accessibilityRole="button"
-              accessibilityLabel={`Cancel the ${timer.stepLabel || 'step'} timer`}
-            >
-              <Ionicons name="close" size={iconSize.sm} color={colors.textTertiary} />
-            </TouchableOpacity>
-          </>
+          <TouchableOpacity
+            style={[styles.primaryBtn, running && styles.primaryBtnRunning]}
+            activeOpacity={interaction.activeOpacity}
+            onPress={onToggle}
+            accessibilityRole="button"
+            accessibilityLabel={`${running ? 'Pause' : 'Resume'} the ${name} timer`}
+          >
+            <Ionicons name={running ? 'pause' : 'play'} size={iconSize.sm} color={colors.onAccent} />
+          </TouchableOpacity>
         )}
+
+        {/* Set a wider gap apart from the button beside it (`removeBtn`),
+            and no hitSlop on either: the two used to sit 8pt apart with
+            overlapping hit areas, so a knuckle meant for Pause could land on
+            Cancel. */}
+        <TouchableOpacity
+          onPress={ready ? onRemove : handleRemove}
+          style={[styles.secondaryBtn, styles.removeBtn]}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole="button"
+          accessibilityLabel={ready ? `Dismiss the ${name} timer` : `Cancel the ${name} timer`}
+        >
+          <Ionicons
+            name={ready ? 'checkmark' : 'close'}
+            size={iconSize.sm}
+            color={ready ? colors.textSecondary : colors.textTertiary}
+          />
+        </TouchableOpacity>
       </View>
+      {/* Its own full-width line rather than squeezed under the clock beside
+          three 44pt controls, where the excerpt came out as "Simmer the r…":
+          the words are what say which pan this is, so they get the row. */}
+      {(ready || !!context) && (
+        <Text style={styles.context} numberOfLines={1}>
+          {ready && <Text style={styles.contextReady}>Time's up{context ? ' · ' : ''}</Text>}
+          {context}
+        </Text>
+      )}
       <ProgressBar progress={stepTimerProgress(timer, now)} height={4} />
     </View>
   );
 }
+
+/** Every control on the row is at least this tall and wide: the 44pt touch target. */
+const TOUCH = 44;
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   row: {
@@ -155,47 +191,66 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   clock: {
     color: colors.text,
-    fontSize: font.sm,
-    fontWeight: fontWeight.medium,
+    fontSize: font.lg,
+    fontWeight: fontWeight.semibold,
     fontVariant: ['tabular-nums'],
   },
   clockReady: {
     color: colors.orange,
-    fontWeight: fontWeight.semibold,
+  },
+  clockState: {
+    color: colors.textSecondary,
+    fontSize: font.sm,
+    fontWeight: fontWeight.medium,
+  },
+  clockStateReady: {
+    color: colors.orange,
   },
   context: {
-    color: colors.textTertiary,
-    fontSize: font.xs,
+    color: colors.textSecondary,
+    fontSize: font.sm,
+  },
+  contextReady: {
+    color: colors.orange,
+    fontWeight: fontWeight.semibold,
   },
   primaryBtn: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: spacing.xsm,
     backgroundColor: colors.accentFill,
-    borderRadius: radius.sm,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xsm,
+    borderRadius: radius.md,
+    minWidth: TOUCH,
+    height: TOUCH,
+  },
+  primaryBtnWide: {
+    paddingHorizontal: spacing.smd,
   },
   primaryBtnRunning: {
     backgroundColor: colors.orange,
   },
   primaryBtnText: {
     color: colors.onAccent,
-    fontSize: font.xs,
+    fontSize: font.sm,
     fontWeight: fontWeight.semibold,
   },
   secondaryBtn: {
-    minWidth: 28,
-    height: 28,
-    paddingHorizontal: spacing.xsm,
+    minWidth: TOUCH,
+    height: TOUCH,
+    paddingHorizontal: spacing.xs,
     borderRadius: radius.full,
     backgroundColor: colors.bgTertiary,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // With the row's own gap, 16pt clear of the button beside it.
+  removeBtn: {
+    marginLeft: spacing.sm,
+  },
   secondaryBtnText: {
     color: colors.textSecondary,
-    fontSize: font.xs,
+    fontSize: font.sm,
     fontWeight: fontWeight.semibold,
     fontVariant: ['tabular-nums'],
   },

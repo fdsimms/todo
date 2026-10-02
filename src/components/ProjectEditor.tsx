@@ -8,10 +8,17 @@ import {
   Alert,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import type { Project } from '../types';
+import type { Project, ProjectLink } from '../types';
+import { usePersonStore, displayNameOf } from '../store/usePersonStore';
+import { parseLabelledLink, linkHost } from '../utils/textLinks';
+import { generateId } from '../utils/id';
 import { TITLE_MAX_LENGTH } from '../types';
 import { useProjectStore } from '../store/useProjectStore';
 import { useTaskStore } from '../store/useTaskStore';
+import { useTemplateStore } from '../store/useTemplateStore';
+import { useTaskGroupStore } from '../store/useTaskGroupStore';
+import { templateFromProject } from '../utils/projectTemplate';
+import { useNavigation } from '@react-navigation/native';
 import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
 import { WhenPicker } from './WhenPicker';
@@ -21,7 +28,6 @@ import { PillGroup, type PillGroupOption } from './PillGroup';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { categoryLabel } from '../utils/categoryLabel';
 import { useGroceryStore } from '../store/useGroceryStore';
-import { InlineAction } from './InlineAction';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
 import { EditorRow } from './EditorRow';
@@ -34,7 +40,10 @@ import { CountStepper } from './CountStepper';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
-import { formatDeadlineDate } from '../utils/dateUtils';
+import { dayKeyOf, dayKeyToDate, formatDeadlineDate } from '../utils/dateUtils';
+import { addDays } from 'date-fns/addDays';
+import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
+import { buildAwayShiftPlan } from '../utils/awayShift';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import {
@@ -68,7 +77,7 @@ const NUDGE_MODE_OPTIONS: SegmentOption<NudgeMode>[] = NUDGE_MODES.map(mode => (
 const NUDGE_MODE_HINT: Record<NudgeMode, string> = {
   never: 'Stays out of "Pull from projects" and never writes a review task. For a list you keep rather than work through, like gift ideas.',
   'on-ask': 'Shows up in "Pull from projects" when you open it, and never brings itself up.',
-  scheduled: 'Adds a review task once it has gone this long with nothing scheduled.',
+  scheduled: "Adds a review task once nothing in it is scheduled and nothing's been finished in it for this long.",
 };
 
 interface Props {
@@ -76,7 +85,12 @@ interface Props {
   project: Project | null;
   /** Titles the sheet "New project" — set when arriving from quick add's "More details". */
   isNew?: boolean;
-  onClose: () => void;
+  /**
+   * `discarded` is passed when the person backed out of a project created for
+   * this sheet (isNew). The row already exists, so the host deletes it; a
+   * plain close keeps whatever was saved.
+   */
+  onClose: (outcome?: 'discarded') => void;
 }
 
 export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
@@ -89,7 +103,9 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
   const completeProject = useTaskStore(s => s.completeProject);
   const uncompleteProject = useTaskStore(s => s.uncompleteProject);
   const deleteProject = useTaskStore(s => s.deleteProject);
-  const allTasks = useTaskStore(s => s.tasks);
+  const startFreshFromProject = useTaskStore(s => s.startFreshFromProject);
+  const addTemplateFromProject = useTemplateStore(s => s.addTemplateFromProject);
+  const navigation = useNavigation();
   // `project` is a snapshot handed down when the sheet was opened, so it never
   // sees its own archived flag flip back — read that one field live instead,
   // or unarchiving here leaves the toggle showing "archived" until the sheet
@@ -126,11 +142,21 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
   const addGroceryList = useGroceryStore(s => s.addList);
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
   const simpleMode = useSettingsStore(s => s.simpleMode);
+  const weekendNudgeOn = useSettingsStore(s => s.weekendNudgeTasks && !!s.weekendNudgeTaskCategory);
+  const forecastOn = useSettingsStore(s => s.destinationForecastEnabled);
+  const setForecastOn = useSettingsStore(s => s.setDestinationForecastEnabled);
+  // What "Pause tasks while away" would actually hide: only what's already
+  // marked to pause on vacation. Counted so the hint can say when that's
+  // nothing, which turned vacation mode on to hide nothing at all.
+  const pausedTaskCount = useTaskStore(s => s.tasks.filter(t => t.vacationPause && !t.completed && !t.archived && t.parentId === null).length);
+  const pausedCategoryCount = useCategoryStore(s => s.categories.filter(c => c.hideOnVacation).length);
   // Rule 2 of simplified mode: a project that already has a trip keeps its
   // rows, whatever the switch says.
-  const awayFieldShown = featureShown('awayDates', simpleMode, awayStart !== null);
-  const [addingCategory, setAddingCategory] = useState(false);
-  const [newCategory, setNewCategory] = useState('');
+  // A list is lines to tick off, so the fields about dates and being chased
+  // step aside for it. Only while unused: a list that was given a deadline or
+  // a nudge before it became one keeps the row that can take it off again.
+  const isList = project?.kind === 'list';
+  const awayFieldShown = featureShown('awayDates', simpleMode, awayStart !== null) && (!isList || awayStart !== null);
   // Collapsed to the chosen category until tapped, like every other editor.
   const [categoryOpen, setCategoryOpen] = useState(false);
   // The merged nudge control: one chosen answer, plus the cadence the third of
@@ -142,6 +168,28 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
   const [autoSchedule, setAutoSchedule] = useState(false);
   const [ongoing, setOngoing] = useState(false);
   const [weekendSource, setWeekendSource] = useState(false);
+  // Project.pausedUntil, held as the day it comes back.
+  const [pausedUntil, setPausedUntil] = useState<Date | null>(null);
+  const [pickingPause, setPickingPause] = useState(false);
+  const [personIds, setPersonIds] = useState<string[]>([]);
+  const [peopleOpen, setPeopleOpen] = useState(false);
+  const [links, setLinks] = useState<ProjectLink[]>([]);
+  const [linkDraft, setLinkDraft] = useState('');
+  const [linkError, setLinkError] = useState<string | null>(null);
+  const [inOrder, setInOrder] = useState(false);
+  const [showChecked, setShowChecked] = useState(false);
+  const people = usePersonStore(useShallow(s => s.people.filter(p => !p.archived)));
+
+  // Returns the typed link to the list, or says why it can't.
+  const addLinkDraft = () => {
+    if (!linkDraft.trim()) return;
+    const parsed = parseLabelledLink(linkDraft);
+    if (!parsed) { setLinkError("That doesn't look like a link. Paste one that starts with https://."); return; }
+    haptics.tap();
+    setLinks(ls => [...ls, { id: generateId(), ...parsed }]);
+    setLinkDraft('');
+    setLinkError(null);
+  };
   const [cadenceOpen, setCadenceOpen] = useState(false);
 
   const awayListName = awayListId
@@ -193,6 +241,15 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
     setAutoSchedule(project.autoSchedule);
     setOngoing(project.ongoing);
     setWeekendSource(project.weekendSource);
+    setPausedUntil(project.pausedUntil ? dayKeyToDate(project.pausedUntil) : null);
+    setPickingPause(false);
+    setPersonIds(project.personIds ?? []);
+    setPeopleOpen(false);
+    setLinks(project.links ?? []);
+    setLinkDraft('');
+    setLinkError(null);
+    setInOrder(project.inOrder ?? false);
+    setShowChecked(project.showChecked ?? false);
     setCategoryOpen(false);
     setCadenceOpen(false);
   }, [project]);
@@ -202,17 +259,9 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
   // The cadence is stored in days; the picker shows it as a count and a unit.
   const cadence = toCadenceParts(nudgeCadenceDays);
 
-  // Done can fire before the new-category field's own blur or Enter has
-  // committed it — same race TaskEditor's resolveLinkUrl guards against.
-  // Read the live text box instead of trusting stale `category` state.
-  const resolveCategory = () => {
-    const c = newCategory.trim();
-    if (addingCategory && c) {
-      addCategory(c);
-      return c;
-    }
-    return category;
-  };
+  // A new category is created and picked as soon as it's submitted in the
+  // pill grid, so there's no half-typed name to resolve at save time.
+  const resolveCategory = () => category;
 
   /**
    * The departure this sheet opened on, and where it has just been moved to.
@@ -227,8 +276,18 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
   const [shiftFrom, setShiftFrom] = useState<Date | null>(null);
   const [shiftTo, setShiftTo] = useState<Date | null>(null);
 
-  const saveAndClose = () => {
-    if (!project) { onClose(); return; }
+  /**
+   * Writes everything on the sheet. Split from the close because Mark complete
+   * and Archive also end the session, and they used to close without it: every
+   * edit made alongside was dropped, and a project fresh from quick add's "More
+   * details" still had its blank stored title, so ProjectsScreen's
+   * handleEditorClose read it as never named and deleted the row outright.
+   *
+   * Answers whether the trip's departure moved, which only the Done path acts
+   * on (a trip being completed or filed away has nothing left to prepare).
+   */
+  const commitEdits = (): { from: Date; to: Date } | null => {
+    if (!project) return null;
     const trimmed = title.trim();
     // Did the departure move? Only the start is compared: a trip that got
     // longer at the far end has not moved anything scheduled against its
@@ -283,23 +342,137 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
       autoSchedule: nudgeMode === 'scheduled' && autoSchedule,
       ongoing,
       weekendSource,
+      pausedUntil: pausedUntil ? dayKeyOf(pausedUntil) : null,
+      // A person archived since keeps their place: the page reads through
+      // the people store and simply doesn't draw them.
+      personIds,
+      // A link still sitting in the field counts too, the way a typed line
+      // does on Done anywhere else.
+      links: (() => {
+        const pending = linkDraft.trim() ? parseLabelledLink(linkDraft) : null;
+        return pending ? [...links, { id: generateId(), ...pending }] : links;
+      })(),
+      inOrder,
+      showChecked,
     });
+    if (departureMoved && priorStart && nextStart) return { from: priorStart, to: nextStart };
+    // The same offer when the deadline moves: a party pushed back a week takes
+    // its "a week before" tasks with it. The departure wins when both moved,
+    // since a trip's prep is counted from the day you leave.
+    const priorDeadline = project.deadline ? new Date(project.deadline) : null;
+    if (priorDeadline && deadline && dayKeyOf(priorDeadline) !== dayKeyOf(deadline)) {
+      return { from: priorDeadline, to: deadline };
+    }
+    return null;
+  };
+
+  const saveAndClose = (skipLinkCheck = false) => {
+    // A new project can't be saved without a name. It used to close anyway,
+    // and the host then deleted the unnamed row along with the deadline,
+    // notes and settings entered for it, without a word.
+    if (isNew && !title.trim()) {
+      Alert.alert(
+        'Name this project',
+        'A new project needs a name before it can be saved.',
+        [
+          { text: 'Keep editing', style: 'cancel' },
+          { text: 'Discard project', style: 'destructive', onPress: () => onClose('discarded') },
+        ],
+      );
+      return;
+    }
+    // A link left in the field is saved with the rest, so one that can't be
+    // read was dropped without a word. Say so instead.
+    if (!skipLinkCheck && linkDraft.trim() && !parseLabelledLink(linkDraft)) {
+      Alert.alert(
+        "That link can't be read",
+        'A link starts with https://, or is a site name like example.com.',
+        [
+          { text: 'Keep editing', style: 'cancel' },
+          { text: 'Save without it', onPress: () => saveAndClose(true) },
+        ],
+      );
+      return;
+    }
+    const moved = commitEdits();
     // The trip moved, so offer to bring its prepared work with it (see
     // utils/awayShift). Deliberately an offer rather than a shift: "Renew
     // passport" is anchored to the trip and "Buy a suitcase" is not, and only
     // the person who typed them knows which. The sheet closes this one.
-    if (departureMoved && priorStart && nextStart) {
-      setShiftFrom(priorStart);
-      setShiftTo(nextStart);
+    // Only when something would move: with no dated task the sheet opened
+    // anyway, over "0 tasks" and a disabled button.
+    if (moved && buildAwayShiftPlan(projectTasks, moved.from, moved.to, useSettingsStore.getState().dayResetTime).proposals.length > 0) {
+      setShiftFrom(moved.from);
+      setShiftTo(moved.to);
       return;
     }
     onClose();
   };
 
+  // The name as it reads on screen right now, for the confirms below: the
+  // snapshot's title is blank for a project fresh from quick add, and stale
+  // for one renamed in this session.
+  const displayTitle = () => title.trim() || project?.title || 'this project';
+
+  /**
+   * Whether anything on the sheet differs from what the project holds. Read
+   * against the stored project rather than a snapshot, since nothing else
+   * writes these fields while the sheet is open.
+   */
+  const isDirty = (): boolean => {
+    if (!project) return false;
+    const iso = (d: Date | null) => (d ? d.toISOString() : null);
+    const nudge = nudgeFieldsFor(nudgeMode, nudgeCadenceDays);
+    return (
+      title.trim() !== project.title ||
+      notes !== project.notes ||
+      category !== project.category ||
+      defaultTaskCategory !== project.defaultTaskCategory ||
+      iso(deadline) !== (project.deadline ? new Date(project.deadline).toISOString() : null) ||
+      (awayStart ? awayNoonIso(awayStart) : null) !== project.awayStart ||
+      (awayStart && awayEnd ? awayNoonIso(awayEnd) : null) !== project.awayEnd ||
+      (awayStart !== null && awayPauses) !== project.awayPauses ||
+      (awayStart !== null ? awayListId : null) !== project.awayListId ||
+      (awayStart !== null && destination.trim() ? destination.trim() : null) !== project.destination ||
+      nudge.nudgeOptIn !== project.nudgeOptIn ||
+      nudge.nudgeCadenceDays !== project.nudgeCadenceDays ||
+      (nudgeMode === 'scheduled' && autoSchedule) !== project.autoSchedule ||
+      ongoing !== project.ongoing ||
+      weekendSource !== project.weekendSource ||
+      (pausedUntil ? dayKeyOf(pausedUntil) : null) !== project.pausedUntil ||
+      personIds.join() !== (project.personIds ?? []).join() ||
+      JSON.stringify(links) !== JSON.stringify(project.links ?? []) ||
+      linkDraft.trim() !== '' ||
+      inOrder !== (project.inOrder ?? false) ||
+      showChecked !== (project.showChecked ?? false)
+    );
+  };
+
+  // Same confirm, in the same words, as TaskEditor's own Cancel.
+  //
+  // On a project created for this sheet, Cancel means "don't create it": the
+  // row already exists (quick add's "More details" makes it up front), so the
+  // host is told to delete it. Only asked about when something was entered
+  // beyond the name quick add passed in.
+  const handleCancel = () => {
+    const leave = () => onClose(isNew ? 'discarded' : undefined);
+    if (!isDirty()) { leave(); return; }
+    Alert.alert(
+      isNew ? 'Discard this project?' : 'Discard changes?',
+      isNew
+        ? "It hasn't been saved yet. Are you sure you want to discard it?"
+        : 'You have unsaved changes. Are you sure you want to discard them?',
+      [
+        { text: 'Keep editing', style: 'cancel' },
+        { text: 'Discard', style: 'destructive', onPress: leave },
+      ],
+    );
+  };
+
   const handleDelete = () => {
     if (!project) return;
     Alert.alert(
-      `Delete "${project.title}"?`,
+      `Delete "${displayTitle()}"?`,
       'Its tasks can stay in your list without a project, or be deleted with it.',
       [
         { text: 'Cancel', style: 'cancel' },
@@ -315,11 +488,15 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
 
   const handleComplete = () => {
     if (!project) return;
-    const remaining = allTasks.filter(
+    // Read at the moment of asking rather than subscribed to: nothing else on
+    // the sheet needs the task list, and a subscription re-rendered the whole
+    // editor on every task write anywhere in the app.
+    const remaining = useTaskStore.getState().tasks.filter(
       t => t.projectId === project.id && t.parentId === null && !t.completed && !t.archived
     );
     const finish = (archiveRemaining: boolean) => {
       haptics.success();
+      commitEdits();
       completeProject(project.id, { archiveRemaining });
       onClose();
     };
@@ -328,7 +505,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
       return;
     }
     Alert.alert(
-      `Complete "${project.title}"?`,
+      `Complete "${displayTitle()}"?`,
       `It still has ${remaining.length} open ${remaining.length === 1 ? 'task' : 'tasks'}.`,
       [
         { text: 'Cancel', style: 'cancel' },
@@ -338,6 +515,91 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
     );
   };
 
+  const categoryOptions: PillGroupOption[] = [
+    {
+      key: '__none__', label: 'None', pinned: true, selected: !category,
+      onPress: () => { haptics.tap(); setCategory(null); closeCategory(); },
+    },
+    ...[...categories].sort((a, b) => a.sortOrder - b.sortOrder).map(cat => ({
+      key: cat.id,
+      label: cat.name,
+      selected: category === cat.name,
+      onPress: () => { haptics.tap(); setCategory(cat.name); closeCategory(); },
+    })),
+  ];
+  // Creating a taken name picks the existing row, in its stored case.
+  const createCategory = (name: string) => {
+    setCategory(addCategory(name).name);
+    closeCategory();
+  };
+
+  const handleArchive = () => {
+    if (!project) return;
+    haptics.success();
+    commitEdits();
+    archiveProject(project.id);
+    onClose();
+  };
+
+  // Reopening and unarchiving leave the sheet open, since the project is still
+  // the one being edited; only the flag underneath it changed.
+  const handleReopen = () => {
+    if (!project) return;
+    haptics.tap();
+    uncompleteProject(project.id);
+  };
+
+  // Reusing a project, for the next party or the next trip: as a template to
+  // apply whenever, or as a fresh copy straight away. Both save the sheet
+  // first, so what's reused is what's on screen.
+  const handleSaveAsTemplate = () => {
+    if (!project) return;
+    commitEdits();
+    const saved = useProjectStore.getState().getProjectById(project.id) ?? project;
+    const draft = templateFromProject(
+      saved,
+      useTaskStore.getState().tasks,
+      useTaskGroupStore.getState().groups,
+      useSettingsStore.getState().dayResetTime,
+    );
+    addTemplateFromProject(draft);
+    haptics.success();
+    Alert.alert(
+      'Saved as a template',
+      `"${draft.name}" is in Templates with its ${draft.items.length} ${draft.items.length === 1 ? 'task' : 'tasks'}${
+        saved.awayStart ? ', dated from the day you leave' : saved.deadline ? ', dated from the deadline' : ''
+      }. Apply it from any project's add button, or from Templates.`,
+    );
+  };
+
+  const handleStartFresh = () => {
+    if (!project) return;
+    Alert.alert(
+      'Start a fresh copy?',
+      'Makes a new project with the same tasks and sections, all open again and with no dates. This one stays as it is.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Start fresh',
+          onPress: () => {
+            commitEdits();
+            const copy = startFreshFromProject(project.id);
+            if (!copy) return;
+            haptics.success();
+            onClose();
+            (navigation as any).navigate('ProjectDetail', { projectId: copy.id });
+          },
+        },
+      ],
+    );
+  };
+
+  const handleUnarchive = () => {
+    if (!project) return;
+    haptics.tap();
+    unarchiveProject(project.id);
+  };
+
   if (!project) return null;
   const archived = liveArchived ?? project.archived;
   const completed = liveCompleted ?? project.completed;
@@ -345,21 +607,20 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
   return (
     <EditorSheet
       visible={visible}
-      onRequestClose={saveAndClose}
+      onRequestClose={() => saveAndClose()}
       rootStyle={styles.root}
       headerStyle={styles.header}
       scrollStyle={styles.scroll}
       scrollContentStyle={styles.scrollContent}
       header={
+        // Cancel and Done, the pair every other editor sheet has. Done used to
+        // be the only way out, so there was no way to back out of an edit;
+        // Delete moved down to the actions at the bottom to make room.
         <SheetHeader
           bare
           title={isNew ? 'New project' : 'Edit project'}
-          left={<SheetHeaderButton label="Done" onPress={saveAndClose} />}
-          right={
-            <TouchableOpacity onPress={handleDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete project">
-              <Ionicons name="trash-outline" size={20} color={colors.red} />
-            </TouchableOpacity>
-          }
+          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} />}
+          right={<SheetHeaderButton label="Done" onPress={() => saveAndClose()} />}
         />
       }
       footer={
@@ -388,17 +649,25 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
                 // entered on purpose. Backdating is still allowed for both:
                 // recording a trip that has already happened is a real thing
                 // to do, which is why allowPast is left at its default.
-                setAwayEnd(date && awayStart && date > awayStart ? date : null);
+                if (date && awayStart && date <= awayStart) {
+                  // Said rather than silently dropped, which is what this did:
+                  // the picker closed and the row stayed empty with no reason.
+                  Alert.alert('Coming back is before leaving', 'Pick a day after you leave.');
+                  return;
+                }
+                setAwayEnd(date);
               } else {
+                // Moving the departure moves the return with it, keeping the
+                // trip the same length: a flight moved three days later is the
+                // same ten-day trip. Leaving the return where it was quietly
+                // shortened the trip, or cleared the return when the new
+                // departure passed it.
+                if (date && awayStart && awayEnd) {
+                  setAwayEnd(addDays(awayEnd, differenceInCalendarDays(date, awayStart)));
+                }
                 setAwayStart(date);
-                // A return before the new departure stops meaning anything, so
-                // it goes rather than being left to be silently ignored.
-                if (date && awayEnd && awayEnd <= date) setAwayEnd(null);
               }
               setPickingAway(null);
-    setAwayPauses(project.awayPauses);
-    setAwayListId(project.awayListId);
-    setDestination(project.destination ?? '');
             }}
             onClear={() => {
               if (pickingAway === 'end') setAwayEnd(null);
@@ -407,11 +676,20 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
               // would show a value that no longer means anything.
               else { setAwayStart(null); setAwayEnd(null); }
               setPickingAway(null);
-    setAwayPauses(project.awayPauses);
-    setAwayListId(project.awayListId);
-    setDestination(project.destination ?? '');
             }}
             onCancel={() => setPickingAway(null)}
+          />
+          <WhenPicker
+            visible={pickingPause}
+            value={pausedUntil}
+            title="Pause until"
+            showTimeOfDay={false}
+            showSuggest={false}
+            // The day it comes back, so it has to be one still ahead.
+            allowPast={false}
+            onConfirm={(date) => { setPausedUntil(date); setPickingPause(false); }}
+            onClear={() => { setPausedUntil(null); setPickingPause(false); }}
+            onCancel={() => setPickingPause(false)}
           />
           <AwayShiftSheet
             visible={shiftFrom !== null && shiftTo !== null}
@@ -432,6 +710,9 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
         placeholderTextColor={colors.textTertiary}
         multiline
         maxLength={TITLE_MAX_LENGTH}
+        // A project fresh from quick add's "More details" arrives unnamed, and
+        // naming it is the one thing it can't be saved without.
+        autoFocus={isNew && !project.title}
       />
       <TextInput
         style={styles.notesInput}
@@ -442,74 +723,15 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
         multiline
       />
 
-      <View style={styles.sectionCard}>
-        <CollapsibleField
-          label="Category"
-          summary={category ?? undefined}
-          hint="Groups this project with others of the same kind."
-          expanded={categoryOpen}
-          onToggle={() => setCategoryOpen(v => !v)}
-        >
-          <View style={styles.pillRow}>
-            <TouchableOpacity
-              style={[styles.pill, !category && styles.pillActiveNeutral]}
-              onPress={() => { haptics.tap(); setCategory(null); closeCategory(); }}
-            >
-              <Text style={[styles.pillText, !category && styles.pillTextActive]}>None</Text>
-            </TouchableOpacity>
-            {categories.map(cat => (
-              <TouchableOpacity
-                key={cat.id}
-                style={[styles.pill, category === cat.name && styles.pillActiveNeutral]}
-                onPress={() => { haptics.tap(); setCategory(cat.name); closeCategory(); }}
-              >
-                <Text style={[styles.pillText, category === cat.name && styles.pillTextActive]}>{cat.name}</Text>
-              </TouchableOpacity>
-            ))}
-            {addingCategory ? (
-              <TextInput
-                autoFocus
-                style={styles.tagInput}
-                value={newCategory}
-                onChangeText={setNewCategory}
-                onSubmitEditing={() => {
-                  const c = newCategory.trim();
-                  if (c) { addCategory(c); setCategory(c); closeCategory(); }
-                  setNewCategory(''); setAddingCategory(false);
-                }}
-                onBlur={() => {
-                  const c = newCategory.trim();
-                  if (c) { addCategory(c); setCategory(c); closeCategory(); }
-                  setNewCategory(''); setAddingCategory(false);
-                }}
-                placeholder="Category name"
-                placeholderTextColor={colors.textTertiary}
-                returnKeyType="done"
-                autoCapitalize="words"
-              />
-            ) : (
-              <InlineAction icon="add" label="New" accessibilityLabel="New category" onPress={() => setAddingCategory(true)} />
-            )}
-          </View>
-        </CollapsibleField>
-      </View>
-
-      <View style={styles.sectionCard}>
-        <CollapsibleField
-          label="Default task category"
-          summary={defaultTaskCategory ? categoryLabel(defaultTaskCategory, taskCategories) : undefined}
-          hint="A task added straight to this project starts in this category, unless it's given one of its own."
-          expanded={defaultTaskCategoryOpen}
-          onToggle={() => setDefaultTaskCategoryOpen(v => !v)}
-        >
-          <CategoryPickerList
-            value={defaultTaskCategory}
-            onSelect={cat => { setDefaultTaskCategory(cat); setDefaultTaskCategoryOpen(false); }}
-          />
-        </CollapsibleField>
-      </View>
-
-      <View style={[styles.card, { marginTop: spacing.lg }]}>
+      {/* The same card order every other editor follows (Schedule, Organize,
+          then the rarely-changed rows), under the same uppercase labels. This
+          sheet was a column of unlabelled cards in the order each field was
+          added, with the nudge's own switch floating free of the field it
+          belongs to. */}
+      {(!isList || deadline !== null) && (
+      <>
+      <Text style={styles.groupLabel}>Schedule</Text>
+      <View style={styles.card}>
         <EditorRow
           icon="flag-outline"
           label="Deadline"
@@ -521,12 +743,12 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
       {/* Same flag icon and the same word a task's own deadline uses, because
           it is the same idea one container out. It replaced a "Start date" /
           "Target date" pair whose first half had one reader in its life (see
-          Project.deadline) — #1740 had to add a paragraph here denying that
-          either of them scheduled anything, and half of that paragraph went
-          with the field it was denying. */}
+          Project.deadline). */}
       <Text style={styles.sectionFooter}>
-        Optional. Shown on the project's card, with no effect on scheduling or when tasks appear. If it passes before the project's done, nothing happens automatically; it's just flagged so you can decide what to do.
+        Shown on the project's card and flagged once it passes. It doesn't schedule anything.
       </Text>
+      </>
+      )}
 
       {/* The away span. Two rows rather than one range control because the end
           is genuinely optional: a trip you have booked a flight out for and
@@ -542,7 +764,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
           switch would be quietly changing behaviour. */}
       {awayFieldShown && (
       <>
-      <View style={[styles.card, { marginTop: spacing.lg }]}>
+      <View style={[styles.card, styles.stackedCard]}>
         <EditorRow
           icon="airplane-outline"
           label="Leaving"
@@ -573,6 +795,31 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
             />
           </View>
         )}
+        {/* The forecast is an app-wide switch, off by default, and was only
+            mentioned in the footer. Offered right where a place is typed. */}
+        {awayStart && destination.trim().length > 0 && (
+          <TouchableOpacity
+            style={styles.optionRow}
+            onPress={() => { haptics.tap(); setForecastOn(!forecastOn); }}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="switch"
+            accessibilityLabel="Show the forecast for where you're going"
+            accessibilityState={{ checked: forecastOn }}
+          >
+            <Ionicons name="partly-sunny-outline" size={18} color={forecastOn ? colors.accent : colors.textSecondary} />
+            <View style={styles.optionContent}>
+              <Text style={styles.optionLabel}>Show the forecast there</Text>
+              <Text style={styles.optionHint}>
+                {forecastOn
+                  ? "Looks up the place's weather for your trip dates and shows it on the project. Applies to every trip."
+                  : 'Off. Turning it on looks up the place by name, for every trip.'}
+              </Text>
+            </View>
+            <View style={[styles.toggle, forecastOn && styles.toggleOn]}>
+              <View style={[styles.toggleKnob, forecastOn && styles.toggleKnobOn]} />
+            </View>
+          </TouchableOpacity>
+        )}
         {awayStart && (
           <TouchableOpacity
             style={styles.optionRow}
@@ -587,7 +834,12 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
               <Text style={styles.optionLabel}>Pause tasks while away</Text>
               <Text style={styles.optionHint}>
                 {awayPauses
-                  ? "Vacation mode turns on the day you leave and off when you're back. It hides only the tasks and categories you've already set to pause on vacation."
+                  ? pausedTaskCount + pausedCategoryCount === 0
+                    ? "Vacation mode turns on the day you leave and off when you're back. Nothing is set to pause on vacation yet, so it won't hide anything until you set that on a task or category."
+                    : `Vacation mode turns on the day you leave and off when you're back, hiding ${[
+                        pausedTaskCount > 0 ? `${pausedTaskCount} ${pausedTaskCount === 1 ? 'task' : 'tasks'}` : null,
+                        pausedCategoryCount > 0 ? `${pausedCategoryCount} ${pausedCategoryCount === 1 ? 'category' : 'categories'}` : null,
+                      ].filter(Boolean).join(' and ')} set to pause on vacation.`
                   : 'Vacation mode stays however you set it.'}
               </Text>
             </View>
@@ -619,20 +871,128 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
         )}
       </View>
       <Text style={styles.sectionFooter}>
-        Only relevant if this project involves travel, so leave it blank otherwise. The days you're away from home. Look ahead uses them to show what's due while you're gone, and the project's card counts down to the day you leave. The day you come back doesn't count as a day away. Where you're going is optional, and it's only looked up if you turn on the destination forecast in Settings.
+        The days you're away from home, for a trip. Leave these blank otherwise. The day you come back doesn't count as a day away.
       </Text>
       </>
       )}
 
+      <Text style={styles.groupLabel}>Organize</Text>
+      <View style={styles.card}>
+        <CollapsibleField
+          label="Category"
+          summary={category ?? undefined}
+          hint="Groups this project with others of the same kind on the Projects page."
+          expanded={categoryOpen}
+          onToggle={() => setCategoryOpen(v => !v)}
+        >
+          {/* A PillGroup, for the reason the trip's shopping list below is one:
+              the pool is the user's own and has no ceiling. */}
+          <PillGroup options={categoryOptions} noun="category" pluralNoun="categories" onCreate={createCategory} />
+        </CollapsibleField>
+        <View style={styles.sep} />
+        <CollapsibleField
+          label="Default task category"
+          summary={defaultTaskCategory ? categoryLabel(defaultTaskCategory, taskCategories) : undefined}
+          hint="A task added straight to this project starts in this category, unless it's given one of its own."
+          expanded={defaultTaskCategoryOpen}
+          onToggle={() => setDefaultTaskCategoryOpen(v => !v)}
+        >
+          <CategoryPickerList
+            value={defaultTaskCategory}
+            onSelect={cat => { setDefaultTaskCategory(cat); setDefaultTaskCategoryOpen(false); }}
+          />
+        </CollapsibleField>
+        <View style={styles.sep} />
+        <CollapsibleField
+          label="People"
+          summary={personIds.length > 0
+            ? people.filter(p => personIds.includes(p.id)).map(displayNameOf).join(', ') || undefined
+            : undefined}
+          hint="Who this project is with or for. They're shown on the project page. New tasks don't pick them up."
+          expanded={peopleOpen}
+          onToggle={() => setPeopleOpen(v => !v)}
+        >
+          <PillGroup
+            noun="person"
+            pluralNoun="people"
+            options={people.map(p => {
+              const on = personIds.includes(p.id);
+              return {
+                key: p.id,
+                label: displayNameOf(p),
+                selected: on,
+                onPress: () => {
+                  haptics.tap();
+                  setPersonIds(ids => (on ? ids.filter(id => id !== p.id) : [...ids, p.id]));
+                },
+              };
+            })}
+            onCreate={name => {
+              const person = usePersonStore.getState().createPerson(name);
+              setPersonIds(ids => [...ids, person.id]);
+            }}
+          />
+        </CollapsibleField>
+      </View>
+
+      {/* Links kept with the project: the booking, the shared doc, the
+          listing. A line each, tapped open from the project page. */}
+      <Text style={styles.groupLabel}>Links</Text>
+      <View style={styles.card}>
+        {links.map((link, i) => (
+          <React.Fragment key={link.id}>
+            {i > 0 && <View style={styles.sep} />}
+            <View style={styles.linkRow}>
+              <Ionicons name="link-outline" size={18} color={colors.textSecondary} />
+              <View style={styles.optionContent}>
+                <Text style={styles.optionLabel} numberOfLines={1}>{link.label || linkHost(link.url)}</Text>
+                <Text style={styles.optionHint} numberOfLines={1}>{link.url}</Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => { haptics.tap(); setLinks(ls => ls.filter(l => l.id !== link.id)); }}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={`Remove ${link.label || linkHost(link.url)}`}
+              >
+                <Ionicons name="close-circle" size={18} color={colors.textTertiary} />
+              </TouchableOpacity>
+            </View>
+          </React.Fragment>
+        ))}
+        {links.length > 0 && <View style={styles.sep} />}
+        <View style={styles.linkRow}>
+          <Ionicons name="add" size={18} color={colors.textTertiary} />
+          <TextInput
+            style={styles.linkInput}
+            value={linkDraft}
+            onChangeText={setLinkDraft}
+            onSubmitEditing={addLinkDraft}
+            placeholder="Paste a link, with a name before it if you like"
+            placeholderTextColor={colors.textTertiary}
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="done"
+            accessibilityLabel="Add a link"
+          />
+        </View>
+      </View>
+      {linkError && <Text style={styles.sectionFooter}>{linkError}</Text>}
+
       {/* One question, three answers. "Include in nudges" and "Review cadence"
           used to be a switch and a stepper nested inside it, which took two
           controls to say one thing and let them be set into combinations
-          nobody chose — see NudgeMode in utils/nudgeCadence. */}
-      <View style={[styles.sectionCard, { marginTop: spacing.lg }]}>
+          nobody chose — see NudgeMode in utils/nudgeCadence. Automatic
+          scheduling only exists under "Every…", so it lives inside the same
+          field rather than as a card of its own that came and went beside it. */}
+      {(!isList || nudgeMode !== 'never') && (
+      <>
+      <Text style={styles.groupLabel}>Nudges</Text>
+      <View style={styles.card}>
         <CollapsibleField
           label="Bring this up"
-          summary={describeNudge(nudgeFieldsFor(nudgeMode, nudgeCadenceDays))}
-          hint="A project's tasks only reach Today once they have a date, so a project with nothing scheduled goes quiet. This is what happens when it does."
+          summary={describeNudge(nudgeFieldsFor(nudgeMode, nudgeCadenceDays))
+            + (nudgeMode === 'scheduled' && autoSchedule ? ', automatically' : '')}
+          hint="A project's tasks only reach Today once they have a date. This is what happens when nothing in this project has one."
           expanded={cadenceOpen}
           onToggle={() => setCadenceOpen(v => !v)}
         >
@@ -670,6 +1030,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
                         haptics.tap();
                         setNudgeCadenceDays(fromCadenceParts(withCadenceUnit(cadence, unit)));
                       }}
+                      activeOpacity={interaction.activeOpacity}
                       accessibilityRole="button"
                       accessibilityState={{ selected: active }}
                     >
@@ -682,33 +1043,33 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
               </View>
             </View>
           )}
+
+          {nudgeMode === 'scheduled' && (
+            <TouchableOpacity
+              style={[styles.optionRow, styles.optionRowInset]}
+              onPress={() => { haptics.tap(); setAutoSchedule(v => !v); }}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="switch"
+              accessibilityLabel="Schedule automatically"
+              accessibilityState={{ checked: autoSchedule }}
+            >
+              <Ionicons name="play-forward-outline" size={18} color={autoSchedule ? colors.accent : colors.textSecondary} />
+              <View style={styles.optionContent}>
+                <Text style={styles.optionLabel}>Schedule automatically</Text>
+                <Text style={styles.optionHint}>
+                  {autoSchedule
+                    ? 'Dates the next task on its own instead of adding a review task'
+                    : 'Adds a review task and leaves the dates to you'}
+                </Text>
+              </View>
+              <View style={[styles.toggle, autoSchedule && styles.toggleOn]}>
+                <View style={[styles.toggleKnob, autoSchedule && styles.toggleKnobOn]} />
+              </View>
+            </TouchableOpacity>
+          )}
         </CollapsibleField>
       </View>
-
-      {nudgeMode === 'scheduled' && (
-        <View style={[styles.card, { marginTop: spacing.lg }]}>
-          <TouchableOpacity
-            style={styles.optionRow}
-            onPress={() => { haptics.tap(); setAutoSchedule(v => !v); }}
-            activeOpacity={interaction.activeOpacity}
-            accessibilityRole="switch"
-            accessibilityLabel="Keep it moving"
-            accessibilityState={{ checked: autoSchedule }}
-          >
-            <Ionicons name="play-forward-outline" size={18} color={autoSchedule ? colors.accent : colors.textSecondary} />
-            <View style={styles.optionContent}>
-              <Text style={styles.optionLabel}>Keep it moving</Text>
-              <Text style={styles.optionHint}>
-                {autoSchedule
-                  ? 'Dates the next task for you instead of asking'
-                  : 'Ask before scheduling anything from this project'}
-              </Text>
-            </View>
-            <View style={[styles.toggle, autoSchedule && styles.toggleOn]}>
-              <View style={[styles.toggleKnob, autoSchedule && styles.toggleKnobOn]} />
-            </View>
-          </TouchableOpacity>
-        </View>
+      </>
       )}
 
       {/*
@@ -717,7 +1078,69 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
         effect shows — not here. See Project.kind.
       */}
 
-      <View style={[styles.card, { marginTop: spacing.xl }]}>
+      <Text style={styles.groupLabel}>More</Text>
+      <View style={styles.card}>
+        {/* Parking a project for a season. Archive files the project but
+            leaves its tasks (a weekly watering stays on Today all winter);
+            this holds every one of them back until the day, then brings the
+            lot back on its own. */}
+        <EditorRow
+          icon="pause-outline"
+          label="Pause until"
+          hint={isList
+            ? 'Hides all of its items and stops any nudges until this day.'
+            : 'Hides all of its tasks, repeating ones too, and stops any nudges until this day.'}
+          value={pausedUntil ? formatDeadlineDate(pausedUntil.toISOString()) : undefined}
+          onPress={() => setPickingPause(true)}
+          onClear={pausedUntil ? () => setPausedUntil(null) : undefined}
+        />
+        <View style={styles.sepIcon} />
+        {isList ? (
+          <TouchableOpacity
+            style={styles.optionRow}
+            onPress={() => { haptics.tap(); setShowChecked(v => !v); }}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="switch"
+            accessibilityLabel="Keep checked items in view"
+            accessibilityState={{ checked: showChecked }}
+          >
+            <Ionicons name="checkmark-done-outline" size={18} color={showChecked ? colors.accent : colors.textSecondary} />
+            <View style={styles.optionContent}>
+              <Text style={styles.optionLabel}>Keep checked items in view</Text>
+              <Text style={styles.optionHint}>
+                {showChecked
+                  ? 'Checked items stay at the bottom, crossed out, in list order'
+                  : 'Checked items fold away under a "Show checked" button at the bottom'}
+              </Text>
+            </View>
+            <View style={[styles.toggle, showChecked && styles.toggleOn]}>
+              <View style={[styles.toggleKnob, showChecked && styles.toggleKnobOn]} />
+            </View>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            style={styles.optionRow}
+            onPress={() => { haptics.tap(); setInOrder(v => !v); }}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="switch"
+            accessibilityLabel="Work in order"
+            accessibilityState={{ checked: inOrder }}
+          >
+            <Ionicons name="list-outline" size={18} color={inOrder ? colors.accent : colors.textSecondary} />
+            <View style={styles.optionContent}>
+              <Text style={styles.optionLabel}>Work in order</Text>
+              <Text style={styles.optionHint}>
+                {inOrder
+                  ? 'Pull and automatic scheduling only offer the first open task on the page'
+                  : 'Pull and automatic scheduling offer whichever task fits best'}
+              </Text>
+            </View>
+            <View style={[styles.toggle, inOrder && styles.toggleOn]}>
+              <View style={[styles.toggleKnob, inOrder && styles.toggleKnobOn]} />
+            </View>
+          </TouchableOpacity>
+        )}
+        <View style={styles.sepIcon} />
         <TouchableOpacity
           style={styles.optionRow}
           onPress={() => { haptics.tap(); setOngoing(v => !v); }}
@@ -731,15 +1154,15 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
             <Text style={styles.optionLabel}>Ongoing</Text>
             <Text style={styles.optionHint}>
               {ongoing
-                ? "Never offered as complete, however many tasks are done"
-                : "Offers to mark complete once every task is done"}
+                ? `Never offered as complete. Its card counts open ${isList ? 'items' : 'tasks'} instead of a progress bar`
+                : isList ? 'Offers to mark complete once every item is checked' : 'Offers to mark complete once every task is done'}
             </Text>
           </View>
           <View style={[styles.toggle, ongoing && styles.toggleOn]}>
             <View style={[styles.toggleKnob, ongoing && styles.toggleKnobOn]} />
           </View>
         </TouchableOpacity>
-
+        <View style={styles.sepIcon} />
         <TouchableOpacity
           style={styles.optionRow}
           onPress={() => { haptics.tap(); setWeekendSource(v => !v); }}
@@ -752,9 +1175,13 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
           <View style={styles.optionContent}>
             <Text style={styles.optionLabel}>Suggest for a free weekend</Text>
             <Text style={styles.optionHint}>
-              {weekendSource
-                ? 'The weekend task names this project when a weekend has nothing on it'
-                : 'The weekend task does not name this project'}
+              {!weekendNudgeOn
+                ? 'Takes effect once "Nudge for an empty weekend" is on in Settings, under Automatic tasks'
+                : nudgeMode === 'never'
+                  ? 'Takes effect once "Bring this up" is set to When I ask or Every…'
+                  : weekendSource
+                  ? 'The weekend task names this project when a weekend has nothing on it'
+                  : 'The weekend task does not name this project'}
             </Text>
           </View>
           <View style={[styles.toggle, weekendSource && styles.toggleOn]}>
@@ -763,63 +1190,99 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
         </TouchableOpacity>
       </View>
 
-      <View style={[styles.card, { marginTop: spacing.xl }]}>
-        <TouchableOpacity
-          style={styles.optionRow}
-          onPress={() => {
-            if (completed) {
-              uncompleteProject(project.id);
-            } else {
-              handleComplete();
-            }
-          }}
-          activeOpacity={interaction.activeOpacity}
-          accessibilityRole="switch"
-          accessibilityLabel="Mark complete"
-          accessibilityState={{ checked: completed }}
-        >
-          <Ionicons name={completed ? 'checkmark-circle' : 'checkmark-circle-outline'} size={18} color={completed ? colors.accent : colors.textSecondary} />
-          <View style={styles.optionContent}>
-            <Text style={styles.optionLabel}>Mark complete</Text>
-            <Text style={styles.optionHint}>
-              {completed ? 'Off the active list, listed under Completed' : 'Move to the completed list'}
-            </Text>
-          </View>
-          <View style={[styles.toggle, completed && styles.toggleOn]}>
-            <View style={[styles.toggleKnob, completed && styles.toggleKnobOn]} />
-          </View>
-        </TouchableOpacity>
-      </View>
+      {/* Actions, not settings. These were drawn as switches, but turning one
+          on closed the sheet and turning it off didn't, which no switch does.
+          A project fresh from quick add doesn't get them: completing or
+          filing away something that hasn't been named yet isn't a real want,
+          and an unnamed row is discarded on close anyway. */}
+      {!isNew && (
+        <View style={[styles.card, styles.actionsCard]}>
+          <TouchableOpacity
+            style={styles.optionRow}
+            onPress={completed ? handleReopen : handleComplete}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="button"
+            accessibilityLabel={completed ? 'Reopen project' : 'Mark project complete'}
+          >
+            <Ionicons
+              name={completed ? 'refresh-outline' : 'checkmark-circle-outline'}
+              size={18}
+              color={colors.textSecondary}
+            />
+            <View style={styles.optionContent}>
+              <Text style={styles.optionLabel}>{completed ? 'Reopen project' : 'Mark complete'}</Text>
+              <Text style={styles.optionHint}>
+                {completed ? 'Moves it back to the active list' : 'Moves it to the Completed list'}
+              </Text>
+            </View>
+          </TouchableOpacity>
+          <View style={styles.sepIcon} />
+          <TouchableOpacity
+            style={styles.optionRow}
+            onPress={archived ? handleUnarchive : handleArchive}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="button"
+            accessibilityLabel={archived ? 'Unarchive project' : 'Archive project'}
+          >
+            <Ionicons name="archive-outline" size={18} color={colors.textSecondary} />
+            <View style={styles.optionContent}>
+              <Text style={styles.optionLabel}>{archived ? 'Unarchive' : 'Archive'}</Text>
+              <Text style={styles.optionHint}>
+                {archived ? 'Moves it back out of the Archived list' : 'Moves it to the Archived list. Its tasks stay where they are'}
+              </Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+      )}
 
-      <View style={[styles.card, { marginTop: spacing.xl }]}>
-        <TouchableOpacity
-          style={styles.optionRow}
-          onPress={() => {
-            if (archived) {
-              unarchiveProject(project.id);
-            } else {
-              haptics.success();
-              archiveProject(project.id);
-              onClose();
-            }
-          }}
-          activeOpacity={interaction.activeOpacity}
-          accessibilityRole="switch"
-          accessibilityLabel="Archive"
-          accessibilityState={{ checked: archived }}
-        >
-          <Ionicons name="archive-outline" size={18} color={archived ? colors.accent : colors.textSecondary} />
-          <View style={styles.optionContent}>
-            <Text style={styles.optionLabel}>Archive</Text>
-            <Text style={styles.optionHint}>
-              {archived ? 'Hidden from the active list' : 'Move to the archived list'}
-            </Text>
-          </View>
-          <View style={[styles.toggle, archived && styles.toggleOn]}>
-            <View style={[styles.toggleKnob, archived && styles.toggleKnobOn]} />
-          </View>
-        </TouchableOpacity>
-      </View>
+      {!isNew && (
+        <View style={[styles.card, styles.stackedCard]}>
+          <TouchableOpacity
+            style={styles.optionRow}
+            onPress={handleSaveAsTemplate}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="button"
+            accessibilityLabel="Save as a template"
+          >
+            <Ionicons name="copy-outline" size={18} color={colors.textSecondary} />
+            <View style={styles.optionContent}>
+              <Text style={styles.optionLabel}>Save as template</Text>
+              <Text style={styles.optionHint}>Keeps its tasks and sections to apply again, with dates counted from its deadline or trip</Text>
+            </View>
+          </TouchableOpacity>
+          <View style={styles.sepIcon} />
+          <TouchableOpacity
+            style={styles.optionRow}
+            onPress={handleStartFresh}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="button"
+            accessibilityLabel="Start a fresh copy"
+          >
+            <Ionicons name="duplicate-outline" size={18} color={colors.textSecondary} />
+            <View style={styles.optionContent}>
+              <Text style={styles.optionLabel}>Start a fresh copy</Text>
+              <Text style={styles.optionHint}>A new project with the same tasks, all open and undated</Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {!isNew && (
+        <View style={[styles.card, styles.stackedCard]}>
+          <TouchableOpacity
+            style={styles.optionRow}
+            onPress={handleDelete}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="button"
+            accessibilityLabel="Delete project"
+          >
+            <Ionicons name="trash-outline" size={18} color={colors.red} />
+            <View style={styles.optionContent}>
+              <Text style={[styles.optionLabel, styles.deleteLabel]}>Delete project</Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+      )}
     </EditorSheet>
   );
 }
@@ -840,7 +1303,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   notesInput: {
     color: colors.textSecondary, fontSize: font.md,
-    paddingBottom: spacing.lg, minHeight: 44,
+    paddingBottom: spacing.sm, minHeight: 44,
     // No lineHeight on a TextInput. RN maps it onto the iOS paragraph style's
     // minimum/maximum line height with no compensating baseline offset, so the
     // glyphs are drawn a full line height below the top of the line box rather
@@ -854,10 +1317,18 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.md,
     overflow: 'hidden',
   },
-  sectionCard: {
-    backgroundColor: colors.bgSecondary,
-    borderRadius: radius.md,
-    overflow: 'hidden',
+  // A second card under the same group label, like the away rows beneath the
+  // deadline.
+  stackedCard: { marginTop: spacing.md },
+  deleteLabel: { color: colors.red },
+  actionsCard: { marginTop: spacing.xl },
+  // Matches EditorGroup's label, which this sheet can't use directly: its
+  // cards carry their own horizontal margin, and these sit on the scroll
+  // content's padding instead.
+  groupLabel: {
+    color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.bold,
+    textTransform: 'uppercase', letterSpacing: 0.8,
+    marginHorizontal: spacing.xs, marginTop: spacing.lg, marginBottom: spacing.xs,
   },
   pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
   modeBlock: { marginTop: spacing.md, gap: spacing.sm },
@@ -874,17 +1345,18 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
   },
   pillActiveNeutral: { backgroundColor: colors.bgQuaternary },
-  pillText: { color: colors.text, fontSize: font.sm, fontWeight: '500' },
-  pillTextActive: { color: colors.text, fontWeight: '600' },
-  tagInput: {
-    color: colors.text, fontSize: font.sm,
-    borderBottomWidth: 1, borderBottomColor: colors.accent,
-    paddingVertical: 4, paddingHorizontal: 4, minWidth: 80,
-  },
+  pillText: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.medium },
+  pillTextActive: { color: colors.text, fontWeight: fontWeight.semibold },
   sep: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: colors.separator,
     marginLeft: spacing.md,
+  },
+  // Clears the 18pt icon column, the way EditorGroup's own divider does.
+  sepIcon: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.separator,
+    marginLeft: spacing.md + 18 + spacing.md,
   },
   sectionFooter: {
     color: colors.textTertiary,
@@ -897,10 +1369,21 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md, paddingVertical: 14,
   },
   destinationInput: { flex: 1, color: colors.text, fontSize: font.md, padding: 0 },
+  linkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.smd,
+    paddingHorizontal: spacing.md,
+    minHeight: 52,
+  },
+  // Height rather than lineHeight, per the TextInput note in CLAUDE.md.
+  linkInput: { flex: 1, color: colors.text, fontSize: font.md, height: 44 },
   optionRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.md,
     paddingHorizontal: spacing.md, paddingVertical: 14,
   },
+  // Inside a CollapsibleField, which already supplies the side padding.
+  optionRowInset: { paddingHorizontal: 0, paddingBottom: 0, marginTop: spacing.xs },
   optionContent: { flex: 1 },
   optionLabel: { color: colors.text, fontSize: font.md },
   optionHint: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.xxs },

@@ -124,9 +124,11 @@ refused one: it answers, and it answers wrong.
 
 ## What it exposes today
 
-Read-only, and deliberately shaped like the app's own lenses rather than like the schema:
+The read tools are deliberately shaped like the app's own lenses rather than like the schema:
 `list_tasks` over Today/Later/Unscheduled/Inbox, `search_tasks` through the same `fuzzySearch` the
-quick-search sheet uses, `get_task`, `list_projects`, `list_grocery_items`. The tool handlers are
+quick-search sheet uses, `get_task`, `list_projects`, `list_grocery_items`, `list_templates`. (The
+write tools are below; `server.ts` is the authoritative list, and registers the writes only for a
+write-scoped request.) The tool handlers are
 in `mcp/src/tools.ts` and take a replica as an argument, which is what makes them testable without
 an SDK or a socket.
 
@@ -169,12 +171,11 @@ this repo cannot produce on its own.
    but it is the question.
 2. **OAuth.** A remote MCP server is an OAuth 2.1 resource server: it advertises
    `/.well-known/oauth-protected-resource`, and every request arrives with a bearer token it has to
-   validate against an authorization server. `mcp/src/auth.ts` is the seam. It currently checks a
-   shared secret from `MCP_AUTH_TOKEN` and refuses everything if that is unset, which is enough to
+   validate against an authorization server. `mcp/src/auth.ts` is the seam. It currently checks
+   shared secrets (`MCP_AUTH_TOKEN` for reads, `MCP_WRITE_TOKEN` for writes, which also reads); an
+   unset token matches nothing, so with neither set every request is refused. That is enough to
    develop against and is **not** enough to expose. It is written as a single `authorize()` so that
    the real implementation replaces one function.
-Item (3), a transport, was the one that decided whether any of this was real, and it is done. See
-the next section.
 
 ## Phase 1: the payload store
 
@@ -194,6 +195,15 @@ SQLite either side of an `await`, so running them at once lets B's `apply` land 
 between A's push and A's cursor advance, and A pushes straight back what it was just handed. The
 separate cursors do nothing about that.
 
+**What one transport receives, the other is sent, by arrival rather than by stamp.** An applied
+row keeps the peer's `updated_at`, because that is what last-writer-wins compares, so a stamp older
+than the other transport's push cursor used to hide it from that push for good: a phone that pulled
+an iPad's offline edit from iCloud never passed it to the store. `sync_received` records when and
+over which transport each applied row arrived, and a push also sends what arrived since its cursor
+over any *other* transport. Tombstones make the same split (`received_at`/`source` beside a
+`deleted_at` that keeps the peer's time), which also stopped a relayed deletion being stamped as
+newer than it was and deleting an edit made after it.
+
 **The store is deliberately dumb.** Append an opaque string, read back the ones after a cursor. It
 never parses a payload, so the merge rules stay on the devices where `syncMerge.ts` tests them
 without a network, a schema change is not a deployment, and the machine holding the data cannot
@@ -204,6 +214,10 @@ Two rules in it are worth not re-deriving. A pull's cursor is **the last row of 
 table's maximum** — advancing past rows that were not returned is the only way to lose a change
 here. And an unreadable cursor reads as **the beginning rather than as a skip**, because applying a
 payload twice is a no-op under `syncMerge`'s tie rule while skipping one loses an edit for good.
+
+A page is capped by size as well as by count (`DEFAULT_PULL_MAX_CHARS`, 16 MB), since a payload can
+carry recipe photos (#2704) and 200 of those is a response no phone finishes downloading. A page
+always holds at least one payload, so one larger than the cap still gets through on its own.
 
 Payloads are pruned at 90 days, matched to `TOMBSTONE_RETENTION_DAYS` rather than chosen
 separately: a device away longer than the tombstone window already needs a full reconcile, and
@@ -217,7 +231,8 @@ settings table for the usual reason plus one specific to it: settings rows are w
 credential that synced would be handed to every device through the very store it authenticates.
 `syncServerUrl` is not on `SYNCED_SETTING_KEYS` either, same reasoning as `syncEnabled`.
 
-The replica syncs before answering, throttled to ten seconds. Long enough to cover the run of tool
+The replica syncs before answering, throttled to ten seconds per replica (`lastSyncAtByReplica`,
+at module scope because `buildMcpServer` runs once per request). Long enough to cover the run of tool
 calls a model makes to answer one question, short enough that somebody who just ticked something
 off on their phone and turned to Claude sees it. A failure is swallowed: a store that is down
 should mean slightly stale answers, not no answers.
@@ -363,6 +378,14 @@ Checked lives on the membership row, and `dbSetGroceryListEntry` is also the onl
 mirror columns on the item (`dbSyncGroceryHomeColumns`), so the row and its entry cannot end up
 disagreeing. Removing parks the row and clears a recipe's claim on the quantity, which is two lines.
 
+**Every grocery tool is about the list at home, the read included.** The writes all act on the home
+list's entry (`listId` null), so `list_grocery_items` reports that list and each item's tick on it,
+read off `groceryListEntries()`. It used to filter on `GroceryItem.onList`, which is the broader "in
+any trolley" flag (see `docs/arch/groceries.md`): a trip's list came back merged into the one at
+home with no name on it, and check-off then refused those same items as not on the list. The
+serialized `onList` means the home list everywhere, including a write's result and the catalog
+view, and the remove guard and the add's "already on the list" answer ask the same question.
+
 **Adding could not.** `planGroceryAdd` (`src/utils/groceryAdd.ts`) is `addByName`'s core, lifted out
 with `newItemRow`, `ensureProductFor` and `nextSortOrder`. Two things made a second implementation
 untenable rather than merely inadvisable:
@@ -378,23 +401,6 @@ What stayed in the store is the `set()`, the cart-hold timer behind the tick ani
 and the debounced AI aisle classification a row landing in Other triggers. The last is the only one
 with teeth and the right call regardless: it is a network request to Anthropic on the user's key,
 and a server making them because a model added milk is not a thing to do unasked.
-
-#### One bug and one wrong comment, found by moving the code
-
-Both were pre-existing, and neither would have surfaced without a second caller.
-
-**Re-adding something already in your cart un-ticked it.** The row's `checked` was forced to false
-whenever the target was the home list, on the stated grounds that the membership write would
-recompute it. It does not: joining a list a row is already in is a deliberate no-op, so on exactly
-the path where the tick matters nothing recomputed anything. The row then said unbought while its
-own entry still said checked. The tick is now read off the entry, which is what the schema treats as
-the truth. `joinList`'s own comment had asserted this behaviour all along; a test asserted the
-opposite, and that test is replaced.
-
-**`ensureProductFor`'s doc claimed more matching than it does.** `productKeyFor` goes through
-`groceryNameKey`, which keeps letters, digits and `%` and turns everything else into a space, so
-"Arnold's" keys as `arnold s` and "arnolds" as `arnolds`: two boxes, not one. Only the comment was
-wrong, and it is corrected rather than the keying, which the groceries doc fences off.
 
 ### Writes have their own token
 
@@ -467,18 +473,12 @@ on both destinations, which is the minimum; a separate switch would be the next 
 
 - **Phase 0 (done).** The replica, the read-only tools, the serializer, the auth seam, and this
   file. Ran locally, against a database file the user supplied.
-- **Phase 1 (here).** The payload store, `httpSyncTransport`, `runSyncAll`, and the Settings rows
+- **Phase 1 (done).** The payload store, `httpSyncTransport`, `runSyncAll`, and the Settings rows
   to configure it. The replica is current instead of a snapshot.
-- **Phase 2 (here).** The writes, the write token, and the per-request scoping. Templates went
+- **Phase 2 (done).** The writes, the write token, and the per-request scoping. Templates went
   first because a template is a *definition* — creating one fires no notification, spawns no
   successor and completes nothing, so it is the write with the least machinery behind it. Then
   `create_task`, which moved `newTaskFromDraft` out of the store, then `complete_task` and
   `defer_task`, which moved the completion core out after it, and then the grocery list, which
   moved `addByName`'s core out.
 - **Phase 3. Hosting.** Real OAuth, a deployment, and the Settings surface that admits to the copy.
-
-The design question phase 2 was holding is settled, and the sections above say how: a model is the
-one caller that could have asked a task's question and did not, so an omitted answer is refused
-rather than read as "nobody asked", while an explicit `null` still completes without one. Both of the other phase 2 items are done too: the grocery list writes, and `listProjects` now asks
-`projectProgress` rather than counting incomplete rows, so a project holding a recurring member no
-longer grows a denominator for ever.

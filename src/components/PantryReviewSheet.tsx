@@ -23,7 +23,7 @@ import {
   spacing,
   type Colors,
 } from '../theme';
-import type { GroceryItem, GroceryListEntry } from '../types';
+import type { GroceryItem, GroceryListEntry, ItemProduct } from '../types';
 import { entryFor } from '../utils/groceryLists';
 import { useGroceryStore } from '../store/useGroceryStore';
 import {
@@ -47,7 +47,14 @@ interface Props {
 
 /** One card the deck has moved past — see the `history` state's own doc comment. */
 type PantryReviewHistoryEntry =
-  | { kind: 'answered'; item: GroceryItem; entry: GroceryListEntry | null; answer: PantryReviewAnswer }
+  | {
+      kind: 'answered';
+      item: GroceryItem;
+      entry: GroceryListEntry | null;
+      answer: PantryReviewAnswer;
+      /** Thawed portions the answer deleted, for Undo. See `answerPantryReview`. */
+      portions: ItemProduct[];
+    }
   | { kind: 'skipped'; item: GroceryItem };
 
 /**
@@ -148,12 +155,11 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
       const live = state.items.find(i => i.id === card.item.id);
       const entry = entryFor(state.listEntries, card.item.id, state.activeListId);
       haptics.tap();
-      answerPantryReview(card.item.id, answer);
-      setHistory(h => [...h, { kind: 'answered', item: live ?? card.item, entry, answer }]);
+      const portions = answerPantryReview(card.item.id, answer);
+      setHistory(h => [...h, { kind: 'answered', item: live ?? card.item, entry, answer, portions }]);
       setIndex(i => i + 1);
-      pan.setValue({ x: 0, y: 0 });
     },
-    [answerPantryReview, pan]
+    [answerPantryReview]
   );
 
   /**
@@ -198,7 +204,16 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
         duration: animation.duration.fast,
         useNativeDriver: true,
       }).start(({ finished }) => {
-        if (finished) commit(answer);
+        if (!finished) return;
+        commit(answer);
+        // `pan` is one shared node bound to whichever card sits at offset 0,
+        // so resetting it here — before this commit's `setIndex` has actually
+        // been rendered — snaps the card that just flew out back into view
+        // for a frame, since it's still the mounted, pan-bound view until
+        // React promotes the next one. Deferring a frame lets that render
+        // land first, the same fix `TaskItem`'s `finishPacingOut` uses for
+        // the same reason (see its comment).
+        requestAnimationFrame(() => pan.setValue({ x: 0, y: 0 }));
       });
     },
     [commit, pan]
@@ -208,7 +223,7 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
     if (history.length === 0) return;
     haptics.tap();
     const previous = history[history.length - 1];
-    if (previous.kind === 'answered') revertPantryAnswer(previous.item, previous.entry);
+    if (previous.kind === 'answered') revertPantryAnswer(previous.item, previous.entry, previous.portions);
     setHistory(h => h.slice(0, -1));
     setIndex(i => Math.max(0, i - 1));
     pan.setValue({ x: 0, y: 0 });
@@ -230,7 +245,7 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
       const entry = history[i];
       if (!entry || entry.kind !== 'answered') return;
       haptics.tap();
-      revertPantryAnswer(entry.item, entry.entry);
+      revertPantryAnswer(entry.item, entry.entry, entry.portions);
       setHistory(h => h.filter((_, idx) => idx !== i));
     },
     [history, revertPantryAnswer]
@@ -251,9 +266,9 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
       const entry = history[i];
       if (!entry || entry.kind !== 'answered' || entry.answer === answer) return;
       haptics.tap();
-      revertPantryAnswer(entry.item, entry.entry);
-      answerPantryReview(entry.item.id, answer);
-      setHistory(h => h.map((e, idx) => (idx === i && e.kind === 'answered' ? { ...e, answer } : e)));
+      revertPantryAnswer(entry.item, entry.entry, entry.portions);
+      const portions = answerPantryReview(entry.item.id, answer);
+      setHistory(h => h.map((e, idx) => (idx === i && e.kind === 'answered' ? { ...e, answer, portions } : e)));
     },
     [answerPantryReview, history, revertPantryAnswer]
   );

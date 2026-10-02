@@ -25,6 +25,11 @@ jest.mock('react-native', () => ({
 }));
 
 jest.mock('../utils/healthBridge', () => ({ healthBridge: jest.fn() }));
+// useHealthStore tells the task store when today's exercise reading changes; it
+// reaches the database and native modules, and nothing in this suite is about it.
+jest.mock('../store/useTaskStore', () => ({
+  useTaskStore: { getState: () => ({ syncWaterQuotaTasks: jest.fn() }) },
+}));
 
 let bridge: { readDailyHealth: jest.Mock; readWeightSeries: jest.Mock };
 

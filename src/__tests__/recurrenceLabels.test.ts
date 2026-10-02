@@ -99,7 +99,28 @@ describe('describeRecurrence', () => {
 
   it('ignores weekdays on a type that has no use for them', () => {
     expect(describeRecurrence({ type: 'daily', interval: 1, days: [1, 3] })).toBe('Every day');
-    expect(describeRecurrence({ type: 'yearly', interval: 1, monthDay: 4 })).toBe('Every year');
+  });
+
+  describe('yearly anchors', () => {
+    it('says the day of the month, same as monthly', () => {
+      expect(describeRecurrence({ type: 'yearly', interval: 1, monthDay: 4 })).toBe('Every year on the 4th');
+      expect(describeRecurrence({ type: 'yearly', interval: 1, monthDay: -1 })).toBe('Every year on the last day');
+    });
+
+    it('says the month, when the rule pins one', () => {
+      expect(describeRecurrence({ type: 'yearly', interval: 1, month: 6 })).toBe('Every year in June');
+    });
+
+    it('says both together', () => {
+      expect(describeRecurrence({ type: 'yearly', interval: 1, monthDay: 4, month: 6 }))
+        .toBe('Every year on the 4th of June');
+      expect(describeRecurrence({ type: 'yearly', interval: 2, monthDay: -1, month: 12 }))
+        .toBe('Every 2 years on the last day of December');
+    });
+
+    it('leaves both anchors out when neither is set', () => {
+      expect(describeRecurrence({ type: 'yearly', interval: 1 })).toBe('Every year');
+    });
   });
 });
 
@@ -111,6 +132,7 @@ describe('describeTaskRecurrence', () => {
     recurrenceInterval: 1,
     recurrenceDays: [] as number[],
     recurrenceMonthDay: null,
+    recurrenceMonth: null,
     recurrenceWeekOrdinal: null,
     recurrenceFromCompletion: false,
     ...over,
@@ -149,6 +171,17 @@ describe('describeTaskRecurrence', () => {
       .toBe('Every 2 years');
   });
 
+  it('reads a yearly anchor', () => {
+    expect(describeTaskRecurrence(rule({ recurrenceType: 'yearly', recurrenceMonthDay: 4 })))
+      .toBe('Yearly on the 4th');
+    expect(describeTaskRecurrence(rule({ recurrenceType: 'yearly', recurrenceMonth: 6 })))
+      .toBe('Yearly in June');
+    expect(describeTaskRecurrence(rule({ recurrenceType: 'yearly', recurrenceMonthDay: -1, recurrenceMonth: 12 })))
+      .toBe('Yearly on the last day of December');
+    expect(describeTaskRecurrence(rule({ recurrenceType: 'yearly', recurrenceInterval: 2, recurrenceMonth: 6 })))
+      .toBe('Every 2 years in June');
+  });
+
   it('reads a monthly anchor', () => {
     expect(describeTaskRecurrence(rule({ recurrenceType: 'monthly' }))).toBe('Monthly');
     expect(describeTaskRecurrence(rule({ recurrenceType: 'monthly', recurrenceMonthDay: 3 })))
@@ -184,5 +217,21 @@ describe('describeTaskRecurrence', () => {
     expect(describeTaskRecurrence(rule({ recurrenceType: 'daily', recurrenceFromCompletion: true })))
       .toBe('Daily · from completion');
     expect(describeRecurrence({ type: 'daily', interval: 1 })).toBe('Every day');
+  });
+
+  it('reads the hours recurrence', () => {
+    expect(describeTaskRecurrence(rule({ recurrenceType: 'hours', recurrenceInterval: 1 })))
+      .toBe('Hourly');
+    expect(describeTaskRecurrence(rule({ recurrenceType: 'hours', recurrenceInterval: 8 })))
+      .toBe('Every 8 hours');
+    expect(describeRecurrence({ type: 'hours', interval: 8 })).toBe('Every 8 hours');
+  });
+
+  // Always measured from completion, so saying so on every row would be
+  // noise — unlike every other type, there's no "on schedule" mode to
+  // distinguish it from.
+  it('never appends the after-completion suffix to hours, even though it is always set', () => {
+    expect(describeTaskRecurrence(rule({ recurrenceType: 'hours', recurrenceInterval: 8, recurrenceFromCompletion: true })))
+      .toBe('Every 8 hours');
   });
 });

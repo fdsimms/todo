@@ -10,6 +10,8 @@ import { SettingsRow } from './SettingsRow';
 import { SettingsSegments } from './SettingsSegments';
 import { type SegmentOption } from '../../components/SegmentedControl';
 import { PillGroup } from '../../components/PillGroup';
+import { CountStepper } from '../../components/CountStepper';
+import { MAX_HOUSEHOLD_SERVINGS } from '../../utils/recipeScale';
 import { NutritionTargetsSheet } from '../../components/NutritionTargetsSheet';
 import { targetedNutrients } from '../../utils/nutritionTargets';
 import { StandingSwapsSheet } from '../../components/StandingSwapsSheet';
@@ -59,6 +61,9 @@ export function KitchenSettings() {
   const setUnitSystem = useSettingsStore(s => s.setUnitSystem);
   const currencySymbol = useSettingsStore(s => s.currencySymbol);
   const setCurrencySymbol = useSettingsStore(s => s.setCurrencySymbol);
+  const householdServings = useSettingsStore(s => s.householdServings);
+  const setHouseholdServings = useSettingsStore(s => s.setHouseholdServings);
+  const people = (n: number) => `${n} ${n === 1 ? 'person' : 'people'}`;
 
   // How many substitutes the app is currently applying on its own (#1571) —
   // the count on the Standing swaps row, and the reason it reads as active.
@@ -92,7 +97,7 @@ export function KitchenSettings() {
           label="Show the day's meals"
           hint={mealsOnToday === 'inline'
             ? "As rows in the task list, for planned meals without a task from Automatic tasks"
-            : 'Nothing. Meals stay on the Meal plan tab'}
+            : 'Nothing. Meals stay on the Meal plan screen'}
           toggle={mealsOnToday === 'inline'}
           onPress={() => setMealsOnToday(mealsOnToday === 'inline' ? 'off' : 'inline')}
           accessibilityLabel="Show the day's meals"
@@ -104,7 +109,7 @@ export function KitchenSettings() {
             switch for. */}
         <SettingsRow
           entryId="nutritionTargets"
-          icon="flag-outline"
+          icon="target"
           iconColor={targetCount > 0 ? colors.accent : undefined}
           label="Daily targets"
           hint={targetCount === 0
@@ -118,7 +123,7 @@ export function KitchenSettings() {
           icon="nutrition-outline"
           iconColor={mealLogPrompt ? colors.accent : undefined}
           label="Ask what you ate"
-          hint="When you finish a planned meal or a leftover, offer to add it to the food log. Only for food whose nutrition is known."
+          hint="When you finish a planned meal or a leftover, offer to add it to the food log."
           toggle={mealLogPrompt}
           onPress={() => setMealLogPrompt(!mealLogPrompt)}
           accessibilityLabel="Ask what you ate"
@@ -153,6 +158,43 @@ export function KitchenSettings() {
         />
         )}
       </SettingsSection>
+
+      {/* The household size a planned recipe starts scaled to (#2910). A
+          stepper that can be cleared rather than a switch plus a number: "not
+          set" is the default and the answer most installs keep, and it is the
+          stepper's own empty state. Simplified mode takes recipe scaling away,
+          so this goes with it, except while one is set: the mode hides a
+          setting's editor, never a setting that is still changing what gets
+          planned (the Standing swaps row below makes the same exception). */}
+      {(!simpleMode || householdServings > 0) && (
+        <SettingsSection
+          label="Meal plan"
+          footer="Only meals planned from now on start at this amount. Meals already on the plan keep theirs, and any meal can be changed under Batch on its own sheet."
+        >
+          <SettingsRow
+            entryId="householdServings"
+            icon="people-outline"
+            iconColor={householdServings > 0 ? colors.accent : undefined}
+            label="Usually cooking for"
+            hint={householdServings > 0
+              ? `A recipe you plan starts at enough for ${people(householdServings)}, when the recipe says how many it serves.`
+              : 'Not set. A recipe you plan starts at the amount it makes.'}
+            tight
+          />
+          <View style={styles.cadenceRow}>
+            <CountStepper
+              value={householdServings > 0 ? householdServings : null}
+              onChange={next => setHouseholdServings(next ?? 0)}
+              min={1}
+              max={MAX_HOUSEHOLD_SERVINGS}
+              allowNull
+              emptyLabel="Not set"
+              label="Usually cooking for"
+              describeValue={n => (n === null ? 'Not set' : people(n))}
+            />
+          </View>
+        </SettingsSection>
+      )}
 
       {Platform.OS === 'ios' && !simpleMode && (
         <SettingsSection
@@ -243,8 +285,13 @@ export function KitchenSettings() {
           lands in the trolley (#1571). The rule itself is written where the
           pair is, on the item's Substitutes field — this is the "what is the
           app currently rewriting for me" read, which is the thing a link-level
-          bit on its own can't answer. */}
-      {!simpleMode && (
+          bit on its own can't answer.
+
+          Shown in simplified mode too while any swap is in force, the same
+          exception the vacation and expired-task rows make: the mode hides the
+          rule's editor, not the rule, so the swaps go on rewriting recipes and
+          the list, and this is the only place to see which ones are. */}
+      {(!simpleMode || standingSwapCount > 0) && (
       <SettingsSection
         label="Substitutes"
         footer="A substitute normally just says what you could use instead. One marked “always use this instead” is applied for you: recipes calling for the original show and shop for the substitute, marked with what the recipe said. Nothing is written to the recipe, and a single line can opt out under “Keep as written”."

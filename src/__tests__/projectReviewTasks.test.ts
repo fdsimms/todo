@@ -56,6 +56,11 @@ const makeProject = (overrides: Partial<Project> = {}): Project => ({
   destination: null,
   awayListId: null,
   awayListDeclinedFor: null,
+  pausedUntil: null,
+  personIds: [],
+  links: [],
+  inOrder: false,
+  showChecked: false,
   ...overrides,
 });
 
@@ -87,6 +92,7 @@ const makeStall = (project: Project, quietDays = 21): ProjectStall => ({
 describe('projectReviewLinkUrl', () => {
   it('scopes the pull sheet to one project', () => {
     expect(projectReviewLinkUrl('p1')).toBe('dundundun://projects?pull=p1');
+    expect(projectReviewLinkUrl('p1', '2026-10-03')).toBe('dundundun://projects?pull=p1&on=2026-10-03');
   });
 
   it('falls back to the bare link rather than minting one that scopes to nothing', () => {
@@ -263,6 +269,16 @@ describe('projectQuietDays', () => {
   it('falls back to the project’s own creation, so one that never finished anything still ages', () => {
     const project = makeProject({ createdAt: subDays(new Date(), 12).toISOString() });
     expect(projectQuietDays(project, [])).toBe(12);
+  });
+
+  // Marking a project reviewed restarts the clock the stall check reads, so the
+  // chip on the review task that stall writes has to read it too.
+  it('counts from a review later than every completion', () => {
+    const project = makeProject({
+      createdAt: subDays(new Date(), 60).toISOString(),
+      reviewedAt: subDays(new Date(), 14).toISOString(),
+    });
+    expect(projectQuietDays(project, [{ completedAt: subDays(new Date(), 30).toISOString() }])).toBe(14);
   });
 
   it('renders no chip at all for a project that is gone', () => {

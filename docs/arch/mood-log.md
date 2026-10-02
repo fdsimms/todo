@@ -10,9 +10,9 @@ Read this before changing anything under `src/utils/moodLog.ts`,
 `src/store/useMedicationStore.ts`, `src/screens/MedicationScreen.tsx` or
 `src/components/MedicationLogSheet.tsx`.
 
-The rules here are settled decisions with the reasoning attached. Don't
-re-derive them from the code, and don't re-open one without a reason this note
-doesn't already cover.
+The rules here are strong defaults with the reasoning
+attached: read the reason before deviating from one. Where this note and the
+code disagree, the code is what ships, so fix the note.
 
 ---
 
@@ -88,14 +88,17 @@ grid — it is a constant, the same kind `MOOD_LEVELS` is, and it never
 overrides what the log itself has accumulated (real usage sorts ahead of it
 in `MoodLogSheet`'s pill ordering).
 
-**The one auto-suggestion, and why it stops at one.** `MoodLogSheet`
-pre-selects "Vacation" when opening a *new* entry while `vacationMode` is on
-— visibly, as an already-picked pill the person can untap before Save, never
-written silently. That is the same "offer, don't decide" posture
+**The auto-suggestions, and why they stop at two.** A *new* entry opens with
+"Vacation" pre-selected while `vacationMode` is on, and with whatever context
+tags an earlier entry that same day already gave (a fourth "Sick" check-in on a
+day you're unwell shouldn't need a fourth tap) — visibly, as already-picked
+pills the person can untap before Save, never written silently
+(`seededContextTags` in `moodLog.ts`). That is the same "offer, don't decide" posture
 `lowMoodDeloadNote` takes below: the app can notice a fact it already tracks,
 but the log stays the user's own record of what they think was going on, not
-an automated inference dressed up as one. It is scoped to exactly one signal
-on purpose. Vacation mode is a clean boolean the app already owns and gets
+an automated inference dressed up as one. Both sources are things the app
+already knows cleanly: what the person themselves said earlier that day, and
+vacation mode, a clean boolean the app already owns and gets
 right on its own terms (see the vacation-mode note in the tasks
 architecture); most other "obvious" candidates are not nearly as clean —
 a missed-task-heavy day, a bad-sleep night from Health — and guessing wrong
@@ -104,11 +107,35 @@ is exactly what `moodInsights.ts`'s association-not-cause rule exists to
 forbid. Widening the source list is a real feature decision each time, not a
 default to reach for.
 
-The suggestion only fires for a *new* entry on **today**. Editing an existing
-row must never retroactively add a tag it didn't say (same reason the Day
-row itself only shows for a new entry), and a backdated entry records how a
-past day went — the app's *current* vacation state says nothing about
-whether last Tuesday was one.
+Only a *new* entry is seeded. Editing an existing row must never retroactively
+add a tag it didn't say (same reason the Day row itself only shows for a new
+entry). **Moving a new entry's Day row re-seeds for that day**, as long as the
+user hasn't touched the tags yet: a backdated entry gets that day's own earlier
+tags and never "Vacation", because the app's *current* vacation state says
+nothing about whether last Tuesday was one.
+
+## Correcting a tag's text is a rename across the whole log, not an edit of one entry
+
+A derived vocabulary (above) has no row to fix a typo on — "Trvael" typed once
+sits in the pill grid forever, indistinguishable from a real tag, unless
+something rewrites every entry that carries it. `useMoodStore.renameContextTag`
+does that: long-press a context tag pill in `MoodLogSheet` (`Alert.prompt`,
+the same pattern `FoodLogScreen.handleRename` uses), and it walks every
+`MoodLog` sharing the tag's key and rewrites it via `renamedContextTags`
+(`moodLog.ts`), same `contextTagKey` case-insensitive match as everything
+else here.
+
+**It's a global rename, not scoped to the entry the pill was tapped in.**
+The alternative — fixing only the entry open in the sheet — leaves every
+other entry still carrying the typo, so the corrected and misspelled forms
+would keep showing as two separate pills. The vocabulary has no per-entry
+identity worth preserving here the way a symptom's severity does.
+
+**Renaming onto a tag the entry already has merges rather than duplicates**,
+the same rule `withContextTag` applies to an ordinary add — `renamedContextTags`
+is built on it. Symptoms have no equivalent yet; nothing asked for it, and the
+severity a merge would have to pick between is a question this feature
+doesn't have.
 
 ## Several entries a day is the normal case
 
@@ -257,7 +284,7 @@ symptom vocabulary is the clearest case that rule has: it is whatever the user
 has ever typed, so no phone-width scroll row can assume a ceiling for it. The
 chips are multi-select and `ChipFilterSheet` is the shared shell they live in —
 `LogbookFilterSheet` and `RecipeTagFilterSheet` predate it and still carry their
-own copies of the same 150 lines of sheet chrome.
+own copies of the same sheet chrome (#2995).
 
 Two rules on the filtering itself, both in `moodHistory.ts`:
 
@@ -416,6 +443,18 @@ still cannot know is whether a quiet fortnight was one of not needing it or
 one of not recording it, which is why the copy says recorded rather than
 taken.
 
+### Archiving a medication you stopped
+
+A medication has no row, so what is archived is the **name**: `medication_archived`
+holds `medicationKey`s (a synced setting) and `useMedicationStore.archived` reads
+them. Archiving leaves "What you take" and the suggestions and deletes nothing:
+the doses stay in Recent, in `medicationStats` and in the export, which is the
+whole record. **Recording another dose restores it** (`addLog`, and `updateLog`
+when a rename lands on it), so no date comparison is needed and a scheduled
+task that keeps completing can't leave a medicine archived while it is still
+being logged. Don't add a separate restore step to any other write path: it
+goes through `addLog`.
+
 ### A chain step records its own dose
 
 `ChainItem.medicationName` is the third field on the pattern
@@ -491,13 +530,23 @@ measurement and isn't.
   of seven entries is fine on the day's own card, where `describeFoodLogTotals`
   prints the clause saying so. Across days there is nowhere to print one and the
   coverage varies day to day, so the variation reads as variation in the food.
+  Stats' per-nutrient averages (`nutrientAverages`) apply the same rule for the
+  same reason, since a month's average is an across-days read too; there, the
+  day's water is left out of the count and feeds only the water row.
 
 Unlike the averages on Stats, **today is kept**: that window stops at yesterday
 because a partial day drags a mean down, and this one is paired rather than
-averaged with the two-meal bar already asking that question.
+averaged with the two-meal bar already asking that question. The EATING card's
+two plain figures ("calories a day", "protein a day") are the exception, because
+they are averages rather than pairings: `finishedDaysAverage` leaves today out
+as Stats does, and shows nothing below `MIN_PAIRED_DAYS` days, so a first
+afternoon of logging no longer reads as "900 calories a day".
 
-**The vocabulary is four nutrients and that is a cap, not a starting point.**
-`NUTRIENT_INSIGHT_KEYS` is calories, caffeine, sugar and protein. Ten nutrients
+**The vocabulary is two nutrients and that is a cap, not a starting point.**
+`NUTRIENT_INSIGHT_KEYS` is calories and sugar. Caffeine was cut because an absent
+caffeine figure is not a zero and a stated one often isn't either, and protein
+because nobody holds a hypothesis about protein and mood; the constant's own
+comment says why each one should stay out. Ten nutrients
 against two outcomes would be twenty comparisons over the same thirty-odd days,
 and at that width a couple land at something eye-catching by arithmetic alone —
 `MIN_PAIRED_DAYS` guards each comparison from being built on too little, and
@@ -520,9 +569,25 @@ here, so "how do the days I take it compare" needs no second vocabulary. A food
 you ate is already a food log entry here, for the same reason and with the same
 payoff: this is the elimination-diet question, and every symptom tracker that
 asks it makes you keep a whole separate food diary next to the log you were
-already keeping. Grouped by the entry's own label, which is `mostLoggedFoods`'
-choice and made for its reason — `itemId` and `recipeId` are null for anything
-typed in.
+already keeping. Grouped by what each entry *is* (`foodKeyResolver` in
+`nutritionStats.ts`): a linked entry by its catalog row or recipe, and only an
+unlinked one by its label.
+
+That used to be the label for everything, for a reason that still holds where
+it applies: `itemId` and `recipeId` are null for anything typed in or estimated,
+and keying on them alone would drop every hand-entered food. It stopped holding
+where the link is there (#2947). The entry picker offers an item and each of its
+boxes as separate rows ("Bread" and "Bread, Dave's Killer 21 grain"), so a
+person testing bread against headaches logged whichever was on top, and the
+branded days landed in plain bread's "didn't" group: bread days compared
+against bread days, in the one read somebody might change their diet over. So a
+box counts as its item (eating a pot of yogurt is eating yogurt, the same call
+`foodLogRecents.ts` makes), a dish is its recipe across a rename, and an
+unlinked label joins the row a linked entry was logged under by that same name,
+so "bread" typed by hand still counts as Bread. A label that linked entries
+carry for two different rows stays a label rather than guessing between them.
+The screens name a key through `foodKeyNames`, by the row's or recipe's current
+name, and `mostLoggedFoods` on Stats groups the same way.
 
 Its second gate is the one that makes the answer mean anything: it runs over
 `foodPairedDays`, not `pairedDays`, so "the days you didn't eat it" is days the

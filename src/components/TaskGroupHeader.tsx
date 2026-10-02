@@ -1,9 +1,9 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { Task, TaskGroup } from '../types';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, border, iconSize, interaction, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, interaction, type Colors } from '../theme';
 import { groupRoster, isRelevantToGroupToday } from '../utils/visibilityUtils';
 import { tagColor } from '../utils/tagColor';
 import { haptics } from '../utils/haptics';
@@ -38,6 +38,13 @@ interface Props {
   // don't render while a filter is narrowing the list underneath them.
   filtered?: boolean;
   /**
+   * Whether the tally counts today's work (the default, for Today) or the
+   * whole roster passed in `dueTodayOverride`. A project's page passes
+   * 'all': its sections are mostly undated work that is never "due today",
+   * so the Today tally read as nothing done out of nothing.
+   */
+  tallyScope?: 'today' | 'all';
+  /**
    * What is actually drawn under this header, when a caller can't take that
    * from `group.collapsed` alone. A project screen force-opens an empty stack
    * whatever the stored flag says (collapse hides rows and an empty one has
@@ -48,7 +55,12 @@ interface Props {
    * wants.
    */
   expanded?: boolean;
-  onToggleCollapse: () => void;
+  // Takes the group's own id back for the reason the four below it do, and
+  // needs it more than they do: this header is memoized, and its collapse is
+  // the one transition a stray re-commit is visible in (see
+  // AnimatedCollapsible), so a fresh closure per group per render would both
+  // defeat the memo and land inside the 250ms it matters.
+  onToggleCollapse: (groupId: string) => void;
   // These three (plus onPressEdit below) take the group's own id back rather
   // than closing over it — the same reason TaskItem's row handlers take
   // `task.id` — so TodayScreen can hand every header one stable `useCallback`
@@ -59,6 +71,8 @@ interface Props {
   // see the roster note in TodayScreen. Omitted on a list with no bulk bar,
   // which hides the panel rather than revealing a no-op.
   onSwipeSelect?: (groupId: string) => void;
+  /** Bulk selection is on: swiping stands down, same as every task row's. */
+  selectionMode?: boolean;
   onPressEdit: (groupId: string) => void;
   /** Long-pressing the title starts dragging the whole group (see TodayScreen). */
   onDrag?: () => void;
@@ -74,16 +88,31 @@ interface Props {
   onPressPin?: (groupId: string) => void;
 }
 
-export function TaskGroupHeader({
+/**
+ * Memoized, and that is load-bearing rather than an optimisation.
+ *
+ * This header folds its summary line away on the same clock the tray below it
+ * runs (see the AnimatedCollapsible further down), and a React commit landing
+ * inside those 250ms repaints that section at a clamp the animation has
+ * already moved off — AnimatedCollapsible's own header is the long version of
+ * why. Today re-renders for reasons that have nothing to do with this stack (a
+ * minute tick, any store write), and its list doesn't virtualize, so without
+ * this every stack on screen took that commit. Every prop it is handed is kept
+ * referentially stable at the call sites for the same reason; see the note on
+ * `onToggleCollapse`.
+ */
+export const TaskGroupHeader = React.memo(function TaskGroupHeader({
   group,
   allChildren,
   dueTodayOverride,
   filtered,
+  tallyScope = 'today',
   expanded,
   onToggleCollapse,
   onComplete,
   onDefer,
   onSwipeSelect,
+  selectionMode = false,
   onPressEdit,
   onDrag,
   pinned = false,
@@ -93,6 +122,7 @@ export function TaskGroupHeader({
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const isExpanded = expanded ?? !group.collapsed;
+  const toggleCollapse = useCallback(() => onToggleCollapse(group.id), [onToggleCollapse, group.id]);
   const [showDefer, setShowDefer] = useState(false);
   // Mounted on first open and kept, so it closes through `visible` rather
   // than by leaving the tree. See useSheetMount.
@@ -117,7 +147,7 @@ export function TaskGroupHeader({
   // numbers, and a bare "3/8" pill doesn't say which one it means.
   const nextUp = dueToday.find(c => !c.completed);
   const summary = totalToday === 0 || filtered ? null
-    : `${doneToday} of ${totalToday} done today${nextUp ? ` · Next: ${nextUp.title}` : ''}`;
+    : `${doneToday} of ${totalToday} done${tallyScope === 'today' ? ' today' : ''}${nextUp ? ` · Next: ${nextUp.title}` : ''}`;
   const showTally = totalToday > 0 && !filtered;
 
   const completeAll = () => {
@@ -135,6 +165,7 @@ export function TaskGroupHeader({
               destructive action one flick away and meant the gesture said
               "delete" on stacks and "select" on every task under them. */}
           <SwipeableRow
+            enabled={!selectionMode}
             selectAction={onSwipeSelect ? {
               onSelect: () => onSwipeSelect(group.id),
               accessibilityLabel: `Select all of ${group.title}`,
@@ -161,7 +192,7 @@ export function TaskGroupHeader({
                 // an N-task completion (with its recurrence spawns, chain
                 // advances and streak writes) one stray tap away from the child
                 // checkboxes directly below it.
-                onPress={onToggleCollapse}
+                onPress={toggleCollapse}
                 onLongPress={completeAll}
                 delayLongPress={interaction.delayLongPress}
                 activeOpacity={interaction.activeOpacity}
@@ -183,7 +214,7 @@ export function TaskGroupHeader({
 
               <TouchableOpacity
                 style={styles.content}
-                onPress={onToggleCollapse}
+                onPress={toggleCollapse}
                 onLongPress={onDrag}
                 delayLongPress={interaction.delayLongPress}
                 activeOpacity={interaction.activeOpacity}
@@ -194,8 +225,8 @@ export function TaskGroupHeader({
                 // "3/8" is invisible to a screen reader on its own.
                 accessibilityLabel={
                   showTally
-                    ? `${group.title} stack, ${doneToday} of ${totalToday} done today`
-                    : `${group.title} stack`
+                    ? `${group.title} ${group.checklist ? 'checklist' : group.projectId ? 'section' : 'stack'}, ${doneToday} of ${totalToday} done${tallyScope === 'today' ? ' today' : ''}`
+                    : `${group.title} ${group.checklist ? 'checklist' : group.projectId ? 'section' : 'stack'}`
                 }
                 accessibilityHint={
                   onDrag
@@ -209,6 +240,11 @@ export function TaskGroupHeader({
                 onAccessibilityAction={e => { if (e.nativeEvent.actionName === 'longpress') completeAll(); }}
               >
                 <View style={styles.titleRow}>
+                  {/* Says a section is a checklist before its rows do: its
+                      lines hide their dates and Pull passes it over. */}
+                  {group.checklist && (
+                    <Ionicons name="checkbox-outline" size={iconSize.sm} color={colors.textTertiary} />
+                  )}
                   <Text style={styles.title} numberOfLines={1}>{group.title}</Text>
                   {/* Bare type, not a filled pill: the header has no card
                       behind it any more, and a tinted capsule floating on
@@ -268,7 +304,7 @@ export function TaskGroupHeader({
                 hitSlop={8}
                 style={styles.iconBtn}
                 accessibilityRole="button"
-                accessibilityLabel={`Edit ${group.title} stack`}
+                accessibilityLabel={`Edit ${group.title} ${group.projectId ? 'section' : 'stack'}`}
               >
                 <Ionicons name="ellipsis-horizontal" size={iconSize.sm} color={colors.textTertiary} />
               </TouchableOpacity>
@@ -292,11 +328,16 @@ export function TaskGroupHeader({
       )}
     </>
   );
-}
+});
 
 // The stack's leading tile, and the gap between it and the title.
 const GLYPH_SIZE = 30;
 const GLYPH_GAP = 10;
+// The header's height with nothing under the title, and what the tile, the
+// title and the buttons are each centred on by arithmetic — see `row` for why
+// `alignItems: 'center'` no longer does that job.
+const BAND_MIN_HEIGHT = 48;
+const ICON_BTN_SIZE = iconSize.sm + spacing.sm * 2;
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   /**
@@ -340,14 +381,28 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   row: {
     flexDirection: 'row',
-    alignItems: 'center',
-    minHeight: 48,
+    // Top-aligned, with the tile, the title and the buttons each pinned at
+    // the offset that centres it on BAND_MIN_HEIGHT — deliberately not
+    // `alignItems: 'center'`, which is what this was. Centring measured the
+    // whole content column, and that column changes height on every frame of
+    // the summary line folding in or out (it runs alongside TaskGroupBody's
+    // own collapse): the 10pt of minHeight slack was handed back and forth,
+    // so the title crept up ~5pt through the first half of a toggle and the
+    // tile and buttons sank ~5pt through the second, in the one row the eye
+    // is on when it taps. Nothing here moves now; the summary grows under a
+    // title that stays put. The price is a collapsed header up to ~8pt
+    // taller than before (63 against 55 in a CSS mock with the real tokens),
+    // with the extra above the title, since the title no longer slides up to
+    // make room for the line under it; an expanded header is the same 48.
+    alignItems: 'flex-start',
+    minHeight: BAND_MIN_HEIGHT,
     backgroundColor: colors.bgSunken,
   },
   glyphWrapper: {
     // No padding: the tile's leading edge lines up with the left edge of the
     // cards below it, hitSlop does the finger-target work.
     marginRight: GLYPH_GAP,
+    marginTop: (BAND_MIN_HEIGHT - GLYPH_SIZE) / 2,
   },
   glyph: {
     width: GLYPH_SIZE,
@@ -366,7 +421,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   content: {
     flex: 1,
-    paddingVertical: spacing.sm,
+    // Asymmetric on purpose: the top inset centres the title's line box on
+    // BAND_MIN_HEIGHT (see `row`), the bottom is the gap under whatever the
+    // last line is — the title, the summary, or a row of tags.
+    paddingTop: (BAND_MIN_HEIGHT - lineHeight.lg) / 2,
+    paddingBottom: spacing.sm,
   },
   titleRow: {
     flexDirection: 'row',
@@ -381,6 +440,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexShrink: 1,
     color: colors.text,
     fontSize: font.lg,
+    // Explicit so `content`'s top inset can centre it by arithmetic rather
+    // than by measurement.
+    lineHeight: lineHeight.lg,
     fontWeight: fontWeight.regular,
     letterSpacing: -0.2,
   },
@@ -395,6 +457,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   summary: {
     color: colors.textTertiary,
     fontSize: font.xs,
+    lineHeight: lineHeight.xs,
     marginTop: 3,
   },
   tagsRow: {
@@ -415,5 +478,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   iconBtn: {
     padding: spacing.sm,
+    marginTop: (BAND_MIN_HEIGHT - ICON_BTN_SIZE) / 2,
   },
 });

@@ -19,10 +19,12 @@ import { useSavedViewStore } from '../store/useSavedViewStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useStepTimerStore } from '../store/useStepTimerStore';
+import { stepDurationOffers, stepTimerExcerpt } from './stepTimers';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useSettingsStore, type WeekStart } from '../store/useSettingsStore';
 import { supplyReorderTitle } from './supply';
+import { nudgeFieldsFor } from './nudgeCadence';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { useFocusStore } from '../store/useFocusStore';
 import { useSharedLinkStore } from '../store/useSharedLinkStore';
@@ -44,6 +46,7 @@ import { waterHelping } from './waterLog';
 import { cookedDishGrams, mealHelping, weighedHelping } from './mealLog';
 import { perServing, recipeNutrition } from './recipeNutrition';
 import { recipeMap } from './recipeComponents';
+import { recipeInBook } from './recipeUtils';
 import { packageChoices, packageHelping } from './scanPortion';
 import { describeProduct } from './groceryProduct';
 import { focusPlanOptionsFrom } from './focusSettings';
@@ -54,6 +57,8 @@ import { birthdayGiftTitle, personLinkUrl } from './birthdayTasks';
 import { waitingFollowUpTitle } from './waitingFollowUpTasks';
 import { giftIdeasText } from './personNotes';
 import { mealShortfallLinkUrl, mealShortfallTitle } from './mealShortfallTasks';
+import { frozenForMeal, mealThawLinkUrl, mealThawTitle } from './mealThawTasks';
+import { standingSwapMap } from './standingSwaps';
 import { mealLogNudgeLinkUrl, mealLogNudgeTitle } from './mealLogNudgeTasks';
 import { CALENDAR_REVIEW_TITLE } from './calendarReviewTasks';
 import {
@@ -62,7 +67,7 @@ import {
   weekendNudgeLinkUrl,
   weekendNudgeNotes,
 } from './weekendTasks';
-import { weatherSourceId, defaultWeatherRules, describeWeatherWindow, weatherTaskTitle } from './weatherTasks';
+import { weatherSourceId, defaultWeatherRules, describeWeatherWindow, weatherTaskTitle, WEATHER_LINK_URL } from './weatherTasks';
 import { screenTimeSourceId, defaultScreenTimeRules } from './screenTimeRules';
 import { defaultEventRules, eventOccurrenceKey, eventTaskSourceId } from './eventTasks';
 import { TRAVEL_LEAD_MINUTES_DEFAULT, travelSourceId, travelTaskTitle } from './travelTasks';
@@ -100,6 +105,7 @@ export function seedDemoData(): void {
     updateTask,
     completeTask,
     setMeasuredTime,
+    logRotationUnit,
     addNewGroupedTask,
     addExistingToProject,
     addTag,
@@ -346,6 +352,29 @@ export function seedDemoData(): void {
     excludeFromSuggestions: true,
   });
 
+  // The 'hours' recurrence — a dose that can only be taken again N hours
+  // after the last one, not on a fixed clock time (see RecurrenceType's own
+  // doc comment). Naproxen rather than the ibuprofen already seeded by
+  // `seedAsNeededDoses`: that one is deliberately task-less (see its own doc
+  // comment — "nobody schedules a painkiller"), and this feature is the
+  // exception to that reasoning, not a second way of seeding the same drug.
+  // Completed a few hours ago so the successor it spawned is still sitting
+  // hidden, which is the whole point of the feature: a plain completed row
+  // demonstrates nothing, since the interesting state is the one you can't
+  // see without knowing to look for it.
+  const naproxen = addTask({
+    title: 'Take naproxen',
+    notes: 'For the back. Not sooner than every 8 hours.',
+    category: 'Health',
+    recurrenceType: 'hours',
+    recurrenceInterval: 8,
+    recurrenceFromCompletion: true,
+    medicationName: 'Naproxen',
+    medicationAmount: 250,
+    medicationUnit: 'mg',
+  });
+  completeTask(naproxen.id, { completedAt: subHours(today, 3).toISOString() });
+
   // The postpone check has nothing to show until a task has actually been
   // ducked a few times, and a fresh demo database has no history — so the count
   // is stamped on directly. Opening this one's date picker is the whole feature:
@@ -384,6 +413,22 @@ export function seedDemoData(): void {
   updateTask(gutters.id, {
     postponeCount: 3,
     driftingSince: subDays(today, 11).toISOString(),
+  });
+
+  // A yearly rule pinned to a month of its own — recurrenceMonth, otherwise
+  // invisible until something uses it. April, regardless of what month the
+  // due date otherwise falls in.
+  addTask({
+    title: 'Renew passport',
+    notes: 'Expires in June — starting the paperwork in April keeps it well ahead of any trip.',
+    category: 'Errands',
+    dueDate: new Date(today.getFullYear(), 3, 15).toISOString(),
+    recurrenceType: 'yearly',
+    recurrenceInterval: 1,
+    recurrenceMonth: 4,
+    priority: 1,
+    effort: 1,
+    tags: ['admin'],
   });
 
   addTask({
@@ -553,6 +598,23 @@ export function seedDemoData(): void {
   // Part-done, so the meter on the row reads as a meter rather than an empty bar.
   updateTask(water.id, { progressCount: 2 });
 
+  // The same target counted off the food log instead of typed in: it logs 250ml
+  // a glass and follows the 2,000ml water target seeded with the food log, so
+  // its count is 8 and moves when that target does. Without a row like this the
+  // toggle reads as a setting nobody has used.
+  addTask({
+    title: 'Reach my water target',
+    category: 'Health',
+    dueDate: today.toISOString(),
+    targetCount: 8,
+    targetUnit: 'glasses',
+    recurrenceType: 'daily',
+    recurrenceInterval: 1,
+    logHealthMetric: 'waterMl',
+    logHealthAmount: 250,
+    followWaterTarget: true,
+  });
+
   // The other kind of daily target: one whose cadence is the point and whose
   // count is arithmetic. Invisible as a capability without a row using it —
   // the interval, the nudges and the window all read as ordinary quota fields
@@ -633,6 +695,37 @@ export function seedDemoData(): void {
   });
   updateTask(runs.id, { progressCount: 1 });
 
+  // A rotation: the same weekly counting, but the units have names (see
+  // utils/rotation.ts). This is the one shape a plain weekly target cannot
+  // express — "three times a week" cannot tell you *which* three are left —
+  // and the whole feature is invisible until something has been logged
+  // against it, so the seed logs two of the five and leaves three standing.
+  const languages = [
+    { id: generateId(), title: 'Spanish', linkUrl: null },
+    { id: generateId(), title: 'French', linkUrl: null },
+    { id: generateId(), title: 'German', linkUrl: null },
+    { id: generateId(), title: 'Japanese', linkUrl: null },
+    { id: generateId(), title: 'Portuguese', linkUrl: null },
+  ];
+  const podcasts = addTask({
+    title: 'Language podcast',
+    notes: 'One podcast a day, a different language each time. Checking it off asks which one you listened to.',
+    category: 'Personal',
+    dueDate: today.toISOString(),
+    rotationEnabled: true,
+    rotationItems: languages,
+    targetCount: languages.length,
+    quotaPeriod: 'week',
+    recurrenceType: 'weekly',
+    recurrenceInterval: 1,
+    quotaAlwaysVisible: true,
+  });
+  // Through the store action rather than a hand-written ledger, so the seed
+  // cannot drift from what a real pick writes — the rule the whole seed is
+  // built on. Two picks, which leaves the row reading "3 left".
+  logRotationUnit(podcasts.id, languages[0].id);
+  logRotationUnit(podcasts.id, languages[3].id);
+
   // A follow-up task rule. Invisible until it fires, so the seed carries a tally
   // partway through the cycle: the editor's caption then reads as a rule in
   // progress rather than one nobody has started.
@@ -675,6 +768,23 @@ export function seedDemoData(): void {
     effort: 2,
   });
   updateTask(violin.id, { followUpTaskTally: 2 });
+  // One follow-up task already added by an earlier cycle of the rule above,
+  // pointing back at the live "Practice the violin" row — what TaskEditor's
+  // "Follow-up frequency" row (Task.followUpTaskSourceId) resolves against,
+  // so the demo shows the rule editable from the task it added and not just
+  // from the task that owns it.
+  addTask({
+    title: 'Rosin the bow',
+    category: 'Home',
+    tags: ['upkeep'],
+    priority: 1,
+    effort: 1,
+    estimatedMinutes: 5,
+    timeSegments: ['evening'],
+    dueDate: today.toISOString(),
+    followUpTaskSourceTitle: 'Practice the violin',
+    followUpTaskSourceId: violin.id,
+  });
 
   // A decision task — one that completes by recording an answer rather than
   // just being ticked. Seeded live so its checkbox shows the "?" that says it
@@ -794,6 +904,15 @@ export function seedDemoData(): void {
     deferUntil: addDays(today, 3).toISOString(),
     effort: 4,
     priority: 2,
+    // Tracks the exact moment this comes off its defer (Task.
+    // reminderTracksVisibility) rather than a fixed instant or an offset
+    // from a due date it doesn't have — the reminder mode with nothing to
+    // count from but the defer/time-segment gate itself. reminderTime is
+    // seeded to match today; reanchorWallClockReminders corrects it for
+    // real on the next launch/foreground, same as it does for wall-clock
+    // drift.
+    reminderTime: addDays(today, 3).toISOString(),
+    reminderTracksVisibility: true,
   });
 
   addTask({
@@ -958,16 +1077,30 @@ export function seedDemoData(): void {
   // the demo rather than only the behaviour — a list drawn as a project is a
   // feature the demo says the app doesn't have.
   //
-  // nudgeOptIn defaults to false, so it still never trips the gone-quiet nudge
-  // or shows up in "Pull from projects". See Project.nudgeOptIn.
+  // Set to Never below, so it never trips the gone-quiet nudge or shows up in
+  // "Pull from projects". See Project.nudgeOptIn.
   const giftIdeas = createProject('Gift ideas', { kind: 'list' });
   // A running list nobody expects to finish — see Project.ongoing. Never
   // offers to mark itself complete, however many ideas on it get used.
-  updateProject(giftIdeas.id, { category: 'Ideas', ongoing: true });
+  // Set to Never by hand: a new project starts at "When I ask", and a list of
+  // gift ideas is exactly the kind nobody wants in the Pull sheet.
+  updateProject(giftIdeas.id, { category: 'Ideas', ongoing: true, ...nudgeFieldsFor('never', 0) });
   ['Something for Mom\'s birthday', 'Housewarming idea for the Chens', 'Stocking stuffers'].forEach(title => {
     const t = addTask({ title });
     addExistingToProject(t.id, giftIdeas.id);
   });
+
+  // A project parked for a season (Project.pausedUntil): a weekly routine and a
+  // one-off, both held off Today until the pause lifts in three weeks. Without
+  // it, pausing is a feature the demo says the app doesn't have.
+  const garden = createProject('Garden', { category: 'Around the house' });
+  const gardenBack = addDays(new Date(), 21);
+  updateProject(garden.id, {
+    ongoing: true,
+    pausedUntil: `${gardenBack.getFullYear()}-${String(gardenBack.getMonth() + 1).padStart(2, '0')}-${String(gardenBack.getDate()).padStart(2, '0')}`,
+  });
+  addTask({ title: 'Water the beds', projectId: garden.id, recurrenceType: 'weekly', dueDate: new Date().toISOString() });
+  addTask({ title: 'Build a raised bed', projectId: garden.id });
 
   // The list the feature was built for, and the one that shows an answer being
   // recorded. Exactly one item carries a deliverable: a list where every line
@@ -977,13 +1110,12 @@ export function seedDemoData(): void {
   const doctor = createProject('Questions for Dr. Okafor', { kind: 'list' });
   updateProject(doctor.id, { category: 'Ideas' });
 
-  // What `CookbookChecklistSheet` builds from a photo of a table of contents:
-  // a list-kind project named for the book, one item per recipe, some already
-  // checked off. Seeded with a couple already cooked so the checklist reads as
-  // progress through a book rather than as an ordinary uncompleted list —
-  // that's the whole feature this exists to demo.
+  // A list-kind project that's read in book order rather than worked off a
+  // list, and crossed out rather than dropped once done (Project.showChecked)
+  // — a book is read with what's done still on the page. Seeded with a couple
+  // already cooked so it reads as progress through a book.
   const cookbook = createProject('Six Seasons', { kind: 'list' });
-  updateProject(cookbook.id, { category: 'Ideas' });
+  updateProject(cookbook.id, { category: 'Ideas', showChecked: true });
   ['Grilled Asparagus with Anchovy', 'Sugar Snaps with Mint', 'Roast Chicken with Crispy Bread Salad',
     'Corn Chaat', 'Slow-Roasted Tomatoes'].forEach((title, i) => {
     const t = addTask({ title });
@@ -1031,6 +1163,53 @@ export function seedDemoData(): void {
     'Get the referral letter for physical therapy'].forEach(title => {
     const t = addTask({ title });
     addExistingToProject(t.id, doctor.id);
+  });
+
+  // Lisbon's packing as a checklist section (TaskGroup.checklist): lines that
+  // are checked off rather than dated, inside a project whose other tasks are
+  // dated. Without it the switch reads as a feature the app doesn't have.
+  const packing = createGroup('Packing', null, lisbon.id);
+  useTaskGroupStore.getState().updateGroup(packing.id, { checklist: true, sortOrder: 1000 });
+  ['Adapter plugs', 'Sunscreen', 'Walking shoes'].forEach(title => {
+    addTask({ title, projectId: lisbon.id, groupId: packing.id }, undefined, { skipTitleRules: true });
+  });
+  // Where the trip's booking lives, kept on the project page (Project.links).
+  updateProject(lisbon.id, {
+    links: [{ id: 'demo-lisbon-flat', label: 'The flat in Alfama', url: 'https://example.com/lisbon-flat' }],
+  });
+
+  // A party: RSVPs as one Pick-one task per guest, counted on the project page
+  // ("2 Yes, 1 No, 2 waiting"), and invitations that wait on two things at
+  // once (Task.blockedByIds). Seeded through the same store calls the
+  // "Track replies" sheet and the editor make.
+  const party = createProject("Maya's birthday party", {
+    category: 'Ideas',
+    deadline: addDays(today, 38).toISOString(),
+  });
+  const venue = addTask({ title: 'Book the venue', projectId: party.id }, undefined, { skipTitleRules: true });
+  const guestList = addTask({ title: 'Settle the guest list', projectId: party.id }, undefined, { skipTitleRules: true });
+  addTask({
+    title: 'Send the invitations',
+    projectId: party.id,
+    blockedById: venue.id,
+    blockedByIds: [guestList.id],
+  }, undefined, { skipTitleRules: true });
+  const guests = createGroup('Guests', null, party.id);
+  // A checklist, as the page's own Add guests makes one: a guest is ticked
+  // off with a reply, never dated. Lee said Maybe, which is recorded and
+  // leaves the row open to be asked again.
+  useTaskGroupStore.getState().updateGroup(guests.id, { sortOrder: 1000, checklist: true });
+  [
+    ['Priya', 'Yes'], ['Sam', 'Yes'], ['Jordan', 'No'], ['Lee', 'Maybe'], ['Alex', null],
+  ].forEach(([name, answer]) => {
+    const guest = addTask({
+      title: name!,
+      projectId: party.id,
+      groupId: guests.id,
+      deliverableKind: 'choice',
+      deliverableOptions: ['Yes', 'No', 'Maybe'],
+    }, undefined, { skipTitleRules: true });
+    if (answer) completeTask(guest.id, { deliverableValue: answer });
   });
 
   // A project that has gone quiet, and the task the app writes about it.
@@ -1129,8 +1308,11 @@ export function seedDemoData(): void {
   // until something reads it — here, the next task added straight to the
   // project below.
   const kitchenRemodel = createProject('Kitchen remodel');
-  updateProject(kitchenRemodel.id, { defaultTaskCategory: 'Home' });
+  // Worked in order (Project.inOrder): Pull only ever offers the first open
+  // task, so the cabinets can't come up before the quotes.
+  updateProject(kitchenRemodel.id, { defaultTaskCategory: 'Home', inOrder: true });
   addTask({ title: 'Get quotes from contractors', projectId: kitchenRemodel.id });
+  addTask({ title: 'Pick the cabinets', projectId: kitchenRemodel.id });
   ['Drive out to the coast', 'Walk the ridge trail', 'That bakery two towns over'].forEach(title => {
     const t = addTask({ title });
     addExistingToProject(t.id, dayTrips.id);
@@ -1141,7 +1323,7 @@ export function seedDemoData(): void {
   const weekend = upcomingWeekend(today);
   addTask({
     title: WEEKEND_NUDGE_TITLE,
-    notes: weekendNudgeNotes({
+    notes: weekendNudgeNotes([], {
       projectId: dayTrips.id,
       projectTitle: 'Day trips',
       candidateTitle: 'Drive out to the coast',
@@ -1179,6 +1361,7 @@ export function seedDemoData(): void {
     ),
     dueDate: today.toISOString(),
     category: 'Weather',
+    linkUrl: WEATHER_LINK_URL,
     ...generatedBy('weather', weatherSourceId(dayKeyOf(today), sunscreenRule.id)),
   });
   // And the day-ahead half of the same feature, which is invisible until
@@ -1191,6 +1374,7 @@ export function seedDemoData(): void {
     ),
     dueDate: addDays(today, 1).toISOString(),
     category: 'Weather',
+    linkUrl: WEATHER_LINK_URL,
     ...generatedBy('weather', weatherSourceId(tomorrowKey, rainRule.id)),
   });
 
@@ -1655,6 +1839,13 @@ function seedFoodLog(today: Date): void {
     meals.push({ name: 'Milk', quantity: '1 cup', slot: 'breakfast', hour: 8, daysAgo });
     // The two thin days: somebody logged breakfast and got on with their life.
     if (daysAgo === 5 || daysAgo === 6) continue;
+    // And yesterday's dinner, which is a third thin day with a reason: the
+    // `mealLogNudge` task seeded further down asks about yesterday's planned
+    // stir-fry, and a meal counts as logged the moment anything is in its slot
+    // (see `mealLogCoverage.ts`). Potatoes and butter filed under yesterday's
+    // dinner would answer the very question the seeded task is there to show
+    // being asked, and the first foreground sweep would clear the row.
+    if (daysAgo === 1) continue;
     // The low patch in `seedMoodLog` runs 8 to 11 days back. Plainer, smaller
     // dinners through it.
     const lean = daysAgo >= 8 && daysAgo <= 11;
@@ -1827,6 +2018,45 @@ function seedFoodLog(today: Date): void {
   }
 
   /**
+   * A food a database answered that nobody filed, logged by weight.
+   *
+   * **The one entry whose row menu offers Edit with no catalog row behind
+   * it** (#2914). Searching a whole food, weighing it and logging it without
+   * filing is the ordinary macro-tracker path, and the entry keeps the
+   * database's own per-100 g panel (`FoodLogEntry.sourcePanel`) so a wrong
+   * weight is a correction rather than a delete and a fresh search. With no
+   * row like this in the seed, that path reads as rename-only. It keeps the
+   * database's own long description, which is what an unfiled food is called.
+   */
+  {
+    const label = 'Chicken, broilers or fryers, breast, meat only, cooked, roasted';
+    const kept = {
+      basis: 'per100g' as const,
+      servingGrams: null,
+      servingText: null,
+      amounts: { calorieKcal: 165, proteinG: 31, fatG: 3.6, satFatG: 1, carbsG: 0, sodiumMg: 74 },
+      portions: [{ amount: 1, label: 'cup, chopped or diced', grams: 140 }],
+      source: 'fdc' as const,
+      sourceId: '171477',
+      recordedAt: subDays(today, 4).toISOString(),
+    };
+    const built = scalePanelToAmount(kept, '150 g', null, undefined, label);
+    if (built) {
+      const at = subDays(today, 4);
+      at.setHours(12, 30, 0, 0);
+      addEntry({
+        label,
+        quantity: '150 g',
+        grams: built.grams,
+        nutrition: built.nutrition,
+        sourcePanel: kept,
+        slot: 'lunch',
+        at,
+      });
+    }
+  }
+
+  /**
    * Today's water, part-way to its target.
    *
    * **On today rather than back in the run**, because the water card is what
@@ -1966,6 +2196,25 @@ function seedPeople(today: Date): void {
     location: 'Denver, CO',
   });
 
+  // A business, not a person — Person.kind exists so a company name like
+  // "Eye Q" doesn't get read as though its first word were a first name (no
+  // "@eye" mention, no calendar-title guess landing on "Eye"), and so it never
+  // gets a reach-out nudge: see docs/arch/people.md, "Businesses don't get
+  // check-ins". The editor hides the cadence field for one entirely, and this
+  // row is seeded with no cadence set, same as the default for any new person.
+  const optometrist = createPerson('Eye Q');
+  updatePerson(optometrist.id, {
+    kind: 'business',
+    phoneNumber: '555 0199',
+    notes: 'Optometrist.',
+  });
+  const eyeExam = addTask({
+    title: 'Eye exam',
+    dueDate: addDays(today, 12).toISOString(),
+    phoneNumber: '555 0199',
+  });
+  updateTask(eyeExam.id, { personIds: [optometrist.id] });
+
   // Tasks that name people, which is what a shared history is made of (#2045).
   // One planned and one already done, so the link reads both ways rather than
   // only as something upcoming.
@@ -2017,6 +2266,20 @@ function seedPeople(today: Date): void {
   // way a task blocked on another task does, so without a seeded one the
   // Waiting screen's person sections read as a feature the app doesn't have —
   // and unlike a task blocker, nothing ends this on its own.
+  // Who a project is with (Project.personIds): the party is being planned
+  // with Ansley, shown on its page and opening her page from there.
+  const partyProject = useProjectStore.getState().projects.find(p => p.title === "Maya's birthday party");
+  if (partyProject) useProjectStore.getState().updateProject(partyProject.id, { personIds: [ansley.id] });
+
+  // A wait with its own follow-up day (Task.followUpOn): the follow-up task
+  // arrives that day rather than after a week, whatever the setting says
+  // (see followUpDue).
+  const cake = addTask({
+    title: 'Hear back about the cake order',
+    ...(partyProject ? { projectId: partyProject.id } : {}),
+  }, undefined, { skipTitleRules: true });
+  updateTask(cake.id, { waitingOnPersonId: ansley.id, followUpOn: dayKeyOf(addDays(today, 3)) });
+
   const photos = addTask({ title: 'Photos from the trip' });
   updateTask(photos.id, { waitingOnPersonId: dustin.id });
   // Backdated past WAITING_FOLLOW_UP_THRESHOLD_DAYS, so the follow-up task
@@ -2079,22 +2342,6 @@ function seedPeople(today: Date): void {
   // exactly one person opted in, so demo mode opens with one catch-up row
   // rather than a screen of them.
   useTaskStore.getState().checkReachOutTasks();
-
-  // The weekly review, from the same pass the app runs at launch rather than a
-  // row written by hand, for the reason the birthday task above uses it: a
-  // seeded row that skipped the generator could drift from what the generator
-  // actually produces — and here that includes the link, which is the whole
-  // point of the row.
-  //
-  // It runs last in the seed for the reason it runs last in the maintenance
-  // sequence: it counts the inbox, what is stuck and what slipped, and
-  // everything seeded above it adds to those piles. Called from here rather
-  // than left to the launch pass because the pass spends the week key on the
-  // first launch that qualifies, and a demo entered later the same week would
-  // then show no review at all.
-  useSettingsStore.getState().setWeeklyReviewTasks(true);
-  useSettingsStore.getState().setWeeklyReviewTaskCategory('Personal');
-  useTaskStore.getState().checkWeeklyReviewTasks();
 }
 
 // ---------------------------------------------------------------------------
@@ -2226,6 +2473,18 @@ function seedAsNeededDoses(today: Date): void {
       at: setHours(subDays(today, back), 15),
     });
   }
+  // A finished course, archived, so the Archived section on the Medications
+  // screen has a row and "What you take" shows only what is still current.
+  for (const back of [29, 28, 27]) {
+    addLog({
+      name: 'Amoxicillin',
+      amount: 500,
+      unit: 'mg',
+      asNeeded: false,
+      at: setHours(subDays(today, back), 9),
+    });
+  }
+  useMedicationStore.getState().archiveMedication('Amoxicillin');
 }
 
 /**
@@ -2337,7 +2596,7 @@ function seedTemplates(): void {
     // The decision item: applying the template produces a task that asks for
     // the dates when it's ticked, rather than one someone has to convert to a
     // decision by hand every trip.
-    { title: 'Pick dates for {destination}', dueOffsetDays: -28, deliverableKind: 'date' },
+    { title: 'Pick dates for {destination}', dueOffsetDays: -28, deliverableKind: 'date', deliverableSetsAway: true },
     { title: 'Put in for PTO for {run}', category: 'Work', dueOffsetDays: -21, priority: 3 },
     { title: 'Book flights to {destination}', dueOffsetDays: -14, priority: 4, effort: 2 },
     { title: 'Somewhere to stay in {destination}', dueOffsetDays: -14, effort: 2 },
@@ -2375,7 +2634,7 @@ function seedTemplates(): void {
   //
   // Its *run* isn't seeded, and can't be: the only thing that could stamp a
   // period key without also firing is checkScheduledTemplates, and the demo
-  // database is swapped in by initTasks rather than by the launch sequence
+  // database is swapped in by useTaskStore.initialize rather than by the launch sequence
   // that calls it. So this one fires for real the next time the app comes to
   // the foreground, which is the honest demonstration anyway.
   const reset = addTemplate('Sunday reset');
@@ -2426,8 +2685,7 @@ interface DemoRecipes {
 function newRecipe(name: string): Recipe {
   const created = useRecipeStore.getState().addRecipe(name);
   if (created) return created;
-  const key = groceryNameKey(name);
-  return useRecipeStore.getState().recipes.find(r => r.nameKey === key)!;
+  return recipeInBook(useRecipeStore.getState().recipes, name, null)!;
 }
 
 /** An ingredient row's id, by the name it was parsed down to. Null if the line didn't take. */
@@ -2481,6 +2739,7 @@ function seedRecipes(): DemoRecipes {
     setSourceType,
     setSourcePage,
     linkNewCookbook,
+    ensureCookbook,
     setEstimatedMinutes,
     setPrepMinutes,
     setLeftoverKeepDays,
@@ -2676,13 +2935,18 @@ function seedRecipes(): DemoRecipes {
   // rule a single ingredient list can't: it holds "brown sugar" and "sugar" as
   // separate lines, so the frosting step's plain "sugar" has to go to the line
   // actually called that rather than to the alias the other one offers.
-  [
-    'Heat the oven to 180°C and line a 9-inch cake pan.',
-    'Whisk the eggs with the brown sugar, then fold in the flour, cinnamon and grated carrot.',
-    'Bake for 35 minutes, until a skewer comes out clean.',
-    'Beat the cream cheese, butter and sugar together while the cake cools.',
-    'Frost the cake once it is completely cool.',
-  ].forEach(text => addStep(cake.id, text));
+  //
+  // The method is filed under the same two headings the ingredients already
+  // use (RecipeStep.section) — this is the one recipe in the box showing that
+  // a method can be grouped the same way a shopping list is, not a second
+  // feature to demonstrate on its own.
+  ([
+    ['Heat the oven to 180°C and line a 9-inch cake pan.', 'For the cake'],
+    ['Whisk the eggs with the brown sugar, then fold in the flour, cinnamon and grated carrot.', 'For the cake'],
+    ['Bake for 35 minutes, until a skewer comes out clean.', 'For the cake'],
+    ['Beat the cream cheese, butter and sugar together while the cake cools.', 'For the frosting'],
+    ['Frost the cake once it is completely cool.', 'For the frosting'],
+  ] as const).forEach(([text, section]) => addStep(cake.id, text, section));
   setRecipeYield(cake.id, '1 9-inch cake');
   setServings(cake.id, 12);
   setEstimatedMinutes(cake.id, 45);
@@ -2706,6 +2970,39 @@ function seedRecipes(): DemoRecipes {
   setEstimatedMinutes(shortbread.id, 40);
   setSourcePage(shortbread.id, '52');
   linkNewCookbook(shortbread.id, 'Sweet', 'Yotam Ottolenghi');
+
+  // A second shortbread of the same name from a different book. A name is
+  // unique per book rather than across the box, so the two sit side by side,
+  // told apart by the book in each row's subtitle.
+  const dessertPerson = ensureCookbook('Dessert Person', 'Claire Saffitz');
+  const otherShortbread = dessertPerson
+    ? useRecipeStore.getState().addRecipe('Brown sugar shortbread', dessertPerson.id)
+    : null;
+  if (otherShortbread) {
+    addIngredientsFromText(
+      otherShortbread.id,
+      ['225g butter', '110g dark brown sugar', '280g flour', '1/2 tsp salt', 'demerara sugar, for rolling'].join('\n')
+    );
+    setMealType(otherShortbread.id, 'dessert');
+    setRecipeYield(otherShortbread.id, '16 cookies');
+    setSourcePage(otherShortbread.id, '76');
+  }
+
+  // A few lines of each book's index: dishes known only by name, page and the
+  // ingredients the index lists them under. They aren't recipes and don't sit
+  // in the box; Cook with… is where they turn up ("butter" finds the two
+  // shortbreads above and the apple cake here), and the book's page lists them.
+  const sweet = useRecipeStore.getState().cookbooks.find(c => c.title === 'Sweet');
+  const { addIndexEntry } = useRecipeStore.getState();
+  if (sweet) {
+    addIndexEntry(sweet.id, { title: 'Lemon and poppy seed cake', page: '30', ingredients: ['lemons', 'poppy seeds'] });
+    addIndexEntry(sweet.id, { title: 'Chocolate hazelnut cookies', page: '64', ingredients: ['chocolate', 'hazelnuts'] });
+    addIndexEntry(sweet.id, { title: 'Fig and almond tart', page: '188', ingredients: ['figs', 'almonds'] });
+  }
+  if (dessertPerson) {
+    addIndexEntry(dessertPerson.id, { title: 'Brown butter apple cake', page: '110', ingredients: ['apples', 'butter'] });
+    addIndexEntry(dessertPerson.id, { title: 'Lemon curd tart', page: '204', ingredients: ['lemons', 'eggs'] });
+  }
 
   const tea = newRecipe('Iced mint tea');
   addIngredientsFromText(tea.id, ['4 tea bags', '1 bunch mint', '2 lemons', '1/4 cup honey'].join('\n'));
@@ -2818,6 +3115,8 @@ function seedRecipes(): DemoRecipes {
       recipeName: stirFry.name,
       stepId: stirFryStep.id,
       stepLabel: 'Step 3 of 4',
+      // The words the footer row goes by, read the way cook mode reads them.
+      stepExcerpt: stepTimerExcerpt(stirFryStep.text, stepDurationOffers(stirFryStep)[0]?.start ?? 0),
       durationSeconds: 2 * 60,
     });
   }
@@ -2878,6 +3177,9 @@ function seedRecipes(): DemoRecipes {
       '4 cups vegetable stock',
       '1 can diced tomatoes',
       '1 tsp dried thyme',
+      // Shares with the stir-fry and the salmon, so "Cook together" has a
+      // third dish to offer rather than a pair.
+      '2 cloves garlic, minced',
     ].join('\n')
   );
   setMealType(soup.id, 'dinner');
@@ -2897,6 +3199,29 @@ function seedRecipes(): DemoRecipes {
   // a real question at log time instead of a line demo mode can never answer.
   const crustyBread = addIngredient(soup.id, 'Bread');
   if (crustyBread) updateIngredient(soup.id, crustyBread.id, { purpose: 'serving', optional: true });
+
+  // Deliberately left unplanned, and deliberately built out of what the
+  // planned stir-fry already buys: rice, garlic and soy sauce. It's what
+  // "Cook together" exists to surface — a dish worth cooking this week
+  // precisely because the shopping is already half done. Without a candidate
+  // that overlaps three ways, the feature demos as a list of near-misses.
+  const friedRice = newRecipe('Garlic fried rice');
+  addIngredientsFromText(
+    friedRice.id,
+    [
+      '2 cups rice',
+      '3 cloves garlic, minced',
+      '2 tbsp soy sauce',
+      '2 eggs',
+      '3 scallions, sliced',
+      '1 tsp salt',
+    ].join('\n')
+  );
+  setMealType(friedRice.id, 'dinner');
+  setTags(friedRice.id, ['weeknight', 'quick']);
+  setServings(friedRice.id, 2);
+  setEstimatedMinutes(friedRice.id, 15);
+  setSourceType(friedRice.id, 'homeRecipe');
 
   const steak = newRecipe('Seared steak with potatoes');
   addIngredientsFromText(
@@ -3008,6 +3333,7 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
     updateProduct,
     setPreferredProduct,
     setProductFrozen,
+    freezePortion,
     setProductOnHandUntil,
     linkScannedGtins,
     setProductStrict,
@@ -3039,6 +3365,9 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
     linkItemSub,
     setShopExcludedFromSuggestions,
     setShopAisles,
+    setShopAisleOrder,
+    setShopReceiptStyle,
+    rememberAliases,
     startTrip,
     setItemPrice,
     addList,
@@ -3437,6 +3766,17 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
   // its own demonstration), and paper goods at a pharmacy is the shape of it.
   const pharmacy = newShop('Corner Pharmacy');
   setShopAisles(pharmacy.id, ['Household']);
+  // A store's receipt shorthand, remembered the way applying a receipt review
+  // remembers it, so the next Trader Joe's receipt reads these two lines
+  // without asking. With none, the matcher's "remembered" tier (and the link
+  // the catalog counts for it) reads as something the app doesn't do.
+  rememberAliases([
+    { shopId: traderJoes.id, rawText: 'ORG BABY SPINACH', itemId: itemNamed('Spinach').id },
+    { shopId: traderJoes.id, rawText: 'CHKN BRST BNLS', itemId: itemNamed('Chicken breast').id },
+  ]);
+  // And a store whose receipt isn't worth photographing: an online order hands
+  // you no paper, so the receipt sheet says so instead of reading nothing.
+  setShopReceiptStyle(amazon.id, 'none');
 
   // Three finished trips, so the catalog and the autocomplete ranking have a
   // real spread of purchase counts to sort by rather than a flat list of ones.
@@ -3859,6 +4199,18 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
     setProductOnHandUntil(arnolds.id, defaultOnHandUntil(itemNamed('Bread'), new Date()));
   }
 
+  // A family pack split in two, which is "Freeze some" (#2925): half the ground
+  // beef in the freezer, the other half out and counting down. Ground beef
+  // because the 2 lb pack above is exactly what people buy big and split, and
+  // unlike the two loaves there's no brand to tell the halves apart by, which
+  // is the case a named box couldn't cover. The item keeps its own use-by day
+  // (three days out, so it doesn't join the two "use up" rows above) and the
+  // portion gets a row of its own under the freezer. Through addToPantry, like
+  // the pepper, since no trip in this seed buys it.
+  addToPantry('Ground beef');
+  setExpiresAt(itemNamed('Ground beef').id, dayKeyOf(addDays(new Date(), 3)));
+  freezePortion(itemNamed('Ground beef').id);
+
   // A walk order the user has clearly edited: a custom section they file two
   // things into by hand, a built-in they never shop deleted (which leaves the
   // tombstone that stops normalizeAisleOrder re-appending it), and Frozen
@@ -3871,6 +4223,16 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
   deleteAisle('Personal Care');
   const order = useGroceryStore.getState().aisleOrder;
   setAisleOrder([...order.filter(a => a !== 'Frozen'), 'Frozen']);
+
+  // Trader Joe's walks an order of its own (#2938): its freezers come straight
+  // after produce, where the usual order above puts Frozen last. The seeded
+  // trip below is at Trader Joe's, so the list follows this walk (Ice cream
+  // comes up second rather than last) and the Aisles tab opens on it, with its
+  // way back to the usual order. Set after the usual order, since an
+  // arrangement is measured against it and one that matched would save as none.
+  const tjWalk = useGroceryStore.getState().aisleOrder.filter(a => a !== 'Frozen');
+  tjWalk.splice(tjWalk.indexOf('Produce') + 1, 0, 'Frozen');
+  setShopAisleOrder(traderJoes.id, tjWalk);
 
   // Household holds Paper towels/Toilet paper/Dish soap above — none of it is
   // food, so it's flagged non-food the way a real shopper filing that aisle
@@ -4263,10 +4625,18 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
   plan(0, 'dinner', { title: 'Weeknight chicken stir-fry', recipeId: recipes.stirFry });
   plan(0, 'snack', { title: 'Hummus snack plate', recipeId: recipes.snacks, cookTask: false });
 
-  plan(1, 'breakfast', { title: 'Overnight oats', recipeId: recipes.oats });
   // Captured for the shopping task seeded at the end of this function — it's
   // the night the kitchen can't currently make.
   const salmonNight = plan(1, 'dinner', { title: 'Lemon garlic salmon', recipeId: recipes.salmon });
+  // The frozen chili, planned for tomorrow's lunch: a frozen container is
+  // still live and plannable, which is most of what anyone freezes one for.
+  // Captured for the freezer task seeded at the end of this function. It took
+  // the place of a second morning of oats, which kept tomorrow at two meals
+  // of three: the nudge's counter wants exactly one day planned end to end
+  // (today), with the rest of the week spread either side of it.
+  const chiliLunch = frozenChilli
+    ? plan(1, 'lunch', { title: 'Beef chili', leftoverId: frozenChilli.id })
+    : null;
 
   // Freeform — planning doesn't require a recipe, and a night that just says
   // "eating out" holds its place and counts like any other.
@@ -4360,6 +4730,38 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
     });
   }
 
+  // --- Something tonight's dinner needs out of the freezer ------------------
+  // The freezer generator (#2926, off by default, so written by hand for the
+  // shortfall task's reason). Tomorrow's lunch is the chili frozen with the
+  // leftovers above, which is the honest instance. (Tonight's stir-fry isn't:
+  // its chicken breast is frozen too, but it's also on the list, so the rule
+  // reads it as being bought fresh.) Worked out with the real rule rather than
+  // typed, so the first foreground sweep can't disagree with it and clear the
+  // row.
+  if (chiliLunch) {
+    const grocery = useGroceryStore.getState();
+    const frozen = frozenForMeal(
+      chiliLunch,
+      new Map(useRecipeStore.getState().recipes.map(r => [r.id, r])),
+      useLeftoverStore.getState().leftovers,
+      grocery.items,
+      grocery.itemSubs,
+      standingSwapMap(grocery.itemSubs, grocery.items),
+      new Date(),
+      grocery.itemProducts
+    );
+    if (frozen && frozen.names.length > 0) {
+      useSettingsStore.getState().setMealThawTaskCategory('Meal Plan');
+      useTaskStore.getState().addTask({
+        title: mealThawTitle(chiliLunch.date, chiliLunch.slot, frozen.names),
+        dueDate: today.toISOString(),
+        linkUrl: mealThawLinkUrl(frozen),
+        category: 'Meal Plan',
+        ...generatedBy('mealThaw', chiliLunch.id),
+      });
+    }
+  }
+
   // --- A planned meal with nothing logged -----------------------------------
   // The reverse-window generator (off by default, same reasoning as the
   // shortfall task above): yesterday's stir-fry was cooked but never logged
@@ -4390,5 +4792,11 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
   // cooked, which the demo is fully set up for: tonight's stir-fry, its
   // ingredients and an unrated recipe are all here.
   useMealPlanStore.getState().clearCookRecap();
+
+  // "Usually cooking for" (#2910), set only once every night above is planned:
+  // it decides where a meal planned from here on starts and moves nothing
+  // already on the plan, so setting it first would have quietly rescaled the
+  // seed. Planning the salmon (serves 2) from the demo shows it as 2x.
+  useSettingsStore.getState().setHouseholdServings(4);
 
 }

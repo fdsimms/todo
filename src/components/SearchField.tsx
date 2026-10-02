@@ -1,4 +1,4 @@
-import React, { forwardRef, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import {
   View, TextInput, TouchableOpacity, StyleSheet, Platform,
   type StyleProp, type ViewStyle,
@@ -6,10 +6,15 @@ import {
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, type Colors } from '../theme';
+import type { FilterField } from '../hooks/useFilterField';
 
 interface Props {
-  value: string;
-  onChangeText: (text: string) => void;
+  /**
+   * From `useFilterField`. The field is uncontrolled and this carries both the
+   * text and the ref — see that hook for why a `value` prop would put the iOS
+   * caret-jump bug back.
+   */
+  field: FilterField;
   placeholder: string;
   /**
    * Which surface the field sits on. `card` (the default) is the page-level
@@ -42,9 +47,8 @@ interface Props {
  * Shared so the three copies of it (Search, Logbook, quick search) can't drift
  * — and so the `height`/`padding` note below only has to be right once.
  */
-export const SearchField = forwardRef<TextInput, Props>(function SearchField(
-  { value, onChangeText, placeholder, surface = 'card', style, onSubmitEditing, autoFocus, accessibilityLabel },
-  ref
+export function SearchField(
+  { field, placeholder, surface = 'card', style, onSubmitEditing, autoFocus, accessibilityLabel }: Props
 ) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -53,12 +57,11 @@ export const SearchField = forwardRef<TextInput, Props>(function SearchField(
     <View style={[styles.bar, surface === 'sunken' && styles.barSunken, style]}>
       <Ionicons name="search" size={16} color={colors.textTertiary} style={styles.icon} />
       <TextInput
-        ref={ref}
+        key={field.fieldKey}
+        {...field.props}
         style={styles.input}
         placeholder={placeholder}
         placeholderTextColor={colors.textTertiary}
-        value={value}
-        onChangeText={onChangeText}
         autoFocus={autoFocus}
         autoCorrect={false}
         spellCheck={false}
@@ -67,9 +70,9 @@ export const SearchField = forwardRef<TextInput, Props>(function SearchField(
         onSubmitEditing={onSubmitEditing}
         accessibilityLabel={accessibilityLabel}
       />
-      {value.length > 0 && (
+      {field.query.length > 0 && (
         <TouchableOpacity
-          onPress={() => onChangeText('')}
+          onPress={field.clear}
           hitSlop={8}
           accessibilityRole="button"
           accessibilityLabel="Clear search"
@@ -79,7 +82,7 @@ export const SearchField = forwardRef<TextInput, Props>(function SearchField(
       )}
     </View>
   );
-});
+}
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   bar: {

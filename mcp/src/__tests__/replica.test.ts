@@ -99,7 +99,7 @@ describe('the replica', () => {
 
   it('sorts tasks into the app\'s four lenses, which a date comparison could not', () => {
     insert({ id: 'today', title: 'Due now', dueDate: new Date().toISOString() });
-    insert({ id: 'later', title: 'Deferred', deferUntil: '2099-01-01T00:00:00.000Z' });
+    insert({ id: 'later', title: 'Deferred', deferUntil: '2099-06-01T12:00:00.000Z' });
     insert({ id: 'unscheduled', title: 'Someday', category: 'Home' });
     // Bare: no date, no category, no tags, no priority. That is what makes it
     // an inbox task rather than an unscheduled one.
@@ -427,7 +427,31 @@ describe('the replica', () => {
       const milk = replica.addGroceryItem('milk').item;
       replica.removeFromGroceryList(milk.id);
       replica.refresh();
-      expect(() => replica.setGroceryChecked(milk.id, true)).toThrow(/not on the list/);
+      expect(() => replica.setGroceryChecked(milk.id, true)).toThrow(/not on the home list/);
+    });
+
+    // Every grocery tool is about the list at home. A row only on a trip's
+    // list is in *a* trolley (GroceryItem.onList), which is not this one.
+    it('exposes the list entries, so a read can tell the home list from a trip\'s', () => {
+      const sunscreen = replica.addGroceryItem('sunscreen', { listId: 'airbnb' }).item;
+      replica.refresh();
+      expect(replica.groceryListEntries().map(e => [e.itemId, e.listId])).toEqual([[sunscreen.id, 'airbnb']]);
+    });
+
+    it('refuses to take a row off the home list when only a trip\'s list holds it', () => {
+      const sunscreen = replica.addGroceryItem('sunscreen', { listId: 'airbnb' }).item;
+      replica.refresh();
+      expect(() => replica.removeFromGroceryList(sunscreen.id)).toThrow(/not on the home list/);
+      expect(replica.groceryListEntries()).toHaveLength(1);
+    });
+
+    it('does not call an add to the home list a no-op when only a trip\'s list held the row', () => {
+      replica.addGroceryItem('sunscreen', { listId: 'airbnb' });
+      replica.refresh();
+      const again = replica.addGroceryItem('sunscreen');
+      expect(again.isNew).toBe(false);
+      expect(again.wasOnList).toBe(false);
+      expect(replica.groceryListEntries().map(e => e.listId).sort()).toEqual(['airbnb', null].sort());
     });
 
     // Parks, never deletes. Dropping a row wrongly destroys a price history or
@@ -439,6 +463,22 @@ describe('the replica', () => {
       expect(parked.onList).toBe(false);
       replica.refresh();
       expect(replica.groceryItems().map(i => i.id)).toEqual([milk.id]);
+    });
+
+    it('drops the recipe credit along with the recipe\'s quantity', () => {
+      // What the app's own removeFromList does. Kept, a hand-typed re-add
+      // weeks later still read 'For "Chili"'.
+      const beans = replica.addGroceryItem('beans').item;
+      mockRaw.runSync(
+        'UPDATE grocery_items SET source_recipe_id = ?, source_recipe_title = ? WHERE id = ?',
+        ['r-chili', 'Chili', beans.id]
+      );
+      replica.refresh();
+
+      const parked = replica.removeFromGroceryList(beans.id);
+
+      expect(parked.sourceRecipeId).toBeNull();
+      expect(parked.sourceRecipeTitle).toBeNull();
     });
 
     it('refuses an unknown id rather than doing nothing', () => {
@@ -594,6 +634,24 @@ describe('the replica', () => {
     const task = replica.createTask({ title: 'Pick a colour', deliverableKind: 'text' });
     const result = replica.completeTask(task.id, { deliverableValue: 'Green' });
     expect(result.completed.deliverableValue).toBe('Green');
+  });
+
+  // A fixed set of answers takes one of them, in the option's own spelling,
+  // or the project's tally counts it as no answer.
+  it('takes one of a Pick one question\'s options, and refuses anything else', () => {
+    const task = replica.createTask({
+      title: 'Dana', deliverableKind: 'choice', deliverableOptions: ['Yes', 'No', 'Maybe'],
+    });
+    expect(() => replica.completeTask(task.id, { deliverableValue: 'Coming' })).toThrow(/Yes, No, Maybe/);
+    const result = replica.completeTask(task.id, { deliverableValue: 'maybe' });
+    expect(result.completed.deliverableValue).toBe('Maybe');
+  });
+
+  it('keeps an option that has a comma in it whole', () => {
+    const task = replica.createTask({
+      title: 'Dana', deliverableKind: 'choice', deliverableOptions: ['Yes, definitely', 'No'],
+    });
+    expect(replica.deliverableOptions(task)).toEqual(['Yes, definitely', 'No']);
   });
 
   // The app may never *require* an answer, so declining has to get through.

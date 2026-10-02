@@ -56,12 +56,20 @@ function ingredient(nameKey: string): RecipeIngredient {
   } as RecipeIngredient;
 }
 
-function recipe(name: string, keys: string[]): Recipe {
+function recipe(name: string, keys: string[], componentIds: string[] = []): Recipe {
   seq += 1;
   return {
     id: `r-${seq}`,
     name,
     ingredients: keys.map(ingredient),
+    // The walk resolves components on every recipe it visits, so even a recipe
+    // that composes nothing has to say so rather than leaving it undefined.
+    components: componentIds.map((recipeId, i) => ({
+      id: `rc-${seq}-${i}`,
+      recipeId,
+      name: recipeId,
+      choiceGroup: null,
+    })),
   } as Recipe;
 }
 
@@ -89,6 +97,29 @@ describe('useUpRecipes', () => {
     // used up, the same rule the exact-key case keeps.
     const suggestions = useUpRecipes([tomatoes], [recipe('Sauce', ['tomatoes', 'tomato'])]);
     expect(suggestions[0].uses).toHaveLength(1);
+  });
+
+  it('suggests a recipe through the option of an either/or that is going off', () => {
+    // "jalapeño or serrano": read as written the first option wins, so the
+    // serranos going soft never suggested the tacos.
+    const serranos = entry('Serrano', 'due');
+    const tacos = recipe('Tacos', ['jalapeno', 'serrano', 'tortilla']);
+    tacos.ingredients[0].choiceGroup = 'Chile';
+    tacos.ingredients[1].choiceGroup = 'Chile';
+
+    const suggestions = useUpRecipes([serranos], [tacos]);
+    expect(suggestions.map(s => s.recipe.name)).toEqual(['Tacos']);
+    expect(suggestions[0].uses.map(e => e.title)).toEqual(['Serrano']);
+  });
+
+  it('never counts both options of an either/or when both are going off', () => {
+    const jalapenos = entry('Jalapeno', 'due');
+    const serranos = entry('Serrano', 'due');
+    const tacos = recipe('Tacos', ['jalapeno', 'serrano']);
+    tacos.ingredients[0].choiceGroup = 'Chile';
+    tacos.ingredients[1].choiceGroup = 'Chile';
+
+    expect(useUpRecipes([jalapenos, serranos], [tacos])[0].uses).toHaveLength(1);
   });
 
   it('leaves out a recipe that uses none of what is dying', () => {
@@ -153,12 +184,83 @@ describe('useUpRecipes', () => {
     expect(useUpRecipes([chilli], [recipe('Chilli bake', ['chilli'])])).toEqual([]);
   });
 
+  // A box is the same catalog row tracked apart, keyed by that row's nameKey:
+  // a thawed packet due tomorrow is chicken going off, however it's filed.
+  it('counts a box going off as the item it belongs to', () => {
+    const box = entry('Chicken breast', 'due', {
+      kind: 'product',
+      id: kitchenEntryId('product', 'p-1'),
+      sourceId: 'p-1',
+      itemId: 'gi-chicken',
+      productName: 'Brand A',
+      matchKey: 'chicken breast',
+    });
+
+    const suggestions = useUpRecipes([box], [recipe('Chicken tacos', ['chicken breast', 'tortillas'])]);
+
+    expect(suggestions).toHaveLength(1);
+    expect(suggestions[0].uses).toEqual([box]);
+  });
+
+  it('lets the most urgent of an item and its boxes answer for their shared key', () => {
+    const item = entry('Chicken breast', 'soon', { matchKey: 'chicken breast' });
+    const box = entry('Chicken breast', 'over', {
+      kind: 'product',
+      id: kitchenEntryId('product', 'p-2'),
+      sourceId: 'p-2',
+      matchKey: 'chicken breast',
+    });
+
+    // Either order in, the box past its day wins: one line of chicken is one
+    // thing being used up, and it's the one going off first.
+    for (const entries of [[item, box], [box, item]]) {
+      const suggestions = useUpRecipes(entries, [recipe('Chicken tacos', ['chicken breast'])]);
+      expect(suggestions[0].uses).toEqual([box]);
+    }
+  });
+
   // A name with no letters or digits normalises to '', and an ingredient that
   // did the same would otherwise match every blank-keyed entry at once.
   it('never matches on a blank key', () => {
     const blank = entry('???', 'due', { matchKey: '' });
 
     expect(useUpRecipes([blank], [recipe('Mystery', [''])])).toEqual([]);
+  });
+
+  // The component tree, which every other shopping read already walks.
+  describe('components', () => {
+    it('counts an ingredient a recipe only calls for through a component', () => {
+      const potatoes = entry('Potatoes', 'due');
+      const mash = recipe('Mash', ['potatoes']);
+      const steak = recipe('Steak with mash', ['steak'], [mash.id]);
+
+      const out = useUpRecipes([potatoes], [steak, mash]);
+
+      expect(out.map(r => r.recipe.name).sort()).toEqual(['Mash', 'Steak with mash']);
+    });
+
+    it('counts a component used twice in one tree once', () => {
+      const potatoes = entry('Potatoes', 'due');
+      const mash = recipe('Mash', ['potatoes']);
+      const side = recipe('Side plate', [], [mash.id]);
+      const dinner = recipe('Dinner', ['steak'], [mash.id, side.id]);
+
+      // The whole library, since the component tree resolves against exactly
+      // the recipes handed in — same resolve-or-shrug every cross-row pointer
+      // in the app has.
+      const out = useUpRecipes([potatoes], [dinner, side, mash]);
+
+      expect(out.map(r => r.recipe.name)).toContain('Dinner');
+      expect(out.find(r => r.recipe.name === 'Dinner')!.uses).toHaveLength(1);
+    });
+
+    it('leaves out a recipe whose component tree names nothing dying', () => {
+      const spinach = entry('Spinach', 'due');
+      const rice = recipe('Rice', ['rice']);
+      const bowl = recipe('Rice bowl', ['egg'], [rice.id]);
+
+      expect(useUpRecipes([spinach], [bowl, rice])).toEqual([]);
+    });
   });
 
   // Varieties (GroceryItem.varietyOfKey) — a dying variety answers for its

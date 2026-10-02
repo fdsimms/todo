@@ -28,12 +28,12 @@ export interface ProjectBackfillFieldDef {
 }
 
 // Order matters: the order these render in on the field-picker step. Same
-// order ProjectEditor's own Nudges/Order cards use.
+// order ProjectEditor's own Nudges and More groups use.
 export const PROJECT_BACKFILL_FIELDS: ProjectBackfillFieldDef[] = [
   {
     id: 'nudge',
     label: 'Bring this up',
-    hint: 'How long a project can sit with nothing scheduled before it gets a review task.',
+    hint: 'Whether this project shows up in Pull from projects, and whether it adds a review task after a while with nothing scheduled.',
   },
   // A plain toggle, unlike `nudge` above it — turning this on picks nothing
   // else, so it is the `streak`/`vacation` shape rather than the cadence one.

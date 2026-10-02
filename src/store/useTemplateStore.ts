@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { ProjectTemplateDraft } from '../utils/projectTemplate';
 import type { Task, TaskTemplate, TemplateContainer, TemplateItem, TemplateItemGroup, TemplateQuestion, TemplateSchedule } from '../types';
 import {
   dbGetAllTemplates,
@@ -74,6 +75,12 @@ interface TemplateStore {
   initialized: boolean;
   initialize: () => void;
   addTemplate: (name: string) => TaskTemplate;
+  /**
+   * A template holding what a project holds, from "Save as template" on a
+   * project (see templateFromProject). Otherwise a fresh template like
+   * addTemplate's: no schedule, applied only when someone taps Apply.
+   */
+  addTemplateFromProject: (draft: ProjectTemplateDraft) => TaskTemplate;
   renameTemplate: (id: string, name: string) => void;
   setTemplateCategory: (id: string, category: string | null) => void;
   /** Filing several templates at once from the Templates screen's bulk bar. */
@@ -166,6 +173,21 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
     };
     dbInsertTemplate(template);
     set(s => ({ templates: [...s.templates, template] }));
+    return template;
+  },
+
+  addTemplateFromProject(draft) {
+    const base = get().addTemplate(draft.name);
+    const template: TaskTemplate = {
+      ...base,
+      items: draft.items,
+      itemGroups: draft.itemGroups,
+      applyContainer: draft.applyContainer,
+      anchorsAreAway: draft.anchorsAreAway,
+      category: draft.category,
+    };
+    dbUpdateTemplate(template);
+    set(s => ({ templates: s.templates.map(t => (t.id === template.id ? template : t)) }));
     return template;
   },
 
@@ -488,6 +510,28 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
         : null;
       const projectId = options?.targetProjectId ?? runProject?.id ?? null;
 
+      // Applied into a project that already exists, the same anchors fill in
+      // whatever that project hasn't got yet: the trip span for a trip
+      // template, the deadline otherwise. Only an empty field is written. The
+      // sheet asked for these dates, and they used to go nowhere unless the
+      // template made a new project; a project that already has dates keeps
+      // them, since its own dates are the ones the person set on purpose.
+      if (options?.targetProjectId) {
+        const target = useProjectStore.getState().getProjectById(options.targetProjectId);
+        if (target) {
+          if (template.anchorsAreAway) {
+            if (!target.awayStart && anchors.start) {
+              useProjectStore.getState().updateProject(target.id, {
+                awayStart: awayNoonIso(anchors.start),
+                awayEnd: anchors.end ? awayNoonIso(anchors.end) : null,
+              });
+            }
+          } else if (!target.deadline && anchors.end) {
+            useProjectStore.getState().updateProject(target.id, { deadline: anchors.end.toISOString() });
+          }
+        }
+      }
+
       // A 'task' container's parent is a real Task rather than a TaskGroup or
       // Project, created up front like they are so its id can ride in on the
       // item drafts below — as parentId rather than groupId, since every
@@ -551,7 +595,13 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
         const category = expanded.find(
           e => e.sourceTemplateId === sourceTemplateId && e.item.groupId === groupId
         )?.item.category ?? null;
-        groupTasks(taskIds, group.title, category);
+        const section = groupTasks(taskIds, group.title, category);
+        // Applied into a project, a group is one of its sections: homed on its
+        // page (so it stays there once its tasks are done) and a checklist if
+        // it was saved as one. See TaskGroup.projectId and .checklist.
+        if (projectId) {
+          useTaskGroupStore.getState().updateGroup(section.id, { projectId, checklist: group.checklist ?? false });
+        }
       });
     });
 

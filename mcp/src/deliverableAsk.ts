@@ -45,6 +45,8 @@ const WANTED: Record<DeliverableKind, string> = {
   text: 'some text',
   date: 'a date (ISO, e.g. 2026-03-14)',
   number: 'a number',
+  yesno: 'Yes or No',
+  choice: 'one of the options the task offers',
 };
 
 /**

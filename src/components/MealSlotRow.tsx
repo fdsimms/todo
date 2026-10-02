@@ -8,6 +8,8 @@ import { haptics } from '../utils/haptics';
 import { slotLabel } from '../utils/mealPlan';
 import { formatScale, isUnscaled } from '../utils/recipeScale';
 import { SwipeableRow } from './SwipeableRow';
+import { SelectionDot } from './SelectionDot';
+import { usePaintSelectionRow } from './PaintSelection';
 import { useFabIntentSelector, type FabIntentChannel } from './FabDropZones';
 
 interface Props {
@@ -21,6 +23,17 @@ interface Props {
    * many meals that pose no either/or.
    */
   choices?: string;
+  /**
+   * "Logged 640 cal" when the food log has something in this meal's slot
+   * — `describeSlotLog`'s answer, which is null for the ordinary unlogged
+   * meal and so leaves the caption reading exactly as it did before.
+   *
+   * A caption about the **slot** rather than about this dish, for the reason
+   * `mealLogCoverage.ts` gives at length: two dishes on one dinner share a
+   * square the log cannot choose between, so both rows say the dinner was
+   * logged and neither claims the calories were its own.
+   */
+  loggedText?: string | null;
   onPress: () => void;
   /**
    * Ticks the entry off, or back on — the same shortcut a task row's checkbox
@@ -30,12 +43,13 @@ interface Props {
    */
   onToggleCooked?: () => void;
   /**
-   * Bulk-selection mode (#1110). While on, the leading icon becomes a
-   * checkbox — same swap RecipesScreen's row makes — `onPress` is expected to
-   * toggle selection rather than open MealEntrySheet, and the cooked toggle
-   * and chevron both disappear: a finger reaching for the toggle mid-selection
-   * is reaching to select the row, not to cook one meal out from under a bulk
-   * action.
+   * Bulk-selection mode (#1110). While on, `onPress` is expected to toggle
+   * selection rather than open MealEntrySheet, and the cooked toggle and
+   * chevron both give way to a SelectionDot in the same trailing slot: a
+   * finger reaching for the toggle mid-selection is reaching to select the
+   * row, not to cook one meal out from under a bulk action. The leading tile
+   * stays put, since a check in its place read as a meal marked done rather
+   * than one picked (#2944 made the same split on the grocery list).
    */
   selectionMode?: boolean;
   selected?: boolean;
@@ -44,6 +58,11 @@ interface Props {
    * entry point tasks use (#1378). No `whenAction`: there's no single-tap
    * "when" to offer a meal, since moving one to another day is already a
    * multi-step flow behind the entry sheet's day picker.
+   *
+   * Also what registers the row for paint selection: a row with no way into
+   * selection has no business in a PaintSelectionProvider's registry, which
+   * would otherwise take a meal's id into whatever the enclosing screen is
+   * selecting (Today's tasks, say).
    */
   onSwipeSelect?: (id: string) => void;
   /**
@@ -106,12 +125,15 @@ interface Props {
  * absence a reader is expected to infer.
  */
 export function MealSlotRow({
-  entry, title, hasRecipe, choices, onPress, onToggleCooked, selectionMode, selected, onSwipeSelect,
+  entry, title, hasRecipe, choices, loggedText, onPress, onToggleCooked, selectionMode, selected, onSwipeSelect,
   onDragStart, dragging, surface,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const cooked = !!entry.cookedAt;
+  // So a drag down the column of selection dots picks up this row (#2944).
+  // A no-op on a screen with no provider; see `onSwipeSelect` for the gate.
+  const paintRowRef = usePaintSelectionRow(onSwipeSelect ? entry.id : null);
 
   /**
    * The tick pops when it lands.
@@ -159,7 +181,7 @@ export function MealSlotRow({
       accessibilityRole={selectionMode ? 'checkbox' : 'button'}
       accessibilityState={selectionMode ? { checked: !!selected } : undefined}
       accessibilityLabel={
-        [slotLabel(entry.slot), title, scaleLabel, choices, cooked ? 'cooked' : null]
+        [slotLabel(entry.slot), title, scaleLabel, choices, loggedText, cooked ? 'cooked' : null]
           .filter(Boolean).join(', ')
       }
       accessibilityHint={
@@ -169,31 +191,18 @@ export function MealSlotRow({
             : 'Double tap to move or remove this meal.'
       }
     >
-      {selectionMode ? (
-        // Takes the icon tile's place rather than sitting beside it, same
-        // swap RecipesScreen's row makes — every row shifts by the same
-        // amount, so the title column stays put.
-        <View style={styles.select}>
-          <Ionicons
-            name={selected ? 'checkmark-circle' : 'ellipse-outline'}
-            size={24}
-            color={selected ? colors.accent : colors.textTertiary}
-          />
-        </View>
-      ) : (
-        <View
-          style={[
-            styles.icon,
-            { backgroundColor: hasRecipe ? colors.accentSubtle : colors.bgTertiary },
-          ]}
-        >
-          <Ionicons
-            name={fromFridge ? 'snow-outline' : hasRecipe ? 'restaurant-outline' : 'create-outline'}
-            size={16}
-            color={hasRecipe ? colors.accent : colors.textSecondary}
-          />
-        </View>
-      )}
+      <View
+        style={[
+          styles.icon,
+          { backgroundColor: hasRecipe ? colors.accentSubtle : colors.bgTertiary },
+        ]}
+      >
+        <Ionicons
+          name={fromFridge ? 'snow-outline' : hasRecipe ? 'restaurant-outline' : 'create-outline'}
+          size={16}
+          color={hasRecipe ? colors.accent : colors.textSecondary}
+        />
+      </View>
       <View style={styles.info}>
         <Text style={styles.title} numberOfLines={2}>{title}</Text>
         {/* Appended to the caption rather than given a pill of its own: the row
@@ -202,6 +211,7 @@ export function MealSlotRow({
         <Text style={styles.slot} numberOfLines={2}>
           {[slotLabel(entry.slot), scaleLabel].filter(Boolean).join(' · ')}
           {!!choices && <Text style={styles.choices}> · {choices}</Text>}
+          {!!loggedText && <Text style={styles.logged}> · {loggedText}</Text>}
         </Text>
       </View>
       {/*
@@ -235,6 +245,10 @@ export function MealSlotRow({
       {!selectionMode && (
         <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
       )}
+      {/* In the slot the cooked toggle and chevron give up while selecting,
+          so nothing moves aside for it. On every row, picked or not: the
+          empty rings are what say selection is on. */}
+      {selectionMode && <SelectionDot selected={!!selected} onPress={onPress} />}
     </TouchableOpacity>
   );
 
@@ -254,7 +268,7 @@ export function MealSlotRow({
         accessibilityLabel: `Select ${title}`,
       } : undefined}
     >
-      {rowBody}
+      <View ref={paintRowRef}>{rowBody}</View>
     </SwipeableRow>
   );
 }
@@ -366,14 +380,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // Same footprint as the icon tile it replaces, so entering selection mode
-  // doesn't shift the row's text.
-  select: {
-    width: 32,
-    height: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   info: { flex: 1, gap: spacing.xxs },
   title: {
     color: colors.text,
@@ -392,6 +398,16 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   choices: {
     color: colors.textTertiary,
     fontWeight: fontWeight.regular,
+    letterSpacing: 0,
+    textTransform: 'none',
+  },
+  // Same nesting as `choices`, in the green the cooked tick already uses, so
+  // the two facts the row reports about a meal having happened read as the
+  // same kind of fact. Semibold rather than regular because unlike a choice
+  // this is a state and not a qualifier.
+  logged: {
+    color: colors.green,
+    fontWeight: fontWeight.semibold,
     letterSpacing: 0,
     textTransform: 'none',
   },

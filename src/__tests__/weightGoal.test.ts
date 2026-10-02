@@ -2,6 +2,7 @@ import {
   MAINTAIN_BAND_KG,
   MAX_RATE_KG_PER_WEEK,
   RATE_RANGE,
+  autoCalorieTargetKcal,
   daysToTarget,
   goalDirection,
   goalPace,
@@ -14,7 +15,16 @@ import {
   weightSinceGoalStart,
   type WeightGoal,
 } from '@/utils/weightGoal';
+import type { BodyProfile } from '@/utils/energyBudget';
+import { dayKeyToDate } from '@/utils/dateUtils';
 import type { WeightPoint } from '@/utils/weightLog';
+
+const completeProfile: BodyProfile = {
+  heightCm: 170,
+  birthYear: 1990,
+  sex: 'female',
+  activity: 'sedentary',
+};
 
 // `weightGoal` reaches `dayKeyToDate`, and `dateUtils` pulls the settings store
 // in at module load for `dayResetTime`. Nothing under test reads it — a day key
@@ -55,6 +65,37 @@ describe('signedRateKgPerWeek', () => {
   it('never trusts a negative magnitude to mean the direction', () => {
     expect(signedRateKgPerWeek(losingGoal({ rateKgPerWeek: -0.5 }))).toBe(-0.5);
     expect(signedRateKgPerWeek(losingGoal({ targetKg: 85, rateKgPerWeek: -0.5 }))).toBe(0.5);
+  });
+});
+
+describe('autoCalorieTargetKcal', () => {
+  const today = new Date(2026, 8, 15, 12);
+
+  it('is null with no goal', () => {
+    expect(autoCalorieTargetKcal(null, completeProfile, 78, today)).toBeNull();
+  });
+
+  it('is null when the profile cannot support an estimate', () => {
+    const bareProfile: BodyProfile = { heightCm: null, birthYear: null, sex: null, activity: 'sedentary' };
+    expect(autoCalorieTargetKcal(losingGoal(), bareProfile, 78, today)).toBeNull();
+  });
+
+  it('falls back to the goal\'s own start weight when no current weight is known', () => {
+    const withCurrent = autoCalorieTargetKcal(losingGoal(), completeProfile, 80, today);
+    const withoutCurrent = autoCalorieTargetKcal(losingGoal(), completeProfile, null, today);
+    expect(withoutCurrent).toBe(withCurrent);
+  });
+
+  it('moves with the current weight rather than staying pinned to the start', () => {
+    const at80 = autoCalorieTargetKcal(losingGoal(), completeProfile, 80, today);
+    const at70 = autoCalorieTargetKcal(losingGoal(), completeProfile, 70, today);
+    expect(at80).not.toBe(at70);
+  });
+
+  it('reads a signed rate off the goal, not the stored magnitude alone', () => {
+    const losing = autoCalorieTargetKcal(losingGoal(), completeProfile, 80, today);
+    const gaining = autoCalorieTargetKcal(losingGoal({ targetKg: 85 }), completeProfile, 80, today);
+    expect(losing).not.toBe(gaining);
   });
 });
 
@@ -171,8 +212,8 @@ describe('weightSinceGoalStart', () => {
     { dayKey: '2026-09-08', kilograms: 78.4 },
   ];
 
-  it('takes the last reading on or after the start day', () => {
-    expect(weightSinceGoalStart(losingGoal(), points)).toBe(78.4);
+  it('takes the last reading on or after the start day, with its day', () => {
+    expect(weightSinceGoalStart(losingGoal(), points)).toEqual({ kilograms: 78.4, dayKey: '2026-09-08' });
   });
 
   it('ignores readings from before the goal existed', () => {
@@ -180,7 +221,24 @@ describe('weightSinceGoalStart', () => {
   });
 
   it('counts a reading on the start day itself', () => {
-    expect(weightSinceGoalStart(losingGoal({ startDayKey: '2026-08-31' }), points.slice(0, 2))).toBe(83);
+    expect(weightSinceGoalStart(losingGoal({ startDayKey: '2026-08-31' }), points.slice(0, 2)))
+      .toEqual({ kilograms: 83, dayKey: '2026-08-31' });
+  });
+
+  it('lets an old reading be measured against the pace on its own day', () => {
+    // On pace three weeks in (78.5 on Sep 22 for a goal set Sep 1 at half a
+    // kilo a week), then nothing for three weeks. Measured at its own day it
+    // is on pace and the forecast counts from that day; measured against
+    // today it read 1.5 kg behind for a weight that was exactly on plan.
+    const reading = weightSinceGoalStart(losingGoal(), [
+      { dayKey: '2026-09-22', kilograms: 78.5 },
+      { dayKey: '2026-10-01', kilograms: null },
+    ])!;
+    expect(reading.dayKey).toBe('2026-09-22');
+    const pace = goalPace(losingGoal(), reading.kilograms, dayKeyToDate(reading.dayKey))!;
+    expect(pace.daysElapsed).toBe(21);
+    expect(pace.aheadKg).toBeCloseTo(0);
+    expect(goalPace(losingGoal(), reading.kilograms, new Date(2026, 9, 13))!.aheadKg).toBeCloseTo(-1.5);
   });
 });
 
@@ -211,6 +269,13 @@ describe('storage', () => {
   it('clamps an over-range rate rather than dropping the goal', () => {
     const parsed = parseWeightGoal(JSON.stringify({ ...losingGoal(), rateKgPerWeek: 99 }));
     expect(parsed?.rateKgPerWeek).toBeCloseTo(MAX_RATE_KG_PER_WEEK);
+  });
+
+  it('keeps the kg stepper\'s own ceiling through a round trip', () => {
+    // 1.0 kg/week is RATE_RANGE.kg.max; clamping it to the 2 lb ceiling
+    // (0.907) moved the calorie target on the next read.
+    const goal = { ...losingGoal(), rateKgPerWeek: 1 };
+    expect(parseWeightGoal(serializeWeightGoal(goal))?.rateKgPerWeek).toBe(1);
   });
 
   it('refuses a negative rate, which no writer here produces', () => {

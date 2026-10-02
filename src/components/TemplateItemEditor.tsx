@@ -18,17 +18,18 @@ import {
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import type { Priority, Effort, TimeOfDay, TemplateAnchor, TemplateItem, TemplateItemCondition, RecurrenceType, ChainItem, DeliverableKind, Polarity, MealSlot } from '../types';
+import type { Priority, Effort, TimeOfDay, TemplateAnchor, TemplateItem, TemplateItemCondition, RecurrenceType, ChainItem, RotationItem, DeliverableKind, Polarity, MealSlot } from '../types';
 import { PRIORITY_LABELS, EFFORT_LABELS, EFFORT_HINTS, TITLE_MAX_LENGTH, MEAL_SLOTS, MEAL_SLOT_LABELS } from '../types';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
-import { DOSE_UNITS } from '../utils/medicationLog';
+import { DOSE_UNITS, medicationVocabulary, medicationKey } from '../utils/medicationLog';
 import { formatDuration } from '../utils/effort';
 import { animateLayout } from '../utils/layoutAnimation';
 import { tagColor } from '../utils/tagColor';
 import { useTaskStore } from '../store/useTaskStore';
 import { useTemplateStore } from '../store/useTemplateStore';
+import { useMedicationStore } from '../store/useMedicationStore';
 import { describeConditions, questionLabel, toggleItemCondition } from '../utils/templateQuestions';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
@@ -45,7 +46,7 @@ import {
 import { categoryLabel } from '../utils/categoryLabel';
 import { formatHHMM, hhmmToDate, dateToHHMM } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
-import { deliverableMeta } from '../utils/deliverables';
+import { deliverableMeta, parseDeliverableOptions } from '../utils/deliverables';
 import { SortableList } from './SortableList';
 import { DeliverableKindPicker } from './DeliverableKindPicker';
 import { StepMinutes } from './StepMinutes';
@@ -62,8 +63,10 @@ import { SegmentedControl } from './SegmentedControl';
 import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
 import { CollapsibleField } from './CollapsibleField';
 import { InlineAction } from './InlineAction';
+import { PillGroup } from './PillGroup';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorRow } from './EditorRow';
+import { linkHost, parseLabelledLink } from '../utils/textLinks';
 import { EditorSheet } from './EditorSheet';
 import { NumberPadAccessory } from './NumberPadAccessory';
 import { CountStepper } from './CountStepper';
@@ -90,7 +93,7 @@ const MEDICATION_NAME_MAX_LENGTH = 60;
 /** Matches TaskEditor's own cap on the completion timer's note. */
 const COMPLETION_TIMER_NOTE_MAX_LENGTH = 120;
 
-type FieldKey = 'blanks' | 'conditions' | 'category' | 'tags' | 'priority' | 'effort' | 'subtasks' | 'chainSteps' | 'deliverable' | 'completionTimer' | 'penalty' | 'medication' | 'logMealSlot';
+type FieldKey = 'blanks' | 'conditions' | 'category' | 'tags' | 'priority' | 'effort' | 'subtasks' | 'chainSteps' | 'rotationSet' | 'deliverable' | 'completionTimer' | 'penalty' | 'medication' | 'logMealSlot' | 'link';
 
 interface Props {
   visible: boolean;
@@ -118,10 +121,20 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const categories = useCategoryStore(useShallow(s => s.categories));
   const addItem = useTemplateStore(s => s.addItem);
   const updateItem = useTemplateStore(s => s.updateItem);
+  const tripTemplate = useTemplateStore(s => s.templates.find(t => t.id === templateId)?.anchorsAreAway ?? false);
   // Only a choice can gate an item: a number or a free-text answer has no
   // fixed set to pick from, so there's nothing an author could tick.
   const choiceQuestions = useTemplateStore(
     useShallow(s => (s.templates.find(t => t.id === templateId)?.questions ?? []).filter(q => q.kind === 'choice'))
+  );
+  // Every medication ever logged, for the "Log a dose" name field's own
+  // suggestions below — see medicationVocabulary for why this is derived
+  // rather than a registry.
+  const medicationLogs = useMedicationStore(useShallow(s => s.logs));
+  const archivedMedications = useMedicationStore(useShallow(s => s.archived));
+  const medicationSuggestions = useMemo(
+    () => medicationVocabulary(medicationLogs, archivedMedications),
+    [medicationLogs, archivedMedications]
   );
 
   // ==== local state: the draft, one piece of state per field ====
@@ -139,6 +152,9 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const [deferOffsetDays, setDeferOffsetDays] = useState<number | null>(null);
   const [deadlineOffsetDays, setDeadlineOffsetDays] = useState<number | null>(null);
   const [windowStart, setWindowStart] = useState<string | null>(null);
+  // Task.linkUrl as typed: read the way a list line is ("Booking https://…"
+  // keeps the url), and a bare domain gets its https://.
+  const [linkText, setLinkText] = useState('');
   const [windowEnd, setWindowEnd] = useState<string | null>(null);
   const [windowPickerMode, setWindowPickerMode] = useState<'none' | 'start' | 'end'>('none');
   const [windowPickerDate, setWindowPickerDate] = useState(new Date());
@@ -169,9 +185,12 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const [recurrenceInterval, setRecurrenceInterval] = useState(1);
   const [recurrenceDays, setRecurrenceDays] = useState<number[]>([]);
   const [recurrenceMonthDay, setRecurrenceMonthDay] = useState<number | null>(null);
+  const [recurrenceMonth, setRecurrenceMonth] = useState<number | null>(null);
   const [recurrenceFromCompletion, setRecurrenceFromCompletion] = useState(false);
   const [recurrenceCount, setRecurrenceCount] = useState<number | null>(null);
   const [deliverableKind, setDeliverableKind] = useState<DeliverableKind | null>(null);
+  const [deliverableOptionsText, setDeliverableOptionsText] = useState('');
+  const [deliverableSetsAway, setDeliverableSetsAway] = useState(false);
   const [chainEnabled, setChainEnabled] = useState(false);
   const [chainItems, setChainItems] = useState<ChainItem[]>([]);
   // By id rather than index — see the same state in TaskEditor.
@@ -182,6 +201,11 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const [chainIndex, setChainIndex] = useState(0);
   const [addingChainItem, setAddingChainItem] = useState(false);
   const [newChainItemTitle, setNewChainItemTitle] = useState('');
+  const [rotationEnabled, setRotationEnabled] = useState(false);
+  const [rotationItems, setRotationItems] = useState<RotationItem[]>([]);
+  const [addingRotationItem, setAddingRotationItem] = useState(false);
+  const [newRotationItemTitle, setNewRotationItemTitle] = useState('');
+  const [linkMemberId, setLinkMemberId] = useState<string | null>(null);
   const chainInputRef = useRef<TextInput>(null);
   const chainItemSavedRef = useRef(false);
   const [subtasks, setSubtasks] = useState<{ id: string; title: string }[]>([]);
@@ -212,6 +236,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setDeferOffsetDays(item?.deferOffsetDays ?? draft?.deferOffsetDays ?? null);
     setDeadlineOffsetDays(item?.deadlineOffsetDays ?? draft?.deadlineOffsetDays ?? null);
     setWindowStart(item?.windowStart ?? draft?.windowStart ?? null);
+    setLinkText(item?.linkUrl ?? draft?.linkUrl ?? '');
     setWindowEnd(item?.windowEnd ?? draft?.windowEnd ?? null);
     setReminderOffsetMinutes(item?.reminderOffsetMinutes ?? draft?.reminderOffsetMinutes ?? null);
     setTimeSegments(item?.timeSegments ?? draft?.timeSegments ?? []);
@@ -239,11 +264,16 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setRecurrenceInterval(item?.recurrenceInterval ?? draft?.recurrenceInterval ?? 1);
     setRecurrenceDays(item?.recurrenceDays ?? draft?.recurrenceDays ?? []);
     setRecurrenceMonthDay(item?.recurrenceMonthDay ?? draft?.recurrenceMonthDay ?? null);
+    setRecurrenceMonth(item?.recurrenceMonth ?? draft?.recurrenceMonth ?? null);
     setRecurrenceFromCompletion(item?.recurrenceFromCompletion ?? draft?.recurrenceFromCompletion ?? false);
     setRecurrenceCount(item?.recurrenceCount ?? draft?.recurrenceCount ?? null);
     setDeliverableKind(item?.deliverableKind ?? draft?.deliverableKind ?? null);
+    setDeliverableOptionsText((item?.deliverableOptions ?? draft?.deliverableOptions ?? []).join(', '));
+    setDeliverableSetsAway(item?.deliverableSetsAway ?? draft?.deliverableSetsAway ?? false);
     setChainEnabled(item?.chainEnabled ?? draft?.chainEnabled ?? false);
     setChainItems(item?.chainItems ?? draft?.chainItems ?? []);
+    setRotationEnabled(item?.rotationEnabled ?? false);
+    setRotationItems(item?.rotationItems ?? []);
     setQuestionStepId(null);
     setChainIndex(item?.chainIndex ?? draft?.chainIndex ?? 0);
     setSubtasks(item?.subtasks ?? draft?.subtasks ?? []);
@@ -363,6 +393,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       deadlineOffsetDays,
       windowStart,
       windowEnd,
+      linkUrl: parseLabelledLink(linkText)?.url ?? null,
       reminderOffsetMinutes: dueOffsetDays !== null ? reminderOffsetMinutes : null,
       timeSegments,
       tags: resolvePendingTags(),
@@ -394,10 +425,13 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       recurrenceType,
       recurrenceInterval,
       recurrenceDays: recurrenceType === 'weekly' ? recurrenceDays : [],
-      recurrenceMonthDay: recurrenceType === 'monthly' ? recurrenceMonthDay : null,
+      recurrenceMonthDay: recurrenceType === 'monthly' || recurrenceType === 'yearly' ? recurrenceMonthDay : null,
+      recurrenceMonth: recurrenceType === 'yearly' ? recurrenceMonth : null,
       recurrenceFromCompletion,
       recurrenceCount: recurrenceType !== 'none' ? recurrenceCount : null,
       deliverableKind,
+      deliverableOptions: deliverableKind === 'choice' ? parseDeliverableOptions(deliverableOptionsText) : [],
+      deliverableSetsAway: deliverableKind === 'date' && tripTemplate && deliverableSetsAway,
       // A chain needs at least 2 steps — activeChainStep() (src/utils/chain.ts)
       // already treats a single-item chain as equivalent to a plain task, so
       // saving with fewer than 2 items quietly turns Chain back off rather
@@ -406,6 +440,10 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       // own save gate.
       chainEnabled: chainEnabled && effectiveChainItems.length >= 2,
       chainItems: effectiveChainItems,
+      // Same two-member floor the task editor applies at save, for the same
+      // reason: a set of one gives the picker nothing to ask.
+      rotationEnabled: rotationEnabled && rotationItems.length >= 2,
+      rotationItems: rotationItems.length >= 2 ? rotationItems : [],
       chainIndex: effectiveChainItems.length > 0 ? Math.min(chainIndex, effectiveChainItems.length - 1) : 0,
       subtasks: effectiveSubtasks,
     };
@@ -529,6 +567,18 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
               c => (c.id === linkStepId ? { ...c, ...patch } : c),
             ))}
             onClose={() => setLinkStepId(null)}
+          />
+          {/* Its own instance rather than sharing linkStepId: the two lists
+              have separate id spaces. */}
+          <ChainStepLinkSheet
+            visible={linkMemberId !== null}
+            step={rotationItems.find(r => r.id === linkMemberId) ?? null}
+            taskLinkUrl={null}
+            kitchenEnabled={kitchenEnabled}
+            onSave={patch => setRotationItems(prev => prev.map(
+              r => (r.id === linkMemberId ? { ...r, ...patch } : r),
+            ))}
+            onClose={() => setLinkMemberId(null)}
           />
           <NumberPadAccessory />
         </>
@@ -656,7 +706,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             label="Count days from"
             value={anchor}
             onChange={setAnchor}
-            options={(['start', 'end'] as TemplateAnchor[]).map(a => ({ value: a, label: anchorLabel(a) }))}
+            options={(['start', 'end'] as TemplateAnchor[]).map(a => ({ value: a, label: anchorLabel(a, tripTemplate) }))}
           />
         </View>
         <View style={styles.sep} />
@@ -666,6 +716,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           hint="When the task is due."
           offset={dueOffsetDays}
           anchor={anchor}
+          away={tripTemplate}
           onChange={setDueOffsetDays}
           colors={colors}
           styles={styles}
@@ -677,6 +728,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           hint="Keeps the task off Today until this day."
           offset={deferOffsetDays}
           anchor={anchor}
+          away={tripTemplate}
           onChange={setDeferOffsetDays}
           colors={colors}
           styles={styles}
@@ -688,6 +740,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           hint="A hard cut-off, shown separately from the due date."
           offset={deadlineOffsetDays}
           anchor={anchor}
+          away={tripTemplate}
           onChange={setDeadlineOffsetDays}
           colors={colors}
           styles={styles}
@@ -876,6 +929,9 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             recurrenceMonthDay={recurrenceMonthDay}
             onChangeMonthDay={setRecurrenceMonthDay}
             seedMonthDay={() => 1}
+            recurrenceMonth={recurrenceMonth}
+            onChangeMonth={setRecurrenceMonth}
+            seedMonth={() => 1}
             recurrenceFromCompletion={recurrenceFromCompletion}
             onChangeFromCompletion={setRecurrenceFromCompletion}
             recurrenceCount={recurrenceCount}
@@ -1007,6 +1063,23 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             returnKeyType="done"
             accessibilityLabel="What tasks from this item record a dose of"
           />
+          {/* Picking one of these is what makes it the *same* medication as an
+              earlier dose — medicationKey does no fuzzy matching (see
+              docs/arch/mood-log.md), so retyping "Sertraline" as "sertraline"
+              would otherwise split one medicine's history into two untallied
+              entries. */}
+          {medicationSuggestions.length > 0 && (
+            <PillGroup
+              noun="medication"
+              surface="card"
+              options={medicationSuggestions.map(name => ({
+                key: medicationKey(name),
+                label: name,
+                selected: !!medicationName && medicationKey(name) === medicationKey(medicationName),
+                onPress: () => { haptics.tap(); setMedicationName(name); },
+              }))}
+            />
+          )}
           {medicationName !== null && (
             <>
               <TextInput
@@ -1380,6 +1453,123 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           </CollapsibleField>
       </View>
 
+      {/* Rotation. Its own card beside Chain because the two are the pair
+          people confuse: both hold a list, and the difference is whether the
+          order is fixed. See utils/rotation.ts. */}
+      <View style={styles.sectionCard}>
+        <CollapsibleField
+          label="Rotation"
+          summary={
+            rotationEnabled
+              ? (rotationItems.length > 1
+                  ? `${rotationItems.length} things, one each a week`
+                  : rotationItems.length === 1
+                    ? '1 thing, add one more'
+                    : 'Nothing in the set yet')
+              : undefined
+          }
+          emptySummary="Off"
+          hint="A set of things to get through once each per week, in any order. Checking the task off asks which one you did."
+          expanded={fieldOpen('rotationSet', rotationEnabled)}
+          onToggle={() => toggleField('rotationSet', rotationEnabled)}
+          right={
+            <TouchableOpacity
+              onPress={() => { haptics.tap(); setRotationEnabled(v => !v); }}
+              activeOpacity={interaction.activeOpacity}
+              style={[styles.toggle, rotationEnabled && styles.toggleOn]}
+              accessibilityRole="switch"
+              accessibilityLabel="Rotation"
+              accessibilityState={{ checked: rotationEnabled }}
+            >
+              <View style={[styles.toggleKnob, rotationEnabled && styles.toggleKnobOn]} />
+            </TouchableOpacity>
+          }
+        >
+        {rotationEnabled && (
+          <>
+            <SortableList
+              onDragStateChange={setDraggingRow}
+              data={rotationItems}
+              onReorder={setRotationItems}
+              renderItem={(rotationItem, _displayIndex, drag) => (
+              <View style={styles.chainItemRow}>
+                <TouchableOpacity
+                  onLongPress={drag}
+                  delayLongPress={interaction.delayLongPress}
+                  hitSlop={6}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Reorder ${rotationItem.title}`}
+                >
+                  <Ionicons name="reorder-two-outline" size={16} color={colors.textTertiary} />
+                </TouchableOpacity>
+                <TextInput
+                  style={styles.chainInput}
+                  value={rotationItem.title}
+                  onChangeText={text => setRotationItems(prev => prev.map(
+                    r => (r.id === rotationItem.id ? { ...r, title: text } : r)))}
+                  placeholder="Name"
+                  placeholderTextColor={colors.textTertiary}
+                  maxLength={TITLE_MAX_LENGTH}
+                />
+                <StepLink
+                  step={rotationItem}
+                  taskLinkUrl={null}
+                  onPress={() => setLinkMemberId(rotationItem.id)}
+                />
+                <TouchableOpacity
+                  onPress={() => setRotationItems(prev => prev.filter(r => r.id !== rotationItem.id))}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Remove ${rotationItem.title} from the rotation`}
+                >
+                  <Ionicons name="close" size={14} color={colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
+              )}
+            />
+            {addingRotationItem ? (
+              <View style={styles.chainItemRow}>
+                <Ionicons name="reorder-two-outline" size={16} color={colors.bgQuaternary} />
+                <TextInput
+                  autoFocus
+                  style={styles.chainInput}
+                  value={newRotationItemTitle}
+                  onChangeText={setNewRotationItemTitle}
+                  placeholder="e.g. Spanish"
+                  placeholderTextColor={colors.textTertiary}
+                  maxLength={TITLE_MAX_LENGTH}
+                  returnKeyType="done"
+                  onSubmitEditing={() => {
+                    const t = newRotationItemTitle.trim();
+                    if (t) setRotationItems(prev => [...prev, { id: generateId(), title: t, linkUrl: null }]);
+                    setNewRotationItemTitle('');
+                  }}
+                  onBlur={() => {
+                    const t = newRotationItemTitle.trim();
+                    if (t) setRotationItems(prev => [...prev, { id: generateId(), title: t, linkUrl: null }]);
+                    setNewRotationItemTitle('');
+                    setAddingRotationItem(false);
+                  }}
+                />
+              </View>
+            ) : (
+              <InlineAction
+                icon="add"
+                label="Add to the set"
+                onPress={() => setAddingRotationItem(true)}
+                style={styles.addBtnSpacing}
+              />
+            )}
+            {rotationItems.length === 1 && (
+              <Text style={styles.optionHint}>
+                Add a second one: a rotation needs at least 2 things to save.
+              </Text>
+            )}
+          </>
+        )}
+        </CollapsibleField>
+      </View>
+
       {/* Ask on completion. Its own card below Chain, the way TaskEditor puts
           it below the kinds: it answers the same question they do — what
           finishing this task means — and a chained or repeating item can end
@@ -1402,6 +1592,46 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             onChange={kind => { setDeliverableKind(kind); closeField('deliverable'); }}
           />
         </CollapsibleField>
+        {deliverableKind === 'choice' && (
+          <TextInput
+            style={[styles.fieldBox, styles.deliverableOptionsInput]}
+            value={deliverableOptionsText}
+            onChangeText={setDeliverableOptionsText}
+            placeholder="e.g. Yes, No, Maybe"
+            placeholderTextColor={colors.textTertiary}
+            returnKeyType="done"
+            accessibilityLabel="Options to pick from, separated by commas"
+          />
+        )}
+        {/* Fewer than two options and completing asks nothing
+            (deliverableOptionsFor), so say so where they're typed. */}
+        {deliverableKind === 'choice' && parseDeliverableOptions(deliverableOptionsText).length < 2 && (
+          <Text style={styles.choiceOptionsHint}>
+            Add at least two options, separated by commas. With fewer, completing the task asks nothing.
+          </Text>
+        )}
+        {/* Only on a trip template: "Pick dates" answered with the 14th is
+            the trip leaving on the 14th, so the project it lands in can
+            learn its Leaving date from the answer. */}
+        {deliverableKind === 'date' && tripTemplate && (
+          <TouchableOpacity
+            style={styles.optionRow}
+            onPress={() => { haptics.tap(); setDeliverableSetsAway(!deliverableSetsAway); }}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="switch"
+            accessibilityLabel="Use the answer as the trip's leaving date"
+            accessibilityState={{ checked: deliverableSetsAway }}
+          >
+            <Ionicons name="airplane-outline" size={18} color={deliverableSetsAway ? colors.accent : colors.textSecondary} />
+            <View style={styles.optionContent}>
+              <Text style={styles.optionLabel}>Sets the leaving date</Text>
+              <Text style={styles.optionHint}>The date you answer becomes the trip's Leaving date, if it doesn't have one yet</Text>
+            </View>
+            <View style={[styles.toggle, deliverableSetsAway && styles.toggleOn]}>
+              <View style={[styles.toggleKnob, deliverableSetsAway && styles.toggleKnobOn]} />
+            </View>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Subtasks */}
@@ -1564,6 +1794,33 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             </View>
           )}
         </CollapsibleField>
+
+        <View style={styles.cardSep} />
+
+        <CollapsibleField
+          label="Link"
+          summary={parseLabelledLink(linkText) ? linkHost(parseLabelledLink(linkText)!.url) : undefined}
+          hint="A page each task made from this item opens from its row, like a booking page or a form."
+          expanded={fieldOpen('link')}
+          onToggle={() => toggleField('link')}
+        >
+          <TextInput
+            style={[styles.fieldBox, styles.deliverableOptionsInput]}
+            value={linkText}
+            onChangeText={setLinkText}
+            placeholder="e.g. https://example.com/booking"
+            placeholderTextColor={colors.textTertiary}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="url"
+            returnKeyType="done"
+            accessibilityLabel="Link"
+          />
+          {/* Said here rather than dropped on save without a word. */}
+          {linkText.trim() !== '' && !parseLabelledLink(linkText) && (
+            <Text style={styles.choiceOptionsHint}>That isn't a link yet, so it won't be saved.</Text>
+          )}
+        </CollapsibleField>
       </View>
 
       {/* Priority + Effort */}
@@ -1652,13 +1909,15 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
  * human offset label ("3 days before", "On anchor day") with a clear button.
  */
 function OffsetRow({
-  icon, label, hint, offset, anchor, onChange, colors, styles,
+  icon, label, hint, offset, anchor, away, onChange, colors, styles,
 }: {
   icon: React.ComponentProps<typeof Ionicons>['name'];
   label: string;
   hint: string;
   offset: number | null;
   anchor: TemplateAnchor;
+  /** A trip template's: its anchors read as leaving and coming back. */
+  away: boolean;
   onChange: (offset: number | null) => void;
   colors: Colors;
   styles: ReturnType<typeof makeStyles>;
@@ -1670,7 +1929,7 @@ function OffsetRow({
         <View style={styles.optionContent}>
           <Text style={styles.optionLabel}>{label}</Text>
           <Text style={styles.optionHint}>
-            {offset !== null ? formatOffsetWithAnchor(offset, anchor) : hint}
+            {offset !== null ? formatOffsetWithAnchor(offset, anchor, away) : hint}
           </Text>
         </View>
         {offset !== null ? (
@@ -1699,17 +1958,24 @@ function OffsetRow({
           <TouchableOpacity hitSlop={8}
             style={styles.intervalBtn}
             onPress={() => onChange(offset - 1)}
+            // A week at a time on a hold: "6 weeks before" was 42 taps.
+            onLongPress={() => { haptics.tap(); onChange(offset - 7); }}
+            delayLongPress={interaction.delayLongPress}
             accessibilityRole="button"
             accessibilityLabel="One day earlier"
+            accessibilityHint="Hold to move a week earlier"
           >
             <Ionicons name="remove" size={16} color={colors.text} />
           </TouchableOpacity>
-          <Text style={styles.intervalValue}>{formatOffsetWithAnchor(offset, anchor)}</Text>
+          <Text style={styles.intervalValue}>{formatOffsetWithAnchor(offset, anchor, away)}</Text>
           <TouchableOpacity hitSlop={8}
             style={styles.intervalBtn}
             onPress={() => onChange(offset + 1)}
+            onLongPress={() => { haptics.tap(); onChange(offset + 7); }}
+            delayLongPress={interaction.delayLongPress}
             accessibilityRole="button"
             accessibilityLabel="One day later"
+            accessibilityHint="Hold to move a week later"
           >
             <Ionicons name="add" size={16} color={colors.text} />
           </TouchableOpacity>
@@ -1898,4 +2164,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   /** Sits between the medication's name and its unit row. */
   medicationAmountInput: { marginTop: spacing.sm, marginBottom: spacing.sm },
+  choiceOptionsHint: { color: colors.textSecondary, fontSize: font.xs, marginHorizontal: spacing.md, marginTop: spacing.xs, marginBottom: spacing.sm },
+  deliverableOptionsInput: { marginHorizontal: spacing.md, marginVertical: spacing.sm, height: 40 },
 });

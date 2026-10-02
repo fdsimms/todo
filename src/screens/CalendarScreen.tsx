@@ -1,4 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
+import { useStableCallback } from '../hooks/useStableCallback';
 import { View, Text, ScrollView, StyleSheet, Dimensions, TouchableOpacity } from 'react-native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -19,11 +20,14 @@ import { TaskEditor, type TaskDraft } from '../components/TaskEditor';
 import { PeriodNav } from '../components/PeriodNav';
 import { Fab } from '../components/Fab';
 import { QuickAddModal } from '../components/QuickAddModal';
+import { TodayEventsSheet } from '../components/TodayEventsSheet';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { buildCalendarGrid, weekdayHeaders } from '../utils/calendarGrid';
-import { dayKeyOf, dayKeyToDate, getDayStart, getLogicalToday } from '../utils/dateUtils';
+import { dayKeyOf, dayKeyToDate, getCurrentDayStart, getDayStart, getLogicalToday } from '../utils/dateUtils';
+import { defaultNewEventSpan } from '../utils/eventPeople';
+import { useEventPeopleStore } from '../store/useEventPeopleStore';
 import {
   buildDayBuckets,
   dayDetail,
@@ -104,6 +108,14 @@ export function CalendarScreen() {
   const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
   const calendarReadEnabled = useSettingsStore(s => s.calendarReadEnabled);
+  // Same rule as Today's: which calendar an event came from is only worth a
+  // tag once more than one is being read.
+  const calendarIds = useSettingsStore(s => s.calendarIds);
+  const calendarsById = useCalendarStore(s => s.calendarsById);
+  const eventCalendarTags = calendarIds.length > 1 ? calendarsById : undefined;
+  // Tapping an event on the day view opens the same sheet Today's event row
+  // does, for this day: who it's with, a reminder, a task from it, hiding it.
+  const [eventsSheetVisible, setEventsSheetVisible] = useState(false);
   const calendarEvents = useCalendarStore(s => s.events);
   const calendarLoaded = useCalendarStore(s => s.loaded);
   const calendarWindowStart = useCalendarStore(s => s.windowStart);
@@ -348,6 +360,11 @@ export function CalendarScreen() {
     setEditorInitialDraft(draft);
     setEditorVisible(true);
   };
+  // Stable, because QuickAddModal is memoized and stays mounted while hidden:
+  // a fresh prop each render would re-render the hidden sheet with this screen.
+  const onQuickAddClose = useStableCallback(() => setQuickAddVisible(false));
+  const onQuickAddOpenFull = useStableCallback(handleQuickAddOpenFull);
+  const quickAddSeed = useMemo(() => ({ dueDate: dayKeyToDate(selectedKey).toISOString() }), [selectedKey]);
 
   const renderRows = (label: string, tasks: Task[]) => {
     if (tasks.length === 0) return null;
@@ -404,6 +421,18 @@ export function CalendarScreen() {
             onPress: goToToday,
             accessibilityLabel: 'Go to today',
           },
+          // Opens Apple's new-event sheet on the selected day; the calendar
+          // it's saved to (Google included) is picked there. Absent in a demo,
+          // where it would write to the real calendar.
+          ...(isDemoModeActive() ? [] : [{
+            icon: 'add' as const,
+            onPress: () => {
+              haptics.tap();
+              const { start, end } = defaultNewEventSpan(dayKeyToDate(selectedKey), getCurrentDayStart(), new Date());
+              void useEventPeopleStore.getState().createEvent({ title: '', start, end });
+            },
+            accessibilityLabel: `New event on ${format(dayKeyToDate(selectedKey), 'MMMM d')}`,
+          }]),
         ]}
       />
 
@@ -527,6 +556,7 @@ export function CalendarScreen() {
                   use24Hour={use24Hour}
                   nowMinutes={nowMinutes}
                   onPressTask={handleRowPress}
+                  onPressEvent={() => { haptics.tap(); setEventsSheetVisible(true); }}
                 />
                 {/* Everything the axis refused to place, as real rows. */}
                 {renderRows('No time set', dayTimeline.unplaced)}
@@ -577,10 +607,19 @@ export function CalendarScreen() {
 
       <QuickAddModal
         visible={quickAddVisible}
-        onClose={() => setQuickAddVisible(false)}
-        onOpenFull={handleQuickAddOpenFull}
-        seed={{ dueDate: selectedDate.toISOString() }}
+        onClose={onQuickAddClose}
+        onOpenFull={onQuickAddOpenFull}
+        seed={quickAddSeed}
         seedLabel={format(selectedDate, 'MMM d')}
+      />
+
+      <TodayEventsSheet
+        visible={eventsSheetVisible}
+        onClose={() => setEventsSheetVisible(false)}
+        events={dayEvents}
+        calendarsById={eventCalendarTags}
+        title={format(dayKeyToDate(selectedKey), 'EEEE, MMM d')}
+        day={dayKeyToDate(selectedKey)}
       />
     </View>
   );

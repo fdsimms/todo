@@ -110,6 +110,9 @@ export function ensureProductFor(
       // Claiming one has to release it from whichever box held it before, so
       // it goes through `linkScannedGtins` rather than riding an insert.
       gtin: null,
+      // A box named here has a brand or a variant, which is exactly what a
+      // portion doesn't. See ItemProduct.isPortion.
+      isPortion: false,
       createdAt,
     },
   };
@@ -268,7 +271,11 @@ export interface GroceryAddPlan {
   entry: GroceryListEntry | null;
   /** A product minted by the Brand/Variant chips, needing its own write. */
   product: ItemProduct | null;
-  /** Whether the row was already in some trolley before this add. */
+  /**
+   * Whether the row was already in the trolley this add joins. Not "in some
+   * trolley": milk on the home list is not already on the Airbnb list, so a
+   * paste there has added it, and its undo has to take it back off.
+   */
   wasOnList: boolean;
 }
 
@@ -307,7 +314,10 @@ export function planGroceryAdd(
   // its purchase count and its aisle in two. See groceryPlural.ts; nothing
   // about the stored key changes, this is only how a name finds it.
   const existing = catalogItemForKey(key, items) ?? undefined;
-  const wasOnList = existing?.onList === true;
+  const wasOnList = !!existing && entryFor(listEntries, existing.id, listId) !== null;
+  // The broad "in any trolley" question, which is what the recipe credit below
+  // is about: a row still standing on some list is one the user owns.
+  const onAnyList = existing?.onList === true;
 
   // The entry to upsert, or null for "leave the membership alone".
   //
@@ -379,8 +389,8 @@ export function planGroceryAdd(
       // A row that had fallen off every list is functionally a fresh add: the
       // recipe that put it back is the reason it is there, and crediting a
       // stale recipe (possibly cooked and forgotten) is actively misleading.
-      sourceRecipeId: !wasOnList && source ? source.recipeId : existing.sourceRecipeId,
-      sourceRecipeTitle: !wasOnList && source ? source.recipeTitle : existing.sourceRecipeTitle,
+      sourceRecipeId: !onAnyList && source ? source.recipeId : existing.sourceRecipeId,
+      sourceRecipeTitle: !onAnyList && source ? source.recipeTitle : existing.sourceRecipeTitle,
       ...(ensured ? { preferredProductId: ensured.product.id } : {}),
     };
     return {
@@ -415,5 +425,39 @@ export function planGroceryAdd(
     entry: membership(item.id),
     product: ensured?.created ? ensured.product : null,
     wasOnList: false,
+  };
+}
+
+/**
+ * What the add field says about a name typed while it is already in the
+ * trolley it was added to. Null when the add put the row there, which is the
+ * ordinary case and needs no words.
+ *
+ * Such an add is silent on purpose where the row is concerned: `planGroceryAdd`
+ * leaves the entry alone so the tick and the walk-order slot survive. It was
+ * silent to the person too, which was the bug (#2945). The sheet counted it as
+ * "Added 1 item" and nothing on screen changed, while a paste of the same name
+ * always said "1 already on the list". This is that line for a single name.
+ *
+ * `priorEntry` is the entry as it stood *before* the add, read by the caller
+ * off a snapshot, since afterwards there is an entry either way. `inCart` is
+ * that entry's own tick, so the field can offer to take it back out: typing
+ * milk you have already picked up usually means you want another one.
+ *
+ * A typed quantity still replaces the row's (the re-add rule above), and the
+ * notice says so, since that is the one visible thing the add changed.
+ */
+export function reAddNotice(
+  priorEntry: GroceryListEntry | null,
+  previousQuantity: string | null,
+  item: GroceryItem,
+): { text: string; inCart: boolean } | null {
+  if (!priorEntry) return null;
+  const where = priorEntry.checked ? 'in your cart' : 'on the list';
+  const quantityChanged = !!item.quantity && item.quantity !== previousQuantity;
+  return {
+    text: `“${item.name}” is already ${where}`
+      + (quantityChanged ? `. Quantity changed to ${item.quantity}.` : ''),
+    inCart: priorEntry.checked,
   };
 }

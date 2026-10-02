@@ -1,0 +1,383 @@
+import type { Cookbook, CookbookIndexEntry, GroceryItem, ItemProduct, Recipe } from '../types';
+import { probablyHaveReason } from './grocerySuggest';
+import { GROCERY_NAME_MAX_LENGTH } from '../types';
+import { groceryNameKey } from './groceryParse';
+import { pluralKeyVariants } from './groceryPlural';
+import { flattenRecipeIngredients, recipeMap } from './recipeComponents';
+import { cleanRecipeName, cleanSourcePage, recipeInBook, recipeNameKey, recipeVoteRank } from './recipeUtils';
+import { cookbookPageKey } from './cookbookRecipes';
+
+/**
+ * A cookbook's index, and the "Cook with" finder that searches it.
+ *
+ * An index entry is a dish, its page and the ingredients the index files it
+ * under, and it is **deliberately not a recipe** (see `CookbookIndexEntry` in
+ * types, and docs/arch/recipes.md). Nothing in the recipe box, the pickers,
+ * the meal plan or the grocery list reads the table, so an index of 150 dishes
+ * can't turn up anywhere it wasn't asked for. The finder is the one place it
+ * is asked for: "what can I make with lentils?", answered from the recipes you
+ * have typed up and from the books on your shelf.
+ *
+ * Pure and store-free, so the rules below are tested without a database.
+ */
+
+/** An index lists a handful of ingredients under a dish, never a whole list. */
+export const MAX_INDEX_INGREDIENTS = 12;
+
+/** A dish's name as the index prints it, trimmed and capped like a recipe's. */
+export function cleanIndexTitle(raw: string): string {
+  return cleanRecipeName(raw);
+}
+
+/**
+ * A page as printed ("142", "112-115", "xiv"), or null for none. The same
+ * cleaning `setSourcePage` gives a recipe's page, so a page that moves from an
+ * entry onto the recipe made from it reads the same on both.
+ */
+export function cleanIndexPage(raw: string | null | undefined): string | null {
+  return cleanSourcePage(raw) || null;
+}
+
+/**
+ * The ingredient words worth keeping: trimmed, capped, empties dropped, and a
+ * second spelling of one already kept ("Lentils" after "lentils") dropped too.
+ * Order is kept, since it is the order they were typed or printed in.
+ */
+export function cleanIndexIngredients(words: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of words) {
+    const word = raw.trim().replace(/\s+/g, ' ').slice(0, GROCERY_NAME_MAX_LENGTH).trim();
+    const key = groceryNameKey(word);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(word);
+    if (out.length >= MAX_INDEX_INGREDIENTS) break;
+  }
+  return out;
+}
+
+/** What the entry form hands the store: every field as typed. */
+export interface IndexEntryFields {
+  title: string;
+  page: string | null;
+  ingredients: readonly string[];
+}
+
+/** The fields as stored, or null when there's no title to file them under. */
+export function cleanIndexEntryFields(
+  fields: IndexEntryFields,
+): Pick<CookbookIndexEntry, 'title' | 'page' | 'ingredients'> | null {
+  const title = cleanIndexTitle(fields.title);
+  if (!title) return null;
+  return { title, page: cleanIndexPage(fields.page), ingredients: cleanIndexIngredients(fields.ingredients) };
+}
+
+/**
+ * The line already in `cookbookId`'s index under this dish's name, which is
+ * what `addIndexEntry` refuses a second one over. Keyed by `recipeNameKey`,
+ * the key a recipe's name is refused on, so the entry and the recipe made
+ * from it (`recipeFromIndexEntry`) are one name to both.
+ */
+export function indexEntryInBook(
+  entries: readonly CookbookIndexEntry[],
+  title: string,
+  cookbookId: string,
+): CookbookIndexEntry | null {
+  const key = recipeNameKey(title);
+  if (!key) return null;
+  return entries.find(e => e.cookbookId === cookbookId && recipeNameKey(e.title) === key) ?? null;
+}
+
+/** One line a scan proposes, as the review shows it before anything is written. */
+export interface IndexDraft {
+  title: string;
+  page: string | null;
+  ingredients: string[];
+  /**
+   * The line this book's index already has under that name, which applying
+   * the draft adds to (its ingredients, and its page if it had none) rather
+   * than duplicating. Null for a new line.
+   */
+  existing: CookbookIndexEntry | null;
+}
+
+/**
+ * A scan's pages as one list of proposed lines, a dish once.
+ *
+ * An index files one dish under every ingredient it uses, so a scan meets
+ * "Braised lentils" under Lentils and again under Shallots: those fold into
+ * one line with both words, keyed by name the way `indexEntryInBook` keys
+ * the book's own lines, and the first page given wins. A dish the book's
+ * index already has is marked `existing`, so the review can say it adds to a
+ * line rather than making one. In the book's page order.
+ */
+export function mergeIndexDrafts(
+  read: readonly IndexEntryFields[],
+  bookEntries: readonly CookbookIndexEntry[],
+  cookbookId: string,
+): IndexDraft[] {
+  const byKey = new Map<string, IndexDraft>();
+  for (const fields of read) {
+    const clean = cleanIndexEntryFields(fields);
+    if (!clean) continue;
+    const key = recipeNameKey(clean.title);
+    const seen = byKey.get(key);
+    if (seen) {
+      seen.page = seen.page ?? clean.page;
+      seen.ingredients = cleanIndexIngredients([...seen.ingredients, ...clean.ingredients]);
+      continue;
+    }
+    byKey.set(key, { ...clean, existing: indexEntryInBook(bookEntries, clean.title, cookbookId) });
+  }
+  return [...byKey.values()].sort((a, b) => comparePages(a.page, b.page) || a.title.localeCompare(b.title));
+}
+
+/**
+ * What applying a draft does to the line it names: the existing line with the
+ * draft's words added and its page filled if it had none, or null when that
+ * changes nothing. Shared by the store's apply and the review's count, so
+ * "adds to 3 lines" can't disagree with what gets written.
+ */
+export function mergedIndexLine(draft: IndexDraft): CookbookIndexEntry | null {
+  const line = draft.existing;
+  if (!line) return null;
+  const ingredients = cleanIndexIngredients([...line.ingredients, ...draft.ingredients]);
+  const page = line.page ?? draft.page;
+  const changed = page !== line.page || ingredients.length !== line.ingredients.length;
+  return changed ? { ...line, page, ingredients } : null;
+}
+
+/** The line a book's page shows after a scan is added, beside its Undo. */
+export function describeIndexScan(added: number, updated: number): string {
+  const dishes = (n: number) => `${n} ${n === 1 ? 'dish' : 'dishes'}`;
+  if (added > 0 && updated > 0) return `Added ${dishes(added)}, and ingredients to ${updated} already in the index`;
+  if (added > 0) return `Added ${dishes(added)} to the index`;
+  if (updated > 0) return `Added ingredients to ${dishes(updated)} already in the index`;
+  return 'Nothing new was added';
+}
+
+/** "lentils, shallots; parsley" → the three words, as the entry form takes them. */
+export function splitIngredientText(text: string): string[] {
+  return text.split(/[,;\n]/);
+}
+
+/** The same word, or its singular or plural ("lentil" and "lentils"). */
+function sameWord(a: string, b: string): boolean {
+  return a === b || pluralKeyVariants(a).includes(b);
+}
+
+/**
+ * Whether a key names the wanted ingredient, word for word: "red lentils"
+ * mentions "lentils", "lentil" mentions "lentils", and "eggplant" does not
+ * mention "egg".
+ *
+ * Whole words rather than a substring, which is what `rankRecipes` uses, since
+ * here every result claims to *use* the thing and "egg" turning up aubergine
+ * dishes would be a claim that's plainly wrong. Tolerant of a plural on each
+ * word through `pluralKeyVariants`, the one rule the catalog already uses for
+ * "is this the same shelf item", rather than a second stemmer. It does let
+ * "cream" find "ice cream", which `useUpRecipes` refuses: that one suggests
+ * cooking something unasked, where this answers a search someone typed, and
+ * a result they can look past costs less than one they never see.
+ */
+export function mentionsIngredient(key: string, wantedKey: string): boolean {
+  const words = key.split(' ').filter(Boolean);
+  const wanted = wantedKey.split(' ').filter(Boolean);
+  if (wanted.length === 0 || wanted.length > words.length) return false;
+  for (let start = 0; start + wanted.length <= words.length; start++) {
+    if (wanted.every((w, i) => sameWord(words[start + i], w))) return true;
+  }
+  return false;
+}
+
+/** A recipe you have typed up that uses some of what was asked for. */
+export interface FinderRecipeHit {
+  recipe: Recipe;
+  /** The wanted ingredients it uses, as they were asked for, in that order. */
+  matched: string[];
+}
+
+/** A cookbook index line that uses some of what was asked for. */
+export interface FinderEntryHit {
+  entry: CookbookIndexEntry;
+  cookbook: Cookbook | null;
+  matched: string[];
+  /**
+   * The recipe already made from this entry (same book, same name), when it
+   * has nothing typed into it yet. Opening the entry opens that. An entry whose
+   * recipe *has* been typed up isn't a hit at all: the recipe answers for it.
+   */
+  recipe: Recipe | null;
+}
+
+export interface FinderResults {
+  recipes: FinderRecipeHit[];
+  entries: FinderEntryHit[];
+}
+
+/** One thing being asked about: the word to show, and the keys that answer for it. */
+interface Asked {
+  word: string;
+  keys: string[];
+}
+
+/**
+ * Everything that uses any of `wanted`, most matches first.
+ *
+ * Any rather than all, because the question is "what could I make with
+ * these", and a dish using two of three is still an answer; the count decides
+ * the order, so the dishes using all of them come first.
+ *
+ * - **Your recipes** are matched on their whole ingredient list, flattened
+ *   through components with every option of a choice counted (`allOptions`,
+ *   the same read `rankRecipes` makes), since a recipe that can be made with
+ *   lentils uses them. Its name isn't read: a recipe says what it uses.
+ * - **Index entries** are matched on the ingredients the index files them
+ *   under *and* on their title, since a title-only index ("Lentil soup, 88")
+ *   says what a dish uses in its name and nowhere else.
+ * - An entry whose recipe you have already typed up is left out: that recipe
+ *   is the better answer, and shows under yours when it matches.
+ */
+export function findWithIngredients(
+  wanted: readonly string[],
+  recipes: readonly Recipe[],
+  entries: readonly CookbookIndexEntry[],
+  cookbooks: readonly Cookbook[],
+): FinderResults {
+  const asked = cleanIndexIngredients(wanted).map(word => ({ word, keys: [groceryNameKey(word)] }));
+  return search(asked, mentionsIngredient, true, recipes, entries, cookbooks);
+}
+
+/** Something the pantry says you have, as "What I have" asks about it. */
+export interface PantryIngredient {
+  /** The catalog row's own name, which is what a result says it uses. */
+  word: string;
+  /**
+   * Its key, plus the generic it declares itself a variety of
+   * (`GroceryItem.varietyOfKey`): white onion in the pantry answers a recipe
+   * asking for onion. Specific satisfies generic and never the other way, the
+   * one widening `useUpRecipes` makes too.
+   */
+  keys: string[];
+}
+
+/**
+ * What "What I have" asks about: every catalog row `probablyHaveReason`
+ * vouches for, and nothing else, since that function is the app's single
+ * answer to "do I have this" (docs/arch/groceries.md). A staple is left out
+ * though it reads as on hand: salt and oil are in nearly every dish, so
+ * counting them would put whatever uses the most seasoning at the top.
+ * Leftovers aren't in it either; you reheat a container, you don't cook with it.
+ */
+export function pantryIngredients(
+  items: readonly GroceryItem[],
+  now: Date,
+  products: readonly ItemProduct[] = [],
+): PantryIngredient[] {
+  return items
+    .filter(item => !item.isStaple && probablyHaveReason(item, now, products) !== null)
+    .map(item => ({ word: item.name, keys: item.varietyOfKey ? [item.nameKey, item.varietyOfKey] : [item.nameKey] }))
+    .sort((a, b) => a.word.localeCompare(b.word));
+}
+
+/**
+ * Everything that uses what the pantry says you have, most of it first.
+ *
+ * Matched by key rather than by word: a recipe line or an index ingredient
+ * counts when it names the same catalog item, singular or plural, which is
+ * the join every other pantry read makes (`useUpRecipes`, pantry coverage).
+ * Whole-word matching suits a word someone typed; here the asking set is the
+ * whole pantry, and "butter" in it answering "peanut butter" would claim a
+ * dish you can't make. For the same reason an index entry's title isn't read.
+ *
+ * Ranked by how many things you have that a dish uses, never by how much of
+ * the dish you have: `probablyHaveReason` returning null means the app
+ * doesn't know, not that you're out, so "6 of 8" would be a number built on
+ * a set that was never meant to carry one (the same refusal `useUpRecipes`
+ * makes).
+ */
+export function findWithPantry(
+  have: readonly PantryIngredient[],
+  recipes: readonly Recipe[],
+  entries: readonly CookbookIndexEntry[],
+  cookbooks: readonly Cookbook[],
+): FinderResults {
+  return search(have.map(h => ({ word: h.word, keys: h.keys })), sameKey, false, recipes, entries, cookbooks);
+}
+
+/** The same catalog item: one key, or its singular or plural. */
+function sameKey(key: string, wantedKey: string): boolean {
+  return key === wantedKey || pluralKeyVariants(key).includes(wantedKey);
+}
+
+function search(
+  asked: readonly Asked[],
+  matches: (key: string, wantedKey: string) => boolean,
+  readTitles: boolean,
+  recipes: readonly Recipe[],
+  entries: readonly CookbookIndexEntry[],
+  cookbooks: readonly Cookbook[],
+): FinderResults {
+  if (asked.length === 0) return { recipes: [], entries: [] };
+  const matchedIn = (keys: readonly string[]) =>
+    asked.filter(a => keys.some(key => a.keys.some(wanted => matches(key, wanted)))).map(a => a.word);
+
+  const byId = recipeMap(recipes);
+  const recipeHits: FinderRecipeHit[] = [];
+  for (const recipe of recipes) {
+    const keys = flattenRecipeIngredients(recipe, byId, { allOptions: true }).map(f => f.ingredient.nameKey);
+    const matched = matchedIn(keys);
+    if (matched.length > 0) recipeHits.push({ recipe, matched });
+  }
+  recipeHits.sort((a, b) =>
+    b.matched.length - a.matched.length
+    || recipeVoteRank(a.recipe.vote) - recipeVoteRank(b.recipe.vote)
+    || a.recipe.name.localeCompare(b.recipe.name));
+
+  const booksById = new Map(cookbooks.map(c => [c.id, c]));
+  const entryHits: FinderEntryHit[] = [];
+  for (const entry of entries) {
+    const recipe = recipeInBook(recipes, entry.title, entry.cookbookId);
+    if (recipe && hasContent(recipe)) continue;
+    const keys = entry.ingredients.map(groceryNameKey);
+    if (readTitles) keys.push(groceryNameKey(entry.title));
+    const matched = matchedIn(keys);
+    if (matched.length === 0) continue;
+    entryHits.push({ entry, cookbook: booksById.get(entry.cookbookId) ?? null, matched, recipe });
+  }
+  entryHits.sort((a, b) =>
+    b.matched.length - a.matched.length
+    || (a.cookbook?.title ?? '').localeCompare(b.cookbook?.title ?? '')
+    || comparePages(a.entry.page, b.entry.page)
+    || a.entry.title.localeCompare(b.entry.title));
+
+  return { recipes: recipeHits, entries: entryHits };
+}
+
+/** A book's index in the book's own order: page, then name. */
+export function entriesInCookbook(entries: readonly CookbookIndexEntry[], cookbookId: string): CookbookIndexEntry[] {
+  return entries
+    .filter(e => e.cookbookId === cookbookId)
+    .sort((a, b) => comparePages(a.page, b.page) || a.title.localeCompare(b.title));
+}
+
+/**
+ * "Six Seasons, p. 142", or whichever half exists: where to go and look. The
+ * book comes first because that's the thing on the shelf.
+ */
+export function describeIndexLocation(entry: CookbookIndexEntry, cookbook: Cookbook | null): string {
+  const page = entry.page ? `p. ${entry.page}` : null;
+  return [cookbook?.title ?? null, page].filter(Boolean).join(', ');
+}
+
+/** Whether a recipe has anything in it beyond a name: the difference between typed up and not. */
+function hasContent(recipe: Recipe): boolean {
+  return recipe.ingredients.length > 0 || recipe.components.length > 0 || recipe.steps.length > 0;
+}
+
+function comparePages(a: string | null, b: string | null): number {
+  const ka = cookbookPageKey(a);
+  const kb = cookbookPageKey(b);
+  return ka.band - kb.band || ka.n - kb.n;
+}

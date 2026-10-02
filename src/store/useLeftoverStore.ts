@@ -7,6 +7,8 @@ import {
   dbUpdateLeftover,
   dbDeleteLeftover,
   dbPurgeOldLeftovers,
+  dbGetMealPlanEntry,
+  dbGetMealPlanEntriesForLeftover,
 } from '../db/database';
 import { generateId } from '../utils/id';
 import { dayKeyOf, getLogicalToday } from '../utils/dateUtils';
@@ -18,7 +20,9 @@ import {
   leftoverPurgeCutoff,
   sortLeftovers,
 } from '../utils/leftovers';
-import { useUpTaskDraft, useUpTaskDrift, wantsUseUpTask } from '../utils/leftoverTasks';
+import { plannedMealRowFor, useUpTaskDraft, useUpTaskDrift, wantsUseUpTask } from '../utils/leftoverTasks';
+import { liveGeneratedTask } from '../utils/generatedTasks';
+import { mealSlotSourceId } from '../utils/mealSlotTasks';
 import { clampCookedWeight } from '../utils/mealLog';
 import { dropGeneratedTask, reconcileGeneratedTask } from './generatedTaskSync';
 import { useTaskStore } from './useTaskStore';
@@ -207,8 +211,23 @@ interface LeftoverStore extends UndoHistoryActions {
    * tasks have loaded) and again on app foreground, since `needsAttention` is
    * a function of the wall clock: a leftover can age from "fresh" into "soon"
    * purely by time passing, with no leftover mutation to trigger a reconcile.
+   *
+   * The launch-time call in `useTaskStore.initialize` is this one. The catch-up and
+   * foreground sweeps go through `useGroceryStore.reconcileAllUseUpTasks`
+   * instead, which visits these same leftovers interleaved with the grocery
+   * items by use-by day, so the shared cap goes to the soonest of both (#2924).
    */
   reconcileAllLeftoverTasks: () => void;
+
+  /**
+   * One live leftover's use-up task, brought into line. For the meal plan
+   * (#2932): planning a leftover into a meal whose task already says to eat
+   * it stands the use-up task down, and clearing or moving that meal brings it
+   * back, with no leftover mutation to trigger either. Also the step
+   * `useGroceryStore.reconcileAllUseUpTasks` takes for each leftover in its
+   * merged queue (#2924). A finished or unknown id is a no-op.
+   */
+  reconcileLeftoverUseUpTask: (id: string) => void;
 
   leftoverById: (id: string) => Leftover | undefined;
 }
@@ -224,7 +243,7 @@ interface LeftoverStore extends UndoHistoryActions {
 /**
  * Brings this leftover's use-up task into line: creates it, updates it, or
  * removes it, depending on what the leftover now says. The create/update/delete
- * machinery is shared with the other three generators (store/generatedTaskSync,
+ * machinery is shared with every other generator (store/generatedTaskSync,
  * #1524); what's decided here is only what a leftover wants.
  *
  * No `blocksOnFinished`, for the reason groceries don't have it either: a
@@ -236,11 +255,26 @@ function reconcileLeftoverTask(leftover: Leftover): void {
   reconcileGeneratedTask({
     kind: 'leftoverUseUp',
     sourceId: leftover.id,
-    wanted: wantsUseUpTask(leftover, leftoverUseUpTasks),
+    wanted: wantsUseUpTask(leftover, leftoverUseUpTasks, eatenAsPlanned(leftover)),
     drift: existing => useUpTaskDrift(existing, leftover),
     draft: () => useUpTaskDraft(leftover, leftoverUseUpTaskCategory),
     useUpCap: useUpTaskCap,
   });
+}
+
+/**
+ * Whether a planned meal's own task already says to eat this leftover — see
+ * `plannedMealRowFor`. Read from SQLite rather than the meal plan store, whose
+ * `entries` is only the week that screen has loaded.
+ */
+function eatenAsPlanned(leftover: Leftover): boolean {
+  const { tasks } = useTaskStore.getState();
+  return plannedMealRowFor(
+    leftover,
+    dbGetMealPlanEntriesForLeftover(leftover.id),
+    dayKeyOf(getLogicalToday()),
+    (dayKey, slot) => !!liveGeneratedTask(tasks, 'mealSlot', mealSlotSourceId(dayKey, slot)),
+  ) !== null;
 }
 
 /**
@@ -374,7 +408,11 @@ export const useLeftoverStore = create<LeftoverStore>((set, get) => ({
     save(set, updated);
     // Freezing drops a use-up task that needsAttention no longer wants;
     // thawing spawns one if the restarted window lands inside the threshold.
-    reconcileLeftoverTask(updated);
+    // Dropped on the way in, which writes no "never", for the reason the
+    // grocery store's own setFrozen gives: a container frozen with a live task
+    // used to lose use-up tasks for good. See reconcileGeneratedTask.
+    if (frozen) dropLeftoverTask(id);
+    else reconcileLeftoverTask(updated);
   },
 
   splitLeftover(id) {
@@ -418,9 +456,20 @@ export const useLeftoverStore = create<LeftoverStore>((set, get) => ({
     // anything else — half a takeaway, a hand-logged container with no
     // recipe — gets the search sheet instead, the same split offerMealLog
     // makes in useTaskStore.ts for a meal-slot completion.
-    if (outcome === 'eaten' && useSettingsStore.getState().mealLogPrompt) {
+    //
+    // Skipped when an offer is already waiting. Ticking a leftover-backed
+    // meal's Eat step raises the plan's own offer (with its slot and its link
+    // to the plan entry) and then asks whether that was the last of it, and
+    // answering "Finished it" landed here: a second offer for the same meal
+    // on top of the first, or a slotless one replacing it that logged the
+    // dinner without covering the plan. One offer per meal, and the plan's
+    // knows which meal it was.
+    const foodLog = useFoodLogStore.getState();
+    const offerWaiting = foodLog.pendingMealLog !== null || foodLog.pendingManualMealLog !== null;
+    if (outcome === 'eaten' && useSettingsStore.getState().mealLogPrompt && !offerWaiting) {
       if (leftover.recipeId) {
-        useFoodLogStore.getState().setPendingMealLog({
+        const source = leftover.sourceEntryId ? dbGetMealPlanEntry(leftover.sourceEntryId) : null;
+        foodLog.setPendingMealLog({
           label: leftover.title,
           // A container has no meal of the day: it was eaten whenever it was
           // eaten, and inventing a slot would file it under one it wasn't in.
@@ -430,11 +479,16 @@ export const useLeftoverStore = create<LeftoverStore>((set, get) => ({
           dayKey: dayKeyOf(getLogicalToday()),
           recipeId: leftover.recipeId,
           mealPlanEntryId: null,
-          // The stored portion is whatever was left over, which the recipe's own
-          // scale says nothing about, so this is one helping of the dish as
-          // written and the person corrects it.
-          scale: 1,
-          choices: [],
+          // The cooking this came from, when its plan entry still resolves: the
+          // scale it was made at and the either/or answers that went in. A
+          // helping counted in servings reads the same either way (a doubled
+          // batch doubles its servings too), but a weighed container is
+          // measured against the whole dish's cooked weight, and at the
+          // as-written scale a normal container from a doubled pot weighed
+          // more than the entire dish and was refused. A leftover with no
+          // surviving plan entry falls back to the dish as written.
+          scale: source?.recipeScale ?? 1,
+          choices: source?.recipeChoices ?? [],
           // What this container weighed, when it was weighed — the container
           // against the dish's own cooked weight is the fraction of the recipe
           // that was in it, and finishing it as eaten means that fraction was
@@ -444,7 +498,7 @@ export const useLeftoverStore = create<LeftoverStore>((set, get) => ({
           grams: leftover.weightG,
         });
       } else {
-        useFoodLogStore.getState().setPendingManualMealLog({
+        foodLog.setPendingManualMealLog({
           label: leftover.title,
           slot: null,
           dayKey: dayKeyOf(getLogicalToday()),
@@ -500,6 +554,11 @@ export const useLeftoverStore = create<LeftoverStore>((set, get) => ({
     const updated = { ...leftover, useUpTask: value };
     save(set, updated);
     if (options?.reconcile !== false) reconcileLeftoverTask(updated);
+  },
+
+  reconcileLeftoverUseUpTask(id) {
+    const leftover = get().leftovers.find(l => l.id === id);
+    if (leftover && !leftover.finishedAt) reconcileLeftoverTask(leftover);
   },
 
   reconcileAllLeftoverTasks() {

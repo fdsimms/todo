@@ -7,7 +7,7 @@ import { probablyHaveReason } from './grocerySuggest';
 /**
  * Substitutes — the read side of the item-to-item links.
  *
- * Pure, so groceryItemSubs.test.ts pins it and the wording rules live in one
+ * Pure, so itemSubs.test.ts pins it and the wording rules live in one
  * place. The two rules that matter, restated from ItemSubLink:
  *
  * - **Directional.** A link says "instead of `itemId`, use `subItemId`", and

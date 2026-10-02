@@ -8,15 +8,20 @@ import {
   dbGetMealPlanAddedToList,
   dbSetMealPlanAddedToList,
   dbGetMealPlanEntry,
+  dbGetMealPlanEntriesForRecipe,
 } from '../db/database';
 import type { GroceryItem, MealPlanEntry, MealSlot, Recipe, Task } from '../types';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { groceryNameKey } from '../utils/groceryParse';
 import { mealSlotSourceId, mealSlotTaskDraft } from '../utils/mealSlotTasks';
-import { dayKeyOf } from '../utils/dateUtils';
+import { dayKeyOf, dayKeyToDate } from '../utils/dateUtils';
+
+/** A local wall-clock time as the ISO instant the app stores, so the suite reads the same in any zone. */
+const localIso = (local: string) => new Date(local).toISOString();
 
 jest.mock('../db/database', () => ({
   dbGetMealPlanEntries: jest.fn().mockReturnValue([]),
+  dbGetMealPlanEntriesForRecipe: jest.fn().mockReturnValue([]),
   dbGetMealPlanEntry: jest.fn().mockReturnValue(null),
   dbInsertMealPlanEntry: jest.fn(),
   dbUpdateMealPlanEntry: jest.fn(),
@@ -31,15 +36,21 @@ jest.mock('../db/database', () => ({
   // Runs the body straight through: the grocery store batches its bulk writes
   // into one transaction, and what the tests below check is the writes.
   dbTransaction: jest.fn((fn: () => void) => fn()),
+  // #2950's launch backfill: the ids of the rows the write filled.
+  dbFillMealCalendarExternalIds: jest.fn().mockReturnValue([]),
 }));
 
 // mealCookTasks defaults on, matching the real store — so every test here runs
 // with cook-task reconciliation live rather than only the ones that opt in.
 let mockMealCookTasks = true;
+// "Usually cooking for" (#2910); 0 is not set, the default.
+let mockHouseholdServings = 0;
 // mealCalendarId defaults to null, also matching the real store: the calendar
 // mirror is off until a calendar is picked, so only the tests that opt in run
 // with it live.
 let mockMealCalendarId: string | null = null;
+// Defaults to all three, matching the real store's shipped default.
+let mockMealPlanNudgeSlots: MealSlot[] = ['breakfast', 'lunch', 'dinner'];
 // Mocked for the same reason the task store below is: this suite is about what
 // the meal plan asks of its collaborators, and the one path here that creates a
 // task (setCookTask(true)) makes sure its category exists first — which is the
@@ -53,7 +64,9 @@ jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: {
     getState: () => ({
       dayResetTime: '00:00',
+      get mealPlanNudgeSlots() { return mockMealPlanNudgeSlots; },
       get mealCookTasks() { return mockMealCookTasks; },
+      get householdServings() { return mockHouseholdServings; },
       get mealCalendarId() { return mockMealCalendarId; },
     }),
   },
@@ -64,12 +77,27 @@ jest.mock('../store/useSettingsStore', () => ({
 // same reason useTaskStore.test.ts and useDemoStore.test.ts mock it.
 const mockDeleteCalendarEvent = jest.fn().mockResolvedValue(undefined);
 const mockCreateAllDayEvent = jest.fn().mockResolvedValue('evt-new');
-const mockUpdateAllDayEvent = jest.fn().mockResolvedValue(true);
+// Hands back the id it was given, which is what EventKit reports for an event
+// rewritten in place (and moved, #2949, when the calendar changed).
+const mockMoveAllDayEvent = jest.fn((id: string) => Promise.resolve(id));
+let mockCalendarPermission = 'granted';
+// Whether a local id still names its event here: yes unless a test says not.
+const mockEventExists = jest.fn((_id: string) => Promise.resolve(true));
 jest.mock('../utils/calendarSync', () => ({
+  getCalendarPermission: () => Promise.resolve(mockCalendarPermission),
+  calendarEventExists: (id: string) => mockEventExists(id),
   deleteCalendarEvent: (...args: unknown[]) => mockDeleteCalendarEvent(...args),
   createAllDayEvent: (...args: unknown[]) => mockCreateAllDayEvent(...args),
-  updateAllDayEvent: (...args: unknown[]) => mockUpdateAllDayEvent(...args),
+  moveAllDayEvent: (...args: unknown[]) => mockMoveAllDayEvent(...(args as [string])),
 }));
+// #2950: the native module that reads an event's calendar server id, and finds
+// an event by one. No server ids and no matches unless a test says so.
+const mockExternalIds = jest.fn((_ids: string[]) => Promise.resolve({} as Record<string, string>));
+const mockEventsWithExternalId = jest.fn((_id: string) => Promise.resolve([] as unknown[]));
+jest.mock('todo-eventkit-bridge', () => ({
+  externalIdentifiers: (ids: string[]) => mockExternalIds(ids),
+  eventsWithExternalIdentifier: (id: string) => mockEventsWithExternalId(id),
+}), { virtual: true });
 
 // useGroceryStore (real, below) imports these unconditionally for
 // startTrip/endTrip — same expo-notifications-in-node problem the task store
@@ -115,15 +143,41 @@ jest.mock('../store/useTaskStore', () => ({
   useTaskStore: { getState: () => mockTaskState },
 }));
 
+const mockRecipeNameKey = (name: string): string =>
+  jest.requireActual('../utils/recipeUtils').recipeNameKey(name);
+
 // Mutable, so the cooked-offer tests below can put a recipe behind an entry —
 // the offer is computed from the cooked recipe's ingredient lines.
 const mockRecipeState = {
   recipes: [] as Recipe[],
+  // Off by default, which is "the list hasn't loaded": nothing reads a recipe
+  // as deleted until it has (see recipeIsGone), so the many tests here that
+  // plan against a bare 'r1' keep planning a recipe. The ones about a deleted
+  // recipe switch it on.
+  initialized: false,
   markCooked: jest.fn(),
   restoreCookStats: jest.fn(),
+  // A name-only recipe, refused on a taken name the way the real store is, so
+  // saveEntryAsRecipe's two branches are both reachable.
+  addRecipe: jest.fn((name: string): Recipe | null => {
+    const nameKey = mockRecipeNameKey(name);
+    if (!nameKey || mockRecipeState.recipes.some(r => r.nameKey === nameKey)) return null;
+    const created = { id: `r-new-${nameKey}`, name: name.trim(), nameKey, servings: null } as unknown as Recipe;
+    mockRecipeState.recipes.push(created);
+    return created;
+  }),
 };
 jest.mock('../store/useRecipeStore', () => ({
   useRecipeStore: { getState: () => mockRecipeState },
+}));
+
+// The leftover store decides whether a planned leftover still wants its use-up
+// task (its own suite covers that); this suite is about which leftovers a slot
+// change asks it about (#2932). Mocked too because the real one reaches the
+// Health bridge at import.
+const mockReconcileLeftoverUseUpTask = jest.fn();
+jest.mock('../store/useLeftoverStore', () => ({
+  useLeftoverStore: { getState: () => ({ reconcileLeftoverUseUpTask: mockReconcileLeftoverUseUpTask }) },
 }));
 
 /** The live cook task for an entry, as the store's own helpers find it. */
@@ -144,7 +198,7 @@ function entry(
     recipeId: null,
     title: `Meal ${seq}`,
     sortOrder: 1,
-    createdAt: '2026-01-01T00:00:00.000Z',
+    createdAt: localIso('2026-01-01T00:00'),
     cookedAt: null,
     leftoverId: null,
     recipeChoices: [],
@@ -170,16 +224,21 @@ beforeEach(() => {
   jest.clearAllMocks();
   seq = 0;
   mockMealCookTasks = true;
+  mockHouseholdServings = 0;
   mockMealCalendarId = null;
+  mockCalendarPermission = 'granted';
+  mockMealPlanNudgeSlots = ['breakfast', 'lunch', 'dinner'];
   mockCreateAllDayEvent.mockResolvedValue('evt-new');
-  mockUpdateAllDayEvent.mockResolvedValue(true);
+  mockMoveAllDayEvent.mockImplementation((id: string) => Promise.resolve(id));
   mockTaskState.tasks = [];
   (dbGetMealPlanEntries as jest.Mock).mockReturnValue([]);
   (dbGetMealPlanEntry as jest.Mock).mockReturnValue(null);
   (dbPurgeOldMealPlanEntries as jest.Mock).mockReturnValue(0);
   (dbGetMealPlanAddedToList as jest.Mock).mockReturnValue({});
   mockRecipeState.recipes = [];
-  useGroceryStore.setState({ items: [] });
+  mockRecipeState.initialized = false;
+  (dbGetMealPlanEntriesForRecipe as jest.Mock).mockReturnValue([]);
+  useGroceryStore.setState({ items: [], listEntries: [] });
   useMealPlanStore.setState({
     entries: [], rangeStart: null, rangeEnd: null, addedToListAt: {}, initialized: false,
     lastAction: null, undoStack: [], redoStack: [],
@@ -203,6 +262,7 @@ function recipeWith(name: string, ingredientNames: string[]): Recipe {
       quantity: '', aisle: null, prep: null, purpose: null, section: null, choiceGroup: null,
     })),
     emptySections: [],
+    emptyStepSections: [],
     components: [],
   } as unknown as Recipe;
 }
@@ -272,6 +332,18 @@ describe('refreshPlannedSlotCounts', () => {
 
     expect(counts()).toEqual({});
     expect(dbGetMealPlanEntries).not.toHaveBeenCalled();
+  });
+
+  it('counts only the meals mealPlanNudgeSlots names', () => {
+    mockMealPlanNudgeSlots = ['dinner'];
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([
+      entry('2026-08-11', 'breakfast'),
+      entry('2026-08-11', 'dinner'),
+    ]);
+
+    useMealPlanStore.getState().refreshPlannedSlotCounts(['2026-08-11']);
+
+    expect(counts()).toEqual({ '2026-08-11': 1 });
   });
 
   it('keeps the same object when the counts have not changed', () => {
@@ -536,9 +608,9 @@ describe('initialize', () => {
   });
 
   it('loads addedToListAt from the database, same as any other database swap', () => {
-    (dbGetMealPlanAddedToList as jest.Mock).mockReturnValue({ '2026-08-09': '2026-08-09T00:00:00.000Z' });
+    (dbGetMealPlanAddedToList as jest.Mock).mockReturnValue({ '2026-08-09': localIso('2026-08-09T00:00') });
     useMealPlanStore.getState().initialize();
-    expect(useMealPlanStore.getState().addedToListAt).toEqual({ '2026-08-09': '2026-08-09T00:00:00.000Z' });
+    expect(useMealPlanStore.getState().addedToListAt).toEqual({ '2026-08-09': localIso('2026-08-09T00:00') });
   });
 });
 
@@ -563,6 +635,67 @@ describe('planMeal', () => {
 
     expect(planned.leftoverId).toBe('lo-1');
     expect(planned.recipeId).toBeNull();
+  });
+
+  // #2932: a leftover planned into a meal whose row says "Eat Chilli" has no
+  // "Use up Chilli" beside it, so every change to that plan asks again.
+  it('asks the leftover about its use-up task when it is planned, moved, removed or replaced', () => {
+    loadWeek();
+    const planned = useMealPlanStore.getState().planMeal({
+      date: '2026-08-05', slot: 'dinner', leftoverId: 'lo-1', title: 'Chilli (2 days old)',
+    })!;
+    expect(mockReconcileLeftoverUseUpTask).toHaveBeenCalledWith('lo-1');
+
+    mockReconcileLeftoverUseUpTask.mockClear();
+    useMealPlanStore.getState().moveEntry(planned.id, { date: '2026-08-06' });
+    expect(mockReconcileLeftoverUseUpTask).toHaveBeenCalledWith('lo-1');
+
+    mockReconcileLeftoverUseUpTask.mockClear();
+    useMealPlanStore.getState().bulkReplaceItem([planned.id], { recipeId: null, title: 'Takeout' });
+    // The replacement names no leftover, so the one it displaced is asked from
+    // the original entry.
+    expect(mockReconcileLeftoverUseUpTask).toHaveBeenCalledWith('lo-1');
+
+    useMealPlanStore.getState().lastAction!.undo();
+    mockReconcileLeftoverUseUpTask.mockClear();
+    useMealPlanStore.getState().removeEntry(planned.id);
+    expect(mockReconcileLeftoverUseUpTask).toHaveBeenCalledWith('lo-1');
+  });
+
+  it('asks no leftover about an ordinary plan', () => {
+    loadWeek();
+    useMealPlanStore.getState().planMeal({ date: '2026-08-05', slot: 'dinner', recipeId: 'r1', title: 'Ragù' });
+    expect(mockReconcileLeftoverUseUpTask).not.toHaveBeenCalled();
+  });
+
+  it('starts a recipe at the household size when one is set (#2910)', () => {
+    mockHouseholdServings = 4;
+    mockRecipeState.recipes = [
+      { ...recipeWith('Pasta', []), servings: 2 },
+      { ...recipeWith('Chili', []), servings: 4, servingsMax: 6 },
+      { ...recipeWith('Toast', []), servings: null },
+    ];
+    loadWeek();
+    const plan = (recipeId: string | null, title: string) => useMealPlanStore.getState().planMeal({
+      date: '2026-08-05', slot: 'dinner', recipeId, title,
+    })!.recipeScale;
+
+    expect(plan('r-Pasta', 'Pasta')).toBe(2);
+    // Already feeds four, and a recipe with no servings has nothing to scale by.
+    expect(plan('r-Chili', 'Chili')).toBe(1);
+    expect(plan('r-Toast', 'Toast')).toBe(1);
+    // A typed meal has no recipe to scale.
+    expect(plan(null, 'Takeout')).toBe(1);
+  });
+
+  it('starts every meal as written while no household size is set', () => {
+    mockRecipeState.recipes = [{ ...recipeWith('Pasta', []), servings: 2 }];
+    loadWeek();
+    const planned = useMealPlanStore.getState().planMeal({
+      date: '2026-08-05', slot: 'dinner', recipeId: 'r-Pasta', title: 'Pasta',
+    })!;
+
+    expect(planned.recipeScale).toBe(1);
   });
 
   it('leaves leftoverId null for an ordinary plan', () => {
@@ -797,6 +930,60 @@ describe('renameEntry', () => {
     expect(() => useMealPlanStore.getState().renameEntry('gone', 'New title')).not.toThrow();
     expect(dbUpdateMealPlanEntry).not.toHaveBeenCalled();
   });
+
+  it('renames a meal whose recipe was deleted, and lets go of the dead recipe', () => {
+    // It reads as its typed title everywhere, and its row wears the free-text
+    // pencil, so it renames like one. The choices and the scale belonged to
+    // cooking that recipe; a "2×" nothing can change would sit on "Tacos".
+    mockRecipeState.initialized = true;
+    const dinner = entry('2026-08-05', 'dinner', {
+      recipeId: 'r-gone', title: 'Chili', recipeChoices: ['c-1'], recipeScale: 2,
+    });
+    loadWeek([dinner]);
+
+    useMealPlanStore.getState().renameEntry(dinner.id, 'Tacos');
+
+    expect(getEntries()[0]).toEqual({
+      ...dinner, title: 'Tacos', recipeId: null, recipeChoices: [], recipeScale: 1,
+    });
+    expect(dbUpdateMealPlanEntry).toHaveBeenCalledWith(
+      expect.objectContaining({ id: dinner.id, title: 'Tacos', recipeId: null })
+    );
+  });
+
+  it('undoes a dangling rename back onto the recipe it pointed at', () => {
+    mockRecipeState.initialized = true;
+    const dinner = entry('2026-08-05', 'dinner', { recipeId: 'r-gone', title: 'Chili', recipeScale: 2 });
+    loadWeek([dinner]);
+
+    useMealPlanStore.getState().renameEntry(dinner.id, 'Tacos');
+    useMealPlanStore.getState().undoLastAction();
+
+    expect(getEntries()[0]).toEqual(dinner);
+  });
+
+  it('still refuses a meal whose recipe is there', () => {
+    mockRecipeState.initialized = true;
+    mockRecipeState.recipes = [recipeWith('Chili', [])];
+    const dinner = entry('2026-08-05', 'dinner', { recipeId: 'r-Chili', title: 'Chili' });
+    loadWeek([dinner]);
+
+    useMealPlanStore.getState().renameEntry(dinner.id, 'Tacos');
+
+    expect(getEntries()[0].title).toBe('Chili');
+    expect(dbUpdateMealPlanEntry).not.toHaveBeenCalled();
+  });
+
+  it('reads nothing as deleted before the recipe list has loaded', () => {
+    // An empty list then says nothing about any recipe, and clearing a pointer
+    // on that evidence would unlink a meal from a recipe that's still there.
+    const dinner = entry('2026-08-05', 'dinner', { recipeId: 'r1', title: 'Chili' });
+    loadWeek([dinner]);
+
+    useMealPlanStore.getState().renameEntry(dinner.id, 'Tacos');
+
+    expect(getEntries()[0]).toEqual(dinner);
+  });
 });
 
 describe('setRecipeChoices', () => {
@@ -873,7 +1060,7 @@ describe('setRecipeScale', () => {
   });
 
   it('is allowed on an already-cooked entry, same as a pick', () => {
-    const dinner = entry('2026-08-05', 'dinner', { cookedAt: '2026-08-05T18:00:00.000Z' });
+    const dinner = entry('2026-08-05', 'dinner', { cookedAt: localIso('2026-08-05T18:00') });
     loadWeek([dinner]);
 
     useMealPlanStore.getState().setRecipeScale(dinner.id, 2);
@@ -906,7 +1093,7 @@ describe('setCooked', () => {
   // The half that used not to exist: a row could be ticked and never un-ticked
   // except through the bulk bar (#1361).
   it('clears cookedAt again', () => {
-    const dinner = entry('2026-08-05', 'dinner', { cookedAt: '2026-08-05T18:00:00.000Z' });
+    const dinner = entry('2026-08-05', 'dinner', { cookedAt: localIso('2026-08-05T18:00') });
     loadWeek([dinner]);
 
     useMealPlanStore.getState().setCooked(dinner.id, false);
@@ -917,7 +1104,7 @@ describe('setCooked', () => {
 
   // Idempotence is what holds the recipe's cookCount to one bump per cooking.
   it('is a no-op on an entry already in the target state', () => {
-    const dinner = entry('2026-08-05', 'dinner', { cookedAt: '2026-08-05T18:00:00.000Z' });
+    const dinner = entry('2026-08-05', 'dinner', { cookedAt: localIso('2026-08-05T18:00') });
     loadWeek([dinner]);
 
     useMealPlanStore.getState().setCooked(dinner.id, true);
@@ -949,6 +1136,142 @@ describe('setCooked', () => {
     loadWeek([]);
     expect(() => useMealPlanStore.getState().setCooked('gone', true)).not.toThrow();
     expect(dbUpdateMealPlanEntry).not.toHaveBeenCalled();
+  });
+});
+
+describe('listRowsLeftBy', () => {
+  /** An unticked row on the home list, credited to `recipeId` by a recipe add. */
+  function creditedRow(name: string, recipeId: string): GroceryItem {
+    return {
+      id: `g-${name}`, name, nameKey: groceryNameKey(name), onList: true, checked: false,
+      quantity: '1', quantityFromRecipe: true, sourceRecipeId: recipeId, sourceRecipeTitle: 'Tacos',
+      createdAt: localIso('2026-01-01T00:00'),
+    } as unknown as GroceryItem;
+  }
+  function onList(...rows: GroceryItem[]) {
+    useGroceryStore.setState({
+      items: rows,
+      listEntries: rows.map(r => ({
+        itemId: r.id, listId: null, checked: false, sortOrder: 0, choiceGroup: null, addedAt: r.createdAt,
+      })),
+    });
+  }
+
+  it('finds the rows only a removed meal put on the list (#2912)', () => {
+    mockRecipeState.recipes = [recipeWith('Tacos', [])];
+    const tortillas = creditedRow('Tortillas', 'r-Tacos');
+    onList(tortillas, creditedRow('Rice', 'r-Paella'));
+    const tacos = entry('2026-08-05', 'dinner', { recipeId: 'r-Tacos', title: 'Tacos' });
+
+    expect(useMealPlanStore.getState().listRowsLeftBy([tacos]))
+      .toEqual([{ itemId: tortillas.id, listId: null, name: 'Tortillas' }]);
+  });
+
+  it('keeps them while the recipe is still planned on another uncooked night', () => {
+    mockRecipeState.recipes = [recipeWith('Tacos', [])];
+    onList(creditedRow('Tortillas', 'r-Tacos'));
+    const tacos = entry('2026-08-05', 'dinner', { recipeId: 'r-Tacos', title: 'Tacos' });
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([
+      entry('2026-08-08', 'dinner', { recipeId: 'r-Tacos', title: 'Tacos' }),
+    ]);
+
+    expect(useMealPlanStore.getState().listRowsLeftBy([tacos])).toEqual([]);
+  });
+
+  it('counts a night that is already cooked as wanting nothing', () => {
+    mockRecipeState.recipes = [recipeWith('Tacos', [])];
+    const tortillas = creditedRow('Tortillas', 'r-Tacos');
+    onList(tortillas);
+    const cookedTacos = entry('2026-08-05', 'dinner', { recipeId: 'r-Tacos', cookedAt: localIso('2026-08-05T19:00') });
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([
+      entry('2026-08-08', 'dinner', { recipeId: 'r-Tacos', cookedAt: localIso('2026-08-08T19:00') }),
+    ]);
+
+    // The removed meal was cooked, so its shopping is done with.
+    expect(useMealPlanStore.getState().listRowsLeftBy([cookedTacos])).toEqual([]);
+    // A cooked night elsewhere doesn't hold the rows of an uncooked one removed.
+    const tacos = entry('2026-08-06', 'dinner', { recipeId: 'r-Tacos' });
+    expect(useMealPlanStore.getState().listRowsLeftBy([tacos]).map(r => r.name)).toEqual(['Tortillas']);
+  });
+
+  it('offers nothing for a typed meal, which put nothing on the list by recipe', () => {
+    onList(creditedRow('Tortillas', 'r-Tacos'));
+    expect(useMealPlanStore.getState().listRowsLeftBy([entry('2026-08-05', 'dinner', { title: 'Tacos' })])).toEqual([]);
+  });
+});
+
+describe('copyEntryTo', () => {
+  it('puts one meal on the other days named, in its own slot (#2913)', () => {
+    const monday = entry('2026-08-03', 'lunch', {
+      recipeId: 'r1', title: 'Pasta salad', recipeScale: 2, cookTask: false,
+    });
+    loadWeek([monday]);
+
+    const n = useMealPlanStore.getState().copyEntryTo(monday.id, ['2026-08-04', '2026-08-05']);
+
+    expect(n).toBe(2);
+    const copies = getEntries().filter(e => e.id !== monday.id);
+    expect(copies.map(e => [e.date, e.slot, e.recipeId, e.recipeScale, e.cookTask])).toEqual([
+      ['2026-08-04', 'lunch', 'r1', 2, false],
+      ['2026-08-05', 'lunch', 'r1', 2, false],
+    ]);
+    expect(new Set(copies.map(e => e.id)).size).toBe(2);
+    expect(copies.every(e => e.cookedAt === null && e.calendarEventId === null)).toBe(true);
+  });
+
+  it("lands after what that day's slot already holds rather than replacing it", () => {
+    const monday = entry('2026-08-03', 'lunch', { title: 'Soup' });
+    const tuesday = entry('2026-08-04', 'lunch', { title: 'Sandwich', sortOrder: 1 });
+    loadWeek([monday, tuesday]);
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([tuesday]);
+
+    useMealPlanStore.getState().copyEntryTo(monday.id, ['2026-08-04']);
+
+    const lunches = getEntries().filter(e => e.date === '2026-08-04');
+    expect(lunches.map(e => [e.title, e.sortOrder])).toEqual([['Sandwich', 1], ['Soup', 2]]);
+  });
+
+  it("skips the meal's own day, and copies nothing from a leftover night", () => {
+    const monday = entry('2026-08-03', 'lunch', { title: 'Soup' });
+    const chili = entry('2026-08-03', 'dinner', { title: 'Chili', leftoverId: 'lo-1' });
+    loadWeek([monday, chili]);
+
+    expect(useMealPlanStore.getState().copyEntryTo(monday.id, ['2026-08-03'])).toBe(0);
+    expect(useMealPlanStore.getState().copyEntryTo(chili.id, ['2026-08-04'])).toBe(0);
+    expect(dbInsertMealPlanEntry).not.toHaveBeenCalled();
+  });
+
+  it('refuses a day that already has this meal in this slot, however it was reached (#2913)', () => {
+    const monday = entry('2026-08-03', 'lunch', { recipeId: 'r1', title: 'Pasta salad' });
+    loadWeek([monday]);
+    // A date past the loaded week, as "Another date…" picks: the day's own
+    // rows are read from SQLite rather than from the window.
+    (dbGetMealPlanEntries as jest.Mock).mockImplementation((start: string) => (
+      start === '2026-10-06' ? [entry('2026-10-06', 'lunch', { recipeId: 'r1', title: 'Pasta salad' })]
+        : start === '2026-10-07' ? [entry('2026-10-07', 'dinner', { recipeId: 'r1', title: 'Pasta salad' })]
+          : []
+    ));
+
+    expect(useMealPlanStore.getState().copyEntryTo(monday.id, ['2026-10-06'])).toBe(0);
+    expect(dbInsertMealPlanEntry).not.toHaveBeenCalled();
+    expect(useMealPlanStore.getState().lastAction).toBeNull();
+
+    // The same recipe in another slot is another meal, and a day with nothing
+    // takes it; only the refused day is dropped from a call naming several.
+    expect(useMealPlanStore.getState().copyEntryTo(monday.id, ['2026-10-06', '2026-10-07', '2026-10-08'])).toBe(2);
+    const written = (dbInsertMealPlanEntry as jest.Mock).mock.calls.map(c => [c[0].date, c[0].slot]);
+    expect(written).toEqual([['2026-10-07', 'lunch'], ['2026-10-08', 'lunch']]);
+  });
+
+  it('undoes every copy it wrote in one step', () => {
+    const monday = entry('2026-08-03', 'lunch', { title: 'Soup' });
+    loadWeek([monday]);
+
+    useMealPlanStore.getState().copyEntryTo(monday.id, ['2026-08-04', '2026-08-05']);
+    useMealPlanStore.getState().undoLastAction();
+
+    expect(getEntries()).toEqual([monday]);
+    expect(dbDeleteMealPlanEntry).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -1029,6 +1352,105 @@ describe('copyWeek', () => {
   });
 });
 
+describe('copySlotFromWeek', () => {
+  /** Answers each week's read from its own rows, keyed by the week's start. */
+  const weeks = (byStart: Record<string, MealPlanEntry[]>) =>
+    (dbGetMealPlanEntries as jest.Mock).mockImplementation((start: string) => byStart[start] ?? []);
+
+  it("copies last week's lunches into a week whose dinners are planned (#2913)", () => {
+    const tacos = entry('2026-08-03', 'dinner', { title: 'Tacos' });
+    loadWeek([tacos]);
+    weeks({
+      '2026-07-27': [
+        entry('2026-07-27', 'lunch', { title: 'Pasta salad', recipeId: 'r1', recipeScale: 2 }),
+        entry('2026-07-28', 'lunch', { title: 'Wraps' }),
+        entry('2026-07-27', 'dinner', { title: 'Ragù' }),
+      ],
+      '2026-08-03': [tacos],
+    });
+
+    const n = useMealPlanStore.getState().copySlotFromWeek('2026-07-27', '2026-08-03', 'lunch');
+
+    expect(n).toBe(2);
+    expect(getEntries().map(e => [e.date, e.slot, e.title, e.recipeScale])).toEqual([
+      ['2026-08-03', 'lunch', 'Pasta salad', 2],
+      ['2026-08-03', 'dinner', 'Tacos', 1],
+      ['2026-08-04', 'lunch', 'Wraps', 1],
+    ]);
+    expect(useMealPlanStore.getState().lastAction?.label).toBe('Copied 2 lunches');
+  });
+
+  it("leaves last week's leftover nights behind, as a week copy does", () => {
+    loadWeek([entry('2026-08-03', 'dinner')]);
+    weeks({
+      '2026-07-27': [
+        entry('2026-07-27', 'lunch', { title: 'Soup' }),
+        entry('2026-07-28', 'lunch', { title: 'Leftover chili', leftoverId: 'lo-1' }),
+      ],
+    });
+
+    expect(useMealPlanStore.getState().copySlotFromWeek('2026-07-27', '2026-08-03', 'lunch')).toBe(1);
+    const written = (dbInsertMealPlanEntry as jest.Mock).mock.calls.map(c => c[0].title);
+    expect(written).toEqual(['Soup']);
+  });
+
+  // The offer's rule, held here too: a week with any lunch in it is one the
+  // user is already planning lunches in, and a copy would have to merge.
+  it('writes nothing once the week has anything in that slot', () => {
+    const soup = entry('2026-08-05', 'lunch', { title: 'Soup' });
+    loadWeek([soup]);
+    weeks({
+      '2026-07-27': [entry('2026-07-27', 'lunch', { title: 'Wraps' })],
+      '2026-08-03': [soup],
+    });
+
+    expect(useMealPlanStore.getState().copySlotFromWeek('2026-07-27', '2026-08-03', 'lunch')).toBe(0);
+    expect(dbInsertMealPlanEntry).not.toHaveBeenCalled();
+    expect(useMealPlanStore.getState().lastAction).toBeNull();
+  });
+
+  it('undoes the whole slot in one go', () => {
+    loadWeek([entry('2026-08-03', 'dinner')]);
+    weeks({
+      '2026-07-27': [
+        entry('2026-07-27', 'lunch'),
+        entry('2026-07-28', 'lunch'),
+        entry('2026-07-29', 'lunch'),
+      ],
+    });
+    useMealPlanStore.getState().copySlotFromWeek('2026-07-27', '2026-08-03', 'lunch');
+    expect(getEntries()).toHaveLength(4);
+
+    useMealPlanStore.getState().undoLastAction();
+
+    expect(getEntries().map(e => e.slot)).toEqual(['dinner']);
+    expect(dbDeleteMealPlanEntry).toHaveBeenCalledTimes(3);
+  });
+
+  it('names one meal in the singular', () => {
+    loadWeek([entry('2026-08-03', 'dinner')]);
+    weeks({ '2026-07-27': [entry('2026-07-27', 'breakfast')] });
+
+    useMealPlanStore.getState().copySlotFromWeek('2026-07-27', '2026-08-03', 'breakfast');
+
+    expect(useMealPlanStore.getState().lastAction?.label).toBe('Copied 1 breakfast');
+  });
+});
+
+describe('slotsToCopyFrom', () => {
+  it('reads both weeks and answers which slots the target could take (#2913)', () => {
+    (dbGetMealPlanEntries as jest.Mock).mockImplementation((start: string) => (
+      start === '2026-07-27'
+        ? [entry('2026-07-27', 'lunch'), entry('2026-07-27', 'dinner'), entry('2026-07-28', 'snack')]
+        : [entry('2026-08-03', 'dinner')]
+    ));
+
+    expect(useMealPlanStore.getState().slotsToCopyFrom('2026-07-27', '2026-08-03')).toEqual(['lunch', 'snack']);
+    expect(dbGetMealPlanEntries).toHaveBeenCalledWith('2026-07-27', '2026-08-02');
+    expect(dbGetMealPlanEntries).toHaveBeenCalledWith('2026-08-03', '2026-08-09');
+  });
+});
+
 describe('findPlannedWeekBefore', () => {
   it('finds the most recent week that has anything in it', () => {
     (dbGetMealPlanEntries as jest.Mock)
@@ -1091,20 +1513,20 @@ describe('purgeOldEntries', () => {
   it('trims addedToListAt stamps past the same horizon', () => {
     jest.useFakeTimers().setSystemTime(new Date(2026, 7, 8));
     useMealPlanStore.setState({
-      addedToListAt: { '2026-02-08': '2026-02-08T00:00:00.000Z', '2026-08-03': '2026-08-03T00:00:00.000Z' },
+      addedToListAt: { '2026-02-08': localIso('2026-02-08T00:00'), '2026-08-03': localIso('2026-08-03T00:00') },
     });
 
     useMealPlanStore.getState().purgeOldEntries();
 
     expect(useMealPlanStore.getState().addedToListAt).toEqual({
-      '2026-08-03': '2026-08-03T00:00:00.000Z',
+      '2026-08-03': localIso('2026-08-03T00:00'),
     });
-    expect(dbSetMealPlanAddedToList).toHaveBeenCalledWith({ '2026-08-03': '2026-08-03T00:00:00.000Z' });
+    expect(dbSetMealPlanAddedToList).toHaveBeenCalledWith({ '2026-08-03': localIso('2026-08-03T00:00') });
     jest.useRealTimers();
   });
 
   it('does not touch storage when no stamp was old enough to trim', () => {
-    useMealPlanStore.setState({ addedToListAt: { '2026-08-03': '2026-08-03T00:00:00.000Z' } });
+    useMealPlanStore.setState({ addedToListAt: { '2026-08-03': localIso('2026-08-03T00:00') } });
     useMealPlanStore.getState().purgeOldEntries();
     expect(dbSetMealPlanAddedToList).not.toHaveBeenCalled();
   });
@@ -1139,7 +1561,7 @@ describe('stampAddedToList', () => {
   });
 
   it('keeps stamps for other weeks rather than replacing the whole map', () => {
-    useMealPlanStore.setState({ addedToListAt: { '2026-08-02': '2026-08-02T00:00:00.000Z' } });
+    useMealPlanStore.setState({ addedToListAt: { '2026-08-02': localIso('2026-08-02T00:00') } });
     useMealPlanStore.getState().stampAddedToList('2026-08-09');
 
     const stamps = useMealPlanStore.getState().addedToListAt;
@@ -1332,12 +1754,12 @@ describe('bulkReplaceItem', () => {
   });
 
   it('leaves cookedAt untouched — relabelling a past night does not un-cook it', () => {
-    const a = entry('2026-08-05', 'dinner', { cookedAt: '2026-08-05T18:00:00.000Z' });
+    const a = entry('2026-08-05', 'dinner', { cookedAt: localIso('2026-08-05T18:00') });
     loadWeek([a]);
 
     useMealPlanStore.getState().bulkReplaceItem([a.id], { recipeId: null, title: 'New name' });
 
-    expect(getEntries().find(e => e.id === a.id)!.cookedAt).toBe('2026-08-05T18:00:00.000Z');
+    expect(getEntries().find(e => e.id === a.id)!.cookedAt).toBe(localIso('2026-08-05T18:00'));
   });
 
   it('refuses a blank title', () => {
@@ -1350,6 +1772,91 @@ describe('bulkReplaceItem', () => {
     expect(dbUpdateMealPlanEntry).not.toHaveBeenCalled();
   });
 
+  it('keeps the servings rather than the factor when both recipes say how many they serve', () => {
+    // 2x a pasta that serves 2 is four servings, which is 1x of a soup that
+    // serves 4. Carrying the 2x over made it eight servings of soup.
+    mockRecipeState.recipes = [
+      { ...recipeWith('Pasta', []), servings: 2 },
+      { ...recipeWith('Soup', []), servings: 4 },
+      { ...recipeWith('Stew', []), servings: 8 },
+    ];
+    const tuesday = entry('2026-08-04', 'dinner', { recipeId: 'r-Pasta', recipeScale: 2 });
+    const friday = entry('2026-08-07', 'dinner', { recipeId: 'r-Pasta', recipeScale: 2 });
+    loadWeek([tuesday, friday]);
+
+    useMealPlanStore.getState().bulkReplaceItem([tuesday.id], { recipeId: 'r-Soup', title: 'Soup' });
+    useMealPlanStore.getState().bulkReplaceItem([friday.id], { recipeId: 'r-Stew', title: 'Stew' });
+
+    expect(getEntries().find(e => e.id === tuesday.id)!.recipeScale).toBe(1);
+    expect(getEntries().find(e => e.id === friday.id)!.recipeScale).toBe(0.5);
+  });
+
+  it('keeps the factor when there is no head count to carry', () => {
+    mockRecipeState.recipes = [
+      { ...recipeWith('Pasta', []), servings: 2 },
+      { ...recipeWith('Soup', []), servings: null },
+      { ...recipeWith('Stew', []), servings: 8 },
+    ];
+    const noServings = entry('2026-08-04', 'dinner', { recipeId: 'r-Pasta', recipeScale: 2 });
+    const asWritten = entry('2026-08-05', 'dinner', { recipeId: 'r-Pasta', recipeScale: 1 });
+    const freeText = entry('2026-08-06', 'dinner', { recipeId: null, title: 'Takeout', recipeScale: 2 });
+    const sameRecipe = entry('2026-08-07', 'dinner', { recipeId: 'r-Stew', recipeScale: 1.5 });
+    loadWeek([noServings, asWritten, freeText, sameRecipe]);
+
+    // The new recipe states no servings.
+    useMealPlanStore.getState().bulkReplaceItem([noServings.id], { recipeId: 'r-Soup', title: 'Soup' });
+    // As-written names no head count, so it isn't turned into half a stew.
+    useMealPlanStore.getState().bulkReplaceItem([asWritten.id], { recipeId: 'r-Stew', title: 'Stew' });
+    // A typed meal had no recipe to count servings from.
+    useMealPlanStore.getState().bulkReplaceItem([freeText.id], { recipeId: 'r-Stew', title: 'Stew' });
+    // Replacing a recipe with itself changes nothing it serves.
+    useMealPlanStore.getState().bulkReplaceItem([sameRecipe.id], { recipeId: 'r-Stew', title: 'Stew' });
+
+    const scaleOf = (id: string) => getEntries().find(e => e.id === id)!.recipeScale;
+    expect(scaleOf(noServings.id)).toBe(2);
+    expect(scaleOf(asWritten.id)).toBe(1);
+    expect(scaleOf(freeText.id)).toBe(2);
+    expect(scaleOf(sameRecipe.id)).toBe(1.5);
+  });
+
+  it('starts an as-written night at the household size, as planning the new recipe would (#2910)', () => {
+    mockHouseholdServings = 4;
+    mockRecipeState.recipes = [
+      { ...recipeWith('Chili', []), servings: 4 },
+      { ...recipeWith('Pasta', []), servings: 2 },
+    ];
+    const recipeNight = entry('2026-08-04', 'dinner', { recipeId: 'r-Chili', recipeScale: 1 });
+    const typedNight = entry('2026-08-05', 'dinner', { recipeId: null, title: 'Takeout', recipeScale: 1 });
+    const scaledNight = entry('2026-08-06', 'dinner', { recipeId: 'r-Chili', recipeScale: 2 });
+    loadWeek([recipeNight, typedNight, scaledNight]);
+
+    useMealPlanStore.getState().bulkReplaceItem(
+      [recipeNight.id, typedNight.id, scaledNight.id], { recipeId: 'r-Pasta', title: 'Pasta' });
+
+    const scaleOf = (id: string) => getEntries().find(e => e.id === id)!.recipeScale;
+    expect(scaleOf(recipeNight.id)).toBe(2);
+    expect(scaleOf(typedNight.id)).toBe(2);
+    // A night somebody scaled keeps its own head count (eight), not the household's.
+    expect(scaleOf(scaledNight.id)).toBe(4);
+  });
+
+  it("keeps one meal's day, slot and per-meal answers, which removing and re-planning lost (#2911)", () => {
+    // The one-meal Replace on a meal's own sheet is this with a list of one.
+    const a = entry('2026-08-05', 'lunch', {
+      recipeId: 'r-tacos', title: 'Tacos', cookTask: false, shopTask: false, logMeal: true, sortOrder: 3,
+    });
+    loadWeek([a]);
+
+    useMealPlanStore.getState().bulkReplaceItem([a.id], { recipeId: 'r-soup', title: 'Soup' });
+
+    const updated = getEntries().find(e => e.id === a.id)!;
+    expect(updated).toMatchObject({
+      id: a.id, date: '2026-08-05', slot: 'lunch', sortOrder: 3,
+      cookTask: false, shopTask: false, logMeal: true,
+      recipeId: 'r-soup', title: 'Soup',
+    });
+  });
+
   it('registers an undo that restores every entry to its original recipe and title', () => {
     const a = entry('2026-08-05', 'dinner', {
       recipeId: 'old-recipe', title: 'Old ragù', recipeChoices: ['c-roast'], leftoverId: 'lo-1',
@@ -1360,6 +1867,72 @@ describe('bulkReplaceItem', () => {
     useMealPlanStore.getState().undoLastAction();
 
     expect(getEntries()[0]).toEqual(a);
+  });
+});
+
+describe('saveEntryAsRecipe', () => {
+  it('makes a recipe named after a typed meal and points the meal at it (#2929)', () => {
+    mockRecipeState.initialized = true;
+    const tacos = entry('2026-08-05', 'dinner', { title: 'Tacos', cookTask: false });
+    loadWeek([tacos]);
+
+    const result = useMealPlanStore.getState().saveEntryAsRecipe(tacos.id);
+
+    expect(result?.created).toBe(true);
+    expect(mockRecipeState.addRecipe).toHaveBeenCalledWith('Tacos');
+    const updated = getEntries().find(e => e.id === tacos.id)!;
+    expect(updated).toMatchObject({ recipeId: result!.recipe.id, title: 'Tacos', cookTask: false });
+  });
+
+  it('uses the recipe already called that rather than refusing (#2929)', () => {
+    // Planned as typed text before the recipe existed: this is the one the
+    // meal was always going to mean, and the store won't make a second.
+    mockRecipeState.initialized = true;
+    mockRecipeState.recipes = [{ ...recipeWith('Tacos', []), nameKey: 'tacos' } as Recipe];
+    const tacos = entry('2026-08-05', 'dinner', { title: 'tacos' });
+    loadWeek([tacos]);
+
+    const result = useMealPlanStore.getState().saveEntryAsRecipe(tacos.id);
+
+    expect(result).toEqual({ recipe: mockRecipeState.recipes[0], created: false });
+    expect(mockRecipeState.addRecipe).not.toHaveBeenCalled();
+    expect(getEntries()[0]).toMatchObject({ recipeId: 'r-Tacos', title: 'Tacos' });
+  });
+
+  it('turns a meal whose recipe was deleted into a recipe too, since it reads as typed text', () => {
+    mockRecipeState.initialized = true;
+    const orphan = entry('2026-08-05', 'dinner', { recipeId: 'deleted', title: 'Chili' });
+    loadWeek([orphan]);
+
+    const result = useMealPlanStore.getState().saveEntryAsRecipe(orphan.id);
+
+    expect(result?.created).toBe(true);
+    expect(getEntries()[0].recipeId).toBe(result!.recipe.id);
+  });
+
+  it('leaves a live recipe meal and a leftover night alone', () => {
+    mockRecipeState.initialized = true;
+    mockRecipeState.recipes = [{ ...recipeWith('Soup', []), nameKey: 'soup' } as Recipe];
+    const soup = entry('2026-08-05', 'dinner', { recipeId: 'r-Soup', title: 'Soup' });
+    const leftover = entry('2026-08-06', 'dinner', { title: 'Chili', leftoverId: 'lo-1' });
+    loadWeek([soup, leftover]);
+
+    expect(useMealPlanStore.getState().saveEntryAsRecipe(soup.id)).toBeNull();
+    expect(useMealPlanStore.getState().saveEntryAsRecipe(leftover.id)).toBeNull();
+    expect(mockRecipeState.addRecipe).not.toHaveBeenCalled();
+    expect(dbUpdateMealPlanEntry).not.toHaveBeenCalled();
+  });
+
+  it('undoes to the typed meal and keeps the recipe it made', () => {
+    mockRecipeState.initialized = true;
+    const tacos = entry('2026-08-05', 'dinner', { title: 'Tacos' });
+    loadWeek([tacos]);
+
+    useMealPlanStore.getState().saveEntryAsRecipe(tacos.id);
+    useMealPlanStore.getState().undoLastAction();
+
+    expect(getEntries()[0]).toEqual(tacos);
+    expect(mockRecipeState.recipes.map(r => r.name)).toEqual(['Tacos']);
   });
 });
 
@@ -1558,7 +2131,7 @@ describe('a cooking marks what it used as opened', () => {
   it('leaves a staple and a row it does not claim you have alone', () => {
     cookOn('2026-08-05', recipeWith('Chili', ['salt', 'cumin']), [
       { ...onHand('salt'), isStaple: true },
-      { ...onHand('cumin'), onHandUntil: '2026-01-01T00:00:00.000Z' },
+      { ...onHand('cumin'), onHandUntil: localIso('2026-01-01T00:00') },
     ]);
 
     expect(openedOf('salt')).toBeNull();
@@ -1632,7 +2205,7 @@ describe('bulkSetCooked', () => {
   });
 
   it('clears cookedAt on every named entry that has one', () => {
-    const a = entry('2026-08-05', 'dinner', { cookedAt: '2026-08-05T18:00:00.000Z' });
+    const a = entry('2026-08-05', 'dinner', { cookedAt: localIso('2026-08-05T18:00') });
     loadWeek([a]);
 
     useMealPlanStore.getState().bulkSetCooked([a.id], false);
@@ -1641,7 +2214,7 @@ describe('bulkSetCooked', () => {
   });
 
   it('is idempotent — an entry already at the target state is not rewritten', () => {
-    const alreadyCooked = entry('2026-08-05', 'dinner', { cookedAt: '2026-08-05T18:00:00.000Z' });
+    const alreadyCooked = entry('2026-08-05', 'dinner', { cookedAt: localIso('2026-08-05T18:00') });
     const alreadyRaw = entry('2026-08-06', 'lunch');
     loadWeek([alreadyCooked, alreadyRaw]);
 
@@ -1659,7 +2232,7 @@ describe('bulkSetCooked', () => {
   });
 
   it('registers an undo that restores each entry to its own original cookedAt', () => {
-    const a = entry('2026-08-05', 'dinner', { cookedAt: '2026-08-05T18:00:00.000Z' });
+    const a = entry('2026-08-05', 'dinner', { cookedAt: localIso('2026-08-05T18:00') });
     const b = entry('2026-08-06', 'lunch', { cookedAt: null });
     loadWeek([a, b]);
 
@@ -1667,7 +2240,7 @@ describe('bulkSetCooked', () => {
     useMealPlanStore.getState().undoLastAction();
 
     const byId = new Map(getEntries().map(e => [e.id, e]));
-    expect(byId.get(a.id)!.cookedAt).toBe('2026-08-05T18:00:00.000Z');
+    expect(byId.get(a.id)!.cookedAt).toBe(localIso('2026-08-05T18:00'));
     expect(byId.get(b.id)!.cookedAt).toBeNull();
   });
 });
@@ -1732,8 +2305,10 @@ describe('meal tasks', () => {
     expect(task.chainItems.map(c => c.title))
       .toEqual(['Make Frijoles de la olla', 'Eat Frijoles de la olla']);
     expect(task.title).toBe('Frijoles de la olla');
-    // Answered with a recipe, so the link opens that instead of the day.
-    expect(task.linkUrl).toBe('dundundun://recipe?id=r1');
+    // Answered with a recipe, so the link opens that instead of the day, and
+    // names the meal so its scale and picks travel with it (#2931).
+    const planned = useMealPlanStore.getState().entries.find(e => e.date === '2026-08-05' && e.slot === 'dinner')!;
+    expect(task.linkUrl).toBe(`dundundun://recipe?id=r1&entry=${planned.id}`);
     expect(mockTaskState.addTask).not.toHaveBeenCalled();
   });
 
@@ -1785,7 +2360,7 @@ describe('meal tasks', () => {
     // Where it landed…
     const landed = slotTaskFor('2026-08-07', 'breakfast')!;
     expect(landed.title).toBe('Ragu');
-    expect(landed.dueDate!.startsWith('2026-08-07')).toBe(true);
+    expect(dayKeyOf(new Date(landed.dueDate!))).toBe('2026-08-07');
     // …and the slot it left, which is the half a one-sided reconcile misses.
     expect(slotTaskFor('2026-08-05', 'dinner')!.title).toBe('Dinner');
 
@@ -1827,7 +2402,7 @@ describe('meal tasks', () => {
 
   it('leaves a cooked meal alone rather than re-titling its row', () => {
     loadWeek([entry('2026-08-05', 'dinner', {
-      recipeId: 'r1', title: 'Ragu', cookedAt: '2026-08-05T18:00:00.000Z',
+      recipeId: 'r1', title: 'Ragu', cookedAt: localIso('2026-08-05T18:00'),
     })]);
     plantSlotTask('2026-08-05', 'dinner');
     const cooked = getEntries()[0];
@@ -1922,7 +2497,7 @@ describe('meal tasks', () => {
   });
 
   it('setCookedPaired returns null when there is nothing to do', () => {
-    loadWeek([entry('2026-08-05', 'dinner', { cookedAt: '2026-08-05T18:00:00.000Z' })]);
+    loadWeek([entry('2026-08-05', 'dinner', { cookedAt: localIso('2026-08-05T18:00') })]);
     const cooked = getEntries()[0];
     expect(useMealPlanStore.getState().setCookedPaired(cooked.id, true)).toBeNull();
     expect(useMealPlanStore.getState().setCookedPaired('nope', true)).toBeNull();
@@ -1945,6 +2520,53 @@ describe('meal tasks', () => {
     expect(task.chainItems.map(c => c.title)).toEqual(['Make Ragu', 'Eat Ragu']);
   });
 
+  it('reads a meal whose recipe was deleted as the typed meal it now is', () => {
+    // The entry keeps the pointer on purpose; the task mustn't read it as a
+    // recipe to make, or its link opens "This recipe is gone".
+    mockRecipeState.initialized = true;
+    loadWeek();
+    plantSlotTask('2026-08-05', 'dinner');
+
+    useMealPlanStore.getState().planMeal({
+      date: '2026-08-05', slot: 'dinner', recipeId: 'r-gone', title: 'Chili',
+    });
+
+    const task = slotTaskFor('2026-08-05', 'dinner')!;
+    expect(task.title).toBe('Eat Chili');
+    expect(task.chainEnabled).toBe(false);
+    expect(task.linkUrl).toBe('dundundun://mealplan?date=2026-08-05');
+  });
+
+  it('reconcileRecipeSlots turns "Make X" back into a typed meal once X is deleted', () => {
+    mockRecipeState.initialized = true;
+    mockRecipeState.recipes = [recipeWith('Chili', [])];
+    const thursday = entry('2026-08-06', 'dinner', { recipeId: 'r-Chili', title: 'Chili' });
+    // Monday is outside the loaded week: the reconcile has to reach it too.
+    const monday = entry('2026-08-10', 'dinner', { recipeId: 'r-Chili', title: 'Chili' });
+    loadWeek([thursday]);
+    plantSlotTask('2026-08-06', 'dinner', thursday);
+    plantSlotTask('2026-08-10', 'dinner', monday);
+    expect(slotTaskFor('2026-08-06', 'dinner')!.linkUrl).toBe(`dundundun://recipe?id=r-Chili&entry=${thursday.id}`);
+
+    // What useRecipeStore.deleteRecipe does: the recipe leaves the list, then
+    // the plan is told.
+    mockRecipeState.recipes = [];
+    (dbGetMealPlanEntriesForRecipe as jest.Mock).mockReturnValue([thursday, monday]);
+    (dbGetMealPlanEntries as jest.Mock).mockImplementation((start: string) =>
+      start === '2026-08-10' ? [monday] : []);
+    useMealPlanStore.getState().reconcileRecipeSlots(['r-Chili']);
+
+    for (const day of ['2026-08-06', '2026-08-10']) {
+      const task = slotTaskFor(day, 'dinner')!;
+      expect(task.title).toBe('Eat Chili');
+      expect(task.chainItems.map(c => c.title)).toEqual(['Eat Chili']);
+      expect(task.linkUrl).toBe(`dundundun://mealplan?date=${day}`);
+    }
+    expect(dbGetMealPlanEntriesForRecipe).toHaveBeenCalledWith('r-Chili');
+    // The plan itself is untouched: the pointer stays, so last Tuesday isn't blanked.
+    expect(dbUpdateMealPlanEntry).not.toHaveBeenCalled();
+  });
+
   it('a slot with no task is left alone entirely', () => {
     // Every mutation reconciles, and most days have no meal task at all — a
     // slot nobody enabled, a day the pass hasn't reached. None of them should
@@ -1959,6 +2581,63 @@ describe('meal tasks', () => {
     expect(mockTaskState.addTask).not.toHaveBeenCalled();
     expect(mockTaskState.updateTask).not.toHaveBeenCalled();
     expect(mockTaskState.deleteTask).not.toHaveBeenCalled();
+  });
+});
+
+describe('retitleRecipeEntries', () => {
+  const slotTaskFor = (dayKey: string, slot: MealSlot) =>
+    mockTaskState.tasks.find(
+      t => t.generatedSourceId === mealSlotSourceId(dayKey, slot) && !t.completed
+    );
+  const settle = () => new Promise<void>(resolve => setImmediate(resolve));
+
+  it('rewrites the captured title everywhere the recipe is planned, the task and the event with it', async () => {
+    mockMealCalendarId = 'cal-1';
+    const thursday = entry('2026-08-06', 'dinner', {
+      recipeId: 'r1', title: 'Chicken thing', calendarEventId: 'evt-1',
+    });
+    // Outside the loaded week, and cooked: the calendar is the household's
+    // record of the week, and the plan row already shows the new name.
+    const lastMonth = entry('2026-07-02', 'dinner', {
+      recipeId: 'r1', title: 'Chicken thing', calendarEventId: 'evt-0', cookedAt: localIso('2026-07-02T19:00'),
+    });
+    loadWeek([thursday]);
+    mockTaskState.addTask({ ...mealSlotTaskDraft('2026-08-06', 'dinner', thursday, 'Meal Plan') } as Partial<Task>);
+    (dbGetMealPlanEntriesForRecipe as jest.Mock).mockReturnValue([lastMonth, thursday]);
+
+    useMealPlanStore.getState().retitleRecipeEntries('r1', 'Lemon garlic chicken');
+    await settle();
+
+    expect(getEntries()[0].title).toBe('Lemon garlic chicken');
+    expect(dbUpdateMealPlanEntry).toHaveBeenCalledWith(
+      expect.objectContaining({ id: lastMonth.id, title: 'Lemon garlic chicken' })
+    );
+    expect(slotTaskFor('2026-08-06', 'dinner')!.chainItems.map(c => c.title))
+      .toEqual(['Make Lemon garlic chicken', 'Eat Lemon garlic chicken']);
+    expect(mockMoveAllDayEvent).toHaveBeenCalledWith('evt-1', 'cal-1', expect.objectContaining({
+      title: 'Dinner: Lemon garlic chicken',
+    }));
+    expect(mockMoveAllDayEvent).toHaveBeenCalledWith('evt-0', 'cal-1', expect.objectContaining({
+      title: 'Dinner: Lemon garlic chicken',
+    }));
+  });
+
+  it('leaves a leftover alone, and writes nothing already up to date', () => {
+    const leftover = entry('2026-08-06', 'dinner', { recipeId: 'r1', leftoverId: 'lo-1', title: 'Chili (2 days old)' });
+    const current = entry('2026-08-07', 'dinner', { recipeId: 'r1', title: 'Chili' });
+    loadWeek([leftover, current]);
+    (dbGetMealPlanEntriesForRecipe as jest.Mock).mockReturnValue([leftover, current]);
+
+    useMealPlanStore.getState().retitleRecipeEntries('r1', 'Chili');
+
+    expect(dbUpdateMealPlanEntry).not.toHaveBeenCalled();
+    expect(getEntries().map(e => e.title)).toEqual(['Chili (2 days old)', 'Chili']);
+  });
+
+  it('refuses a blank name', () => {
+    (dbGetMealPlanEntriesForRecipe as jest.Mock).mockReturnValue([entry('2026-08-07', 'dinner', { recipeId: 'r1' })]);
+    useMealPlanStore.getState().retitleRecipeEntries('r1', '   ');
+    expect(dbUpdateMealPlanEntry).not.toHaveBeenCalled();
   });
 });
 
@@ -2036,7 +2715,7 @@ describe('calendar events (#1494)', () => {
     useMealPlanStore.getState().moveEntry('m-a', { date: '2026-08-07' });
     await settle();
 
-    expect(mockUpdateAllDayEvent).toHaveBeenCalledWith('evt-1', expect.objectContaining({
+    expect(mockMoveAllDayEvent).toHaveBeenCalledWith('evt-1', 'cal-1', expect.objectContaining({
       title: 'Dinner: Ragu',
     }));
     expect(mockCreateAllDayEvent).not.toHaveBeenCalled();
@@ -2049,7 +2728,7 @@ describe('calendar events (#1494)', () => {
     useMealPlanStore.getState().renameEntry('m-a', 'Lasagne');
     await settle();
 
-    expect(mockUpdateAllDayEvent).toHaveBeenCalledWith('evt-1', expect.objectContaining({
+    expect(mockMoveAllDayEvent).toHaveBeenCalledWith('evt-1', 'cal-1', expect.objectContaining({
       title: 'Dinner: Lasagne',
     }));
   });
@@ -2061,6 +2740,22 @@ describe('calendar events (#1494)', () => {
     useMealPlanStore.getState().removeEntry('m-a');
 
     expect(mockDeleteCalendarEvent).toHaveBeenCalledWith('evt-1');
+  });
+
+  it('deletes the event found by its server id when a restored phone\'s local id names nothing (#2950)', async () => {
+    mockMealCalendarId = 'cal-1';
+    mockEventExists.mockResolvedValueOnce(false);
+    mockEventsWithExternalId.mockResolvedValueOnce([{ id: 'evt-this-phone', allDay: true, calendarId: 'cal-1' }]);
+    loadWeek([entry('2026-08-05', 'dinner', {
+      id: 'm-a', calendarEventId: 'evt-old-phone', calendarEventExternalId: 'ext-1',
+    })]);
+
+    useMealPlanStore.getState().removeEntry('m-a');
+    await settle();
+
+    expect(mockEventsWithExternalId).toHaveBeenCalledWith('ext-1');
+    expect(mockDeleteCalendarEvent).toHaveBeenCalledWith('evt-this-phone');
+    expect(mockDeleteCalendarEvent).not.toHaveBeenCalledWith('evt-old-phone');
   });
 
   it('deletes the event of a meal whose id was only just written back', async () => {
@@ -2104,7 +2799,7 @@ describe('calendar events (#1494)', () => {
 
     // Two rows pointing at one device event means whichever reconciles last
     // rewrites the other's night.
-    expect(mockUpdateAllDayEvent).not.toHaveBeenCalledWith('evt-1', expect.anything());
+    expect(mockMoveAllDayEvent).not.toHaveBeenCalledWith('evt-1', expect.anything(), expect.anything());
     expect(mockCreateAllDayEvent).toHaveBeenCalledWith('cal-1', expect.objectContaining({
       title: 'Dinner: Ragu',
     }));
@@ -2119,6 +2814,190 @@ describe('calendar events (#1494)', () => {
 
     expect(mockDeleteCalendarEvent).not.toHaveBeenCalled();
   });
+
+  // #2950: the calendar server's id is kept beside the device's, so a backup
+  // restored on a new phone finds the old phone's events rather than writing
+  // each one again.
+  it('links the server id of the event it writes, beside the event id', async () => {
+    mockMealCalendarId = 'cal-1';
+    mockExternalIds.mockResolvedValueOnce({ 'evt-new': 'ext-new' });
+    loadWeek();
+    const meal = useMealPlanStore.getState().planMeal({
+      date: '2026-08-05', slot: 'dinner', recipeId: 'r1', title: 'Ragu',
+    })!;
+    await settle();
+
+    expect(getEntries().find(e => e.id === meal.id)).toMatchObject({
+      calendarEventId: 'evt-new', calendarEventExternalId: 'ext-new',
+    });
+    expect(dbUpdateMealPlanEntry).toHaveBeenCalledWith(
+      expect.objectContaining({ id: meal.id, calendarEventId: 'evt-new', calendarEventExternalId: 'ext-new' })
+    );
+  });
+
+  it('moves a restored meal\'s event, found by its server id, rather than writing a second one', async () => {
+    mockMealCalendarId = 'cal-1';
+    // The old phone's local id names nothing here; its event came down from
+    // the shared calendar under the same server id and a new local one.
+    loadWeek([entry('2026-08-05', 'dinner', {
+      id: 'm-a', title: 'Ragu', calendarEventId: 'evt-old-phone', calendarEventExternalId: 'ext-1',
+    })]);
+    mockMoveAllDayEvent.mockImplementationOnce(() => Promise.resolve(null as unknown as string));
+    mockEventsWithExternalId.mockResolvedValueOnce([{ id: 'evt-this-phone', allDay: true, calendarId: 'cal-1' }]);
+
+    useMealPlanStore.getState().moveEntry('m-a', { date: '2026-08-07' });
+    await settle();
+
+    expect(mockEventsWithExternalId).toHaveBeenCalledWith('ext-1');
+    expect(mockMoveAllDayEvent).toHaveBeenLastCalledWith('evt-this-phone', 'cal-1', {
+      title: 'Dinner: Ragu',
+      date: dayKeyToDate('2026-08-07'),
+    });
+    expect(mockCreateAllDayEvent).not.toHaveBeenCalled();
+    expect(getEntries().find(e => e.id === 'm-a')).toMatchObject({
+      calendarEventId: 'evt-this-phone', calendarEventExternalId: 'ext-1',
+    });
+  });
+
+  it('writes a fresh event for a restored meal whose server id finds several copies', async () => {
+    mockMealCalendarId = 'cal-1';
+    loadWeek([entry('2026-08-05', 'dinner', {
+      id: 'm-a', title: 'Ragu', calendarEventId: 'evt-old-phone', calendarEventExternalId: 'ext-1',
+    })]);
+    mockMoveAllDayEvent.mockImplementationOnce(() => Promise.resolve(null as unknown as string));
+    mockEventsWithExternalId.mockResolvedValueOnce([
+      { id: 'evt-a', allDay: true, calendarId: 'cal-1' },
+      { id: 'evt-b', allDay: true, calendarId: 'cal-1' },
+    ]);
+
+    useMealPlanStore.getState().renameEntry('m-a', 'Lasagne');
+    await settle();
+
+    expect(mockMoveAllDayEvent).toHaveBeenCalledTimes(1);
+    expect(mockCreateAllDayEvent).toHaveBeenCalledWith('cal-1', expect.objectContaining({ title: 'Dinner: Lasagne' }));
+    expect(getEntries().find(e => e.id === 'm-a')!.calendarEventId).toBe('evt-new');
+  });
+
+  it('gives a copied meal no server id of its own until its own event is written', async () => {
+    mockMealCalendarId = 'cal-1';
+    loadWeek();
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([
+      entry('2026-08-05', 'dinner', {
+        id: 'm-a', title: 'Ragu', calendarEventId: 'evt-1', calendarEventExternalId: 'ext-1',
+      }),
+    ]);
+
+    useMealPlanStore.getState().copyWeek('2026-08-03', '2026-08-10');
+
+    const inserted = (dbInsertMealPlanEntry as jest.Mock).mock.calls.map(c => c[0] as MealPlanEntry);
+    expect(inserted.length).toBeGreaterThan(0);
+    expect(inserted.every(e => e.calendarEventId === null && e.calendarEventExternalId === null)).toBe(true);
+  });
+
+  // #2950: the event is this device's, so a change made on another device
+  // reaches it only through the reconcile the sync reload runs.
+  describe('after a sync', () => {
+    const synced = (over: { mealEntryIds?: string[]; removedMealEvents?: { eventId: string; externalId: string | null; date: string }[] }) => ({
+      mealEntryIds: [], removedMealEvents: [], ...over,
+    });
+
+    it('moves this device\'s event when another device moved the meal', async () => {
+      mockMealCalendarId = 'cal-1';
+      // The row as the reload re-read it: Wednesday's dinner, now on Friday.
+      loadWeek([entry('2026-08-07', 'dinner', { id: 'm-a', title: 'Ragu', calendarEventId: 'evt-1' })]);
+
+      useMealPlanStore.getState().reconcileSyncedEvents(synced({ mealEntryIds: ['m-a'] }));
+      await settle();
+
+      expect(mockMoveAllDayEvent).toHaveBeenCalledWith('evt-1', 'cal-1', {
+        title: 'Dinner: Ragu',
+        date: dayKeyToDate('2026-08-07'),
+      });
+      expect(mockCreateAllDayEvent).not.toHaveBeenCalled();
+    });
+
+    it('reads a meal outside the loaded week from SQLite', async () => {
+      mockMealCalendarId = 'cal-1';
+      loadWeek();
+      (dbGetMealPlanEntry as jest.Mock).mockImplementation((id: string) =>
+        id === 'm-far' ? entry('2026-09-18', 'lunch', { id: 'm-far', title: 'Soup', calendarEventId: 'evt-far' }) : null
+      );
+
+      useMealPlanStore.getState().reconcileSyncedEvents(synced({ mealEntryIds: ['m-far'] }));
+      await settle();
+
+      expect(mockMoveAllDayEvent).toHaveBeenCalledWith('evt-far', 'cal-1', expect.objectContaining({
+        title: 'Lunch: Soup',
+      }));
+    });
+
+    it('writes no event for a synced meal this device never wrote one for', async () => {
+      mockMealCalendarId = 'cal-1';
+      loadWeek([entry('2026-08-07', 'dinner', { id: 'm-a', calendarEventId: null })]);
+
+      useMealPlanStore.getState().reconcileSyncedEvents(synced({ mealEntryIds: ['m-a'] }));
+      await settle();
+
+      expect(mockCreateAllDayEvent).not.toHaveBeenCalled();
+      expect(mockMoveAllDayEvent).not.toHaveBeenCalled();
+      expect(dbUpdateMealPlanEntry).not.toHaveBeenCalled();
+    });
+
+    it('links the fresh event when the old one had gone, same as a local edit', async () => {
+      mockMealCalendarId = 'cal-1';
+      mockMoveAllDayEvent.mockImplementation(() => Promise.resolve(null as unknown as string));
+      loadWeek([entry('2026-08-07', 'dinner', { id: 'm-a', title: 'Ragu', calendarEventId: 'evt-1' })]);
+
+      useMealPlanStore.getState().reconcileSyncedEvents(synced({ mealEntryIds: ['m-a'] }));
+      await settle();
+
+      expect(mockCreateAllDayEvent).toHaveBeenCalledWith('cal-1', expect.objectContaining({ title: 'Dinner: Ragu' }));
+      expect(dbUpdateMealPlanEntry).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'm-a', calendarEventId: 'evt-new' })
+      );
+    });
+
+    it('deletes this device\'s event when no calendar is picked any more, same as a local edit', async () => {
+      loadWeek([entry('2026-08-07', 'dinner', { id: 'm-a', calendarEventId: 'evt-1' })]);
+
+      useMealPlanStore.getState().reconcileSyncedEvents(synced({ mealEntryIds: ['m-a'] }));
+      await settle();
+
+      expect(mockDeleteCalendarEvent).toHaveBeenCalledWith('evt-1');
+      expect(getEntries()[0].calendarEventId).toBeNull();
+    });
+
+    it('deletes the event of a meal another device removed', async () => {
+      mockMealCalendarId = 'cal-1';
+      loadWeek();
+
+      useMealPlanStore.getState().reconcileSyncedEvents(synced({
+        removedMealEvents: [{ eventId: 'evt-9', externalId: null, date: dayKeyOf(new Date()) }],
+      }));
+      await settle();
+
+      expect(mockDeleteCalendarEvent).toHaveBeenCalledWith('evt-9');
+    });
+
+    // Without access the move fails, the fallback creates nothing, and the
+    // null it returns would have been written over the link.
+    it('touches nothing without calendar access, so no link is lost', async () => {
+      mockCalendarPermission = 'denied';
+      mockMealCalendarId = 'cal-1';
+      loadWeek([entry('2026-08-07', 'dinner', { id: 'm-a', title: 'Ragu', calendarEventId: 'evt-1' })]);
+
+      useMealPlanStore.getState().reconcileSyncedEvents(synced({
+        mealEntryIds: ['m-a'],
+        removedMealEvents: [{ eventId: 'evt-9', externalId: null, date: dayKeyOf(new Date()) }],
+      }));
+      await settle();
+
+      expect(mockMoveAllDayEvent).not.toHaveBeenCalled();
+      expect(mockDeleteCalendarEvent).not.toHaveBeenCalled();
+      expect(dbUpdateMealPlanEntry).not.toHaveBeenCalled();
+      expect(getEntries()[0].calendarEventId).toBe('evt-1');
+    });
+  });
 });
 
 // ─── finishCookForRecipe — Done on a cook timer's Live Activity ─────────────
@@ -2127,7 +3006,7 @@ describe('calendar events (#1494)', () => {
 // door onto: the caller knows which dish came off the heat and nothing else.
 describe('finishCookForRecipe', () => {
   const today = dayKeyOf(new Date());
-  const stats = { cookCount: 3, lastCookedAt: '2026-01-01T00:00:00.000Z' };
+  const stats = { cookCount: 3, lastCookedAt: localIso('2026-01-01T00:00') };
 
   /**
    * Today's plan as SQLite would answer it. Both reads are stubbed because
@@ -2250,7 +3129,7 @@ describe('finishCookForRecipe', () => {
   // A dish cooked twice in a day ticks the row that hasn't happened yet.
   it('skips a row already ticked off and takes the next one', () => {
     const lunch = entry(today, 'lunch', {
-      recipeId: 'r1', title: 'Ragu', cookedAt: '2026-01-01T12:00:00.000Z',
+      recipeId: 'r1', title: 'Ragu', cookedAt: localIso('2026-01-01T12:00'),
     });
     const dinner = entry(today, 'dinner', { recipeId: 'r1', title: 'Ragu' });
     planToday([lunch, dinner]);
@@ -2260,5 +3139,29 @@ describe('finishCookForRecipe', () => {
     expect(dbUpdateMealPlanEntry).toHaveBeenCalledWith(
       expect.objectContaining({ id: dinner.id, cookedAt: expect.any(String) })
     );
+  });
+});
+
+describe('fillCalendarExternalIds (#2950)', () => {
+  const { dbFillMealCalendarExternalIds } = jest.requireMock('../db/database') as {
+    dbFillMealCalendarExternalIds: jest.Mock;
+  };
+
+  it('fills the loaded window in memory for the rows the database write filled', () => {
+    dbFillMealCalendarExternalIds.mockReturnValueOnce(['m-a']);
+    useMealPlanStore.setState({
+      entries: [
+        entry('2026-08-05', 'dinner', { id: 'm-a', calendarEventId: 'evt-a' }),
+        entry('2026-08-06', 'dinner', { id: 'm-b', calendarEventId: 'evt-b' }),
+      ],
+    });
+    const found = { 'evt-a': 'ext-a', 'evt-b': 'ext-b' };
+
+    useMealPlanStore.getState().fillCalendarExternalIds(found);
+
+    expect(dbFillMealCalendarExternalIds).toHaveBeenCalledWith(found);
+    const byId = Object.fromEntries(useMealPlanStore.getState().entries.map(e => [e.id, e]));
+    expect(byId['m-a'].calendarEventExternalId).toBe('ext-a');
+    expect(byId['m-b'].calendarEventExternalId ?? null).toBeNull();
   });
 });

@@ -1,7 +1,7 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { PanResponder, StyleSheet, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
-import { navigationRef } from './navigationRef';
+import { navigationRef, resetToRecipeDetail, flushPendingNavigation } from './navigationRef';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -48,19 +48,22 @@ import { SettingsScreen } from '../screens/SettingsScreen';
 import { SettingsGroupScreen } from '../screens/SettingsGroupScreen';
 import { DemoBanner } from '../components/DemoBanner';
 import { UndoBar } from '../components/UndoBar';
+import { ReadyOfferBar } from '../components/ReadyOfferBar';
+import { TripDatePrompt } from '../components/TripDatePrompt';
 import { UseUpResolveSheet } from '../components/UseUpResolveSheet';
 import { FinishLeftoverPrompt } from '../components/FinishLeftoverPrompt';
 import { LogMealPrompt } from '../components/LogMealPrompt';
 import { HealthWriteRefusedNotice } from '../components/HealthWriteRefusedNotice';
 import { LogMealEntrySheet } from '../components/LogMealEntrySheet';
 import { CookRecap } from '../components/CookRecap';
+import { CookingBar } from '../components/CookingBar';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
 import { border } from '../theme';
 import { haptics } from '../utils/haptics';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { hasRunningRecipeTimer } from '../utils/recipeTimer';
+import { hasRunningRecipeTimer, isCookTimerRunning } from '../utils/recipeTimer';
 import { screenShown } from '../utils/simpleMode';
 import { NAV_HUBS, NAV_MENU_ROWS } from '../utils/navHubs';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
@@ -132,7 +135,7 @@ const PUSHED_ROUTES = new Set([
   'Settings', 'SettingsGroup', 'TemplateDetail', 'ProjectDetail', 'CategoryDetail',
   // Saved views has no menu row (see NAV_EXTRA_DESTINATIONS): it is opened
   // from Today's filter sheet, and from the drawer's find field, which is why
-  // navigateToTab below has to leave the tab highlight alone for these.
+  // handleDrawerNavigate below has to leave the tab highlight alone for these.
   'SavedViews', 'SavedViewDetail',
   'RecipeDetail', 'PersonDetail', 'CookbookDetail',
   // Reached from the Mood screen rather than from the menu. Both are the mood
@@ -191,6 +194,13 @@ const MainTabs = React.memo(function MainTabs({
   const kitchenEnabled = useSettingsStore(state => state.kitchenEnabled);
   const anyTimerRunning = useRecipeStore(state => state.recipes.some(hasRunningRecipeTimer));
   const timerRunning = kitchenEnabled && anyTimerRunning;
+  // Which recipe the dot means, when it means a *cook* specifically: tapping
+  // More jumps straight into that recipe's Cook Mode instead of opening the
+  // drawer, the same destination CookingBar's own tap goes to. A prep timer
+  // alone still just opens the drawer as before — prep has no cook-mode
+  // screen for a tap to land on, so the dot there is see-only.
+  const runningCookRecipeId = useRecipeStore(state => state.recipes.find(isCookTimerRunning)?.id);
+  const cookingRecipeId = kitchenEnabled ? runningCookRecipeId : undefined;
   return (
     <Tab.Navigator initialRouteName={initialRouteName} screenOptions={screenOptions}>
       <Tab.Screen
@@ -231,11 +241,19 @@ const MainTabs = React.memo(function MainTabs({
           tabPress: (e) => {
             e.preventDefault();
             haptics.tap();
-            onOpenMenu();
+            if (cookingRecipeId) {
+              resetToRecipeDetail(cookingRecipeId, { openCookMode: true });
+            } else {
+              onOpenMenu();
+            }
           },
         }}
         options={{
-          tabBarAccessibilityLabel: timerRunning ? 'More, opens menu, a cook timer is running' : 'More, opens menu',
+          tabBarAccessibilityLabel: cookingRecipeId
+            ? 'More, a cook timer is running, opens cook mode'
+            : timerRunning
+              ? 'More, opens menu, a prep timer is running'
+              : 'More, opens menu',
           tabBarIcon: ({ color }) => (
             <View>
               <Ionicons name="menu" size={24} color={menuOpen ? accentColor : color} />
@@ -385,7 +403,15 @@ export default function AppNavigator() {
 
   return (
     <>
-      <NavigationContainer ref={navRef} onStateChange={handleStateChange}>
+      <NavigationContainer
+        ref={navRef}
+        onStateChange={handleStateChange}
+        // Replays any resetTo*/openQuickAdd* call that arrived before the
+        // container was ready — a widget tap or Home Screen quick action that
+        // raced app startup — instead of leaving it silently dropped. See
+        // navigationRef.ts's runWhenReady/flushPendingNavigation.
+        onReady={flushPendingNavigation}
+      >
         <RootStack.Navigator screenOptions={{ headerShown: false }}>
           <RootStack.Screen name="MainTabs">
             {() => (
@@ -490,6 +516,12 @@ export default function AppNavigator() {
           the app is in for a few seconds, not a screen — see UndoBar's own
           doc comment for why it belongs beside DemoBanner. */}
       <UndoBar />
+      {/* Beside it, for the same reason: "X is ready" is a moment after a
+          tap, not a screen. See ReadyOfferBar. */}
+      <ReadyOfferBar />
+      {/* "Pick dates" asking for Coming back, or offering to move Leaving:
+          raised by an answer given anywhere. See TripDatePrompt. */}
+      <TripDatePrompt />
       {/* Same placement again, and for the same "not tied to a screen" reason:
           each renders nothing (FinishLeftoverPrompt) or a plain Modal
           (UseUpResolveSheet's LeftoverSheet, CookRecap's sheet), touching no
@@ -507,6 +539,11 @@ export default function AppNavigator() {
           so two copies of a *sheet* would each present a Modal for the same
           cooking. Same reason FinishLeftoverPrompt above is mounted once. */}
       <CookRecap />
+      {/* Same "not a screen" placement, and floating rather than a sibling of
+          a list the way ActiveTripBanner is — see CookingBar's own doc
+          comment for why a cook timer needs the app-wide bar that shopping
+          trip deliberately doesn't get. */}
+      <CookingBar />
     </>
   );
 }

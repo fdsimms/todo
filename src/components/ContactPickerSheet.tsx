@@ -31,6 +31,7 @@ import {
 } from '../utils/contactsAccess';
 import { usePersonStore } from '../store/usePersonStore';
 import { useShallow } from 'zustand/react/shallow';
+import { useFilterField } from '../hooks/useFilterField';
 
 /** How long the field sits still before a search runs. */
 const SEARCH_DEBOUNCE_MS = 250;
@@ -72,7 +73,6 @@ interface Props {
 export function ContactPickerSheet({ visible, onPick, onClose }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const inputRef = useRef<TextInput>(null);
 
   // Everybody, archived included: a contact already on file as an archived
   // person is still already on file, and offering them again would mint the
@@ -81,7 +81,7 @@ export function ContactPickerSheet({ visible, onPick, onClose }: Props) {
 
   const [permission, setPermission] = useState<ContactsPermission | null>(null);
   const [scope, setScope] = useState<ContactsAccessScope | null>(null);
-  const [query, setQuery] = useState('');
+  const { query, clear: clearQuery, inputRef, props: filterField } = useFilterField();
   const [results, setResults] = useState<ContactCandidate[]>([]);
   const [searching, setSearching] = useState(false);
   const [limited, setLimited] = useState<ContactCandidate[]>([]);
@@ -90,7 +90,7 @@ export function ContactPickerSheet({ visible, onPick, onClose }: Props) {
 
   useEffect(() => {
     if (!visible) return;
-    setQuery('');
+    clearQuery();
     setResults([]);
     setAdded([]);
     setScope(null);
@@ -121,6 +121,16 @@ export function ContactPickerSheet({ visible, onPick, onClose }: Props) {
   // later one: the field is typed into fast and the native read is async, so
   // without it "dus" can overwrite the results for "dustin". Full access
   // only — a limited grant filters the set it already fetched, locally.
+  // Covers every case that lands on the search field: a fresh grant this
+  // session (askPermission's own focus call below still fires first for
+  // that one, harmlessly refocusing the same field) and — the one the bare
+  // `autoFocus` prop used to miss — reopening after permission was already
+  // granted in an earlier session, where this branch renders with no state
+  // transition of its own to hang a remount off.
+  useEffect(() => {
+    if (visible && permission === 'granted' && scope !== null) inputRef.current?.focus();
+  }, [visible, permission, scope, inputRef]);
+
   const searchToken = useRef(0);
   useEffect(() => {
     if (!visible || permission !== 'granted' || scope !== 'all') return;
@@ -190,16 +200,13 @@ export function ContactPickerSheet({ visible, onPick, onClose }: Props) {
           <View style={styles.searchWrap}>
             <Ionicons name="search" size={iconSize.sm} color={colors.textTertiary} style={styles.searchIcon} />
             <TextInput
-              ref={inputRef}
+              {...filterField}
               style={styles.field}
-              value={query}
-              onChangeText={setQuery}
               placeholder={scope === 'limited' ? 'Search shared contacts' : 'Search your contacts'}
               placeholderTextColor={colors.textTertiary}
               autoCapitalize="words"
               autoCorrect={false}
               spellCheck={false}
-              autoFocus
               returnKeyType="search"
               accessibilityLabel={scope === 'limited' ? 'Search or browse the contacts you shared' : 'Search your contacts'}
             />

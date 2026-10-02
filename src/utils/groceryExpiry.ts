@@ -2,6 +2,7 @@ import type { GroceryItem, Task, TaskDraft } from '../types';
 import { GROCERY_USE_UP_LEAD_DAYS_MAX, GROCERY_USE_UP_LEAD_DAYS_MIN } from '../types';
 import { dayKeyToDate } from './dateUtils';
 import { generatedBy, wantsGeneratedTask } from './generatedTasks';
+import { OUT_OF_IT_UNTIL } from './grocerySuggest';
 import { liveExpiresAt } from './groceryShelfLife';
 import { kitchenEntryId, kitchenLinkUrl } from './kitchenInventory';
 import { resolveOffsetDate } from './templateUtils';
@@ -17,7 +18,7 @@ import { resolveOffsetDate } from './templateUtils';
  *
  * **A grocery item is not a task and this doesn't make it one.** What's
  * created is a separate ordinary Task pointing back at the item, exactly the
- * master/replica split mealTasks.ts describes: the catalog row keeps its own
+ * master/replica split every generator here shares: the catalog row keeps its own
  * lifecycle, and deleting every use-up task in the app would leave the
  * groceries untouched. Going through a real Task rather than a bespoke nudge
  * is the point — reminders, Today, snoozing, categories and the notification
@@ -65,6 +66,12 @@ export function wantsUseUpTask(item: GroceryItem, enabled: boolean): boolean {
   // An opt-in isn't lost by this, only deferred — it's still sitting on the row
   // when the item thaws or is bought again, and takes effect then.
   if (liveExpiresAt(item) === null) return false;
+  // Out of it is the other "nothing to remind about": every path that marks a
+  // row out clears its use-by day now, but rows marked out before that clear
+  // existed still carry the old date, and the catch-up sweep (#2924) walks
+  // every row with one. Without this, a packet thrown away weeks ago came back
+  // as "Use up X, 14d overdue".
+  if (item.onHandUntil === OUT_OF_IT_UNTIL) return false;
   return wantsGeneratedTask(item.useUpTask, enabled, true);
 }
 
@@ -182,9 +189,11 @@ export function useUpTaskDraft(
  * The one thing `deadline` can't see is the *lead* changing, since the row
  * records the expiry it was derived from and not the offset. That costs
  * nothing today: `setGroceryUseUpLeadDays` writes the setting and reconciles
- * nothing, so existing tasks have never re-dated on a lead change. A future
- * caller that wants them to has to sweep the items itself, the way
- * `reconcileAllLeftoverTasks` does.
+ * nothing, so existing tasks have never re-dated on a lead change. The use-up
+ * sweep (`useGroceryStore.reconcileAllUseUpTasks`, #2924) does now reconcile
+ * every item that wants a task on each foreground, but it reconciles through
+ * this function, so a lead change still moves nothing: a caller that wants it
+ * to would have to compare the lead as well as the deadline.
  */
 export function useUpTaskDrift(
   task: Pick<Task, 'title' | 'deadline' | 'linkUrl'>,

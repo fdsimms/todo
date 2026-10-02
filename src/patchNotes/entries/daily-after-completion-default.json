@@ -1,0 +1,4 @@
+{
+  "message": "Daily repeats (and a bare \"every N days\" with no clock time) now default to After completion instead of a fixed schedule, both when picking Daily in the editor and when typed into quick add. Typing \"ac\" after a repeat phrase (\"every week ac\") sets After completion too, the same as spelling out \"after completion\".",
+  "date": "2026-09-28"
+}

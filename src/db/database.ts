@@ -3,12 +3,14 @@ import * as SQLite from 'expo-sqlite';
 // on the settings load in useSettingsStore.ts: a list every new type is added to, so one line is a guaranteed conflict.
 import type {
   Cookbook,
+  CookbookIndexEntry,
   DeliverableKind,
   FoodLogEntry,
   GeneratedKind,
   LoggedSymptom,
   MedicationLog,
   Milestone,
+  EventPeopleLink,
   MoodLevel,
   MoodLog,
   NutrientKey,
@@ -18,6 +20,7 @@ import type {
   PersonNoteKind,
   Task,
   Category,
+  GroceryGroupBy,
   GroceryItem,
   GroceryList,
   GroceryListEntry,
@@ -44,6 +47,7 @@ import type {
   FocusStep,
   FocusStepRecord,
   Project,
+  ProjectLink,
   ProjectCategory,
   TaskTemplate,
   TemplateCategory,
@@ -62,6 +66,7 @@ import { appendPriceObservation, parsePriceHistory } from '../utils/priceHistory
 import { parseFoodNutrition, serializeFoodNutrition } from '../utils/foodNutrition';
 import { parseUnavailableProductIds, productKeyFor } from '../utils/groceryProduct';
 import { parseChainItems } from '../utils/chain';
+import { parseRotationItems, parseRotationLastDone, parseRotationLog } from '../utils/rotation';
 import { parseSavedViewClauses, serializeSavedViewClauses } from '../utils/savedViews';
 import { parseFollowUpTaskDraft } from '../utils/followUpTask';
 import { cookbookKey, parseRecipeIngredients, parsePrepTasks, parseSteps } from '../utils/recipeUtils';
@@ -70,14 +75,19 @@ import { parseRecipeChoices, parseRecipeComponents } from '../utils/recipeCompon
 import { parseEmptySections } from '../utils/recipeSections';
 import { normalizeScale } from '../utils/recipeScale';
 import { normalizeTemplateItem, normalizeTemplateQuestion } from '../utils/templateUtils';
-import { projectRow, REDACTED_SETTING_KEYS, type BackupRow } from '../utils/backup';
+import { isDeviceLocalSetting, projectRow, type BackupRow } from '../utils/backup';
+import { foldRows, foldWinner, NATURAL_KEYS, REFERENCES, SETTING_REFERENCES } from '../utils/naturalKeyFold';
 import {
   SYNC_DELETIONS_TABLE,
+  SYNC_ALIASES_TABLE,
+  SYNC_RECEIVED_TABLE,
   SYNC_TRACKED_TABLES,
   TOMBSTONE_RETENTION_DAYS,
   KEY_SEPARATOR,
   NOW_EXPR,
   isSyncedSettingKey,
+  isDeviceLocalColumn,
+  withoutDeviceLocalColumns,
   backfillStatements,
   installStatements,
   updatedAtMigrations,
@@ -393,6 +403,22 @@ export function initDatabase(): void {
       created_at TEXT NOT NULL
     );
 
+    -- Who a calendar event occurrence is with — see EventPeopleLink in
+    -- types/index.ts and docs/arch/people.md. event_key is deliberately not
+    -- UNIQUE: two phones can link the same occurrence before they sync, and
+    -- the reader collapses those (eventPeople.ts) rather than a constraint
+    -- failing the sync apply.
+    CREATE TABLE IF NOT EXISTS event_people_links (
+      id TEXT PRIMARY KEY NOT NULL,
+      event_key TEXT NOT NULL,
+      event_start TEXT NOT NULL,
+      event_end TEXT NOT NULL,
+      title TEXT NOT NULL DEFAULT '',
+      person_ids TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_event_people_links_event_key ON event_people_links(event_key);
+
     -- One dose taken, at one moment — see MedicationLog in types/index.ts and
     -- src/utils/medicationLog.ts. Same shape call mood_logs makes and for the
     -- same reason: several doses a day is the normal case, so day_key is an
@@ -616,6 +642,18 @@ export function initDatabase(): void {
       created_at TEXT NOT NULL
     );
 
+    -- One line of a cookbook's index: a dish, its page, and the ingredients
+    -- the index files it under (a JSON array of the printed words). Not a
+    -- recipe, on purpose; see CookbookIndexEntry in types.
+    CREATE TABLE IF NOT EXISTS cookbook_index_entries (
+      id TEXT PRIMARY KEY NOT NULL,
+      cookbook_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      page TEXT,
+      ingredients TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT NOT NULL
+    );
+
     -- A dish, and what it takes to shop for it. The ingredients column is a
     -- JSON array rather than its own table for the reason templates.items is
     -- one: nothing outside this row holds an ingredient's id. See Recipe in
@@ -824,9 +862,16 @@ export function initDatabase(): void {
     // Null for every existing target, which is exactly the old behaviour: no
     // unit means the meter keeps reading as the bare "5/12" it always has.
     'ALTER TABLE tasks ADD COLUMN target_unit TEXT',
-    // Where the no-duplicate-recipes guarantee actually lives, same as
-    // idx_grocery_items_name_key does for the catalog.
-    'CREATE UNIQUE INDEX IF NOT EXISTS idx_recipes_name_key ON recipes(name_key)',
+    // This used to create a UNIQUE index on recipes(name_key), the
+    // no-duplicate-recipes guarantee. A name is now unique per cookbook
+    // rather than across the box (two books can each have a "Lentil Soup"),
+    // which is a rule the store keeps (`recipeInBook`) and the database
+    // deliberately doesn't: a composite index would make every write that
+    // moves a recipe between books (link, unlink, deleting or merging a book)
+    // able to fail, and sync's natural-key fold would silently merge the two
+    // books' recipes into one. Dropped here, in the index's old slot, so an
+    // install that has it loses it and a fresh one never gets it.
+    'DROP INDEX IF EXISTS idx_recipes_name_key',
     // Nullable like link_url, and null is what every existing row wants: no
     // task written before this shipped has a number to call.
     'ALTER TABLE tasks ADD COLUMN phone_number TEXT',
@@ -1421,6 +1466,10 @@ export function initDatabase(): void {
     // Task.quotaAlwaysVisible. 0 on every existing row: a quota task has
     // always hidden while on pace, and this column only ever turns that off.
     'ALTER TABLE tasks ADD COLUMN quota_always_visible INTEGER NOT NULL DEFAULT 0',
+    // Whether a water target task's count follows the food log's water target
+    // (Task.followWaterTarget). 0 on every existing row: a target has always
+    // been the number it was typed as.
+    'ALTER TABLE tasks ADD COLUMN follow_water_target INTEGER NOT NULL DEFAULT 0',
     // NULL on every existing row — the review deck has never answered for one,
     // which is exactly what "no answer to keep quiet" means for this column.
     // See GroceryItem.pantryReviewedAt.
@@ -1477,6 +1526,11 @@ export function initDatabase(): void {
     // counted across. The column only ever adds the weekly kind (see
     // Task.quotaPeriod), so an install upgrading into it reads exactly as it did.
     "ALTER TABLE tasks ADD COLUMN quota_period TEXT NOT NULL DEFAULT 'day'",
+    "ALTER TABLE tasks ADD COLUMN rotation_enabled INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE tasks ADD COLUMN rotation_items TEXT NOT NULL DEFAULT '[]'",
+    "ALTER TABLE tasks ADD COLUMN rotation_log TEXT NOT NULL DEFAULT '[]'",
+    "ALTER TABLE tasks ADD COLUMN rotation_period_start TEXT",
+    "ALTER TABLE tasks ADD COLUMN rotation_last_done TEXT NOT NULL DEFAULT '{}'",
     // 'positive' on every existing row, which is what every task in the app has
     // always been: something to do. The column only ever adds the opposite kind
     // (see Task.polarity), so an install upgrading into it reads exactly as it
@@ -1534,6 +1588,9 @@ export function initDatabase(): void {
     // belongs to. See Project.awayListId.
     'ALTER TABLE projects ADD COLUMN away_list_id TEXT',
     'ALTER TABLE projects ADD COLUMN away_list_declined_for TEXT',
+    // Null on every existing row: nothing is paused until somebody pauses it.
+    // See Project.pausedUntil.
+    'ALTER TABLE projects ADD COLUMN paused_until TEXT',
     // Null on every existing row. See Person.location.
     'ALTER TABLE people ADD COLUMN location TEXT',
     // Null on every existing row: a completion timer is something a task opts
@@ -1676,6 +1733,76 @@ export function initDatabase(): void {
     // Null on every existing row: a project has no default task category
     // until somebody nominates one. See Project.defaultTaskCategory.
     'ALTER TABLE projects ADD COLUMN default_task_category TEXT',
+    // The other alternative to a fixed reminder_time, mutually exclusive with
+    // reminder_offset_days — see Task.reminderTracksVisibility. 0 on every
+    // existing row, which reads as exactly the behaviour they already had: a
+    // reminder that doesn't track visibility at all.
+    'ALTER TABLE tasks ADD COLUMN reminder_tracks_visibility INTEGER NOT NULL DEFAULT 0',
+    // 'individual' on every existing row: a business marker is new, and every
+    // person entered before it existed was a person. See Person.kind.
+    "ALTER TABLE people ADD COLUMN kind TEXT NOT NULL DEFAULT 'individual'",
+    // Null on every existing row: a yearly rule's month, previously never
+    // stored, always fell out of whatever month dueDate happened to be in.
+    // See Task.recurrenceMonth.
+    'ALTER TABLE tasks ADD COLUMN recurrence_month INTEGER',
+    // Empty on every existing row: a task waited on one thing at most until
+    // this. See Task.blockedByIds.
+    "ALTER TABLE tasks ADD COLUMN blocked_by_ids TEXT NOT NULL DEFAULT '[]'",
+    // Empty and off on every existing row: no question offered options, and no
+    // answer set a trip's departure. See Task.deliverableOptions/SetsAway.
+    "ALTER TABLE tasks ADD COLUMN deliverable_options TEXT NOT NULL DEFAULT '[]'",
+    'ALTER TABLE tasks ADD COLUMN deliverable_sets_away INTEGER NOT NULL DEFAULT 0',
+    // Null on every existing row: no wait has named its own follow-up day
+    // yet. See Task.followUpOn.
+    'ALTER TABLE tasks ADD COLUMN follow_up_on TEXT',
+    // A project names nobody, keeps no links and works in any order until
+    // somebody says otherwise. See Project.personIds/links/inOrder.
+    "ALTER TABLE projects ADD COLUMN person_ids TEXT NOT NULL DEFAULT '[]'",
+    "ALTER TABLE projects ADD COLUMN links TEXT NOT NULL DEFAULT '[]'",
+    'ALTER TABLE projects ADD COLUMN in_order INTEGER NOT NULL DEFAULT 0',
+    // Off on every existing list: checked lines fold away, as they always
+    // have. See Project.showChecked.
+    'ALTER TABLE projects ADD COLUMN show_checked INTEGER NOT NULL DEFAULT 0',
+    // Off on every existing section. See TaskGroup.checklist.
+    'ALTER TABLE task_groups ADD COLUMN checklist INTEGER NOT NULL DEFAULT 0',
+    // Empty on every existing recipe: a method heading declared ahead of any
+    // step is new. See Recipe.emptyStepSections.
+    "ALTER TABLE recipes ADD COLUMN empty_step_sections TEXT NOT NULL DEFAULT '[]'",
+    // Nullable with no default, for log_meal's reason: NULL is "the setting
+    // decides", and a DEFAULT 0 would record every meal ever planned as having
+    // declined a freezer reminder. See MealPlanEntry.thawTask.
+    'ALTER TABLE meal_plan_entries ADD COLUMN thaw_task INTEGER',
+    // Null on every existing row: no follow-up task written before this
+    // carried a pointer back to its parent's live occurrence, only the title
+    // snapshot in extra_task_source_title. See Task.followUpTaskSourceId.
+    'ALTER TABLE tasks ADD COLUMN extra_task_source_id TEXT',
+    // Null on every existing entry, which is the truth: nothing kept the panel
+    // an unfiled database food was measured against before this, so those
+    // entries stay rename-only. See FoodLogEntry.sourcePanel.
+    'ALTER TABLE food_logs ADD COLUMN source_panel TEXT',
+    // Off on every existing box: each one was named as a brand, and "Freeze
+    // some" is what makes the first unnamed one. See ItemProduct.isPortion.
+    'ALTER TABLE grocery_item_products ADD COLUMN is_portion INTEGER NOT NULL DEFAULT 0',
+    // The calendar server's id beside a meal's and a deadline's device event id
+    // (#2950), null until that event's next write reads one. Device-local in
+    // sync like the ids beside them, and in backups, which is what they are
+    // for: a restore on a new phone finds the old phone's events by them rather
+    // than writing each one again. See utils/calendarEventLink.ts.
+    'ALTER TABLE meal_plan_entries ADD COLUMN calendar_event_external_id TEXT',
+    'ALTER TABLE tasks ADD COLUMN calendar_event_external_id TEXT',
+    // The same beside a time block's id, so a restored backup's task finds its
+    // block again instead of dropping the pointer. See Task.timeBlockExternalId.
+    'ALTER TABLE tasks ADD COLUMN time_block_external_id TEXT',
+    // And beside a completion event's, so reopening a task on a restored phone
+    // still deletes the old phone's event. See Task.completionCalendarEventExternalId.
+    'ALTER TABLE tasks ADD COLUMN completion_calendar_event_external_id TEXT',
+    // A store's own aisle walk (#2938). NULL on every existing row, which is
+    // every store following the usual order exactly as it did before this
+    // column. Nullable rather than '[]' for the reason `aisles` is: an empty
+    // list is not a state, and NULL is what "no order of its own" reads as.
+    // A whole-row column like the rest of grocery_shops, so it syncs and is
+    // backed up with no list to add it to. See Shop.aisleOrder.
+    'ALTER TABLE grocery_shops ADD COLUMN aisle_order TEXT',
   ];
   // Asking SQLite for a table's columns once is cheaper than handing it every
   // ALTER for that table and catching the duplicate-column error, and by the
@@ -2059,6 +2186,8 @@ export const BACKUP_TABLES = [
   'mood_logs',
   // Also points at nothing, for the same reason and beside the same neighbor.
   'milestones',
+  // After people: a link names people by id, so they are restored first.
+  'event_people_links',
   // The medication log, beside the two above it. Its one pointer (task_id) is
   // provenance rather than a reference — a dose whose task is gone is still a
   // dose — so it has no ordering requirement against `tasks`.
@@ -2084,6 +2213,8 @@ export const BACKUP_TABLES = [
   'grocery_store_aliases',
   // Before recipes: a recipe can point at a cookbook.
   'cookbooks',
+  // After cookbooks: every entry names one.
+  'cookbook_index_entries',
   'recipes',
   // Before meal_plan_entries: an entry can point at a leftover.
   'leftovers',
@@ -2117,6 +2248,13 @@ export const BACKUP_EXCLUDED_TABLES = [
   // triggers; carrying the old ones forward would restore stale deletion
   // history rather than the task list the user actually asked for back.
   'sync_deletions',
+  // Which peer rows arrived when, over which transport (see
+  // SYNC_RECEIVED_TABLE). Relay bookkeeping for this device's sync, about rows
+  // the restore is about to replace; the same reasoning as the tombstones.
+  'sync_received',
+  // Which id a folded row now lives under (see SYNC_ALIASES_TABLE). About ids
+  // the restore is about to replace; the same reasoning again.
+  'sync_aliases',
   // The barcode cache. Every row is reconstructible from the barcode alone,
   // and reconstructing one costs a single free request the next time that item
   // is scanned — so putting it in a backup would inflate the file with data
@@ -2164,10 +2302,9 @@ export function dbReplaceAllData(tables: Record<string, BackupRow[]>): void {
   // them either. Without this the API key is wiped by restoring, and because
   // it was redacted on the way out there is nothing in the file to put back:
   // the user silently loses a credential they never exported.
-  const preserved = db.getAllSync<BackupRow>(
-    `SELECT * FROM settings WHERE key IN (${REDACTED_SETTING_KEYS.map(() => '?').join(', ')})`,
-    [...REDACTED_SETTING_KEYS]
-  );
+  const preserved = db
+    .getAllSync<BackupRow>('SELECT * FROM settings')
+    .filter(row => isDeviceLocalSetting(row.key));
 
   db.withTransactionSync(() => {
     // Cleared in reverse, children first, for the same reason rows go back in
@@ -2175,6 +2312,9 @@ export function dbReplaceAllData(tables: Record<string, BackupRow[]>): void {
     for (const table of [...BACKUP_TABLES].reverse()) {
       db.runSync(`DELETE FROM "${table}"`);
     }
+    // The aliases describe ids the restore just replaced wholesale.
+    db.runSync(`DELETE FROM ${SYNC_ALIASES_TABLE}`);
+    const ctx = loadFoldContext();
 
     for (const table of BACKUP_TABLES) {
       const rows = tables[table];
@@ -2195,7 +2335,28 @@ export function dbReplaceAllData(tables: Record<string, BackupRow[]>): void {
       const allowed = dbTableColumns(table).filter(c => c !== 'updated_at');
 
       for (const raw of rows) {
-        const row = projectRow(raw, allowed);
+        // Skipped rather than only overwritten below: a device that has never
+        // synced has no id of its own to put back, and would otherwise adopt
+        // the backed-up device's.
+        if (table === 'settings' && isDeviceLocalSetting(raw.key)) continue;
+        // Two rows in the file naming the same thing (a backup taken on an
+        // install that had one) fold into one, the way sync folds them, rather
+        // than the unique index silently deleting the first along with what
+        // pointed at it. Later tables' references follow through the aliases.
+        const projected = remapReferences(ctx, table, projectRow(raw, allowed));
+        if (absorbAliasedRow(ctx, table, projected)) continue;
+        const placed = foldClashes(ctx, table, projected);
+        if (!placed) continue;
+        let row = placed.row;
+        // A row moved onto a survivor's key by the aliases (the folded copy's
+        // list entry, landing on the survivor's own) folds into what's there.
+        const tracked = trackedTable(table);
+        const key = tracked ? rowKeyOf(tracked, row) : null;
+        if (tracked && key !== null) {
+          const where = keyClause(tracked, key);
+          const existing = db.getFirstSync<BackupRow>(`SELECT * FROM "${table}" WHERE ${where.sql}`, where.values);
+          if (existing) row = foldRows(table, existing, row);
+        }
         const columns = Object.keys(row);
         if (columns.length === 0) continue;
         const quoted = columns.map(c => `"${c}"`).join(', ');
@@ -2205,6 +2366,12 @@ export function dbReplaceAllData(tables: Record<string, BackupRow[]>): void {
           columns.map(c => row[c])
         );
       }
+    }
+
+    // A folded item's list entries were restored after it, so its on-list
+    // columns are worked out again now they're all in.
+    for (const winner of new Set(ctx.aliases.get('grocery_items')?.values() ?? [])) {
+      dbSyncGroceryHomeColumns(winner);
     }
 
     // Put the device-local settings back. After the inserts, so a backup that
@@ -2254,7 +2421,7 @@ export function isSyncableDatabase(): boolean {
  * backup.ts does — see the note in its header. A column added to the schema
  * and not yet threaded into rowToTask still syncs.
  */
-export function dbSyncChangesSince(since: string | null): SyncChangeSet {
+export function dbSyncChangesSince(since: string | null, transport?: string): SyncChangeSet {
   let result: SyncChangeSet | null = null;
 
   db.withTransactionSync(() => {
@@ -2273,12 +2440,14 @@ export function dbSyncChangesSince(since: string | null): SyncChangeSet {
             `SELECT * FROM "${name}" WHERE updated_at >= ? AND updated_at <= ?`,
             [since, until]
           );
+      if (since !== null) relayReceivedRows(name, since, until, transport, rows);
       // Only some settings rows travel; every other table sends all of them.
       // Filtered here rather than in the trigger so the policy lives in one
       // readable list — see SYNCED_SETTING_KEYS.
+      // And only some *columns* of some tables — see SYNC_DEVICE_LOCAL_COLUMNS.
       tables[name] = name === 'settings'
         ? rows.filter(r => typeof r.key === 'string' && isSyncedSettingKey(r.key))
-        : rows;
+        : rows.map(r => withoutDeviceLocalColumns(name, r));
     }
 
     // A first read needs no deletions: a peer that has never heard of a row
@@ -2287,10 +2456,14 @@ export function dbSyncChangesSince(since: string | null): SyncChangeSet {
     const deletionRows = since === null
       ? []
       : db.getAllSync<{ table_name: string; row_key: string; deleted_at: string }>(
+          // A deletion made here goes out by its own time; one applied from a
+          // peer keeps the peer's time, so it is relayed by its arrival
+          // instead, to every transport but the one it came in on.
           `SELECT table_name, row_key, deleted_at FROM ${SYNC_DELETIONS_TABLE}
-            WHERE deleted_at >= ? AND deleted_at <= ?
+            WHERE (received_at IS NULL AND deleted_at >= ? AND deleted_at <= ?)
+               OR (received_at >= ? AND received_at <= ? AND source IS NOT ?)
             ORDER BY deleted_at ASC`,
-          [since, until]
+          [since, until, since, until, transport ?? null]
         );
 
     result = {
@@ -2311,17 +2484,46 @@ export function dbSyncChangesSince(since: string | null): SyncChangeSet {
   return result as unknown as SyncChangeSet;
 }
 
+/**
+ * Adds to `rows` the peer rows that arrived in the window over a transport
+ * other than `transport`, and whose own stamp put them outside it. See
+ * SYNC_RECEIVED_TABLE for why the stamp alone can't find them.
+ */
+function relayReceivedRows(
+  name: string,
+  since: string,
+  until: string,
+  transport: string | undefined,
+  rows: BackupRow[]
+): void {
+  const table = trackedTable(name);
+  if (!table) return;
+  const received = db.getAllSync<{ row_key: string }>(
+    `SELECT row_key FROM ${SYNC_RECEIVED_TABLE}
+      WHERE table_name = ? AND received_at >= ? AND received_at <= ? AND source IS NOT ?`,
+    [name, since, until, transport ?? null]
+  );
+  if (received.length === 0) return;
+  const have = new Set(rows.map(r => rowKeyOf(table, r)));
+  for (const { row_key } of received) {
+    if (have.has(row_key)) continue;
+    const where = keyClause(table, row_key);
+    // Gone since it arrived: its tombstone is what goes out instead.
+    const row = db.getFirstSync<BackupRow>(`SELECT * FROM "${name}" WHERE ${where.sql}`, where.values);
+    if (row) rows.push(row);
+  }
+}
+
 const DEVICE_ID_KEY = 'syncDeviceId';
 const CURSOR_KEY_PREFIX = 'syncCursor:';
 
 /**
  * This device's stable id, minted on first use.
  *
- * Lives in `settings`, which is the one table sync deliberately doesn't carry
- * (see SYNC_TRACKED_TABLES) — so it cannot travel to the other device and make
- * two devices claim the same identity. That the storage happens to guarantee
- * this is luck worth naming: if settings ever start syncing by allowlist, this
- * key and the cursors below must stay off it.
+ * Lives in `settings`, which syncs by allowlist (SYNCED_SETTING_KEYS), and
+ * this key and the cursors below are deliberately off it: two devices sharing
+ * an id would each skip the other's payloads as their own. A backup leaves
+ * them out for the same reason (isDeviceLocalSetting in utils/backup.ts).
  */
 export function dbGetDeviceId(): string {
   const existing = dbGetSetting(DEVICE_ID_KEY);
@@ -2365,9 +2567,14 @@ function rowKeyOf(table: SyncTable, row: BackupRow): string | null {
   const parts: string[] = [];
   for (const col of table.key) {
     const v = row[col];
-    if (typeof v !== 'string' || v === '') return null;
+    if (typeof v !== 'string') return null;
     parts.push(v);
   }
+  // An empty part is a real value inside a composite key: the home list is
+  // list_id '' (see GroceryList), so refusing it skipped every home-list entry
+  // a peer sent and the shared list never synced. Only a key that is empty as
+  // a whole is no key at all.
+  if (parts.every(p => p === '')) return null;
   return parts.join(KEY_SEPARATOR);
 }
 
@@ -2395,16 +2602,290 @@ function rowKeyOf(table: SyncTable, row: BackupRow): string | null {
  * does. A peer on a newer build sending a column this one has never heard of
  * must not fail the whole sync.
  */
-export function dbApplySyncChanges(payload: SyncPayload): ApplyReport {
+/** What dbRepointItemReferences changed, for its undo to put back exactly. */
+export interface RepointSnapshot {
+  rows: Array<{ table: string; id: string; column: string; before: BackupRow[string] }>;
+  settings: Array<{ key: string; before: string }>;
+}
+
+/**
+ * Points the references a manual item merge doesn't otherwise reach at the
+ * survivor: food log entries, saved meals and the Reminders grocery links.
+ * mergeItems moves the grocery tables itself; these belong to other stores and
+ * were left naming a deleted row. Reuses the fold's own reference map, so the
+ * two merges can't disagree about what points at an item.
+ */
+export function dbRepointItemReferences(fromId: string, intoId: string): RepointSnapshot {
+  const snapshot: RepointSnapshot = { rows: [], settings: [] };
+  const tables = new Set(['food_logs', 'saved_meals']);
+  db.withTransactionSync(() => {
+    for (const ref of REFERENCES) {
+      if (ref.target !== 'grocery_items' || !tables.has(ref.table)) continue;
+      const rows = ref.match === 'equals'
+        ? db.getAllSync<BackupRow>(`SELECT * FROM "${ref.table}" WHERE "${ref.column}" = ?`, [fromId])
+        : db.getAllSync<BackupRow>(`SELECT * FROM "${ref.table}" WHERE instr("${ref.column}", ?) > 0`, [fromId]);
+      for (const row of rows) {
+        const next = ref.rewrite(row, fromId, intoId);
+        if (!next) continue;
+        snapshot.rows.push({ table: ref.table, id: String(row.id), column: ref.column, before: row[ref.column] });
+        db.runSync(`UPDATE "${ref.table}" SET "${ref.column}" = ? WHERE id = ?`, [next[ref.column], row.id]);
+      }
+    }
+    for (const setting of SETTING_REFERENCES) {
+      if (setting.target !== 'grocery_items') continue;
+      const value = dbGetSetting(setting.key);
+      if (value === null) continue;
+      const next = setting.rewrite(value, fromId, intoId);
+      if (next === null) continue;
+      snapshot.settings.push({ key: setting.key, before: value });
+      dbSetSetting(setting.key, next);
+    }
+  });
+  return snapshot;
+}
+
+export function dbRestoreRepoint(snapshot: RepointSnapshot): void {
+  db.withTransactionSync(() => {
+    for (const r of snapshot.rows) {
+      db.runSync(`UPDATE "${r.table}" SET "${r.column}" = ? WHERE id = ?`, [r.before, r.id]);
+    }
+    for (const s of snapshot.settings) dbSetSetting(s.key, s.before);
+  });
+}
+
+// ─── Natural-key folds ──────────────────────────────────────────────────────
+//
+// Two rows naming the same thing (two "Milk"s added on two devices) are folded
+// into one rather than one silently replacing the other. The rules — which id
+// survives, how two rows combine, what points at a row — live in
+// utils/naturalKeyFold.ts; this is the SQL that carries them out. Every write
+// here leaves updated_at to the triggers, so a fold travels as a change made
+// on this device.
+
+/** The aliases in force during one apply or restore, loaded once. */
+interface FoldContext {
+  aliases: Map<string, Map<string, string>>;
+}
+
+function loadFoldContext(): FoldContext {
+  const aliases = new Map<string, Map<string, string>>();
+  for (const r of db.getAllSync<{ table_name: string; loser_id: string; winner_id: string }>(
+    `SELECT table_name, loser_id, winner_id FROM ${SYNC_ALIASES_TABLE}`
+  )) {
+    if (!aliases.has(r.table_name)) aliases.set(r.table_name, new Map());
+    aliases.get(r.table_name)!.set(r.loser_id, r.winner_id);
+  }
+  return { aliases };
+}
+
+/** Where `id` lives now, following folds of folds. */
+function resolveAlias(ctx: FoldContext, table: string, id: string): string {
+  const map = ctx.aliases.get(table);
+  let cur = id;
+  for (let i = 0; map && i < 16 && map.has(cur); i++) cur = map.get(cur)!;
+  return cur;
+}
+
+function addAlias(ctx: FoldContext, table: string, loser: string, winner: string): void {
+  if (!ctx.aliases.has(table)) ctx.aliases.set(table, new Map());
+  const map = ctx.aliases.get(table)!;
+  map.set(loser, winner);
+  db.runSync(
+    `INSERT OR REPLACE INTO ${SYNC_ALIASES_TABLE} (table_name, loser_id, winner_id, created_at)
+     VALUES (?, ?, ?, ${NOW_EXPR})`,
+    [table, loser, winner]
+  );
+}
+
+/** `row` with every reference to a folded-away row pointed at its survivor. */
+function remapReferences(ctx: FoldContext, table: string, row: BackupRow): BackupRow {
+  let out = row;
+  for (const ref of REFERENCES) {
+    if (ref.table !== table) continue;
+    const map = ctx.aliases.get(ref.target);
+    if (!map) continue;
+    for (const loser of map.keys()) {
+      const next = ref.rewrite(out, loser, resolveAlias(ctx, ref.target, loser));
+      if (next) out = next;
+    }
+  }
+  return out;
+}
+
+/** Local rows other than `row` itself that share one of its natural keys. */
+function naturalKeyClashes(name: string, row: BackupRow): BackupRow[] {
+  const keys = NATURAL_KEYS[name];
+  if (!keys || typeof row.id !== 'string') return [];
+  const found = new Map<string, BackupRow>();
+  for (const key of keys) {
+    const values = key.columns.map(c => row[c]);
+    if (values.some(v => v === undefined)) continue;
+    if (key.ignoreNull && values.some(v => v === null)) continue;
+    const where = key.columns.map(c => `"${c}" IS ?`).join(' AND ');
+    for (const hit of db.getAllSync<BackupRow>(
+      `SELECT * FROM "${name}" WHERE ${where} AND id <> ?`,
+      [...values, row.id]
+    )) {
+      found.set(String(hit.id), hit);
+    }
+  }
+  return [...found.values()];
+}
+
+/** Writes `row`'s columns (never updated_at) over the row at `where`. */
+function updateRowStampNow(name: string, where: { sql: string; values: string[] }, row: BackupRow): void {
+  const columns = Object.keys(row).filter(c => c !== 'updated_at');
+  if (columns.length === 0) return;
+  db.runSync(
+    `UPDATE OR REPLACE "${name}" SET ${columns.map(c => `"${c}" = ?`).join(', ')} WHERE ${where.sql}`,
+    [...columns.map(c => row[c]), ...where.values]
+  );
+}
+
+function insertRowStampNow(name: string, row: BackupRow): void {
+  const columns = Object.keys(row).filter(c => c !== 'updated_at');
+  db.runSync(
+    `INSERT OR REPLACE INTO "${name}" (${columns.map(c => `"${c}"`).join(', ')})
+     VALUES (${columns.map(() => '?').join(', ')})`,
+    columns.map(c => row[c])
+  );
+}
+
+/** Bookkeeping a table keeps derived from others, redone for a row a fold touched. */
+function afterFold(name: string, id: string): void {
+  // The item's on-list columns mirror its home-list entry, which the fold may
+  // just have merged or moved onto it.
+  if (name === 'grocery_items') dbSyncGroceryHomeColumns(id);
+}
+
+/**
+ * Retires `loser` in favour of `winner`: deletes it (the tombstone tells every
+ * peer), remembers where it went, and points everything local at the winner.
+ * The caller has already folded the loser's values into the winner.
+ */
+function foldAway(ctx: FoldContext, name: string, loser: string, winner: string): void {
+  addAlias(ctx, name, loser, winner);
+  db.runSync(`DELETE FROM "${name}" WHERE id = ?`, [loser]);
+  for (const ref of REFERENCES) {
+    if (ref.target !== name) continue;
+    const rows = ref.match === 'equals'
+      ? db.getAllSync<BackupRow>(`SELECT * FROM "${ref.table}" WHERE "${ref.column}" = ?`, [loser])
+      : db.getAllSync<BackupRow>(
+          `SELECT * FROM "${ref.table}" WHERE instr("${ref.column}", ?) > 0`,
+          [loser]
+        );
+    for (const row of rows) {
+      const next = ref.rewrite(row, loser, winner);
+      if (next) repointLocalRow(ctx, ref.table, row, next);
+    }
+  }
+  for (const setting of SETTING_REFERENCES) {
+    if (setting.target !== name) continue;
+    const value = dbGetSetting(setting.key);
+    if (value === null) continue;
+    const next = setting.rewrite(value, loser, winner);
+    if (next !== null) dbSetSetting(setting.key, next);
+  }
+  afterFold(name, winner);
+}
+
+/**
+ * Rewrites one local row after a reference in it moved. A reference that is
+ * part of the row's own key (a list entry is keyed by item and list) moves the
+ * row, and it may land on a row already there — the same entry reached from
+ * both copies — which is folded rather than replaced. A reference that is part
+ * of a natural key (a product is unique per item) may clash the same way.
+ */
+function repointLocalRow(ctx: FoldContext, name: string, before: BackupRow, after: BackupRow): void {
+  const table = trackedTable(name);
+  if (!table) return;
+  const oldKey = rowKeyOf(table, before);
+  const newKey = rowKeyOf(table, after);
+  if (oldKey === null || newKey === null) return;
+
+  if (oldKey !== newKey) {
+    const oldWhere = keyClause(table, oldKey);
+    db.runSync(`DELETE FROM "${name}" WHERE ${oldWhere.sql}`, oldWhere.values);
+    // A substitute pointing at itself is no substitute.
+    if (name === 'grocery_item_subs' && after.item_id === after.sub_item_id) return;
+    const newWhere = keyClause(table, newKey);
+    const existing = db.getFirstSync<BackupRow>(`SELECT * FROM "${name}" WHERE ${newWhere.sql}`, newWhere.values);
+    if (existing) updateRowStampNow(name, newWhere, foldRows(name, existing, after));
+    else insertRowStampNow(name, after);
+    return;
+  }
+
+  const placed = foldClashes(ctx, name, after);
+  if (!placed) return;
+  updateRowStampNow(name, keyClause(table, newKey), placed.row);
+}
+
+/**
+ * Folds `row` against any local row naming the same thing. Returns the row to
+ * write — which may have absorbed others, in which case `folded` says it is a
+ * local change to stamp now — or null when `row` lost and was folded into an
+ * existing row instead, which has already been written.
+ */
+function foldClashes(ctx: FoldContext, name: string, row: BackupRow): { row: BackupRow; folded: boolean } | null {
+  let current = row;
+  let folded = false;
+  for (const other of naturalKeyClashes(name, current)) {
+    const mine = String(current.id);
+    const theirs = String(other.id);
+    if (foldWinner(mine, theirs) === mine) {
+      current = { ...foldRows(name, current, other), id: mine };
+      foldAway(ctx, name, theirs, mine);
+      folded = true;
+    } else {
+      const merged = { ...foldRows(name, other, current), id: theirs };
+      updateRowStampNow(name, { sql: 'id = ?', values: [theirs] }, merged);
+      foldAway(ctx, name, mine, theirs);
+      return null;
+    }
+  }
+  return { row: current, folded };
+}
+
+/**
+ * An incoming row for an id this device already folded away: a peer that
+ * edited the loser before it heard of the fold. Its values fold into the
+ * survivor rather than bringing the loser back. Returns false when `row` isn't
+ * one of those.
+ */
+function absorbAliasedRow(ctx: FoldContext, name: string, row: BackupRow): boolean {
+  if (typeof row.id !== 'string') return false;
+  const winner = resolveAlias(ctx, name, row.id);
+  if (winner === row.id) return false;
+  const local = db.getFirstSync<BackupRow>(`SELECT * FROM "${name}" WHERE id = ?`, [winner]);
+  if (local) {
+    updateRowStampNow(name, { sql: 'id = ?', values: [winner] }, { ...foldRows(name, local, row), id: winner });
+    afterFold(name, winner);
+  }
+  return true;
+}
+
+export function dbApplySyncChanges(payload: SyncPayload, transport?: string): ApplyReport {
   const report = emptyApplyReport();
 
   db.withTransactionSync(() => {
+    const ctx = loadFoldContext();
+    // Grocery rows whose on-list mirror this apply may have left wrong: an item
+    // row arrives with the peer's copy of it, and an entry arriving or leaving
+    // changes what it should be. Recomputed once at the end, after every table
+    // and deletion, since a payload's tables arrive in no particular order.
+    const groceryItemIds = new Set<string>();
     for (const [name, rows] of Object.entries(payload.tables)) {
       const table = trackedTable(name);
       if (!table) continue;
-      const allowed = dbTableColumns(name);
+      // Never a device-local column, even from a peer that sends one (an older
+      // build): the local value is this device's own and must survive the
+      // apply. See SYNC_DEVICE_LOCAL_COLUMNS.
+      const allowed = dbTableColumns(name).filter(c => !isDeviceLocalColumn(name, c));
 
-      for (const raw of rows) {
+      for (const received of rows) {
+        // Pointed at the survivors of any fold first, since that can move the
+        // row's own key (a list entry is keyed by the item it lists).
+        const raw = remapReferences(ctx, name, received);
         const rowKey = rowKeyOf(table, raw);
         const remoteStamp = raw.updated_at;
         if (rowKey === null || typeof remoteStamp !== 'string') {
@@ -2419,6 +2900,10 @@ export function dbApplySyncChanges(payload: SyncPayload): ApplyReport {
           report.skipped++;
           continue;
         }
+        if (absorbAliasedRow(ctx, name, projectRow(raw, allowed))) {
+          report.updated++;
+          continue;
+        }
 
         const where = keyClause(table, rowKey);
         const local = db.getFirstSync<{ updated_at: string | null }>(
@@ -2431,20 +2916,85 @@ export function dbApplySyncChanges(payload: SyncPayload): ApplyReport {
           continue;
         }
 
-        const row = projectRow(raw, allowed);
-        const columns = Object.keys(row);
-        if (columns.length === 0) {
+        // No local row may mean this device deleted it. A peer's copy older
+        // than that deletion is exactly what remoteDeletionWins would have
+        // refused to keep, so it must not come back just because the delete
+        // landed first; inserting it would also fire the undelete trigger and
+        // erase the tombstone, leaving nothing to re-send. A later edit still
+        // brings the row back, as designed.
+        if (!local) {
+          const tombstone = db.getFirstSync<{ deleted_at: string }>(
+            `SELECT deleted_at FROM ${SYNC_DELETIONS_TABLE} WHERE table_name = ? AND row_key = ?`,
+            [name, rowKey]
+          );
+          if (tombstone && remoteDeletionWins(remoteStamp, tombstone.deleted_at)) {
+            report.skipped++;
+            continue;
+          }
+        }
+
+        const projected = projectRow(raw, allowed);
+        if (Object.keys(projected).length === 0) {
           report.skipped++;
           continue;
         }
-        const quoted = columns.map(c => `"${c}"`).join(', ');
-        const placeholders = columns.map(() => '?').join(', ');
+        // Another local row naming the same thing: fold rather than let the
+        // unique index delete one of them.
+        const placed = foldClashes(ctx, name, projected);
+        if (!placed) {
+          report.updated++;
+          continue;
+        }
+        // Every path from here writes this row. Which meals changed is what the
+        // calendar reconcile after the sync reads (#2950); it decides for itself
+        // which of them hold an event of this device's.
+        if (name === 'meal_plan_entries' && typeof placed.row.id === 'string') {
+          report.mealEntryIds.push(placed.row.id);
+        }
+        // And which tasks, for their deadline events and time blocks: device-local
+        // the same way, so the same reconcile is the only thing that reaches them.
+        if (name === 'tasks' && typeof placed.row.id === 'string') {
+          report.taskIds.push(placed.row.id);
+        }
+        if (placed.folded) {
+          if (local) updateRowStampNow(name, where, placed.row);
+          else insertRowStampNow(name, placed.row);
+          afterFold(name, String(placed.row.id));
+          if (local) report.updated++;
+          else report.inserted++;
+          continue;
+        }
+        const row = placed.row;
+        const columns = Object.keys(row);
+        if (local) {
+          // An existing row is updated column by column rather than replaced,
+          // so a column the peer's build doesn't have keeps its local value.
+          // A whole-row REPLACE reset it to the default, which a peer one
+          // version behind did to every newer column on every edit. OR REPLACE
+          // keeps the insert path's behaviour on a clash with another UNIQUE
+          // column, rather than throwing and wedging the whole apply.
+          const assignments = columns.map(c => `"${c}" = ?`).join(', ');
+          db.runSync(
+            `UPDATE OR REPLACE "${name}" SET ${assignments} WHERE ${where.sql}`,
+            [...columns.map(c => row[c]), ...where.values]
+          );
+          report.updated++;
+        } else {
+          const quoted = columns.map(c => `"${c}"`).join(', ');
+          const placeholders = columns.map(() => '?').join(', ');
+          db.runSync(
+            `INSERT OR REPLACE INTO "${name}" (${quoted}) VALUES (${placeholders})`,
+            columns.map(c => row[c])
+          );
+          report.inserted++;
+        }
         db.runSync(
-          `INSERT OR REPLACE INTO "${name}" (${quoted}) VALUES (${placeholders})`,
-          columns.map(c => row[c])
+          `INSERT OR REPLACE INTO ${SYNC_RECEIVED_TABLE} (table_name, row_key, source, received_at)
+           VALUES (?, ?, ?, ${NOW_EXPR})`,
+          [name, rowKey, transport ?? null]
         );
-        if (local) report.updated++;
-        else report.inserted++;
+        if (name === 'grocery_items' && typeof row.id === 'string') groceryItemIds.add(row.id);
+        if (name === 'grocery_list_items' && typeof row.item_id === 'string') groceryItemIds.add(row.item_id);
       }
     }
 
@@ -2465,9 +3015,64 @@ export function dbApplySyncChanges(payload: SyncPayload): ApplyReport {
         continue;
       }
 
+      if (deletion.table === 'grocery_list_items') {
+        const entry = db.getFirstSync<{ item_id: string }>(
+          `SELECT item_id FROM grocery_list_items WHERE ${where.sql}`,
+          where.values
+        );
+        if (entry) groceryItemIds.add(entry.item_id);
+      }
+      // The meal's event id is device-local, so this row is the only place it
+      // lives: read it now or the event outlives the meal (#2950).
+      if (deletion.table === 'meal_plan_entries') {
+        const meal = db.getFirstSync<{
+          calendar_event_id: string | null;
+          calendar_event_external_id: string | null;
+          date: string;
+        }>(
+          `SELECT calendar_event_id, calendar_event_external_id, date FROM meal_plan_entries WHERE ${where.sql}`,
+          where.values
+        );
+        if (meal?.calendar_event_id) {
+          report.removedMealEvents.push({
+            eventId: meal.calendar_event_id,
+            externalId: meal.calendar_event_external_id ?? null,
+            date: meal.date,
+          });
+        }
+      }
+      // A task's deadline event, for the same reason. Not its time block, which
+      // the app never deletes, nor its completion event, which is history.
+      if (deletion.table === 'tasks') {
+        const task = db.getFirstSync<{
+          calendar_event_id: string | null;
+          calendar_event_external_id: string | null;
+        }>(
+          `SELECT calendar_event_id, calendar_event_external_id FROM tasks WHERE ${where.sql}`,
+          where.values
+        );
+        if (task?.calendar_event_id) {
+          report.removedTaskEvents.push({
+            eventId: task.calendar_event_id,
+            externalId: task.calendar_event_external_id ?? null,
+          });
+        }
+      }
       db.runSync(`DELETE FROM "${deletion.table}" WHERE ${where.sql}`, where.values);
+      // The tombstone trigger just stamped this deletion with local now. Put
+      // the peer's time back, or a third device hearing it relayed would take
+      // it as newer than it is and delete an edit made after the real one; the
+      // arrival goes in received_at, which is what relays it.
+      db.runSync(
+        `UPDATE ${SYNC_DELETIONS_TABLE}
+            SET deleted_at = ?, received_at = ${NOW_EXPR}, source = ?
+          WHERE table_name = ? AND row_key = ?`,
+        [deletion.deletedAt, transport ?? null, deletion.table, deletion.rowKey]
+      );
       report.deleted++;
     }
+
+    for (const id of groceryItemIds) resyncGroceryHomeColumns(id);
   });
 
   return report;
@@ -2482,6 +3087,19 @@ export function dbApplySyncChanges(payload: SyncPayload): ApplyReport {
  * tombstone dropped before every device has seen it resurrects the row.
  */
 export function dbPruneSyncDeletions(olderThanDays = TOMBSTONE_RETENTION_DAYS): number {
+  // Arrival records only matter until every transport has pushed past them,
+  // and an alias only until every peer has stopped sending rows written before
+  // the fold, so the tombstones' window is more than enough for both.
+  db.runSync(
+    `DELETE FROM ${SYNC_ALIASES_TABLE}
+      WHERE created_at < strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?)`,
+    [`-${olderThanDays} days`]
+  );
+  db.runSync(
+    `DELETE FROM ${SYNC_RECEIVED_TABLE}
+      WHERE received_at < strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?)`,
+    [`-${olderThanDays} days`]
+  );
   const res = db.runSync(
     `DELETE FROM ${SYNC_DELETIONS_TABLE}
       WHERE deleted_at < strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?)`,
@@ -2549,6 +3167,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     recurrenceInterval: (row.recurrence_interval as number) ?? 1,
     recurrenceDays: JSON.parse((row.recurrence_days as string) ?? '[]') as number[],
     recurrenceMonthDay: (row.recurrence_month_day as number | null) ?? null,
+    recurrenceMonth: (row.recurrence_month as number | null) ?? null,
     recurrenceWeekOrdinal: (row.recurrence_week_ordinal as number | null) ?? null,
     recurrenceAnchorDay: (row.recurrence_anchor_day as number | null) ?? null,
     recurrenceAnchorDate: (row.recurrence_anchor_date as string | null) ?? null,
@@ -2566,11 +3185,17 @@ function rowToTask(row: Record<string, unknown>): Task {
     quotaReminders: Boolean(row.quota_reminders),
     quotaStartedAt: (row.quota_started_at as string | null) ?? null,
     quotaAlwaysVisible: Boolean(row.quota_always_visible),
+    followWaterTarget: Boolean(row.follow_water_target),
     // Anything but the one known alternative reads as 'day', which is both the
     // pre-column default and the safe way round: a weekly target misread as
     // daily is merely owed its whole count today, where a daily one misread as
     // weekly would quietly stop asking for six days.
     quotaPeriod: row.quota_period === 'week' ? 'week' : 'day',
+    rotationEnabled: Boolean(row.rotation_enabled),
+    rotationItems: parseRotationItems(JSON.parse((row.rotation_items as string) ?? '[]')),
+    rotationLog: parseRotationLog(JSON.parse((row.rotation_log as string) ?? '[]')),
+    rotationPeriodStart: (row.rotation_period_start as string | null) ?? null,
+    rotationLastDone: parseRotationLastDone(JSON.parse((row.rotation_last_done as string) ?? '{}')),
     supplyCount: (row.supply_count as number | null) ?? null,
     supplyUnit: (row.supply_unit as string | null) ?? null,
     supplyRefillCount: (row.supply_refill_count as number | null) ?? null,
@@ -2599,6 +3224,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     reminderTime: (row.reminder_time as string) ?? null,
     reminderKind: ((row.reminder_kind as Task['reminderKind']) ?? 'notification'),
     reminderOffsetDays: (row.reminder_offset_days as number | null) ?? null,
+    reminderTracksVisibility: Boolean(row.reminder_tracks_visibility),
     reminderTimeAnchor: (row.reminder_time_anchor as 'wallClock' | 'fixed' | null) ?? 'wallClock',
     reminderUtcOffsetMinutes: (row.reminder_utc_offset_minutes as number | null) ?? null,
     // Column names stay cycle_* — this is the pre-rename "Cycle" feature
@@ -2615,6 +3241,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     followUpTaskTally: (row.extra_task_tally as number) ?? 0,
     previousFollowUpTaskTally: (row.previous_extra_task_tally as number) ?? 0,
     followUpTaskSourceTitle: (row.extra_task_source_title as string | null) ?? null,
+    followUpTaskSourceId: (row.extra_task_source_id as string | null) ?? null,
     vacationPause: Boolean(row.vacation_pause),
     excludeFromSuggestions: Boolean(row.exclude_from_suggestions),
     timerStartedAt: (row.timer_started_at as string | null) ?? null,
@@ -2686,8 +3313,12 @@ function rowToTask(row: Record<string, unknown>): Task {
     phoneNumber: (row.phone_number as string) ?? null,
     emailAddress: (row.email_address as string) ?? null,
     blockedById: (row.blocked_by_id as string | null) ?? null,
+    blockedByIds: parseStringList(row.blocked_by_ids),
     deliverableKind: (row.deliverable_kind as DeliverableKind | null) ?? null,
     deliverableValue: (row.deliverable_value as string | null) ?? null,
+    deliverableOptions: parseStringList(row.deliverable_options),
+    deliverableSetsAway: row.deliverable_sets_away === 1,
+    followUpOn: (row.follow_up_on as string | null) ?? null,
     generatedKind: (row.generated_kind as GeneratedKind | null) ?? null,
     generatedSourceId: (row.generated_source_id as string | null) ?? null,
     pendingImport: parsePendingImport(row.pending_import),
@@ -2698,6 +3329,9 @@ function rowToTask(row: Record<string, unknown>): Task {
     logCompletionToCalendar: Boolean(row.log_completion_to_calendar),
     completionCalendarEventId: (row.completion_calendar_event_id as string | null) ?? null,
     timeBlockEventId: (row.time_block_event_id as string | null) ?? null,
+    calendarEventExternalId: (row.calendar_event_external_id as string | null) ?? null,
+    timeBlockExternalId: (row.time_block_external_id as string | null) ?? null,
+    completionCalendarEventExternalId: (row.completion_calendar_event_external_id as string | null) ?? null,
     backfillDismissedFields: JSON.parse((row.backfill_dismissed_fields as string) ?? '[]') as string[],
     location: (row.location as string) ?? null,
   };
@@ -2726,17 +3360,21 @@ export function dbInsertTask(task: Task): void {
       extra_task_every_n, extra_task_title, extra_task_draft, extra_task_one_at_a_time, extra_task_tally, previous_extra_task_tally, extra_task_source_title,
       deliverable_kind, deliverable_value, deadline_on_calendar, calendar_event_id,
       log_completion_to_calendar, completion_calendar_event_id, time_block_event_id,
+      calendar_event_external_id, time_block_external_id, completion_calendar_event_external_id,
       streak_requires_window, backfill_dismissed_fields,
       supply_count, supply_unit, supply_refill_count, supply_reorder_at,
       supply_lead_days, supply_declined_at_count, supply_grocery_item_id,
       person_ids, waiting_on_person_id, reminder_offset_days, exclude_from_suggestions,
-      quota_interval_minutes, quota_reminders, quota_started_at, quota_always_visible, quota_period, location,
+      quota_interval_minutes, quota_reminders, quota_started_at, quota_always_visible, follow_water_target, quota_period,
+      rotation_enabled, rotation_items, rotation_log, rotation_period_start, rotation_last_done, location,
       prior_best_streak, reminder_time_anchor, reminder_utc_offset_minutes, polarity, slip_count, slip_date,
       health_metric, health_target, completion_timer_minutes, completion_timer_note, completion_timer_started_at, log_health_metric, log_health_amount,
       penalty_minutes, penalty_cutoff_time, penalty_fired_at, penalty_credited_at, gates_apps,
       medication_name, medication_amount, medication_unit, log_meal_slot,
-      estimate_before_timing, waiting_on_person_since, waiting_follow_up_declined_at
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      estimate_before_timing, waiting_on_person_since, waiting_follow_up_declined_at,
+      reminder_tracks_visibility, recurrence_month,
+      blocked_by_ids, deliverable_options, deliverable_sets_away, follow_up_on, extra_task_source_id
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -2790,6 +3428,9 @@ export function dbInsertTask(task: Task): void {
       task.logCompletionToCalendar ? 1 : 0,
       task.completionCalendarEventId ?? null,
       task.timeBlockEventId ?? null,
+      task.calendarEventExternalId ?? null,
+      task.timeBlockExternalId ?? null,
+      task.completionCalendarEventExternalId ?? null,
       task.streakRequiresWindow ? 1 : 0,
       JSON.stringify(task.backfillDismissedFields),
       task.supplyCount ?? null,
@@ -2806,7 +3447,13 @@ export function dbInsertTask(task: Task): void {
       task.quotaReminders ? 1 : 0,
       task.quotaStartedAt ?? null,
       task.quotaAlwaysVisible ? 1 : 0,
+      task.followWaterTarget ? 1 : 0,
       task.quotaPeriod,
+      task.rotationEnabled ? 1 : 0,
+      JSON.stringify(task.rotationItems),
+      JSON.stringify(task.rotationLog),
+      task.rotationPeriodStart ?? null,
+      JSON.stringify(task.rotationLastDone),
       task.location ?? null,
       task.priorBestStreak,
       task.reminderTimeAnchor,
@@ -2833,6 +3480,13 @@ export function dbInsertTask(task: Task): void {
       task.estimateBeforeTiming ?? null,
       task.waitingOnPersonSince ?? null,
       task.waitingFollowUpDeclinedAt ?? null,
+      task.reminderTracksVisibility ? 1 : 0,
+      task.recurrenceMonth ?? null,
+      JSON.stringify(task.blockedByIds ?? []),
+      JSON.stringify(task.deliverableOptions ?? []),
+      task.deliverableSetsAway ? 1 : 0,
+      task.followUpOn ?? null,
+      task.followUpTaskSourceId ?? null,
     ]
   );
 }
@@ -2855,16 +3509,20 @@ export function dbUpdateTask(task: Task): void {
       extra_task_every_n=?, extra_task_title=?, extra_task_draft=?, extra_task_one_at_a_time=?, extra_task_tally=?, previous_extra_task_tally=?, extra_task_source_title=?,
       deliverable_kind=?, deliverable_value=?, deadline_on_calendar=?, calendar_event_id=?,
       log_completion_to_calendar=?, completion_calendar_event_id=?, time_block_event_id=?,
+      calendar_event_external_id=?, time_block_external_id=?, completion_calendar_event_external_id=?,
       streak_requires_window=?, backfill_dismissed_fields=?,
       supply_count=?, supply_unit=?, supply_refill_count=?, supply_reorder_at=?,
       supply_lead_days=?, supply_declined_at_count=?, supply_grocery_item_id=?,
       person_ids=?, waiting_on_person_id=?, reminder_offset_days=?, exclude_from_suggestions=?,
-      quota_interval_minutes=?, quota_reminders=?, quota_started_at=?, quota_always_visible=?, quota_period=?, location=?,
+      quota_interval_minutes=?, quota_reminders=?, quota_started_at=?, quota_always_visible=?, follow_water_target=?, quota_period=?,
+      rotation_enabled=?, rotation_items=?, rotation_log=?, rotation_period_start=?, rotation_last_done=?, location=?,
       prior_best_streak=?, reminder_time_anchor=?, reminder_utc_offset_minutes=?, polarity=?, slip_count=?, slip_date=?,
       health_metric=?, health_target=?, completion_timer_minutes=?, completion_timer_note=?, completion_timer_started_at=?, log_health_metric=?, log_health_amount=?,
       penalty_minutes=?, penalty_cutoff_time=?, penalty_fired_at=?, penalty_credited_at=?, gates_apps=?,
       medication_name=?, medication_amount=?, medication_unit=?, log_meal_slot=?,
-      estimate_before_timing=?, waiting_on_person_since=?, waiting_follow_up_declined_at=?
+      estimate_before_timing=?, waiting_on_person_since=?, waiting_follow_up_declined_at=?,
+      reminder_tracks_visibility=?, recurrence_month=?,
+      blocked_by_ids=?, deliverable_options=?, deliverable_sets_away=?, follow_up_on=?, extra_task_source_id=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -2919,6 +3577,9 @@ export function dbUpdateTask(task: Task): void {
       task.logCompletionToCalendar ? 1 : 0,
       task.completionCalendarEventId ?? null,
       task.timeBlockEventId ?? null,
+      task.calendarEventExternalId ?? null,
+      task.timeBlockExternalId ?? null,
+      task.completionCalendarEventExternalId ?? null,
       task.streakRequiresWindow ? 1 : 0,
       JSON.stringify(task.backfillDismissedFields),
       task.supplyCount ?? null,
@@ -2935,7 +3596,13 @@ export function dbUpdateTask(task: Task): void {
       task.quotaReminders ? 1 : 0,
       task.quotaStartedAt ?? null,
       task.quotaAlwaysVisible ? 1 : 0,
+      task.followWaterTarget ? 1 : 0,
       task.quotaPeriod,
+      task.rotationEnabled ? 1 : 0,
+      JSON.stringify(task.rotationItems),
+      JSON.stringify(task.rotationLog),
+      task.rotationPeriodStart ?? null,
+      JSON.stringify(task.rotationLastDone),
       task.location ?? null,
       task.priorBestStreak,
       task.reminderTimeAnchor,
@@ -2962,6 +3629,13 @@ export function dbUpdateTask(task: Task): void {
       task.estimateBeforeTiming ?? null,
       task.waitingOnPersonSince ?? null,
       task.waitingFollowUpDeclinedAt ?? null,
+      task.reminderTracksVisibility ? 1 : 0,
+      task.recurrenceMonth ?? null,
+      JSON.stringify(task.blockedByIds ?? []),
+      JSON.stringify(task.deliverableOptions ?? []),
+      task.deliverableSetsAway ? 1 : 0,
+      task.followUpOn ?? null,
+      task.followUpTaskSourceId ?? null,
       task.id,
     ]
   );
@@ -3044,6 +3718,98 @@ export function dbClearAllPins(): void {
 // nest.
 export function dbTransaction(fn: () => void): void {
   db.withTransactionSync(fn);
+}
+
+/**
+ * A device event id and the column holding the calendar server's id beside it.
+ * Every pair `fillCalendarExternalIds` fills.
+ */
+const CALENDAR_ID_PAIRS: Readonly<Record<'tasks' | 'meal_plan_entries', ReadonlyArray<readonly [string, string]>>> = {
+  tasks: [
+    ['calendar_event_id', 'calendar_event_external_id'],
+    ['time_block_event_id', 'time_block_external_id'],
+    ['completion_calendar_event_id', 'completion_calendar_event_external_id'],
+  ],
+  meal_plan_entries: [['calendar_event_id', 'calendar_event_external_id']],
+};
+
+/**
+ * Writes the calendar server id `found` holds for each device event id, beside
+ * that id, on every row of `table` that holds it with no server id yet, and
+ * returns the ids of the rows it wrote (#2950). The one-time launch backfill's
+ * write (`backfillCalendarExternalIds`).
+ *
+ * **Each row keeps the sync stamp it had.** Any UPDATE restamps a row as a
+ * local change (the stamp trigger), and a row's stamp is what decides which
+ * copy wins against a peer's. Restamped, every row holding an event would read
+ * as edited here just now, at launch, which is when a peer's edits made while
+ * the app was closed are least likely to have arrived yet: the next sync would
+ * put this device's stale copy over each of them. The columns written are
+ * device-local and never sent, so nothing about the row changed that a peer
+ * could want; putting the old stamp back, which the trigger lets through as
+ * the sync apply's own writes are let through, says exactly that.
+ *
+ * A row whose device id has moved on since `found` was read no longer matches
+ * and is left alone, and so is one that already has a server id.
+ */
+function fillCalendarExternalIds(
+  table: 'tasks' | 'meal_plan_entries',
+  found: Readonly<Record<string, string>>
+): string[] {
+  const pairs = CALENDAR_ID_PAIRS[table];
+  if (Object.keys(found).length === 0) return [];
+  const wanting = pairs.map(([idCol, extCol]) => `(${idCol} IS NOT NULL AND ${extCol} IS NULL)`).join(' OR ');
+  const written: string[] = [];
+  db.withTransactionSync(() => {
+    const rows = db.getAllSync<Record<string, string | null>>(
+      `SELECT id, updated_at, ${pairs.flat().join(', ')} FROM ${table} WHERE ${wanting}`
+    );
+    for (const row of rows) {
+      const sets: string[] = [];
+      const values: string[] = [];
+      for (const [idCol, extCol] of pairs) {
+        const eventId = row[idCol];
+        if (eventId && !row[extCol] && found[eventId]) {
+          sets.push(`${extCol} = ?`);
+          values.push(found[eventId]);
+        }
+      }
+      if (sets.length === 0) continue;
+      db.runSync(`UPDATE ${table} SET ${sets.join(', ')} WHERE id = ?`, [...values, row.id as string]);
+      db.runSync(`UPDATE ${table} SET updated_at = ? WHERE id = ?`, [row.updated_at ?? null, row.id as string]);
+      written.push(row.id as string);
+    }
+  });
+  return written;
+}
+
+/** `fillCalendarExternalIds` over tasks: deadline events, time blocks and completion events. */
+export function dbFillTaskCalendarExternalIds(found: Readonly<Record<string, string>>): string[] {
+  return fillCalendarExternalIds('tasks', found);
+}
+
+/** `fillCalendarExternalIds` over planned meals' events. */
+export function dbFillMealCalendarExternalIds(found: Readonly<Record<string, string>>): string[] {
+  return fillCalendarExternalIds('meal_plan_entries', found);
+}
+
+/**
+ * Every device event id on a task or a planned meal with no calendar server
+ * id beside it yet, which is what the launch backfill reads server ids for.
+ * Read from the tables rather than the stores, because the meal plan store
+ * holds only the window of days last asked for.
+ */
+export function dbCalendarEventIdsWantingExternalIds(): string[] {
+  const ids = new Set<string>();
+  for (const table of ['tasks', 'meal_plan_entries'] as const) {
+    for (const [idCol, extCol] of CALENDAR_ID_PAIRS[table]) {
+      const rows = db.getAllSync<{ event_id: string }>(
+        `SELECT ${idCol} AS event_id FROM ${table} WHERE ${idCol} IS NOT NULL AND ${idCol} <> '' AND ${extCol} IS NULL`
+      );
+      for (const row of rows) ids.add(row.event_id);
+    }
+  }
+  return [...ids];
 }
 
 const BULK_DELETE_CHUNK_SIZE = 500;
@@ -3295,6 +4061,10 @@ export function dbRenameCategory(id: string, oldName: string, newName: string): 
     db.runSync('UPDATE categories SET name = ? WHERE id = ?', [newName, id]);
     db.runSync('UPDATE tasks SET category = ? WHERE category = ?', [newName, oldName]);
     db.runSync('UPDATE task_groups SET category = ? WHERE category = ?', [newName, oldName]);
+    db.runSync(
+      'UPDATE projects SET default_task_category = ? WHERE default_task_category = ?',
+      [newName, oldName]
+    );
   });
 }
 
@@ -3370,6 +4140,7 @@ function rowToTaskGroup(row: Record<string, unknown>): TaskGroup {
     collapsed: Boolean(row.collapsed),
     onToday: Boolean(row.on_today),
     projectId: (row.project_id as string) ?? null,
+    checklist: row.checklist === 1,
   };
 }
 
@@ -3383,22 +4154,22 @@ export function dbInsertTaskGroup(group: TaskGroup): void {
     // completed_at is deliberately absent: it held the old "stack dismissed
     // for today" stamp, which no longer exists (see TaskGroup). The column
     // stays on the table for installs that already have it, and stays null.
-    'INSERT INTO task_groups (id, title, notes, tags, category, sort_order, collapsed, on_today, project_id) VALUES (?,?,?,?,?,?,?,?,?)',
+    'INSERT INTO task_groups (id, title, notes, tags, category, sort_order, collapsed, on_today, project_id, checklist) VALUES (?,?,?,?,?,?,?,?,?,?)',
     [
       group.id, group.title, group.notes, JSON.stringify(group.tags),
       group.category ?? null, group.sortOrder, group.collapsed ? 1 : 0,
-      group.onToday ? 1 : 0, group.projectId ?? null,
+      group.onToday ? 1 : 0, group.projectId ?? null, group.checklist ? 1 : 0,
     ]
   );
 }
 
 export function dbUpdateTaskGroup(group: TaskGroup): void {
   db.runSync(
-    'UPDATE task_groups SET title=?, notes=?, tags=?, category=?, sort_order=?, collapsed=?, on_today=?, project_id=? WHERE id=?',
+    'UPDATE task_groups SET title=?, notes=?, tags=?, category=?, sort_order=?, collapsed=?, on_today=?, project_id=?, checklist=? WHERE id=?',
     [
       group.title, group.notes, JSON.stringify(group.tags),
       group.category ?? null, group.sortOrder, group.collapsed ? 1 : 0,
-      group.onToday ? 1 : 0, group.projectId ?? null, group.id,
+      group.onToday ? 1 : 0, group.projectId ?? null, group.checklist ? 1 : 0, group.id,
     ]
   );
 }
@@ -3741,7 +4512,7 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
        pantry_check_declined_at=?, pantry_reviewed_at=?, used_up_count=?, spoiled_count=?, last_spoiled_at=?,
        last_price_minor=?, last_priced_at=?, last_price_quantity=?,
        preferred_product_id=?, brand_strict=?, variety_of_key=?, backfill_dismissed_fields=?, nutrition=?,
-       name_from_scan=?
+       name_from_scan=?, price_history=?
      WHERE id=?`,
     [
       item.name, item.nameKey, item.aisle, item.quantity ?? null, item.quantityFromRecipe ? 1 : 0, item.note,
@@ -3760,6 +4531,10 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
       JSON.stringify(item.backfillDismissedFields),
       serializeFoodNutrition(item.nutrition),
       item.nameFromScan ? 1 : 0,
+      // Written here too, not only by dbFinishGroceryShopping: an undo that
+      // puts back a "before" row could otherwise restore every column except
+      // the history, leaving the undone price in it for good.
+      JSON.stringify(item.priceHistory ?? []),
       item.id,
     ]
   );
@@ -3820,8 +4595,9 @@ export function dbFinishGroceryShopping(
   shopId: string | null = null,
   expiresAtById: Readonly<Record<string, string>> = {},
   priceById: Readonly<Record<string, number>> = {},
-  // The rows this trip is putting straight in the freezer — the scan sheet's
-  // own toggle, made about the bag being carried home right now. It overrides
+  // The rows this trip is putting straight in the freezer — the finish
+  // sheet's toggle (which the scan sheet's own seeds), made about the bag
+  // being carried home right now. It overrides
   // the blanket `frozen_at = NULL` below, which is about the *previous* bag.
   // Without it the store's matching in-memory patch was the only record of the
   // freeze, so it survived until the next load and no further (see
@@ -3842,17 +4618,25 @@ export function dbFinishGroceryShopping(
   const rows = db.getAllSync<{
     id: string;
     quantity: string | null;
+    quantity_from_recipe: number | null;
     preferred_product_id: string | null;
     brand_strict: number | null;
     price_history: string | null;
   }>(
-    `SELECT i.id, i.quantity, i.preferred_product_id, i.brand_strict, i.price_history
+    `SELECT i.id, i.quantity, i.quantity_from_recipe, i.preferred_product_id, i.brand_strict, i.price_history
        FROM grocery_items i
        JOIN grocery_list_items e ON e.item_id = i.id
       WHERE e.list_id = ? AND e.checked = 1`,
     [listKey(listId)]
   );
   if (rows.length === 0) return [];
+  // What a typed price was paid for. A quantity a recipe wrote ("3 cups") is
+  // the cooking amount, not the pack that came home, so a price is recorded
+  // against nothing rather than against that: recipeCost divides by this
+  // string, and a gallon's price over "3 cups" costs every later recipe wrong.
+  // Mirrors pricedQuantityById in useGroceryStore.finishShopping.
+  const pricedQuantity = (row: { quantity: string | null; quantity_from_recipe: number | null }) =>
+    row.quantity_from_recipe ? null : row.quantity ?? null;
   const ids = rows.map(r => r.id);
   const placeholders = ids.map(() => '?').join(',');
   // The trolley empties by the entries going, which is the whole of what an
@@ -3970,7 +4754,7 @@ export function dbFinishGroceryShopping(
         // record of not knowing which one came home — see PriceObservation.
         {
           minor: price,
-          quantity: row.quantity ?? null,
+          quantity: pricedQuantity(row),
           at: purchasedAt,
           productId: row.preferred_product_id ?? null,
         }
@@ -3980,7 +4764,7 @@ export function dbFinishGroceryShopping(
             SET last_price_minor = ?, last_priced_at = ?, last_price_quantity = ?,
                 price_history = ?
           WHERE id = ?`,
-        [price, purchasedAt, row.quantity ?? null, JSON.stringify(history), row.id]
+        [price, purchasedAt, pricedQuantity(row), JSON.stringify(history), row.id]
       );
     }
   }
@@ -4036,7 +4820,7 @@ export function dbFinishGroceryShopping(
           // store's baseline against the item's must be comparing like boxes.
           {
             minor: price,
-            quantity: row.quantity ?? null,
+            quantity: pricedQuantity(row),
             at: purchasedAt,
             productId: row.preferred_product_id ?? null,
           }
@@ -4046,7 +4830,7 @@ export function dbFinishGroceryShopping(
               SET last_price_minor = ?, last_priced_at = ?, last_price_quantity = ?,
                   price_history = ?
             WHERE item_id = ? AND shop_id = ?`,
-          [price, purchasedAt, row.quantity ?? null, JSON.stringify(history), row.id, shopId]
+          [price, purchasedAt, pricedQuantity(row), JSON.stringify(history), row.id, shopId]
         );
       }
     }
@@ -4162,6 +4946,22 @@ export function dbDeleteGroceryListEntriesForItem(itemId: string): void {
  * Airbnb list is not unused.
  */
 export function dbSyncGroceryHomeColumns(itemId: string): void {
+  const cols = homeColumnsFor(itemId);
+  db.runSync(
+    'UPDATE grocery_items SET on_list = ?, checked = ?, sort_order = ?, choice_group = ? WHERE id = ?',
+    [cols.on_list, cols.checked, cols.sort_order, cols.choice_group, itemId]
+  );
+}
+
+interface HomeColumns {
+  on_list: number;
+  checked: number;
+  sort_order: number;
+  choice_group: string | null;
+}
+
+/** What `dbSyncGroceryHomeColumns` writes for `itemId`, read off its entries. */
+function homeColumnsFor(itemId: string): HomeColumns {
   const home = db.getFirstSync<{ checked: number; sort_order: number; choice_group: string | null }>(
     "SELECT checked, sort_order, choice_group FROM grocery_list_items WHERE item_id = ? AND list_id = ''",
     [itemId]
@@ -4170,16 +4970,43 @@ export function dbSyncGroceryHomeColumns(itemId: string): void {
     'SELECT COUNT(*) AS n FROM grocery_list_items WHERE item_id = ?',
     [itemId]
   );
-  db.runSync(
-    'UPDATE grocery_items SET on_list = ?, checked = ?, sort_order = ?, choice_group = ? WHERE id = ?',
-    [
-      (anywhere?.n ?? 0) > 0 ? 1 : 0,
-      home?.checked ? 1 : 0,
-      home?.sort_order ?? 0,
-      home?.choice_group ?? null,
-      itemId,
-    ]
+  return {
+    on_list: (anywhere?.n ?? 0) > 0 ? 1 : 0,
+    checked: home?.checked ? 1 : 0,
+    sort_order: home?.sort_order ?? 0,
+    choice_group: home?.choice_group ?? null,
+  };
+}
+
+/**
+ * `dbSyncGroceryHomeColumns` for the sync apply: writes only when the stored
+ * columns disagree with the entries.
+ *
+ * A peer's item row arrives carrying the peer's copy of the mirror, and a
+ * peer's entry changes what the mirror should be, so neither can be trusted
+ * as it lands. **The write-only-when-wrong half is what stops a bounce.** Any
+ * UPDATE restamps the row (the stamp trigger), so recomputing every applied
+ * row would send each one straight back to the peer as a local change. A row
+ * that does need correcting is restamped and does travel back, which is the
+ * fold's rule too (see `afterFold`): the peer takes the corrected columns,
+ * recomputes them from the same entries, finds them right and writes nothing.
+ */
+function resyncGroceryHomeColumns(itemId: string): void {
+  const stored = db.getFirstSync<{ on_list: number | null; checked: number | null; sort_order: number | null; choice_group: string | null }>(
+    'SELECT on_list, checked, sort_order, choice_group FROM grocery_items WHERE id = ?',
+    [itemId]
   );
+  if (!stored) return;
+  const want = homeColumnsFor(itemId);
+  if (
+    (stored.on_list ? 1 : 0) === want.on_list &&
+    (stored.checked ? 1 : 0) === want.checked &&
+    (stored.sort_order ?? 0) === want.sort_order &&
+    (stored.choice_group ?? null) === want.choice_group
+  ) {
+    return;
+  }
+  dbSyncGroceryHomeColumns(itemId);
 }
 
 // ─── Grocery lists ──────────────────────────────────────────────────────────
@@ -4339,15 +5166,17 @@ export function dbSetGroceryAisleOverrides(overrides: Record<string, string>): v
   dbSetSetting('grocery_aisle_overrides', JSON.stringify(overrides));
 }
 
-// The list's two ways of grouping unchecked items — see
-// buildGroceryRecipeSections. A scalar, so it's a settings key like
-// grocery_aisle_order rather than a column; anything but 'recipe' reads back
-// as 'aisle', which is also what an install that predates this setting gets.
-export function dbGetGroceryGroupBy(): 'aisle' | 'recipe' {
-  return dbGetSetting('grocery_group_by') === 'recipe' ? 'recipe' : 'aisle';
+// The list's three ways of grouping unchecked items — see
+// buildGroceryRecipeSections and buildGroceryStoreSections. A scalar, so it's
+// a settings key like grocery_aisle_order rather than a column; anything but
+// 'recipe' or 'store' reads back as 'aisle', which is also what an install
+// that predates this setting gets.
+export function dbGetGroceryGroupBy(): GroceryGroupBy {
+  const stored = dbGetSetting('grocery_group_by');
+  return stored === 'recipe' || stored === 'store' ? stored : 'aisle';
 }
 
-export function dbSetGroceryGroupBy(groupBy: 'aisle' | 'recipe'): void {
+export function dbSetGroceryGroupBy(groupBy: GroceryGroupBy): void {
   dbSetSetting('grocery_group_by', groupBy);
 }
 
@@ -4383,6 +5212,9 @@ function rowToShop(row: Record<string, unknown>): Shop {
     // rather than one whose list has silently become empty. Same
     // resolve-or-shrug the rest of this file applies to a stored JSON value.
     aisles: parseShopAisles(row.aisles),
+    // Same parser and the same permissive answer: an order that can't be read
+    // is the usual order, never a store whose aisles have all gone missing.
+    aisleOrder: parseShopAisles(row.aisle_order),
   };
 }
 
@@ -4392,6 +5224,9 @@ function rowToShop(row: Record<string, unknown>): Shop {
  * array is not a state this feature has (see Shop.aisles), so it normalises to
  * null on the way in rather than being carried around as a second way to say
  * "unscoped".
+ *
+ * `Shop.aisleOrder` reads through this too, and for it the same null means
+ * "walk the usual order".
  */
 function parseShopAisles(value: unknown): string[] | null {
   if (typeof value !== 'string' || value === '') return null;
@@ -4438,6 +5273,18 @@ export function dbSetShopExcludeFromSuggestions(id: string, exclude: boolean): v
 export function dbSetShopAisles(id: string, aisles: string[] | null): void {
   const value = aisles && aisles.length > 0 ? JSON.stringify(aisles) : null;
   db.runSync('UPDATE grocery_shops SET aisles = ? WHERE id = ?', [value, id]);
+}
+
+/**
+ * The store's own aisle walk. `null` goes back to the usual order, and so does
+ * an empty list, collapsed here for the reason dbSetShopAisles collapses one.
+ * Whether an order is worth keeping at all (one that walks the same as the
+ * usual order isn't) is `shopAisleOrderToSave`'s call, made in the store
+ * before this.
+ */
+export function dbSetShopAisleOrder(id: string, order: string[] | null): void {
+  const value = order && order.length > 0 ? JSON.stringify(order) : null;
+  db.runSync('UPDATE grocery_shops SET aisle_order = ? WHERE id = ?', [value, id]);
 }
 
 export function dbSetShopReceiptStyle(id: string, style: ReceiptStyle): void {
@@ -4491,8 +5338,9 @@ export function dbSetItemShopLink(link: ItemShopLink): void {
   db.runSync(
     `INSERT INTO grocery_item_shops
        (item_id, shop_id, purchase_count, last_purchased_at, unavailable_at,
-        last_price_minor, last_priced_at, last_price_quantity, product_id, unavailable_product_ids)
-     VALUES (?,?,?,?,?,?,?,?,?,?)
+        last_price_minor, last_priced_at, last_price_quantity, product_id, unavailable_product_ids,
+        price_history)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?)
      ON CONFLICT(item_id, shop_id)
      DO UPDATE SET purchase_count = excluded.purchase_count,
                    last_purchased_at = excluded.last_purchased_at,
@@ -4501,7 +5349,8 @@ export function dbSetItemShopLink(link: ItemShopLink): void {
                    last_priced_at = excluded.last_priced_at,
                    last_price_quantity = excluded.last_price_quantity,
                    product_id = excluded.product_id,
-                   unavailable_product_ids = excluded.unavailable_product_ids`,
+                   unavailable_product_ids = excluded.unavailable_product_ids,
+                   price_history = excluded.price_history`,
     [
       link.itemId,
       link.shopId,
@@ -4513,6 +5362,7 @@ export function dbSetItemShopLink(link: ItemShopLink): void {
       link.lastPriceQuantity ?? null,
       link.productId ?? null,
       JSON.stringify(link.unavailableProductIds ?? {}),
+      JSON.stringify(link.priceHistory ?? []),
     ]
   );
 }
@@ -4543,6 +5393,7 @@ function rowToItemProduct(row: Record<string, unknown>): ItemProduct {
     frozenAt: (row.frozen_at as string) ?? null,
     openedAt: (row.opened_at as string) ?? null,
     nutrition: parseFoodNutrition(row.nutrition as string | null),
+    isPortion: Boolean(row.is_portion),
     createdAt: row.created_at as string,
   };
 }
@@ -4576,8 +5427,8 @@ export function dbSetItemProduct(product: ItemProduct): void {
   db.runSync(
     `INSERT INTO grocery_item_products
        (id, item_id, brand, variant, product_key, rating, note, purchase_count, last_purchased_at,
-        on_hand_until, expires_at, frozen_at, opened_at, nutrition, created_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        on_hand_until, expires_at, frozen_at, opened_at, nutrition, is_portion, created_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
      ON CONFLICT(id)
      DO UPDATE SET brand = excluded.brand,
                    variant = excluded.variant,
@@ -4590,7 +5441,8 @@ export function dbSetItemProduct(product: ItemProduct): void {
                    expires_at = excluded.expires_at,
                    frozen_at = excluded.frozen_at,
                    opened_at = excluded.opened_at,
-                   nutrition = excluded.nutrition`,
+                   nutrition = excluded.nutrition,
+                   is_portion = excluded.is_portion`,
     [
       product.id,
       product.itemId,
@@ -4606,6 +5458,7 @@ export function dbSetItemProduct(product: ItemProduct): void {
       product.frozenAt ?? null,
       product.openedAt ?? null,
       serializeFoodNutrition(product.nutrition),
+      product.isPortion ? 1 : 0,
       product.createdAt,
     ]
   );
@@ -4942,7 +5795,53 @@ export function dbUpdateCookbook(cookbook: Cookbook): void {
  */
 export function dbDeleteCookbook(id: string): void {
   db.runSync('UPDATE recipes SET cookbook_id = NULL WHERE cookbook_id = ?', [id]);
+  // The index goes with the book, though, where recipes don't: an entry is
+  // only "page 142 of this book", and with the book gone it names nothing.
+  db.runSync('DELETE FROM cookbook_index_entries WHERE cookbook_id = ?', [id]);
   db.runSync('DELETE FROM cookbooks WHERE id = ?', [id]);
+}
+
+// ─── Cookbook index entries ─────────────────────────────────────────────────
+
+function rowToCookbookIndexEntry(row: Record<string, unknown>): CookbookIndexEntry {
+  let ingredients: string[] = [];
+  try {
+    const parsed = JSON.parse((row.ingredients as string) ?? '[]');
+    if (Array.isArray(parsed)) ingredients = parsed.filter((w): w is string => typeof w === 'string');
+  } catch { /* a malformed blob reads as no ingredients rather than failing the load */ }
+  return {
+    id: row.id as string,
+    cookbookId: row.cookbook_id as string,
+    title: row.title as string,
+    page: (row.page as string) ?? null,
+    ingredients,
+    createdAt: row.created_at as string,
+  };
+}
+
+export function dbGetAllCookbookIndexEntries(): CookbookIndexEntry[] {
+  const rows = db.getAllSync<Record<string, unknown>>(
+    'SELECT * FROM cookbook_index_entries ORDER BY created_at ASC'
+  );
+  return rows.map(rowToCookbookIndexEntry);
+}
+
+export function dbInsertCookbookIndexEntry(entry: CookbookIndexEntry): void {
+  db.runSync(
+    'INSERT INTO cookbook_index_entries (id, cookbook_id, title, page, ingredients, created_at) VALUES (?,?,?,?,?,?)',
+    [entry.id, entry.cookbookId, entry.title, entry.page ?? null, JSON.stringify(entry.ingredients), entry.createdAt]
+  );
+}
+
+export function dbUpdateCookbookIndexEntry(entry: CookbookIndexEntry): void {
+  db.runSync(
+    'UPDATE cookbook_index_entries SET cookbook_id=?, title=?, page=?, ingredients=? WHERE id=?',
+    [entry.cookbookId, entry.title, entry.page ?? null, JSON.stringify(entry.ingredients), entry.id]
+  );
+}
+
+export function dbDeleteCookbookIndexEntry(id: string): void {
+  db.runSync('DELETE FROM cookbook_index_entries WHERE id = ?', [id]);
 }
 
 // ─── Recipes ────────────────────────────────────────────────────────────────
@@ -4980,6 +5879,7 @@ function rowToRecipe(row: Record<string, unknown>): Recipe {
     components: parseRecipeComponents(row.components),
     prepTasks: parsePrepTasks(row.prep_tasks),
     steps: parseSteps(row.steps),
+    emptyStepSections: parseEmptySections(row.empty_step_sections),
     sortOrder: (row.sort_order as number) ?? 0,
     createdAt: row.created_at as string,
     cookCount: (row.cook_count as number) ?? 0,
@@ -5013,11 +5913,11 @@ export function dbGetAllRecipes(): Recipe[] {
 export function dbInsertRecipe(recipe: Recipe): void {
   db.runSync(
     `INSERT INTO recipes
-      (id, name, name_key, notes, source_url, source_name, author, source, source_type, source_page, cookbook_id, servings, servings_max, recipe_yield, cooked_weight_g, leftover_keep_days, image_path, meal_type, tags, ingredients, empty_sections, components, prep_tasks, steps, sort_order, created_at, cook_count, last_cooked_at, vote, up_next, up_next_order,
+      (id, name, name_key, notes, source_url, source_name, author, source, source_type, source_page, cookbook_id, servings, servings_max, recipe_yield, cooked_weight_g, leftover_keep_days, image_path, meal_type, tags, ingredients, empty_sections, components, prep_tasks, steps, empty_step_sections, sort_order, created_at, cook_count, last_cooked_at, vote, up_next, up_next_order,
        estimated_minutes, timer_started_at, timer_elapsed_seconds, last_cook_minutes, cook_time_count, total_cook_minutes,
        prep_minutes, prep_timer_started_at, prep_timer_elapsed_seconds, last_prep_minutes, prep_time_count, total_prep_minutes,
        backfill_dismissed_fields)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       recipe.id, recipe.name, recipe.nameKey, recipe.notes, recipe.sourceUrl ?? null,
       recipe.sourceName ?? null, recipe.author ?? null, recipe.source ?? null,
@@ -5029,6 +5929,7 @@ export function dbInsertRecipe(recipe: Recipe): void {
       JSON.stringify(recipe.ingredients),
       JSON.stringify(recipe.emptySections),
       JSON.stringify(recipe.components), JSON.stringify(recipe.prepTasks), JSON.stringify(recipe.steps),
+      JSON.stringify(recipe.emptyStepSections),
       recipe.sortOrder, recipe.createdAt,
       recipe.cookCount, recipe.lastCookedAt ?? null, recipe.vote ?? null,
       recipe.upNext ? 1 : 0, recipe.upNextOrder,
@@ -5044,7 +5945,7 @@ export function dbInsertRecipe(recipe: Recipe): void {
 export function dbUpdateRecipe(recipe: Recipe): void {
   db.runSync(
     `UPDATE recipes SET
-       name=?, name_key=?, notes=?, source_url=?, source_name=?, author=?, source=?, source_type=?, source_page=?, cookbook_id=?, servings=?, servings_max=?, recipe_yield=?, cooked_weight_g=?, leftover_keep_days=?, image_path=?, meal_type=?, tags=?, ingredients=?, empty_sections=?, components=?, prep_tasks=?, steps=?,
+       name=?, name_key=?, notes=?, source_url=?, source_name=?, author=?, source=?, source_type=?, source_page=?, cookbook_id=?, servings=?, servings_max=?, recipe_yield=?, cooked_weight_g=?, leftover_keep_days=?, image_path=?, meal_type=?, tags=?, ingredients=?, empty_sections=?, components=?, prep_tasks=?, steps=?, empty_step_sections=?,
        sort_order=?, cook_count=?, last_cooked_at=?, vote=?, up_next=?, up_next_order=?,
        estimated_minutes=?, timer_started_at=?, timer_elapsed_seconds=?, last_cook_minutes=?, cook_time_count=?, total_cook_minutes=?,
        prep_minutes=?, prep_timer_started_at=?, prep_timer_elapsed_seconds=?, last_prep_minutes=?, prep_time_count=?, total_prep_minutes=?,
@@ -5061,6 +5962,7 @@ export function dbUpdateRecipe(recipe: Recipe): void {
       JSON.stringify(recipe.ingredients),
       JSON.stringify(recipe.emptySections),
       JSON.stringify(recipe.components), JSON.stringify(recipe.prepTasks), JSON.stringify(recipe.steps),
+      JSON.stringify(recipe.emptyStepSections),
       recipe.sortOrder,
       recipe.cookCount, recipe.lastCookedAt ?? null, recipe.vote ?? null,
       recipe.upNext ? 1 : 0, recipe.upNextOrder,
@@ -5089,6 +5991,32 @@ export function dbDeleteRecipe(id: string): void {
  */
 export function dbSetRecipeImagePath(id: string, imagePath: string | null): void {
   db.runSync('UPDATE recipes SET image_path = ? WHERE id = ?', [imagePath, id]);
+}
+
+/**
+ * Every recipe's saved photo path, by recipe id: for the ids given, or every
+ * recipe that has one when `ids` is omitted. What sync reads to know which
+ * photos this device holds and which ones a peer's edit or delete just
+ * stopped pointing at (`recipeImageSync.ts`, #2704).
+ */
+export function dbRecipeImagePaths(ids?: readonly string[]): Map<string, string> {
+  const out = new Map<string, string>();
+  const add = (rows: { id: string; image_path: string }[]) => rows.forEach(r => out.set(r.id, r.image_path));
+  if (ids === undefined) {
+    add(db.getAllSync<{ id: string; image_path: string }>(
+      "SELECT id, image_path FROM recipes WHERE image_path IS NOT NULL AND image_path <> ''"
+    ));
+    return out;
+  }
+  for (let i = 0; i < ids.length; i += 500) {
+    const chunk = ids.slice(i, i + 500);
+    if (chunk.length === 0) continue;
+    add(db.getAllSync<{ id: string; image_path: string }>(
+      `SELECT id, image_path FROM recipes WHERE image_path IS NOT NULL AND image_path <> '' AND id IN (${chunk.map(() => '?').join(', ')})`,
+      chunk
+    ));
+  }
+  return out;
 }
 
 // ─── Meal plan ──────────────────────────────────────────────────────────────
@@ -5129,7 +6057,12 @@ function rowToMealPlanEntry(row: Record<string, unknown>): MealPlanEntry {
     logMeal: row.log_meal === null || row.log_meal === undefined
       ? null
       : Boolean(row.log_meal),
+    // And a fourth time — see MealPlanEntry.thawTask.
+    thawTask: row.thaw_task === null || row.thaw_task === undefined
+      ? null
+      : Boolean(row.thaw_task),
     calendarEventId: (row.calendar_event_id as string | null) ?? null,
+    calendarEventExternalId: (row.calendar_event_external_id as string | null) ?? null,
   };
 }
 
@@ -5339,6 +6272,49 @@ export function dbDeleteMilestone(id: string): void {
   db.runSync('DELETE FROM milestones WHERE id = ?', [id]);
 }
 
+function rowToEventPeopleLink(row: Record<string, unknown>): EventPeopleLink {
+  let personIds: string[] = [];
+  try {
+    const parsed = JSON.parse((row.person_ids as string) ?? '[]');
+    if (Array.isArray(parsed)) personIds = parsed.filter((id): id is string => typeof id === 'string');
+  } catch {
+    // A list we can't read is an empty one; the row is pruned or rewritten on its next edit.
+  }
+  return {
+    id: row.id as string,
+    eventKey: row.event_key as string,
+    eventStart: row.event_start as string,
+    eventEnd: row.event_end as string,
+    title: (row.title as string) ?? '',
+    personIds,
+    createdAt: row.created_at as string,
+  };
+}
+
+export function dbGetAllEventPeopleLinks(): EventPeopleLink[] {
+  return db
+    .getAllSync<Record<string, unknown>>('SELECT * FROM event_people_links ORDER BY created_at ASC')
+    .map(rowToEventPeopleLink);
+}
+
+/** Insert or rewrite one link by id. An UPDATE first, so an existing row keeps its created_at. */
+export function dbUpsertEventPeopleLink(link: EventPeopleLink): void {
+  const result = db.runSync(
+    `UPDATE event_people_links SET event_key=?, event_start=?, event_end=?, title=?, person_ids=? WHERE id=?`,
+    [link.eventKey, link.eventStart, link.eventEnd, link.title, JSON.stringify(link.personIds), link.id]
+  );
+  if (result.changes > 0) return;
+  db.runSync(
+    `INSERT INTO event_people_links (id, event_key, event_start, event_end, title, person_ids, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [link.id, link.eventKey, link.eventStart, link.eventEnd, link.title, JSON.stringify(link.personIds), link.createdAt]
+  );
+}
+
+export function dbDeleteEventPeopleLinks(ids: readonly string[]): void {
+  for (const id of ids) db.runSync('DELETE FROM event_people_links WHERE id = ?', [id]);
+}
+
 /**
  * One dose, mapped off its row.
  *
@@ -5443,6 +6419,10 @@ function rowToFoodLogEntry(row: Record<string, unknown>): FoodLogEntry | null {
     quantity: (row.quantity as string) ?? '',
     grams: typeof row.grams === 'number' && Number.isFinite(row.grams) ? row.grams : null,
     nutrition,
+    // A blob that won't parse reads as none kept, rather than dropping the row
+    // the way a bad `nutrition` does: the helping is still whole, and all this
+    // costs is the correction, which is where every entry stood before it.
+    sourcePanel: parseFoodNutrition(row.source_panel as string | null),
     healthSampleIds,
     sortOrder: typeof row.sort_order === 'number' ? row.sort_order : 0,
     createdAt: row.created_at as string,
@@ -5488,12 +6468,13 @@ export function dbGetFoodLogEntry(id: string): FoodLogEntry | null {
 export function dbInsertFoodLogEntry(entry: FoodLogEntry): void {
   db.runSync(
     `INSERT INTO food_logs (id, day_key, at_iso, slot, label, recipe_id, item_id, product_id,
-       meal_plan_entry_id, quantity, grams, nutrition, health_sample_ids, sort_order, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       meal_plan_entry_id, quantity, grams, nutrition, source_panel, health_sample_ids, sort_order, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       entry.id, entry.dayKey, entry.atISO, entry.slot, entry.label,
       entry.recipeId, entry.itemId, entry.productId, entry.mealPlanEntryId,
       entry.quantity, entry.grams, serializeFoodNutrition(entry.nutrition),
+      serializeFoodNutrition(entry.sourcePanel ?? null),
       JSON.stringify(entry.healthSampleIds), entry.sortOrder, entry.createdAt,
     ]
   );
@@ -5502,13 +6483,14 @@ export function dbInsertFoodLogEntry(entry: FoodLogEntry): void {
 export function dbUpdateFoodLogEntry(entry: FoodLogEntry): void {
   db.runSync(
     `UPDATE food_logs SET day_key=?, at_iso=?, slot=?, label=?, recipe_id=?, item_id=?,
-       product_id=?, meal_plan_entry_id=?, quantity=?, grams=?, nutrition=?, health_sample_ids=?,
-       sort_order=?
+       product_id=?, meal_plan_entry_id=?, quantity=?, grams=?, nutrition=?, source_panel=?,
+       health_sample_ids=?, sort_order=?
      WHERE id=?`,
     [
       entry.dayKey, entry.atISO, entry.slot, entry.label,
       entry.recipeId, entry.itemId, entry.productId, entry.mealPlanEntryId,
       entry.quantity, entry.grams, serializeFoodNutrition(entry.nutrition),
+      serializeFoodNutrition(entry.sourcePanel ?? null),
       JSON.stringify(entry.healthSampleIds), entry.sortOrder, entry.id,
     ]
   );
@@ -5594,6 +6576,11 @@ function rowToSavedMeal(row: Record<string, unknown>): SavedMeal | null {
             quantity: typeof r.quantity === 'string' ? r.quantity : '',
             grams: typeof r.grams === 'number' && Number.isFinite(r.grams) ? r.grams : null,
             nutrition,
+            // Absent on every meal saved before items kept a panel, and a
+            // panel that won't parse reads as none kept rather than dropping
+            // the item: the helping is still whole, which is the same call
+            // rowToFoodLogEntry makes for the entry's own column.
+            sourcePanel: parseFoodNutrition(JSON.stringify(r.sourcePanel ?? null)),
           };
         })
         .filter((i): i is SavedMealItem => i !== null);
@@ -5655,10 +6642,45 @@ export function dbGetMealPlanEntries(startKey: string, endKey: string): MealPlan
   return rows.map(rowToMealPlanEntry);
 }
 
+/**
+ * Every entry planned from one recipe, whatever its date.
+ *
+ * Not range-scoped, unlike `dbGetMealPlanEntries`, because what reads it is a
+ * change to the recipe itself (a rename retitles these entries, a delete
+ * reconciles their tasks), and the entries that change has to reach are
+ * exactly the ones outside the week on screen. The purge horizon bounds it
+ * anyway.
+ */
+export function dbGetMealPlanEntriesForRecipe(recipeId: string): MealPlanEntry[] {
+  const rows = db.getAllSync<Record<string, unknown>>(
+    `SELECT * FROM meal_plan_entries WHERE recipe_id = ?
+     ORDER BY date ASC, sort_order ASC, created_at ASC`,
+    [recipeId]
+  );
+  return rows.map(rowToMealPlanEntry);
+}
+
+/**
+ * Every entry planned from one leftover, whatever its date.
+ *
+ * Not range-scoped, for `dbGetMealPlanEntriesForRecipe`'s reason: what reads it
+ * is the leftover's own use-up task (`plannedMealRowFor`, #2932), which asks
+ * whether any meal is going to eat the container, and that meal is rarely in
+ * the week the Meal Plan screen has loaded.
+ */
+export function dbGetMealPlanEntriesForLeftover(leftoverId: string): MealPlanEntry[] {
+  const rows = db.getAllSync<Record<string, unknown>>(
+    `SELECT * FROM meal_plan_entries WHERE leftover_id = ?
+     ORDER BY date ASC, sort_order ASC, created_at ASC`,
+    [leftoverId]
+  );
+  return rows.map(rowToMealPlanEntry);
+}
+
 export function dbInsertMealPlanEntry(entry: MealPlanEntry): void {
   db.runSync(
-    `INSERT INTO meal_plan_entries (id, date, slot, recipe_id, title, sort_order, created_at, cooked_at, leftover_id, recipe_choices, recipe_scale, cook_task, shop_task, log_meal, calendar_event_id)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    `INSERT INTO meal_plan_entries (id, date, slot, recipe_id, title, sort_order, created_at, cooked_at, leftover_id, recipe_choices, recipe_scale, cook_task, shop_task, log_meal, calendar_event_id, thaw_task, calendar_event_external_id)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       entry.id, entry.date, entry.slot, entry.recipeId ?? null,
       entry.title, entry.sortOrder, entry.createdAt, entry.cookedAt ?? null,
@@ -5668,13 +6690,15 @@ export function dbInsertMealPlanEntry(entry: MealPlanEntry): void {
       entry.shopTask === null || entry.shopTask === undefined ? null : (entry.shopTask ? 1 : 0),
       entry.logMeal === null || entry.logMeal === undefined ? null : (entry.logMeal ? 1 : 0),
       entry.calendarEventId ?? null,
+      entry.thawTask === null || entry.thawTask === undefined ? null : (entry.thawTask ? 1 : 0),
+      entry.calendarEventExternalId ?? null,
     ]
   );
 }
 
 export function dbUpdateMealPlanEntry(entry: MealPlanEntry): void {
   db.runSync(
-    `UPDATE meal_plan_entries SET date=?, slot=?, recipe_id=?, title=?, sort_order=?, cooked_at=?, leftover_id=?, recipe_choices=?, recipe_scale=?, cook_task=?, shop_task=?, log_meal=?, calendar_event_id=? WHERE id=?`,
+    `UPDATE meal_plan_entries SET date=?, slot=?, recipe_id=?, title=?, sort_order=?, cooked_at=?, leftover_id=?, recipe_choices=?, recipe_scale=?, cook_task=?, shop_task=?, log_meal=?, calendar_event_id=?, thaw_task=?, calendar_event_external_id=? WHERE id=?`,
     [
       entry.date, entry.slot, entry.recipeId ?? null, entry.title, entry.sortOrder,
       entry.cookedAt ?? null, entry.leftoverId ?? null,
@@ -5683,6 +6707,8 @@ export function dbUpdateMealPlanEntry(entry: MealPlanEntry): void {
       entry.shopTask === null || entry.shopTask === undefined ? null : (entry.shopTask ? 1 : 0),
       entry.logMeal === null || entry.logMeal === undefined ? null : (entry.logMeal ? 1 : 0),
       entry.calendarEventId ?? null,
+      entry.thawTask === null || entry.thawTask === undefined ? null : (entry.thawTask ? 1 : 0),
+      entry.calendarEventExternalId ?? null,
       entry.id,
     ]
   );
@@ -5895,6 +6921,31 @@ export function dbSetTrip(
 
 // ─── Projects ───────────────────────────────────────────────────────────────
 
+/** A JSON array of strings, or empty for anything else: a missing column, a bad write. */
+function parseStringList(raw: unknown): string[] {
+  if (typeof raw !== 'string') return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+/** A project's links, keeping only entries with a url. */
+function parseProjectLinks(raw: unknown): ProjectLink[] {
+  if (typeof raw !== 'string') return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter(l => l && typeof l.url === 'string' && l.url.trim())
+      .map(l => ({ id: String(l.id ?? l.url), label: typeof l.label === 'string' ? l.label : '', url: l.url }));
+  } catch {
+    return [];
+  }
+}
+
 function rowToProject(row: Record<string, unknown>): Project {
   return {
     id: row.id as string,
@@ -5932,6 +6983,11 @@ function rowToProject(row: Record<string, unknown>): Project {
     awayListId: (row.away_list_id as string) ?? null,
     awayListDeclinedFor: (row.away_list_declined_for as string) ?? null,
     destination: (row.destination as string) ?? null,
+    pausedUntil: (row.paused_until as string) ?? null,
+    personIds: parseStringList(row.person_ids),
+    links: parseProjectLinks(row.links),
+    inOrder: row.in_order === 1,
+    showChecked: row.show_checked === 1,
   };
 }
 
@@ -5942,7 +6998,7 @@ export function dbGetAllProjects(): Project[] {
 
 export function dbInsertProject(project: Project): void {
   db.runSync(
-    'INSERT INTO projects (id, title, notes, target_end_date, category, default_task_category, sort_order, archived, archived_at, completed, completed_at, ongoing, created_at, nudge_cadence_days, auto_schedule, nudge_opt_in, weekend_source, review_declined_at, reviewed_at, backfill_dismissed_fields, kind, away_start, away_end, away_pauses, away_pause_declined_for, destination, away_list_id, away_list_declined_for) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+    'INSERT INTO projects (id, title, notes, target_end_date, category, default_task_category, sort_order, archived, archived_at, completed, completed_at, ongoing, created_at, nudge_cadence_days, auto_schedule, nudge_opt_in, weekend_source, review_declined_at, reviewed_at, backfill_dismissed_fields, kind, away_start, away_end, away_pauses, away_pause_declined_for, destination, away_list_id, away_list_declined_for, paused_until, person_ids, links, in_order, show_checked) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
     [
       project.id, project.title, project.notes, project.deadline,
       project.category, project.defaultTaskCategory, project.sortOrder, project.archived ? 1 : 0, project.archivedAt,
@@ -5952,14 +7008,15 @@ export function dbInsertProject(project: Project): void {
       project.reviewDeclinedAt, project.reviewedAt, JSON.stringify(project.backfillDismissedFields), project.kind,
       project.awayStart, project.awayEnd,
       project.awayPauses ? 1 : 0, project.awayPauseDeclinedFor, project.destination,
-      project.awayListId, project.awayListDeclinedFor,
+      project.awayListId, project.awayListDeclinedFor, project.pausedUntil,
+      JSON.stringify(project.personIds ?? []), JSON.stringify(project.links ?? []), project.inOrder ? 1 : 0, project.showChecked ? 1 : 0,
     ]
   );
 }
 
 export function dbUpdateProject(project: Project): void {
   db.runSync(
-    'UPDATE projects SET title=?, notes=?, target_end_date=?, category=?, default_task_category=?, sort_order=?, archived=?, archived_at=?, completed=?, completed_at=?, ongoing=?, nudge_cadence_days=?, auto_schedule=?, nudge_opt_in=?, weekend_source=?, review_declined_at=?, reviewed_at=?, backfill_dismissed_fields=?, kind=?, away_start=?, away_end=?, away_pauses=?, away_pause_declined_for=?, destination=?, away_list_id=?, away_list_declined_for=? WHERE id=?',
+    'UPDATE projects SET title=?, notes=?, target_end_date=?, category=?, default_task_category=?, sort_order=?, archived=?, archived_at=?, completed=?, completed_at=?, ongoing=?, nudge_cadence_days=?, auto_schedule=?, nudge_opt_in=?, weekend_source=?, review_declined_at=?, reviewed_at=?, backfill_dismissed_fields=?, kind=?, away_start=?, away_end=?, away_pauses=?, away_pause_declined_for=?, destination=?, away_list_id=?, away_list_declined_for=?, paused_until=?, person_ids=?, links=?, in_order=?, show_checked=? WHERE id=?',
     [
       project.title, project.notes, project.deadline,
       project.category, project.defaultTaskCategory, project.sortOrder, project.archived ? 1 : 0, project.archivedAt,
@@ -5969,7 +7026,9 @@ export function dbUpdateProject(project: Project): void {
       project.reviewDeclinedAt, project.reviewedAt, JSON.stringify(project.backfillDismissedFields), project.kind,
       project.awayStart, project.awayEnd,
       project.awayPauses ? 1 : 0, project.awayPauseDeclinedFor, project.destination,
-      project.awayListId, project.awayListDeclinedFor, project.id,
+      project.awayListId, project.awayListDeclinedFor, project.pausedUntil,
+      JSON.stringify(project.personIds ?? []), JSON.stringify(project.links ?? []), project.inOrder ? 1 : 0, project.showChecked ? 1 : 0,
+      project.id,
     ]
   );
 }
@@ -5992,6 +7051,7 @@ function rowToPerson(row: Record<string, unknown>): Person {
   return {
     id: row.id as string,
     name: row.name as string,
+    kind: (row.kind as 'individual' | 'business') || 'individual',
     nickname: (row.nickname as string) ?? '',
     notes: (row.notes as string) ?? '',
     sortOrder: row.sort_order as number,
@@ -6026,14 +7086,14 @@ export function dbGetAllPeople(): Person[] {
 export function dbInsertPerson(person: Person): void {
   db.runSync(
     `INSERT INTO people (
-      id, name, nickname, notes, sort_order, archived, archived_at, created_at,
+      id, name, kind, nickname, notes, sort_order, archived, archived_at, created_at,
       birthday_month, birthday_day, birth_year, birthday_task_opt_out, birthday_gift_task_opt_out,
       phone_number, email, link_url, cadence_days, nudge_opt_in, cadence_set_at, reach_out_declined_at,
       reach_out_offer_declined_at, ask_about,
       backfill_dismissed_fields, group_id, location
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
-      person.id, person.name, person.nickname, person.notes, person.sortOrder,
+      person.id, person.name, person.kind, person.nickname, person.notes, person.sortOrder,
       person.archived ? 1 : 0, person.archivedAt, person.createdAt,
       person.birthdayMonth, person.birthdayDay, person.birthYear,
       person.birthdayTaskOptOut ? 1 : 0,
@@ -6051,14 +7111,14 @@ export function dbInsertPerson(person: Person): void {
 export function dbUpdatePerson(person: Person): void {
   db.runSync(
     `UPDATE people SET
-      name=?, nickname=?, notes=?, sort_order=?, archived=?, archived_at=?,
+      name=?, kind=?, nickname=?, notes=?, sort_order=?, archived=?, archived_at=?,
       birthday_month=?, birthday_day=?, birth_year=?, birthday_task_opt_out=?, birthday_gift_task_opt_out=?,
       phone_number=?, email=?, link_url=?, cadence_days=?, nudge_opt_in=?, cadence_set_at=?, reach_out_declined_at=?,
       reach_out_offer_declined_at=?, ask_about=?,
       backfill_dismissed_fields=?, group_id=?, location=?
     WHERE id=?`,
     [
-      person.name, person.nickname, person.notes, person.sortOrder,
+      person.name, person.kind, person.nickname, person.notes, person.sortOrder,
       person.archived ? 1 : 0, person.archivedAt,
       person.birthdayMonth, person.birthdayDay, person.birthYear,
       person.birthdayTaskOptOut ? 1 : 0,

@@ -1,0 +1,4 @@
+{
+  "message": "Sync fixes: something you deleted no longer comes back from an older edit on another device, a device on an older app version no longer blanks newer fields when it syncs, and restoring a backup from another device no longer stops the two devices from syncing with each other",
+  "date": "2026-09-23"
+}

@@ -18,6 +18,7 @@ import {
   isProfileComplete,
   budgetFromMaintenance,
   maintenanceKcal,
+  DIGESTION_SHARE,
   measuredMaintenanceKcal,
   parseBodyProfile,
   parseHeightInput,
@@ -87,7 +88,13 @@ describe('measuredMaintenanceKcal', () => {
     // 1750 resting for this profile at 80kg; the activity level is ignored
     // entirely, which is the point of the alternative basis.
     expect(measuredMaintenanceKcal(profile({ activity: 'veryActive' }), 80, TODAY, 600))
-      .toBeCloseTo(1750 + 600);
+      .toBeCloseTo((1750 + 600) / 0.9);
+  });
+
+  it('counts digestion as a tenth of the total, on top of resting and movement', () => {
+    const total = measuredMaintenanceKcal(profile(), 80, TODAY, 600) as number;
+    expect(DIGESTION_SHARE).toBe(0.1);
+    expect(total - (1750 + 600)).toBeCloseTo(total * DIGESTION_SHARE);
   });
 
   it('has no answer without an activity figure, rather than falling back to the multiplier', () => {
@@ -105,15 +112,15 @@ describe('measuredMaintenanceKcal', () => {
   });
 
   it('counts a genuine zero-activity day as zero rather than as no answer', () => {
-    expect(measuredMaintenanceKcal(profile(), 80, TODAY, 0)).toBeCloseTo(1750);
+    expect(measuredMaintenanceKcal(profile(), 80, TODAY, 0)).toBeCloseTo(1750 / 0.9);
   });
 
   it('reads below the multiplier for the same person on a sedentary day', () => {
     // Not a rule the module enforces, just the arithmetic both are doing: the
     // sedentary factor credits 20% of resting (350 here) where a quiet
-    // measured day credits what was actually recorded.
+    // measured day credits what was actually recorded, plus digestion.
     const multiplier = maintenanceKcal(profile({ activity: 'sedentary' }), 80, TODAY);
-    const measured = measuredMaintenanceKcal(profile(), 80, TODAY, 200);
+    const measured = measuredMaintenanceKcal(profile(), 80, TODAY, 100);
     expect(measured).toBeLessThan(multiplier as number);
   });
 });

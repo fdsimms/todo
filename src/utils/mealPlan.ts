@@ -5,7 +5,7 @@ import { isSameDay } from 'date-fns/isSameDay';
 import { isSameWeek } from 'date-fns/isSameWeek';
 import type { MealPlanEntry, MealSlot, Recipe } from '../types';
 import { MEAL_SLOTS, MEAL_SLOT_LABELS, MEAL_PLAN_RETENTION_DAYS } from '../types';
-import { cleanRecipeName } from './recipeUtils';
+import { cleanRecipeName, recipeByName, recipeNameKey } from './recipeUtils';
 import { dayKeyOf, dayKeyToDate } from './dateUtils';
 import type { WeekStart } from '../store/useSettingsStore';
 
@@ -30,6 +30,22 @@ export function slotRank(slot: MealSlot): number {
 
 export function slotLabel(slot: MealSlot): string {
   return MEAL_SLOT_LABELS[slot] ?? 'Meal';
+}
+
+/**
+ * `2026-08-22#lunch` — one meal of one day, as a string a Set or a Map can key on.
+ *
+ * The app now asks "which meal is this" of two different tables: a meal-slot
+ * task's `generatedSourceId` (`mealSlotSourceId`) and the food log's coverage
+ * of the plan (`loggedMealSlotKeys`). One format for the pair rather than two
+ * that happen to match, so a lookup across them can't quietly miss.
+ *
+ * `#` rather than `:` because a day key already contains `-` and a slot
+ * contains neither, so the pair splits back apart unambiguously — see
+ * `parseMealSlotSource`, which is the half that does the splitting.
+ */
+export function mealSlotKey(dayKey: string, slot: MealSlot): string {
+  return `${dayKey}#${slot}`;
 }
 /**
  * Reading order for a set of entries: by day, then down the day, then by the
@@ -178,14 +194,15 @@ export function shiftDayKey(dayKey: string, days: number): string {
 
 /**
  * Everything a copied entry carries; the store adds the id, the stamp and a
- * null `calendarEventId`.
+ * null `calendarEventId` (and `calendarEventExternalId`, the server's name for
+ * the same event).
  *
  * `calendarEventId` is omitted rather than carried for the same reason
  * `duplicateTask` clears a task's: a copy is a new meal on a new day and
  * needs its own event, and two rows pointing at one device event means
  * whichever reconciles last rewrites the other's night.
  */
-export type MealCopyDraft = Omit<MealPlanEntry, 'id' | 'createdAt' | 'calendarEventId'>;
+export type MealCopyDraft = Omit<MealPlanEntry, 'id' | 'createdAt' | 'calendarEventId' | 'calendarEventExternalId'>;
 
 /**
  * What copying a week forward actually carries, shifted by `days`.
@@ -223,22 +240,118 @@ export function weekCopyDrafts(
   entries: readonly MealPlanEntry[],
   days: number
 ): MealCopyDraft[] {
-  return entries
-    .filter(e => !e.leftoverId)
-    .map(e => ({
-      date: shiftDayKey(e.date, days),
-      slot: e.slot,
-      recipeId: e.recipeId,
-      title: e.title,
-      sortOrder: e.sortOrder,
-      cookedAt: null,
-      leftoverId: null,
-      recipeChoices: [...e.recipeChoices],
-      recipeScale: e.recipeScale,
-      cookTask: e.cookTask,
-      shopTask: e.shopTask,
-      logMeal: e.logMeal,
-    }));
+  return entries.flatMap(e => {
+    const draft = mealCopyDraft(e, shiftDayKey(e.date, days));
+    return draft ? [draft] : [];
+  });
+}
+
+/**
+ * One entry copied onto `date`, carrying exactly what `weekCopyDrafts` carries
+ * (that doc comment is the rule; this is the one place it's written), or null
+ * for a meal eating a tracked leftover, for the reason given there.
+ *
+ * Shared with the one-meal copy (#2913), `copyEntryTo`, so "the same lunch
+ * Monday to Friday" and "last week again" can't come to disagree about
+ * whether a copy keeps the double batch or the meal task answer.
+ * `sortOrder` is the source's: a week copy keeps two dinners in their order,
+ * and a one-meal copy has its own renumbered by the store where it lands.
+ */
+export function mealCopyDraft(entry: MealPlanEntry, date: string): MealCopyDraft | null {
+  if (entry.leftoverId) return null;
+  return {
+    date,
+    slot: entry.slot,
+    recipeId: entry.recipeId,
+    title: entry.title,
+    sortOrder: entry.sortOrder,
+    cookedAt: null,
+    leftoverId: null,
+    recipeChoices: [...entry.recipeChoices],
+    recipeScale: entry.recipeScale,
+    cookTask: entry.cookTask,
+    shopTask: entry.shopTask,
+    logMeal: entry.logMeal,
+  };
+}
+
+/**
+ * The days in `entries` that already have `entry`'s meal in its slot: the
+ * entry's own day, and any day holding a copy of it (#2913). What the meal
+ * sheet's "Also on" chips show as done, so a second tap on Wednesday can't
+ * put two of the same lunch there.
+ *
+ * "The same meal" is the same recipe, or for a typed meal the same title under
+ * `recipeNameKey` (a typed meal has nothing else to be the same by). A leftover
+ * night is only ever its own day: a container isn't copied (see
+ * `weekCopyDrafts`), so no other night can be holding it this way.
+ */
+export function daysWithMeal(
+  entries: readonly MealPlanEntry[],
+  entry: MealPlanEntry
+): Set<string> {
+  const days = new Set<string>([entry.date]);
+  if (entry.leftoverId) return days;
+  const key = entry.recipeId ? null : recipeNameKey(entry.title);
+  for (const other of entries) {
+    if (other.slot !== entry.slot || other.leftoverId) continue;
+    const same = entry.recipeId
+      ? other.recipeId === entry.recipeId
+      : !other.recipeId && recipeNameKey(other.title) === key;
+    if (same) days.add(other.date);
+  }
+  return days;
+}
+
+const SLOT_PLURALS: Record<MealSlot, string> = {
+  breakfast: 'breakfasts',
+  lunch: 'lunches',
+  dinner: 'dinners',
+  snack: 'snacks',
+};
+
+/** "lunches": a slot counted, for "Copy lunches from Sep 21 – 27" and its undo. */
+export function slotPlural(slot: MealSlot): string {
+  return SLOT_PLURALS[slot] ?? 'meals';
+}
+
+/**
+ * The slots a week could take from `source` one at a time (#2913), in day
+ * order: those with nothing at all in `target`, and something in `source`
+ * that a copy would carry.
+ *
+ * **Offered only into a slot that is empty for the whole week**, which is the
+ * whole-week offer's own rule applied to a narrower unit. That offer is made
+ * only into an empty week because it copies every slot, and a week with
+ * anything in it would ask "does Tuesday's dinner replace the one there, or
+ * sit beside it?" This copies one slot, so the question is only avoided if
+ * that slot has nothing in it: a week with its dinners planned and no lunches
+ * yet takes last week's lunches with nothing to merge. A week with one lunch
+ * planned is being worked on, lunch-wise, and isn't offered them.
+ *
+ * "Something a copy would carry" is `weekCopyDrafts`' rule: a slot whose only
+ * meals were leftover nights has nothing to copy, so it isn't offered.
+ */
+export function slotsToCopy(
+  source: readonly MealPlanEntry[],
+  target: readonly MealPlanEntry[]
+): MealSlot[] {
+  const taken = new Set(target.map(e => e.slot));
+  const copyable = new Set(source.filter(e => !e.leftoverId).map(e => e.slot));
+  return MEAL_SLOTS.filter(slot => !taken.has(slot) && copyable.has(slot));
+}
+
+/**
+ * One slot of a week copied forward by `days`: `weekCopyDrafts` over just that
+ * slot's meals, so a slot copy and a week copy carry exactly the same things
+ * (and a leftover night is dropped from both).
+ */
+export function slotCopyDrafts(
+  source: readonly MealPlanEntry[],
+  slot: MealSlot,
+  days: number
+): MealCopyDraft[] {
+  return weekCopyDrafts(source.filter(e => e.slot === slot), days);
 }
 
 /** Where one entry lands in a bulk move — see resolveBulkMoveTargets. */
@@ -311,6 +424,61 @@ export function titleForEntry(
     if (recipe) return recipe.name;
   }
   return entry.title;
+}
+
+/**
+ * The recipe a typed meal is already named after, or null (#2929).
+ *
+ * `recipeByName`, so "is there one called this?" can't answer differently
+ * from "could one be made called this?": a typed meal is saved as a recipe
+ * under no book, and the recipe this returns when several books share the
+ * name is the one filed under no book, which is exactly the one `addRecipe`
+ * would refuse a second copy of. When the only matches are two books' recipes
+ * it returns null rather than picking one, and saving the meal makes a new
+ * recipe of its own.
+ */
+export function recipeNamedLike<R extends Pick<Recipe, 'nameKey' | 'cookbookId'>>(
+  title: string,
+  recipes: readonly R[]
+): R | null {
+  return recipeByName(recipes, title);
+}
+
+/**
+ * Whether this entry names a recipe that has since been deleted — the state in
+ * which `titleForEntry` above falls back to the captured `title`, and in which
+ * the meal behaves as the typed meal that title already is.
+ *
+ * `library` is the recipe store's own state, and **a list that hasn't loaded
+ * says nothing about any recipe**: read as "every recipe is gone", one failed
+ * load would turn every "Make X" on Today into "Eat X" and let a rename clear
+ * pointers to recipes that are still there. So it answers false until
+ * `initialized`, and a reader acts on a missing recipe only once it's sure.
+ */
+export function recipeIsGone(
+  entry: Pick<MealPlanEntry, 'recipeId'>,
+  library: { initialized: boolean; recipes: readonly Pick<Recipe, 'id'>[] }
+): boolean {
+  if (!entry.recipeId || !library.initialized) return false;
+  const { recipeId } = entry;
+  return !library.recipes.some(r => r.id === recipeId);
+}
+
+/**
+ * An entry's title as read somewhere the snowflake on its plan row can't be
+ * seen — the shared calendar event, the week pasted into Messages.
+ *
+ * A leftover is planned under its dish's own name (`mealTitleForLeftover`),
+ * so without this Wednesday's container of Monday's stir-fry reads as
+ * cooking stir-fry again, to exactly the people who'd defrost the chicken for
+ * it. A suffix rather than "Leftover …" in front, because the front would
+ * mean lowercasing a name the user typed ("Grandma's chili"), and a title
+ * that already says so is left alone so the demo seed's hand-written
+ * "Leftover chicken stir-fry" doesn't come out saying it twice.
+ */
+export function mealTitleOffPlan(entry: Pick<MealPlanEntry, 'leftoverId'>, title: string): string {
+  if (!entry.leftoverId || /\bleftovers?\b/i.test(title)) return title;
+  return `${title} (leftovers)`;
 }
 
 /** Index for titleForEntry — built once per render rather than per row. */

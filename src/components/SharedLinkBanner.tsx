@@ -22,7 +22,7 @@ interface Props {
  *
  * **It waits for a tap rather than importing on arrival**, which is the whole
  * reason it exists as a banner and not as a recipe that's already there. The
- * import is a page fetch plus an Anthropic call billed to the user's own key,
+ * import is a page fetch plus, with a key, an Anthropic call billed to it,
  * and running that unasked — for something shared in a supermarket aisle three
  * days ago, possibly several of them at once — spends money on a decision nobody
  * made. Tapping Import opens the same `RecipeCreateSheet` a typed link opens,
@@ -36,6 +36,14 @@ interface Props {
  * case where the list below is empty. One page at a time, oldest first: the
  * queue is worked front to back and a stack of banners would bury the screen
  * it's sitting on.
+ *
+ * **Without a key it offers Import all the same.** It used to swap Import for
+ * "Add API key", back when every link import needed the model. A page that
+ * publishes `schema.org/Recipe` now imports with no key at all
+ * (`recipePageOffline.ts`), which is most recipe sites and so most shares, and
+ * one that doesn't is refused in the sheet with a message naming the key. That
+ * is a better place to learn it than a banner guessing before the page has
+ * even been fetched.
  */
 export function SharedLinkBanner({ url, remaining, onImport, onDismiss }: Props) {
   const colors = useColors();
@@ -101,6 +109,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: spacing.xs,
   },
   text: { flexShrink: 1, color: colors.text, fontSize: font.md },
+  // Information rather than an aside, so `textSecondary` for the reason
+  // EmptyNote's own text is.
   host: { fontWeight: fontWeight.bold },
   // The queue's depth, not a badge on an action — same quiet treatment the
   // "N more" counters elsewhere get, so it reads as context for the line it

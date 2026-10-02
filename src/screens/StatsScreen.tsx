@@ -20,6 +20,7 @@ import { useTaskStore } from '../store/useTaskStore';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
+import { SegmentedControl, type SegmentOption } from '../components/SegmentedControl';
 import { bestStreakOf, isStreakAtRecord } from '../utils/streakRecord';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, animation, type Colors } from '../theme';
@@ -55,6 +56,7 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { haptics } from '../utils/haptics';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useRecipeStore } from '../store/useRecipeStore';
+import { useGroceryStore } from '../store/useGroceryStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { describeFridgeHistory, outcomeCounts } from '../utils/leftovers';
 import { getLogicalToday } from '../utils/dateUtils';
@@ -66,6 +68,7 @@ import {
 import {
   cookingWindow,
   hasCookingData,
+  lastDaysOf,
   leftoversFinishedIn,
   mostCookedRecipes,
   type CookingWindow,
@@ -101,7 +104,17 @@ const MOST_COOKED_LIMIT = 5;
 // The eating read shares the cooking window rather than picking its own. They
 // are the same question asked from two sides, and two headings a month apart on
 // one screen would read as a disagreement about what "lately" means.
+//
+// Unless somebody asks for the week (#2916): a person checking their eating
+// week by week has no use for a month, and a heading they just chose to change
+// is not the two sections disagreeing. So the month stays the default and the
+// week is one tap away on the Eating card, narrowing the month already loaded
+// (`lastDaysOf`) rather than reading a second window.
 const MOST_LOGGED_LIMIT = 5;
+const EATING_RANGES: SegmentOption<number>[] = [
+  { value: 7, label: '7 days', accessibilityLabel: 'Show the last 7 days' },
+  { value: COOKING_DAYS, label: `${COOKING_DAYS} days`, accessibilityLabel: `Show the last ${COOKING_DAYS} days` },
+];
 
 // Sections cascade in on mount: each fades and rises with a small delay.
 function StaggerIn({ index, children }: { index: number; children: React.ReactNode }) {
@@ -377,6 +390,7 @@ export function StatsScreen() {
   // a blurred tab stays mounted for the life of the session, so a window
   // computed at mount would still end on the day the app was opened.
   const foodEntries = useFoodLogStore(s => s.windowEntries);
+  const groceryItems = useGroceryStore(s => s.items);
   const loadFoodWindow = useFoodLogStore(s => s.loadWindow);
   useFocusEffect(
     useCallback(() => {
@@ -411,16 +425,28 @@ export function StatsScreen() {
   // behind the kitchen switch, so somebody who has put the kitchen away
   // shouldn't be shown what they ate, and turning it back on restores this
   // exactly as it was.
+  const [eatingDays, setEatingDays] = useState(COOKING_DAYS);
   const eating = useMemo(() => {
     if (!kitchenEnabled || !cookWindow) return null;
+    const span = lastDaysOf(cookWindow, eatingDays);
     return {
-      counts: nutritionCounts(foodEntries, cookWindow),
-      averages: nutrientAverages(foodEntries, cookWindow),
-      mix: sourceMix(foodEntries, cookWindow),
-      foods: mostLoggedFoods(foodEntries, cookWindow, MOST_LOGGED_LIMIT),
+      counts: nutritionCounts(foodEntries, span),
+      averages: nutrientAverages(foodEntries, span),
+      mix: sourceMix(foodEntries, span),
+      // A food is named by the catalog row or recipe it is, as it is called
+      // now, rather than by whichever box of it was logged last.
+      foods: mostLoggedFoods(foodEntries, span, MOST_LOGGED_LIMIT, {
+        items: new Map(groceryItems.map(item => [item.id, item.name])),
+        recipes: new Map(recipes.map(recipe => [recipe.id, recipe.name])),
+      }),
     };
-  }, [kitchenEnabled, foodEntries, cookWindow]);
-  const hasEating = hasNutritionData(eating?.counts ?? null);
+  }, [kitchenEnabled, foodEntries, cookWindow, eatingDays, groceryItems, recipes]);
+  // Asked of the whole month whichever span is showing, so a week with nothing
+  // logged in it keeps the section, and with it the control that switches back.
+  const hasEating = useMemo(
+    () => hasNutritionData(kitchenEnabled && cookWindow ? nutritionCounts(foodEntries, cookWindow) : null),
+    [kitchenEnabled, foodEntries, cookWindow],
+  );
 
   // The screen used to be gated on completions alone, so someone whose history
   // is in the kitchen rather than the task list was told there was no data.
@@ -932,9 +958,25 @@ export function StatsScreen() {
           {hasEating && eating !== null && (
             <StaggerIn index={cookingStagger + 2}>
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>EATING (LAST {COOKING_DAYS} DAYS)</Text>
+              <Text style={styles.sectionTitle}>EATING (LAST {eatingDays} DAYS)</Text>
+              {/* Governs this card and MOST LOGGED below, which read the same
+                  entries. See EATING_RANGES. */}
+              <View style={styles.rangeRow}>
+                <SegmentedControl
+                  options={EATING_RANGES}
+                  value={eatingDays}
+                  onChange={next => { haptics.tap(); setEatingDays(next); }}
+                  label="Eating range"
+                />
+              </View>
               <View style={styles.card}>
-                <View style={[styles.row, styles.rowBorder]}>
+                <View
+                  style={[
+                    styles.row,
+                    (eating.counts.daysComplete < eating.counts.daysLogged || eating.averages.length > 0)
+                      && styles.rowBorder,
+                  ]}
+                >
                   <Text style={styles.rowText}>Days you logged</Text>
                   <Text style={styles.cookValue}>
                     {eating.counts.daysLogged} of {eating.counts.days}
@@ -943,7 +985,7 @@ export function StatsScreen() {
                 {/* Named rather than quietly filtered out of the averages: this
                     is how the card says what its figures are built on. */}
                 {eating.counts.daysComplete < eating.counts.daysLogged && (
-                  <View style={[styles.row, styles.rowBorder]}>
+                  <View style={[styles.row, eating.averages.length > 0 && styles.rowBorder]}>
                     <Text style={styles.rowText}>Logged past one meal</Text>
                     <Text style={styles.cookValue}>
                       {eating.counts.daysComplete} of {eating.counts.daysLogged}
@@ -957,7 +999,9 @@ export function StatsScreen() {
                   >
                     <View style={styles.instanceMain}>
                       <Text style={styles.rowText}>{NUTRIENT_LABEL[row.key].label} a day</Text>
-                      {row.days < eating.counts.daysComplete && (
+                      {/* Against the days the averages are drawn from,
+                          which stop at yesterday, not every complete day. */}
+                      {row.days < eating.counts.daysAveraged && (
                         <Text style={styles.instanceMeta}>
                           across {row.days} {row.days === 1 ? 'day' : 'days'} that stated it
                         </Text>
@@ -984,10 +1028,10 @@ export function StatsScreen() {
           {hasEating && eating !== null && eating.foods.length > 0 && (
             <StaggerIn index={cookingStagger + 3}>
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>MOST LOGGED (LAST {COOKING_DAYS} DAYS)</Text>
+              <Text style={styles.sectionTitle}>MOST LOGGED (LAST {eatingDays} DAYS)</Text>
               <View style={styles.card}>
                 {eating.foods.map((food, i) => (
-                  <View key={food.label} style={[styles.row, styles.rowBorder]}>
+                  <View key={food.key} style={[styles.row, styles.rowBorder]}>
                     <Text style={styles.rank}>#{i + 1}</Text>
                     <View style={styles.instanceMain}>
                       <Text style={styles.instanceTitle} numberOfLines={1}>{food.label}</Text>
@@ -998,16 +1042,21 @@ export function StatsScreen() {
                     </View>
                   </View>
                 ))}
+                {/* The sources under the label rather than beside it: three
+                    or four of them can't share a 390pt row with it, and the
+                    label was being crushed to a sliver. */}
                 <View style={styles.row}>
-                  <Text style={styles.rowText}>Where the figures came from</Text>
-                  <Text style={styles.cookValue}>
-                    {[
-                      eating.mix.label > 0 ? `${eating.mix.label} label` : null,
-                      eating.mix.database > 0 ? `${eating.mix.database} database` : null,
-                      eating.mix.manual > 0 ? `${eating.mix.manual} typed` : null,
-                      eating.mix.estimated > 0 ? `${eating.mix.estimated} estimated` : null,
-                    ].filter(Boolean).join(' · ')}
-                  </Text>
+                  <View style={styles.instanceMain}>
+                    <Text style={styles.rowText}>Where the figures came from</Text>
+                    <Text style={styles.mixLine}>
+                      {[
+                        eating.mix.label > 0 ? `${eating.mix.label} label` : null,
+                        eating.mix.database > 0 ? `${eating.mix.database} database` : null,
+                        eating.mix.manual > 0 ? `${eating.mix.manual} typed` : null,
+                        eating.mix.estimated > 0 ? `${eating.mix.estimated} estimated` : null,
+                      ].filter(Boolean).join(' · ')}
+                    </Text>
+                  </View>
                 </View>
               </View>
             </View>
@@ -1048,7 +1097,7 @@ export function StatsScreen() {
                   <View style={[styles.row, styles.rowBorder]}>
                     <Text style={styles.rowText}>
                       {projectSummary.activeDone}/{projectSummary.activeTotal} tasks done across{' '}
-                      {projectSummary.active} active {projectSummary.active === 1 ? 'project' : 'projects'}
+                      {projectSummary.activeTracked} active {projectSummary.activeTracked === 1 ? 'project' : 'projects'}
                     </Text>
                   </View>
                 )}
@@ -1126,6 +1175,7 @@ const makeStyles = (colors: Colors) =>
       textAlign: 'center',
     },
     section: { marginBottom: spacing.lg },
+    rangeRow: { marginBottom: spacing.sm },
     sectionTitle: {
       color: colors.textSecondary,
       fontSize: font.xs,
@@ -1291,6 +1341,13 @@ const makeStyles = (colors: Colors) =>
       color: colors.textTertiary,
       fontSize: font.xs,
       fontWeight: '500',
+    },
+    // The source mix is information rather than a dim aside, so it reads in
+    // textSecondary, the grey the rest of this card uses for its figures.
+    mixLine: {
+      color: colors.textSecondary,
+      fontSize: font.sm,
+      marginTop: 2,
     },
     habitRow: {
       paddingHorizontal: spacing.md,

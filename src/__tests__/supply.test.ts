@@ -18,10 +18,12 @@ import {
   staleSupplyReorderTasks,
   suppliesStockedFrom,
   suppliesWantingList,
+  supplyLinkActs,
   supplyOrderByDate,
   supplyReorderReason,
   supplyReorderSourceId,
   supplyReorderTitle,
+  supplyRestockReleasesItem,
   supplyRunOutDate,
   wantedSupplyReorders,
 } from '../utils/supply';
@@ -55,6 +57,7 @@ const BASE: Task = {
   recurrenceInterval: 1,
   recurrenceDays: [],
   recurrenceMonthDay: null,
+  recurrenceMonth: null,
   recurrenceWeekOrdinal: null,
   recurrenceAnchorDay: null,
   recurrenceAnchorDate: null,
@@ -73,8 +76,13 @@ const BASE: Task = {
   allowOvershoot: false,
   quotaIntervalMinutes: null,
   quotaReminders: false,
-  quotaStartedAt: null, quotaAlwaysVisible: false,
+  quotaStartedAt: null, quotaAlwaysVisible: false, followWaterTarget: false,
   quotaPeriod: 'day',
+  rotationEnabled: false,
+  rotationItems: [],
+  rotationLog: [],
+  rotationPeriodStart: null,
+  rotationLastDone: {},
   progressCount: 0,
   tags: [],
   sortOrder: 0,
@@ -103,7 +111,7 @@ const BASE: Task = {
   streakRequiresWindow: false,
   reminderTime: null,
   reminderKind: 'notification',
-  reminderOffsetDays: null, reminderTimeAnchor: 'wallClock', reminderUtcOffsetMinutes: null,
+  reminderOffsetDays: null, reminderTracksVisibility: false, reminderTimeAnchor: 'wallClock', reminderUtcOffsetMinutes: null,
   parentId: null,
   groupId: null,
   projectId: null,
@@ -119,6 +127,7 @@ const BASE: Task = {
   followUpTaskTally: 0,
   previousFollowUpTaskTally: 0,
   followUpTaskSourceTitle: null,
+  followUpTaskSourceId: null,
   vacationPause: false, excludeFromSuggestions: false,
   timerStartedAt: null,
   timedMinutes: null,
@@ -433,6 +442,15 @@ describe('wantedSupplyReorders', () => {
     expect(wantedSupplyReorders([linked])).toEqual([]);
   });
 
+  it('asks for a linked supply whose item is not one the list can act on', () => {
+    // Deleted from the catalog, or the kitchen switched off: the list half
+    // says nothing about it, so a reorder task is the only way it asks.
+    const linked = supplyTask({ id: 'linked', supplyCount: 0, supplyGroceryItemId: 'item-1' });
+    expect(wantedSupplyReorders([linked], undefined, undefined, new Set(['item-2'])).map(w => w.taskId))
+      .toEqual(['linked']);
+    expect(wantedSupplyReorders([linked], undefined, undefined, new Set(['item-1']))).toEqual([]);
+  });
+
   it('puts the soonest run-out first and the unknowable ones last', () => {
     const soon = supplyTask({ id: 'soon', supplyCount: 1 });
     const later = supplyTask({
@@ -441,6 +459,18 @@ describe('wantedSupplyReorders', () => {
     const unknown = supplyTask({ id: 'unknown', supplyCount: 1, recurrenceFromCompletion: true });
     const order = wantedSupplyReorders([unknown, later, soon]).map(w => w.taskId);
     expect(order).toEqual(['soon', 'later', 'unknown']);
+  });
+
+  it('puts a supply that has already run out first, so the cap cannot drop it', () => {
+    // An empty supply has no run-out date to sort by, but it is the most
+    // urgent one there is, not the least.
+    const low = [1, 2, 3, 4, 5].map(n => supplyTask({
+      id: `low${n}`, supplyCount: 1, recurrenceType: 'weekly', dueDate: dayFromToday(n),
+    }));
+    const empty = supplyTask({ id: 'empty', supplyCount: 0 });
+    const order = wantedSupplyReorders([...low, empty], undefined, 5).map(w => w.taskId);
+    expect(order[0]).toBe('empty');
+    expect(order).toHaveLength(5);
   });
 
   it('carries the deadline, the pack size and the buying link onto the want', () => {
@@ -460,6 +490,18 @@ describe('wantedSupplyReorders', () => {
       supplyTask({ id: `t${i}`, supplyCount: 1 })
     );
     expect(wantedSupplyReorders(many)).toHaveLength(MAX_SUPPLY_REORDER_TASKS);
+  });
+});
+
+describe('supplyLinkActs', () => {
+  it('is false with no link, and true for any link when no set is given', () => {
+    expect(supplyLinkActs({ supplyGroceryItemId: null })).toBe(false);
+    expect(supplyLinkActs({ supplyGroceryItemId: 'item-1' })).toBe(true);
+  });
+
+  it('is true only for a link inside the set it is given', () => {
+    expect(supplyLinkActs({ supplyGroceryItemId: 'item-1' }, new Set(['item-1']))).toBe(true);
+    expect(supplyLinkActs({ supplyGroceryItemId: 'item-1' }, new Set())).toBe(false);
   });
 });
 
@@ -488,6 +530,13 @@ describe('staleSupplyReorderTasks', () => {
     );
     const rows = sources.map(s => reorderTask(s.id));
     expect(staleSupplyReorderTasks([...sources, ...rows])).toEqual([]);
+  });
+
+  it('keeps the order of a supply whose linked item is gone, and clears it once the link can act', () => {
+    const source = supplyTask({ id: 'src', supplyCount: 1, supplyGroceryItemId: 'item-1' });
+    expect(staleSupplyReorderTasks([source, reorderTask('src')], undefined, new Set())).toEqual([]);
+    expect(staleSupplyReorderTasks([source, reorderTask('src')], undefined, new Set(['item-1'])).map(t => t.id))
+      .toEqual(['reorder-src']);
   });
 
   it('leaves a completed reorder task alone', () => {
@@ -576,6 +625,42 @@ describe('suppliesWantingList', () => {
     const a = supplyTask({ id: 'a', supplyCount: 1, supplyGroceryItemId: 'item-1' });
     const b = supplyTask({ id: 'b', supplyCount: 0, supplyGroceryItemId: 'item-1' });
     expect(suppliesWantingList([a, b], [item('item-1')])).toEqual(['item-1']);
+  });
+});
+
+describe('supplyRestockReleasesItem', () => {
+  // #2935: a row taken off the list by hand left the supply's flag standing,
+  // so a later restock in the editor never re-armed it and the next run-down
+  // asked nowhere.
+  it('names the linked item once a restock clears the threshold', () => {
+    const before = supplyTask({ supplyCount: 1, supplyGroceryItemId: 'item-1' });
+    const after = { ...before, supplyCount: 6 };
+    expect(supplyRestockReleasesItem(before, after)).toBe('item-1');
+  });
+
+  it('leaves the flag while the supply is still low after the top-up', () => {
+    // Clearing here would have the next sweep put a row the user just took off
+    // the list straight back on it.
+    const before = supplyTask({ supplyCount: 0, supplyReorderAt: 2, supplyGroceryItemId: 'item-1' });
+    const after = { ...before, supplyCount: 1 };
+    expect(supplyRestockReleasesItem(before, after)).toBeNull();
+  });
+
+  it('ignores a save that did not raise the count', () => {
+    // The editor writes the whole supply card on every save.
+    const before = supplyTask({ supplyCount: 4, supplyGroceryItemId: 'item-1' });
+    expect(supplyRestockReleasesItem(before, { ...before, supplyLeadDays: 3 })).toBeNull();
+    expect(supplyRestockReleasesItem(before, { ...before, supplyCount: 3 })).toBeNull();
+  });
+
+  it('names nothing for an unlinked supply', () => {
+    const before = supplyTask({ supplyCount: 1 });
+    expect(supplyRestockReleasesItem(before, { ...before, supplyCount: 6 })).toBeNull();
+  });
+
+  it('names nothing for a supply that has stopped being one', () => {
+    const before = supplyTask({ supplyCount: null, supplyGroceryItemId: 'item-1' });
+    expect(supplyRestockReleasesItem(before, { ...before, supplyCount: 6 })).toBeNull();
   });
 });
 

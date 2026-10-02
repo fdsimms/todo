@@ -9,10 +9,21 @@ import {
 import type { Recipe, RecipeIngredient } from '../types';
 import { LEFTOVER_KEEP_DAYS_MAX, RECIPE_STEP_NOTE_MAX_LENGTH } from '../types';
 import { groceryNameKey } from '../utils/groceryParse';
+import { deleteRecipeImage } from '../utils/recipePhoto';
 
+// Only the file delete is stubbed, so a test can see which photos a delete
+// cleans up; everything else in the module is the real thing.
+jest.mock('../utils/recipePhoto', () => ({
+  ...jest.requireActual('../utils/recipePhoto'),
+  deleteRecipeImage: jest.fn(),
+}));
 jest.mock('../db/database', () => ({
   dbGetAllRecipes: jest.fn().mockReturnValue([]),
   dbGetAllCookbooks: jest.fn().mockReturnValue([]),
+  dbGetAllCookbookIndexEntries: jest.fn().mockReturnValue([]),
+  dbInsertCookbookIndexEntry: jest.fn(),
+  dbUpdateCookbookIndexEntry: jest.fn(),
+  dbDeleteCookbookIndexEntry: jest.fn(),
   dbInsertCookbook: jest.fn(),
   dbUpdateCookbook: jest.fn(),
   dbDeleteCookbook: jest.fn(),
@@ -20,6 +31,19 @@ jest.mock('../db/database', () => ({
   dbUpdateRecipe: jest.fn(),
   dbDeleteRecipe: jest.fn(),
   dbBatchUpdateRecipeUpNextOrders: jest.fn(),
+}));
+
+// The meal plan is what a rename or a delete owes a write to (its entries
+// point at recipes by id), and the store reaches it lazily. Mocked here for
+// the reason useMealPlanStore.test.ts mocks this store back: what's pinned is
+// what the recipe store asks of it, and the meal plan's own suite covers what
+// it then does.
+const mockMealPlan = {
+  retitleRecipeEntries: jest.fn(),
+  reconcileRecipeSlots: jest.fn(),
+};
+jest.mock('../store/useMealPlanStore', () => ({
+  useMealPlanStore: { getState: () => mockMealPlan },
 }));
 
 let seq = 0;
@@ -44,6 +68,7 @@ function makeRecipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
     tags: [],
     ingredients: [],
     emptySections: [],
+    emptyStepSections: [],
     components: [],
     prepTasks: [],
     steps: [],
@@ -74,7 +99,7 @@ function makeRecipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
 }
 
 function seed(recipes: Recipe[]) {
-  useRecipeStore.setState({ recipes, cookbooks: [], initialized: true });
+  useRecipeStore.setState({ recipes, cookbooks: [], indexEntries: [], initialized: true });
 }
 
 beforeEach(() => {
@@ -116,6 +141,43 @@ describe('addRecipe', () => {
     expect(useRecipeStore.getState().recipes).toHaveLength(1);
   });
 
+  it('allows a name another book already has', () => {
+    // Six Seasons and Plenty can each have a Lentil Soup: a name is unique per
+    // book, not across the box.
+    const plenty = { id: 'b-plenty', title: 'Plenty', titleKey: 'plenty|', author: null, sortOrder: 1, createdAt: '' };
+    seed([makeRecipe('Lentil soup', { nameKey: 'lentil soup', cookbookId: 'b-six' })]);
+    useRecipeStore.setState({ cookbooks: [plenty] });
+
+    const created = useRecipeStore.getState().addRecipe('Lentil Soup', plenty.id);
+
+    expect(created).not.toBeNull();
+    expect(useRecipeStore.getState().recipes).toHaveLength(2);
+  });
+
+  it('creates a recipe already linked to the book it names, mirroring it', () => {
+    const plenty = { id: 'b-plenty', title: 'Plenty', titleKey: 'plenty|yotam ottolenghi', author: 'Yotam Ottolenghi', sortOrder: 1, createdAt: '' };
+    useRecipeStore.setState({ cookbooks: [plenty] });
+
+    const created = useRecipeStore.getState().addRecipe('Lentil soup', plenty.id)!;
+
+    expect(created).toMatchObject({ cookbookId: 'b-plenty', source: 'Plenty', author: 'Yotam Ottolenghi', sourceType: 'cookbook' });
+  });
+
+  it('refuses a name already in the same book, and a bookless one among bookless ones', () => {
+    const plenty = { id: 'b-plenty', title: 'Plenty', titleKey: 'plenty|', author: null, sortOrder: 1, createdAt: '' };
+    seed([
+      makeRecipe('Lentil soup', { nameKey: 'lentil soup', cookbookId: 'b-plenty' }),
+      makeRecipe('Ragu', { nameKey: 'ragu' }),
+    ]);
+    useRecipeStore.setState({ cookbooks: [plenty] });
+
+    expect(useRecipeStore.getState().addRecipe('lentil soup', 'b-plenty')).toBeNull();
+    expect(useRecipeStore.getState().addRecipe('Ragu')).toBeNull();
+    // A bookless recipe is not a clash for a book, nor the other way round.
+    expect(useRecipeStore.getState().addRecipe('Ragu', 'b-plenty')).not.toBeNull();
+    expect(useRecipeStore.getState().addRecipe('Lentil soup')).not.toBeNull();
+  });
+
   it('hands each new recipe the next sort order', () => {
     useRecipeStore.getState().addRecipe('One');
     const second = useRecipeStore.getState().addRecipe('Two')!;
@@ -152,10 +214,48 @@ describe('renameRecipe', () => {
     expect(useRecipeStore.getState().recipeById(b.id)!.name).toBe('Soup');
   });
 
+  it('allows a rename onto a name only another book has', () => {
+    const a = makeRecipe('Lentil soup', { nameKey: 'lentil soup', cookbookId: 'b-six' });
+    const b = makeRecipe('Soup', { nameKey: 'soup', cookbookId: 'b-plenty' });
+    seed([a, b]);
+
+    expect(useRecipeStore.getState().renameRecipe(b.id, 'Lentil soup')).toBe(true);
+  });
+
+  it('refuses a rename onto a name its own book already has', () => {
+    const a = makeRecipe('Lentil soup', { nameKey: 'lentil soup', cookbookId: 'b-plenty' });
+    const b = makeRecipe('Soup', { nameKey: 'soup', cookbookId: 'b-plenty' });
+    seed([a, b]);
+
+    expect(useRecipeStore.getState().renameRecipe(b.id, 'Lentil soup')).toBe(false);
+  });
+
   it('refuses an empty name', () => {
     const r = makeRecipe('Ragu');
     seed([r]);
     expect(useRecipeStore.getState().renameRecipe(r.id, '  ')).toBe(false);
+  });
+
+  it('retitles the meals planned from it, with the cleaned name', () => {
+    // The plan shows the live name, but the calendar event and the "Make X"
+    // task read each entry's captured title, which kept the old name for good.
+    const r = makeRecipe('Chicken thing', { nameKey: 'chicken thing' });
+    seed([r]);
+
+    useRecipeStore.getState().renameRecipe(r.id, '  Lemon garlic chicken ');
+
+    expect(mockMealPlan.retitleRecipeEntries).toHaveBeenCalledWith(r.id, 'Lemon garlic chicken');
+  });
+
+  it('leaves the plan alone when the rename is refused', () => {
+    const a = makeRecipe('Ragu', { nameKey: 'ragu' });
+    const b = makeRecipe('Soup', { nameKey: 'soup' });
+    seed([a, b]);
+
+    useRecipeStore.getState().renameRecipe(b.id, 'ragu');
+    useRecipeStore.getState().renameRecipe(b.id, '   ');
+
+    expect(mockMealPlan.retitleRecipeEntries).not.toHaveBeenCalled();
   });
 });
 
@@ -389,6 +489,19 @@ describe('ingredients', () => {
 
     expect(useRecipeStore.getState().addIngredient(r.id, ' GARLIC ')).toBeNull();
     expect(useRecipeStore.getState().recipeById(r.id)!.ingredients).toHaveLength(1);
+  });
+
+  it('adds the same ingredient again under another heading (#2917)', () => {
+    const r = makeRecipe('Carnitas tacos');
+    seed([r]);
+    useRecipeStore.getState().addIngredient(r.id, '3 cloves garlic', 'For the marinade');
+
+    expect(useRecipeStore.getState().addIngredient(r.id, '2 cloves garlic', 'For the sauce')).not.toBeNull();
+    const rows = useRecipeStore.getState().recipeById(r.id)!.ingredients;
+    expect(rows.map(i => [i.section, i.quantity])).toEqual([
+      ['For the marinade', '3 cloves'],
+      ['For the sauce', '2 cloves'],
+    ]);
   });
 
   it('recognizes clove/cloves as a unit', () => {
@@ -801,6 +914,124 @@ describe('steps', () => {
     useRecipeStore.getState().removeStep(r.id, 'gone');
     expect(useRecipeStore.getState().recipeById(r.id)!.steps).toEqual([]);
   });
+
+  it('files a new step under a section, trimmed and capped, and leaves it absent with none given', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+
+    const withSection = useRecipeStore.getState().addStep(r.id, 'Simmer the sauce', '  For the sauce  ')!;
+    expect(withSection.section).toBe('For the sauce');
+
+    const withoutSection = useRecipeStore.getState().addStep(r.id, 'Plate it up')!;
+    expect(withoutSection.section).toBeUndefined();
+  });
+});
+
+describe('addEmptyStepSection / removeEmptyStepSection', () => {
+  it('declares a heading with nothing under it yet', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+
+    expect(useRecipeStore.getState().addEmptyStepSection(r.id, ' For the tofu ')).toBe(true);
+    expect(useRecipeStore.getState().recipeById(r.id)!.emptyStepSections).toEqual(['For the tofu']);
+  });
+
+  it('refuses a blank name', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+
+    expect(useRecipeStore.getState().addEmptyStepSection(r.id, '   ')).toBe(false);
+  });
+
+  it('refuses a heading a step already uses', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+    useRecipeStore.getState().addStep(r.id, 'Simmer the sauce', 'For the sauce');
+
+    expect(useRecipeStore.getState().addEmptyStepSection(r.id, 'For the sauce')).toBe(false);
+  });
+
+  it('refuses a heading already declared', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+    useRecipeStore.getState().addEmptyStepSection(r.id, 'For the sauce');
+
+    expect(useRecipeStore.getState().addEmptyStepSection(r.id, 'For the sauce')).toBe(false);
+  });
+
+  it('un-declares a heading', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+    useRecipeStore.getState().addEmptyStepSection(r.id, 'For the sauce');
+
+    useRecipeStore.getState().removeEmptyStepSection(r.id, 'For the sauce');
+
+    expect(useRecipeStore.getState().recipeById(r.id)!.emptyStepSections).toEqual([]);
+  });
+
+  it('is a no-op for a heading that was never declared', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+    jest.clearAllMocks();
+
+    useRecipeStore.getState().removeEmptyStepSection(r.id, 'Never declared');
+
+    expect(dbUpdateRecipe).not.toHaveBeenCalled();
+  });
+
+  it('prunes a declared heading the moment a step adopts the same label', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+    useRecipeStore.getState().addEmptyStepSection(r.id, 'For the sauce');
+
+    useRecipeStore.getState().addStep(r.id, 'Simmer the sauce', 'For the sauce');
+
+    const recipe = useRecipeStore.getState().recipeById(r.id)!;
+    expect(recipe.emptyStepSections).toEqual([]);
+    expect(recipe.steps[0].section).toBe('For the sauce');
+  });
+});
+
+describe('reorderSteps with sections', () => {
+  it('applies the resolved section for each step in the same write as the order', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+    const a = useRecipeStore.getState().addStep(r.id, 'Simmer the sauce')!;
+    const b = useRecipeStore.getState().addStep(r.id, 'Press the tofu')!;
+
+    useRecipeStore.getState().reorderSteps(r.id, [b.id, a.id], new Map([
+      [b.id, 'For the tofu'],
+      [a.id, 'For the sauce'],
+    ]));
+
+    const steps = useRecipeStore.getState().recipeById(r.id)!.steps;
+    expect(steps.map(s => s.id)).toEqual([b.id, a.id]);
+    expect(steps[0].section).toBe('For the tofu');
+    expect(steps[1].section).toBe('For the sauce');
+  });
+
+  it('clears a section when the map resolves it to null', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+    const a = useRecipeStore.getState().addStep(r.id, 'Simmer the sauce', 'For the sauce')!;
+
+    useRecipeStore.getState().reorderSteps(r.id, [a.id], new Map([[a.id, null]]));
+
+    expect(useRecipeStore.getState().recipeById(r.id)!.steps[0].section).toBeUndefined();
+  });
+
+  it('keeps a step\'s current section when no map is given, same as a plain reorder', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+    const a = useRecipeStore.getState().addStep(r.id, 'Simmer the sauce', 'For the sauce')!;
+    const b = useRecipeStore.getState().addStep(r.id, 'Press the tofu')!;
+
+    useRecipeStore.getState().reorderSteps(r.id, [b.id, a.id]);
+
+    const steps = useRecipeStore.getState().recipeById(r.id)!.steps;
+    expect(steps.map(s => s.id)).toEqual([b.id, a.id]);
+    expect(steps.find(s => s.id === a.id)!.section).toBe('For the sauce');
+  });
 });
 
 describe('remapIngredientKey', () => {
@@ -1212,6 +1443,21 @@ describe('deleteRecipe', () => {
     expect(useRecipeStore.getState().recipes).toEqual([]);
   });
 
+  it('reconciles the planned meals\' tasks once the recipe has left the list', () => {
+    // So Thursday's "Make Chili" stops asking to make a recipe that's gone.
+    const r = makeRecipe('Chili');
+    seed([r]);
+    mockMealPlan.reconcileRecipeSlots.mockImplementation(() => {
+      // Read at call time: the reconcile resolves the recipe against the list.
+      expect(useRecipeStore.getState().recipes).toEqual([]);
+    });
+
+    useRecipeStore.getState().deleteRecipe(r.id);
+
+    expect(mockMealPlan.reconcileRecipeSlots).toHaveBeenCalledWith([r.id]);
+    mockMealPlan.reconcileRecipeSlots.mockReset();
+  });
+
   it('leaves a parent’s link dangling rather than editing a recipe the user didn’t touch', () => {
     const steak = makeRecipe('Steak');
     const mash = makeRecipe('Mash');
@@ -1227,6 +1473,18 @@ describe('deleteRecipe', () => {
 });
 
 describe('bulkDeleteRecipes', () => {
+  it('deletes each recipe\'s photo file, as a single delete does', () => {
+    // It used to leave every bulk-deleted recipe's image on disk for good.
+    const a = { ...makeRecipe('Ragu'), imagePath: 'recipe-images/a.jpg' };
+    const b = { ...makeRecipe('Soup'), imagePath: 'recipe-images/b.jpg' };
+    seed([a, b]);
+
+    useRecipeStore.getState().bulkDeleteRecipes([a.id]);
+
+    expect(deleteRecipeImage).toHaveBeenCalledWith('recipe-images/a.jpg');
+    expect(deleteRecipeImage).not.toHaveBeenCalledWith('recipe-images/b.jpg');
+  });
+
   it('drops every named row, in one db call each, and leaves the rest', () => {
     const a = makeRecipe('Ragu');
     const b = makeRecipe('Soup');
@@ -1239,6 +1497,16 @@ describe('bulkDeleteRecipes', () => {
     expect(dbDeleteRecipe).toHaveBeenCalledWith(a.id);
     expect(dbDeleteRecipe).toHaveBeenCalledWith(c.id);
     expect(useRecipeStore.getState().recipes.map(r => r.id)).toEqual([b.id]);
+  });
+
+  it('reconciles the planned meals\' tasks for every recipe it deleted', () => {
+    const a = makeRecipe('Ragu');
+    const b = makeRecipe('Soup');
+    seed([a, b]);
+
+    useRecipeStore.getState().bulkDeleteRecipes([a.id, 'not-a-recipe']);
+
+    expect(mockMealPlan.reconcileRecipeSlots).toHaveBeenCalledWith([a.id]);
   });
 
   it('writes nothing for an empty selection', () => {
@@ -1807,6 +2075,29 @@ describe('logManualPrepTime', () => {
 // ============================================================================
 
 describe('cookbooks', () => {
+  it('finds a book already on the shelf rather than making a second', () => {
+    const first = useRecipeStore.getState().ensureCookbook('Plenty', 'Yotam Ottolenghi')!;
+    const again = useRecipeStore.getState().ensureCookbook(' plenty ', 'Yotam Ottolenghi')!;
+
+    expect(again.id).toBe(first.id);
+    expect(useRecipeStore.getState().cookbooks).toHaveLength(1);
+    expect(useRecipeStore.getState().ensureCookbook('   ')).toBeNull();
+  });
+
+  it('lets two same-named recipes share a book after a merge, rather than failing it', () => {
+    // Names are unique per book at add and rename only; a merge of two books
+    // that each had one is allowed to leave both, since nothing below the
+    // store refuses it and failing the merge would strand the loser.
+    const a = makeRecipe('Lentil soup', { nameKey: 'lentil soup' });
+    const b = makeRecipe('Lentil soup', { nameKey: 'lentil soup' });
+    seed([a, b]);
+    const six = useRecipeStore.getState().linkNewCookbook(a.id, 'Six Seasons')!;
+    const copy = useRecipeStore.getState().linkNewCookbook(b.id, 'Six seasons!', 'Joshua McFadden')!;
+
+    expect(useRecipeStore.getState().mergeCookbooks(six.id, copy.id)).toBe(true);
+    expect(useRecipeStore.getState().recipes.filter(r => r.cookbookId === six.id)).toHaveLength(2);
+  });
+
   it('creates a book and mirrors it onto the recipe', () => {
     const cake = makeRecipe('Carrot cake');
     seed([cake]);
@@ -1965,6 +2256,66 @@ describe('cookbooks', () => {
     expect(useRecipeStore.getState().recipeById(cake.id)!.cookbookId).toBeNull();
   });
 
+  it('clears the page when a recipe moves to a different book (#2921)', () => {
+    // Page 42 of Plenty is not page 42 of Jerusalem.
+    const salad = makeRecipe('Salad');
+    const hummus = makeRecipe('Hummus');
+    seed([salad, hummus]);
+    useRecipeStore.getState().linkNewCookbook(salad.id, 'Plenty', 'Yotam Ottolenghi');
+    useRecipeStore.getState().setSourcePage(salad.id, '42');
+    const jerusalem = useRecipeStore.getState().linkNewCookbook(hummus.id, 'Jerusalem', 'Yotam Ottolenghi')!;
+
+    useRecipeStore.getState().linkCookbook(salad.id, jerusalem.id);
+
+    const saved = useRecipeStore.getState().recipeById(salad.id)!;
+    expect(saved.cookbookId).toBe(jerusalem.id);
+    expect(saved.sourcePage).toBeNull();
+  });
+
+  it('clears the page when a find-or-create link moves the recipe too', () => {
+    const salad = makeRecipe('Salad');
+    seed([salad]);
+    useRecipeStore.getState().linkNewCookbook(salad.id, 'Plenty', 'Yotam Ottolenghi');
+    useRecipeStore.getState().setSourcePage(salad.id, '42');
+
+    useRecipeStore.getState().linkNewCookbook(salad.id, 'Jerusalem', 'Yotam Ottolenghi');
+
+    expect(useRecipeStore.getState().recipeById(salad.id)!.sourcePage).toBeNull();
+  });
+
+  it('keeps the page on a link that stays in the same book, and through a rename or merge', () => {
+    const salad = makeRecipe('Salad');
+    const soup = makeRecipe('Soup');
+    seed([salad, soup]);
+    const plenty = useRecipeStore.getState().linkNewCookbook(salad.id, 'Plenty', 'Yotam Ottolenghi')!;
+    useRecipeStore.getState().setSourcePage(salad.id, '42');
+    const copy = useRecipeStore.getState().linkNewCookbook(soup.id, 'Plenty', null)!;
+    useRecipeStore.getState().setSourcePage(soup.id, '7');
+
+    // What RecipeEditor does on every save.
+    useRecipeStore.getState().linkNewCookbook(salad.id, 'Plenty', 'Yotam Ottolenghi');
+    useRecipeStore.getState().linkCookbook(salad.id, plenty.id);
+    expect(useRecipeStore.getState().recipeById(salad.id)!.sourcePage).toBe('42');
+
+    useRecipeStore.getState().renameCookbook(plenty.id, 'Plenty More', 'Yotam Ottolenghi');
+    expect(useRecipeStore.getState().recipeById(salad.id)!.sourcePage).toBe('42');
+
+    // "These are the same book", so its pages are still its pages.
+    useRecipeStore.getState().mergeCookbooks(plenty.id, copy.id);
+    expect(useRecipeStore.getState().recipeById(soup.id)!.sourcePage).toBe('7');
+  });
+
+  it('keeps a page read off a photo when the book is named afterwards', () => {
+    const salsa = makeRecipe('Salsa verde');
+    seed([salsa]);
+    useRecipeStore.getState().setSourceType(salsa.id, 'cookbook');
+    useRecipeStore.getState().setSourcePage(salsa.id, '45');
+
+    useRecipeStore.getState().linkNewCookbook(salsa.id, 'Plenty', 'Yotam Ottolenghi');
+
+    expect(useRecipeStore.getState().recipeById(salsa.id)!.sourcePage).toBe('45');
+  });
+
   it('shrugs at a link naming a book that is gone', () => {
     seed([makeRecipe('Carrot cake')]);
     expect(useRecipeStore.getState().cookbookById('missing')).toBeUndefined();
@@ -1994,5 +2345,100 @@ describe('setSourcePage', () => {
     useRecipeStore.getState().setSourcePage(cake.id, typed);
     // Every reader prefixes "p." itself, so storing one renders "p. p. 142".
     expect(useRecipeStore.getState().recipeById(cake.id)!.sourcePage).toBe(expected);
+  });
+});
+
+describe('cookbook index entries', () => {
+  const book = (id: string, title: string) =>
+    ({ id, title, titleKey: `${title.toLowerCase()}|`, author: null, sortOrder: 1, createdAt: '' });
+
+  beforeEach(() => {
+    useRecipeStore.setState({ cookbooks: [book('b-six', 'Six Seasons'), book('b-plenty', 'Plenty')] });
+  });
+
+  it('adds a line to a book\'s index, cleaned, and never as a recipe', () => {
+    const entry = useRecipeStore.getState().addIndexEntry('b-six', {
+      title: '  Braised lentils ', page: 'p. 142', ingredients: ['Lentils', ' shallots ', 'lentils', ''],
+    })!;
+
+    expect(entry).toMatchObject({ cookbookId: 'b-six', title: 'Braised lentils', page: '142', ingredients: ['Lentils', 'shallots'] });
+    expect(useRecipeStore.getState().indexEntries).toHaveLength(1);
+    expect(useRecipeStore.getState().recipes).toHaveLength(0);
+  });
+
+  it('refuses no title, a book that isn\'t on the shelf, and a second line of one name in one book', () => {
+    const store = useRecipeStore.getState();
+    expect(store.addIndexEntry('b-six', { title: '  ', page: null, ingredients: [] })).toBeNull();
+    expect(store.addIndexEntry('b-gone', { title: 'Soup', page: null, ingredients: [] })).toBeNull();
+    expect(store.addIndexEntry('b-six', { title: 'Lentil soup', page: '88', ingredients: [] })).not.toBeNull();
+    expect(useRecipeStore.getState().addIndexEntry('b-six', { title: 'lentil soup', page: '90', ingredients: [] })).toBeNull();
+    // Another book's index may have its own.
+    expect(useRecipeStore.getState().addIndexEntry('b-plenty', { title: 'Lentil soup', page: '12', ingredients: [] })).not.toBeNull();
+  });
+
+  it('edits and deletes a line', () => {
+    const entry = useRecipeStore.getState().addIndexEntry('b-six', { title: 'Soup', page: '1', ingredients: [] })!;
+    expect(useRecipeStore.getState().updateIndexEntry(entry.id, { title: 'Lentil soup', page: '2', ingredients: ['lentils'] })).toBe(true);
+    expect(useRecipeStore.getState().indexEntries[0]).toMatchObject({ title: 'Lentil soup', page: '2', ingredients: ['lentils'] });
+
+    useRecipeStore.getState().deleteIndexEntry(entry.id);
+    expect(useRecipeStore.getState().indexEntries).toHaveLength(0);
+  });
+
+  it('takes a book\'s index with it when the book is deleted', () => {
+    useRecipeStore.getState().addIndexEntry('b-six', { title: 'Soup', page: '1', ingredients: [] });
+    useRecipeStore.getState().addIndexEntry('b-plenty', { title: 'Salad', page: '2', ingredients: [] });
+
+    useRecipeStore.getState().deleteCookbook('b-six');
+
+    expect(useRecipeStore.getState().indexEntries.map(e => e.title)).toEqual(['Salad']);
+  });
+
+  it('moves the loser\'s index to the survivor on a merge, folding a dish both listed', () => {
+    const store = useRecipeStore.getState();
+    store.addIndexEntry('b-six', { title: 'Lentil soup', page: null, ingredients: ['lentils'] });
+    store.addIndexEntry('b-plenty', { title: 'Lentil Soup', page: '88', ingredients: ['lentils', 'cumin'] });
+    store.addIndexEntry('b-plenty', { title: 'Fennel salad', page: '40', ingredients: ['fennel'] });
+
+    expect(useRecipeStore.getState().mergeCookbooks('b-six', 'b-plenty')).toBe(true);
+
+    const entries = useRecipeStore.getState().indexEntries;
+    expect(entries).toHaveLength(2);
+    expect(entries.every(e => e.cookbookId === 'b-six')).toBe(true);
+    expect(entries.find(e => e.title === 'Lentil soup')).toMatchObject({ page: '88', ingredients: ['lentils', 'cumin'] });
+  });
+
+  it('applies a scan and takes it back out again', () => {
+    const kept = useRecipeStore.getState().addIndexEntry('b-six', { title: 'Braised lentils', page: null, ingredients: ['lentils'] })!;
+    const drafts = [
+      { title: 'Braised lentils', page: '142', ingredients: ['shallots'], existing: kept },
+      { title: 'Fennel salad', page: '40', ingredients: ['fennel'], existing: null },
+    ];
+
+    const undo = useRecipeStore.getState().applyIndexDrafts('b-six', drafts);
+
+    let entries = useRecipeStore.getState().indexEntries;
+    expect(entries).toHaveLength(2);
+    expect(entries.find(e => e.id === kept.id)).toMatchObject({ page: '142', ingredients: ['lentils', 'shallots'] });
+    expect(undo.created).toHaveLength(1);
+
+    useRecipeStore.getState().undoIndexImport(undo);
+
+    entries = useRecipeStore.getState().indexEntries;
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toEqual(kept);
+  });
+
+  it('makes the recipe to cook a line from, with its book and page and no lines', () => {
+    const entry = useRecipeStore.getState().addIndexEntry('b-six', { title: 'Braised lentils', page: '142', ingredients: ['lentils'] })!;
+
+    const recipe = useRecipeStore.getState().recipeFromIndexEntry(entry.id)!;
+
+    expect(recipe).toMatchObject({ name: 'Braised lentils', cookbookId: 'b-six', source: 'Six Seasons', sourcePage: '142' });
+    expect(recipe.ingredients).toEqual([]);
+    // The entry stays, and asking again opens the same recipe.
+    expect(useRecipeStore.getState().indexEntries).toHaveLength(1);
+    expect(useRecipeStore.getState().recipeFromIndexEntry(entry.id)!.id).toBe(recipe.id);
+    expect(useRecipeStore.getState().recipes).toHaveLength(1);
   });
 });

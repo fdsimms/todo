@@ -3,7 +3,7 @@ import { Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'r
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { Calendar as DeviceCalendar } from 'expo-calendar/legacy';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
+import { spacing, radius, font, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import {
   getCalendarPermission,
@@ -14,7 +14,7 @@ import { EmptyNote } from './EmptyNote';
 import { InlineAction } from './InlineAction';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
-import { SheetModal } from './SheetModal';
+import { CardSheet, useCardSheet } from './CardSheet';
 
 interface Props {
   visible: boolean;
@@ -61,6 +61,8 @@ export function CalendarChoiceSheet({ visible, title, selectedId, onSelect, onCl
   // several.
   const [state, setState] = useState<'loading' | 'denied' | 'ready'>('loading');
   const [calendars, setCalendars] = useState<DeviceCalendar[]>([]);
+  const card = useCardSheet();
+  const dismiss = () => card.close(onClose);
 
   const load = useCallback(async () => {
     setState('loading');
@@ -81,21 +83,20 @@ export function CalendarChoiceSheet({ visible, title, selectedId, onSelect, onCl
   const pick = (calendarId: string | null) => {
     haptics.tap();
     onSelect(calendarId);
-    onClose();
+    dismiss();
   };
 
   return (
-    <SheetModal
+    <CardSheet
       name="CalendarChoiceSheet"
       visible={visible}
-      animationType="slide"
-      presentationStyle="pageSheet"
-      onRequestClose={onClose}
+      controller={card}
+      onRequestClose={dismiss}
     >
       <View style={styles.root}>
         <SheetHeader
           title={title}
-          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} />}
+          left={<SheetHeaderButton label="Cancel" role="cancel" onPress={dismiss} />}
           right={<View style={styles.headerSpacer} />}
         />
         <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
@@ -167,18 +168,18 @@ export function CalendarChoiceSheet({ visible, title, selectedId, onSelect, onCl
           </Text>
         </ScrollView>
       </View>
-    </SheetModal>
+    </CardSheet>
   );
 }
 
 function makeStyles(colors: Colors) {
   return StyleSheet.create({
-    root: { flex: 1, backgroundColor: colors.bg },
+    root: { flexShrink: 1 },
     headerSpacer: { minWidth: 40 },
-    scroll: { flex: 1 },
-    scrollContent: { padding: spacing.md, paddingBottom: spacing.xl },
+    scroll: { flexGrow: 0, flexShrink: 1 },
+    scrollContent: { padding: spacing.md },
     card: {
-      backgroundColor: colors.bgSecondary,
+      backgroundColor: colors.bgTertiary,
       borderRadius: radius.md,
       overflow: 'hidden',
     },

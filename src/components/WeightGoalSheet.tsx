@@ -33,6 +33,7 @@ import {
   feetInchesToCm,
   isProfileComplete,
   macroGrams,
+  DIGESTION_SHARE,
   measuredMaintenanceKcal,
   type ActivityLevel,
   type BodyProfile,
@@ -68,14 +69,21 @@ const HEIGHT_START_FEET = cmToFeetInches(HEIGHT_START_CM).feet;
 /**
  * Setting a weight goal, and the calorie figure it implies.
  *
- * **The app proposes and the person decides, in both halves.** The goal itself
- * is entirely typed in — no suggested target, no recommended rate, nothing
- * filled in from a body. The calorie figure is arithmetic over the fields
- * above it, printed with its own working shown, and it stays a suggestion
- * until the button under it is pressed. `energyBudget.ts` gives the long
- * version of why that line matters; the short version is that a number nobody
- * chose must not end up driving the food log.
+ * **The goal itself is entirely typed in** — no suggested target, no
+ * recommended rate, nothing filled in from a body. The calorie figure is
+ * arithmetic over the fields above it, printed with its own working shown.
+ * `energyBudget.ts` gives the long version of why that matters.
  *
+ * **The plain calorie figure is the one asked-for exception to "stays a
+ * suggestion until applied."** Saving this sheet writes it straight to
+ * `nutritionTargets.calorieKcal`, and `useSettingsStore.syncWeightGoalCalorieTarget`
+ * keeps it in step afterward too, on a body-profile edit or a fresh weigh-in,
+ * so the food log target doesn't quietly go stale the moment the goal isn't
+ * being looked at. See `autoCalorieTargetKcal` in `weightGoal.ts` for the
+ * reasoning and the scope of the exception — it stops at the plain figure:
+ * macros stay opt-in via the button below, same as before.
+ *
+
  * **An `EditorSheet` (full screen) rather than a page sheet**, so the staged
  * form has no swipe-down to lose it — the same answer `LogWeightSheet` takes,
  * and the reason there is no `handleCancel` confirm here.
@@ -295,6 +303,12 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
       targetKg,
       rateKgPerWeek: maintaining ? 0 : (rateKg ?? 0),
     });
+    // Keeps the food log's calorie target in step with the goal automatically
+    // — see autoCalorieTargetKcal's doc comment. Whichever basis (multiplier
+    // or measured) is on screen right now is the one that gets written; a
+    // later weigh-in or profile edit re-syncs on the multiplier basis, via
+    // useSettingsStore.syncWeightGoalCalorieTarget.
+    if (budget !== null) setNutritionTarget('calorieKcal', budget.proposedKcal);
     onClose();
   };
 
@@ -572,7 +586,7 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
                     />
                     <Text style={styles.help}>
                       {measuredBasis
-                        ? `Your resting rate plus ${(typicalActiveKcal ?? 0).toLocaleString()} cal, the active calories in a typical recent day of yours. Movement only, so it reads a little low: it does not count the energy spent digesting food, which the activity levels do.`
+                        ? `Your resting rate plus ${(typicalActiveKcal ?? 0).toLocaleString()} cal, the active calories in a typical recent day of yours, plus about ${Math.round(budget.maintenanceKcal * DIGESTION_SHARE).toLocaleString()} cal for digesting food (about a tenth of what you eat). To also add a day when you move more than usual, turn on Add active calories under Daily targets.`
                         : `The activity level you picked above, as a multiplier on your resting rate.`}
                     </Text>
                   </View>
@@ -604,7 +618,7 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
 
                 <Text style={styles.help}>
                   {measuredBasis
-                    ? 'Still an estimate: the resting half comes from a population formula (Mifflin-St Jeor) and only the activity half is measured. Treat it as a starting point and adjust it against what the scale actually does.'
+                    ? 'Still an estimate: the resting rate comes from a population formula (Mifflin-St Jeor), digestion is a rule of thumb, and only the activity is measured. Treat it as a starting point and adjust it against what the scale actually does.'
                     : 'An estimate from a population formula (Mifflin-St Jeor), not a measurement of you. Treat it as a starting point and adjust it against what the scale actually does.'}
                 </Text>
 
@@ -614,7 +628,7 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
                   </Text>
                 ) : (
                   <InlineAction
-                    icon="flag-outline"
+                    icon="target"
                     label={
                       existingCalorieTarget === undefined
                         ? 'Use as my calorie target'
@@ -623,6 +637,13 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
                     onPress={applyCalorieTarget}
                   />
                 )}
+                {/* Saving writes this figure and refreshWeight re-applies it
+                    (autoCalorieTargetKcal), so say so here rather than let a
+                    typed target change with nobody told why. */}
+                <Text style={styles.help}>
+                  Saving this goal also sets your calorie target to this figure. It is
+                  worked out again each time the Weight screen reads your weight.
+                </Text>
               </>
             )}
           </View>
@@ -660,7 +681,7 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
                         percent={macroPreset.split.fatPct} />
                     </View>
                     <InlineAction
-                      icon="flag-outline"
+                      icon="target"
                       label="Use these as my targets"
                       onPress={applyMacroTargets}
                     />

@@ -1,11 +1,15 @@
 import {
+  plannedMealRowFor,
   useUpTaskDraft,
   useUpTaskDrift,
   useUpTaskFields,
   useUpTaskTitle,
   wantsUseUpTask,
 } from '../utils/leftoverTasks';
-import type { Leftover } from '../types';
+import type { Leftover, MealPlanEntry, MealSlot } from '../types';
+
+/** A local wall-clock time as the ISO instant the app stores, so the suite reads the same in any zone. */
+const localIso = (local: string) => new Date(local).toISOString();
 
 // utils/leftovers → dateUtils → the settings store → database.ts → expo-sqlite,
 // none of which this suite needs; same stub groceryExpiry.test.ts takes.
@@ -21,19 +25,19 @@ function leftover(overrides: Partial<Leftover> = {}): Leftover {
     title: 'Chicken stir-fry',
     recipeId: null,
     sourceEntryId: null,
-    storedAt: '2026-08-10T18:00:00.000Z',
+    storedAt: localIso('2026-08-10T18:00'),
     keepUntil: '2026-08-14',
     finishedAt: null,
     outcome: null,
     frozenAt: null,
     weightG: null,
-    createdAt: '2026-08-10T18:00:00.000Z',
+    createdAt: localIso('2026-08-10T18:00'),
     useUpTask: null,
     ...overrides,
   };
 }
 
-const now = new Date('2026-08-13T09:00:00.000Z');
+const now = new Date(localIso('2026-08-13T09:00'));
 
 // Every other function here takes `now` as an argument, but wantsUseUpTask asks
 // freshness.ts, which reads the clock itself — so without pinning it the
@@ -83,7 +87,7 @@ describe('wantsUseUpTask', () => {
 
   it('ignores a closed-out leftover, however close its keep-until day is', () => {
     expect(
-      wantsUseUpTask(leftover({ keepUntil: '2026-08-14', finishedAt: '2026-08-12T00:00:00.000Z', outcome: 'eaten' }), true)
+      wantsUseUpTask(leftover({ keepUntil: '2026-08-14', finishedAt: localIso('2026-08-12T00:00'), outcome: 'eaten' }), true)
     ).toBe(false);
   });
 
@@ -95,11 +99,60 @@ describe('wantsUseUpTask', () => {
     // fires the task during the grace window, before its own day arrives.
     settingsState.dayResetTime = '02:00';
     try {
-      jest.setSystemTime(new Date('2026-08-14T00:30:00.000Z'));
+      jest.setSystemTime(new Date(localIso('2026-08-14T00:30')));
       expect(wantsUseUpTask(leftover({ keepUntil: '2026-08-15' }), true)).toBe(false);
     } finally {
       settingsState.dayResetTime = '00:00';
     }
+  });
+});
+
+describe('a leftover planned into a meal (#2932)', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(now);
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  type Planned = Pick<MealPlanEntry, 'date' | 'slot' | 'leftoverId' | 'cookedAt'>;
+  const planned = (overrides: Partial<Planned> = {}): Planned => ({
+    date: '2026-08-13', slot: 'dinner', leftoverId: 'chili', cookedAt: null, ...overrides,
+  });
+  const chili = leftover({ id: 'chili', keepUntil: '2026-08-14' });
+  const everyRow = () => true;
+
+  it('finds the meal whose own task already says to eat it', () => {
+    expect(plannedMealRowFor(chili, [planned()], '2026-08-13', everyRow)).toEqual(planned());
+    // Tomorrow's dinner, still before it goes bad, counts too.
+    expect(plannedMealRowFor(chili, [planned({ date: '2026-08-14' })], '2026-08-13', everyRow)).not.toBeNull();
+  });
+
+  it('needs that meal to have a task, or the use-up row is the only reminder there is', () => {
+    const rows = new Set(['2026-08-13#lunch']);
+    const hasRow = (day: string, slot: MealSlot) => rows.has(`${day}#${slot}`);
+    expect(plannedMealRowFor(chili, [planned()], '2026-08-13', hasRow)).toBeNull();
+    expect(plannedMealRowFor(chili, [planned({ slot: 'lunch' })], '2026-08-13', hasRow)).not.toBeNull();
+  });
+
+  it('ignores a meal already eaten, one in the past, one after it goes bad, and another container', () => {
+    const cases: Planned[] = [
+      planned({ cookedAt: localIso('2026-08-13T19:00') }),
+      planned({ date: '2026-08-12' }),
+      planned({ date: '2026-08-15' }),
+      planned({ leftoverId: 'soup' }),
+    ];
+    for (const entry of cases) {
+      expect(plannedMealRowFor(chili, [entry], '2026-08-13', everyRow)).toBeNull();
+    }
+  });
+
+  it('stands the use-up task down, unless the leftover itself asked for one', () => {
+    expect(wantsUseUpTask(chili, true, true)).toBe(false);
+    expect(wantsUseUpTask(chili, true, false)).toBe(true);
+    // A per-leftover "yes" is the user's answer, and outranks the default.
+    expect(wantsUseUpTask({ ...chili, useUpTask: true }, true, true)).toBe(true);
   });
 });
 

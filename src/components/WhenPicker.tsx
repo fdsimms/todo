@@ -27,6 +27,7 @@ import {
   canPageToNextMonth, clampMonthToLatest, isDayAfter,
 } from '../utils/calendarGrid';
 import { dayKeyOf, getLogicalNow, getLogicalToday, getLogicalTomorrow } from '../utils/dateUtils';
+import { projectDateShortcuts, type ProjectDateAnchor } from '../utils/projectDateShortcuts';
 import { parseNaturalDate } from '../utils/parseNaturalDate';
 import { generateId } from '../utils/id';
 import type { TimeOfDay, Effort, Priority, Task } from '../types';
@@ -56,13 +57,13 @@ const BLANK_SNOOZE_TASK: Task = {
   deadlineOffsetDays: null, deadlineMonthDay: null, deferUntil: null,
   timeSegments: [], windowStart: null, windowEnd: null,
   recurrenceType: 'none', recurrenceInterval: 1, recurrenceDays: [],
-  recurrenceMonthDay: null, recurrenceWeekOrdinal: null, recurrenceAnchorDay: null, recurrenceAnchorDate: null, recurrenceEndDate: null,
+  recurrenceMonthDay: null, recurrenceMonth: null, recurrenceWeekOrdinal: null, recurrenceAnchorDay: null, recurrenceAnchorDate: null, recurrenceEndDate: null,
   recurrenceCount: null, recurrenceFromCompletion: false,
   supplyCount: null, supplyUnit: null, supplyRefillCount: null, supplyReorderAt: 1,
   supplyLeadDays: null, supplyDeclinedAtCount: null, supplyGroceryItemId: null,
   targetCount: null, progressCount: 0, targetUnit: null, allowOvershoot: false,
   tags: [], personIds: [], category: null, sortOrder: 0, pinned: false, pinnedOrder: 0, priority: 0, effort: 0,
-  estimatedMinutes: null, reminderTime: null, reminderKind: 'notification', reminderOffsetDays: null, reminderTimeAnchor: 'wallClock', reminderUtcOffsetMinutes: null, linkUrl: null, phoneNumber: null, emailAddress: null, location: null, blockedById: null, waitingOnPersonId: null, waitingOnPersonSince: null, waitingFollowUpDeclinedAt: null, deliverableKind: null, deliverableValue: null, generatedKind: null, generatedSourceId: null,
+  estimatedMinutes: null, reminderTime: null, reminderKind: 'notification', reminderOffsetDays: null, reminderTracksVisibility: false, reminderTimeAnchor: 'wallClock', reminderUtcOffsetMinutes: null, linkUrl: null, phoneNumber: null, emailAddress: null, location: null, blockedById: null, waitingOnPersonId: null, waitingOnPersonSince: null, waitingFollowUpDeclinedAt: null, deliverableKind: null, deliverableValue: null, generatedKind: null, generatedSourceId: null,
   deadlineOnCalendar: false, calendarEventId: null,
   logCompletionToCalendar: false, completionCalendarEventId: null,
   timeBlockEventId: null,
@@ -72,14 +73,19 @@ const BLANK_SNOOZE_TASK: Task = {
   polarity: 'positive', slipCount: 0, slipDate: null, penaltyMinutes: null, penaltyCutoffTime: null, penaltyFiredAt: null, penaltyCreditedAt: null, gatesApps: false,
   parentId: null, groupId: null, projectId: null,
   chainEnabled: false, chainIndex: 0, chainItems: [], chainStepOnSchedule: false, vacationPause: false, excludeFromSuggestions: false,
-  followUpTaskEveryN: null, followUpTaskTitle: null, followUpTaskDraft: null, followUpTaskOneAtATime: false, followUpTaskTally: 0, previousFollowUpTaskTally: 0, followUpTaskSourceTitle: null,
+  followUpTaskEveryN: null, followUpTaskTitle: null, followUpTaskDraft: null, followUpTaskOneAtATime: false, followUpTaskTally: 0, previousFollowUpTaskTally: 0, followUpTaskSourceTitle: null, followUpTaskSourceId: null,
   archived: false, archivedAt: null, timerStartedAt: null, actualMinutes: null,
   timedMinutes: null, timerElapsedSeconds: 0,
   previousOccurrenceId: null,
   seriesId: null, seriesMonthDays: [], seriesRepeatMonths: 1, seriesDefaults: null,
   postponeCount: 0, postponeMuted: false, driftingSince: null,
-  quotaIntervalMinutes: null, quotaReminders: false, quotaStartedAt: null, quotaAlwaysVisible: false,
+  quotaIntervalMinutes: null, quotaReminders: false, quotaStartedAt: null, quotaAlwaysVisible: false, followWaterTarget: false,
   quotaPeriod: 'day',
+  rotationEnabled: false,
+  rotationItems: [],
+  rotationLog: [],
+  rotationPeriodStart: null,
+  rotationLastDone: {},
   healthMetric: null,
   healthTarget: null, completionTimerMinutes: null, completionTimerNote: null, completionTimerStartedAt: null, logHealthMetric: null, logHealthAmount: null, medicationName: null, medicationAmount: null, medicationUnit: null, logMealSlot: null, estimateBeforeTiming: null,
 };
@@ -167,6 +173,12 @@ interface Props {
    * on, which is the case this earns its keep.
    */
   nlEnabled?: boolean;
+  /**
+   * A project date to count back from (see projectDateAnchor): the deadline,
+   * or the day a trip leaves. Adds a row of "1 week", "2 weeks" before it,
+   * for a task in that project. Omitted for anything else.
+   */
+  projectAnchor?: ProjectDateAnchor | null;
 }
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -197,6 +209,7 @@ export function WhenPicker({
   onConfirm, onClear, onCancel,
   title = 'When?', showTimeOfDay = true, showSuggest = true, allowPast = true, allowFuture = true,
   postponeTaskId, onBreakUp, nlEnabled,
+  projectAnchor = null,
 }: Props) {
   const colors = useColors();
   const { shadows } = useTheme();
@@ -363,8 +376,8 @@ export function WhenPicker({
     if (pendingRef.current) return;
     pendingRef.current = true;
     // The free-text field can still hold focus when a calendar day or quick
-    // button is tapped — closing without this races the keyboard's own
-    // dismiss animation against the Modal's and freezes whatever's underneath.
+    // button is tapped. SheetModal already holds the close until the keyboard
+    // is gone; this only starts it moving a beat sooner.
     Keyboard.dismiss();
     setPendingKey(key);
     if (date) setDisplayMonth(startOfMonth(date));
@@ -398,6 +411,12 @@ export function WhenPicker({
   // Offering a quick button for a day the grid refuses would be the one
   // control in the picker that disagrees with the rest of it.
   const showTomorrow = latestDay === null;
+  // Counted back from the project's date; only the ones still ahead, and none
+  // when the grid itself has a latest day (a picker that caps the future).
+  const projectShortcuts = useMemo(
+    () => (projectAnchor && latestDay === null ? projectDateShortcuts(projectAnchor, today) : []),
+    [projectAnchor, latestDay, today],
+  );
 
   // As-you-type: just page the grid to what's been typed so far, the same
   // preview CalendarPicker's own nlText gives. Nothing commits until Enter —
@@ -405,7 +424,7 @@ export function WhenPicker({
   // and would otherwise close the picker out from under whoever's still typing.
   const onNlChange = (text: string) => {
     setNlText(text);
-    const parsed = parseNaturalDate(text, getLogicalNow(dayResetTime));
+    const parsed = parseNaturalDate(text, getLogicalNow(dayResetTime), new Date());
     if (parsed) setDisplayMonth(startOfMonth(parsed));
   };
 
@@ -413,7 +432,7 @@ export function WhenPicker({
   // same allowPast floor, same reach-out decline. Unparseable or refused text
   // is left alone rather than cleared, so a typo can be fixed in place.
   const onNlSubmit = () => {
-    const parsed = parseNaturalDate(nlText, getLogicalNow(dayResetTime));
+    const parsed = parseNaturalDate(nlText, getLogicalNow(dayResetTime), new Date());
     if (!parsed) return;
     if (earliestDay && isDayBefore(parsed, earliestDay)) return;
     if (latestDay && isDayAfter(parsed, latestDay)) return;
@@ -481,7 +500,7 @@ export function WhenPicker({
   // Whether the reach-out-specific offer is the one to show right now, rather
   // than the generic mute — false during the hold window after it was last
   // declined by deferring past it (see offerDeclinedRecently).
-  const reachOutOfferActive = !!reachOutPerson && !offerDeclinedRecently(reachOutPerson, new Date());
+  const reachOutOfferActive = !!reachOutPerson && !offerDeclinedRecently(reachOutPerson, getLogicalToday());
   const showPostponeCheck =
     !!postponeTask &&
     !checkDismissed &&
@@ -497,9 +516,9 @@ export function WhenPicker({
     }
   };
 
-  // Closing while the free-text field still holds focus is the same freeze
-  // bug fixed elsewhere: the keyboard's own dismiss animation races the
-  // Modal's and strands the touch handler on whatever's underneath.
+  // SheetModal holds the close until the keyboard is gone (see its doc
+  // comment), so this dismiss isn't what prevents the freeze; it only starts
+  // the keyboard moving a beat sooner.
   const cancel = () => {
     Keyboard.dismiss();
     onCancel();
@@ -694,6 +713,38 @@ export function WhenPicker({
                 </TouchableOpacity>
               )}
             </View>
+
+            {projectShortcuts.length > 0 && projectAnchor && (
+              <View style={styles.projectShortcutBlock}>
+                <Text style={styles.projectShortcutLabel}>
+                  {projectAnchor.label}, {format(projectAnchor.date, 'EEE, MMM d')}
+                </Text>
+                <View style={styles.projectShortcutRow}>
+                  {projectShortcuts.map(shortcut => {
+                    const key = `project-${dayKeyOf(shortcut.date)}`;
+                    return (
+                      <TouchableOpacity
+                        key={key}
+                        style={styles.projectShortcut}
+                        onPress={() => { declineReachOutOfferIfShown(); confirmWithFeedback(noonOf(shortcut.date), key); }}
+                        activeOpacity={interaction.activeOpacity}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${shortcut.label}${shortcut.label === 'On the day' ? '' : ' before'}, ${format(shortcut.date, 'EEEE, MMMM d')}`}
+                      >
+                        <Animated.Text
+                          style={[
+                            styles.projectShortcutText,
+                            pendingKey === key && { transform: [{ scale: popAnim }] },
+                          ]}
+                        >
+                          {shortcut.label}
+                        </Animated.Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+            )}
 
             {afterVacationDay && (
               <TouchableOpacity
@@ -1018,6 +1069,16 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingTop: spacing.sm,
     paddingBottom: spacing.sm,
   },
+  projectShortcutBlock: { marginTop: spacing.sm, gap: spacing.xs },
+  projectShortcutLabel: { color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.medium },
+  projectShortcutRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
+  projectShortcut: {
+    paddingHorizontal: spacing.smd,
+    paddingVertical: spacing.xsm,
+    borderRadius: radius.full,
+    backgroundColor: colors.bgQuaternary,
+  },
+  projectShortcutText: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.medium },
   quickRow: {
     flexDirection: 'row',
     alignItems: 'center',

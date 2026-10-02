@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import { Alert, View, Text, TouchableOpacity, ScrollView, StyleSheet, useWindowDimensions } from 'react-native';
 import { SheetModal } from './SheetModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -18,7 +18,7 @@ import {
   type Colors,
 } from '../theme';
 import { trolleyStateFor } from '../utils/groceryLists';
-import { useGroceryStore, type PlannedRow } from '../store/useGroceryStore';
+import { describePlanAdd, useGroceryStore, type PlannedRow } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import {
@@ -32,6 +32,7 @@ import { describeStandingSwap, standingSwapMap } from '../utils/standingSwaps';
 import { onHandNameKeys } from '../utils/grocerySuggest';
 import { describeSubstitutes, substitutesFor, type Substitute } from '../utils/itemSubs';
 import { convertQuantity } from '../utils/unitConvert';
+import { addMealsToListNameSpace, quantityFitsBesideName } from '../utils/groceryRowQuantity';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
 import { InlineAction } from './InlineAction';
@@ -125,6 +126,7 @@ export function AddMealsToListSheet({
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
 
   const unitSystem = useSettingsStore(s => s.unitSystem);
 
@@ -136,6 +138,9 @@ export function AddMealsToListSheet({
     [listEntries, activeListId]
   );
   const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
+  // The boxes, so a packet frozen or marked "Got it" counts as having it here
+  // the way it does in the Pantry (see classifyPlanned's `products`).
+  const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
   const addFromPlan = useGroceryStore(s => s.addFromPlan);
   const addToPantry = useGroceryStore(s => s.addToPantry);
   const stampAddedToList = useMealPlanStore(s => s.stampAddedToList);
@@ -147,12 +152,12 @@ export function AddMealsToListSheet({
   const classified = useMemo(() => {
     // Live, not persisted — see recipeComponents.ts's ChoiceResolution.onHand.
     const planned = collectPlannedIngredients(
-      entries, recipesById, range, swaps, onHandNameKeys(items, new Date())
+      entries, recipesById, range, swaps, onHandNameKeys(items, new Date(), itemProducts)
     );
     // Against the list being added to — see classifyPlanned's own note on why
     // an unscoped read silently drops shopping.
-    return classifyPlanned(planned, items, new Date(), itemSubs, inTrolley);
-  }, [entries, recipesById, range, items, itemSubs, swaps, inTrolley]);
+    return classifyPlanned(planned, items, new Date(), itemSubs, inTrolley, itemProducts);
+  }, [entries, recipesById, range, items, itemSubs, swaps, inTrolley, itemProducts]);
 
   const byCategory = useMemo(() => {
     const out: Record<PlanCategory, ClassifiedIngredient[]> = {
@@ -293,7 +298,7 @@ export function AddMealsToListSheet({
     if (!dirty) { onClose(); return; }
     Alert.alert(
       'Discard changes?',
-      'The choices you made about what goes on the list will be lost.',
+      'You have unsaved changes. Are you sure you want to discard them?',
       [
         { text: 'Keep editing', style: 'cancel' },
         { text: 'Discard', style: 'destructive', onPress: onClose },
@@ -320,13 +325,8 @@ export function AddMealsToListSheet({
 
     // Each count on its own terms, never added together — the same
     // discipline describeShops and RecipeDetailScreen's addToList keep.
-    const parts = [`Added ${result.added.length}`];
-    if (result.alreadyOnList.length > 0) parts.push(`${result.alreadyOnList.length} already on your list`);
-    if (result.skippedInCart.length > 0) parts.push(`${result.skippedInCart.length} already in your cart`);
-    Alert.alert(
-      result.added.length > 0 ? 'On the list' : 'Nothing to add',
-      parts.join(' · ')
-    );
+    const summary = describePlanAdd(result);
+    Alert.alert(summary.title, summary.message);
     onClose();
   };
 
@@ -422,6 +422,21 @@ export function AddMealsToListSheet({
                               // markAlreadyHave.
                               const canMarkHave = category === 'needToBuy';
                               const subs = substitutesByKey.get(row.nameKey);
+                              // Beside the name when both fit, under it when
+                              // the quantity is too long for the capped pill
+                              // or the name too long to share the line with
+                              // it. RecipeToListSheet's rule, with this
+                              // sheet's wider pill (#2946): see
+                              // groceryRowQuantity.ts.
+                              const quantityBesideName =
+                                !!shownQuantity &&
+                                quantityFitsBesideName(shownQuantity, {
+                                  name: row.name,
+                                  space: addMealsToListNameSpace(windowWidth, {
+                                    substitutes: subs?.length ?? 0,
+                                    pantryButton: canMarkHave,
+                                  }),
+                                });
                               return (
                                 <React.Fragment key={row.nameKey}>
                                   {i > 0 && <View style={styles.sep} />}
@@ -461,11 +476,26 @@ export function AddMealsToListSheet({
                                         {!!swapNote && (
                                           <Text style={styles.swapNote} numberOfLines={1}>{swapNote}</Text>
                                         )}
+                                        {/* A quantity that can't share the
+                                            line with the name, on its own line
+                                            under it: the same pill, left-aligned
+                                            and as wide as the text column, after
+                                            the swap note so the order on screen
+                                            is the order the label reads out.
+                                            Still inside the row's touchable, so
+                                            tapping it checks the row. */}
+                                        {!!shownQuantity && !quantityBesideName && (
+                                          <View style={[styles.qtyPill, styles.qtyPillUnder]}>
+                                            <Text style={[styles.qtyText, styles.qtyTextUnder]} numberOfLines={2}>
+                                              {shownQuantity}
+                                            </Text>
+                                          </View>
+                                        )}
                                         {!!subtitle && (
                                           <Text style={styles.sources} numberOfLines={1}>{subtitle}</Text>
                                         )}
                                       </View>
-                                      {!!shownQuantity && (
+                                      {quantityBesideName && (
                                         <View style={styles.qtyPill}>
                                           {/* Two lines, same call as the name
                                               above: "1 large pie…" names no
@@ -625,6 +655,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // Accent where `sources` is grey: this row isn't what the recipe wrote, and
   // that has to survive a glance down a week's worth of rows.
   swapNote: { fontSize: font.xs, color: colors.accent, fontWeight: fontWeight.medium },
+  // addMealsToListNameSpace (groceryRowQuantity.ts) counts this cap, the
+  // checkbox, the row and list padding and the trailing buttons to work out
+  // what a name has beside it. Change one and change it there too.
   qtyPill: {
     backgroundColor: colors.bgTertiary,
     borderRadius: radius.sm,
@@ -632,6 +665,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: 3,
     maxWidth: 110,
   },
+  // A quantity's own line under the name (#2946), as in RecipeToListSheet.
+  qtyPillUnder: {
+    alignSelf: 'flex-start',
+    maxWidth: '100%',
+    marginTop: spacing.xxs,
+  },
+  qtyTextUnder: { textAlign: 'left' },
   // Centred for the two-line case: the pill takes the width of its longest
   // line, so this only moves the shorter one ("1 large" / "piece") and is a
   // no-op on the single-line pills, which size to their own text.

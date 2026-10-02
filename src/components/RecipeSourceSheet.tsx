@@ -6,12 +6,13 @@ import { useShallow } from 'zustand/react/shallow';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, interaction, type Colors } from '../theme';
 import { useRecipeStore } from '../store/useRecipeStore';
-import { rankRecipes, describeRecipe, sortRecipesForDisplay } from '../utils/recipeUtils';
+import { rankRecipes, describeRecipe, sharedRecipeNameKeys, sortRecipesForDisplay } from '../utils/recipeUtils';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EmptyState } from './EmptyState';
 import { haptics } from '../utils/haptics';
 import type { Recipe } from '../types';
+import { useFilterField } from '../hooks/useFilterField';
 
 interface Props {
   visible: boolean;
@@ -44,7 +45,9 @@ export function RecipeSourceSheet({ visible, allowAIImport, onPickSaved, onImpor
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const recipes = useRecipeStore(useShallow(s => s.recipes));
-  const [query, setQuery] = useState('');
+  // Recipes another recipe shares a name with lead their subtitle with the book.
+  const sharedNames = useMemo(() => sharedRecipeNameKeys(recipes), [recipes]);
+  const { query, clear: clearQuery, props: filterField } = useFilterField();
 
   const matches = useMemo(() => {
     const ranked = query.trim()
@@ -53,7 +56,7 @@ export function RecipeSourceSheet({ visible, allowAIImport, onPickSaved, onImpor
     return ranked.slice(0, MAX_ROWS);
   }, [query, recipes]);
 
-  const reset = () => setQuery('');
+  const reset = () => clearQuery();
 
   const handleClose = () => {
     Keyboard.dismiss();
@@ -89,8 +92,7 @@ export function RecipeSourceSheet({ visible, allowAIImport, onPickSaved, onImpor
             <Ionicons name="search" size={15} color={colors.textTertiary} />
             <TextInput
               style={styles.searchInput}
-              value={query}
-              onChangeText={setQuery}
+              {...filterField}
               placeholder="Search your recipes"
               placeholderTextColor={colors.textTertiary}
               autoCorrect={false}
@@ -147,14 +149,14 @@ export function RecipeSourceSheet({ visible, allowAIImport, onPickSaved, onImpor
                     onPress={() => pickSaved(recipe)}
                     activeOpacity={interaction.activeOpacity}
                     accessibilityRole="button"
-                    accessibilityLabel={`Add ingredients from ${recipe.name}. ${describeRecipe(recipe)}`}
+                    accessibilityLabel={`Add ingredients from ${recipe.name}. ${describeRecipe(recipe, null, { sharedName: sharedNames.has(recipe.nameKey) })}`}
                   >
                     <View style={[styles.rowIcon, { backgroundColor: colors.accentSubtle }]}>
                       <Ionicons name="restaurant-outline" size={16} color={colors.accent} />
                     </View>
                     <View style={styles.rowInfo}>
                       <Text style={styles.rowName} numberOfLines={1}>{recipe.name}</Text>
-                      <Text style={styles.rowHint} numberOfLines={1}>{describeRecipe(recipe)}</Text>
+                      <Text style={styles.rowHint} numberOfLines={1}>{describeRecipe(recipe, null, { sharedName: sharedNames.has(recipe.nameKey) })}</Text>
                     </View>
                     {recipe.vote === 'loved' && <Ionicons name="thumbs-up" size={13} color={colors.orange} />}
                   </TouchableOpacity>

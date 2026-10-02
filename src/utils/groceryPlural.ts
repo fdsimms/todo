@@ -118,6 +118,16 @@ export function pluralKeyVariants(key: string): string[] {
 export function resolvePluralKey(key: string, existing: Iterable<string>): string | null {
   const variants = pluralKeyVariants(key);
   if (variants.length === 0) return null;
+  // A set answers the same question by lookup rather than by walking it: the
+  // walk below is order-free (its answer is null whenever `key` is anywhere in
+  // `existing`, else the one variant present), so asking the set about each
+  // variant gives exactly its answer. `classifyPlanned` resolves every
+  // ingredient line against the whole catalog, which is why this matters.
+  if (existing instanceof Set) {
+    if (existing.has(key)) return null;
+    const present = variants.filter(v => existing.has(v));
+    return present.length === 1 ? present[0] : null;
+  }
   const wanted = new Set(variants);
   let found: string | null = null;
   for (const candidate of existing) {

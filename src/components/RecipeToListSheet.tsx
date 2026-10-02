@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import { Alert, View, Text, TouchableOpacity, ScrollView, StyleSheet, useWindowDimensions } from 'react-native';
 import { SheetModal } from './SheetModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -18,7 +18,7 @@ import {
   type Colors,
 } from '../theme';
 import { trolleyStateFor } from '../utils/groceryLists';
-import { useGroceryStore, type PlannedRow } from '../store/useGroceryStore';
+import { describePlanAdd, useGroceryStore, type PlannedRow } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import {
   classifyPlanned,
@@ -33,7 +33,9 @@ import { onHandNameKeys } from '../utils/grocerySuggest';
 import { describeSubstitutes, substitutesFor, type Substitute } from '../utils/itemSubs';
 import { alternativeCaptions, applyChoice, choiceGroupKey, recipeChoiceGroups } from '../utils/recipeComponents';
 import { normalizeScale } from '../utils/recipeScale';
+import { featureShown } from '../utils/simpleMode';
 import { convertQuantity } from '../utils/unitConvert';
+import { quantityFitsBesideName, recipeToListNameSpace } from '../utils/groceryRowQuantity';
 import { RecipeScaleChips } from './RecipeScaleChips';
 import { RecipeChoiceChips } from './RecipeChoiceChips';
 import { SheetHeader } from './SheetHeader';
@@ -165,8 +167,10 @@ export function RecipeToListSheet({
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
 
   const unitSystem = useSettingsStore(s => s.unitSystem);
+  const simpleMode = useSettingsStore(s => s.simpleMode);
 
   const items = useGroceryStore(useShallow(s => s.items));
   const listEntries = useGroceryStore(useShallow(s => s.listEntries));
@@ -229,9 +233,12 @@ export function RecipeToListSheet({
       new Date(),
       itemSubs,
       // Against the list being added to, not "any list" — see classifyPlanned.
-      inTrolley
+      inTrolley,
+      // The same boxes `onHand` above reads, so the either/or default and the
+      // row under it can't disagree about a frozen or "Got it" packet.
+      itemProducts
     );
-  }, [recipe, recipesById, items, itemSubs, swaps, choiceKey, scale, inTrolley, onHand]);
+  }, [recipe, recipesById, items, itemSubs, swaps, choiceKey, scale, inTrolley, onHand, itemProducts]);
 
   // "or jalapeño" on each option of a group left open, so a row in Need to buy
   // reads as one of a pair rather than as a second thing to buy. Keyed on
@@ -283,12 +290,20 @@ export function RecipeToListSheet({
   // that was already there (keep whatever the user left it at). Null means
   // "sheet just opened" — everything starts ticked.
   const knownRowKeysRef = useRef<Set<string> | null>(null);
+  // What the sheet opened with, for the dirty check below. A meal planned with
+  // a side already picked, or scaled for four, opens with both set, and
+  // comparing against "no choice" and 1× asked to discard changes that were
+  // never made.
+  const openedChoicesRef = useRef('[]');
+  const openedScaleRef = useRef(1);
 
   useEffect(() => {
     if (!visible) return;
     setChoices(initialChoices ? [...initialChoices] : []);
     setUndecided([]);
     setScale(normalizeScale(initialScale));
+    openedChoicesRef.current = JSON.stringify(initialChoices ?? []);
+    openedScaleRef.current = normalizeScale(initialScale);
     knownRowKeysRef.current = null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
@@ -420,20 +435,21 @@ export function RecipeToListSheet({
   };
 
   // Same shape as GroceryItemSheet/TaskEditor's own dirty check. A scale or a
-  // choice made is dirty on its own — there's nowhere for either to be
-  // written back once this closes, so losing them is losing real decisions —
+  // choice changed from what the sheet opened with is dirty on its own —
+  // there's nowhere for either to be written back once this closes, so losing
+  // them is losing real decisions —
   // and `ticked` is compared against the baseline for the *current* choice
   // state, so a set that only changed because a choice swap just recomputed
   // it doesn't falsely read as user work about to be lost.
   const handleCancel = () => {
-    const dirty = choices.length > 0
+    const dirty = JSON.stringify(choices) !== openedChoicesRef.current
       || undecided.length > 0
-      || scale !== 1
+      || scale !== openedScaleRef.current
       || JSON.stringify([...ticked].sort()) !== tickedBaselineRef.current;
     if (!dirty) { onClose(); return; }
     Alert.alert(
       'Discard changes?',
-      'The choices you made about what goes on the list will be lost.',
+      'You have unsaved changes. Are you sure you want to discard them?',
       [
         { text: 'Keep editing', style: 'cancel' },
         { text: 'Discard', style: 'destructive', onPress: onClose },
@@ -463,14 +479,11 @@ export function RecipeToListSheet({
     const result = addFromPlan(rows);
     haptics.success();
 
-    const parts = [`Added ${result.added.length}`];
-    if (result.alreadyOnList.length > 0) parts.push(`${result.alreadyOnList.length} already on your list`);
-    if (result.skippedInCart.length > 0) parts.push(`${result.skippedInCart.length} already in your cart`);
-    const added = result.added.length > 0;
+    const summary = describePlanAdd(result);
     Alert.alert(
-      added ? 'On the list' : 'Nothing to add',
-      parts.join(' · '),
-      added && onAdded ? [{ text: 'OK', onPress: () => onAdded(scale) }] : undefined
+      summary.title,
+      summary.message,
+      summary.changed && onAdded ? [{ text: 'OK', onPress: () => onAdded(scale) }] : undefined
     );
     onClose();
   };
@@ -496,7 +509,11 @@ export function RecipeToListSheet({
 
         {/* Above the choice chips: how much you're making applies to the whole
             shop, while a choice applies to one group within it. */}
-        {!nothingToShow && (
+        {/* Simplified mode drops it unless this shop is already scaled (a
+            meal planned for four opens at 2x), the rule RecipeDetail's own
+            chips follow. */}
+        {!nothingToShow
+          && featureShown('recipeScaling', simpleMode, scale !== 1 || normalizeScale(initialScale) !== 1) && (
           <View style={styles.scaleRow}>
             <Text style={styles.sectionLabel}>Batch</Text>
             <RecipeScaleChips
@@ -634,6 +651,21 @@ export function RecipeToListSheet({
                               // to the list is still row.quantity, as the
                               // recipe wrote it.
                               const shownQuantity = convertQuantity(row.quantity, unitSystem).text;
+                              // Beside the name when both fit, under it when
+                              // the quantity is too long for the capped pill
+                              // or the name too long to share the line with
+                              // it. The grocery row's rule, read against this
+                              // line's own buttons (#2946): see
+                              // groceryRowQuantity.ts.
+                              const quantityBesideName =
+                                !!shownQuantity &&
+                                quantityFitsBesideName(shownQuantity, {
+                                  name: row.name,
+                                  space: recipeToListNameSpace(windowWidth, {
+                                    substitutes: subs?.length ?? 0,
+                                    pantryButton: canMarkHave,
+                                  }),
+                                });
                               return (
                                 <React.Fragment key={row.nameKey}>
                                   {i > 0 && <View style={styles.sep} />}
@@ -674,6 +706,22 @@ export function RecipeToListSheet({
                                         {!!swapNote && (
                                           <Text style={styles.swapNote} numberOfLines={1}>{swapNote}</Text>
                                         )}
+                                        {/* A quantity that can't share the
+                                            line with the name, on its own line
+                                            under it: the same pill, left-aligned
+                                            and as wide as the text column. After
+                                            the swap note, which qualifies the
+                                            name, so the order on screen is the
+                                            order the label reads out. Still
+                                            inside the row's touchable, so
+                                            tapping it checks the row as before. */}
+                                        {!!shownQuantity && !quantityBesideName && (
+                                          <View style={[styles.qtyPill, styles.qtyPillUnder]}>
+                                            <Text style={[styles.qtyText, styles.qtyTextUnder]} numberOfLines={2}>
+                                              {shownQuantity}
+                                            </Text>
+                                          </View>
+                                        )}
                                         {!!subtitle && (
                                           <Text style={styles.sources} numberOfLines={1}>{subtitle}</Text>
                                         )}
@@ -683,14 +731,17 @@ export function RecipeToListSheet({
                                           </Text>
                                         )}
                                       </View>
-                                      {!!shownQuantity && (
+                                      {quantityBesideName && (
                                         <View style={styles.qtyPill}>
                                           {/* Two lines, same call as the name
                                               above: "1 large pie…" names no
                                               amount anyone can shop to. The
                                               pill is capped by width, not by
                                               lines, so the second one costs
-                                              the row no width. */}
+                                              the row no width. Only what fits
+                                              beside the name comes here now,
+                                              so the second line is a backstop
+                                              for wide glyphs (#2946). */}
                                           <Text style={styles.qtyText} numberOfLines={2}>{shownQuantity}</Text>
                                         </View>
                                       )}
@@ -882,6 +933,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // Accent for the same reason `alternativeNote` is: this row isn't what the
   // recipe wrote, and that has to survive a glance down a list of ten rows.
   swapNote: { fontSize: font.xs, color: colors.accent, fontWeight: fontWeight.medium },
+  // recipeToListNameSpace (groceryRowQuantity.ts) counts this cap, the
+  // checkbox, the row and list padding and the trailing buttons to work out
+  // what a name has beside it. Change one and change it there too.
   qtyPill: {
     backgroundColor: colors.bgTertiary,
     borderRadius: radius.sm,
@@ -889,6 +943,18 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: 3,
     maxWidth: 90,
   },
+  // A quantity's own line under the name (#2946): qtyPill above, sized to its
+  // text and left-aligned under the name, as wide as the text column rather
+  // than the side pill's 90pt. A step further below the captions' own 2pt
+  // gap, since a filled pill sits tighter to the line above than text does.
+  qtyPillUnder: {
+    alignSelf: 'flex-start',
+    maxWidth: '100%',
+    marginTop: spacing.xxs,
+  },
+  // Left, where the side pill centres its two lines: under the name the text
+  // lines up with the name's own left edge.
+  qtyTextUnder: { textAlign: 'left' },
   // Centred for the two-line case: the pill takes the width of its longest
   // line, so this only moves the shorter one ("1 large" / "piece") and is a
   // no-op on the single-line pills, which size to their own text.

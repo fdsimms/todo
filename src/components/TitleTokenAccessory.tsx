@@ -38,6 +38,12 @@ interface TitleTokenAccessoryProps {
   floating?: boolean;
   /** Only read when `floating`. */
   focused?: boolean;
+  /**
+   * Which of "#", "@" and "!" to offer. Defaults to all three; a field where
+   * a sigil means nothing leaves it off (the event quick add reads "@" only,
+   * since an event has no category, tag or priority).
+   */
+  tokens?: readonly string[];
 }
 
 /**
@@ -67,7 +73,7 @@ interface TitleTokenAccessoryProps {
  * See the `floating` prop's own doc comment for the one field this can't
  * attach to as a real `InputAccessoryView` at all.
  */
-export function TitleTokenAccessory({ nativeID, onInsert, onConfirm, confirmVisible, floating, focused }: TitleTokenAccessoryProps) {
+export function TitleTokenAccessory({ nativeID, onInsert, onConfirm, confirmVisible, floating, focused, tokens }: TitleTokenAccessoryProps) {
   const colors = useColors();
   // Starts true so the button isn't disabled for a frame before the first
   // check resolves; a listener keeps it current while the bar stays mounted
@@ -81,9 +87,16 @@ export function TitleTokenAccessory({ nativeID, onInsert, onConfirm, confirmVisi
   useEffect(() => {
     if (Platform.OS !== 'ios') return;
     let cancelled = false;
+    // A link copied from some apps (podcast apps' share sheets among them)
+    // lands on the pasteboard as a URL type only, with no plain-text
+    // representation alongside it — `hasStringAsync` is backed by
+    // `UIPasteboard.hasStrings`, which is false for that pasteboard, so a
+    // copied link read as "nothing to paste" without also checking
+    // `hasUrlAsync`. This is the same reason iOS's own system Paste command
+    // greys out for the same clipboard.
     const check = () => {
-      Clipboard.hasStringAsync().then((result) => {
-        if (!cancelled) setHasClipboardContent(result);
+      Promise.all([Clipboard.hasStringAsync(), Clipboard.hasUrlAsync()]).then(([hasString, hasUrl]) => {
+        if (!cancelled) setHasClipboardContent(hasString || hasUrl);
       });
     };
     check();
@@ -122,10 +135,12 @@ export function TitleTokenAccessory({ nativeID, onInsert, onConfirm, confirmVisi
   if (floating && (!focused || keyboardHeight <= 0)) return null;
 
   const handlePaste = async () => {
+    // Same URL-only-pasteboard case as the check above: fall back to the URL
+    // when there's no plain-text representation to read.
+    const text = (await Clipboard.getStringAsync()) || (await Clipboard.getUrlAsync()) || '';
     // Empty is a no-op rather than inserting nothing visible — same guard
     // useCopyToClipboard uses on the write side, for the same reason: a
     // silently-failed read shouldn't read as "there was nothing to paste".
-    const text = await Clipboard.getStringAsync();
     if (text) onInsert(text);
   };
 
@@ -133,7 +148,7 @@ export function TitleTokenAccessory({ nativeID, onInsert, onConfirm, confirmVisi
   const bar = (
     <View style={styles.bar}>
       <View style={styles.tokenGroup}>
-        {TOKENS.map(({ char, label }) => (
+        {TOKENS.filter(t => !tokens || tokens.includes(t.char)).map(({ char, label }) => (
           <PressableScale
             key={char}
             style={styles.tokenBtn}

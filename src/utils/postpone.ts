@@ -165,6 +165,25 @@ export interface DriftEntry {
 }
 
 /**
+ * Whether a single task counts as drifting — the same rule `driftingTaskList`
+ * filters a whole array by, pulled out so a row (TaskItem) can ask it about
+ * the one task it's rendering without importing that list function and its
+ * sort.
+ */
+export function isDriftingTask(
+  task: Pick<Task, 'completed' | 'archived' | 'parentId' | 'postponeMuted' | 'postponeCount'>,
+  threshold: number,
+): boolean {
+  return (
+    !task.completed &&
+    !task.archived &&
+    !task.parentId &&
+    !task.postponeMuted &&
+    task.postponeCount >= threshold
+  );
+}
+
+/**
  * The Drift screen's list, as raw Task rows: incomplete, unarchived tasks
  * pushed at least `threshold` times, worst first.
  *
@@ -187,14 +206,7 @@ export interface DriftEntry {
  */
 export function driftingTaskList(tasks: readonly Task[], threshold: number): Task[] {
   return tasks
-    .filter(
-      t =>
-        !t.completed &&
-        !t.archived &&
-        !t.parentId &&
-        !t.postponeMuted &&
-        t.postponeCount >= threshold,
-    )
+    .filter(t => isDriftingTask(t, threshold))
     .sort((a, b) => {
       if (b.postponeCount !== a.postponeCount) return b.postponeCount - a.postponeCount;
       // A null stamp sorts last within its count: it's an older run than the

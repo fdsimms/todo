@@ -13,8 +13,9 @@ import {
   dbBatchUpdateProjectSortOrders,
 } from '../db/database';
 import { generateId } from '../utils/id';
+import { registerPausedProjectSource } from '../utils/projectPause';
 import { registerAwayProjectSource } from '../utils/awayDates';
-import { deliverableKindFor } from '../utils/deliverables';
+import { deliverableKindFor, deliverableOptionsFor } from '../utils/deliverables';
 
 /**
  * What one member of a project is, as far as counting goes: a task, not a row.
@@ -82,6 +83,10 @@ export function projectProgress(projectId: string, tasks: Task[]): { done: numbe
     if (bucket) bucket.push(member);
     else groups.set(key, [member]);
   }
+  // A guest waiting to reply isn't work left on the party: the tally counts
+  // those members ("12 Yes, 5 waiting"), and counting them here too held the
+  // project short of done until every last RSVP came in.
+  for (const key of talliedMemberKeys(groups)) groups.delete(key);
 
   let done = 0;
   for (const rows of groups.values()) {
@@ -137,6 +142,150 @@ export function projectDecisions(projectId: string, tasks: Task[]): Task[] {
   return Array.from(latest.values()).sort((a, b) => answeredAt(b).localeCompare(answeredAt(a)));
 }
 
+/** One set of pick-from-a-list questions on a project, counted. */
+export interface AnswerTally {
+  /** The options, in the order the question offers them. */
+  options: string[];
+  /** How many members answered each option, index for index. */
+  counts: number[];
+  /** Members still open with no answer yet. */
+  waiting: number;
+  /**
+   * Who is behind each count, by title ("Sam", "The Parks"): `names[i]` for
+   * `options[i]`, then the waiting and the unanswered. The counts are the
+   * lengths; kept both ways so a caller that only wants the line needn't
+   * count, and tapping "3 Maybe" can say which three.
+   */
+  names: string[][];
+  waitingNames: string[];
+  unansweredNames: string[];
+  /** Members completed without an answer, or with one that isn't an option. */
+  unanswered: number;
+}
+
+/**
+ * The member identities `projectAnswerTallies` counts: every member asking a
+ * pick-one question that at least one other member asks with the same
+ * options. What keeps an RSVP list out of `projectProgress`.
+ */
+function talliedMemberKeys(groups: Map<string, Task[]>): string[] {
+  const bySet = new Map<string, string[]>();
+  for (const [key, rows] of groups) {
+    const withOptions = rows.find(r => deliverableOptionsFor(r).length > 0);
+    if (!withOptions) continue;
+    const setKey = deliverableOptionsFor(withOptions).join('\u0000');
+    const keys = bySet.get(setKey);
+    if (keys) keys.push(key);
+    else bySet.set(setKey, [key]);
+  }
+  return [...bySet.values()].filter(keys => keys.length >= 2).flat();
+}
+
+/**
+ * "12 Yes, 3 No, 5 waiting": the members of a project that ask the same
+ * pick-one question, counted by answer. RSVPs are the case this is for (one
+ * task per guest, each asking Yes/No/Maybe), and a survey of what everyone
+ * wants for dinner is the same read.
+ *
+ * Members are grouped by their options, so a project holding both RSVPs and
+ * a Yes/No question gets two tallies rather than one muddled one. A set of
+ * one isn't a tally (its answer is already in the Answers block), so only
+ * sets of two or more come back. Identity is `projectProgress`'s, and each
+ * member counts its current answer: the latest answered row, else whether it
+ * is still open.
+ */
+export function projectAnswerTallies(projectId: string, tasks: Task[]): AnswerTally[] {
+  const members = tasks.filter(t => t.projectId === projectId && t.parentId === null && !t.archived);
+  const byId = new Map(members.map(t => [t.id, t]));
+  // Per member identity: its options, its latest answer, and whether it's open.
+  const identities = new Map<string, { options: string[]; answer: Task | null; open: boolean; name: string }>();
+  for (const member of members) {
+    const options = deliverableOptionsFor(member);
+    if (options.length === 0) continue;
+    const key = memberKey(member, byId);
+    const held = identities.get(key) ?? { options, answer: null, open: false, name: member.title.trim() };
+    if (!member.completed) { held.open = true; held.name = member.title.trim(); }
+    if (member.deliverableValue !== null && (!held.answer || answeredAt(member) > answeredAt(held.answer))) {
+      held.answer = member;
+      held.options = options;
+    }
+    identities.set(key, held);
+  }
+
+  const sets = new Map<string, { tally: AnswerTally; members: number }>();
+  for (const { options, answer, open, name } of identities.values()) {
+    const setKey = options.join('\u0000');
+    const entry = sets.get(setKey) ?? {
+      tally: {
+        options, counts: options.map(() => 0), waiting: 0, unanswered: 0,
+        names: options.map(() => [] as string[]), waitingNames: [], unansweredNames: [],
+      },
+      members: 0,
+    };
+    entry.members += 1;
+    const value = answer?.deliverableValue?.trim().toLowerCase() ?? null;
+    const index = value === null ? -1 : options.findIndex(o => o.toLowerCase() === value);
+    if (index >= 0) { entry.tally.counts[index] += 1; entry.tally.names[index].push(name); }
+    else if (open && value === null) { entry.tally.waiting += 1; entry.tally.waitingNames.push(name); }
+    else { entry.tally.unanswered += 1; entry.tally.unansweredNames.push(name); }
+    sets.set(setKey, entry);
+  }
+  return [...sets.values()].filter(s => s.members >= 2).map(s => s.tally);
+}
+
+/**
+ * A tally's parts, each a count and who it counts: "12 Yes", "5 waiting".
+ * Options nobody picked are left out. The line is these joined with commas.
+ */
+export function answerTallyParts(tally: AnswerTally): Array<{ label: string; names: string[] }> {
+  const parts = tally.options
+    .map((option, i) => (tally.counts[i] > 0 ? { label: `${tally.counts[i]} ${option}`, names: tally.names[i] } : null))
+    .filter((p): p is { label: string; names: string[] } => p !== null);
+  if (tally.waiting > 0) parts.push({ label: `${tally.waiting} waiting`, names: tally.waitingNames });
+  if (tally.unanswered > 0) parts.push({ label: `${tally.unanswered} no answer`, names: tally.unansweredNames });
+  return parts;
+}
+
+/** A tally as one line: "12 Yes, 3 No, 5 waiting". Options nobody picked are left out. */
+export function describeAnswerTally(tally: AnswerTally): string {
+  const parts = tally.options
+    .map((option, i) => (tally.counts[i] > 0 ? `${tally.counts[i]} ${option}` : null))
+    .filter((p): p is string => p !== null);
+  if (tally.waiting > 0) parts.push(`${tally.waiting} waiting`);
+  if (tally.unanswered > 0) parts.push(`${tally.unanswered} no answer`);
+  return parts.join(', ');
+}
+
+/**
+ * The project page's Completed section: finished members, newest first, one
+ * row per member.
+ *
+ * Grouped by the same identity `projectProgress` counts, for the reason
+ * `projectDecisions` gives: a repeating member leaves a completed row per
+ * occurrence, so a daily task in a project grew the section by one a day and
+ * "Show 47 completed" sat beside a progress line counting 8 members. Each
+ * member shows its most recent completion; the rest of its history is in the
+ * Logbook, where history lives.
+ */
+export function projectCompletedRows(projectId: string, tasks: Task[]): Task[] {
+  const members = tasks.filter(t => t.projectId === projectId && t.parentId === null && !t.archived);
+  const byId = new Map(members.map(t => [t.id, t]));
+  const latest = new Map<string, Task>();
+  // A member with a row still open isn't finished: a repeating task's past
+  // occurrences are done, but the task is still up above among the open ones,
+  // and listing it here too made the section disagree with "X of Y done".
+  const open = new Set<string>();
+  for (const member of members) {
+    const key = memberKey(member, byId);
+    if (!member.completed) { open.add(key); continue; }
+    const held = latest.get(key);
+    if (!held || (member.completedAt ?? '') > (held.completedAt ?? '')) latest.set(key, member);
+  }
+  for (const key of open) latest.delete(key);
+  return Array.from(latest.values())
+    .sort((a, b) => (b.completedAt ?? '').localeCompare(a.completedAt ?? ''));
+}
+
 // When a decision was made, as far as ordering goes. A live row that was
 // un-completed has no stamp and sorts last, which is the honest place for it:
 // the answer is still on the row, but the moment it was reached is gone.
@@ -173,7 +322,7 @@ interface ProjectStore {
   initialized: boolean;
   initialize: () => void;
   createProject: (title: string, options?: CreateProjectOptions) => Project;
-  updateProject: (id: string, patch: Partial<Pick<Project, 'title' | 'notes' | 'deadline' | 'category' | 'defaultTaskCategory' | 'nudgeCadenceDays' | 'autoSchedule' | 'nudgeOptIn' | 'weekendSource' | 'reviewDeclinedAt' | 'reviewedAt' | 'backfillDismissedFields' | 'kind' | 'ongoing' | 'awayStart' | 'awayEnd' | 'awayPauses' | 'awayPauseDeclinedFor' | 'destination' | 'awayListId' | 'awayListDeclinedFor'>>) => void;
+  updateProject: (id: string, patch: Partial<Pick<Project, 'title' | 'notes' | 'deadline' | 'category' | 'defaultTaskCategory' | 'nudgeCadenceDays' | 'autoSchedule' | 'nudgeOptIn' | 'weekendSource' | 'reviewDeclinedAt' | 'reviewedAt' | 'backfillDismissedFields' | 'kind' | 'ongoing' | 'awayStart' | 'awayEnd' | 'awayPauses' | 'awayPauseDeclinedFor' | 'destination' | 'awayListId' | 'awayListDeclinedFor' | 'pausedUntil' | 'personIds' | 'links' | 'inOrder' | 'showChecked'>>) => void;
   /** Filing several projects at once from the Projects screen's bulk bar. */
   bulkSetProjectCategory: (ids: string[], category: string | null) => void;
   getProjectById: (id: string) => Project | null;
@@ -249,9 +398,12 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     // every new project was still silent. The two are one control now (see
     // nudgeFieldsFor), and the default answers it whole.
     //
-    // A default of Never is still the default, and still means what it did:
-    // being asked about a project you never decided you wanted chasing is the
-    // annoying half of this feature.
+    // With no cadence set, a new project is "When I ask": it shows up in the
+    // Pull sheet the person opens themselves and never brings itself up. It
+    // used to be Never, which also kept it out of that sheet, so on a fresh
+    // install the button everyone can see answered "every project is set to
+    // never be chased" about projects nobody had set to anything. Being asked
+    // unprompted is still opt-in, which is the half that can be annoying.
     const defaultCadenceDays = useSettingsStore.getState().defaultProjectNudgeCadenceDays;
     const project: Project = {
       id: generateId(),
@@ -271,7 +423,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       createdAt: new Date().toISOString(),
       // Seeded from the global default at creation time only — changing the
       // default in Settings later never touches a project already created.
-      ...nudgeFieldsFor(defaultCadenceDays > 0 ? 'scheduled' : 'never', defaultCadenceDays),
+      ...nudgeFieldsFor(defaultCadenceDays > 0 ? 'scheduled' : 'on-ask', defaultCadenceDays),
       autoSchedule: false,
       // Off, like every other opt-in here: the weekend nudge may quote a project
       // only once somebody has said it is one to quote. See
@@ -299,6 +451,11 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       // Project.awayListId.
       awayListId: null,
       awayListDeclinedFor: null,
+      pausedUntil: null,
+      personIds: [],
+      links: [],
+      inOrder: false,
+      showChecked: false,
     };
     dbInsertProject(project);
     set(s => ({ projects: [...s.projects, project] }));
@@ -334,7 +491,17 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   },
 
   reorderProjects(orderedIds) {
-    const updates = orderedIds.map((id, index) => ({ id, sortOrder: index }));
+    // The ids passed are only the list on screen (Active, Completed or
+    // Archived), so they're laid into the slots those projects already hold in
+    // the full order, and the whole list renumbered. Numbering just the subset
+    // 0..n-1 collided with the projects off screen: an unarchived project came
+    // back wherever the tie happened to break, and reordering the Archived
+    // list reshuffled the Active one.
+    const full = [...get().projects].sort((a, b) => a.sortOrder - b.sortOrder);
+    const moving = new Set(orderedIds);
+    const queue = orderedIds.filter(id => full.some(p => p.id === id));
+    const merged = full.map(p => (moving.has(p.id) ? queue.shift()! : p.id));
+    const updates = merged.map((id, index) => ({ id, sortOrder: index }));
     dbBatchUpdateProjectSortOrders(updates);
     set(s => ({
       projects: s.projects
@@ -348,7 +515,19 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
 
   reorderProjectsWithCategoryUpdates(orderedIds, categoryUpdates) {
     get().reorderProjects(orderedIds);
-    categoryUpdates.forEach(u => get().updateProject(u.id, { category: u.category }));
+    if (categoryUpdates.length === 0) return;
+    // One state write for the lot rather than one per project.
+    const byId = new Map(categoryUpdates.map(u => [u.id, u.category]));
+    const touched: Project[] = [];
+    const next = get().projects.map(p => {
+      if (!byId.has(p.id) || p.category === byId.get(p.id)) return p;
+      const updated = { ...p, category: byId.get(p.id)! };
+      touched.push(updated);
+      return updated;
+    });
+    if (touched.length === 0) return;
+    touched.forEach(p => dbUpdateProject(p));
+    set(() => ({ projects: next }));
   },
 
   applyProjectArchived(id, archived, archivedAt) {
@@ -382,7 +561,10 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
 
   restoreProject(project) {
     dbInsertProject(project);
-    set(s => ({ projects: [...s.projects, project] }));
+    // Sorted back into place, the way restoreCategory does: every reader
+    // groups the list in store order, so an appended row sat at the bottom of
+    // its section after an undo until the next launch.
+    set(s => ({ projects: [...s.projects, project].sort((a, b) => a.sortOrder - b.sortOrder) }));
   },
 }));
 
@@ -390,3 +572,6 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
 // this store — and so expo-sqlite — being reachable from `visibilityUtils`.
 // See the registry note in `src/utils/awayDates.ts`.
 registerAwayProjectSource(() => useProjectStore.getState().projects);
+// So the visibility gates can hold a paused project's tasks back. See
+// src/utils/projectPause.ts.
+registerPausedProjectSource(() => useProjectStore.getState().projects);

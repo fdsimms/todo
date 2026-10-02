@@ -11,6 +11,9 @@ import { MEAL_SLOT_LABELS, type MealPlanEntry } from '../types';
 const HOUR_HEIGHT = 56;
 /** A block never draws shorter than this, however few minutes it covers. */
 const MIN_BLOCK_HEIGHT = 22;
+/** Trimmed off the bottom of every block so two that abut (one ends as the
+ *  next starts) read as two cards instead of one merged shape. */
+const BLOCK_GAP = 2;
 const GUTTER_WIDTH = 52;
 
 interface Props {
@@ -29,6 +32,11 @@ interface Props {
   /** Minutes from `dayStart` to draw the now line at, or null when not today. */
   nowMinutes: number | null;
   onPressTask: (taskId: string) => void;
+  /**
+   * Tapping a calendar event's block. Omit to leave events inert, the way they
+   * were before an event had anything to open.
+   */
+  onPressEvent?: (eventId: string) => void;
 }
 
 /**
@@ -41,7 +49,7 @@ interface Props {
  * distinction the whole feature rests on.
  */
 export function DayTimeline({
-  dayStart, timeline, meals, busyKnown, use24Hour, nowMinutes, onPressTask,
+  dayStart, timeline, meals, busyKnown, use24Hour, nowMinutes, onPressTask, onPressEvent,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -98,6 +106,11 @@ export function DayTimeline({
           const top = offsetFor(entry.startMinutes);
           const rawHeight = ((entry.endMinutes - entry.startMinutes) / 60) * HOUR_HEIGHT;
           const isTask = entry.kind === 'task';
+          const pressable = isTask || (!!onPressEvent && !!entry.eventId);
+          const press = () => {
+            if (isTask) { if (entry.taskId) onPressTask(entry.taskId); }
+            else if (entry.eventId) onPressEvent?.(entry.eventId);
+          };
           const startClock = new Date(dayStart.getTime() + entry.startMinutes * 60000);
           const timeLabel = formatTimeOfDay(startClock, use24Hour);
           const laneWidth = 100 / entry.laneCount;
@@ -115,13 +128,13 @@ export function DayTimeline({
                 key={entry.key}
                 style={[styles.entry, styles.instant, position]}
                 activeOpacity={interaction.activeOpacity}
-                disabled={!isTask}
-                onPress={() => entry.taskId && onPressTask(entry.taskId)}
-                accessibilityRole={isTask ? 'button' : undefined}
+                disabled={!pressable}
+                onPress={press}
+                accessibilityRole={pressable ? 'button' : undefined}
                 accessibilityLabel={`${entry.title} at ${timeLabel}, no time estimate`}
               >
                 <View style={styles.instantDot} />
-                <Text style={styles.instantText} numberOfLines={1}>
+                <Text style={styles.instantText} numberOfLines={2}>
                   {timeLabel}  {entry.title}
                 </Text>
               </TouchableOpacity>
@@ -135,12 +148,12 @@ export function DayTimeline({
                 styles.entry,
                 styles.block,
                 isTask ? styles.blockTask : styles.blockEvent,
-                { ...position, height: Math.max(MIN_BLOCK_HEIGHT, rawHeight) },
+                { ...position, height: Math.max(MIN_BLOCK_HEIGHT, rawHeight - BLOCK_GAP) },
               ]}
               activeOpacity={interaction.activeOpacity}
-              disabled={!isTask}
-              onPress={() => entry.taskId && onPressTask(entry.taskId)}
-              accessibilityRole={isTask ? 'button' : undefined}
+              disabled={!pressable}
+              onPress={press}
+              accessibilityRole={pressable ? 'button' : undefined}
               accessibilityLabel={`${entry.title}, ${timeLabel}`}
             >
               <Text
@@ -279,12 +292,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   instant: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: spacing.xs,
   },
   instantDot: {
     width: 6,
     height: 6,
+    // Sits on the first line's centre when the title wraps to a second.
+    marginTop: 5,
     borderRadius: radius.full,
     backgroundColor: colors.accent,
   },

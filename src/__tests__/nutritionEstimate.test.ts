@@ -1,4 +1,6 @@
 import {
+  ESTIMATE_DESCRIPTION_MAX_LENGTH,
+  ESTIMATE_REQUEST_MAX_LENGTH,
   describeEstimate,
   estimateToPanel,
   readNutritionEstimate,
@@ -282,6 +284,17 @@ describe('estimateToPanel', () => {
 });
 
 describe('refineDescription', () => {
+  it('always fits inside the request cap, answers and all', () => {
+    // The request used to be capped at the description's own length, which
+    // cut the answers off any description near its limit.
+    const longest = refineDescription('x'.repeat(ESTIMATE_DESCRIPTION_MAX_LENGTH), [
+      { prompt: 'p'.repeat(80), answer: 'a'.repeat(80) },
+      { prompt: 'q'.repeat(80), answer: 'b'.repeat(80) },
+    ]);
+    expect(longest.length).toBeLessThanOrEqual(ESTIMATE_REQUEST_MAX_LENGTH);
+    expect(longest.slice(0, ESTIMATE_REQUEST_MAX_LENGTH).endsWith('b'.repeat(80))).toBe(true);
+  });
+
   it('states the answers alongside what was typed', () => {
     expect(refineDescription('Burger and fries', [
       { prompt: 'Which size?', answer: 'Large' },
@@ -298,6 +311,24 @@ describe('refineDescription', () => {
   it('hands back the description alone when nothing was answered', () => {
     expect(refineDescription('  Burger and fries  ', [])).toBe('Burger and fries');
     expect(refineDescription('Burger', [{ prompt: '', answer: 'Large' }])).toBe('Burger');
+  });
+
+  it('states a typed amount as its own line, ahead of any answers', () => {
+    expect(refineDescription('Tofu', [{ prompt: 'Fried?', answer: 'Yes' }], '  200 g '))
+      .toBe('Tofu\nAmount eaten: 200 g\nFried? Yes');
+  });
+
+  it('reads a blank amount as not given', () => {
+    expect(refineDescription('Tofu', [], '   ')).toBe('Tofu');
+  });
+
+  it('keeps a full description, amount and answers inside the request cap', () => {
+    const longest = refineDescription('x'.repeat(ESTIMATE_DESCRIPTION_MAX_LENGTH), [
+      { prompt: 'p'.repeat(80), answer: 'a'.repeat(80) },
+      { prompt: 'q'.repeat(80), answer: 'b'.repeat(80) },
+    ], 'm'.repeat(200));
+    expect(longest.length).toBeLessThanOrEqual(ESTIMATE_REQUEST_MAX_LENGTH);
+    expect(longest.endsWith('b'.repeat(80))).toBe(true);
   });
 
   it('clamps a description longer than the field allows', () => {

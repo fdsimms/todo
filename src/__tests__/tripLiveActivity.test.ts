@@ -11,6 +11,7 @@ jest.mock('../store/useGroceryStore', () => ({ useGroceryStore: { subscribe: jes
 jest.mock('../store/useSettingsStore', () => ({ useSettingsStore: { subscribe: jest.fn(), getState: jest.fn() } }));
 
 import { buildTripRun } from '../utils/tripLiveActivity';
+import { isTripLive, TRIP_MAX_MS } from '../utils/activeTrip';
 import type { Shop } from '../types';
 
 const NOW = new Date(2026, 7, 11, 12, 0, 0).getTime();
@@ -26,6 +27,7 @@ function makeShop(overrides: Partial<Shop> = {}): Shop {
     excludeFromSuggestions: false,
     receiptStyle: 'itemized' as const,
     aisles: null,
+    aisleOrder: null,
     ...overrides,
   };
 }
@@ -60,7 +62,17 @@ describe('buildTripRun', () => {
   it('builds a run for a live trip', () => {
     const shops = [makeShop({ id: 'shop-1', name: 'Costco' })];
     const run = buildTripRun('shop-1', startedAgo(30), shops, { enabled: true });
-    expect(run).toEqual({ shopName: 'Costco', startedAtMs: NOW - 30_000 });
+    expect(run).toEqual({ shopName: 'Costco', startedAtMs: NOW - 30_000, staleAtMs: NOW - 30_000 + TRIP_MAX_MS });
+  });
+
+  it('goes stale on the Lock Screen when the app stops counting the trip as live', () => {
+    // #2937: nothing ends the activity while the app is closed, so the stale
+    // date is what stops it claiming a trip the app has already let go of.
+    const shops = [makeShop({ id: 'shop-1' })];
+    const run = buildTripRun('shop-1', startedAgo(60), shops, { enabled: true })!;
+    expect(run.staleAtMs - run.startedAtMs).toBe(TRIP_MAX_MS);
+    expect(isTripLive(new Date(run.staleAtMs - 1).toISOString(), new Date(run.staleAtMs - 2))).toBe(true);
+    expect(isTripLive(new Date(run.startedAtMs).toISOString(), new Date(run.staleAtMs))).toBe(false);
   });
 
   it('truncates a long store name', () => {

@@ -1,0 +1,4 @@
+{
+  "message": "Fixed the cursor jumping mid-word while you type in a search box, which scrambled the letters. It affected every field that filters a list as you type, from the meal planner's recipe search to Search, Logbook and the grocery catalog.",
+  "date": "2026-09-20"
+}

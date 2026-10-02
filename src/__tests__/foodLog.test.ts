@@ -5,23 +5,37 @@ import {
   composeFoodAmount,
   describeFoodLogEntry,
   describeFoodLogTotals,
+  ESTIMATE_AMOUNTS,
+  MAX_ESTIMATE_MULTIPLE,
+  currentEstimateCount,
+  currentEstimateFactor,
+  describeEstimateCount,
+  estimateAmountPatch,
+  estimateAmountUnchanged,
+  estimateCount,
+  estimateCountQuestion,
   foodLogEntryEdit,
   foodLogSections,
   foodLogTotals,
   foodUnitOptionsFor,
   isBeverageName,
+  logInstantFor,
   matchMealPlanEntry,
   nutrientContributions,
   helpingNutrition,
   parseFoodAmount,
+  plannedEntryForRecipe,
   portionExamples,
+  recallAmount,
   recipeHelpingNutrition,
   resolveFoodLogDrop,
   savedMealCalories,
   scalePanelToAmount,
+  wholeEstimate,
   type FoodLogListItem,
 } from '../utils/foodLog';
 import type { FoodLogEntry, FoodNutrition, MealPlanEntry, NutrientKey, SavedMealItem } from '../types';
+import { packageChoices } from '../utils/scanPortion';
 
 const NOW = new Date('2026-04-02T18:30:00.000Z');
 
@@ -547,6 +561,15 @@ describe('describeFoodLogEntry', () => {
     expect(described('manual')).toContain('typed in');
     expect(described('estimated')).toContain('estimated');
   });
+
+  it('takes the words a row would rather show in place of the stored ones', () => {
+    const water = entry({
+      quantity: '1.89 L',
+      nutrition: panel({ source: 'manual', amounts: { waterMl: 1893 } }),
+    });
+    expect(describeFoodLogEntry(water, '64 fl oz')).toBe('64 fl oz');
+    expect(describeFoodLogEntry(water)).toBe('1.89 L');
+  });
 });
 
 describe('nutrientContributions', () => {
@@ -618,6 +641,40 @@ describe('matchMealPlanEntry', () => {
   });
 });
 
+describe('plannedEntryForRecipe', () => {
+  // The recipe page's log button: tonight's chili, logged from the page, has
+  // to cover tonight's planned chili or the Eat step asks again.
+  it('links the one planned entry for the recipe, whatever slot it is in', () => {
+    const lunch = planEntry({ slot: 'lunch', recipeId: 'r-salad' });
+    const dinner = planEntry({ slot: 'dinner', recipeId: 'r-chili' });
+    expect(plannedEntryForRecipe([lunch, dinner], [], 'r-chili')).toBe(dinner);
+  });
+
+  it('skips an entry a food log row already claims', () => {
+    const dinner = planEntry({ slot: 'dinner', recipeId: 'r-chili' });
+    const logged = entry({ slot: 'dinner', recipeId: 'r-chili', mealPlanEntryId: dinner.id });
+    expect(plannedEntryForRecipe([dinner], [logged], 'r-chili')).toBeNull();
+  });
+
+  it('refuses a recipe planned twice that day rather than guessing', () => {
+    const lunch = planEntry({ slot: 'lunch', recipeId: 'r-chili' });
+    const dinner = planEntry({ slot: 'dinner', recipeId: 'r-chili' });
+    expect(plannedEntryForRecipe([lunch, dinner], [], 'r-chili')).toBeNull();
+  });
+
+  it('takes the other one when the first of two is already logged', () => {
+    const lunch = planEntry({ slot: 'lunch', recipeId: 'r-chili' });
+    const dinner = planEntry({ slot: 'dinner', recipeId: 'r-chili' });
+    const logged = entry({ slot: 'lunch', recipeId: 'r-chili', mealPlanEntryId: lunch.id });
+    expect(plannedEntryForRecipe([lunch, dinner], [logged], 'r-chili')).toBe(dinner);
+  });
+
+  it('never falls back to a slot, since the page names no meal', () => {
+    const dinner = planEntry({ slot: 'dinner', recipeId: 'r-other' });
+    expect(plannedEntryForRecipe([dinner], [], 'r-chili')).toBeNull();
+  });
+});
+
 describe('foodLogEntryEdit', () => {
   it('reopens a catalog food on the amount it was logged with', () => {
     const row = entry({ itemId: 'item-milk', quantity: '1 cup' });
@@ -640,9 +697,42 @@ describe('foodLogEntryEdit', () => {
     expect(foodLogEntryEdit(row)).toEqual({ amount: '2 slices', dishMeasure: null });
   });
 
+  it('reopens a scanned whole package on its serving count, which re-measures', () => {
+    const label = packageChoices(panel({ basis: 'per100g', servingGrams: 45 }), '450 g')
+      .find(c => c.key === 'package')!.label;
+    const row = entry({
+      productId: 'prod-1',
+      quantity: label,
+      nutrition: panel({ basis: 'per100g', servingGrams: 45, servingText: label }),
+    });
+    expect(foodLogEntryEdit(row)).toEqual({ amount: '10 servings', dishMeasure: null });
+    expect(scalePanelToAmount(panel({ basis: 'per100g', servingGrams: 45 }), '10 servings', null, NOW)).not.toBeNull();
+  });
+
   it('refuses an entry with no link, since there is no panel left to measure against', () => {
-    // A described meal the model estimated, or a database food nobody filed.
+    // A described meal the model estimated, or a database food logged before
+    // entries kept their panel.
     expect(foodLogEntryEdit(entry({ quantity: 'a bowl of ramen' }))).toBeNull();
+  });
+
+  it('reopens an unfiled database food on the panel it kept (#2914)', () => {
+    // Logged as 200 g of a database's chicken, never filed. The per-100 g panel
+    // rode onto the entry, so the amount can be re-measured against it.
+    const kept = panel({ amounts: { calorieKcal: 165, proteinG: 31 }, portions: [] });
+    const helping = scalePanelToAmount(kept, '200 g', null, NOW)!;
+    const row = entry({ quantity: '200 g', grams: 200, nutrition: helping.nutrition, sourcePanel: kept });
+    const plan = foodLogEntryEdit(row);
+    expect(plan).toEqual({ amount: '200 g', dishMeasure: null });
+    // And the correction measures against the kept panel exactly as the
+    // original did, rather than multiplying the stored helping.
+    const corrected = scalePanelToAmount(kept, '170 g', null, NOW)!;
+    expect(corrected.nutrition.amounts.calorieKcal).toBe(280.5);
+    expect(corrected.grams).toBe(170);
+  });
+
+  it('still refuses an unlinked entry whose kept panel is absent or null', () => {
+    expect(foodLogEntryEdit(entry({ quantity: '200 g', sourcePanel: null }))).toBeNull();
+    expect(foodLogEntryEdit(entry({ quantity: '200 g', sourcePanel: undefined }))).toBeNull();
   });
 
   it('refuses an entry carrying answered "Anything else?" lines', () => {
@@ -692,6 +782,244 @@ describe('foodLogEntryEdit', () => {
   });
 });
 
+describe('changing an estimate\'s amount (#2914)', () => {
+  // The seeded "Five Guys" estimate's shape: a described meal, linked to
+  // nothing, stating a short list and no weight, in words that count nothing.
+  const burger = () => entry({
+    label: 'Cheeseburger and fries',
+    quantity: '1 burger and a regular fries',
+    grams: null,
+    nutrition: {
+      basis: 'perServing',
+      servingGrams: null,
+      servingText: '1 burger and a regular fries',
+      amounts: { calorieKcal: 1250, proteinG: 45, fatG: 68, sodiumMg: 1470 },
+      source: 'estimated',
+      sourceId: null,
+      portions: [],
+      recordedAt: '2026-04-02T13:00:00.000Z',
+    },
+  });
+
+  // The one the report was about: an estimate whose words are a count.
+  const pizza = () => entry({
+    label: 'Pepperoni pizza',
+    quantity: '2 slices',
+    grams: null,
+    nutrition: {
+      basis: 'perServing',
+      servingGrams: null,
+      servingText: '2 slices',
+      amounts: { calorieKcal: 600, proteinG: 26, fatG: 25 },
+      source: 'estimated',
+      sourceId: null,
+      portions: [],
+      recordedAt: '2026-04-02T19:00:00.000Z',
+    },
+  });
+
+  /** The entry as `reviseEntry` would leave it after a patch. */
+  const applied = (row: FoodLogEntry, factor: number): FoodLogEntry => {
+    const patch = estimateAmountPatch(row, factor)!;
+    return { ...row, ...patch };
+  };
+
+  it('is offered only for an estimate linked to nothing', () => {
+    expect(wholeEstimate(burger())).not.toBeNull();
+    // Linked: corrected by re-measuring against its row instead.
+    expect(wholeEstimate({ ...burger(), itemId: 'item-a' })).toBeNull();
+    expect(wholeEstimate({ ...burger(), recipeId: 'r1' })).toBeNull();
+    // Not an estimate: a database food that kept its panel is re-measured,
+    // and one that didn't claims figures a multiple would still be a guess at.
+    expect(wholeEstimate(entry({ nutrition: panel({ basis: 'perServing' }) }))).toBeNull();
+  });
+
+  describe('estimateCount', () => {
+    it('reads a count of one thing, in its own noun', () => {
+      expect(estimateCount('2 slices')).toMatchObject({ count: 2, noun: 'slices', rest: '', measure: false, step: 1 });
+      expect(estimateCount('1 burger')).toMatchObject({ count: 1, noun: 'burger', rest: '', step: 0.5 });
+      expect(estimateCount('3 tacos')).toMatchObject({ count: 3, noun: 'tacos' });
+      expect(estimateCount('1 1/2 cups')).toMatchObject({ count: 1.5, noun: 'cups', measure: true, step: 0.5 });
+      expect(estimateCount('12 oz')).toMatchObject({ count: 12, noun: 'oz', measure: true });
+      // "of" and the one thing counted still counts it.
+      expect(estimateCount('2 slices of pepperoni pizza')).toMatchObject({ count: 2, noun: 'slices', rest: ' of pepperoni pizza' });
+      expect(estimateCount('1 bowl of pho')).toMatchObject({ count: 1, noun: 'bowl', rest: ' of pho' });
+    });
+
+    it('gives none when the number counts only part of the meal, or nothing', () => {
+      // The 1 is the burger's; doubling it would double the fries unsaid.
+      expect(estimateCount('1 burger and a regular fries')).toBeNull();
+      expect(estimateCount('1 plate of rice and beans')).toBeNull();
+      expect(estimateCount('1 bowl of rice with 2 eggs')).toBeNull();
+      expect(estimateCount('2 slices, large')).toBeNull();
+      // A size in front of the noun is not the noun.
+      expect(estimateCount('1 large pizza')).toBeNull();
+      expect(estimateCount('a bowl of pho')).toBeNull();
+      expect(estimateCount('1-2 slices')).toBeNull();
+      expect(estimateCount('1 14 oz can')).toBeNull();
+      expect(estimateCount('3')).toBeNull();
+      expect(estimateCount('')).toBeNull();
+      expect(estimateCount(null)).toBeNull();
+    });
+
+    it('asks in the plural of the noun, or in the unit for a measure', () => {
+      expect(estimateCountQuestion(estimateCount('2 slices')!)).toBe('How many slices');
+      expect(estimateCountQuestion(estimateCount('1 slice')!)).toBe('How many slices');
+      expect(estimateCountQuestion(estimateCount('1 burger')!)).toBe('How many burgers');
+      expect(estimateCountQuestion(estimateCount('12 oz')!)).toBe('How much, in oz');
+      expect(estimateCountQuestion(estimateCount('1 cup')!)).toBe('How much, in cups');
+    });
+
+    it('writes a new count in agreement with its noun', () => {
+      const say = (words: string, n: number) => describeEstimateCount(estimateCount(words)!, n);
+      expect(say('2 slices', 3)).toBe('3 slices');
+      expect(say('2 slices', 1)).toBe('1 slice');
+      expect(say('1 slice', 1.5)).toBe('1 1/2 slices');
+      expect(say('1 burger', 2)).toBe('2 burgers');
+      expect(say('3 tacos', 1)).toBe('1 taco');
+      expect(say('2 sandwiches', 1)).toBe('1 sandwich');
+      expect(say('1 sandwich', 2)).toBe('2 sandwiches');
+      expect(say('2 cookies', 1)).toBe('1 cookie');
+      expect(say('1 patty', 3)).toBe('3 patties');
+      expect(say('12 oz', 16)).toBe('16 oz');
+      expect(say('1.5 cups', 2.5)).toBe('2.5 cups');
+      expect(say('2 slices of pepperoni pizza', 3)).toBe('3 slices of pepperoni pizza');
+    });
+  });
+
+  it('scales a counted estimate up in its own unit', () => {
+    // "I actually ate 3 slices": one and a half times the meal as estimated.
+    const patch = estimateAmountPatch(pizza(), 3 / 2)!;
+    expect(patch.nutrition.amounts).toEqual({ calorieKcal: 900, proteinG: 39, fatG: 37.5 });
+    expect(patch.quantity).toBe('3 slices');
+    expect(patch.nutrition.servingText).toBe('3 slices');
+    expect(patch.nutrition.source).toBe('estimated');
+    expect(patch.nutrition.basis).toBe('perServing');
+    // Stamped when the model estimated it, not when the count was changed.
+    expect(patch.nutrition.recordedAt).toBe('2026-04-02T19:00:00.000Z');
+    expect(patch.sourcePanel.amounts.calorieKcal).toBe(600);
+  });
+
+  it('scales it down the same way', () => {
+    const patch = estimateAmountPatch(pizza(), 1 / 2)!;
+    expect(patch.nutrition.amounts.calorieKcal).toBe(300);
+    expect(patch.quantity).toBe('1 slice');
+  });
+
+  it('takes every change of the whole, and puts the entry back at the count the model described', () => {
+    const three = applied(pizza(), 3 / 2);
+    // Four slices of a two-slice meal, not four-thirds of three.
+    const four = applied(three, 2);
+    expect(four.nutrition.amounts.calorieKcal).toBe(1200);
+    expect(four.quantity).toBe('4 slices');
+
+    const original = pizza();
+    const restored = applied(four, 1);
+    expect(restored.nutrition.amounts).toEqual(original.nutrition.amounts);
+    expect(restored.quantity).toBe(original.quantity);
+    expect(restored.nutrition.servingText).toBe(original.nutrition.servingText);
+  });
+
+  it('scales an estimate with no count by a share or a multiple of the whole', () => {
+    const twothirds = estimateAmountPatch(burger(), 2 / 3)!;
+    expect(twothirds.nutrition.amounts).toEqual({ calorieKcal: 833.3, proteinG: 30, fatG: 45.3, sodiumMg: 980 });
+    expect(twothirds.quantity).toBe('two-thirds of 1 burger and a regular fries');
+
+    const twice = estimateAmountPatch(burger(), 2)!;
+    expect(twice.nutrition.amounts).toEqual({ calorieKcal: 2500, proteinG: 90, fatG: 136, sodiumMg: 2940 });
+    expect(twice.quantity).toBe('twice 1 burger and a regular fries');
+    // No nutrient appears that the estimate did not state.
+    expect(twice.nutrition.amounts.fiberG).toBeUndefined();
+
+    expect(estimateAmountPatch(burger(), 3 / 2)!.quantity).toBe('one and a half times 1 burger and a regular fries');
+  });
+
+  it('keeps the whole meal, so a second change is of the whole rather than of the first', () => {
+    const halved = applied(burger(), 1 / 2);
+    expect(halved.sourcePanel?.amounts.calorieKcal).toBe(1250);
+    expect(halved.nutrition.amounts.calorieKcal).toBe(625);
+
+    const threeQuarters = applied(halved, 3 / 4);
+    // Three-quarters of the meal, not three-eighths of it.
+    expect(threeQuarters.nutrition.amounts.calorieKcal).toBe(937.5);
+    expect(threeQuarters.quantity).toBe('three-quarters of 1 burger and a regular fries');
+  });
+
+  it('puts the entry back exactly as logged when All is chosen', () => {
+    const original = burger();
+    const restored = applied(applied(original, 3), 1);
+    expect(restored.nutrition.amounts).toEqual(original.nutrition.amounts);
+    expect(restored.quantity).toBe(original.quantity);
+  });
+
+  it('refuses nothing, a non-number, or more than the cap', () => {
+    expect(estimateAmountPatch(burger(), 0)).toBeNull();
+    expect(estimateAmountPatch(burger(), -0.5)).toBeNull();
+    expect(estimateAmountPatch(burger(), Number.NaN)).toBeNull();
+    expect(estimateAmountPatch(burger(), MAX_ESTIMATE_MULTIPLE)).not.toBeNull();
+    expect(estimateAmountPatch(burger(), MAX_ESTIMATE_MULTIPLE + 1)).toBeNull();
+    expect(estimateAmountPatch({ ...burger(), itemId: 'item-a' }, 0.5)).toBeNull();
+  });
+
+  it('scales a weight the estimate carried, and says the amount alone when it had no words', () => {
+    const weighed = { ...burger(), quantity: '', grams: 400, nutrition: { ...burger().nutrition, servingText: null } };
+    const quarter = estimateAmountPatch(weighed, 1 / 4)!;
+    expect(quarter.grams).toBe(100);
+    expect(quarter.nutrition.servingGrams).toBe(100);
+    expect(quarter.quantity).toBe('a quarter');
+    const twice = estimateAmountPatch(weighed, 2)!;
+    expect(twice.grams).toBe(800);
+    expect(twice.quantity).toBe('twice');
+  });
+
+  it('is not offered the editor once a change has been kept', () => {
+    // The kept whole is an estimate, which has no amounts to re-measure.
+    expect(foodLogEntryEdit(applied(burger(), 1 / 2))).toBeNull();
+    expect(foodLogEntryEdit(applied(pizza(), 3 / 2))).toBeNull();
+  });
+
+  it('reads back how many times the whole an entry stands at', () => {
+    expect(currentEstimateFactor(burger())).toBe(1);
+    expect(currentEstimateFactor(applied(burger(), 1 / 3))).toBe(1 / 3);
+    expect(currentEstimateFactor(applied(burger(), 3))).toBe(3);
+    expect(currentEstimateFactor(applied(applied(burger(), 1 / 3), 1))).toBe(1);
+    expect(currentEstimateFactor(applied(pizza(), 3 / 2))).toBe(3 / 2);
+    // A count off the preset set, read back from the words the change wrote.
+    expect(currentEstimateFactor(applied(pizza(), 7 / 2))).toBe(7 / 2);
+    expect(currentEstimateFactor(entry({ itemId: 'item-a' }))).toBeNull();
+  });
+
+  it('reads back the count a counted estimate stands at, without division dust', () => {
+    expect(currentEstimateCount(pizza())).toBe(2);
+    expect(currentEstimateCount(applied(pizza(), 3 / 2))).toBe(3);
+    expect(currentEstimateCount(applied(pizza(), 7 / 2))).toBe(7);
+    // Words with no count have no count to stand at.
+    expect(currentEstimateCount(burger())).toBeNull();
+    expect(currentEstimateCount(entry({ itemId: 'item-a' }))).toBeNull();
+  });
+
+  it('reads an estimate of nothing but zeros as the whole rather than a quarter', () => {
+    const water = { ...burger(), nutrition: { ...burger().nutrition, amounts: { calorieKcal: 0 } } };
+    expect(currentEstimateFactor(water)).toBe(1);
+  });
+
+  it('says when a change would leave the entry as it is', () => {
+    const three = applied(pizza(), 3 / 2);
+    expect(estimateAmountUnchanged(three, estimateAmountPatch(three, 3 / 2)!)).toBe(true);
+    expect(estimateAmountUnchanged(three, estimateAmountPatch(three, 1)!)).toBe(false);
+    expect(estimateAmountUnchanged(pizza(), estimateAmountPatch(pizza(), 1)!)).toBe(true);
+  });
+
+  it('offers the amounts smallest first, from shares through the whole to multiples of it', () => {
+    const values = ESTIMATE_AMOUNTS.map(a => a.value);
+    expect(values).toEqual([...values].sort((a, b) => a - b));
+    expect(values).toContain(1);
+    expect(values.some(v => v < 1)).toBe(true);
+    expect(values.some(v => v > 1)).toBe(true);
+    expect(values.every(v => v > 0 && v <= MAX_ESTIMATE_MULTIPLE)).toBe(true);
+  });
+});
+
 describe('portionExamples', () => {
   it('lists the food\'s own stated portions, up to the limit', () => {
     expect(portionExamples(panel())).toEqual(['1 cup']);
@@ -723,6 +1051,11 @@ describe('amountHint / amountExample', () => {
   it('mentions servings too, once a per-100ml panel states a serving weight', () => {
     expect(amountHint(panel({ basis: 'per100ml', servingGrams: 240, portions: [] })))
       .toBe('A volume, like 250 ml or 1 cup, or a number of servings.');
+  });
+
+  it('mentions a weight too, once a per-100ml panel has had a volume weighed onto it', () => {
+    const weighed = panel({ basis: 'per100ml', portions: [{ amount: 1, label: 'fl oz', grams: 20.45 }] });
+    expect(amountHint(weighed)).toBe('A volume, like 250 ml or 1 cup, or a weight now that one has been weighed.');
   });
 
   it('asks for a serving count from a perServing panel with no serving weight', () => {
@@ -790,6 +1123,15 @@ describe('foodUnitOptionsFor', () => {
     const options = foodUnitOptionsFor(panel({ basis: 'per100ml', portions: [{ amount: 1, label: 'cup', grams: 240 }] }));
     expect(options.filter(o => o.key === 'cup')).toHaveLength(1);
   });
+
+  it('adds a grams pill for a per-100ml panel once a volume has been weighed onto it', () => {
+    // The exact shape `handleSaveWeighedPortion` writes when someone weighs a
+    // "fl oz" amount of a drink or an ice cream (#2968's bug was that weighing
+    // never recorded a usable density in the first place).
+    const weighed = panel({ basis: 'per100ml', portions: [{ amount: 1, label: 'fl oz', grams: 20.45 }] });
+    const options = foodUnitOptionsFor(weighed);
+    expect(options).toContainEqual({ key: 'g', label: 'g', suffix: 'g' });
+  });
 });
 
 describe('composeFoodAmount / parseFoodAmount', () => {
@@ -812,5 +1154,91 @@ describe('composeFoodAmount / parseFoodAmount', () => {
   });
 });
 
+describe('recallAmount', () => {
+  const yogurt = panel({ portions: [{ amount: 1, label: 'cup', grams: 245 }] });
+
+  it('opens a food on its last amount, split into the unit pill and the number', () => {
+    expect(recallAmount({ amount: '250g', dishMeasure: null }, { kind: 'food', panel: yogurt, name: 'Greek yogurt' }))
+      .toEqual({ amount: '250g', unitKey: 'g', number: '250', dishMeasure: null });
+    expect(recallAmount({ amount: '1.5 cup', dishMeasure: null }, { kind: 'food', panel: yogurt, name: 'Greek yogurt' }))
+      .toEqual({ amount: '1.5 cup', unitKey: 'cup', number: '1.5', dishMeasure: null });
+  });
+
+  it('recalls nothing for a food that was never logged', () => {
+    expect(recallAmount(undefined, { kind: 'food', panel: yogurt, name: 'Greek yogurt' })).toBeNull();
+    expect(recallAmount(null, { kind: 'food', panel: yogurt, name: 'Greek yogurt' })).toBeNull();
+  });
+
+  it('falls back to the default when the unit it was logged in is gone from the panel', () => {
+    // Logged as "2 cup" against a panel that has since been replaced by one
+    // stating no cup. A pre-filled amount Save then refuses is worse than an
+    // empty field.
+    const noCup = panel({ portions: [] });
+    expect(recallAmount({ amount: '2 cup', dishMeasure: null }, { kind: 'food', panel: noCup, name: 'Greek yogurt' }))
+      .toBeNull();
+  });
+
+  it('opens an amount that resolves but is not one of the pills on "Something else", text intact', () => {
+    const bread = panel({ portions: [{ amount: 1, label: 'slice', grams: 30 }] });
+    const recalled = recallAmount({ amount: '1/2 slice', dishMeasure: null }, { kind: 'food', panel: bread, name: 'Bread' });
+    expect(recalled).toEqual({ amount: '1/2 slice', unitKey: 'other', number: '', dishMeasure: null });
+    expect(scalePanelToAmount(bread, '1/2 slice', null, NOW)).not.toBeNull();
+  });
+
+  it('puts a whole-package scan back on the serving pill it re-measures by', () => {
+    // `foodLogEntryEdit` reads "The whole package (2 servings)" as "2 servings".
+    const stated = panel({ basis: 'perServing', servingGrams: null, portions: [] });
+    expect(recallAmount({ amount: '2 servings', dishMeasure: null }, { kind: 'food', panel: stated, name: null }))
+      .toEqual({ amount: '2 serving', unitKey: 'serving', number: '2', dishMeasure: null });
+  });
+
+  it('refuses a dish amount for a food, and a food amount for a dish', () => {
+    expect(recallAmount({ amount: '2', dishMeasure: 'servings' }, { kind: 'food', panel: yogurt, name: null })).toBeNull();
+    expect(recallAmount({ amount: '1 cup', dishMeasure: null }, { kind: 'dish', weighed: true, served: true })).toBeNull();
+  });
+
+  it('opens a dish on the measure and number it was last logged in', () => {
+    expect(recallAmount({ amount: '320', dishMeasure: 'weight' }, { kind: 'dish', weighed: true, served: true }))
+      .toEqual({ amount: '320', unitKey: null, number: '', dishMeasure: 'weight' });
+    expect(recallAmount({ amount: '0.5', dishMeasure: 'servings' }, { kind: 'dish', weighed: false, served: true }))
+      .toEqual({ amount: '0.5', unitKey: null, number: '', dishMeasure: 'servings' });
+  });
+
+  it('falls back when the dish can no longer answer the measure it was logged in', () => {
+    // A plate weighed against a dish nobody has weighed since, or servings of
+    // one that no longer says how many it makes.
+    expect(recallAmount({ amount: '320', dishMeasure: 'weight' }, { kind: 'dish', weighed: false, served: true })).toBeNull();
+    expect(recallAmount({ amount: '2', dishMeasure: 'servings' }, { kind: 'dish', weighed: true, served: false })).toBeNull();
+  });
+});
+
 const _keyCheck: NutrientKey = 'calorieKcal';
 void _keyCheck;
+
+describe('logInstantFor', () => {
+  const now = new Date(2026, 8, 27, 19, 42);
+
+  it('stamps the logical today with the real moment', () => {
+    // A dinner logged from the after-meal prompt used to reach Health as noon.
+    expect(logInstantFor('2026-09-27', '2026-09-27', now).getTime()).toBe(now.getTime());
+  });
+
+  it('keeps the real moment in the grace window, when the calendar date has moved on', () => {
+    // 1:30 AM on the 28th under a 3 AM reset is still the logical 27th; the
+    // entry keeps its real instant and addEntry keys it back onto the 27th.
+    const small = new Date(2026, 8, 28, 1, 30);
+    expect(logInstantFor('2026-09-27', '2026-09-27', small).getTime()).toBe(small.getTime());
+  });
+
+  it('stamps any other day at noon on that day', () => {
+    const at = logInstantFor('2026-09-25', '2026-09-27', now);
+    expect([at.getFullYear(), at.getMonth(), at.getDate(), at.getHours(), at.getMinutes()])
+      .toEqual([2026, 8, 25, 12, 0]);
+  });
+
+  it('hands back a copy, never the clock it was given', () => {
+    const at = logInstantFor('2026-09-27', '2026-09-27', now);
+    at.setHours(0);
+    expect(now.getHours()).toBe(19);
+  });
+});

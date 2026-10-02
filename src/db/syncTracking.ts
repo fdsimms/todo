@@ -75,6 +75,13 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
   // differently on each phone, and a milestone is written once and rarely
   // edited, so last-writer-wins is a no-op on almost every row.
   { name: 'milestones', key: ['id'] },
+  // Who a calendar event is with (eventPeople.ts). The event itself syncs
+  // through its own calendar; this is the app's note about it, and it syncs
+  // because it names the event by the calendar server's id wherever the
+  // device could read one. A row keyed by a device-local id travels too and
+  // simply matches nothing on the other phone. Duplicates from two phones
+  // linking the same occurrence offline are collapsed by the reader.
+  { name: 'event_people_links', key: ['id'] },
   // The medication log. Same health-record argument as mood_logs, with one
   // extra edge: a phone that only has half the doses answers "how often did I
   // reach for it" with a number that is simply too low, and nothing about that
@@ -85,7 +92,10 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
   // reading it prevents is starker: a day's totals computed off whichever half
   // of the record happens to be on the phone in your hand. An entry is written
   // once and edited rarely, and its nutrition is a snapshot nothing recomputes,
-  // so last-writer-wins is a no-op on almost every row.
+  // so last-writer-wins is a no-op on almost every row. Every column travels,
+  // `source_panel` included (the panel an unfiled database food keeps, #2914):
+  // it describes the entry rather than the device, and a phone without it
+  // would offer only a rename on an entry the other phone can correct.
   { name: 'food_logs', key: ['id'] },
   // Saved meals. Built from food_logs entries and read the same way they are
   // — a phone missing them offers a shorter list of "log again" shortcuts
@@ -122,6 +132,10 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
   // receipt's printed text and can contain anything, '|' included.
   { name: 'grocery_store_aliases', key: ['id'] },
   { name: 'cookbooks', key: ['id'] },
+  // A cookbook's index lines. Entered by hand or a page at a time, so a phone
+  // that didn't get them would search a different shelf from the one it was
+  // typed into. Ids are base36 from generateId().
+  { name: 'cookbook_index_entries', key: ['id'] },
   { name: 'recipes', key: ['id'] },
   { name: 'leftovers', key: ['id'] },
   { name: 'meal_plan_entries', key: ['id'] },
@@ -145,6 +159,93 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
 ];
 
 /**
+ * Columns of a synced table that belong to this device rather than to the
+ * row: never sent, and never taken from a peer.
+ *
+ * The columns SYNCED_SETTING_KEYS keeps a *setting* off the wire for (an
+ * EventKit id "names a record on one phone", docs/arch/people.md), held inside
+ * a row that otherwise travels whole. `meal_plan_entries.calendar_event_id` is
+ * the id of the event this device wrote for the meal into the calendar picked
+ * on this device (`mealCalendarId`, itself device-local). Sent across, it
+ * named nothing on the other phone, and that phone's reconcile then undid this
+ * one's: with no calendar picked it "deleted" the foreign id, wrote null, and
+ * synced the null back, so the device that owned the event lost its link and
+ * wrote a duplicate on its next edit, leaving the first on the calendar for
+ * good (#2950).
+ *
+ * Both directions, and both are needed. Stripped on the way out
+ * (`dbSyncChangesSince`), so a peer never sees the id; left out of the columns
+ * an apply writes (`dbApplySyncChanges`), so a peer on an older build that
+ * still sends one can't overwrite the local link. An apply updates an existing
+ * row column by column, which is what lets the local value survive a peer's
+ * edit to the rest of the row; a row that arrives new gets the column's
+ * default, null, which is the truth here (no event on this device yet).
+ *
+ * The three event ids on `tasks` are the same shape and failed the same way.
+ * `calendar_event_id` is the deadline event written into `deadlineCalendarId`
+ * (device-local like `mealCalendarId`): `syncDeadlineEvent` on a phone with no
+ * deadline calendar picked "deleted" the foreign id and wrote null, so the
+ * owner lost its link and duplicated the event on its next edit.
+ * `time_block_event_id` did it on a tap: the other phone's editor read the id
+ * as "On your calendar", `putTaskOnCalendar` couldn't resolve it, took the
+ * event for deleted and cleared the pointer, and the null synced back to the
+ * phone whose block it was. `completion_calendar_event_id` is written by the
+ * completing phone and cleared by an uncomplete, which on another phone
+ * deleted nothing and still nulled the owner's link. Kept local, the other
+ * phone's editor offers "Put on my calendar" for a block it can't open, which
+ * is what it can actually do, rather than breaking the block it can't see.
+ *
+ * A backup keeps the columns: restoring onto the phone that wrote the events is
+ * the common case, and there the ids still resolve. Restored onto a new phone
+ * they don't, so each event's calendar server id is kept beside its local id
+ * (`calendar_event_external_id`, `time_block_external_id`,
+ * `completion_calendar_event_external_id`) and the next write looks the event
+ * up by it before writing a fresh one (`writeAllDayEvent` in
+ * utils/calendarEventLink.ts), or, for a time block, before dropping the
+ * pointer (`adoptTimeBlock` in useTaskStore). A delete does the same when the
+ * local id names nothing (`deleteLinkedEvent`), which is all a completion
+ * event's server id is kept for.
+ * That column names the same event this device wrote, so it stays here too:
+ * sent across, a peer could find the event by it and start rewriting an event
+ * it doesn't own.
+ *
+ * Keeping the id local also means only this device can act on the event, so a
+ * peer's edit reaches it through the apply's report rather than the row: an
+ * apply names the meals it wrote and, for a meal it deletes, the event id read
+ * off the row first (`ApplyReport.mealEntryIds`/`removedMealEvents`), and the
+ * reload after the sync reconciles them. Tasks get the same
+ * (`taskIds`/`removedTaskEvents`): a changed task's deadline event and time
+ * block are rewritten, a deleted task's deadline event is deleted, and a
+ * reopened task's completion event is deleted and unlinked, as a local
+ * uncomplete does. Not a deleted task's time block, which the app never
+ * deletes, nor its completion event, a record of something that happened. A
+ * column added here that names something outside the database needs the same,
+ * or a peer's delete strands whatever it pointed at.
+ */
+export const SYNC_DEVICE_LOCAL_COLUMNS: Readonly<Record<string, readonly string[]>> = {
+  meal_plan_entries: ['calendar_event_id', 'calendar_event_external_id'],
+  tasks: [
+    'calendar_event_id', 'calendar_event_external_id',
+    'completion_calendar_event_id', 'completion_calendar_event_external_id',
+    'time_block_event_id', 'time_block_external_id',
+  ],
+};
+
+/** Whether `column` of `table` stays on this device — see SYNC_DEVICE_LOCAL_COLUMNS. */
+export function isDeviceLocalColumn(table: string, column: string): boolean {
+  return SYNC_DEVICE_LOCAL_COLUMNS[table]?.includes(column) ?? false;
+}
+
+/** A row as it may leave this device: its device-local columns dropped. */
+export function withoutDeviceLocalColumns<R extends Record<string, unknown>>(table: string, row: R): R {
+  const local = SYNC_DEVICE_LOCAL_COLUMNS[table];
+  if (!local) return row;
+  const out = { ...row };
+  for (const column of local) delete out[column];
+  return out;
+}
+
+/**
  * Real tables deliberately outside SYNC_TRACKED_TABLES, with the reason
  * attached — an exception has to be argued for here, not just missing from
  * the list above, or nothing would distinguish a deliberate omission from a
@@ -158,6 +259,14 @@ export const SYNC_EXCLUDED_TABLES = [
   // peer that needs to know a tombstone row was written, only that the row it
   // describes was deleted, and the tombstone already says that.
   'sync_deletions',
+  // When, and over which transport, each applied peer row arrived (see
+  // SYNC_RECEIVED_TABLE). Bookkeeping about this device's own relaying, for
+  // the same reason as the tombstones above: nothing a peer needs to hear.
+  'sync_received',
+  // Which id a folded-away row was folded into (see SYNC_ALIASES_TABLE). Every
+  // device folds for itself when it meets the clash, so there is nothing to
+  // tell a peer; the table only redirects rows this device receives later.
+  'sync_aliases',
   // The barcode cache. It holds no user data — only what a GTIN denotes, which
   // is the same answer on every device and for everyone — so there is nothing
   // for two devices to disagree about and nothing a merge would resolve. A
@@ -242,6 +351,7 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'calendarEventCategory',
   'kitchenEnabled',
   'unitSystem',
+  'householdServings',
   'currencySymbol',
 
   // Automatic tasks. Per-generator, matching the settings keys themselves
@@ -257,7 +367,13 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'mealPlanNudgeEnabled',
   'mealPlanNudgeTime',
   'mealPlanNudgeWeekday',
+  'mealPlanNudgeSlots',
   'mealPlanNudgeTaskCategory',
+  // Missing from this allowlist until now — a genuine gap found while adding
+  // mealPlanNudgeSlots beside it: this is exactly the "what the app looks
+  // like and how it behaves" preference case 1 above describes, and a second
+  // device was left to be reconfigured from scratch for it.
+  'mealSlotsEnabled',
   'projectReviewTasks',
   'projectReviewTaskCategory',
   'pantryCheckTasks',
@@ -273,6 +389,9 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'grocery_aisle_order',
   'grocery_aisle_hidden',
   'grocery_aisle_overrides',
+  // Which medications you have archived. A statement about what you take, and
+  // a device without it would list a medicine you stopped on the other one.
+  'medication_archived',
 
   // Vacation mode is a statement about the person, not the device.
   'vacationMode',
@@ -307,6 +426,12 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
  *   about on a person's screen, keyed by EventKit event id. Same objection as
  *   `groceryImportLinks`: an event id names a record on one device, so the
  *   other phone would read it as answers about events it has never seen.
+ * - `calendarEventPeople` — where who-an-event-is-with lived before it moved
+ *   to the synced `event_people_links` table (keyed by the calendar server's
+ *   id instead). Read once by the migration and deleted; never synced.
+ * - `calendarEventTasks` — which tasks were planned around each event, keyed
+ *   by the EventKit id, so wrong on another device for `calendarHistoryHandled`'s
+ *   reason.
  * - `aiFeatureConfig` — the API key it depends on is device-local by design,
  *   so syncing the config turns features on for a device that cannot run them.
  * - `activeListDrivenBy` — a pointer into `grocery_active_list`, so it is per
@@ -360,6 +485,30 @@ export const NOW_EXPR = `strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`;
  */
 export const TOMBSTONE_RETENTION_DAYS = 90;
 
+/**
+ * Rows this device received from a peer: when, and over which transport.
+ *
+ * A row applied from a peer keeps the peer's `updated_at`, which is what
+ * last-writer-wins needs, but it also means the row is invisible to every
+ * other transport's push window if that stamp predates the window. A phone on
+ * both iCloud and a payload store that pulled an iPad's older edit from iCloud
+ * never passed it on to the store. This records the arrival separately, so
+ * the push can relay it to the transports it didn't come from without touching
+ * the stamp the merge is decided by.
+ */
+export const SYNC_RECEIVED_TABLE = 'sync_received';
+
+/**
+ * Rows folded into another because they named the same thing (see
+ * utils/naturalKeyFold.ts): the loser's id, and the id it now lives under.
+ *
+ * A fold repoints every local reference to the loser, but a peer can still
+ * send rows written before it heard of the fold — a list entry for the loser,
+ * or the loser itself, edited offline. This is what points those at the
+ * survivor on arrival instead of back at a row that no longer exists.
+ */
+export const SYNC_ALIASES_TABLE = 'sync_aliases';
+
 /** `NEW.id`, or `NEW.item_id || '|' || NEW.shop_id` for a composite key. */
 export function rowKeyExpr(table: SyncTable, alias: 'NEW' | 'OLD'): string {
   return table.key
@@ -383,6 +532,31 @@ export function deletionsTableStatements(): string[] {
     )`,
     `CREATE INDEX IF NOT EXISTS idx_${SYNC_DELETIONS_TABLE}_deleted_at
        ON ${SYNC_DELETIONS_TABLE} (deleted_at)`,
+    // A tombstone applied from a peer keeps the peer's deleted_at (what the
+    // merge compares) and records its arrival here, the same split
+    // SYNC_RECEIVED_TABLE makes for rows. NULL on a local deletion. Added by
+    // ALTER for installs whose table predates them; the error on an install
+    // that already has them is swallowed by the caller, like every ALTER here.
+    `ALTER TABLE ${SYNC_DELETIONS_TABLE} ADD COLUMN received_at TEXT`,
+    `ALTER TABLE ${SYNC_DELETIONS_TABLE} ADD COLUMN source TEXT`,
+    `CREATE INDEX IF NOT EXISTS idx_${SYNC_DELETIONS_TABLE}_received_at
+       ON ${SYNC_DELETIONS_TABLE} (received_at)`,
+    `CREATE TABLE IF NOT EXISTS ${SYNC_RECEIVED_TABLE} (
+      table_name TEXT NOT NULL,
+      row_key TEXT NOT NULL,
+      source TEXT,
+      received_at TEXT NOT NULL,
+      PRIMARY KEY (table_name, row_key)
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_${SYNC_RECEIVED_TABLE}_received_at
+       ON ${SYNC_RECEIVED_TABLE} (received_at)`,
+    `CREATE TABLE IF NOT EXISTS ${SYNC_ALIASES_TABLE} (
+      table_name TEXT NOT NULL,
+      loser_id TEXT NOT NULL,
+      winner_id TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (table_name, loser_id)
+    )`,
   ];
 }
 

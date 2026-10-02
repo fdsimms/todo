@@ -1,0 +1,4 @@
+{
+  "message": "Fixed: describing a meal with more than one food (\"31g baguette, 25g peach jam\") and tapping + on a recognized item no longer discards the rest of what you typed, or logs it at the wrong weight",
+  "date": "2026-09-29"
+}

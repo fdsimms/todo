@@ -405,7 +405,7 @@ export function TasksProjectsSettings() {
           iconColor={autoCompleteProjectsOnDone ? colors.accent : undefined}
           label="Auto-complete projects"
           hint={autoCompleteProjectsOnDone
-            ? 'A project marks itself complete once every task in it is done. You can still archive it afterwards'
+            ? 'A project marks itself complete once every task in it is done. You can still archive it afterward'
             : 'A finished project sits at 100% until you mark it complete'}
           toggle={autoCompleteProjectsOnDone}
           onPress={() => setAutoCompleteProjectsOnDone(!autoCompleteProjectsOnDone)}
@@ -416,8 +416,8 @@ export function TasksProjectsSettings() {
           icon="notifications-outline"
           iconColor={defaultProjectNudgeCadenceDays > 0 ? colors.accent : undefined}
           label="Bring new projects up every"
-          hint="What a new project's “Bring this up” starts at. Never by default, so a new project is never brought up on its own; pick a length and new projects start doing so. This doesn't touch projects you've already created, and each one can still be changed on its own."
-          value={describeCadence(defaultProjectNudgeCadenceDays)}
+          hint="What a new project's “Bring this up” starts at. By default a new project shows up in Pull from projects when you open it, and never brings itself up. Pick a length and new projects add a review task once they've gone that long with nothing scheduled. This doesn't touch projects you've already created, and each one can still be changed on its own."
+          value={defaultProjectNudgeCadenceDays > 0 ? describeCadence(defaultProjectNudgeCadenceDays) : 'When I ask'}
           tight
         />
         <View style={styles.cadenceRow}>
@@ -427,13 +427,13 @@ export function TasksProjectsSettings() {
             min={1}
             max={CADENCE_UNIT_MAX[defaultCadence.unit]}
             allowNull
-            emptyLabel="Never"
+            emptyLabel="When I ask"
             label="Bring new projects up every"
             describeValue={n => describeCadence(fromCadenceParts({ ...defaultCadence, count: n }))}
           />
           <View style={styles.cadenceUnitRow}>
             {CADENCE_UNITS.map(unit => {
-              // Never has no unit — leaving all three unlit is what says so.
+              // When I ask has no unit — leaving all three unlit is what says so.
               const active = defaultCadence.count !== null && defaultCadence.unit === unit;
               return (
                 <TouchableOpacity
@@ -662,7 +662,7 @@ export function TasksProjectsSettings() {
           iconColor={focusHideTimers ? colors.accent : undefined}
           label="Hide timers while focusing"
           hint={focusHideTimers
-            ? 'By default, the countdown is hidden everywhere a session shows one — the running session screen, the strip on Today, and the Lock Screen. The step still ends and chimes on schedule. Change it for a single session from the start screen.'
+            ? 'By default, the countdown is hidden everywhere a session shows one: the running session screen, the strip on Today, and the Lock Screen. The step still ends and chimes on schedule. Change it for a single session from the start screen.'
             : 'By default, the countdown shows everywhere a session runs. Change it for a single session from the start screen.'}
           toggle={focusHideTimers}
           onPress={() => setFocusHideTimers(!focusHideTimers)}

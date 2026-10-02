@@ -3,8 +3,11 @@ import { View, Alert } from 'react-native';
 import Constants from 'expo-constants';
 import { useShallow } from 'zustand/react/shallow';
 import { useSettingsStore } from '../../store/useSettingsStore';
+import { useProjectStore } from '../../store/useProjectStore';
 import { useTaskStore } from '../../store/useTaskStore';
-import { useDemoStore } from '../../store/useDemoStore';
+import { clearUndoHistories, useDemoStore } from '../../store/useDemoStore';
+import { useSharedLinkStore } from '../../store/useSharedLinkStore';
+import { useStepTimerStore } from '../../store/useStepTimerStore';
 import { dbExportTables, dbReplaceAllData, dbSetRecipeImagePath } from '../../db/database';
 import { confirmDelete } from '../../utils/confirmDelete';
 import {
@@ -39,7 +42,8 @@ import { makeSettingsStyles } from './settingsStyles';
  * failed to read at export time), so a dangling path doesn't linger as a
  * permanently blank image.
  */
-function restoreRecipeImages(backup: Backup): void {
+function restoreRecipeImages(backup: Backup): number {
+  let failed = 0;
   for (const row of backup.tables.recipes ?? []) {
     const id = row.id;
     const path = row.image_path;
@@ -48,11 +52,19 @@ function restoreRecipeImages(backup: Backup): void {
     const basename = recipeImageBasename(path);
     const base64 = basename ? backup.images[basename] : undefined;
     if (basename && base64) {
-      dbSetRecipeImagePath(id, writeRecipeImageFile(basename, base64));
+      // One photo failing to write (a full disk, an odd file name) costs that
+      // photo, not the rest of them, and not the store refresh after this loop.
+      try {
+        dbSetRecipeImagePath(id, writeRecipeImageFile(basename, base64));
+      } catch {
+        dbSetRecipeImagePath(id, null);
+        failed++;
+      }
     } else {
       dbSetRecipeImagePath(id, null);
     }
   }
+  return failed;
 }
 
 /**
@@ -61,11 +73,27 @@ function restoreRecipeImages(backup: Backup): void {
  * rules read, so a task list rebuilt against the *old* day reset would be
  * wrong for a frame.
  */
-function applyBackup(backup: Backup): void {
+function applyBackup(backup: Backup): number {
+  // Only this line can fail with nothing changed: it is one transaction. Past
+  // it the data is already replaced, so the stores are re-read whatever the
+  // photos do. Left holding the old data, their next writes would put
+  // pre-restore rows back over the restored ones.
   dbReplaceAllData(backup.tables);
-  restoreRecipeImages(backup);
-  useTaskStore.getState().initialize();
-  useSettingsStore.getState().initialize();
+  try {
+    return restoreRecipeImages(backup);
+  } finally {
+    useTaskStore.getState().initialize();
+    useSettingsStore.getState().initialize();
+    // The rest of what leaving demo mode resets, for the same reason: a
+    // restore swaps every row out from under the stores just as that does.
+    // The two queues re-read the restored database, and every undo history
+    // goes, because an undo writes its row snapshots back by id, and those
+    // rows belong to the data that was just replaced. Kept, a shake after
+    // restoring put pre-restore rows into the restored data.
+    useSharedLinkStore.getState().reload();
+    useStepTimerStore.getState().reload();
+    clearUndoHistories();
+  }
 }
 
 const RETENTION_SEGMENTS: SegmentOption<RetentionDays>[] =
@@ -147,7 +175,7 @@ export function DataResetSettings() {
       const backup = result.backup;
       Alert.alert(
         'Replace everything with this backup?',
-        `The backup holds ${summarizeBackup(backup)}. Everything currently in the app (tasks, projects, stacks, templates, categories and settings) is deleted and replaced by it. This can't be undone, so export what you have first if you haven't.`,
+        `The backup holds ${summarizeBackup(backup)}. Everything currently in the app (tasks, projects, groceries, recipes, the meal plan, the food and mood logs, people and settings) is deleted and replaced by it. Meals the app already wrote to Apple Health and events it added to your calendar are not removed. This can't be undone, so export what you have first if you haven't.`,
         [
           { text: 'Cancel', style: 'cancel' },
           {
@@ -155,8 +183,11 @@ export function DataResetSettings() {
             style: 'destructive',
             onPress: () => {
               try {
-                applyBackup(backup);
-                Alert.alert('Restored', `Your data now matches the backup: ${summarizeBackup(backup)}.`);
+                const photosLost = applyBackup(backup);
+                const photoNote = photosLost === 0
+                  ? ''
+                  : ` ${photosLost} recipe ${photosLost === 1 ? 'photo' : 'photos'} couldn't be saved and ${photosLost === 1 ? 'was' : 'were'} left off.`;
+                Alert.alert('Restored', `Your data now matches the backup: ${summarizeBackup(backup)}.${photoNote}`);
               } catch (e) {
                 Alert.alert(
                   'Restore failed',
@@ -187,7 +218,10 @@ export function DataResetSettings() {
   const onPickRetention = (days: RetentionDays) => {
     if (days === completedRetentionDays) return;
     const cutoff = retentionCutoff(days, new Date(), dayResetTime);
-    const doomed = cutoff ? selectPurgeableTaskIds(allTasks, cutoff) : [];
+    // The same exemption the purge applies, or the count here would name
+    // lines on a list that the purge then keeps.
+    const listIds = new Set(useProjectStore.getState().projects.filter(p => p.kind === 'list').map(p => p.id));
+    const doomed = cutoff ? selectPurgeableTaskIds(allTasks, cutoff, listIds) : [];
     // Finished focus sessions ride the same window, so they have to be in the
     // count too. The dialog is this feature's whole safety mechanism, and one
     // that named only the tasks would understate what the tap deletes.
@@ -247,7 +281,7 @@ export function DataResetSettings() {
     <>
       <SettingsSection
         label="Backup"
-        footer="Everything lives on this device and nowhere else, so a backup is the only copy that survives losing the phone. The file holds your tasks, projects, stacks, templates, categories and settings, but never your API key, since a backup is a file you send places. Restoring replaces what's in the app rather than merging into it."
+        footer="Everything lives on this device and nowhere else, so a backup is the only copy that survives losing the phone. The file holds your tasks, projects, groceries, recipes, meal plan, food and mood logs, people and settings, but never your API key, since a backup is a file you send places. Restoring replaces what's in the app rather than merging into it."
       >
         <SettingsRow
           entryId="exportBackup"

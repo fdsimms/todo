@@ -1,5 +1,6 @@
 import type { GroceryItem, ItemSubLink, RecipeIngredient } from '../types';
 import { substituteQuantity } from './itemSubs';
+import { pluralKeyVariants, resolvePluralKey } from './groceryPlural';
 
 /**
  * Standing swaps — "I never buy dairy milk, so every recipe calling for milk
@@ -85,6 +86,19 @@ export function standingSwaps(
  * answer, and the oldest wins if two somehow exist — the store keeps it to one
  * (`linkItemSub` clears the bit on the item's other links), so this is the
  * same belt-and-braces the resolve-or-shrug filters above are.
+ *
+ * **A rule also answers for the line spelled one plural away** (#2940), because
+ * the rest of the app already reads "1 egg" as the Eggs row (`catalogItemForKey`,
+ * and every recipe-line reader groceries.md lists under "Singular and plural are
+ * one row"). Without this, "2 eggs" shopped flax eggs and "1 egg" put eggs on
+ * the list. The variant keys are added here rather than as a fallback in
+ * `applyStandingSwap` because only this function sees the catalog, and a
+ * variant is claimed only where `resolvePluralKey` would resolve it to this
+ * rule's row: never when a row of its own owns that spelling (a catalog holding
+ * both "Egg" and "Eggs" means two things, and the swap is Eggs'), and never
+ * when the spelling is a plural of two rows at once. Same refusals, same
+ * function, so a swapped line and a catalog join can't disagree about which
+ * row a spelling is.
  */
 export function standingSwapMap(
   links: readonly ItemSubLink[],
@@ -94,6 +108,16 @@ export function standingSwapMap(
   for (const swap of standingSwaps(links, items)) {
     if (!swap.from.nameKey || map.has(swap.from.nameKey)) continue;
     map.set(swap.from.nameKey, swap);
+  }
+  if (map.size === 0) return map;
+
+  const catalogKeys = items.map(i => i.nameKey);
+  for (const [key, swap] of [...map]) {
+    for (const variant of pluralKeyVariants(key)) {
+      if (map.has(variant)) continue;
+      if (resolvePluralKey(variant, catalogKeys) !== key) continue;
+      map.set(variant, swap);
+    }
   }
   return map;
 }

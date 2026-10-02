@@ -1,69 +1,57 @@
-# Generated tasks: the nineteen things that write a task unattended
+# Generated tasks: the things that write a task unattended
 
-The shared mechanism behind meal tasks, use-up tasks, the meal-plan nudge,
-project reviews, pantry checks and the pantry review, supply reorders, the
-daily calendar review, birthdays, the reach-out nudge and weather-matched
-tasks.
-Read this before adding a twentieth generator: the whole point of the refactor
-it describes is that a new one costs a rules module and a registry entry, not a
-column.
+The shared mechanism behind every task the app writes without being asked: meal
+tasks, use-up tasks, the meal-plan nudge, project reviews, pantry checks, supply
+reorders, the calendar review, birthdays, weather, Health and Screen Time rules,
+the mood check-ins and the rest. Read this before adding a generator: the whole
+point of the refactor it describes is that a new one costs a rules module and a
+registry entry, not a column.
 
-The prose below walks the generators in the order they were added. It had
-fallen a generator behind once already (`reachOut` shipped without an entry,
-leaving this file claiming eleven while twelve were listed), so when adding one:
-`GENERATED_KINDS` in `src/utils/generatedTasks.ts` is the authoritative list,
-and the count in the two headings above is derived from it rather than from the
-number of sections here.
+**`GENERATED_KINDS` in `src/utils/generatedTasks.ts` is the list of generators**,
+and `GENERATED_KIND_SPECS` beside it holds each one's flags (`pausedOnVacation`,
+`notice`, `kitchen`, `sourced`, its setting and its default category). This file
+deliberately states no count and no "the Nth generator": both went stale every
+time one shipped. Most generators have a section below; when adding one, add a
+section, and describe it by what it is rather than by where it falls in the order.
 
 Moved out of `CLAUDE.md` so it is read when it applies rather than on every
-task. The rules here are settled decisions with the reasoning attached: don't
-re-derive them from the code, and don't re-open one without a reason the note
-doesn't already cover.
+task. The rules here are strong defaults with the reasoning
+attached: read the reason before deviating from one. Where this note and the
+code disagree, the code is what ships, so fix the note.
 
 ---
 
-## Generated tasks — the twenty things that write a task unattended
+## The shared mechanism
 
-Each meal of the day becomes a task, a perishable grocery and an ageing leftover each become "Use up
-X", an opt-in weekly trigger becomes "Plan meals for…", a project that has gone quiet becomes
-"Review X", a grocery whose pantry guess has run out becomes "Check if you still have X", a task's
-supply running low becomes "Order more X", and (once a day, when tomorrow has anything on it) the
-calendar becomes "Review tomorrow's calendar". The first four were each built by copying the last,
-which is fine twice and had reached four — four nullable back-pointer columns on `Task`, four
-hand-written "don't pile up" rules, three copies of one opt-out. They now share
+The first four generators were each built by copying the last: four nullable back-pointer columns
+on `Task`, four hand-written "don't pile up" rules, three copies of one opt-out. They now share
 `src/utils/generatedTasks.ts` (pure: the kinds, the registry, the opt-out precedence, the lookups)
-and `src/store/generatedTaskSync.ts` (the create/update/delete).
-**A fifth generator should need neither a column nor a reconcile** — just its own rules module and a
-registry entry (#1524). `projectReview` is that fifth, and it cost exactly that: a rules module, a
-registry entry, a firing beside the nudge's, and no `extrasFor` case in Settings at all.
-`pantryCheck` is the sixth and cost the same; the one column it added
-(`GroceryItem.pantryCheckDeclinedAt`) is on its *source* row, which is where every generator's
-opt-out already lives. `supplyReorder` is the seventh, sourced from a task rather than a row in
-another store — see `src/utils/supply.ts` for its own rules. `calendarReview` is the eighth and adds
-no column at all: its source is tomorrow's day key rather than a row, so its opt-out is a
-settings-level mark (`calendarReviewLastDayKey`) rather than a stamp anywhere — see the section
-below. `birthday` is the ninth (`src/utils/birthdayTasks.ts`). `mealShortfall` is the tenth, and is
-the first whose *source row* is one the user edits freely and often — which is why its entire
-staleness rule is the creation predicate re-run, rather than a list of mutations to intercept; see
-the section below. `birthdayGift` is the eleventh, and costs no rules module of its own at all —
-it lives beside `birthday` in the same file and reuses every rule but the lead time and the title.
-See `docs/arch/people.md`'s "The birthday-gift task" for why it ships off where `birthday` ships on.
+and `src/store/generatedTaskSync.ts` (the create/update/delete). **A new generator needs neither a
+column nor a reconcile of its own** (#1524): a rules module, a registry entry, and a firing in
+`maintenancePasses.ts` beside the others. Where it needs an opt-out stamp, that goes on its
+*source* row (`GroceryItem.pantryCheckDeclinedAt`, say), which is where every generator's opt-out
+lives. A generator with no source row (`calendarReview`, `mealPlanNudge`, the mood check-ins:
+anything keyed by a day) keeps a settings-level mark instead (`calendarReviewLastDayKey`).
+Two generators that share a subject can share a rules module and a firing pass (`birthday` and
+`birthdayGift` in `birthdayTasks.ts`; `moodLog` and `moodNudge` in `moodTasks.ts`).
 
-`weighIn` is the twentieth, and it is the only one whose trigger is the
-*absence* of data. See its own section at the end of this file: it reads
-Apple Health the way `health` does and is deliberately not part of it, because
-one reacts to a reading and the other asks for one.
+What kind of trigger a generator answers is worth naming, because a few are unusual and their rules
+follow from it: most fire on a date or a source row; `mealShortfall` and `mealLogNudge` re-run their
+creation predicate against a row the user edits freely; `weighIn` fires on the *absence* of data
+(it reads Apple Health the way `health` does and is deliberately not part of it, because one reacts
+to a reading and the other asks for one); `moodNudge` fires on a trend in the user's own answers;
+and `weekendNudge` asks about a span of days rather than one. See each one's section.
 
-`moodLog` and `moodNudge` are the sixteenth and seventeenth, and they share a
+`moodLog` and `moodNudge` share a
 file (`src/utils/moodTasks.ts`) and a firing pass the way `birthday` and
 `birthdayGift` share theirs — one subject, two lead-ins, read together in
 Settings. Both are day-keyed with no source row, so both use a settings-level
 mark rather than a stamp on anything (`moodLogLastDayKey`,
 `moodNudgeLastDayKey`), the position `calendarReview` is already in.
 
-**`moodNudge` is the first generator whose trigger is a trend in the user's own
-answers** rather than a date, a row, or a threshold crossed once — which makes
-it the only one that can be wrong about a *person* rather than about their data.
+**`moodNudge`'s trigger is a trend in the user's own answers** rather than a
+date, a row, or a threshold crossed once, which makes it the one generator that
+can be wrong about a *person* rather than about their data.
 It never names a feeling back at the user, it fires at most once a week, and it
 counts only logged days, so a fortnight away neither builds a run nor breaks
 one. Those three rules and the reasoning behind them are in
@@ -131,17 +119,37 @@ one. Those three rules and the reasoning behind them are in
   mutations that reconcile without re-dating (un-opening a jar, the per-item switch). Deferring is
   the main thing anyone does to these rows, and `skipPostponeCount` means the app doesn't even
   notice it is undoing one.
-- **`blocksOnFinished` is cook tasks only, and that asymmetry is the feature.** A meal is one
-  event, so a completed cook task means the night happened and a second one would be an invention.
-  A grocery item and a leftover are rows that come round again — reading the wide set there would
-  mean a staple got exactly one use-up task, ever.
+- **`blocksOnFinished` is for a source that is one event, and that asymmetry is the feature.** A
+  planned meal is one event (`mealShortfall`, `mealThaw` and `mealLogNudge` pass it; `mealSlot`
+  asks `hasAnyGeneratedTask` directly), so a completed task about it means it was dealt with and a
+  second one would be an invention. A grocery item and a leftover are rows that come round again —
+  reading the wide set there would mean a staple got exactly one use-up task, ever. A project
+  review is a third case: it can go quiet again, so it uses a day-scoped answer instead (below).
+- **The use-up cap is filled by one sweep over both kinds, soonest use-by day first** (#2924).
+  `useUpTaskCap` is shared by `groceryUseUp` and `leftoverUseUp`, and `reconcileGeneratedTask`
+  declines a new one when it is full without suppressing the source, on the understanding that a
+  later reconcile will find room. For a leftover that was the foreground sweep; a grocery item had
+  none, since every grocery reconcile runs off an edit to that one row, so the fourth perishable
+  under a cap of three never got its task after the first three were done. The catch-up pass and
+  the Today foreground now run `useGroceryStore.reconcileAllUseUpTasks`, which walks
+  `useUpSweepOrder` (`src/utils/useUpSweep.ts`): every live leftover and every grocery item that
+  wants a task, in one queue by date, which is also what makes the setting's "closest date first"
+  hold across the two kinds. Two refusals keep it from being noisier than the per-row path. It still
+  never evicts, so a task already showing keeps its slot. And it skips an item whose task for its
+  *current* use-by day was already completed or archived (the task's `deadline` is that day), because
+  only a live task blocks a new one on an edit and a sweep that ran on every foreground with that
+  rule would hand a ticked-off "Use up spinach" straight back. `useTaskStore.initialize` still runs the
+  leftover-only sweep it always has: it runs before settings load, so a grocery half there would be
+  judged against the defaults, and the catch-up pass that follows it runs the merged sweep against
+  the real ones.
 - **The per-source opt-out stays on the source row** (`MealPlanEntry.cookTask`,
   `GroceryItem.useUpTask`, `Leftover.useUpTask`), written by `deleteTask` and `bulkDeleteTasks` and
   dispatched in one `writeGeneratedOptOut` switch — both take a `skipGeneratedOptOut` option for the
-  app's own housekeeping deletes (`dropGeneratedTask`, `sweepExpiredTasks`), which aren't the user
-  declining anything. A selection-bar delete of a live nudge is exactly as much an instruction to
-  the source as the single-row path, and for a while only the latter wrote it: bulk-deleting a
-  "Catch up with Sarah" task removed the row but handed back an identical one on the next sweep.
+  app's own housekeeping deletes (`dropGeneratedTask`, `reconcileGeneratedTask`'s unwanted branch,
+  `sweepExpiredTasks`), which aren't the user declining anything: a source that is unwanted only
+  for now (a frozen item, until it thaws) must not be left with a permanent "no". A selection-bar
+  delete of a live task is exactly as much an instruction to the source as the single-row path, so
+  `bulkDeleteTasks` writes it too.
   **Don't hoist it into a generic suppression record** keyed by
   `(kind, sourceId)`: that grows without bound, the same disease `remindersImportHandled` has and
   survives only by pruning to what the Reminders list still holds on every drain. A generic record
@@ -152,9 +160,11 @@ one. Those three rules and the reasoning behind them are in
   `TaskItem` drops every control that treats one as something to plan: the reschedule chip and the
   swipe that opens the same picker, duplicate, the pin, Edit, renaming the title in place, and the
   "Add subtask" field. What stays is the checkbox, the meta chips and the link button, because that
-  is how a notice is read and answered. `isNoticeTask` is the read and `TaskItem` is the only
-  caller — creation, reconciling and the opt-out are untouched by it.
-  - **Being generated is not what makes a row a notice.** The other twelve keep everything. A
+  is how a notice is read and answered. `isNoticeTask` is the read; `TaskItem` and `taskMoves.ts`
+  (which refuses to bulk-move or deload a notice) call it, and creation, reconciling and the opt-out
+  are untouched by it.
+  - **Being generated is not what makes a row a notice.** Every other generator's rows keep
+    everything. A
     `pantryReview` deferred to Saturday is that generator working as designed, a `weather` rule's
     "put on sunscreen" and a `birthdayGift` are ordinary tasks with an unusual author, and
     deferring a use-up task is the main thing anyone does to one (see the re-dating note above).
@@ -177,9 +187,8 @@ one. Those three rules and the reasoning behind them are in
     quota, recurring, chained or in a series. A notice kind that grew one of those would need this
     to become a count.
 - **The settings keys stayed per-generator; only the UI merged.** One "Automatic tasks" section
-  (`GeneratedTasksSection`) lists all four, replacing three sections here and one in Notifications.
-  (It shipped as "Tasks the app adds" and was renamed in #2155; the patch-notes entries naming the
-  old title are a record of what it was called then and stay as they are.)
+  (`GeneratedTasksSection`, under Settings → Automatic tasks) lists every generator. Patch-notes
+  entries that call it "Tasks the app adds" are a record of its old name and stay as they are.
   Renaming `mealCookTasks`/`groceryUseUpTasks`/… to a generic pair would be a migration over
   preferences people have already set, for nothing a person can see. The section's *list* comes
   from the registry; its **controls are still hand-written JSX**, the same line `settingsIndex.ts`
@@ -202,7 +211,7 @@ one. Those three rules and the reasoning behind them are in
     makes a project *not* quiet, so filing the row into the project it describes deletes it on the
     next sweep and recreates it on the one after, for ever. It points at its project through
     `generatedSourceId` like every other generator points at its source.
-  - **Its opt-out is a date, not a `false`** (`Project.reviewDeclinedAt`). The other four write a
+  - **Its opt-out is a date, not a `false`** (`Project.reviewDeclinedAt`). Most generators write a
     permanent "no" onto their source, which is right for a staple bought every week and wrong
     here: the only fields a project could carry that on are `nudgeOptIn`/`nudgeCadenceDays`, and
     both mean "never chase me about this again" — far more than a swipe says. Read through
@@ -226,8 +235,8 @@ one. Those three rules and the reasoning behind them are in
     leaving the row reading "Kitchen renovation" (a task to *do* the renovation) on the widget, in
     Search and in the Logbook, none of which render a meta line. The fact the row already carries
     does the job. **And it stays this generator's alone** — a shared "the app wrote this" chip
-    across all five was mocked and rejected: a planned week is seven cook tasks the user chose by
-    planning the meals, and captioning every one of them is the noise `tripMarkerFor`'s
+    across every generator was mocked and rejected: a planned week is a row per meal the user chose
+    by planning it, and captioning every one of them is the noise `tripMarkerFor`'s
     silence-by-default rule exists to avoid.
   - **It's the one generator whose reconcile can't ride a source mutation.** A project goes quiet
     by time passing and stops being quiet when some *other* task gets a date, so the check runs on
@@ -238,8 +247,7 @@ one. Those three rules and the reasoning behind them are in
     deferred to Saturday. The cost, stated plainly: a review task can be stale until the next
     sweep, which the banner — being pure derivation — never could be.
 
-- **`pantryCheck` is the sixth, and it fires on a *guess expiring* rather than on a source
-  changing.** Nothing is ever taken out of the pantry, because there is no inventory to take it out
+- **`pantryCheck` fires on a *guess expiring* rather than on a source changing.** Nothing is ever taken out of the pantry, because there is no inventory to take it out
   of (see `docs/arch/groceries.md`): membership is `probablyHaveReason` recomputed on every read, and
   an item leaves it by that function starting to return null. Three of the four ways that happens are
   the user speaking; the fourth is the purchase reading's window running out, which changes no row
@@ -272,7 +280,7 @@ one. Those three rules and the reasoning behind them are in
   - **It ships off**, unlike `projectReview` beside it, which replaced a surface that was already
     on screen. This adds one.
 
-- **`reachOut` is the twelfth, and it is `projectReview` one shelf over.** A person somebody asked
+- **`reachOut` is `projectReview` one shelf over.** A person somebody asked
   to be reminded about, who it has been a while since they saw, becomes "Catch up with Ansley".
   **The reasoning lives in `docs/arch/people.md`'s "The reach-out nudge"** and is not repeated here:
   that file holds the rules about what this feature may never do, and they are what shaped every
@@ -324,9 +332,23 @@ one. Those three rules and the reasoning behind them are in
     `pinnedOrder` is against restamping on every unrelated re-save of an already-waiting task. Cleared
     back to null when the wait ends, and the decline stamp is cleared alongside it: a decline about
     the *previous* wait says nothing about a fresh one.
+  - **A follow-up day on the wait is when to ask** (`Task.followUpOn`, read by `followUpDue`).
+    "Waiting on the contractor, chase it Friday" is set in the editor under "Waiting on someone", and
+    the task itself is still held back on Friday, so the follow-up is the only row that can surface
+    that day. It fires on the day whether or not the threshold has run; with no day the threshold is
+    the only way in. **It is its own field, not the task's `dueDate`**, which is what it read first:
+    the task's date says when the task is due, and an overdue task that started waiting asked for a
+    follow-up the same minute, about a wait seconds old. A follow-up day earlier than the wait
+    counts from the day the wait began, for the same reason. It's cleared with the wait, like the
+    two stamps above.
   - **The cap is two and the order is never re-ranked**, for `reachOut`'s own reason applied to a
     task instead of a person: sorting the due set by longest-waiting would still be the app quietly
     deciding whose wait matters most, just measured on the task rather than the person it's about.
+    **A named day is outside the cap and the setting both**: it was asked for, and the cap and the
+    switch exist to limit the app speaking up unasked. With the setting off, the pass still runs for
+    those alone (and its stale pass with it).
+  - **The follow-up is filed under the waiting task's project**, so chasing the contractor sits on
+    the kitchen's page beside the task it's about, and pauses when the project does.
   - **A completed or archived follow-up holds its source for the decline window**, the same blind
     spot `reachOutsHandledRecently` covers and for the same reason: ticking "Follow up with Dustin"
     off answers *this* nudge, not the wait itself, which is still open until the task it names is
@@ -338,13 +360,14 @@ one. Those three rules and the reasoning behind them are in
     record that something happened with them, and ticking this off would otherwise reset a clock this
     generator has no business touching.
   - **It ships off**, unlike `reachOut` beside it. That one's real gate is a recorded intent (a
-    person explicitly opted in); a wait has no equivalent — every "Waiting on someone" is a candidate
-    the moment it's old enough, so the setting is the only permission this generator has.
+    person explicitly opted in); an undated wait has no equivalent — every "Waiting on someone" is a
+    candidate the moment it's old enough, so the setting is the only permission it has. A named
+    follow-up day is that recorded intent, which is why it doesn't need the setting.
   - **It pauses on vacation**, unlike `reachOut`. A follow-up nudge is a chore about moving a wait
     along, not sunscreen — the test this file sets throughout is whether a generator invents
     something to *do*, and this one does.
 
-- **`pantryReview` is the thirteenth, and it is `calendarReview` one shelf over, not `pantryCheck`.**
+- **`pantryReview` is `calendarReview` one shelf over, not `pantryCheck`.**
   It asks the drip's question in bulk: one row, "Review what's in the pantry", opening a swipe deck
   over everything the app is currently unsure about (see `docs/arch/groceries.md` for the deck
   itself). Its source is the day key the offer was raised on rather than a row — there is no single
@@ -383,7 +406,7 @@ one. Those three rules and the reasoning behind them are in
   - **It ships off**, like `pantryCheck` and `mealShortfall`, for their reason: it adds a surface
     rather than replacing one that was already on screen.
 
-- **`calendarReview` is the eighth, and it's structurally `mealPlanNudge` one shelf over, not
+- **`calendarReview` is structurally `mealPlanNudge` one shelf over, not
   `projectReview`/`pantryCheck`.** Its source is tomorrow's day key rather than a row (a square on
   the calendar, not something a stamp can live on — the position the nudge is already in), so there
   is no per-source qualifying predicate, no capped set, and no stale-vs-still-qualifies distinction
@@ -402,8 +425,8 @@ one. Those three rules and the reasoning behind them are in
     same as every other generator, rather than reusing `calendarEventCategory`. It defaults to the
     same "Calendar Events" name that setting does, so an install that upgrades into this files its
     review task exactly where it always did — but the two settings can now be pointed apart.
-  - **It fires on time passing, from the same two places `pantryCheck` does** (the launch sequence
-    and the Today foreground sweep) — but unlike every other generator, it reads state
+  - **It fires on time passing, from the catch-up passes `pantryCheck` runs in** (launch, the Today
+    foreground sweep and background refresh) — but unlike most generators, it reads state
     (`useCalendarStore`) that nothing in the launch sequence populates synchronously; the window is
     filled by `useCalendarSync`'s own effect. In practice the launch-sequence firing is close to a
     no-op on a cold start and the foreground sweep does the real work, reading whatever the calendar
@@ -413,13 +436,14 @@ one. Those three rules and the reasoning behind them are in
   - **Its row is a notice** (`notice: true`, see the shared bullet above): the events it lists are
     the whole of its expanded panel, and none of the controls that would reschedule, duplicate, pin
     or edit it are offered, because there is no version of "tomorrow's calendar, on Thursday".
-  - **It's the one generator gated on `isDemoModeActive()`.** Every other generator's qualifying
-    condition is a row in the demo's own throwaway database; this one's is the real device calendar,
-    which demo mode must never read from or expose the existence of. The demo's own example task is
+  - **It is gated on `isDemoModeActive()`, like every generator that reads a device source**
+    (the calendar, weather, Screen Time, Health): most generators' qualifying condition is a row in
+    the demo's own throwaway database; this one's is the real device calendar, which demo mode must
+    never read from or expose the existence of. The demo's own example task is
     seeded directly in `demoSeed.ts`, the same way `pantryCheck`'s is, rather than left to the real
     sweep.
 
-- **`weather` is the fourteenth, and it's `calendarReview` one shelf over — a rule the user wrote
+- **`weather` is `calendarReview` one shelf over — a rule the user wrote
   matched against a day-keyed reading, rather than a fixed question about a fixed source.** "On a
   sunny day, put on sunscreen" becomes a task the same way "tomorrow has events" does: no source
   row, a settings-level idempotency mark instead of a per-row stamp, and creation through the
@@ -525,7 +549,7 @@ one. Those three rules and the reasoning behind them are in
     theirs: it's the one generator that also wants a location fix, which is not something to start
     reading without being asked.
 
-- **`mealShortfall` is the tenth, and it fires on a *meal coming into range*.** Planning a week
+- **`mealShortfall` fires on a *meal coming into range*.** Planning a week
   has never required owning any of it, so a dish you can't cook was indistinguishable from one you
   can right up until the night. `mealPlanGroceries.ts` has been able to answer "what's missing for
   this meal" since the add-to-list sheets shipped; the only thing absent was something to say it
@@ -577,26 +601,92 @@ one. Those three rules and the reasoning behind them are in
     people keep loosely, and a half-filled week answered with shopping rows is the fastest way to
     have the whole thing switched off.
 
+- **`mealThaw` is `mealShortfall` asking the other question about the same rows** (#2926,
+  `src/utils/mealThawTasks.ts`). `probablyHaveReason` reads a live `frozenAt` as on hand, which is
+  what keeps the shortfall quiet about chicken in the freezer, and correctly; but being quiet was
+  all anything did, and "frozen and planned" is the moment somebody avoiding waste needs telling,
+  because a fridge thaw takes a day. So a meal planned for today or tomorrow whose ingredients are
+  on hand only frozen gets "Take chicken out of the freezer (Thursday Dinner)".
+  - **Everything but the question is borrowed**: the same source row, the same `classifyPlanned`
+    over the entry's own picks, scale and standing swaps, the same clear-then-create pass re-running
+    the create predicate, the same cap of three, `blocksOnFinished`, and a permanent per-meal `false`
+    (`MealPlanEntry.thawTask`, beside `shopTask`) that only ever subtracts. What it asks about is a
+    `probablyHave` row whose reason is `FROZEN_REASON`, the freezer's own rung on that ladder, so an
+    "Out of it" or "running low" outranks it exactly as it does in the Pantry, and a frozen item also
+    on the shopping list reads as being bought fresh.
+  - **The window is today and tomorrow, and there is no lead-time setting.** Tomorrow is the day a
+    fridge thaw is for; today still has the quick methods. Further out is premature, since food
+    moved to the fridge early loses that many days off its clock.
+  - **One row per meal, naming everything frozen in it**, and a planned leftover counts: a frozen
+    container is still live and plannable (see "A frozen container is still live" in
+    `groceries.md`), and a frozen portion planned for tomorrow is the commonest case of all.
+  - **Ticking it thaws nothing.** Whether the food actually came out is said in the Pantry, which is
+    where the row's link goes (the one frozen row, or the Pantry itself when there are several).
+    The stale pass then clears any row whose food is no longer frozen.
+  - **Half a pack frozen asks nothing while the other half is out** (#2925). "Freeze some" writes a
+    portion box and leaves the item on its own clock, so `probablyHaveReason` answers with the
+    item's own reason and the meal is covered by the fresh half. Once that half is marked out of
+    it, the frozen portion is what answers (`FROZEN_REASON`) and the thaw row follows. The item's
+    own `groceryUseUp` task is untouched by the split, since `wantsUseUpTask` reads only the item.
+  - **It ships off**, for `mealShortfall`'s reason: it adds a surface rather than replacing one.
+
+- **`mealLogNudge` asks to log a planned meal nothing was logged for** ("Log breakfast? (Mon
+  9/8)"), the half of the completion-time log prompt that a meal whose Eat step was never ticked
+  can't reach. `src/utils/mealLogNudgeTasks.ts` is modelled on `mealShortfallTasks.ts`: a want/stale
+  pair re-run off the creation predicate, a row per `MealPlanEntry`, and `blocksOnFinished`. Its
+  rules are in the module's header; the ones worth knowing before touching it:
+  - **It doesn't try to tell whether the meal happened.** `cookedAt` is never consulted, because a
+    meal with nothing logged and nothing ticked is exactly the case it exists for. Completing it
+    without logging is a legitimate "I'm not bothering".
+  - **Completing it opens the same offer completing the Eat step would have** (`completeTask`
+    reads its source entry through the meal-slot branch).
+  - **Its per-meal "no" is `MealPlanEntry.logMeal`**, the field the completion prompt's "Don't ask
+    for this meal" already writes, so declining either holds for both.
+  - **"Logged" means the slot has food in it** (`mealLogCoverage.ts`), not only a food log row
+    naming the entry, since `mealPlanEntryId` is stamped on one route into the log out of several.
+  - **There is no row cap**: unlike a shortfall it isn't competing for shelf space, and the window
+    already bounds it.
+
+## An estimate set on one is kept on its generator
+
+Every generated task (and every follow-up task) is a fresh one-off row, so an
+estimate set or timed on one used to die with it. Editing a generated row's
+estimate now writes it back onto the generator that wrote it, and the next row
+starts from there. The title plays no part, so a title carrying a date or a
+forecast changes nothing. `src/utils/ruleEstimate.ts` has the three homes:
+
+- **A rule somebody wrote** (weather, Screen Time, Health, calendar events):
+  on the rule itself, via `ruleEstimateDraft` in each rule's draft.
+- **A follow-up rule**: in `followUpTaskDraft`. The source pointer goes stale
+  after another cycle, so the write walks forward along `previousOccurrenceId`
+  to the row holding the rule now (`liveFollowUpSource`).
+- **Every other generator**: one entry per kind in the `generatorEstimates`
+  setting, filled in by `addTask` when a draft carrying a `generatedKind` names
+  no estimate. Meal tasks are left out (`holdsKindEstimate`): they arrive
+  estimated from the recipe, and one figure for every meal would be wrong.
+
+The write-back compares values, not the patch's keys, because an undo snapshot
+names both fields without changing them. Only a draft with no estimate of its
+own is ever filled, and a task somebody typed never is.
+
 ## Vacation mode: which of them stand down
 
 `GeneratedKindSpec.pausedOnVacation` is every generator's answer, required the way `kitchen` is
-because it isn't guessable from anything else about the generator. Before it existed exactly one of
-the nineteen answered — `checkMealPlanNudge`'s own inline gate — and the other eighteen carried on
-writing tasks onto Today throughout a deliberate "hide work from me", with nothing in the Vacation
-section of Settings saying so. Three of them had the decision argued out in this file and simply had
-nowhere to record it.
+because it isn't guessable from anything else about the generator: without it, generators carried
+on writing tasks onto Today throughout a deliberate "hide work from me". **Read the spec for each
+generator's answer**; the lists below are the reasoning, not the record.
 
 The rule is the one coined for `weather` below and reused for `screenTime` and `health`:
 **sunscreen, not work.** A generator that invents something to *do* is exactly what vacation mode
-was switched on to stop, so it pauses: `mealSlot`, `groceryUseUp`, `leftoverUseUp`, `pantryCheck`,
-`pantryReview`, `projectReview`, `supplyReorder`, `mealShortfall`, `mealPlanNudge`, `weekendNudge`.
+was switched on to stop, so it pauses (the use-up and pantry generators, the meal plan's, project
+reviews, supply reorders, chasing a wait (`waitingFollowUp`), the weekend nudge, the weigh-in).
 A generator about your body, your mood, the weather, your own phone use, the people you care about,
-or what is on tomorrow is not work and keeps running: `weather`, `screenTime`, `health`, `moodLog`,
-`moodNudge`, `birthday`, `birthdayGift`, `reachOut`, `calendarReview`, `eventTask`, `travel`. A birthday missed because you
+or what is on your calendar is not work and keeps running (weather, Screen Time and Health rules,
+the mood check-ins, birthdays, reaching out, the calendar review, calendar event rules, leave-by reminders). A birthday missed because you
 were away is the exact failure that feature exists to prevent, and what is on tomorrow matters more
 when you are travelling, not less.
 
-Two things enforce it, and they are not redundant:
+Three things enforce it, and they are not redundant:
 
 - **The clock-driven passes** check `generatorPausedForVacation` at the top, and skip *without
   recording their period key* — the behaviour `checkMealPlanNudge` already had. That is what makes
@@ -607,6 +697,23 @@ Two things enforce it, and they are not redundant:
   so only creation stops: an existing row still follows its source and still goes when the source
   stops wanting it. Gating the whole function would freeze rows their source has finished with, and
   gating `wanted` would delete a row on the way into vacation and write it again on the way out.
+- **The rows themselves carry `vacationPause: true`**, stamped by `generatedBy` for every kind
+  that pauses, so no generator's draft can forget it. The two gates above only stop *new* rows,
+  and several passes write ahead (a week of meal rows), so a row written the day before a trip sat
+  on Today for most of it. Paused, it hides while vacation mode is on and comes back when it ends,
+  exactly as any task set to pause does, and a person can still switch it off on one row. The one
+  override is `mealPlanNudge` with "Also during vacation" on: those rows are written during a trip
+  on purpose, so the pass writes them unpaused.
+
+**A kitchen pass's own switch and the kitchen gate stop creating, not clearing.** `mealSlot`,
+`pantryCheck`, `pantryReview`, `mealShortfall`, `mealThaw` and `mealLogNudge` check them *below* their stale
+pass, not at the top, and short-circuit only when there is nothing live of their kind to clear.
+Returning above the clear froze every row already written: "Shop for Ragu" stayed on Today, overdue,
+naming a meal dropped from the plan after the switch went off, until somebody deleted it by hand.
+Off means stop asking. It is not a decline of the rows already there, so only those whose reason
+has gone are removed, and each pass's period mark is still spent only on a run that could have
+created. The vacation gate stays at the top, as above: a paused row is hidden rather than on Today,
+and the clear catches up the first time the app is opened after vacation ends.
 
 ## `mealSlot` — the fold that turned cook tasks into meal tasks
 
@@ -627,11 +734,11 @@ things to cook, and offered none of it from the list you were looking at. So the
 | The slot holds | The chain |
 |---|---|
 | nothing | Choose → Prepare → Eat |
-| a recipe | Cook X → Eat X |
+| a recipe | Make X → Eat X |
 | a leftover, takeaway, a typed answer | Eat X (one step, so `chainEnabled: false`) |
 
 "Already chosen" is the same task with its first step gone, not a different task — which is why the
-table is read on every reconcile rather than only at creation. Six consequences worth not
+table is read on every reconcile rather than only at creation. Eight consequences worth not
 re-deriving:
 
 - **`completeTask` no longer clears `generatedKind` on a mid-chain spawn**, and that one-line change
@@ -644,13 +751,13 @@ re-deriving:
 - **The chain is only rewritten while `chainIndex === 0`.** Once a step has been ticked the
   remaining ones are the user's; a plan change mid-cook updates the title and the link and leaves the
   steps alone. Rewriting would have to remap the index onto a different-length list, and step 1 of
-  [Choose, Prepare, Eat] has no honest answer in [Cook X, Eat X].
+  [Choose, Prepare, Eat] has no honest answer in [Make X, Eat X].
 - **The row says which meal it is, in the meta line rather than in the title** (`mealSlotOf`, read
   off the source id — no store lookup). Only an unanswered slot names its meal in its own steps
   ("Choose lunch"); the moment something is planned the title becomes the food, and a day's three
   rows sit together under one category with nothing telling them apart. It's a chip beside the
   scheduled one rather than a longer title because the title is also what Search, the Logbook and
-  the widget show, and "Cook Peanut Butter Tofu with Sriracha for dinner" wraps to two lines on a
+  the widget show, and "Make Peanut Butter Tofu with Sriracha for dinner" wraps to two lines on a
   390pt row. The glyph is `MEAL_SLOT_ICONS`, shared with the Settings row that switches the meal
   on — one meal wearing two glyphs on two screens is the drift the shared primitives exist to stop.
 - **A high-water mark is the entire opt-out** (`mealSlotTasksWrittenThroughDayKey`). There is no
@@ -672,12 +779,37 @@ re-deriving:
 - **It doesn't chase the date.** The day is baked into the source id and never moves, so the only
   thing that can change `dueDate` is the user deferring the row — and rewriting that back onto today
   is the one thing this must not do. `projectReview` draws the same line for the same reason.
+- **A day that has gone by takes its untouched rows with it** (`staleMealSlotTasks`). The pass
+  never writes a past day, since a meal task is no use once its day has gone, but nothing removed a
+  row it *had* written, so a weekend away left six or nine "Choose lunch" rows overdue at the top
+  of the section for good. Each run now drops, with `dropGeneratedTask` and no opt-out, every live
+  row whose day is before the logical today and that nobody touched: still on step 0, and not moved
+  onto today or later by its date or a defer. A started chain is the user's, the same line the
+  drift draws, and a moved row was a decision about when to deal with it. The mark is untouched, so
+  a dropped day is never written again, and the log nudge is what asks about a past meal.
 - **A week at a time** (`MEAL_SLOT_TASK_DAYS`), matching the meal plan's own `upcomingDays` and the
   horizon the weekly nudge asks about. This shipped as today-only, on the grounds that a week of
   rows saying "Choose lunch" would be noise; it isn't, because those meals genuinely are undecided
   and a Later screen that says so is being accurate. What the narrower version actually cost was the
   honest half — a meal you *had* planned had something to say ahead of time, exactly as a cook task
   did, and no row to say it on.
+
+**A leftover planned into a meal that has its own task gets no "Use up X" beside it** (#2932).
+Planning last night's chili for dinner put "Eat Chili" and "Use up Chili" on Today together: two
+rows, two sections, one container. The meal row is the more specific of the two (it says when), so
+`leftoverTasks.plannedMealRowFor` stands the use-up task down while an uneaten entry names the
+leftover, dated from the logical today through its `keepUntil`, **and a live `mealSlot` task exists
+for that day and slot**. That last condition is the premise itself: with the meal-task generator
+off, that meal not one the user gets a task for, or the row swiped away, the use-up task is the only
+reminder left, so it stays. A dinner planned after the container goes bad doesn't use it in time,
+and a meal already eaten may have left some behind, so neither counts. It narrows `qualifies`
+rather than overriding the per-leftover answer, so a leftover the user switched its task on for
+keeps it. The meal plan asks from `reconcileMealSlot` (both halves of a change: the entry handed in
+and whatever the slot now holds, plus the original of a `bulkReplaceItem`, which names no leftover
+afterwards), and runs after the slot's own task since that task's presence is half the rule.
+Cooking is deliberately not a trigger: the "was that the last of it?" prompt is still open at that
+moment, and the next foreground sweep brings the task back if some is left. The drop goes through
+`reconcileGeneratedTask`'s unwanted branch, which writes no opt-out.
 
 `MealPlanEntry.cookTask` survives the fold unchanged — it is still the per-meal "no", read by both
 the pass and the reconcile, and the one thing a meal task inherits from the cook task it replaces.
@@ -702,7 +834,7 @@ owners — `TaskItem.handleComplete` and `TaskCheckbox.runPress` — short-circu
 already do for `asksOnComplete`/`'ask'`, mounting `RecipePickerSheet` locally instead of running the
 ordinary completion, with `dayKey`/`forceSlot` read off `parseMealSlotSource(task.generatedSourceId)`
 rather than off navigation params. **Nothing is completed by picking.** `planMeal`'s reconcile rewrites
-this same row from "Choose lunch" into "Cook X"/"Eat X" (`mealSlotDrift`, since `chainIndex` is still 0)
+this same row from "Choose lunch" into "Make X"/"Eat X" (`mealSlotDrift`, since `chainIndex` is still 0)
 exactly as it would if the pick had come from the Meal Plan screen — the checkbox tap never reaches
 `completeTask` at all. This is a deliberate reopening of the objection above, not a lapse of it: the
 thing that made a second copy wrong was a second *browsing* surface holding its own idea of what
@@ -712,13 +844,13 @@ either way. The link's slot still beats the sheet's remembered one (`forceSlot`)
 point: "Choose lunch" named the slot before the sheet opened.
 
 - **They still write straight to Today**, rather than proposing into a review surface the way
-  `deloadPlan`/`projectPull` do. That fork is real and was deliberately left alone here: it's a
-  product decision about all four at once, and this refactor is what makes it a change in one
-  place instead of four.
+  `deloadPlan`/`projectPull` do. That fork is real and was deliberately left alone: it's a
+  product decision about every generator at once, and the shared mechanism is what makes it a
+  change in one place.
 
 **An answered slot with a recipe to cook links to the recipe, not the meal plan day.** Until now
 `linkUrl` always opened the day on the Meal Plan screen — right for a leftover or a typed answer,
-which have nothing else to show, but wrong for "Cook X": the row exists to point at the thing you're
+which have nothing else to show, but wrong for "Make X": the row exists to point at the thing you're
 about to do, and the meal plan names the meal without showing what's in it. `mealSlotLinkUrl` now
 reads the entry (`recipeLinkUrl`, `dundundun://recipe?id=…`, parsed by `deepLinks.isRecipeUrl` /
 `recipeUrlId` into `resetToRecipeDetail`) whenever `entry.recipeId && !entry.leftoverId` — exactly
@@ -728,7 +860,27 @@ carried unchanged into "Eat X" (`mealSlotDrift` writes `linkUrl` unconditionally
 destinations for one row. The picker link for an unanswered slot, and the meal-plan link for a
 leftover/takeout/typed answer, are unchanged.
 
-## `screenTime` — the fifteenth, and the second rule the user wrote
+**The recipe link names the planned meal too (`&entry=…`), and resolves it when tapped.** The Meal
+Plan screen's own "Open recipe" seeds RecipeDetail with the meal's `recipeChoices` and
+`recipeScale`; a link carrying only the recipe id opened a doubled chili at 1× with the default
+side, so cook mode read out half the quantities and "Log to food log" logged half the helping
+(#2931). The entry's id travels rather than its numbers because `mealSlotDrift` rewrites `linkUrl`
+on every reconcile: a scale in the URL would make every scale change a task write, while the id is
+stable and `plannedRecipeParams` reads the entry as it stands at the tap. An entry that has gone, or
+that now holds a different recipe, gives nothing and the recipe opens on its own defaults.
+
+**A recipe that has since been deleted is not a recipe to cook.** `MealPlanEntry.recipeId` outlives
+the recipe on purpose, so every path that builds a slot task from an entry (the daily pass, the
+reconcile, `setCookTask`'s create) goes through `slotEntryForTask` first, which hands the projection
+a copy with the dead pointer cleared. The slot then reads "Eat X" and links to its day, like a typed
+meal, rather than "Make X" linking to "This recipe is gone". Deleting a recipe reconciles the slots
+planned from it (`reconcileRecipeSlots`), since nothing about the plan itself changed to trigger one.
+It trusts the pointer until the recipe store has loaded (`recipeIsGone`), so a list that failed to
+load can't turn every meal on Today into a typed one. Renaming a recipe is the other direction:
+`retitleRecipeEntries` rewrites the entries' captured titles, which is what "Make X" and the
+calendar event read.
+
+## `screenTime` — a rule the user wrote, about their own phone use
 
 "After 30 minutes on the apps I picked, add a task to take a walk." Structurally it is `weather`
 (`src/utils/screenTimeRules.ts` is `weatherTasks.ts` with the condition swapped for a number), and
@@ -763,15 +915,15 @@ the differences all come from one place: **the app cannot see usage.**
 - **It ships off**, like `weather` and `pantryCheck`, and for a reason on top of theirs: it wants a
   Screen Time authorization the app doesn't hold. Asking is a Settings action, from the rules
   sheet — never something a sweep does.
-- **It is the second generator gated on `isDemoModeActive()`**, and the gate matters more here than
-  it does for `calendarReview`. Crossings are drained *destructively* from the OS, so acting on them
+- **It is gated on `isDemoModeActive()`** (see `calendarReview`), and the gate matters more here
+  than it does for a calendar read. Crossings are drained *destructively* from the OS, so acting on them
   against a database about to be discarded wouldn't merely write fiction, it would lose the crossing
   outright. Both halves refuse: `screenTimeBridge()` won't drain, and `checkScreenTimeTasks` won't
   run. The demo's own example task is seeded directly in `demoSeed.ts`.
 - **It does not gate on vacation mode**, following `weather` rather than `mealPlanNudge`. A rule
   about your own phone use is sunscreen, not work: vacation is exactly when somebody might want it.
 
-## `eventTask` — the fourth rule the user wrote, and the first cued by text
+## `eventTask` — a rule the user wrote, cued by text
 
 "When something on my calendar says *flight*, add a task to pack, two days before."
 `src/utils/eventTasks.ts` is `weatherTasks.ts` with the calendar in place of the forecast, and
@@ -941,7 +1093,7 @@ turned up a bug: `generatorSwitchedOn` gated `calendarReview` on the calendar re
 `eventTask`, whose pass also refuses without it, so its switch read "on" over a closed read while
 writing nothing. Both are gated now.
 
-## `weekendNudge` — the eighteenth, and the first that asks about a *span*
+## `weekendNudge` — the one that asks about a *span*
 
 A weekend with nothing on it becomes "Make plans for the weekend", raised on the
 Thursday or Friday before it. Structurally it is `projectReview` one shelf over —
@@ -1037,7 +1189,7 @@ in the mechanism.
   rendering the cadence stepper. Dismissal stays per field, so "never chase me
   about this project" is not also "never suggest it for a weekend".
 
-## `health` — the nineteenth, and the third rule the user wrote
+## `health` — a rule the user wrote, about a Health reading
 
 "Under six hours of sleep, keep today light." Structurally `weather`
 (`src/utils/healthRules.ts` is `weatherTasks.ts` with the condition swapped for
@@ -1056,21 +1208,24 @@ particular the one this generator would be worst to get wrong.
   weather's. Weather refuses a per-rule number because the title carries the
   meaning; that move isn't available here, because the number *is* the rule.
   Six hours and four hours are two different days.
-- **Only "under" is expressible.** Every rule worth writing is a shortfall — a
-  short night, a day spent sitting down — and the mirror describes something
-  that has already happened and needs no task. A comparator would be a control
-  on every row serving nobody.
+- **A rule reads as a floor or a ceiling, and the metric picks the default.**
+  Steps, sleep and exercise are floors only: the mirror describes something
+  that has already happened and needs no task. A nutrient can be either (too
+  little protein, too much sodium), so `HealthRule.direction` overrides
+  `HEALTH_METRIC_DIRECTION` per rule. Either way the task is about a shortfall
+  against the number the user picked, never "you did enough".
 - **A rule whose hour has not come is skipped without spending its mark**, and
   this is the one thing the generator needs that neither neighbour does. Every
   other day-keyed generator writes its mark ahead of the decision so a swiped-
   away task cannot come straight back. That order is unavailable for a
   shortfall: "under 3,000 steps" is true at 7am for everybody who is not out
   running, so marking the day considered then would mean the rule could never
-  fire. `ruleCanBeJudgedYet` gates the whole consideration, and
-  `HEALTH_METRIC_EARLIEST_HOUR` is a property of the *metric* rather than a
-  per-rule setting — sleep is settled by the time anybody looks, steps are not —
-  which is what keeps a fourth control off every row. 18:00 is round rather than
-  measured, the same admission `weatherCondition.ts` makes about its bands.
+  fire. `ruleCanBeJudgedYet` gates the whole consideration. Steps, sleep and
+  exercise take a fixed hour from `HEALTH_METRIC_EARLIEST_HOUR` (sleep is settled
+  by the time anybody looks, steps are not); a nutrient rule carries its own
+  `checkpointHour`, defaulting to that table (`usesCheckpoint`). 18:00 is round
+  rather than measured, the same admission `weatherCondition.ts` makes about its
+  bands.
 - **The hour is measured into the logical day**, not off the wall clock. With a
   4am reset, 6pm is fourteen hours in, and reading the clock instead would let a
   step rule fire two hours early for anybody whose day doesn't start at midnight.
@@ -1097,8 +1252,8 @@ particular the one this generator would be worst to get wrong.
   could be stamped on.
 - **It ships off**, like weather and screenTime, and wants two more switches on
   top of its own before anything happens.
-- **It is the third generator gated on `isDemoModeActive()`**, and the sharpest
-  case the rule has had: a reading taken in demo mode is a real person's, and a
+- **It is gated on `isDemoModeActive()`** (see `calendarReview`), and this is the
+  sharpest case for it: a reading taken in demo mode is a real person's, and a
   task written from it would be a claim about their body sitting in a database
   about to be thrown away. Both halves refuse — `healthBridge()` won't read and
   `checkHealthTasks` won't run — and the demo's example task is seeded directly.
@@ -1107,7 +1262,7 @@ particular the one this generator would be worst to get wrong.
 - **It does not gate on vacation mode**, following `weather` and `screenTime`.
   A short night is sunscreen, not work.
 
-## `weighIn` — the twentieth, and the only one that fires on missing data
+## `weighIn` — the one that fires on missing data
 
 Every other generator here fires because something happened: a date arrived, a
 row changed, a reading crossed a rule. This one fires because nothing did.
@@ -1133,7 +1288,7 @@ themselves every morning unprompted never sees this task, and somebody who has
 drifted for a fortnight sees exactly one. `weighInEveryDays` sets the window,
 from a day to a month.
 
-Four things worth not re-deriving:
+Five things worth not re-deriving:
 
 - **It is the only async generator pass**, because it takes a Health read of
   its own rather than judging a snapshot some foreground effect already filled
@@ -1160,9 +1315,61 @@ Four things worth not re-deriving:
   personal record that a week away is the interesting part of. Hunting for
   scales in a hotel is a chore, and standing chores down is what vacation mode
   is for.
+- **Deleting a request holds for the window, not for a day.** The gap trigger
+  answers "how many rows", not "how often": once a window was empty, it stayed
+  empty the next morning, so somebody asked every seven days who deleted the
+  request was asked again every day after. A delete now stamps
+  `weighInDeclinedDayKey` (the `weighIn` arm of `writeGeneratedOptOut`, the
+  settings-level stamp a day key's lack of a source row calls for), and the pass
+  stands down until `weighInEveryDays` have passed from that day
+  (`weighInDeclineHolds`), before it spends a Health read. The pass clearing a
+  request whose day has gone uses `dropGeneratedTask`, so an ignored request is
+  not a decline: it comes back the next day, because it was never answered.
 
 The row carries `dundundun://weight?log=1` so its link button opens the sheet
 that answers it, and `completeWeighInTaskForToday` ticks the request off when a
 weight is saved. Both are copied from `moodLog`, and the reason is sharper
 here: a mood entry recorded late is still roughly true, while a weight that
 was never typed is a number nobody can reconstruct afterwards.
+
+## `waterShortfall` — the water still owed after the daily task was finished
+
+A daily water task can follow the food log's water target (`Task.followWaterTarget`,
+a toggle under "Log to Health" in the editor). While the task is open,
+`syncWaterQuotaTasks` writes `followedWaterTargetCount` onto its `targetCount`
+(the target, plus the exercise boost when today qualifies, over the amount one
+unit logs), so a workout at noon just makes the day's task longer. This
+generator covers the case that can't: the task was finished at 3 PM and the
+target rose at 5.
+
+- **The finished task stays finished.** Reopening it would undo a streak and a
+  successor row for a rise nobody could have planned for, and "completed" is a
+  record of something that was done. What is owed becomes its own one-off task
+  ("Drink 500 ml more water"), written in the unit the person reads water in.
+- **The amount is measured against the food log, not the finished task.**
+  `waterShortfallMl` is today's target less today's total, rounded up to the
+  stepper's step, and null under one step (rounding is not a task). Whatever got
+  the day to where it is (the task, the stepper, a bottle logged as food) is the
+  same answer.
+- **Completing it logs the water it asks for.** The draft carries
+  `logHealthMetric: 'waterMl'` and `logHealthAmount`, so it goes through the same
+  `logTaskWaterToFoodLog` path the daily task does and moves the same bar.
+  `drift` keeps the title and amount current as the total changes.
+- **Day-keyed with no source row, `weighIn`'s position.** At most one a day:
+  `blocksOnFinished` stops a completed one from being followed by a second, and
+  `waterShortfallDeclinedDayKey` (written by `writeGeneratedOptOut`'s
+  `waterShortfall` case) stops a deleted one from coming straight back, since the
+  target is still above the total. One from a past day is dropped rather than
+  deleted quietly, because nobody declined it.
+- **A target that can't be known is left alone.** With the exercise boost
+  configured and no Health reading for today yet, neither the followed count nor
+  this generator acts: an unread value is not "no exercise", and acting on it
+  would shrink a boosted target and complete or clear things the day had not
+  earned. The same reason `followedWaterTargetCount` returns null.
+- **It runs from `syncWaterQuotaTasks`**, which is already called whenever today's
+  total, the water target or today's exercise changes (a settings subscription
+  and a Health-store subscription in `useHealthSync`, plus the catch-up passes at
+  launch). It needs no pass of its own and reads nothing outside the app.
+- Ships off, pauses on vacation, and files under its own category setting like
+  the rest. Rules are in `src/utils/waterShortfallTasks.ts` and the target
+  arithmetic in `src/utils/waterTargetUnits.ts`.

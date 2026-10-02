@@ -17,6 +17,7 @@ import type {
   TemplateQuestionSource,
 } from '../types';
 import { generateId } from './id';
+import { parseRotationItems } from './rotation';
 import { parseChainItems } from './chain';
 
 /** The two anchor dates a template can be applied with. */
@@ -42,6 +43,7 @@ export function normalizeTemplateItem(raw: Partial<TemplateItem>): TemplateItem 
     deadlineOffsetDays: raw.deadlineOffsetDays ?? null,
     windowStart: raw.windowStart ?? null,
     windowEnd: raw.windowEnd ?? null,
+    linkUrl: raw.linkUrl ?? null,
     reminderOffsetMinutes: raw.reminderOffsetMinutes ?? null,
     timeSegments: raw.timeSegments ?? [],
     tags: raw.tags ?? [],
@@ -56,6 +58,7 @@ export function normalizeTemplateItem(raw: Partial<TemplateItem>): TemplateItem 
     recurrenceInterval: raw.recurrenceInterval ?? 1,
     recurrenceDays: raw.recurrenceDays ?? [],
     recurrenceMonthDay: raw.recurrenceMonthDay ?? null,
+    recurrenceMonth: raw.recurrenceMonth ?? null,
     recurrenceFromCompletion: raw.recurrenceFromCompletion ?? false,
     recurrenceCount: raw.recurrenceCount ?? null,
     vacationPause: raw.vacationPause ?? false,
@@ -73,8 +76,12 @@ export function normalizeTemplateItem(raw: Partial<TemplateItem>): TemplateItem 
     completionTimerMinutes: raw.completionTimerMinutes ?? null,
     completionTimerNote: raw.completionTimerNote ?? null,
     deliverableKind: raw.deliverableKind ?? null,
+    deliverableOptions: Array.isArray(raw.deliverableOptions) ? raw.deliverableOptions : [],
+    deliverableSetsAway: raw.deliverableSetsAway ?? false,
     chainEnabled: raw.chainEnabled ?? false,
     chainItems: parseChainItems(raw.chainItems),
+    rotationEnabled: raw.rotationEnabled ?? false,
+    rotationItems: parseRotationItems(raw.rotationItems),
     chainIndex: raw.chainIndex ?? 0,
     subtasks: raw.subtasks ?? [],
     groupId: raw.groupId ?? null,
@@ -174,6 +181,7 @@ export function buildDraftsFromTemplate(
       deadlineOffsetDays: null,
       windowStart: item.windowStart,
       windowEnd: item.windowEnd,
+      linkUrl: item.linkUrl ?? null,
       reminderTime,
       timeSegments: [...item.timeSegments],
       tags: [...item.tags],
@@ -184,6 +192,7 @@ export function buildDraftsFromTemplate(
       recurrenceInterval: item.recurrenceInterval,
       recurrenceDays: [...item.recurrenceDays],
       recurrenceMonthDay: item.recurrenceMonthDay,
+      recurrenceMonth: item.recurrenceMonth,
       recurrenceFromCompletion: item.recurrenceFromCompletion,
       recurrenceCount: item.recurrenceCount,
       vacationPause: item.vacationPause,
@@ -207,6 +216,8 @@ export function buildDraftsFromTemplate(
       // The question only — createTask never reads a draft's deliverableValue,
       // so an applied item always starts with the decision still to make.
       deliverableKind: item.deliverableKind,
+      deliverableOptions: item.deliverableOptions ?? [],
+      deliverableSetsAway: item.deliverableSetsAway ?? false,
       chainEnabled: item.chainEnabled,
       chainItems: item.chainItems.map(c => ({ ...c })),
       // Clamped rather than trusted verbatim: chainItems can have shrunk (a
@@ -215,6 +226,8 @@ export function buildDraftsFromTemplate(
       chainIndex: item.chainItems.length > 0
         ? Math.min(item.chainIndex, item.chainItems.length - 1)
         : 0,
+      rotationEnabled: item.rotationEnabled,
+      rotationItems: item.rotationItems.map(r => ({ ...r })),
     };
   });
 }
@@ -228,8 +241,15 @@ export function formatOffsetLabel(offsetDays: number | null): string {
   return offsetDays < 0 ? `${n} ${unit} before` : `${n} ${unit} after`;
 }
 
-/** Human label for which anchor an item's offsets are relative to. */
-export function anchorLabel(anchor: TemplateAnchor): string {
+/**
+ * Human label for which anchor an item's offsets are relative to. `away` is a
+ * trip template's (TaskTemplate.anchorsAreAway), whose anchors are the days
+ * you leave and get back, and which the apply sheet already asks for as
+ * "Leaving" and "Coming back". Saying "start date" on those rows named a
+ * field the person would never see.
+ */
+export function anchorLabel(anchor: TemplateAnchor, away = false): string {
+  if (away) return anchor === 'end' ? 'Coming back' : 'Leaving';
   return anchor === 'end' ? 'End date' : 'Start date';
 }
 
@@ -238,9 +258,12 @@ export function anchorLabel(anchor: TemplateAnchor): string {
  * date" rather than formatOffsetLabel's bare "3 days before". Used wherever
  * the offset is shown without the anchor picker sitting right next to it.
  */
-export function formatOffsetWithAnchor(offsetDays: number | null, anchor: TemplateAnchor): string {
+export function formatOffsetWithAnchor(offsetDays: number | null, anchor: TemplateAnchor, away = false): string {
   if (offsetDays === null) return 'No date';
-  const name = anchor === 'end' ? 'end date' : 'start date';
+  if (away && offsetDays === 0) return anchor === 'end' ? "The day you're back" : 'The day you leave';
+  const name = away
+    ? (anchor === 'end' ? "you're back" : 'leaving')
+    : (anchor === 'end' ? 'end date' : 'start date');
   if (offsetDays === 0) return `On ${name}`;
   const n = Math.abs(offsetDays);
   const unit = n === 1 ? 'day' : 'days';
@@ -802,6 +825,10 @@ export function substituteDraftPlaceholders(
     chainItems: draft.chainItems?.map(c => ({
       ...c,
       title: substitutePlaceholders(c.title, values),
+    })),
+    rotationItems: draft.rotationItems?.map(r => ({
+      ...r,
+      title: substitutePlaceholders(r.title, values),
     })),
   };
 }

@@ -38,6 +38,11 @@ const makeProject = (overrides: Partial<Project> = {}): Project => ({
   destination: null,
   awayListId: null,
   awayListDeclinedFor: null,
+  pausedUntil: null,
+  personIds: [],
+  links: [],
+  inOrder: false,
+  showChecked: false,
   ...overrides,
 });
 
@@ -46,13 +51,18 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   autoScheduledAt: null, createdAt: '2026-01-01T00:00:00.000Z', seenAt: null, dueDate: null,
   deadline: null, deadlineOffsetDays: null, deadlineMonthDay: null, deferUntil: null,
   timeSegments: [], windowStart: null, windowEnd: null, recurrenceType: 'none',
-  recurrenceInterval: 1, recurrenceDays: [], recurrenceMonthDay: null, recurrenceWeekOrdinal: null,
+  recurrenceInterval: 1, recurrenceDays: [], recurrenceMonthDay: null, recurrenceMonth: null, recurrenceWeekOrdinal: null,
   recurrenceAnchorDay: null, recurrenceAnchorDate: null, recurrenceEndDate: null,
   recurrenceCount: null, recurrenceFromCompletion: false, supplyCount: null, supplyUnit: null,
   supplyRefillCount: null, supplyReorderAt: 1, supplyLeadDays: null, supplyDeclinedAtCount: null,
   supplyGroceryItemId: null, targetCount: null, targetUnit: null, allowOvershoot: false,
-  quotaIntervalMinutes: null, quotaReminders: false, quotaStartedAt: null, quotaAlwaysVisible: false,
+  quotaIntervalMinutes: null, quotaReminders: false, quotaStartedAt: null, quotaAlwaysVisible: false, followWaterTarget: false,
   quotaPeriod: 'day',
+  rotationEnabled: false,
+  rotationItems: [],
+  rotationLog: [],
+  rotationPeriodStart: null,
+  rotationLastDone: {},
   healthMetric: null, healthTarget: null, completionTimerMinutes: null, completionTimerNote: null, completionTimerStartedAt: null, logHealthMetric: null, logHealthAmount: null, medicationName: null, medicationAmount: null, medicationUnit: null, logMealSlot: null, estimateBeforeTiming: null,
   progressCount: 0, tags: [], category: null, sortOrder: 1, pinned: false, pinnedOrder: 0,
   postponeCount: 0, postponeMuted: false, driftingSince: null, priority: 0, effort: 0,
@@ -67,10 +77,10 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   penaltyCreditedAt: null,
   gatesApps: false,
   groupId: null, projectId: null, reminderTime: null, reminderKind: 'notification',
-  reminderOffsetDays: null, reminderTimeAnchor: 'wallClock', reminderUtcOffsetMinutes: null, chainEnabled: false, chainIndex: 0, chainItems: [],
+  reminderOffsetDays: null, reminderTracksVisibility: false, reminderTimeAnchor: 'wallClock', reminderUtcOffsetMinutes: null, chainEnabled: false, chainIndex: 0, chainItems: [],
   chainStepOnSchedule: false, followUpTaskEveryN: null, followUpTaskTitle: null, followUpTaskDraft: null,
   followUpTaskOneAtATime: false, followUpTaskTally: 0, previousFollowUpTaskTally: 0,
-  followUpTaskSourceTitle: null, vacationPause: false,
+  followUpTaskSourceTitle: null, followUpTaskSourceId: null, vacationPause: false,
   excludeFromSuggestions: false, timerStartedAt: null, timedMinutes: null, timerElapsedSeconds: 0,
   actualMinutes: null, previousOccurrenceId: null, seriesId: null, seriesMonthDays: [],
   seriesRepeatMonths: 1, seriesDefaults: null, archived: false, archivedAt: null, linkUrl: null,
@@ -92,6 +102,7 @@ describe('projectStats', () => {
       finishedThisYear: 0,
       activeDone: 0,
       activeTotal: 0,
+      activeTracked: 0,
       typicalDays: null,
       recentlyFinished: [],
     });
@@ -140,6 +151,22 @@ describe('projectStats', () => {
     const stats = projectStats(projects, tasks, NOW);
     expect(stats.activeDone).toBe(2);
     expect(stats.activeTotal).toBe(3);
+  });
+
+  // An ongoing project never finishes, so counting its members only ever
+  // dragged "tasks done across active projects" down.
+  it('leaves ongoing projects out of the aggregate, while still counting them as active', () => {
+    const projects = [makeProject({ id: 'a' }), makeProject({ id: 'b', ongoing: true })];
+    const tasks = [
+      makeTask({ id: '1', projectId: 'a', completed: true }),
+      makeTask({ id: '2', projectId: 'b' }),
+      makeTask({ id: '3', projectId: 'b' }),
+    ];
+    const stats = projectStats(projects, tasks, NOW);
+    expect(stats.active).toBe(2);
+    expect(stats.activeTracked).toBe(1);
+    expect(stats.activeDone).toBe(1);
+    expect(stats.activeTotal).toBe(1);
   });
 
   it('counts this year separately from ever', () => {

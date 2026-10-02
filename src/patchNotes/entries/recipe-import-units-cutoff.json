@@ -1,0 +1,4 @@
+{
+  "message": "Fixed a recipe import bug that could cut off an ingredient's amount mid-unit, like \"1 packet (1/4 ounce, 7 g\" missing its closing parenthesis.",
+  "date": "2026-09-26"
+}

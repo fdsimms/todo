@@ -140,6 +140,8 @@ export function measuredTimeAppliesTo(task: EstimateSource): boolean {
 /** What measuredTimeWorthSuggesting needs on top of EstimateSource. */
 export type SuggestionCarrier = ChainCompletionCarrier & {
   seriesId?: string | null;
+  generatedKind?: string | null;
+  followUpTaskSourceTitle?: string | null;
 };
 
 /**
@@ -156,8 +158,18 @@ export type SuggestionCarrier = ChainCompletionCarrier & {
  */
 export function measuredTimeWorthSuggesting(task: SuggestionCarrier): boolean {
   if ((task.recurrenceType ?? 'none') !== 'none') return true;
+  // A one-off the app wrote (a generated task, a follow-up) comes round again
+  // as a fresh row, which starts from the estimate its generator keeps, and a
+  // correction here is written back there (ruleEstimate.ts). So it does have a
+  // future reader, which is the whole test.
+  if (task.generatedKind || task.followUpTaskSourceTitle) return true;
   if (task.seriesId) return false;
   return task.chainEnabled === true && !isChainFinish(task);
+}
+
+/** Whether a draft already says how long it takes, so nothing should be filled in. */
+export function draftHasEstimate(draft: { estimatedMinutes?: number | null; effort?: Effort }): boolean {
+  return draft.estimatedMinutes != null || !!draft.effort;
 }
 
 // The floor a diff has to clear before a session's clock reading is worth
@@ -221,6 +233,9 @@ export function formatDuration(min: number): string {
   if (min < 60) return `${min}m`;
   const hours = min / 60;
   // Drop a trailing ".0" (2h, not 2.0h); keep one decimal otherwise (1.5h).
-  const label = Number.isInteger(hours) ? String(hours) : hours.toFixed(1);
+  // Tested on the rounded text, not on `hours`: 119 minutes is not a whole
+  // number of hours but still rounds to "2.0".
+  const fixed = hours.toFixed(1);
+  const label = fixed.endsWith('.0') ? fixed.slice(0, -2) : fixed;
   return `${label}h`;
 }

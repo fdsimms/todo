@@ -139,7 +139,15 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
   const handleOpenLink = async () => {
     if (!currentTask?.linkUrl) return;
     haptics.tap();
-    if (openInAppUrl(currentTask.linkUrl)) return;
+    if (openInAppUrl(currentTask.linkUrl)) {
+      // An in-app link navigates the screen underneath this sheet, which does
+      // nothing on its own — the sheet stays on top and the destination is
+      // stuck behind it. Same "closing is not stopping" close this sheet's own
+      // X uses: the session keeps running, FocusBar keeps it one tap away, and
+      // the page just navigated to is what's actually visible now.
+      onClose();
+      return;
+    }
     try {
       await Linking.openURL(currentTask.linkUrl);
     } catch {

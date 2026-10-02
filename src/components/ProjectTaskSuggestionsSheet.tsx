@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Alert,
   View,
@@ -28,6 +28,14 @@ interface Props {
   projectNotes: string;
   /** Titles already in the project, so the AI doesn't suggest duplicates. */
   existingTitles: string[];
+  /**
+   * The project is a list (see Project.kind). Its lines are written down
+   * exactly as given, so title rules are skipped for these the way the list's
+   * own add field skips them.
+   */
+  isList?: boolean;
+  /** How many were added, so the screen can say so; the sheet closes itself. */
+  onAdded?: (count: number) => void;
   onClose: () => void;
 }
 
@@ -37,7 +45,9 @@ interface Props {
  * each one accepted or rejected, then adds the accepted ones to the project.
  * Modelled directly on TemplateSuggestionsSheet.
  */
-export function ProjectTaskSuggestionsSheet({ visible, projectId, projectTitle, projectNotes, existingTitles, onClose }: Props) {
+export function ProjectTaskSuggestionsSheet({
+  visible, projectId, projectTitle, projectNotes, existingTitles, isList = false, onAdded, onClose,
+}: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const addTask = useTaskStore(s => s.addTask);
@@ -47,20 +57,28 @@ export function ProjectTaskSuggestionsSheet({ visible, projectId, projectTitle, 
   const [suggestions, setSuggestions] = useState<ProjectTaskSuggestion[]>([]);
   // Indices of accepted suggestions; everything starts accepted.
   const [accepted, setAccepted] = useState<Set<number>>(new Set());
+  // Bumped by every request and by closing the sheet, so only the newest
+  // request's answer is kept. Regenerate tapped twice, or the sheet closed and
+  // reopened mid-request, otherwise let an older batch land over a newer one,
+  // or fill a sheet that had already been closed.
+  const requestIdRef = useRef(0);
 
   const load = useCallback(async () => {
+    const requestId = ++requestIdRef.current;
     setLoading(true);
     setError(null);
     try {
       const result = await suggestProjectTasks(projectTitle, projectNotes, existingTitles);
+      if (requestId !== requestIdRef.current) return;
       setSuggestions(result);
       setAccepted(new Set(result.map((_, i) => i)));
     } catch (e) {
+      if (requestId !== requestIdRef.current) return;
       setSuggestions([]);
       setAccepted(new Set());
       setError(describeAIError(e));
     } finally {
-      setLoading(false);
+      if (requestId === requestIdRef.current) setLoading(false);
     }
     // projectTitle/projectNotes/existingTitles are read at call time; the
     // sheet only fires this when it opens or on an explicit regenerate, so
@@ -71,6 +89,8 @@ export function ProjectTaskSuggestionsSheet({ visible, projectId, projectTitle, 
   // Generate fresh suggestions each time the sheet opens; clear on close.
   useEffect(() => {
     if (!visible) {
+      requestIdRef.current++;
+      setLoading(false);
       setSuggestions([]);
       setAccepted(new Set());
       setError(null);
@@ -95,10 +115,11 @@ export function ProjectTaskSuggestionsSheet({ visible, projectId, projectTitle, 
     dbTransaction(() => {
       suggestions.forEach((s, i) => {
         if (!accepted.has(i)) return;
-        addTask({ title: s.title, notes: s.notes, projectId });
+        addTask({ title: s.title, notes: s.notes, projectId }, undefined, { skipTitleRules: isList });
       });
     });
     haptics.success();
+    onAdded?.(accepted.size);
     onClose();
   };
 
@@ -107,8 +128,8 @@ export function ProjectTaskSuggestionsSheet({ visible, projectId, projectTitle, 
   const handleCancel = () => {
     if (suggestions.length === 0) { onClose(); return; }
     Alert.alert(
-      'Discard suggestions?',
-      'The suggested tasks will be lost.',
+      'Discard changes?',
+      'You have unsaved changes. Are you sure you want to discard them?',
       [
         { text: 'Keep editing', style: 'cancel' },
         { text: 'Discard', style: 'destructive', onPress: onClose },
@@ -174,6 +195,9 @@ export function ProjectTaskSuggestionsSheet({ visible, projectId, projectTitle, 
                   style={[styles.row, !isAccepted && styles.rowRejected]}
                   onPress={() => toggle(i)}
                   activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: isAccepted }}
+                  accessibilityLabel={s.title}
                 >
                   <Ionicons
                     name={isAccepted ? 'checkmark-circle' : 'ellipse-outline'}

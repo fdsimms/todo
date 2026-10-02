@@ -1,6 +1,7 @@
 import type { FoodNutrition, NutrientKey } from '../types';
 import type { LabelColumn, LabelReading } from './labelOcr';
 import { NUTRIENT_KEYS } from '../types';
+import { unitFactor } from './unitConvert';
 
 /**
  * Turning a printed label into a stored panel, and back into a form to edit.
@@ -101,6 +102,39 @@ export function invalidPanelFields(form: PanelForm): PanelFieldKey[] {
   return bad;
 }
 
+/** The two units a serving weight can be typed in. `PanelForm.servingGrams` and
+ * `FoodNutrition.servingGrams` only ever hold grams; this is a display/entry
+ * convenience over that one field, never a second field. */
+export type ServingWeightUnit = 'g' | 'oz';
+
+const GRAMS_PER_OUNCE = unitFactor('oz', 'g') ?? 28.349523125;
+
+/**
+ * A serving weight typed in `unit`, converted to the grams `PanelForm.servingGrams`
+ * always holds — so a label printed in ounces ("Serving Size 1 oz (28g)", or one
+ * with no metric figure at all) doesn't need that multiplication done by hand
+ * before it can be typed in.
+ *
+ * Blank and unreadable text pass straight through unchanged. An unparseable
+ * figure is exactly as unparseable whichever unit was on screen when it was
+ * typed, so `invalidPanelFields` catches it either way without this having to
+ * know which unit produced it.
+ */
+export function servingWeightToGrams(text: string, unit: ServingWeightUnit): string {
+  if (unit === 'g') return text;
+  const value = readPanelNumber(text);
+  if (typeof value !== 'number') return text;
+  return String(Math.round(value * GRAMS_PER_OUNCE * 100) / 100);
+}
+
+/** The grams in `PanelForm.servingGrams`, shown in `unit` — the inverse of `servingWeightToGrams`. */
+export function gramsToServingWeight(grams: string, unit: ServingWeightUnit): string {
+  if (unit === 'g') return grams;
+  const value = readPanelNumber(grams);
+  if (typeof value !== 'number') return grams;
+  return String(Math.round((value / GRAMS_PER_OUNCE) * 100) / 100);
+}
+
 /** Whether the form still says what it opened saying, for the unsaved-changes guard. */
 export function panelFormDirty(form: PanelForm, baseline: PanelForm): boolean {
   if (form.basis !== baseline.basis) return true;
@@ -157,6 +191,74 @@ export function buildPanelNutrition(
     portions: previous?.portions ?? [],
     recordedAt: now.toISOString(),
   };
+}
+
+/** A figure rounded the way a label's own precision reads — the same one decimal `foodLog.ts`'s own `round` keeps. */
+function roundNutrient(value: number): number {
+  return Math.round(value * 10) / 10;
+}
+
+/**
+ * The form's typed figures re-expressed in the other basis, using
+ * `servingGrams` as the ratio — so a US label that only prints "Amount Per
+ * Serving" can still be typed in and stored as per 100g (or the reverse)
+ * without anyone doing that multiplication by hand.
+ *
+ * **Only between `per100g` and `perServing`.** A `per100ml` panel has no
+ * `servingGrams` to convert against — a product sold by volume states none,
+ * see that field's own doc comment — and converting it would need a density
+ * this app does not have, the same refusal `FoodNutrition.basis` itself
+ * documents. Null whenever the conversion can't be done: the form is already
+ * at `target`, there's no positive serving weight, or nothing is typed to
+ * convert — the caller uses that to decide whether to offer the action at
+ * all, not just whether to act on it.
+ */
+export function convertPanelBasis(
+  form: PanelForm,
+  target: 'per100g' | 'perServing',
+): PanelForm | null {
+  if (form.basis !== 'per100g' && form.basis !== 'perServing') return null;
+  if (form.basis === target) return null;
+  const grams = readPanelNumber(form.servingGrams);
+  if (typeof grams !== 'number' || grams <= 0) return null;
+
+  const ratio = target === 'per100g' ? 100 / grams : grams / 100;
+  const amounts = { ...form.amounts };
+  let converted = false;
+  for (const key of NUTRIENT_KEYS) {
+    const value = readPanelNumber(form.amounts[key]);
+    if (typeof value !== 'number') continue;
+    amounts[key] = String(roundNutrient(value * ratio));
+    converted = true;
+  }
+  if (!converted) return null;
+  return { ...form, basis: target, amounts };
+}
+
+/**
+ * The form's typed figures, read as a whole package's totals, divided down to
+ * one serving — for a label that states "X servings per container" and only
+ * a per-container total, with no per-serving column to copy. `basis` becomes
+ * `perServing`, since that's what the result now is.
+ *
+ * `servingGrams` is deliberately left alone: it already means one serving's
+ * weight, which a label states directly (see its own doc comment) far more
+ * often than it states a package's total weight, so there is nothing here
+ * this function could safely divide for it. Null when there's nothing to
+ * divide, or `servings` isn't a real, positive count.
+ */
+export function divideAmountsByServings(form: PanelForm, servings: number): PanelForm | null {
+  if (!(servings > 0) || !Number.isFinite(servings)) return null;
+  const amounts = { ...form.amounts };
+  let divided = false;
+  for (const key of NUTRIENT_KEYS) {
+    const value = readPanelNumber(form.amounts[key]);
+    if (typeof value !== 'number') continue;
+    amounts[key] = String(roundNutrient(value / servings));
+    divided = true;
+  }
+  if (!divided) return null;
+  return { ...form, basis: 'perServing', amounts };
 }
 
 /**

@@ -78,6 +78,12 @@ export interface ScaledQuantity {
  *   this way at all and refuses.
  * - **A counted sized container** ("2 14 oz cans") — the count scales, the size
  *   never does.
+ * - **A second measure after the first** ("2 cups plus 2 tbsp", "1 lb 2 oz",
+ *   "200 g/7 oz") — verbatim, flagged, like anything else this can't read.
+ *   Only the leading amount is ever parsed, so scaling one of these doubled
+ *   the cups and left the tablespoons ("4 cups plus 2 tbsp"), or doubled the
+ *   grams and left the ounces beside them disagreeing. Refusing is what the
+ *   rest of this module does with a shape it can't scale whole.
  * - **A range** ("1 to 2 tbsp", "1-2 tbsp") — both ends scale by the same
  *   factor and the unit agrees with the scaled high end, so "1 to 2 tbsp"
  *   halved is "1/2 to 1 tbsp", not the low end alone with the high end
@@ -102,8 +108,24 @@ export interface ScaledQuantity {
  * be lying about how much fruit the doubled recipe actually needs. Dropping
  * it is safer than leaving stale information in a scaled ingredient list.
  */
+/**
+ * A second amount straight after the first measure: joined by "plus", "+",
+ * "and" or a slash, or simply the next number and its unit ("1 lb 2 oz").
+ * A number followed by "%" is a product ("1 cup 2% milk"), not a measure.
+ */
+const SECOND_MEASURE = /^\s*[,;]?\s*(?:(?:plus|and)\s+|\+\s*|\/\s*)?\d+(?:[.,]\d+)?(?:\s*\/\s*\d+)?\s*[a-z]/i;
+
 function stripSourceCountAside(trailing: string): string {
   return trailing.replace(/\s*\([^()]*\)\s*$/, '');
+}
+
+// With no unit, `trailing` is the trimmed rest, so it needs its space back
+// before a word or a parenthesised size ("2 (14 oz) cans") — but not before
+// the punctuation of a size clause ("1, medium"), or the hyphen of a compound
+// ("1-inch piece" doubled is "2-inch piece", not "2 -inch piece").
+function joinTrailing(amount: string, trailing: string): string {
+  if (!trailing || /^[\s,;.:)]|^-(?=\S)/.test(trailing)) return `${amount}${trailing}`;
+  return `${amount} ${trailing}`;
 }
 
 export function scaleQuantity(quantity: string, factor: number): ScaledQuantity {
@@ -139,6 +161,8 @@ export function scaleQuantity(quantity: string, factor: number): ScaledQuantity 
     };
   }
 
+  if (SECOND_MEASURE.test(q.trailing)) return unchanged;
+
   if (q.rangeMax) {
     const scaledMin = multiplyRational(q.amount, multiplier);
     const scaledMax = multiplyRational(q.rangeMax, multiplier);
@@ -147,7 +171,7 @@ export function scaleQuantity(quantity: string, factor: number): ScaledQuantity 
     const joined =
       q.rangeSeparator === '-' ? `${renderedMin}-${renderedMax}` : `${renderedMin} to ${renderedMax}`;
     const trailing = stripSourceCountAside(q.trailing);
-    if (!q.unitWritten) return { text: `${joined}${trailing}`, scaled: true };
+    if (!q.unitWritten) return { text: joinTrailing(joined, trailing), scaled: true };
     const inflected = inflectUnit(q.unitWritten, rationalToNumber(scaledMax));
     return { text: `${joined} ${inflected}${trailing}`, scaled: true };
   }
@@ -159,7 +183,7 @@ export function scaleQuantity(quantity: string, factor: number): ScaledQuantity 
   const trailing = stripSourceCountAside(q.trailing);
   // A size clause rather than a unit — parseGroceryInput emits "1, medium",
   // and splitting that on spaces would produce "2 , medium".
-  if (!q.unitWritten) return { text: `${rendered}${trailing}`, scaled: true };
+  if (!q.unitWritten) return { text: joinTrailing(rendered, trailing), scaled: true };
 
   const inflected = inflectUnit(q.unitWritten, rationalToNumber(scaled));
   return { text: `${rendered} ${inflected}${trailing}`, scaled: true };
@@ -170,15 +194,15 @@ export function scaleQuantity(quantity: string, factor: number): ScaledQuantity 
 // ---------------------------------------------------------------------------
 
 /**
- * The factors the pickers offer. Halves and small whole multiples, which is
- * what a cook actually reaches for — and deliberately not derived from a
+ * The factors the pickers offer. Quarters, halves and small whole multiples,
+ * which is what a cook actually reaches for — and deliberately not derived from a
  * target servings count, because `Recipe.servings` is nullable and plenty of
  * recipes never had one, so a "cook for 6" stepper would be unavailable
  * exactly where a factor still makes perfect sense. Scaled servings are shown
  * *alongside* the factor when the recipe happens to know them (see
  * scaleServings).
  */
-export const RECIPE_SCALE_FACTORS = [0.5, 1, 1.5, 2, 3] as const;
+export const RECIPE_SCALE_FACTORS = [0.25, 0.5, 1, 1.5, 2, 3] as const;
 
 /** True for the do-nothing factor, including the `null`/legacy absence of one. */
 export function isUnscaled(factor: number | null | undefined): boolean {
@@ -247,6 +271,40 @@ export function factorForServings(target: number, baseServings: number): number 
   return target / baseServings;
 }
 
+/** The most people "Usually cooking for" takes — the cap Recipe.servings has too. */
+export const MAX_HOUSEHOLD_SERVINGS = 99;
+
+/**
+ * The factor a newly planned recipe starts at when the person has said how many
+ * they usually cook for (`householdServings`, #2910) — so a household of four
+ * planning five recipes that serve two gets five 2× nights rather than five
+ * trips into the meal's sheet to fix each one.
+ *
+ * As written (1) whenever there is no head count to go on, which is the same
+ * refusal `rescaleForRecipe` makes:
+ * - **No household size** (0, the default). A plan is allowed not to have
+ *   answered how much you're making, and that stays the default.
+ * - **The recipe states no servings.** Nothing to divide by, and a guess is the
+ *   thing this module never makes.
+ * - **The recipe already covers it.** "Serves 4-6" for a household of five is
+ *   the recipe as written, not 1¼× of it.
+ *
+ * Otherwise it is `factorForServings` against the recipe's own count (the low
+ * end of a range), which is the number the servings stepper on the meal's
+ * sheet then shows and edits, so the default is one tap from changing.
+ */
+export function householdScale(
+  householdServings: number | null | undefined,
+  servings: number | null | undefined,
+  servingsMax?: number | null,
+): number {
+  if (householdServings == null || !Number.isFinite(householdServings) || householdServings <= 0) return 1;
+  if (servings == null || !(servings > 0)) return 1;
+  const top = servingsMax != null && servingsMax > servings ? servingsMax : servings;
+  if (householdServings >= servings && householdServings <= top) return 1;
+  return factorForServings(householdServings, servings);
+}
+
 /**
  * The servings a live factor currently implies, for seeding the stepper —
  * after a chip tap as much as after typing a number. Delegates to
@@ -255,6 +313,36 @@ export function factorForServings(target: number, baseServings: number): number 
  */
 export function targetServingsFor(baseServings: number, factor: number): number {
   return scaleServings(baseServings, null, factor).servings ?? Math.max(1, Math.round(baseServings));
+}
+
+/**
+ * The factor that keeps a planned meal feeding the same number of people when
+ * a different recipe takes its place — what `bulkReplaceItem` stores.
+ *
+ * A factor means different servings for different recipes: 2× a pasta that
+ * serves 2 is four servings, and carried over unchanged onto a soup that serves
+ * 4 it was eight. So the head count the old recipe implied is what survives the
+ * swap, converted back through the new recipe's own count (and rounded to whole
+ * people on the way, exactly as the servings stepper does).
+ *
+ * The factor is kept as it was whenever there is no head count to carry:
+ * - **Either recipe states no servings.** Nothing to convert through, and a
+ *   guess is the thing `recipeScale` never makes.
+ * - **The meal was never scaled.** As-written is "make the recipe", not a
+ *   number of people — a plan is allowed not to have answered how much
+ *   (see `planMeal`) — so converting it would invent a head count from the
+ *   old recipe's yield and quietly halve or double the new one.
+ */
+export function rescaleForRecipe(
+  factor: number | null | undefined,
+  fromServings: number | null | undefined,
+  toServings: number | null | undefined,
+): number {
+  const scale = normalizeScale(factor);
+  if (isUnscaled(scale)) return scale;
+  if (fromServings == null || !(fromServings > 0)) return scale;
+  if (toServings == null || !(toServings > 0)) return scale;
+  return factorForServings(targetServingsFor(fromServings, scale), toServings);
 }
 
 /**

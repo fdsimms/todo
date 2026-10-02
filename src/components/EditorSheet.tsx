@@ -7,7 +7,7 @@ import {
 } from 'react-native';
 import { SheetModal } from './SheetModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
+import { KeyboardScrollIntoViewContext, useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 
 interface Props {
   visible: boolean;
@@ -97,7 +97,7 @@ export function EditorSheet({
   // combination could over-scroll the sheet — a small field near the top
   // scrolling far past where it needed to, occasionally all the way to the
   // bottom of the content. One mechanism owning the adjustment fixes that.
-  const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
 
   return (
     <SheetModal
@@ -127,7 +127,9 @@ export function EditorSheet({
           contentContainerStyle={scrollContentStyle}
           {...keyboardScroll.props}
         >
-          {children}
+          <KeyboardScrollIntoViewContext.Provider value={keyboardScroll.focusInput}>
+            {children}
+          </KeyboardScrollIntoViewContext.Provider>
         </ScrollView>
 
         {footer}

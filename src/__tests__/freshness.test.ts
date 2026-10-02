@@ -9,6 +9,9 @@ import {
   liveUseBy,
 } from '../utils/freshness';
 
+/** A local wall-clock time as the ISO instant the app stores, so the suite reads the same in any zone. */
+const localIso = (local: string) => new Date(local).toISOString();
+
 // freshness reaches dateUtils for dayKeyToDate, which reaches the settings
 // store for dayResetTime — which nothing here needs, since a day key is a
 // calendar day and carries no time at all. Same stub leftovers.test.ts uses.
@@ -84,24 +87,24 @@ describe('liveUseBy', () => {
   });
 
   it('suspends the day while frozen, rather than the row having lost it', () => {
-    expect(liveUseBy('2026-08-14', '2026-08-01T10:00:00.000Z')).toBeNull();
+    expect(liveUseBy('2026-08-14', localIso('2026-08-01T10:00'))).toBeNull();
   });
 
   it('is null either way for a row that never had a day', () => {
     expect(liveUseBy(null, null)).toBeNull();
-    expect(liveUseBy(null, '2026-08-01T10:00:00.000Z')).toBeNull();
+    expect(liveUseBy(null, localIso('2026-08-01T10:00'))).toBeNull();
   });
 });
 
 describe('describeFrozenSince', () => {
   it('names the day it went in, not how long it has been there', () => {
-    expect(describeFrozenSince('2026-07-12T09:00:00.000Z', NOW)).toBe('Frozen Jul 12');
+    expect(describeFrozenSince(localIso('2026-07-12T09:00'), NOW)).toBe('Frozen Jul 12');
   });
 
   it('drops the date rather than the whole clause when the stamp is unusable', () => {
     // A restored backup with a junk stamp, and a device whose clock has been
     // moved back — both still say the true half.
     expect(describeFrozenSince('not-a-date', NOW)).toBe('Frozen');
-    expect(describeFrozenSince('2026-09-01T09:00:00.000Z', NOW)).toBe('Frozen');
+    expect(describeFrozenSince(localIso('2026-09-01T09:00'), NOW)).toBe('Frozen');
   });
 });

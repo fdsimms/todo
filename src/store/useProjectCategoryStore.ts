@@ -29,7 +29,7 @@ import {
  *
  * Undo lives in `useTaskStore` alongside every other undoable action, which is
  * why delete and rename are split the way the task-category ones are: the store
- * owns the row write, and `restoreProjectCategory` is the low-level restore the
+ * owns the row write, and `restoreCategory` is the low-level restore the
  * undo entry calls.
  */
 interface ProjectCategoryStore {
@@ -46,6 +46,11 @@ interface ProjectCategoryStore {
   getCategoryByName: (name: string) => ProjectCategory | null;
 }
 
+function findByName(categories: ProjectCategory[], name: string): ProjectCategory | undefined {
+  const key = name.trim().toLocaleLowerCase();
+  return categories.find(c => c.name.toLocaleLowerCase() === key);
+}
+
 export const useProjectCategoryStore = create<ProjectCategoryStore>((set, get) => ({
   categories: [],
   initialized: false,
@@ -55,8 +60,13 @@ export const useProjectCategoryStore = create<ProjectCategoryStore>((set, get) =
     set({ categories, initialized: true });
   },
 
-  addCategory(name) {
-    const existing = get().categories.find(c => c.name === name);
+  addCategory(rawName) {
+    // Trimmed and matched without case: the name is the identity (see
+    // renameCategory), so "Travel" and "travel " would otherwise be two
+    // sections on the Projects page holding what anyone would call one.
+    // Callers must use the returned row's name rather than what they passed.
+    const name = rawName.trim();
+    const existing = findByName(get().categories, name);
     if (existing) return existing;
     const category = dbInsertProjectCategory(name);
     set(s => ({ categories: [...s.categories, category] }));
@@ -83,7 +93,10 @@ export const useProjectCategoryStore = create<ProjectCategoryStore>((set, get) =
     // Names are the identity here — Project.category stores the name, not the
     // id — so a collision would silently merge two sections rather than rename
     // one. Refused, and the caller keeps its field open.
-    if (get().categories.some(c => c.name === trimmed)) return false;
+    // Compared without case for the reason addCategory gives, except that
+    // re-casing the category's own name ("travel" to "Travel") is a rename.
+    const taken = findByName(get().categories, trimmed);
+    if (taken && taken.id !== category.id) return false;
     dbRenameProjectCategory(category.id, name, trimmed);
     set(s => ({
       categories: s.categories.map(c => (c.id === category.id ? { ...c, name: trimmed } : c)),

@@ -12,13 +12,13 @@ import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeBlurView } from './SafeBlurView';
 import { useColors, useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, border, animation, interaction, iconSize, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, border, interaction, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { SheetScrim } from './SheetScrim';
-import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
-import { formatDeadlineDate } from '../utils/dateUtils';
+import { useSheetMotion } from '../hooks/useSheetMotion';
+import { formatDeadlineDate, getEffectiveTaskDate } from '../utils/dateUtils';
 import {
   awayShiftUpdates,
   buildAwayShiftPlan,
@@ -31,7 +31,7 @@ import type { Task } from '../types';
 /**
  * "The trip moved. Do these move with it?"
  *
- * Offered when a project's departure date changes and it has dated members.
+ * Offered when a project's departure date or deadline changes and it has dated members.
  * It proposes and never shifts, for the reason `deloadPlan` and `projectPull`
  * do: only the person who typed them knows that "Renew passport" is anchored
  * to the trip and "Buy a suitcase" is not. So every movable row is untickable.
@@ -56,9 +56,11 @@ interface Props {
   to: Date | null;
   projectTitle: string;
   onClose: () => void;
+  /** Fires when the user applies the move (not on cancel), before the sheet dismisses. */
+  onApplied?: () => void;
 }
 
-export function AwayShiftSheet({ visible, tasks, from, to, projectTitle, onClose }: Props) {
+export function AwayShiftSheet({ visible, tasks, from, to, projectTitle, onClose, onApplied }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -69,32 +71,29 @@ export function AwayShiftSheet({ visible, tasks, from, to, projectTitle, onClose
   // Computed once per opening, not derived live: it is a snapshot the reader
   // is deciding on, the same rule ProjectPullSheet's plan follows.
   const [plan, setPlan] = useState<AwayShiftPlan | null>(null);
+  // Open top-level tasks with no date on them: the plan skips these, and the
+  // hint says so.
+  const undatedCount = useMemo(
+    () => tasks.filter(t => !t.completed && !t.archived && t.parentId === null && !getEffectiveTaskDate(t)).length,
+    [tasks],
+  );
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
-  const hiddenY = useSheetHiddenOffset();
-  const translateY = useRef(new Animated.Value(hiddenY)).current;
-  const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const sheet = useSheetMotion(visible);
+  const { translateY, backdropOpacity } = sheet;
 
   useEffect(() => {
     if (!visible || !from || !to) return;
     const next = buildAwayShiftPlan(tasks, from, to, dayResetTime);
     setPlan(next);
     setSelectedIds(new Set(next.proposals.filter(p => p.selected && p.destination).map(p => p.task.id)));
-    translateY.setValue(hiddenY);
-    backdropOpacity.setValue(0);
-    Animated.parallel([
-      Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
-    ]).start();
+    sheet.show();
     // Keyed on `visible` alone, same as the sheets beside it.
   }, [visible]);
 
   const dismiss = () => {
-    Animated.parallel([
-      Animated.spring(translateY, { toValue: hiddenY, ...animation.spring.sheetDismiss, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
-    ]).start(() => {
-      // No re-arming setValue here — see useSheetHiddenOffset.
+    sheet.hide(() => {
+      // No re-arming setValue here — see useSheetMotion.
       onClose();
     });
   };
@@ -108,7 +107,7 @@ export function AwayShiftSheet({ visible, tasks, from, to, projectTitle, onClose
       },
       onPanResponderRelease: (_, { dy, vy }) => {
         if (dy > 80 || vy > 1.2) dismiss();
-        else Animated.spring(translateY, { toValue: 0, ...animation.spring.snappy, useNativeDriver: true }).start();
+        else sheet.restore();
       },
     })
   ).current;
@@ -133,6 +132,7 @@ export function AwayShiftSheet({ visible, tasks, from, to, projectTitle, onClose
       haptics.success();
       shiftAwayTasks(moves);
     }
+    onApplied?.();
     dismiss();
   };
 
@@ -147,7 +147,7 @@ export function AwayShiftSheet({ visible, tasks, from, to, projectTitle, onClose
       </Animated.View>
       <SheetScrim onPress={dismiss} />
 
-      <Animated.View style={[styles.sheetOuter, { transform: [{ translateY }] }]}>
+      <Animated.View onLayout={sheet.onCardLayout} style={[styles.sheetOuter, { transform: [{ translateY }] }]}>
         <View style={styles.handleArea} {...panResponder.panHandlers}>
           <View style={styles.handle} />
         </View>
@@ -165,6 +165,13 @@ export function AwayShiftSheet({ visible, tasks, from, to, projectTitle, onClose
           {hasAnchoredMember(plan) && (
             <Text style={styles.hint}>
               A repeating task moves this one time. Its schedule stays where it is.
+            </Text>
+          )}
+          {/* The undated ones aren't in the list at all, which read as them
+              being forgotten rather than having no date to move. */}
+          {undatedCount > 0 && (
+            <Text style={styles.hint}>
+              {undatedCount === 1 ? '1 task has' : `${undatedCount} tasks have`} no date, so {undatedCount === 1 ? "it isn't" : "they aren't"} listed and won't move.
             </Text>
           )}
 

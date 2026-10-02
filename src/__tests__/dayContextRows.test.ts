@@ -24,7 +24,7 @@ jest.mock('../store/useCategoryStore', () => ({
   },
 }));
 
-const NOW = new Date('2026-08-13T14:00:00Z');
+const NOW = new Date(2026, 7, 13, 14, 0);
 
 let seq = 0;
 function ev(start: string, end: string, overrides: Partial<BusyEvent> = {}): BusyEvent {
@@ -43,10 +43,10 @@ function ev(start: string, end: string, overrides: Partial<BusyEvent> = {}): Bus
   };
 }
 
-/** An ISO instant at the given UTC hour on the test day. */
+/** An ISO instant at the given local hour on the test day. */
 function at(hours: number, minutes = 0): string {
-  const d = new Date('2026-08-13T00:00:00Z');
-  d.setUTCHours(hours, minutes, 0, 0);
+  const d = new Date(2026, 7, 13);
+  d.setHours(hours, minutes, 0, 0);
   return d.toISOString();
 }
 
@@ -81,6 +81,14 @@ const task = (id: string, category: string | null = null): TodayListItem =>
   ({ type: 'task', task: { id, category } as never });
 
 describe('eventContextRows', () => {
+  it('carries the moved note for the events it names, and nothing for the rest', () => {
+    const rows = eventContextRows(
+      [ev(at(16), at(17), { title: 'Dinner' }), ev(at(18), at(19), { title: 'Gym', id: 'other' })],
+      { ...eventOpts, movedNote: e => (e.title === 'Dinner' ? 'Moved, 2 tasks' : null) },
+    );
+    expect(rows.map(r => [r.title, r.movedNote])).toEqual([['Dinner', 'Moved, 2 tasks'], ['Gym', null]]);
+  });
+
   it('drops an event that has already ended', () => {
     const rows = eventContextRows([ev(at(9), at(10)), ev(at(16), at(17))], eventOpts);
     expect(rows.map(r => r.caption)).toEqual(['16:00']);
@@ -261,15 +269,20 @@ describe('withoutContextRows', () => {
 describe('healthContextRows', () => {
   const TODAY = '2026-08-13';
   const opts = { todayKey: TODAY, category: 'Health' };
+  // Every case below states both fields, even the ones it isn't about, so a
+  // reader can't mistake an omitted field for "doesn't matter" — the whole
+  // point of this function is that the two are judged independently.
+  const reading = (steps: number | null, activeEnergyKcal: number | null) =>
+    ({ dayKey: TODAY, steps, activeEnergyKcal });
 
   it('says the count, captioned as a running total', () => {
-    const rows = healthContextRows({ dayKey: TODAY, steps: 4120 }, opts);
+    const rows = healthContextRows(reading(4120, null), opts);
     expect(rows.map(r => [r.kind, r.title, r.caption]))
       .toEqual([['health', '4,120 steps', 'So far today']]);
   });
 
   it('files under the category it is given, and carries no source', () => {
-    const [row] = healthContextRows({ dayKey: TODAY, steps: 900 }, opts);
+    const [row] = healthContextRows(reading(900, null), opts);
     expect(row.category).toBe('Health');
     // The reading is about a day, not a row — there is nothing to point at.
     expect(row.sourceId).toBe('');
@@ -284,32 +297,56 @@ describe('healthContextRows', () => {
   it('says nothing about a reading from another day', () => {
     // The store holds one day-keyed snapshot, and one taken before the day
     // turned over is not an answer about this day.
-    expect(healthContextRows({ dayKey: '2026-08-12', steps: 9000 }, opts)).toEqual([]);
+    expect(healthContextRows({ dayKey: '2026-08-12', steps: 9000, activeEnergyKcal: 500 }, opts)).toEqual([]);
   });
 
   it('says nothing for a null count, which is also what a refusal looks like', () => {
     // HealthKit serves a refused read as an empty store, so null covers "you
     // said no" as well as "nothing recorded". A "No steps" row would be shown
     // to exactly the people who declined.
-    expect(healthContextRows({ dayKey: TODAY, steps: null }, opts)).toEqual([]);
+    expect(healthContextRows(reading(null, null), opts)).toEqual([]);
   });
 
   it('says nothing for zero, which is where every morning starts', () => {
     // The bridge keeps a real 0 truthfully; the row declines to exist for it.
     // Zero steps is not context about a day, and in practice it is also the
     // not-synced-yet state.
-    expect(healthContextRows({ dayKey: TODAY, steps: 0 }, opts)).toEqual([]);
+    expect(healthContextRows(reading(0, 0), opts)).toEqual([]);
   });
 
   it('does not say "1 steps"', () => {
-    expect(healthContextRows({ dayKey: TODAY, steps: 1 }, opts)[0].title).toBe('1 step');
+    expect(healthContextRows(reading(1, null), opts)[0].title).toBe('1 step');
   });
 
   it('lands in the loose group when no category is set, like every other kind', () => {
     // The screen drops the row before it gets here in that case — the category
     // is the row's off switch — but the builder itself stays kind-blind about
     // it, exactly as eventContextRows does.
-    const [row] = healthContextRows({ dayKey: TODAY, steps: 12 }, { ...opts, category: null });
+    const [row] = healthContextRows(reading(12, null), { ...opts, category: null });
     expect(row.category).toBeNull();
+  });
+
+  it('says the active calorie figure, rounded, with its own fixed id', () => {
+    const [row] = healthContextRows(reading(null, 234.7), opts);
+    expect(row.id).toBe('health-activeEnergy');
+    expect(row.title).toBe('235 active cal');
+    expect(row.caption).toBe('So far today');
+  });
+
+  it('judges the two readings independently, in either direction', () => {
+    expect(healthContextRows(reading(4120, null), opts)).toHaveLength(1);
+    expect(healthContextRows(reading(null, 300), opts)).toHaveLength(1);
+    expect(healthContextRows(reading(0, 300), opts)).toHaveLength(1);
+    expect(healthContextRows(reading(4120, 0), opts)).toHaveLength(1);
+  });
+
+  it('says nothing for a null or zero active-calorie figure, for the same reasons as steps', () => {
+    expect(healthContextRows(reading(null, null), opts)).toEqual([]);
+    expect(healthContextRows(reading(null, 0), opts)).toEqual([]);
+  });
+
+  it('lists steps ahead of active calories when both are present', () => {
+    const rows = healthContextRows(reading(4120, 300), opts);
+    expect(rows.map(r => r.id)).toEqual(['health-steps', 'health-activeEnergy']);
   });
 });

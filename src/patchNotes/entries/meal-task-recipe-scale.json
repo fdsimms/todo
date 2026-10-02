@@ -1,0 +1,4 @@
+{
+  "message": "Opening a recipe from a meal's task on Today now uses that meal's scale and choices, the same as opening it from the meal plan, so a doubled recipe shows doubled amounts in cook mode and logs the full amount.",
+  "date": "2026-09-28"
+}

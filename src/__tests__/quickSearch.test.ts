@@ -1,5 +1,6 @@
-import { quickSearch, QUICK_SEARCH_LIMIT } from '../utils/quickSearch';
-import type { Task } from '../types';
+import { quickSearch, quickDestinations, QUICK_SEARCH_LIMIT, QUICK_DESTINATION_LIMIT } from '../utils/quickSearch';
+import { menuDestinations, type NavMenuOptions } from '../utils/navHubs';
+import type { Project, Task, TaskGroup } from '../types';
 
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: { getState: () => ({ dayResetTime: '00:00', vacationMode: false }) },
@@ -31,6 +32,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   recurrenceInterval: 1,
   recurrenceDays: [],
   recurrenceMonthDay: null,
+  recurrenceMonth: null,
   recurrenceWeekOrdinal: null,
   recurrenceAnchorDay: null,
   recurrenceAnchorDate: null,
@@ -49,8 +51,13 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   allowOvershoot: false,
   quotaIntervalMinutes: null,
   quotaReminders: false,
-  quotaStartedAt: null, quotaAlwaysVisible: false,
+  quotaStartedAt: null, quotaAlwaysVisible: false, followWaterTarget: false,
   quotaPeriod: 'day',
+  rotationEnabled: false,
+  rotationItems: [],
+  rotationLog: [],
+  rotationPeriodStart: null,
+  rotationLastDone: {},
   progressCount: 0,
   tags: [],
   sortOrder: 1,
@@ -82,7 +89,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   projectId: null,
   reminderTime: null,
   reminderKind: 'notification',
-  reminderOffsetDays: null, reminderTimeAnchor: 'wallClock', reminderUtcOffsetMinutes: null,
+  reminderOffsetDays: null, reminderTracksVisibility: false, reminderTimeAnchor: 'wallClock', reminderUtcOffsetMinutes: null,
   chainEnabled: false,
   chainIndex: 0,
   chainItems: [],
@@ -94,6 +101,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   followUpTaskTally: 0,
   previousFollowUpTaskTally: 0,
   followUpTaskSourceTitle: null,
+  followUpTaskSourceId: null,
   category: null,
   vacationPause: false, excludeFromSuggestions: false,
   timerStartedAt: null,
@@ -135,17 +143,19 @@ const titles = (results: { task: Task }[]) => results.map(r => r.task.title);
 
 describe('quickSearch', () => {
   describe('empty / trivial inputs', () => {
+    const nothing = { groupResults: [], projectResults: [], results: [], total: 0, overflow: 0 };
+
     it('reports nothing for an empty query', () => {
-      expect(quickSearch([makeTask()], '')).toEqual({ results: [], total: 0, overflow: 0 });
+      expect(quickSearch([makeTask()], '')).toEqual(nothing);
     });
 
     it('reports nothing for a whitespace-only query', () => {
-      expect(quickSearch([makeTask()], '   ')).toEqual({ results: [], total: 0, overflow: 0 });
+      expect(quickSearch([makeTask()], '   ')).toEqual(nothing);
     });
 
     it('reports nothing when no task matches', () => {
       const tasks = [makeTask({ id: 'a', title: 'Renew passport' })];
-      expect(quickSearch(tasks, 'zzz')).toEqual({ results: [], total: 0, overflow: 0 });
+      expect(quickSearch(tasks, 'zzz')).toEqual(nothing);
     });
   });
 
@@ -275,7 +285,7 @@ describe('quickSearch', () => {
         makeTask({ id: `t${i}`, title: `Rent job ${i}` })
       );
       // The second row is ticked off. Without the hold it sorts behind the
-      // other six and falls off the end of a five-row card entirely.
+      // other eight and falls off the end of a seven-row card entirely.
       const ticked = tasks.map(t => (t.id === 't1' ? { ...t, completed: true } : t));
 
       expect(quickSearch(ticked, 'rent').results.map(r => r.task.id)).not.toContain('t1');
@@ -316,5 +326,153 @@ describe('quickSearch', () => {
       const names = new Map([['p1', 'Renovation']]);
       expect(quickSearch(tasks, 'renovation', names).total).toBe(1);
     });
+  });
+
+  describe('stacks and projects', () => {
+    const makeGroup = (overrides: Partial<TaskGroup> = {}): TaskGroup => ({
+      id: 'g1',
+      title: 'Supplements',
+      notes: '',
+      tags: [],
+      category: null,
+      sortOrder: 1,
+      collapsed: true,
+      onToday: false,
+      projectId: null,
+      ...overrides,
+    });
+
+    const makeProject = (overrides: Partial<Project> = {}): Project => ({
+      id: 'p1',
+      title: 'Renovation',
+      notes: '',
+      deadline: null,
+      category: null,
+      defaultTaskCategory: null,
+      sortOrder: 1,
+      archived: false,
+      archivedAt: null,
+      completed: false,
+      completedAt: null,
+      ongoing: false,
+      createdAt: '2025-01-01T00:00:00.000Z',
+      nudgeCadenceDays: 0,
+      autoSchedule: false,
+      nudgeOptIn: false,
+      weekendSource: false,
+      reviewDeclinedAt: null,
+      reviewedAt: null,
+      backfillDismissedFields: [],
+      kind: 'project' as const,
+      awayStart: null,
+      awayEnd: null,
+      awayPauses: false,
+      awayPauseDeclinedFor: null,
+      destination: null,
+      awayListId: null,
+      awayListDeclinedFor: null,
+      pausedUntil: null,
+      personIds: [],
+      links: [],
+      inOrder: false,
+      showChecked: false,
+      ...overrides,
+    });
+
+    it('finds a stack by name even when no task matches', () => {
+      const groups = [makeGroup({ id: 'g1', title: 'Supplements' })];
+      const tasks = [makeTask({ id: 't1', title: 'Buy milk' })];
+      const { groupResults, results, total } = quickSearch(
+        tasks, 'supplements', new Map(), QUICK_SEARCH_LIMIT, new Set(), groups
+      );
+      expect(groupResults.map(r => r.group.title)).toEqual(['Supplements']);
+      expect(results).toHaveLength(0);
+      expect(total).toBe(1);
+    });
+
+    it('finds a project by name even when no task matches', () => {
+      const projects = [makeProject({ id: 'p1', title: 'Renovation' })];
+      const tasks = [makeTask({ id: 't1', title: 'Buy milk' })];
+      const { projectResults, total } = quickSearch(
+        tasks, 'renovation', new Map(), QUICK_SEARCH_LIMIT, new Set(), [], new Map(), projects
+      );
+      expect(projectResults.map(r => r.project.title)).toEqual(['Renovation']);
+      expect(total).toBe(1);
+    });
+
+    it('leads with stacks, then projects, then tasks, spending the same cap across all three', () => {
+      const groups = [makeGroup({ id: 'g1', title: 'Renew group' })];
+      const projects = [makeProject({ id: 'p1', title: 'Renew project' })];
+      const tasks = Array.from({ length: 4 }, (_, i) =>
+        makeTask({ id: `t${i}`, title: `Renew thing ${i}` })
+      );
+      const { groupResults, projectResults, results, total, overflow } = quickSearch(
+        tasks, 'renew', new Map(), 3, new Set(), groups, new Map(), projects
+      );
+      expect(groupResults).toHaveLength(1);
+      expect(projectResults).toHaveLength(1);
+      expect(results).toHaveLength(1);
+      expect(total).toBe(6);
+      expect(overflow).toBe(3);
+    });
+
+    it('leaves stacks and projects out when none are supplied, exactly as before', () => {
+      const tasks = [makeTask({ id: 'a', title: 'Renew passport' })];
+      const { groupResults, projectResults } = quickSearch(tasks, 'renew');
+      expect(groupResults).toEqual([]);
+      expect(projectResults).toEqual([]);
+    });
+  });
+});
+
+describe('quickDestinations', () => {
+  const options: NavMenuOptions = {
+    kitchenEnabled: true,
+    simpleMode: false,
+    counts: { stacks: 1, templates: 1, people: 1, mood: 1, medications: 1, foodLog: 1 },
+  };
+  const all = menuDestinations(options);
+  const routes = (query: string, list = all) => quickDestinations(list, query).map(d => d.route);
+
+  it('finds nothing for an empty query', () => {
+    expect(quickDestinations(all, '')).toEqual([]);
+    expect(quickDestinations(all, '   ')).toEqual([]);
+  });
+
+  it('finds a hub member by name, naming its hub', () => {
+    const [weight] = quickDestinations(all, 'weight');
+    expect(weight.route).toBe('Weight');
+    expect(weight.hubLabel).toBe('Health');
+  });
+
+  it('finds a screen by keyword', () => {
+    expect(routes('scale')).toContain('Weight');
+    expect(routes('birthdays')).toContain('People');
+  });
+
+  it('ranks a label match ahead of a keyword match earlier in the menu', () => {
+    // Meal plan has the keyword "week" and sits above Weight in the menu.
+    expect(routes('we')[0]).toBe('Weight');
+  });
+
+  it('ranks a label starting with the query ahead of one merely containing it', () => {
+    // Food log sits above Logbook in the menu, but only contains "log".
+    expect(routes('log')).toEqual(['Logbook', 'FoodLog']);
+  });
+
+  it('never offers the screen the card opens from, or the Search tab its footer opens', () => {
+    expect(routes('tasks')).not.toContain('Today');
+    expect(routes('search')).not.toContain('Search');
+  });
+
+  it('caps itself', () => {
+    expect(quickDestinations(all, 'e').length).toBe(QUICK_DESTINATION_LIMIT);
+    expect(quickDestinations(all, 'e', 0)).toEqual([]);
+  });
+
+  it("can't reach a screen the menu has taken away", () => {
+    const noKitchen = menuDestinations({ ...options, kitchenEnabled: false });
+    expect(routes('recipes', noKitchen)).toEqual([]);
+    expect(routes('recipes')).toEqual(['Recipes']);
   });
 });

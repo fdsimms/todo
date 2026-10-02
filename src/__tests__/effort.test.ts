@@ -1,6 +1,7 @@
 import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatClockDuration,
   formatDuration, formatStopwatch, applyMeasuredTime, measuredTimeAppliesTo, measuredTimeDiffersEnough,
-  measuredTimeWorthSuggesting, sumEstimatedMinutes, estimatedMinutesFor } from '../utils/effort';
+  measuredTimeWorthSuggesting, sumEstimatedMinutes, estimatedMinutesFor,
+  draftHasEstimate } from '../utils/effort';
 import type { ChainItem, Effort } from '../types';
 
 const step = (title: string, estimatedMinutes: number | null = null): ChainItem =>
@@ -66,6 +67,9 @@ describe('formatClockDuration', () => {
     expect(formatClockDuration(80)).toBe('1h 20m');
     expect(formatClockDuration(75)).toBe('1h 15m');
     expect(formatDuration(80)).toBe('1.3h');
+    // Not a whole number of hours, but rounds to one: no trailing ".0".
+    expect(formatDuration(119)).toBe('2h');
+    expect(formatDuration(61)).toBe('1h');
   });
 
   it('reads zero and negatives as no time rather than going backwards', () => {
@@ -324,5 +328,22 @@ describe('measuredTimeDiffersEnough', () => {
 
   it('treats an exact match as nothing to offer', () => {
     expect(measuredTimeDiffersEnough(30, 30)).toBe(false);
+  });
+});
+
+describe('draftHasEstimate', () => {
+  it('is true for either half and false for neither', () => {
+    expect(draftHasEstimate({ estimatedMinutes: 5 })).toBe(true);
+    expect(draftHasEstimate({ effort: 2 })).toBe(true);
+    expect(draftHasEstimate({ estimatedMinutes: null, effort: 0 })).toBe(false);
+    expect(draftHasEstimate({})).toBe(false);
+  });
+});
+
+describe('measuredTimeWorthSuggesting on app-written one-offs', () => {
+  it('offers the correction for a generated task and a follow-up', () => {
+    expect(measuredTimeWorthSuggesting({ recurrenceType: 'none', generatedKind: 'weather' })).toBe(true);
+    expect(measuredTimeWorthSuggesting({ recurrenceType: 'none', followUpTaskSourceTitle: 'Laundry' })).toBe(true);
+    expect(measuredTimeWorthSuggesting({ recurrenceType: 'none' })).toBe(false);
   });
 });

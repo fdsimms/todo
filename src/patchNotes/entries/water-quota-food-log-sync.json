@@ -1,0 +1,4 @@
+{
+  "message": "A daily water target task now stays in sync with the food log both ways: logging water from the day view (or any food that states water) catches the task up, and finishing the day's total there completes the task without needing a tap",
+  "date": "2026-09-25"
+}

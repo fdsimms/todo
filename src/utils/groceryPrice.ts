@@ -2,7 +2,7 @@ import { format } from 'date-fns/format';
 import type { GroceryItem, ItemShopLink, PriceObservation, Shop } from '../types';
 import { GROCERY_PRICE_MINOR_MAX } from '../types';
 import { isUnavailable } from './groceryShops';
-import { parseQuantity, rationalToNumber } from './quantity';
+import { parseQuantity, rationalToNumber, unitKey } from './quantity';
 import { measureQuantity, shelfUnit, type Dimension } from './unitConvert';
 import { priceBaseline, priceRunForProduct, priceStanding, type PriceStanding } from './priceHistory';
 
@@ -257,6 +257,9 @@ export interface Comparable {
   countUnit: string;
 }
 
+/** Count words meaning twelve. See comparableQuantity. */
+const DOZEN_WORDS = new Set(['dozen', 'dozens', 'doz']);
+
 /**
  * A quantity string as something two prices can be divided by, or null when it
  * isn't one ("a bunch", "some", an empty quantity).
@@ -298,7 +301,20 @@ export function comparableQuantity(quantity: string | null): Comparable | null {
   // '' for a bare number ("12") and for a counted container ("2 14 oz cans",
   // whose leading amount is followed by a second number rather than a word).
   const unit = q.unit ?? '';
-  return { amount: value, key: `unit:${unit}`, measure: null, countUnit: unit };
+  // A dozen is exactly twelve of a bare count, so it becomes one. This is the
+  // single count word with a fixed size, which is why it's safe where "a bag"
+  // is not: eggs priced per dozen then cost a recipe's "3" eggs, and a store's
+  // "18" compares with another's "1 dozen".
+  if (!q.container && DOZEN_WORDS.has(unitKey(unit))) {
+    return { amount: value * 12, key: 'unit:', measure: null, countUnit: '' };
+  }
+  // A counted container is priced per container, so its size belongs in the
+  // key: "2 14 oz cans" and "2 28 oz cans" are both 2 "each", and ranking them
+  // on that would call the dearer tin cheaper. Same-size tins still compare.
+  const key = q.container
+    ? `container:${rationalToNumber(q.container.size)} ${unitKey(q.container.sizeUnit)} ${unitKey(q.container.word)}`
+    : `unit:${unit}`;
+  return { amount: value, key, measure: null, countUnit: unit };
 }
 
 export interface UnitPrice {
@@ -657,6 +673,58 @@ export function pricedSince(
   }
   if (item.lastPriceMinor == null) return false;
   return !!item.lastPricedAt && item.lastPricedAt >= since;
+}
+
+/**
+ * What a running trip's price tag on a shopping-list row holds, and whether it
+ * was typed during this trip.
+ *
+ * **Never another store's price.** `lastPriceFor` falls back to the item's own
+ * price for a store with none of its own, which is right for a placeholder and
+ * wrong for a value: the tag used to open holding Costco's number while
+ * standing in Aldi, with nothing saying whose it was, and confirming it wrote
+ * nothing because it matched (#2936). So the tag holds the trip store's own
+ * price, or a price typed during this trip (which `setItemPrice` files on the
+ * item when the store has no link yet), and otherwise nothing.
+ *
+ * `recorded` is `pricedSince`, which already reads the same two places in the
+ * same order, so the two halves can't disagree about which price they mean.
+ */
+export function tripPriceFor(
+  item: GroceryItem,
+  shopId: string,
+  links: readonly ItemShopLink[],
+  since: string
+): { minor: number | null; recorded: boolean } {
+  const recorded = pricedSince(item, shopId, links, since);
+  const link = links.find(l => l.itemId === item.id && l.shopId === shopId);
+  if (link?.lastPriceMinor != null) return { minor: link.lastPriceMinor, recorded };
+  return { minor: recorded ? item.lastPriceMinor : null, recorded };
+}
+
+/**
+ * The prices typed at the shelf during a trip, by item id, for the rows given.
+ *
+ * What the finish sheet seeds its price fields with, so that finishing records
+ * them against the trip's store. Without it a price typed for an item never
+ * bought at this store went only onto the item (`setItemPrice` never mints a
+ * store link, on purpose), the finish sheet showed an empty field, and skipping
+ * it minted the store's link with no price at all (#2936). Seeded as a value
+ * rather than a placeholder because it is an answer the user already gave,
+ * this trip, about this store.
+ */
+export function pricesRecordedSince(
+  items: readonly GroceryItem[],
+  shopId: string,
+  links: readonly ItemShopLink[],
+  since: string
+): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const item of items) {
+    const { minor, recorded } = tripPriceFor(item, shopId, links, since);
+    if (recorded && minor !== null) out[item.id] = minor;
+  }
+  return out;
 }
 
 /**

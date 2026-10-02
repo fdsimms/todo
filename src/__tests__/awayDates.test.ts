@@ -1,4 +1,6 @@
 import {
+  departureFromAnswer,
+  departureMoveFromAnswer,
   awayNights,
   awayListDriver,
   awayPauseDriver,
@@ -366,6 +368,11 @@ describe('awayListDriver', () => {
     awayEnd: noon(2026, 11, 10),
     awayListId: 'l1',
     awayListDeclinedFor: null,
+    pausedUntil: null,
+    personIds: [],
+    links: [],
+    inOrder: false,
+    showChecked: false,
     archived: false,
     completed: false,
     ...extra,
@@ -392,5 +399,43 @@ describe('awayListDriver', () => {
 
   it('ignores a span that is over', () => {
     expect(awayListDriver([trip()], new Date(2026, 10, 20))).toBeNull();
+  });
+});
+
+describe('departureFromAnswer', () => {
+  const answer = new Date(2026, 5, 14, 12);
+
+  it('gives an empty Leaving date the answered day, at noon', () => {
+    const iso = departureFromAnswer({ awayStart: null, awayEnd: null }, answer);
+    expect(new Date(iso!).getDate()).toBe(14);
+    expect(new Date(iso!).getHours()).toBe(12);
+  });
+
+  it('never moves a Leaving date somebody set', () => {
+    expect(departureFromAnswer({ awayStart: new Date(2026, 5, 1, 12).toISOString(), awayEnd: null }, answer)).toBeNull();
+  });
+
+  it('refuses a day after the Coming back date', () => {
+    expect(departureFromAnswer({ awayStart: null, awayEnd: new Date(2026, 5, 10, 12).toISOString() }, answer)).toBeNull();
+    expect(departureFromAnswer({ awayStart: null, awayEnd: new Date(2026, 5, 20, 12).toISOString() }, answer)).not.toBeNull();
+  });
+
+  it('does nothing without an answer', () => {
+    expect(departureFromAnswer({ awayStart: null, awayEnd: null }, null)).toBeNull();
+  });
+});
+
+describe('departureMoveFromAnswer', () => {
+  const answer = new Date(2026, 5, 14, 12);
+  const set = new Date(2026, 5, 12, 12).toISOString();
+
+  it('offers the answered day when Leaving is set to another', () => {
+    expect(new Date(departureMoveFromAnswer({ awayStart: set, awayEnd: null }, answer)!).getDate()).toBe(14);
+  });
+
+  it('offers nothing for the same day, an empty Leaving date, or a day after Coming back', () => {
+    expect(departureMoveFromAnswer({ awayStart: new Date(2026, 5, 14, 9).toISOString(), awayEnd: null }, answer)).toBeNull();
+    expect(departureMoveFromAnswer({ awayStart: null, awayEnd: null }, answer)).toBeNull();
+    expect(departureMoveFromAnswer({ awayStart: set, awayEnd: new Date(2026, 5, 13, 12).toISOString() }, answer)).toBeNull();
   });
 });

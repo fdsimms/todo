@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -26,7 +26,6 @@ import {
   fontWeight,
   lineHeight,
   border,
-  animation,
   interaction,
   type Colors,
 } from '../theme';
@@ -59,11 +58,17 @@ import { useProjectStore } from '../store/useProjectStore';
 import { useShallow } from 'zustand/react/shallow';
 import { awayStatus, nextAwayProject } from '../utils/awayDates';
 import type { Task } from '../types';
-import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
+import { useSheetMotion } from '../hooks/useSheetMotion';
 
 interface Props {
   visible: boolean;
   onClose: () => void;
+  /**
+   * The trip to read, when opened from one. Without it the sheet reads the
+   * next trip on the board, which from a trip's own page could be a different
+   * one leaving sooner.
+   */
+  tripProjectId?: string | null;
 }
 
 /**
@@ -92,7 +97,7 @@ type Mode = 'read' | 'move';
 /** How many rows a bucket shows before it collapses behind a count. */
 const BUCKET_LIMIT = 4;
 
-export function LookAheadSheet({ visible, onClose }: Props) {
+export function LookAheadSheet({ visible, onClose, tripProjectId = null }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
   const insets = useSafeAreaInsets();
@@ -134,10 +139,8 @@ export function LookAheadSheet({ visible, onClose }: Props) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
-  const hiddenY = useSheetHiddenOffset();
-
-  const translateY = useRef(new Animated.Value(hiddenY)).current;
-  const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const sheet = useSheetMotion(visible);
+  const { translateY, backdropOpacity } = sheet;
 
   /** What a fresh opening starts on. */
   useEffect(() => {
@@ -148,7 +151,11 @@ export function LookAheadSheet({ visible, onClose }: Props) {
     // you leave is not a day you have") and its return is exactly `backOn`.
     // This is the note on `backOn` above being cashed in — the sheet had to ask
     // because nothing in the app held the dates, and now something can.
-    const trip = nextAwayProject(projects, today, dayResetTime);
+    const trip = nextAwayProject(
+      tripProjectId ? projects.filter(p => p.id === tripProjectId) : projects,
+      today,
+      dayResetTime,
+    ) ?? (tripProjectId ? nextAwayProject(projects, today, dayResetTime) : null);
     // A fortnight: the span this was built for, and long enough to hold a
     // recurrence or two where "next Monday" would open on a window too short
     // to say anything.
@@ -176,16 +183,7 @@ export function LookAheadSheet({ visible, onClose }: Props) {
     setMode('read');
     setPicking(null);
     setExpanded(new Set());
-    translateY.setValue(hiddenY);
-    backdropOpacity.setValue(0);
-    Animated.parallel([
-      Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, {
-        toValue: 1,
-        duration: animation.duration.normal,
-        useNativeDriver: true,
-      }),
-    ]).start();
+    sheet.show();
     // Keyed on `visible` alone: the window is a snapshot the reader is deciding
     // on, the same rule DeloadSheet's plan follows.
   }, [visible]);
@@ -214,19 +212,8 @@ export function LookAheadSheet({ visible, onClose }: Props) {
   ]);
 
   const dismiss = () => {
-    Animated.parallel([
-      Animated.spring(translateY, {
-        toValue: hiddenY,
-        ...animation.spring.sheetDismiss,
-        useNativeDriver: true,
-      }),
-      Animated.timing(backdropOpacity, {
-        toValue: 0,
-        duration: animation.duration.fast,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      // No re-arming setValue here — see useSheetHiddenOffset.
+    sheet.hide(() => {
+      // No re-arming setValue here — see useSheetMotion.
       onClose();
     });
   };
@@ -642,6 +629,7 @@ export function LookAheadSheet({ visible, onClose }: Props) {
       <SheetScrim onPress={dismiss} />
 
       <Animated.View
+        onLayout={sheet.onCardLayout}
         style={[
           styles.sheetOuter,
           { paddingTop: insets.top + spacing.lg, transform: [{ translateY }] },

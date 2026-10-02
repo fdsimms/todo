@@ -5,24 +5,25 @@ import {
   RECIPE_MEAL_TYPES,
   RECIPE_MEAL_TYPE_LABELS,
   RECIPE_NAME_MAX_LENGTH,
+  RECIPE_PAGE_MAX_LENGTH,
   RECIPE_SOURCE_MAX_LENGTH,
   RECIPE_SECTION_MAX_LENGTH,
   RECIPE_STEP_NOTE_MAX_LENGTH,
   PREP_MAX_LENGTH,
   GROCERY_NAME_MAX_LENGTH,
-  GROCERY_QUANTITY_MAX_LENGTH,
+  RECIPE_INGREDIENT_QUANTITY_MAX_LENGTH,
   TITLE_MAX_LENGTH,
 } from '../types';
 import { format } from 'date-fns/format';
 import { groceryNameKey, parseGroceryInput, splitExample, splitGroceryLines, splitPrep, splitPurpose } from './groceryParse';
 import { generateId } from './id';
 import { resolveOffsetDate } from './templateUtils';
-import { classifyPlanned, plannedIngredientsForRecipe } from './mealPlanGroceries';
+import { classifyPlanned, plannedCatalogIndex, plannedIngredientsForRecipe, type PlannedCatalogIndex } from './mealPlanGroceries';
 import { substitutesOnHand } from './itemSubs';
 import { varietyIndex } from './itemVarieties';
 import { onHandNameKeys } from './grocerySuggest';
 import { resolvePluralKey } from './groceryPlural';
-import { standingSwapMap } from './standingSwaps';
+import { standingSwapMap, type StandingSwapMap } from './standingSwaps';
 import { formatDuration } from './effort';
 import {
   countChoiceAware,
@@ -107,7 +108,7 @@ export function normalizeIngredient(raw: unknown): RecipeIngredient | null {
     name,
     nameKey: groceryNameKey(name),
     quantity: typeof r.quantity === 'string'
-      ? r.quantity.trim().slice(0, GROCERY_QUANTITY_MAX_LENGTH)
+      ? r.quantity.trim().slice(0, RECIPE_INGREDIENT_QUANTITY_MAX_LENGTH)
       : '',
     aisle: typeof r.aisle === 'string' && r.aisle ? r.aisle : null,
     prep,
@@ -215,8 +216,119 @@ export function makeIngredient(line: string, section: string | null = null): Rec
 }
 
 /**
- * A pasted ingredient list into ingredients, deduped on the catalog's own key
- * so a recipe listing salt twice doesn't carry it twice.
+ * What makes two ingredient lines "the same line" to the add paths below: the
+ * catalog key, and the three fields that say which *use* of the ingredient a
+ * line is — the heading it sits under, its prep and its purpose.
+ *
+ * **Not the catalog key alone.** That was the rule, and it dropped every
+ * second use of an ingredient: carnitas that want garlic under "For the
+ * marinade" and again under "For the sauce" imported with the marinade's
+ * garlic only, the sauce section lost a line nobody deleted, and the shop
+ * bought 3 cloves instead of 5 (#2917). The review list had shown both rows
+ * ticked. Two rows sharing a key is a shape every reader already handles,
+ * because a composed recipe has always produced it (the root's garlic and a
+ * component's garlic): classifyPlanned sums them into one shopping row, cost
+ * and nutrition are per line, and stepIngredients refuses an amount for a
+ * name two lines share rather than picking one.
+ *
+ * **The quantity is deliberately not part of it.** "Garlic" and then "3
+ * cloves garlic" under one heading is as likely a correction as a second use,
+ * and a freshly parsed line replacing an amount the user set by hand is the
+ * quiet overwrite addByName refuses to do; the detail screen says which row
+ * blocked the add (duplicateIngredientIn) instead of guessing.
+ *
+ * The section is compared as written, since two spellings of a heading render
+ * as two headings; prep and purpose are notes, so they compare case-blind.
+ */
+export function ingredientDedupeKey(ingredient: RecipeIngredient): string {
+  const note = (text: string | null | undefined) => (text ?? '').trim().toLowerCase();
+  return [
+    ingredient.nameKey || ingredient.name.toLowerCase(),
+    (ingredient.section ?? '').trim(),
+    note(ingredient.prep),
+    note(ingredient.purpose),
+  ].join('\u0000');
+}
+
+/**
+ * The row in `existing` that would stop `candidate` being added — the same
+ * test mergeIngredients applies — or null when it would go in. Lets an add
+ * field name the line that blocked it rather than just refusing.
+ */
+export function duplicateIngredientIn(
+  existing: readonly RecipeIngredient[],
+  candidate: RecipeIngredient,
+): RecipeIngredient | null {
+  const key = ingredientDedupeKey(candidate);
+  return existing.find(i => ingredientDedupeKey(i) === key) ?? null;
+}
+
+/**
+ * What the recipe screen's add field says when some or all of what was typed
+ * was already there (the rows duplicateIngredientIn found), or null when
+ * nothing was. It names the rows, so the next move (edit that line, or file
+ * this one under another section) is on screen rather than a buzz and an
+ * emptied field, which is all a refused add used to leave.
+ */
+export function blockedIngredientNote(
+  blocked: readonly RecipeIngredient[],
+  added: number,
+): string | null {
+  if (blocked.length === 0) return null;
+  if (blocked.length === 1 && added === 0) return alreadyInRecipeNote(blocked[0]);
+  const count = blocked.length === 1 ? '1 line' : `${blocked.length} lines`;
+  return `Skipped ${count} already in this recipe: ${blocked.map(blockedRowLabel).join(', ')}.`;
+}
+
+/** "3 cloves garlic": how a blocking row is named, amount first as the recipe shows it. */
+function blockedRowLabel(row: RecipeIngredient): string {
+  return [row.quantity.trim(), row.name].filter(Boolean).join(' ');
+}
+
+/**
+ * What a line says about the one row that blocks it: `blockedIngredientNote`'s
+ * single-row wording, shared with the import review, which names each blocked
+ * row where it sits rather than summing up an add (`blockedReviewRows`).
+ */
+export function alreadyInRecipeNote(blocker: RecipeIngredient): string {
+  const where = blocker.section ? ` under ${blocker.section}` : '';
+  return `Already in this recipe${where}: ${blockedRowLabel(blocker)}. Edit that line to change it.`;
+}
+
+/**
+ * Which rows of an import review won't be added, each mapped to the row that
+ * blocks it: an earlier row of the same review, or one the recipe already has
+ * (`existing`, empty for a recipe the review is creating).
+ *
+ * `rows` is the review's lines normalized, with null for any line that isn't
+ * going in (unticked, or covered by a component), which neither blocks nor is
+ * blocked. Walked in order through `duplicateIngredientIn`, which is exactly
+ * how `mergeIngredients` keeps the first of each line on Create, so a row
+ * named here is one the store drops. Without it the review showed "3 tbsp olive
+ * oil" and "2 tbsp olive oil" under one heading both ticked, and the second
+ * never arrived, with nothing said (#2917's remainder). The detail screen's
+ * add field already said so; this is the review saying the same thing before
+ * the tap rather than after it.
+ */
+export function blockedReviewRows(
+  rows: readonly (RecipeIngredient | null)[],
+  existing: readonly RecipeIngredient[] = [],
+): Map<number, RecipeIngredient> {
+  const kept = [...existing];
+  const out = new Map<number, RecipeIngredient>();
+  rows.forEach((row, i) => {
+    if (!row) return;
+    const blocker = duplicateIngredientIn(kept, row);
+    if (blocker) out.set(i, blocker);
+    else kept.push(row);
+  });
+  return out;
+}
+
+/**
+ * A pasted ingredient list into ingredients, deduped the way mergeIngredients
+ * is (ingredientDedupeKey) so a paste listing salt twice doesn't carry it
+ * twice, while "flour" and "flour for dusting" stay two lines.
  *
  * splitGroceryLines already strips bullets and caps the paste; this adds only
  * the parse and the empty-name guard. `section` is passed through to every
@@ -228,7 +340,7 @@ export function ingredientsFromText(raw: string, section: string | null = null):
   for (const line of splitGroceryLines(raw)) {
     const ingredient = makeIngredient(line, section);
     if (!ingredient) continue;
-    const key = ingredient.nameKey || ingredient.name.toLowerCase();
+    const key = ingredientDedupeKey(ingredient);
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(ingredient);
@@ -238,8 +350,10 @@ export function ingredientsFromText(raw: string, section: string | null = null):
 
 /**
  * Merges new ingredients into an existing list, keeping the first occurrence of
- * each key. Used by both paste-into-an-existing-recipe and the editor's add
- * field, so "garlic" typed twice edits rather than duplicates.
+ * each line (ingredientDedupeKey). Used by both paste-into-an-existing-recipe
+ * and the editor's add field, so "garlic" typed twice under one heading adds
+ * one row, while garlic under a second heading, or with a different prep,
+ * is a second use and gets its own.
  *
  * The *existing* row wins on a collision: it may carry a quantity or an aisle
  * the user set by hand, and silently replacing that with a freshly-parsed line
@@ -250,9 +364,9 @@ export function mergeIngredients(
   incoming: readonly RecipeIngredient[],
 ): RecipeIngredient[] {
   const out = [...existing];
-  const seen = new Set(existing.map(i => i.nameKey || i.name.toLowerCase()));
+  const seen = new Set(existing.map(ingredientDedupeKey));
   for (const ingredient of incoming) {
-    const key = ingredient.nameKey || ingredient.name.toLowerCase();
+    const key = ingredientDedupeKey(ingredient);
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(ingredient);
@@ -345,10 +459,13 @@ export function normalizeStep(raw: unknown): RecipeStep | null {
   // same round-trip reason: a step nobody has kept a note on serializes exactly
   // as it did before the field existed.
   const note = typeof r.note === 'string' ? r.note.trim().slice(0, RECIPE_STEP_NOTE_MAX_LENGTH) : '';
+  // Same treatment, same reason — see RecipeStep.section.
+  const section = typeof r.section === 'string' ? r.section.trim().slice(0, RECIPE_SECTION_MAX_LENGTH) : '';
   return {
     id: typeof r.id === 'string' && r.id ? r.id : generateId(),
     text,
     ...(timerSeconds === null ? {} : { timerSeconds }),
+    ...(section ? { section } : {}),
     ...(note ? { note } : {}),
   };
 }
@@ -492,8 +609,18 @@ export interface LikelyInPantryCount {
  * under it. What the component clause is for is saying there's more: "3
  * ingredients" alone would read as the whole shop for a dish that's mostly its
  * parts.
+ *
+ * `sharedName` moves the attribution to the front, for a recipe whose name
+ * another recipe also has (`sharedRecipeNameKeys`). Two cookbooks can each hold
+ * a "Lentil Soup", and in a one-line row the attribution at the end is the
+ * clause a long subtitle truncates, so the one thing telling the two rows apart
+ * was the part cut off. Every other recipe keeps the usual order.
  */
-export function describeRecipe(recipe: Recipe, likelyInPantry?: LikelyInPantryCount | null): string {
+export function describeRecipe(
+  recipe: Recipe,
+  likelyInPantry?: LikelyInPantryCount | null,
+  options: { sharedName?: boolean } = {},
+): string {
   // Choice-aware, so "serrano or jalapeño" reads as the one pepper a meal of
   // this actually buys — see countChoiceAware.
   const count = countChoiceAware(recipe.ingredients);
@@ -514,8 +641,28 @@ export function describeRecipe(recipe: Recipe, likelyInPantry?: LikelyInPantryCo
   const total = totalMinutes(recipe);
   if (total) parts.push(formatDuration(total));
   const attribution = describeAttribution(recipe);
-  if (attribution) parts.push(attribution);
+  if (attribution) {
+    if (options.sharedName) parts.unshift(attribution);
+    else parts.push(attribution);
+  }
   return parts.join(' · ');
+}
+
+/**
+ * The name keys more than one recipe has: two cookbooks' "Lentil Soup", or a
+ * bookless one beside a book's. What `describeRecipe`'s `sharedName` is asked
+ * of, computed once over the whole box rather than per row, and over the whole
+ * box rather than a filtered list, since the other recipe of that name being
+ * filtered out of view doesn't make this row's name any less ambiguous.
+ */
+export function sharedRecipeNameKeys(recipes: readonly Pick<Recipe, 'nameKey'>[]): Set<string> {
+  const seen = new Set<string>();
+  const shared = new Set<string>();
+  for (const recipe of recipes) {
+    if (seen.has(recipe.nameKey)) shared.add(recipe.nameKey);
+    else seen.add(recipe.nameKey);
+  }
+  return shared;
 }
 
 /**
@@ -539,9 +686,79 @@ export function countLikelyInPantry(
   recipesById?: ReadonlyMap<string, Recipe>,
   itemSubs: readonly ItemSubLink[] = [],
 ): LikelyInPantryCount | null {
-  const coverage = pantryCoverageForRecipe(recipe, items, now, recipesById, itemSubs);
+  return likelyCountOf(pantryCoverageForRecipe(recipe, items, now, recipesById, itemSubs));
+}
+
+/**
+ * `countLikelyInPantry` for a whole box at once, as `recipe.id → count` with
+ * the null answers left out (#2922). Same answer per recipe, by construction:
+ * both run `coverageWithLookups` over the same `pantryLookups`, and the only
+ * difference is that this builds those lookups once for every recipe rather
+ * than once per recipe.
+ *
+ * That is most of the cost. The lookups are catalog-wide (every item's pantry
+ * reason, every standing swap), so the per-recipe form repeats the same pass
+ * over the catalog for each row of the recipe box, and a box of a few hundred
+ * recipes against a few hundred items spent most of its time there.
+ */
+export function countLikelyInPantryByRecipe(
+  recipes: readonly Recipe[],
+  items: readonly GroceryItem[],
+  now: Date,
+  recipesById?: ReadonlyMap<string, Recipe>,
+  itemSubs: readonly ItemSubLink[] = [],
+): Map<string, LikelyInPantryCount> {
+  const lookups = pantryLookups(items, now, itemSubs);
+  const counts = new Map<string, LikelyInPantryCount>();
+  for (const recipe of recipes) {
+    const count = likelyCountOf(coverageWithLookups(recipe, items, now, recipesById, itemSubs, lookups));
+    if (count !== null) counts.set(recipe.id, count);
+  }
+  return counts;
+}
+
+/** The two counts a coverage reduces to, or null when both are zero — see `countLikelyInPantry`. */
+function likelyCountOf(coverage: PantryCoverage): LikelyInPantryCount | null {
   if (coverage.probablyHave === 0 && coverage.viaSubstitute === 0) return null;
   return { probablyHave: coverage.probablyHave, viaSubstitute: coverage.viaSubstitute };
+}
+
+/**
+ * Whether two versions of the grocery catalog would give every recipe the
+ * same `countLikelyInPantry`, judged without running it: true when they
+ * differ in nothing but rows' `checked` (#2922).
+ *
+ * Checking a row off is the commonest write to the catalog by far, and it
+ * cannot move a count. A row on the list is `alreadyOnList` or `inCart` in
+ * `classifyPlanned` whether or not it's checked, and neither is counted; a
+ * variety covering a generic line is picked from the listed rows first either
+ * way (`coveringVariety`), so a check changes at most *which* listed row
+ * answers, never whether one does; and nothing else under the count
+ * (`probablyHaveReason`, `onHandNameKeys`, `standingSwapMap`,
+ * `substitutesOnHand`) reads the field at all. So the recipe box keeps its
+ * counts through a check rather than recounting every recipe.
+ *
+ * Everything else is compared exactly, by identity per row and then per
+ * field, so any other change (a purchase, a new row, a reorder, a field
+ * this function has never heard of) reads as different and recounts. That is
+ * the safe direction to be wrong in: a recount that turns out to change
+ * nothing costs time, while a missed one leaves a row saying the wrong thing.
+ */
+export function samePantryCatalog(a: readonly GroceryItem[], b: readonly GroceryItem[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i];
+    const y = b[i];
+    if (x === y) continue;
+    const xKeys = Object.keys(x) as (keyof GroceryItem)[];
+    if (xKeys.length !== Object.keys(y).length) return false;
+    for (const key of xKeys) {
+      if (key === 'checked') continue;
+      if (!Object.prototype.hasOwnProperty.call(y, key) || !Object.is(x[key], y[key])) return false;
+    }
+  }
+  return true;
 }
 
 /**
@@ -609,24 +826,58 @@ export function pantryCoverageForRecipe(
   recipesById?: ReadonlyMap<string, Recipe>,
   itemSubs: readonly ItemSubLink[] = [],
 ): PantryCoverage {
-  // Swapped, from the same links this already takes: a cook who never buys
-  // dairy milk is not missing an ingredient, and a coverage number that says
-  // they are is the exact complaint #1571 exists to answer. Built here rather
-  // than passed in so every caller of this — and of
-  // `countLikelyInPantry` above it — gets the same answer without a new
-  // argument each.
-  // Live, not persisted — an unresolved choice group counts toward coverage
-  // via whichever alternative is already on hand (see recipeComponents.ts's
-  // ChoiceResolution.onHand), the same rule the shopping read uses.
-  const planned = plannedIngredientsForRecipe(
-    recipe, recipesById, { onHand: onHandNameKeys(items, now) }, 1, standingSwapMap(itemSubs, items)
-  );
+  return coverageWithLookups(recipe, items, now, recipesById, itemSubs, pantryLookups(items, now, itemSubs));
+}
+
+/**
+ * What `pantryCoverageForRecipe` reads off the catalog as a whole rather than
+ * off one recipe, split out so `countLikelyInPantryByRecipe` can build it
+ * once for a whole box (#2922). Nothing in it depends on the recipe.
+ */
+interface PantryLookups {
+  /** The catalog's on-hand keys, for choosing between a choice group's options. */
+  onHand: ReadonlySet<string>;
+  /** The standing swaps, applied before anything is classified. */
+  swaps: StandingSwapMap;
+  /** Every catalog key, for `catalogMatches`. */
+  itemKeys: ReadonlySet<string>;
+  /** `classifyPlanned`'s own catalog lookups, the larger part of what a recipe used to rebuild. */
+  catalog: PlannedCatalogIndex;
+}
+
+function pantryLookups(items: readonly GroceryItem[], now: Date, itemSubs: readonly ItemSubLink[]): PantryLookups {
+  const catalog = plannedCatalogIndex(items);
+  return {
+    // Live, not persisted — an unresolved choice group counts toward coverage
+    // via whichever alternative is already on hand (see recipeComponents.ts's
+    // ChoiceResolution.onHand), the same rule the shopping read uses.
+    onHand: onHandNameKeys(items, now),
+    // Swapped, from the same links this already takes: a cook who never buys
+    // dairy milk is not missing an ingredient, and a coverage number that says
+    // they are is the exact complaint #1571 exists to answer. Built here rather
+    // than passed in so every caller of `pantryCoverageForRecipe` — and of
+    // `countLikelyInPantry` above it — gets the same answer without a new
+    // argument each.
+    swaps: standingSwapMap(itemSubs, items),
+    itemKeys: catalog.keys,
+    catalog,
+  };
+}
+
+function coverageWithLookups(
+  recipe: Recipe,
+  items: readonly GroceryItem[],
+  now: Date,
+  recipesById: ReadonlyMap<string, Recipe> | undefined,
+  itemSubs: readonly ItemSubLink[],
+  lookups: PantryLookups,
+): PantryCoverage {
+  const planned = plannedIngredientsForRecipe(recipe, recipesById, { onHand: lookups.onHand }, 1, lookups.swaps);
   if (planned.length === 0) return { total: 0, catalogMatches: 0, probablyHave: 0, viaSubstitute: 0, percent: null };
 
-  const classified = classifyPlanned(planned, items, now, itemSubs);
+  const classified = classifyPlanned(planned, items, now, itemSubs, null, [], lookups.catalog);
   const total = classified.length;
-  const itemKeys = new Set(items.map(i => i.nameKey));
-  const catalogMatches = classified.filter(row => itemKeys.has(row.nameKey)).length;
+  const catalogMatches = classified.filter(row => lookups.itemKeys.has(row.nameKey)).length;
   const probablyHave = classified.filter(row => row.category === 'probablyHave' || row.category === 'staple').length;
   const viaSubstitute = classified.filter(row => row.category === 'needToBuy' && row.reason !== null).length;
   const percent = catalogMatches > 0 ? Math.round((probablyHave / total) * 100) : null;
@@ -687,12 +938,94 @@ export function cleanRecipeName(raw: string): string {
 }
 
 /**
+ * The key a recipe named `raw` is stored under, and so the one `addRecipe`
+ * refuses a second recipe on within a book (see `recipeInBook`).
+ *
+ * One function because every "is this already in the box?" check has to
+ * agree with the refusal it is predicting. The AI sheets each kept their own
+ * (a bare lowercase) and it didn't: "Chicken Tacos" and "Chicken taco" are one
+ * key here and two there, so a paid draft was made for a dish the box then
+ * refused, and the fallback lookup that followed couldn't find the recipe the
+ * store had refused it for.
+ */
+export function recipeNameKey(raw: string): string {
+  const clean = cleanRecipeName(raw);
+  return groceryNameKey(clean) || clean.toLowerCase();
+}
+
+/**
+ * The recipe already called `name` in `cookbookId` (null: filed under no
+ * book), which is exactly the recipe `addRecipe` and `renameRecipe` refuse a
+ * second one over.
+ *
+ * **A name is unique per book, not across the box.** Six Seasons and Plenty
+ * can each have a "Lentil Soup", and they are two recipes. Every "is this
+ * already in the box?" pre-check calls this rather than matching `nameKey`
+ * alone, for the reason `recipeNameKey` gives: a pre-check that disagrees with
+ * the refusal it predicts either blocks a recipe the store would take or lands
+ * on one it wasn't about.
+ *
+ * Nothing enforces this below the store. The database has no unique index on
+ * name (see the note where `idx_recipes_name_key` is dropped in database.ts),
+ * so moving recipes between books, deleting a book or merging two can leave
+ * two same-named recipes in one place, and that is allowed rather than failed.
+ */
+export function recipeInBook<R extends Pick<Recipe, 'nameKey' | 'cookbookId'>>(
+  recipes: readonly R[],
+  name: string,
+  cookbookId: string | null,
+): R | null {
+  const key = recipeNameKey(name);
+  if (!key) return null;
+  return recipes.find(r => r.nameKey === key && r.cookbookId === cookbookId) ?? null;
+}
+
+/**
+ * The one recipe a bare name means when nothing says which book: a typed meal
+ * on the plan, a component a page mentions by name.
+ *
+ * `preferCookbookId`, when given, is asked first (a component read off page 45
+ * is page 45 of the parent's book). Then a name only one recipe has is that
+ * recipe, and when several books share it, the one filed under no book
+ * answers, since that is what `addRecipe` without a book would be refused
+ * over. Otherwise null: two books' "Lentil Soup" and nothing to choose between
+ * them is a question, and picking by array order would be a guess.
+ */
+export function recipeByName<R extends Pick<Recipe, 'nameKey' | 'cookbookId'>>(
+  recipes: readonly R[],
+  name: string,
+  preferCookbookId?: string | null,
+): R | null {
+  const key = recipeNameKey(name);
+  if (!key) return null;
+  const hits = recipes.filter(r => r.nameKey === key);
+  if (hits.length === 0) return null;
+  if (preferCookbookId !== undefined) {
+    const inBook = hits.find(r => r.cookbookId === preferCookbookId);
+    if (inBook) return inBook;
+  }
+  if (hits.length === 1) return hits[0];
+  return hits.find(r => r.cookbookId === null) ?? null;
+}
+
+/**
  * Trims and caps a source byline ("NYT Cooking"). Empty is a valid answer —
  * no attribution. `maxLength` defaults to a byline's own ceiling; callers
  * with a shorter field (a page number) pass their own.
  */
 export function cleanRecipeSource(raw: string, maxLength: number = RECIPE_SOURCE_MAX_LENGTH): string {
   return raw.trim().replace(/\s+/g, ' ').slice(0, maxLength).trim();
+}
+
+/**
+ * A page number as stored: a leading "p." comes off, because every reader puts
+ * one back (describeAttribution renders "Sweet, p. 142" and the editor's row
+ * reads "p. 142", so a stored "p. 142" renders "p. p. 142"). Only the prefix;
+ * the rest stays free text, since some books print "xii". Empty means none.
+ */
+export function cleanSourcePage(raw: string | null | undefined): string {
+  const typed = (raw ?? '').replace(/^\s*(?:pages?|pp?)(?:\s*\.\s*|\s+)/i, '');
+  return cleanRecipeSource(typed, RECIPE_PAGE_MAX_LENGTH);
 }
 
 /**
@@ -889,7 +1222,7 @@ export function rankRecipes(query: string, recipes: readonly Recipe[]): Recipe[]
   return scored
     .sort((a, b) =>
       b.weight - a.weight ||
-      voteRank(a.recipe.vote) - voteRank(b.recipe.vote) ||
+      recipeVoteRank(a.recipe.vote) - recipeVoteRank(b.recipe.vote) ||
       a.recipe.name.localeCompare(b.recipe.name)
     )
     .map(s => s.recipe);
@@ -1029,7 +1362,7 @@ export function describePrepTime(recipe: Recipe): string {
  */
 export function sortRecipesForDisplay(recipes: readonly Recipe[]): Recipe[] {
   return [...recipes].sort((a, b) =>
-    voteRank(a.vote) - voteRank(b.vote) || a.sortOrder - b.sortOrder
+    recipeVoteRank(a.vote) - recipeVoteRank(b.vote) || a.sortOrder - b.sortOrder
   );
 }
 
@@ -1039,7 +1372,7 @@ export function sortRecipesForDisplay(recipes: readonly Recipe[]): Recipe[] {
 // opinion sits above never-again for the same reason it always did: cooking
 // something you never explicitly rejected isn't the same as having decided
 // against it.
-function voteRank(vote: RecipeVote | null): number {
+export function recipeVoteRank(vote: RecipeVote | null): number {
   if (vote === 'loved') return 0;
   if (vote === 'liked') return 1;
   if (vote === 'never') return 3;

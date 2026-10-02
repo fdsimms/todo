@@ -51,9 +51,23 @@ import { NUTRIENT_KEYS } from '../types';
 export const ESTIMATE_DESCRIPTION_MAX_LENGTH = 200;
 /** Longest label, quantity or answer this will carry out of a reply. */
 const FIELD_MAX_LENGTH = 80;
+/** Longest amount a person can type to say how much they had. */
+export const ESTIMATE_AMOUNT_MAX_LENGTH = FIELD_MAX_LENGTH;
+/** The label `refineDescription` puts in front of a typed amount. */
+const AMOUNT_LINE_PREFIX = 'Amount eaten: ';
 /** One or two questions, never an interrogation. */
 export const MAX_ESTIMATE_QUESTIONS = 2;
 const MAX_QUESTION_OPTIONS = 4;
+/**
+ * The longest text a request carries: a description plus one answered line
+ * per question (`refineDescription`). The description cap alone is not it:
+ * applied to the refined text, it cut the answers off the end of any
+ * description near its limit, so tapping an answer re-asked the same meal.
+ */
+export const ESTIMATE_REQUEST_MAX_LENGTH =
+  ESTIMATE_DESCRIPTION_MAX_LENGTH
+  + MAX_ESTIMATE_QUESTIONS * (FIELD_MAX_LENGTH * 2 + 2)
+  + AMOUNT_LINE_PREFIX.length + FIELD_MAX_LENGTH + 1;
 /** More than this and it stops being a meal, it's a shopping list. */
 const MAX_BREAKDOWN_ITEMS = 12;
 
@@ -365,15 +379,25 @@ export function estimateToPanel(estimate: NutritionEstimate, now: Date = new Dat
  * published figure by a guessed multiplier would turn a real number into an
  * invented one. Unanswered questions are simply left out, which is what makes
  * skipping free.
+ *
+ * `amount` is what the person typed to say how much they had ("200 g", "half a
+ * block"). It rides as its own line for the same reason an answer does: the
+ * model re-estimates from it, and this module never multiplies a figure by a
+ * guessed ratio. Blank reads as not given.
  */
 export function refineDescription(
   description: string,
   answers: readonly { prompt: string; answer: string }[],
+  amount: string = '',
 ): string {
   const base = description.trim().slice(0, ESTIMATE_DESCRIPTION_MAX_LENGTH);
-  const stated = answers
-    .map(a => ({ prompt: a.prompt.trim(), answer: a.answer.trim() }))
-    .filter(a => a.prompt && a.answer)
-    .map(a => `${a.prompt} ${a.answer}`);
+  const typed = amount.trim().slice(0, ESTIMATE_AMOUNT_MAX_LENGTH);
+  const stated = [
+    ...(typed ? [`${AMOUNT_LINE_PREFIX}${typed}`] : []),
+    ...answers
+      .map(a => ({ prompt: a.prompt.trim(), answer: a.answer.trim() }))
+      .filter(a => a.prompt && a.answer)
+      .map(a => `${a.prompt} ${a.answer}`),
+  ];
   return stated.length === 0 ? base : `${base}\n${stated.join('\n')}`;
 }

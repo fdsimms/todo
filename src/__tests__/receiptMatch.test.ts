@@ -5,6 +5,7 @@ import {
   matchReceiptShop,
   receiptCautionsFor,
   receiptMatchConfidence,
+  unclaimedAddTarget,
 } from '../utils/receiptMatch';
 import { groceryNameKey } from '../utils/groceryParse';
 import type { ReceiptLine } from '../services/aiSuggestions';
@@ -64,6 +65,7 @@ function makeShop(name: string): Shop {
     excludeFromSuggestions: false,
     receiptStyle: 'itemized' as const,
     aisles: null,
+    aisleOrder: null,
   };
 }
 
@@ -785,5 +787,40 @@ describe('matchReceiptLines in catalog scope', () => {
     expect(matches[0].itemId).toBe(items[0].id);
     expect(matches[1].itemId).toBeNull();
     expect(matches[1].duplicateOf).toBe(items[0].id);
+  });
+});
+
+describe('unclaimedAddTarget (#2923)', () => {
+  const chicken = makeItem({ name: 'Chicken breast', onList: false });
+  const shorthand = line({ label: 'ORG BNLS CHKN BRST', name: 'org bnls chkn brst' });
+
+  it('lands a hand match on the picked row, under the row’s own name', () => {
+    // The pantry applies by name, so the shorthand here would mint a second
+    // row beside the one the user just pointed at.
+    const [match] = matchReceiptLines([shorthand], [chicken], undefined, 'catalog');
+    expect(match.itemId).toBeNull();
+    expect(unclaimedAddTarget(match, chicken)).toEqual({
+      existingItemId: chicken.id,
+      name: 'Chicken breast',
+    });
+  });
+
+  it('lets a hand match outrank the reader’s own off-list match', () => {
+    const flour = makeItem({ name: 'Flour', onList: false });
+    const [match] = matchReceiptLines([line({ name: 'flour' })], [flour], undefined, 'list');
+    expect(match.offListMatchId).toBe(flour.id);
+
+    expect(unclaimedAddTarget(match, null)).toEqual({ existingItemId: flour.id, name: 'flour' });
+    expect(unclaimedAddTarget(match, chicken).existingItemId).toBe(chicken.id);
+  });
+
+  it('mints a new row under the typed name, or the line’s own when blank', () => {
+    const [match] = matchReceiptLines([shorthand], [chicken], undefined, 'catalog');
+    expect(unclaimedAddTarget(match, null, '  Chicken thighs ')).toEqual({
+      existingItemId: null,
+      name: 'Chicken thighs',
+    });
+    expect(unclaimedAddTarget(match, null, '   ').name).toBe('org bnls chkn brst');
+    expect(unclaimedAddTarget(match, null).name).toBe('org bnls chkn brst');
   });
 });

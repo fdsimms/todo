@@ -31,6 +31,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   recurrenceInterval: 1,
   recurrenceDays: [],
   recurrenceMonthDay: null,
+  recurrenceMonth: null,
   recurrenceWeekOrdinal: null,
   recurrenceAnchorDay: null,
   recurrenceAnchorDate: null,
@@ -49,8 +50,13 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   allowOvershoot: false,
   quotaIntervalMinutes: null,
   quotaReminders: false,
-  quotaStartedAt: null, quotaAlwaysVisible: false,
+  quotaStartedAt: null, quotaAlwaysVisible: false, followWaterTarget: false,
   quotaPeriod: 'day',
+  rotationEnabled: false,
+  rotationItems: [],
+  rotationLog: [],
+  rotationPeriodStart: null,
+  rotationLastDone: {},
   progressCount: 0,
   tags: [],
   sortOrder: 1,
@@ -82,7 +88,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   projectId: null,
   reminderTime: null,
   reminderKind: 'notification',
-  reminderOffsetDays: null, reminderTimeAnchor: 'wallClock', reminderUtcOffsetMinutes: null,
+  reminderOffsetDays: null, reminderTracksVisibility: false, reminderTimeAnchor: 'wallClock', reminderUtcOffsetMinutes: null,
   chainEnabled: false,
   chainIndex: 0,
   chainItems: [],
@@ -94,6 +100,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   followUpTaskTally: 0,
   previousFollowUpTaskTally: 0,
   followUpTaskSourceTitle: null,
+  followUpTaskSourceId: null,
   category: null,
   vacationPause: false, excludeFromSuggestions: false,
   timerStartedAt: null,
@@ -132,6 +139,13 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
 });
 
 describe('fuzzySearch', () => {
+  // The answer a question recorded is searchable, so "matte" finds the task
+  // that asked which tile.
+  it('finds a task by its recorded answer', () => {
+    const task = makeTask({ id: 'q', title: 'Pick countertop material', deliverableKind: 'text', deliverableValue: 'Matte quartz' });
+    expect(fuzzySearch([task], 'quartz').map(r => r.task.id)).toEqual(['q']);
+  });
+
   describe('empty / trivial inputs', () => {
     it('returns [] for empty query', () => {
       expect(fuzzySearch([makeTask()], '')).toEqual([]);
@@ -522,6 +536,11 @@ const makeProject = (overrides: Partial<Project> = {}): Project => ({
   destination: null,
   awayListId: null,
   awayListDeclinedFor: null,
+  pausedUntil: null,
+  personIds: [],
+  links: [],
+  inOrder: false,
+  showChecked: false,
   ...overrides,
 });
 

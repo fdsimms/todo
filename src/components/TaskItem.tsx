@@ -34,14 +34,15 @@ import Reanimated, {
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import { PinIcon } from './PinIcon';
-import type { Task, GroceryItem, ItemSubLink, ItemProduct, Recipe } from '../types';
+import type { Task, GroceryItem, ItemSubLink, ItemProduct, Recipe, ChainItem } from '../types';
 import { MEAL_SLOT_ICONS, MEAL_SLOT_LABELS, PRIORITY_COLORS, TITLE_MAX_LENGTH } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animation, interaction, checkboxRadius, type Colors } from '../theme';
-import { formatDeadlineDate, formatScheduledDate, formatTaskDate, formatHHMM, dateToHHMM, formatWindowRemaining, getDeadlineCountdown, getEffectiveTaskDate, getTaskDayStart, getCurrentDayStart, getLogicalDayKey, dayKeyToDate, formatTimeOfDay } from '../utils/dateUtils';
+import { formatDeadlineDate, formatScheduledDate, formatTaskDate, formatHHMM, dateToHHMM, formatWindowRemaining, getDeadlineCountdown, getEffectiveTaskDate, getTaskDayStart, getCurrentDayStart, getLogicalDayKey, dayKeyToDate, formatTimeOfDay, hoursUnlockLabel } from '../utils/dateUtils';
 import { isNegativeTask, isCleanToday, slipsToday } from '../utils/negativeHabits';
 import { scheduleMoveUpdates } from '../utils/taskMoves';
+import { confirmScheduleMove, confirmSegmentScope } from '../utils/scheduleMovePrompt';
 import { formatDuration, formatStopwatch } from '../utils/effort';
 import { confirmSlip } from '../utils/slipConfirm';
 import { scheduleCompletionTimer } from '../utils/notifications';
@@ -53,10 +54,10 @@ import { useHealthStore } from '../store/useHealthStore';
 import { activeSegment, segmentPhase, segmentRemaining, timerSegments } from '../utils/timerSegments';
 import { isStreakAtRecord } from '../utils/streakRecord';
 import { isTaskWindowActive, isTaskExpired, effectiveWindowEnd, isRecurrenceNotYetDue, isMissableMealPlanTask, isTaskNew, isTaskVisible, isQuotaTask, isQuotaPartial, quotaRidesOutTheDay, isOnPaceQuota, quotaLeavesTodayAfterLog, quotaNextDueAt, quotaFraction, quotaPaceFraction, quotaUnitsToPace, activeChainStepTitle, displayTitleFor } from '../utils/visibilityUtils';
-import { asksOnCompletion } from '../utils/deliverables';
+import { asksOnCompletion, deliverableKindFor, isTentativeAnswer } from '../utils/deliverables';
 import { offersMealLogOnCompletion } from '../utils/completionTap';
 import { describeTaskRecurrence } from '../utils/recurrenceLabels';
-import { chainPreview, isChainFinish } from '../utils/chain';
+import { chainPreview, isChainFinish, chainStepAdvancesInPlace, nextChainStep } from '../utils/chain';
 import { formatQuotaProgress } from '../utils/quotaUnit';
 import { clampSupplyReorderAt, describeSupply } from '../utils/supply';
 import { followUpTaskRule, completionsUntilFollowUpTask } from '../utils/followUpTask';
@@ -80,7 +81,7 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { taskFieldsFromEvent } from '../utils/calendarEventImport';
 import { useMealPlanStore } from '../store/useMealPlanStore';
-import { MEAL_PLAN_NUDGE_SLOT_COUNT, mealPlanNudgeDayKey } from '../utils/mealPlanNudge';
+import { mealPlanNudgeDayKey } from '../utils/mealPlanNudge';
 import { activeMealSlotStepId, mealSlotOf, parseMealSlotSource } from '../utils/mealSlotTasks';
 import { calendarReviewEventsFor } from '../utils/calendarReviewTasks';
 import { isNoticeTask } from '../utils/generatedTasks';
@@ -93,12 +94,17 @@ import { standingSwapMap } from '../utils/standingSwaps';
 import { mealShortfallEntryId, mealShortfallRows } from '../utils/mealShortfallTasks';
 import { usePlanMeal } from '../hooks/usePlanMeal';
 import { useSheetMount } from '../hooks/useSheetMount';
+import { RotationPickSheet } from './RotationPickSheet';
+import { RotationChecklist } from './RotationChecklist';
+import { isRotationTask, rotationMembers, rotationOverCommitted, rotationSummary } from '../utils/rotation';
 import {
   describeProjectQuiet,
   projectQuietDays,
   projectReviewProjectId,
 } from '../utils/projectReviewTasks';
 import { resolveBlocker, waitingCountFor } from '../utils/blockerRegistry';
+import { liveBlockersOf } from '../utils/blocking';
+import { isDriftingTask } from '../utils/postpone';
 import { resolvePerson, peopleOn, groupMentionTokens } from '../utils/peopleRegistry';
 import { displayNameOf, usePersonStore } from '../store/usePersonStore';
 import { matchPersonMentions } from '../utils/parseTaskInput';
@@ -225,6 +231,19 @@ interface Props {
   indented?: boolean;
   /** Briefly tints the row to draw the eye to it — a task that was just created, or one jumped to from the new-todos banner. */
   highlighted?: boolean;
+  /**
+   * A line on a list project: checked off rather than scheduled. A tap opens
+   * the line with its text ready to edit, the whole text shows while open,
+   * and the panel trades the timer, the date and the subtask field for a
+   * Delete. No reschedule swipe, since a list line has no date to move.
+   */
+  listRow?: boolean;
+  /**
+   * A list line's Return: the edit is saved and the host opens a new line
+   * right under this one, the way Notes and Reminders do. Keep it stable (a
+   * useCallback), or the memo on this row stops holding.
+   */
+  onSubmitLine?: (taskId: string) => void;
   /** Plays the same checkbox-tap complete animation as a real tap, then completes the task — used for a completion that happened in the Today widget so the user can watch it happen here too. */
   autoComplete?: boolean;
   /**
@@ -285,6 +304,8 @@ export const TaskItem = React.memo(function TaskItem({
   duplicateRow = false,
   indented = false,
   highlighted = false,
+  listRow = false,
+  onSubmitLine,
   autoComplete = false,
   hidesWhenOnPace = false,
   onApplyImport,
@@ -323,6 +344,8 @@ export const TaskItem = React.memo(function TaskItem({
     cancelCompletionAnimation,
     logQuotaUnit,
     unlogQuotaUnit,
+    recordRotationPick,
+    unlogRotationUnit,
     logSlip,
     undoSlip,
     startQuotaRun,
@@ -345,6 +368,7 @@ export const TaskItem = React.memo(function TaskItem({
     reorderSubtasks,
     addSubtask,
     duplicateTask,
+    deleteTask,
   } = useTaskStore.getState();
   // ==== the row's outward actions: link, call, text, contact, email ====
   const handleOpenLink = async () => {
@@ -470,6 +494,12 @@ export const TaskItem = React.memo(function TaskItem({
   // ==== local state (expansion, completion animation, inline editing) ====
   const [showWhenPicker, setShowWhenPicker] = useState(false);
   const [showBreakdown, setShowBreakdown] = useState(false);
+  // The pin glyph flips on the tap, ahead of the store write: the write
+  // re-renders the whole Today screen, and the glyph used to wait for that.
+  // `pinWritesPending` counts taps whose write hasn't run, so a double tap
+  // doesn't drop back to the stored value between its two writes.
+  const [pinOverride, setPinOverride] = useState<boolean | null>(null);
+  const pinWritesPending = useRef(0);
   const [showDeliverablePrompt, setShowDeliverablePrompt] = useState(false);
   const [showMealPicker, setShowMealPicker] = useState(false);
   const { offerPrepTasksForEach } = usePlanMeal();
@@ -526,7 +556,11 @@ export const TaskItem = React.memo(function TaskItem({
   const [chainStepsExpanded, setChainStepsExpanded] = useState(false);
   // Natural height of the expansion panel content, measured off-screen so the
   // expansion can animate to the real height instead of an arbitrary cap.
-  const [panelHeight, setPanelHeight] = useState(0);
+  // A shared value rather than state: only the UI-thread style below reads it,
+  // and as state every row re-rendered once right after mounting just to
+  // record it — a whole second render of every row a list mounts, which is
+  // what a page of Later rows arriving mid-scroll paid for twice.
+  const panelHeight = useSharedValue(0);
   // Drives the live-counting timer display. We only re-render on a 1s tick while
   // this task's timer is actually running, so idle rows never spin an interval.
   const [nowTick, setNowTick] = useState(() => Date.now());
@@ -538,6 +572,30 @@ export const TaskItem = React.memo(function TaskItem({
   // commit below has to pass the same value on — a completion salvaged without
   // its answer would tick the task off and drop what the user typed.
   const pendingDeliverableRef = useRef<string | null | undefined>(undefined);
+  // Set for the span of one completion that was confirmed through the
+  // "log early" prompt below, so whichever runCompletion call eventually
+  // fires it (the deliverable prompt and the completion-timer alert both
+  // resolve well after handleComplete returns) still carries the override
+  // through to completeTask. Cleared as soon as that completion runs.
+  const logEarlyRef = useRef(false);
+  // What the row previews itself as, mid-chain-completion — see
+  // chainStepAdvancesInPlace and runCompletion. Null the rest of the time,
+  // when chainStep/chainStepIndex/displayTitle read straight off `task`.
+  const [inPlaceNextStep, setInPlaceNextStep] = useState<{ item: ChainItem; index: number } | null>(null);
+  // Drives the title/badge crossfade for that same transition: 1 is at rest
+  // (identical to no transform at all), and the sequence in runCompletion
+  // takes it to 0 (fading the current step out) and back to 1 with a spring
+  // that overshoots past it — the "gets slightly bigger" settle the new step
+  // arrives with. Used directly as a transform scale rather than through an
+  // interpolation, the same way circleScale below drives its own pop: the
+  // overshoot only reads as a bounce if the raw spring value reaches the
+  // transform.
+  const chainStepAnim = useRef(new Animated.Value(1)).current;
+  const chainStepOpacity = chainStepAnim.interpolate({
+    inputRange: [0, 0.3, 1],
+    outputRange: [0, 1, 1],
+    extrapolate: 'clamp',
+  });
   const circleScale = useRef(new Animated.Value(1)).current;
   // A row can mount already completed — Calendar keeps completed rows in its
   // day list, where every other screen filters them out before TaskItem ever
@@ -587,7 +645,9 @@ export const TaskItem = React.memo(function TaskItem({
   // it waits: the completion is committed by then, so the row's own tap handler
   // (handleUndoComplete) would uncheck something it can no longer take back.
   const [awaitingCollapse, setAwaitingCollapse] = useState(false);
-  const [rowHeight, setRowHeight] = useState<number | null>(null);
+  // A shared value for the same reason as panelHeight: only collapseStyle
+  // reads it, so recording it needn't re-render the row.
+  const rowHeight = useSharedValue<number | null>(null);
   // Remounts the collapse wrapper below, for a row that has to come back after
   // it already collapsed (see restoreFromCompletion). Putting collapseProgress
   // back to 1 is not enough on its own: above 1 the animated style stops
@@ -669,7 +729,7 @@ export const TaskItem = React.memo(function TaskItem({
   // height change rather than a half-duration cross-fade overlapping the shrink
   // (the latter is what made collapse look like two separate phases).
   const expandedPanelStyle = useAnimatedStyle(() => ({
-    height: interpolate(expansionProgress.value, [0, 1], [0, panelHeight], Extrapolation.CLAMP),
+    height: interpolate(expansionProgress.value, [0, 1], [0, panelHeight.value], Extrapolation.CLAMP),
     opacity: interpolate(expansionProgress.value, [0, 0.2, 1], [0, 1, 1], Extrapolation.CLAMP),
   }));
 
@@ -687,9 +747,10 @@ export const TaskItem = React.memo(function TaskItem({
   const collapseStyle = useAnimatedStyle(() => {
     if (collapseProgress.value >= 1) return {};
     const opacity = interpolate(collapseProgress.value, [0.3, 1], [0, 1], Extrapolation.CLAMP);
-    if (rowHeight === null) return { opacity };
+    const measured = rowHeight.value;
+    if (measured === null) return { opacity };
     return {
-      height: interpolate(collapseProgress.value, [0, 1], [0, rowHeight], Extrapolation.CLAMP),
+      height: interpolate(collapseProgress.value, [0, 1], [0, measured], Extrapolation.CLAMP),
       opacity,
       overflow: 'hidden' as const,
     };
@@ -699,15 +760,13 @@ export const TaskItem = React.memo(function TaskItem({
     // Same guard as the panel's, and it matters more here: this is the whole
     // row, so it re-measures on every frame of its own panel animation.
     if (collapseStartedRef.current || !e.nativeEvent?.layout) return;
-    // Read the height now, synchronously, rather than inside the updater
-    // below: `setRowHeight`'s functional form only *schedules* that function,
-    // and React can call it later, during a subsequent render, once this
-    // event has already returned — RN recycles the event object after the
-    // handler that received it returns, so `e.nativeEvent` reads back null by
-    // then. A crash from exactly that showed up in production with a stack
-    // through useState's reducer, not through this callback.
+    // Read the height now, synchronously, and never from anything that runs
+    // later: RN recycles the event object after the handler that received it
+    // returns, so `e.nativeEvent` reads back null by then. A crash from exactly
+    // that showed up in production when this was a functional setState, whose
+    // updater React may call during a later render.
     const height = e.nativeEvent.layout.height;
-    setRowHeight(prev => nextMeasuredHeight(prev, height));
+    rowHeight.value = nextMeasuredHeight(rowHeight.value, height);
   };
 
   // The store flips this on for every row of a burst in the same commit, which
@@ -876,11 +935,16 @@ export const TaskItem = React.memo(function TaskItem({
   const plannedMeals = useMealPlanStore(s =>
     nudgeDayKey ? s.plannedSlotCounts[nudgeDayKey] : undefined
   );
+  // The denominator in "2/3 planned" — user-configurable (mealPlanNudgeSlots),
+  // not the fixed three the feature shipped with. Selecting the length alone
+  // keeps this cheap: it only re-renders a row when the chosen set's *size*
+  // changes, not on every settings write.
+  const mealPlanNudgeSlotCount = useSettingsStore(s => s.mealPlanNudgeSlots.length);
   // Ready is a nudge, not a gate: the day being fully planned is the app's
   // observation, and the tick box stays exactly as tappable at 0/3 as at 3/3
   // (see mealPlanNudge.ts on why nothing here completes a task by itself).
   const mealPlanReady =
-    plannedMeals !== undefined && plannedMeals >= MEAL_PLAN_NUDGE_SLOT_COUNT && !task.completed;
+    plannedMeals !== undefined && plannedMeals >= mealPlanNudgeSlotCount && !task.completed;
 
   // Three more generated-task readinesses, same "nudge, not a lock" treatment
   // as the ones above: the question this row asked has already been answered
@@ -951,6 +1015,13 @@ export const TaskItem = React.memo(function TaskItem({
   const mountDeliverablePrompt = useSheetMount(showDeliverablePrompt);
   const mealPickerOpen = showMealPicker && mealSlotChooseSource !== null;
   const mountMealPicker = useSheetMount(mealPickerOpen);
+  const [showRotationPick, setShowRotationPick] = useState(false);
+  const mountRotationPick = useSheetMount(showRotationPick);
+  const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
+  // One reading per render rather than one per helper, so the chip, the
+  // over-commitment test and the sheet can't land on different sides of a
+  // dayResetTime boundary within the same frame.
+  const rotationDayStart = getCurrentDayStart();
 
   // A quiet project's review task: how long the project has actually been
   // silent, which is what the banner this replaced showed beside each name.
@@ -998,7 +1069,9 @@ export const TaskItem = React.memo(function TaskItem({
   // A notice offers no subtasks, but one that somehow has them still lists
   // them — only the "Add subtask" field goes. Hiding a row somebody put there
   // would be losing it, not simplifying it.
-  const showSubtaskSection = !notice || subtasks.length > 0;
+  // A list line keeps the section only for subtasks it already has: an empty
+  // "Add subtask" field under every line of a checklist is noise.
+  const showSubtaskSection = (!notice && !listRow) || subtasks.length > 0;
   // Sections in the expanded panel each draw a border above themselves, which
   // has been unconditional since the subtask section started always rendering.
   // A notice drops that section, so the first thing below it must not draw a
@@ -1028,6 +1101,7 @@ export const TaskItem = React.memo(function TaskItem({
   );
   const shortfallGroceryItems = useGroceryStore(s => (shortfallEntry ? s.items : EMPTY_GROCERY_ITEMS));
   const shortfallItemSubs = useGroceryStore(s => (shortfallEntry ? s.itemSubs : EMPTY_ITEM_SUBS));
+  const shortfallItemProducts = useGroceryStore(s => (shortfallEntry ? s.itemProducts : EMPTY_ITEM_PRODUCTS));
   const shortfallRecipes = useRecipeStore(s => (shortfallEntry ? s.recipes : EMPTY_RECIPES));
   const shortfallRows = useMemo(() => {
     if (!shortfallEntry) return null;
@@ -1037,9 +1111,12 @@ export const TaskItem = React.memo(function TaskItem({
       shortfallGroceryItems,
       shortfallItemSubs,
       standingSwapMap(shortfallItemSubs, shortfallGroceryItems),
-      new Date()
+      new Date(),
+      // The boxes, which the sweep that wrote this row reads too — or the chip
+      // would count a frozen packet the task itself no longer asks for.
+      shortfallItemProducts
     );
-  }, [shortfallEntry, shortfallRecipes, shortfallGroceryItems, shortfallItemSubs]);
+  }, [shortfallEntry, shortfallRecipes, shortfallGroceryItems, shortfallItemSubs, shortfallItemProducts]);
   // No chip rather than "0 to buy" — a shortfall task can outlive its own
   // reason by up to one sweep (the item got bought some other way, the
   // meal's ingredients changed), and naming a shortfall of zero would be
@@ -1172,13 +1249,30 @@ export const TaskItem = React.memo(function TaskItem({
     // `expandable`. Marking it seen above still counts: it was read.
     if (!expandable) return;
     onPress(rowId);
+    // A list line opens with its text ready to edit: fixing a typo in a line
+    // is the common want, and it used to take a second tap on a title nothing
+    // said was tappable. Opening a line that's already open closes it instead.
+    if (listRow && !expanded && !notice) {
+      setTitleEdit(task.title);
+      setIsEditingTitle(true);
+    }
   };
   // A recurring task showing early in Later (its day hasn't arrived yet)
   // can't be completed ahead of schedule — see isRecurrenceNotYetDue.
   const recurrenceNotYetDue = isRecurrenceNotYetDue(task);
   // Why this row's checkbox refuses a tap — an error haptic and nothing
   // happening — so everything that just needs "can this be ticked" asks this.
+  // No longer true for 'hours': see hoursLoggable below, which is the one
+  // exception that still lets the tap through.
   const completionLocked = recurrenceNotYetDue;
+  // An "every N hours" task's own tap still works while completionLocked —
+  // it asks to confirm logging early instead of refusing (see handleComplete)
+  // — so the checkbox needs to look tappable rather than blank. Without this
+  // the circle below fell to circleLocked (no border at all, see its own
+  // comment), which for every other locked recurrence correctly draws
+  // nothing there to tap; for this one type it was hiding the only
+  // affordance the early-log feature has.
+  const hoursLoggable = completionLocked && task.recurrenceType === 'hours';
 
   // A decision task asks for a value on the way out (see Task.deliverableKind),
   // so its box carries a "?" instead of sitting empty — the tap is about to
@@ -1217,6 +1311,15 @@ export const TaskItem = React.memo(function TaskItem({
   // it twice would move the start a second time and drop the count again.
   const canStartQuotaRun =
     isQuota && task.quotaIntervalMinutes !== null && task.quotaStartedAt === null && !task.archived;
+  // A rotation is a quota whose units have names (see utils/rotation.ts), so
+  // it keeps the whole meter — fill, pace mark, count chip — and differs only
+  // in that a tap has to ask which member. `isQuota` already excludes a
+  // completed or negative row, so this inherits both guards.
+  const isRotation = isQuota && isRotationTask(task);
+  const rotationLine = isRotation
+    ? rotationSummary(task, rotationDayStart, weekStartsOn)
+    : null;
+  const rotationTight = isRotation && rotationOverCommitted(task, rotationDayStart, weekStartsOn);
   // A daily target closed out short of its count (rollover, or an explicit
   // miss) is still `completed`, but a plain checkmark would read as the same
   // full finish an on-target row gets — same distinction Logbook's row draws
@@ -1281,11 +1384,17 @@ export const TaskItem = React.memo(function TaskItem({
   // says what it always said, and the selection lives on its own control at the
   // trailing edge (see SelectionDot).
   const showQuotaMeter = isQuota && (!completing || quotaCompleting);
+  // The meter itself (the fill, its pace mark, the accent ring) is withheld
+  // while the task isn't due yet — that's the same "not due" lock a plain
+  // recurring task gets, and a grey pace mark plus an accent ring drawn right
+  // behind the lock's own repeat glyph read as visual noise rather than as a
+  // meter, since there's nothing to log yet anyway (see completionLocked).
+  const quotaMeterVisible = showQuotaMeter && !recurrenceNotYetDue;
   // The pace mark: a line on the gauge at "expected by now," so the gap above
   // the fill is legible as "how far behind" without reading a number. Hidden
   // once the last unit is tapped (quotaCompleting) — that read is already
   // stale, and the fill is about to rise past it anyway.
-  const showPaceMark = showQuotaMeter && !quotaCompleting && quotaUnitsToPace(task) > 0;
+  const showPaceMark = quotaMeterVisible && !quotaCompleting && quotaUnitsToPace(task) > 0;
   const quotaPaceLevel = showPaceMark ? quotaPaceFraction(task) : 0;
   // Shown but no longer a meter to tap: once the run-up starts, the control
   // does what a completing row's checkbox does — undo. Nor while selecting,
@@ -1317,12 +1426,16 @@ export const TaskItem = React.memo(function TaskItem({
   // change, but returns a primitive, so an unchanged count doesn't re-render.
   const waitingCount = useTaskStore(() => waitingCountFor(task.id));
   const blockerTitle = useTaskStore(() => {
-    if (!task.blockedById) return undefined;
-    const blocker = resolveBlocker(task.blockedById);
+    // Only blockers still open: one that's done or filed away no longer holds
+    // this task, so naming it would dim a row that's free. With several, the
+    // first still open is named and the rest are counted.
+    const live = liveBlockersOf(task, resolveBlocker);
+    if (live.length === 0) return undefined;
     // displayTitleFor, not .title — a chained blocker is named by its active
     // step everywhere else, and this chip shouldn't be the one surface that
     // disagrees.
-    return blocker ? displayTitleFor(blocker) : undefined;
+    const first = displayTitleFor(live[0]);
+    return live.length > 1 ? `${first} +${live.length - 1}` : first;
   });
 
   // Resolved through the registry rather than the store's array, the same way
@@ -1333,6 +1446,20 @@ export const TaskItem = React.memo(function TaskItem({
     const person = resolvePerson(task.waitingOnPersonId);
     return person && !person.archived ? displayNameOf(person) : undefined;
   });
+
+  // Waiting on another task or on a person: the title drops to the secondary
+  // grey, so a list holding a few of these (a project's page, the Stuck
+  // screen) reads which rows can be picked up now without scanning each row's
+  // chips. The chip still says what it waits on.
+  const heldBackDim = !task.completed && (!!blockerTitle || !!waitingPersonName);
+
+  // A task that has been put off enough times to count as drifting — the
+  // same rule StuckScreen's own Drift section is built on. Shown here too, on
+  // the row itself: a task pushed six times reads as an ordinary row on Today
+  // with nothing marking that history, and StuckScreen is a place you have to
+  // go looking for it.
+  const postponeCheckThreshold = useSettingsStore(s => s.postponeCheckThreshold);
+  const isDrifting = isDriftingTask(task, postponeCheckThreshold);
 
   const activeChainItem =
     !task.completed && !isNegative && task.chainEnabled && task.chainItems.length > 0
@@ -1348,13 +1475,24 @@ export const TaskItem = React.memo(function TaskItem({
   // finished), so without the gate a completed chain step kept showing its
   // old "N/M" position for as long as the row was on screen — most visibly
   // during the completion hold, right when the row is meant to read as done.
-  const chainStep = activeChainItem && task.chainItems.length > 1 ? activeChainItem : null;
-  const chainStepIndex = task.chainItems.length > 0 ? task.chainIndex % task.chainItems.length : 0;
+  //
+  // `inPlaceNextStep` overrides all of this while a chain-step completion is
+  // animating itself onto the successor's look (see runCompletion) — the real
+  // `task` is still the step that was just ticked (completeTask hasn't run
+  // yet), but the row is already previewing what it's about to become.
+  const chainStep = inPlaceNextStep
+    ? inPlaceNextStep.item
+    : (activeChainItem && task.chainItems.length > 1 ? activeChainItem : null);
+  const chainStepIndex = inPlaceNextStep
+    ? inPlaceNextStep.index
+    : (task.chainItems.length > 0 ? task.chainIndex % task.chainItems.length : 0);
   const chainPosition = chainStep ? `${chainStepIndex + 1}/${task.chainItems.length}` : '';
   // Its own title on a negative task rather than the step's: a chain step can
   // never be advanced past, so displayTitleFor would otherwise replace the row's
   // title with step one for ever.
-  const displayTitle = (isNegative ? null : activeChainStepTitle(task)) ?? task.title;
+  const displayTitle = inPlaceNextStep
+    ? inPlaceNextStep.item.title
+    : (isNegative ? null : activeChainStepTitle(task)) ?? task.title;
   // Computed once and reused by the expandable step list (#1237) and the row's
   // step-forward/back controls (#786) — same reasoning as chainStepIndex above.
   const chainStepPreview = chainStep ? chainPreview(task) : null;
@@ -1392,6 +1530,14 @@ export const TaskItem = React.memo(function TaskItem({
   const scheduledIso = showDate ? getEffectiveTaskDate(task) : null;
   const scheduledHidden = scheduledIso !== null && scheduledIso === task.deferUntil && scheduledIso !== task.dueDate;
 
+  // An "every N hours" task has no calendar grid — the row's own recurrence
+  // caption just says the interval ("Every 8 hours"), never the clock time it
+  // actually lands on, which is exactly the affordance requested (#comment on
+  // the Sep 22 screenshot). Shown both in the expanded recurrence caption
+  // below and, so it doesn't take a tap to see, in the collapsed row's own
+  // meta chip alongside the other "when" facts.
+  const hoursUnlockTime = hoursUnlockLabel(task);
+
   // Self-gating: only an Apple Reminders import ever sets pendingImport, and it
   // clears the moment the suggestion is taken or dropped — so nothing else has
   // to decide whether this row is the kind that shows one.
@@ -1425,6 +1571,19 @@ export const TaskItem = React.memo(function TaskItem({
    */
   const runCompletion = async (deliverableValue?: string | null) => {
     if (completingRef.current || pacingOutRef.current) return;
+    // A "Maybe" leaves the task open (see completeTask), so it skips the
+    // send-off: the row fading out would say it had gone when it hasn't.
+    if (deliverableKindFor(task) === 'choice' && isTentativeAnswer(deliverableValue)) {
+      haptics.tap();
+      completeTask(task.id, { deliverableValue });
+      return;
+    }
+    // Read and cleared here rather than taken as an argument: the deliverable
+    // prompt and the completion-timer alert both call this well after
+    // handleComplete set it, with no way to hand it back down through their
+    // own callbacks.
+    const logEarly = logEarlyRef.current;
+    logEarlyRef.current = false;
     if (isNew) markTaskSeen(task.id);
     // A quota row completes through its meter — the last unit tops the fill
     // out to the brim first, since that's what the row has been doing all
@@ -1432,6 +1591,12 @@ export const TaskItem = React.memo(function TaskItem({
     // does; see the delayed checkScale spring below. Any completion of a row
     // that's currently showing a meter takes this path, the widget's included.
     const viaMeter = isQuota;
+    // Set when this completion will spawn its successor immediately and the
+    // row can preview it in place, rather than collapsing and waiting for a
+    // separate row to slide in below — see chainStepAdvancesInPlace. Mutually
+    // exclusive with viaMeter in practice (a chain step isn't a daily target),
+    // but guarded anyway rather than assumed.
+    const chainNextItem = !viaMeter && chainStepAdvancesInPlace(task) ? nextChainStep(task) : null;
     // The unit that meets the target can land inside a linger window (log the
     // seventh, then the eighth). The completion owns the row from here, so the
     // send-off queued behind that seventh unit must not fire over it — the hold
@@ -1495,6 +1660,15 @@ export const TaskItem = React.memo(function TaskItem({
     sequence.start(({ finished }) => {
       completeAnimRef.current = null;
       if (!finished) return;
+      if (chainNextItem) {
+        // The row previews its own successor instead of collapsing — see
+        // chainStepAdvancesInPlace's doc comment and runChainStepTransition
+        // below. completingRef stays true for the whole preview (guards
+        // against a re-tap the same way the ordinary hold does) and only
+        // clears once that function actually calls completeTask.
+        void runChainStepTransition(chainNextItem, deliverableValue, logEarly);
+        return;
+      }
       completingRef.current = false;
       pendingDeliverableRef.current = undefined;
       // Leaves the row checked and fully visible, holding its slot: the send-off
@@ -1505,7 +1679,10 @@ export const TaskItem = React.memo(function TaskItem({
       // since the store masks a held completion as incomplete (see
       // withHeldCompletions) and the row would render as ordinary work again.
       setAwaitingCollapse(true);
-      completeTask(task.id, deliverableValue !== undefined ? { deliverableValue } : undefined);
+      completeTask(task.id, {
+        ...(deliverableValue !== undefined ? { deliverableValue } : {}),
+        ...(logEarly ? { logEarly: true } : {}),
+      });
       endQuotaHold();
       // The row leaves the list via the batched collapse above rather than an
       // onPress, so the parent's expanded-row state is never told to clear —
@@ -1513,6 +1690,62 @@ export const TaskItem = React.memo(function TaskItem({
       // no row left to spotlight (same fix as markMissed/skipNextRecurrence).
       if (expanded) onPress(rowId);
     });
+  };
+
+  /**
+   * The in-place half of a chain step's completion — everything runCompletion
+   * hands off to once it knows chainNextItem is real. Runs entirely off local
+   * animated state, ahead of the store: the row fades its current step out,
+   * swaps to the next one with the same bounce a fresh completion pops in
+   * with, and resets its checkbox to unstarted — all before completeTask ever
+   * runs. By the time it does, this row already looks exactly like the
+   * successor it's about to become, so the real swap (this task marked
+   * completed and filtered out, the new one taking its place) lands with
+   * nothing left to animate.
+   *
+   * completingRef stays true for the whole thing, same as the ordinary path
+   * keeps it true through its hold — a re-tap mid-preview is a no-op via
+   * handleComplete's own guard, and the unmount cleanup effect still finishes
+   * the completion (without this treatment) if the row goes away early.
+   */
+  const runChainStepTransition = async (
+    nextItem: ChainItem,
+    deliverableValue: string | null | undefined,
+    logEarly: boolean,
+  ) => {
+    // Same brief hold on the finished step's checkmark the ordinary path
+    // gives it before the row starts moving on.
+    await new Promise(resolve => setTimeout(resolve, 180));
+    await new Promise<void>(resolve => {
+      Animated.timing(chainStepAnim, { toValue: 0, duration: 140, useNativeDriver: true }).start(() => resolve());
+    });
+    // The swap: title and badge start reading as the next step, and the
+    // checkbox goes back to unstarted. `task` itself hasn't changed — this is
+    // local state standing in for it until completeTask below catches up.
+    setInPlaceNextStep({ item: nextItem, index: chainStepIndex + 1 });
+    setCompleting(false);
+    setQuotaCompleting(false);
+    checkScale.setValue(0);
+    // A small ring pulse on the checkbox marks the reset the same way an
+    // uncomplete does elsewhere in this file, rather than just vanishing.
+    Animated.sequence([
+      Animated.spring(circleScale, { toValue: 1.15, ...animation.spring.snappy, useNativeDriver: true }),
+      Animated.spring(circleScale, { toValue: 1, ...animation.spring.snappy, useNativeDriver: true }),
+    ]).start();
+    await new Promise<void>(resolve => {
+      // The spring itself overshoots past 1 — that overshoot, applied directly
+      // as the title/badge's own scale, is the "gets slightly bigger" settle.
+      Animated.spring(chainStepAnim, { toValue: 1, ...animation.spring.bouncy, useNativeDriver: true }).start(() => resolve());
+    });
+    completingRef.current = false;
+    pendingDeliverableRef.current = undefined;
+    completeTask(task.id, {
+      ...(deliverableValue !== undefined ? { deliverableValue } : {}),
+      ...(logEarly ? { logEarly: true } : {}),
+      chainStepInPlace: true,
+    });
+    endQuotaHold();
+    if (expanded) onPress(rowId);
   };
 
   // ==== completing, quota taps, and their undos ====
@@ -1536,8 +1769,34 @@ export const TaskItem = React.memo(function TaskItem({
   const handleComplete = async () => {
     if (completingRef.current || pacingOutRef.current) return;
     if (completionLocked) {
-      await haptics.error();
-      return;
+      // An "every N hours" task (medication, most often) has no calendar grid
+      // to knock off schedule — the next dose is always measured from the
+      // moment it's actually logged (see taskCompletion.ts's nextDeferUntil),
+      // so logging one early costs nothing a fixed-day recurrence would lose.
+      // Every other recurring type keeps the plain refusal: completing those
+      // early really would generate the next occurrence off today instead of
+      // the task's own day.
+      if (task.recurrenceType !== 'hours') {
+        await haptics.error();
+        return;
+      }
+      await haptics.tap();
+      const minutesEarly = task.deferUntil
+        ? Math.max(1, Math.round((new Date(task.deferUntil).getTime() - Date.now()) / 60000))
+        : task.recurrenceInterval * 60;
+      const confirmed = await new Promise<boolean>(resolve => {
+        Alert.alert(
+          'Log early?',
+          `"${displayTitleFor(task)}" isn't due for another ${formatDuration(minutesEarly)}. Log it now anyway?`,
+          [
+            { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+            { text: 'Log now', onPress: () => resolve(true) },
+          ],
+          { cancelable: true, onDismiss: () => resolve(false) },
+        );
+      });
+      if (!confirmed) return;
+      logEarlyRef.current = true;
     }
     // "Choose lunch" isn't answered by ticking it — it's answered by putting
     // something in the slot. Picking a meal here rewrites this same row into
@@ -1665,6 +1924,56 @@ export const TaskItem = React.memo(function TaskItem({
     logQuotaUnit(task.id);
   };
 
+  // A rotation's tap opens the picker instead of logging. Everything the quota
+  // tap does — the pop, the hold, the send-off — happens on the way back, once
+  // a member has been named; see handleRotationPick.
+  const handleRotationTap = async () => {
+    if (completingRef.current || pacingOutRef.current) return;
+    if (completionLocked) {
+      await haptics.error();
+      return;
+    }
+    if (isNew) markTaskSeen(task.id);
+    await haptics.tap();
+    setShowRotationPick(true);
+  };
+
+  const handleRotationPick = async (itemId: string) => {
+    setShowRotationPick(false);
+    if (completingRef.current || pacingOutRef.current) return;
+    // Recorded before anything animates, so the pick is in the ledger whichever
+    // branch runs — and so the closing one closes over a complete week rather
+    // than over four fifths of it.
+    const covered = recordRotationPick(task.id, itemId);
+    if (covered) {
+      // The set is covered, so this is a completion: hand off to the same path
+      // the last unit of a quota takes, meter topping out and all. The store's
+      // own logRotationUnit would complete too, which is why the row calls the
+      // recorder rather than it.
+      handleComplete();
+      return;
+    }
+    await haptics.impactLight();
+    circleScale.setValue(1);
+    Animated.sequence([
+      Animated.spring(circleScale, { toValue: 1.25, ...animation.spring.snappy, useNativeDriver: true }),
+      Animated.spring(circleScale, { toValue: 1, ...animation.spring.snappy, useNativeDriver: true }),
+    ]).start();
+    // The same linger a quota unit gets, and the reason the user asked for it:
+    // a pick that puts the row back on pace would otherwise take it off Today
+    // before a second podcast could be logged. Holding it means the second tap
+    // is right there, and the send-off waits for the tapping to stop.
+    if (hidesWhenOnPace && (quotaHeldRef.current || quotaLeavesTodayAfterLog(task))) {
+      if (!quotaHeldRef.current) {
+        quotaHeldRef.current = true;
+        setQuotaSettled(true);
+        holdQuotaOnToday(task.id);
+      }
+      scheduleQuotaSendOff();
+    }
+    setLastAction({ label: 'Logged', undo: () => unlogRotationUnit(task.id) });
+  };
+
   // Pushed out by every tap; when it finally lapses the row plays the beats a
   // completion gets — hold, fade, collapse — minus the green, because nothing
   // was finished.
@@ -1757,7 +2066,12 @@ export const TaskItem = React.memo(function TaskItem({
   const handleQuotaUndo = async () => {
     if (task.progressCount === 0) return;
     await haptics.tap();
-    unlogQuotaUnit(task.id);
+    // A rotation's count and its ledger have to move together — decrementing
+    // through the quota path would leave the ledger holding a pick the count
+    // no longer knows about, and "the count is how many distinct members the
+    // ledger holds" is the invariant everything downstream reads.
+    if (isRotation) unlogRotationUnit(task.id);
+    else unlogQuotaUnit(task.id);
   };
 
   // Widget checkbox taps queue a completion and open the app (see
@@ -1879,6 +2193,10 @@ export const TaskItem = React.memo(function TaskItem({
           selectionMode ? () => onSelect?.(task.id)
           : isNegative ? handleSlip
           : completing ? (completingRef.current ? handleUndoComplete : handleUncompletePersisted)
+          // Ahead of the meter for the reason completionTapFor puts 'pick'
+          // ahead of 'log-unit': a rotation is a quota, so the meter branch
+          // would log an anonymous unit against a set whose point is names.
+          : (isRotation && !completing) ? handleRotationTap
           : showQuotaMeter ? handleQuotaTap
           : handleComplete
         }
@@ -1903,10 +2221,10 @@ export const TaskItem = React.memo(function TaskItem({
         accessibilityRole={meterInteractive || (isNegative && !selectionMode) ? 'button' : 'checkbox'}
         accessibilityState={
           meterInteractive || (isNegative && !selectionMode)
-            ? { disabled: completionLocked }
+            ? { disabled: completionLocked && !hoursLoggable }
             : {
                 checked: selectionMode ? selected : completing,
-                disabled: !selectionMode && completionLocked,
+                disabled: !selectionMode && completionLocked && !hoursLoggable,
               }
         }
         accessibilityLabel={
@@ -1917,7 +2235,9 @@ export const TaskItem = React.memo(function TaskItem({
                 ? `${task.title}, broken today, log another`
                 : `${task.title}, clean today, log a slip`
             : recurrenceNotYetDue
-              ? `${task.title}, not due yet`
+              ? hoursLoggable
+                ? `${task.title}, not due yet, double tap to log early`
+                : `${task.title}, not due yet`
               : completing
                 ? `Undo complete ${task.title}`
                 : meterInteractive
@@ -1927,7 +2247,7 @@ export const TaskItem = React.memo(function TaskItem({
                     : healthReady
                       ? `${task.title}, health target reached, complete`
                     : mealPlanReady
-                      ? `${task.title}, all ${MEAL_PLAN_NUDGE_SLOT_COUNT} meals planned, complete`
+                      ? `${task.title}, all ${mealPlanNudgeSlotCount} meals planned, complete`
                     : pantryCheckReady || pantryReviewReady || deloadReady || mealShortfallReady
                       ? `${task.title}, ready, complete`
                     : mealSlotChooseSource
@@ -1953,12 +2273,14 @@ export const TaskItem = React.memo(function TaskItem({
         <Animated.View style={[
           styles.circle,
           completing && !quotaCompleting && !quotaPartial && styles.circleCompleting,
-          completionLocked && styles.circleLocked,
+          completionLocked && !hoursLoggable && styles.circleLocked,
           // Ready is a nudge, not a lock — the checkbox stays tappable either way.
           // The meal-plan nudge's full day borrows the same treatment on purpose:
           // green already means done-or-ready on this row, and a second colour
           // for a second kind of "you can tick this now" would be teaching the
-          // reader two vocabularies for one idea.
+          // reader two vocabularies for one idea. hoursLoggable earns the same
+          // treatment for the same reason — its tap is a request too, just one
+          // that confirms first.
           !completing &&
             !completionLocked &&
             (timerReady ||
@@ -1969,7 +2291,8 @@ export const TaskItem = React.memo(function TaskItem({
               deloadReady ||
               mealShortfallReady) &&
             styles.circleReady,
-          (showQuotaMeter || quotaPartial) && styles.circleQuota,
+          !completing && hoursLoggable && styles.circleReady,
+          (quotaMeterVisible || quotaPartial) && styles.circleQuota,
           // Last of the state styles, so a broken day wins the box outright:
           // it's the one thing on this row that has just gone wrong.
           slipped && styles.circleSlipped,
@@ -1979,7 +2302,7 @@ export const TaskItem = React.memo(function TaskItem({
           quotaToppedOut && styles.circleQuotaDone,
           { transform: [{ scale: circleScale }] },
         ]}>
-          {showQuotaMeter && (
+          {quotaMeterVisible && (
             <Animated.View
               style={[
                 styles.quotaFill,
@@ -2009,7 +2332,7 @@ export const TaskItem = React.memo(function TaskItem({
               the bottom — rather than extending quotaFill's own bottom, which
               would reopen the top hairline the sibling comment already
               explains. */}
-          {showQuotaMeter && (
+          {quotaMeterVisible && (
             <Animated.View
               style={[
                 styles.quotaFillCap,
@@ -2146,11 +2469,17 @@ export const TaskItem = React.memo(function TaskItem({
             value={titleEdit}
             onChangeText={setTitleEdit}
             onBlur={saveTitle}
-            onSubmitEditing={saveTitle}
-            returnKeyType="done"
+            onSubmitEditing={() => {
+              saveTitle();
+              if (listRow) onSubmitLine?.(task.id);
+            }}
+            returnKeyType={listRow && onSubmitLine ? 'next' : 'done'}
             maxLength={TITLE_MAX_LENGTH}
             blurOnSubmit
             autoFocus
+            // A list line can be a long question for the doctor, and a
+            // one-line field scrolls it out of sight while it's edited.
+            multiline={listRow}
           />
         ) : (
           <View style={styles.titleRow}>
@@ -2163,23 +2492,32 @@ export const TaskItem = React.memo(function TaskItem({
               // (handleTitleTap/saveTitle), even though the displayed text here
               // is the step's while one is active — matching the collapsed row.
               <TouchableOpacity style={styles.titleFlex} onPress={handleTitleTap} activeOpacity={interaction.activeOpacity} hitSlop={8}>
+                {/* Same crossfade wrapper as the collapsed row below — see
+                    chainStepOpacity/chainStepAnim's own comment. A no-op the
+                    rest of the time: chainStepAnim rests at 1. */}
+                <Animated.View style={{ opacity: chainStepOpacity, transform: [{ scale: chainStepAnim }] }}>
+                  <HighlightedText
+                    text={displayTitle}
+                    ranges={titleMentionRanges}
+                    style={[styles.title, heldBackDim && styles.titleHeldBack]}
+                    highlightStyle={styles.titleMention}
+                    // Open, a list line shows all of itself: the editor was
+                    // otherwise the only place a long question could be read.
+                    numberOfLines={listRow ? undefined : 2}
+                  />
+                </Animated.View>
+              </TouchableOpacity>
+            ) : (
+              <Animated.View style={[styles.titleFlex, { opacity: chainStepOpacity, transform: [{ scale: chainStepAnim }] }]}>
                 <HighlightedText
                   text={displayTitle}
                   ranges={titleMentionRanges}
-                  style={styles.title}
+                  style={[styles.title, heldBackDim && styles.titleHeldBack]}
                   highlightStyle={styles.titleMention}
                   numberOfLines={2}
+                  ellipsizeMode="tail"
                 />
-              </TouchableOpacity>
-            ) : (
-              <HighlightedText
-                text={displayTitle}
-                ranges={titleMentionRanges}
-                style={[styles.title, styles.titleFlex]}
-                highlightStyle={styles.titleMention}
-                numberOfLines={2}
-                ellipsizeMode="tail"
-              />
+              </Animated.View>
             )}
             {deadlineDays !== null && (
               <View
@@ -2198,7 +2536,7 @@ export const TaskItem = React.memo(function TaskItem({
             )}
           </View>
         )}
-        {(isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || windowActive || windowExpired || showStreakChip || waitingCount > 0 || !!blockerTitle || !!waitingPersonName || autoScheduled || scheduledIso !== null || reminderTimeLabel !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.notes.length > 0) && (
+        {(isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || windowActive || windowExpired || showStreakChip || waitingCount > 0 || !!blockerTitle || !!waitingPersonName || autoScheduled || scheduledIso !== null || reminderTimeLabel !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.notes.length > 0) && (
           <View style={styles.metaRow}>
             {/* Leads the meta line: on the screens that ask for it, "when" is
                 what the row is being read for, and every other chip here
@@ -2219,6 +2557,21 @@ export const TaskItem = React.memo(function TaskItem({
                 />
                 <Text style={styles.scheduledLabel} numberOfLines={1}>
                   {formatScheduledDate(scheduledIso)}
+                </Text>
+              </View>
+            )}
+            {/* An "every N hours" task's own placement — see hoursUnlockTime's
+                comment above. Shown regardless of showDate, the same as the
+                reminder chip below: that flag is about a calendar date, and
+                this task has none to gate on. */}
+            {hoursUnlockTime !== null && (
+              <View
+                style={styles.metaChip}
+                accessibilityLabel={`Comes up again at ${hoursUnlockTime}`}
+              >
+                <Ionicons name="time-outline" size={iconSize.xs} color={colors.textSecondary} />
+                <Text style={styles.scheduledLabel} numberOfLines={1}>
+                  {hoursUnlockTime}
                 </Text>
               </View>
             )}
@@ -2285,7 +2638,15 @@ export const TaskItem = React.memo(function TaskItem({
             {!!waitingPersonName && (
               <TouchableOpacity
                 style={styles.metaChip}
-                onPress={() => { haptics.tap(); animateLayout(); updateTask(task.id, { waitingOnPersonId: null }); }}
+                onPress={() => {
+                  haptics.tap();
+                  animateLayout();
+                  // One tap on a small chip is easy to make by accident, and
+                  // it drops the wait's start and follow-up day with it.
+                  const snapshot = { ...task };
+                  updateTask(task.id, { waitingOnPersonId: null });
+                  setLastAction({ label: 'Stopped waiting', undo: () => updateTask(snapshot.id, snapshot) });
+                }}
                 activeOpacity={interaction.activeOpacity}
                 accessibilityRole="button"
                 accessibilityLabel={`Waiting on ${waitingPersonName}. Double tap to stop waiting.`}
@@ -2301,6 +2662,19 @@ export const TaskItem = React.memo(function TaskItem({
                     ends would be undiscoverable. */}
                 <Ionicons name="close" size={iconSize.xs} color={colors.textSecondary} />
               </TouchableOpacity>
+            )}
+            {/* Same wording StuckScreen's own drift row uses ("Moved N times"),
+                so a task doesn't get a second way of saying the same thing. */}
+            {isDrifting && (
+              <View
+                style={styles.metaChip}
+                accessibilityLabel={`Moved ${task.postponeCount} times`}
+              >
+                <Ionicons name="repeat-outline" size={iconSize.xs} color={colors.textSecondary} />
+                <Text style={styles.blockingLabel} numberOfLines={1}>
+                  Moved {task.postponeCount}×
+                </Text>
+              </View>
             )}
             {showStreakChip && (
               <View
@@ -2352,6 +2726,21 @@ export const TaskItem = React.memo(function TaskItem({
                 <Ionicons name="speedometer-outline" size={iconSize.xs} color={colors.accent} />
                 <Text style={styles.quotaLabel} numberOfLines={1}>
                   {quotaProgress}{quotaReturnAt ? ` · next ${quotaReturnAt}` : ''}
+                </Text>
+              </View>
+            )}
+            {rotationLine !== null && (
+              // Deliberately not the pace ramp said twice: the gap between the
+              // meter's fill and its pace mark already draws "behind". This is
+              // the discrete claim the ramp cannot make — what is left no
+              // longer fits in the days left — and it only takes the warning
+              // colour at that point.
+              <View style={styles.metaChip}>
+                <Text
+                  style={[styles.quotaLabel, rotationTight && styles.rotationTight]}
+                  numberOfLines={1}
+                >
+                  {rotationLine}
                 </Text>
               </View>
             )}
@@ -2456,8 +2845,8 @@ export const TaskItem = React.memo(function TaskItem({
                 style={styles.metaChip}
                 accessibilityLabel={
                   mealPlanReady
-                    ? `All ${MEAL_PLAN_NUDGE_SLOT_COUNT} meals planned, ready to complete`
-                    : `${plannedMeals} of ${MEAL_PLAN_NUDGE_SLOT_COUNT} meals planned`
+                    ? `All ${mealPlanNudgeSlotCount} meals planned, ready to complete`
+                    : `${plannedMeals} of ${mealPlanNudgeSlotCount} meals planned`
                 }
               >
                 <Ionicons
@@ -2469,7 +2858,7 @@ export const TaskItem = React.memo(function TaskItem({
                   style={[styles.plannedMealsLabel, mealPlanReady && styles.plannedMealsLabelReady]}
                   numberOfLines={1}
                 >
-                  {plannedMeals}/{MEAL_PLAN_NUDGE_SLOT_COUNT} planned
+                  {plannedMeals}/{mealPlanNudgeSlotCount} planned
                 </Text>
               </View>
             )}
@@ -2650,7 +3039,9 @@ export const TaskItem = React.memo(function TaskItem({
           accessibilityLabel={chainName ? `Step ${chainPosition} of "${chainName}"` : `Chain step ${chainPosition}`}
         >
           <Ionicons name="git-commit" size={9} color={colors.accent} />
-          <Text style={styles.chainBadgeText}>{chainPosition}</Text>
+          <Animated.Text style={[styles.chainBadgeText, { opacity: chainStepOpacity, transform: [{ scale: chainStepAnim }] }]}>
+            {chainPosition}
+          </Animated.Text>
         </View>
       )}
 
@@ -2743,21 +3134,31 @@ export const TaskItem = React.memo(function TaskItem({
         <TouchableOpacity
           onPress={() => {
             haptics.tap();
-            animateLayout();
-            togglePin(task.id);
+            setPinOverride(!(pinOverride ?? task.pinned));
+            pinWritesPending.current += 1;
+            // A frame later, so the glyph commits and paints before the
+            // screen-wide render the write causes. animateLayout goes with the
+            // write, since it applies to the next layout pass and would
+            // otherwise be spent on the glyph's own commit.
+            requestAnimationFrame(() => {
+              animateLayout();
+              togglePin(task.id);
+              pinWritesPending.current -= 1;
+              if (pinWritesPending.current === 0) setPinOverride(null);
+            });
           }}
           hitSlop={8}
           style={styles.pinBtn}
           accessibilityRole="button"
-          accessibilityState={{ selected: task.pinned }}
+          accessibilityState={{ selected: pinOverride ?? task.pinned }}
           accessibilityLabel={
-            task.pinned ? `Unpin ${task.title}` : `Pin ${task.title}`
+            (pinOverride ?? task.pinned) ? `Unpin ${task.title}` : `Pin ${task.title}`
           }
         >
           <PinIcon
-            filled={task.pinned}
+            filled={pinOverride ?? task.pinned}
             size={iconSize.sm}
-            color={task.pinned ? colors.orange : colors.textSecondary}
+            color={(pinOverride ?? task.pinned) ? colors.orange : colors.textSecondary}
           />
         </TouchableOpacity>
       )}
@@ -2782,15 +3183,15 @@ export const TaskItem = React.memo(function TaskItem({
       <View
         style={styles.panelMeasure}
         // Guarded like AnimatedCollapsible's: this feeds the animated height
-        // above it, so an accepted measurement costs a React commit — and a
-        // pixel-grid rounding difference is not a content change. Unguarded,
-        // an expanded row inside a stack commits on every layout pass of the
-        // section animating around it.
+        // above it, so an accepted measurement re-runs that style on the UI
+        // thread — and a pixel-grid rounding difference is not a content
+        // change. Unguarded, an expanded row inside a stack re-applied its
+        // height on every layout pass of the section animating around it.
         onLayout={e => {
           if (!e.nativeEvent?.layout) return;
           // See handleItemLayout above: read now, close over the number, not `e`.
           const height = e.nativeEvent.layout.height;
-          setPanelHeight(prev => nextMeasuredHeight(prev, height));
+          panelHeight.value = nextMeasuredHeight(panelHeight.value, height);
         }}
       >
       <View style={styles.expandedPanel}>
@@ -2826,6 +3227,18 @@ export const TaskItem = React.memo(function TaskItem({
 
             {task.notes.length > 0 && (
               <Text style={styles.expandNotes}>{task.notes}</Text>
+            )}
+
+            {/* Read-only on purpose: these are options, not subtasks, and
+                ticking one here would be the bypass the whole feature exists
+                to close. Shared with the Logbook's week sheet. */}
+            {isRotation && (
+              <View style={[
+                styles.expandSection,
+                (task.notes.length > 0 || !!task.followUpTaskSourceTitle || followUpRule !== null) && styles.sectionDivider,
+              ]}>
+                <RotationChecklist task={task} />
+              </View>
             )}
 
             {/* Unconditional except on a notice — the always-visible "Add
@@ -2979,6 +3392,12 @@ export const TaskItem = React.memo(function TaskItem({
               ]}>
                 <Ionicons name="repeat" size={12} color={colors.textSecondary} />
                 <Text style={styles.expandMeta}>{describeTaskRecurrence(task)}</Text>
+                {hoursUnlockTime && (
+                  <>
+                    <Text style={styles.expandMeta}> · </Text>
+                    <Text style={styles.expandMeta}>Unlocks {hoursUnlockTime}</Text>
+                  </>
+                )}
                 {task.streakCount > 0 && (
                   <>
                     <Text style={styles.expandMeta}> · </Text>
@@ -3317,7 +3736,7 @@ export const TaskItem = React.memo(function TaskItem({
                       )}
                     </View>
                   )}
-                  {showActions && !timed && (
+                  {showActions && !timed && !listRow && (
                     timerRunning ? (
                     <View style={styles.timerRunningGroup}>
                       <TouchableOpacity
@@ -3410,6 +3829,32 @@ export const TaskItem = React.memo(function TaskItem({
                       <Ionicons name="close-circle-outline" size={iconSize.sm} color={colors.textSecondary} />
                     </PressableScale>
                   )}
+                  {/* The missed button above always advances a mid-chain miss
+                      into the next step (see the comment on `atChainEnd` in
+                      taskCompletion.ts) — right for a chain of independent
+                      steps, wrong for one whose later steps depend on the
+                      one just missed (meal-slot's Choose → Prepare → Eat:
+                      nothing to prepare with nothing chosen). This is that
+                      other case: it ends the whole chain here instead of
+                      spawning the next step. Only offered while there's a
+                      later step for it to matter against — on the chain's
+                      last step it would be identical to the button above. */}
+                  {chainStep &&
+                    chainStepIndex < task.chainItems.length - 1 &&
+                    (task.recurrenceType !== 'none' || isMissableMealPlanTask(task)) && (
+                    <PressableScale
+                      style={styles.iconActionBtn}
+                      onPress={async () => {
+                        await haptics.impactMedium();
+                        markMissed(task.id, { wholeChain: true });
+                        if (expanded) onPress(rowId);
+                      }}
+                      hitSlop={8}
+                      accessibilityLabel={`Mark ${task.title} missed and end the rest of its chain for today`}
+                    >
+                      <Ionicons name="stop-circle-outline" size={iconSize.sm} color={colors.textSecondary} />
+                    </PressableScale>
+                  )}
                   {/* Distinct from the missed button above: this occurrence
                       wasn't skipped because it got missed, it just didn't need
                       doing this time — so it moves on with no Logbook row, no
@@ -3471,6 +3916,23 @@ export const TaskItem = React.memo(function TaskItem({
                   )}
                 </View>
                 <View style={styles.editSectionRight}>
+                  {listRow ? (
+                    // Delete in place of Set date on a list line: a line has
+                    // no date to set, and deleting one otherwise took the bulk
+                    // bar or the editor. Not on a swipe (see SwipeableRow),
+                    // and deleteTask raises the Undo bar.
+                    <PressableScale
+                      style={styles.iconActionBtn}
+                      onPress={async () => {
+                        await haptics.tap();
+                        deleteTask(task.id);
+                      }}
+                      hitSlop={8}
+                      accessibilityLabel={`Delete ${task.title}`}
+                    >
+                      <Ionicons name="trash-outline" size={iconSize.sm} color={colors.red} />
+                    </PressableScale>
+                  ) : (
                   <TouchableOpacity
                     style={[styles.editBtn, !task.dueDate && styles.editBtnIconOnly]}
                     onPress={() => setShowWhenPicker(true)}
@@ -3486,6 +3948,7 @@ export const TaskItem = React.memo(function TaskItem({
                       <Text style={styles.editBtnText}>{formatTaskDate(task)}</Text>
                     )}
                   </TouchableOpacity>
+                  )}
                   <PressableScale
                     style={styles.iconActionBtn}
                     onPress={async () => {
@@ -3602,7 +4065,7 @@ export const TaskItem = React.memo(function TaskItem({
             // No reschedule panel on a notice: there's nothing a later date
             // would mean for it, and the button that opens the same picker
             // is gone from its panel for that reason (see `notice`).
-            whenAction={notice ? undefined : {
+            whenAction={notice || listRow ? undefined : {
               onAction: () => setShowWhenPicker(true),
               accessibilityLabel: `Reschedule ${task.title}`,
             }}
@@ -3669,7 +4132,7 @@ export const TaskItem = React.memo(function TaskItem({
           taskNotes={task.notes}
           taskEffort={task.effort}
           taskEstimatedMinutes={task.estimatedMinutes}
-          onConfirm={(date, segs) => {
+          onConfirm={(date, segs) => confirmScheduleMove([task], date, restartSchedule => confirmSegmentScope([task], segs, segmentScope => {
             const snapshot = { ...task };
             // A recurring task's dueDate is the anchor its whole future grid is
             // measured from, and a series member's was hand-picked out of a set
@@ -3691,7 +4154,9 @@ export const TaskItem = React.memo(function TaskItem({
             // that exists so it cannot drift from `isDateAnchored` beside it.
             // It was inline here until the away-date shift became its third
             // caller; the comments explaining the three arms moved with it.
-            const baseUpdates = { ...scheduleMoveUpdates(task, date), timeSegments: segs };
+            // A pull forward on a repeating task asks first whether the rest of
+            // the schedule stays put or counts from here (confirmScheduleMove).
+            const baseUpdates = { ...scheduleMoveUpdates(task, date, undefined, { restartSchedule }), timeSegments: segs };
             const picked = date ? getTaskDayStart(date) : null;
             // Pinning is for today's block specifically — moving the task off
             // the day it was sitting on means it no longer belongs there, so a
@@ -3709,14 +4174,14 @@ export const TaskItem = React.memo(function TaskItem({
             updateTask(
               task.id,
               moved ? { ...baseUpdates, pinned: false } : baseUpdates,
-              { markSeenOnBecomeVisible: true },
+              { markSeenOnBecomeVisible: true, ...(segmentScope === 'occurrence' ? { scope: 'occurrence' as const } : {}) },
             );
             setLastAction({
               label: 'Task rescheduled',
               undo: () => updateTask(snapshot.id, snapshot),
             });
             setShowWhenPicker(false);
-          }}
+          }))}
           onClear={() => {
             const snapshot = { ...task };
             updateTask(task.id, {
@@ -3767,6 +4232,14 @@ export const TaskItem = React.memo(function TaskItem({
           onPlanned={offerPrepTasksForEach}
           onUnplan={removeMealPlanEntry}
           onClose={() => setShowMealPicker(false)}
+        />
+      )}
+      {mountRotationPick && (
+        <RotationPickSheet
+          visible={showRotationPick}
+          task={task}
+          onPick={handleRotationPick}
+          onCancel={() => setShowRotationPick(false)}
         />
       )}
     </>
@@ -3957,6 +4430,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     lineHeight: lineHeight.md,
     fontWeight: fontWeight.regular,
   },
+  titleHeldBack: { color: colors.textSecondary },
   // The tint an "@name" mention keeps once it's part of a saved title — same
   // language quick add uses for a token still being composed.
   titleMention: {
@@ -4082,6 +4556,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.xs,
     fontWeight: fontWeight.medium,
   },
+  // Only worn once what's outstanding no longer fits in the days left — see
+  // rotationOverCommitted, which is deliberately a harder test than "behind".
+  rotationTight: { color: colors.orange },
   // Deliberately textSecondary rather than red: the shield beside it is already
   // carrying the alarm, and a second red thing on the same row would make one
   // slip look like two separate problems.

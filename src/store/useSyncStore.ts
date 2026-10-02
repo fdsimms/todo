@@ -19,7 +19,7 @@ import { httpSyncTransport, isHttpSyncConfigured } from '../utils/httpSyncTransp
 import { loadSecureKey, saveSecureKey, SYNC_TOKEN_SECURE_KEY } from '../utils/secureApiKey';
 import { databaseSyncLocal } from '../utils/syncLocal';
 import { runSyncAll, summarizeRuns, type SyncSummary, type SyncTransport } from '../utils/syncEngine';
-import { describeApply } from '../utils/syncMerge';
+import { describeApply, type ApplyReport } from '../utils/syncMerge';
 
 const ENABLED_KEY = 'syncEnabled';
 const LAST_SYNCED_KEY = 'syncLastSyncedAt';
@@ -39,6 +39,13 @@ interface SyncState {
   problem: string | null;
   /** What the last successful sync brought in, for the status line. */
   lastSummary: string | null;
+  /**
+   * Bumped whenever a sync writes recipe photos to this device (#2704). A photo
+   * can arrive in a sync that changes no row, and then nothing else re-renders
+   * a recipe still showing that its photo isn't here, so the recipe screens
+   * read this to look again.
+   */
+  recipeImagesVersion: number;
 
   /**
    * The payload store's origin, or '' for none. Its token lives in the
@@ -75,6 +82,30 @@ async function configuredTransports(state: { enabled: boolean; serverUrl: string
   return transports;
 }
 
+// See syncNow: claimed synchronously, so two calls can't both reach runSyncAll.
+let syncInFlight = false;
+
+/**
+ * Re-reads every data store from the database after a sync wrote to it.
+ *
+ * A sync writes straight to SQLite, and before this nothing re-read it: the
+ * other device's changes stayed off screen until the next launch, and worse,
+ * the stores save a row by writing their whole in-memory copy back, so the next
+ * local edit of a synced row wrote the stale copy over it with a fresh stamp,
+ * which then won on every device. Injected rather than imported because the
+ * task store fans out to every other store and this one has to stay importable
+ * without them (see App.tsx and backgroundRefresh.ts for the registration).
+ *
+ * Handed what the sync applied, for the work a reload alone can't do: a meal's
+ * calendar event, and a task's deadline event and time block, live on this
+ * device and only this device can move or delete them (#2950,
+ * `reconcileSyncedEvents` in useMealPlanStore and useTaskStore).
+ */
+let reloadAfterSync: (applied: ApplyReport) => void = () => {};
+export function registerSyncReload(reload: (applied: ApplyReport) => void): void {
+  reloadAfterSync = reload;
+}
+
 export const useSyncStore = create<SyncState>((set, get) => ({
   initialized: false,
   enabled: false,
@@ -83,6 +114,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
   lastSyncedAt: null,
   problem: null,
   lastSummary: null,
+  recipeImagesVersion: 0,
 
   serverUrl: '',
   hasServerToken: false,
@@ -144,45 +176,72 @@ export const useSyncStore = create<SyncState>((set, get) => ({
 
   syncNow: async () => {
     const { enabled, phase, serverUrl } = get();
-    if (phase === 'syncing') return null;
-
-    // No longer gated on `enabled` alone: that flag is iCloud's, and a device
-    // with only a payload store configured still has somewhere to sync to.
-    // `configuredTransports` is what decides, and an empty list is a no-op
-    // rather than a failure.
-    const transports = await configuredTransports({ enabled, serverUrl });
-    if (transports.length === 0) return null;
-
-    set({ phase: 'syncing' });
+    if (phase === 'syncing' || syncInFlight) return null;
+    // Claimed before the first await rather than by `phase`, which is only set
+    // once the transports are known: the keychain read in between left a window
+    // where a foreground return and the mount-time sync both got past the check
+    // and ran runSyncAll twice, interleaved, which is what running the
+    // transports sequentially exists to prevent.
+    syncInFlight = true;
     try {
-      const summary = summarizeRuns(await runSyncAll(transports, databaseSyncLocal()));
-
-      if (summary.ok) {
-        const now = new Date().toISOString();
-        dbSetSetting(LAST_SYNCED_KEY, now);
-        set({
-          lastSyncedAt: now,
-          // A failure on one transport still shows, even though another
-          // succeeded: half a sync is exactly the state worth telling somebody
-          // about, because the device it did not reach is the one they will
-          // wonder about later.
-          problem: summary.problem
-            ?? (summary.unreadable > 0 ? 'Some changes need a newer version of the app.' : null),
-          lastSummary: describeApply(summary.applied),
-        });
-      } else if (summary.problem !== null) {
-        set({ problem: summary.problem });
-      }
-      // Neither ok nor failed means every transport skipped, which is demo
-      // mode. Not a problem and not worth reporting — the user swapped their
-      // data out themselves.
-
-      return summary;
+      return await syncOnce(enabled, serverUrl);
     } finally {
-      set({ phase: 'idle' });
+      syncInFlight = false;
     }
   },
 }));
+
+async function syncOnce(enabled: boolean, serverUrl: string): Promise<SyncSummary | null> {
+  const set = useSyncStore.setState;
+
+  // No longer gated on `enabled` alone: that flag is iCloud's, and a device
+  // with only a payload store configured still has somewhere to sync to.
+  // `configuredTransports` is what decides, and an empty list is a no-op
+  // rather than a failure.
+  const transports = await configuredTransports({ enabled, serverUrl });
+  if (transports.length === 0) return null;
+
+  set({ phase: 'syncing' });
+  try {
+    const summary = summarizeRuns(await runSyncAll(transports, databaseSyncLocal()));
+
+    // Before the summary is recorded, and whenever anything landed, including
+    // on a run where the other transport then failed: the rows are in the
+    // database either way. Skipped when nothing came in, which is most runs.
+    const a = summary.applied;
+    if (a.inserted + a.updated + a.deleted > 0) reloadAfterSync(a);
+    if (summary.imagesReceived > 0) set(s => ({ recipeImagesVersion: s.recipeImagesVersion + 1 }));
+
+    if (summary.ok) {
+      const now = new Date().toISOString();
+      dbSetSetting(LAST_SYNCED_KEY, now);
+      set({
+        lastSyncedAt: now,
+        // A failure on one transport still shows, even though another
+        // succeeded: half a sync is exactly the state worth telling somebody
+        // about, because the device it did not reach is the one they will
+        // wonder about later.
+        problem: summary.problem
+          ?? (summary.unreadable > 0 ? 'Some changes need a newer version of the app.' : null)
+          // Last, and only when the rows went: a photo that didn't send is
+          // retried on its own, so this names it without calling the sync failed.
+          ?? (summary.imageProblem
+            ? `Some recipe photos didn't send (${summary.imageProblem}). They go again with the next sync.`
+            : null),
+        lastSummary: describeApply(summary.applied),
+      });
+    } else if (summary.problem !== null) {
+      set({ problem: summary.problem });
+    }
+    // Neither ok nor failed means every transport skipped, which is demo
+    // mode. Not a problem and not worth reporting — the user swapped their
+    // data out themselves.
+
+    return summary;
+  } finally {
+    set({ phase: 'idle' });
+  }
+}
 
 /**
  * Whether the sync feature should appear at all.

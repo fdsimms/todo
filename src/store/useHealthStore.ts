@@ -4,9 +4,10 @@ import { create } from 'zustand';
 import { addDays } from 'date-fns/addDays';
 import { dayKeyOf, getCurrentDayStart, getLogicalDayKey } from '../utils/dateUtils';
 import type { HealthDayInput } from '../utils/moodInsights';
-import type { WeightPoint } from '../utils/weightLog';
+import { latestWeight, type WeightPoint } from '../utils/weightLog';
 import { healthBridge } from '../utils/healthBridge';
 import { useSettingsStore } from './useSettingsStore';
+import { useTaskStore } from './useTaskStore';
 import { createRefreshGuard } from '../utils/refreshGuard';
 import { anyExerciseRule } from '../utils/healthRules';
 
@@ -412,6 +413,10 @@ export const useHealthStore = create<HealthState>((set, get) => ({
       // last good series would keep drawing a chart of somebody's weight after
       // they revoked access to it, which is the one thing this must not do.
       set({ weightSeries });
+      // A fresh weigh-in can move the weight goal's own calorie figure (it's
+      // worked out against the current weight), so keep the food log target
+      // in step here too, not just when the goal or profile sheet is saved.
+      useSettingsStore.getState().syncWeightGoalCalorieTarget(latestWeight(weightSeries)?.kilograms ?? null);
     } finally {
       set({ loadingWeight: false });
     }
@@ -523,6 +528,26 @@ export function useHealthSync(): void {
       }
     });
 
+    // A water task following the food log's target is re-judged whenever either
+    // of the two things that move that target does: the figure on the targets
+    // sheet (or its exercise boost), and today's exercise reading arriving.
+    const unsubscribeSettingsWater = useSettingsStore.subscribe((state, prev) => {
+      if (
+        state.nutritionTargets.waterMl !== prev.nutritionTargets.waterMl ||
+        state.waterExerciseBoost !== prev.waterExerciseBoost
+      ) {
+        useTaskStore.getState().syncWaterQuotaTasks();
+      }
+    });
+    const unsubscribeHealthWater = useHealthStore.subscribe((state, prev) => {
+      if (
+        state.today?.dayKey !== prev.today?.dayKey ||
+        state.today?.exerciseMinutes !== prev.today?.exerciseMinutes
+      ) {
+        useTaskStore.getState().syncWaterQuotaTasks();
+      }
+    });
+
     const subscription = AppState.addEventListener('change', state => {
       if (state === 'active' && useSettingsStore.getState().healthReadEnabled) {
         void useHealthStore.getState().refresh();
@@ -531,6 +556,8 @@ export function useHealthSync(): void {
 
     return () => {
       unsubscribe();
+      unsubscribeSettingsWater();
+      unsubscribeHealthWater();
       subscription.remove();
     };
   }, []);

@@ -1,4 +1,5 @@
 import { addDays } from 'date-fns/addDays';
+import { addHours } from 'date-fns/addHours';
 import { addWeeks } from 'date-fns/addWeeks';
 import { addMonths } from 'date-fns/addMonths';
 import { addYears } from 'date-fns/addYears';
@@ -12,6 +13,7 @@ import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { differenceInCalendarMonths } from 'date-fns/differenceInCalendarMonths';
 import { differenceInCalendarYears } from 'date-fns/differenceInCalendarYears';
 import { setDate } from 'date-fns/setDate';
+import { setMonth } from 'date-fns/setMonth';
 import { lastDayOfMonth } from 'date-fns/lastDayOfMonth';
 import type { Task } from '../types';
 import { hhmmToDate, formatHHMM as formatClockTime, clockTimeToken, logicalDayStart, taskDayStart } from './clockTime';
@@ -112,6 +114,25 @@ export function formatHHMM(hhmm: string, use24Hour?: boolean): string {
  */
 export function formatTimeOfDay(date: Date, use24Hour?: boolean): string {
   return format(date, clockTimeToken(use24Hour ?? useSettingsStore.getState().use24HourTime));
+}
+
+/**
+ * The clock time an `'hours'`-recurring task's next occurrence unlocks at.
+ * That recurrence type never gets a `dueDate` (see taskCompletion.ts's
+ * `nextDeferUntil`) — `deferUntil` *is* the precise instant the next
+ * occurrence lands, not just a floor hiding an already-dated row — so
+ * whichever row wants to say "when does this come back" has nothing else to
+ * read. Null once that instant has passed (the task is just due, same as
+ * everything else) or for any other recurrence type, so every caller can use
+ * it as a plain presence check.
+ */
+export function hoursUnlockLabel(
+  task: Pick<Task, 'recurrenceType' | 'deferUntil'>,
+  use24Hour?: boolean,
+): string | null {
+  if (task.recurrenceType !== 'hours' || !task.deferUntil) return null;
+  const at = new Date(task.deferUntil);
+  return at > new Date() ? formatTimeOfDay(at, use24Hour) : null;
 }
 
 /**
@@ -325,10 +346,16 @@ const MAX_CATCH_UP_STEPS = 500;
  * is the opposite and is checked on the caught-up answer: a series whose end
  * has passed while the app was shut is over, not owed a final occurrence.
  */
+export type RecurrenceScheduleInput = Pick<Task,
+  | 'recurrenceType' | 'recurrenceInterval' | 'recurrenceDays' | 'recurrenceMonthDay' | 'recurrenceMonth'
+  | 'recurrenceWeekOrdinal' | 'recurrenceAnchorDay' | 'recurrenceAnchorDate'
+  | 'recurrenceFromCompletion' | 'recurrenceEndDate' | 'recurrenceCount' | 'dueDate'
+>;
+
 export function getNextDueDate(
-  task: Task,
+  task: RecurrenceScheduleInput,
   dayResetTime?: string,
-  options?: { catchUp?: boolean },
+  options?: { catchUp?: boolean; completedAt?: Date },
 ): Date | null {
   // Fixed schedule: anchor to the previous due date so the recurrence grid doesn't drift.
   // After completion: anchor to today (the completion day) so it's always relative to when you finished.
@@ -341,13 +368,37 @@ export function getNextDueDate(
   // under `recurrenceFromCompletion`, which measures from the day you finished
   // and has no grid to be knocked off.
   const anchorIso = task.recurrenceAnchorDate ?? task.dueDate;
+  // 'hours' has no calendar grid to anchor to, so it always measures from
+  // today regardless of the stored recurrenceFromCompletion — the editor
+  // forces that flag true for this type, and this is the defensive mirror of
+  // it for any row that predates or bypasses that.
+  //
+  // `completedAt` is the moment the work was done when that isn't now: the
+  // morning check-in recording last night, or a widget tap drained after the
+  // day turned over. Measured from now instead, "done Monday" answered on
+  // Tuesday put the next one on Wednesday. 'hours' keeps now on purpose: its
+  // real placement is taskCompletion's nextDeferUntil, measured from now.
+  const completionMoment = task.recurrenceType !== 'hours' && options?.completedAt
+    ? options.completedAt
+    : new Date();
   const base =
-    !task.recurrenceFromCompletion && anchorIso
+    !task.recurrenceFromCompletion && task.recurrenceType !== 'hours' && anchorIso
       ? getTaskDayStart(new Date(anchorIso), dayResetTime)
-      : getDayStart(new Date(), dayResetTime);
+      : getDayStart(completionMoment, dayResetTime);
 
   const step = (from: Date): Date => {
     switch (task.recurrenceType) {
+      case 'hours':
+        // Approximate only: `from` is a day-start (see `base` above and the
+        // catch-up loop below, both of which normalize through
+        // getTaskDayStart), so this is "midnight plus N hours", not "N hours
+        // from the actual completion instant". Every caller of this branch
+        // only asks whether a next occurrence exists at all (isLiveRecurring,
+        // the snooze horizon, the recurrenceEndDate/recurrenceCount check
+        // below) — the real successor's precise deferUntil is computed
+        // separately in taskCompletion.ts, which is what makes an
+        // approximation here safe rather than a second, competing answer.
+        return addHours(from, task.recurrenceInterval);
       case 'daily':
         return addDays(from, task.recurrenceInterval);
       case 'weekly':
@@ -370,6 +421,7 @@ export function getNextDueDate(
       case 'yearly':
         return getNextYearDayOccurrence(
           task.recurrenceMonthDay ?? task.recurrenceAnchorDay,
+          task.recurrenceMonth,
           from,
           task.recurrenceInterval,
         );
@@ -459,17 +511,29 @@ function getNextMonthDayOccurrence(day: number, from: Date, interval: number): D
 
 /**
  * Next occurrence of a yearly rule, restoring the day-of-month the grid is
- * anchored to. The month never drifts (addYears keeps it), so only the day
- * needs putting back: "every year on Feb 29" would otherwise clamp to the 28th
- * in the first non-leap year and stay there through every leap year after,
- * which is the same one-way clamp getNextMonthDayOccurrence exists to avoid a
- * month at a time. `null` means no anchor was ever captured (a row older than
- * the column), which is exactly the old behaviour.
+ * anchored to and, if the rule pins one, the month. The month never drifts on
+ * its own (addYears keeps it), so with no explicit `month` only the day needs
+ * putting back: "every year on Feb 29" would otherwise clamp to the 28th in
+ * the first non-leap year and stay there through every leap year after, which
+ * is the same one-way clamp getNextMonthDayOccurrence exists to avoid a month
+ * at a time. `day === null` means no anchor was ever captured (a row older
+ * than the column), which is exactly the old behaviour; `month === null`
+ * means "whatever month the due date falls in" (the picker's "same month as
+ * due date"), also the old behaviour.
+ *
+ * With an explicit month, the day still has to come from somewhere: an
+ * unset day anchor falls back to `from`'s own day-of-month rather than being
+ * left alone, since repositioning into a different month means there's no
+ * longer an "as addYears left it" day to keep.
  */
-function getNextYearDayOccurrence(day: number | null, from: Date, interval: number): Date {
+function getNextYearDayOccurrence(day: number | null, month: number | null, from: Date, interval: number): Date {
   const next = addYears(from, interval);
-  if (day === null) return next;
-  return day === -1 ? lastDayOfMonth(next) : setDate(next, Math.min(day, lastDayOfMonth(next).getDate()));
+  if (month === null && day === null) return next;
+  const base = month === null ? next : setMonth(setDate(next, 1), month - 1);
+  const targetDay = day ?? from.getDate();
+  return targetDay === -1
+    ? lastDayOfMonth(base)
+    : setDate(base, Math.min(targetDay, lastDayOfMonth(base).getDate()));
 }
 
 /**
@@ -592,6 +656,17 @@ export function describeReminderOffset(offsetDays: number): string {
 }
 
 /**
+ * The user-facing wording for a visibility-tracking reminder (see
+ * Task.reminderTracksVisibility) — owned here for the same reason
+ * describeReminderOffset is, so the editor's row summary and the picker's
+ * info card can't drift apart. Doesn't need the task itself: unlike an
+ * offset there's no number to report, just what the reminder does.
+ */
+export function describeReminderTracksVisibility(): string {
+  return 'When it becomes visible';
+}
+
+/**
  * The UTC offset (minutes, `Date.getTimezoneOffset()`) in effect at
  * `reminderTime`'s own moment, for a 'wallClock' reminder to compare itself
  * against later (see reanchorReminderToWallClock and
@@ -646,10 +721,10 @@ export function getDeadlineFromMonthDay(dueDate: Date, day: number): Date {
 }
 
 /**
- * How many days late a weekly completion can land and still count as "on
- * schedule" (e.g. a Monday habit finished on Tuesday). Daily cadences stay
- * exact — "every day" or "every N days" means what it says, with no slack —
- * so this only widens the weekly window.
+ * How many days late a weekly, monthly or yearly completion can land and
+ * still count as "on schedule" (e.g. a Monday habit finished on Tuesday).
+ * Daily cadences stay exact — "every day" or "every N days" means what it
+ * says, with no slack.
  */
 const STREAK_LATE_TOLERANCE_DAYS = 1;
 
@@ -676,8 +751,11 @@ function getExpectedStreakGapDays(task: Task, from: Date): number {
  * from the task's own cadence instead of assuming one day, with a small
  * tolerance for lateness (e.g. a weekly Monday habit finished on Tuesday
  * still continues). Monthly/yearly use calendar-unit differences rather than
- * day counts, since month/year lengths vary — that unit itself supplies the
- * tolerance, so no extra grace period is added on top.
+ * day counts, since month/year lengths vary. The unit supplies most of the
+ * tolerance but not at a month's end: a task on the 31st done a day late lands
+ * two calendar months after the last one, while a task on the 1st can be 27
+ * days late and still read one. So the same one day of slack applies there
+ * too, measured by stepping today back a day.
  */
 export function getStreakOutcome(
   task: Task,
@@ -695,11 +773,14 @@ export function getStreakOutcome(
   if (daysBetween <= 0) return 'same-day';
 
   if (task.recurrenceType === 'monthly' || task.recurrenceType === 'yearly') {
-    const unitsBetween =
-      task.recurrenceType === 'monthly'
-        ? differenceInCalendarMonths(todayDay, lastDay)
-        : differenceInCalendarYears(todayDay, lastDay);
-    return unitsBetween >= 1 && unitsBetween <= task.recurrenceInterval ? 'continued' : 'reset';
+    const inRange = (day: Date) => {
+      const unitsBetween =
+        task.recurrenceType === 'monthly'
+          ? differenceInCalendarMonths(day, lastDay)
+          : differenceInCalendarYears(day, lastDay);
+      return unitsBetween >= 1 && unitsBetween <= task.recurrenceInterval;
+    };
+    return inRange(todayDay) || inRange(subDays(todayDay, STREAK_LATE_TOLERANCE_DAYS)) ? 'continued' : 'reset';
   }
 
   const expectedGapDays = getExpectedStreakGapDays(task, lastDay);

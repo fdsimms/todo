@@ -178,11 +178,21 @@ function placeTask(task: Task, dayStart: Date): { start: number; end: number; in
 }
 
 /**
+ * How many minutes an instant holds in the lane packing: about the two lines
+ * its title can wrap to at the axis scale. One minute let a block starting ten
+ * minutes later share the lane and sit on the second line of the title.
+ */
+const INSTANT_SLOT_MINUTES = 30;
+
+const laneEnd = (e: TimelineEntry) =>
+  e.instant ? e.startMinutes + INSTANT_SLOT_MINUTES : Math.max(e.endMinutes, e.startMinutes + 1);
+
+/**
  * Greedy column packing over a sorted run.
  *
- * An instant is given a minute of width for overlap purposes only, so a
- * reminder landing inside a meeting sits beside it rather than on top of it,
- * while still reporting `startMinutes === endMinutes` to the caller.
+ * An instant holds a slot for overlap purposes only, so a reminder landing
+ * inside a meeting sits beside it rather than on top of it, while still
+ * reporting `startMinutes === endMinutes` to the caller.
  */
 function assignLanes(entries: TimelineEntry[]): void {
   let run: TimelineEntry[] = [];
@@ -196,10 +206,10 @@ function assignLanes(entries: TimelineEntry[]): void {
   };
 
   for (const entry of entries) {
-    const width = Math.max(entry.endMinutes, entry.startMinutes + 1);
+    const width = laneEnd(entry);
     if (run.length > 0 && entry.startMinutes >= runEnd) closeRun();
     const taken = new Set(
-      run.filter(e => Math.max(e.endMinutes, e.startMinutes + 1) > entry.startMinutes).map(e => e.lane),
+      run.filter(e => laneEnd(e) > entry.startMinutes).map(e => e.lane),
     );
     let lane = 0;
     while (taken.has(lane)) lane += 1;

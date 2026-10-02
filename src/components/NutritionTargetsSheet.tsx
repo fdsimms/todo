@@ -5,12 +5,13 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
 import { useShallow } from 'zustand/react/shallow';
 import { useColors } from '../theme/ThemeContext';
+import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { border, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { NUTRIENT_KEYS, type NutrientKey } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { NUTRITION_TARGET_RANGES } from '../utils/nutritionTargets';
+import { NUTRITION_TARGET_RANGES, type NutritionTargets } from '../utils/nutritionTargets';
 import { NUTRIENT_LABEL } from '../utils/foodNutrition';
-import { describeWater } from '../utils/waterLog';
+import { describeWater, waterInUnit, waterTargetRange, waterToMl } from '../utils/waterLog';
 import {
   WATER_EXERCISE_BOOST_ML_RANGE,
   WATER_EXERCISE_BOOST_MINUTES_RANGE,
@@ -24,6 +25,8 @@ import {
 } from '../utils/activeEnergyBoost';
 import { useHealthStore } from '../store/useHealthStore';
 import { openHealthApp } from '../utils/healthBridge';
+import { dayKeyOf, getCurrentDayStart } from '../utils/dateUtils';
+import { isProfileComplete } from '../utils/energyBudget';
 import { haptics } from '../utils/haptics';
 import { navigateToSettingsEntry } from '../utils/settingsIndex';
 import { CountStepper } from './CountStepper';
@@ -36,12 +39,16 @@ const PINNABLE_NUTRIENTS = NUTRIENT_KEYS.filter(k => k !== 'waterMl');
 /**
  * A daily figure to aim at, per nutrient.
  *
- * **Nothing is suggested and nothing is on by default.** Every stepper opens
- * empty, and the number it shows when you first press + is where that
- * nutrient's range starts from rather than a recommendation. The app has no
- * business having an opinion on what somebody should eat, so it does not
- * express one here, and `docs/arch/health-data.md` makes the same argument at
- * length about a related case.
+ * **Nothing is on by default, and nothing here is the app's opinion.** Every
+ * stepper opens empty, and the number it lands on at the first press of + —
+ * same figure the "Set to U.S. Daily Value" action above the list fills in
+ * for every nutrient still unset — is `NUTRITION_TARGET_RANGES[key].default`,
+ * the reference figure US nutrition-label law already prints on the packet.
+ * The app is repeating that figure, not assessing the person holding it, the
+ * same distinction `NUTRITION_TARGET_RANGES`'s own comment draws and
+ * `docs/arch/health-data.md` makes at length about a related case. A target
+ * still exists only once somebody presses + or taps that action; the map
+ * itself ships and stays empty until then.
  *
  * **Clearing a target is one press at the floor**, which is what `allowNull`
  * is for. "I no longer want a protein target" is a real thing to say, and
@@ -64,14 +71,20 @@ interface Props {
 
 export function NutritionTargetsSheet({ visible, onClose }: Props) {
   const colors = useColors();
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation();
 
   const targets = useSettingsStore(useShallow(s => s.nutritionTargets));
   const setNutritionTarget = useSettingsStore(s => s.setNutritionTarget);
+  const setNutritionTargets = useSettingsStore(s => s.setNutritionTargets);
   const pinnedNutrients = useSettingsStore(useShallow(s => s.foodLogPinnedNutrients));
   const setFoodLogPinnedNutrients = useSettingsStore(s => s.setFoodLogPinnedNutrients);
   const waterUnit = useSettingsStore(s => s.waterUnit);
+  // Whether the weight goal keeps the calorie target in step
+  // (autoCalorieTargetKcal): a goal and a complete profile. The row says so,
+  // since a figure typed here is replaced the next time Weight refreshes.
+  const calorieFollowsGoal = useSettingsStore(s => s.weightGoal !== null && isProfileComplete(s.bodyProfile));
   const healthReadEnabled = useSettingsStore(s => s.healthReadEnabled);
   const waterExerciseBoost = useSettingsStore(useShallow(s => s.waterExerciseBoost));
   const setWaterExerciseBoost = useSettingsStore(s => s.setWaterExerciseBoost);
@@ -128,7 +141,10 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
    * exactly what stops the toggle above sitting on doing nothing with no
    * explanation.
    */
-  const activeEnergyToday = useHealthStore(s => s.today?.activeEnergyKcal ?? null);
+  // Only today's reading, the same day-key check FoodLogScreen makes: the
+  // snapshot outlives the day reset until the next refresh.
+  const activeEnergyToday = useHealthStore(s =>
+    (s.today?.dayKey === dayKeyOf(getCurrentDayStart()) ? s.today.activeEnergyKcal ?? null : null));
   const noActiveEnergy = boostOn && healthReadEnabled && activeEnergyToday === null;
   useEffect(() => {
     if (!visible || !healthReadEnabled || !boostOn) return;
@@ -148,6 +164,14 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
 
   const set = (key: NutrientKey, value: number | null) => setNutritionTarget(key, value);
 
+  const unsetKeys = NUTRIENT_KEYS.filter(key => targets[key] === undefined);
+  const applyDailyValues = () => {
+    haptics.tap();
+    const values: NutritionTargets = {};
+    for (const key of unsetKeys) values[key] = NUTRITION_TARGET_RANGES[key].default;
+    setNutritionTargets(values);
+  };
+
   const togglePinned = (key: NutrientKey) => {
     haptics.tap();
     const next = pinnedNutrients.includes(key)
@@ -165,7 +189,13 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
           <SheetHeaderButton label="Done" onPress={onClose} minWidth={64} />
         </View>
 
-        <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent}>
+        <ScrollView
+          ref={keyboardScroll.ref}
+          style={styles.body}
+          contentContainerStyle={styles.bodyContent}
+          keyboardShouldPersistTaps="handled"
+          {...keyboardScroll.props}
+        >
           <View>
             <Text style={styles.sectionLabel}>Shown on Food log</Text>
             <Text style={styles.intro}>
@@ -199,27 +229,81 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
           <Text style={styles.sectionLabel}>Daily targets</Text>
           <Text style={styles.intro}>
             A figure to read the day's total against. Nothing is set to begin with, and
-            nothing is suggested: these are yours to choose or to leave alone.
+            nothing is suggested: these are yours to choose, to leave alone, or to start
+            from the U.S. Daily Value, the reference figure nutrition labels print.
           </Text>
+          {unsetKeys.length > 0 && (
+            <InlineAction
+              label="Set to U.S. Daily Value"
+              variant="neutral"
+              onPress={applyDailyValues}
+              style={styles.dailyValueAction}
+            />
+          )}
 
           {NUTRIENT_KEYS.map(key => {
-            const range = NUTRITION_TARGET_RANGES[key];
+            // Water's target is stored in ml regardless (like every other
+            // water figure — see waterLogUnit's note in TaskEditor), but the
+            // stepper shows and steps in whichever unit the person picked for
+            // water elsewhere in the app (`waterUnit`).
+            const isWater = key === 'waterMl';
+            const range = isWater ? waterTargetRange(waterUnit) : NUTRITION_TARGET_RANGES[key];
             const unit = NUTRIENT_LABEL[key].unit;
+            const value = isWater ? waterInUnit(targets.waterMl ?? null, waterUnit) : (targets[key] ?? null);
+            // waterRange's own range has no default of its own to open on —
+            // the reference figure is the ml one below, shown in whichever
+            // unit the stepper is in, the same conversion `value`/`onChange`
+            // already do. The `??` never actually fires (2000ml is always
+            // positive), it just keeps waterInUnit's `number | null` result
+            // assignable to `start`, which only takes a plain number.
+            const start = isWater
+              ? waterInUnit(NUTRITION_TARGET_RANGES.waterMl.default, waterUnit) ?? NUTRITION_TARGET_RANGES.waterMl.default
+              : NUTRITION_TARGET_RANGES[key].default;
             return (
               <View key={key} style={styles.row}>
                 <Text style={styles.rowLabel}>{NUTRIENT_LABEL[key].label}</Text>
+                <View style={styles.stepperLine}>
                 <CountStepper
-                  value={targets[key] ?? null}
-                  onChange={next => set(key, next)}
+                  value={value}
+                  onChange={next =>
+                    set(key, isWater ? (next === null ? null : waterToMl(next, waterUnit)) : next)
+                  }
                   min={range.min}
                   max={range.max}
                   step={range.step}
+                  start={start}
                   allowNull
                   emptyLabel="None"
-                  format={n => `${n.toLocaleString()}${unit === 'cal' ? '' : unit}`}
+                  format={n =>
+                    isWater
+                      ? (waterUnit === 'flOz' ? `${n.toLocaleString()} fl oz` : `${n.toLocaleString()}ml`)
+                      : `${n.toLocaleString()}${unit === 'cal' ? '' : unit}`
+                  }
                   label={`${NUTRIENT_LABEL[key].label} target`}
-                  describeValue={n => `${n} ${unit === 'cal' ? 'calories' : unit}`}
+                  describeValue={n =>
+                    isWater
+                      ? `${n} ${waterUnit === 'flOz' ? 'fluid ounces' : 'ml'}`
+                      : `${n} ${unit === 'cal' ? 'calories' : unit}`
+                  }
                 />
+                {targets[key] !== NUTRITION_TARGET_RANGES[key].default && (
+                  <InlineAction
+                    label="Use Daily Value"
+                    variant="neutral"
+                    onPress={() => {
+                      haptics.tap();
+                      set(key, NUTRITION_TARGET_RANGES[key].default);
+                    }}
+                    accessibilityLabel={`Set ${NUTRIENT_LABEL[key].label} target to the U.S. Daily Value`}
+                  />
+                )}
+                </View>
+                {key === 'calorieKcal' && calorieFollowsGoal && (
+                  <Text style={styles.boostHint}>
+                    This follows your weight goal. It is worked out again each time the
+                    Weight screen reads your weight, which replaces a number set here.
+                  </Text>
+                )}
               </View>
             );
           })}
@@ -382,18 +466,25 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
                       {/* Offered, never applied on its own — the arrangement
                           `WeightGoalSheet` uses for a far bigger number, and
                           the reason a figure worked out from somebody's own
-                          data is allowed to be shown here at all. Withheld
-                          when it would set what is already set. */}
-                      {typicalKcal !== null && typicalKcal !== undefined
-                        && snapToBaselineStep(typicalKcal) !== activeEnergyBoost.baselineKcal && (
-                        <InlineAction
-                          label={`Use your recent average (${typicalKcal.toLocaleString()} cal)`}
-                          variant="neutral"
-                          onPress={() => {
-                            haptics.tap();
-                            setActiveEnergyBoost({ baselineKcal: snapToBaselineStep(typicalKcal) });
-                          }}
-                        />
+                          data is allowed to be shown here at all. Said even
+                          when it matches what's already set, so a resolved
+                          figure is never indistinguishable from one still
+                          loading or one Health had nothing to answer. */}
+                      {typicalKcal !== null && typicalKcal !== undefined && (
+                        snapToBaselineStep(typicalKcal) !== activeEnergyBoost.baselineKcal ? (
+                          <InlineAction
+                            label={`Use your recent average (${snapToBaselineStep(typicalKcal).toLocaleString()} cal)`}
+                            variant="neutral"
+                            onPress={() => {
+                              haptics.tap();
+                              setActiveEnergyBoost({ baselineKcal: snapToBaselineStep(typicalKcal) });
+                            }}
+                          />
+                        ) : (
+                          <Text style={styles.boostHint}>
+                            Matches your recent average ({typicalKcal.toLocaleString()} cal).
+                          </Text>
+                        )
                       )}
                       {typicalKcal === null && !noActiveEnergy && (
                         <Text style={styles.boostHint}>
@@ -473,6 +564,8 @@ function makeStyles(colors: Colors) {
     },
     pinnedRowLast: { borderBottomWidth: 0 },
     pinnedRowLabel: { color: colors.text, fontSize: font.sm },
+    dailyValueAction: { alignSelf: 'flex-start' },
+    stepperLine: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.sm },
     row: {
       backgroundColor: colors.bgSecondary,
       borderRadius: radius.md,

@@ -6,7 +6,7 @@
 //
 // The parsing itself lives in src/utils/parseTaskInput.ts and parseNaturalDate.ts;
 // this file only decides what to do with what they return.
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useDeferredValue } from 'react';
 import {
   Alert,
   View,
@@ -37,6 +37,7 @@ import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { categoryLabel } from '../utils/categoryLabel';
 import { CategoryPickerSheet } from './CategoryPicker';
+import { ProjectPickerSheet } from './ProjectPickerSheet';
 import { useShallow } from 'zustand/react/shallow';
 import type { Priority, Effort, TimeOfDay, RecurrenceType, Task, ChainItem } from '../types';
 import { PRIORITY_COLORS, EFFORT_LABELS, TITLE_MAX_LENGTH } from '../types';
@@ -63,6 +64,7 @@ import { featureShown } from '../utils/simpleMode';
 import { resolvePillOverflow } from '../utils/pillOverflow';
 import { MAX_TARGET_UNIT_LENGTH } from '../utils/quotaUnit';
 import { WhenPicker } from './WhenPicker';
+import { projectDateAnchor } from '../utils/projectDateShortcuts';
 import { WeekdaySelector } from './WeekdaySelector';
 import { PressableScale } from './PressableScale';
 import { CountStepper } from './CountStepper';
@@ -71,18 +73,22 @@ import { TitleTokenAccessory } from './TitleTokenAccessory';
 import { HighlightedText } from './HighlightedText';
 import { suggestTitles } from '../utils/titleSuggestions';
 import { findArchivedMatch } from '../utils/archiveMatch';
-import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, parseDurationInput, parseSupplyInput, parseCategoryAndTagsInput, parsePriorityInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, applyMentionOverrides, withTrailingSpace, type ParsedCategoryAndTags, type MentionSuggestionCandidate } from '../utils/parseTaskInput';
+import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, parseDurationInput, parseSupplyInput, parseCategoryAndTagsInput, parsePriorityInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, applyMentionOverrides, withTrailingSpace, type ParsedCategoryAndTags, type MentionSuggestionCandidate } from '../utils/parseTaskInput';
 import { mergeRanges } from '../utils/ranges';
-import { usePersonStore } from '../store/usePersonStore';
+import { aimTooltip } from '../utils/tooltipAim';
+import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { usePersonGroupStore } from '../store/usePersonGroupStore';
 import { groupMentionTokens } from '../utils/peopleRegistry';
+import { eventMarkerText, parseQuickEvent } from '../utils/quickEvent';
+import { useEventPeopleStore } from '../store/useEventPeopleStore';
+import { isDemoModeActive } from '../utils/demoState';
 import { clampSupplyCount, formatSupplyLeft, MAX_SUPPLY_COUNT } from '../utils/supply';
 import { describeTitleRuleTargets, resolveTitleRules } from '../utils/titleRules';
 import { KNOWN_LINK_APPS, linkAppsFor } from '../constants/linkApps';
 import { tagColor } from '../utils/tagColor';
 import { formatPhoneInput } from '../utils/phone';
 import { format } from 'date-fns/format';
-import { getLogicalToday, getLogicalTomorrow, getLogicalNow, formatTimeOfDay } from '../utils/dateUtils';
+import { getLogicalToday, getLogicalTomorrow, getLogicalNow, getCurrentDayStart, formatTimeOfDay } from '../utils/dateUtils';
 import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration } from '../utils/effort';
 import { TaskEditor, type TaskDraft } from './TaskEditor';
 import { RECURRENCE_LABELS, onlyNewestWeekday } from './RecurrencePicker';
@@ -137,6 +143,17 @@ interface Props {
   initialType?: TaskKind;
   /** Seeds the title field on open, e.g. handing a search query straight into a new task. */
   initialTitle?: string;
+  /**
+   * The project this sheet adds into, when it was opened from one. Every task
+   * created here is filed under it, including each one "Add another" makes,
+   * and the category field starts at the project's own default
+   * (Project.defaultTaskCategory) rather than Settings' global one.
+   *
+   * It used to be left to the caller's onCreated, which "Add another"
+   * deliberately never calls, so a burst of tasks typed on a project's page
+   * all landed in Unscheduled with no project.
+   */
+  intoProjectId?: string | null;
 }
 
 // Category is absent on purpose: it opens its own sheet rather than a panel
@@ -196,24 +213,37 @@ const RECURRENCE_UNITS: Record<Exclude<RecurrenceType, 'none'>, [string, string]
   weekly: ['week', 'weeks'],
   monthly: ['month', 'months'],
   yearly: ['year', 'years'],
+  // Quick add's own picker never offers 'hours' (see RecurrencePicker.tsx) —
+  // present only so this map stays exhaustive over the type.
+  hours: ['hour', 'hours'],
 };
 
-export function QuickAddModal({
+// Mounted on every screen that can add a task, and hidden most of the time.
+// The two task-store reads below are gated on `visible` and the component is
+// memoized, so a hidden sheet costs nothing on a task write or on its host's
+// re-render: it used to re-render, and rescan every task's tags, on each one.
+const NO_TASKS: Task[] = [];
+const NO_TAGS: string[] = [];
+
+export const QuickAddModal = React.memo(function QuickAddModal({
   visible, onClose, onOpenFull, context, onCreated, onResumed, seed, seedLabel,
-  initialType = 'task', initialTitle,
+  initialType = 'task', initialTitle, intoProjectId = null,
 }: Props) {
   const addTask = useTaskStore(s => s.addTask);
   const unarchiveTask = useTaskStore(s => s.unarchiveTask);
-  const allTags = useTaskStore(useShallow(s => s.allTags()));
+  const allTags = useTaskStore(useShallow(s => (visible ? s.allTags() : NO_TAGS)));
   const categories = useCategoryStore(useShallow(s => s.categories));
   // Archived people are out of the picker but never stripped off a task that
   // already names them, the same call TaskEditor makes.
   const people = usePersonStore(useShallow(s => s.people.filter(p => !p.archived)));
   const groups = usePersonGroupStore(useShallow(s => s.groups));
-  // Read only to name a project a title rule files into — quick add has no
-  // project picker; see the projectId state below.
+  // To name the project on the Project chip and in a title rule's caption.
   const projects = useProjectStore(useShallow(s => s.projects));
-  const tasks = useTaskStore(s => s.tasks);
+  // Read at reset time, so a default changed in the editor is picked up by
+  // the next task rather than frozen at mount.
+  const hostDefaultCategory = () =>
+    (intoProjectId ? projects.find(p => p.id === intoProjectId)?.defaultTaskCategory : null) ?? null;
+  const tasks = useTaskStore(s => (visible ? s.tasks : NO_TASKS));
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
   const newTaskDefaults = useSettingsStore(s => s.newTaskDefaults);
   const setNewTaskDefaults = useSettingsStore(s => s.setNewTaskDefaults);
@@ -232,8 +262,13 @@ export function QuickAddModal({
   // The date a fresh sheet opens with, absent a drop seed — factored out so
   // shaking off the seed chip can revert to exactly this rather than to a
   // second, drifting copy of the same rule.
-  const defaultDueDate = () =>
-    effectiveContext === 'later' ? getLogicalTomorrow(dayResetTime)
+  // A list's lines are undated, and a line with a category would sit under a
+  // header on Today, so a sheet filing into a list opens with neither.
+  const isListProject = (id: string | null) =>
+    id !== null && projects.find(p => p.id === id)?.kind === 'list';
+  const defaultDueDate = (listTarget = isListProject(intoProjectId)) =>
+    listTarget ? null
+    : effectiveContext === 'later' ? getLogicalTomorrow(dayResetTime)
     : effectiveContext === 'inbox' || effectiveContext === 'unscheduled' ? null
     : getLogicalToday(dayResetTime);
   // Holds the task created by this sheet while its editor is open — only used
@@ -360,10 +395,24 @@ export function QuickAddModal({
   // text — see applyAmbiguousCandidate and applyMentionOverrides.
   const [personOverrides, setPersonOverrides] = useState<Record<string, string>>({});
   const [category, setCategory] = useState<string | null>(null);
-  // Quick add has no project picker of its own — this is only ever written by
-  // a title rule, which is the point: filing into a project as you type is
-  // something you could otherwise only do by opening the full editor after.
+  // Written by the Project chip (ProjectPickerSheet) or by a title rule. The
+  // rule effect only moves it while it still holds what the rule last wrote,
+  // so a project picked by hand isn't taken back by the next keystroke.
   const [projectId, setProjectId] = useState<string | null>(null);
+  // The project the picker last set, as opposed to one a title rule filled.
+  const pickedProjectRef = useRef<string | null>(null);
+  const pickProject = (id: string | null) => {
+    pickedProjectRef.current = id;
+    setProjectId(id);
+    // Picking a list takes off the date and category the sheet opened with,
+    // and only those: one the person set themselves is theirs to keep.
+    if (isListProject(id)) {
+      const openedWith = defaultDueDate(false);
+      setDueDate(cur => (cur && openedWith && cur.getTime() === openedWith.getTime() ? null : cur));
+      const baseCategory = hostDefaultCategory() ?? newTaskDefaults.category;
+      setCategory(cur => (cur === baseCategory ? null : cur));
+    }
+  };
   // "Not on this task" for whatever a rule filled in. Sheet-lifetime, like
   // showAllChips: the next task starts from the rules again rather than
   // inheriting a decision made once about a different title.
@@ -418,8 +467,14 @@ export function QuickAddModal({
   };
   const tooltipAnim = useRef(new Animated.Value(0)).current;
   const hadParse = useRef(false);
+  // Which detected phrase the person said "no, leave it as text" to — keyed
+  // by position + text so it resets the moment the title changes enough that
+  // it isn't the same phrase anymore. Same mechanism as TaskEditor's own
+  // schedule banner.
+  const [dismissedMatchSignature, setDismissedMatchSignature] = useState<string | null>(null);
   const [whenPickerVisible, setWhenPickerVisible] = useState(false);
   const [categoryPickerVisible, setCategoryPickerVisible] = useState(false);
+  const [projectPickerVisible, setProjectPickerVisible] = useState(false);
   // Whether the drop's placement still applies — the chip can shake it off.
   const [seedActive, setSeedActive] = useState(false);
   // Read only when the sheet opens: a seed that changes identity mid-edit must
@@ -439,20 +494,26 @@ export function QuickAddModal({
    * re-ran when those changed would wipe a half-typed task out from under the
    * user. The effect's deps stay exactly what they were.
    */
-  const resetDraft = (nextTitle: string) => {
+  const resetDraft = (nextTitle: string, opts?: { keepProject?: boolean }) => {
+    // "Add another" keeps a project picked by hand: filling a project is the
+    // case for adding several in a row. One a title rule chose isn't kept,
+    // since the next title answers for itself.
+    const keptProjectId = opts?.keepProject ? pickedProjectRef.current : null;
+    if (!opts?.keepProject) pickedProjectRef.current = null;
+    const listTarget = isListProject(intoProjectId ?? keptProjectId);
     setTitle(nextTitle);
     titleCaret.resetCaret(nextTitle);
     setPriority(newTaskDefaults.priority ?? 0);
     setEffort(newTaskDefaults.effort ?? 0);
     setEstimatedMinutes(null);
     setCustomEffortText('');
-    setDueDate(defaultDueDate());
+    setDueDate(defaultDueDate(listTarget));
     setTimeSegments(newTaskDefaults.timeSegment ? [newTaskDefaults.timeSegment] : []);
     setWindowStart(null);
     setWindowEnd(null);
     setTags([]);
     setPersonOverrides({});
-    setCategory(newTaskDefaults.category);
+    setCategory(hostDefaultCategory() ?? (listTarget ? null : newTaskDefaults.category));
     setSeedActive(false);
     setLinkUrl(null);
     setPhoneNumber(null);
@@ -484,15 +545,17 @@ export function QuickAddModal({
     setRecurrenceFromCompletion(false);
     setSupplyCount(null);
     setSupplyUnit('');
-    setProjectId(null);
+    setProjectId(keptProjectId);
     setRulesOptedOut(false);
     appliedRuleRef.current = null;
     setPrefixW(null);
     setMatchW(null);
     tooltipAnim.setValue(0);
     hadParse.current = false;
+    setDismissedMatchSignature(null);
     setWhenPickerVisible(false);
     setCategoryPickerVisible(false);
+    setProjectPickerVisible(false);
     setPostCreateTask(null);
   };
 
@@ -523,9 +586,11 @@ export function QuickAddModal({
         Animated.timing(sheetOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
         Animated.timing(backdropOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
       ]).start();
-      // Focus (and the keyboard's own slide-up) starts alongside the sheet
-      // animation rather than after it, so the keyboard is up sooner.
-      inputRef.current?.focus();
+      // Focus is requested from the SheetModal's `onShow` instead of here —
+      // this effect fires the moment the `visible` prop flips, which can be a
+      // commit or more before the native Modal has actually presented (see
+      // the sibling-Modal sequencing note on SheetModal.tsx), and a `.focus()`
+      // call before then is a silent no-op with nothing left to retry it.
     }
   }, [visible, effectiveContext, initialType, initialTitle]);
 
@@ -567,7 +632,8 @@ export function QuickAddModal({
     // than those, so it wins them, and losing the match hands the field back.
     // linkUrl has no such baseline (the sheet always opens with none), so its
     // base is simply null, same as projectId.
-    const baseCategory = seedRef.current?.category ?? newTaskDefaults.category;
+    const baseCategory = seedRef.current?.category ?? hostDefaultCategory()
+      ?? (isListProject(intoProjectId) ? null : newTaskDefaults.category);
     const basePriority: Priority = newTaskDefaults.priority ?? 0;
     const baseEffort: Effort = newTaskDefaults.effort ?? 0;
     const prev = appliedRuleRef.current
@@ -598,21 +664,42 @@ export function QuickAddModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ruleFill, visible]);
 
-  /** "“expense” → Work · #receipts" — the word that fired, and what it filled in. */
+  /**
+   * "“expense” → Work · #receipts" — the word that fired, and what it filled
+   * in. Only names a field the rule *still* holds: the reconcile effect above
+   * leaves a field alone the moment the user overrides it by hand (picking a
+   * different category from the chip, say), so a rule's own guess can go
+   * stale without ever being taken back out of state. Re-deriving "did this
+   * field stay what the rule set" from current state — rather than trusting
+   * ruleFill outright — is what makes an overridden field drop out of the
+   * caption instead of continuing to name a category that's no longer
+   * selected. When every field the rule set has been overridden, there's
+   * nothing left for the caption to say, so it disappears rather than
+   * showing a bare, now-meaningless keyword.
+   */
   const ruleCaption = useMemo(() => {
     if (!ruleFill) return null;
+    const stillSet = {
+      category: ruleFill.category !== null && category === ruleFill.category ? ruleFill.category : null,
+      projectId: ruleFill.projectId !== null && projectId === ruleFill.projectId ? ruleFill.projectId : null,
+      priority: ruleFill.priority !== 0 && priority === ruleFill.priority ? ruleFill.priority : (0 as Priority),
+      effort: ruleFill.effort !== 0 && effort === ruleFill.effort ? ruleFill.effort : (0 as Effort),
+      linkUrl: ruleFill.linkUrl !== null && linkUrl === ruleFill.linkUrl ? ruleFill.linkUrl : null,
+      tags: ruleFill.tags.filter(t => tags.includes(t)),
+    };
     const targets = describeTitleRuleTargets(
-      ruleFill,
-      ruleFill.category ? categoryLabel(ruleFill.category, categories) : null,
-      projects.find(p => p.id === ruleFill.projectId)?.title ?? null,
-      ruleFill.linkUrl ? linkLabel(ruleFill.linkUrl) : null,
+      stillSet,
+      stillSet.category ? categoryLabel(stillSet.category, categories) : null,
+      projects.find(p => p.id === stillSet.projectId)?.title ?? null,
+      stillSet.linkUrl ? linkLabel(stillSet.linkUrl) : null,
     );
+    if (!targets) return null;
     const word = ruleFill.matched[0].match.keyword;
     // An arrow rather than the "·" describeTitleRuleTargets uses between its
     // own parts: those are a flat list (category · project · tag), but the
     // word causes the targets, and a dot doesn't say that.
-    return targets ? `“${word}” → ${targets}` : `“${word}”`;
-  }, [ruleFill, categories, projects]);
+    return `“${word}” → ${targets}`;
+  }, [ruleFill, categories, projects, category, projectId, priority, effort, linkUrl, tags]);
 
   // Natural-language scheduling: detect a trailing date/recurrence phrase in
   // the title ("go for a run on tuesday", "water plants every 3 days"). The
@@ -620,7 +707,7 @@ export function QuickAddModal({
   // applied until the user taps the tooltip.
   // ==== parsing the typed line: date, category/tags, link, phone, email, duration ====
   const parsed = useMemo(
-    () => (title.trim() ? parseTaskInput(title, getLogicalNow(dayResetTime)) : null),
+    () => (title.trim() ? parseTaskInput(title, getLogicalNow(dayResetTime), new Date()) : null),
     [title, dayResetTime]
   );
   // "pay rent tmrw #home #errand" — one or more "#word" tokens, the first
@@ -687,13 +774,30 @@ export function QuickAddModal({
     () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && title.trim() ? parsePriorityInput(title) : null),
     [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion]
   );
+  // "call mom -> buy milk -> walk the dog" — the "->" token for an ad hoc
+  // chain, each segment becoming its own step (see parseChainInput's own doc
+  // comment for why a step's duration/link phrase binds to that step while
+  // everything else — schedule, category/tag, priority, mention — stays
+  // task-wide). Checked after every task-wide token so those still resolve
+  // wherever they're typed, including inside a later step, before the split
+  // is offered, and before link/phone/email/duration below, which must not
+  // claim a step's own phrase for the whole task once a chain is what's
+  // being typed. Same type gate as durationParsed and for the same reason:
+  // accepting it commits the sheet to Chain, so it's only offered from the
+  // plain type.
+  const chainParsed = useMemo(
+    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed
+      && type === 'task' && title.trim()
+      ? parseChainInput(title) : null),
+    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, type]
+  );
   // Pasted URL/app-link detection — same tooltip mechanism as the schedule
   // parse above, just not suffix-anchored. Only checked when no schedule
-  // phrase, category/tag token, ambiguous mention, or priority token
+  // phrase, category/tag token, ambiguous mention, priority token, or chain
   // matched, so the tooltips never compete for the same slot.
   const linkParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && title.trim() ? parseLinkInput(title) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed]
+    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !chainParsed && title.trim() ? parseLinkInput(title) : null),
+    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, chainParsed]
   );
   // "call the doctor 555-123-4567" — the same mechanism again, for the number
   // rather than the URL. Checked after the link so a tel: URL someone pasted
@@ -701,8 +805,8 @@ export function QuickAddModal({
   // looksLikePhoneNumber): this one is reading prose full of digits, so a
   // year or a price must not light it up.
   const phoneParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !linkParsed && title.trim() ? parsePhoneInput(title) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, linkParsed]
+    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !chainParsed && !linkParsed && title.trim() ? parsePhoneInput(title) : null),
+    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, chainParsed, linkParsed]
   );
   // "email jane@example.com about the invoice" — the same mechanism again,
   // for an address rather than a number. Checked after phone so a title that
@@ -710,8 +814,8 @@ export function QuickAddModal({
   // priority chain, and email addresses don't collide with the phone pattern
   // since "@" and letters aren't dial digits.
   const emailParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !linkParsed && !phoneParsed && title.trim() ? parseEmailInput(title) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, linkParsed, phoneParsed]
+    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !chainParsed && !linkParsed && !phoneParsed && title.trim() ? parseEmailInput(title) : null),
+    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, chainParsed, linkParsed, phoneParsed]
   );
   // "play violin for 15 minutes" — a duration, not a schedule. Same single
   // tooltip slot, checked last, so a schedule, category/tag token, link or
@@ -722,8 +826,8 @@ export function QuickAddModal({
   // is one. Someone already part-way through a Chain or a Target has said what
   // they're making, and a tooltip shouldn't overrule it.
   const durationParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !linkParsed && !phoneParsed && !emailParsed && type === 'task' && title.trim() ? parseDurationInput(title) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, linkParsed, phoneParsed, emailParsed, type]
+    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !chainParsed && !linkParsed && !phoneParsed && !emailParsed && type === 'task' && title.trim() ? parseDurationInput(title) : null),
+    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, chainParsed, linkParsed, phoneParsed, emailParsed, type]
   );
   // "replace cpap filter 6 filters left" — a stock this task spends, not a
   // schedule. Last in the chain, so everything above still wins the one slot.
@@ -740,12 +844,12 @@ export function QuickAddModal({
   // and the schedule tooltip comes first (it needs the trailing text); tapping
   // it shortens the title, sets the repeat, and this fires on the remainder.
   const supplyParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !linkParsed && !phoneParsed && !emailParsed
+    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !chainParsed && !linkParsed && !phoneParsed && !emailParsed
       && !durationParsed && recurrenceType !== 'none' && title.trim()
       ? parseSupplyInput(title) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, linkParsed, phoneParsed, emailParsed, durationParsed, recurrenceType]
+    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, chainParsed, linkParsed, phoneParsed, emailParsed, durationParsed, recurrenceType]
   );
-  const activeMatch = parsed
+  const rawMatch = parsed
     ? { matchStart: parsed.matchStart, matchedText: parsed.matchedText }
     : categoryTagsParsed
       ? {
@@ -767,6 +871,8 @@ export function QuickAddModal({
             matchStart: priorityParsed.matchStart,
             matchedText: title.slice(priorityParsed.matchStart, priorityParsed.matchEnd),
           }
+      : chainParsed
+        ? { matchStart: chainParsed.matchStart, matchedText: chainParsed.matchedText }
       : linkParsed
         ? { matchStart: linkParsed.matchStart, matchedText: linkParsed.url }
         : phoneParsed
@@ -784,6 +890,13 @@ export function QuickAddModal({
                     matchedText: title.slice(supplyParsed.matchStart, supplyParsed.matchEnd),
                   }
                 : null;
+  // The tooltip's own ✕ answers "not that" for this one phrase — comparing
+  // by position+text (rather than a bare boolean) means editing the title so
+  // a *different* phrase parses brings the tooltip straight back, with no
+  // separate reset needed.
+  const rawMatchSignature = rawMatch ? `${rawMatch.matchStart}|${rawMatch.matchedText}` : null;
+  const matchDismissed = rawMatchSignature !== null && rawMatchSignature === dismissedMatchSignature;
+  const activeMatch = matchDismissed ? null : rawMatch;
   const matchEnd = activeMatch ? activeMatch.matchStart + activeMatch.matchedText.length : 0;
 
   // "beach with @dustin @ansley sat" — every "@name" token that resolves to
@@ -818,9 +931,12 @@ export function QuickAddModal({
   // Suggest previously-used titles that match what's being typed. Suppressed
   // while a schedule/link phrase is detected so the list doesn't fight the
   // tooltip that renders just below the input row.
+  // Deferred: it scans every task, so it runs behind the keystroke rather
+  // than holding the field up while it does.
+  const suggestQuery = useDeferredValue(title);
   const suggestions = useMemo(
-    () => (activeMatch ? [] : suggestTitles(tasks, title)),
-    [tasks, title, activeMatch]
+    () => (activeMatch ? [] : suggestTitles(tasks, suggestQuery)),
+    [tasks, suggestQuery, activeMatch]
   );
 
   const applySuggestion = (suggestion: string) => {
@@ -850,32 +966,9 @@ export function QuickAddModal({
   // Tooltip geometry: center the bubble under the highlighted phrase and aim
   // the caret at it, clamped to the row. Mirror-text widths land a frame after
   // the parse appears; until then the tooltip is still fading in from 0.
-  const CARET_W = 12;
-  let bubbleLeft = 0;
-  let caretLeft = 14;
-  if (activeMatch && prefixW != null && matchW != null) {
-    const center = Math.min((prefixW + matchW) / 2, Math.max(inputW - 8, 0));
-    bubbleLeft = Math.min(Math.max(center - bubbleW / 2, 0), Math.max(tooltipRowW - bubbleW, 0));
-    const rawAim = center - bubbleLeft;
-    // A multi-candidate row has gaps between its pills (tooltipCandidateRow's
-    // own `gap`), and the raw aim point can land in one — floating the caret
-    // over nothing rather than a pill it visibly touches. Snap to whichever
-    // pill is actually nearest instead.
-    let aim = rawAim;
-    let nearestDist = Infinity;
-    for (const layout of candidateLayouts) {
-      if (!layout) continue;
-      const dist = Math.abs(layout.x + layout.width / 2 - rawAim);
-      if (dist < nearestDist) {
-        nearestDist = dist;
-        aim = layout.x + layout.width / 2;
-      }
-    }
-    caretLeft = Math.min(
-      Math.max(aim - CARET_W / 2, 10),
-      Math.max(bubbleW - CARET_W - 10, 10),
-    );
-  }
+  const { bubbleLeft, caretLeft } = activeMatch
+    ? aimTooltip({ prefixW, matchW, inputW, bubbleW, rowW: tooltipRowW, candidateLayouts })
+    : { bubbleLeft: 0, caretLeft: 14 };
 
   // Apply the suggested schedule and strip the phrase from the title.
   const applyParse = () => {
@@ -993,6 +1086,28 @@ export function QuickAddModal({
     setPriority(priorityParsed.priority);
   };
 
+  // Apply the detected "->" chain: the first step becomes the task's own
+  // title, the rest become chainItems. Typing "->" is someone describing a
+  // chain in their own words, so accepting it switches the sheet into that
+  // mode the same way applyDuration switches into Timed.
+  const applyChain = () => {
+    if (!chainParsed) return;
+    haptics.success();
+    animateLayout();
+    const [first, ...rest] = chainParsed.steps;
+    setTitle(first.title);
+    titleCaret.moveCaret(first.title);
+    setType('chain');
+    if (first.estimatedMinutes !== null) setEstimatedMinutes(first.estimatedMinutes);
+    if (first.linkUrl !== null) setLinkUrl(first.linkUrl);
+    setChainItems(rest.map(step => ({
+      id: generateId(),
+      title: step.title,
+      estimatedMinutes: step.estimatedMinutes,
+      linkUrl: step.linkUrl,
+    })));
+  };
+
   const applyLink = () => {
     if (!linkParsed) return;
     haptics.success();
@@ -1061,6 +1176,7 @@ export function QuickAddModal({
     if (parsed) applyParse();
     else if (categoryTagsParsed) applyCategoryTags();
     else if (priorityParsed) applyPriority();
+    else if (chainParsed) applyChain();
     else if (linkParsed) applyLink();
     else if (phoneParsed) applyPhone();
     else if (emailParsed) applyEmail();
@@ -1068,6 +1184,15 @@ export function QuickAddModal({
     else if (supplyParsed) applySupply();
   };
   const confirmVisible = activeMatch !== null && !ambiguousMention && !mentionSuggestion;
+
+  // "No, that's just part of the title" — leaves the title and every other
+  // field untouched, just drops the tooltip for this phrase.
+  const dismissActiveParse = () => {
+    if (!activeMatch) return;
+    haptics.tap();
+    animateLayout();
+    setDismissedMatchSignature(`${activeMatch.matchStart}|${activeMatch.matchedText}`);
+  };
 
   const addStep = (stepTitle: string) => {
     const t = stepTitle.trim();
@@ -1096,6 +1221,10 @@ export function QuickAddModal({
   );
 
   const typeValues: TypeValues = {
+    // Always empty here, for the same reason healthMetric is null: quick add
+    // has no Rotation kind to pick, and a set is authored in the editor.
+    rotationEnabled: false,
+    rotationItems: [],
     timedMinutes,
     targetCount,
     targetUnit,
@@ -1172,7 +1301,13 @@ export function QuickAddModal({
   // The burst mode itself. Gated on there being no drop seed, so the toggle is
   // neither shown nor honoured for a sheet opened by dragging the add button
   // onto a spot in the list.
-  const keepOpen = newTaskDefaults.keepOpenAfterQuickAdd && !seedActive;
+  //
+  // One seed is the exception: a section and nothing else. Filling a section
+  // is the case for adding several in a row, and every task it makes belongs
+  // in the same section, so the seed is kept for each rather than spent.
+  const sectionOnlySeed = !!seed?.groupId && seed.dueDate === undefined && !seed.timeSegments
+    && !seed.windowStart && !seed.pinned && seed.category == null;
+  const keepOpen = newTaskDefaults.keepOpenAfterQuickAdd && (!seedActive || sectionOnlySeed);
 
   const createTask = (finalTitle: string) => {
     haptics.success();
@@ -1192,7 +1327,9 @@ export function QuickAddModal({
       linkUrl: resolveLinkUrl(),
       phoneNumber: resolvePhoneNumber(),
       emailAddress: resolveEmailAddress(),
-      projectId,
+      // The project the sheet was opened in wins over one a title rule named:
+      // a task typed on a project's own page belongs to that project.
+      projectId: intoProjectId ?? projectId,
       // recurrenceType deliberately absent — it comes from `baked` above,
       // which is what turns a Target into a daily task.
       recurrenceInterval,
@@ -1232,11 +1369,15 @@ export function QuickAddModal({
     // onDone exists to avoid. Each add says where it went in the sheet instead
     // (see the burst row below), which is where the user is already looking.
     //
-    // A seeded sheet never takes this path: the drop chose a slot for one
-    // task, and positioning that task is exactly what onCreated does.
+    // A seeded sheet only takes this path for a section-only seed (see
+    // keepOpen): any other drop chose a slot for one task, and positioning
+    // that task is exactly what onCreated does. The section seed is put back
+    // after the reset, so the next task joins the same section.
     if (keepOpen) {
+      const keepSeed = seedActive && sectionOnlySeed;
       setBurstAdded(prev => [...prev, finalTitle]);
-      resetDraft('');
+      resetDraft('', { keepProject: true });
+      if (keepSeed) setSeedActive(true);
       inputRef.current?.focus();
       return;
     }
@@ -1249,7 +1390,32 @@ export function QuickAddModal({
   };
 
   // ==== the exits: add, or hand the draft to the full editor ====
+  // A line starting "event:" is a calendar event, not a task: the rest goes
+  // through QuickEventSheet's reader and fills Apple's new-event sheet, which
+  // presents on top of this one; this closes only once the event is saved, so
+  // a cancel there comes back to the line. Off in a demo, where the event
+  // would reach the real calendar, so there the line is an ordinary task.
+  const eventText = isDemoModeActive() ? null : eventMarkerText(title);
+  const addAsEvent = async (text: string) => {
+    haptics.tap();
+    const byId = new Map(people.map(p => [p.id, p]));
+    const draft = parseQuickEvent(text, {
+      people,
+      groups: groupTokens,
+      nameOf: id => { const p = byId.get(id); return p ? displayNameOf(p) : null; },
+      now: getLogicalNow(dayResetTime),
+      today: getCurrentDayStart(),
+      wallClock: new Date(),
+    });
+    const saved = await useEventPeopleStore.getState().createEvent(
+      { title: draft.title, start: draft.start, end: draft.end },
+      draft.personIds
+    );
+    if (saved) dismiss();
+  };
+
   const handleAdd = () => {
+    if (eventText !== null) { void addAsEvent(eventText); return; }
     // A rule that strips takes its word out here rather than as you type —
     // rewriting the field under the cursor is the one way this feature would
     // be unusable. Nothing strips unless a rule asked to, and a strip that
@@ -1294,12 +1460,20 @@ export function QuickAddModal({
       tags: resolveTags(),
       personIds,
       category: resolveCategory(),
+      // The project picked here (or the one the sheet was opened in) rides
+      // into the full editor too, rather than being dropped on the way.
+      projectId: intoProjectId ?? projectId,
       linkUrl: resolveLinkUrl(),
       phoneNumber: resolvePhoneNumber(),
       emailAddress: resolveEmailAddress(),
       recurrenceInterval,
       recurrenceDays,
       recurrenceMonthDay,
+      // Quick add has no month-of-year control for yearly rules (RecurrencePicker's
+      // "In which month" group is TaskEditor/TemplateItemEditor-only, same scoping
+      // as the day-of-month stepper below, which quick add also doesn't expose for
+      // yearly) — always "same month as the due date" until edited in the full editor.
+      recurrenceMonth: null,
       recurrenceWeekOrdinal,
       recurrenceFromCompletion,
       recurrenceEndDate: recurrenceEndDate ? new Date(recurrenceEndDate) : null,
@@ -1311,6 +1485,10 @@ export function QuickAddModal({
       // on its own save.
       supplyCount,
       supplyUnit: supplyUnit.trim() || null,
+      // Same seed createTask applies (see its own groupId line) — dropped
+      // here before, so opening "More details" off a stack-seeded quick add
+      // silently lost the stack.
+      ...(seedActive && seed?.groupId ? { groupId: seed.groupId } : {}),
     });
   };
 
@@ -1470,8 +1648,26 @@ export function QuickAddModal({
     {
       key: 'category', icon: 'folder-outline',
       value: category !== null ? categoryLabel(category, categories) : null,
-      onPress: () => { haptics.tap(); setCategoryPickerVisible(true); },
+      // CategoryPickerSheet deliberately doesn't autofocus its own search
+      // field (see its own doc comment), so without this the title field's
+      // keyboard — and the InputAccessoryView attached to it — stays up in
+      // this now-backgrounded Modal while the picker's Modal becomes the
+      // topmost window. iOS then has nowhere reliable to draw that accessory
+      // bar, which is what left it stuck behind the keyboard once the picker
+      // closed and focus returned to the title field. Dismissing first means
+      // there's nothing left attached to lose track of.
+      onPress: () => { haptics.tap(); Keyboard.dismiss(); setCategoryPickerVisible(true); },
     },
+    // Which project it goes into, a list's included, so a line can be added to
+    // a list from anywhere. Not offered when the sheet was opened inside a
+    // project, whose own id wins (intoProjectId). Keyboard dismissed first for
+    // the reason the category chip gives.
+    ...(intoProjectId ? [] : [{
+      key: 'project' as const, icon: 'briefcase-outline' as const,
+      value: projectId !== null ? projects.find(p => p.id === projectId)?.title ?? null : null,
+      truncate: true,
+      onPress: () => { haptics.tap(); Keyboard.dismiss(); setProjectPickerVisible(true); },
+    }]),
     {
       key: 'effort', icon: 'barbell', panel: 'effort',
       value: effort > 0
@@ -1544,6 +1740,14 @@ export function QuickAddModal({
       animationType="none"
       transparent
       onRequestClose={() => dismiss()}
+      // Opening this sheet can be held back a commit or more by SheetModal's
+      // own sibling-Modal sequencing (e.g. right after FabMenu's popup closes)
+      // — see SheetModal.tsx. Focusing off the `visible` prop races that: the
+      // effect below fires the moment `visible` flips, which can be before the
+      // native Modal has actually presented, so the focus call is a silent
+      // no-op with nothing to retry it. `onShow` only fires once iOS confirms
+      // the modal is up, which is the one signal that can't be early.
+      onShow={() => inputRef.current?.focus()}
     >
       <Animated.View style={[StyleSheet.absoluteFill, { opacity: backdropOpacity }]} pointerEvents="none">
         <SafeBlurView
@@ -1586,7 +1790,7 @@ export function QuickAddModal({
                     haptics.tap();
                     if (seed?.category && category === seed.category) setCategory(null);
                     if (seed?.dueDate !== undefined && (dueDate?.toISOString() ?? null) === (seed.dueDate ?? null)) {
-                      setDueDate(defaultDueDate());
+                      setDueDate(defaultDueDate(isListProject(intoProjectId ?? projectId)));
                     }
                     if (seed?.timeSegments && timeSegments === seed.timeSegments) setTimeSegments([]);
                     setSeedActive(false);
@@ -1663,7 +1867,7 @@ export function QuickAddModal({
                 onPress={handleAdd}
                 disabled={!title.trim() || blocked !== null}
                 accessibilityRole="button"
-                accessibilityLabel="Add task"
+                accessibilityLabel={eventText !== null ? 'Add event' : 'Add task'}
               >
                 <Ionicons name="arrow-up" size={18} color={colors.onAccent} />
               </TouchableOpacity>
@@ -1753,54 +1957,70 @@ export function QuickAddModal({
                     ))}
                   </View>
                 ) : (
-                  <PressableScale
-                    style={[styles.tooltipBubble, tooltipRowW > 0 && { maxWidth: tooltipRowW }]}
-                    onPress={applyActiveParse}
+                  <View
+                    style={[styles.tooltipPillRow, tooltipRowW > 0 && { maxWidth: tooltipRowW }]}
                     onLayout={e => setBubbleW(e.nativeEvent.layout.width)}
                   >
-                    <Ionicons
-                      name={
-                        parsed
-                          ? (parsed.schedule.recurrenceType !== 'none'
-                              ? 'repeat'
-                              : parsed.schedule.deadline ? 'flag-outline' : 'calendar-outline')
+                    <PressableScale
+                      style={[styles.tooltipBubble, styles.tooltipBubbleJoined]}
+                      onPress={applyActiveParse}
+                    >
+                      <Ionicons
+                        name={
+                          parsed
+                            ? (parsed.schedule.recurrenceType !== 'none'
+                                ? 'repeat'
+                                : parsed.schedule.deadline ? 'flag-outline' : 'calendar-outline')
+                            : categoryTagsParsed
+                              ? (categoryTagsParsed.category ? 'pricetag-outline' : 'pricetags-outline')
+                              : priorityParsed
+                                ? 'alert-circle-outline'
+                                : chainParsed
+                                  ? 'git-commit-outline'
+                                  : linkParsed
+                                    ? 'link-outline'
+                                    : phoneParsed
+                                      ? 'call-outline'
+                                      : emailParsed
+                                        ? 'mail-outline'
+                                        : durationParsed
+                                          ? 'timer-outline'
+                                          : 'cube-outline'
+                        }
+                        size={14}
+                        color={colors.onAccent}
+                      />
+                      <Text style={styles.tooltipText} numberOfLines={1} ellipsizeMode="tail">
+                        {parsed
+                          ? describeSchedule(parsed.schedule, getLogicalNow(dayResetTime))
                           : categoryTagsParsed
-                            ? (categoryTagsParsed.category ? 'pricetag-outline' : 'pricetags-outline')
+                            ? categoryTagsLabel(categoryTagsParsed, categories)
                             : priorityParsed
-                              ? 'alert-circle-outline'
-                              : linkParsed
-                                ? 'link-outline'
-                                : phoneParsed
-                                  ? 'call-outline'
-                                  : emailParsed
-                                    ? 'mail-outline'
-                                    : durationParsed
-                                      ? 'timer-outline'
-                                      : 'cube-outline'
-                      }
-                      size={14}
-                      color={colors.onAccent}
-                    />
-                    <Text style={styles.tooltipText} numberOfLines={1} ellipsizeMode="tail">
-                      {parsed
-                        ? describeSchedule(parsed.schedule, getLogicalNow(dayResetTime))
-                        : categoryTagsParsed
-                          ? categoryTagsLabel(categoryTagsParsed, categories)
-                          : priorityParsed
-                            ? `Priority · ${PRIORITY_LABELS_SHORT[priorityParsed.priority]}`
-                            : linkParsed
-                              ? linkLabel(linkParsed.url)
-                              : phoneParsed
-                                ? `Call ${phoneParsed.number}`
-                                : emailParsed
-                                  ? `Email ${emailParsed.address}`
-                                  : durationParsed
-                                    ? `Timer · ${formatDuration(durationParsed.minutes)}`
-                                    : `Supply · ${formatSupplyLeft(supplyParsed!.count, supplyParsed!.unit)}`}
-                    </Text>
-                    <View style={styles.tooltipDot} />
-                    <Text style={styles.tooltipHint}>Tap to set</Text>
-                  </PressableScale>
+                              ? `Priority · ${PRIORITY_LABELS_SHORT[priorityParsed.priority]}`
+                              : chainParsed
+                                ? `Chain · ${chainParsed.steps.length} steps`
+                                : linkParsed
+                                  ? linkLabel(linkParsed.url)
+                                  : phoneParsed
+                                    ? `Call ${phoneParsed.number}`
+                                    : emailParsed
+                                      ? `Email ${emailParsed.address}`
+                                      : durationParsed
+                                        ? `Timer · ${formatDuration(durationParsed.minutes)}`
+                                        : `Supply · ${formatSupplyLeft(supplyParsed!.count, supplyParsed!.unit)}`}
+                      </Text>
+                      <View style={styles.tooltipDot} />
+                      <Text style={styles.tooltipHint}>Tap to set</Text>
+                    </PressableScale>
+                    <View style={styles.tooltipDivider} />
+                    <PressableScale
+                      style={styles.tooltipDismiss}
+                      onPress={dismissActiveParse}
+                      accessibilityLabel="Not that"
+                    >
+                      <Ionicons name="close" size={14} color={colors.onAccent} />
+                    </PressableScale>
+                  </View>
                 )}
               </View>
             </Animated.View>
@@ -2506,8 +2726,9 @@ export function QuickAddModal({
           {/* "Add another": the burst-capture switch. Its own row rather than
               squeezed into the footer, which in the simple form already holds
               three buttons — and so that the count beside it has somewhere to
-              sit. Hidden for a seeded sheet, where the mode doesn't apply. */}
-          {!seedActive && (
+              sit. Hidden for a seeded sheet, where the mode doesn't apply,
+              except a section-only one (see keepOpen). */}
+          {(!seedActive || sectionOnlySeed) && (
             <View style={styles.burstRow}>
               <TouchableOpacity
                 style={[styles.keepOpenChip, keepOpen && styles.keepOpenChipOn]}
@@ -2570,13 +2791,13 @@ export function QuickAddModal({
                 disabled={!title.trim() || blocked !== null}
                 activeOpacity={interaction.activeOpacity}
                 accessibilityRole="button"
-                accessibilityLabel="Add task"
+                accessibilityLabel={eventText !== null ? 'Add event' : 'Add task'}
               >
                 <Text style={[
                   styles.footerAddText,
                   (!title.trim() || blocked !== null) && styles.footerAddTextDisabled,
                 ]}>
-                  Add task
+                  {eventText !== null ? 'Add event' : 'Add task'}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -2599,6 +2820,7 @@ export function QuickAddModal({
         visible={whenPickerVisible}
         value={dueDate}
         timeSegments={timeSegments}
+        projectAnchor={projectDateAnchor(projects.find(p => p.id === (intoProjectId ?? projectId)), getLogicalToday())}
         taskTitle={title}
         taskTags={tags}
         taskCategory={category}
@@ -2625,6 +2847,12 @@ export function QuickAddModal({
         onSelect={setCategory}
         onClose={() => setCategoryPickerVisible(false)}
       />
+      <ProjectPickerSheet
+        visible={projectPickerVisible}
+        value={projectId}
+        onSelect={pickProject}
+        onClose={() => setProjectPickerVisible(false)}
+      />
       <NumberPadAccessory />
       <TitleTokenAccessory
         nativeID={TITLE_TOKEN_ACCESSORY_ID}
@@ -2643,7 +2871,7 @@ export function QuickAddModal({
     />
     </>
   );
-}
+});
 
 const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create({
   backdropDim: { backgroundColor: colors.backdrop },
@@ -2946,7 +3174,10 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     borderBottomWidth: 6,
     borderLeftColor: 'transparent',
     borderRightColor: 'transparent',
-    borderBottomColor: colors.accent,
+    // Matches the bubble's own fill (accentFill), not the plain `accent`
+    // token — the two are different shades, so the caret was visibly a
+    // different blue than the bubble it's supposed to be pointing out of.
+    borderBottomColor: colors.accentFill,
     // Overlap the bubble by a hair so independent sub-pixel rounding of this
     // 0-height triangle and the bubble below it can never leave a seam.
     marginBottom: -1,
@@ -2960,6 +3191,42 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     paddingVertical: 7,
     borderRadius: radius.md,
     backgroundColor: colors.accentFill,
+  },
+  tooltipPillRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    // Backs the 1px divider between the bubble and the ✕: the row itself
+    // has no fill, only its two children do, so the divider's translucent
+    // (opacity-based) color sat over the transparent gap between them and
+    // showed the screen behind it instead of a subtle line on the pill.
+    backgroundColor: colors.accentFill,
+    borderRadius: radius.md,
+  },
+  // Overrides for the tooltip's own apply button, joined to the ✕ on its
+  // right: square that side off and let the text give way to it instead of
+  // pushing it past the row's edge.
+  tooltipBubbleJoined: {
+    flexShrink: 1,
+    borderTopRightRadius: 0,
+    borderBottomRightRadius: 0,
+  },
+  tooltipDismiss: {
+    flexShrink: 0,
+    alignSelf: 'stretch',
+    justifyContent: 'center',
+    paddingVertical: 7,
+    paddingHorizontal: spacing.xsm,
+    borderTopRightRadius: radius.md,
+    borderBottomRightRadius: radius.md,
+    backgroundColor: colors.accentFill,
+  },
+  tooltipDivider: {
+    width: 1,
+    alignSelf: 'stretch',
+    marginVertical: 7,
+    backgroundColor: colors.onAccent,
+    opacity: 0.25,
   },
   tooltipCandidateRow: {
     flexDirection: 'row',

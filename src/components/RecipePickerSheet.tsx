@@ -23,7 +23,7 @@ import { haptics } from '../utils/haptics';
 import { SegmentedControl } from './SegmentedControl';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
-import { rankRecipes, describeRecipe, cleanRecipeName, sortRecipesForDisplay } from '../utils/recipeUtils';
+import { rankRecipes, describeRecipe, cleanRecipeName, sharedRecipeNameKeys, sortRecipesForDisplay } from '../utils/recipeUtils';
 import { slotLabel } from '../utils/mealPlan';
 import { describeLeftover, liveFreshnessOf, liveLeftovers, mealTitleForLeftover } from '../utils/leftovers';
 // The colour ladder lives with the card that established it rather than in
@@ -32,7 +32,8 @@ import { describeLeftover, liveFreshnessOf, liveLeftovers, mealTitleForLeftover 
 import { freshnessColor } from './LeftoversCard';
 import { SheetScrim } from './SheetScrim';
 import { MEAL_SLOTS, RECIPE_NAME_MAX_LENGTH, type Leftover, type MealPlanEntry, type MealSlot } from '../types';
-import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
+import { useSheetMotion } from '../hooks/useSheetMotion';
+import { useFilterField } from '../hooks/useFilterField';
 
 export interface MealPick {
   /**
@@ -150,8 +151,10 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
   const { height: windowHeight } = useWindowDimensions();
 
   const recipes = useRecipeStore(useShallow(s => s.recipes));
+  // Recipes another recipe shares a name with lead their subtitle with the book.
+  const sharedNames = useMemo(() => sharedRecipeNameKeys(recipes), [recipes]);
   const leftovers = useLeftoverStore(useShallow(s => s.leftovers));
-  const [query, setQuery] = useState('');
+  const { query, clear: clearQuery, props: filterField, inputRef: searchInputRef } = useFilterField();
   const [slot, setSlot] = useState<MealSlot>(defaultSlot);
   /** Every entry picked so far this session, in the order they landed. */
   const [planned, setPlanned] = useState<MealPlanEntry[]>([]);
@@ -197,10 +200,8 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
   const showFreeText =
     !!typed && !matches.some(r => r.name.toLowerCase() === typed.toLowerCase());
 
-  const hiddenY = useSheetHiddenOffset();
-
-  const translateY = useRef(new Animated.Value(hiddenY)).current;
-  const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const sheet = useSheetMotion(visible);
+  const { translateY, backdropOpacity } = sheet;
   const keyboardOffset = useRef(new Animated.Value(0)).current;
   const [keyboardHeight, setKeyboardHeight] = useState(0);
 
@@ -234,26 +235,21 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
 
   useEffect(() => {
     if (!visible) return;
-    setQuery('');
+    clearQuery();
     setSlot(forceSlot ?? lastPickedSlot ?? defaultSlotRef.current);
     setPlanned([]);
-    translateY.setValue(hiddenY);
-    backdropOpacity.setValue(0);
     keyboardOffset.setValue(0);
     setKeyboardHeight(0);
-    Animated.parallel([
-      Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
-    ]).start();
+    sheet.show();
+    // Same fix as QuickSearchModal's own field: the sheet stays mounted
+    // across opens, so nothing else focuses this one.
+    searchInputRef.current?.focus();
   }, [visible, forceSlot]);
 
   const dismiss = () => {
     Keyboard.dismiss();
-    Animated.parallel([
-      Animated.spring(translateY, { toValue: hiddenY, ...animation.spring.sheetDismiss, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
-    ]).start(() => {
-      // No re-arming setValue here — see useSheetHiddenOffset.
+    sheet.hide(() => {
+      // No re-arming setValue here — see useSheetMotion.
       onClose();
       // Deferred to here rather than fired as each pick lands — see onPlanned
       // on the props, and `pick`/`pickLeftover` below.
@@ -270,7 +266,7 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
       },
       onPanResponderRelease: (_, { dy, vy }) => {
         if (dy > 80 || vy > 1.2) dismiss();
-        else Animated.spring(translateY, { toValue: 0, ...animation.spring.snappy, useNativeDriver: true }).start();
+        else sheet.restore();
       },
     })
   ).current;
@@ -294,7 +290,7 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
     const entry = onPlan({ date: dayKey, slot, recipeId, leftoverId: null, title });
     if (!entry) return;
     setPlanned(prev => [...prev, entry]);
-    setQuery('');
+    clearQuery();
   };
 
   /**
@@ -341,7 +337,7 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
     });
     if (!entry) return;
     setPlanned(prev => [...prev, entry]);
-    setQuery('');
+    clearQuery();
   };
 
   return (
@@ -353,6 +349,7 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
       <SheetScrim onPress={dismiss} />
 
       <Animated.View
+        onLayout={sheet.onCardLayout}
         style={[
           styles.sheetOuter,
           { maxHeight: windowHeight - keyboardHeight - TOP_INSET },
@@ -391,8 +388,7 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
             <Ionicons name="search" size={15} color={colors.textTertiary} />
             <TextInput
               style={styles.searchInput}
-              value={query}
-              onChangeText={setQuery}
+              {...filterField}
               placeholder="Search recipes, or type a meal"
               placeholderTextColor={colors.textTertiary}
               autoCorrect={false}
@@ -494,14 +490,14 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
                       accessibilityRole="button"
                       accessibilityLabel={pickedId
                         ? `Remove ${recipe.name} from ${slotLabel(slot)}`
-                        : `Plan ${recipe.name}. ${describeRecipe(recipe)}`}
+                        : `Plan ${recipe.name}. ${describeRecipe(recipe, null, { sharedName: sharedNames.has(recipe.nameKey) })}`}
                     >
                       <View style={[styles.rowIcon, { backgroundColor: colors.accentSubtle }]}>
                         <Ionicons name="restaurant-outline" size={16} color={colors.accent} />
                       </View>
                       <View style={styles.rowInfo}>
                         <Text style={styles.rowName} numberOfLines={1}>{recipe.name}</Text>
-                        <Text style={styles.rowHint} numberOfLines={1}>{describeRecipe(recipe)}</Text>
+                        <Text style={styles.rowHint} numberOfLines={1}>{describeRecipe(recipe, null, { sharedName: sharedNames.has(recipe.nameKey) })}</Text>
                       </View>
                       {pickedId
                         ? <Ionicons name="checkmark-circle" size={16} color={colors.accent} />

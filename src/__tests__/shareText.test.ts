@@ -3,8 +3,9 @@ import {
   buildGroceryListShareText, buildGroceryListText, buildIngredientsText, buildRecipeShareText,
   buildWeekPlanShareText,
 } from '../utils/shareText';
+import { weightLookups } from '../utils/lineWeight';
 
-// shareText reaches recipeUtils.ts (for describeAttribution/formatServings)
+// shareText reaches recipeUtils.ts (for describeAttribution/formatServingsRange)
 // and mealPlan.ts directly, both of which reach dateUtils.ts → the settings
 // store — which nothing here needs. Same mock as recipeUtils.test.ts and
 // mealPlanGroceries.test.ts.
@@ -57,6 +58,7 @@ function recipe(id: string, name: string, overrides: Partial<Recipe> = {}): Reci
     tags: [],
     ingredients: [],
     emptySections: [],
+    emptyStepSections: [],
     components: [],
     prepTasks: [],
     steps: [],
@@ -111,6 +113,21 @@ describe('buildRecipeShareText', () => {
     const lines = text.split('\n');
     expect(lines[0]).toBe('Chili');
     expect(lines[1]).toBe('Serves 4-6 · 1h');
+  });
+
+  it('says the servings the scaled batch makes, the way the stepper does', () => {
+    const r = recipe('r1', 'Chili', {
+      servings: 4, servingsMax: 6, recipeYield: '24 cookies',
+      ingredients: [ing('Beans', { quantity: '2 cans' })],
+    });
+    const lines = buildRecipeShareText(r, recipeMap([r]), { scale: 2 }).split('\n');
+    expect(lines[1]).toBe('Serves 8-12 · Makes 24 cookies');
+    expect(lines).toContain('- 4 cans Beans');
+  });
+
+  it('claims no servings for a recipe that never said, at any scale', () => {
+    const r = recipe('r1', 'Chili', { servings: null, ingredients: [ing('Beans')] });
+    expect(buildRecipeShareText(r, recipeMap([r]), { scale: 2 })).not.toContain('Serves');
   });
 
   it('lists every ingredient, scaled and converted to match the screen', () => {
@@ -173,6 +190,90 @@ describe('buildRecipeShareText', () => {
     expect(lines.slice(at + 1, at + 6)).toEqual([
       'To finish:', '- Parsley', 'For the Mash:', 'To finish:', '- Butter',
     ]);
+  });
+
+  it('sends an either/or as the choice, every option with its own amount (#2948)', () => {
+    // The recipe screen shows both peppers, captioned "or jalapeño". Sending
+    // the default alone told the reader there was no choice.
+    const tacos = recipe('r1', 'Tacos', {
+      ingredients: [
+        ing('serrano', { quantity: '1', choiceGroup: 'Pepper' }),
+        ing('jalapenos', { quantity: '2', choiceGroup: 'Pepper' }),
+        ing('onion', { quantity: '1' }),
+      ],
+    });
+    const lines = buildRecipeShareText(tacos, recipeMap([tacos]), { scale: 2 }).split('\n');
+    const at = lines.indexOf('Ingredients:');
+    expect(lines.slice(at + 1, at + 3)).toEqual(['- 2 serrano or 4 jalapenos', '- 2 onion']);
+  });
+
+  it('names a component that shares an ingredient\'s group, without listing its lines', () => {
+    const homemade = recipe('r2', 'Tortillas de Maiz', { ingredients: [ing('masa harina')] });
+    const tacos = recipe('r1', 'Tacos', {
+      ingredients: [
+        ing('corn tortillas', { quantity: '8', choiceGroup: 'Tortillas' }),
+        ing('flour tortillas', { quantity: '8', choiceGroup: 'Tortillas' }),
+      ],
+      components: [{ ...link('r2', 'Tortillas de Maiz'), choiceGroup: 'Tortillas' }],
+    });
+    const text = buildRecipeShareText(tacos, recipeMap([tacos, homemade]));
+    expect(text).toContain('- 8 corn tortillas or 8 flour tortillas or Tortillas de Maiz');
+    expect(text).not.toContain('masa harina');
+  });
+
+  it('keeps a choice between two components at its default dish', () => {
+    // Both dishes in full would be two headings of lines to buy.
+    const mash = recipe('r2', 'Mash', { ingredients: [ing('Potatoes')] });
+    const rice = recipe('r3', 'Rice', { ingredients: [ing('Rice')] });
+    const steak = recipe('r1', 'Steak', {
+      ingredients: [ing('Steak')],
+      components: [{ ...link('r2', 'Mash'), choiceGroup: 'Side' }, { ...link('r3', 'Rice'), choiceGroup: 'Side' }],
+    });
+    const text = buildRecipeShareText(steak, recipeMap([steak, mash, rice]));
+    expect(text).toContain('- Potatoes');
+    expect(text).not.toContain('- Rice');
+  });
+
+  it('names the other dishes of a component choice in the default dish\'s heading', () => {
+    // Sending only the mash told the reader the side was mash.
+    const mash = recipe('r2', 'Mash', { ingredients: [ing('Potatoes')] });
+    const rice = recipe('r3', 'Rice', { ingredients: [ing('Rice')] });
+    const salad = recipe('r4', 'Salad', { ingredients: [ing('Lettuce')] });
+    const gravy = recipe('r5', 'Gravy', { ingredients: [ing('Stock')] });
+    const steak = recipe('r1', 'Steak', {
+      ingredients: [ing('Steak')],
+      components: [
+        { ...link('r2', 'Mash'), choiceGroup: 'Side' },
+        { ...link('r3', 'Rice'), choiceGroup: 'Side' },
+        { ...link('gone', 'Polenta'), choiceGroup: 'Side' },
+        link('r5', 'Gravy'),
+        { ...link('r4', 'Salad'), choiceGroup: 'Starter' },
+      ],
+    });
+    const lines = buildRecipeShareText(steak, recipeMap([steak, mash, rice, salad, gravy])).split('\n');
+    // A deleted alternative is still named by the name it was linked under,
+    // the way an ingredient slot names one.
+    expect(lines).toContain('For the Mash (or Rice or Polenta):');
+    expect(lines).toContain('- Potatoes');
+    // Not on a choice: the plain heading.
+    expect(lines).toContain('For the Gravy:');
+    // A choice of one has no other dish to name.
+    expect(lines).toContain('For the Salad:');
+    expect(lines.join('\n')).not.toContain('- Rice');
+  });
+
+  it('names the alternatives of a choice nested inside a component', () => {
+    const buttery = recipe('r3', 'Buttery mash', { ingredients: [ing('Butter')] });
+    const olive = recipe('r4', 'Olive oil mash', { ingredients: [ing('Olive oil')] });
+    const side = recipe('r2', 'Side', {
+      components: [
+        { ...link('r3', 'Buttery mash'), choiceGroup: 'Style' },
+        { ...link('r4', 'Olive oil mash'), choiceGroup: 'Style' },
+      ],
+    });
+    const steak = recipe('r1', 'Steak', { ingredients: [ing('Steak')], components: [link('r2', 'Side')] });
+    const lines = buildRecipeShareText(steak, recipeMap([steak, side, buttery, olive])).split('\n');
+    expect(lines).toContain('For the Buttery mash (or Olive oil mash):');
   });
 
   it('numbers steps when the recipe has them', () => {
@@ -258,6 +359,29 @@ describe('buildIngredientsText', () => {
     const r = recipe('r1', 'Idea', { steps: [{ id: 's1', text: 'Think about it.' }] });
     expect(buildIngredientsText(r, recipeMap([r]))).toBe('');
   });
+
+  it('pastes a component choice as the default dish\'s lines alone, with no heading to name the others in', () => {
+    const mash = recipe('r2', 'Mash', { ingredients: [ing('Potatoes', { quantity: '2 lb' })] });
+    const rice = recipe('r3', 'Rice', { ingredients: [ing('Rice', { quantity: '1 cup' })] });
+    const steak = recipe('r1', 'Steak', {
+      ingredients: [ing('Steak', { quantity: '1 lb' })],
+      components: [{ ...link('r2', 'Mash'), choiceGroup: 'Side' }, { ...link('r3', 'Rice'), choiceGroup: 'Side' }],
+    });
+    expect(buildIngredientsText(steak, recipeMap([steak, mash, rice]))).toBe('1 lb Steak\n2 lb Potatoes');
+  });
+
+  it('pastes an either/or as one line holding both options (#2948)', () => {
+    // One line per ingredient still: the pepper is one ingredient, and two
+    // lines would paste as two things to buy.
+    const tacos = recipe('r1', 'Tacos', {
+      ingredients: [
+        ing('serrano', { quantity: '1', choiceGroup: 'Pepper' }),
+        ing('jalapenos', { quantity: '2', choiceGroup: 'Pepper' }),
+        ing('onion', { quantity: '1' }),
+      ],
+    });
+    expect(buildIngredientsText(tacos, recipeMap([tacos]))).toBe('1 serrano or 2 jalapenos\n1 onion');
+  });
 });
 
 describe('buildGroceryListShareText', () => {
@@ -271,9 +395,58 @@ describe('buildGroceryListShareText', () => {
     expect(buildGroceryListShareText(items)).toBe('Grocery list\n- Eggs');
   });
 
+  it('sends an either/or as one line where its first option sits', () => {
+    const items = [
+      item('apples', { quantity: '4', choiceGroup: 'g1' }),
+      item('milk'),
+      item('pears', { quantity: '4', choiceGroup: 'g1' }),
+    ];
+    expect(buildGroceryListShareText(items)).toBe('Grocery list\n- 4 apples or 4 pears\n- milk');
+  });
+
+  it('sends the one option left once the other is checked off', () => {
+    const items = [
+      item('apples', { choiceGroup: 'g1', checked: true }),
+      item('pears', { choiceGroup: 'g1' }),
+    ];
+    expect(buildGroceryListShareText(items)).toBe('Grocery list\n- pears');
+  });
+
   it('is empty when nothing is on the list', () => {
     expect(buildGroceryListShareText([item('Milk', { checked: true })])).toBe('');
     expect(buildGroceryListShareText([])).toBe('');
+  });
+
+  it('sends the amount in the units the screen was showing', () => {
+    // A recipe-added "500 g" reads as about a pound on a US-units screen, and
+    // the person shopping from the text should see what was on it.
+    const items = [item('ground beef', { quantity: '500 g' }), item('Eggs', { quantity: 'x12' })];
+    expect(buildGroceryListShareText(items, { unitSystem: 'us' }))
+      .toBe('Grocery list\n- ≈1.1 lbs ground beef\n- x12 Eggs');
+  });
+
+  it('carries the preferred product and the note the row shows', () => {
+    // The two captions that decide which box leaves the shelf.
+    const cheddar = item('cheddar');
+    const milk = item('milk', { quantity: '1 gal', note: '  the green top one ' });
+    const productCaptions = new Map([[cheddar.id, 'Tillamook sharp']]);
+    expect(buildGroceryListShareText([cheddar, milk], { productCaptions }))
+      .toBe('Grocery list\n- cheddar: Tillamook sharp\n- 1 gal milk (the green top one)');
+  });
+
+  it('puts each option of an either/or in its own words', () => {
+    const apples = item('apples', { quantity: '4', choiceGroup: 'g1', note: 'Honeycrisp' });
+    const pears = item('pears', { quantity: '4', choiceGroup: 'g1' });
+    expect(buildGroceryListShareText([apples, pears]))
+      .toBe('Grocery list\n- 4 apples (Honeycrisp) or 4 pears');
+  });
+
+  it('titles a list away from home with its own name', () => {
+    expect(buildGroceryListShareText([item('Milk')], { listName: 'Cabin week' }))
+      .toBe('Cabin week\n- Milk');
+    // The home list keeps the plain title.
+    expect(buildGroceryListShareText([item('Milk')], { listName: null }))
+      .toBe('Grocery list\n- Milk');
   });
 });
 
@@ -281,6 +454,11 @@ describe('buildGroceryListText', () => {
   it('is the items alone — no title line, no bullets', () => {
     const items = [item('Milk', { quantity: '2 L' }), item('Bread')];
     expect(buildGroceryListText(items)).toBe('2 L Milk\nBread');
+  });
+
+  it('leaves out the note, which would become part of the item on the other side', () => {
+    expect(buildGroceryListText([item('milk', { quantity: '1 gal', note: 'the green top one' })]))
+      .toBe('1 gal milk');
   });
 
   it('leaves out a checked row and an off-list row, same as the share', () => {
@@ -323,8 +501,61 @@ describe('buildWeekPlanShareText', () => {
     expect(buildWeekPlanShareText(days, entries, new Map())).toContain('- Dinner: Leftovers');
   });
 
+  it('says a leftover night is leftovers', () => {
+    const days = [new Date(2026, 7, 12)];
+    const entries = [entry('2026-08-12', 'dinner', { leftoverId: 'lo-1', title: 'Chicken stir-fry' })];
+    expect(buildWeekPlanShareText(days, entries, new Map())).toContain('- Dinner: Chicken stir-fry (leftovers)');
+  });
+
   it('is empty for a week with nothing planned', () => {
     const days = [new Date(2026, 7, 10), new Date(2026, 7, 11)];
     expect(buildWeekPlanShareText(days, [], new Map())).toBe('');
+  });
+
+  it('says "this week" only for this week, and names any other week by its dates', () => {
+    // The plan pages forward and back, and "This week's meals" over next
+    // week's dinners sends the reader to the wrong week.
+    const days = [new Date(2026, 9, 5), new Date(2026, 9, 11)];
+    const entries = [entry('2026-10-05', 'dinner', { title: 'Steak' })];
+    const heading = (thisWeek?: boolean) =>
+      buildWeekPlanShareText(days, entries, new Map(), { thisWeek }).split('\n')[0];
+    expect(heading(true)).toBe("This week's meals (Oct 5 – 11)");
+    expect(heading(false)).toBe('Meals for Oct 5 – 11');
+    // Unsaid, it's the dates, which are never wrong.
+    expect(heading(undefined)).toBe('Meals for Oct 5 – 11');
+  });
+});
+
+describe('weights in shared text', () => {
+  const butter = item('Butter', {
+    nutrition: {
+      basis: 'per100g', servingGrams: null, servingText: null, amounts: { calorieKcal: 717 },
+      portions: [{ amount: 1, label: 'tbsp', grams: 14.2 }],
+      source: 'fdc', sourceId: null, recordedAt: '2026-01-01T00:00:00.000Z',
+    },
+  });
+  const weights = weightLookups([butter], []);
+
+  it('puts the weight after the name, ahead of the prep, where the catalog can say it', () => {
+    const r = recipe('r1', 'Mash', {
+      ingredients: [
+        ing('Butter', { quantity: '4 tbsp', prep: 'softened' }),
+        ing('Potatoes', { quantity: '2 lb' }),
+      ],
+    });
+    expect(buildIngredientsText(r, recipeMap([r]), { weights }))
+      .toBe('4 tbsp Butter (≈57 g), softened\n2 lb Potatoes');
+    expect(buildRecipeShareText(r, recipeMap([r]), { weights })).toContain('- 4 tbsp Butter (≈57 g), softened');
+  });
+
+  it('weighs the scaled line and writes it in the reader\'s units', () => {
+    const r = recipe('r1', 'Mash', { ingredients: [ing('Butter', { quantity: '4 tbsp' })] });
+    expect(buildIngredientsText(r, recipeMap([r]), { scale: 2, unitSystem: 'metric', weights }))
+      .toBe('≈120 ml Butter (≈114 g)');
+  });
+
+  it('adds nothing without the lookups', () => {
+    const r = recipe('r1', 'Mash', { ingredients: [ing('Butter', { quantity: '4 tbsp' })] });
+    expect(buildIngredientsText(r, recipeMap([r]))).toBe('4 tbsp Butter');
   });
 });

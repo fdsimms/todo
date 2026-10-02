@@ -1,5 +1,7 @@
 import { useEffect } from 'react';
 import { Linking } from 'react-native';
+import { runOrHoldForDemo } from './demoHold';
+import { isDemoModeActive } from './demoState';
 import { useTaskStore } from '../store/useTaskStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useMealPlanStore } from '../store/useMealPlanStore';
@@ -21,10 +23,10 @@ import {
   resetToProjectPull,
   resetToFocusSession,
   resetToDeload,
-  resetToWeeklyReview,
   openQuickAddFromShortcut,
+  openQuickAddEventFromShortcut,
 } from '../navigation/navigationRef';
-import { MEAL_SLOTS, type MealSlot } from '../types';
+import { MEAL_SLOTS, type MealPlanEntry, type MealSlot } from '../types';
 import { KNOWN_LINK_APPS } from '../constants/linkApps';
 
 export interface AddTaskLink {
@@ -108,6 +110,18 @@ export function isQuickAddUrl(url: string): boolean {
   return ADD_PATH_RE.test(url.trim()) && parseAddTaskUrl(url) === null;
 }
 
+// `dundundun://addevent` — the Today widget's event shortcut (see
+// targets/todo-widget/WidgetShared.swift's addEventURL), the event
+// counterpart of quickAddURL: opens QuickEventSheet directly rather than
+// quick add, the same one-line event capture the FAB's "Event" row offers
+// (see AddTaskFab.tsx / quickEvent.ts) with the blank sheet the user then
+// types into.
+const ADD_EVENT_RE = new RegExp(`^${SCHEME}:\\/\\/\\/?addevent\\/?$`, 'i');
+
+export function isAddEventUrl(url: string): boolean {
+  return typeof url === 'string' && ADD_EVENT_RE.test(url.trim());
+}
+
 // Matches the bare scheme with no path — what the Today widget's
 // `.widgetURL` opens (see targets/todo-widget/TodoTodayWidget.swift). Tapping
 // the widget should always surface the Today tab's Today sub-view, even if
@@ -118,8 +132,9 @@ export function isOpenAppUrl(url: string): boolean {
   return typeof url === 'string' && OPEN_APP_RE.test(url.trim());
 }
 
-// `dundundun://groceries[?finish=1]` — what a recurring "Grocery run" task
-// carries in its linkUrl, so the reminder to go opens the list to shop from.
+// `dundundun://groceries[?finish=1|?shop=<id>]` — what a recurring "Grocery
+// run" task carries in its linkUrl, so the reminder to go opens the list to
+// shop from. `shop` is one stop of a planned trip (see groceriesLinkUrl).
 const GROCERIES_RE = new RegExp(`^${SCHEME}:\\/\\/\\/?groceries\\/?(?:\\?(.*))?$`, 'i');
 
 export function isGroceriesUrl(url: string): boolean {
@@ -151,6 +166,44 @@ export function groceriesUrlFinish(url: string): boolean {
   return (parseQuery(match[1] ?? '').finish ?? '').trim() === '1';
 }
 
+// The bare groceries link, looked up by name rather than written out, so a
+// "Grocery run" task picked from the link chips and the one the trip planner
+// writes can't come to disagree.
+const GROCERIES_LINK_URL = KNOWN_LINK_APPS.find(app => app.name === 'Groceries')!.scheme;
+
+/**
+ * The link a "Get groceries at X" task carries (#2938): the bare groceries
+ * link, plus `?shop=<id>` when the task is one stop of a planned trip. The
+ * reader is `groceriesUrlShop` below; GroceryScreen opens with that store's
+ * section expanded and in view when the list is grouped by store.
+ *
+ * The id rather than the name, the way `kitchenLinkUrl` carries an entry id: a
+ * store can be renamed between planning the trip and tapping the task, and an
+ * id survives that where a name wouldn't.
+ */
+export function groceriesLinkUrl(shopId?: string | null): string {
+  return shopId ? `${GROCERIES_LINK_URL}?shop=${encodeURIComponent(shopId)}` : GROCERIES_LINK_URL;
+}
+
+/**
+ * Which store a groceries link names, or null (#2938).
+ *
+ * Opaque, like `kitchenUrlItemId`: GroceryScreen matches it against the store
+ * sections it is showing and shrugs when there's no match (the store was
+ * deleted, nothing on the list files under it, or the list isn't grouped by
+ * store). **It never starts a trip.** Tapping a task named for a store is
+ * planning to go there, not saying you're standing in it, and nothing infers
+ * a trip (docs/arch/groceries.md). The bare link every older task carries
+ * reads as null and opens the list exactly as it always has.
+ */
+export function groceriesUrlShop(url: string): string | null {
+  if (typeof url !== 'string') return null;
+  const match = GROCERIES_RE.exec(url.trim());
+  if (!match) return null;
+  const id = (parseQuery(match[1] ?? '').shop ?? '').trim();
+  return id || null;
+}
+
 // `dundundun://recipes` — the peer of the groceries link, so a "plan meals"
 // task can open the recipe box directly.
 const RECIPES_RE = new RegExp(`^${SCHEME}:\\/\\/\\/?recipes\\/?$`, 'i');
@@ -175,6 +228,44 @@ export function recipeUrlId(url: string): string | null {
   if (!match) return null;
   const id = (parseQuery(match[1] ?? '').id ?? '').trim();
   return id || null;
+}
+
+/**
+ * The planned meal a recipe link was written for (`&entry=…`, see
+ * `mealSlotTasks.recipeLinkUrl`), or null when it names none.
+ *
+ * Opaque like `mealPlanUrlShopEntryId`: the entry may have gone by the time
+ * the row is tapped, and `plannedRecipeParams` shrugs when it has.
+ */
+export function recipeUrlEntryId(url: string): string | null {
+  if (typeof url !== 'string') return null;
+  const match = RECIPE_RE.exec(url.trim());
+  if (!match) return null;
+  const id = (parseQuery(match[1] ?? '').entry ?? '').trim();
+  return id || null;
+}
+
+/**
+ * What a recipe link naming a planned meal opens RecipeDetail with: the meal's
+ * own picks and scale, the same `choices`/`scale` params the Meal Plan screen's
+ * "Open recipe" passes.
+ *
+ * Resolve-or-shrug, like every other cross-row pointer: an entry that has gone
+ * (removed, or the week re-planned since the task was written) or that now
+ * holds a *different* recipe gives nothing, and the recipe opens on its own
+ * defaults exactly as a link without an entry does. The recipe check matters
+ * because one recipe's picks are meaningless ids on another's.
+ *
+ * Here rather than beside `recipeLinkUrl` in `mealSlotTasks` because this file
+ * is loaded by the app shell and that one reaches the database through
+ * `dateUtils`.
+ */
+export function plannedRecipeParams(
+  entry: Pick<MealPlanEntry, 'recipeId' | 'recipeChoices' | 'recipeScale'> | null | undefined,
+  recipeId: string
+): { choices?: string[]; scale?: number } {
+  if (!entry || entry.recipeId !== recipeId) return {};
+  return { choices: entry.recipeChoices, scale: entry.recipeScale };
 }
 
 // `dundundun://mealplan[?date=YYYY-MM-DD]` — the third kitchen link, so a
@@ -287,6 +378,19 @@ export function projectsUrlPullId(url: string): string | null {
   return id || null;
 }
 
+/**
+ * The day a projects link asks pulled tasks to land on (`on=YYYY-MM-DD`), or
+ * null to leave it to the sheet. A malformed value is ignored rather than
+ * trusted, since it is going to become a task's due date.
+ */
+export function projectsUrlPullDay(url: string): string | null {
+  if (typeof url !== 'string') return null;
+  const match = PROJECTS_RE.exec(url.trim());
+  if (!match) return null;
+  const day = (parseQuery(match[1] ?? '').on ?? '').trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : null;
+}
+
 export function isKitchenUrl(url: string): boolean {
   return typeof url === 'string' && KITCHEN_RE.test(url.trim());
 }
@@ -365,16 +469,6 @@ const DELOAD_RE = new RegExp(`^${SCHEME}:\\/\\/\\/?deload\\/?$`, 'i');
 
 export function isDeloadUrl(url: string): boolean {
   return typeof url === 'string' && DELOAD_RE.test(url.trim());
-}
-
-// `dundundun://review` — the weekly review task's own link, so the row that
-// offers to walk the week opens the thing that walks it. Same shape as
-// `deload` above and for the same reason: a generated task whose title names
-// an action wants a next step, not a tick.
-const WEEKLY_REVIEW_RE = new RegExp(`^${SCHEME}:\\/\\/\\/?review\\/?$`, 'i');
-
-export function isWeeklyReviewUrl(url: string): boolean {
-  return typeof url === 'string' && WEEKLY_REVIEW_RE.test(url.trim());
 }
 
 // `dundundun://completeTask?id=…` — the Done button on a task's timer Live
@@ -536,8 +630,16 @@ export function openInAppUrl(url: string | null | undefined): boolean {
     openQuickAddFromShortcut();
     return true;
   }
+  if (isAddEventUrl(url)) {
+    // Event creation is off in demo mode, same as the FAB's own "Event" row
+    // (AddTaskFab.tsx) — it would write to the real calendar — so the widget
+    // tap lands on Today without a sheet that couldn't do anything anyway.
+    if (isDemoModeActive()) resetToToday();
+    else openQuickAddEventFromShortcut();
+    return true;
+  }
   if (isGroceriesUrl(url)) {
-    resetToGroceries(groceriesUrlFinish(url));
+    resetToGroceries(groceriesUrlFinish(url), groceriesUrlShop(url));
     return true;
   }
   if (isRecipesUrl(url)) {
@@ -546,8 +648,17 @@ export function openInAppUrl(url: string | null | undefined): boolean {
   }
   if (isRecipeUrl(url)) {
     const id = recipeUrlId(url);
-    if (id) resetToRecipeDetail(id);
-    else resetToRecipes();
+    if (!id) {
+      resetToRecipes();
+      return true;
+    }
+    // A meal task's link names its planned meal, so the recipe opens on that
+    // night's scale and picks, the way the Meal Plan screen's "Open recipe"
+    // does. Read when tapped, so a scale changed since the task was written
+    // is the one that opens.
+    const entryId = recipeUrlEntryId(url);
+    const entry = entryId ? useMealPlanStore.getState().entryById(entryId) : null;
+    resetToRecipeDetail(id, plannedRecipeParams(entry, id));
     return true;
   }
   if (isMealPlanUrl(url)) {
@@ -575,15 +686,11 @@ export function openInAppUrl(url: string | null | undefined): boolean {
     return true;
   }
   if (isProjectsUrl(url)) {
-    resetToProjectPull(projectsUrlPullId(url));
+    resetToProjectPull(projectsUrlPullId(url), projectsUrlPullDay(url));
     return true;
   }
   if (isDeloadUrl(url)) {
     resetToDeload();
-    return true;
-  }
-  if (isWeeklyReviewUrl(url)) {
-    resetToWeeklyReview();
     return true;
   }
   if (isCompleteTaskUrl(url)) {
@@ -669,10 +776,11 @@ export function openInAppUrl(url: string | null | undefined): boolean {
 // initialize() has run so the SQLite DB exists.
 export function useTaskDeepLinks(): void {
   useEffect(() => {
-    const handle = (url: string | null) => {
+    // Held during a demo: see demoHold.ts.
+    const handle = (url: string | null) => runOrHoldForDemo(() => {
       handleIncomingUrl(url);
       if (url) openInAppUrl(url);
-    };
+    });
     Linking.getInitialURL().then(handle).catch(() => {});
     const sub = Linking.addEventListener('url', ({ url }) => handle(url));
     return () => sub.remove();

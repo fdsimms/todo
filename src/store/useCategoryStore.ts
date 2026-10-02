@@ -18,7 +18,7 @@ import {
 } from '../db/database';
 import { firstEmoji } from '../utils/emojiInput';
 import { useSettingsStore } from './useSettingsStore';
-import { GENERATED_KIND_LIST, GENERATED_KIND_SPECS, generatorSwitchedOn, type GeneratedKind } from '../utils/generatedTasks';
+import { GENERATED_KINDS, GENERATED_KIND_LIST, GENERATED_KIND_SPECS, generatorSwitchedOn, type GeneratedKind } from '../utils/generatedTasks';
 
 interface CategoryStore {
   categories: Category[];
@@ -317,6 +317,8 @@ function generatedCategorySetting(kind: GeneratedKind): {
       return { key: 'pantryReviewTaskCategory', current: s.pantryReviewTaskCategory, assign: s.setPantryReviewTaskCategory };
     case 'mealShortfall':
       return { key: 'mealShortfallTaskCategory', current: s.mealShortfallTaskCategory, assign: s.setMealShortfallTaskCategory };
+    case 'mealThaw':
+      return { key: 'mealThawTaskCategory', current: s.mealThawTaskCategory, assign: s.setMealThawTaskCategory };
     case 'mealLogNudge':
       return { key: 'mealLogNudgeTaskCategory', current: s.mealLogNudgeTaskCategory, assign: s.setMealLogNudgeTaskCategory };
     case 'supplyReorder':
@@ -347,10 +349,24 @@ function generatedCategorySetting(kind: GeneratedKind): {
       return { key: 'moodNudgeTaskCategory', current: s.moodNudgeTaskCategory, assign: s.setMoodNudgeTaskCategory };
     case 'weekendNudge':
       return { key: 'weekendNudgeTaskCategory', current: s.weekendNudgeTaskCategory, assign: s.setWeekendNudgeTaskCategory };
-    case 'weeklyReview':
-      return { key: 'weeklyReviewTaskCategory', current: s.weeklyReviewTaskCategory, assign: s.setWeeklyReviewTaskCategory };
     case 'weighIn':
       return { key: 'weighInTaskCategory', current: s.weighInTaskCategory, assign: s.setWeighInTaskCategory };
+    case 'waterShortfall':
+      return { key: 'waterShortfallTaskCategory', current: s.waterShortfallTaskCategory, assign: s.setWaterShortfallTaskCategory };
+  }
+}
+
+/**
+ * Points every generator's category setting at `to` where it named `from`, so
+ * a rename doesn't leave the next generated task filed under a name nothing has
+ * any more. Walks the same per-kind switch the ensure pass uses, which is what
+ * keeps this from being a second list to forget a new generator in. mealSlot
+ * and mealCook share a key, so assigning twice is harmless.
+ */
+export function renameGeneratedCategorySettings(from: string, to: string): void {
+  for (const kind of GENERATED_KINDS) {
+    const setting = generatedCategorySetting(kind);
+    if (setting && setting.current === from) setting.assign(to);
   }
 }
 

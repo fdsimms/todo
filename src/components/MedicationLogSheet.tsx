@@ -56,6 +56,7 @@ export function MedicationLogSheet({ visible, log, onClose }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const logs = useMedicationStore(s => s.logs);
+  const archived = useMedicationStore(s => s.archived);
   const addLog = useMedicationStore(s => s.addLog);
   const updateLog = useMedicationStore(s => s.updateLog);
   const removeLog = useMedicationStore(s => s.removeLog);
@@ -92,7 +93,7 @@ export function MedicationLogSheet({ visible, log, onClose }: Props) {
   const pillNames = useMemo(() => {
     const seen = new Set<string>();
     const out: string[] = [];
-    for (const candidate of [name, ...medicationVocabulary(logs), ...drafted]) {
+    for (const candidate of [name, ...medicationVocabulary(logs, archived), ...drafted]) {
       const trimmed = candidate.trim();
       const key = medicationKey(trimmed);
       if (!key || seen.has(key)) continue;
@@ -100,7 +101,7 @@ export function MedicationLogSheet({ visible, log, onClose }: Props) {
       out.push(trimmed);
     }
     return out;
-  }, [name, logs, drafted]);
+  }, [name, logs, archived, drafted]);
 
   const createMedication = (raw: string): string | null | void => {
     const trimmed = raw.trim();

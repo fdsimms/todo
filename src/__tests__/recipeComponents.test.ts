@@ -61,6 +61,7 @@ function recipe(id: string, name: string, overrides: Partial<Recipe> = {}): Reci
     tags: [],
     ingredients: [],
     emptySections: [],
+    emptyStepSections: [],
     components: [],
     prepTasks: [],
     steps: [],
@@ -322,6 +323,18 @@ describe('cookedDishes', () => {
     expect(cookedDishes(steak, byId).map(d => d.recipe.name)).toEqual(['Steak', 'Mash']);
     expect(cookedDishes(steak, byId, { chosen: [roastLink.id] }).map(d => d.recipe.name))
       .toEqual(['Steak', 'Roast potatoes']);
+  });
+
+  it('carries the link each part was reached through, and none for the meal', () => {
+    const mash = recipe('r2', 'Mash');
+    const roast = recipe('r3', 'Roast potatoes');
+    const mashLink = link('r2', 'Mash', 'Side');
+    const steak = recipe('r1', 'Steak', { components: [mashLink, link('r3', 'Roast potatoes', 'Side')] });
+
+    const [meal, side] = cookedDishes(steak, recipeMap([steak, mash, roast]));
+
+    expect('via' in meal).toBe(false);
+    expect(side.via).toEqual({ parent: steak, component: mashLink });
   });
 
   it('shrugs off a part whose recipe is gone', () => {

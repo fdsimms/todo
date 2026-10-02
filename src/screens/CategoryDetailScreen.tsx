@@ -15,6 +15,7 @@ import { useAnswerFirstCompletion } from '../hooks/useAnswerFirstCompletion';
 import { DeliverablePromptQueue } from '../components/DeliverablePromptQueue';
 import { useTaskStore } from '../store/useTaskStore';
 import { useTaskSelection } from '../hooks/useTaskSelection';
+import { useStableCallback } from '../hooks/useStableCallback';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useElevatedCellRenderer } from '../hooks/useElevatedCellRenderer';
 import { PaintSelectionProvider } from '../components/PaintSelection';
@@ -31,6 +32,7 @@ import { QuickAddModal } from '../components/QuickAddModal';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { confirmBulkSetWhen } from '../utils/scheduleMovePrompt';
 import { animateLayout } from '../utils/layoutAnimation';
 import type { Task } from '../types';
 
@@ -54,7 +56,6 @@ export function CategoryDetailScreen() {
   const bulkCompleteTasks = useTaskStore(s => s.bulkCompleteTasks);
   const bulkMarkMissed = useTaskStore(s => s.bulkMarkMissed);
   const bulkSetPriority = useTaskStore(s => s.bulkSetPriority);
-  const bulkSetWhen = useTaskStore(s => s.bulkSetWhen);
   const bulkSetCategory = useTaskStore(s => s.bulkSetCategory);
   const bulkAddTags = useTaskStore(s => s.bulkAddTags);
   const categories = useCategoryStore(useShallow(s => s.categories));
@@ -170,6 +171,11 @@ export function CategoryDetailScreen() {
     setEditorInitialDraft({ ...draft, category });
     setEditorVisible(true);
   };
+  // Stable, because QuickAddModal is memoized and stays mounted while hidden:
+  // a fresh prop each render would re-render the hidden sheet with this screen.
+  const onQuickAddClose = useStableCallback(() => setQuickAddVisible(false));
+  const onQuickAddOpenFull = useStableCallback(handleQuickAddOpenFull);
+  const quickAddSeed = useMemo(() => ({ category }), [category]);
 
   const handleRowSwipeSelect = useCallback((id: string) => {
     setExpandedTaskId(null);
@@ -316,7 +322,7 @@ export function CategoryDetailScreen() {
             onComplete={handleBulkComplete}
             completableCount={completableCount}
             onDelete={handleBulkDelete}
-            onSetWhen={(date, segs) => { bulkSetWhen(Array.from(selectedIds), date, segs); exitSelection(); }}
+            onSetWhen={(date, segs) => confirmBulkSetWhen(Array.from(selectedIds), date, segs, exitSelection)}
             onSetCategory={cat => { bulkSetCategory(Array.from(selectedIds), cat); exitSelection(); }}
             onAddTags={tags => { bulkAddTags(Array.from(selectedIds), tags); exitSelection(); }}
             onSetPriority={p => { bulkSetPriority(Array.from(selectedIds), p); exitSelection(); }}
@@ -344,9 +350,9 @@ export function CategoryDetailScreen() {
 
         <QuickAddModal
           visible={quickAddVisible}
-          onClose={() => setQuickAddVisible(false)}
-          onOpenFull={handleQuickAddOpenFull}
-          seed={{ category }}
+          onClose={onQuickAddClose}
+          onOpenFull={onQuickAddOpenFull}
+          seed={quickAddSeed}
           seedLabel={category}
         />
       </View>

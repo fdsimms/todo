@@ -5,6 +5,7 @@ import {
   isTaskExpired,
   isTaskSweepable,
   getVisibleAt,
+  isWithheld,
   isHiddenForVacation,
   isVisibleApartFromVacation,
   isRecurrenceNotYetDue,
@@ -37,6 +38,7 @@ import {
 } from '../utils/visibilityUtils';
 import { registerTaskSource } from '../utils/blockerRegistry';
 import { registerAwayProjectSource } from '../utils/awayDates';
+import { registerPausedProjectSource } from '../utils/projectPause';
 import { registerPersonSource } from '../utils/peopleRegistry';
 import { useCategoryStore } from '../store/useCategoryStore';
 import type { Task, Category } from '../types';
@@ -112,6 +114,7 @@ const baseTask: Task = {
   recurrenceInterval: 1,
   recurrenceDays: [],
   recurrenceMonthDay: null,
+  recurrenceMonth: null,
   recurrenceWeekOrdinal: null,
   recurrenceAnchorDay: null,
   recurrenceAnchorDate: null,
@@ -155,11 +158,16 @@ const baseTask: Task = {
   allowOvershoot: false,
   quotaIntervalMinutes: null,
   quotaReminders: false,
-  quotaStartedAt: null, quotaAlwaysVisible: false, quotaPeriod: 'day',
+  quotaStartedAt: null, quotaAlwaysVisible: false, followWaterTarget: false, quotaPeriod: 'day',
+  rotationEnabled: false,
+  rotationItems: [],
+  rotationLog: [],
+  rotationPeriodStart: null,
+  rotationLastDone: {},
   progressCount: 0,
   reminderTime: null,
   reminderKind: 'notification',
-  reminderOffsetDays: null, reminderTimeAnchor: 'wallClock', reminderUtcOffsetMinutes: null,
+  reminderOffsetDays: null, reminderTracksVisibility: false, reminderTimeAnchor: 'wallClock', reminderUtcOffsetMinutes: null,
   parentId: null,
   groupId: null,
   projectId: null,
@@ -175,6 +183,7 @@ const baseTask: Task = {
   followUpTaskTally: 0,
   previousFollowUpTaskTally: 0,
   followUpTaskSourceTitle: null,
+  followUpTaskSourceId: null,
   vacationPause: false, excludeFromSuggestions: false,
   timerStartedAt: null,
   timedMinutes: null,
@@ -229,6 +238,40 @@ describe('isTaskVisible', () => {
     expect(isTaskVisible({ ...baseTask, completed: true })).toBe(false);
   });
 
+  // Paused with its project (Project.pausedUntil), and back on the day the
+  // pause ends.
+  it('hides a task in a paused project until the pause ends', () => {
+    const due = { ...baseTask, projectId: 'garden', dueDate: NOW.toISOString() };
+    const pausedUntil = (days: number) => {
+      const d = new Date(NOW); d.setDate(d.getDate() + days);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    };
+    registerPausedProjectSource(() => [{ id: 'garden', pausedUntil: pausedUntil(1), archived: false, completed: false }]);
+    expect(isTaskVisible(due)).toBe(false);
+    registerPausedProjectSource(() => [{ id: 'garden', pausedUntil: pausedUntil(0), archived: false, completed: false }]);
+    expect(isTaskVisible(due)).toBe(true);
+    registerPausedProjectSource(null);
+  });
+
+  it('keeps a paused project\'s task and negative habit off Today, not expired, and back on the resume day', () => {
+    const inDays = (days: number) => {
+      const d = new Date(NOW); d.setDate(d.getDate() + days);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    };
+    registerPausedProjectSource(() => [{ id: 'garden', pausedUntil: inDays(3), archived: false, completed: false }]);
+    try {
+      const due = { ...baseTask, projectId: 'garden', dueDate: NOW.toISOString() };
+      expect(isWithheld(due)).toBe(true);
+      expect(isTaskVisible({ ...due, polarity: 'negative' as const })).toBe(false);
+      expect(isTaskExpired({ ...due, windowEnd: '00:01' })).toBe(false);
+      const back = getVisibleAt(due);
+      expect(back.getDate()).toBe(new Date(NOW.getFullYear(), NOW.getMonth(), NOW.getDate() + 3).getDate());
+      expect(back > NOW).toBe(true);
+    } finally {
+      registerPausedProjectSource(null);
+    }
+  });
+
   it('hides an uncompleted task with no date signal (it belongs in Inbox/Unscheduled, not Today)', () => {
     expect(isTaskVisible(baseTask)).toBe(false);
   });
@@ -253,6 +296,20 @@ describe('isTaskVisible', () => {
   it('shows tasks whose deferUntil day has arrived (noon today)', () => {
     const deferUntil = new Date(2025, 5, 10, 12, 0, 0).toISOString();
     expect(isTaskVisible({ ...baseTask, deferUntil })).toBe(true);
+  });
+
+  // Unlike every other type, an 'hours' recurrence's deferUntil is an exact
+  // instant, not a day — "noon today" at 10 AM has to stay hidden, or a
+  // same-day gap (medication due again in a few hours) would be visible the
+  // moment the calendar day ticked over instead of when it actually resolves.
+  it('keeps an hours-recurrence task hidden until its precise deferUntil, even later today', () => {
+    const deferUntil = new Date(2025, 5, 10, 12, 0, 0).toISOString();
+    expect(isTaskVisible({ ...baseTask, recurrenceType: 'hours', deferUntil })).toBe(false);
+  });
+
+  it('shows an hours-recurrence task once its precise deferUntil has passed', () => {
+    const deferUntil = new Date(2025, 5, 10, 9, 0, 0).toISOString();
+    expect(isTaskVisible({ ...baseTask, recurrenceType: 'hours', deferUntil })).toBe(true);
   });
 
   it('hides tasks with afternoon segment before noon', () => {
@@ -392,6 +449,26 @@ describe('isUpcomingToday', () => {
     expect(isUpcomingToday(task)).toBe(false);
     expect(isTaskVisible(task)).toBe(true);
   });
+
+  it('places a segment starting before dayResetTime at the end of the day, except morning', () => {
+    // A night that starts at 01:00 under a 4 AM reset is the day's last hours.
+    // Placed before the day began, night tasks showed from the day's start.
+    mockSettingsState.dayResetTime = '04:00';
+    mockSettingsState.morningStart = '03:00';
+    mockSettingsState.nightStart = '01:00';
+    try {
+      jest.setSystemTime(new Date(2025, 5, 10, 10, 0, 0));
+      expect(isTaskVisible({ ...baseTask, timeSegments: ['night'] })).toBe(false);
+      // Morning first thing is the one segment that must not roll: it has begun.
+      expect(isTaskVisible({ ...baseTask, timeSegments: ['morning'] })).toBe(true);
+      jest.setSystemTime(new Date(2025, 5, 11, 1, 30, 0)); // still logical June 10
+      expect(isTaskVisible({ ...baseTask, timeSegments: ['night'] })).toBe(true);
+    } finally {
+      mockSettingsState.dayResetTime = '00:00';
+      mockSettingsState.morningStart = '06:00';
+      mockSettingsState.nightStart = '21:00';
+    }
+  });
 });
 
 // ─── isTaskWindowActive ────────────────────────────────────────────────────────
@@ -469,6 +546,26 @@ describe('isTaskExpired', () => {
     expect(isTaskExpired(nightly)).toBe(false);
     expect(isTaskVisible(nightly)).toBe(true);
     expect(isTaskWindowActive(nightly)).toBe(true);
+  });
+
+  // "Before 1am tonight" under a 4 AM reset: 01:00 is earlier than the day's
+  // start, so it belongs to the small hours at the day's end. It used to be
+  // placed on the day start's own date, closing three hours before the day
+  // began, so the task was expired (and swept under Immediately) all day.
+  it('closes a window ending before dayResetTime at the end of the logical day', () => {
+    mockSettingsState.dayResetTime = '04:00';
+    try {
+      const dueDate = new Date(2025, 5, 10, 12, 0, 0).toISOString();
+      const task = { ...baseTask, dueDate, windowEnd: '01:00' };
+      expect(isTaskExpired(task)).toBe(false);
+      expect(isTaskSweepable(task, 0)).toBe(false);
+      jest.setSystemTime(new Date(2025, 5, 11, 0, 30, 0)); // still logical June 10
+      expect(isTaskExpired(task)).toBe(false);
+      jest.setSystemTime(new Date(2025, 5, 11, 1, 30, 0));
+      expect(isTaskExpired(task)).toBe(true);
+    } finally {
+      mockSettingsState.dayResetTime = '00:00';
+    }
   });
 
   it('is false for a window with identical start and end', () => {
@@ -777,6 +874,16 @@ describe('isRecurrenceNotYetDue', () => {
     const dueDate = new Date(2025, 5, 15, 0, 0, 0).toISOString();
     expect(isRecurrenceNotYetDue({ ...baseTask, recurrenceType: 'daily', dueDate, completed: true })).toBe(false);
   });
+
+  it('returns true for an hours-recurrence task still short of its precise deferUntil, even later today', () => {
+    const deferUntil = new Date(2025, 5, 10, 12, 0, 0).toISOString();
+    expect(isRecurrenceNotYetDue({ ...baseTask, recurrenceType: 'hours', deferUntil })).toBe(true);
+  });
+
+  it('returns false for an hours-recurrence task once its precise deferUntil has passed', () => {
+    const deferUntil = new Date(2025, 5, 10, 9, 0, 0).toISOString();
+    expect(isRecurrenceNotYetDue({ ...baseTask, recurrenceType: 'hours', deferUntil })).toBe(false);
+  });
 });
 
 // ─── isLiveRecurring ──────────────────────────────────────────────────────────
@@ -870,6 +977,15 @@ describe('getVisibleAt', () => {
     const task: Task = { ...baseTask, deferUntil: deferUntil.toISOString() };
     const result = getVisibleAt(task);
     expect(result.getDate()).toBe(11);
+  });
+
+  // An 'hours' recurrence's deferUntil is the exact moment, not a day start —
+  // "noon today" at 10 AM has to surface at noon, not at today's midnight.
+  it('returns the precise instant for an hours-recurrence deferUntil, not its day start', () => {
+    const deferUntil = new Date(2025, 5, 10, 12, 0, 0);
+    const task: Task = { ...baseTask, recurrenceType: 'hours', deferUntil: deferUntil.toISOString() };
+    const result = getVisibleAt(task);
+    expect(result.getTime()).toBe(deferUntil.getTime());
   });
 
   it('returns earliest segment threshold when no segment has started today', () => {
@@ -1394,7 +1510,7 @@ describe('isTaskNew when a hold comes off', () => {
 
   it('is true once the person a task was waiting on is archived', () => {
     const dustin = {
-      id: 'p1', name: 'Dustin', nickname: '', notes: '', sortOrder: 1,
+      id: 'p1', name: 'Dustin', kind: 'individual' as const, nickname: '', notes: '', sortOrder: 1,
       archived: true, archivedAt: releasedAt, createdAt: NOW.toISOString(),
       birthdayMonth: null, birthdayDay: null, birthYear: null, birthdayTaskOptOut: false, birthdayGiftTaskOptOut: false,
       phoneNumber: null, email: null, linkUrl: null,
@@ -2019,7 +2135,7 @@ describe('blocking', () => {
   // #2087: the same hiding, with a person on the other end.
   it('hides a task waiting on somebody, and frees it when they go', () => {
     const dustin = {
-      id: 'p1', name: 'Dustin', nickname: '', notes: '', sortOrder: 1,
+      id: 'p1', name: 'Dustin', kind: 'individual' as const, nickname: '', notes: '', sortOrder: 1,
       archived: false, archivedAt: null, createdAt: NOW.toISOString(),
       birthdayMonth: null, birthdayDay: null, birthYear: null, birthdayTaskOptOut: false, birthdayGiftTaskOptOut: false,
       phoneNumber: null, email: null, linkUrl: null,

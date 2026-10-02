@@ -1,5 +1,6 @@
 import { useSettingsStore } from '../store/useSettingsStore';
 import { dbGetAllSettings, dbGetSetting, dbSetSetting } from '../db/database';
+import type { MealSlot } from '../types';
 import { loadAnthropicApiKey, saveAnthropicApiKey } from '../utils/secureApiKey';
 
 jest.mock('../db/database', () => ({
@@ -31,7 +32,7 @@ beforeEach(() => {
     get: (key: string) => (dbGetSetting as jest.Mock)(key) ?? undefined,
   }));
   (loadAnthropicApiKey as jest.Mock).mockResolvedValue('');
-  useSettingsStore.setState({ dayResetTime: '00:00', themeMode: 'dark', anthropicApiKey: '', appLockEnabled: false, appLockGraceSeconds: 60, patchNotesQaStatus: {}, mealSlotStepEstimates: {}, initialized: false });
+  useSettingsStore.setState({ dayResetTime: '00:00', themeMode: 'dark', anthropicApiKey: '', appLockEnabled: false, appLockGraceSeconds: 60, patchNotesQaStatus: {}, mealSlotStepEstimates: {}, nutritionTargets: {}, initialized: false });
 });
 
 // ─── initial state ────────────────────────────────────────────────────────────
@@ -325,6 +326,79 @@ describe('setMealSlotStepEstimate', () => {
     );
     useSettingsStore.getState().initialize();
     expect(useSettingsStore.getState().mealSlotStepEstimates).toEqual({ 'breakfast-choose': 2 });
+  });
+});
+
+describe('setNutritionTargets', () => {
+  it('has an empty default', () => {
+    expect(useSettingsStore.getState().nutritionTargets).toEqual({});
+  });
+
+  it('fills in several nutrients in one write', () => {
+    useSettingsStore.getState().setNutritionTargets({ calciumMg: 1300, ironMg: 18, potassiumMg: 4700 });
+    expect(useSettingsStore.getState().nutritionTargets).toEqual({
+      calciumMg: 1300, ironMg: 18, potassiumMg: 4700,
+    });
+  });
+
+  it('merges onto targets already set rather than replacing them', () => {
+    useSettingsStore.getState().setNutritionTarget('proteinG', 90);
+    useSettingsStore.getState().setNutritionTargets({ calciumMg: 1300 });
+    expect(useSettingsStore.getState().nutritionTargets).toEqual({ proteinG: 90, calciumMg: 1300 });
+  });
+
+  it('stores a target of zero rather than clearing it, and clears only on null', () => {
+    useSettingsStore.getState().setNutritionTarget('caffeineMg', 0);
+    expect(useSettingsStore.getState().nutritionTargets).toEqual({ caffeineMg: 0 });
+    useSettingsStore.getState().setNutritionTarget('caffeineMg', null);
+    expect(useSettingsStore.getState().nutritionTargets).toEqual({});
+  });
+
+  it('persists the merged map in a single database write', () => {
+    useSettingsStore.getState().setNutritionTargets({ calciumMg: 1300, ironMg: 18 });
+    expect(dbSetSetting).toHaveBeenCalledTimes(1);
+    expect(dbSetSetting).toHaveBeenCalledWith(
+      'nutritionTargets',
+      JSON.stringify({ calciumMg: 1300, ironMg: 18 }),
+    );
+  });
+});
+
+describe('syncWeightGoalCalorieTarget', () => {
+  const goal = { startKg: 80, startDayKey: '2026-09-01', targetKg: 75, rateKgPerWeek: 0.5 };
+  const profile = { heightCm: 170, birthYear: 1990, sex: 'female' as const, activity: 'sedentary' as const };
+
+  it('does nothing without a weight goal', () => {
+    useSettingsStore.setState({ weightGoal: null });
+    useSettingsStore.getState().syncWeightGoalCalorieTarget(78);
+    expect(useSettingsStore.getState().nutritionTargets.calorieKcal).toBeUndefined();
+  });
+
+  it('writes a calorie target once a goal and a complete profile exist', () => {
+    useSettingsStore.getState().setWeightGoal(goal);
+    useSettingsStore.getState().setBodyProfile(profile);
+    useSettingsStore.getState().syncWeightGoalCalorieTarget(80);
+    expect(useSettingsStore.getState().nutritionTargets.calorieKcal).toEqual(expect.any(Number));
+  });
+
+  it('re-syncs to a new figure when the weight moves', () => {
+    useSettingsStore.getState().setWeightGoal(goal);
+    useSettingsStore.getState().setBodyProfile(profile);
+    useSettingsStore.getState().syncWeightGoalCalorieTarget(80);
+    const first = useSettingsStore.getState().nutritionTargets.calorieKcal;
+    useSettingsStore.getState().syncWeightGoalCalorieTarget(70);
+    expect(useSettingsStore.getState().nutritionTargets.calorieKcal).not.toBe(first);
+  });
+
+  it('leaves an existing target alone when the profile cannot support an estimate', () => {
+    useSettingsStore.getState().setWeightGoal(goal);
+    // Explicit rather than relying on the shared beforeEach: bodyProfile
+    // isn't one of the fields it resets, so a prior test's complete profile
+    // would otherwise leak in here and produce a real estimate.
+    useSettingsStore.getState().setBodyProfile({ heightCm: null, birthYear: null, sex: null, activity: 'sedentary' });
+    useSettingsStore.getState().setNutritionTarget('calorieKcal', 1800);
+    useSettingsStore.getState().syncWeightGoalCalorieTarget(80);
+    expect(useSettingsStore.getState().nutritionTargets.calorieKcal).toBe(1800);
   });
 });
 
@@ -930,6 +1004,45 @@ describe('meal plan nudge settings', () => {
     expect(useSettingsStore.getState().mealPlanNudgeEnabled).toBe(false);
     expect(useSettingsStore.getState().mealPlanNudgeLastFiredWeekKey).toBe('2026-08-09');
   });
+
+  it('defaults mealPlanNudgeSlots to all three meals', () => {
+    expect(useSettingsStore.getState().mealPlanNudgeSlots).toEqual(['breakfast', 'lunch', 'dinner']);
+  });
+
+  it('stores and persists a narrowed mealPlanNudgeSlots', () => {
+    useSettingsStore.getState().setMealPlanNudgeSlots(['dinner']);
+    expect(useSettingsStore.getState().mealPlanNudgeSlots).toEqual(['dinner']);
+    expect(dbSetSetting).toHaveBeenCalledWith('mealPlanNudgeSlots', JSON.stringify(['dinner']));
+  });
+
+  it('reorders a hand-edited mealPlanNudgeSlots into breakfast/lunch/dinner order', () => {
+    useSettingsStore.getState().setMealPlanNudgeSlots(['dinner', 'breakfast']);
+    expect(useSettingsStore.getState().mealPlanNudgeSlots).toEqual(['breakfast', 'dinner']);
+  });
+
+  it('drops snack from a hand-edited or synced mealPlanNudgeSlots', () => {
+    // Not offered by the picker (see MEAL_PLAN_NUDGE_SLOTS), so a value that
+    // somehow carries it — a synced row from a future version, say — is
+    // filtered down rather than trusted.
+    useSettingsStore.getState().setMealPlanNudgeSlots(['dinner', 'snack'] as MealSlot[]);
+    expect(useSettingsStore.getState().mealPlanNudgeSlots).toEqual(['dinner']);
+  });
+
+  it('reads a missing mealPlanNudgeSlots row back as the shipped default', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'mealPlanNudgeSlots' ? null : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().mealPlanNudgeSlots).toEqual(['breakfast', 'lunch', 'dinner']);
+  });
+
+  it('reads a stored mealPlanNudgeSlots back on initialize', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'mealPlanNudgeSlots' ? JSON.stringify(['dinner']) : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().mealPlanNudgeSlots).toEqual(['dinner']);
+  });
 });
 
 describe('setVacationEnd', () => {
@@ -991,6 +1104,40 @@ describe('unitSystem', () => {
     );
     useSettingsStore.getState().initialize();
     expect(useSettingsStore.getState().unitSystem).toBe('asWritten');
+  });
+});
+
+describe('householdServings', () => {
+  it('defaults to not set, so a planned meal keeps starting as written (#2910)', () => {
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().householdServings).toBe(0);
+  });
+
+  it('round-trips through the settings table', () => {
+    useSettingsStore.getState().setHouseholdServings(4);
+    expect(dbSetSetting).toHaveBeenCalledWith('householdServings', '4');
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'householdServings' ? '4' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().householdServings).toBe(4);
+  });
+
+  it('stores clearing it as 0, and holds a count to the stepper cap', () => {
+    useSettingsStore.getState().setHouseholdServings(0);
+    expect(useSettingsStore.getState().householdServings).toBe(0);
+    useSettingsStore.getState().setHouseholdServings(-2);
+    expect(useSettingsStore.getState().householdServings).toBe(0);
+    useSettingsStore.getState().setHouseholdServings(500);
+    expect(useSettingsStore.getState().householdServings).toBe(99);
+  });
+
+  it('reads a missing or unparseable row as not set', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'householdServings' ? 'lots' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().householdServings).toBe(0);
   });
 });
 

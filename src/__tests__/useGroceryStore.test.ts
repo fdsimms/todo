@@ -1,4 +1,4 @@
-import { useGroceryStore } from '../store/useGroceryStore';
+import { describePlanAdd, subscribeCartHoldRelease, useGroceryStore } from '../store/useGroceryStore';
 import {
   dbGetAllGroceryItems,
   dbGetGroceryAisleOrder,
@@ -23,6 +23,7 @@ import {
   dbGetAllGroceryShops,
   dbInsertGroceryShop,
   dbSetShopAisles,
+  dbSetShopAisleOrder,
   dbUpdateGroceryShop,
   dbDeleteGroceryShop,
   dbGetAllItemShopLinks,
@@ -49,6 +50,7 @@ import { groceryNameKey } from '../utils/groceryParse';
 import { DEFAULT_AISLES, OTHER_AISLE } from '../utils/groceryAisles';
 import { OUT_OF_IT_UNTIL, probablyHaveReason } from '../utils/grocerySuggest';
 import { expiryDaysFromNow, expiryKeyFor, openShelfLifeDaysFor } from '../utils/groceryShelfLife';
+import { FROZEN_REASON, PORTION_PRODUCT_KEY } from '../types';
 import type { GroceryItem, GroceryList, GroceryListEntry, ItemProduct, ItemShopLink, ItemSubLink, Shop, StoreAlias, Task } from '../types';
 
 jest.mock('../db/database', () => ({
@@ -76,6 +78,8 @@ jest.mock('../db/database', () => ({
   dbInsertGroceryItem: jest.fn(),
   dbUpdateGroceryItem: jest.fn(),
   dbDeleteGroceryItem: jest.fn(),
+  dbRepointItemReferences: jest.fn().mockReturnValue({ rows: [], settings: [] }),
+  dbRestoreRepoint: jest.fn(),
   dbFinishGroceryShopping: jest.fn().mockReturnValue([]),
   dbClearGroceryList: jest.fn().mockReturnValue([]),
   dbGetAllGroceryShops: jest.fn().mockReturnValue([]),
@@ -83,6 +87,7 @@ jest.mock('../db/database', () => ({
   dbUpdateGroceryShop: jest.fn(),
   dbDeleteGroceryShop: jest.fn(),
   dbSetShopAisles: jest.fn(),
+  dbSetShopAisleOrder: jest.fn(),
   dbGetAllItemShopLinks: jest.fn().mockReturnValue([]),
   dbSetItemShopLink: jest.fn(),
   dbDeleteItemShopLink: jest.fn(),
@@ -111,6 +116,10 @@ jest.mock('../db/database', () => ({
   // ingredient keys in step.
   dbGetAllRecipes: jest.fn().mockReturnValue([]),
   dbGetAllCookbooks: jest.fn().mockReturnValue([]),
+  dbGetAllCookbookIndexEntries: jest.fn().mockReturnValue([]),
+  dbInsertCookbookIndexEntry: jest.fn(),
+  dbUpdateCookbookIndexEntry: jest.fn(),
+  dbDeleteCookbookIndexEntry: jest.fn(),
   dbInsertCookbook: jest.fn(),
   dbUpdateCookbook: jest.fn(),
   dbDeleteCookbook: jest.fn(),
@@ -153,6 +162,7 @@ jest.mock('../store/useTaskStore', () => ({
 // user would.
 let mockUseUpTasks = false;
 let mockUseUpLeadDays = 1;
+let mockUseUpCap: number | null = null;
 let mockUseUpCategory: string | null = null;
 let mockActiveListDrivenBy: string | null = null;
 let mockProjects: any[] = [];
@@ -164,6 +174,7 @@ jest.mock('../store/useSettingsStore', () => ({
       get groceryUseUpTasks() { return mockUseUpTasks; },
       get groceryUseUpLeadDays() { return mockUseUpLeadDays; },
       get groceryUseUpTaskCategory() { return mockUseUpCategory; },
+      get useUpTaskCap() { return mockUseUpCap; },
       dayResetTime: '00:00',
       get activeListDrivenBy() { return mockActiveListDrivenBy; },
       setActiveListDrivenBy: (id: string | null) => { mockActiveListDrivenBy = id; },
@@ -177,6 +188,21 @@ jest.mock('../store/useSettingsStore', () => ({
       anthropicApiKey: null,
       onDeviceAiEnabled: false,
       aiFeatureConfig: { groceryAisles: { enabled: true, model: 'claude-haiku-4-5-20251001' } },
+    }),
+  },
+}));
+
+// The use-up sweep reads the leftovers and hands each one back to the
+// leftover store to reconcile, in date order with the grocery items (#2924).
+// Mocked so the order is observable, and because the real store reaches the
+// Health bridge through the food log at import.
+let mockLeftovers: any[] = [];
+const mockLeftoverReconciles: string[] = [];
+jest.mock('../store/useLeftoverStore', () => ({
+  useLeftoverStore: {
+    getState: () => ({
+      leftovers: mockLeftovers,
+      reconcileLeftoverUseUpTask: (id: string) => { mockLeftoverReconciles.push(id); },
     }),
   },
 }));
@@ -224,6 +250,7 @@ function makeProduct(itemId: string, brand: string | null, variant: string | nul
     expiresAt: null,
     frozenAt: null,
     openedAt: null,
+    isPortion: false,
     createdAt: '2026-01-01T00:00:00.000Z',
   };
 }
@@ -281,6 +308,7 @@ function makeShop(name: string, overrides: Partial<Shop> = {}): Shop {
     excludeFromSuggestions: false,
     receiptStyle: 'itemized' as const,
     aisles: null,
+    aisleOrder: null,
     ...overrides,
   };
 }
@@ -365,7 +393,10 @@ beforeEach(() => {
   mockTaskState.tasks = [];
   mockUseUpTasks = false;
   mockUseUpLeadDays = 1;
+  mockUseUpCap = null;
   mockUseUpCategory = null;
+  mockLeftovers = [];
+  mockLeftoverReconciles.length = 0;
   mockCollapsedGroceryGroups = [];
   seed([]);
   // Every test starts with an empty history. Undo used to null a single slot,
@@ -924,6 +955,48 @@ describe('toggleChecked', () => {
     jest.useRealTimers();
   });
 
+  it('tells the screen just before the hold lets go, once per burst, so it can animate the sink (#2943)', () => {
+    jest.useFakeTimers();
+    const milk = makeItem({ name: 'Milk', onList: true });
+    const eggs = makeItem({ name: 'Eggs', onList: true });
+    seed([milk, eggs]);
+    // What the hold still held when the listener ran: a LayoutAnimation has to
+    // be configured before the commit that moves the rows, not after it.
+    const heldAtRelease: string[][] = [];
+    const unsubscribe = subscribeCartHoldRelease(() => {
+      heldAtRelease.push(useGroceryStore.getState().cartHoldIds);
+    });
+
+    useGroceryStore.getState().toggleChecked(milk.id);
+    useGroceryStore.getState().toggleChecked(eggs.id);
+    jest.advanceTimersByTime(5000);
+
+    expect(heldAtRelease).toEqual([[milk.id, eggs.id]]);
+    expect(useGroceryStore.getState().cartHoldIds).toEqual([]);
+    unsubscribe();
+    jest.useRealTimers();
+  });
+
+  it('stays quiet when the hold empties some other way, and after unsubscribing', () => {
+    jest.useFakeTimers();
+    const milk = makeItem({ name: 'Milk', onList: true });
+    seed([milk]);
+    const listener = jest.fn();
+    const unsubscribe = subscribeCartHoldRelease(listener);
+
+    // Unticked inside the window: the row never sinks, so there's nothing to animate.
+    useGroceryStore.getState().toggleChecked(milk.id);
+    useGroceryStore.getState().toggleChecked(milk.id);
+    jest.advanceTimersByTime(5000);
+    expect(listener).not.toHaveBeenCalled();
+
+    unsubscribe();
+    useGroceryStore.getState().toggleChecked(milk.id);
+    jest.advanceTimersByTime(5000);
+    expect(listener).not.toHaveBeenCalled();
+    jest.useRealTimers();
+  });
+
   it('refuses to check a row that is not on the list', () => {
     // The checked ⇒ onList invariant.
     const milk = makeItem({ name: 'Milk', onList: false });
@@ -1393,6 +1466,57 @@ describe('list membership', () => {
     expect(after.sourceRecipeTitle).toBeNull();
   });
 
+  describe('takeOffLists', () => {
+    // The meal plan's "take its ingredients off the list?" offer (#2912).
+    it('takes each row off the trolley it names, parked as removeFromListMany parks', () => {
+      const tortillas = makeItem({
+        name: 'Tortillas', onList: true, quantity: '8', quantityFromRecipe: true,
+        sourceRecipeId: 'r-tacos', sourceRecipeTitle: 'Tacos',
+      });
+      const milk = makeItem({ name: 'Milk', onList: true });
+      seed([tortillas, milk]);
+
+      const n = useGroceryStore.getState().takeOffLists([{ itemId: tortillas.id, listId: null }], 'Took off 1');
+
+      expect(n).toBe(1);
+      const after = useGroceryStore.getState().itemById(tortillas.id)!;
+      expect(after).toMatchObject({ onList: false, quantity: null, sourceRecipeId: null });
+      expect(useGroceryStore.getState().itemById(milk.id)!.onList).toBe(true);
+    });
+
+    it('puts every row back as it stood on undo, credit and amount included', () => {
+      const tortillas = makeItem({
+        name: 'Tortillas', onList: true, quantity: '8', quantityFromRecipe: true,
+        sourceRecipeId: 'r-tacos', sourceRecipeTitle: 'Tacos',
+      });
+      const away: GroceryList = { id: 'away', name: 'Airbnb', sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z' };
+      seed([tortillas], {
+        lists: [away],
+        listEntries: [{ itemId: tortillas.id, listId: away.id, checked: false, sortOrder: 7, choiceGroup: null, addedAt: tortillas.createdAt }],
+      });
+      const entriesBefore = useGroceryStore.getState().listEntries;
+
+      useGroceryStore.getState().takeOffLists([{ itemId: tortillas.id, listId: away.id }], 'Took off 1');
+      expect(useGroceryStore.getState().listEntries).toEqual([]);
+      expect(useGroceryStore.getState().lastAction?.destructive).toBe(true);
+      useGroceryStore.getState().undoLastAction();
+
+      expect(useGroceryStore.getState().listEntries).toEqual(entriesBefore);
+      expect(useGroceryStore.getState().itemById(tortillas.id)).toMatchObject({
+        quantity: '8', quantityFromRecipe: true, sourceRecipeId: 'r-tacos', sourceRecipeTitle: 'Tacos',
+      });
+    });
+
+    it('does nothing, and arms no undo, for a row not in the trolley named', () => {
+      const milk = makeItem({ name: 'Milk', onList: true });
+      seed([milk]);
+
+      expect(useGroceryStore.getState().takeOffLists([{ itemId: milk.id, listId: 'elsewhere' }], 'x')).toBe(0);
+      expect(useGroceryStore.getState().itemById(milk.id)!.onList).toBe(true);
+      expect(useGroceryStore.getState().lastAction).toBeNull();
+    });
+  });
+
   it('removeFromListMany only touches ids that are on the list', () => {
     const milk = makeItem({ name: 'Milk', onList: false });
     seed([milk]);
@@ -1401,6 +1525,80 @@ describe('list membership', () => {
 
     expect(dbUpdateGroceryItem).not.toHaveBeenCalled();
     expect(dbDeleteGroceryItem).not.toHaveBeenCalled();
+  });
+
+  it('removeFromListMany registers nothing unless asked, since its other callers are undos or unattended', () => {
+    const milk = makeItem({ name: 'Milk', onList: true });
+    seed([milk]);
+
+    useGroceryStore.getState().removeFromListMany([milk.id]);
+
+    expect(useGroceryStore.getState().lastAction).toBeNull();
+  });
+
+  it("the bulk bar's Remove undoes as one step, entries and recipe claims included (#2942)", () => {
+    const milk = makeItem({ name: 'Milk', onList: true, checked: true, sortOrder: 7 });
+    const rice = makeItem({
+      name: 'Rice', onList: true, sortOrder: 3, quantity: '2 cups', quantityFromRecipe: true,
+      sourceRecipeId: 'r1', sourceRecipeTitle: 'Paella',
+    });
+    const apples = makeItem({ name: 'Apples', onList: true, choiceGroup: 'g1' });
+    const pears = makeItem({ name: 'Pears', onList: true, choiceGroup: 'g1' });
+    seed([milk, rice, apples, pears]);
+    const entriesBefore = useGroceryStore.getState().listEntries;
+
+    useGroceryStore.getState().removeFromListMany([milk.id, rice.id, apples.id], { registerUndo: true });
+
+    const action = useGroceryStore.getState().lastAction!;
+    expect(action.label).toBe('Removed 3 items from the list');
+    // Clear the list's twin, so it gets the undo bar Clear gets.
+    expect(action.destructive).toBe(true);
+    expect(useGroceryStore.getState().itemById(rice.id)!.quantity).toBeNull();
+
+    useGroceryStore.getState().undoLastAction();
+
+    const s = useGroceryStore.getState();
+    // Each entry as it was: the tick, the walk-order slot and the either/or.
+    const sorted = (es: GroceryListEntry[]) => [...es].sort((a, b) => a.itemId.localeCompare(b.itemId));
+    expect(sorted(s.listEntries)).toEqual(sorted(entriesBefore));
+    expect(s.itemById(milk.id)).toMatchObject({ onList: true, checked: true });
+    expect(s.itemById(rice.id)).toMatchObject({
+      quantity: '2 cups', quantityFromRecipe: true, sourceRecipeId: 'r1', sourceRecipeTitle: 'Paella',
+    });
+  });
+
+  it('undoing the bulk Remove keeps what was recorded on a row since, and skips a row deleted since', () => {
+    const milk = makeItem({ name: 'Milk', onList: true });
+    const bread = makeItem({ name: 'Bread', onList: true });
+    seed([milk, bread]);
+
+    useGroceryStore.getState().removeFromListMany([milk.id, bread.id], { registerUndo: true });
+    const undo = useGroceryStore.getState().lastAction!.undo;
+    // Written straight to state, as something that registers no undo of its own would.
+    useGroceryStore.setState(s => ({
+      items: s.items
+        .filter(i => i.id !== bread.id)
+        .map(i => (i.id === milk.id ? { ...i, note: 'the blue cap one' } : i)),
+    }));
+
+    undo();
+
+    const s = useGroceryStore.getState();
+    expect(s.itemById(milk.id)).toMatchObject({ onList: true, note: 'the blue cap one' });
+    expect(s.listEntries.map(e => e.itemId)).toEqual([milk.id]);
+  });
+
+  it('the bulk Remove redoes', () => {
+    const milk = makeItem({ name: 'Milk', onList: true });
+    seed([milk]);
+
+    useGroceryStore.getState().removeFromListMany([milk.id], { registerUndo: true });
+    useGroceryStore.getState().undoLastAction();
+    expect(useGroceryStore.getState().itemById(milk.id)!.onList).toBe(true);
+
+    useGroceryStore.getState().redoLastUndone();
+    expect(useGroceryStore.getState().itemById(milk.id)!.onList).toBe(false);
+    expect(useGroceryStore.getState().lastAction!.label).toBe('Removed 1 item from the list');
   });
 });
 
@@ -1413,6 +1611,60 @@ describe('aisles', () => {
 
     expect(useGroceryStore.getState().items[0].aisle).toBe('Butcher');
     expect(useGroceryStore.getState().aisleOrder).toContain('Butcher');
+  });
+
+  it('setAisleMany registers nothing unless asked, so the item sheet and the AI tidy stay as they were', () => {
+    const item = makeItem({ name: 'nduja' });
+    seed([item]);
+
+    useGroceryStore.getState().setAisleMany({ [item.id]: 'Butcher' });
+
+    expect(useGroceryStore.getState().lastAction).toBeNull();
+  });
+
+  it("the bulk bar's Move to Aisle undoes the aisles and the filings it remembered (#2942)", () => {
+    const peas = makeItem({ name: 'Peas', aisle: 'Produce' });
+    const bread = makeItem({ name: 'Bread', aisle: 'Bakery' });
+    const nduja = makeItem({ name: 'nduja', aisle: 'Deli' });
+    // Peas had a filing of its own; bread had none.
+    seed([peas, bread, nduja], { aisleOverrides: { peas: 'Produce', basil: 'Produce' } });
+
+    useGroceryStore.getState().setAisleMany(
+      { [peas.id]: 'Frozen', [bread.id]: 'Frozen' },
+      { registerUndo: true },
+    );
+    const moved = useGroceryStore.getState();
+    expect(moved.lastAction!.label).toBe('Moved 2 items to Frozen');
+    expect(moved.lastAction!.destructive).toBeFalsy();
+    expect(moved.aisleOverrides).toMatchObject({ peas: 'Frozen', bread: 'Frozen' });
+    // A filing made after the move, for a name the move didn't touch.
+    useGroceryStore.getState().setAisle(nduja.id, 'Butcher');
+    const nKey = useGroceryStore.getState().itemById(nduja.id)!.nameKey;
+    // setAisle registers nothing, so the move is still the step on top.
+    useGroceryStore.getState().undoLastAction();
+
+    const s = useGroceryStore.getState();
+    expect(s.itemById(peas.id)!.aisle).toBe('Produce');
+    expect(s.itemById(bread.id)!.aisle).toBe('Bakery');
+    expect(s.aisleOverrides.peas).toBe('Produce');
+    expect('bread' in s.aisleOverrides).toBe(false);
+    expect(s.aisleOverrides.basil).toBe('Produce');
+    expect(s.aisleOverrides[nKey]).toBe('Butcher');
+    expect(s.itemById(nduja.id)!.aisle).toBe('Butcher');
+    expect(dbSetGroceryAisleOverrides).toHaveBeenLastCalledWith(s.aisleOverrides);
+  });
+
+  it('names no aisle when the move sent rows to several', () => {
+    const peas = makeItem({ name: 'Peas', aisle: 'Produce' });
+    const bread = makeItem({ name: 'Bread', aisle: 'Bakery' });
+    seed([peas, bread]);
+
+    useGroceryStore.getState().setAisleMany(
+      { [peas.id]: 'Frozen', [bread.id]: 'Pantry' },
+      { registerUndo: true },
+    );
+
+    expect(useGroceryStore.getState().lastAction!.label).toBe('Moved 2 items');
   });
 
   it('applyDrop writes the new order and any aisle the drop changed', () => {
@@ -1808,6 +2060,19 @@ describe('shops', () => {
     expect(useGroceryStore.getState().itemShops[0].shopId).toBe(safeway.id);
   });
 
+  it('deleteShop takes the receipt lines remembered against it', () => {
+    const costco = makeShop('Costco');
+    const safeway = makeShop('Safeway');
+    seed([], { shops: [costco, safeway] });
+    const alias = (id: string, shopId: string) =>
+      ({ id, shopId, rawKey: id, itemId: 'i1', hitCount: 1, createdAt: '', lastUsedAt: '' }) as StoreAlias;
+    useGroceryStore.setState({ storeAliases: [alias('a1', costco.id), alias('a2', safeway.id)] });
+
+    useGroceryStore.getState().deleteShop(costco.id);
+
+    expect(useGroceryStore.getState().storeAliases.map(a => a.id)).toEqual(['a2']);
+  });
+
   it('deleteShop clears the remembered store when it was the one deleted', () => {
     const costco = makeShop('Costco');
     seed([], { shops: [costco] });
@@ -2098,6 +2363,19 @@ describe('prices by hand', () => {
     expect(state.itemShops[0].lastPriceQuantity).toBe('2 L');
   });
 
+  it('setItemPrice pairs no quantity when a recipe wrote the one on the row', () => {
+    const costco = makeShop('Costco');
+    const milk = makeItem({ name: 'Milk', quantity: '3 cups', quantityFromRecipe: true });
+    seed([milk], { shops: [costco], itemShops: [link(milk.id, costco.id)] });
+
+    useGroceryStore.getState().setItemPrice(milk.id, 429, costco.id);
+
+    const state = useGroceryStore.getState();
+    expect(state.items[0].lastPriceMinor).toBe(429);
+    expect(state.items[0].lastPriceQuantity).toBeNull();
+    expect(state.itemShops[0].lastPriceQuantity).toBeNull();
+  });
+
   it('setItemPrice with a store the item has no link to leaves the link alone', () => {
     const costco = makeShop('Costco');
     const milk = makeItem({ name: 'Milk' });
@@ -2292,6 +2570,26 @@ describe('finishShopping with a store', () => {
 
     const link = useGroceryStore.getState().itemShops[0];
     expect(link).toMatchObject({ lastPriceMinor: 429, lastPriceQuantity: '1 gal' });
+  });
+
+  it('files a price paid against a recipe-written quantity against no quantity at all', () => {
+    // "3 cups" is what the week's recipes needed, not the gallon that came
+    // home. recipeCost divides the price by this string, so pairing them would
+    // cost a later 2-cup recipe at two thirds of a gallon.
+    const costco = makeShop('Costco');
+    const milk = makeItem({ name: 'Milk', onList: true, checked: true, quantity: '3 cups', quantityFromRecipe: true });
+    seed([milk], { shops: [costco] });
+    (dbFinishGroceryShopping as jest.Mock).mockReturnValue([milk.id]);
+
+    useGroceryStore.getState().finishShopping(costco.id, { [milk.id]: 429 });
+
+    const after = useGroceryStore.getState().items.find(i => i.id === milk.id)!;
+    expect(after.lastPriceMinor).toBe(429);
+    expect(after.lastPriceQuantity).toBeNull();
+    expect(after.priceHistory[after.priceHistory.length - 1].quantity).toBeNull();
+    const link = useGroceryStore.getState().itemShops[0];
+    expect(link).toMatchObject({ lastPriceMinor: 429, lastPriceQuantity: null });
+    expect(link.priceHistory[link.priceHistory.length - 1].quantity).toBeNull();
   });
 
   it('leaves an unpriced item’s previous price standing', () => {
@@ -2678,6 +2976,37 @@ describe('addFromPlan', () => {
     // The quantity the user set survives — this is the overwrite addByName
     // already refuses to do, held to across the plan path too.
     expect(useGroceryStore.getState().itemById(milk.id)!.quantity).toBe('2 gal');
+  });
+
+  it('reports a recipe-owned row whose amount it merged as topped up', () => {
+    const rice = makeItem({ name: 'Rice', onList: true, quantity: '1 cup', quantityFromRecipe: true });
+    const milk = makeItem({ name: 'Milk', onList: true, quantity: '2 gal' });
+    seed([rice, milk]);
+
+    const result = useGroceryStore.getState().addFromPlan([
+      { name: 'Rice', quantity: '1 cup', aisle: 'Pantry' },
+      { name: 'Milk', quantity: '1 pint', aisle: 'Dairy & Eggs' },
+    ]);
+
+    expect(result.alreadyOnList.map(i => i.id)).toEqual([rice.id, milk.id]);
+    // Milk's hand-set amount outranks the recipe, so only rice moved.
+    expect(result.toppedUp.map(i => i.id)).toEqual([rice.id]);
+    expect(describePlanAdd(result)).toEqual({
+      title: 'On the list',
+      message: 'Updated 1 amount already on your list · 1 already on your list',
+      changed: true,
+    });
+  });
+
+  it('describes a plan add that changed nothing as nothing to add', () => {
+    const eggs = makeItem({ name: 'Eggs', onList: true, checked: true });
+    seed([eggs]);
+    const result = useGroceryStore.getState().addFromPlan([
+      { name: 'Eggs', quantity: '6', aisle: 'Dairy & Eggs' },
+    ]);
+    expect(describePlanAdd(result)).toEqual({
+      title: 'Nothing to add', message: '1 already in your cart', changed: false,
+    });
   });
 
   it('marks a quantity it writes as recipe-owned, and never overwrites a hand-set one', () => {
@@ -4683,6 +5012,172 @@ describe('addManyToPantry', () => {
   });
 });
 
+// A receipt or a barcode read into the Pantry is a packet that just came home,
+// so the old one's freezer, opened and running-low claims don't carry over.
+describe('addManyToPantry, acquired', () => {
+  const FROZEN_AT = '2026-06-01T09:00:00.000Z';
+
+  it('clears the previous packet’s frozen, opened and running-low claims', () => {
+    const chicken = makeItem({ name: 'Chicken breast', frozenAt: FROZEN_AT, expiresAt: '2026-06-03' });
+    const pesto = makeItem({ name: 'Pesto', openedAt: FROZEN_AT, expiresAt: '2026-06-06' });
+    const oil = makeItem({ name: 'Olive oil', runningLowAt: FROZEN_AT, expiresAt: null });
+    seed([chicken, pesto, oil]);
+
+    useGroceryStore.getState().addManyToPantry(
+      ['Chicken breast', 'Pesto', 'Olive oil'], undefined, undefined, undefined, { acquired: true }
+    );
+
+    const byName = Object.fromEntries(useGroceryStore.getState().items.map(i => [i.name, i]));
+    expect(byName['Chicken breast'].frozenAt).toBeNull();
+    expect(byName.Pesto.openedAt).toBeNull();
+    expect(byName['Olive oil'].runningLowAt).toBeNull();
+    // The day a freeze suspended, or an opening set, was the old packet's: kept,
+    // clearing the freeze would wake a stale June day on the new chicken.
+    expect(byName['Chicken breast'].expiresAt).toBeNull();
+    expect(byName.Pesto.expiresAt).toBeNull();
+  });
+
+  it('keeps a plain row’s use-by day, since nothing it was derived from went', () => {
+    const spinach = makeItem({ name: 'Spinach', runningLowAt: FROZEN_AT, expiresAt: '2026-06-10' });
+    seed([spinach]);
+
+    useGroceryStore.getState().addManyToPantry(['Spinach'], undefined, undefined, undefined, { acquired: true });
+
+    expect(useGroceryStore.getState().items[0].expiresAt).toBe('2026-06-10');
+  });
+
+  it('takes a running-low row off the home list', () => {
+    const oil = makeItem({ name: 'Olive oil', runningLowAt: FROZEN_AT, onList: true });
+    seed([oil]);
+
+    useGroceryStore.getState().addManyToPantry(['Olive oil'], undefined, undefined, undefined, { acquired: true });
+
+    expect(useGroceryStore.getState().listEntries).toHaveLength(0);
+    expect(useGroceryStore.getState().items[0].onList).toBe(false);
+  });
+
+  // setRunningLow adds to the list being looked at, so "running low" tapped
+  // while an away list was open put the row there. Buying it has to take it
+  // back off that one too, or it sits on the away list after it came home.
+  it('takes a running-low row off the away list it was added to, and leaves a hand-added one', () => {
+    const away: GroceryList = { id: 'away', name: 'Airbnb', sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z' };
+    const oil = makeItem({ name: 'Olive oil', runningLowAt: FROZEN_AT });
+    const salt = makeItem({ name: 'Salt', runningLowAt: FROZEN_AT });
+    const entry = (itemId: string, addedAt: string): GroceryListEntry => ({
+      itemId, listId: 'away', checked: false, sortOrder: 1, choiceGroup: null, addedAt,
+    });
+    seed([oil, salt], {
+      lists: [away],
+      listEntries: [entry(oil.id, FROZEN_AT), entry(salt.id, '2026-05-01T09:00:00.000Z')],
+    });
+
+    useGroceryStore.getState().addManyToPantry(['Olive oil', 'Salt'], undefined, undefined, undefined, { acquired: true });
+
+    expect(useGroceryStore.getState().listEntries.map(e => e.itemId)).toEqual([salt.id]);
+  });
+
+  it('leaves a row on the list that nobody marked running low', () => {
+    const milk = makeItem({ name: 'Milk', onList: true });
+    seed([milk]);
+
+    useGroceryStore.getState().addManyToPantry(['Milk'], undefined, undefined, undefined, { acquired: true });
+
+    expect(useGroceryStore.getState().items[0].onList).toBe(true);
+  });
+
+  it('drops an opened jar’s use-up task without writing the item’s "never"', () => {
+    mockUseUpTasks = true;
+    const pesto = makeItem({ name: 'Pesto', openedAt: FROZEN_AT, expiresAt: null });
+    seed([pesto]);
+    useGroceryStore.getState().setExpiresAt(pesto.id, '2026-06-06');
+    const task = useUpTaskFor(pesto.id)!;
+    expect(task).toBeDefined();
+
+    useGroceryStore.getState().addManyToPantry(['Pesto'], undefined, undefined, undefined, { acquired: true });
+
+    expect(useUpTaskFor(pesto.id)).toBeUndefined();
+    expect(mockTaskState.deleteTask).toHaveBeenCalledWith(task.id, { skipGeneratedOptOut: true });
+  });
+
+  it('lets the scan sheet’s freezer toggle land on the new packet', () => {
+    const peas = makeItem({ name: 'Peas', frozenAt: FROZEN_AT, expiresAt: '2026-06-03' });
+    seed([peas]);
+
+    useGroceryStore.getState().addManyToPantry(
+      ['Peas'], new Set(['Peas']), undefined, undefined, { acquired: true }
+    );
+
+    const updated = useGroceryStore.getState().items[0];
+    expect(updated.frozenAt).not.toBeNull();
+    expect(updated.frozenAt).not.toBe(FROZEN_AT);
+  });
+
+  // The receipt's own shape (#2925): prices and the freezer toggle in one
+  // batch, a found row and a minted one, only the flagged names frozen.
+  it('freezes the receipt rows flagged for the freezer and prices every row', () => {
+    const chicken = makeItem({ name: 'Chicken thighs' });
+    const milk = makeItem({ name: 'Milk' });
+    seed([chicken, milk]);
+
+    useGroceryStore.getState().addManyToPantry(
+      ['Chicken thighs', 'Milk', 'Frozen berries'],
+      new Set(['Chicken thighs', 'Frozen berries']),
+      undefined,
+      { byName: new Map([['Chicken thighs', 899], ['Milk', 429]]), shopId: null },
+      { acquired: true }
+    );
+
+    const byName = (name: string) => useGroceryStore.getState().items.find(i => i.name === name)!;
+    expect(byName('Chicken thighs').frozenAt).not.toBeNull();
+    expect(byName('Frozen berries').frozenAt).not.toBeNull();
+    expect(byName('Milk').frozenAt).toBeNull();
+    expect(byName('Chicken thighs').lastPriceMinor).toBe(899);
+    expect(byName('Milk').lastPriceMinor).toBe(429);
+  });
+
+  it('is off without the option, which is still a plain "Got it"', () => {
+    const chicken = makeItem({ name: 'Chicken breast', frozenAt: FROZEN_AT, expiresAt: '2026-06-03' });
+    seed([chicken]);
+
+    useGroceryStore.getState().addManyToPantry(['Chicken breast']);
+
+    expect(useGroceryStore.getState().items[0].frozenAt).toBe(FROZEN_AT);
+  });
+
+  it('undo puts back the claims, the list entry and the task', () => {
+    mockUseUpTasks = true;
+    const pesto = makeItem({ name: 'Pesto', openedAt: FROZEN_AT, expiresAt: null });
+    const oil = makeItem({ name: 'Olive oil', runningLowAt: FROZEN_AT, onList: true });
+    seed([pesto, oil]);
+    useGroceryStore.getState().setExpiresAt(pesto.id, '2026-06-06');
+    const pestoBefore = useGroceryStore.getState().itemById(pesto.id)!;
+
+    useGroceryStore.getState().addManyToPantry(
+      ['Pesto', 'Olive oil'], undefined, undefined, undefined, { acquired: true }
+    );
+    useGroceryStore.getState().undoLastAction();
+
+    expect(useGroceryStore.getState().itemById(pesto.id)).toEqual(pestoBefore);
+    expect(useGroceryStore.getState().itemById(oil.id)).toEqual(oil);
+    expect(useGroceryStore.getState().listEntries.map(e => e.itemId)).toEqual([oil.id]);
+    expect(useUpTaskFor(pesto.id)).toBeDefined();
+  });
+
+  // Two packs of the same thing on one receipt: the second line finds the row
+  // the first already cleared, and undo has to restore the row from before both.
+  it('undo restores the row from before the batch when a name appears twice', () => {
+    const chicken = makeItem({ name: 'Chicken breast', frozenAt: FROZEN_AT, expiresAt: '2026-06-03' });
+    seed([chicken]);
+
+    useGroceryStore.getState().addManyToPantry(
+      ['Chicken breast', 'Chicken breast'], undefined, undefined, undefined, { acquired: true }
+    );
+    useGroceryStore.getState().undoLastAction();
+
+    expect(useGroceryStore.getState().items[0]).toEqual(chicken);
+  });
+});
+
 describe('setStaple', () => {
   it('writes the given value and persists it', () => {
     const salt = makeItem({ name: 'Salt' });
@@ -4833,6 +5328,21 @@ describe('setFrozen', () => {
     useGroceryStore.getState().setFrozen(spinach.id, true);
 
     expect(useUpTaskFor(spinach.id)).toBeUndefined();
+  });
+
+  it('drops it without writing the item\'s "never", so the thaw can bring one back', () => {
+    // The real deleteTask stamps `useUpTask: false` unless told not to, which
+    // is right for a swipe and wrong here: an item frozen once with a live task
+    // never got a use-up task again.
+    mockUseUpTasks = true;
+    const spinach = makeItem({ name: 'Spinach', expiresAt: null });
+    seed([spinach]);
+    useGroceryStore.getState().setExpiresAt(spinach.id, '2026-08-20');
+    const task = useUpTaskFor(spinach.id)!;
+
+    useGroceryStore.getState().setFrozen(spinach.id, true);
+
+    expect(mockTaskState.deleteTask).toHaveBeenCalledWith(task.id, { skipGeneratedOptOut: true });
   });
 
   // The whole point of the thaw: chicken that keeps two days keeps two days
@@ -5435,6 +5945,73 @@ describe('either/or items (choiceGroup)', () => {
 
 // ─── Use-up tasks (#1106) ───────────────────────────────────────────────────
 
+describe('reconcileAllUseUpTasks (#2924)', () => {
+  it('gives an item the cap turned away its task once a slot frees up', () => {
+    mockUseUpTasks = true;
+    mockUseUpCap = 1;
+    const spinach = makeItem({ name: 'Spinach' });
+    const chicken = makeItem({ name: 'Chicken' });
+    seed([spinach, chicken]);
+    useGroceryStore.getState().setExpiresAt(spinach.id, '2026-08-17');
+    useGroceryStore.getState().setExpiresAt(chicken.id, '2026-08-18');
+    // The cap is full, so chicken is declined.
+    expect(useUpTaskFor(chicken.id)).toBeUndefined();
+
+    // Spinach's task is done; nothing touches chicken's row.
+    const done = useUpTaskFor(spinach.id)!;
+    mockTaskState.tasks = mockTaskState.tasks.map(t => (t.id === done.id ? { ...t, completed: true } : t));
+
+    useGroceryStore.getState().reconcileAllUseUpTasks();
+
+    expect(useUpTaskFor(chicken.id)).toBeDefined();
+    // And the spinach task ticked off for this same use-by day isn't handed
+    // straight back.
+    expect(useUpTaskFor(spinach.id)).toBeUndefined();
+  });
+
+  it('spends an open slot on the soonest use-by day, not the first item reconciled', () => {
+    mockUseUpTasks = true;
+    mockUseUpCap = 1;
+    const later = makeItem({ name: 'Yogurt', expiresAt: '2026-08-25' });
+    const sooner = makeItem({ name: 'Spinach', expiresAt: '2026-08-16' });
+    seed([later, sooner]);
+
+    useGroceryStore.getState().reconcileAllUseUpTasks();
+
+    expect(useUpTaskFor(sooner.id)).toBeDefined();
+    expect(useUpTaskFor(later.id)).toBeUndefined();
+  });
+
+  it('visits the leftovers in the same queue, by date', () => {
+    mockUseUpTasks = true;
+    const spinach = makeItem({ name: 'Spinach', expiresAt: '2026-08-16' });
+    seed([spinach]);
+    mockLeftovers = [
+      { id: 'l-late', keepUntil: '2026-08-20', frozenAt: null, finishedAt: null },
+      { id: 'l-soon', keepUntil: '2026-08-15', frozenAt: null, finishedAt: null },
+    ];
+    // One sequence for both kinds, so the interleave itself is what's pinned.
+    mockTaskState.addTask.mockImplementationOnce((draft: Partial<Task>) => {
+      mockLeftoverReconciles.push('spinach');
+      const task = { id: 't-x', completed: false, archived: false, ...draft } as Task;
+      mockTaskState.tasks.push(task);
+      return task;
+    });
+
+    useGroceryStore.getState().reconcileAllUseUpTasks();
+
+    expect(mockLeftoverReconciles).toEqual(['l-soon', 'spinach', 'l-late']);
+    expect(useUpTaskFor(spinach.id)).toBeDefined();
+  });
+
+  it('creates nothing for an item with the setting off', () => {
+    const spinach = makeItem({ name: 'Spinach', expiresAt: '2026-08-16' });
+    seed([spinach]);
+    useGroceryStore.getState().reconcileAllUseUpTasks();
+    expect(useUpTaskFor(spinach.id)).toBeUndefined();
+  });
+});
+
 describe('use-up tasks', () => {
   const NAME = 'Spinach';
 
@@ -5605,6 +6182,36 @@ describe('use-up tasks', () => {
     expect(useGroceryStore.getState().items[0].useUpTask).not.toBe(false);
   });
 
+  it('answerPantryReview("out") clears the use-by day, as the other out-of-it paths do', () => {
+    mockUseUpTasks = true;
+    const spinach = makeItem({ name: NAME });
+    seed([spinach]);
+    useGroceryStore.getState().setExpiresAt(spinach.id, '2026-08-17');
+
+    useGroceryStore.getState().answerPantryReview(spinach.id, 'out');
+
+    expect(useGroceryStore.getState().items[0].expiresAt).toBeNull();
+  });
+
+  it('the catch-up sweep drops a live task on a row marked out that kept its date', () => {
+    // A row marked out before the out-of-it paths cleared expiresAt: the sweep
+    // walked it as dated and handed back "Use up X", weeks overdue.
+    mockUseUpTasks = true;
+    const spinach = makeItem({ name: NAME });
+    seed([spinach]);
+    useGroceryStore.getState().setExpiresAt(spinach.id, '2026-08-17');
+    expect(useUpTaskFor(spinach.id)).toBeDefined();
+    useGroceryStore.setState(s => ({
+      items: s.items.map(i => ({ ...i, onHandUntil: OUT_OF_IT_UNTIL })),
+    }));
+
+    useGroceryStore.getState().reconcileAllUseUpTasks();
+
+    expect(useUpTaskFor(spinach.id)).toBeUndefined();
+    // Dropped by the app, so not a permanent opt-out.
+    expect(useGroceryStore.getState().items[0].useUpTask).not.toBe(false);
+  });
+
   it('honours an opt-out on the item, which is what deleting the task records', () => {
     mockUseUpTasks = true;
     const spinach = makeItem({ name: NAME, useUpTask: false });
@@ -5736,6 +6343,23 @@ describe('the active trip', () => {
 
     useGroceryStore.getState().startTrip(costco.id, 6000);
     expect(useGroceryStore.getState().tripBudgetMinor).toBe(6000);
+  });
+
+  it('keeps the budget when the store changes mid-shop', () => {
+    // "Change store" is the same shop moved, not a new one with its ceiling
+    // quietly cleared.
+    const costco = makeShop('Costco');
+    const safeway = makeShop('Safeway');
+    seed([], { shops: [costco, safeway] });
+    useGroceryStore.getState().startTrip(costco.id, 6000);
+
+    useGroceryStore.getState().startTrip(safeway.id);
+    expect(useGroceryStore.getState().tripShopId).toBe(safeway.id);
+    expect(useGroceryStore.getState().tripBudgetMinor).toBe(6000);
+
+    // An explicit null still starts with none.
+    useGroceryStore.getState().startTrip(costco.id, null);
+    expect(useGroceryStore.getState().tripBudgetMinor).toBeNull();
   });
 
   it('sets and clears a budget mid-shop', () => {
@@ -6344,6 +6968,27 @@ describe('swapForSubstitute', () => {
     expect(items.find(i => i.id === margarine.id)).toEqual(margarine);
   });
 
+  it('keeps a substitute that is already on the list as it was: checked, with its own quantity', () => {
+    const butter = makeItem({ name: 'Butter', onList: true, quantity: '2 sticks' });
+    const margarine = makeItem({ name: 'Margarine', onList: true, checked: true, quantity: '1 tub' });
+    seed([butter, margarine], {
+      itemSubs: [
+        { itemId: butter.id, subItemId: margarine.id, note: null, createdAt: '2020-01-01T00:00:00.000Z', ratioFrom: null, ratioTo: null, standing: false },
+      ],
+    });
+
+    useGroceryStore.getState().swapForSubstitute(butter.id, margarine.id);
+
+    const items = useGroceryStore.getState().items;
+    expect(items.find(i => i.id === margarine.id)).toMatchObject({ onList: true, checked: true, quantity: '1 tub' });
+    expect(items.find(i => i.id === butter.id)!.onList).toBe(false);
+
+    useGroceryStore.getState().lastAction!.undo();
+    const restored = useGroceryStore.getState().items;
+    expect(restored.find(i => i.id === butter.id)).toEqual(butter);
+    expect(restored.find(i => i.id === margarine.id)).toEqual(margarine);
+  });
+
   // It used to delete a never-bought original outright. That was the worst
   // instance of the old rule: the row being swapped away from is the one
   // holding the link that says what to swap it for.
@@ -6793,6 +7438,182 @@ describe('per-box pantry state', () => {
   });
 });
 
+// ─── a split pack: "Freeze some" (#2925) ────────────────────────────────────
+
+describe('freezing some of a pack', () => {
+  const portionOf = (itemId: string) =>
+    useGroceryStore.getState().itemProducts.find(p => p.itemId === itemId && p.isPortion) ?? null;
+  const itemById = (id: string) => useGroceryStore.getState().items.find(i => i.id === id)!;
+
+  it('puts a portion in the freezer and leaves the item counting down', () => {
+    const chicken = makeItem({ name: 'Chicken thighs', expiresAt: '2026-06-03' });
+    seed([chicken]);
+
+    const portion = useGroceryStore.getState().freezePortion(chicken.id)!;
+
+    expect(portion).toMatchObject({
+      itemId: chicken.id, isPortion: true, productKey: PORTION_PRODUCT_KEY,
+      brand: null, variant: null, onHandUntil: null,
+    });
+    expect(portion.frozenAt).toEqual(expect.any(String));
+    expect(dbSetItemProduct).toHaveBeenCalledWith(portion);
+    // The rest of the pack is untouched: still out of the freezer, still on
+    // its own clock.
+    expect(itemById(chicken.id).frozenAt).toBeNull();
+    expect(itemById(chicken.id).expiresAt).toBe('2026-06-03');
+  });
+
+  it('keeps the use-up task for the half still counting down', () => {
+    // Freezing the whole item drops it (a frozen thing has no countdown to be
+    // reminded about); freezing some must not, or the fresh half goes to waste
+    // silently — the issue's first failure.
+    mockUseUpTasks = true;
+    const chicken = makeItem({ name: 'Chicken thighs' });
+    seed([chicken]);
+    useGroceryStore.getState().setExpiresAt(chicken.id, '2026-06-03');
+    expect(useUpTaskFor(chicken.id)).toBeDefined();
+
+    useGroceryStore.getState().freezePortion(chicken.id);
+
+    expect(useUpTaskFor(chicken.id)).toBeDefined();
+  });
+
+  it('never becomes the preference or a product of the item', () => {
+    const chicken = makeItem({ name: 'Chicken thighs' });
+    seed([chicken]);
+    const portion = useGroceryStore.getState().freezePortion(chicken.id)!;
+
+    expect(itemById(chicken.id).preferredProductId).toBeNull();
+    useGroceryStore.getState().setPreferredProduct(chicken.id, portion.id);
+    expect(itemById(chicken.id).preferredProductId).toBeNull();
+    expect(useGroceryStore.getState().updateProduct(portion.id, { brand: 'Bell & Evans' })).toBe(false);
+  });
+
+  it('reuses the one portion rather than minting a second', () => {
+    const chicken = makeItem({ name: 'Chicken thighs' });
+    seed([chicken]);
+    const first = useGroceryStore.getState().freezePortion(chicken.id)!;
+    useGroceryStore.getState().setProductFrozen(first.id, false);
+
+    const again = useGroceryStore.getState().freezePortion(chicken.id)!;
+
+    expect(again.id).toBe(first.id);
+    expect(again.frozenAt).toEqual(expect.any(String));
+    // The thaw's "Got it" goes with it: the freezer is the claim now.
+    expect(again.onHandUntil).toBeNull();
+    expect(useGroceryStore.getState().itemProducts.filter(p => p.isPortion)).toHaveLength(1);
+  });
+
+  it('leaves a portion already in the freezer exactly as it was', () => {
+    const chicken = makeItem({ name: 'Chicken thighs' });
+    const frozen = { ...makeProduct(chicken.id, null, null), productKey: PORTION_PRODUCT_KEY, isPortion: true, frozenAt: '2026-05-01T12:00:00.000Z' };
+    seed([chicken], { itemProducts: [frozen] });
+    (dbSetItemProduct as jest.Mock).mockClear();
+
+    expect(useGroceryStore.getState().freezePortion(chicken.id)).toBe(frozen);
+    expect(dbSetItemProduct).not.toHaveBeenCalled();
+  });
+
+  it('undoes a portion it minted by deleting it', () => {
+    const chicken = makeItem({ name: 'Chicken thighs' });
+    seed([chicken]);
+    const portion = useGroceryStore.getState().freezePortion(chicken.id)!;
+
+    useGroceryStore.getState().lastAction!.undo();
+
+    expect(portionOf(chicken.id)).toBeNull();
+    expect(dbDeleteItemProduct).toHaveBeenCalledWith(portion.id);
+  });
+
+  it('thaws a portion onto a fresh shelf life and a claim of its own', () => {
+    const chicken = makeItem({ name: 'Chicken thighs', shelfLifeDays: 2 });
+    seed([chicken]);
+    const portion = useGroceryStore.getState().freezePortion(chicken.id)!;
+
+    useGroceryStore.getState().setProductFrozen(portion.id, false);
+
+    const thawed = portionOf(chicken.id)!;
+    expect(thawed.frozenAt).toBeNull();
+    expect(thawed.expiresAt).toBe(expiryKeyFor(new Date(), 2));
+    // Without its own claim a thawed portion would leave the pantry the moment
+    // it left the freezer.
+    expect(new Date(thawed.onHandUntil!).getTime()).toBeGreaterThan(Date.now());
+  });
+
+  it('deletes a portion marked out rather than keeping it as a memory, and undo brings it back', () => {
+    const chicken = makeItem({ name: 'Chicken thighs' });
+    seed([chicken]);
+    const portion = useGroceryStore.getState().freezePortion(chicken.id)!;
+
+    expect(useGroceryStore.getState().markProductsOutOf([portion.id])).toBe(1);
+    expect(portionOf(chicken.id)).toBeNull();
+    expect(dbDeleteItemProduct).toHaveBeenCalledWith(portion.id);
+
+    useGroceryStore.getState().lastAction!.undo();
+    expect(portionOf(chicken.id)).toEqual(portion);
+  });
+
+  it('keeps the frozen half when the item is marked out of it', () => {
+    // "I've used up the chicken" about the half in the fridge says nothing
+    // about the half in the freezer.
+    const chicken = makeItem({ name: 'Chicken thighs' });
+    seed([chicken]);
+    const portion = useGroceryStore.getState().freezePortion(chicken.id)!;
+
+    useGroceryStore.getState().markOutOfMany([chicken.id]);
+
+    expect(itemById(chicken.id).onHandUntil).toBe(OUT_OF_IT_UNTIL);
+    expect(portionOf(chicken.id)).toEqual(portion);
+    expect(dbDeleteItemProduct).not.toHaveBeenCalledWith(portion.id);
+    expect(probablyHaveReason(itemById(chicken.id), new Date(), useGroceryStore.getState().itemProducts))
+      .toBe(FROZEN_REASON);
+  });
+
+  it('takes a thawed portion with the rest when the item is marked out, and undo restores it', () => {
+    const chicken = makeItem({ name: 'Chicken thighs' });
+    seed([chicken]);
+    const portion = useGroceryStore.getState().freezePortion(chicken.id)!;
+    useGroceryStore.getState().setProductFrozen(portion.id, false);
+    const thawed = portionOf(chicken.id)!;
+
+    useGroceryStore.getState().markOutOfMany([chicken.id]);
+    expect(portionOf(chicken.id)).toBeNull();
+    expect(dbDeleteItemProduct).toHaveBeenCalledWith(portion.id);
+
+    useGroceryStore.getState().lastAction!.undo();
+    expect(portionOf(chicken.id)).toEqual(thawed);
+  });
+
+  // The pantry review deck's "out of it" is the same answer by another door,
+  // and it left the thawed half standing to come back beside the next purchase.
+  it('takes a thawed portion with an "out of it" review answer, keeps a frozen one, and the deck\'s undo restores it', () => {
+    const chicken = makeItem({ name: 'Chicken thighs' });
+    seed([chicken]);
+    const portion = useGroceryStore.getState().freezePortion(chicken.id)!;
+    useGroceryStore.getState().setProductFrozen(portion.id, false);
+    const thawed = portionOf(chicken.id)!;
+    const before = itemById(chicken.id);
+
+    const taken = useGroceryStore.getState().answerPantryReview(chicken.id, 'out');
+    expect(taken).toEqual([thawed]);
+    expect(portionOf(chicken.id)).toBeNull();
+    expect(dbDeleteItemProduct).toHaveBeenCalledWith(portion.id);
+
+    useGroceryStore.getState().revertPantryAnswer(before, null, taken);
+    expect(portionOf(chicken.id)).toEqual(thawed);
+    expect(itemById(chicken.id)).toEqual(before);
+  });
+
+  it('leaves a frozen portion alone on an "out of it" review answer', () => {
+    const chicken = makeItem({ name: 'Chicken thighs' });
+    seed([chicken]);
+    const portion = useGroceryStore.getState().freezePortion(chicken.id)!;
+
+    expect(useGroceryStore.getState().answerPantryReview(chicken.id, 'out')).toEqual([]);
+    expect(portionOf(chicken.id)).toEqual(portion);
+  });
+});
+
 
 // ─── separate lists ──────────────────────────────────────────────────────────
 
@@ -6802,6 +7623,44 @@ describe('separate shopping lists', () => {
   /** This item's membership of this list, from the store as it now stands. */
   const entryOf = (itemId: string, listId: string | null) =>
     useGroceryStore.getState().listEntries.find(e => e.itemId === itemId && e.listId === listId) ?? null;
+
+  describe('ticking and removing on a named list', () => {
+    // The Reminders mirror's case: it only ever reads the list at home, so its
+    // ticks and removals have to land there whatever list is on screen.
+    it('ticks on the list named rather than the one being shown', () => {
+      const milk = makeItem({ name: 'Milk', onList: true });
+      seed([milk], {
+        lists: [AIRBNB],
+        activeListId: AIRBNB.id,
+        listEntries: [
+          { itemId: milk.id, listId: null, checked: false, sortOrder: 0, choiceGroup: null, addedAt: milk.createdAt },
+          { itemId: milk.id, listId: AIRBNB.id, checked: false, sortOrder: 0, choiceGroup: null, addedAt: milk.createdAt },
+        ],
+      });
+
+      useGroceryStore.getState().setCheckedMany([milk.id], true, { listId: null });
+
+      expect(entryOf(milk.id, null)!.checked).toBe(true);
+      expect(entryOf(milk.id, AIRBNB.id)!.checked).toBe(false);
+    });
+
+    it('removes from the list named, leaving the one being shown alone', () => {
+      const milk = makeItem({ name: 'Milk', onList: true });
+      seed([milk], {
+        lists: [AIRBNB],
+        activeListId: AIRBNB.id,
+        listEntries: [
+          { itemId: milk.id, listId: null, checked: false, sortOrder: 0, choiceGroup: null, addedAt: milk.createdAt },
+          { itemId: milk.id, listId: AIRBNB.id, checked: false, sortOrder: 0, choiceGroup: null, addedAt: milk.createdAt },
+        ],
+      });
+
+      useGroceryStore.getState().removeFromListMany([milk.id], { listId: null });
+
+      expect(entryOf(milk.id, null)).toBeNull();
+      expect(entryOf(milk.id, AIRBNB.id)).not.toBeNull();
+    });
+  });
 
   describe('adding', () => {
     it('lands a typed add on the list being shown', () => {
@@ -6831,6 +7690,36 @@ describe('separate shopping lists', () => {
 
       expect(entryOf(milk.id, null)).not.toBeNull();
       expect(entryOf(milk.id, AIRBNB.id)).not.toBeNull();
+    });
+
+    it('counts a paste line on the home list only as added to the away list, and undo takes it back off', () => {
+      // "Already on the list" is about the list being pasted into. Milk on the
+      // home list is a fresh add to Airbnb, so the paste reports it as added
+      // and its undo removes it from Airbnb (and only from Airbnb).
+      const milk = makeItem({ name: 'Milk', onList: true });
+      seed([milk], { lists: [AIRBNB], activeListId: AIRBNB.id });
+
+      const { added, alreadyOnList } = useGroceryStore.getState().addManyFromText('milk\neggs');
+
+      expect(added.map(i => i.name)).toEqual(['milk', 'eggs']);
+      expect(alreadyOnList).toHaveLength(0);
+      expect(useGroceryStore.getState().lastAction!.label).toBe('2 items added');
+
+      useGroceryStore.getState().lastAction!.undo();
+      expect(entryOf(milk.id, AIRBNB.id)).toBeNull();
+      expect(entryOf(milk.id, null)).not.toBeNull();
+    });
+
+    it('registers an undo for a typed add that is new to the away list', () => {
+      const milk = makeItem({ name: 'Milk', onList: true });
+      seed([milk], { lists: [AIRBNB], activeListId: AIRBNB.id });
+
+      useGroceryStore.getState().addByName('milk');
+
+      expect(useGroceryStore.getState().lastAction?.label).toBe('Added "milk"');
+      useGroceryStore.getState().lastAction!.undo();
+      expect(entryOf(milk.id, AIRBNB.id)).toBeNull();
+      expect(entryOf(milk.id, null)).not.toBeNull();
     });
 
     it('leaves the tick on the list it is already in', () => {
@@ -6973,6 +7862,18 @@ describe('separate shopping lists', () => {
 
       expect(entryOf(oil.id, null)).not.toBeNull();
       expect(entryOf(oil.id, AIRBNB.id)).not.toBeNull();
+    });
+
+    it('adds it to the list it is told to, whichever is being shown', () => {
+      // The supply sweep names the home list: a home supply joining the
+      // Airbnb list is never restocked there.
+      const oil = makeItem({ name: 'Olive oil', onList: false });
+      seed([oil], { lists: [AIRBNB], activeListId: AIRBNB.id });
+
+      useGroceryStore.getState().setRunningLow(oil.id, true, { registerUndo: false, listId: null });
+
+      expect(entryOf(oil.id, null)).not.toBeNull();
+      expect(entryOf(oil.id, AIRBNB.id)).toBeNull();
     });
   });
 
@@ -7154,6 +8055,17 @@ describe('separate shopping lists', () => {
       );
     });
 
+    // The finish sheet hides its freezer toggle on an away list (#2925) on the
+    // strength of this: a rented freezer is not the pantry, so even a flag
+    // that got through writes nothing.
+    it('freezes nothing, even when the caller flags a row', () => {
+      const coffee = seedAwayTrip();
+
+      useGroceryStore.getState().finishShopping(null, {}, undefined, new Set([coffee.id]));
+
+      expect(useGroceryStore.getState().items.find(i => i.id === coffee.id)!.frozenAt).toBeNull();
+    });
+
     it('links no store, even when the caller names one', () => {
       // Every store on file is one near home. A trip at the shop by the rental
       // is not evidence about where you can get this.
@@ -7212,6 +8124,11 @@ describe('checkAwayGroceryList', () => {
     awayEnd: new Date(2026, 8, 19, 12, 0, 0).toISOString(),
     awayListId: LISBON.id,
     awayListDeclinedFor: null,
+    pausedUntil: null,
+    personIds: [],
+    links: [],
+    inOrder: false,
+    showChecked: false,
     archived: false,
     completed: false,
     ...extra,
@@ -7447,5 +8364,230 @@ describe('a store\'s aisle range', () => {
 
     expect(useGroceryStore.getState().shops[0].aisles).toBeNull();
     expect(dbSetShopAisles).toHaveBeenLastCalledWith(cvs.id, null);
+  });
+});
+
+// #2938: the order a store's aisles are walked in, applied while you're there.
+describe('a store\'s own aisle walk', () => {
+  const others = DEFAULT_AISLES.filter(a => a !== 'Produce' && a !== 'Frozen' && a !== OTHER_AISLE);
+  // Frozen first, Produce last: nothing like the usual order.
+  const ARRANGED = ['Frozen', ...others, 'Produce'];
+  const orderOf = () => useGroceryStore.getState().shops[0].aisleOrder;
+
+  it('starts with none, so a new store walks the usual order', () => {
+    expect(useGroceryStore.getState().addShop("Trader Joe's")!.aisleOrder).toBeNull();
+  });
+
+  it('setShopAisleOrder writes an arrangement and keeps it in state', () => {
+    const tj = makeShop("Trader Joe's");
+    seed([], { shops: [tj] });
+
+    useGroceryStore.getState().setShopAisleOrder(tj.id, [...ARRANGED, OTHER_AISLE]);
+
+    // Other is never stored: it always walks last.
+    expect(dbSetShopAisleOrder).toHaveBeenCalledWith(tj.id, ARRANGED);
+    expect(orderOf()).toEqual(ARRANGED);
+  });
+
+  // A drag that ends where it began says nothing about the store, and keeping
+  // a copy would stop it following the next change to the usual order.
+  it('saves an order that walks the same as the usual one as none at all', () => {
+    const tj = makeShop("Trader Joe's", { aisleOrder: ARRANGED });
+    seed([], { shops: [tj] });
+
+    useGroceryStore.getState().setShopAisleOrder(tj.id, [...DEFAULT_AISLES]);
+
+    expect(dbSetShopAisleOrder).toHaveBeenCalledWith(tj.id, null);
+    expect(orderOf()).toBeNull();
+  });
+
+  it('goes back to the usual order on null', () => {
+    const tj = makeShop("Trader Joe's", { aisleOrder: ARRANGED });
+    seed([], { shops: [tj] });
+
+    useGroceryStore.getState().setShopAisleOrder(tj.id, null);
+
+    expect(dbSetShopAisleOrder).toHaveBeenCalledWith(tj.id, null);
+    expect(orderOf()).toBeNull();
+  });
+
+  it('writes nothing when the order hasn\'t changed', () => {
+    const tj = makeShop("Trader Joe's", { aisleOrder: ARRANGED });
+    const costco = makeShop('Costco');
+    seed([], { shops: [tj, costco] });
+
+    useGroceryStore.getState().setShopAisleOrder(tj.id, ARRANGED);
+    useGroceryStore.getState().setShopAisleOrder(costco.id, [...DEFAULT_AISLES]);
+
+    expect(dbSetShopAisleOrder).not.toHaveBeenCalled();
+  });
+
+  it('ignores a store that is gone', () => {
+    useGroceryStore.getState().setShopAisleOrder('nope', ARRANGED);
+    expect(dbSetShopAisleOrder).not.toHaveBeenCalled();
+  });
+
+  // The fifth place an aisle name lives, so a rename carries onto it, in place.
+  it('carries a renamed aisle onto every store\'s walk, where it was', () => {
+    const tj = makeShop("Trader Joe's", { aisleOrder: ARRANGED });
+    seed([], { shops: [tj] });
+
+    useGroceryStore.getState().renameAisle('Frozen', 'Freezer');
+
+    const expected = ['Freezer', ...others, 'Produce'];
+    expect(orderOf()).toEqual(expected);
+    expect(dbSetShopAisleOrder).toHaveBeenLastCalledWith(tj.id, expected);
+  });
+
+  it('leaves a store walking the usual order alone on a rename', () => {
+    const tj = makeShop("Trader Joe's");
+    seed([], { shops: [tj] });
+
+    useGroceryStore.getState().renameAisle('Frozen', 'Freezer');
+
+    expect(orderOf()).toBeNull();
+    expect(dbSetShopAisleOrder).not.toHaveBeenCalled();
+  });
+
+  it('keeps a store\'s range and walk apart through a rename', () => {
+    const tj = makeShop("Trader Joe's", { aisles: ['Produce', 'Frozen'], aisleOrder: ARRANGED });
+    seed([], { shops: [tj] });
+
+    useGroceryStore.getState().renameAisle('Produce', 'Fruit & Veg');
+
+    expect(useGroceryStore.getState().shops[0].aisles).toEqual(['Fruit & Veg', 'Frozen']);
+    expect(orderOf()).toEqual(['Frozen', ...others, 'Fruit & Veg']);
+  });
+
+  it('drops a deleted aisle from a store\'s walk and keeps the rest of it', () => {
+    const tj = makeShop("Trader Joe's", { aisleOrder: ARRANGED });
+    seed([], { shops: [tj] });
+
+    useGroceryStore.getState().deleteAisle('Frozen');
+
+    const expected = [...others, 'Produce'];
+    expect(orderOf()).toEqual(expected);
+    expect(dbSetShopAisleOrder).toHaveBeenLastCalledWith(tj.id, expected);
+  });
+
+  it('clears a walk left naming nothing', () => {
+    const tj = makeShop("Trader Joe's", { aisleOrder: ['Snacks'] });
+    seed([], { shops: [tj] });
+
+    useGroceryStore.getState().deleteAisle('Snacks');
+
+    expect(orderOf()).toBeNull();
+    expect(dbSetShopAisleOrder).toHaveBeenLastCalledWith(tj.id, null);
+  });
+});
+
+// ─── Fixes from the grocery store audit ──────────────────────────────────────
+
+describe('grocery store fixes', () => {
+  const AWAY: GroceryList = { id: 'away', name: 'Airbnb', sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z' };
+  const entryOf = (itemId: string, listId: string | null) =>
+    useGroceryStore.getState().listEntries.find(e => e.itemId === itemId && e.listId === listId) ?? null;
+
+  it('adds a recipe\'s ingredients to the list being shown, whatever the home list says', () => {
+    // Onion ticked at home and garlic on the home list: neither is on the
+    // Airbnb list, so both belong on it.
+    const onion = makeItem({ name: 'Onion', onList: true, checked: true });
+    const garlic = makeItem({ name: 'Garlic', onList: true });
+    seed([onion, garlic], { lists: [AWAY], activeListId: AWAY.id });
+
+    const result = useGroceryStore.getState().addFromPlan([
+      { name: 'onion', quantity: null, aisle: null },
+      { name: 'garlic', quantity: null, aisle: null },
+    ]);
+
+    expect(result.skippedInCart).toHaveLength(0);
+    expect(entryOf(onion.id, AWAY.id)).not.toBeNull();
+    expect(entryOf(garlic.id, AWAY.id)).not.toBeNull();
+  });
+
+  it('undoing a pantry scan batch deletes the rows it created from the database too', () => {
+    seed([]);
+    useGroceryStore.getState().addManyToPantry(['Flour', 'Sugar']);
+    const ids = useGroceryStore.getState().items.map(i => i.id);
+    (dbDeleteGroceryItem as jest.Mock).mockClear();
+
+    useGroceryStore.getState().undoLastAction();
+
+    expect(useGroceryStore.getState().items).toHaveLength(0);
+    for (const id of ids) expect(dbDeleteGroceryItem).toHaveBeenCalledWith(id);
+  });
+
+  it('clearing the list ends a kept row\'s recipe quantity and credit', () => {
+    const butter = makeItem({
+      name: 'Butter', onList: true, purchaseCount: 2,
+      quantity: '3/4 cup', quantityFromRecipe: true, sourceRecipeId: 'cake', sourceRecipeTitle: 'Cake',
+    });
+    seed([butter]);
+    (dbClearGroceryList as jest.Mock).mockReturnValue([butter.id]);
+
+    useGroceryStore.getState().clearList();
+
+    expect(useGroceryStore.getState().items[0]).toMatchObject({
+      quantity: null, quantityFromRecipe: false, sourceRecipeId: null, sourceRecipeTitle: null,
+    });
+  });
+});
+
+describe('mergeItems: what it moves onto the survivor', () => {
+  const AWAY: GroceryList = { id: 'away', name: 'Airbnb', sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z' };
+  const entryOf = (itemId: string, listId: string | null) =>
+    useGroceryStore.getState().listEntries.find(e => e.itemId === itemId && e.listId === listId) ?? null;
+  const entry = (itemId: string, listId: string | null, checked = false): GroceryListEntry => ({
+    itemId, listId, checked, sortOrder: 1, choiceGroup: null, addedAt: '2026-01-01T00:00:00.000Z',
+  });
+
+  beforeEach(() => {
+    mockTaskState.tasks = [];
+    (mockTaskState.updateTask as jest.Mock).mockClear();
+  });
+
+  it('keeps the merged item on every list the loser was on', () => {
+    const cilantro = makeItem({ name: 'Cilantro' });
+    const coriander = makeItem({ name: 'Coriander' });
+    seed([cilantro, coriander], { lists: [AWAY], listEntries: [entry(cilantro.id, AWAY.id), entry(cilantro.id, null)] });
+
+    useGroceryStore.getState().mergeItems(cilantro.id, coriander.id);
+
+    expect(entryOf(coriander.id, AWAY.id)).not.toBeNull();
+    expect(entryOf(coriander.id, null)).not.toBeNull();
+    expect(useGroceryStore.getState().itemById(coriander.id)!.onList).toBe(true);
+  });
+
+  it('keeps it in the cart when either copy was checked', () => {
+    const cilantro = makeItem({ name: 'Cilantro' });
+    const coriander = makeItem({ name: 'Coriander' });
+    seed([cilantro, coriander], { listEntries: [entry(cilantro.id, null, true), entry(coriander.id, null, false)] });
+
+    useGroceryStore.getState().mergeItems(cilantro.id, coriander.id);
+
+    expect(entryOf(coriander.id, null)?.checked).toBe(true);
+  });
+
+  it('points a supply task at the survivor, so buying it still restocks', () => {
+    const soap = makeItem({ name: 'Dish soap' });
+    const liquid = makeItem({ name: 'Dishwashing liquid' });
+    mockTaskState.tasks = [{ id: 'supply', supplyGroceryItemId: soap.id } as Task];
+    seed([soap, liquid]);
+
+    useGroceryStore.getState().mergeItems(soap.id, liquid.id);
+
+    expect(mockTaskState.updateTask).toHaveBeenCalledWith('supply', { supplyGroceryItemId: liquid.id }, expect.anything());
+  });
+
+  it('puts the list entries back on undo', () => {
+    const cilantro = makeItem({ name: 'Cilantro' });
+    const coriander = makeItem({ name: 'Coriander' });
+    seed([cilantro, coriander], { lists: [AWAY], listEntries: [entry(cilantro.id, AWAY.id)] });
+
+    useGroceryStore.getState().mergeItems(cilantro.id, coriander.id);
+    useGroceryStore.getState().undoLastAction();
+
+    expect(entryOf(cilantro.id, AWAY.id)).not.toBeNull();
+    expect(entryOf(coriander.id, AWAY.id)).toBeNull();
   });
 });

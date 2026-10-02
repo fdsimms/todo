@@ -33,6 +33,7 @@ describe('the three maintenance groups', () => {
       'check away grocery list',
       'roll over quotas',
       'sweep overshoot quotas',
+      'sync water quotas',
       'drip stalled projects',
       'check meal plan nudge',
       'check project review tasks',
@@ -40,6 +41,7 @@ describe('the three maintenance groups', () => {
       'check pantry reviews',
       'check pantry checks',
       'check meal shortfall tasks',
+      'check meal thaw tasks',
       'check meal log nudge tasks',
       'check calendar review tasks',
       'check weather tasks',
@@ -54,9 +56,9 @@ describe('the three maintenance groups', () => {
       'check birthday gift tasks',
       'check reach-out tasks',
       'check waiting follow-up tasks',
-      'reconcile leftover use-up tasks',
+      'reconcile use-up tasks',
       'check scheduled templates',
-      'check weekly review tasks',
+      'dismiss expired completion timers',
       'sweep task penalties',
     ]);
   });

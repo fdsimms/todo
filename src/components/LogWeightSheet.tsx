@@ -1,10 +1,11 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, TextInput, StyleSheet, Alert } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { format } from 'date-fns/format';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useHealthStore } from '../store/useHealthStore';
 import { useTaskStore } from '../store/useTaskStore';
+import { useDemoStore } from '../store/useDemoStore';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -13,8 +14,10 @@ import { logWeightToHealth } from '../utils/healthWeightSync';
 import { openHealthApp } from '../utils/healthBridge';
 import { parseWeightInput } from '../utils/weightLog';
 import { navigateToSettingsEntry } from '../utils/settingsIndex';
+import { isDemoModeActive } from '../utils/demoState';
 import { EditorSheet } from './EditorSheet';
 import { EditorRow } from './EditorRow';
+import { InlineAction } from './InlineAction';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { WhenPicker } from './WhenPicker';
@@ -49,12 +52,24 @@ export function LogWeightSheet({ visible, onClose }: Props) {
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation();
   const unit = useSettingsStore(s => s.weightUnit);
+  const healthWriteEnabled = useSettingsStore(s => s.healthWriteEnabled);
+  const demoActive = useDemoStore(s => s.active);
   const refreshWeight = useHealthStore(s => s.refreshWeight);
 
   const [text, setText] = useState('');
   const [day, setDay] = useState<Date>(() => getLogicalToday());
   const [pickerOpen, setPickerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const weightInputRef = useRef<TextInput>(null);
+
+  // The sheet stays mounted across opens (see `onShow` below), so the day it
+  // was seeded with, or reset to on the last close, can be yesterday's by the
+  // time it opens again: tomorrow morning's weigh-in then saved to the day
+  // before, at midnight. A fresh open starts on today. A draft still holding a
+  // typed weight (the "Open Settings" detour below keeps it) keeps its day too.
+  useEffect(() => {
+    if (visible && text === '') setDay(getLogicalToday());
+  }, [visible]);
 
   const kilograms = parseWeightInput(text, unit);
   const canSave = kilograms !== null && !saving;
@@ -64,6 +79,15 @@ export function LogWeightSheet({ visible, onClose }: Props) {
     setDay(getLogicalToday());
     setSaving(false);
     onClose();
+  };
+
+  // `onClose` rather than `close`: the weight just typed stays in the sheet for
+  // when they come back from turning the switch on, instead of having to be
+  // typed a second time. The sheet closes first: it is full screen, and
+  // Settings would arrive behind it.
+  const openWriteSetting = () => {
+    onClose();
+    navigateToSettingsEntry(navigation, 'healthWrite');
   };
 
   const save = async () => {
@@ -101,13 +125,7 @@ export function LogWeightSheet({ visible, onClose }: Props) {
         'Turn on "Log to Health" in Settings before recording a weight.',
         [
           { text: 'Not now', style: 'cancel' },
-          {
-            text: 'Open Settings',
-            onPress: () => {
-              close();
-              navigateToSettingsEntry(navigation, 'healthWrite');
-            },
-          },
+          { text: 'Open Settings', onPress: openWriteSetting },
         ],
       );
       return;
@@ -127,6 +145,13 @@ export function LogWeightSheet({ visible, onClose }: Props) {
       Alert.alert('That is not a weight', 'Enter a number your scale could have shown.');
       return;
     }
+    // Demo mode refuses the write before the device is ever asked (see
+    // logWeightToHealth), so "this device cannot" would blame the phone for a
+    // refusal that is ours.
+    if (isDemoModeActive()) {
+      Alert.alert('Not available in demo mode', 'Demo mode does not read or write Apple Health, so a weight cannot be saved here.');
+      return;
+    }
     Alert.alert('Health is not available', 'This device cannot record a weight.');
   };
 
@@ -134,6 +159,9 @@ export function LogWeightSheet({ visible, onClose }: Props) {
     <EditorSheet
       visible={visible}
       onRequestClose={close}
+      // The sheet stays mounted across opens, so a bare `autoFocus` on the
+      // field would only ever fire once.
+      onShow={() => weightInputRef.current?.focus()}
       rootStyle={styles.root}
       headerStyle={styles.header}
       scrollStyle={styles.scroll}
@@ -159,18 +187,44 @@ export function LogWeightSheet({ visible, onClose }: Props) {
         />
       }
     >
+      {/* Said before any typing rather than only after Save: a weight can only
+          be recorded by writing it to Health, so with the write switch off
+          (or in demo mode, where no Health write happens at all) the number
+          has nowhere to go. */}
+      {demoActive ? (
+        <View style={[styles.card, styles.notice]}>
+          <Text style={styles.noticeText}>
+            Weight is not available in demo mode. Demo mode does not read or write
+            Apple Health, so a weight cannot be saved here.
+          </Text>
+        </View>
+      ) : !healthWriteEnabled ? (
+        <View style={[styles.card, styles.notice]}>
+          <Text style={styles.noticeText}>
+            Log to Health is off, so a weight cannot be saved until you turn it on
+            in Settings.
+          </Text>
+          <InlineAction
+            label="Open Settings"
+            icon="settings-outline"
+            onPress={openWriteSetting}
+            style={styles.noticeAction}
+          />
+        </View>
+      ) : null}
+
       <View style={styles.card}>
         <View style={styles.field}>
           <Text style={styles.fieldLabel}>Weight</Text>
           <View style={styles.inputRow}>
             <TextInput
+              ref={weightInputRef}
               style={styles.input}
               value={text}
               onChangeText={setText}
               keyboardType="decimal-pad"
               placeholder="e.g. 72.4"
               placeholderTextColor={colors.textTertiary}
-              autoFocus
               accessibilityLabel={`Weight in ${unit === 'kg' ? 'kilograms' : 'pounds'}`}
             />
             <Text style={styles.unit}>{unit}</Text>
@@ -215,6 +269,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginBottom: spacing.md,
   },
   field: { paddingVertical: spacing.md },
+  notice: { paddingVertical: spacing.md, gap: spacing.sm },
+  noticeAction: { alignSelf: 'flex-start' },
+  noticeText: { fontSize: font.sm, lineHeight: 18, color: colors.textSecondary },
   fieldLabel: {
     fontSize: font.xs,
     fontWeight: fontWeight.semibold,

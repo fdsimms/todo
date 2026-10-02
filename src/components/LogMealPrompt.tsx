@@ -9,7 +9,9 @@ import { useGroceryStore } from '../store/useGroceryStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useRecipeStore } from '../store/useRecipeStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { perServing, recipeNutrition } from '../utils/recipeNutrition';
+import { standingSwapMap } from '../utils/standingSwaps';
 import {
   cookedDishGrams,
   defaultHelpings,
@@ -17,8 +19,8 @@ import {
   servingGrams,
   weighedHelping,
 } from '../utils/mealLog';
-import { helpingNutrition } from '../utils/foodLog';
-import { dayKeyToDate } from '../utils/dateUtils';
+import { helpingNutrition, logInstantFor } from '../utils/foodLog';
+import { dayKeyOf, getCurrentDayStart } from '../utils/dateUtils';
 import { haptics } from '../utils/haptics';
 import { CountStepper } from './CountStepper';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
@@ -60,6 +62,14 @@ const MEASURE_OPTIONS: SegmentOption<Measure>[] = [
  *
  * **Declining costs one tap and is never punished.** No badge, no "you didn't
  * log", no streak, and the offer does not come back for that meal.
+ *
+ * **Somebody who doesn't track food can say so here, once.** "Stop asking
+ * after meals" writes the same `mealLogPrompt` switch Settings holds, from the
+ * moment the question is asked, rather than leaving the per-meal "no" as the
+ * only decline on offer (it is written on one plan entry, so next week's
+ * copied dinner asked again). Offered only when the app raised the prompt on
+ * its own: a person who tapped to log a meal asked for this sheet, and that
+ * switch doesn't govern it.
  */
 
 export function LogMealPrompt() {
@@ -70,10 +80,12 @@ export function LogMealPrompt() {
   const setPending = useFoodLogStore(s => s.setPendingMealLog);
   const addEntry = useFoodLogStore(s => s.addEntry);
   const setLogMeal = useMealPlanStore(s => s.setLogMeal);
+  const setMealLogPrompt = useSettingsStore(s => s.setMealLogPrompt);
   const pendingFinishLeftoverId = useLeftoverStore(s => s.pendingFinishLeftoverId);
   const recipes = useRecipeStore(useShallow(s => s.recipes));
   const items = useGroceryStore(useShallow(s => s.items));
   const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
+  const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
 
   const [helpings, setHelpings] = useState<number | null>(defaultHelpings());
   const [platedText, setPlatedText] = useState('');
@@ -93,6 +105,10 @@ export function LogMealPrompt() {
   // the pending flag: the store that sets it must not reach the recipe store,
   // and the figures are the same either way.
   const recipesById = useMemo(() => new Map(recipes.map(r => [r.id, r])), [recipes]);
+  // "Always use oat milk for milk", applied as the recipe page's nutrition row
+  // and the meal plan's week line apply it, so the dish logged is the dish
+  // those showed rather than the recipe as written. See standingSwaps.ts.
+  const swaps = useMemo(() => standingSwapMap(itemSubs, items), [itemSubs, items]);
 
   const figures = useMemo(() => {
     if (!pending?.recipeId) return null;
@@ -112,6 +128,7 @@ export function LogMealPrompt() {
       // collectPlannedIngredients makes off the same field.
       { chosen: pending.choices },
       pending.scale,
+      swaps,
     );
     if (!dish) return null;
     return {
@@ -122,14 +139,29 @@ export function LogMealPrompt() {
       // already are: a doubled batch weighs twice what the recipe says.
       cookedGrams: cookedDishGrams(recipe.cookedWeightG, pending.scale),
     };
-  }, [pending, recipes, recipesById, items, itemProducts]);
+  }, [pending, recipes, recipesById, items, itemProducts, swaps]);
 
   // Nothing measurable came back, so there is no question worth asking. The
   // flag is cleared rather than left pending, or the next thing that sets one
   // would find it already occupied.
+  //
+  // A meal somebody tapped to log goes on to the search sheet rather than
+  // vanishing: from the food log's planned row or the meal plan's "Log this
+  // meal", a recipe with no figures used to make the button do nothing at
+  // all. Unasked (a meal's own finish), it still just doesn't come up.
+  const setPendingManual = useFoodLogStore(s => s.setPendingManualMealLog);
   useEffect(() => {
-    if (pending && !figures) setPending(null);
-  }, [pending, figures, setPending]);
+    if (!pending || figures) return;
+    setPending(null);
+    if (pending.asked) {
+      setPendingManual({
+        label: pending.label,
+        slot: pending.slot,
+        dayKey: pending.dayKey,
+        mealPlanEntryId: pending.mealPlanEntryId,
+      });
+    }
+  }, [pending, figures, setPending, setPendingManual]);
 
   // Declining clears `pending`/`figures` in the same commit that starts the
   // close animation, but SheetModal keeps rendering this sheet's children
@@ -149,7 +181,12 @@ export function LogMealPrompt() {
   }
   const shown = pending ?? lastPending.current;
   const shownFigures = figures ?? lastFigures.current;
-  const visible = !!pending && !!figures && !pendingFinishLeftoverId;
+  // Waits for CookRecap too, which the same tick raises: the recap is where a
+  // dish gets weighed, and asking "how much did you have?" first meant the
+  // prompt had no weight to measure a plate against. The recap clears itself
+  // when it has nothing to ask, so this can't be starved.
+  const cookRecapUp = useMealPlanStore(s => s.cookRecap !== null);
+  const visible = !!pending && !!figures && !pendingFinishLeftoverId && !cookRecapUp;
 
   // Weight leads for a dish somebody has weighed, and is simply unavailable
   // for one nobody has: there is nothing to measure a plate against. Reset per
@@ -171,11 +208,11 @@ export function LogMealPrompt() {
     if (!pending || !helping) return;
     const nutrition = helpingNutrition(helping.amounts, helping.servingText, helping.grams);
     if (!nutrition) { haptics.error(); return; }
-    // Anchored at noon, never at the day key's own midnight — see the same
-    // normalising `dayLoad.ts` does before handing a day key to anything
-    // dayResetTime-sensitive, which addEntry's own getLogicalDayKey is.
-    const at = dayKeyToDate(pending.dayKey);
-    at.setHours(12, 0, 0, 0);
+    // The real moment for a meal eaten today, noon for any other day, and
+    // never the day key's own midnight: see `logInstantFor`. addEntry keys it
+    // with getLogicalDayKey, so a dinner logged at 1 AM inside the grace
+    // window still lands on the day it was planned for.
+    const at = logInstantFor(pending.dayKey, dayKeyOf(getCurrentDayStart()));
     addEntry({
       label: pending.label,
       quantity: helping.servingText,
@@ -200,6 +237,14 @@ export function LogMealPrompt() {
     close();
   };
 
+  const handleStopAsking = () => {
+    // The whole offer, not this meal: the Settings switch, written from here so
+    // it can be said at the moment it is asked. Settings can turn it back on.
+    setMealLogPrompt(false);
+    haptics.tap();
+    close();
+  };
+
   if (!shown) return null;
 
   return (
@@ -210,7 +255,7 @@ export function LogMealPrompt() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <View style={styles.card}>
-          <Text style={styles.title}>Log {shown.label.toLowerCase()}?</Text>
+          <Text style={styles.title}>Log {shown.label}?</Text>
           <Text style={styles.body}>
             {helping
               ? `About ${Math.round(helping.amounts.calorieKcal ?? 0)} cal for ${helping.servingText}.`
@@ -254,11 +299,16 @@ export function LogMealPrompt() {
           ) : (
             <>
               <View style={styles.stepper}>
+                {/* Half steps, down to a half: a bowl of soup that was half
+                    a serving, or half the dish, was otherwise unsayable here
+                    and had to be logged as one and corrected afterwards.
+                    `describeHelping` already words both ("half the dish"). */}
                 <CountStepper
                   value={helpings}
                   onChange={setHelpings}
-                  min={1}
+                  min={0.5}
                   max={20}
+                  step={0.5}
                   label={helping?.countsServings ? 'Servings' : 'Whole dishes'}
                 />
               </View>
@@ -291,6 +341,23 @@ export function LogMealPrompt() {
               >
                 <Text style={styles.secondaryText}>Don't ask for this meal</Text>
               </TouchableOpacity>
+            )}
+            {!shown.asked && (
+              <>
+                <TouchableOpacity
+                  style={styles.secondary}
+                  activeOpacity={interaction.activeOpacity}
+                  onPress={handleStopAsking}
+                  accessibilityRole="button"
+                  accessibilityLabel="Stop asking after meals"
+                  accessibilityHint="You can turn Ask what you ate back on in Settings, under Groceries and meals."
+                >
+                  <Text style={styles.secondaryText}>Stop asking after meals</Text>
+                </TouchableOpacity>
+                <Text style={styles.hint}>
+                  {'You can turn "Ask what you ate" back on in Settings, under Groceries & meals.'}
+                </Text>
+              </>
             )}
           </View>
         </View>

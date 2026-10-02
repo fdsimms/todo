@@ -1,4 +1,4 @@
-import { convertQuantity, describeUnitFamily, unitFactor } from '../utils/unitConvert';
+import { convertQuantity, describeUnitFamily, formatScaleWeight, measureQuantity, unitFactor } from '../utils/unitConvert';
 
 const metric = (q: string) => convertQuantity(q, 'metric').text;
 const us = (q: string) => convertQuantity(q, 'us').text;
@@ -141,6 +141,7 @@ describe('convertQuantity — to US', () => {
 describe('convertQuantity — what it refuses', () => {
   it('never converts a container size', () => {
     expect(convertQuantity('14 oz can', 'metric')).toEqual({ text: '14 oz can', converted: false });
+    expect(convertQuantity('400 g tin', 'us')).toEqual({ text: '400 g tin', converted: false });
     expect(convertQuantity('1 L bottle', 'us')).toEqual({ text: '1 L bottle', converted: false });
     expect(convertQuantity('2 14 oz cans', 'metric')).toEqual({ text: '2 14 oz cans', converted: false });
   });
@@ -183,6 +184,12 @@ describe('convertQuantity — unit agreement', () => {
     expect(us('480 ml')).toBe('≈2 cups');
     expect(us('460 g')).toBe('≈1 lb');
     expect(us('900 g')).toBe('≈2 lbs');
+  });
+
+  it('moves up to pounds when the ounces round to a whole pound', () => {
+    // 450 g is 15.9 oz; the cutoff used to be decided before that rounded to 16.
+    expect(us('450 g')).toBe('≈1 lb');
+    expect(us('425 g')).toBe('≈15 oz');
   });
 });
 
@@ -248,5 +255,52 @@ describe('describeUnitFamily', () => {
     expect(describeUnitFamily('clove')).toBeNull();
     expect(describeUnitFamily('bunch')).toBeNull();
     expect(describeUnitFamily('')).toBeNull();
+  });
+});
+
+describe('a compound amount ("1 lb 8 oz")', () => {
+  it('measures both halves as one weight', () => {
+    expect(measureQuantity('1 lb 8 oz')!.base).toBeCloseTo(680.4, 1);
+    expect(measureQuantity('1 cup 2 tbsp')!.base).toBeCloseTo(236.6 + 29.6, 0);
+  });
+
+  it('converts both halves together rather than leaving the second behind', () => {
+    const out = convertQuantity('1 lb 8 oz', 'metric');
+    expect(out.converted).toBe(true);
+    expect(out.text).not.toMatch(/oz/);
+  });
+
+  it('carries prose after the second half through', () => {
+    expect(convertQuantity('1 lb 8 oz, trimmed', 'metric').text).toMatch(/, trimmed$/);
+  });
+
+  it('leaves a second amount in another dimension or system as prose', () => {
+    expect(measureQuantity('1 lb 250 g')!.base).toBeCloseTo(453.6, 1);
+    expect(measureQuantity('1 lb 2 cups')!.base).toBeCloseTo(453.6, 1);
+  });
+
+  it('does not rewrite a compound already in the target system', () => {
+    expect(convertQuantity('1 cup 2 tbsp', 'us')).toEqual({ text: '1 cup 2 tbsp', converted: false });
+  });
+});
+
+describe('formatScaleWeight', () => {
+  it('writes whole grams, for a scale, in metric and as-written alike', () => {
+    expect(formatScaleWeight(125, 'metric')).toBe('≈125 g');
+    expect(formatScaleWeight(7.8, 'asWritten')).toBe('≈8 g');
+  });
+
+  it('moves to kilograms at a thousand grams', () => {
+    expect(formatScaleWeight(1250, 'metric')).toBe('≈1.25 kg');
+    expect(formatScaleWeight(999.6, 'metric')).toBe('≈1 kg');
+  });
+
+  it('answers a US reader in ounces and pounds', () => {
+    expect(formatScaleWeight(453.6, 'us')).toBe('≈1 lb');
+  });
+
+  it('is null for nothing', () => {
+    expect(formatScaleWeight(0, 'metric')).toBeNull();
+    expect(formatScaleWeight(0.2, 'metric')).toBeNull();
   });
 });

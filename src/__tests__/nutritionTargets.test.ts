@@ -48,8 +48,8 @@ describe('parseNutritionTargets', () => {
     expect(parseNutritionTargets('{"unobtainium":5,"proteinG":60}')).toEqual({ proteinG: 60 });
   });
 
-  it('refuses a target of zero or less, which is not a thing to aim at', () => {
-    expect(parseNutritionTargets('{"calorieKcal":0,"proteinG":-4}')).toEqual({});
+  it('keeps a target of zero, which is a goal somebody chose, and drops a negative', () => {
+    expect(parseNutritionTargets('{"caffeineMg":0,"proteinG":-4}')).toEqual({ caffeineMg: 0 });
   });
 
   it('shrugs at a malformed blob rather than failing the settings load', () => {
@@ -82,11 +82,12 @@ describe('describeAgainstTarget', () => {
     expect(describeAgainstTarget('proteinG', 42, { proteinG: 60 })).toBe('42 of 60g');
   });
 
-  it('says nothing for a nutrient nothing logged today stated', () => {
-    // A day nobody has eaten in has no total, and "0 of 2,000" every morning
-    // reads as a scold to somebody who has not eaten and as a bug to everybody
-    // else. Same refusal the step row makes.
-    expect(describeAgainstTarget('calorieKcal', undefined, { calorieKcal: 2000 })).toBeNull();
+  it('reads an unstated nutrient as zero when a target is set', () => {
+    // A target is something to aim at for the whole day, so a day with
+    // nothing logged yet hasn't missed it — it just hasn't been recorded
+    // against yet, and the target line should say so rather than disappear.
+    expect(describeAgainstTarget('calorieKcal', undefined, { calorieKcal: 2000 }))
+      .toBe('0 of 2,000 cal');
   });
 
   it('says nothing when there is no target to read against', () => {
@@ -173,6 +174,25 @@ describe('targetProgress', () => {
   it('draws empty when nothing is known', () => {
     expect(targetProgress('calorieKcal', undefined, { calorieKcal: 2000 })).toBe(0);
     expect(targetProgress('calorieKcal', 1000, {})).toBe(0);
+  });
+});
+
+describe('a target of zero', () => {
+  it('reads an empty day as met and any amount as over', () => {
+    expect(targetStatus('caffeineMg', undefined, { caffeineMg: 0 })).toBe('met');
+    expect(targetStatus('caffeineMg', 0, { caffeineMg: 0 })).toBe('met');
+    expect(targetStatus('caffeineMg', 80, { caffeineMg: 0 })).toBe('over');
+  });
+
+  it('draws a full bar only once something is logged', () => {
+    expect(targetProgress('caffeineMg', 0, { caffeineMg: 0 })).toBe(0);
+    expect(targetProgress('caffeineMg', 80, { caffeineMg: 0 })).toBe(1);
+  });
+
+  it('lets every nutrient, water included, step down to it', () => {
+    for (const key of NUTRIENT_KEYS) {
+      expect(NUTRITION_TARGET_RANGES[key].min).toBe(0);
+    }
   });
 });
 

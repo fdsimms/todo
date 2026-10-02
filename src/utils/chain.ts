@@ -71,7 +71,9 @@ export function nextChainStepTitle(items: readonly ChainItem[], stepId: string |
 }
 
 /** The kinds a stored step's question may be, for validating JSON off disk. */
-const DELIVERABLE_KINDS: readonly string[] = ['text', 'date', 'number'];
+// A step may ask a Yes/No, but not a pick-one: a step has no options list of
+// its own, and borrowing the task's would ask one step's options at another.
+const DELIVERABLE_KINDS: readonly string[] = ['text', 'date', 'number', 'yesno'];
 
 /**
  * Normalize chainItems read back out of stored JSON (the `cycle_items` column,
@@ -149,6 +151,30 @@ export function chainPreview(task: ChainCarrier): ChainPreview | null {
     currentTitle: items[currentIdx].title,
     nextTitle: nextItem ? nextItem.title : null,
   };
+}
+
+/**
+ * True when completing this task right now spawns the next chain step
+ * immediately, in the same commit — no recurrence to wait out and no
+ * per-step schedule holding it back. Mirrors completeTask's own
+ * `chainAdvances && !atChainEnd && !stepsBySchedule` (useTaskStore.ts /
+ * taskCompletion.ts): the case where the successor is real and visible
+ * before the tap has even finished its own animation.
+ *
+ * This is what lets the row animate the transition itself — see
+ * `runCompletion` in TaskItem.tsx — rather than collapsing and waiting for a
+ * separate row to slide in below it. A step gated behind its own schedule
+ * (chainStepOnSchedule, only meaningful on a recurring chain) doesn't spawn
+ * anything today, so there's nothing for the row to preview.
+ */
+export function chainStepAdvancesInPlace(task: ChainCompletionCarrier & { chainStepOnSchedule?: boolean }): boolean {
+  const items = task.chainItems;
+  if (!task.chainEnabled || !items || items.length === 0) return false;
+  const idx = task.chainIndex ?? 0;
+  if (idx >= items.length - 1) return false; // atChainEnd — ends or waits for the recurrence, never immediate
+  const recurs = (task.recurrenceType ?? 'none') !== 'none';
+  const stepsBySchedule = recurs && task.chainStepOnSchedule === true;
+  return !stepsBySchedule;
 }
 
 /**

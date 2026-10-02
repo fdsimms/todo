@@ -1,4 +1,4 @@
-import type { Leftover, Task, TaskDraft } from '../types';
+import type { Leftover, MealPlanEntry, MealSlot, Task, TaskDraft } from '../types';
 import { generatedBy, wantsGeneratedTask } from './generatedTasks';
 import { kitchenEntryId, kitchenLinkUrl } from './kitchenInventory';
 import { needsAttention } from './leftovers';
@@ -8,7 +8,7 @@ import { getCurrentDayStart } from './dateUtils';
 /**
  * Projecting a leftover onto a "Use up X" task in the task list.
  *
- * Same master/replica split as mealTasks.ts and groceryExpiry.ts, and for the
+ * Same master/replica split as mealSlotTasks.ts and groceryExpiry.ts, and for the
  * same reason: LeftoversCard's own history explains why a leftover isn't a
  * Task (a name key, an aisle, a purchase count — none of it applies to a
  * container in the fridge), and none of that changes here. What's created is
@@ -37,14 +37,66 @@ import { getCurrentDayStart } from './dateUtils';
  * stamp a use-by date days ahead of the trip, a leftover is already tracked
  * from the moment it's logged, so "soon" already means "look at this now".
  */
-export function wantsUseUpTask(leftover: Leftover, enabled: boolean): boolean {
+export function wantsUseUpTask(leftover: Leftover, enabled: boolean, eatenAsPlanned = false): boolean {
   // `needsAttention` defaults its own `now` to a bare `new Date()`, which
   // flips at real midnight rather than at the user's `dayResetTime` — this is
   // the scheduling decision that creates the task, so it gets the logical
   // day instead. `freshnessOf`/`needsAttention`'s other callers (the fridge
   // card's badge, the hub pill) are display, not scheduling, and keep the
   // wall clock on purpose — see the grace-window note in CLAUDE.md.
-  return wantsGeneratedTask(leftover.useUpTask, enabled, needsAttention(leftover, getCurrentDayStart()));
+  //
+  // `eatenAsPlanned` (see `plannedMealRowFor`) only ever narrows the default:
+  // it is part of what *qualifies*, so a per-leftover "yes" the user gave
+  // still wins over it, the same precedence every generator keeps.
+  return wantsGeneratedTask(
+    leftover.useUpTask,
+    enabled,
+    !eatenAsPlanned && needsAttention(leftover, getCurrentDayStart())
+  );
+}
+
+/**
+ * The planned meal whose own task already says to eat this leftover, or null
+ * when there isn't one — which is what stands the use-up task down (#2932).
+ *
+ * Planning last night's chili for dinner put two rows on Today about one
+ * container: "Eat Chili" under the meal and "Use up Chili" under Leftovers.
+ * The meal row is the more specific of the two (it names *when*), so while it
+ * exists the use-up row has nothing to add. Four conditions, each narrowing:
+ *
+ * - **An entry naming this leftover that hasn't been eaten yet.** A cooked one
+ *   is a meal that happened; if there is still some left afterwards, the
+ *   container needs the nudge again.
+ * - **From the logical today on.** A plan for a day already gone is not a plan.
+ * - **No later than `keepUntil`.** A dinner planned after the container goes
+ *   bad doesn't use it up in time, so the use-up task still has something to
+ *   say.
+ * - **A live meal task for that day and slot** (`hasMealRow`). The premise is
+ *   that the meal's row already says it, so where there is no such row (the
+ *   meal-task generator is off, that meal isn't one the user gets a task for,
+ *   or they swiped it away) the use-up task is the only reminder there is, and
+ *   it stays.
+ *
+ * Pure: the store supplies the entries (every one naming the leftover, from
+ * SQLite, since the week Meal plan has loaded is rarely the one asked about)
+ * and the task lookup.
+ */
+export function plannedMealRowFor(
+  leftover: Pick<Leftover, 'id' | 'keepUntil'>,
+  entries: readonly Pick<MealPlanEntry, 'date' | 'slot' | 'leftoverId' | 'cookedAt'>[],
+  todayKey: string,
+  hasMealRow: (dayKey: string, slot: MealSlot) => boolean
+): Pick<MealPlanEntry, 'date' | 'slot'> | null {
+  return (
+    entries.find(
+      e =>
+        e.leftoverId === leftover.id &&
+        !e.cookedAt &&
+        e.date >= todayKey &&
+        e.date <= leftover.keepUntil &&
+        hasMealRow(e.date, e.slot)
+    ) ?? null
+  );
 }
 
 /** What a use-up task is called. Built off `leftover.title`, same as the other two. */

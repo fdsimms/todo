@@ -209,6 +209,71 @@ describe('applyStandingSwap', () => {
   });
 });
 
+describe('a rule and the line spelled one plural away (#2940)', () => {
+  const eggs = makeItem('Eggs');
+  const flaxEggs = makeItem('Flax eggs');
+  const serranos = makeItem('Serrano peppers');
+  const jalapenos = makeItem('Jalapeños');
+
+  it('swaps the singular line for a rule on the plural row, and the reverse', () => {
+    // The rest of the app reads "1 egg" as the Eggs row, so the rule on Eggs
+    // has to reach it too, or "2 eggs" shops flax eggs and "1 egg" shops eggs.
+    const swaps = standingSwapMap(
+      [link(eggs.id, flaxEggs.id), link(serranos.id, jalapenos.id)],
+      [eggs, flaxEggs, serranos, jalapenos]
+    );
+    expect(applyStandingSwap(ingredient('eggs', '2'), swaps)).toMatchObject({
+      ingredient: { name: 'Flax eggs' }, swappedFrom: 'eggs',
+    });
+    expect(applyStandingSwap(ingredient('egg', '1'), swaps)).toMatchObject({
+      ingredient: { name: 'Flax eggs', quantity: '1' }, swappedFrom: 'egg',
+    });
+    expect(applyStandingSwap(ingredient('serrano pepper', '1'), swaps).ingredient.name)
+      .toBe('Jalapeños');
+
+    const onion = makeItem('Onion');
+    const shallot = makeItem('Shallot');
+    const reverse = standingSwapMap([link(onion.id, shallot.id)], [onion, shallot]);
+    expect(applyStandingSwap(ingredient('onions', '2'), reverse).ingredient.name).toBe('Shallot');
+  });
+
+  it('leaves the other spelling alone when a row of its own owns it', () => {
+    // "Egg" and "Eggs" both in the catalog are two things the user kept apart,
+    // and the rule was written about Eggs.
+    const egg = makeItem('Egg');
+    const swaps = standingSwapMap([link(eggs.id, flaxEggs.id)], [eggs, egg, flaxEggs]);
+    expect(applyStandingSwap(ingredient('egg', '1'), swaps).swappedFrom).toBeNull();
+    expect(applyStandingSwap(ingredient('eggs', '2'), swaps).swappedFrom).toBe('eggs');
+  });
+
+  it('refuses a spelling that is a plural of two rows at once', () => {
+    // A catalog holding both "leaf" and "leave" says nothing about which one
+    // "leaves" meant, which is the refusal catalogItemForKey makes too.
+    const leaf = makeItem('Leaf');
+    const leave = makeItem('Leave');
+    const lettuce = makeItem('Lettuce');
+    const swaps = standingSwapMap([link(leaf.id, lettuce.id)], [leaf, leave, lettuce]);
+    expect(applyStandingSwap(ingredient('leaves'), swaps).swappedFrom).toBeNull();
+    expect(applyStandingSwap(ingredient('leaf'), swaps).swappedFrom).toBe('leaf');
+  });
+
+  it('keeps each spelling on its own rule when both rows carry one', () => {
+    const egg = makeItem('Egg');
+    const tofu = makeItem('Tofu');
+    const swaps = standingSwapMap(
+      [link(eggs.id, flaxEggs.id), link(egg.id, tofu.id)],
+      [eggs, egg, flaxEggs, tofu]
+    );
+    expect(applyStandingSwap(ingredient('eggs'), swaps).ingredient.name).toBe('Flax eggs');
+    expect(applyStandingSwap(ingredient('egg'), swaps).ingredient.name).toBe('Tofu');
+  });
+
+  it('still honours the line’s own opt-out on the other spelling', () => {
+    const swaps = standingSwapMap([link(eggs.id, flaxEggs.id)], [eggs, flaxEggs]);
+    expect(applyStandingSwap(ingredient('egg', '1', { noSwap: true }), swaps).swappedFrom).toBeNull();
+  });
+});
+
 describe('describeStandingSwap', () => {
   it('names what the recipe said, lower-cased for a row subtitle', () => {
     expect(describeStandingSwap('Milk')).toBe('instead of milk');

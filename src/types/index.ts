@@ -1,7 +1,16 @@
-export type RecurrenceType = 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly';
+// 'hours' is the one type with no calendar grid of its own — see
+// getNextDueDate and the "hours" note on Task.recurrenceInterval. It always
+// behaves as recurrenceFromCompletion regardless of that flag's stored value.
+export type RecurrenceType = 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly' | 'hours';
 export type Priority = 0 | 1 | 2 | 3 | 4;
 export type Effort = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 export type SortOption = 'default' | 'priority' | 'effort-asc' | 'effort-desc' | 'due-date' | 'streak';
+/**
+ * The Projects screen's order. 'manual' is the hand-dragged order and the only
+ * one a drag can change; the others sort within each category section. See
+ * sortProjects in utils/projectList.
+ */
+export type ProjectSortOption = 'manual' | 'deadline' | 'progress' | 'name';
 export type RecipeSortOption = 'default' | 'name' | 'cooked-recent' | 'cooked-oldest' | 'ingredients-asc' | 'ingredients-desc';
 export type TimeOfDay = 'morning' | 'afternoon' | 'evening' | 'night';
 // 'persistent' is 'alarm' that re-rings on an interval until the task is
@@ -16,7 +25,11 @@ export type ReminderKind = 'notification' | 'alarm' | 'persistent';
  * resolve, the same mistake `splitAlternativeNames` exists to avoid on the
  * grocery side.
  */
-export type DeliverableKind = 'text' | 'date' | 'number';
+//
+// 'yesno' and 'choice' answer with one of a fixed set: Yes/No for the first,
+// the task's own `deliverableOptions` for the second. The stored answer is the
+// option's text, so a project can count them ("12 yes, 3 no").
+export type DeliverableKind = 'text' | 'date' | 'number' | 'yesno' | 'choice';
 
 /**
  * Which direction a task's success runs in — see `Task.polarity`.
@@ -149,6 +162,46 @@ export interface ChainItem {
   // step's link at every step. Resolved by `linkFor`, which prefers the
   // active step and falls back to the task.
   linkUrl?: string | null;
+}
+
+/**
+ * One named unit of a rotation — a language to listen to, a bathroom to clean,
+ * an instrument to practise. The rotation itself lives on the task that holds
+ * the set (see `Task.rotationItems`).
+ *
+ * Deliberately a plain record rather than a `Task`. A member is an *option*,
+ * not a thing with a schedule: it has no due date, no completion state of its
+ * own and never appears on Today, because the entire point of the feature is
+ * that one parent row stands in for the whole set and asks which one you did.
+ * Subtask rows would put all five on the day and let you tick one directly,
+ * which is the shape this exists to avoid.
+ *
+ * One JSON column rather than a table, for the reason `chainItems` is one:
+ * these are only ever read and written together, with the task that owns them.
+ */
+export interface RotationItem {
+  id: string;
+  title: string;
+  // What the link button opens for this member — the podcast feed, the lesson
+  // page. Optional, and falls back to nothing rather than to the task's own
+  // `linkUrl`: a rotation's members are siblings, so a member with no link of
+  // its own has no link, where a chain *step* sensibly inherits the task's.
+  linkUrl?: string | null;
+}
+
+/**
+ * One logged pick — which member, and when. The period's ledger is an array of
+ * these (`Task.rotationLog`), in the order they were logged.
+ *
+ * It carries a timestamp because the ledger *is* the record for the period:
+ * the closed occurrence keeps it the same way a partial quota keeps its
+ * `progressCount` (see `rolloverQuotas`), so "which did I listen to on
+ * Tuesday" is answerable from the week's own row rather than from five
+ * tombstones that retention is entitled to delete.
+ */
+export interface RotationLogEntry {
+  itemId: string;
+  at: string;
 }
 
 // Everything the "Follow-up task" rule says about the task it adds, beyond its
@@ -287,7 +340,18 @@ export type WeatherCondition = 'sunny' | 'rainy' | 'snowy' | 'cold' | 'hot';
  * settings, not a row anything could stamp a decline onto (see the
  * `'weather'` case of `GeneratedKind` above).
  */
-export interface WeatherRule {
+/**
+ * How long the task a rule writes takes, carried on the rule so each task it
+ * writes starts with it. Written back from the task, never asked for on the
+ * rule sheet; see `src/utils/ruleEstimate.ts`. Both absent on a rule nobody
+ * has estimated.
+ */
+export interface RuleTaskEstimate {
+  estimatedMinutes?: number | null;
+  effort?: Effort;
+}
+
+export interface WeatherRule extends RuleTaskEstimate {
   id: string;
   condition: WeatherCondition;
   /** The task's title, e.g. "Put on sunscreen". */
@@ -336,7 +400,7 @@ export interface WeatherRule {
  * Group as opaque tokens iOS never resolves for the app, so every rule watches
  * the same one selection — see modules/todo-screentime-bridge.
  */
-export interface ScreenTimeRule {
+export interface ScreenTimeRule extends RuleTaskEstimate {
   id: string;
   /** Minutes of use across the chosen apps that trips this rule. */
   thresholdMinutes: number;
@@ -390,7 +454,7 @@ export type HealthRuleMetric =
  * both, and `docs/arch/health-data.md` for why a missing reading can never
  * match.
  */
-export interface HealthRule {
+export interface HealthRule extends RuleTaskEstimate {
   id: string;
   /** Which reading this rule watches. */
   metric: HealthRuleMetric;
@@ -468,7 +532,7 @@ export interface HealthRule {
  * this reads titles where `calendarHistory.ts` — which infers — may only
  * offer.
  */
-export interface EventTaskRule {
+export interface EventTaskRule extends RuleTaskEstimate {
   id: string;
   /**
    * The words or phrases looked for in an event's title — the rule fires if
@@ -635,6 +699,12 @@ export interface TaskGroup {
   // belong to, so changing it moves no tasks — unlike `category`, which the
   // stack does own and cascades onto its members.
   projectId: string | null;
+  // A section whose rows are ticked off rather than scheduled: a packing list
+  // inside a trip. Its rows show no dates and are never offered by Pull or
+  // auto-schedule, the way a list project's lines aren't. Only meaningful on
+  // a project's section; ignored anywhere else. Optional for rows built before
+  // it existed.
+  checklist?: boolean;
 }
 
 /**
@@ -901,6 +971,13 @@ export interface UnattendedEntry {
 // from the tasks — `projectProgress` answers "how far along", which is a
 // different question, and deliberately never reaches 100% for a project holding
 // a recurring member.
+/** A link kept on a project page. `label` is optional; the page falls back to the host. */
+export interface ProjectLink {
+  id: string;
+  label: string;
+  url: string;
+}
+
 export interface Project {
   id: string;
   title: string;
@@ -970,11 +1047,12 @@ export interface Project {
   // than global — silently rescheduling is a bigger promise than suggesting,
   // and it's the right call for a chore list and the wrong one for a wishlist.
   autoSchedule: boolean;
-  // Off by default: a project has to be explicitly opted in before it can
-  // appear in ANY nudge surface — the gone-quiet banner, the auto-schedule
-  // drip, and even the manually-opened "Pull from projects" sheet (see
-  // classifyProject in utils/projectPull.ts, which gates on this ahead of
-  // every other rule, in both modes). A reference list like "Gift ideas" is
+  // False keeps a project out of ANY nudge surface — the gone-quiet banner,
+  // the auto-schedule drip, and even the manually-opened "Pull from projects"
+  // sheet (see classifyProject in utils/projectPull.ts, which gates on this
+  // ahead of every other rule, in both modes). A new project starts opted in
+  // with no cadence ("When I ask", see createProject), so it answers the sheet
+  // but never volunteers itself. A reference list like "Gift ideas" is
   // never going to want a due date; without this, the only way to keep it
   // quiet was nudgeCadenceDays === 0, which only silenced the unprompted
   // surfaces and still showed up the moment someone opened the Pull sheet.
@@ -1184,6 +1262,39 @@ export interface Project {
    */
   awayListDeclinedFor: string | null;
   /**
+   * Paused until this day (a `YYYY-MM-DD` logical day key), or null. While
+   * set and not yet reached, the project's tasks are held off Today and Later
+   * and it's left out of every nudge, then it comes back on its own that day.
+   * For "park the garden for winter": archiving leaves the repeating tasks on
+   * Today (an archive files the project, not its tasks), and vacation mode is
+   * app-wide. Its own field rather than a reading of `archived`, since a
+   * paused project is still one you mean to come back to.
+   */
+  pausedUntil: string | null;
+  /**
+   * The people this project is with or for: the planner, the contractor, the
+   * guests of honor. Shown on the project page, each opening the person.
+   * Deliberately not copied onto new tasks: a project with a contractor on it
+   * isn't a list of tasks involving the contractor, and `Task.personIds` is
+   * where a task says who it's about.
+   */
+  personIds: string[];
+  /** Links kept with the project (the booking, the shared doc), in order. */
+  links: ProjectLink[];
+  /**
+   * Work the tasks in page order: Pull and auto-schedule offer only the first
+   * open one, so "paint" never comes up before "patch the wall". Off by
+   * default, where they offer whatever is best.
+   */
+  inOrder: boolean;
+  /**
+   * On a list: checked lines stay on the page, struck through at the bottom
+   * in list order, rather than folding behind "Show N completed". A packing
+   * list is read with what's already packed in view. Presentation only, like
+   * `kind` itself.
+   */
+  showChecked: boolean;
+  /**
    * Where the trip goes, as free text.
    *
    * `Task.location` carries a note saying nothing in the app plots it and that
@@ -1233,6 +1344,17 @@ export const DEFAULT_NUDGE_CADENCE_DAYS = 0;
 export interface Person {
   id: string;
   name: string;
+  // 'individual' unless set otherwise. 'business' marks an entry that isn't a
+  // person — an optometrist, a vet, a dry cleaner — so the app stops reading
+  // its name the way it reads a person's: the "@" mention index and the
+  // calendar-title guess in calendarHistory.ts both answer to a name's first
+  // word on the assumption that it's a first name ("@dustin" for "Dustin
+  // Reyes"), which turns a company name like "Eye Q" into "Eye" as though it
+  // were somebody's given name. Business entries skip that fallback. It also
+  // turns the reach-out nudge off outright — see docs/arch/people.md,
+  // "Businesses don't get check-ins" — because a business has no cadence to
+  // keep up with; the editor hides the cadence field for one accordingly.
+  kind: 'individual' | 'business';
   // What you'd actually call them, when that isn't their name. Display falls
   // back to `name`, so leaving it empty is the normal case rather than a gap.
   nickname: string;
@@ -1711,6 +1833,13 @@ export type GeneratedKind =
   // and often, which is why its whole staleness rule is the creation predicate
   // re-run — see src/utils/mealShortfallTasks.ts.
   | 'mealShortfall'
+  // A meal planned for today or tomorrow whose ingredients (or leftover
+  // container) are only on hand frozen becomes "Take chicken out of the
+  // freezer". mealShortfall's sibling on the same source row, asking about the
+  // rows the kitchen has frozen rather than the ones it lacks, and its opt-out
+  // is its own tri-state beside shopTask (`MealPlanEntry.thawTask`). See
+  // src/utils/mealThawTasks.ts.
+  | 'mealThaw'
   // A planned meal a few days in the past with nothing logged against it
   // becomes "Log X" — the missed half of the offer `mealLog.ts` makes at
   // completion time. Its source row is the same `MealPlanEntry` mealShortfall's
@@ -1784,18 +1913,21 @@ export type GeneratedKind =
   // src/utils/weightTasks.ts. Its source id is the day key the request was
   // raised on, the same "square on the calendar, not a row" position moodLog
   // is in, and what stops a swiped-away one coming straight back is
-  // weighInLastDayKey.
+  // weighInLastDayKey, then weighInDeclinedDayKey for the rest of the window.
   //
   // Deliberately not part of 'health' despite reading the same store: that
   // kind fires *because* a reading crossed a rule the user wrote, and this one
   // fires because there is no reading at all. Asking for data and reacting to
   // it are two different permissions, so they are two different switches.
   | 'weighIn'
-  // The weekly review: an offer to walk the inbox, what is stuck, what slipped
-  // and the week ahead in one pass, in an order where each answer narrows the
-  // next. The only generator that watches what the others leave behind rather
-  // than watching a thing of its own. See src/utils/weeklyReview.ts.
-  | 'weeklyReview';
+  // A water task that follows the food log's target (Task.followWaterTarget),
+  // finished for the day before the target rose, becomes a one-off task for
+  // what is still owed — see src/utils/waterShortfallTasks.ts. Its source id is
+  // the day key it was raised on, the same "square on the calendar, not a row"
+  // position weighIn is in. What stops a deleted one coming straight back is
+  // waterShortfallDeclinedDayKey, and a completed one blocks a second through
+  // `blocksOnFinished`.
+  | 'waterShortfall';
 
 export interface Task {
   id: string;
@@ -1918,9 +2050,20 @@ export interface Task {
   windowEnd: string | null;   // "HH:MM" — task expires (moves to Expired) after this time on its day
 
   recurrenceType: RecurrenceType;
+  // The count of days/weeks/months/years for every type but 'hours', which
+  // reuses this same field to mean hours instead — "take medication every 8
+  // hours after the last dose" is 8 here, not a separate column, since the
+  // two meanings never coexist on one row (the type says which one applies).
   recurrenceInterval: number;
   recurrenceDays: number[];
   recurrenceMonthDay: number | null; // day of month (1-31) for monthly recurrence on a fixed schedule, -1 = last day of the month; null = same day as dueDate
+  // Month (1-12) a yearly rule falls in, on a fixed schedule; null = whatever
+  // month dueDate currently falls in (the picker's "same month as due date").
+  // Monthly/weekly/daily/hours ignore this — there's no month for it to mean
+  // anything against. Unlike recurrenceMonthDay it needs no anchor-day-style
+  // clamp/restore pair: a month never gets clamped short the way Feb clamps a
+  // day, so the stored value is read as-is by getNextYearDayOccurrence.
+  recurrenceMonth: number | null;
   // Nth weekday-of-month for monthly recurrence, e.g. "every 2nd Tuesday" (recurrenceWeekOrdinal=2,
   // recurrenceDays=[2]); 1-4 = 1st..4th occurrence, -1 = last occurrence in the month. Mutually
   // exclusive with recurrenceMonthDay; null = not using this mode. Only the first entry of
@@ -2051,6 +2194,15 @@ export interface Task {
   // behavior is switched off. Off by default, so an existing quota task
   // keeps hiding on pace exactly as it always has.
   quotaAlwaysVisible: boolean;
+  // Opt-in, and only meaningful on a daily target that logs water
+  // (`logHealthMetric: 'waterMl'`): `targetCount` is then derived each day from
+  // the food log's own water target (plus the exercise boost, when today
+  // qualifies) divided by `logHealthAmount`, instead of being a fixed number.
+  // The task still stores a real `targetCount`, so every reader of a quota
+  // (pace, progress, completion, Stats) needs no second path; what this adds
+  // is a writer, `syncWaterQuotaTasks`. See `followedWaterTargetCount` in
+  // src/utils/waterTargetUnits.ts. Off by default.
+  followWaterTarget: boolean;
 
   /**
    * The stretch of time the target is counted over: one logical day (every
@@ -2079,6 +2231,96 @@ export interface Task {
    * Pairs with weekly recurrence, which is what spawns next week's occupant.
    */
   quotaPeriod: QuotaPeriod;
+
+  /**
+   * Rotation — the set of named things a quota is counting, when the units are
+   * distinguishable from each other. Five languages to listen to once each per
+   * week; four bathrooms; three instruments. Empty (the default) = an ordinary
+   * quota, counting anonymously exactly as it always has.
+   *
+   * **A rotation is a quota whose units have names**, and that framing is the
+   * whole implementation. Everything about when the row appears is the weekly
+   * quota's, unchanged: the pace ramp surfaces it when you fall behind and
+   * hides it while you are keeping up, so a five-member rotation over a week
+   * shows up on about five of the seven days, one at a time, and leaves the
+   * moment you log. What is new is only that logging asks *which*, and that
+   * the row can say which are left.
+   *
+   * So `targetCount` is **derived** from `rotationItems.length` (see
+   * `derivedTargetCount` in useTaskStore, alongside the interval's own
+   * derivation) rather than typed. Every existing reader — the meter, the pace
+   * mark, the progress chip, `isQuotaPartial`, `rolloverQuotas` — keeps reading
+   * `targetCount` and needs to know nothing about this column, which is the
+   * same call `recurrenceAnchorDate` makes about staying inside the recurrence
+   * engine, and the reason the feature is affordable at all.
+   *
+   * Order is the user's own and is never re-ranked: it is the order the picker
+   * lists the remaining members in, and a set someone arranged by how much they
+   * like each option should stay arranged that way.
+   */
+  /**
+   * Whether this task is a rotation at all, held separately from the set.
+   *
+   * Exactly `chainEnabled`'s job and there for exactly its reason: the editor
+   * derives the task's kind from its fields (`taskKindOf`), and a set is
+   * empty for as long as it takes to type the first two names into it. Without
+   * a flag to hold the kind, picking Rotation would compute a `targetCount` of
+   * zero, read back as an ordinary task, and throw you out of the mode before
+   * you could add anything to it.
+   *
+   * So the "a rotation needs two members" rule lives at *save* (and in
+   * `isRotationTask`, for everything downstream), never in the kind — the same
+   * split `chainEnabled` documents.
+   */
+  rotationEnabled: boolean;
+  rotationItems: RotationItem[];
+  /**
+   * What has been logged in the *current* period, oldest first. Paired with
+   * `rotationPeriodStart`, which says which period that is.
+   *
+   * `progressCount` stays the count and this stays the ledger. The invariant
+   * held at the two write sites (`recordRotationPick` / `unlogRotationUnit`)
+   * is that `progressCount` equals the number of *distinct* members in here,
+   * not the number of entries: a member may be logged twice in a period and
+   * the second one is a real listen but not a sixth language, so the ledger
+   * can be longer than the count. See `rotationDoneCount`.
+   *
+   * The redundancy is deliberate and is what buys the paragraph above: every
+   * reader that only needs "how many" keeps working untouched, and only the
+   * handful that need "which" reach for this.
+   */
+  rotationLog: RotationLogEntry[];
+  /**
+   * The opening instant of the period `rotationLog` belongs to, or null when
+   * nothing has been logged yet.
+   *
+   * A ledger from a period that has since closed is **ignored rather than
+   * swept** — `activeRotationLog` compares this against the current period and
+   * returns nothing when they differ. That is the same shape as
+   * `quotaStartedAt` being "only honoured on its own logical day", and it is
+   * what keeps this feature free of a maintenance pass: an app left closed for
+   * a fortnight comes back to a clean week without anything having had to run
+   * while it was shut.
+   */
+  rotationPeriodStart: string | null;
+  /**
+   * When each member was last logged, by member id, across every period this
+   * task has ever had. Never reset.
+   *
+   * It exists because the ledger above resets weekly and so cannot answer "when
+   * did I last do Portuguese", and because summing that back out of completed
+   * occurrences would be wrong rather than merely slow: `completedRetentionDays`
+   * is entitled to delete those rows, so a history derived from them quietly
+   * loses weeks. Same reasoning that keeps `streakCount` on the live row rather
+   * than counting the chain.
+   *
+   * **It says when, and nothing else.** The picker shows "Last done 3 weeks
+   * ago" beside a member and stops there. Naming the pattern — calling someone
+   * avoidant, ranking their languages by neglect — is the line `people.md` and
+   * `mood-log.md` both hold, and a feature that watches which of five things
+   * you keep skipping is close enough to it to say so here.
+   */
+  rotationLastDone: Record<string, string>;
 
   // Supply — how many units of a consumable are left, for a recurring task
   // that spends one every time it's done. Replacing a CPAP filter monthly out
@@ -2208,6 +2450,23 @@ export interface Task {
   // today's behaviour: a reminder that just tracks the due date's own day.
   reminderOffsetDays: number | null;
 
+  // The other alternative to a fixed reminderTime, mutually exclusive with
+  // reminderOffsetDays: when true, reminderTime is recomputed as the exact
+  // moment getVisibleAt() (src/utils/visibilityUtils.ts) says this task next
+  // surfaces — the same function that orders the Later screen — rather than
+  // as an offset from dueDate. "Remind me the moment this comes off snooze"
+  // or "remind me right when the evening segment opens". Only meaningful
+  // (and only editable) when the task has something to become visible
+  // *from*: deferUntil is set or timeSegments is non-empty, mirroring how
+  // reminderOffsetDays is gated on dueDate. Recomputed at completion,
+  // skip-recurrence and series-reanchor time exactly where reminderOffsetDays
+  // is, plus periodically by reanchorWallClockReminders (useTaskStore.ts)
+  // since — unlike an offset, which only changes when dueDate moves —
+  // getVisibleAt's own answer can change on its own as a defer date arrives
+  // or a time-of-day threshold passes. No numeric parameter, since there's
+  // nothing to count: false keeps today's behaviour.
+  reminderTracksVisibility: boolean;
+
   // Whether reminderTime means "this wall-clock reading, wherever the device
   // currently is" ('wallClock', the default) or "this exact fixed instant,
   // never touched" ('fixed'). A task/habit app's "9am" overwhelmingly means
@@ -2272,14 +2531,26 @@ export interface Task {
   // a stored flag would need one in each of those paths, and a missed cascade
   // leaves a task no user action can ever surface again.
   //
-  // Deliberately a single id rather than a list: "waiting on" is one thing in
-  // practice, and it keeps cycle detection a chain walk instead of a graph
-  // traversal. A JSON array is the upgrade path if that ever changes.
+  // Started as a single id on the grounds that "waiting on" is one thing in
+  // practice. It isn't always ("send invitations" waits on both the guest list
+  // and the venue), so `blockedByIds` holds the rest and the task waits for
+  // all of them. This stays the first, so everything written before the list
+  // existed reads exactly as it did. Read the set through `blockerIdsOf`.
   //
   // Note a recurring blocker unblocks its waiter permanently: completing it
   // spawns a new row with a NEW id, so this keeps pointing at the completed
   // original. That's intended — "wait for trash day to happen once".
   blockedById: string | null;
+  /**
+   * The tasks this one waits on beyond `blockedById`, and it waits for every
+   * one of them. Empty on almost every task. Never holds `blockedById` itself,
+   * and never has entries while `blockedById` is null (see `blockerFields`,
+   * the one writer that keeps both halves in step).
+   *
+   * Optional so a row built before the field existed still type-checks; every
+   * reader goes through `blockerIdsOf`, which treats a missing list as empty.
+   */
+  blockedByIds?: string[];
 
   /**
    * Somebody you are waiting on — "Waiting on Dustin to send the photos"
@@ -2330,6 +2601,19 @@ export interface Task {
   waitingFollowUpDeclinedAt: string | null;
 
   /**
+   * When to follow up on this wait — a day key ("YYYY-MM-DD"), or null to
+   * leave it to `WAITING_FOLLOW_UP_THRESHOLD_DAYS`. Set beside
+   * `waitingOnPersonId` in the editor ("chase the contractor Friday"), and
+   * deliberately its own field rather than the task's `dueDate`: the task's
+   * date is when the task is due, and reading it as the follow-up day made an
+   * overdue task ask straight away the moment it started waiting. A date set
+   * here always gets its follow-up, whether or not the generator's setting is
+   * on and past its cap of two, because it was asked for. Cleared when the
+   * wait ends or moves to somebody else, like the stamps above.
+   */
+  followUpOn?: string | null;
+
+  /**
    * "Ask on completion" — a task whose completion means recording a decision
    * ("Pick a date for the trip"), not just ticking a box. Null on every
    * ordinary task, which is almost all of them.
@@ -2358,6 +2642,21 @@ export interface Task {
    * without bound, and a scope:'series' edit would fan the text across the set.
    */
   deliverableValue: string | null;
+  /**
+   * The options a 'choice' question offers, in the order they're shown.
+   * Ignored for every other kind ('yesno' has its own two). Rides to the next
+   * occurrence with the kind, since both are the question. Read through
+   * `deliverableOptionsFor`.
+   */
+  deliverableOptions?: string[];
+  /**
+   * A 'date' answer that also becomes the project's departure (`awayStart`):
+   * "Pick dates for Lisbon" answered with the 14th makes the trip leave on the
+   * 14th. Opt-in per task, written in `completeTask` and nowhere else, and it
+   * never overwrites a departure the project already has. See
+   * `src/utils/deliverables.ts` for the terms a second destination has to meet.
+   */
+  deliverableSetsAway?: boolean;
 
   // Which generator wrote this task, and the row it was projected from — both
   // null on every task a person typed. See src/utils/generatedTasks.ts for the
@@ -2410,7 +2709,26 @@ export interface Task {
   // Resolve-or-shrug like every other cross-row pointer here — the event
   // gone missing (deleted by hand, or the calendar itself removed) leaves
   // this dangling, and the next reconcile just writes a fresh one.
+  //
+  // **This device's, and it doesn't sync, like the two below** (#2950): an
+  // EventKit id names a record on one phone (`SYNC_DEVICE_LOCAL_COLUMNS` in
+  // db/syncTracking.ts says how each of the three went wrong on the wire).
+  // Each device holds the id of the event *it* wrote, and a peer's edit to the
+  // task leaves it alone. The event itself still follows that edit: the reload
+  // after a sync rewrites it, or deletes it when the peer completed or deleted
+  // the task (`reconcileSyncedEvents` in useTaskStore, with the rules in
+  // `taskEventsAfterSync`). A task with no event here gets none from a sync.
   calendarEventId: string | null;
+
+  // The calendar server's id for the deadline event above
+  // (`calendarItemExternalIdentifier`), read back after every write, or null
+  // until one is (#2950). Only read when calendarEventId no longer resolves: a
+  // backup restored on a new phone carries the old phone's local ids, which
+  // name nothing there, so the event is looked up by this before a fresh one is
+  // written beside it (`writeAllDayEvent` in utils/calendarEventLink.ts).
+  // Device-local in sync and kept in backups, exactly like calendarEventId.
+  // Optional so a row or fixture from before it reads as null.
+  calendarEventExternalId?: string | null;
 
   // The id of the one-shot event logging this task's completion, or null when
   // logCompletionToCalendar is off, no calendar is picked, or the write
@@ -2423,8 +2741,21 @@ export interface Task {
   //
   // On uncomplete, if this is set, the device event is deleted and this is
   // cleared — un-completing the task means the thing the event recorded
-  // didn't actually happen, so there's nothing left for it to log.
+  // didn't actually happen, so there's nothing left for it to log. That
+  // includes an uncomplete on another device (#2950): this id stays on the
+  // device that wrote the event, so the reload after the sync does the same
+  // delete here (`taskEventsAfterSync`'s `uncompleted`).
   completionCalendarEventId: string | null;
+
+  // The calendar server's id for the completion event above, read back after
+  // it is written, or null until one is (#2950). Read only when uncompleting
+  // deletes the event and the id above names nothing here, which is every
+  // completion event on a phone a backup was restored to: without it, the
+  // reopened task's "completed" event stayed on the calendar
+  // (`deleteLinkedEvent` in utils/calendarEventLink.ts). Cleared with the id
+  // above, device-local and kept in backups like it. Optional so a row or
+  // fixture from before it reads as null.
+  completionCalendarEventExternalId?: string | null;
 
   // The id of the timed event blocking out room to actually *do* this task,
   // or null until the user asks for one. Deliberately its own field rather
@@ -2436,7 +2767,7 @@ export interface Task {
   // across the line: **the task owns the title and the duration, the event
   // owns the time.** Dragging the block to a better hour in Apple Calendar is
   // the entire point of putting it there, so nothing here ever rewrites its
-  // start — see syncTimeBlockEvent in timeBlock.ts for exactly what a
+  // start — see timeBlockUpdateFor in timeBlock.ts for exactly what a
   // reconcile touches.
   //
   // Never written except through the system event sheet, which is also the
@@ -2445,7 +2776,21 @@ export interface Task {
   // made in their own calendar and may have shared with other people. A task
   // completed, deleted or spawned into its next occurrence leaves the event
   // alone. Resolve-or-shrug like every other cross-row pointer here.
+  //
+  // Device-local like calendarEventId (#2950), and a peer's rename or new
+  // estimate reaches the block the same way, through the reload after a sync:
+  // the title and the length, never the start, and a task deleted on another
+  // device still leaves its block where it is.
   timeBlockEventId: string | null;
+
+  // The calendar server's id for the block above (`calendarItemExternalIdentifier`),
+  // read after the sheet saves it and again by any reconcile that finds it
+  // missing, or null until one is (#2950). Read only when timeBlockEventId no
+  // longer resolves, which a backup restored on a new phone leaves every
+  // block with: the task finds its block by this instead of forgetting it
+  // (`adoptTimeBlock` in useTaskStore). Device-local and kept in backups, like
+  // the id beside it. Optional so a row or fixture from before it reads as null.
+  timeBlockExternalId?: string | null;
 
   /**
    * Which direction success runs in. 'positive' — do the thing — is every task
@@ -2779,6 +3124,23 @@ export interface Task {
   // undo path that needs the live row. Same call the pending-suppression
   // match above makes, and for the same reason.
   followUpTaskSourceTitle: string | null;
+  // A pointer, unlike the title above — but at the *rule's* current
+  // occurrence rather than at the one that earned this task, which is the
+  // row followUpTaskSourceTitle explicitly declined to point at. Stamped
+  // with the successor's id the same completion spawns (nextTask.id in
+  // buildCompletion), so it names whichever row is carrying
+  // followUpTaskEveryN/followUpTaskTitle forward right now — what
+  // TaskEditor's "Follow-up frequency" row resolves against, so the count
+  // can be raised or lowered from here without leaving for the parent's own
+  // editor.
+  //
+  // It goes stale the next time the parent completes again: every occurrence
+  // is a fresh id, so a follow-up task left unopened across another cycle of
+  // its parent points at a row that no longer carries the live rule. That
+  // isn't corrected here — the id simply stops resolving to a task, and the
+  // editor's shortcut quietly stops offering itself, the same "nothing to
+  // show" a dangling blocker pointer already reads as elsewhere.
+  followUpTaskSourceId: string | null;
 
   vacationPause: boolean;    // hide and protect streak while vacation mode is on
 
@@ -2994,9 +3356,18 @@ export type TaskDraft = Omit<
   | 'followUpTaskTally'
   | 'previousFollowUpTaskTally'
   | 'calendarEventId'
+  | 'calendarEventExternalId'
   | 'completionCalendarEventId'
+  | 'completionCalendarEventExternalId'
   | 'timeBlockEventId'
+  | 'timeBlockExternalId'
   | 'backfillDismissedFields'
+  // The set is configuration and a draft may carry it; the ledger, the period
+  // stamp and the last-done memory are what a running rotation has recorded,
+  // which is the same line the streak fields above are cut on.
+  | 'rotationLog'
+  | 'rotationPeriodStart'
+  | 'rotationLastDone'
 >;
 
 // Which of the template's two anchor dates an item's offsets are relative
@@ -3100,6 +3471,9 @@ export interface TemplateItem {
   deadlineOffsetDays: number | null;
   windowStart: string | null; // "HH:MM" — carried through unchanged, no date component
   windowEnd: string | null;   // "HH:MM"
+  // Task.linkUrl, seeded onto the task: a booking page, the form to fill in.
+  // Optional so a template stored before it reads as having none.
+  linkUrl?: string | null;
   // Minutes before the item's *resolved* due date. Only meaningful (and only
   // editable) when dueOffsetDays is set — there's no date to count back from
   // otherwise.
@@ -3118,6 +3492,7 @@ export interface TemplateItem {
   recurrenceInterval: number;
   recurrenceDays: number[];
   recurrenceMonthDay: number | null;
+  recurrenceMonth: number | null;
   recurrenceFromCompletion: boolean;
   recurrenceCount: number | null;
 
@@ -3172,9 +3547,20 @@ export interface TemplateItem {
   // set by hand on every application. There is no template-side counterpart to
   // deliverableValue: the question carries, the answer doesn't.
   deliverableKind: DeliverableKind | null;
+  // The options a 'choice' question offers, and whether a date answer sets
+  // the trip's departure. Both seed the Task fields of the same names.
+  deliverableOptions?: string[];
+  deliverableSetsAway?: boolean;
 
   chainEnabled: boolean;
   chainItems: ChainItem[];
+  // The named set a task created from this item counts over — seeds
+  // Task.rotationItems. Configuration, so it carries exactly as chainItems
+  // does; the ledger, the period stamp and the last-done memory are the run's
+  // own record and have no template-side counterpart, the same split the
+  // medication triple and deliverableKind already make.
+  rotationEnabled: boolean;
+  rotationItems: RotationItem[];
   // Which step a task created from this template starts on. 0 by default —
   // TaskEditor lets a real task's current step move freely (tap a dot), and
   // this is the template-side parity for that: a chain that's meant to be
@@ -3227,6 +3613,10 @@ export interface TemplateItemGroup {
   id: string;
   title: string;
   sortOrder: number;
+  // Applied into a project, the section is a checklist (TaskGroup.checklist):
+  // a packing list saved from a trip comes back as one. Optional so templates
+  // saved before it read as ordinary sections.
+  checklist?: boolean;
 }
 
 // Where one apply of a template puts the tasks it creates. Item titles are
@@ -3831,9 +4221,42 @@ export interface FoodLogEntry {
    * Its `basis` is always `perServing` here and its figures are the amounts
    * actually eaten, not per 100g: an entry records one helping rather than a
    * food, so scaling has already happened by the time it is stored. See
-   * `buildFoodLogNutrition`.
+   * `helpingNutrition` in `foodLog.ts`.
    */
   nutrition: FoodNutrition;
+  /**
+   * The panel `nutrition` was measured against, kept on the entry because no
+   * catalog row holds it. Null (or absent) on everything else.
+   *
+   * **Written for two cases, both linked to nothing** (#2914). The main one is
+   * a food a database answered that nobody filed, below. The other is an
+   * estimate once its amount has been changed (more or less of it than the
+   * model was told about): then this is the whole meal the model described,
+   * `source: 'estimated'` like the helping, so every later change is taken of
+   * the whole rather than of the last one (see `wholeEstimate`). A Describe
+   * sheet recall at a new count writes it too, for the same reason. The source
+   * tells the two apart, and only the first is something an amount can be
+   * re-measured against.
+   *
+   * **The database food.** `nutrition` is one helping with its portion table
+   * emptied, so an entry like that had nothing left to re-measure a corrected
+   * amount against, and "I logged 200 g, it was 170 g" could only be a delete
+   * and a fresh search. This is the database's own panel, per 100 g with its portions,
+   * snapshotted at log time on `nutrition`'s rule: a later lookup of the same
+   * food must not rewrite what was measured. `foodLogEntryEdit` reopens such
+   * an entry on it exactly as it reopens a linked food on its row's panel.
+   *
+   * **Not written for a linked entry**, whose row already holds the panel, and
+   * a correction that re-measures against a row (or picks a different food)
+   * clears it: from then on it would describe how a helping *used* to be
+   * measured. It travels in sync and backups with the row, since it describes
+   * the entry rather than the device.
+   *
+   * Optional on the type rather than required-nullable because absent and
+   * null read identically at every reader, and every entry built in memory
+   * without one (most of what a saved meal logs, a test) is the ordinary case.
+   */
+  sourcePanel?: FoodNutrition | null;
   /**
    * Health sample identifiers this entry wrote, so an edit or a delete can
    * retract them.
@@ -3875,6 +4298,21 @@ export interface SavedMealItem {
   quantity: string;
   grams: number | null;
   nutrition: FoodNutrition;
+  /**
+   * The panel the entry it was built from kept (`FoodLogEntry.sourcePanel`),
+   * handed on to every entry the saved meal logs. Absent or null for an item
+   * built from an entry that kept none, which is most of them.
+   *
+   * Without it a database food nobody filed, saved as part of a meal, logged
+   * back as an entry that could only be renamed (#2914), and an estimate cut
+   * to a share came back with no whole to take a different share of. It is a
+   * snapshot on `nutrition`'s rule, copied verbatim both ways: the saved meal
+   * logs the same helping, so the same panel describes how it was measured.
+   *
+   * Optional because saved meals stored before it hold no such key, and it
+   * rides inside the `items` JSON blob, so sync and backups carry it as-is.
+   */
+  sourcePanel?: FoodNutrition | null;
 }
 
 /**
@@ -4273,6 +4711,10 @@ export interface GroceryItem {
    * which inherits every refusal `parseQuantityAmount` makes ("a bunch" has no
    * per-unit price) — so the string is shown next to the price and the reader
    * does the comparing.
+   *
+   * Null rather than `quantity` when a recipe wrote that quantity
+   * (`quantityFromRecipe`): "3 cups" is what the week's cooking needed, not
+   * the pack the price was paid for, and `recipeCost` divides by this string.
    */
   lastPriceQuantity: string | null;
   /**
@@ -4431,6 +4873,17 @@ export const WEEKEND_NUDGE_LEAD_DAYS_DEFAULT = 2;
 export const WEEKEND_NUDGE_LEAD_DAYS_MIN = 1;
 export const WEEKEND_NUDGE_LEAD_DAYS_MAX = 5;
 
+// How many one-off tasks or events may already be on the weekend and it still
+// counts as under-planned enough to nudge about. Default 1, so a single thing
+// (one movie, one dinner) doesn't read as a fully planned weekend — the offer
+// is about whether there's still room, not about literal emptiness. The floor
+// is 0 (only a truly bare weekend counts) and the ceiling is 4 (a weekend
+// naming four things is planned by any reading, so a fifth mustn't buy a way
+// past that). See src/utils/weekendTasks.ts.
+export const WEEKEND_NUDGE_PLAN_THRESHOLD_DEFAULT = 1;
+export const WEEKEND_NUDGE_PLAN_THRESHOLD_MIN = 0;
+export const WEEKEND_NUDGE_PLAN_THRESHOLD_MAX = 4;
+
 export const GROCERY_USE_UP_LEAD_DAYS_DEFAULT = 1;
 export const GROCERY_USE_UP_LEAD_DAYS_MIN = 0;
 export const GROCERY_USE_UP_LEAD_DAYS_MAX = 14;
@@ -4486,10 +4939,27 @@ export const FROZEN_REASON = 'in the freezer';
  */
 export const RUNNING_LOW_REASON = 'running low';
 
+/**
+ * Why a portion that has come back out of the freezer is still in the kitchen
+ * — `productHaveReason`'s word for a thawed `ItemProduct.isPortion` box, and
+ * here beside the other two for the same module-weight reason.
+ *
+ * Its own phrase rather than "marked as on hand", which is what the same
+ * assertion reads as on an ordinary box: nobody tapped "Got it" on this one.
+ * They took it out of the freezer, and that is the fact the row can state.
+ */
+export const THAWED_PORTION_REASON = 'out of the freezer';
+
 // Shorter than TITLE_MAX_LENGTH on purpose — this is a shelf label, not a task
 // title, and a long one wrecks the row layout at the bigger grocery font size.
 export const GROCERY_NAME_MAX_LENGTH = 80;
 export const GROCERY_QUANTITY_MAX_LENGTH = 24;
+// Roomier than GROCERY_QUANTITY_MAX_LENGTH: a recipe's own amount is allowed to
+// carry a parenthetical source count ("1 packet (1/4 ounce, 7 g)", "3 oz (from
+// about 2 limes)") per extractRecipe's own prompt, which a grocery list's plain
+// "2 lb" never needs room for. Used for RecipeGroceryItem.quantity on the way
+// to RecipeIngredient.quantity — never for GroceryItem's own quantity field.
+export const RECIPE_INGREDIENT_QUANTITY_MAX_LENGTH = 60;
 // Shorter than a name on purpose: this is a brand, not a second name for the
 // thing. Matches SHOP_NAME_MAX_LENGTH, which is the same kind of proper noun.
 export const GROCERY_BRAND_MAX_LENGTH = 40;
@@ -4670,7 +5140,64 @@ export interface ItemProduct {
    * world and a label panel is that box's own statement about itself.
    */
   nutrition: FoodNutrition | null;
+  /**
+   * True for the one unnamed box "Freeze some" makes (`freezePortion`): part
+   * of a pack that went in the freezer while the rest stayed out and kept
+   * counting down (#2925). Every other box is a *brand*, and this is the one
+   * that isn't — it is a place some of the item went, not a thing anyone buys
+   * or rates.
+   *
+   * **It is a box because a box already had the four pantry columns** a split
+   * pack needs, and a box's row already joins its item's rather than replacing
+   * it. The item's own `frozenAt` couldn't say it: freezing the item suspends
+   * the fresh half's clock and drops its use-up task, and leaving it unfrozen
+   * left the frozen half nowhere to be written down. A second catalog row
+   * would split one food's purchase history and recipes in two, which is why
+   * `ItemProduct` exists in the first place.
+   *
+   * **Its identity is `productKey` = `PORTION_PRODUCT_KEY`**, a key
+   * `productKeyFor` can never produce, so the item's UNIQUE `(item_id,
+   * product_key)` index is what holds it to one per item and what folds two
+   * phones' portions into one on sync. This flag is the reading side of that
+   * and is what every reader tests (`isPortionBox`), so nothing ever compares
+   * keys.
+   *
+   * **Nothing that treats a box as a brand sees one.** It is left out of the
+   * Products list (`productsForItem`), can't be preferred, rated, renamed or
+   * given a barcode, isn't a "saved brand" to lose when the item is forgotten,
+   * and never earns a purchase count (only a preferred box does). It shows in
+   * exactly one place: the pantry, as frozen stock of its item.
+   *
+   * **An item-level "Out of it" doesn't reach it while it's frozen**, which is
+   * the one exception to "the item's Out of it outranks every box". "I've used
+   * up the chicken" said about the half in the fridge is not a statement about
+   * the half in the freezer, and a portion is not a brand you ran out of. Once
+   * it's thawed it's more of the item in the fridge again, and the item's
+   * "Out of it" takes it with the rest. It's deleted rather than marked when
+   * it's used up: a named box is a memory worth keeping after the packet is
+   * gone, and a portion is nothing but the packet.
+   */
+  isPortion: boolean;
   createdAt: string;
+}
+
+/**
+ * The `productKey` every portion box carries. It has no `|` in it, and
+ * `productKeyFor` always joins a brand and a variant with one, so no named box
+ * can ever collide with it however it is spelled. See ItemProduct.isPortion.
+ */
+export const PORTION_PRODUCT_KEY = 'portion';
+
+/**
+ * Whether a box is a frozen-portion box rather than a brand — the one test
+ * every reader that lists, counts or prefers boxes makes before treating it as
+ * one. Here beside the type rather than in `groceryProduct.ts` because the
+ * readers include `grocerySuggest` and `groceryFacts`, which that module reads
+ * down into, so the obvious home is a cycle. Optional in its input so a caller
+ * holding a narrowed `Pick` of a box can still ask.
+ */
+export function isPortionBox(product: { isPortion?: boolean } | null | undefined): boolean {
+  return product?.isPortion === true;
 }
 
 /**
@@ -4791,6 +5318,14 @@ export interface GtinLookup {
   fetchedAt: string;
 }
 
+/**
+ * How the shopping list groups what's still to buy: by aisle (the default and
+ * the only one a drag can file into), by the recipe a row came from, or by the
+ * store it is usually bought at (#2938). Three lenses on one list, never
+ * layered; see `buildGroceryRecipeSections` and `buildGroceryStoreSections`.
+ */
+export type GroceryGroupBy = 'aisle' | 'recipe' | 'store';
+
 // A place you shop. "Store" everywhere the user can read; `Shop` in code,
 // because `store` is already Zustand's word here (useGroceryStore,
 // useTaskStore) and `useGroceryStoreStore` is not a name anyone should type.
@@ -4848,6 +5383,34 @@ export interface Shop {
    * `renameAisle` rewrites it and `deleteAisle` drops from it.
    */
   aisles: string[] | null;
+  /**
+   * The order you walk this store's aisles in, or `null` to walk it in the
+   * usual order (`useGroceryStore.aisleOrder`), which is every store until
+   * somebody arranges one (#2938).
+   *
+   * **Read through `shopWalkOrder` (groceryShops.ts), never directly.** The
+   * list here is what somebody arranged on the day they arranged it: an aisle
+   * added since is missing from it, and sorts where the usual order puts it
+   * relative to its neighbours rather than dropping off the end. `Other` is
+   * never stored and always walks last.
+   *
+   * **Applied only where the store is known**: the list while a trip at this
+   * store is running, and this store's own section in the store lens.
+   * Everywhere else (the kitchen, every aisle picker) keeps the usual order.
+   * Arranged from the Aisles tab of `GroceryAislesSheet` during a trip here,
+   * and cleared from the same place ("Use the usual order").
+   *
+   * **An order that walks the same as the usual one is saved as `null`**
+   * (`shopAisleOrderToSave`), so a drag that ends where it began leaves the
+   * store following the usual order, and any later change to it.
+   *
+   * Aisle names are strings, so this is the fifth place one lives (after
+   * `aisleOrder`, `GroceryItem.aisle`, the values of `aisleOverrides` and
+   * `aisles` above): `renameAisle` rewrites it and `deleteAisle` drops from it.
+   * It is about the store rather than the device, so it syncs and is backed up
+   * with the rest of the row.
+   */
+  aisleOrder: string[] | null;
 }
 
 /**
@@ -5439,6 +6002,32 @@ export interface Cookbook {
   createdAt: string;
 }
 
+// One line of a cookbook's index: a dish, the page it's on, and the
+// ingredients the index files it under ("Lentils", "Shallots").
+//
+// **Deliberately not a Recipe.** It has no ingredient list, no method and
+// nothing to shop for, so as a recipe row it would sit in every picker, count,
+// Backfill queue and meal-plan list as a recipe that can't be cooked from.
+// Its own table keeps it out of all of them by construction, because none of
+// them read it. Two surfaces do: the "Cook with" finder
+// (`src/utils/cookbookIndex.ts`) and the book's own page. When you decide to
+// cook one, `recipeFromIndexEntry` makes the real recipe and the entry stays
+// as it was. See docs/arch/recipes.md.
+//
+// `ingredients` is the index's own words, not grocery keys, so a catalog
+// rename never has to rewrite it and matching works the key out at read time.
+// It is the main things the dish uses, never all of them, which is the other
+// reason it can't be recipe lines: every reader of those assumes a whole list.
+export interface CookbookIndexEntry {
+  id: string;
+  cookbookId: string;
+  title: string;
+  // As printed ("142", "112-115"), the same shape as Recipe.sourcePage.
+  page: string | null;
+  ingredients: string[];
+  createdAt: string;
+}
+
 // A dish you cook, with what it takes to shop for it.
 //
 // Its own table rather than a TaskTemplate variant: applyTemplate materialises
@@ -5450,8 +6039,9 @@ export interface Cookbook {
 export interface Recipe {
   id: string;
   name: string;
-  // UNIQUE in SQLite, from groceryNameKey — so two spellings of one dish can't
-  // both exist, the same guarantee GroceryItem and Shop get.
+  // From recipeNameKey — so two spellings of one dish can't both exist in one
+  // book. Unique per cookbook (`recipeInBook`), not across the box: two books
+  // can each hold a "Lentil Soup". Kept by the store, not by an index.
   nameKey: string;
   notes: string;
   sourceUrl: string | null;
@@ -5597,6 +6187,13 @@ export interface Recipe {
   // second list to keep in step with this one, worth adding only once
   // something actually reads them (#1695).
   steps: RecipeStep[];
+  // Method headings declared with nothing filed under them yet — the same
+  // gap `emptySections` covers for ingredients, for `RecipeStep.section`
+  // instead. Pruned the moment a step actually carries the same label, so
+  // it never duplicates what `sectionsOf(steps)` already reports. Empty for
+  // every recipe that's never had a method heading declared ahead of its
+  // steps, which is most of them.
+  emptyStepSections: string[];
   sortOrder: number;
   createdAt: string;
   /**
@@ -5741,6 +6338,17 @@ export interface RecipeStep {
    */
   timerSeconds?: number | null;
   /**
+   * Which part of the method this step belongs to — "For the sauce", "For the
+   * tofu". Absent (not null — see the round-trip note on `note` below) means
+   * the recipe wasn't authored with sections, the common case. Same model as
+   * `RecipeIngredient.section`: a label on a flat list, not a nested groups
+   * type, inferred wherever a step's section differs from the step before it
+   * (`RecipeDetailScreen`), with `Recipe.emptyStepSections` covering a heading
+   * declared ahead of any step. `recipeSections.ts`'s helpers are generic over
+   * `{ id, section }` and are reused here verbatim rather than duplicated.
+   */
+  section?: string;
+  /**
    * A note kept alongside the step, shown under it in cook mode and on the
    * recipe screen; absent on a step nobody has written one for.
    *
@@ -5788,6 +6396,12 @@ export interface StepTimer {
   recipeName: string;
   /** "Step 2 of 3" as it read when the timer started. */
   stepLabel: string;
+  /**
+   * A few words of the step's own text ("Simmer the rice, covered…"), from
+   * `stepTimerExcerpt`, so two rows in the stack say which pan is which.
+   * Absent on a timer started before it existed, which falls back to the label.
+   */
+  stepExcerpt?: string;
   /** What the countdown runs for. Fixed at start; "+1 min" adds to it. */
   durationSeconds: number;
   /** ISO instant the current run segment began; null while paused. */
@@ -6037,6 +6651,24 @@ export interface MealPlanEntry {
    */
   logMeal: boolean | null;
   /**
+   * Whether this meal gets a "Take chicken out of the freezer" task the day
+   * before (#2926): `false` once the user has swiped one away for this meal,
+   * `null` (or absent) when the `mealThawTasks` setting decides. See
+   * utils/mealThawTasks.ts.
+   *
+   * `shopTask`'s tri-state a fourth time, for its tombstone reason above:
+   * every other way a thaw task goes is the app noticing the plan or the
+   * freezer changed, so without a per-meal `false` a deleted row would come
+   * back on the next sweep. Only `false` is ever read, the same subtract-only
+   * reading `shopTask` gets.
+   *
+   * **Optional in the type**, unlike the three above: `rowToMealPlanEntry`
+   * always fills it, and an entry built anywhere else (a copied week, a saved
+   * meal, a test fixture) reads its absence as `null`, which is what it would
+   * have been.
+   */
+  thawTask?: boolean | null;
+  /**
    * The device calendar event mirroring this meal, or null when there isn't
    * one (#1494) — the household's shared answer to "what's for dinner
    * Thursday", which a local task can't give.
@@ -6054,8 +6686,27 @@ export interface MealPlanEntry {
    * Not in `MealPlanDraft` — nothing may create an entry pre-pointed at an
    * event. Written only by `reconcileMealEvent` in useMealPlanStore, from
    * whatever the device write returned.
+   *
+   * **This device's, and it doesn't sync** (#2950): an EventKit id names a
+   * record on one phone, so the column is kept off the wire in both directions
+   * (`SYNC_DEVICE_LOCAL_COLUMNS` in db/syncTracking.ts). Each device holds the
+   * id of the event *it* wrote, and a peer's edit to the meal leaves it alone.
+   * The event itself still follows that edit: the reload after a sync rewrites
+   * it, or deletes it when the peer removed the meal (`reconcileSyncedEvents`,
+   * with the rules in `mealEventsAfterSync`).
    */
   calendarEventId: string | null;
+  /**
+   * The calendar server's id for that same event (`calendarItemExternalIdentifier`),
+   * read back after every write, or null until one is (#2950). Read only when
+   * `calendarEventId` no longer resolves, which is what a backup restored on a
+   * new phone leaves every meal with: the event is looked up by this and
+   * adopted rather than written a second time beside the one the old phone
+   * wrote (`writeAllDayEvent` in utils/calendarEventLink.ts). Device-local in
+   * sync and kept in backups, like `calendarEventId`. Optional so a row or
+   * fixture from before it reads as null.
+   */
+  calendarEventExternalId?: string | null;
 }
 
 /**
@@ -6216,6 +6867,31 @@ export const LEFTOVER_RETENTION_DAYS = 60;
 export const MEAL_PLAN_RETENTION_DAYS = 180;
 
 /**
+ * Who one calendar event occurrence is with — the app's own note about an
+ * event it does not own (see `src/utils/eventPeople.ts` and
+ * `docs/arch/people.md`). One synced row per occurrence.
+ *
+ * `eventKey` is `<event ref>#<start ISO>`, where the ref is the calendar
+ * server's id for the event (`calendarItemExternalIdentifier`) when this device
+ * could read it, which is what lets the same event be found on another phone,
+ * and the device-local EventKit id otherwise. The row's own id is a plain
+ * generated id rather than the event key, since sync splits row keys on `|`
+ * and a server id may contain anything.
+ */
+export interface EventPeopleLink {
+  id: string;
+  eventKey: string;
+  /** ISO, the occurrence's own start. */
+  eventStart: string;
+  /** ISO. */
+  eventEnd: string;
+  /** Title at the time of linking, so a later reader has something to show. */
+  title: string;
+  personIds: string[];
+  createdAt: string;
+}
+
+/**
  * A row on the Today list that isn't a task and never becomes one (#1571).
  *
  * A calendar event, a planned meal, what's about to go off in the kitchen and
@@ -6313,6 +6989,13 @@ export interface ContextRow {
    * second source makes "which one" a real question.
    */
   calendarTag: { name: string; color: string } | null;
+  /**
+   * An event that moved with tasks planned around it ("Moved, 3 tasks"), set
+   * by `eventContextRows`' `movedNote`. The offer to move them is in the events
+   * sheet this row opens; this only makes sure somebody looking at Today sees
+   * there is one. Absent on every other row.
+   */
+  movedNote?: string | null;
 }
 
 export const PRIORITY_LABELS = ['None', 'Low', 'Medium', 'High', 'Urgent'] as const;

@@ -8,7 +8,7 @@ import {
 } from '../db/database';
 import { generateId } from '../utils/id';
 import { dayKeyOf, getCurrentDayStart, getDayStart } from '../utils/dateUtils';
-import { contextTagKey, symptomKey } from '../utils/moodLog';
+import { contextTagKey, renamedContextTags, symptomKey } from '../utils/moodLog';
 
 /**
  * The mood/symptom log — see `src/utils/moodLog.ts` for every rule and
@@ -52,15 +52,22 @@ interface MoodStore {
      * lands here, under the same `dayResetTime` rule, so a backdated entry
      * counts toward the day it happened on rather than the day it was typed.
      *
-     * No UI passes it yet — the sheet always records now. `demoSeed` uses it
-     * to lay down a fortnight of history, which is what the insights on the
-     * Mood screen need before they will say anything at all.
+     * `MoodLogSheet` passes it for an entry on an earlier day (noon of that
+     * day). `demoSeed` uses it to lay down two weeks of history, which is what
+     * the insights on the Mood screen need before they will say anything.
      */
     at?: Date,
     contextTags?: string[],
   ) => MoodLog | null;
   updateLog: (id: string, patch: MoodLogPatch) => void;
   removeLog: (id: string) => void;
+  /**
+   * Correct a context tag's text everywhere it was logged, not just on one
+   * entry — the vocabulary is derived from the logs (see `moodLog.ts`), so a
+   * typo typed once otherwise sits in the suggestion pills forever with no
+   * way back. A no-op if `newName` is blank or unchanged.
+   */
+  renameContextTag: (oldName: string, newName: string) => void;
 }
 
 export const useMoodStore = create<MoodStore>((set, get) => ({
@@ -120,6 +127,20 @@ export const useMoodStore = create<MoodStore>((set, get) => ({
   removeLog(id) {
     dbDeleteMoodLog(id);
     set({ logs: get().logs.filter(l => l.id !== id) });
+  },
+
+  renameContextTag(oldName, newName) {
+    const trimmed = newName.trim();
+    if (!trimmed) return;
+    const oldKey = contextTagKey(oldName);
+    if (contextTagKey(trimmed) === oldKey && trimmed === oldName) return;
+    const next = get().logs.map(log => {
+      if (!log.contextTags.some(t => contextTagKey(t) === oldKey)) return log;
+      const updated: MoodLog = { ...log, contextTags: renamedContextTags(log.contextTags, oldName, trimmed) };
+      dbUpdateMoodLog(updated);
+      return updated;
+    });
+    set({ logs: next });
   },
 }));
 

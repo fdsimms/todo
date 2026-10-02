@@ -14,6 +14,7 @@
     "ios": "expo run:ios",
     "test": "jest",
     "test:watch": "jest --watch",
+    "test:tz": "TZ=Pacific/Kiritimati jest && TZ=Pacific/Pago_Pago jest && TZ=America/St_Johns jest",
     "docs": "node scripts/build-module-map.js && node scripts/check-doc-stats.js && node scripts/build-screen-map.js",
     "verify": "tsc --noEmit && npm test && npm run docs && git status --short"
   },
@@ -95,6 +96,7 @@
     "todo-alarmkit-bridge": "file:./modules/todo-alarmkit-bridge",
     "todo-cloudkit-bridge": "file:./modules/todo-cloudkit-bridge",
     "todo-datascanner-bridge": "file:./modules/todo-datascanner-bridge",
+    "todo-eventkit-bridge": "file:./modules/todo-eventkit-bridge",
     "todo-foundation-models": "file:./modules/todo-foundation-models",
     "todo-health-bridge": "file:./modules/todo-health-bridge",
     "todo-privacy-shield": "file:./modules/todo-privacy-shield",

@@ -11,6 +11,7 @@ import {
   suggestGroceryAisles,
   suggestRecipeGroceries,
   extractRecipe,
+  extractCalendarEvents,
   extractReceipt,
   suggestMealIdeas,
   draftMealRecipe,
@@ -20,9 +21,10 @@ import {
   nutritionLabelPhotoAiAvailable,
   estimateRecipeNutrition,
   recipeNutritionEstimateAvailable,
+  parseIndexPage,
 } from '../services/aiSuggestions';
 import { MAX_MEAL_IDEAS } from '../utils/mealIdeas';
-import { LEFTOVER_KEEP_DAYS_MAX, type Task } from '../types';
+import { LEFTOVER_KEEP_DAYS_MAX, RECIPE_INGREDIENT_QUANTITY_MAX_LENGTH, type Task } from '../types';
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -36,6 +38,7 @@ const TEST_AI_FEATURE_CONFIG = {
   mealIdeas: { enabled: true, model: 'claude-haiku-4-5-20251001' },
   substitutes: { enabled: true, model: 'claude-haiku-4-5-20251001' },
   receiptImport: { enabled: true, model: 'claude-sonnet-5' },
+  calendarImport: { enabled: true, model: 'claude-sonnet-5' },
   nutritionLabelPhoto: { enabled: true, model: 'claude-sonnet-5' },
   recipeNutritionEstimate: { enabled: true, model: 'claude-sonnet-5' },
 };
@@ -49,6 +52,7 @@ let mockSettings: {
   anthropicApiKey: string;
   aiFeatureConfig: typeof TEST_AI_FEATURE_CONFIG;
   onDeviceAiEnabled: boolean;
+  dayResetTime: string;
 };
 
 const resetMockSettings = () => {
@@ -56,6 +60,8 @@ const resetMockSettings = () => {
     anthropicApiKey: 'test-key-does-not-hit-network',
     aiFeatureConfig: JSON.parse(JSON.stringify(TEST_AI_FEATURE_CONFIG)),
     onDeviceAiEnabled: true,
+    // extractCalendarEvents tells the model today's logical date.
+    dayResetTime: '00:00',
   };
 };
 resetMockSettings();
@@ -102,6 +108,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   recurrenceInterval: 1,
   recurrenceDays: [],
   recurrenceMonthDay: null,
+  recurrenceMonth: null,
   recurrenceWeekOrdinal: null,
   recurrenceAnchorDay: null,
   recurrenceAnchorDate: null,
@@ -120,8 +127,13 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   allowOvershoot: false,
   quotaIntervalMinutes: null,
   quotaReminders: false,
-  quotaStartedAt: null, quotaAlwaysVisible: false,
+  quotaStartedAt: null, quotaAlwaysVisible: false, followWaterTarget: false,
   quotaPeriod: 'day',
+  rotationEnabled: false,
+  rotationItems: [],
+  rotationLog: [],
+  rotationPeriodStart: null,
+  rotationLastDone: {},
   progressCount: 0,
   tags: [],
   category: null,
@@ -154,7 +166,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   projectId: null,
   reminderTime: null,
   reminderKind: 'notification',
-  reminderOffsetDays: null, reminderTimeAnchor: 'wallClock', reminderUtcOffsetMinutes: null,
+  reminderOffsetDays: null, reminderTracksVisibility: false, reminderTimeAnchor: 'wallClock', reminderUtcOffsetMinutes: null,
   chainEnabled: false,
   chainIndex: 0,
   chainItems: [],
@@ -166,6 +178,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   followUpTaskTally: 0,
   previousFollowUpTaskTally: 0,
   followUpTaskSourceTitle: null,
+  followUpTaskSourceId: null,
   vacationPause: false, excludeFromSuggestions: false,
   timerStartedAt: null,
   timedMinutes: null,
@@ -404,6 +417,20 @@ describe('suggestProjectTasks', () => {
 // ============================================================================
 
 describe('shared Anthropic request handling', () => {
+  // Demo mode keeps the owner's real key in memory, so the request itself is
+  // where it has to stop.
+  it('sends nothing in demo mode', async () => {
+    const { setDemoModeActive } = jest.requireActual('../utils/demoState') as typeof import('../utils/demoState');
+    const fetchSpy = jest.spyOn(global, 'fetch');
+    setDemoModeActive(true);
+    try {
+      await expect(suggestTemplateItems('Weekly reset', [])).rejects.toThrow('demo mode');
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      setDemoModeActive(false);
+    }
+  });
+
   it('sends the feature\'s configured model and no temperature override', async () => {
     // No `temperature` — Opus 5 / Sonnet 5 reject a non-default value, and the
     // tool-forced extraction below doesn't need one for determinism.
@@ -478,6 +505,16 @@ describe('describeAIError', () => {
 
   it('mentions truncation for a max_tokens cutoff', () => {
     expect(describeAIError(new Error('Response was truncated'))).toContain('cut off');
+  });
+
+  it('says demo mode rather than blaming the connection', () => {
+    expect(describeAIError(new Error('AI features are off in demo mode.'))).toBe('AI features are off in demo mode.');
+  });
+
+  it('says a reply held nothing usable rather than blaming the connection', () => {
+    for (const e of [new Error('No suggestions returned'), new Error('No answer returned'), new SyntaxError('Unexpected token')]) {
+      expect(describeAIError(e)).toBe('Nothing usable came back. Try again.');
+    }
   });
 
   it('falls back to a network message for an unrecognized error', () => {
@@ -787,6 +824,33 @@ describe('suggestRecipeGroceries', () => {
 });
 
 describe('extractRecipe', () => {
+  // The reply is the whole recipe written back out (shopping list, method and
+  // prep tasks), which outlasts the ordinary 15s window even though nothing
+  // but text was sent.
+  it('gives a pasted recipe longer than the ordinary 15s before aborting', async () => {
+    jest.useFakeTimers();
+    jest.spyOn(global, 'fetch').mockImplementation((_url, init) => {
+      return new Promise((_resolve, reject) => {
+        (init as RequestInit).signal?.addEventListener('abort', () => {
+          const err = new Error('Aborted');
+          err.name = 'AbortError';
+          reject(err);
+        });
+      });
+    });
+
+    const promise = extractRecipe('some long recipe with its method', AISLES);
+    const assertion = expect(promise).rejects.toThrow('Request timed out');
+
+    let settled = false;
+    void promise.catch(() => { settled = true; });
+    await jest.advanceTimersByTimeAsync(15_000);
+    expect(settled).toBe(false);
+
+    await jest.advanceTimersByTimeAsync(25_000);
+    await assertion;
+  });
+
   it('returns the name, servings, prep time, and shopping list', async () => {
     mockFetchOnce(
       toolUseResponse('extract_recipe', {
@@ -812,6 +876,17 @@ describe('extractRecipe', () => {
       steps: [],
       prepTasks: [],
     });
+  });
+
+  it('reads a list field that came back as something other than a list as empty', async () => {
+    // A string or an object here used to throw a TypeError in the parse loop,
+    // which the sheets reported as "Network request failed".
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', { name: 'Weeknight Chili', items: 'ground beef, beans' })
+    );
+    const result = await extractRecipe('some recipe', AISLES);
+    expect(result.name).toBe('Weeknight Chili');
+    expect(result.ingredients).toEqual([]);
   });
 
   it('reads a non-serving yield alongside servings', async () => {
@@ -996,6 +1071,38 @@ describe('extractRecipe', () => {
       { name: 'tempeh', quantity: '1 block', aisle: 'Pantry', section: null, prep: 'pressed and cubed' },
       { name: 'garlic', quantity: '2 cloves', aisle: 'Produce', section: null, prep: null },
     ]);
+  });
+
+  it('keeps a quantity carrying a parenthetical source count, past the grocery quantity cap', async () => {
+    // "1 packet (1/4 ounce, 7 g)" is 25 characters — one past
+    // GROCERY_QUANTITY_MAX_LENGTH (24), which used to cut it to "1 packet (1/4
+    // ounce, 7 g" with the closing paren dropped (#recipe-import-units-cutoff).
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', {
+        name: 'Dinner Rolls',
+        items: [
+          { name: 'active dry yeast', quantity: '1 packet (1/4 ounce, 7 g)', aisle: 'Pantry' },
+          { name: 'unsalted butter', quantity: '1 stick (4 ounces or 115 g)', aisle: 'Dairy & Eggs' },
+        ],
+      })
+    );
+    const result = await extractRecipe('some recipe', AISLES);
+    expect(result.ingredients).toEqual([
+      { name: 'active dry yeast', quantity: '1 packet (1/4 ounce, 7 g)', aisle: 'Pantry', section: null, prep: null },
+      { name: 'unsalted butter', quantity: '1 stick (4 ounces or 115 g)', aisle: 'Dairy & Eggs', section: null, prep: null },
+    ]);
+  });
+
+  it('still clamps an extracted quantity to RECIPE_INGREDIENT_QUANTITY_MAX_LENGTH', async () => {
+    const long = 'a'.repeat(RECIPE_INGREDIENT_QUANTITY_MAX_LENGTH + 20);
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', {
+        name: 'Something',
+        items: [{ name: 'thing', quantity: long, aisle: 'Pantry' }],
+      })
+    );
+    const result = await extractRecipe('some recipe', AISLES);
+    expect(result.ingredients[0].quantity).toHaveLength(RECIPE_INGREDIENT_QUANTITY_MAX_LENGTH);
   });
 
   it('reads the model\'s optional flag, and only carries it when true', async () => {
@@ -1727,6 +1834,32 @@ describe('draftMealRecipe', () => {
     expect(spy).not.toHaveBeenCalled();
   });
 
+  // A whole recipe comes back from one line of text, so the reply is what
+  // takes the time, not the request.
+  it('allows longer than the ordinary 15s before aborting', async () => {
+    jest.useFakeTimers();
+    jest.spyOn(global, 'fetch').mockImplementation((_url, init) => {
+      return new Promise((_resolve, reject) => {
+        (init as RequestInit).signal?.addEventListener('abort', () => {
+          const err = new Error('Aborted');
+          err.name = 'AbortError';
+          reject(err);
+        });
+      });
+    });
+
+    const promise = draftMealRecipe('Lemon chicken', AISLES, 4);
+    const assertion = expect(promise).rejects.toThrow('Request timed out');
+
+    let settled = false;
+    void promise.catch(() => { settled = true; });
+    await jest.advanceTimersByTimeAsync(15_000);
+    expect(settled).toBe(false);
+
+    await jest.advanceTimersByTimeAsync(25_000);
+    await assertion;
+  });
+
   it('returns the drafted shopping list', async () => {
     mockFetchOnce(recipeResponse({
       items: [
@@ -2021,6 +2154,15 @@ describe('extractReceipt', () => {
       });
     });
 
+    it('refuses a date that does not exist rather than rolling it over', async () => {
+      // new Date('2026-02-30') is March 2, not an error, so the shape and NaN
+      // checks alone filed the trip two days late.
+      mockFetchOnce(toolUseResponse('extract_receipt', { storeName: '', lines: [], date: '2026-02-30' }));
+      expect((await extractReceipt(OCR_TEXT)).date).toBeNull();
+      mockFetchOnce(toolUseResponse('extract_receipt', { storeName: '', lines: [], date: '2028-02-29' }));
+      expect((await extractReceipt(OCR_TEXT)).date).toBe('2028-02-29');
+    });
+
     it('makes no request at all for an empty reading', async () => {
       const spy = jest.spyOn(global, 'fetch');
       await expect(extractReceipt('   ')).resolves.toEqual({
@@ -2074,6 +2216,21 @@ describe('extractReceipt', () => {
 // ============================================================================
 // readLabelPhotoWithAi / nutritionLabelPhotoAiAvailable
 // ============================================================================
+
+describe('extractCalendarEvents', () => {
+  it('refuses a date that does not exist rather than rolling it over', async () => {
+    // Same check as the receipt's: new Date('2026-02-30') is March 2, so the
+    // event would have been drafted two days late.
+    mockFetchOnce(toolUseResponse('extract_calendar_events', {
+      events: [
+        { title: 'Dentist', date: '2026-02-30', time: '', location: '', notes: '' },
+        { title: 'Flight', date: '2028-02-29', time: '', location: '', notes: '' },
+      ],
+    }));
+    const events = await extractCalendarEvents('Dentist Feb 30. Flight Feb 29 2028.');
+    expect(events.map(e => e.date)).toEqual([null, '2028-02-29']);
+  });
+});
 
 describe('nutritionLabelPhotoAiAvailable', () => {
   it('is true with the feature on and a key configured', () => {
@@ -2253,5 +2410,29 @@ describe('readLabelPhotoWithAi', () => {
   it('maps a network failure through describeAIError like the rest of the file', async () => {
     mockFetchOnce({}, 500);
     await expect(readLabelPhotoWithAi(PHOTO)).rejects.toThrow('API error 500');
+  });
+});
+
+describe('parseIndexPage', () => {
+  it('keeps each dish with its page and headings, and drops what is malformed', () => {
+    const page = parseIndexPage({
+      entries: [
+        { title: '  Braised lentils   with shallots ', page: '142', ingredients: ['Lentils', ' ', 'Shallots'] },
+        { title: '', page: '1', ingredients: [] },
+        { title: 'Fritters', page: '', ingredients: 'lentils' },
+        'nonsense',
+      ],
+      lastHeading: ' Lentils ',
+    });
+
+    expect(page.entries).toEqual([
+      { title: 'Braised lentils with shallots', page: '142', ingredients: ['Lentils', 'Shallots'] },
+      { title: 'Fritters', page: null, ingredients: [] },
+    ]);
+    expect(page.lastHeading).toBe('Lentils');
+  });
+
+  it('reads an empty heading as none', () => {
+    expect(parseIndexPage({ entries: [], lastHeading: '' })).toEqual({ entries: [], lastHeading: null });
   });
 });

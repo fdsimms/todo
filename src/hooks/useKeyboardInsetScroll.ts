@@ -1,7 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Keyboard, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Keyboard,
+  type FocusEvent,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+} from 'react-native';
 import { useIsFocused } from '@react-navigation/native';
 import { NO_INSET, pulseNoInset, strandedScrollOffset } from '../utils/scrollClamp';
+import { PresentationLevelContext, sheetCovered, subscribeSheetCover } from '../utils/sheetModal';
 
 /**
  * Makes `automaticallyAdjustKeyboardInsets` safe on a list that lives on a tab
@@ -16,13 +22,34 @@ import { NO_INSET, pulseNoInset, strandedScrollOffset } from '../utils/scrollCla
  *    alone (`RCTScrollView.m` `_keyboardWillChangeFrame:`), so a list the user
  *    isn't even looking at gets a bottom `contentInset`. With
  *    `enableScreens(false)` (see App.tsx — load-bearing, don't revert) a
- *    blurred tab is not detached but parked at `top: 30000` by react-navigation's
- *    `ResourceSavingView`, and the inset is computed from the scroll view's
- *    position in the WINDOW: `MAX(scrollViewBottomY - keyboardTopY, 0)` comes
- *    out around 30,000pt. The keyboard *hiding* recomputes the same 30,000,
- *    so it never clears. Switch to that tab and there are thirty thousand
- *    points of empty scroll range under the content. Passing the screen's own
- *    focus state means a backgrounded list simply doesn't listen.
+ *    blurred tab is not detached: under React Navigation v7 it stays mounted
+ *    at its normal offset, stacked behind the focused one (`ScreenFallback`'s
+ *    plain `View`, `zIndex: -1`). Under v6 it was parked at `top: 30000` by
+ *    `ResourceSavingView`, which turned this into a ~30,000pt inset; v7 removed
+ *    the parking, not the listener, so a backgrounded list still picks up a
+ *    keyboard-height inset it never asked for. Passing the screen's own focus
+ *    state means a backgrounded list simply doesn't listen.
+ *
+ *    Route focus alone misses one case: a sibling `SheetModal` (quick add, a
+ *    raised sheet) presented *over* this screen doesn't blur its route, so a
+ *    still-"focused" list kept listening to the covering sheet's own keyboard
+ *    events and visibly scrolled itself while the user typed in the sheet
+ *    above it. `PresentationLevelContext` already tracks this — a sheet
+ *    registers with the level it presents from while it's up — so `focused`
+ *    below folds that in too.
+ *
+ *    **A sheet's own list passes `{ ownsSheet: true }`.** The component that
+ *    renders a `SheetModal` calls this hook from *outside* that sheet, so the
+ *    level it reads is the one its own sheet registers with, and "anything
+ *    presented here?" is true for exactly as long as the list is on screen.
+ *    Without the flag every sheet switched its own keyboard handling off the
+ *    moment it opened, and the field being typed in sat behind the keyboard
+ *    (shipped for a week across every sheet using this, the task editor
+ *    included). With it, the question becomes whether something is presented
+ *    *from* that sheet (`sheetCovered`), which is the same "covered by a sheet
+ *    above" rule one level down. A hook called from a component rendered
+ *    *inside* the sheet's children already reads the sheet's own level and
+ *    must not pass it.
  *
  * 2. **Shrinking an inset never re-clamps `contentOffset`.** RN calls
  *    `scrollToOffset:` after adjusting the insets, but only with an offset it
@@ -42,12 +69,11 @@ import { NO_INSET, pulseNoInset, strandedScrollOffset } from '../utils/scrollCla
  *    longer listening for. What that leaves behind is dead scroll range under
  *    the content, on a screen the user comes back to and can scroll down into
  *    and not easily out of, since (2) only moves the list back inside the range
- *    — it cannot take the range away. Both sizes of it happen: a leftover the
- *    height of the keyboard, and (when a keyboard frame lands in the frame
- *    between react-navigation parking the screen at `top: 30000` and
- *    `useIsFocused` flipping, which is a render later — it rides a focus event
- *    emitted from an effect) the full ~30,000. So the inset is cleared
- *    explicitly, via `contentInset`, whenever this list stops listening.
+ *    — it cannot take the range away. A keyboard frame can land between the
+ *    blur and `useIsFocused` flipping, which is a render later (it rides a
+ *    focus event emitted from an effect), and leave a keyboard-height inset
+ *    behind. So the inset is cleared explicitly, via `contentInset`,
+ *    whenever this list stops listening.
  *
  * The clamp is deliberately not run while the keyboard is up — resting inside
  * the inset is the entire point of it while it's there — and only on a settled
@@ -72,10 +98,57 @@ import { NO_INSET, pulseNoInset, strandedScrollOffset } from '../utils/scrollCla
 export interface ScrollHandle {
   scrollTo?(opts: { x?: number; y?: number; animated?: boolean }): void;
   scrollToOffset?(opts: { offset: number; animated?: boolean }): void;
+  // ScrollView only — see `focusInput` below for why a field needs to call it directly.
+  scrollResponderScrollNativeHandleToKeyboard?(
+    nodeHandle: number,
+    additionalOffset?: number,
+    preventNegativeScrollOffset?: boolean,
+  ): void;
 }
 
-export function useKeyboardInsetScroll<T extends ScrollHandle>() {
-  const focused = useIsFocused();
+/**
+ * Lets a field reach the `ScrollView` it lives in and ask to be scrolled clear
+ * of the keyboard on demand, bypassing `automaticallyAdjustKeyboardInsets`
+ * entirely. `null` outside one (a field rendered somewhere with no keyboard
+ * scroll handling at all), so a consumer's `onFocus` wiring is always safe to
+ * call unconditionally.
+ */
+export const KeyboardScrollIntoViewContext = createContext<((nodeHandle: number) => void) | null>(null);
+
+/**
+ * An `onFocus` handler for a `TextInput` living inside a `useKeyboardInsetScroll`
+ * `ScrollView`, for the one case `automaticallyAdjustKeyboardInsets` cannot
+ * cover: refocusing from one field straight onto another while the keyboard
+ * never closes. iOS only recomputes the scroll-into-view offset in response to
+ * `UIKeyboardWillChangeFrameNotification`, which fires on a keyboard *height*
+ * change — not on a same-height refocus — so a field that opens (or is newly
+ * mounted and `autoFocus`ed) while the keyboard is already up from a sibling
+ * field is left exactly where it was, which can be entirely behind the
+ * keyboard. `scrollResponderScrollNativeHandleToKeyboard` is RN's own answer to
+ * this (its doc comment: "should be used as the callback to onFocus in a
+ * TextInput's parent view") — it reads the keyboard's last-known metrics
+ * rather than waiting on a new notification, so it works whether or not the
+ * keyboard is already showing.
+ */
+export function useScrollFieldIntoView() {
+  const focusInput = useContext(KeyboardScrollIntoViewContext);
+  return useCallback(
+    (e: FocusEvent) => {
+      if (typeof e.nativeEvent.target === 'number') focusInput?.(e.nativeEvent.target);
+    },
+    [focusInput],
+  );
+}
+
+export function useKeyboardInsetScroll<T extends ScrollHandle>(
+  { ownsSheet = false }: { ownsSheet?: boolean } = {},
+) {
+  const routeFocused = useIsFocused();
+  const level = useContext(PresentationLevelContext);
+  const [, forceRecheck] = useState(0);
+  useEffect(() => subscribeSheetCover(level, () => forceRecheck(n => n + 1)), [level]);
+  const covered = ownsSheet ? sheetCovered(level) : level.presented.size > 0;
+  const focused = routeFocused && !covered;
   const ref = useRef<T | null>(null);
   // Everything the clamp needs, read off the last settled scroll event rather
   // than from onLayout/onContentSizeChange: a scroll event carries the
@@ -167,9 +240,22 @@ export function useKeyboardInsetScroll<T extends ScrollHandle>() {
     [noInset],
   );
 
+  // See `useScrollFieldIntoView`'s doc comment — this is what it calls through
+  // `KeyboardScrollIntoViewContext`. `additionalOffset` is the inset the list
+  // is already carrying so this doesn't under-scroll a field that's near the
+  // bottom of the content.
+  const focusInput = useCallback((nodeHandle: number) => {
+    ref.current?.scrollResponderScrollNativeHandleToKeyboard?.(
+      nodeHandle,
+      lastScroll.current.insetBottom,
+      true,
+    );
+  }, []);
+
   return {
     ref,
     clearStaleInset,
+    focusInput,
     props: {
       automaticallyAdjustKeyboardInsets: focused,
       contentInset: insetProp,

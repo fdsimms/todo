@@ -49,6 +49,13 @@ describe('parseQuantity — the amount', () => {
 });
 
 describe('parseQuantity — Unicode vulgar fractions', () => {
+  it('reads a whole number spaced apart from its glyph, as a decoded "1 &frac12;" arrives', () => {
+    const q = parseQuantity('1 ½ cups');
+    expect(amount('1 ½ cups')).toBe(1.5);
+    expect(q.unit).toBe('cup');
+    expect(q.trailing).toBe('');
+  });
+
   it('reads a whole number glued straight to the glyph, the shape decodeEntities writes', () => {
     expect(amount('1½ cups')).toBe(1.5);
     expect(amount('1¼ cups')).toBe(1.25);
@@ -230,6 +237,17 @@ describe('parseQuantity — a range', () => {
     expect(rationalToNumber(q.rangeMax!)).toBe(2);
     expect(q.rangeSeparator).toBe('-');
     expect(q.unit).toBe('tbsp');
+  });
+
+  it('reads an en- or em-dash range the same way, spaced or not', () => {
+    // Imported pages print ranges with an en dash (recipeUrl decodes &ndash;),
+    // and a dash left unread carried the high end through unscaled as prose.
+    for (const input of ['1\u20132 cups', '1 \u2013 2 cups', '1\u20142 cups']) {
+      const q = parseQuantity(input);
+      expect(rationalToNumber(q.rangeMax!)).toBe(2);
+      expect(q.rangeSeparator).toBe('-');
+      expect(q.unit).toBe('cup');
+    }
   });
 
   it('reads fractional and mixed-number ends', () => {

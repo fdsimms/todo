@@ -1,11 +1,3 @@
-// Settings' "Automatic tasks" section: one switch per generator in
-// GENERATED_KIND_LIST, the category each files under, and whatever extra rows
-// a switched-on generator needs. One component of ~900 lines, so grep a
-// landmark rather than reading it start to finish:
-//
-//   ==== <name> ====        the section banners through the logic half
-//   extrasFor               the per-generator rows, one `if (kind === …)` each
-//   makeStyles              styles, at the bottom
 import React, { useMemo, useState } from 'react';
 import { Alert, StyleSheet, View } from 'react-native';
 import { useSettingsStore, type WeekStart } from '../../store/useSettingsStore';
@@ -35,6 +27,9 @@ import {
   WEEKEND_NUDGE_LEAD_DAYS_DEFAULT,
   WEEKEND_NUDGE_LEAD_DAYS_MAX,
   WEEKEND_NUDGE_LEAD_DAYS_MIN,
+  WEEKEND_NUDGE_PLAN_THRESHOLD_DEFAULT,
+  WEEKEND_NUDGE_PLAN_THRESHOLD_MAX,
+  WEEKEND_NUDGE_PLAN_THRESHOLD_MIN,
   type TimeOfDay,
 } from '../../types';
 import {
@@ -42,6 +37,7 @@ import {
   WEIGH_IN_EVERY_DAYS_MAX,
   WEIGH_IN_EVERY_DAYS_MIN,
 } from '../../utils/weightTasks';
+import { MEAL_PLAN_NUDGE_SLOTS } from '../../utils/mealPlanNudge';
 import { dateToHHMM, hhmmToDate } from '../../utils/clockTime';
 import { formatHHMM } from '../../utils/dateUtils';
 import { useColors } from '../../theme/ThemeContext';
@@ -52,7 +48,7 @@ import {
   DEFAULT_BIRTHDAY_GIFT_LEAD_DAYS,
   MAX_BIRTHDAY_LEAD_DAYS,
 } from '../../utils/birthdayTasks';
-import { describeWeekendNudgeLead } from '../../utils/weekendTasks';
+import { describeWeekendNudgeLead, describeWeekendNudgePlanThreshold } from '../../utils/weekendTasks';
 import {
   TRAVEL_LEAD_MINUTES_DEFAULT,
   TRAVEL_LEAD_MINUTES_MAX,
@@ -71,6 +67,15 @@ import { HealthRulesSheet } from '../../components/HealthRulesSheet';
 import { PillGroup, type PillGroupOption } from '../../components/PillGroup';
 import { type SegmentOption } from '../../components/SegmentedControl';
 import { makeSettingsStyles } from './settingsStyles';
+
+// Map of this file (one component holding most of it; `grep -n '// ===='` is
+// the table of contents):
+//   state          settings, categories, and the shared category pill grid
+//   listing        which generators show, and the rule counts their rows quote
+//   rows           each row's switch, what blocks it, its category and its hint
+//   extras         the controls only one generator has (extrasFor)
+//   render         the section: one row per listed generator, extras under it
+// Above the component: the weekday and time-of-day choices. Below it: styles.
 
 /**
  * Every task the app writes without being asked, in one section.
@@ -129,7 +134,7 @@ function weekdayOptions(weekStartsOn: WeekStart): SegmentOption<number>[] {
 }
 
 export function GeneratedTasksSection() {
-  // ==== store bindings and local state ====
+  // ==== state ====
   const colors = useColors();
   const styles = useMemo(() => makeSettingsStyles(colors), [colors]);
   const sectionStyles = useMemo(() => makeStyles(colors), [colors]);
@@ -160,6 +165,7 @@ export function GeneratedTasksSection() {
     onPress: () => { haptics.tap(); onSelect(o.value); },
   }));
 
+  // ==== listing ====
   // The kitchen's generators go with the area, the way every other kitchen row
   // does — but the other six stay, which is the whole point of the flag living
   // on the registry. This section used to sit inside Tasks & projects' own
@@ -192,7 +198,7 @@ export function GeneratedTasksSection() {
 
   const weekdaySegmentOptions = useMemo(() => weekdayOptions(s.weekStartsOn), [s.weekStartsOn]);
 
-  // ==== on/off, and what has to be on first ====
+  // ==== rows ====
   // Each generator's on/off answer and its category still live under their own
   // settings keys. Renaming them to a generic pair would be a migration over
   // preferences people have already set, for no gain a person can see — the
@@ -211,8 +217,8 @@ export function GeneratedTasksSection() {
    * What a generator needs turned on before its own switch can mean anything,
    * or null for the rest, which need nothing.
    *
-   * Four of them read a source the app has to be allowed into first (Apple
-   * Health, or the calendar for the three that read its window), and
+   * Five of them read a source the app has to be allowed into first (Apple
+   * Health for two, the calendar for the three that read its window), and
    * `enabledOf` refuses to show any of them as on while that read is shut. That is
    * right (a row reading "on" over a closed read would be lying about itself)
    * and it left the switch untappable: `toggle` computes `!enabledOf(kind)`, so
@@ -227,6 +233,13 @@ export function GeneratedTasksSection() {
     if ((kind === 'calendarReview' || kind === 'eventTask' || kind === 'travel') && !s.calendarReadEnabled) {
       return { setting: 'Read my calendar', screen: 'Calendar' };
     }
+    // The weigh-in needs both Health switches — see generatorSwitchedOn.
+    if (kind === 'weighIn' && !s.healthReadEnabled) {
+      return { setting: 'Read Apple Health', screen: 'Health' };
+    }
+    if (kind === 'weighIn' && !s.healthWriteEnabled) {
+      return { setting: 'Log to Health', screen: 'Health' };
+    }
     return null;
   };
 
@@ -235,7 +248,7 @@ export function GeneratedTasksSection() {
     if (blocker) {
       Alert.alert(
         `Turn on “${blocker.setting}” first`,
-        `This adds tasks from something the app isn't allowed to read yet. Turn on “${blocker.setting}” under ${blocker.screen} in Settings, then come back.`,
+        `This needs “${blocker.setting}”, which is off. Turn it on under ${blocker.screen} in Settings, then come back.`,
       );
       return;
     }
@@ -250,6 +263,7 @@ export function GeneratedTasksSection() {
       case 'pantryCheck': s.setPantryCheckTasks(next); break;
       case 'pantryReview': s.setPantryReviewTasks(next); break;
       case 'mealShortfall': s.setMealShortfallTasks(next); break;
+      case 'mealThaw': s.setMealThawTasks(next); break;
       case 'mealLogNudge': s.setMealLogNudgeTasks(next); break;
       case 'supplyReorder': s.setSupplyReorderTasks(next); break;
       case 'calendarReview': s.setCalendarReviewTasks(next); break;
@@ -265,8 +279,8 @@ export function GeneratedTasksSection() {
       case 'moodLog': s.setMoodLogTasks(next); break;
       case 'moodNudge': s.setMoodNudgeTasks(next); break;
       case 'weekendNudge': s.setWeekendNudgeTasks(next); break;
-      case 'weeklyReview': s.setWeeklyReviewTasks(next); break;
       case 'weighIn': s.setWeighInTasks(next); break;
+      case 'waterShortfall': s.setWaterShortfallTasks(next); break;
       // Exhaustive for setCategory's reason below: this returns void, so a
       // missing arm would be a switch that silently does nothing.
       default: {
@@ -282,7 +296,6 @@ export function GeneratedTasksSection() {
     if (next) ensureGeneratedTaskCategory(kind, { force: true });
   };
 
-  // ==== which category each generator files under ====
   const categoryOf = (kind: GeneratedKind): string | null => {
     switch (kind) {
       case 'mealSlot':
@@ -294,6 +307,7 @@ export function GeneratedTasksSection() {
       case 'pantryCheck': return s.pantryCheckTaskCategory;
       case 'pantryReview': return s.pantryReviewTaskCategory;
       case 'mealShortfall': return s.mealShortfallTaskCategory;
+      case 'mealThaw': return s.mealThawTaskCategory;
       case 'mealLogNudge': return s.mealLogNudgeTaskCategory;
       case 'calendarReview': return s.calendarReviewTaskCategory;
       case 'birthday': return s.birthdayTaskCategory;
@@ -309,8 +323,8 @@ export function GeneratedTasksSection() {
       case 'moodLog': return s.moodLogTaskCategory;
       case 'moodNudge': return s.moodNudgeTaskCategory;
       case 'weekendNudge': return s.weekendNudgeTaskCategory;
-      case 'weeklyReview': return s.weeklyReviewTaskCategory;
       case 'weighIn': return s.weighInTaskCategory;
+      case 'waterShortfall': return s.waterShortfallTaskCategory;
     }
   };
 
@@ -327,6 +341,7 @@ export function GeneratedTasksSection() {
       case 'pantryCheck': s.setPantryCheckTaskCategory(category); break;
       case 'pantryReview': s.setPantryReviewTaskCategory(category); break;
       case 'mealShortfall': s.setMealShortfallTaskCategory(category); break;
+      case 'mealThaw': s.setMealThawTaskCategory(category); break;
       case 'mealLogNudge': s.setMealLogNudgeTaskCategory(category); break;
       case 'birthday': s.setBirthdayTaskCategory(category); break;
       case 'birthdayGift': s.setBirthdayGiftTaskCategory(category); break;
@@ -341,8 +356,8 @@ export function GeneratedTasksSection() {
       case 'moodLog': s.setMoodLogTaskCategory(category); break;
       case 'moodNudge': s.setMoodNudgeTaskCategory(category); break;
       case 'weekendNudge': s.setWeekendNudgeTaskCategory(category); break;
-      case 'weeklyReview': s.setWeeklyReviewTaskCategory(category); break;
       case 'weighIn': s.setWeighInTaskCategory(category); break;
+      case 'waterShortfall': s.setWaterShortfallTaskCategory(category); break;
       case 'supplyReorder': s.setSupplyReorderTaskCategory(category); break;
       // Exhaustive, unlike the switches above it, which are only exhaustive
       // because they return a value. This one returns void, so a missing arm is
@@ -357,7 +372,6 @@ export function GeneratedTasksSection() {
     }
   };
 
-  // ==== the nudge time picker, and the hint under each switch ====
   const confirmTime = () => {
     s.setMealPlanNudgeTime(dateToHHMM(pickerDate));
     setTimePickerOpen(false);
@@ -376,7 +390,7 @@ export function GeneratedTasksSection() {
     if (blocker) return `Needs “${blocker.setting}”, which is off`;
     if (!enabledOf(spec.kind)) return spec.offHint;
     if (spec.kind === 'mealPlanNudge') {
-      return `A task appears ${WEEKDAY_NAMES[s.mealPlanNudgeWeekday]} at ${formatHHMM(s.mealPlanNudgeTime)} to plan that week`;
+      return `A stack appears ${WEEKDAY_NAMES[s.mealPlanNudgeWeekday]} at ${formatHHMM(s.mealPlanNudgeTime)}, with a task for each day of that week to plan its meals`;
     }
     if (spec.kind === 'calendarReview' && s.calendarReviewTimeSegment) {
       return `Adds a task each day, held back until ${s.calendarReviewTimeSegment}, to review tomorrow's events`;
@@ -402,7 +416,7 @@ export function GeneratedTasksSection() {
    * header states: `extrasFor` is JSX precisely so the knobs one generator has
    * don't have to be expressible in config.
    */
-  // ==== per-generator extras: the rows under a switched-on generator ====
+  // ==== extras ====
   const timeSegmentExtra = (
     entryId: string,
     value: TimeOfDay | null,
@@ -614,6 +628,25 @@ export function GeneratedTasksSection() {
               describeValue={n => describeWeekendNudgeLead(n ?? WEEKEND_NUDGE_LEAD_DAYS_DEFAULT)}
             />
           </View>
+          <View style={styles.sep} />
+          <SettingsRow
+            entryId="weekendNudgePlanThreshold"
+            icon="checkmark-done-outline"
+            label="How much counts as open"
+            hint="How many things can already be on Friday evening, Saturday or Sunday and the weekend still counts as open."
+            value={describeWeekendNudgePlanThreshold(s.weekendNudgePlanThreshold)}
+            tight
+          />
+          <View style={styles.cadenceRow}>
+            <CountStepper
+              value={s.weekendNudgePlanThreshold}
+              onChange={next => s.setWeekendNudgePlanThreshold(next ?? WEEKEND_NUDGE_PLAN_THRESHOLD_DEFAULT)}
+              min={WEEKEND_NUDGE_PLAN_THRESHOLD_MIN}
+              max={WEEKEND_NUDGE_PLAN_THRESHOLD_MAX}
+              label="Things already planned"
+              describeValue={n => describeWeekendNudgePlanThreshold(n ?? WEEKEND_NUDGE_PLAN_THRESHOLD_DEFAULT)}
+            />
+          </View>
         </>
       );
     }
@@ -773,6 +806,39 @@ export function GeneratedTasksSection() {
             toggle={s.mealPlanNudgeIgnoresVacation}
             onPress={() => s.setMealPlanNudgeIgnoresVacation(!s.mealPlanNudgeIgnoresVacation)}
           />
+          <View style={styles.sep} />
+          <SettingsRow
+            entryId="mealPlanNudgeSlots"
+            icon="restaurant-outline"
+            iconColor={s.mealPlanNudgeSlots.length > 0 ? colors.accent : undefined}
+            label="Meals to plan for"
+            hint={
+              s.mealPlanNudgeSlots.length === 0
+                ? 'No meals picked, so a day never reads as fully planned.'
+                : "Each day's task counts down against these. Planning only these meals is enough to mark the day done."
+            }
+            tight
+          />
+          {MEAL_PLAN_NUDGE_SLOTS.map(slot => {
+            const on = s.mealPlanNudgeSlots.includes(slot);
+            return (
+              <SettingsRow
+                key={slot}
+                icon={MEAL_SLOT_ICONS[slot]}
+                iconColor={on ? colors.accent : undefined}
+                label={MEAL_SLOT_LABELS[slot]}
+                toggle={on}
+                onPress={() => {
+                  s.setMealPlanNudgeSlots(
+                    on
+                      ? s.mealPlanNudgeSlots.filter(x => x !== slot)
+                      : [...s.mealPlanNudgeSlots, slot]
+                  );
+                }}
+                accessibilityLabel={`Count ${MEAL_SLOT_LABELS[slot].toLowerCase()} toward a planned day`}
+              />
+            );
+          })}
         </>
       );
     }
@@ -941,8 +1007,7 @@ export function GeneratedTasksSection() {
     return null;
   };
 
-  // ==== render: the background switch, then one block per listed generator ====
-
+  // ==== render ====
   return (
     <>
     <SettingsSection

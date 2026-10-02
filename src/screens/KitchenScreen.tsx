@@ -59,17 +59,22 @@ import { GroceryItemSheet, type CollapsibleFieldKey } from '../components/Grocer
 import { navigateToFoodSearchSettings } from '../components/NutritionSearchSheet';
 import { ItemDisposalOffer } from '../components/ItemDisposalOffer';
 import { LeftoverSheet } from '../components/LeftoverSheet';
+import { FridgeHistorySheet } from '../components/FridgeHistorySheet';
+import { useSheetMount } from '../hooks/useSheetMount';
 import { PantryReviewSheet } from '../components/PantryReviewSheet';
 import { BarcodeScanSheet, type ScanProductDraft } from '../components/BarcodeScanSheet';
 import { featureHidden } from '../utils/simpleMode';
 import type { ScannedGtinLink } from '../utils/scanResolve';
 import { ReceiptImportSheet, type ReceiptAddDraft } from '../components/ReceiptImportSheet';
+import { CookWithSheet } from '../components/CookWithSheet';
 import { freshnessColor } from '../components/LeftoversCard';
 import { useNowTick } from '../hooks/useNowTick';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { resolveActiveTrip } from '../utils/activeTrip';
 import { resetToGroceries } from '../navigation/navigationRef';
+import { useFilterField } from '../hooks/useFilterField';
+import { isPortionBox } from '../types';
 
 /**
  * Everything the app currently thinks is in your kitchen, in one place — the
@@ -113,7 +118,9 @@ import { resetToGroceries } from '../navigation/navigationRef';
  * The two things this screen writes by itself are `addToPantry`, off the
  * field at the top, and `addManyToPantry`, off the two scan actions in the
  * header — the same one-bit assertion the item sheet's "Got it" pill writes,
- * one name or a whole session at a time. They exist because that correction
+ * one name or a whole session at a time (a scan also says the packet is new,
+ * which clears the old one's freezer, opened and running-low claims — see
+ * `addManyToPantry`'s `acquired`). They exist because that correction
  * was unreachable for anything with no row yet: you can only open an item's
  * sheet from the list or from the catalog, so "I have flour" was unsayable until
  * flour had been bought through the app at least once. All of them add to the
@@ -130,9 +137,9 @@ import { resetToGroceries } from '../navigation/navigationRef';
  * reading one is offered here and not only at the foot of the shopping list:
  * the paper names thirty things at once, and this screen is where someone
  * standing over the bags actually is. What it records is smaller than a
- * finished trip's — names, and what each cost — because it isn't a trip: no
- * purchase count, no store stocking claim, no purchase date (see
- * `handleReceiptApply`).
+ * finished trip's — names, what each cost, and which went straight in the
+ * freezer — because it isn't a trip: no purchase count, no store stocking
+ * claim, no purchase date (see `handleReceiptApply`).
  *
  * That keeps the model the one #1040 settled on — computed from what you buy,
  * corrected when it's wrong, never an inventory anybody has to keep up.
@@ -155,6 +162,14 @@ export function KitchenScreen() {
   const setFrozen = useGroceryStore(s => s.setFrozen);
   const setAisle = useGroceryStore(s => s.setAisle);
   const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
+  // The frozen portions among the boxes (#2925). Their rows open the item's
+  // Pantry field, where "Freeze some" and the portion's own line live, rather
+  // than its Products field, which doesn't list them: a portion is some of the
+  // item, not a brand of it. See ItemProduct.isPortion.
+  const portionIds = useMemo(
+    () => new Set(itemProducts.filter(p => isPortionBox(p)).map(p => p.id)),
+    [itemProducts]
+  );
   const listEntries = useGroceryStore(useShallow(s => s.listEntries));
   const markProductsOutOf = useGroceryStore(s => s.markProductsOutOf);
   const setProductFrozen = useGroceryStore(s => s.setProductFrozen);
@@ -188,7 +203,7 @@ export function KitchenScreen() {
   const reopenLeftover = useLeftoverStore(s => s.reopenLeftover);
   const deleteLeftover = useLeftoverStore(s => s.deleteLeftover);
 
-  const [query, setQuery] = useState('');
+  const { query, clear: clearQuery, props: filterField } = useFilterField();
   const [openItemId, setOpenItemId] = useState<string | null>(null);
   // Which field the sheet opens on. Pantry for every row tap (see the sheet
   // below); the repeat-waste offer is the one thing that asks for another.
@@ -197,6 +212,16 @@ export function KitchenScreen() {
   const [scanOpen, setScanOpen] = useState(false);
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
+  // What happened to past containers, the same sheet the meal plan's fridge
+  // card opens. Offered on the same condition that card offers it: something
+  // has been closed out, since an empty history is a sheet with nothing in it.
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [cookWithOpen, setCookWithOpen] = useState(false);
+  const hasFridgeHistory = useMemo(() => leftovers.some(l => !!l.finishedAt), [leftovers]);
+  // Lazily, then kept: most pantries never open it, and a sheet that has been
+  // opened has to stay mounted for its ordered close (see useSheetMount).
+  const mountHistory = useSheetMount(historyOpen);
+  const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
 
   // This screen never unmounts once visited (the drawer's tabs stay mounted
   // under `enableScreens(false)`), so a use-by day computed once at mount
@@ -314,7 +339,7 @@ export function KitchenScreen() {
     if (focused) {
       if (focused.kind === 'leftover') setOpenLeftoverId(focused.sourceId);
       else if (focused.kind === 'product' && focused.itemId) {
-        setOpenItemField('products');
+        setOpenItemField(portionIds.has(focused.sourceId) ? 'pantry' : 'products');
         setOpenItemId(focused.itemId);
       } else setOpenItemId(focused.sourceId);
       return;
@@ -338,7 +363,7 @@ export function KitchenScreen() {
       // through the box rather than giving up.
       const product = itemProducts.find(p => p.id === parsed.sourceId);
       if (product && items.some(i => i.id === product.itemId)) {
-        setOpenItemField('products');
+        setOpenItemField(isPortionBox(product) ? 'pantry' : 'products');
         setOpenItemId(product.itemId);
       }
     }
@@ -388,7 +413,7 @@ export function KitchenScreen() {
     haptics.success();
     // Cleared like every other add field in the app, so the next name can be
     // typed straight in; the row it just made is in the list behind it.
-    setQuery('');
+    clearQuery();
   };
 
   const handleMarkOut = (entry: KitchenEntry) => {
@@ -396,7 +421,9 @@ export function KitchenScreen() {
     // A box's ✕ writes the box and says nothing about its siblings — being out
     // of the Beyond one is not being out of vegan ground beef. The item-level
     // ✕ still means all of them, which is why an item's own "Out of it"
-    // outranks every box in `probablyHaveReason`.
+    // outranks every box in `probablyHaveReason` — all but a frozen portion,
+    // which is the half of a pack that went in the freezer and which the ✕ on
+    // the rest of it says nothing about (#2925). A portion's own ✕ deletes it.
     const changed = entry.kind === 'product'
       ? markProductsOutOf([entry.sourceId])
       : markOutOfMany([entry.sourceId]);
@@ -462,12 +489,20 @@ export function KitchenScreen() {
   // box, a barcode is worth carrying for a row that has no brand or variant at
   // all — an unfound code the user just named is the one most worth
   // remembering, so `noteScanned` writes an entry either way.
+  //
+  // The shelf price read beside a barcode rides the same name-keyed map
+  // handleReceiptApply below builds, and for the same reason (#2934): it was
+  // shown on the scan row and then dropped here. Matched rows carry it in
+  // `priceById`, drafts on `priceMinor`. It is filed against the store a
+  // running trip names, or none: a scan doesn't say where the shelf was, and
+  // `setItemPrice` records an item-level price when there is no store.
   const handleScanApply = (
     itemIds: string[],
     toAdd: ReceiptAddDraft[],
     frozenItemIds: ReadonlySet<string>,
     products: ScanProductDraft[],
-    gtinLinks: ScannedGtinLink[]
+    gtinLinks: ScannedGtinLink[],
+    priceById: Readonly<Record<string, number>>
   ) => {
     const names = [
       ...itemIds
@@ -540,9 +575,25 @@ export function KitchenScreen() {
         draft.existingItemId ? undefined : draft.nameFromScan
       );
     }
+    const priceByName = new Map<string, number>();
+    for (const id of itemIds) {
+      const name = items.find(i => i.id === id)?.name;
+      const minor = priceById[id];
+      if (name && minor !== undefined) priceByName.set(name, minor);
+    }
+    for (const draft of toAdd) {
+      if (draft.priceMinor !== null) priceByName.set(draft.name, draft.priceMinor);
+    }
     setScanOpen(false);
     if (names.length === 0) return;
-    if (addManyToPantry(names, frozenNames, productNames) > 0) haptics.success();
+    // `acquired`: a scanned bag is a new packet, so the old one's freezer,
+    // opened and running-low claims go (see addManyToPantry).
+    const prices = priceByName.size > 0
+      ? { byName: priceByName, shopId: useGroceryStore.getState().activeShop()?.id ?? null }
+      : undefined;
+    if (addManyToPantry(names, frozenNames, productNames, prices, { acquired: true }) > 0) {
+      haptics.success();
+    }
   };
 
   /**
@@ -558,18 +609,26 @@ export function KitchenScreen() {
    * `purchasedAt` is dropped, and the sheet doesn't ask for it here: nothing
    * in the pantry writes a purchase date. `addToPantry` stamps on-hand from
    * now, and a use-by day comes from `finishShopping`, which this isn't one of.
+   * What it does say is that these are new packets (`acquired`), so the old
+   * one's freezer, opened and running-low claims don't carry over to them.
    *
    * The prices ride the same name-keyed map the freezer flag and the box do,
    * for the reason `addManyToPantry` gives — a row this batch mints has no id
    * until the loop creates it. What they record is deliberately smaller than a
    * trip's: see that action's own doc comment.
+   *
+   * The freezer flag is the sheet's per-row snowflake (#2925), reduced to names
+   * exactly as `handleScanApply` reduces the barcode sheet's: matched rows by
+   * `frozenItemIds`, new ones by `draft.frozen`. `addManyToPantry` applies it
+   * after the `acquired` clear, so it lands on the new packet.
    */
   const handleReceiptApply = (
     shopId: string | null,
     itemIds: string[],
     priceById: Record<string, number>,
     _purchasedAt: string,
-    toAdd: ReceiptAddDraft[]
+    toAdd: ReceiptAddDraft[],
+    frozenItemIds: ReadonlySet<string>
   ) => {
     const nameOf = (id: string) => items.find(i => i.id === id)?.name;
     const names = [
@@ -585,10 +644,19 @@ export function KitchenScreen() {
     for (const draft of toAdd) {
       if (draft.priceMinor !== null) priceByName.set(draft.name, draft.priceMinor);
     }
+    const frozenNames = new Set([
+      ...itemIds
+        .filter(id => frozenItemIds.has(id))
+        .map(nameOf)
+        .filter((name): name is string => !!name),
+      ...toAdd.filter(draft => draft.frozen).map(draft => draft.name),
+    ]);
     setReceiptOpen(false);
     if (names.length === 0) return;
     if (
-      addManyToPantry(names, undefined, undefined, { byName: priceByName, shopId }) > 0
+      addManyToPantry(
+        names, frozenNames, undefined, { byName: priceByName, shopId }, { acquired: true }
+      ) > 0
     ) haptics.success();
   };
 
@@ -597,6 +665,7 @@ export function KitchenScreen() {
     // as ordinary tertiary text, so most of a kitchen stays quiet and the one
     // thing going off is the one thing coloured.
     const tint = entry.freshness ? freshnessColor(entry.freshness, colors) : colors.textTertiary;
+    const isPortion = entry.kind === 'product' && portionIds.has(entry.sourceId);
     return (
       <TouchableOpacity
         style={[styles.row, isActive && styles.rowActive]}
@@ -608,9 +677,10 @@ export function KitchenScreen() {
           // sheet with the Products field already unfolded — the same
           // pre-opening a catalog row gets for its Pantry field, and for the
           // same reason: a collapsed field halfway down a dense sheet is in
-          // practice no way to correct anything.
+          // practice no way to correct anything. A frozen portion's
+          // corrections are in the Pantry field instead (see `portionIds`).
           else if (entry.kind === 'product' && entry.itemId) {
-            setOpenItemField('products');
+            setOpenItemField(portionIds.has(entry.sourceId) ? 'pantry' : 'products');
             setOpenItemId(entry.itemId);
           } else setOpenItemId(entry.sourceId);
         }}
@@ -622,9 +692,11 @@ export function KitchenScreen() {
         accessibilityHint={
           entry.kind === 'leftover'
             ? 'Opens the container, where you can close it out. Long press to move it between the fridge and the freezer'
-            : entry.kind === 'product'
-              ? 'Opens the item, where you can correct this one. Long press to move it to another aisle or the freezer'
-              : 'Opens the item, where you can correct it further. Long press to move it to another aisle or the freezer'
+            : isPortion
+              ? 'Opens the item, where you can take this portion out of the freezer. Long press to move it to another aisle or the freezer'
+              : entry.kind === 'product'
+                ? 'Opens the item, where you can correct this one. Long press to move it to another aisle or the freezer'
+                : 'Opens the item, where you can correct it further. Long press to move it to another aisle or the freezer'
         }
       >
         <View style={styles.body}>
@@ -654,14 +726,18 @@ export function KitchenScreen() {
             onPress={() => handleMarkOut(entry)}
             hitSlop={8}
             accessibilityLabel={
-              entry.productName
-                ? `Mark ${entry.productName} ${entry.title} out`
-                : `Mark ${entry.title} out`
+              isPortion
+                ? `Mark the portion of ${entry.title} used up`
+                : entry.productName
+                  ? `Mark ${entry.productName} ${entry.title} out`
+                  : `Mark ${entry.title} out`
             }
             accessibilityHint={
-              entry.kind === 'product'
-                ? 'Marks this one not on hand, leaving the others alone'
-                : 'Marks it not on hand, without opening the item'
+              isPortion
+                ? 'Removes this portion, leaving the rest of the item alone'
+                : entry.kind === 'product'
+                  ? 'Marks this one not on hand, leaving the others alone'
+                  : 'Marks it not on hand, without opening the item'
             }
           >
             <Ionicons name="close-circle-outline" size={iconSize.md} color={colors.textTertiary} />
@@ -742,9 +818,31 @@ export function KitchenScreen() {
             onPress: () => setReviewOpen(true),
             accessibilityLabel: 'Go through the pantry one thing at a time',
           },
+          ...(hasFridgeHistory
+            ? [{
+                icon: 'time-outline' as const,
+                onPress: () => { haptics.tap(); setHistoryOpen(true); },
+                accessibilityLabel: 'What happened to past leftovers',
+              }]
+            : []),
         ]}
       />
       <HubPills hub="kitchen" active="Kitchen" />
+      {/* The recipe finder, opened on "What I have": the pantry is the other
+          half of that question, so this is where it's asked from. The same
+          quiet link the Recipes and Cookbooks screens carry. */}
+      <View style={styles.cookWithRow}>
+        <TouchableOpacity
+          style={styles.cookWith}
+          onPress={() => { haptics.tap(); setCookWithOpen(true); }}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole="button"
+          accessibilityLabel="Find recipes that use what you have"
+        >
+          <Ionicons name="search-outline" size={13} color={colors.textTertiary} />
+          <Text style={styles.cookWithText}>Cook with…</Text>
+        </TouchableOpacity>
+      </View>
       <TipHost screen="kitchen" />
       {!!activeTripShop && (
         <ActiveTripBanner
@@ -768,8 +866,7 @@ export function KitchenScreen() {
         <Ionicons name="search" size={iconSize.sm} color={colors.textTertiary} />
         <TextInput
           style={styles.search}
-          value={query}
-          onChangeText={setQuery}
+          {...filterField}
           placeholder="Find or add an item…"
           placeholderTextColor={colors.textTertiary}
           autoCorrect={false}
@@ -804,6 +901,7 @@ export function KitchenScreen() {
         data={rows}
         keyExtractor={kitchenRowKey}
         renderItem={renderRow}
+        scrollToTop={{ bottom: tabBarHeight + spacing.md }}
         // dragTick, not tap: a fast drag crosses several rows between frames
         // and unthrottled ticks run together into one long buzz. The lift
         // itself is fired by ReorderableList.
@@ -866,6 +964,13 @@ export function KitchenScreen() {
         onApply={handleScanApply}
       />
 
+      <CookWithSheet
+        visible={cookWithOpen}
+        initialMode="have"
+        onClose={() => setCookWithOpen(false)}
+        onOpenRecipe={id => { setCookWithOpen(false); navigation.navigate('RecipeDetail', { recipeId: id }); }}
+        onOpenCookbook={id => { setCookWithOpen(false); navigation.navigate('CookbookDetail', { cookbookId: id }); }}
+      />
       <ReceiptImportSheet
         visible={receiptOpen}
         context="pantry"
@@ -874,6 +979,18 @@ export function KitchenScreen() {
       />
 
       <PantryReviewSheet visible={reviewOpen} onClose={() => setReviewOpen(false)} />
+
+      {mountHistory && (
+        <FridgeHistorySheet
+          visible={historyOpen}
+          leftovers={leftovers}
+          weekStartsOn={weekStartsOn}
+          // The history closes itself before this runs, so the container's
+          // sheet below opens in its place rather than on top of it.
+          onOpen={l => setOpenLeftoverId(l.id)}
+          onClose={() => setHistoryOpen(false)}
+        />
+      )}
 
       <LeftoverSheet
         visible={openLeftover !== null}
@@ -1015,5 +1132,21 @@ function makeStyles(colors: Colors) {
     meta: { fontSize: font.xs, color: colors.textTertiary, marginTop: spacing.xxs },
     metaBox: { color: colors.textSecondary, fontWeight: fontWeight.medium },
     outButton: { padding: spacing.xxs },
+    cookWithRow: {
+      flexDirection: 'row',
+      justifyContent: 'flex-end',
+      marginHorizontal: spacing.md,
+      marginTop: spacing.xs,
+    },
+    cookWith: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 3,
+    },
+    cookWithText: {
+      color: colors.textTertiary,
+      fontSize: font.xs,
+      fontWeight: fontWeight.medium,
+    },
   });
 }

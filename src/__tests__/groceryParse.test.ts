@@ -8,7 +8,9 @@ import {
   suggestShorterCatalogName,
   resolveGroceryTokens,
   splitGroceryLines,
+  LEADING_PREP_PRODUCTS,
 } from '../utils/groceryParse';
+import { AISLE_LEXICON, aisleForName } from '../utils/groceryAisles';
 
 // ─── groceryNameKey ──────────────────────────────────────────────────────────
 
@@ -45,6 +47,12 @@ describe('groceryNameKey', () => {
 // ─── parseGroceryInput ───────────────────────────────────────────────────────
 
 describe('parseGroceryInput', () => {
+  it('reads a quantity written with a Unicode fraction, glued or spaced', () => {
+    expect(parseGroceryInput('1 ½ cups flour').name).toBe('flour');
+    expect(parseGroceryInput('1½ cups flour').name).toBe('flour');
+    expect(parseGroceryInput('½ lb butter').name).toBe('butter');
+  });
+
   it('peels a leading number + unit', () => {
     expect(parseGroceryInput('2 lb chicken thighs')).toEqual({
       name: 'chicken thighs',
@@ -308,9 +316,39 @@ describe('splitPrep', () => {
   it('splits a whitelisted leading prep word', () => {
     expect(splitPrep('Minced garlic')).toEqual({ name: 'garlic', prep: 'minced' });
     expect(splitPrep('chopped onion')).toEqual({ name: 'onion', prep: 'chopped' });
-    expect(splitPrep('diced tomatoes')).toEqual({ name: 'tomatoes', prep: 'diced' });
-    expect(splitPrep('crushed red pepper')).toEqual({ name: 'red pepper', prep: 'crushed' });
+    expect(splitPrep('diced onion')).toEqual({ name: 'onion', prep: 'diced' });
+    expect(splitPrep('crushed garlic')).toEqual({ name: 'garlic', prep: 'crushed' });
     expect(splitPrep('grated cheddar')).toEqual({ name: 'cheddar', prep: 'grated' });
+  });
+
+  it('leaves a product whose name starts with a prep word whole (#2927)', () => {
+    // Split, these were fresh tomatoes and a bell pepper: filed under Produce
+    // and keyed onto the fresh row, for a can and a spice.
+    expect(splitPrep('diced tomatoes')).toEqual({ name: 'diced tomatoes', prep: null });
+    expect(splitPrep('Crushed Tomatoes')).toEqual({ name: 'Crushed Tomatoes', prep: null });
+    expect(splitPrep('crushed red pepper')).toEqual({ name: 'crushed red pepper', prep: null });
+    expect(splitPrep('crushed pineapple')).toEqual({ name: 'crushed pineapple', prep: null });
+    expect(splitPrep('diced tomatoes with green chiles'))
+      .toEqual({ name: 'diced tomatoes with green chiles', prep: null });
+  });
+
+  it('still splits a comma clause off one of those products\' own words', () => {
+    // "tomatoes, diced" is fresh tomatoes the recipe wants diced.
+    expect(splitPrep('tomatoes, diced')).toEqual({ name: 'tomatoes', prep: 'diced' });
+    expect(splitPrep('diced tomatoes, drained')).toEqual({ name: 'diced tomatoes', prep: 'drained' });
+  });
+
+  it('files every prep-word product under its own lexicon entry, and misses none', () => {
+    // A closed list here and a lexicon over there, kept in step both ways:
+    // each product has an exact aisle, and every lexicon name that opens with
+    // a split word is on the list (or it would be split before it was looked up).
+    for (const product of LEADING_PREP_PRODUCTS) {
+      expect(AISLE_LEXICON[product]).toBeDefined();
+      expect(splitPrep(product).prep).toBeNull();
+    }
+    const splitWords = ['minced', 'chopped', 'diced', 'crushed', 'grated'];
+    const opening = Object.keys(AISLE_LEXICON).filter(key => splitWords.includes(key.split(' ')[0]));
+    expect([...opening].sort()).toEqual([...LEADING_PREP_PRODUCTS].sort());
   });
 
   it('does not split "sliced" — excluded because it has a standalone-product reading', () => {
@@ -538,6 +576,16 @@ describe('suggestShorterCatalogName', () => {
 
 describe('resolveGroceryTokens', () => {
   const noneRejected = { quantity: null, prep: null, purpose: null };
+
+  it('adds "diced tomatoes" as the canned product, not fresh tomatoes (#2927)', () => {
+    const result = resolveGroceryTokens('diced tomatoes', noneRejected);
+    expect(result.name).toBe('diced tomatoes');
+    expect(result.note).toBeNull();
+    expect(aisleForName(result.name)).toBe('Canned & Jarred');
+    expect(aisleForName(resolveGroceryTokens('crushed red pepper', noneRejected).name)).toBe('Baking & Spices');
+    // The split words still split everywhere else.
+    expect(resolveGroceryTokens('diced onion', noneRejected).name).toBe('onion');
+  });
 
   it('accepts both the quantity and the prep clause by default', () => {
     expect(resolveGroceryTokens('1 tsp ginger, minced', noneRejected)).toEqual({

@@ -38,7 +38,8 @@ import {
   resolveCategorySubmit,
   type CategoryOption,
 } from '../utils/categoryPicker';
-import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
+import { useSheetMotion } from '../hooks/useSheetMotion';
+import { useFilterField } from '../hooks/useFilterField';
 
 interface ListProps {
   /**
@@ -101,7 +102,7 @@ export function CategoryPickerList({
   const categories = useCategoryStore(useShallow(s => s.categories));
   const addCategory = useTaskStore(s => s.addCategory);
 
-  const [query, setQuery] = useState('');
+  const { query, clear: clearQuery, props: filterField } = useFilterField();
 
   const options: CategoryOption[] = useMemo(
     () => names.map(name => ({ name, emoji: categories.find(c => c.name === name)?.emoji ?? null })),
@@ -205,8 +206,7 @@ export function CategoryPickerList({
         <Ionicons name="search" size={iconSize.sm} color={colors.textTertiary} />
         <TextInput
           style={styles.searchInput}
-          value={query}
-          onChangeText={setQuery}
+          {...filterField}
           placeholder={searchPlaceholder ?? (allowCreate ? 'Find or add a category…' : 'Find a category…')}
           placeholderTextColor={colors.textTertiary}
           returnKeyType="done"
@@ -217,7 +217,7 @@ export function CategoryPickerList({
         />
         {!!trimmed && (
           <TouchableOpacity
-            onPress={() => setQuery('')}
+            onPress={() => clearQuery()}
             hitSlop={8}
             accessibilityRole="button"
             accessibilityLabel="Clear the search"
@@ -270,15 +270,42 @@ interface SheetProps extends Omit<ListProps, 'maxHeight'> {
  * would cover half the list to serve the typists who can already tap the field.
  */
 export function CategoryPickerSheet({ visible, onClose, title = 'Category', onSelect, ...listProps }: SheetProps) {
+  return (
+    <PickerSheet visible={visible} onClose={onClose} title={title}>
+      {choose => (
+        <CategoryPickerList
+          {...listProps}
+          maxHeight={SHEET_LIST_MAX_HEIGHT}
+          onSelect={name => choose(() => onSelect(name))}
+        />
+      )}
+    </PickerSheet>
+  );
+}
+
+/** Most a picker sheet's own list grows before it scrolls. */
+export const PICKER_SHEET_LIST_MAX_HEIGHT = SHEET_LIST_MAX_HEIGHT;
+
+/**
+ * The bottom-sheet shell `CategoryPickerSheet` is built on, for any other
+ * pick-one-thing list that needs the same arrival, swipe-away, keyboard lift
+ * and Cancel (quick add's project picker is the second). `children` gets
+ * `choose`, which animates the sheet away and then runs what was picked, so a
+ * choice never lands under a sheet that's still on screen.
+ */
+export function PickerSheet({ visible, onClose, title, children }: {
+  visible: boolean;
+  onClose: () => void;
+  title: string;
+  children: (choose: (after: () => void) => void) => React.ReactNode;
+}) {
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const { height: windowHeight } = useWindowDimensions();
 
-  const hiddenY = useSheetHiddenOffset();
-
-  const translateY = useRef(new Animated.Value(hiddenY)).current;
-  const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const sheet = useSheetMotion(visible);
+  const { translateY, backdropOpacity } = sheet;
   /**
    * The sheet is bottom-anchored, so a short list sits behind the keyboard the
    * search field raises. Lifting it clear needs the height cap below as well
@@ -308,8 +335,6 @@ export function CategoryPickerSheet({ visible, onClose, title = 'Category', onSe
 
   useEffect(() => {
     if (visible) {
-      translateY.setValue(hiddenY);
-      backdropOpacity.setValue(0);
       // Seeded from whatever is on screen rather than assumed to be nothing:
       // both hosts open this over a keyboard of their own (quick add's title
       // field, the bulk bar's tag field), and if iOS leaves that keyboard up
@@ -319,20 +344,14 @@ export function CategoryPickerSheet({ visible, onClose, title = 'Category', onSe
       const height = Keyboard.metrics()?.height ?? 0;
       setKeyboardHeight(height);
       keyboardOffset.setValue(-height);
-      Animated.parallel([
-        Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
-        Animated.timing(backdropOpacity, { toValue: 1, duration: animation.duration.sheetBackdropIn, useNativeDriver: true }),
-      ]).start();
+      sheet.show();
     }
   }, [visible]);
 
   const dismiss = (after?: () => void) => {
     Keyboard.dismiss();
-    Animated.parallel([
-      Animated.spring(translateY, { toValue: hiddenY, ...animation.spring.sheetDismiss, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.sheetBackdropOut, useNativeDriver: true }),
-    ]).start(() => {
-      // No re-arming setValue here — see useSheetHiddenOffset.
+    sheet.hide(() => {
+      // No re-arming setValue here — see useSheetMotion.
       onClose();
       after?.();
     });
@@ -349,7 +368,7 @@ export function CategoryPickerSheet({ visible, onClose, title = 'Category', onSe
         if (dy > 80 || vy > 1.2) {
           dismiss();
         } else {
-          Animated.spring(translateY, { toValue: 0, ...animation.spring.snappy, useNativeDriver: true }).start();
+          sheet.restore();
         }
       },
     })
@@ -364,6 +383,7 @@ export function CategoryPickerSheet({ visible, onClose, title = 'Category', onSe
       <SheetScrim onPress={() => dismiss()} />
 
       <Animated.View
+        onLayout={sheet.onCardLayout}
         style={[
           styles.sheetOuter,
           // Capped against what's left above the keyboard; the card and its
@@ -380,11 +400,7 @@ export function CategoryPickerSheet({ visible, onClose, title = 'Category', onSe
         <View style={styles.card}>
           <Text style={styles.sheetTitle}>{title}</Text>
           <View style={styles.sheetBody}>
-            <CategoryPickerList
-              {...listProps}
-              maxHeight={SHEET_LIST_MAX_HEIGHT}
-              onSelect={name => dismiss(() => onSelect(name))}
-            />
+            {children(after => dismiss(after))}
           </View>
         </View>
 

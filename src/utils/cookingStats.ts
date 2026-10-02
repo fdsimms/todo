@@ -1,7 +1,7 @@
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { subDays } from 'date-fns/subDays';
 import type { Leftover, MealPlanEntry, Recipe } from '../types';
-import { dayKeyOf, dayKeyToDate } from './dateUtils';
+import { dayKeyOf, dayKeyToDate, getLogicalDayKey } from './dateUtils';
 import { outcomeCounts } from './leftovers';
 import { avgCookMinutes } from './recipeUtils';
 
@@ -48,7 +48,8 @@ export interface MealCookCounts {
   daysCooked: number;
   /**
    * Meals planned in the window on days that have already passed — the
-   * denominator of "planned meals cooked".
+   * denominator of "planned meals cooked". A meal eaten from leftovers is not
+   * one of them (see `mealCookCounts`).
    */
   planned: number;
   /** How many of `planned` were marked cooked. */
@@ -91,6 +92,27 @@ export function cookingWindow(today: Date, days: number): CookingWindow {
 }
 
 /**
+ * The last `days` of a window, ending where it ends.
+ *
+ * For a read that narrows a window already loaded rather than loading a second
+ * one: Stats reads a month of the food log and shows either the month or its
+ * last week (#2916). Narrowing the rows in hand keeps the section's own
+ * "is there anything here at all" answer on the month, so switching to a week
+ * with nothing logged in it can't take away the control that switches back.
+ *
+ * Never wider than the window it is given, and never shorter than a day.
+ */
+export function lastDaysOf(window: CookingWindow, days: number): CookingWindow {
+  const span = Math.max(1, Math.round(days));
+  const start = dayKeyOf(subDays(dayKeyToDate(window.endKey), span - 1));
+  return {
+    startKey: start > window.startKey ? start : window.startKey,
+    endKey: window.endKey,
+    todayKey: window.todayKey,
+  };
+}
+
+/**
  * What the meal plan says about the window.
  *
  * Two rules that aren't obvious from the fields:
@@ -105,6 +127,15 @@ export function cookingWindow(today: Date, days: number): CookingWindow {
  * the days still to come would make the fraction worse the further ahead
  * someone plans, which is exactly backwards. `daysCooked` has no such problem —
  * it's a straight count of days that happened — so it does include today.
+ *
+ * **A meal eaten from leftovers is not a meal cooked, and is left out of all
+ * three counts.** It is planned from the fridge card (`leftoverId`) and ticked
+ * like any other row, and that tick means it was eaten: counted here, a week of
+ * reheated chili read as "Days you cooked 3" and "Planned meals cooked 3 of 3"
+ * with nothing cooked. It is out of the denominator too, since it was never a
+ * meal to cook, and leaving it in would report every leftover night as one not
+ * cooked. A free-text row ("Takeout") is kept: whether it was cooked is not
+ * something its fields say.
  */
 export function mealCookCounts(
   entries: readonly MealPlanEntry[],
@@ -118,6 +149,7 @@ export function mealCookCounts(
     // Day keys are zero-padded, so the range test is a lexical compare — the
     // same property that lets the SQLite read be a plain `date >= ? AND <= ?`.
     if (entry.date < window.startKey || entry.date > window.endKey) continue;
+    if (entry.leftoverId) continue;
     if (entry.cookedAt) cookedDays.add(entry.date);
     if (entry.date >= window.todayKey) continue;
     planned += 1;
@@ -150,14 +182,20 @@ export function mealCookCounts(
  * Handed back as rows rather than as a tally so the caller can put them through
  * `describeFridgeHistory` for the wording *and* `outcomeCounts` for the number
  * without either being restated here.
+ *
+ * `finishedAt` is an instant, so it is keyed by the logical day it fell in:
+ * the window's keys are logical days, and a calendar key put a container
+ * finished at 00:30 under a 4 AM reset on a day the window hadn't reached.
+ * `dayResetTime` defaults to the setting.
  */
 export function leftoversFinishedIn(
   leftovers: readonly Leftover[],
-  window: CookingWindow
+  window: CookingWindow,
+  dayResetTime?: string
 ): Leftover[] {
   return leftovers.filter(leftover => {
     if (!leftover.finishedAt) return false;
-    const key = dayKeyOf(new Date(leftover.finishedAt));
+    const key = getLogicalDayKey(new Date(leftover.finishedAt), dayResetTime);
     return key >= window.startKey && key <= window.endKey;
   });
 }

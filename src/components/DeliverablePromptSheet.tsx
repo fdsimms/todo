@@ -1,25 +1,22 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Animated,
-  Keyboard,
-  Platform,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
-import { SheetModal } from './SheetModal';
+import { CardSheet, useCardSheet } from './CardSheet';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { Task } from '../types';
-import { useColors, useTheme } from '../theme/ThemeContext';
+import { useColors } from '../theme/ThemeContext';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { supplyReorderPackSeed } from '../utils/supply';
 import { getLogicalToday, getLogicalTomorrow } from '../utils/dateUtils';
 import { isDayBefore } from '../utils/calendarGrid';
 import { displayTitleFor } from '../utils/visibilityUtils';
-import { spacing, radius, font, fontWeight, iconSize, animation, interaction, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import {
   DELIVERABLE_TEXT_MAX_LENGTH,
@@ -29,12 +26,10 @@ import {
   chainStepDatedByAnswer,
   deliverableDate,
   deliverableKindFor,
+  deliverableOptionsFor,
 } from '../utils/deliverables';
-import { SafeBlurView } from './SafeBlurView';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { WhenPicker } from './WhenPicker';
-import { SheetScrim } from './SheetScrim';
-import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
 import { useSheetMount } from '../hooks/useSheetMount';
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
@@ -84,8 +79,7 @@ interface Props {
  */
 export function DeliverablePromptSheet({ visible, task, mode = 'complete', onConfirm, onCancel }: Props) {
   const colors = useColors();
-  const { isDark } = useTheme();
-  const styles = useMemo(() => makeStyles(colors), [colors]);
+    const styles = useMemo(() => makeStyles(colors), [colors]);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
 
   // The active chain step's question when there is one, so a two-step chain
@@ -97,16 +91,12 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
   // a day nobody chose: the answer is doing two jobs and only one of them is
   // visible from the question.
   const datesStep = chainStepDatedByAnswer(task);
+  // Yes/No and Pick-one answer with a tap on one of these. Empty for every
+  // other kind, and for a Pick-one with fewer than two options, which falls
+  // back to the text field rather than offering one button.
+  const options = deliverableOptionsFor(task);
 
-  const hiddenY = useSheetHiddenOffset();
-
-  const translateY = useRef(new Animated.Value(hiddenY)).current;
-  const backdropOpacity = useRef(new Animated.Value(0)).current;
-  // Bottom-anchored, same edge the keyboard docks to — without this the
-  // autofocused field raises a keyboard straight over the sheet. Same fix
-  // LeftoverSheet's doc comment describes.
-  const keyboardOffset = useRef(new Animated.Value(0)).current;
-
+  const card = useCardSheet();
   const inputRef = useRef<TextInput>(null);
   const [draft, setDraft] = useState('');
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -115,29 +105,7 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
   const mountPicker = useSheetMount(pickerOpen);
 
   useEffect(() => {
-    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-    const showSub = Keyboard.addListener(showEvent, e => {
-      Animated.timing(keyboardOffset, {
-        toValue: -(e.endCoordinates?.height ?? 0),
-        duration: e.duration ?? animation.duration.normal,
-        useNativeDriver: true,
-      }).start();
-    });
-    const hideSub = Keyboard.addListener(hideEvent, e => {
-      Animated.timing(keyboardOffset, {
-        toValue: 0,
-        duration: e.duration ?? animation.duration.normal,
-        useNativeDriver: true,
-      }).start();
-    });
-    return () => { showSub.remove(); hideSub.remove(); };
-  }, [keyboardOffset]);
-
-  useEffect(() => {
     if (!visible) return;
-    translateY.setValue(hiddenY);
-    backdropOpacity.setValue(0);
     // Seeded from whatever's already there, which matters more than it looks:
     // un-completing a task keeps its answer, so re-ticking it shouldn't ask the
     // user to type the same thing again.
@@ -165,29 +133,19 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
     const packSeed = !stored ? supplyReorderPackSeed(task, useTaskStore.getState().tasks) : null;
     setDraft(staleForScheduling ? '' : (stored || packSeed || ''));
     setPickerOpen(false);
-    Animated.parallel([
-      Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
-    ]).start();
-    // Focus (and the keyboard's own slide-up) starts alongside the sheet
-    // animation rather than after it, so the keyboard is up sooner — same
-    // fix as QuickAddModal's (#1210). A date answers through the calendar,
-    // so there's no field to focus and no keyboard wanted.
-    if (kind !== 'date') inputRef.current?.focus();
   }, [visible, task.id]);
 
-  const dismiss = (after: () => void) => {
-    Keyboard.dismiss();
-    Animated.parallel([
-      Animated.spring(translateY, { toValue: hiddenY, ...animation.spring.sheetDismiss, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
-    ]).start(() => {
-      // No re-arming setValue here — see useSheetHiddenOffset.
-      after();
-    });
+  // A date answers through the calendar and a choice through its buttons, so
+  // only the typed kinds have a field to focus. From the card's `onShow`
+  // rather than the open effect, which can run before the card is presented
+  // (see QuickAddModal's own note on this).
+  const focusField = () => {
+    if (kind !== 'date' && options.length === 0) inputRef.current?.focus();
   };
 
   const normalized = normalizeDeliverableValue(kind, draft);
+
+  const dismiss = (after: () => void) => card.close(after);
 
   const confirm = (value: string | null) => {
     haptics.success();
@@ -203,154 +161,157 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
   const dateLabel = normalized ? formatDeliverableValue(kind, normalized) : null;
 
   return (
-    <SheetModal visible={visible} animationType="none" transparent onRequestClose={() => dismiss(onCancel)}>
-      <Animated.View style={[StyleSheet.absoluteFill, { opacity: backdropOpacity }]} pointerEvents="none">
-        <SafeBlurView intensity={isDark ? 20 : 15} tint="dark" style={StyleSheet.absoluteFill} />
-        <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
-      </Animated.View>
-      {/* Tapping out is a cancel, never a skip: it's the gesture people make by
-          reflex, so it has to be the one that changes nothing. */}
-      <SheetScrim onPress={() => dismiss(onCancel)} />
+    <CardSheet
+      name="DeliverablePromptSheet"
+      visible={visible}
+      onShow={focusField}
+      controller={card}
+      // Tapping out is a cancel, never a skip: it's the gesture people make by
+      // reflex, so it has to be the one that changes nothing.
+      onRequestClose={() => dismiss(onCancel)}
+      overlays={
+        /* Nested inside this Modal rather than beside it: a Modal presents from
+           the controller its React parent belongs to, so a sibling would ask
+           this sheet's own controller to present a second one while it's up.
+           Same reason GroceryCatalogSheet nests GroceryItemSheet. */
+        mountPicker && (
+          <WhenPicker
+            visible={pickerOpen}
+            value={normalized ? new Date(normalized) : null}
+            title={displayTitleFor(task)}
+            showTimeOfDay={false}
+            showSuggest={false}
+            // A date that merely records something ("when did the warranty
+            // start") can be any day; one that schedules the next chain step
+            // can't be a day that has been and gone, or the step it places is
+            // overdue the moment it arrives.
+            allowPast={datesStep === null}
+            onConfirm={date => { if (date) pickDate(date); else setPickerOpen(false); }}
+            onCancel={() => setPickerOpen(false)}
+          />
+        )
+      }
+    >
+      <View style={styles.card}>
+        <View style={styles.headerRow}>
+          <SheetHeaderButton label="Cancel" role="cancel" onPress={() => dismiss(onCancel)} minWidth={56} />
+          <Text style={styles.heading} numberOfLines={2}>{displayTitleFor(task)}</Text>
+          <SheetHeaderButton
+            label="Save"
+            onPress={() => confirm(normalized)}
+            disabled={normalized === null}
+            minWidth={56}
+            style={styles.headerRight}
+            accessibilityLabel={mode === 'edit' ? 'Save answer' : 'Complete with this answer'}
+          />
+        </View>
 
-      <Animated.View
-        style={[
-          styles.sheetOuter,
-          { transform: [{ translateY: Animated.add(translateY, keyboardOffset) }] },
-        ]}
-      >
-        <View style={styles.card}>
-          <View style={styles.headerRow}>
-            <SheetHeaderButton label="Cancel" role="cancel" onPress={() => dismiss(onCancel)} minWidth={56} />
-            <Text style={styles.heading} numberOfLines={2}>{displayTitleFor(task)}</Text>
-            <SheetHeaderButton
-              label="Save"
-              onPress={() => confirm(normalized)}
-              disabled={normalized === null}
-              minWidth={56}
-              style={styles.headerRight}
-              accessibilityLabel={mode === 'edit' ? 'Save answer' : 'Complete with this answer'}
-            />
+        <Text style={styles.label}>Answer</Text>
+
+        {options.length > 0 ? (
+          <View style={styles.options}>
+            {options.map(option => {
+              const chosen = draft.trim().toLowerCase() === option.toLowerCase();
+              return (
+                <TouchableOpacity
+                  key={option}
+                  style={[styles.option, chosen && styles.optionChosen]}
+                  onPress={() => { setDraft(option); confirm(option); }}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: chosen }}
+                  accessibilityLabel={mode === 'edit' ? `Answer ${option}` : `Complete with ${option}`}
+                >
+                  <Text style={[styles.optionText, chosen && styles.optionTextChosen]}>{option}</Text>
+                  {chosen && <Ionicons name="checkmark" size={iconSize.sm} color={colors.accent} />}
+                </TouchableOpacity>
+              );
+            })}
           </View>
-
-          <Text style={styles.label}>Answer</Text>
-
-          {kind === 'date' ? (
-            <>
-              <TouchableOpacity
-                style={styles.field}
-                onPress={() => { haptics.tap(); setPickerOpen(true); }}
-                activeOpacity={interaction.activeOpacity}
-                accessibilityRole="button"
-                accessibilityLabel={dateLabel ? `Answer, ${dateLabel}` : 'Pick a date'}
-              >
-                <Ionicons name={meta.icon as IoniconName} size={iconSize.sm} color={colors.textSecondary} />
-                <Text style={dateLabel ? styles.fieldValue : styles.fieldPlaceholder}>
-                  {dateLabel ?? 'Pick a date'}
-                </Text>
-              </TouchableOpacity>
-              <View style={styles.pills}>
-                {/* The same two days WhenPicker's own quick buttons offer, off
-                    the same helpers and landing on the same instant (noon, via
-                    noonOf there) — both routes end in the same pickDate, so a
-                    bare `new Date()` here would have this pill and the calendar
-                    it opens disagree about which day is "today" for anyone
-                    whose dayResetTime is after midnight. */}
-                {[
-                  { label: 'Today', resolve: () => getLogicalToday(dayResetTime) },
-                  { label: 'Tomorrow', resolve: () => getLogicalTomorrow(dayResetTime) },
-                ].map(({ label, resolve }) => (
-                  <TouchableOpacity
-                    key={label}
-                    style={styles.pill}
-                    onPress={() => pickDate(noonOf(resolve()))}
-                    activeOpacity={interaction.activeOpacity}
-                    accessibilityRole="button"
-                    accessibilityLabel={label}
-                  >
-                    <Text style={styles.pillText}>{label}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-              {datesStep && (
-                <Text style={styles.datesStepNote}>
-                  {`\u201C${datesStep.title}\u201D will be scheduled for this date.`}
-                </Text>
-              )}
-            </>
-          ) : (
-            <View style={styles.field}>
-              <Ionicons name={meta.icon as IoniconName} size={iconSize.sm} color={colors.textSecondary} />
-              <TextInput
-                ref={inputRef}
-                style={styles.input}
-                value={draft}
-                onChangeText={setDraft}
-                placeholder={kind === 'number' ? 'A number' : 'Your answer'}
-                placeholderTextColor={colors.textTertiary}
-                keyboardType={kind === 'number' ? 'decimal-pad' : 'default'}
-                maxLength={kind === 'text' ? DELIVERABLE_TEXT_MAX_LENGTH : undefined}
-                returnKeyType="done"
-                onSubmitEditing={() => { if (normalized !== null) confirm(normalized); }}
-                accessibilityLabel="Answer"
-              />
-            </View>
-          )}
-
-          {/* The quiet way out, and it says exactly what it does. In 'edit'
-              mode there is nothing to complete, so the same row clears the
-              answer instead — and only when there is one to clear. */}
-          {(mode === 'complete' || task.deliverableValue !== null) && (
+        ) : kind === 'date' ? (
+          <>
             <TouchableOpacity
-              style={styles.skipRow}
-              onPress={() => confirm(null)}
+              style={styles.field}
+              onPress={() => { haptics.tap(); setPickerOpen(true); }}
               activeOpacity={interaction.activeOpacity}
               accessibilityRole="button"
+              accessibilityLabel={dateLabel ? `Answer, ${dateLabel}` : 'Pick a date'}
             >
-              <Text style={styles.skipText}>
-                {mode === 'edit' ? 'Clear the answer' : 'Complete without an answer'}
+              <Ionicons name={meta.icon as IoniconName} size={iconSize.sm} color={colors.textSecondary} />
+              <Text style={dateLabel ? styles.fieldValue : styles.fieldPlaceholder}>
+                {dateLabel ?? 'Pick a date'}
               </Text>
             </TouchableOpacity>
-          )}
-        </View>
-      </Animated.View>
+            <View style={styles.pills}>
+              {/* The same two days WhenPicker's own quick buttons offer, off
+                  the same helpers and landing on the same instant (noon, via
+                  noonOf there) — both routes end in the same pickDate, so a
+                  bare `new Date()` here would have this pill and the calendar
+                  it opens disagree about which day is "today" for anyone
+                  whose dayResetTime is after midnight. */}
+              {[
+                { label: 'Today', resolve: () => getLogicalToday(dayResetTime) },
+                { label: 'Tomorrow', resolve: () => getLogicalTomorrow(dayResetTime) },
+              ].map(({ label, resolve }) => (
+                <TouchableOpacity
+                  key={label}
+                  style={styles.pill}
+                  onPress={() => pickDate(noonOf(resolve()))}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="button"
+                  accessibilityLabel={label}
+                >
+                  <Text style={styles.pillText}>{label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            {datesStep && (
+              <Text style={styles.datesStepNote}>
+                {`\u201C${datesStep.title}\u201D will be scheduled for this date.`}
+              </Text>
+            )}
+          </>
+        ) : (
+          <View style={styles.field}>
+            <Ionicons name={meta.icon as IoniconName} size={iconSize.sm} color={colors.textSecondary} />
+            <TextInput
+              ref={inputRef}
+              style={styles.input}
+              value={draft}
+              onChangeText={setDraft}
+              placeholder={kind === 'number' ? 'A number' : 'Your answer'}
+              placeholderTextColor={colors.textTertiary}
+              keyboardType={kind === 'number' ? 'decimal-pad' : 'default'}
+              maxLength={kind === 'text' ? DELIVERABLE_TEXT_MAX_LENGTH : undefined}
+              returnKeyType="done"
+              onSubmitEditing={() => { if (normalized !== null) confirm(normalized); }}
+              accessibilityLabel="Answer"
+            />
+          </View>
+        )}
 
-      {/* Nested inside this Modal rather than beside it: a Modal presents from
-          the controller its React parent belongs to, so a sibling would ask
-          this sheet's own controller to present a second one while it's up.
-          Same reason GroceryCatalogSheet nests GroceryItemSheet. */}
-      {mountPicker && (
-        <WhenPicker
-          visible={pickerOpen}
-          value={normalized ? new Date(normalized) : null}
-          title={displayTitleFor(task)}
-          showTimeOfDay={false}
-          showSuggest={false}
-          // A date that merely records something ("when did the warranty
-          // start") can be any day; one that schedules the next chain step
-          // can't be a day that has been and gone, or the step it places is
-          // overdue the moment it arrives.
-          allowPast={datesStep === null}
-          onConfirm={date => { if (date) pickDate(date); else setPickerOpen(false); }}
-          onCancel={() => setPickerOpen(false)}
-        />
-      )}
-    </SheetModal>
+        {/* The quiet way out, and it says exactly what it does. In 'edit'
+            mode there is nothing to complete, so the same row clears the
+            answer instead — and only when there is one to clear. */}
+        {(mode === 'complete' || task.deliverableValue !== null) && (
+          <TouchableOpacity
+            style={styles.skipRow}
+            onPress={() => confirm(null)}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="button"
+          >
+            <Text style={styles.skipText}>
+              {mode === 'edit' ? 'Clear the answer' : 'Complete without an answer'}
+            </Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    </CardSheet>
   );
 }
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
-  backdropDim: { backgroundColor: colors.backdrop },
-  sheetOuter: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    paddingHorizontal: spacing.md,
-    paddingBottom: 34,
-  },
   card: {
-    backgroundColor: colors.bgSecondary,
-    borderRadius: radius.lg,
     paddingBottom: spacing.md,
   },
   headerRow: {
@@ -416,6 +377,19 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgTertiary,
   },
   pillText: { color: colors.text, fontSize: font.sm },
+  options: { gap: spacing.sm, paddingHorizontal: spacing.md },
+  option: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.md,
+    height: 48,
+    borderRadius: radius.md,
+    backgroundColor: colors.bgTertiary,
+  },
+  optionChosen: { borderWidth: 1, borderColor: colors.accent },
+  optionText: { color: colors.text, fontSize: font.lg },
+  optionTextChosen: { fontWeight: fontWeight.semibold },
   skipRow: {
     alignItems: 'center',
     marginHorizontal: spacing.md,

@@ -1,0 +1,4 @@
+{
+  "message": "A repeating target task shown ahead of its day (in Later, before it's due) no longer draws its progress meter behind the repeat icon. It now shows the same plain locked circle any other not-yet-due recurring task gets",
+  "date": "2026-09-24"
+}

@@ -1,0 +1,4 @@
+{
+  "message": "Remind me now has a \"When it becomes visible\" option, for a snoozed or time-segmented task: the reminder fires the moment the task comes off snooze or its time-of-day window opens, instead of at a fixed time.",
+  "date": "2026-09-22"
+}

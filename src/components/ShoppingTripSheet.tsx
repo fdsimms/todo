@@ -61,8 +61,12 @@ interface Props {
  * about what's on the list two screens away.
  *
  * So the sheet answers it. Stores are ranked by how much of the list they're
- * known to carry, and the best one is picked for you on opening. **The gap is
- * the other half** — one store rarely has everything, and a plan of "Trader
+ * known to carry. Planning for later picks nothing for you: the sheet opens on
+ * "No store" and the ranking is there to choose from. Starting a trip opens on
+ * one store (the trip's current one, else best coverage, else the last trip's;
+ * see `startPreselect`), because that confirm has to start a trip rather than
+ * quietly make a task. **The gap is the other half** — one store rarely has everything, and
+ * a plan of "Trader
  * Joe's, then the pharmacy for shampoo" is the thing worth surfacing, so the
  * card names the second stop and what it adds. Naming the missing items rather
  * than counting them is deliberate: "3 items aren't there" can't be acted on,
@@ -97,6 +101,23 @@ interface Props {
  * its own rather than a cancel, and it makes exactly the task this button made
  * before any of this existed.
  */
+/**
+ * The store a "start shopping" open arrives on: the live trip's, else the best
+ * coverage, else the last trip's. Empty when none of them names a store that
+ * still exists.
+ */
+function startPreselect(coverage: readonly ShopCoverage[], shops: readonly Shop[]): string[] {
+  const grocery = useGroceryStore.getState();
+  const live = new Set(shops.map(s => s.id));
+  const candidates = [
+    grocery.activeShop()?.id ?? null,
+    coverage.find(c => c.itemIds.length > 0)?.shop.id ?? null,
+    grocery.lastShopId,
+  ];
+  const pick = candidates.find(id => id !== null && live.has(id));
+  return pick ? [pick] : [];
+}
+
 export function ShoppingTripSheet({ visible, onClose, onCreate, onStart, intent }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -106,7 +127,6 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart, intent 
   const activeListId = useGroceryStore(s => s.activeListId);
   const itemShops = useGroceryStore(useShallow(s => s.itemShops));
   const shops = useGroceryStore(useShallow(s => s.shops));
-  const lastShopId = useGroceryStore(s => s.lastShopId);
 
   // The trolley being shopped, not every trolley you have going: a plan built
   // over both lists would send you to a store for things on a list you aren't
@@ -129,30 +149,24 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart, intent 
   const [correcting, setCorrecting] = useState<string | null>(null);
   const [ticked, setTicked] = useState<string[]>([]);
 
-  // Read through refs so the reset fires on opening only. The list can't
-  // change while the sheet is up, but re-deriving the default from a store
-  // update would silently undo a choice the user had already made.
-  const planRef = useRef(plan);
-  planRef.current = plan;
-  const lastShopRef = useRef(lastShopId);
-  lastShopRef.current = lastShopId;
   // What `selected` got seeded to on open, so handleCancel can tell a real
   // pick apart from the default the sheet arrived with.
   const selectedBaselineRef = useRef<string[]>([]);
 
   useEffect(() => {
     if (!visible) return;
-    const current = planRef.current;
-    // The best store, or — with nothing on the list to rank by — wherever the
-    // last trip was finished, which is FinishShoppingSheet's default and right
-    // more often than it's wrong.
-    const best = summarizeTrip([], current).suggestion[0]?.shop.id ?? null;
-    const last = lastShopRef.current;
-    const fallback = last && current.coverage.some(c => c.shop.id === last) ? last : null;
-    const initial = best ?? fallback;
-    const seeded = initial ? [initial] : [];
-    setSelected(seeded);
-    selectedBaselineRef.current = seeded;
+    // Planning for later opens on "No store": the ranking below is a
+    // suggestion to pick from, and "No store" is a real answer there (see the
+    // header comment). Starting a trip is different, because the entry points
+    // that open it that way already said "start shopping" and the confirm has
+    // to start one: opened on "No store" it read "Add" and made a task
+    // instead. So a start opens on the store the trip is already at (changing
+    // store), else the best coverage, else wherever the last trip ended, the
+    // one StartTripPrompt and docs/arch/groceries.md promise. Named and
+    // changeable before Start, same as any other pick.
+    const initial = intent === 'start' ? startPreselect(plan.coverage, shops) : [];
+    setSelected(initial);
+    selectedBaselineRef.current = initial;
     setCorrecting(null);
   }, [visible]);
 
@@ -259,7 +273,7 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart, intent 
     if (!dirty) { setCorrecting(null); return; }
     Alert.alert(
       'Discard changes?',
-      'What you checked off for this store will be lost.',
+      'You have unsaved changes. Are you sure you want to discard them?',
       [
         { text: 'Keep editing', style: 'cancel' },
         { text: 'Discard', style: 'destructive', onPress: () => setCorrecting(null) },
@@ -405,7 +419,7 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart, intent 
                 {selected.length === 0 ? (
                   <>
                     <Text style={styles.suggestionTitle}>
-                      You’ve got {next[0].itemIds.length} of these {total} at {next[0].shop.name}{' '}
+                      You’ve bought {next[0].itemIds.length} of these {total} at {next[0].shop.name}{' '}
                       before, more than anywhere else.
                     </Text>
                     {next.length > 1 && (
@@ -449,7 +463,7 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart, intent 
                         thing; it hasn't got the one that was asked for, and
                         saying "doesn't have it" here would be false. */}
                     <Text style={styles.suggestionTitle}>
-                      {selectedNames} {selected.length > 1 ? 'haven’t' : 'hasn’t'} got the{' '}
+                      {selectedNames} {selected.length > 1 ? 'don’t' : 'doesn’t'} have the{' '}
                       {namesFor(summary.withoutProduct)} you want.
                     </Text>
                     <Text style={styles.suggestionSub}>

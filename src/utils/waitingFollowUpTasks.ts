@@ -1,5 +1,6 @@
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import type { Person, Task } from '../types';
+import { dayKeyToDate, getDayStart } from './dateUtils';
 import { canWaitOn } from './blocking';
 import { generatedSourceOf, liveGeneratedTasksOfKind } from './generatedTasks';
 import { displayTitleFor } from './visibilityUtils';
@@ -52,7 +53,7 @@ export function waitingFollowUpTitle(
 /** Whether this wait's nudge was swiped away recently enough to still hold. */
 function declinedRecently(task: Pick<Task, 'waitingFollowUpDeclinedAt'>, today: Date): boolean {
   if (!task.waitingFollowUpDeclinedAt) return false;
-  const since = differenceInCalendarDays(today, new Date(task.waitingFollowUpDeclinedAt));
+  const since = differenceInCalendarDays(today, getDayStart(new Date(task.waitingFollowUpDeclinedAt)));
   return since < WAITING_FOLLOW_UP_DECLINE_DAYS;
 }
 
@@ -78,9 +79,44 @@ export function waitingFollowUpsHandledRecently(
     if (!waitingTaskId) continue;
     const stamp = (task.completed && task.completedAt) || (task.archived && task.archivedAt) || null;
     if (!stamp) continue;
-    if (differenceInCalendarDays(today, new Date(stamp)) < holdDays) done.add(waitingTaskId);
+    if (differenceInCalendarDays(today, getDayStart(new Date(stamp))) < holdDays) done.add(waitingTaskId);
   }
   return done;
+}
+
+/**
+ * Whether this wait has reached the point of asking about it, and why:
+ * 'dated' when the person named the day, 'threshold' when it has simply gone
+ * on long enough, null while it hasn't.
+ *
+ * Two ways in. `Task.followUpOn` is the person saying when: "waiting on the
+ * contractor for the quote, chase it Friday". The task itself stays held back
+ * on Friday (it still can't be done), so the follow-up is the only thing that
+ * can surface that day, and it does whether or not the week has gone by.
+ * Without one, the wait has to have run for the threshold.
+ *
+ * It is not the task's `dueDate`, which it used to be: an overdue task that
+ * started waiting asked for its follow-up the same minute, about a wait that
+ * was seconds old. For the same reason a follow-up day earlier than the wait
+ * itself counts from the day the wait began, so a date left from before can
+ * make it ask that day at the soonest, never before the wait existed.
+ */
+export function followUpDue(
+  task: Pick<Task, 'waitingOnPersonSince'> & Partial<Pick<Task, 'followUpOn'>>,
+  today: Date,
+): 'dated' | 'threshold' | null {
+  const since = task.waitingOnPersonSince ? getDayStart(new Date(task.waitingOnPersonSince)) : null;
+  if (task.followUpOn) {
+    const named = dayKeyToDate(task.followUpOn);
+    const from = since && since.getTime() > named.getTime() ? since : named;
+    return differenceInCalendarDays(today, from) >= 0 ? 'dated' : null;
+  }
+  // No stamp is a task waiting on somebody from before this generator
+  // existed — treated as "not long enough yet" rather than guessed at,
+  // the same refusal `hasNoDateSignal`'s callers make about a field that
+  // predates the read asking about it.
+  if (!since) return null;
+  return differenceInCalendarDays(today, since) >= WAITING_FOLLOW_UP_THRESHOLD_DAYS ? 'threshold' : null;
 }
 
 /** One wait that should have a follow-up task sitting on the list right now. */
@@ -89,6 +125,8 @@ export interface WaitingFollowUpWant {
   personId: string;
   title: string;
   phoneNumber: string | null;
+  /** The waiting task's project, which the follow-up is filed under too. */
+  projectId: string | null;
 }
 
 /**
@@ -100,36 +138,42 @@ export interface WaitingFollowUpWant {
  * person: sorting the due set by longest-waiting would still be the app
  * quietly deciding whose wait matters most, just measured on the task instead
  * of the person.
+ *
+ * A wait with its own follow-up day is outside all of that: it was asked for,
+ * so it comes back on its day whether the generator's setting is on or not
+ * (`thresholdWaits: false`) and without taking one of the capped slots. The
+ * cap and the setting are about the app speaking up unasked.
  */
 export function wantedWaitingFollowUps(
   tasks: readonly Task[],
   people: readonly Person[],
   today: Date,
   handledRecently: ReadonlySet<string> = new Set(),
-  cap: number = MAX_WAITING_FOLLOW_UP_TASKS
+  cap: number = MAX_WAITING_FOLLOW_UP_TASKS,
+  thresholdWaits = true,
 ): WaitingFollowUpWant[] {
   const peopleById = new Map(people.map(p => [p.id, p]));
   const wants: WaitingFollowUpWant[] = [];
+  let unasked = 0;
   for (const task of tasks) {
-    if (wants.length >= Math.max(0, cap)) break;
     if (task.completed || task.archived || task.parentId) continue;
     if (!task.waitingOnPersonId) continue;
     const person = peopleById.get(task.waitingOnPersonId);
     if (!canWaitOn(person)) continue;
     if (handledRecently.has(task.id)) continue;
     if (declinedRecently(task, today)) continue;
-    // No stamp is a task waiting on somebody from before this generator
-    // existed — treated as "not long enough yet" rather than guessed at,
-    // the same refusal `hasNoDateSignal`'s callers make about a field that
-    // predates the read asking about it.
-    if (!task.waitingOnPersonSince) continue;
-    const waitingDays = differenceInCalendarDays(today, new Date(task.waitingOnPersonSince));
-    if (waitingDays < WAITING_FOLLOW_UP_THRESHOLD_DAYS) continue;
+    const due = followUpDue(task, today);
+    if (!due) continue;
+    if (due === 'threshold') {
+      if (!thresholdWaits || unasked >= Math.max(0, cap)) continue;
+      unasked += 1;
+    }
     wants.push({
       taskId: task.id,
       personId: person!.id,
       title: waitingFollowUpTitle(person!, task),
       phoneNumber: person!.phoneNumber,
+      projectId: task.projectId ?? null,
     });
   }
   return wants;

@@ -9,6 +9,7 @@ import { useCalendarStore } from '../store/useCalendarStore';
 import { usePersonNoteStore } from '../store/usePersonNoteStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
+import { useProjectStore } from '../store/useProjectStore';
 import { DetailHeader } from '../components/DetailHeader';
 import { EmptyState } from '../components/EmptyState';
 import { InlineAction } from '../components/InlineAction';
@@ -23,6 +24,9 @@ import { dayKeyOf, getCurrentDayStart } from '../utils/dateUtils';
 import type { PersonNote, PersonNoteKind } from '../types';
 import { PERSON_NOTE_KINDS } from '../types';
 import { suggestedHistoryEvents } from '../utils/calendarHistory';
+import { useEventPeopleStore } from '../store/useEventPeopleStore';
+import { defaultNewEventSpan, peopleForEvent, upcomingEventsWith } from '../utils/eventPeople';
+import { isDemoModeActive } from '../utils/demoState';
 import {
   PERSON_NOTE_HEADINGS,
   describeNoteDay,
@@ -106,6 +110,16 @@ export function PersonDetailScreen() {
 
   const personId = route.params.personId;
   const tasks = useMemo(() => tasksNaming(personId), [personId, allTasks]);
+  // Projects that name this person (Project.personIds): the trip with them,
+  // the party they're helping with. Active first, then finished; filed-away
+  // ones left out. In the projects' own order, never ranked.
+  const allProjects = useProjectStore(useShallow(s => s.projects));
+  const theirProjects = useMemo(
+    () => allProjects
+      .filter(p => !p.archived && (p.personIds ?? []).includes(personId))
+      .sort((a, b) => Number(a.completed) - Number(b.completed) || a.sortOrder - b.sortOrder),
+    [allProjects, personId],
+  );
   const history = useMemo(() => personHistory(tasks), [tasks]);
   const upcoming = useMemo(() => personUpcoming(tasks), [tasks]);
 
@@ -119,6 +133,9 @@ export function PersonDetailScreen() {
   const pastEvents = useCalendarStore(useShallow(s => s.pastEvents));
   const handledHistory = useCalendarStore(s => s.handledHistory);
   const markHistoryHandled = useCalendarStore(s => s.markHistoryHandled);
+  const calendarEvents = useCalendarStore(useShallow(s => s.events));
+  const eventLinks = useEventPeopleStore(s => s.links);
+  const createEvent = useEventPeopleStore(s => s.createEvent);
   const [showAllSuggestions, setShowAllSuggestions] = useState(false);
   const allNotes = usePersonNoteStore(useShallow(s => s.notes));
   const [noteSheet, setNoteSheet] = useState<{ note: PersonNote | null; kind: PersonNoteKind } | null>(null);
@@ -139,9 +156,15 @@ export function PersonDetailScreen() {
   const last = lastTogether(history);
   const daysSince = daysSinceTogether(last, today);
 
-  /** Tasks naming this person that are still ahead, sorted by the day each falls on. */
+  /**
+   * Tasks naming this person that are still ahead, and calendar events linked
+   * to them (`eventPeople.ts`), sorted by the day each falls on. Events are
+   * read out of the same two-week window Today uses, so a plan further out
+   * appears once the window reaches it.
+   */
   const comingUp = useMemo(() => {
-    const rows: { key: string; title: string; when: string; icon: 'calendar-outline'; day: string }[] =
+    type Row = { key: string; title: string; when: string; icon: 'calendar-outline' | 'people-outline'; day: string };
+    const rows: Row[] =
       upcoming.map(entry => ({
         key: `task:${entry.taskId}`,
         title: entry.title,
@@ -149,8 +172,17 @@ export function PersonDetailScreen() {
         icon: 'calendar-outline' as const,
         day: dayKeyOf(new Date(entry.on)),
       }));
+    for (const event of upcomingEventsWith(calendarEvents, eventLinks, personId, new Date())) {
+      rows.push({
+        key: `event:${event.id}|${event.start}`,
+        title: event.title || 'Event',
+        when: new Date(event.start).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+        icon: 'people-outline',
+        day: dayKeyOf(new Date(event.start)),
+      });
+    }
     return rows.sort((a, b) => a.day.localeCompare(b.day));
-  }, [upcoming]);
+  }, [upcoming, calendarEvents, eventLinks, personId]);
 
   /**
    * The three kinds, each with its own heading, and each shown only when it
@@ -172,9 +204,12 @@ export function PersonDetailScreen() {
   // Built across everybody and then narrowed, so one event naming two people
   // resolves to the same set of ids on either of their screens.
   const suggestions = useMemo(
-    () => suggestedHistoryEvents(pastEvents, allPeople, handledHistory, new Date())
+    () => suggestedHistoryEvents(
+      pastEvents, allPeople, handledHistory, new Date(),
+      event => peopleForEvent(eventLinks, event)
+    )
       .filter(s => s.personIds.includes(personId)),
-    [pastEvents, allPeople, handledHistory, personId]
+    [pastEvents, allPeople, handledHistory, personId, eventLinks]
   );
 
   if (!person) {
@@ -190,6 +225,12 @@ export function PersonDetailScreen() {
 
   const name = displayNameOf(person);
   const birthday = hasBirthday(person) ? nextBirthday(person, today) : null;
+
+  const planSomething = () => {
+    haptics.tap();
+    const { start, end } = defaultNewEventSpan(today, today, new Date());
+    void createEvent({ title: `With ${name}`, start, end }, [person.id]);
+  };
 
   const open = (url: string | null) => {
     if (!url) return;
@@ -436,6 +477,35 @@ export function PersonDetailScreen() {
           </>
         )}
 
+        {theirProjects.length > 0 && (
+          <>
+            <Text style={styles.groupLabel}>PROJECTS</Text>
+            <View style={styles.card}>
+              {theirProjects.map((project, i) => (
+                <View key={project.id}>
+                  {i > 0 && <View style={styles.sep} />}
+                  <TouchableOpacity
+                    style={styles.entryRow}
+                    onPress={() => { haptics.tap(); (navigation as any).navigate('ProjectDetail', { projectId: project.id }); }}
+                    activeOpacity={interaction.activeOpacity}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Open ${project.title}${project.completed ? ', finished' : ''}`}
+                  >
+                    <Ionicons
+                      name={project.kind === 'list' ? 'list-outline' : 'folder-outline'}
+                      size={14}
+                      color={project.completed ? colors.textTertiary : colors.accent}
+                    />
+                    <Text style={styles.entryTitle} numberOfLines={1}>{project.title}</Text>
+                    {project.completed && <Text style={styles.entryDate}>Finished</Text>}
+                    <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          </>
+        )}
+
         <Text style={styles.groupLabel}>TOGETHER</Text>
         {history.length === 0 ? (
           <View style={styles.card}>
@@ -541,6 +611,12 @@ export function PersonDetailScreen() {
             onPress={() => { haptics.tap(); setNoteSheet({ note: null, kind: 'note' }); }}
           />
           <InlineAction icon="add" label="Add to history" variant="neutral" surface="page" onPress={addToHistory} />
+          {/* Opens Apple's new-event sheet with them already linked. The
+              link is the app's own and never an invite; see eventPeople.ts.
+              Absent in a demo, where the event would reach the real calendar. */}
+          {!isDemoModeActive() && (
+            <InlineAction icon="calendar-outline" label="Plan something" variant="neutral" surface="page" onPress={planSomething} />
+          )}
         </View>
       </ScrollView>
 

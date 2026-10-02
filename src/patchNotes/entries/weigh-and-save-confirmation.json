@@ -1,0 +1,4 @@
+{
+  "message": "Fixed: saving a weighed portion in the food log now closes the form, so it's clear the weight was saved",
+  "date": "2026-09-24"
+}

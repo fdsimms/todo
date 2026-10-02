@@ -1,0 +1,4 @@
+{
+  "message": "Marking a chained task's step missed now moves on to the next step again instead of ending the whole chain, matching how completing a step works.",
+  "date": "2026-09-19"
+}

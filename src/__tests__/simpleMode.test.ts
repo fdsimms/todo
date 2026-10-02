@@ -139,7 +139,7 @@ describe('groceryRowShown', () => {
 
 describe('addMenuItemShown', () => {
   it('leaves the whole menu alone while the mode is off', () => {
-    for (const key of ['chain', 'stack', 'template', 'task', 'new', 'existing']) {
+    for (const key of ['stack', 'template', 'import', 'event', 'task', 'new', 'existing']) {
       expect(addMenuItemShown(key, false)).toBe(true);
     }
   });
@@ -152,10 +152,14 @@ describe('addMenuItemShown', () => {
 
   // Today's add button is left offering Task alone, which FabMenu performs on
   // the tap rather than opening a menu around.
-  it('drops the three that start something simplified mode hides', () => {
-    expect(addMenuItemShown('chain', true)).toBe(false);
+  it('drops the items that start something simplified mode hides', () => {
     expect(addMenuItemShown('stack', true)).toBe(false);
     expect(addMenuItemShown('template', true)).toBe(false);
+  });
+
+  it('drops the new-event entry along with the Calendar screen', () => {
+    expect(addMenuItemShown('event', false)).toBe(true);
+    expect(addMenuItemShown('event', true)).toBe(featureShown('calendarScreen', true));
   });
 
   // Only *starting* a new one goes: an install with stacks keeps the screen
@@ -217,7 +221,7 @@ describe('screenShown', () => {
 
 describe('taskKindsForMode', () => {
   it('offers every kind while the mode is off', () => {
-    expect(taskKindsForMode(false, 'task')).toEqual(['task', 'timed', 'target', 'health', 'chain']);
+    expect(taskKindsForMode(false, 'task')).toEqual(['task', 'timed', 'target', 'health', 'rotation', 'chain']);
   });
 
   // The row itself is gone for a Standard task, so this only ever runs for one

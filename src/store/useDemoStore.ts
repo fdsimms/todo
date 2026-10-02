@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { replayHeldForDemo } from '../utils/demoHold';
 import { switchToDemoDatabase, switchToRealDatabase } from '../db/database';
 import { seedDemoData } from '../utils/demoSeed';
 import { setDemoModeActive } from '../utils/demoState';
@@ -9,6 +10,8 @@ import { useStepTimerStore } from './useStepTimerStore';
 import { useGroceryStore } from './useGroceryStore';
 import { useMealPlanStore } from './useMealPlanStore';
 import { useLeftoverStore } from './useLeftoverStore';
+import { usePersonStore } from './usePersonStore';
+import { usePersonGroupStore } from './usePersonGroupStore';
 
 /**
  * Drops every undo and redo entry in all four stores that keep a history.
@@ -22,11 +25,16 @@ import { useLeftoverStore } from './useLeftoverStore';
  * because every db function keeps working and simply answers about whichever
  * file the handle points at.
  */
-function clearUndoHistories(): void {
+export function clearUndoHistories(): void {
   useTaskStore.getState().clearUndoHistory();
   useGroceryStore.getState().clearUndoHistory();
   useMealPlanStore.getState().clearUndoHistory();
   useLeftoverStore.getState().clearUndoHistory();
+  // The people stores keep the same kind of history (undoHistoryActions) and
+  // were missing here, so a person deleted in the demo could be undone into
+  // the real database.
+  usePersonStore.getState().clearUndoHistory();
+  usePersonGroupStore.getState().clearUndoHistory();
 }
 
 // Demo mode replaces the app's entire data source with a throwaway one, so
@@ -100,5 +108,8 @@ export const useDemoStore = create<DemoStore>((set, get) => ({
     // staying armed to write invented rows into the user's real one.
     clearUndoHistories();
     set({ active: false });
+    // Last, against the real stores: the links and notification actions that
+    // arrived during the demo (see demoHold.ts).
+    replayHeldForDemo();
   },
 }));

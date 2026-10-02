@@ -8,7 +8,7 @@ import {
   unitKey,
   type Quantity,
 } from './quantity';
-import { measureParsedQuantity, unitBase } from './unitConvert';
+import { measureParsedQuantity, unitBase, type MeasuredQuantity } from './unitConvert';
 
 /**
  * How much a recipe line actually weighs, or nothing at all.
@@ -79,7 +79,11 @@ function gramsPerUnit(portion: FoodPortion): number {
 function densityOf(portion: FoodPortion): number | null {
   const words = labelWords(portion.label);
   if (words.length === 0) return null;
-  const unit = unitBase(words[0]);
+  // A two-word unit ("fl oz") has to be tried whole before falling back to
+  // its first word alone, which names nothing on its own ("fl" isn't a unit;
+  // only "fl oz" is) — a custom portion weighed and saved under that exact
+  // label otherwise came back with no density at all.
+  const unit = unitBase(words.join(' ')) ?? unitBase(words[0]);
   if (!unit || unit.dimension !== 'volume' || unit.base <= 0) return null;
   return gramsPerUnit(portion) / unit.base;
 }
@@ -144,8 +148,16 @@ function agreedDensity(
   return densities[0];
 }
 
-function gramsFromVolume(
-  millilitres: number,
+/**
+ * The one density a food's own portions agree on, in grams per millilitre, or
+ * null when none of them name a volume or they disagree with nothing to
+ * settle it.
+ *
+ * Shared by `gramsFromVolume` and `volumeFromMass` below — the same fact read
+ * in either direction, once for a recipe line and once for a per-100ml food
+ * that's had a volume weighed onto its own table.
+ */
+function densityForPortions(
   portions: readonly FoodPortion[],
   prep: string | null,
 ): number | null {
@@ -158,7 +170,7 @@ function gramsFromVolume(
   // and asking for a single matching row would refuse that, which is a
   // refusal with nothing behind it.
   const agreed = agreedDensity(withDensity);
-  if (agreed !== null) return millilitres * agreed;
+  if (agreed !== null) return agreed;
 
   const prepWords = prep ? labelWords(prep) : [];
   if (prepWords.length === 0) return null;
@@ -166,8 +178,79 @@ function gramsFromVolume(
     const words = labelWords(p.portion.label);
     return prepWords.every(w => words.includes(w));
   });
-  const settled = agreedDensity(matched);
-  return settled === null ? null : millilitres * settled;
+  return agreedDensity(matched);
+}
+
+function gramsFromVolume(
+  millilitres: number,
+  portions: readonly FoodPortion[],
+  prep: string | null,
+): number | null {
+  const density = densityForPortions(portions, prep);
+  return density === null ? null : millilitres * density;
+}
+
+/**
+ * A per-100ml food's own density, run the other way: how many millilitres a
+ * weighed amount comes to, so a mass line can reach the same per-100ml panel
+ * a volume line already could.
+ *
+ * **Still never a global density** — the module header's rule holds exactly
+ * as it does for `gramsFromVolume`. This only has anything to answer once a
+ * volume has actually been weighed onto the food's own portion table
+ * (`weighableLine`'s per-100ml branch is what writes one), which is what
+ * keeps it from inventing a density for a food nobody has measured.
+ */
+export function volumeFromMass(
+  grams: number,
+  portions: readonly FoodPortion[],
+  prep: string | null,
+): number | null {
+  const density = densityForPortions(portions, prep);
+  return density === null || density <= 0 ? null : grams / density;
+}
+
+/**
+ * Whether a food's own portions carry enough to answer a weight at all —
+ * what `foodUnitOptionsFor` checks before offering a "g" pill on a per-100ml
+ * food, so the pill only appears once a density actually resolves rather
+ * than promising a measurement `volumeFromMass` would go on to refuse.
+ */
+export function hasKnownDensity(portions: readonly FoodPortion[]): boolean {
+  return densityForPortions(portions, null) !== null;
+}
+
+/**
+ * How much a line calls for, `measureParsedQuantity` plus the one shape it
+ * refuses that still states an amount: a counted sized container.
+ *
+ * "2 14 oz cans" says both how many tins and how much is in one, so it is
+ * twenty-eight ounces. `measureParsedQuantity` refuses it for a reason that
+ * holds where it lives: its leading number is the count, and measuring that as
+ * the size would read two tins as two ounces. Multiplying the size by the
+ * count is not that mistake, and refusing it here cost more than the line: a
+ * recipe's own "14 oz can" doubled *becomes* "2 14 oz cans", so a can that
+ * counted at 1x dropped out of a dish's figures at 2x, and the sheet then asked
+ * for "how much one holds" off a line that says so (#2918).
+ *
+ * Deliberately not a change to `measureParsedQuantity`: that one also prices
+ * a line per unit (`groceryPrice.ts`), where a recorded price against a counted
+ * container is its own question. Exported for the one other reader that
+ * relates a line's whole amount rather than ranking a price per unit:
+ * `recipeCost.ts`, which relates a recipe's "2 14 oz cans" to a price recorded
+ * by the pound for the same reason this relates it to a panel per 100 g.
+ */
+export function measureLineAmount(quantity: Quantity): MeasuredQuantity | null {
+  const container = quantity.container;
+  if (!container?.count) return measureParsedQuantity(quantity);
+  const count = rationalToNumber(container.count);
+  if (!(count > 0)) return null;
+  const one = measureParsedQuantity({
+    ...quantity,
+    amount: container.size,
+    container: { ...container, count: null },
+  });
+  return one ? { ...one, base: one.base * count } : null;
 }
 
 /**
@@ -185,12 +268,13 @@ function gramsFromVolume(
  *    refusing the line outright. The low end matches what `stepTimers` decided
  *    for durations and is the conservative direction for a calorie count.
  * 2. **Mass is free**, and needs no portion table: a line already written in
- *    grams or pounds is a weight.
+ *    grams or pounds is a weight, and so is a counted sized container ("2 14
+ *    oz cans" is two tins' worth, see `measureLineAmount`).
  * 3. **Volume needs a portion naming a volume**, and refuses without one.
  * 4. **A count needs a portion naming that same word**, size included, and
  *    refuses without one.
  * 5. **Everything else refuses** — a bare count with no size word among sized
- *    portions, a counted container, an unparseable amount.
+ *    portions, a container whose size didn't settle it, an unparseable amount.
  */
 export function gramsForLine(
   quantity: Quantity,
@@ -206,14 +290,14 @@ export function gramsForLine(
   // and this is choosing which end to believe.
   const single: Quantity = quantity.rangeMax ? { ...quantity, rangeMax: null } : quantity;
 
-  const measured = measureParsedQuantity(single);
+  const measured = measureLineAmount(single);
   if (measured?.dimension === 'mass') return measured.base;
   if (portions.length === 0) return null;
   if (measured?.dimension === 'volume') return gramsFromVolume(measured.base, portions, prep);
 
-  // A counted container ("2 14 oz cans") names how many tins, not how much is
-  // in one, and its words would otherwise be hunted for in the portion table.
-  // A *bare* sized container is a real weight and was measured above.
+  // A sized container, bare or counted, is answered by its size above or not
+  // at all: "oz cans" is not a portion label, and hunting for it in the table
+  // would weigh the line as some other row.
   if (single.container) return null;
 
   // Neither a mass nor a volume, so the line is a count and the word beside
@@ -256,12 +340,18 @@ export function gramsForLine(
  * meal plan and through it the settings store and SQLite, which is not
  * something a figure-scaling helper should drag behind it.
  *
- * **The line is measured in the panel's own unit, never converted into it.**
- * A per-100g panel wants grams, a per-100ml panel wants millilitres, and
- * turning one into the other needs a density this app does not have. So a
- * volume line against a per-100g food goes through the food's own portion
- * table (`gramsForLine`), and a per-100ml food is answered only by a line that
- * is itself a volume. Anything else refuses, which is the whole posture.
+ * **The line is measured in the panel's own unit, never converted into it —
+ * unless the food's own table has already supplied the density that
+ * conversion needs.** A per-100g panel wants grams, a per-100ml panel wants
+ * millilitres, and turning one into the other ordinarily needs a density
+ * this app does not have. So a volume line against a per-100g food goes
+ * through the food's own portion table (`gramsForLine`), and a per-100ml
+ * food written in mass is refused *until* a volume has been weighed onto its
+ * table (`weighableLine`'s per-100ml branch, which is the only thing that
+ * writes one) — from then on `volumeFromMass` reads the same density
+ * `gramsFromVolume` would, off the same row, and a mass line resolves too.
+ * Anything else still refuses, which is the whole posture: no density is
+ * ever assumed, only ever read back off a weighing the food itself carries.
  *
  * A per-serving panel needs a serving to weigh something, since otherwise
  * "how many servings is 300g" has no answer.
@@ -296,9 +386,12 @@ export function panelMultiplier(
 
   if (nutrition.basis === 'per100ml') {
     const single = parsed.rangeMax ? { ...parsed, rangeMax: null } : parsed;
-    const measured = measureParsedQuantity(single);
-    if (!measured || measured.dimension !== 'volume') return null;
-    return measured.base / 100;
+    const measured = measureLineAmount(single);
+    if (!measured) return null;
+    if (measured.dimension === 'volume') return measured.base / 100;
+    if (measured.dimension !== 'mass') return null;
+    const millilitres = volumeFromMass(measured.base, nutrition.portions, prep);
+    return millilitres === null ? null : millilitres / 100;
   }
 
   const grams = gramsForLine(parsed, prep, nutrition.portions);
@@ -315,26 +408,25 @@ export function panelMultiplier(
  * Every *other* reason it says no — a missing portion, a per-100ml panel
  * with no density, a per-serving panel with no serving weight — is answered
  * by the food's own side: "Edit these figures" fixes the panel, and
- * `weighableLine` offers a scale for the portion table. These two aren't
+ * `weighableLine` offers a scale for the portion table. This one isn't
  * that. The line itself is what needs rewriting, on the recipe, not on the
  * food:
  *
  * - `'noAmount'` — no number at all, the same refusal `parseQuantity` makes
  *   for "several cloves" or "to taste". With nothing to multiply, no figure
  *   the food could carry would relate the line to a weight.
- * - `'countedContainer'` — "2 14 oz cans" names how many tins, not how much
- *   is in one, and `gramsForLine`/`panelMultiplier` refuse it on every basis
- *   for exactly that reason (see the comment above the `container` check in
- *   `gramsForLine`). What's missing is how much *one* tin holds, which the
- *   line doesn't say and no per-100g/ml/serving figure can stand in for.
+ *
+ * There used to be a second, `'countedContainer'`, for "2 14 oz cans", on the
+ * reading that it names how many tins but not how much is in one. It names
+ * both, and it is measured now (`measureLineAmount`), so the sheet no longer
+ * asks for "how much one holds" off a line that already says (#2918).
  */
-export type UnfixableQuantity = 'noAmount' | 'countedContainer';
+export type UnfixableQuantity = 'noAmount';
 
-/** Which of the two food-independent refusals `quantity` hits, or null if neither does. */
+/** The food-independent refusal `quantity` hits, or null if it doesn't. */
 export function unfixableQuantityReason(quantity: string): UnfixableQuantity | null {
   const parsed = parseQuantity(quantity);
   if (parsed.amount === null) return 'noAmount';
-  if (parsed.container && parsed.container.count !== null) return 'countedContainer';
   return null;
 }
 
@@ -392,6 +484,13 @@ const PROBE_GRAMS = [10, 1000];
  * `gramsForLine`'s last rule looks for. A food already carrying one whole-item
  * row is refused by the probe rather than by a rule here, since a second one
  * is what makes that rule ambiguous.
+ *
+ * **One line resolves without ever answering a weight, and that's the one
+ * exception to "a resolved line has nothing to weigh."** A per-100ml panel's
+ * own volume math answers a volume line's nutrients directly — no portion
+ * table involved — so `panelMultiplier` can already say yes while `grams`
+ * for that same line is still null. That's still a gap worth a scale: it's
+ * the only way such a food's weight is ever going to get onto the row.
  */
 export function weighableLine(
   quantity: string,
@@ -399,17 +498,32 @@ export function weighableLine(
   nutrition: FoodNutrition,
   foodName: string,
 ): LineWeighing | null {
-  // A line that already resolves has no gap to close, so there is nothing to
-  // weigh — asked here rather than left to the caller, so the answer is about
-  // the line and the panel rather than about who happened to ask.
-  if (panelMultiplier(quantity, prep, nutrition) !== null) return null;
-
   const parsed = parseQuantity(quantity);
   if (parsed.amount === null) return null;
+
+  // A line that already resolves has no gap to close in the ordinary case —
+  // asked here rather than left to the caller, so the answer is about the
+  // line and the panel rather than about who happened to ask. The per-100ml
+  // volume case handled just below is the one time a resolved line still has
+  // a gap: its weight, not its nutrients.
+  if (panelMultiplier(quantity, prep, nutrition) !== null) {
+    if (nutrition.basis !== 'per100ml') return null;
+    if (gramsForLine(parsed, prep, nutrition.portions) !== null) return null;
+    const single = parsed.rangeMax ? { ...parsed, rangeMax: null } : parsed;
+    const measured = measureParsedQuantity(single);
+    if (!measured || measured.dimension !== 'volume') return null;
+    const amount = rationalToNumber(parsed.amount);
+    if (amount <= 0) return null;
+    const label = (parsed.unit ?? foodName).trim();
+    if (!label) return null;
+    const written = formatRational(parsed.amount, parsed.decimal);
+    return { label, amount, text: `${written} ${inflectUnit(label, amount)}` };
+  }
+
   const amount = rationalToNumber(parsed.amount);
   if (amount <= 0) return null;
-  // A counted container names how many tins, not how much is in one — the same
-  // line `gramsForLine` draws, and weighing "2 cans" would record the tin.
+  // A sized container is answered by its size or not at all — the same line
+  // `gramsForLine` draws, and weighing "2 cans" would record the tin.
   if (parsed.container) return null;
 
   const label = (parsed.unit ?? foodName).trim();

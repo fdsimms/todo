@@ -3,6 +3,7 @@ import {
   View, Text, TouchableOpacity, ActivityIndicator, Animated, type AccessibilityRole,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { TargetIcon, TARGET_ICON } from '../../components/TargetIcon';
 import { useColors } from '../../theme/ThemeContext';
 import { interaction, spacing } from '../../theme';
 import { useSettingsStore } from '../../store/useSettingsStore';
@@ -94,12 +95,18 @@ export function SettingsRow({
 
   const body = (
     <>
-      <Ionicons
-        name={icon as never}
-        size={18}
-        color={iconColor ?? colors.textSecondary}
-        style={children != null ? { marginTop: spacing.xxs } : undefined}
-      />
+      {icon === TARGET_ICON ? (
+        <View style={children != null ? { marginTop: spacing.xxs } : undefined}>
+          <TargetIcon size={18} color={iconColor ?? colors.textSecondary} />
+        </View>
+      ) : (
+        <Ionicons
+          name={icon as never}
+          size={18}
+          color={iconColor ?? colors.textSecondary}
+          style={children != null ? { marginTop: spacing.xxs } : undefined}
+        />
+      )}
       <View style={styles.rowContent}>
         <Text style={[styles.rowLabel, !!labelColor && { color: labelColor }]}>{label}</Text>
         {showHint && <Text style={[styles.rowHint, !!children && styles.rowHintSpaced]}>{hint}</Text>}

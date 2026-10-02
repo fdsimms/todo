@@ -269,6 +269,32 @@ describe('parseNaturalDate', () => {
       expect(d.getDay()).toBe(6);
       expect(d.getDate()).toBe(14);
     });
+
+    it('reads "this weekend" said on a Saturday or Sunday as the one under way', () => {
+      const sat = parseNaturalDate('this weekend', new Date(2026, 1, 28, 10))!;
+      expect([sat.getMonth(), sat.getDate()]).toEqual([1, 28]);
+      const sun = parseNaturalDate('weekend', new Date(2026, 2, 1, 10))!;
+      expect([sun.getMonth(), sun.getDate()]).toEqual([2, 1]);
+    });
+
+    it('still reads "next weekend" said on a Saturday as the following one', () => {
+      const d = parseNaturalDate('next weekend', new Date(2026, 1, 28, 10))!;
+      expect([d.getMonth(), d.getDate()]).toEqual([2, 7]);
+    });
+
+    it('reads "next weekend" said on a Sunday as the coming one, not a week past it', () => {
+      // Sun Mar 1: "this weekend" is today, so the Mar 7 weekend is the only
+      // one "next weekend" can mean. It used to skip to Mar 14.
+      const d = parseNaturalDate('next weekend', new Date(2026, 2, 1, 10))!;
+      expect([d.getMonth(), d.getDate()]).toEqual([2, 7]);
+    });
+
+    it('reads "oxt weekend" the same from either day of a weekend', () => {
+      const sat = parseNaturalDate('oxt weekend', new Date(2026, 1, 28, 10))!;
+      const sun = parseNaturalDate('oxt weekend', new Date(2026, 2, 1, 10))!;
+      expect([sat.getMonth(), sat.getDate()]).toEqual([2, 14]);
+      expect([sun.getMonth(), sun.getDate()]).toEqual([2, 14]);
+    });
   });
 
   describe('explicit dates', () => {
@@ -336,6 +362,30 @@ describe('parseNaturalDate', () => {
       const d = parse('  Tomorrow   At   3 PM ')!;
       expect(d.getDate()).toBe(11);
       expect(d.getHours()).toBe(15);
+    });
+  });
+
+  describe('the grace window before dayResetTime', () => {
+    // Sat Aug 16 01:30 on the clock, with a 02:00 reset: the logical day is
+    // still Fri Aug 15, so callers pass getLogicalNow() (a day back) as `now`
+    // and the real instant as `clockNow`.
+    const clock = new Date(2025, 7, 16, 1, 30);
+    const logical = new Date(2025, 7, 15, 1, 30);
+    const grace = (input: string) => parseNaturalDate(input, logical, clock)!;
+
+    it('counts minutes and hours from the real instant', () => {
+      expect(grace('in 30 min')).toEqual(new Date(2025, 7, 16, 2, 0));
+      expect(grace('in 2 hours')).toEqual(new Date(2025, 7, 16, 3, 30));
+    });
+
+    it('reads a bare clock time and "tonight" as the next one on the clock', () => {
+      expect(grace('3pm')).toEqual(new Date(2025, 7, 16, 15, 0));
+      expect(grace('tonight')).toEqual(new Date(2025, 7, 16, 20, 0));
+    });
+
+    it('still reads a day word against the logical day', () => {
+      const d = grace('tomorrow');
+      expect([d.getMonth(), d.getDate()]).toEqual([7, 16]);
     });
   });
 });

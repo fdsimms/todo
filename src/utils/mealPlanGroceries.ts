@@ -1,12 +1,17 @@
 import { format } from 'date-fns/format';
-import type { GroceryItem, ItemSubLink, MealPlanEntry, Recipe } from '../types';
+import type { GroceryItem, GroceryListEntry, ItemProduct, ItemSubLink, MealPlanEntry, Recipe } from '../types';
 import { isKeyInRange } from './mealPlan';
 import { dayKeyToDate } from './dateUtils';
 import { probablyHaveReason } from './grocerySuggest';
 import { resolvePluralKey } from './groceryPlural';
 import { describeSubstitutesOnHand, substitutesOnHand } from './itemSubs';
 import { coveringVariety, describeFamilyOnHand, familyOnHand, varietyIndex } from './itemVarieties';
-import { choiceGroupKey, flattenRecipeIngredients, type ChoiceResolution } from './recipeComponents';
+import {
+  choiceGroupKey,
+  flattenRecipeIngredients,
+  reachableRecipeIds,
+  type ChoiceResolution,
+} from './recipeComponents';
 import { NO_STANDING_SWAPS, type StandingSwapMap } from './standingSwaps';
 import {
   formatQuantityAmount,
@@ -96,6 +101,19 @@ export interface PlannedIngredient {
    * for the same reason.
    */
   excludeFromNutrition?: boolean;
+  /**
+   * The line as the recipe wrote it and the entry's scale, present only when
+   * that scale isn't 1 (at 1, `quantity` already is the line as written).
+   *
+   * `quantity` is shopping notation, which is right for a list and lossy for
+   * arithmetic: a "14 oz can" can't be written at 1.5x so it stays one can, and
+   * "1 lb 2 oz" isn't scaled at all. `estimateWeekCost` and `weekNutrition`
+   * measure this and multiply by `factor` instead, the order a single recipe's
+   * cost and nutrition already use (#2918). Written only when scaled so the
+   * common row stays the shape every literal fixture of it already is, the
+   * same convention as `optional`.
+   */
+  unscaled?: { quantity: string; factor: number };
 }
 
 /**
@@ -170,6 +188,7 @@ export function collectPlannedIngredients(
         swappedFrom: flat.swappedFrom ?? null,
         ...(flat.ingredient.optional ? { optional: true } : {}),
         ...(flat.ingredient.excludeFromNutrition ? { excludeFromNutrition: true } : {}),
+        ...(scale !== 1 ? { unscaled: { quantity: flat.ingredient.quantity, factor: scale } } : {}),
       });
     }
   }
@@ -210,7 +229,7 @@ export function hasShoppableMeals(
 /**
  * One recipe's ingredients, standing alone rather than flattened out of a
  * week — the source a single-recipe "Add ingredients to list" needs to run
- * through the same classifyPlanned pantry-awareness AddWeekToListSheet gets,
+ * through the same classifyPlanned pantry-awareness AddMealsToListSheet gets,
  * instead of the blind addFromPlan RecipeDetailScreen used before.
  *
  * `recipesById` is what lets a composed recipe bring its components' lines
@@ -437,10 +456,11 @@ export interface ClassifiedIngredient {
    * question — whose words the row's *name* is — and a swapped row can want
    * both at once.
    *
-   * The first non-null among the group's contributors, the same rule
-   * `choiceGroup` follows: two lines swapped into one item ("milk" and "whole
-   * milk" both to oat milk) merge into one row, and naming one origin is what
-   * the row has space to say.
+   * The first non-null among the group's contributors: two lines swapped into
+   * one item ("milk" and "whole milk" both to oat milk) merge into one row, and
+   * naming one origin is what the row has space to say. (`choiceGroup` used to
+   * be described as following this rule; it doesn't, since one outright
+   * contributor takes the row out of the choice.)
    */
   swappedFrom: string | null;
   /**
@@ -461,6 +481,30 @@ export interface ClassifiedIngredient {
    * the list, exactly like every other row here.
    */
   optional?: boolean;
+}
+
+/**
+ * What `classifyPlanned` reads off the catalog as a whole rather than off the
+ * lines being classified: each row by key, the set of keys a plural is resolved
+ * against, and the declared varieties. None of it depends on the lines, so a
+ * caller classifying a whole recipe box builds it once (#2922); rebuilt per
+ * recipe, it was most of what counting a box's pantry coverage cost.
+ *
+ * `items` is the array it was built from, which is how `classifyPlanned`
+ * tells a matching index from one built for some other catalog.
+ */
+export interface PlannedCatalogIndex {
+  items: readonly GroceryItem[];
+  byKey: ReadonlyMap<string, GroceryItem>;
+  keys: ReadonlySet<string>;
+  varieties: ReadonlyMap<string, GroceryItem[]>;
+}
+
+/** Builds `classifyPlanned`'s catalog lookups once, for classifying many recipes against `items`. */
+export function plannedCatalogIndex(items: readonly GroceryItem[]): PlannedCatalogIndex {
+  const byKey = new Map<string, GroceryItem>();
+  for (const item of items) byKey.set(item.nameKey, item);
+  return { items, byKey, keys: new Set(byKey.keys()), varieties: varietyIndex(items) };
 }
 
 /**
@@ -521,11 +565,27 @@ export function classifyPlanned(
    * separate lists, and what the readers that aren't adding to a list (a cook's
    * recap, a pantry-readiness percentage) still mean.
    */
-  inTrolley: ReadonlyMap<string, boolean> | null = null
+  inTrolley: ReadonlyMap<string, boolean> | null = null,
+  /**
+   * The items' boxes, so a packet frozen or marked "Got it" on its own counts as
+   * having it here exactly as it does in the Pantry and in `onHandNameKeys`
+   * (a box only ever adds an answer; see `probablyHaveReason`). Without them a
+   * row whose one claim is a box fell back to the item's lapsed purchase window
+   * and read as needToBuy, so the sheet ticked it and a shortfall task asked for
+   * it while the Pantry listed it in the freezer. Empty by default: the
+   * item-only read every caller had before boxes carried pantry state.
+   */
+  products: readonly ItemProduct[] = [],
+  /**
+   * The catalog-wide lookups, for a caller classifying many recipes against one
+   * catalog (`countLikelyInPantryByRecipe`). Built from `items` when omitted,
+   * which is every other caller, and rebuilt when it was built from a
+   * different array, so a stale one costs time rather than a wrong answer.
+   */
+  catalog: PlannedCatalogIndex = plannedCatalogIndex(items)
 ): ClassifiedIngredient[] {
-  const byKey = new Map<string, GroceryItem>();
-  for (const item of items) byKey.set(item.nameKey, item);
-  const varieties = varietyIndex(items);
+  const index = catalog.items === items ? catalog : plannedCatalogIndex(items);
+  const { byKey, keys: catalogKeys, varieties } = index;
 
   const groups = new Map<string, PlannedIngredient[]>();
   for (const p of planned) {
@@ -543,9 +603,17 @@ export function classifyPlanned(
   // `swappedFrom`: this is the same thing spelled the other way, not a swap,
   // and "instead of serrano pepper" would be a caption about nothing. Ordered
   // ahead of the variety pass so a re-filed key gets that pass too.
+  //
+  // And with no catalog row to resolve against, two lines one plural apart
+  // resolve to each other: "onion" in one recipe and "onions" in another are
+  // one thing to buy whether or not the catalog has met it yet, and the week
+  // review used to list them as two rows with two quantities. The key itself
+  // is left out of what it's resolved against, since `resolvePluralKey`
+  // refuses outright when the key is in the set it is given.
   for (const [key, group] of [...groups]) {
-    if (byKey.has(key)) continue;
-    const resolved = resolvePluralKey(key, byKey.keys());
+    if (byKey.has(key) || !groups.has(key)) continue;
+    const resolved = resolvePluralKey(key, catalogKeys)
+      ?? resolvePluralKey(key, [...groups.keys()].filter(k => k !== key && !byKey.has(k)));
     if (!resolved) continue;
     groups.delete(key);
     const target = groups.get(resolved);
@@ -572,8 +640,8 @@ export function classifyPlanned(
     for (const [key, group] of [...groups]) {
       const match = byKey.get(key);
       const matchListed = match ? (inTrolley ? inTrolley.has(match.id) : match.onList) : false;
-      if (match && (matchListed || match.isStaple || probablyHaveReason(match, now) !== null)) continue;
-      const covering = coveringVariety(varieties.get(key), now, inTrolley);
+      if (match && (matchListed || match.isStaple || probablyHaveReason(match, now, products) !== null)) continue;
+      const covering = coveringVariety(varieties.get(key), now, inTrolley, products);
       if (!covering) continue;
       groups.delete(key);
       const refiled = group.map(g => ({ ...g, swappedFrom: g.swappedFrom ?? g.name }));
@@ -604,7 +672,7 @@ export function classifyPlanned(
       category = (inTrolley ? inTrolley.get(match.id) : match.checked) ? 'inCart' : 'alreadyOnList';
     } else if (match?.isStaple) {
       category = 'staple';
-    } else if (match && (reason = probablyHaveReason(match, now))) {
+    } else if (match && (reason = probablyHaveReason(match, now, products))) {
       category = 'probablyHave';
     } else {
       category = 'needToBuy';
@@ -620,11 +688,13 @@ export function classifyPlanned(
       }
     }
 
-    // The first group any contributor names, not the last: a line wanted both
-    // as an option and outright is wanted outright, and letting the second
-    // occurrence overwrite a null would put a row on the list as half a choice
-    // that something else needs unconditionally.
-    const choiceGroup = group.find(g => g.choiceGroup)?.choiceGroup ?? null;
+    // A line wanted both as an option and outright is wanted outright, so any
+    // contributor with no group keeps the row out of every choice. Taking the
+    // first group anybody named (which is what this used to do, despite the
+    // note it carried saying otherwise) put the row on the list as half an
+    // either/or, and choosing the other option at the shelf took off an item
+    // another meal needed unconditionally.
+    const choiceGroup = group.some(g => !g.choiceGroup) ? null : (group[0]?.choiceGroup ?? null);
     const swappedFrom = group.find(g => g.swappedFrom)?.swappedFrom ?? null;
     // Every contributor has to agree it's optional — see ClassifiedIngredient.optional.
     const optional = group.every(g => g.optional);
@@ -733,6 +803,94 @@ export function restockRows(classified: readonly ClassifiedIngredient[]): Classi
  */
 export function consumedRows(classified: readonly ClassifiedIngredient[]): ClassifiedIngredient[] {
   return classified.filter(r => r.category === 'probablyHave');
+}
+
+// ─── What a removed meal left on the list (#2912) ──────────────────────────
+
+/**
+ * Every recipe a meal's shopping can be credited to: the meal's own recipe and
+ * every recipe inside it. A composed recipe's rows are credited to the
+ * component a line is written on (see RecipeToListSheet's `sourceRecipeId`),
+ * so the salsa bought for Tuesday's tacos carries the salsa's id, not the
+ * tacos'. Every alternative is walked, since which side got shopped for isn't
+ * recorded on the row.
+ */
+export function mealCreditIds(
+  recipeId: string,
+  recipesById: ReadonlyMap<string, Recipe>
+): Set<string> {
+  const ids = reachableRecipeIds(recipesById, recipeId);
+  ids.add(recipeId);
+  return ids;
+}
+
+/** One list row a removed or replaced meal left behind: an item, in one trolley. */
+export interface LeftBehindRow {
+  itemId: string;
+  listId: string | null;
+  name: string;
+}
+
+/**
+ * The rows on the grocery list that only a meal no longer planned put there,
+ * and so the ones worth offering to take off when it goes (#2912).
+ *
+ * A row qualifies only when every one of these says the meal's shopping is
+ * still all it is, because the offer is a delete-shaped action on a list the
+ * person may have been working on for days:
+ *
+ * - **It is credited to one of the gone meal's recipes** (`sourceRecipeId`, in
+ *   `goneRecipeIds`), and to none still `neededRecipeIds`. The credit is only
+ *   ever one recipe: a row two recipes wanted was set to null by
+ *   `mergeOnListRecipeNeed`, and a row that was on the list before the recipe
+ *   add keeps whatever it had. Either way it isn't offered, and both are right:
+ *   something else wants it.
+ * - **It is in exactly one trolley, unticked.** The credit is the item's, not
+ *   the entry's, so a row since put on a second list by hand can't say which
+ *   of the two the recipe was for; and a ticked row is already in the cart.
+ * - **The recipe still owns its amount** (`quantityFromRecipe`, or no amount
+ *   at all). An amount typed by hand is the person taking the row over, the
+ *   same ownership rule `addFromPlan` keeps for writing one.
+ *
+ * Pure over the three inputs; which recipes are gone and which are still
+ * needed is the meal plan store's to work out (`listRowsLeftBy`).
+ */
+export function rowsLeftBehind(opts: {
+  goneRecipeIds: ReadonlySet<string>;
+  neededRecipeIds: ReadonlySet<string>;
+  items: readonly GroceryItem[];
+  listEntries: readonly GroceryListEntry[];
+}): LeftBehindRow[] {
+  const { goneRecipeIds, neededRecipeIds, items, listEntries } = opts;
+  if (goneRecipeIds.size === 0) return [];
+  const entriesByItem = new Map<string, GroceryListEntry[]>();
+  for (const entry of listEntries) {
+    const list = entriesByItem.get(entry.itemId);
+    if (list) list.push(entry);
+    else entriesByItem.set(entry.itemId, [entry]);
+  }
+  const rows: LeftBehindRow[] = [];
+  for (const item of items) {
+    const credit = item.sourceRecipeId;
+    if (!credit || !goneRecipeIds.has(credit) || neededRecipeIds.has(credit)) continue;
+    if (item.quantity && !item.quantityFromRecipe) continue;
+    const entries = entriesByItem.get(item.id) ?? [];
+    if (entries.length !== 1 || entries[0]!.checked) continue;
+    rows.push({ itemId: item.id, listId: entries[0]!.listId, name: item.name });
+  }
+  return rows;
+}
+
+/**
+ * "Tortillas, salsa and 3 more", for the offer's message. Names the first two
+ * rather than all of them, since the offer is one sentence and a week's
+ * shopping for one dish can be a dozen lines.
+ */
+export function describeLeftBehind(rows: readonly LeftBehindRow[]): string {
+  const names = rows.map(r => r.name);
+  if (names.length <= 2) return names.join(' and ');
+  if (names.length === 3) return `${names[0]}, ${names[1]} and ${names[2]}`;
+  return `${names[0]}, ${names[1]} and ${names.length - 2} more`;
 }
 
 function shortestName(names: readonly string[]): string {

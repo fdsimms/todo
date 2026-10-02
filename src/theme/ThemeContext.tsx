@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useMemo } from 'react';
+import React, { createContext, useContext, useDeferredValue, useMemo } from 'react';
 import { useColorScheme } from 'react-native';
 import { darkColors, darkPurpleColors, lightColors, getShadows, type Colors, type ThemeMode } from './index';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -19,8 +19,12 @@ const ThemeContext = createContext<ThemeContextValue>({
 });
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const themeMode = useSettingsStore(s => s.themeMode);
-  const systemScheme = useColorScheme();
+  // Deferred so a switch is two renders: the picker's own highlight commits
+  // at once (it reads the store directly), and the app-wide re-render that
+  // rebuilds every `makeStyles(colors)` follows at low priority instead of
+  // holding the tap until it finishes. Only the resolved colors lag behind.
+  const themeMode = useDeferredValue(useSettingsStore(s => s.themeMode));
+  const systemScheme = useDeferredValue(useColorScheme());
 
   const isDark =
     themeMode === 'dark' ||

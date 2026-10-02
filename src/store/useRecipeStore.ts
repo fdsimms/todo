@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Cookbook, Recipe, RecipeIngredient, RecipeMealType, RecipePrepTask, RecipeSourceType, RecipeStep, RecipeVote } from '../types';
+import type { Cookbook, CookbookIndexEntry, Recipe, RecipeIngredient, RecipeMealType, RecipePrepTask, RecipeSourceType, RecipeStep, RecipeVote } from '../types';
 import { GROCERY_NAME_MAX_LENGTH, RECIPE_PAGE_MAX_LENGTH, RECIPE_SECTION_MAX_LENGTH, RECIPE_STEP_NOTE_MAX_LENGTH, TITLE_MAX_LENGTH } from '../types';
 import {
   dbGetAllRecipes,
@@ -11,6 +11,10 @@ import {
   dbInsertCookbook,
   dbUpdateCookbook,
   dbDeleteCookbook,
+  dbGetAllCookbookIndexEntries,
+  dbInsertCookbookIndexEntry,
+  dbUpdateCookbookIndexEntry,
+  dbDeleteCookbookIndexEntry,
 } from '../db/database';
 import { generateId } from '../utils/id';
 import { MAX_STEP_TIMER_SECONDS, MIN_STEP_TIMER_SECONDS } from '../utils/stepTimers';
@@ -22,10 +26,13 @@ import {
   cleanChoiceGroup,
   cleanRecipeName,
   cleanRecipeSource,
+  cleanSourcePage,
   cookbookKey,
   ingredientsFromText,
   makeIngredient,
   mergeIngredients,
+  recipeInBook,
+  recipeNameKey,
   remapIngredientKeyIn,
 } from '../utils/recipeUtils';
 import { cookTimerElapsed, prepTimerElapsed } from '../utils/recipeTimer';
@@ -34,6 +41,17 @@ import { clampCookedWeight } from '../utils/mealLog';
 import { normalizeRecipeTags } from '../utils/recipeTags';
 import { makeComponent, recipeMap, wouldCreateRecipeCycle } from '../utils/recipeComponents';
 import { sectionsOf } from '../utils/recipeSections';
+import { pageAfterCookbookLink } from '../utils/cookbookRecipes';
+import {
+  cleanIndexEntryFields, cleanIndexIngredients, indexEntryInBook, mergedIndexLine,
+  type IndexDraft, type IndexEntryFields,
+} from '../utils/cookbookIndex';
+
+/** What `undoIndexImport` needs to take a scan back out. */
+export interface IndexImportUndo {
+  created: string[];
+  previous: CookbookIndexEntry[];
+}
 
 /**
  * The recipe library.
@@ -69,9 +87,20 @@ interface RecipeStore {
 
   initialize: () => void;
 
-  /** Null when the name is empty or already taken — the caller shows why. */
-  addRecipe: (name: string) => Recipe | null;
-  /** False on an empty name or a collision with another recipe. */
+  /**
+   * Null when the name is empty or already taken in that book — the caller
+   * shows why. A name is unique per book (`recipeInBook`), so `cookbookId`
+   * is part of the question: "Lentil Soup" for Plenty is refused only when
+   * Plenty already has one. When the book resolves, the recipe is created
+   * already linked to it (mirrored the way `linkCookbook` mirrors).
+   */
+  addRecipe: (name: string, cookbookId?: string | null) => Recipe | null;
+  /**
+   * False on an empty name or a collision with another recipe in the same
+   * book. A rename that
+   * lands also retitles the meals planned from it (see
+   * useMealPlanStore.retitleRecipeEntries).
+   */
   renameRecipe: (id: string, name: string) => boolean;
   setNotes: (id: string, notes: string) => void;
   setSourceUrl: (id: string, url: string | null) => void;
@@ -105,7 +134,19 @@ interface RecipeStore {
    * working on plain strings. Null only when the title is empty.
    */
   linkNewCookbook: (recipeId: string, title: string, author?: string | null) => Cookbook | null;
-  /** Points a recipe at a book already on the shelf, mirroring it down. Null id unlinks. */
+  /**
+   * The book with this title and author, created when the shelf doesn't have
+   * it yet. `linkNewCookbook`'s find-or-create half, for a caller that needs
+   * the book *before* the recipe exists, to ask `addRecipe` about the right
+   * book. Null only when the title is empty.
+   */
+  ensureCookbook: (title: string, author?: string | null) => Cookbook | null;
+  /**
+   * Points a recipe at a book already on the shelf, mirroring it down. Null id
+   * unlinks. Both link actions clear `sourcePage` when the recipe named a
+   * different book (see `pageAfterCookbookLink`): a page of one book is not a
+   * page of another.
+   */
   linkCookbook: (recipeId: string, cookbookId: string | null) => void;
   /**
    * Renames the book everywhere at once — the whole point of the entity. False
@@ -131,6 +172,41 @@ interface RecipeStore {
    * what it exists to fix.
    */
   mergeCookbooks: (survivorId: string, loserId: string) => boolean;
+  /**
+   * The lines of every cookbook's index — see `CookbookIndexEntry`. Held here
+   * beside `cookbooks` for the reason those are, and deliberately not part of
+   * `recipes`: nothing that lists recipes reads this.
+   */
+  indexEntries: CookbookIndexEntry[];
+  /**
+   * Adds a line to a book's index. Null when the title is empty, the book
+   * isn't on the shelf, or that book's index already has a dish of that name
+   * (`indexEntryInBook`) — the caller says why.
+   */
+  addIndexEntry: (cookbookId: string, fields: IndexEntryFields) => CookbookIndexEntry | null;
+  /** False on the same refusals as `addIndexEntry`, or an id that's gone. */
+  updateIndexEntry: (id: string, fields: IndexEntryFields) => boolean;
+  deleteIndexEntry: (id: string) => void;
+  /**
+   * The recipe to cook an index line from: the one already in that book under
+   * that name, or a new one made with the book and page and nothing else.
+   * The index's ingredients are deliberately not written onto it as lines:
+   * they're the dish's main things, not its list, and every reader of recipe
+   * lines assumes a whole list. The entry stays as it was.
+   */
+  recipeFromIndexEntry: (id: string) => Recipe | null;
+  /**
+   * Writes a reviewed scan into a book's index: a new line per new draft, and
+   * each draft naming a line the index already has added to that line
+   * (`mergedIndexLine`). Returns what `undoIndexImport` needs to put it back.
+   */
+  applyIndexDrafts: (cookbookId: string, drafts: readonly IndexDraft[]) => IndexImportUndo;
+  /**
+   * Takes a scan back out: the lines it made are deleted and the lines it
+   * added to are restored as they were. A line edited since isn't touched
+   * twice, since it's restored to what the scan found rather than merged.
+   */
+  undoIndexImport: (undo: IndexImportUndo) => void;
   /**
    * `servingsMax` is the top of a range ("serves 4-6") and is optional — omit
    * it (or pass null) for a plain count. A max at or below `servings` isn't a
@@ -214,6 +290,10 @@ interface RecipeStore {
    * couldn't put them back; a link that stops resolving renders as a row saying
    * so, which they can remove or replace. The editor's confirm names those
    * parents first (see RecipeEditor.handleDelete).
+   *
+   * Planned meals keep their pointer the same way (MealPlanEntry.recipeId),
+   * but their tasks on Today are reconciled so they stop asking to make a
+   * recipe that's gone (see useMealPlanStore.reconcileRecipeSlots).
    */
   deleteRecipe: (id: string) => void;
   /** Deletes every named recipe. No undo — same as deleteRecipe's own confirm-only flow. */
@@ -421,8 +501,13 @@ interface RecipeStore {
   updatePrepTask: (recipeId: string, prepTaskId: string, patch: Partial<RecipePrepTask>) => void;
   removePrepTask: (recipeId: string, prepTaskId: string) => void;
 
-  /** Null when the text is empty. */
-  addStep: (recipeId: string, text: string) => RecipeStep | null;
+  /**
+   * Null when the text is empty. `section` is optional and follows
+   * `addIngredient`'s convention: omitted or null files the step under no
+   * heading, an unresolved name goes nowhere special either — see
+   * RecipeStep.section.
+   */
+  addStep: (recipeId: string, text: string, section?: string | null) => RecipeStep | null;
   /** Editing a step down to nothing removes it — same as leaving an add field blank never creates one. */
   updateStep: (recipeId: string, stepId: string, text: string) => void;
   /**
@@ -444,8 +529,23 @@ interface RecipeStore {
    * The new order. An id missing from `ids` keeps its place at the end rather
    * than being dropped — same "stale caller can't delete data" rule
    * reorderIngredients follows.
+   *
+   * `sectionById` is the same resolved-by-the-caller map `reorderIngredients`
+   * takes, from `RecipeDetailScreen`'s merged step+heading list — omitted
+   * (rather than required) so every existing caller that only reorders,
+   * without touching sections, keeps compiling. A missing entry, or a missing
+   * map, keeps that step's current section.
    */
-  reorderSteps: (recipeId: string, ids: string[]) => void;
+  reorderSteps: (recipeId: string, ids: string[], sectionById?: ReadonlyMap<string, string | null>) => void;
+
+  /**
+   * Declares a method heading with nothing filed under it yet — the same
+   * shape as addEmptySection, for RecipeStep.section instead of
+   * RecipeIngredient.section. See Recipe.emptyStepSections.
+   */
+  addEmptyStepSection: (recipeId: string, name: string) => boolean;
+  /** Un-declares a method heading that never got anything under it. */
+  removeEmptyStepSection: (recipeId: string, name: string) => void;
 
   /**
    * Follows a grocery item's rename across every recipe that referenced its old
@@ -472,17 +572,24 @@ interface RecipeStore {
 export const useRecipeStore = create<RecipeStore>((set, get) => ({
   recipes: [],
   cookbooks: [],
+  indexEntries: [],
   initialized: false,
 
   initialize() {
-    set({ recipes: dbGetAllRecipes(), cookbooks: dbGetAllCookbooks(), initialized: true });
+    set({
+      recipes: dbGetAllRecipes(),
+      cookbooks: dbGetAllCookbooks(),
+      indexEntries: dbGetAllCookbookIndexEntries(),
+      initialized: true,
+    });
   },
 
-  addRecipe(name) {
+  addRecipe(name, cookbookId = null) {
     const clean = cleanRecipeName(name);
     if (!clean) return null;
-    const key = groceryNameKey(clean) || clean.toLowerCase();
-    if (get().recipes.some(r => r.nameKey === key)) return null;
+    const key = recipeNameKey(clean);
+    const cookbook = cookbookId ? get().cookbooks.find(c => c.id === cookbookId) ?? null : null;
+    if (recipeInBook(get().recipes, clean, cookbook?.id ?? null)) return null;
 
     const maxOrder = get().recipes.reduce((m, r) => Math.max(m, r.sortOrder), 0);
     const recipe: Recipe = {
@@ -510,6 +617,7 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
       components: [],
       prepTasks: [],
       steps: [],
+      emptyStepSections: [],
       sortOrder: maxOrder + 1,
       createdAt: new Date().toISOString(),
       cookCount: 0,
@@ -532,6 +640,7 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
       // Nobody has dismissed a Backfill screen field on a recipe that didn't
       // exist a moment ago.
       backfillDismissedFields: [],
+      ...(cookbook ? mirrorOf(cookbook) : {}),
     };
     dbInsertRecipe(recipe);
     set(s => ({ recipes: [...s.recipes, recipe] }));
@@ -543,11 +652,16 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     if (!recipe) return false;
     const clean = cleanRecipeName(name);
     if (!clean) return false;
-    const key = groceryNameKey(clean) || clean.toLowerCase();
+    const key = recipeNameKey(clean);
     // A rename that only changes capitalisation keeps the same key, so compare
-    // against *other* recipes rather than refusing to touch this one.
-    if (key !== recipe.nameKey && get().recipes.some(r => r.nameKey === key)) return false;
+    // against *other* recipes rather than refusing to touch this one. Only
+    // those in its own book: another book's recipe of that name is no clash.
+    const others = get().recipes.filter(r => r.id !== id);
+    if (key !== recipe.nameKey && recipeInBook(others, clean, recipe.cookbookId)) return false;
     save(set, { ...recipe, name: clean, nameKey: key });
+    // The plan shows the live name already, but the calendar event and the
+    // "Make X" task are built off each entry's captured title.
+    mealPlan().retitleRecipeEntries(id, clean);
     return true;
   },
 
@@ -600,6 +714,13 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
   linkNewCookbook(recipeId, title, author = null) {
     const recipe = get().recipes.find(r => r.id === recipeId);
     if (!recipe) return null;
+    const cookbook = get().ensureCookbook(title, author);
+    if (!cookbook) return null;
+    save(set, linkedTo(recipe, cookbook, get().cookbooks));
+    return cookbook;
+  },
+
+  ensureCookbook(title, author = null) {
     const cleanTitle = cleanRecipeSource(title);
     if (!cleanTitle) return null;
     const cleanAuthor = cleanRecipeSource(author ?? '') || null;
@@ -618,7 +739,6 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
       dbInsertCookbook(cookbook);
       set(s => ({ cookbooks: [...s.cookbooks, cookbook!] }));
     }
-    save(set, { ...recipe, ...mirrorOf(cookbook) });
     return cookbook;
   },
 
@@ -632,7 +752,7 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     }
     const cookbook = get().cookbooks.find(c => c.id === cookbookId);
     if (!cookbook) return;
-    save(set, { ...recipe, ...mirrorOf(cookbook) });
+    save(set, linkedTo(recipe, cookbook, get().cookbooks));
   },
 
   renameCookbook(id, title, author) {
@@ -662,6 +782,8 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     set(s => ({
       cookbooks: s.cookbooks.filter(c => c.id !== id),
       recipes: s.recipes.map(r => (r.cookbookId === id ? { ...r, cookbookId: null } : r)),
+      // dbDeleteCookbook took these with the book; see its note.
+      indexEntries: s.indexEntries.filter(e => e.cookbookId !== id),
     }));
   },
 
@@ -675,20 +797,122 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     for (const recipe of get().recipes) {
       if (recipe.cookbookId === loserId) save(set, { ...recipe, ...mirrorOf(survivor) });
     }
+    // Before the delete, which takes a book's index with it. The two books'
+    // indexes are one book's now, so a dish both listed would be listed twice;
+    // the survivor's line is kept and the other's ingredients folded into it.
+    const moved: CookbookIndexEntry[] = [];
+    for (const entry of get().indexEntries) {
+      if (entry.cookbookId !== loserId) continue;
+      const twin = indexEntryInBook(get().indexEntries, entry.title, survivorId);
+      if (twin) {
+        const merged: CookbookIndexEntry = {
+          ...twin,
+          page: twin.page ?? entry.page,
+          ingredients: cleanIndexIngredients([...twin.ingredients, ...entry.ingredients]),
+        };
+        dbUpdateCookbookIndexEntry(merged);
+        dbDeleteCookbookIndexEntry(entry.id);
+        set(s => ({ indexEntries: s.indexEntries.filter(e => e.id !== entry.id).map(e => (e.id === twin.id ? merged : e)) }));
+      } else {
+        const repointed = { ...entry, cookbookId: survivorId };
+        dbUpdateCookbookIndexEntry(repointed);
+        moved.push(repointed);
+      }
+    }
+    if (moved.length > 0) {
+      const byId = new Map(moved.map(e => [e.id, e]));
+      set(s => ({ indexEntries: s.indexEntries.map(e => byId.get(e.id) ?? e) }));
+    }
     dbDeleteCookbook(loserId);
     set(s => ({ cookbooks: s.cookbooks.filter(c => c.id !== loserId) }));
     return true;
   },
 
+  addIndexEntry(cookbookId, fields) {
+    if (!get().cookbooks.some(c => c.id === cookbookId)) return null;
+    const clean = cleanIndexEntryFields(fields);
+    if (!clean) return null;
+    if (indexEntryInBook(get().indexEntries, clean.title, cookbookId)) return null;
+    const entry: CookbookIndexEntry = {
+      id: generateId(),
+      cookbookId,
+      ...clean,
+      createdAt: new Date().toISOString(),
+    };
+    dbInsertCookbookIndexEntry(entry);
+    set(s => ({ indexEntries: [...s.indexEntries, entry] }));
+    return entry;
+  },
+
+  updateIndexEntry(id, fields) {
+    const entry = get().indexEntries.find(e => e.id === id);
+    if (!entry) return false;
+    const clean = cleanIndexEntryFields(fields);
+    if (!clean) return false;
+    const others = get().indexEntries.filter(e => e.id !== id);
+    if (indexEntryInBook(others, clean.title, entry.cookbookId)) return false;
+    const updated: CookbookIndexEntry = { ...entry, ...clean };
+    dbUpdateCookbookIndexEntry(updated);
+    set(s => ({ indexEntries: s.indexEntries.map(e => (e.id === id ? updated : e)) }));
+    return true;
+  },
+
+  deleteIndexEntry(id) {
+    dbDeleteCookbookIndexEntry(id);
+    set(s => ({ indexEntries: s.indexEntries.filter(e => e.id !== id) }));
+  },
+
+  applyIndexDrafts(cookbookId, drafts) {
+    const undo: IndexImportUndo = { created: [], previous: [] };
+    if (!get().cookbooks.some(c => c.id === cookbookId)) return undo;
+    const createdAt = new Date().toISOString();
+    const added: CookbookIndexEntry[] = [];
+    const updated = new Map<string, CookbookIndexEntry>();
+    for (const draft of drafts) {
+      if (draft.existing) {
+        const merged = mergedIndexLine(draft);
+        if (!merged) continue;
+        dbUpdateCookbookIndexEntry(merged);
+        undo.previous.push(draft.existing);
+        updated.set(merged.id, merged);
+        continue;
+      }
+      const clean = cleanIndexEntryFields(draft);
+      if (!clean) continue;
+      const entry: CookbookIndexEntry = { id: generateId(), cookbookId, ...clean, createdAt };
+      dbInsertCookbookIndexEntry(entry);
+      undo.created.push(entry.id);
+      added.push(entry);
+    }
+    set(s => ({ indexEntries: [...s.indexEntries.map(e => updated.get(e.id) ?? e), ...added] }));
+    return undo;
+  },
+
+  undoIndexImport(undo) {
+    const created = new Set(undo.created);
+    for (const id of undo.created) dbDeleteCookbookIndexEntry(id);
+    for (const line of undo.previous) dbUpdateCookbookIndexEntry(line);
+    const restored = new Map(undo.previous.map(e => [e.id, e]));
+    set(s => ({
+      indexEntries: s.indexEntries.filter(e => !created.has(e.id)).map(e => restored.get(e.id) ?? e),
+    }));
+  },
+
+  recipeFromIndexEntry(id) {
+    const entry = get().indexEntries.find(e => e.id === id);
+    if (!entry) return null;
+    const existing = recipeInBook(get().recipes, entry.title, entry.cookbookId);
+    if (existing) return existing;
+    const recipe = get().addRecipe(entry.title, entry.cookbookId);
+    if (!recipe) return null;
+    if (entry.page) get().setSourcePage(recipe.id, entry.page);
+    return get().recipeById(recipe.id) ?? recipe;
+  },
+
   setSourcePage(id, sourcePage) {
     const recipe = get().recipes.find(r => r.id === id);
     if (!recipe) return;
-    // A leading "p." comes off, because every reader puts one back:
-    // describeAttribution renders "Sweet, p. 142" and the editor's own row
-    // reads "p. 142", so a stored "p. 142" renders "p. p. 142". Only the
-    // prefix — the rest stays free text, since some books print "xii".
-    const typed = (sourcePage ?? '').replace(/^\s*(?:pages?|pp?)(?:\s*\.\s*|\s+)/i, '');
-    const clean = cleanRecipeSource(typed, RECIPE_PAGE_MAX_LENGTH);
+    const clean = cleanSourcePage(sourcePage);
     save(set, { ...recipe, sourcePage: clean || null });
   },
 
@@ -782,6 +1006,9 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     dbDeleteRecipe(id);
     set(s => ({ recipes: s.recipes.filter(r => r.id !== id) }));
     if (recipe) deleteRecipeImage(recipe.imagePath);
+    // After the recipe has left the list, which is what the reconcile reads to
+    // turn "Make Chili" on Today back into a typed meal.
+    if (recipe) mealPlan().reconcileRecipeSlots([id]);
   },
 
   bulkDeleteRecipes(ids) {
@@ -790,6 +1017,11 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     if (toDelete.length === 0) return;
     toDelete.forEach(r => dbDeleteRecipe(r.id));
     set(s => ({ recipes: s.recipes.filter(r => !idSet.has(r.id)) }));
+    // Their photo files too, the same cleanup deleteRecipe does: without it
+    // every recipe deleted from the bulk bar left its image on disk for good.
+    toDelete.forEach(r => deleteRecipeImage(r.imagePath));
+    // And their planned meals' tasks, the same reconcile deleteRecipe runs.
+    mealPlan().reconcileRecipeSlots(toDelete.map(r => r.id));
   },
 
   bulkSetVote(ids, vote) {
@@ -1220,12 +1452,17 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     save(set, { ...recipe, prepTasks });
   },
 
-  addStep(recipeId, text) {
+  addStep(recipeId, text, section = null) {
     const recipe = get().recipes.find(r => r.id === recipeId);
     if (!recipe) return null;
     const clean = text.trim();
     if (!clean) return null;
-    const step: RecipeStep = { id: generateId(), text: clean };
+    const cleanSection = section?.trim().slice(0, RECIPE_SECTION_MAX_LENGTH) || null;
+    const step: RecipeStep = {
+      id: generateId(),
+      text: clean,
+      ...(cleanSection ? { section: cleanSection } : {}),
+    };
     save(set, { ...recipe, steps: [...recipe.steps, step] });
     return step;
   },
@@ -1296,14 +1533,41 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     save(set, { ...recipe, steps });
   },
 
-  reorderSteps(recipeId, ids) {
+  reorderSteps(recipeId, ids, sectionById) {
     const recipe = get().recipes.find(r => r.id === recipeId);
     if (!recipe) return;
     const byId = new Map(recipe.steps.map(s => [s.id, s]));
     const ordered = ids.map(id => byId.get(id)).filter((s): s is RecipeStep => !!s);
     const named = new Set(ordered.map(s => s.id));
     const rest = recipe.steps.filter(s => !named.has(s.id));
-    save(set, { ...recipe, steps: [...ordered, ...rest] });
+    const next = [...ordered, ...rest];
+
+    // Same one-write rule reorderIngredients follows: a caller with a
+    // resolved section for a step applies it in the same write as the new
+    // order. No map, or no entry for a step, keeps that step's section.
+    const steps = sectionById === undefined ? next : next.map(s => {
+      const section = sectionById.get(s.id);
+      return section === undefined ? s : withStepSection(s, section);
+    });
+
+    save(set, { ...recipe, steps });
+  },
+
+  addEmptyStepSection(recipeId, name) {
+    const recipe = get().recipes.find(r => r.id === recipeId);
+    if (!recipe) return false;
+    const cleaned = name.trim().slice(0, RECIPE_SECTION_MAX_LENGTH).trim();
+    if (!cleaned) return false;
+    if (sectionsOf(stepRows(recipe.steps)).includes(cleaned)) return false;
+    if (recipe.emptyStepSections.includes(cleaned)) return false;
+    save(set, { ...recipe, emptyStepSections: [...recipe.emptyStepSections, cleaned] });
+    return true;
+  },
+
+  removeEmptyStepSection(recipeId, name) {
+    const recipe = get().recipes.find(r => r.id === recipeId);
+    if (!recipe || !recipe.emptyStepSections.includes(name)) return;
+    save(set, { ...recipe, emptyStepSections: recipe.emptyStepSections.filter(s => s !== name) });
   },
 
   remapIngredientKey(fromKey, toKey) {
@@ -1346,6 +1610,18 @@ type SetRecipes = (fn: (s: { recipes: Recipe[] }) => { recipes: Recipe[] }) => v
  * for why the mirror exists at all. The page is untouched: it belongs to the
  * recipe, not the book.
  */
+/**
+ * `recipe` pointed at `cookbook` by one of the two link actions: the mirror,
+ * plus the page number cleared when the link takes the recipe to a different
+ * book than the one it named (`pageAfterCookbookLink`, #2921). Not in
+ * `mirrorOf` itself, because rename and merge re-mirror a recipe onto what is
+ * still its own book, where the page is still right.
+ */
+function linkedTo(recipe: Recipe, cookbook: Cookbook, cookbooks: readonly Cookbook[]): Recipe {
+  const sourcePage = pageAfterCookbookLink(recipe, cookbook, id => cookbooks.find(c => c.id === id));
+  return { ...recipe, ...mirrorOf(cookbook), sourcePage };
+}
+
 function mirrorOf(cookbook: Cookbook): Pick<Recipe, 'cookbookId' | 'source' | 'author' | 'sourceType'> {
   return {
     cookbookId: cookbook.id,
@@ -1381,14 +1657,53 @@ function unlinkIfChanged(recipe: Recipe, changed: boolean): { cookbookId?: strin
  * sections at all.
  */
 function save(set: SetRecipes, recipe: Recipe): void {
-  const next = recipe.emptySections.length === 0 ? recipe : {
+  const withoutStale = recipe.emptySections.length === 0 ? recipe : {
     ...recipe,
     emptySections: recipe.emptySections.filter(
       name => !recipe.ingredients.some(i => i.section === name)
     ),
   };
+  // Same reconciliation, one field over — see Recipe.emptyStepSections.
+  const next = withoutStale.emptyStepSections.length === 0 ? withoutStale : {
+    ...withoutStale,
+    emptyStepSections: withoutStale.emptyStepSections.filter(
+      name => !withoutStale.steps.some(s => s.section === name)
+    ),
+  };
   dbUpdateRecipe(next);
   set(s => ({ recipes: s.recipes.map(r => (r.id === next.id ? next : r)) }));
+}
+
+/**
+ * The meal plan store, required lazily: it imports this one back (a planned
+ * meal resolves its recipe here), and loading it eagerly would pull the task
+ * store and the calendar bridge into everything that reads a recipe. Only a
+ * rename or a delete reaches it, and those owe the plan a write: its entries
+ * point at recipes by id, and what's built off them (a meal's task, its
+ * calendar event) doesn't follow a recipe on its own.
+ */
+function mealPlan() {
+  const { useMealPlanStore } = require('./useMealPlanStore') as typeof import('./useMealPlanStore');
+  return useMealPlanStore.getState();
+}
+
+/** `RecipeStep.section` read as `sectionsOf`'s generic `string | null` shape. */
+function stepRows(steps: readonly RecipeStep[]): { id: string; section: string | null }[] {
+  return steps.map(s => ({ id: s.id, section: s.section ?? null }));
+}
+
+/**
+ * Sets or clears a step's section, absent (not null) when cleared — same
+ * round-trip rule `timerSeconds`/`note` follow, so a step with no section
+ * serializes exactly as it did before the field existed.
+ */
+function withStepSection(step: RecipeStep, section: string | null): RecipeStep {
+  if (section === (step.section ?? null)) return step;
+  if (section === null) {
+    const { section: _dropped, ...rest } = step;
+    return rest;
+  }
+  return { ...step, section };
 }
 
 // Same shape as useTaskStore's nextPinnedOrder: one past the shelf's current

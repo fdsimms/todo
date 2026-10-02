@@ -86,7 +86,7 @@ export function PrepTasksReviewSheet({ visible, recipe, recipesById, resolution,
     if (ticked.size === prepTasks.length) { onClose(); return; }
     Alert.alert(
       'Discard changes?',
-      'Which prep tasks you checked will be lost.',
+      'You have unsaved changes. Are you sure you want to discard them?',
       [
         { text: 'Keep editing', style: 'cancel' },
         { text: 'Discard', style: 'destructive', onPress: onClose },

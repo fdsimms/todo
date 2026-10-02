@@ -21,7 +21,8 @@ import { useTemplateStore } from '../store/useTemplateStore';
 import { useTemplateCategoryStore } from '../store/useTemplateCategoryStore';
 import { groupTemplatesByCategory } from '../utils/templateGrouping';
 import type { TaskTemplate } from '../types';
-import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
+import { useNavigation } from '@react-navigation/native';
+import { useSheetMotion } from '../hooks/useSheetMotion';
 
 interface Props {
   visible: boolean;
@@ -43,6 +44,7 @@ export function TemplatePickerSheet({ visible, onClose, onSelect }: Props) {
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const templates = useTemplateStore(useShallow(s => s.templates));
+  const navigation = useNavigation();
   const templateCategories = useTemplateCategoryStore(useShallow(s => s.categories));
 
   const categoryOrder = useMemo(
@@ -54,44 +56,18 @@ export function TemplatePickerSheet({ visible, onClose, onSelect }: Props) {
     [templates, categoryOrder]
   );
 
-  const hiddenY = useSheetHiddenOffset();
-
-  const translateY = useRef(new Animated.Value(hiddenY)).current;
-  const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const sheet = useSheetMotion(visible);
+  const { translateY, backdropOpacity } = sheet;
 
   useEffect(() => {
     if (visible) {
-      translateY.setValue(hiddenY);
-      backdropOpacity.setValue(0);
-      Animated.parallel([
-        Animated.spring(translateY, {
-          toValue: 0,
-          ...animation.spring.smooth,
-          useNativeDriver: true,
-        }),
-        Animated.timing(backdropOpacity, {
-          toValue: 1,
-          duration: animation.duration.sheetBackdropIn,
-          useNativeDriver: true,
-        }),
-      ]).start();
+      sheet.show();
     }
   }, [visible]);
 
   const dismiss = (after?: () => void) => {
-    Animated.parallel([
-      Animated.spring(translateY, {
-        toValue: hiddenY,
-        ...animation.spring.sheetDismiss,
-        useNativeDriver: true,
-      }),
-      Animated.timing(backdropOpacity, {
-        toValue: 0,
-        duration: animation.duration.sheetBackdropOut,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      // No re-arming setValue here — see useSheetHiddenOffset.
+    sheet.hide(() => {
+      // No re-arming setValue here — see useSheetMotion.
       onClose();
       after?.();
     });
@@ -131,7 +107,7 @@ export function TemplatePickerSheet({ visible, onClose, onSelect }: Props) {
       </Animated.View>
       <SheetScrim onPress={() => dismiss()} />
 
-      <Animated.View style={[styles.sheetOuter, { transform: [{ translateY }] }]}>
+      <Animated.View onLayout={sheet.onCardLayout} style={[styles.sheetOuter, { transform: [{ translateY }] }]}>
         <View style={styles.handleArea} {...panResponder.panHandlers}>
           <View style={styles.handle} />
         </View>
@@ -144,7 +120,12 @@ export function TemplatePickerSheet({ visible, onClose, onSelect }: Props) {
               <EmptyState
                 icon="copy-outline"
                 title="No templates yet"
-                subtitle="Build a reusable checklist under More › Templates, then add it all here in one tap"
+                subtitle="Build a reusable checklist once, then add it all here in one tap"
+                // A way there, rather than directions to it.
+                actionLabel="Make a template"
+                // Through MainTabs, so it resolves from a pushed screen (a
+                // project's page) as well as from a tab.
+                onAction={() => dismiss(() => (navigation as any).navigate('MainTabs', { screen: 'Templates' }))}
               />
             </View>
           ) : (

@@ -46,8 +46,16 @@ describe('a line already written as a mass', () => {
   });
 
   it('measures a bare sized container, which is a real weight', () => {
-    // "14 oz can" is fourteen ounces. A *counted* one is refused below.
+    // "14 oz can" is fourteen ounces.
     expect(grams('14 oz can', null, [])).toBeCloseTo(396.9, 1);
+  });
+
+  it('measures a counted container as the count times the size (#2918)', () => {
+    // "2 14 oz cans" states how many tins and how much is in one. It is also
+    // what a recipe's own "14 oz can" becomes at 2x, so refusing it dropped a
+    // can that counted fine at 1x.
+    expect(grams('2 14 oz cans', null, [])).toBeCloseTo(793.8, 1);
+    expect(grams('3 400 g tins', null, [])).toBe(1200);
   });
 });
 
@@ -93,6 +101,16 @@ describe('a line written as a volume', () => {
     // oz should come back to the same weight as "1 cup" above.
     expect(grams('8 fl oz', null, FLOUR)).toBeCloseTo(125, 4);
     expect(grams('4 fl oz', null, FLOUR)).toBeCloseTo(62.5, 4);
+  });
+
+  it('reads a density off a portion whose own label is a two-word unit', () => {
+    // A weighed custom portion is saved under the unit exactly as parsed —
+    // "fl oz", not "fl" — so densityOf has to look up the whole label, not
+    // just its first word ("fl" alone names nothing). This is the same food
+    // as a cup of ice cream at roughly 0.69 g/ml.
+    const iceCream: FoodPortion[] = [{ amount: 1, label: 'fl oz', grams: 20.45 }];
+    expect(grams('1 fl oz', null, iceCream)).toBeCloseTo(20.45, 4);
+    expect(grams('1 cup', null, iceCream)).toBeCloseTo(163.6, 1);
   });
 });
 
@@ -164,8 +182,10 @@ describe('the refusals', () => {
     expect(grams('x2')).toBeNull();
   });
 
-  it('refuses a counted container, since two tins is not fourteen ounces', () => {
-    expect(grams('2 14 oz cans', null, [])).toBeNull();
+  it('never reads a counted container as its leading number', () => {
+    // Two tins is not two ounces, and not fourteen either.
+    expect(grams('2 14 oz cans', null, [])).not.toBeCloseTo(56.7, 0);
+    expect(grams('2 14 oz cans', null, [])).not.toBeCloseTo(396.9, 0);
   });
 
   it('refuses a count when the food has no portions to match against', () => {
@@ -233,7 +253,7 @@ describe('weighableLine', () => {
     expect(weighableLine('2', null, panel({ portions: ONION }), 'Onion')).toBeNull();
   });
 
-  it('refuses a counted container, since weighing it would record the tin', () => {
+  it('has nothing to weigh for a counted container, which measures by its size', () => {
     expect(weighableLine('2 14 oz cans', null, panel(), 'Tomatoes')).toBeNull();
   });
 
@@ -271,6 +291,33 @@ describe('weighableLine', () => {
     expect(weighableLine('1.5 servings', null, panel({ basis: 'perServing' }), 'Bar')).toBeNull();
     expect(weighableLine('1.5 servings', null, panel(), 'Bar')).toBeNull();
   });
+
+  describe('a per-100ml panel and a volume amount', () => {
+    // A per-100ml panel answers a volume line's nutrients straight from its
+    // own volume math, with no portion table involved — so the line already
+    // resolves and still has no weight. That's the one exception to "a
+    // resolved line has nothing to weigh."
+    it('offers to weigh it, even though the line already resolves for nutrients', () => {
+      expect(weighableLine('500 ml', null, panel({ basis: 'per100ml' }), 'Juice'))
+        .toEqual({ label: 'ml', amount: 500, text: '500 ml' });
+    });
+
+    it('does not offer once the food already states a weight for that volume', () => {
+      const withWeight = panel({
+        basis: 'per100ml',
+        portions: [{ amount: 500, label: 'ml', grams: 515 }],
+      });
+      expect(weighableLine('500 ml', null, withWeight, 'Juice')).toBeNull();
+      // A different volume the density still answers is just as settled.
+      expect(weighableLine('1 l', null, withWeight, 'Juice')).toBeNull();
+    });
+
+    it('still refuses a weight-dimension amount, which no volume math can answer', () => {
+      // Unchanged from before: relating a weight to a volume needs a density
+      // this app never assumes, weighed or not.
+      expect(weighableLine('200 g', null, panel({ basis: 'per100ml' }), 'Milk')).toBeNull();
+    });
+  });
 });
 
 describe('unfixableQuantityReason', () => {
@@ -281,8 +328,10 @@ describe('unfixableQuantityReason', () => {
     expect(unfixableQuantityReason('')).toBe('noAmount');
   });
 
-  it('names a counted container', () => {
-    expect(unfixableQuantityReason('2 14 oz cans')).toBe('countedContainer');
+  it('is null for a counted container, which states how much one holds (#2918)', () => {
+    // It used to be refused, and the sheet asked for "how much one holds"
+    // off a line that says so.
+    expect(unfixableQuantityReason('2 14 oz cans')).toBeNull();
   });
 
   it('is null for a bare container, which is a real weight', () => {
@@ -345,9 +394,29 @@ describe('panelMultiplier and servings', () => {
       .toBeCloseTo(3.5488235475, 6);
   });
 
+  it('measures a counted container of a liquid against a per-100ml panel', () => {
+    expect(panelMultiplier('2 330 ml cans', null, panel({ basis: 'per100ml' }))).toBeCloseTo(6.6, 6);
+  });
+
   it('still refuses a bare weight against a per-100ml panel', () => {
     // Oat milk's own drink is per 100ml, and a weight is a fact nobody
     // measured — this must not silently treat "12g" as "12ml".
     expect(panelMultiplier('12g', null, panel({ basis: 'per100ml' }))).toBeNull();
+  });
+
+  it('answers a weight against a per-100ml panel once a volume has been weighed onto it', () => {
+    // The row `handleSaveWeighedPortion` writes after someone weighs "1 fl
+    // oz" of a per-100ml food: 1 fl oz (29.5735 ml) at 20.45g is the same
+    // ~0.69 g/ml as the ice cream in #2968. 100g of it is ~144.8 ml, so a
+    // per-100ml panel's own figures scale by that over 100.
+    const iceCream = panel({
+      basis: 'per100ml',
+      portions: [{ amount: 1, label: 'fl oz', grams: 20.45 }],
+    });
+    expect(panelMultiplier('100 g', null, iceCream)).toBeCloseTo(1.44614, 4);
+    // A cup of it should agree with what a cup would measure directly, once
+    // both are read off the same weighed density.
+    expect(panelMultiplier('1 cup', null, iceCream))
+      .toBeCloseTo(panelMultiplier('163.6 g', null, iceCream)!, 4);
   });
 });

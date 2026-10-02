@@ -4,9 +4,9 @@
 
 Read this before touching `src/utils/supply.ts`, the supply half of
 `completeTask`, or the `supplyReorder` generator. Moved out of `CLAUDE.md` so it
-is read when it applies rather than on every task. The rules here are settled
-decisions with the reasoning attached: don't re-derive them from the code, and
-don't re-open one without a reason the note doesn't already cover.
+is read when it applies rather than on every task. The rules here are strong defaults with the reasoning
+attached: read the reason before deviating from one. Where this note and the
+code disagree, the code is what ships, so fix the note.
 
 ---
 
@@ -113,9 +113,10 @@ screen anybody has to visit.
   means "I've dealt with this" and nothing more, exactly the reading
   `pantryCheckTasks` gives one.
 
-**`supplyRefillCount ?? reorderAt + 1` is the linked path's one subtlety.** When
-the user has said what a pack holds, the credit is exact. When they haven't, the
-app credits the least it can that still clears the threshold — enough that the
+**`supplyRefillCount ?? max(1, reorderAt + 1 - supplyCount)` is the linked
+path's one subtlety.** When the user has said what a pack holds, the credit is
+exact. When they haven't, the app tops the count up to one past the threshold,
+the least it can credit that still clears it — enough that the
 buy-it/still-low/buy-it loop can't happen, and never a number it invented about
 a pack it has never seen.
 
@@ -203,13 +204,14 @@ the stamp on a save that only changed the lead time.
 
 ## Rules that are not obvious from the code
 
-- **A supply requires a recurrence** (`canHoldSupply`), and `addTask` enforces
-  it rather than trusting the draft. The count rides onto the successor
+- **A supply requires a recurrence and a top-level task** (`canHoldSupply`), and
+  `newTaskFromDraft` (`taskDraft.ts`, which `addTask` and the MCP write path both
+  call) enforces it rather than trusting the draft. The count rides onto the successor
   `completeTask` spawns, exactly as `recurrenceCount` and the streak do, so a
   task that spawns none has nowhere to put the decrement — it would sit at its
   starting number for ever while the filters were actually being used, a chip
   that lies with no way to tell from looking at it. The editor and quick add
-  both clear it on save, but `addTask` is the door every draft passes through,
+  both clear it on save, but `newTaskFromDraft` is the door every draft passes through,
   including one assembled by a template, an import or a restored backup.
   `NO_RECURRENCE` clears it again when a task becomes a dated series, with the
   rule and for the reason `showStreak` is cleared there.
@@ -235,9 +237,36 @@ the stamp on a save that only changed the lead time.
   then correct. The *Settings* rows for the generator are deliberately not
   flagged, matching every other generator's rows.
 - **A dangling `supplyGroceryItemId` is resolve-or-shrug**, like every other
-  cross-row pointer in this app (`blockedById`, `previousOccurrenceId`).
-  `suppliesWantingList` checks the item is still live and otherwise says nothing;
-  deleting a catalog row rewrites no tasks.
+  cross-row pointer in this app (`blockedById`, `previousOccurrenceId`), and
+  shrugging means reading it as *no link*, not as silence. `supplyLinkActs` is
+  the one test: a link counts only while it names a live catalog row and the
+  kitchen is on. `suppliesWantingList` skips a row that isn't live, and
+  `wantedSupplyReorders`/`staleSupplyReorderTasks` treat the same supply as
+  unlinked, so it asks through a reorder task instead. Before that the reorder
+  half skipped every linked task whether or not the link resolved, and a supply
+  whose item had been deleted (or whose kitchen was off) asked nowhere at all.
+  Until the grocery store has loaded every link is trusted, since an empty
+  catalog mid-launch is not every item having been deleted. Deleting a catalog
+  row still rewrites no tasks; the editor's "Stocked from" row says "Item was
+  deleted" for a link that no longer resolves.
+- **The flag a linked supply writes is spent by a restock, not by the row
+  leaving the list.** `suppliesWantingList` skips an item already flagged low,
+  which is what lets a user take the row off the list (they ordered online)
+  without the next sweep putting it straight back. But nothing used to take the
+  flag back except a home trip buying the item, so a count topped up in the
+  editor left it standing for good: the next time the supply ran low it read as
+  already handled and asked nowhere (#2935). `updateTask` now clears it when the
+  count rises far enough for the supply to stop wanting more
+  (`supplyRestockReleasesItem`), the same place and the same "rising" key the
+  decline stamp uses. A top-up that still leaves the supply low keeps the flag,
+  or the sweep would re-add the row the user just removed. Clearing it in
+  `removeFromList` instead was rejected: removal is per list, and taking the
+  row off an away list would have cleared a flag that belongs to the home one.
+- **The list half writes to the home list**, whichever list is being shown
+  (`setRunningLow`'s `listId: null`). A supply is restocked from a home trip:
+  flagged low onto an away list, it is never restocked there (an away trip
+  records nothing), and once flagged it is never offered to the home list
+  afterwards.
 
 ## The recurrence's own ending
 

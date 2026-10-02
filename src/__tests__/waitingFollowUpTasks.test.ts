@@ -1,10 +1,12 @@
 import type { Person, Task } from '../types';
+import { dayKeyOf } from '../utils/dateUtils';
 
 // waitingFollowUpTitle reaches displayTitleFor in visibilityUtils.ts, which
 // reaches dateUtils.ts's settings-store read — same stub fuzzySearch.test.ts
 // uses to keep expo-sqlite out of this file entirely.
+const settingsState = { dayResetTime: '00:00', vacationMode: false };
 jest.mock('../store/useSettingsStore', () => ({
-  useSettingsStore: { getState: () => ({ dayResetTime: '00:00', vacationMode: false }) },
+  useSettingsStore: { getState: () => settingsState },
 }));
 jest.mock('../store/useCategoryStore', () => ({
   useCategoryStore: { getState: () => ({ categories: [], getCategoryByName: () => null }) },
@@ -25,7 +27,7 @@ const TODAY = new Date(2026, 2, 20, 12);
 const daysAgo = (n: number) => new Date(TODAY.getTime() - n * 86_400_000);
 
 const person = (o: Partial<Person> = {}): Person => ({
-  id: 'p1', name: 'Dustin', nickname: '', notes: '', sortOrder: 1,
+  id: 'p1', name: 'Dustin', kind: 'individual', nickname: '', notes: '', sortOrder: 1,
   archived: false, archivedAt: null, createdAt: '2026-01-01T00:00:00.000Z',
   birthdayMonth: null, birthdayDay: null, birthYear: null, birthdayTaskOptOut: false, birthdayGiftTaskOptOut: false,
   phoneNumber: null, email: null, linkUrl: null,
@@ -39,18 +41,23 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   missedAt: null, autoScheduledAt: null, createdAt: '2025-01-01T00:00:00.000Z', seenAt: null,
   dueDate: null, deadline: null, deadlineOffsetDays: null, deadlineMonthDay: null, deferUntil: null,
   timeSegments: [], windowStart: null, windowEnd: null,
-  recurrenceType: 'none', recurrenceInterval: 1, recurrenceDays: [], recurrenceMonthDay: null,
+  recurrenceType: 'none', recurrenceInterval: 1, recurrenceDays: [], recurrenceMonthDay: null, recurrenceMonth: null,
   recurrenceWeekOrdinal: null, recurrenceAnchorDay: null, recurrenceAnchorDate: null,
   recurrenceEndDate: null, recurrenceCount: null, recurrenceFromCompletion: false,
   supplyCount: null, supplyUnit: null, supplyRefillCount: null, supplyReorderAt: 1,
   supplyLeadDays: null, supplyDeclinedAtCount: null, supplyGroceryItemId: null,
   targetCount: null, targetUnit: null, allowOvershoot: false,
-  quotaIntervalMinutes: null, quotaReminders: false, quotaStartedAt: null, quotaAlwaysVisible: false,
+  quotaIntervalMinutes: null, quotaReminders: false, quotaStartedAt: null, quotaAlwaysVisible: false, followWaterTarget: false,
   quotaPeriod: 'day', progressCount: 0,
+  rotationEnabled: false,
+  rotationItems: [],
+  rotationLog: [],
+  rotationPeriodStart: null,
+  rotationLastDone: {},
   tags: [], category: null, sortOrder: 0, pinned: false, pinnedOrder: 0,
   postponeCount: 0, postponeMuted: false, driftingSince: null,
   priority: 0, effort: 0, estimatedMinutes: null,
-  reminderTime: null, reminderKind: 'notification', reminderOffsetDays: null,
+  reminderTime: null, reminderKind: 'notification', reminderOffsetDays: null, reminderTracksVisibility: false,
   reminderTimeAnchor: 'wallClock', reminderUtcOffsetMinutes: null,
   streakCount: 0, streakDate: null, previousStreakCount: 0, previousStreakDate: null, priorBestStreak: 0,
   polarity: 'positive', slipCount: 0, slipDate: null,
@@ -61,6 +68,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   followUpTaskEveryN: null, followUpTaskTitle: null, followUpTaskDraft: null,
   followUpTaskOneAtATime: false, followUpTaskTally: 0, previousFollowUpTaskTally: 0,
   followUpTaskSourceTitle: null,
+  followUpTaskSourceId: null,
   vacationPause: false, excludeFromSuggestions: false,
   archived: false, archivedAt: null,
   timerStartedAt: null, actualMinutes: null, timedMinutes: null, timerElapsedSeconds: 0,
@@ -115,7 +123,52 @@ describe('wantedWaitingFollowUps', () => {
       taskId: 't1', personId: 'p1',
       title: 'Follow up with Dustin about "Get the quote back"',
       phoneNumber: null,
+      projectId: null,
     }]);
+  });
+
+  it("files the follow-up under the waiting task's project", () => {
+    expect(wantedWaitingFollowUps([waitingTask({ projectId: 'kitchen' })], [person()], TODAY)[0].projectId).toBe('kitchen');
+  });
+
+  it('wants one on the wait\'s own follow-up day, however young the wait', () => {
+    const task = waitingTask({
+      waitingOnPersonSince: daysAgo(1).toISOString(),
+      followUpOn: dayKeyOf(daysAgo(0)),
+    });
+    expect(wantedWaitingFollowUps([task], [person()], TODAY)).toHaveLength(1);
+  });
+
+  it('waits for a follow-up day that has not come yet, even past the threshold', () => {
+    const task = waitingTask({ followUpOn: dayKeyOf(daysAgo(-2)) });
+    expect(wantedWaitingFollowUps([task], [person()], TODAY)).toEqual([]);
+  });
+
+  it('still asks after a follow-up day that has passed', () => {
+    const task = waitingTask({ waitingOnPersonSince: null, followUpOn: dayKeyOf(daysAgo(3)) });
+    expect(wantedWaitingFollowUps([task], [person()], TODAY)).toHaveLength(1);
+  });
+
+  it("ignores the task's own due date: an overdue task that starts waiting doesn't ask at once", () => {
+    const task = waitingTask({ waitingOnPersonSince: TODAY.toISOString(), dueDate: daysAgo(5).toISOString() });
+    expect(wantedWaitingFollowUps([task], [person()], TODAY)).toEqual([]);
+  });
+
+  it('counts a follow-up day from before the wait from the day the wait began', () => {
+    // Waiting since 2 days ago, told to follow up 10 days ago: asks now (the
+    // wait's first day has come), which a date in the future would not.
+    const task = waitingTask({ waitingOnPersonSince: daysAgo(2).toISOString(), followUpOn: dayKeyOf(daysAgo(10)) });
+    expect(wantedWaitingFollowUps([task], [person()], TODAY)).toHaveLength(1);
+    const fresh = waitingTask({ waitingOnPersonSince: daysAgo(-1).toISOString(), followUpOn: dayKeyOf(daysAgo(10)) });
+    expect(wantedWaitingFollowUps([fresh], [person()], TODAY)).toEqual([]);
+  });
+
+  it('asks on a named day with the setting off and past the cap, since it was asked for', () => {
+    const dated = (id: string) => waitingTask({ id, followUpOn: dayKeyOf(TODAY) });
+    const aged = (id: string) => waitingTask({ id });
+    const tasks = [aged('a1'), aged('a2'), aged('a3'), dated('d1'), dated('d2'), dated('d3')];
+    expect(wantedWaitingFollowUps(tasks, [person()], TODAY).map(w => w.taskId)).toEqual(['a1', 'a2', 'd1', 'd2', 'd3']);
+    expect(wantedWaitingFollowUps(tasks, [person()], TODAY, new Set(), 2, false).map(w => w.taskId)).toEqual(['d1', 'd2', 'd3']);
   });
 
   it('is not fooled by a task with no stamp at all — a legacy wait rather than a fresh one', () => {
@@ -132,6 +185,20 @@ describe('wantedWaitingFollowUps', () => {
   it('frees the wait once the person is archived or deleted, same as canWaitOn', () => {
     expect(wantedWaitingFollowUps([waitingTask()], [person({ archived: true })], TODAY)).toEqual([]);
     expect(wantedWaitingFollowUps([waitingTask()], [], TODAY)).toEqual([]);
+  });
+
+  it('counts the wait from the logical day it started, not the calendar day of its stamp', () => {
+    // Marked waiting at 01:30 on Mar 11 with a 02:00 reset: that is still
+    // logical Mar 10, so the threshold is reached N logical days after Mar 10.
+    settingsState.dayResetTime = '02:00';
+    try {
+      const since = new Date(2026, 2, 11, 1, 30);
+      const today = new Date(2026, 2, 10 + WAITING_FOLLOW_UP_THRESHOLD_DAYS, 2, 0);
+      const task = waitingTask({ waitingOnPersonSince: since.toISOString() });
+      expect(wantedWaitingFollowUps([task], [person()], today)).toHaveLength(1);
+    } finally {
+      settingsState.dayResetTime = '00:00';
+    }
   });
 
   it('holds off while the nudge was swiped away recently', () => {

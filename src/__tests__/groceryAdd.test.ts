@@ -3,6 +3,7 @@ import {
   newItemRow,
   nextSortOrder,
   planGroceryAdd,
+  reAddNotice,
   type GroceryAddContext,
 } from '../utils/groceryAdd';
 import type { GroceryItem, GroceryListEntry } from '../types';
@@ -251,6 +252,23 @@ describe('planGroceryAdd', () => {
       expect(plan.entry).toMatchObject({ itemId: 'm1', listId: 'away' });
     });
 
+    // "Already on the list" is about the list this add joins, not any list.
+    it('reports a row on another list only as not already on this one', () => {
+      const plan = planGroceryAdd(
+        'milk',
+        context({ items: [milk], listEntries: [entry('m1')], listId: 'away' }),
+      );
+      expect(plan.wasOnList).toBe(false);
+    });
+
+    it('reports a row already in this trolley as already on the list', () => {
+      const plan = planGroceryAdd(
+        'milk',
+        context({ items: [milk], listEntries: [entry('m1', { listId: 'away' })], listId: 'away' }),
+      );
+      expect(plan.wasOnList).toBe(true);
+    });
+
     it('writes a named either/or onto an entry that already exists', () => {
       const plan = planGroceryAdd(
         'milk',
@@ -279,5 +297,49 @@ describe('planGroceryAdd', () => {
       expect(plan.product).toBeNull();
       expect(plan.item.preferredProductId).toBe(existing.id);
     });
+  });
+});
+
+describe('reAddNotice', () => {
+  const milk = row('Milk', 'milk', { quantity: '1 gal' });
+
+  it('says nothing about a row the add put on the list', () => {
+    expect(reAddNotice(null, null, milk)).toBeNull();
+  });
+
+  it('names a row that was already on the list', () => {
+    expect(reAddNotice(entry(milk.id), '1 gal', milk)).toEqual({
+      text: '“Milk” is already on the list',
+      inCart: false,
+    });
+  });
+
+  it('says it is in the cart when the entry was already ticked, so the field can offer to untick it', () => {
+    expect(reAddNotice(entry(milk.id, { checked: true }), '1 gal', milk)).toEqual({
+      text: '“Milk” is already in your cart',
+      inCart: true,
+    });
+  });
+
+  it('says when the re-add replaced the quantity, the one thing it visibly changed', () => {
+    const after = { ...milk, quantity: '2 gal' };
+    expect(reAddNotice(entry(milk.id), '1 gal', after)?.text)
+      .toBe('“Milk” is already on the list. Quantity changed to 2 gal.');
+    // The same amount typed again changed nothing, so there is nothing to say.
+    expect(reAddNotice(entry(milk.id), '2 gal', after)?.text).toBe('“Milk” is already on the list');
+  });
+
+  it('agrees with planGroceryAdd about which list the name was already on', () => {
+    // Milk on the home list, typed into the Airbnb one: a fresh add there, so
+    // the entry the caller snapshots for that list is absent.
+    const home = entry(milk.id, { listId: null });
+    const plan = planGroceryAdd('milk', context({ items: [milk], listEntries: [home], listId: 'away' }));
+    expect(plan.wasOnList).toBe(false);
+    expect(reAddNotice(null, milk.quantity, plan.item)).toBeNull();
+    // Typed on the home list it is a re-add, and the plan leaves the entry alone.
+    const again = planGroceryAdd('milk', context({ items: [milk], listEntries: [home], listId: null }));
+    expect(again.wasOnList).toBe(true);
+    expect(again.entry).toBeNull();
+    expect(reAddNotice(home, milk.quantity, again.item)?.text).toBe('“milk” is already on the list');
   });
 });

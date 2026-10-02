@@ -13,12 +13,14 @@ import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, interaction, type Colors } from '../theme';
 import { useTaskStore } from '../store/useTaskStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { SheetHeader } from './SheetHeader';
 import { InlineAction } from './InlineAction';
 import { EmptyState } from './EmptyState';
 import { SortableList } from './SortableList';
@@ -66,6 +68,7 @@ interface Row {
 export function ProjectCategoriesSheet({ visible, onClose }: Props) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const categories = useProjectCategoryStore(useShallow(s => s.categories));
@@ -115,7 +118,20 @@ export function ProjectCategoriesSheet({ visible, onClose }: Props) {
     setOrder(prev => (prev.length === storeOrder.length && prev.every((n, i) => n === storeOrder[i]) ? prev : storeOrder));
   }, [storeOrder, visible, dragging]);
 
+  // Every project filed under it, which is what deleting it unfiles.
   const countFor = (name: string) => projects.filter(p => p.category === name).length;
+  // What the row says: the active ones first, since those are what the
+  // Projects page shows under this heading. A bare total read "5 projects"
+  // beside a heading holding 2, with the other 3 finished or filed away.
+  const describeCount = (name: string) => {
+    const filed = projects.filter(p => p.category === name);
+    const active = filed.filter(p => !p.archived && !p.completed).length;
+    const rest = filed.length - active;
+    const activeText = `${active} ${active === 1 ? 'project' : 'projects'}`;
+    if (rest === 0) return activeText;
+    const restText = `${rest} completed or archived`;
+    return active === 0 ? restText : `${activeText}, plus ${restText}`;
+  };
 
   const handleReorder = (next: Row[]) => {
     const names = next.map(r => r.id);
@@ -133,15 +149,24 @@ export function ProjectCategoriesSheet({ visible, onClose }: Props) {
     if (committedRef.current) return;
     committedRef.current = true;
     const trimmed = draft.trim();
-    setEditingName(null);
-    setDraft('');
     // Unchanged or emptied: the field closes and nothing is written. Blanking
     // a name is not a way to delete a category — the trash button is.
-    if (!trimmed || trimmed === name) return;
+    if (!trimmed || trimmed === name) {
+      setEditingName(null);
+      setDraft('');
+      return;
+    }
     if (!renameCategory(name, trimmed)) {
+      // The field stays open holding what was typed, as the store's contract
+      // asks. It used to close before the refusal was known, so the alert
+      // arrived after the text it was about had already been thrown away.
+      committedRef.current = false;
+      setDraft(trimmed);
       Alert.alert('That name is taken', `A project category named "${trimmed}" already exists.`);
       return;
     }
+    setEditingName(null);
+    setDraft('');
     haptics.tap();
   };
 
@@ -162,6 +187,13 @@ export function ProjectCategoriesSheet({ visible, onClose }: Props) {
     setNewName('');
     setAddingNew(false);
     if (!trimmed) return;
+    // addCategory answers a taken name with the existing row, which from here
+    // looked like the tap doing nothing at all.
+    const taken = categories.find(c => c.name.toLocaleLowerCase() === trimmed.toLocaleLowerCase());
+    if (taken) {
+      Alert.alert('That name is taken', `A project category named "${taken.name}" already exists.`);
+      return;
+    }
     animateLayout();
     addCategory(trimmed);
     haptics.tap();
@@ -169,9 +201,9 @@ export function ProjectCategoriesSheet({ visible, onClose }: Props) {
 
   const rows: Row[] = order.map(name => ({ id: name }));
 
-  // Closing while a rename/new-category field still holds focus is the same
-  // freeze bug fixed elsewhere: the keyboard's own dismiss animation races
-  // the Modal's and strands the touch handler on whatever's underneath.
+  // SheetModal holds the close until the keyboard is gone (see its doc
+  // comment), so this dismiss isn't what prevents the freeze; it only starts
+  // the keyboard moving a beat sooner.
   const close = () => {
     Keyboard.dismiss();
     onClose();
@@ -182,13 +214,16 @@ export function ProjectCategoriesSheet({ visible, onClose }: Props) {
   return (
     <SheetModal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={close}>
       <View style={[styles.root, { paddingTop: insets.top }]}>
-        <View style={styles.header}>
-          <View style={styles.headerSpacer} />
-          <Text style={styles.headerTitle}>Project categories</Text>
-          <SheetHeaderButton label="Done" onPress={close} minWidth={64} />
-        </View>
+        <SheetHeader
+          title="Project categories"
+          size="lg"
+          left={<View style={styles.headerSpacer} />}
+          right={<SheetHeaderButton label="Done" onPress={close} minWidth={64} />}
+        />
 
         <ScrollView
+          ref={keyboardScroll.ref}
+          {...keyboardScroll.props}
           contentContainerStyle={order.length === 0 ? styles.listEmpty : styles.list}
           scrollEnabled={!dragging}
           keyboardShouldPersistTaps="handled"
@@ -212,7 +247,6 @@ export function ProjectCategoriesSheet({ visible, onClose }: Props) {
                 onDragStateChange={setDragging}
                 renderItem={(row, _index, drag) => {
                   const name = row.id;
-                  const count = countFor(name);
                   const editing = editingName === name;
                   return (
                     <View style={styles.row}>
@@ -244,9 +278,7 @@ export function ProjectCategoriesSheet({ visible, onClose }: Props) {
                             <Text style={styles.rowLabel} numberOfLines={1}>{name}</Text>
                           </TouchableOpacity>
                         )}
-                        <Text style={styles.rowCount}>
-                          {count} {count === 1 ? 'project' : 'projects'}
-                        </Text>
+                        <Text style={styles.rowCount}>{describeCount(name)}</Text>
                       </View>
                       <TouchableOpacity
                         onPress={() => handleDelete(name)}
@@ -306,23 +338,7 @@ export function ProjectCategoriesSheet({ visible, onClose }: Props) {
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.md,
-    borderBottomWidth: border.hairline,
-    borderBottomColor: colors.separator,
-  },
   headerSpacer: { width: 64 },
-  headerTitle: {
-    flex: 1,
-    textAlign: 'center',
-    color: colors.text,
-    fontSize: font.lg,
-    fontWeight: fontWeight.semibold,
-  },
   list: { padding: spacing.md, paddingBottom: spacing.xl },
   // Full-height content container so EmptyState's own `flex: 1` has room to
   // center above the add row, instead of collapsing to its natural height

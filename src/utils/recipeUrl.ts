@@ -59,6 +59,26 @@ export function normalizeRecipeUrl(input: string): string | null {
   return `${protocol}://${host.toLowerCase()}${port}${path}`;
 }
 
+/**
+ * The recipe already imported from this address, or null.
+ *
+ * Keyed on `normalizeRecipeUrl` on both sides because that is what an import
+ * saves as `sourceUrl`, and it is a pure function of the typed address — so the
+ * question can be answered before anything is fetched, which is the point.
+ * `RecipeCreateSheet` asks it twice (before the page fetch, and again once the
+ * page is in hand) and must get the same answer both times, hence one function.
+ * Normalising the stored side too catches a source typed by hand without its
+ * scheme.
+ */
+export function recipeImportedFrom<T extends { sourceUrl?: string | null }>(
+  recipes: readonly T[],
+  address: string,
+): T | null {
+  const key = normalizeRecipeUrl(address);
+  if (!key) return null;
+  return recipes.find(r => !!r.sourceUrl && normalizeRecipeUrl(r.sourceUrl) === key) ?? null;
+}
+
 // ——— Entities and tags ————————————————————————————————————————————————
 
 /**
@@ -387,6 +407,16 @@ export interface ParsedRecipePage {
    * how a sidebar ends up saved as step 3.
    */
   steps: string[];
+  /**
+   * The ingredient lines, verbatim, and again only from structured data: what
+   * a keyless import builds its ingredient list from (`recipePageOffline.ts`)
+   * without the model. Empty when the page published none.
+   */
+  ingredients: string[];
+  /** `recipeYield` as the page wrote it ("4 servings", "2 loaves"). Structured data only. */
+  recipeYield: string | null;
+  /** The page's own total time, in minutes. Structured data only. */
+  totalMinutes: number | null;
   /** Whether the page published a `schema.org/Recipe` at all. */
   structured: boolean;
 }
@@ -410,6 +440,9 @@ export function parseRecipePage(html: string, limit: number): ParsedRecipePage {
       siteName,
       author: structured.author,
       steps: structured.steps,
+      ingredients: structured.ingredients,
+      recipeYield: structured.recipeYield,
+      totalMinutes: structured.totalMinutes,
       structured: true,
     };
   }
@@ -427,6 +460,9 @@ export function parseRecipePage(html: string, limit: number): ParsedRecipePage {
     siteName,
     author: structured?.author ?? null,
     steps: [],
+    ingredients: [],
+    recipeYield: null,
+    totalMinutes: null,
     structured: false,
   };
 }

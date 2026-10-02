@@ -5,6 +5,8 @@ import {
   API_KEY_SECURE_KEY,
   loadAnthropicApiKey,
   saveAnthropicApiKey,
+  saveSecureKey,
+  SYNC_TOKEN_SECURE_KEY,
 } from '../utils/secureApiKey';
 
 jest.mock('expo-secure-store', () => ({
@@ -122,5 +124,20 @@ describe('saveAnthropicApiKey', () => {
     getSetting.mockReturnValue('sk-ant-stranded');
     await saveAnthropicApiKey('sk-ant-new');
     expect(dbDeleteSetting).toHaveBeenCalledWith(API_KEY_LEGACY_SETTING);
+  });
+});
+
+// The keychain isn't per-database, so a key typed or cleared during a demo
+// would outlive it while every other setting from the demo is thrown away.
+describe('in demo mode', () => {
+  const { setDemoModeActive } = jest.requireActual('../utils/demoState') as typeof import('../utils/demoState');
+  afterEach(() => setDemoModeActive(false));
+
+  it('writes and clears nothing, and says so', async () => {
+    setDemoModeActive(true);
+    await expect(saveAnthropicApiKey('')).resolves.toBe(false);
+    await expect(saveSecureKey(SYNC_TOKEN_SECURE_KEY, 'token')).resolves.toBe(false);
+    expect(setItem).not.toHaveBeenCalled();
+    expect(deleteItem).not.toHaveBeenCalled();
   });
 });

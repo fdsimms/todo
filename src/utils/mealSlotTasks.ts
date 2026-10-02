@@ -1,9 +1,10 @@
 import type { MealPlanEntry, MealSlot, Task, TaskDraft, TimeOfDay } from '../types';
 import { MEAL_SLOT_LABELS } from '../types';
-import { dayKeyToDate } from './dateUtils';
-import { generatedBy, generatedSourceOf } from './generatedTasks';
+import { dayKeyOf, dayKeyToDate } from './dateUtils';
+import { generatedBy, generatedSourceOf, liveGeneratedTasksOfKind } from './generatedTasks';
 import { isChainFinish } from './chain';
 import { mealPlanNudgeLinkUrl } from './mealPlanNudge';
+import { mealSlotKey, recipeIsGone } from './mealPlan';
 import { resolveOffsetDate } from './templateUtils';
 import type { ChainItem } from '../types';
 
@@ -34,7 +35,7 @@ import type { ChainItem } from '../types';
  * task and writing another underneath it.
  *
  * **A chain is only rewritten while it hasn't been started** (`chainIndex ===
- * 0`, see `mealSlotChainDrift`). Once you've ticked a step the remaining ones
+ * 0`, see `mealSlotDrift`). Once you've ticked a step the remaining ones
  * are yours — a plan change mid-cook updates the title and the link and leaves
  * the steps alone. Rewriting them would have to remap the index onto a
  * different-length list, and there is no honest answer for what step 1 of
@@ -142,7 +143,10 @@ export const MEAL_SLOT_TASK_DAYS = 7;
 export const DEFAULT_MEAL_SLOTS_ENABLED: readonly MealSlot[] = ['breakfast', 'lunch', 'dinner'];
 
 export function mealSlotSourceId(dayKey: string, slot: MealSlot): string {
-  return `${dayKey}${SOURCE_SEP}${slot}`;
+  // `mealSlotKey` rather than the separator inline: the food log answers "which
+  // meal is this" about the same pair (`loggedMealSlotKeys`), and two identical
+  // formats written out twice is how a lookup across them comes to miss.
+  return mealSlotKey(dayKey, slot);
 }
 
 /** The (day, slot) back out of a source id, or null if it isn't one. */
@@ -177,17 +181,32 @@ export function mealSlotOf(task: Pick<Task, 'generatedKind' | 'generatedSourceId
 }
 
 /**
- * `dundundun://recipe?id=…` — a meal-slot task's own link once the slot holds
- * a recipe, so "Make X" opens the recipe itself (ingredients, steps, Cook
- * Mode) rather than the meal plan day it's cooked from. Parsed back out in
- * `deepLinks.ts` (`isRecipeUrl`/`recipeUrlId`), which is what routes it to
- * `resetToRecipeDetail`.
+ * `dundundun://recipe?id=…[&entry=…]` — a meal-slot task's own link once the
+ * slot holds a recipe, so "Make X" opens the recipe itself (ingredients,
+ * steps, Cook Mode) rather than the meal plan day it's cooked from. Parsed
+ * back out in `deepLinks.ts` (`isRecipeUrl`/`recipeUrlId`/`recipeUrlEntryId`),
+ * which is what routes it to `resetToRecipeDetail`.
  */
 export const RECIPE_LINK_URL = 'dundundun://recipe';
 
-/** The recipe-scoped counterpart of `kitchenLinkUrl`/`personLinkUrl` — same `?id=` shape. */
-export function recipeLinkUrl(recipeId: string): string {
-  return `${RECIPE_LINK_URL}?id=${encodeURIComponent(recipeId)}`;
+/**
+ * The recipe-scoped counterpart of `kitchenLinkUrl`/`personLinkUrl` — same
+ * `?id=` shape, plus the planned meal it was opened for when there is one.
+ *
+ * **The entry's id travels, not its scale and picks.** The Meal Plan screen's
+ * own "Open recipe" hands RecipeDetail the meal's `recipeChoices` and
+ * `recipeScale` (see `docs/arch/recipes.md`), and a link that carried only the
+ * recipe opened a doubled chili at 1× with the default side: cook mode read
+ * out half the quantities, and "Log to food log" logged half the helping
+ * (#2931). Writing the numbers into the URL instead would put them on a field
+ * `mealSlotDrift` rewrites on every reconcile, so changing a meal's scale would
+ * have to rewrite its task; the id doesn't change when the scale does, and the
+ * link resolves the entry as it stands when it's tapped
+ * (`deepLinks.plannedRecipeParams`).
+ */
+export function recipeLinkUrl(recipeId: string, entryId?: string | null): string {
+  const base = `${RECIPE_LINK_URL}?id=${encodeURIComponent(recipeId)}`;
+  return entryId ? `${base}&entry=${encodeURIComponent(entryId)}` : base;
 }
 
 /**
@@ -214,9 +233,33 @@ export function recipeLinkUrl(recipeId: string): string {
  * unconditionally on every reconcile, not just while the chain is at index 0).
  */
 export function mealSlotLinkUrl(dayKey: string, slot: MealSlot, entry: MealPlanEntry | null): string {
-  if (entry?.recipeId && !entry.leftoverId) return recipeLinkUrl(entry.recipeId);
+  if (entry?.recipeId && !entry.leftoverId) return recipeLinkUrl(entry.recipeId, entry.id);
   const base = mealPlanNudgeLinkUrl(dayKey);
   return entry ? base : `${base}&pick=${slot}`;
+}
+
+/**
+ * The entry as its slot's task should read it: one whose recipe has been
+ * deleted reads as the typed meal its captured `title` already is.
+ *
+ * `MealPlanEntry.recipeId` deliberately outlives the recipe (deleting Chili
+ * must not blank last Tuesday), and every reader of it is meant to be
+ * resolve-or-shrug. This projection was the one that didn't shrug: the pointer
+ * alone decided there was a "Make Chili" step and a link to the recipe, which
+ * then opened on "This recipe is gone". Cleared on the copy handed to the
+ * projection, never on the row, so the task says "Eat Chili" and links to its
+ * day on the plan, exactly what a typed meal gets. Every caller that builds a
+ * slot task from an entry (the daily pass, the reconcile, `setCookTask`'s
+ * create) goes through this.
+ *
+ * `library` is the recipe store's state, and an unloaded one leaves the entry
+ * alone (see `recipeIsGone`).
+ */
+export function slotEntryForTask(
+  entry: MealPlanEntry | null,
+  library: Parameters<typeof recipeIsGone>[1]
+): MealPlanEntry | null {
+  return entry && recipeIsGone(entry, library) ? { ...entry, recipeId: null } : entry;
 }
 
 /** Whether this entry counts as an answer to its slot. */
@@ -436,6 +479,43 @@ export function mealSlotTaskDraft(
     chainIndex: 0,
     category,
   };
+}
+
+/**
+ * The live rows for a day that has gone by without anyone starting on them,
+ * which the daily pass drops rather than leaving overdue on Today.
+ *
+ * A meal task is no use on a day that has already gone, which is the reason
+ * the pass never writes one; without this half a row it *had* written stayed
+ * behind anyway, so a weekend away left six or nine "Choose lunch" rows at the
+ * top of the Meal Plan section for ever. The log nudge is what asks about a
+ * past meal (`mealLogNudgeTasks.ts`), a day after rather than instead.
+ *
+ * Three rows are kept, each because somebody touched it:
+ *
+ * - **A started chain** (`chainIndex > 0`). A step has been ticked, so the
+ *   rest of the chain is the user's, the same line `mealSlotDrift` draws.
+ * - **A row moved onto today or later**, by its date or a defer. That was a
+ *   decision about when to deal with it, and the day in its source id says
+ *   nothing about that.
+ * - **A finished or archived one**, which is not live and never listed here.
+ *
+ * `todayKey` is the logical today. A stored date is compared by its calendar
+ * day, the way `getTaskDayStart` reads one.
+ */
+export function staleMealSlotTasks<
+  T extends Pick<
+    Task,
+    'generatedKind' | 'generatedSourceId' | 'completed' | 'archived' | 'chainIndex' | 'dueDate' | 'deferUntil'
+  >
+>(tasks: readonly T[], todayKey: string): T[] {
+  const movedToToday = (iso: string | null) => iso !== null && dayKeyOf(new Date(iso)) >= todayKey;
+  return liveGeneratedTasksOfKind(tasks, 'mealSlot').filter(task => {
+    const source = parseMealSlotSource(task.generatedSourceId);
+    if (!source || source.dayKey >= todayKey) return false;
+    if ((task.chainIndex ?? 0) > 0) return false;
+    return !movedToToday(task.dueDate) && !movedToToday(task.deferUntil);
+  });
 }
 
 /**

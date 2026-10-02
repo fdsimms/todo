@@ -1,0 +1,4 @@
+{
+  "message": "Fixes: unchecking a daily medication target keeps the doses logged earlier that day, skipping a task on the 31st no longer moves it to the 28th for good, a daily target that falls short keeps its reminder, merging two grocery items keeps the result on your lists, and adding a recipe to a second list checks that list rather than your main one",
+  "date": "2026-09-23"
+}

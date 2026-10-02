@@ -35,9 +35,15 @@ export interface ProjectStatsSummary {
   /** Marked complete, ever — including the ones archived afterwards. */
   finished: number;
   finishedThisYear: number;
-  /** Members done and total across the active projects, aggregated. */
+  /**
+   * Members done and total across the active projects, aggregated, leaving out
+   * ongoing ones (see Project.ongoing): a running list has no finish line, so
+   * its members only ever dragged the fraction down.
+   */
   activeDone: number;
   activeTotal: number;
+  /** How many active projects those two are summed over. */
+  activeTracked: number;
   /**
    * Median days from creation to completion across every finished project, or
    * null with none to measure.
@@ -77,7 +83,8 @@ export function projectStats(
 
   let activeDone = 0;
   let activeTotal = 0;
-  for (const project of active) {
+  const tracked = active.filter(p => !p.ongoing);
+  for (const project of tracked) {
     const progress = projectProgress(project.id, tasks as Task[]);
     activeDone += progress.done;
     activeTotal += progress.total;
@@ -104,6 +111,7 @@ export function projectStats(
     finishedThisYear: finishedAll.filter(p => new Date(p.completedAt!).getFullYear() === thisYear).length,
     activeDone,
     activeTotal,
+    activeTracked: tracked.length,
     typicalDays: median(withDays.map(f => f.days)),
     recentlyFinished,
   };

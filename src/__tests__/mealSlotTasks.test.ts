@@ -7,6 +7,7 @@ import {
   mealSlotChain,
   mealSlotDrift,
   mealSlotLinkUrl,
+  slotEntryForTask,
   mealSlotOf,
   mealSlotSourceId,
   mealSlotStepTimeSegments,
@@ -14,7 +15,13 @@ import {
   mealSlotTaskFields,
   mealSlotTaskTitle,
   parseMealSlotSource,
+  recipeLinkUrl,
+  staleMealSlotTasks,
 } from '../utils/mealSlotTasks';
+import { dayKeyOf } from '../utils/dateUtils';
+
+/** A local wall-clock time as the ISO instant the app stores, so the suite reads the same in any zone. */
+const localIso = (local: string) => new Date(local).toISOString();
 
 // mealSlotTasks reaches dateUtils for dayKeyToDate, which reaches the settings
 // store for dayResetTime — nothing here needs it, since every date this module
@@ -34,7 +41,7 @@ function entry(overrides: Partial<MealPlanEntry> = {}): MealPlanEntry {
     recipeId: null,
     title: `Meal ${seq}`,
     sortOrder: 1,
-    createdAt: '2026-01-01T00:00:00.000Z',
+    createdAt: localIso('2026-01-01T00:00'),
     cookedAt: null,
     leftoverId: null,
     recipeChoices: [],
@@ -241,7 +248,7 @@ describe('the fields a slot owns', () => {
   });
 
   it('lands on the slot\'s own day, noon-normalized', () => {
-    expect(mealSlotTaskFields('2026-08-22', 'lunch', null).dueDate.startsWith('2026-08-22')).toBe(true);
+    expect(dayKeyOf(new Date(mealSlotTaskFields('2026-08-22', 'lunch', null).dueDate))).toBe('2026-08-22');
   });
 
   it('offers the picker only while the slot is unanswered', () => {
@@ -254,8 +261,8 @@ describe('the fields a slot owns', () => {
   });
 
   it('opens the recipe itself once the slot holds one to cook', () => {
-    expect(mealSlotLinkUrl('2026-08-22', 'dinner', entry({ recipeId: 'r-1' })))
-      .toBe('dundundun://recipe?id=r-1');
+    expect(mealSlotLinkUrl('2026-08-22', 'dinner', entry({ id: 'm-chili', recipeId: 'r-1' })))
+      .toBe('dundundun://recipe?id=r-1&entry=m-chili');
     // A leftover naming both a recipe and its own id has nothing to cook —
     // there's no Cook step (see mealSlotChain) and so no recipe to open.
     expect(mealSlotLinkUrl('2026-08-22', 'dinner', entry({ recipeId: 'r-1', leftoverId: 'lo-1' })))
@@ -268,6 +275,33 @@ describe('the fields a slot owns', () => {
     expect(draft.generatedKind).toBe('mealSlot');
     expect(draft.generatedSourceId).toBe('2026-08-22#lunch');
     expect(draft.chainIndex).toBe(0);
+  });
+});
+
+describe('slotEntryForTask', () => {
+  const library = { initialized: true, recipes: [{ id: 'r-1' }] };
+
+  it('reads a meal whose recipe was deleted as the typed meal its title is', () => {
+    // The pointer alone used to decide there was a "Make X" step and a link to
+    // the recipe, which then opened on "This recipe is gone".
+    const planned = slotEntryForTask(entry({ recipeId: 'r-gone', title: 'Chili' }), library)!;
+    expect(planned.recipeId).toBeNull();
+    expect(planned.title).toBe('Chili');
+    expect(mealSlotChain('dinner', planned).map(c => c.title)).toEqual(['Eat Chili']);
+    expect(mealSlotLinkUrl('2026-08-22', 'dinner', planned)).toBe('dundundun://mealplan?date=2026-08-22');
+  });
+
+  it('hands back the entry itself when there is nothing to resolve', () => {
+    const live = entry({ recipeId: 'r-1' });
+    const typed = entry({ recipeId: null });
+    expect(slotEntryForTask(live, library)).toBe(live);
+    expect(slotEntryForTask(typed, library)).toBe(typed);
+    expect(slotEntryForTask(null, library)).toBeNull();
+  });
+
+  it('trusts the pointer until the recipe list has loaded', () => {
+    const planned = entry({ recipeId: 'r-1' });
+    expect(slotEntryForTask(planned, { initialized: false, recipes: [] })).toBe(planned);
   });
 });
 
@@ -286,6 +320,19 @@ describe('mealSlotStepTimeSegments', () => {
   });
 });
 
+describe('the recipe link carries its planned meal (#2931)', () => {
+  it('names the entry, so the scale and picks are read when the link is tapped', () => {
+    expect(recipeLinkUrl('r-1')).toBe('dundundun://recipe?id=r-1');
+    expect(recipeLinkUrl('r 1', 'm/2')).toBe('dundundun://recipe?id=r%201&entry=m%2F2');
+  });
+
+  it('keeps the link stable across a scale change, so a reconcile writes nothing', () => {
+    const planned = entry({ recipeId: 'r1', title: 'Chili' });
+    const task = taskFor('2026-08-22', 'dinner', planned);
+    expect(mealSlotDrift(task, '2026-08-22', 'dinner', { ...planned, recipeScale: 3 })).toBeNull();
+  });
+});
+
 describe('drift', () => {
   it('writes nothing when nothing has changed', () => {
     // The reconcile runs on every meal-plan mutation, most of which (a scale
@@ -300,7 +347,7 @@ describe('drift', () => {
     const updates = mealSlotDrift(task, '2026-08-22', 'dinner', planned)!;
     expect(updates.title).toBe('Chili');
     expect(updates.chainItems!.map(c => c.title)).toEqual(['Make Chili', 'Eat Chili']);
-    expect(updates.linkUrl).toBe('dundundun://recipe?id=r1');
+    expect(updates.linkUrl).toBe(`dundundun://recipe?id=r1&entry=${planned.id}`);
     // Still step 0 of its (now two-step) chain either way — nothing to write.
     expect(updates.timeSegments).toBeUndefined();
   });
@@ -356,7 +403,7 @@ describe('drift', () => {
     // Set once at creation from the day in the source id, which never changes —
     // so the only thing that can move it is the user, and chasing it would
     // rewrite a row they deferred to tomorrow straight back onto today.
-    const deferred = taskFor('2026-08-22', 'dinner', null, { dueDate: '2026-08-25T12:00:00.000Z' });
+    const deferred = taskFor('2026-08-22', 'dinner', null, { dueDate: localIso('2026-08-25T12:00') });
     const updates = mealSlotDrift(deferred, '2026-08-22', 'dinner', null);
     expect(updates).toBeNull();
   });
@@ -384,5 +431,58 @@ describe('the default set of meals', () => {
     // Matches MEAL_PLAN_NUDGE_SLOTS: a day isn't incomplete for want of a
     // snack, and a snack has no part of the day to surface in.
     expect([...DEFAULT_MEAL_SLOTS_ENABLED]).toEqual(['breakfast', 'lunch', 'dinner']);
+  });
+});
+
+describe('staleMealSlotTasks', () => {
+  /** A live row as the pass writes it, generated fields and all. */
+  const row = (dayKey: string, slot: MealSlot, over: Partial<Task> = {}): Task => ({
+    ...taskFor(dayKey, slot, null),
+    ...mealSlotTaskDraft(dayKey, slot, null),
+    id: `${dayKey}#${slot}`,
+    completed: false,
+    archived: false,
+    deferUntil: null,
+    ...over,
+  } as Task);
+
+  it('names a past day\'s row that nobody started', () => {
+    const stale = staleMealSlotTasks([row('2026-08-21', 'lunch')], '2026-08-22');
+    expect(stale.map(t => t.id)).toEqual(['2026-08-21#lunch']);
+  });
+
+  it('leaves today and the days ahead alone', () => {
+    const rows = [row('2026-08-22', 'lunch'), row('2026-08-25', 'dinner')];
+    expect(staleMealSlotTasks(rows, '2026-08-22')).toEqual([]);
+  });
+
+  it('keeps a chain a step has been ticked on', () => {
+    // The rest of the chain is the user's once they have started it, the same
+    // line mealSlotDrift draws.
+    expect(staleMealSlotTasks([row('2026-08-21', 'lunch', { chainIndex: 1 })], '2026-08-22')).toEqual([]);
+  });
+
+  it('keeps a row moved onto today or later, by its date or a defer', () => {
+    const moved = row('2026-08-21', 'lunch', { dueDate: localIso('2026-08-22T12:00') });
+    const deferred = row('2026-08-21', 'dinner', { deferUntil: localIso('2026-08-24T00:00') });
+    expect(staleMealSlotTasks([moved, deferred], '2026-08-22')).toEqual([]);
+  });
+
+  it('drops a row moved to a day that has also gone by', () => {
+    const deferred = row('2026-08-20', 'dinner', { deferUntil: localIso('2026-08-21T00:00') });
+    expect(staleMealSlotTasks([deferred], '2026-08-22').map(t => t.id)).toEqual(['2026-08-20#dinner']);
+  });
+
+  it('never names a finished row, an archived one, or another generator\'s', () => {
+    const done = row('2026-08-21', 'lunch', { completed: true });
+    const archived = row('2026-08-21', 'dinner', { archived: true });
+    const legacy = row('2026-08-21', 'breakfast', { generatedKind: 'mealCook', generatedSourceId: 'm-1' });
+    expect(staleMealSlotTasks([done, archived, legacy], '2026-08-22')).toEqual([]);
+  });
+});
+
+describe('mealSlotTaskDraft on vacation', () => {
+  it('pauses the row on vacation, since the pass writes a week ahead of a trip', () => {
+    expect(mealSlotTaskDraft('2026-08-22', 'lunch', null).vacationPause).toBe(true);
   });
 });

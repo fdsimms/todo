@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Keyboard, View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import { SheetModal } from './SheetModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -11,6 +11,7 @@ import { EmptyState } from './EmptyState';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { useFilterField } from '../hooks/useFilterField';
 
 interface Props {
   visible: boolean;
@@ -36,13 +37,19 @@ export function TripPlannerSheet({ visible, people, onPickPerson, onClose }: Pro
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
-  const [query, setQuery] = useState('');
+  const { query, clear: clearQuery, props: filterField, inputRef } = useFilterField();
 
   const matches = useMemo(() => peopleNearLocation(people, query), [people, query]);
 
+  // The sheet stays mounted across opens, so a bare `autoFocus` on the field
+  // would only ever fire once — same fix as QuickSearchModal's own field.
+  useEffect(() => {
+    if (visible) inputRef.current?.focus();
+  }, [visible, inputRef]);
+
   const handleClose = () => {
     Keyboard.dismiss();
-    setQuery('');
+    clearQuery();
     onClose();
   };
 
@@ -58,15 +65,13 @@ export function TripPlannerSheet({ visible, people, onPickPerson, onClose }: Pro
           <Ionicons name="search-outline" size={iconSize.sm} color={colors.textTertiary} />
           <TextInput
             style={styles.searchInput}
-            value={query}
-            onChangeText={setQuery}
+            {...filterField}
             placeholder="Where are you going?"
             placeholderTextColor={colors.textTertiary}
             autoCapitalize="words"
-            autoFocus
           />
           {query.length > 0 && (
-            <TouchableOpacity onPress={() => setQuery('')} hitSlop={8} accessibilityLabel="Clear search">
+            <TouchableOpacity onPress={() => clearQuery()} hitSlop={8} accessibilityLabel="Clear search">
               <Ionicons name="close-circle" size={iconSize.sm} color={colors.textTertiary} />
             </TouchableOpacity>
           )}

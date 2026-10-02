@@ -2,6 +2,7 @@ import type { KitchenEntry } from './kitchenInventory';
 import type { GroceryItem, Recipe } from '../types';
 import { freshnessRank } from './freshness';
 import { resolvePluralKey } from './groceryPlural';
+import { flattenRecipeIngredients, recipeMap } from './recipeComponents';
 
 /**
  * "You could make X with what's about to go off."
@@ -28,11 +29,25 @@ import { resolvePluralKey } from './groceryPlural';
  * one hop, and still specific-satisfies-generic only — dying generic "onion"
  * never claims a line that asked for red onion in particular.
  *
+ * **A recipe's lines are read through `flattenRecipeIngredients`**, so a dish
+ * that only calls for the dying thing by way of a component — the mash inside
+ * "steak with mash" — still counts. Every other shopping read in the app
+ * already resolves the component tree, and `recipesUsingIngredient` names
+ * reading raw `ingredients` as the one place that would quietly disagree; this
+ * was that place.
+ *
  * **Groceries only.** A `KitchenEntry` can be a container of leftover chilli,
  * and a leftover's `matchKey` comes from its own free-typed title rather than
  * from the catalog, so it would only ever match by accident. Leftovers also
  * aren't ingredients: you reheat last night's chilli, you don't cook with it.
  * `LeftoversCard` is where a container gets planned onto a night.
+ *
+ * "Groceries" includes a box (`kind: 'product'`), which is the same catalog
+ * row tracked apart and carries that row's own `nameKey`. A thawed packet of
+ * chicken going off tomorrow is exactly as much chicken as the item-level row
+ * would be, and skipping it left the one thing dying out of every suggestion.
+ * An item and its boxes share a key, so the most urgent of them is the one
+ * that answers for it.
  *
  * **It reads; it writes nothing and schedules nothing.** No task is spawned, no
  * meal is planned. Cooking something tonight is a decision, and the two
@@ -90,11 +105,15 @@ export function useUpRecipes(
 ): UseUpRecipe[] {
   const dying = new Map<string, KitchenEntry>();
   for (const entry of entries) {
-    // Groceries only, and a blank key never matches: `groceryNameKey` returns
-    // '' for a name with no letters or digits, and an ingredient that
-    // normalised away would otherwise match every one of them at once.
-    if (entry.kind !== 'grocery' || !entry.matchKey) continue;
-    dying.set(entry.matchKey, entry);
+    // Groceries (boxes included) only, and a blank key never matches:
+    // `groceryNameKey` returns '' for a name with no letters or digits, and an
+    // ingredient that normalised away would otherwise match every one of them
+    // at once.
+    if (entry.kind === 'leftover' || !entry.matchKey) continue;
+    // An item and its boxes share one key; the most urgent of them is the one
+    // a recipe would be using up.
+    const current = dying.get(entry.matchKey);
+    if (!current || compareByUrgency(entry, current) < 0) dying.set(entry.matchKey, entry);
   }
   if (dying.size === 0) return [];
 
@@ -116,13 +135,22 @@ export function useUpRecipes(
     if (!dying.has(key)) dying.set(key, entry);
   }
 
+  const byId = recipeMap(recipes);
+  // An either/or line resolves to whichever option is going off, rather than
+  // to its first-listed one: "jalapeño or serrano" with the serranos going
+  // soft is exactly the recipe to suggest, and read as written it never was.
+  // `onHand` only changes which option an open group picks and never adds a
+  // second, so nothing is counted twice.
+  const going = { onHand: new Set(dying.keys()) };
   const out: UseUpRecipe[] = [];
   for (const recipe of recipes) {
     // A Map keyed by the entry id rather than a filter over `dying`, because a
     // recipe can name one item on two lines ("2 tomatoes" for the sauce, "1
-    // tomato" to garnish) and that is one tomato being used up, not two.
+    // tomato" to garnish) and that is one tomato being used up, not two. A
+    // component naming it as well collapses the same way, which is also what
+    // keeps a recipe used twice in one tree from counting twice.
     const uses = new Map<string, KitchenEntry>();
-    for (const ingredient of recipe.ingredients) {
+    for (const { ingredient } of flattenRecipeIngredients(recipe, byId, going)) {
       if (!ingredient.nameKey) continue;
       // Its own plural counts, the same way it does everywhere the catalog
       // resolves a name (`groceryPlural.ts`) — a line reading "serrano pepper"

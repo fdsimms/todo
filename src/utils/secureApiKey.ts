@@ -20,6 +20,7 @@
  */
 
 import { dbDeleteSetting, dbGetSetting } from '../db/database';
+import { isDemoModeActive } from './demoState';
 
 /**
  * Required where it's used rather than imported at the top.
@@ -87,6 +88,11 @@ export async function loadAnthropicApiKey(): Promise<string> {
  * it stuck, so a caller can tell "saved" from "works until you quit".
  */
 export async function saveAnthropicApiKey(key: string): Promise<boolean> {
+  // Every other setting changed during a demo is written to the throwaway
+  // database and gone on exit. The keychain isn't per-database, so without
+  // this someone handed the phone could clear or replace the owner's billing
+  // key for good. Reported as not stuck, which is true.
+  if (isDemoModeActive()) return false;
   try {
     if (key) {
       await secureStore().setItemAsync(API_KEY_SECURE_KEY, key);
@@ -132,6 +138,7 @@ export async function loadSecureKey(name: string): Promise<string> {
 
 /** Writes or clears one key. Reports whether it stuck, like saveAnthropicApiKey. */
 export async function saveSecureKey(name: string, key: string): Promise<boolean> {
+  if (isDemoModeActive()) return false; // See saveAnthropicApiKey.
   try {
     if (key) await secureStore().setItemAsync(name, key);
     else await secureStore().deleteItemAsync(name);

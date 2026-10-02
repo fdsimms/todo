@@ -6,8 +6,9 @@ list of things the feature deliberately does **not** do, and each one is the
 reason a similar feature elsewhere is unpleasant to use.
 
 Moved out of `CLAUDE.md` so it is read when it applies rather than on every
-task. Settled decisions with the arguments attached: don't re-derive them from
-the code, and don't re-open one without a reason the note doesn't cover.
+task. The rules here are strong defaults with the reasoning
+attached: read the reason before deviating from one. Where this note and the
+code disagree, the code is what ships, so fix the note.
 
 ---
 
@@ -64,15 +65,20 @@ this still goes wrong.
 because pulling in 400 contacts is precisely what makes the feature cold: a
 list you did not write, full of people you do not think about, which then has
 to be sorted somehow. People are added one at a time, and the act of adding
-somebody is the act of saying they matter. **That list is the only ranking the
-feature contains**, which is why `PeopleScreen` is hand-ordered by `sortOrder`
-and never re-ranked, the same rule `aisleOrder` and the category list follow.
+somebody is the act of saying they matter. **That hand order is the only ranking
+the feature contains**: `PeopleScreen` defaults to `sortOrder`, the same rule
+`aisleOrder` and the category list follow. An opt-in alphabetical sort is
+allowed, being neutral about the people in it; a sort by anything that measures
+them (recency, neglect, how often you see them) never is.
 
 **4. Every person starts with no cadence and no nudges.** `nudgeOptIn` is false
 and `cadenceDays` is 0 on a new row, and nothing about a person may appear in
 any nudge surface until that is explicitly changed. This is what keeps "who am
 I neglecting" a question the app never asks, since most people have no cadence
-to compare. *(`Project.nudgeOptIn`, word for word.)*
+to compare. *(`Project.nudgeOptIn`, word for word.)* The one carve-out is
+`waitingFollowUp` ("Follow up with Dustin about…"): its subject is a task you
+yourself marked as waiting on that person, not the friendship, and it ships off
+behind its own setting.
 
 **5. Better: let the app offer the cadence rather than asking for one.**
 Declaring a frequency for a friend is the coldest interaction in the feature.
@@ -141,7 +147,7 @@ deliberate, one-at-a-time spirit rule 3 asks for — so it is a list they wrote,
 not the address book this feature otherwise refuses to show. The sheet reads
 it once on open and browses it directly, no query required; a full grant is
 unaffected and still never reads without one. See "Filling one person in from
-Contacts" below for exactly where that read is gated. See "Filling one person in from Contacts" below for how that lands.
+Contacts" below for exactly where that read is gated and how it lands.
 
 **Calendar.** "Attendees" and "event titles" are different reads and only the
 first is out. Attendees is a broad structured sweep of everyone you sit in a
@@ -210,11 +216,13 @@ Search and Quick Search, and `TaskEditor`'s own title field.
   Matching against only the people the task actually names keeps the token
   honest: it lights up because the task links them, not because the text
   happens to spell a name that exists somewhere in the app.
-- **`TaskEditor`'s title field never parses one out of typed text.** It has
-  its own People picker (rule 3), so typing a fresh "@someone" there does
-  nothing until they're added through that field — the overlay there only
-  tints a mention already covered by `personIds`, the same restriction as
-  every other read-only surface, just applied to an editable field.
+- **`TaskEditor`'s title field never links someone just because the text
+  names them.** It has its own People picker (rule 3), and the overlay only
+  tints a mention already covered by `personIds`. What it does offer is a
+  suggestion row for the token being typed (`getEditorMentionSuggestions`):
+  every prefix match not already linked, and picking one both rewrites the
+  token and adds the person to `personIds`. Linking is the tap, never the
+  text.
 - **A token can also resolve by a unique prefix, and an ambiguous one gets a
   pick-one list instead of only refusing.** `matchPersonMentions` itself still
   only ever returns a token that resolves cleanly — "@brit" matches "Brittany"
@@ -225,20 +233,23 @@ Search and Quick Search, and `TaskEditor`'s own title field.
   tooltip renders as a small pick-one row in place of the usual single "tap to
   set" bubble. The pick can't just rewrite the token text the way typing a
   longer prefix does — two people who share an entire first name or nickname
-  (two Sams) can never become unique that way, and the token grammar has no
-  way to spell a two-word full name inline (`PERSON_TOKEN_PATTERN` is
-  single-word only) — so it's recorded by token text instead
+  (two Sams) can never become unique that way — so it's recorded by token text
+  instead
   (`QuickAddModal`'s `personOverrides`) and layered back onto the live matches
   by `applyMentionOverrides` on every render, the same derived-from-the-title
-  design as everything else in this section. This is quick-add-only: `TaskEditor`'s
-  title field never resolves a fresh token at all (the bullet above), so there
-  is nothing for it to disambiguate.
+  design as everything else in this section. This is quick-add-only, since
+  `TaskEditor` links through its suggestion row rather than by resolving a
+  token (the bullet above).
+- **A multi-word name or nickname resolves when spelled out after the "@"**
+  ("@Sam Ortiz", "@Eye Q"). `PERSON_TOKEN_PATTERN` stops at the first space, so
+  `matchPersonMentions` tries a phrase index (`buildPhraseIndex`/`phraseAt`)
+  first; the prefix scan never answers a multi-word name by its first word.
+  Groups have no phrase index, so a group's name still resolves one word at a
+  time.
 - **A short, still-growing token gets a live suggestion row, not silence.**
-  Before `getMentionSuggestions` (`src/utils/parseTaskInput.ts`), typing "@l"
-  toward "@luke" gave no feedback of any kind until the prefix reached
-  `MIN_PREFIX_LENGTH` and resolved on its own — someone one or two letters in
-  had no way to tell whether they were spelling a real person's name or
-  literal text. It only ever fires for the token currently being typed (the
+  `getMentionSuggestions` (`src/utils/parseTaskInput.ts`) exists so someone
+  one or two letters into "@l" can tell whether they're spelling a real
+  person's name or literal text. It only ever fires for the token currently being typed (the
   one running to the end of the title, so it disappears the moment you move
   on to the next word) and only for a token neither `matchPersonMentions` nor
   `findAmbiguousMention` already has an opinion about — an exact match
@@ -247,8 +258,7 @@ Search and Quick Search, and `TaskEditor`'s own title field.
   that person's resolving name (`QuickAddModal`'s `applyMentionSuggestion`),
   unlike the ambiguous-mention pick above: nothing here is an exact-name
   collision text can't spell, so there's no need for the override mechanism's
-  workaround. Same quick-add-only scope as the bullet above, for the same
-  reason.
+  workaround. `TaskEditor` has its own version, described above.
 
 ## History is completed tasks, and there is no interactions table
 
@@ -269,8 +279,8 @@ matters, with no schema at all.
 
 ## The birthday generator
 
-The seventh entry in the registry (`docs/arch/generated-tasks.md`), and the
-only one whose trigger is known years in advance rather than derived from
+One of the generators (`docs/arch/generated-tasks.md`), and the one whose
+trigger is known years in advance rather than derived from
 something that just changed. That is what lets it put the task *before* the
 thing it is about, and the lead is the whole point: a birthday you find out
 about on the day is one you have already half missed.
@@ -297,8 +307,8 @@ about on the day is one you have already half missed.
   history, ticking off "Ansley's birthday" would reset a clock you never
   actually reached out on. It points at its person through `generatedSourceId`
   like every generator points at its source.
-- **There is no cap, unlike every other generator.** A cap exists elsewhere
-  because the qualifying set is open-ended and mostly arbitrary. Birthdays are
+- **There is no cap.** A cap exists on the generators whose qualifying set is
+  open-ended and mostly arbitrary (use-up tasks, project reviews). Birthdays are
   spread across a year by nature, the window is a few days wide, and every row
   names a real date that is about to happen. Three friends born in one week
   should produce three tasks; dropping one would be the app deciding which
@@ -326,7 +336,7 @@ apart before the string becomes a number.
 
 ### The birthday-gift task
 
-The eleventh generator (`birthdayGift` in the registry), living beside
+A generator of its own (`birthdayGift` in the registry), living beside
 `birthday` in `birthdayTasks.ts` rather than in a file of its own — it reuses
 every rule above except the lead time and the title. Getting somebody a gift
 and marking their birthday are two different questions, and the row that used
@@ -390,8 +400,8 @@ person cannot.
 - **A swipe-away holds for a week, not for a day.** `projectReview` scopes its
   decline to the day, which is right there and nagging here: a nudge about
   Sarah returning tomorrow morning reads as the app disagreeing with you about
-  a friendship. Floored at the cadence so a four-day cadence is not silenced
-  for seven, which is the objection to cadence-scoped declines pointed the only
+  a friendship. Capped at the cadence (`Math.min(7, cadence)`) so a four-day
+  cadence is not silenced for seven, which is the objection to cadence-scoped declines pointed the only
   way it actually bites.
 - **The note beats the clock.** `Person.askAbout` turns the title into "Ask
   Ansley about the new job" instead of "Catch up with Ansley" — a reason to get
@@ -544,16 +554,104 @@ assertion.
 - **It does not sync**, for `groceryImportLinks`' reason: an EventKit id names a
   record on one device, so the other phone would read the record as answers
   about events it has never seen.
-- **It is the one calendar reader gated on demo mode**, and the asymmetry is
-  deliberate. The other four show calendar events as calendar events, which is
-  honest whichever database is mounted; this one's output is a claim *about a
-  demo row*, and the seed invents a Dustin. Without the gate a real event
+- **It is gated on demo mode**, like every reader that turns a real calendar
+  event into something in the mounted database (`eventTasks`, `calendarReview`).
+  A reader that only shows calendar events as calendar events is honest
+  whichever database is mounted; this one's output is a claim *about a demo
+  row*, and the seed invents a Dustin. Without the gate a real event
   mentioning a real Dustin would be offered as history for the invented one, on
   a screen handed to somebody else. `enterDemoMode` deliberately does not
   re-initialize the settings store, so the real calendar settings are live
   inside a demo and the gate has to be explicit. The second half is a plain bug
   it also avoids: the answer would be written into the scratch settings table,
   so a dismissal made in a demo is lost and the real install is asked again.
+
+## Who a calendar event is with
+
+`src/utils/eventPeople.ts` + `useEventPeopleStore`. The user says which people
+from the list an event is with, from the person button on a row in Today's
+events sheet, or by starting the event from a person's page ("Plan something").
+
+- **The event lives in the calendar; the link lives in the app.** New events
+  go through Apple's own sheet (`presentEventCreate`), so they land in
+  whichever calendar the user picks there, Google included, and sync wherever
+  that calendar does. The link is metadata only this app reads. Owning events
+  in an app table was the alternative, and would have been a second calendar
+  that Google and iCloud never see.
+- **A link is never an attendee.** Inviting sends mail and publishes an
+  address, and reading attendees back is on the Never list. Nothing about the
+  link is written to the event.
+- **A title match is offered, not applied.** The picker lists people the title
+  names first, and each is still a tap. Same bar as the history offer.
+- **After the event, a link makes an offer, not a record.** Linked people are
+  offered the event under "From your calendar" even when the title never names
+  them (`suggestedHistoryEvents`' `linkedPeople`). A link says who a plan was
+  with; only the user knows it happened, so the existing four refusals and the
+  answered record apply unchanged.
+- **It is kept through the history window, then pruned**, on the start,
+  matching the offer's own floor. Past that it has no reader.
+- **It syncs, keyed by the calendar server's id.** One row per occurrence in
+  `event_people_links`. EventKit's own id names a record on one phone (and,
+  Apple documents, can be lost on a full resync), so the row names the event
+  by `calendarItemExternalIdentifier`, the server's id, read by the
+  `todo-eventkit-bridge` native module; a Google event has the same one on
+  every device. Where it can't be read (an older build, a calendar with no
+  server), the local id is used and the row matches nothing elsewhere, which
+  is harmless. Readers look under both keys, preferred first.
+- **Duplicates are the reader's to fold, not a constraint's to refuse.** Two
+  phones can link one occurrence before they sync. `event_key` is not UNIQUE,
+  since a violation would fail the whole sync apply; `peopleForEvent` unions
+  the rows, and the next edit (`planEventPeopleWrite`) keeps one and deletes
+  the rest. Per-person removal on one phone racing an add on the other is
+  last-writer-wins, the table's merge rule.
+- **The old device-local setting is migrated once** (`legacyEventPeopleRows`,
+  behind `event_people_links_migration_done`) and deleted. Its rows keep the
+  local id they were written under until their next edit moves them onto the
+  server id.
+- **The tasks-planned record below stays on the device**, since tasks are
+  named by EventKit id there and the move offer is a per-phone prompt.
+- **Creating is off in demo mode**: the event would reach the real calendar.
+
+### Typing an event
+
+`src/utils/quickEvent.ts` + `QuickEventSheet`, behind the Today add button's
+"Event". One line ("lunch w/ @dustin sat 12pm") read by quick add's own two
+parsers (`parseTaskInput` for the day and time, `matchPersonMentions` for
+"@name"), so it reads exactly as a task line does, refusals included. It fills
+the system sheet and links the people once the event is saved. A repeat phrase
+gives only its first day; repeating is set in the system sheet. It is its own
+sheet rather than a mode of `QuickAddModal`, since almost nothing that sheet
+sets means anything for an event. Regular quick add reaches the same path
+with a leading `event:` (`eventMarkerText`): the rest of the line is read the
+same way and the Add button says "Add event". A leading word plus a colon, so
+it cannot fire mid-title, and it is off in demo mode, where the line stays a
+task.
+
+### Tasks planned around an event
+
+`src/utils/eventTaskLinks.ts` + `useEventTaskLinkStore`, the sibling record.
+The events sheet's "+" and its "Plan from a template" (a template run whose
+two anchors are the event's first and last day, named after it and carrying
+its linked people) both record the tasks they create against the occurrence.
+
+- **A record, not a `Task` field.** Per-task provenance is refused in
+  `docs/arch/away-dates.md` (a column plus the four-site `TemplateItem`
+  parity); the event already has a record here, so the ids hang off that.
+- **It exists to notice a move, and it only offers.** `movedLinkedEvents`
+  calls an event moved only when its old occurrence is gone, the old start was
+  inside the window (so absence means something), and exactly one occurrence
+  of the id is in the window (a series is refused rather than guessed). The
+  row then offers `AwayShiftSheet`, the trip move's own "these move with it?",
+  or "Keep their dates". Either answer rekeys the record so it is not asked
+  twice. Today's own row for the event carries a "Moved, 3 tasks" chip
+  (`movedEventNote`, via `eventContextRows`' `movedNote`) so the offer is seen
+  without opening the sheet. An event that moved *off* today, which today's
+  rows can never show, gets a row of its own on Today (`movedEventContextRows`)
+  that opens the sheet on just that event, and goes away once the move is
+  answered.
+- **Device-local and pruned a week after the event** (`eventTaskLinks.ts`).
+  The people link is different: it syncs, and is kept for the 90-day history
+  window.
 
 ## Tapping Call or Text, and the question that follows
 
@@ -599,8 +697,8 @@ prompt shows the entry it would write in full, title and time, because what has
 to be checked is whether it happened and only the user can check it.
 
 **The answer is an ordinary completed task, through the same writer the other
-ways in use** — `useTaskStore.addCompletedTask`, which moved into the store once
-it had four callers, two of them not on a screen that could own it. No
+ways in use** — `useTaskStore.addCompletedTask`, in the store because one of its
+callers (`useReachOutPrompt`) is not on a screen that could own it. No
 interactions table, no second kind of record, and nothing marking it as
 machine-suggested afterwards: once confirmed it is not a guess any more, which
 is the rule `acceptSuggestion` already follows.
@@ -941,9 +1039,9 @@ answer is a set of them, not one.
 
 ## Filling in the gaps a few at a time
 
-`peopleBackfill.ts`, and the People segment on the Backfill screen — the fourth
-pool beside tasks, categories and projects, and the one that had to argue for
-itself. A wizard that walks your friends one at a time asking a question about
+`peopleBackfill.ts`, and the People segment on the Backfill screen — one pool
+among several (tasks, categories, projects, items, recipes), and the one that
+had to argue for itself. A wizard that walks your friends one at a time asking a question about
 each is, described that way, the "sort the people you love into castes"
 afternoon this doc opens by refusing. What makes it a different thing is where
 it lives and what it asks.
@@ -954,16 +1052,16 @@ it lives and what it asks.
   Today, a banner or a badge, which is the same argument that lets the day count
   live on the person's own screen and lets `calendarHistory` offer an evening at
   all: you went to look.
-- **The queue is `sortOrder`, not alphabetical**, and this is the one line where
-  copying the three sibling modules would have broken a rule stated outright in
-  the "never" list. All three sort by name; here that is still the app replacing
-  an order somebody made on purpose with one it worked out. Alphabetical is a
-  milder re-rank than by-neglect, and it is a re-rank. `reachOutTasks` breaks its
+- **The queue is `sortOrder`, not alphabetical**, where the sibling pools sort by
+  name. Here a default of alphabetical would be the app replacing an order
+  somebody made on purpose with one it worked out (the People screen's own A–Z
+  is opt-in for the same reason). `reachOutTasks` breaks its
   cap tie the same way for the same reason.
-- **Three fields, and they are the three that unlock something**: a birthday
+- **Four fields, and they are the ones that unlock something**: a birthday
   (the birthday and gift generators are gated on nothing else), a cadence (the
-  reach-out nudge, same), and `askAbout` (what makes that nudge a reason rather
-  than a prompt). Deliberately not `nickname`, `notes`, `email` or `linkUrl` —
+  reach-out nudge, same), `askAbout` (what makes that nudge a reason rather
+  than a prompt), and `location` (what the trip planner, `peopleLocations.ts`,
+  searches). Deliberately not `nickname`, `notes`, `email` or `linkUrl` —
   being walked through your friends supplying nicknames is data entry about the
   people you love, which is the sixth bullet at the top of this doc, and none of
   those four turns anything on.
@@ -976,7 +1074,7 @@ it lives and what it asks.
   below it. Below the floor the field is an honest question with no suggestion
   attached, which is what it already was in the editor.
 - **The person card shows a name, their group if they're in one, and their
-  `notes` — and nothing else.** Its three sibling cards carry meta chips — a
+  `notes` — and nothing else.** Its sibling pools' cards carry meta chips — a
   due date, a task count — and every *number* available here is one this doc
   rules out: a task count under somebody's name reads as a tally against
   them, and a last-together date or a day count belongs on their own screen.
@@ -1036,6 +1134,50 @@ it lives and what it asks.
   `'people'` question follows, for the same reason: an empty people surface is
   a prompt to start filing your friends.
 
+## Businesses don't get check-ins
+
+`Person.kind`, `'individual'` unless set otherwise. An optometrist, a vet, a
+dry cleaner — a `Person` row for the same reason a friend is one (you want
+their number and a place to leave notes), but not a friend, and two of this
+doc's own mechanisms assumed one without saying so.
+
+- **A company name isn't "first name, last name".** The "@" mention index
+  (`buildPersonNameIndex` in `parseTaskInput.ts`) and the calendar-title guess
+  (`nameTokensOf` in `calendarHistory.ts`) both answer to a name's first word
+  on the assumption that it *is* a first name — "Dustin Reyes" answering to
+  "@dustin" is the whole point of that fallback. Read a business's name the
+  same way and "Eye Q" answers to "@eye" and to any event mentioning "eye
+  exam", as though "Eye" were somebody's given name. Both skip the fallback
+  for a business. The mention index goes one step further for a multi-word
+  business name: it doesn't even index the full name for the *prefix* scan
+  `matchPersonMentions` runs before falling back to literal text: a multi-word
+  name resolves only when spelled out in full, through the phrase index, and
+  prefix-indexing it would only ever be a backdoor to the first-word guess
+  this exists to avoid. A single-word business name (or
+  nickname) is unaffected and resolves exactly as a person's name would.
+- **The reach-out nudge is off, structurally, not just by default.** Rule 4
+  already starts every person with no cadence and no nudges, but a business
+  has no cadence to eventually turn on: there's no "getting back in touch"
+  with a dry cleaner, and the whole apparatus above this section —
+  `cadenceDays`, `nudgeOptIn`, the observed-cadence offer, `askAbout` — is
+  about a friendship, not a vendor. `PersonEditor` hides the whole "Keeping in
+  touch" card for one, and forces `nudgeOptIn`/`cadenceDays`/`askAbout` to
+  their off state on save regardless of what the hidden fields hold — the
+  same belt that keeps an already-running cadence from surviving a switch away
+  from it. `wantedReachOuts`
+  (`reachOutTasks.ts`) carries its own `person.kind === 'business'` gate on
+  top of that: it's the function that actually decides who gets nudged, so it
+  has to hold even for a row that somehow still carries a cadence — a stale
+  one synced from before this field existed, or a hand-edited import. The
+  Backfill screen's `cadence` and `askAbout` fields (`peopleBackfill.ts`) read
+  as never-missing for a business for the same reason: there's nothing to
+  backfill toward.
+- **Everything else about a `Person` is unaffected.** Birthdays (an
+  anniversary, an owner's own birthday on file), notes, location, groups,
+  waiting-on and the call/text/email buttons all work identically — the
+  distinction this field draws is narrow and specific to the two mechanisms
+  above, not a second, stripped-down kind of row.
+
 ## Groups: a couple counted once
 
 `PersonGroup`, `Person.groupId`, `usePersonGroupStore`. The feature request
@@ -1045,12 +1187,12 @@ every time you mean the pair. A group is a lightweight, renameable label —
 the `TaskGroup` ("Stacks") shape, one shelf over — that changes three
 things: how the reach-out nudge batches people, how an "@" mention resolves,
 and how the Backfill screen offers and applies a cadence (see "Filling in
-the gaps" below). It carries no cadence, no history and no nudge settings of
+the gaps" above). It carries no cadence, no history and no nudge settings of
 its own; those stay on each `Person`, so nothing here becomes a second place
 to score or rank anybody.
 
 - **`Person.groupId`, not a member array on the group.** The same argument
-  this doc already makes for `Task.groupId` over a join table: a person row
+  this doc already makes for `Task.personIds` over a join table: a person row
   is simple to query by group (there are never more than a handful of
   people, unlike tasks), and a single-valued pointer makes "which group is
   Dustin in" unambiguous by construction rather than a rule to enforce.

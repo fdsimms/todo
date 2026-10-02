@@ -35,6 +35,7 @@ import type {
   DeliverableKind,
   FoodLogEntry,
   GroceryItem,
+  GroceryListEntry,
   MedicationLog,
   MoodLog,
   Person,
@@ -87,7 +88,11 @@ export interface GroceryAddOptions {
 export interface GroceryAddOutcome {
   item: GroceryItem;
   isNew: boolean;
-  /** True when the row was already in some trolley, so this changed little. */
+  /**
+   * True when the row was already in the trolley it was added to, so this
+   * changed little. Another list holding it doesn't count: adding it here
+   * still put it somewhere it wasn't.
+   */
   wasOnList: boolean;
 }
 
@@ -138,6 +143,13 @@ export interface Replica {
   projectProgress(projectId: string): { done: number; total: number };
   categories(): Category[];
   groceryItems(): GroceryItem[];
+  /**
+   * Which trolley each row is in (see `GroceryListEntry`). The list tools read
+   * the home list's entries from this rather than `GroceryItem.onList`, which
+   * is the broader "in any trolley" flag and would fold a trip's list into the
+   * one at home.
+   */
+  groceryListEntries(): GroceryListEntry[];
 
   isVisible(task: Task): boolean;
   isUnscheduled(task: Task): boolean;
@@ -156,6 +168,8 @@ export interface Replica {
   displayTitle(task: Task): string;
   estimatedMinutes(task: Task): number | null;
   deliverableKind(task: Task): DeliverableKind | null;
+  /** The answers a Yes/No or Pick one question offers, or [] for any other. */
+  deliverableOptions(task: Task): string[];
 
   /**
    * The logical day, as a `YYYY-MM-DD` key. Goes through `getLogicalToday` so a
@@ -293,7 +307,9 @@ export interface Replica {
   addGroceryItem(name: string, opts?: GroceryAddOptions): GroceryAddOutcome;
 
   /**
-   * Tick something off in the trolley, or un-tick it.
+   * Tick something off in the trolley at home, or un-tick it. Every grocery
+   * write here acts on the home list, which is the one `list_grocery_items`
+   * reports.
    *
    * Written straight through `dbSetGroceryListEntry` rather than through a
    * builder, because unlike the add there is nothing to decide: checked lives
@@ -304,7 +320,7 @@ export interface Replica {
   setGroceryChecked(id: string, checked: boolean): GroceryItem;
 
   /**
-   * Take something off the list, which parks it rather than deleting it.
+   * Take something off the home list, which parks it rather than deleting it.
    *
    * The catalog row stays, with everything anyone ever recorded on it. That is
    * the app's own rule and not a shortcut: a row leaves only when asked, and
@@ -388,6 +404,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   const { useMedicationStore } = require('../../src/store/useMedicationStore') as typeof import('../../src/store/useMedicationStore');
   const { registerTaskSource } = require('../../src/utils/blockerRegistry') as typeof import('../../src/utils/blockerRegistry');
   const { registerPersonSource } = require('../../src/utils/peopleRegistry') as typeof import('../../src/utils/peopleRegistry');
+  const { registerPausedProjectSource } = require('../../src/utils/projectPause') as typeof import('../../src/utils/projectPause');
   const { useSettingsStore } = require('../../src/store/useSettingsStore') as typeof import('../../src/store/useSettingsStore');
   const { useCategoryStore } = require('../../src/store/useCategoryStore') as typeof import('../../src/store/useCategoryStore');
   const { projectProgress } = require('../../src/store/useProjectStore') as typeof import('../../src/store/useProjectStore');
@@ -421,6 +438,10 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
 
   registerTaskSource(tasks);
   registerPersonSource(people);
+  // After the project store's own module has registered its (never loaded,
+  // so empty) list: without this every paused project's tasks read as on
+  // Today here while the app hides them.
+  registerPausedProjectSource(projects);
 
   return {
     path,
@@ -433,6 +454,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     taskById: (id: string) => tasks().find(t => t.id === id) ?? null,
     categories: () => db.dbGetAllCategories(),
     groceryItems: () => db.dbGetAllGroceryItems(),
+    groceryListEntries: () => db.dbGetAllGroceryListEntries(),
 
     isVisible: (task: Task) => visibility.isTaskVisible(task),
     isUnscheduled: (task: Task) => visibility.isUnscheduledTask(task),
@@ -443,6 +465,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     displayTitle: (task: Task) => visibility.displayTitleFor(task),
     estimatedMinutes: (task: Task) => effort.estimatedMinutesFor(task),
     deliverableKind: (task: Task) => deliverables.deliverableKindFor(task),
+    deliverableOptions: (task: Task) => deliverables.deliverableOptionsFor(task),
 
     todayKey: () => dates.dayKeyOf(dates.getLogicalToday()),
     shiftDayKey: (key: string, days: number) =>
@@ -568,6 +591,19 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       );
       if (unanswered) throw new Error(unanswered);
 
+      // A question with a fixed set of answers takes one of them, stored in
+      // the option's own spelling so the project's tally counts it. Anything
+      // else would be recorded and then counted as "no answer".
+      const offered = deliverables.deliverableOptionsFor(task);
+      const given = options?.deliverableValue;
+      if (offered.length > 0 && typeof given === 'string') {
+        const match = offered.find(o => o.toLowerCase() === given.trim().toLowerCase());
+        if (!match) {
+          throw new Error(`That task's answer is one of: ${offered.join(', ')}. Pass one of those as deliverableValue, or null to complete it without an answer.`);
+        }
+        options = { ...options, deliverableValue: match };
+      }
+
       const settings = useSettingsStore.getState();
       const built = completion.buildCompletion(task, options, {
         dayResetTime: settings.dayResetTime,
@@ -674,7 +710,11 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       if (plan.entry) db.dbSetGroceryListEntry(plan.entry);
 
       refresh();
-      return { item: plan.item, isNew: plan.isNew, wasOnList: plan.wasOnList };
+      // plan.wasOnList is "in any trolley", which reads a row on the Airbnb
+      // list as already added to the list at home.
+      const listId = opts?.listId ?? null;
+      const wasOnList = !plan.isNew && entries.some(e => e.itemId === plan.item.id && e.listId === listId);
+      return { item: plan.item, isNew: plan.isNew, wasOnList };
     },
 
     setGroceryChecked(id: string, checked: boolean): GroceryItem {
@@ -683,7 +723,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
 
       // Checked belongs to a trolley, so there has to be one holding this item.
       const entry = db.dbGetAllGroceryListEntries().find(e => e.itemId === id && e.listId === null);
-      if (!entry) throw new Error(`"${item.name}" is not on the list, so there is nothing to check off.`);
+      if (!entry) throw new Error(`"${item.name}" is not on the home list, so there is nothing to check off.`);
 
       db.dbSetGroceryListEntry({ ...entry, checked });
       refresh();
@@ -693,14 +733,22 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     removeFromGroceryList(id: string): GroceryItem {
       const item = db.dbGetAllGroceryItems().find(i => i.id === id);
       if (!item) throw new Error(`No grocery item with id ${id}.`);
-      if (!item.onList) throw new Error(`"${item.name}" is not on the list.`);
+      // The home entry, not item.onList: that flag is also true for a row
+      // only on a trip's list, which this would park without taking it off
+      // anything.
+      const onHomeList = db.dbGetAllGroceryListEntries().some(e => e.itemId === id && e.listId === null);
+      if (!onHomeList) throw new Error(`"${item.name}" is not on the home list.`);
 
       // A recipe's claim on the quantity ends with the shop, so it does not
-      // ride back onto the catalog row.
+      // ride back onto the catalog row, and nor does its credit: the same
+      // parking `useGroceryStore.removeFromList` does. Left on, a hand-typed
+      // re-add weeks later still read 'For "Chili"'.
       const parked: GroceryItem = {
         ...item,
         quantity: item.quantityFromRecipe ? null : item.quantity,
         quantityFromRecipe: false,
+        sourceRecipeId: null,
+        sourceRecipeTitle: null,
       };
       db.dbUpdateGroceryItem(parked);
       db.dbDeleteGroceryListEntry(id, null);

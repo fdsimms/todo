@@ -9,6 +9,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { getLogicalNow } from './dateUtils';
 import { isDemoModeActive } from './demoState';
 import {
+  mirrorNote,
   mirrorTitleFor,
   parseGroceryLinks,
   planGroceryReminderSync,
@@ -461,6 +462,7 @@ function mirrorItems(): MirrorItem[] {
     quantity: item.quantity,
     onList: home.has(item.id),
     checked: home.get(item.id) ?? false,
+    note: item.note,
   }));
 }
 
@@ -480,7 +482,9 @@ export function groceryMirrorSignature(): string {
     // Separated on every side, because concatenating free text straight onto
     // an id lets two different lists spell the same signature, and a collision
     // here is a change that never syncs.
-    parts.push([item.id, home.get(item.id) ? 1 : 0, item.name, item.quantity ?? ''].join('\u0000'));
+    // The note too, since the mirror carries it (#2933): editing one is a
+    // change the reminder has to hear about.
+    parts.push([item.id, home.get(item.id) ? 1 : 0, item.name, item.quantity ?? '', item.note].join('\u0000'));
   }
   return parts.join('\u0001');
 }
@@ -512,16 +516,19 @@ interface MirrorOutcome {
  */
 async function mirrorOnce(): Promise<MirrorOutcome | null> {
   if (Platform.OS !== 'ios') return null;
+  // The guard notifications.ts and the two calendar mirrors already keep. Demo
+  // mode swaps the whole database for a throwaway one, and a mirror is a
+  // two-way write: without this it would push a seeded demo list into the
+  // user's real Reminders list and delete whatever was already there. It sits
+  // above the clear below too: `linkIndex` is module state that outlives the
+  // swap, so clearing it in demo left the real mirror running against no links
+  // once demo ended, and rows the user had removed came back from their reminders.
+  if (isDemoModeActive()) return null;
   const listId = mirrorTarget();
   if (!listId) {
     writeLinks({});
     return null;
   }
-  // The guard notifications.ts and the two calendar mirrors already keep. Demo
-  // mode swaps the whole database for a throwaway one, and a mirror is a
-  // two-way write: without this it would push a seeded demo list into the
-  // user's real Reminders list and delete whatever was already there.
-  if (isDemoModeActive()) return null;
   if ((await getRemindersPermission()) !== 'granted') {
     return { imported: 0, mirrored: 0, deleteFailed: 0, reason: 'no-permission' };
   }
@@ -544,6 +551,14 @@ async function mirrorOnce(): Promise<MirrorOutcome | null> {
     const raw = await calendar().getRemindersAsync([listId], null, null, null);
     const present = new Set<string>();
     const reminders: MirrorReminder[] = [];
+    // What each reminder's location says, to send back with any update below.
+    // The mirror doesn't carry a location, but `getReminder(from:)` in
+    // expo-calendar's `CalendarModule.swift` assigns `reminder.location =
+    // details.location` on every save, and EventKit's `location` is a
+    // settable `String?`, so an update without one cleared it. This fetch is
+    // the read the carry comes from: every reminder an update names is one it
+    // just returned.
+    const locations = new Map<string, string>();
     for (const reminder of sortRemindersByCreation(raw)) {
       if (!reminder.id) continue;
       present.add(reminder.id);
@@ -551,9 +566,17 @@ async function mirrorOnce(): Promise<MirrorOutcome | null> {
         id: reminder.id,
         title: reminder.title?.trim() ?? '',
         completed: reminder.completed === true,
+        notes: mirrorNote(reminder.notes),
       });
+      if (typeof reminder.location === 'string' && reminder.location) {
+        locations.set(reminder.id, reminder.location);
+      }
     }
 
+    // Again, now the reads are done: demo can start during the awaits above,
+    // and a plan built from here reads the demo list and writes the user's
+    // real Reminders list. Nothing past this point awaits before it writes.
+    if (isDemoModeActive()) return null;
     const store = useGroceryStore.getState();
     const plan = planGroceryReminderSync(mirrorItems(), reminders, linksIndex()[listId] ?? []);
     const nextLinks: GroceryReminderLink[] = [...plan.links];
@@ -576,11 +599,17 @@ async function mirrorOnce(): Promise<MirrorOutcome | null> {
         // reminder it came from down with it.
         const item = store.addByName(add.title, undefined, undefined, { registerUndo: false, listId: null });
         if (!item) continue;
+        // The reminder's notes become the row's note (#2933), unless the row
+        // is a catalog item re-listed with a note of its own. Then the app
+        // keeps its note, as it keeps anything both sides disagree on, and the
+        // shadow below is what makes the next pass write it to the reminder.
+        if (add.notes && !item.note) store.setNote(item.id, add.notes);
         nextLinks.push({
           reminderId: add.reminderId,
           itemId: item.id,
           name: mirrorTitleFor(item),
           checked: item.checked,
+          note: add.notes,
           seen: true,
         });
         imported += 1;
@@ -598,25 +627,50 @@ async function mirrorOnce(): Promise<MirrorOutcome | null> {
         // retries the same impossible rename for ever.
         const item = useGroceryStore.getState().items.find(i => i.id === rename.itemId);
         const link = nextLinks.find(l => l.itemId === rename.itemId);
-        if (item && link) link.name = mirrorTitleFor(item);
+        if (item && link) {
+          link.name = mirrorTitleFor(item);
+          // And the reminder is put back to the row's name, which is "the app
+          // wins" carried through: correcting only the shadow left the two apps
+          // showing different names for good, since neither side ever read as
+          // changed again. The update loop below runs later in this same pass.
+          plan.updateReminders.push({
+            reminderId: link.reminderId,
+            itemId: item.id,
+            title: mirrorTitleFor(item),
+            completed: link.checked,
+            notes: link.note,
+          });
+        }
       }
 
+      for (const edit of plan.setNotes) store.setNote(edit.itemId, edit.note);
+
+      // On the list at home, for addByName's reason above: the mirror only
+      // ever reads home. Left on the list on screen, a tick made in Reminders
+      // during a shop at another store landed on that trolley, the next pass
+      // read home as unticked and unticked the reminder, and a removal took
+      // the row off the away list while it stayed at home, so the deleted
+      // reminder came back.
       const toCheck = plan.setChecked.filter(c => c.checked).map(c => c.itemId);
       const toUncheck = plan.setChecked.filter(c => !c.checked).map(c => c.itemId);
-      if (toCheck.length > 0) store.setCheckedMany(toCheck, true);
-      if (toUncheck.length > 0) store.setCheckedMany(toUncheck, false);
+      if (toCheck.length > 0) store.setCheckedMany(toCheck, true, { listId: null });
+      if (toUncheck.length > 0) store.setCheckedMany(toUncheck, false, { listId: null });
       if (plan.removeItems.length > 0) {
-        store.removeFromListMany(plan.removeItems.map(r => r.itemId));
+        store.removeFromListMany(plan.removeItems.map(r => r.itemId), { listId: null });
       }
 
       for (const create of plan.createReminders) {
-        const id = await calendar().createReminderAsync(listId, { title: create.title });
+        const id = await calendar().createReminderAsync(
+          listId,
+          create.notes ? { title: create.title, notes: create.notes } : { title: create.title }
+        );
         if (!id) continue;
         nextLinks.push({
           reminderId: id,
           itemId: create.itemId,
           name: create.title,
           checked: false,
+          note: create.notes,
           // Nothing has fetched it yet, so its absence next pass would mean
           // nothing. See GroceryReminderLink.seen.
           seen: false,
@@ -629,10 +683,18 @@ async function mirrorOnce(): Promise<MirrorOutcome | null> {
           // The whole title every time, even when only the tick changed:
           // saveReminderAsync assigns `reminder.title = details.title`
           // unconditionally, so a partial update blanks the title of the row it
-          // was meant to leave alone.
+          // was meant to leave alone. The notes likewise (`reminder.notes =
+          // details.notes`, in `getReminder(from:)`): before the mirror carried
+          // them, every tick from this side wiped whatever note had been typed
+          // into the reminder (#2933). And the location, which is assigned the
+          // same way and which the mirror doesn't own: it goes back as the
+          // fetch above read it, so a tick from this side no longer clears it.
+          const location = locations.get(update.reminderId);
           await calendar().updateReminderAsync(update.reminderId, {
             title: update.title,
             completed: update.completed,
+            notes: update.notes,
+            ...(location ? { location } : {}),
           });
         } catch {
           // Isolated, like the drain's deletes: one reminder in a strange state
@@ -744,7 +806,9 @@ async function drainOnce(): Promise<ImportOutcome> {
     // drain. The record is keyed by list only so an un-drained list's ids
     // aren't pruned by a fetch that never covered them — the read side of it
     // flattens back to one set.
+    let demoStarted = false;
     for (const target of targets) {
+      if (demoStarted) break;
       const list = findReminderList(lists, target.listId);
       if (!list) continue;
       sawList = true;
@@ -768,6 +832,14 @@ async function drainOnce(): Promise<ImportOutcome> {
         // dictated in, and one commit at a time bounds the damage if something goes
         // wrong at item 40 of 200.
         for (const reminder of reminders) {
+          // Checked again per reminder, since the list read and each delete
+          // await: demo can start during either, and a row written after that
+          // lands in the throwaway database while its reminder is deleted for
+          // real. Everything from here to the delete is synchronous.
+          if (isDemoModeActive()) {
+            demoStarted = true;
+            break;
+          }
           const draft = draftFromReminder(reminder);
           if (!draft) continue;
 
@@ -870,6 +942,7 @@ async function drainOnce(): Promise<ImportOutcome> {
       }
     }
 
+    if (demoStarted) return NOTHING('off');
     if (imported === 0) {
       if (!sawList) return NOTHING('list-missing');
       if (!sawWritableList) return NOTHING('list-readonly');

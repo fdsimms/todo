@@ -15,11 +15,13 @@ const mockResetToFoodLog = jest.fn();
 const mockResetToProjectPull = jest.fn();
 const mockResetToDeload = jest.fn();
 const mockOpenQuickAdd = jest.fn();
+const mockOpenQuickAddEvent = jest.fn();
 const mockEnqueueWidgetCompletion = jest.fn();
 const mockStopCookTimer = jest.fn();
 const mockRemoveStepTimer = jest.fn();
 const mockStopPrepTimer = jest.fn();
 const mockFinishCookForRecipe = jest.fn();
+const mockEntryById = jest.fn();
 const mockResetToFocusSession = jest.fn();
 const mockFocusAdvance = jest.fn();
 const mockFocusPause = jest.fn();
@@ -41,18 +43,13 @@ jest.mock('../store/useRecipeStore', () => ({
   useRecipeStore: { getState: () => ({ stopCookTimer: mockStopCookTimer, stopPrepTimer: mockStopPrepTimer }) },
 }));
 jest.mock('../store/useMealPlanStore', () => ({
-  useMealPlanStore: { getState: () => ({ finishCookForRecipe: mockFinishCookForRecipe }) },
+  useMealPlanStore: {
+    getState: () => ({ finishCookForRecipe: mockFinishCookForRecipe, entryById: mockEntryById }),
+  },
 }));
 jest.mock('../store/useStepTimerStore', () => ({
   useStepTimerStore: { getState: () => ({ remove: mockRemoveStepTimer }) },
 }));
-// weeklyReview.ts is imported below only for WEEKLY_REVIEW_URL, and it reaches
-// dateUtils, which reads dayResetTime off the settings store. Mocked the same
-// way every other pure-module test mocks it.
-jest.mock('../store/useSettingsStore', () => ({
-  useSettingsStore: { getState: jest.fn(() => ({ dayResetTime: '00:00' })) },
-}));
-
 jest.mock('../store/useFocusStore', () => ({
   useFocusStore: {
     getState: () => ({ advance: mockFocusAdvance, pause: mockFocusPause, resume: mockFocusResume }),
@@ -76,6 +73,12 @@ jest.mock('../navigation/navigationRef', () => ({
   resetToFocusSession: (...args: unknown[]) => mockResetToFocusSession(...args),
   resetToDeload: (...args: unknown[]) => mockResetToDeload(...args),
   openQuickAddFromShortcut: (...args: unknown[]) => mockOpenQuickAdd(...args),
+  openQuickAddEventFromShortcut: (...args: unknown[]) => mockOpenQuickAddEvent(...args),
+}));
+
+let mockDemoActive = false;
+jest.mock('../utils/demoState', () => ({
+  isDemoModeActive: () => mockDemoActive,
 }));
 
 import {
@@ -83,6 +86,8 @@ import {
   handleIncomingUrl,
   isGroceriesUrl,
   groceriesUrlFinish,
+  groceriesLinkUrl,
+  groceriesUrlShop,
   isMealPlanUrl,
   mealPlanUrlDayKey,
   isKitchenUrl,
@@ -90,13 +95,17 @@ import {
   isRecipesUrl,
   isRecipeUrl,
   recipeUrlId,
+  recipeUrlEntryId,
+  plannedRecipeParams,
   isPeopleUrl,
   peopleUrlPersonId,
   isFoodLogUrl,
   isProjectsUrl,
   projectsUrlPullId,
+  projectsUrlPullDay,
   isDeloadUrl,
   isQuickAddUrl,
+  isAddEventUrl,
   isFocusUrl,
   focusUrlAction,
   openInAppUrl,
@@ -107,7 +116,6 @@ import {
   isStopTimerUrl,
   stopTimerUrlKey,
   linkIconFor,
-  isWeeklyReviewUrl,
 } from '../utils/deepLinks';
 
 describe('parseAddTaskUrl', () => {
@@ -241,6 +249,56 @@ describe('groceriesUrlFinish', () => {
   });
 });
 
+// One stop of a planned trip — see createGroceryTasks in GroceryScreen (#2938).
+describe('groceriesLinkUrl / groceriesUrlShop', () => {
+  it('is the bare link with no store, the one every older task carries', () => {
+    expect(groceriesLinkUrl()).toBe('dundundun://groceries');
+    expect(groceriesLinkUrl(null)).toBe('dundundun://groceries');
+  });
+
+  it('is still the Groceries link chip\'s own scheme, so the editor names it', () => {
+    // The chip is matched by exact string, so the bare link must stay it.
+    expect(groceriesLinkUrl()).toBe('dundundun://groceries');
+    expect(isGroceriesUrl(groceriesLinkUrl('shop-1'))).toBe(true);
+  });
+
+  it('round-trips a store id', () => {
+    const url = groceriesLinkUrl('shop-trader-joe-s');
+    expect(url).toBe('dundundun://groceries?shop=shop-trader-joe-s');
+    expect(groceriesUrlShop(url)).toBe('shop-trader-joe-s');
+  });
+
+  it('round-trips an id that needs escaping', () => {
+    const id = 'a&b=c d';
+    expect(groceriesUrlShop(groceriesLinkUrl(id))).toBe(id);
+  });
+
+  it('reads no store off the bare link or the finish link', () => {
+    expect(groceriesUrlShop('dundundun://groceries')).toBeNull();
+    expect(groceriesUrlShop('dundundun://groceries/')).toBeNull();
+    expect(groceriesUrlShop('dundundun://groceries?finish=1')).toBeNull();
+  });
+
+  it('reads no store off an empty value', () => {
+    expect(groceriesUrlShop('dundundun://groceries?shop=')).toBeNull();
+    expect(groceriesUrlShop('dundundun://groceries?shop=%20')).toBeNull();
+  });
+
+  it('tolerates the same spellings the finish flag does', () => {
+    expect(groceriesUrlShop('DUNDUNDUN://Groceries/?shop=s1')).toBe('s1');
+    expect(groceriesUrlShop('  dundundun://groceries?shop=s1  ')).toBe('s1');
+  });
+
+  it('is null for a URL that isn\'t a groceries link at all', () => {
+    expect(groceriesUrlShop('dundundun://kitchen?shop=s1')).toBeNull();
+    expect(groceriesUrlShop('')).toBeNull();
+  });
+
+  it('never reads the store as a finish request', () => {
+    expect(groceriesUrlFinish(groceriesLinkUrl('s1'))).toBe(false);
+  });
+});
+
 describe('isMealPlanUrl', () => {
   it('accepts every spelling of the meal plan link', () => {
     expect(isMealPlanUrl('dundundun://mealplan')).toBe(true);
@@ -353,6 +411,17 @@ describe('isProjectsUrl', () => {
   });
 });
 
+describe('projectsUrlPullDay', () => {
+  it('reads the landing day off a link that carries one', () => {
+    expect(projectsUrlPullDay('dundundun://projects?pull=p1&on=2026-10-03')).toBe('2026-10-03');
+  });
+
+  it('is null without one, or for a malformed one, since it becomes a due date', () => {
+    expect(projectsUrlPullDay('dundundun://projects?pull=p1')).toBeNull();
+    expect(projectsUrlPullDay('dundundun://projects?pull=p1&on=soon')).toBeNull();
+  });
+});
+
 describe('projectsUrlPullId', () => {
   it('reads the project off a scoped link', () => {
     expect(projectsUrlPullId('dundundun://projects?pull=proj-abc123')).toBe('proj-abc123');
@@ -453,6 +522,24 @@ describe('isQuickAddUrl', () => {
   });
 });
 
+describe('isAddEventUrl', () => {
+  it('accepts the bare event-shortcut link', () => {
+    expect(isAddEventUrl('dundundun://addevent')).toBe(true);
+    expect(isAddEventUrl('dundundun:///addevent')).toBe(true);
+    expect(isAddEventUrl('dundundun://addevent/')).toBe(true);
+    expect(isAddEventUrl('DUNDUNDUN://ADDEVENT')).toBe(true);
+    expect(isAddEventUrl('  dundundun://addevent  ')).toBe(true);
+  });
+
+  it('rejects anything else, including its neighbours', () => {
+    expect(isAddEventUrl('dundundun://add')).toBe(false);
+    expect(isAddEventUrl('dundundun://')).toBe(false);
+    expect(isAddEventUrl('dundundun://addevent?title=Party')).toBe(false);
+    expect(isAddEventUrl('https://addevent')).toBe(false);
+    expect(isAddEventUrl('')).toBe(false);
+  });
+});
+
 describe('isFocusUrl', () => {
   it('accepts every spelling of the focus link', () => {
     expect(isFocusUrl('dundundun://focus')).toBe(true);
@@ -523,7 +610,9 @@ describe('openInAppUrl', () => {
     mockResetToProjectPull.mockClear();
     mockResetToDeload.mockClear();
     mockOpenQuickAdd.mockClear();
+    mockOpenQuickAddEvent.mockClear();
     mockAddTask.mockClear();
+    mockDemoActive = false;
     mockEnqueueWidgetCompletion.mockClear();
     mockStopCookTimer.mockClear();
     mockStopPrepTimer.mockClear();
@@ -535,15 +624,40 @@ describe('openInAppUrl', () => {
     mockFocusResume.mockClear();
   });
 
+  // The Today widget's "Add event" shortcut — see WidgetShared.swift's
+  // addEventURL.
+  it('opens QuickEventSheet for the event-shortcut link', () => {
+    expect(openInAppUrl('dundundun://addevent')).toBe(true);
+    expect(mockOpenQuickAddEvent).toHaveBeenCalledTimes(1);
+    expect(mockResetToToday).not.toHaveBeenCalled();
+  });
+
+  // Event creation writes to the real calendar, so it's off in demo mode the
+  // same way AddTaskFab's own "Event" row is — the tap lands on Today instead
+  // of a sheet that couldn't do anything.
+  it('lands on Today instead of QuickEventSheet in demo mode', () => {
+    mockDemoActive = true;
+    expect(openInAppUrl('dundundun://addevent')).toBe(true);
+    expect(mockOpenQuickAddEvent).not.toHaveBeenCalled();
+    expect(mockResetToToday).toHaveBeenCalledTimes(1);
+  });
+
   it('opens the grocery list for the bare link, without asking for the sheet', () => {
     expect(openInAppUrl('dundundun://groceries')).toBe(true);
-    expect(mockResetToGroceries).toHaveBeenCalledWith(false);
+    expect(mockResetToGroceries).toHaveBeenCalledWith(false, null);
   });
 
   // The trip Live Activity's Finish button — see TripLiveActivity.swift.
   it('asks the grocery list to open the finish sheet', () => {
     expect(openInAppUrl('dundundun://groceries?finish=1')).toBe(true);
-    expect(mockResetToGroceries).toHaveBeenCalledWith(true);
+    expect(mockResetToGroceries).toHaveBeenCalledWith(true, null);
+  });
+
+  // One stop of a planned trip (#2938). Only ever a place to scroll to: the
+  // link has no way to start a trip, so there is nothing else to assert.
+  it('hands a stop\'s store to the grocery list, without the finish sheet', () => {
+    expect(openInAppUrl('dundundun://groceries?shop=shop-costco')).toBe(true);
+    expect(mockResetToGroceries).toHaveBeenCalledWith(false, 'shop-costco');
   });
 
   // A task's timer Live Activity Done button — see TimerLiveActivity.swift.
@@ -680,13 +794,13 @@ describe('openInAppUrl', () => {
 
   it('opens the pull sheet on one project — a review task\'s own link', () => {
     expect(openInAppUrl('dundundun://projects?pull=proj-1')).toBe(true);
-    expect(mockResetToProjectPull).toHaveBeenCalledWith('proj-1');
+    expect(mockResetToProjectPull).toHaveBeenCalledWith('proj-1', null);
     expect(mockResetToToday).not.toHaveBeenCalled();
   });
 
   it('opens the pull sheet unscoped for the bare projects link', () => {
     expect(openInAppUrl('dundundun://projects')).toBe(true);
-    expect(mockResetToProjectPull).toHaveBeenCalledWith(null);
+    expect(mockResetToProjectPull).toHaveBeenCalledWith(null, null);
   });
 
   it('navigates to the kitchen and claims the URL — the use-up tasks\' own link', () => {
@@ -742,8 +856,37 @@ describe('openInAppUrl', () => {
     expect(isRecipeUrl('dundundun://recipe?id=r1')).toBe(true);
     expect(recipeUrlId('dundundun://recipe?id=r1')).toBe('r1');
     expect(openInAppUrl('dundundun://recipe?id=r1')).toBe(true);
-    expect(mockResetToRecipeDetail).toHaveBeenCalledWith('r1');
+    expect(mockResetToRecipeDetail).toHaveBeenCalledWith('r1', {});
     expect(mockResetToRecipes).not.toHaveBeenCalled();
+    // No entry named, so nothing is looked up.
+    expect(mockEntryById).not.toHaveBeenCalled();
+  });
+
+  // #2931: a meal task's link names its planned meal, so a doubled chili
+  // opened from Today reads doubled, the way the Meal Plan screen's own
+  // "Open recipe" already did.
+  it('opens a meal task\'s recipe on the meal\'s own scale and picks', () => {
+    mockEntryById.mockReturnValueOnce({ id: 'm1', recipeId: 'r1', recipeScale: 2, recipeChoices: ['c1'] });
+    expect(recipeUrlEntryId('dundundun://recipe?id=r1&entry=m1')).toBe('m1');
+    expect(openInAppUrl('dundundun://recipe?id=r1&entry=m1')).toBe(true);
+    expect(mockEntryById).toHaveBeenCalledWith('m1');
+    expect(mockResetToRecipeDetail).toHaveBeenCalledWith('r1', { choices: ['c1'], scale: 2 });
+  });
+
+  it('reads a planned meal\'s scale and picks only while it still holds that recipe', () => {
+    expect(plannedRecipeParams({ recipeId: 'r-chili', recipeScale: 2, recipeChoices: ['rice'] }, 'r-chili'))
+      .toEqual({ choices: ['rice'], scale: 2 });
+    // One recipe's picks are meaningless ids on another's, so a slot re-planned
+    // since the link was written opens the recipe on its own defaults.
+    expect(plannedRecipeParams({ recipeId: 'r-soup', recipeScale: 2, recipeChoices: [] }, 'r-chili')).toEqual({});
+    expect(plannedRecipeParams(null, 'r-chili')).toEqual({});
+  });
+
+  it('opens the recipe on its defaults when the planned meal has gone', () => {
+    mockEntryById.mockReturnValueOnce(null);
+    expect(openInAppUrl('dundundun://recipe?id=r1&entry=gone')).toBe(true);
+    expect(mockResetToRecipeDetail).toHaveBeenCalledWith('r1', {});
+    expect(recipeUrlEntryId('dundundun://recipe?id=r1')).toBeNull();
   });
 
   it('falls back to the recipe box for a malformed recipe link', () => {
@@ -817,26 +960,5 @@ describe('openInAppUrl', () => {
   it('does not create a task', () => {
     openInAppUrl('dundundun://groceries');
     expect(mockAddTask).not.toHaveBeenCalled();
-  });
-});
-
-import { WEEKLY_REVIEW_URL } from '../utils/weeklyReview';
-
-describe('isWeeklyReviewUrl', () => {
-  // Imported from the module that *writes* the link rather than restated here:
-  // the constant lives in weeklyReview.ts (see its note) and this is what holds
-  // the matcher and the writer together.
-  it('matches the weekly review task’s own link', () => {
-    expect(isWeeklyReviewUrl(WEEKLY_REVIEW_URL)).toBe(true);
-    expect(isWeeklyReviewUrl('dundundun://review')).toBe(true);
-    expect(isWeeklyReviewUrl('dundundun:///review/')).toBe(true);
-    expect(isWeeklyReviewUrl('DUNDUNDUN://REVIEW')).toBe(true);
-  });
-
-  it('does not match anything else', () => {
-    expect(isWeeklyReviewUrl('dundundun://deload')).toBe(false);
-    expect(isWeeklyReviewUrl('dundundun://reviews')).toBe(false);
-    expect(isWeeklyReviewUrl('https://example.com/review')).toBe(false);
-    expect(isWeeklyReviewUrl('')).toBe(false);
   });
 });

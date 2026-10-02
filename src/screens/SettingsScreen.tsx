@@ -22,6 +22,7 @@ import {
 import { searchSettings } from '../utils/settingsSearch';
 import { settingsSummaries } from '../utils/settingsSummary';
 import { generatedTaskCounts, generatorSwitchedOn, GENERATED_KIND_LIST } from '../utils/generatedTasks';
+import { useFilterField } from '../hooks/useFilterField';
 
 /**
  * How the Groceries & meals line names the unit setting. Null for `asWritten`,
@@ -53,7 +54,8 @@ export function SettingsScreen() {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
-  const [query, setQuery] = useState('');
+  const searchFilter = useFilterField();
+  const query = searchFilter.query;
 
   const settings = useSettingsStore();
 
@@ -118,6 +120,7 @@ export function SettingsScreen() {
       leftoverUseUpTasks: settings.leftoverUseUpTasks,
       mealPlanNudgeEnabled: settings.mealPlanNudgeEnabled,
       mealShortfallTasks: settings.mealShortfallTasks,
+      mealThawTasks: settings.mealThawTasks,
       mealLogNudgeTasks: settings.mealLogNudgeTasks,
       projectReviewTasks: settings.projectReviewTasks,
       supplyReorderTasks: settings.supplyReorderTasks,
@@ -134,8 +137,8 @@ export function SettingsScreen() {
       moodLogTasks: settings.moodLogTasks,
       moodNudgeTasks: settings.moodNudgeTasks,
       weekendNudgeTasks: settings.weekendNudgeTasks,
-      weeklyReviewTasks: settings.weeklyReviewTasks,
       weighInTasks: settings.weighInTasks,
+      waterShortfallTasks: settings.waterShortfallTasks,
     }, settings.kitchenEnabled),
     [settings]
   );
@@ -237,8 +240,7 @@ export function SettingsScreen() {
       <SearchField
         style={styles.search}
         placeholder="Search settings"
-        value={query}
-        onChangeText={setQuery}
+        field={searchFilter}
         accessibilityLabel="Search settings"
       />
 

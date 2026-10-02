@@ -98,3 +98,136 @@ export function buildProjectListItems(
 
   return items;
 }
+
+/**
+ * Where a line goes when it's added right after another one: the order to
+ * write, either the page's top-level order (`reorderProjectItems`) or, when
+ * the line it follows sits in a section, that section's own order
+ * (`reorderGroupChildren`). Null when `afterId` isn't on the page.
+ */
+export function orderWithInserted(
+  items: readonly ProjectListItem[],
+  afterId: string,
+  newId: string,
+): { groupId: null; ids: string[] } | { groupId: string; ids: string[] } | null {
+  const top = items.map(item => (item.type === 'group' ? item.group.id : item.task.id));
+  const at = items.findIndex(item => item.type === 'task' && item.task.id === afterId);
+  if (at >= 0) return { groupId: null, ids: [...top.slice(0, at + 1), newId, ...top.slice(at + 1)] };
+  for (const item of items) {
+    if (item.type !== 'group') continue;
+    const ids = [...item.children].sort((a, b) => a.sortOrder - b.sortOrder).map(t => t.id);
+    const i = ids.indexOf(afterId);
+    if (i >= 0) return { groupId: item.group.id, ids: [...ids.slice(0, i + 1), newId, ...ids.slice(i + 1)] };
+  }
+  return null;
+}
+
+/**
+ * A list narrowed to the lines whose text holds `query` (case and accents
+ * ignored). A section stays when its title matches, with all its lines, or
+ * when any of its lines do, with just those. An empty query changes nothing.
+ */
+export function filterProjectListItems(items: readonly ProjectListItem[], query: string): ProjectListItem[] {
+  const q = fold(query.trim());
+  if (!q) return [...items];
+  const hit = (text: string) => fold(text).includes(q);
+  const out: ProjectListItem[] = [];
+  for (const item of items) {
+    if (item.type === 'task') {
+      if (hit(item.task.title)) out.push(item);
+      continue;
+    }
+    if (hit(item.group.title)) { out.push(item); continue; }
+    const children = item.children.filter(t => hit(t.title));
+    if (children.length > 0) out.push({ ...item, children });
+  }
+  return out;
+}
+
+function fold(text: string): string {
+  return text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
+/**
+ * The same page sorted A to Z, for a list: the loose lines by title among the
+ * slots loose lines hold (a section stays where it is), and each section's own
+ * lines by title within it. Case and accents ignored, numbers read as numbers
+ * ("Chapter 2" before "Chapter 10"). Answers the two orders to write, top-level
+ * ids for `reorderProjectItems` and each section's for `reorderGroupChildren`.
+ */
+export function alphabeticalPageOrder(items: readonly ProjectListItem[]): {
+  top: string[];
+  sections: Array<{ groupId: string; ids: string[] }>;
+} {
+  const collator = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true });
+  const byTitle = (a: Task, b: Task) => collator.compare(a.title.trim(), b.title.trim());
+  const loose = items
+    .filter((i): i is { type: 'task'; task: Task } => i.type === 'task')
+    .map(i => i.task)
+    .sort(byTitle);
+  let next = 0;
+  const top = items.map(item => (item.type === 'group' ? item.group.id : loose[next++].id));
+  const sections = items
+    .filter((i): i is { type: 'group'; group: TaskGroup; children: Task[] } => i.type === 'group')
+    .filter(i => i.children.length > 1)
+    .map(i => ({ groupId: i.group.id, ids: [...i.children].sort(byTitle).map(t => t.id) }));
+  return { top, sections };
+}
+
+/**
+ * A project's tasks in the order its page draws them, flattened: loose tasks
+ * and sections merged by their shared order, each section's own tasks in
+ * theirs. What "the first open task" means for a project worked in order.
+ */
+export function projectPageOrder(
+  tasks: readonly Task[],
+  groups: readonly TaskGroup[],
+  projectId: string,
+): Task[] {
+  const sorted = [...tasks].sort((a, b) => a.sortOrder - b.sortOrder || a.id.localeCompare(b.id));
+  return buildProjectListItems(sorted, [...groups], projectId).flatMap(item =>
+    item.type === 'task'
+      ? [item.task]
+      : [...item.children].sort((a, b) => a.sortOrder - b.sortOrder || a.id.localeCompare(b.id)),
+  );
+}
+
+/**
+ * The project's open tasks as plain text, the way "Copy task names" puts them
+ * on the clipboard: one line per task, in the order on screen, each section's
+ * title as a heading over its own tasks, and open subtasks indented under the
+ * task they belong to. It used to copy the top-level titles alone, which for a
+ * list of questions for a doctor dropped both the headings and the follow-ups.
+ *
+ * `subtasksOf` returns a task's subtasks in any order; they're sorted here.
+ * Only this project's own members are copied from a section, since a section
+ * can hold tasks filed under other projects.
+ */
+export function projectCopyText(
+  items: readonly ProjectListItem[],
+  subtasksOf: (taskId: string) => readonly Task[],
+  projectId: string,
+): string {
+  const lines: string[] = [];
+  const pushTask = (task: Task, indent: string) => {
+    lines.push(`${indent}${task.title}`);
+    [...subtasksOf(task.id)]
+      .filter(s => !s.completed)
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .forEach(s => lines.push(`${indent}  ${s.title}`));
+  };
+  items.forEach(item => {
+    if (item.type === 'task') {
+      pushTask(item.task, '');
+      return;
+    }
+    const members = item.children.filter(t => t.projectId === projectId);
+    if (members.length === 0) return;
+    if (lines.length > 0) lines.push('');
+    lines.push(item.group.title.trim() || 'Untitled section');
+    members.forEach(task => pushTask(task, '  '));
+    lines.push('');
+  });
+  while (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
+  return lines.join('\n');
+}

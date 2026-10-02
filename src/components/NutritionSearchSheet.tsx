@@ -26,6 +26,7 @@ import { EmptyState } from './EmptyState';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
 import type { FoodNutrition } from '../types';
+import { useFilterField } from '../hooks/useFilterField';
 
 /**
  * Finding what a catalog food is made of, in a food database, by name.
@@ -91,7 +92,8 @@ export function NutritionSearchSheet({ visible, itemName, onClose, onPick, onOpe
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
-  const [query, setQuery] = useState(itemName);
+  const searchFilter = useFilterField(itemName);
+  const query = searchFilter.query;
   const [hits, setHits] = useState<FoodSearchHit[]>([]);
   const [searching, setSearching] = useState(false);
   const [picking, setPicking] = useState<string | null>(null);
@@ -99,9 +101,9 @@ export function NutritionSearchSheet({ visible, itemName, onClose, onPick, onOpe
   const [errorSettingsEntryId, setErrorSettingsEntryId] = useState<string | null>(null);
   const [searched, setSearched] = useState(false);
 
-  // Closing while the search field still holds focus is the same freeze bug
-  // fixed elsewhere: the keyboard's own dismiss animation races the Modal's
-  // and strands the touch handler on whatever's underneath.
+  // SheetModal holds the close until the keyboard is gone (see its doc
+  // comment), so this dismiss isn't what prevents the freeze; it only starts
+  // the keyboard moving a beat sooner.
   const close = () => {
     Keyboard.dismiss();
     onClose();
@@ -140,7 +142,7 @@ export function NutritionSearchSheet({ visible, itemName, onClose, onPick, onOpe
   // of the row they are already looking at is a step for nothing.
   useEffect(() => {
     if (!visible) return;
-    setQuery(itemName);
+    searchFilter.seed(itemName);
     setHits([]);
     setError(null);
     setErrorSettingsEntryId(null);
@@ -218,9 +220,9 @@ export function NutritionSearchSheet({ visible, itemName, onClose, onPick, onOpe
         <View style={styles.searchRow}>
           <Ionicons name="search" size={iconSize.sm} color={colors.textTertiary} />
           <TextInput
+            key={searchFilter.fieldKey}
+            {...searchFilter.props}
             style={styles.searchInput}
-            value={query}
-            onChangeText={setQuery}
             onSubmitEditing={() => void run(query)}
             placeholder="Search foods"
             placeholderTextColor={colors.textTertiary}

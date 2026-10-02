@@ -29,6 +29,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { PinIcon } from './PinIcon';
 import { RemindMePicker } from './RemindMePicker';
 import { WhenPicker } from './WhenPicker';
+import { projectDateAnchor } from '../utils/projectDateShortcuts';
 import { CalendarPicker } from './CalendarPicker';
 import { PressableScale } from './PressableScale';
 import { StepMinutes } from './StepMinutes';
@@ -44,13 +45,13 @@ import { addDays } from 'date-fns/addDays';
 import { subDays } from 'date-fns/subDays';
 import { subMinutes } from 'date-fns/subMinutes';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
-import type { Task, Priority, Effort, FollowUpTaskDraft, RecurrenceType, ChainItem, DeliverableKind, TimeOfDay, ReminderKind, Polarity, QuotaPeriod, NutrientKey, MealSlot } from '../types';
+import type { Task, Priority, Effort, FollowUpTaskDraft, RecurrenceType, ChainItem, RotationItem, DeliverableKind, TimeOfDay, ReminderKind, Polarity, QuotaPeriod, NutrientKey, MealSlot } from '../types';
 import { PRIORITY_LABELS, EFFORT_LABELS, TITLE_MAX_LENGTH, NUTRIENT_KEYS, MEAL_SLOTS, MEAL_SLOT_LABELS } from '../types';
 import { NUTRIENT_LABEL, mlToFlOz, flOzToMl } from '../utils/foodNutrition';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, border, interaction, animation, checkboxRadius, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
-import { DOSE_UNITS } from '../utils/medicationLog';
+import { DOSE_UNITS, medicationVocabulary, medicationKey } from '../utils/medicationLog';
 import { useTitleSelection } from '../hooks/useTitleSelection';
 import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
@@ -79,13 +80,14 @@ import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
+import { useMedicationStore } from '../store/useMedicationStore';
 import { categoryLabel } from '../utils/categoryLabel';
 import { useShallow } from 'zustand/react/shallow';
 import { isStreakAtRecord, nextStreakRecord, streakHint } from '../utils/streakRecord';
-import { formatDeadlineDate, formatScheduledDate, formatHHMM, formatTimeOfDay, hhmmToDate, dateToHHMM, getDeadlineFromOffset, getDeadlineFromMonthDay, describeDeadlineOffset, describeReminderOffset, getTaskDayStart, getCurrentDayStart, getLogicalNow, getLogicalToday, seriesMonthDaysFrom } from '../utils/dateUtils';
+import { formatDeadlineDate, formatScheduledDate, formatHHMM, formatTimeOfDay, hhmmToDate, dateToHHMM, getDeadlineFromOffset, getDeadlineFromMonthDay, describeDeadlineOffset, describeReminderOffset, describeReminderTracksVisibility, getTaskDayStart, getCurrentDayStart, getLogicalNow, getLogicalToday, seriesMonthDaysFrom, getNextDueDate, dayKeyOf, dayKeyToDate } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
 import { findArchivedMatch } from '../utils/archiveMatch';
-import { parseTaskInput, describeSchedule, detectContactIntent, matchPersonMentions, getEditorMentionSuggestions, withTrailingSpace, type MentionSuggestionCandidate } from '../utils/parseTaskInput';
+import { parseTaskInput, describeSchedule, detectContactIntent, matchPersonMentions, getEditorMentionSuggestions, withTrailingSpace, parseCategoryAndTagsInput, type MentionSuggestionCandidate, type ParsedCategoryAndTags } from '../utils/parseTaskInput';
 import { groupMentionTokens } from '../utils/peopleRegistry';
 import { mergeRanges } from '../utils/ranges';
 import { HighlightedText } from './HighlightedText';
@@ -105,7 +107,7 @@ import {
   supplyRunOutDate,
 } from '../utils/supply';
 import { CategoryPickerList } from './CategoryPicker';
-import { deliverableMeta } from '../utils/deliverables';
+import { deliverableMeta, parseDeliverableOptions } from '../utils/deliverables';
 import { InlineAction } from './InlineAction';
 import { SearchField } from './SearchField';
 import { SheetHeader } from './SheetHeader';
@@ -119,16 +121,17 @@ import { TitleTokenAccessory } from './TitleTokenAccessory';
 import { FollowUpTaskSheet } from './FollowUpTaskSheet';
 import { CalendarChoiceSheet } from './CalendarChoiceSheet';
 import { TaskRelationPickerSheet } from './TaskRelationPickerSheet';
-import { describeBlocks } from '../utils/blocking';
-import { displayTitleFor, isMissableMealPlanTask } from '../utils/visibilityUtils';
+import { blockerFields, blockerIdsOf, describeBlocks } from '../utils/blocking';
+import { displayTitleFor, isMissableMealPlanTask, getVisibleAt } from '../utils/visibilityUtils';
 import { nextChainStepTitle } from '../utils/chain';
 import { RecurrencePicker } from './RecurrencePicker';
 import { SegmentedControl } from './SegmentedControl';
 import { InlineTimePicker } from '../screens/settings/InlineTimePicker';
 import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
 import { describeRecurrence } from '../utils/recurrenceLabels';
-import { KNOWN_LINK_APPS, linkAppsFor } from '../constants/linkApps';
+import { knownLinkAppFor, linkAppsFor } from '../constants/linkApps';
 import { capitalize } from '../utils/capitalize';
+import { useFilterField } from '../hooks/useFilterField';
 
 /** The kind picker's segments. The hint under the track says what the pick does. */
 const TASK_KIND_SEGMENTS = TASK_KIND_META.map(meta => ({
@@ -179,6 +182,7 @@ export interface TaskDraft {
   recurrenceInterval: number;
   recurrenceDays: number[];
   recurrenceMonthDay: number | null;
+  recurrenceMonth: number | null;
   recurrenceWeekOrdinal: number | null;
   recurrenceFromCompletion: boolean;
   recurrenceEndDate: Date | null;
@@ -194,6 +198,9 @@ export interface TaskDraft {
   chainEnabled?: boolean;
   /** Steps already built in quick add, so "More details" doesn't drop them. */
   chainItems?: ChainItem[];
+  /** A rotation's named set, carried over when a draft already holds one. */
+  rotationEnabled?: boolean;
+  rotationItems?: RotationItem[];
   /** Drops a brand-new task straight into a project — set when the editor is opened from one. */
   projectId?: string | null;
   /** Same, for a stack. The task adopts the stack's category on the way in, as it would through addExistingToGroup. */
@@ -216,6 +223,7 @@ export interface TaskDraft {
   quotaIntervalMinutes?: number | null;
   quotaReminders?: boolean;
   quotaAlwaysVisible?: boolean;
+  followWaterTarget?: boolean;
   supplyCount?: number | null;
   supplyUnit?: string | null;
   supplyRefillCount?: number | null;
@@ -240,7 +248,7 @@ type DraftSubtask = { id: string; title: string; completed: boolean; timedMinute
 /** A medication name is a label on a row, not a prescription line. */
 const MEDICATION_NAME_MAX_LENGTH = 60;
 
-type FieldKey = 'stack' | 'category' | 'project' | 'tags' | 'people' | 'waitingOnPerson' | 'priority' | 'effort' | 'duration' | 'subtasks' | 'chainSteps' | 'deliverable' | 'completionTimer' | 'logHealthValue' | 'medication' | 'logMealSlot';
+type FieldKey = 'stack' | 'category' | 'project' | 'tags' | 'people' | 'waitingOnPerson' | 'priority' | 'effort' | 'duration' | 'subtasks' | 'chainSteps' | 'rotationSet' | 'deliverable' | 'completionTimer' | 'logHealthValue' | 'medication' | 'logMealSlot';
 
 // Presets for the Duration field, in minutes — the common "do this for a bit"
 // spans, including the 25-minute pomodoro.
@@ -264,8 +272,8 @@ const MAX_COMPLETION_TIMER_MINUTES = 24 * 60;
 const COMPLETION_TIMER_NOTE_MAX_LENGTH = 120;
 // How long a failed task can block apps for. The floor is a quarter-hour
 // because iOS refuses a very short monitored interval (DeviceActivity throws
-// `intervalTooShort`), so a 5-minute block is a promise this could not keep
-// once the native schedule lands. The ceiling is a day: past that it stops
+// `intervalTooShort`), so a 5-minute block is a promise the native schedule
+// (`schedulePenaltyExpiry`) could not keep. The ceiling is a day: past that it stops
 // being a nudge and becomes somebody locked out of their phone by a chore.
 const PENALTY_STEP_MINUTES = 15;
 const PENALTY_MIN_MINUTES = 15;
@@ -297,6 +305,16 @@ const LOG_HEALTH_VALUE_STEPS: Record<NutrientKey, { step: number; max: number }>
 // moves by clean amounts rather than by 1.7-oz increments; the max is rounded
 // up from waterMl's 1000ml so the two units cover the same real range.
 const LOG_HEALTH_WATER_FL_OZ_STEPS = { step: 1, max: 34 };
+
+/** Banner label for a "#word" match — category, tag count/name, or both joined, same as quick add's. */
+function categoryTagsLabel(parsed: ParsedCategoryAndTags, categories: Parameters<typeof categoryLabel>[1]): string {
+  const parts: string[] = [];
+  if (parsed.category) parts.push(categoryLabel(parsed.category, categories));
+  if (parsed.tags.length > 0) {
+    parts.push(parsed.tags.length > 1 ? `${parsed.tags.length} tags` : `#${parsed.tags[0]}`);
+  }
+  return parts.join(' + ');
+}
 
 
 export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
@@ -333,6 +351,15 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   // wanted on this week's list — going low is what puts it on the list.
   const groceryItems = useGroceryStore(useShallow(s => s.items));
   const addGroceryItem = useGroceryStore(s => s.addToPantry);
+  // Every medication ever logged, for the "Log a dose" name field's own
+  // suggestions below — see medicationVocabulary for why this is derived
+  // rather than a registry.
+  const medicationLogs = useMedicationStore(useShallow(s => s.logs));
+  const archivedMedications = useMedicationStore(useShallow(s => s.archived));
+  const medicationSuggestions = useMemo(
+    () => medicationVocabulary(medicationLogs, archivedMedications),
+    [medicationLogs, archivedMedications]
+  );
   // Archived people are out of the picker but never stripped off a task that
   // already names them: filing somebody away is about the list, not about
   // rewriting what you did together.
@@ -353,7 +380,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   // did: the sheet is dense enough that a permanent bar would cost every task
   // edit to serve the ones that need it.
   const [searchOpen, setSearchOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
+  const searchFilter = useFilterField();
+  const searchQuery = searchFilter.query;
   const searchTerms = useMemo(
     () => (searchOpen ? editorSearchTerms(searchQuery) : []),
     [searchOpen, searchQuery]
@@ -397,7 +425,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     haptics.tap();
     animateLayout();
     setSearchOpen(open => !open);
-    setSearchQuery('');
+    searchFilter.clear();
   }, []);
 
   const [title, setTitle] = useState('');
@@ -444,6 +472,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [quotaIntervalMinutes, setQuotaIntervalMinutes] = useState<number | null>(null);
   const [quotaReminders, setQuotaReminders] = useState(false);
   const [quotaAlwaysVisible, setQuotaAlwaysVisible] = useState(false);
+  const [followWaterTarget, setFollowWaterTarget] = useState(false);
   const [showTargetCount, setShowTargetCount] = useState(false);
   const [showHealthTarget, setShowHealthTarget] = useState(false);
   const [supplyCount, setSupplyCount] = useState<number | null>(null);
@@ -468,6 +497,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [reminderTime, setReminderTime] = useState<Date | null>(null);
   const [reminderKind, setReminderKind] = useState<ReminderKind>('notification');
   const [reminderOffsetDays, setReminderOffsetDays] = useState<number | null>(null);
+  const [reminderTracksVisibility, setReminderTracksVisibility] = useState(false);
   const [reminderTimeAnchor, setReminderTimeAnchor] = useState<'wallClock' | 'fixed'>('wallClock');
   // Whether the user has explicitly set or cleared the reminder this session —
   // gates applyDefaultReminderLead below so a pre-filled default never stomps
@@ -477,6 +507,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [recurrenceInterval, setRecurrenceInterval] = useState(1);
   const [recurrenceDays, setRecurrenceDays] = useState<number[]>([]);
   const [recurrenceMonthDay, setRecurrenceMonthDay] = useState<number | null>(null);
+  const [recurrenceMonth, setRecurrenceMonth] = useState<number | null>(null);
   const [recurrenceWeekOrdinal, setRecurrenceWeekOrdinal] = useState<number | null>(null);
   const [recurrenceFromCompletion, setRecurrenceFromCompletion] = useState(false);
   const [recurrenceEndDate, setRecurrenceEndDate] = useState<Date | null>(null);
@@ -518,9 +549,18 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [medicationAmount, setMedicationAmount] = useState('');
   const [medicationUnit, setMedicationUnit] = useState<string | null>(null);
   const [logMealSlot, setLogMealSlot] = useState<MealSlot | null>(null);
-  const [blockedById, setBlockedById] = useState<string | null>(null);
+  // Every task this one waits on, in order. Several are allowed, and it waits
+  // for all of them (Task.blockedByIds); stored through blockerFields on save.
+  const [blockerIds, setBlockerIds] = useState<string[]>([]);
+  const [showBlockers, setShowBlockers] = useState(false);
   const [waitingOnPersonId, setWaitingOnPersonId] = useState<string | null>(null);
+  // Task.followUpOn: the day to chase the wait, held as a date while editing.
+  const [followUpOn, setFollowUpOn] = useState<Date | null>(null);
+  const [showFollowUpPicker, setShowFollowUpPicker] = useState(false);
   const [deliverableKind, setDeliverableKind] = useState<DeliverableKind | null>(null);
+  // Pick-one's options as typed ("Yes, No, Maybe"), parsed on save.
+  const [deliverableOptionsText, setDeliverableOptionsText] = useState('');
+  const [deliverableSetsAway, setDeliverableSetsAway] = useState(false);
   const [showBlockerPicker, setShowBlockerPicker] = useState(false);
   // The other end of the same pointer: the tasks this one holds back. Draft
   // state like every other field, but it writes to *those* rows rather than to
@@ -534,10 +574,21 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [followUpTaskOneAtATime, setFollowUpTaskOneAtATime] = useState(false);
   const [showFollowUpTaskSheet, setShowFollowUpTaskSheet] = useState(false);
   const [showFollowUpTask, setShowFollowUpTask] = useState(false);
+  const [showFollowUpSource, setShowFollowUpSource] = useState(false);
+  // The live task the rule that added this one is still running on, if it can
+  // still be found — see the field note on Task.followUpTaskSourceId for why
+  // the pointer can go stale. Null on every task that isn't a follow-up task,
+  // and null again once its parent has completed its own next cycle.
+  const followUpSourceParent = useTaskStore(s =>
+    task?.followUpTaskSourceId ? s.tasks.find(t => t.id === task.followUpTaskSourceId) ?? null : null
+  );
   // Just the blocker's title, for the row's value. Selecting the one task
   // rather than the whole list keeps unrelated task changes from re-rendering
   // the editor.
-  const blockerTask = useTaskStore(s => (blockedById ? s.tasks.find(t => t.id === blockedById) : undefined));
+  const blockerTitles = useTaskStore(useShallow(s => blockerIds.map(id => {
+    const t = s.tasks.find(x => x.id === id);
+    return t ? displayTitleFor(t) : '';
+  })));
   // Archived people stay out of the picker but never off a task that already
   // names one — the same split the People field makes. `canWaitOn` has already
   // freed the wait by then, so the row reads as no longer waiting either way.
@@ -546,8 +597,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   // identity: a fresh one every render would re-filter every task on every
   // keystroke in the editor behind it.
   const blocksExcludeIds = useMemo(
-    () => (blockedById ? [...blocksIds, blockedById] : blocksIds),
-    [blocksIds, blockedById],
+    () => [...blocksIds, ...blockerIds],
+    [blocksIds, blockerIds],
   );
   // Just the titles, in the draft's own order — the same reason the blocker
   // above is selected one task at a time. An id whose row has gone resolves to
@@ -572,6 +623,10 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [showStreak, setShowStreak] = useState(false);
   const [polarity, setPolarity] = useState<Polarity>('positive');
   const [quotaPeriod, setQuotaPeriod] = useState<QuotaPeriod>('day');
+  // Whether "follow the water target" can mean anything for this task right
+  // now: a daily target that logs water, with an amount per unit to divide by.
+  const followsWaterTarget =
+    targetCount !== null && quotaPeriod === 'day' && logHealthMetric === 'waterMl' && logHealthAmount !== null;
   const [streakRequiresWindow, setStreakRequiresWindow] = useState(false);
 
   // Every picker section starts collapsed to its current value; opening one is
@@ -602,17 +657,22 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
 
   const [chainEnabled, setChainEnabled] = useState(false);
   const [chainItems, setChainItems] = useState<ChainItem[]>([]);
+  const [rotationEnabled, setRotationEnabled] = useState(false);
+  const [rotationItems, setRotationItems] = useState<RotationItem[]>([]);
   // Which step's "ask on completion" sheet is open, by id rather than index —
   // the list under it can be reordered or shortened while the sheet is up.
   const [questionStepId, setQuestionStepId] = useState<string | null>(null);
   const [medicationStepId, setMedicationStepId] = useState<string | null>(null);
   const [linkStepId, setLinkStepId] = useState<string | null>(null);
+  const [linkMemberId, setLinkMemberId] = useState<string | null>(null);
   // Which of the two "write this to a calendar" rows is asking for one.
   const [calendarPickerFor, setCalendarPickerFor] = useState<'completion' | 'deadline' | null>(null);
   const [chainIndex, setChainIndex] = useState(0);
   const [chainStepOnSchedule, setChainStepOnSchedule] = useState(false);
   const [newChainItemTitle, setNewChainItemTitle] = useState('');
   const [addingChainItem, setAddingChainItem] = useState(false);
+  const [newRotationItemTitle, setNewRotationItemTitle] = useState('');
+  const [addingRotationItem, setAddingRotationItem] = useState(false);
   const [editingChainItemId, setEditingChainItemId] = useState<string | null>(null);
   const [chainItemTitleEdit, setChainItemTitleEdit] = useState('');
 
@@ -661,12 +721,26 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
 
   const scheduleTooltipAnim = useRef(new Animated.Value(0)).current;
   const hadScheduleParse = useRef(false);
+  // Which detected phrase the person said "no, leave it as text" to — keyed
+  // by position + text so it resets the moment the title changes enough that
+  // it isn't the same phrase anymore, rather than staying dismissed forever.
+  const [dismissedScheduleSignature, setDismissedScheduleSignature] = useState<string | null>(null);
   const mentionSuggestionAnim = useRef(new Animated.Value(0)).current;
   const hadMentionSuggestion = useRef(false);
+
+  const categoryTagsTooltipAnim = useRef(new Animated.Value(0)).current;
+  const hadCategoryTagsParse = useRef(false);
+  // Same signature-keyed dismiss as the schedule phrase — see
+  // dismissedScheduleSignature. Only hides the banner: a "#word" naming a
+  // real category/tag still applies at save (see applyCategoryTagsBanner's
+  // auto-accept effect below), same as quick add.
+  const [dismissedCategoryTagsSignature, setDismissedCategoryTagsSignature] = useState<string | null>(null);
 
   const titleRef = useRef<TextInput>(null);
   const chainInputRef = useRef<TextInput>(null);
   const chainItemSavedRef = useRef(false);
+  const rotationInputRef = useRef<TextInput>(null);
+  const rotationItemSavedRef = useRef(false);
   const chainItemTitleEditRef = useRef<TextInput>(null);
   const subtaskTitleEditRef = useRef<TextInput>(null);
   const newSubtaskInputRef = useRef<TextInput>(null);
@@ -686,10 +760,10 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
    */
   const kindMemory = useRef<{
     timedMinutes: number | null; targetCount: number | null;
-    targetUnit: string; chainItems: ChainItem[];
+    targetUnit: string; chainItems: ChainItem[]; rotationItems: RotationItem[];
     healthMetric: HealthMetric | null; healthTarget: number | null;
   }>({
-    timedMinutes: null, targetCount: null, targetUnit: '', chainItems: [],
+    timedMinutes: null, targetCount: null, targetUnit: '', chainItems: [], rotationItems: [],
     healthMetric: null, healthTarget: null,
   });
 
@@ -699,10 +773,14 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     // A search belongs to the trip you made to find one field, not to the
     // sheet — reopening the editor on a filtered form would look broken.
     setSearchOpen(false);
-    setSearchQuery('');
+    searchFilter.clear();
+    // Same for a dismissed schedule phrase — belongs to this trip through
+    // the title, not to the sheet.
+    setDismissedScheduleSignature(null);
+    setDismissedCategoryTagsSignature(null);
     // Belongs to the task being edited, not to the sheet.
     kindMemory.current = {
-      timedMinutes: null, targetCount: null, targetUnit: '', chainItems: [],
+      timedMinutes: null, targetCount: null, targetUnit: '', chainItems: [], rotationItems: [],
       healthMetric: null, healthTarget: null,
     };
     if (task) {
@@ -738,6 +816,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setQuotaIntervalMinutes(task.quotaIntervalMinutes ?? null);
       setQuotaReminders(task.quotaReminders ?? false);
       setQuotaAlwaysVisible(task.quotaAlwaysVisible ?? false);
+      setFollowWaterTarget(task.followWaterTarget ?? false);
       setSupplyCount(task.supplyCount ?? null);
       setSupplyUnit(task.supplyUnit ?? '');
       setSupplyRefillCount(task.supplyRefillCount ?? null);
@@ -748,11 +827,13 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setReminderTime(task.reminderTime ? new Date(task.reminderTime) : null);
       setReminderKind(task.reminderKind ?? 'notification');
       setReminderOffsetDays(task.reminderOffsetDays ?? null);
+      setReminderTracksVisibility(task.reminderTracksVisibility ?? false);
       setReminderTimeAnchor(task.reminderTimeAnchor ?? 'wallClock');
       setReminderTouched(false);
       setRecurrenceType(task.recurrenceType); setRecurrenceInterval(task.recurrenceInterval);
       setRecurrenceDays(task.recurrenceDays ?? []);
       setRecurrenceMonthDay(task.recurrenceMonthDay ?? null);
+      setRecurrenceMonth(task.recurrenceMonth ?? null);
       setRecurrenceWeekOrdinal(task.recurrenceWeekOrdinal ?? null);
       setRecurrenceFromCompletion(task.recurrenceFromCompletion);
       setRecurrenceEndDate(task.recurrenceEndDate ? new Date(task.recurrenceEndDate) : null);
@@ -763,6 +844,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setHealthMetric(task.healthMetric ?? null);
       setHealthTarget(task.healthTarget ?? null);
       setChainEnabled(task.chainEnabled); setChainItems(task.chainItems);
+      setRotationEnabled(task.rotationEnabled); setRotationItems(task.rotationItems);
       setChainIndex(task.chainIndex);
       setChainStepOnSchedule(task.chainStepOnSchedule ?? false);
       setVacationPause(task.vacationPause ?? false);
@@ -783,10 +865,14 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setPhoneNumber(task.phoneNumber ?? null);
       setEmailAddress(task.emailAddress ?? null);
       setLocation(task.location ?? null);
-      setBlockedById(task.blockedById ?? null);
+      setBlockerIds(blockerIdsOf(task));
+      setShowBlockers(false);
       setWaitingOnPersonId(task.waitingOnPersonId ?? null);
+      setFollowUpOn(task.followUpOn ? dayKeyToDate(task.followUpOn) : null);
       setBlocksIds(blockedTasksOf(task.id).map(t => t.id));
       setDeliverableKind(task.deliverableKind ?? null);
+      setDeliverableOptionsText((task.deliverableOptions ?? []).join(', '));
+      setDeliverableSetsAway(task.deliverableSetsAway ?? false);
       setFollowUpTaskEveryN(task.followUpTaskEveryN ?? null);
       setFollowUpTaskTitle(task.followUpTaskTitle ?? '');
       setFollowUpTaskDraft(task.followUpTaskDraft ?? null);
@@ -794,10 +880,11 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     } else {
       setTitle(initialDraft?.title ?? ''); titleCaret.resetCaret(initialDraft?.title ?? ''); setNotes(initialDraft?.notes ?? ''); setCategory(initialDraft?.category ?? null); setProject(initialDraft?.projectId ?? null); setTags(initialDraft?.tags ?? []);
       setGroupId(initialDraft?.groupId ?? null);
-      setDueDate(initialDraft?.dueDate ?? null); setExtraDates([]); setSeriesRepeats(false); setDeadline(null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(null); setWindowEnd(null); setPenaltyMinutes(initialDraft?.penaltyMinutes ?? null); setGatesApps(initialDraft?.gatesApps ?? false); setPenaltyCutoffTime(initialDraft?.penaltyCutoffTime ?? null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setQuotaAlwaysVisible(initialDraft?.quotaAlwaysVisible ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setReminderTime(initialDraft?.reminderTime ?? null); setReminderKind('notification'); setReminderTimeAnchor('wallClock'); setReminderTouched(false);
+      setDueDate(initialDraft?.dueDate ?? null); setExtraDates([]); setSeriesRepeats(false); setDeadline(null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(null); setWindowEnd(null); setPenaltyMinutes(initialDraft?.penaltyMinutes ?? null); setGatesApps(initialDraft?.gatesApps ?? false); setPenaltyCutoffTime(initialDraft?.penaltyCutoffTime ?? null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setQuotaAlwaysVisible(initialDraft?.quotaAlwaysVisible ?? false); setFollowWaterTarget(initialDraft?.followWaterTarget ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setReminderTime(initialDraft?.reminderTime ?? null); setReminderKind('notification'); setReminderTimeAnchor('wallClock'); setReminderTouched(false);
       setRecurrenceType(initialDraft?.recurrenceType ?? 'none'); setRecurrenceInterval(initialDraft?.recurrenceInterval ?? 1);
       setRecurrenceDays(initialDraft?.recurrenceDays ?? []);
       setRecurrenceMonthDay(initialDraft?.recurrenceMonthDay ?? null);
+      setRecurrenceMonth(initialDraft?.recurrenceMonth ?? null);
       setRecurrenceWeekOrdinal(initialDraft?.recurrenceWeekOrdinal ?? null);
       setRecurrenceFromCompletion(initialDraft?.recurrenceFromCompletion ?? false);
       setRecurrenceEndDate(initialDraft?.recurrenceEndDate ?? null);
@@ -809,6 +896,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setHealthMetric(null);
       setHealthTarget(null);
       setChainEnabled(initialDraft?.chainEnabled ?? false); setChainItems(initialDraft?.chainItems ?? []); setChainIndex(0);
+      setRotationEnabled(initialDraft?.rotationEnabled ?? false); setRotationItems(initialDraft?.rotationItems ?? []);
       setVacationPause(false);
       setExcludeFromSuggestions(false);
       setShowStreak(false);
@@ -829,10 +917,14 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setPhoneNumber(initialDraft?.phoneNumber ?? null);
       setEmailAddress(initialDraft?.emailAddress ?? null);
       setLocation(initialDraft?.location ?? null);
-      setBlockedById(null);
+      setBlockerIds([]);
+      setShowBlockers(false);
       setWaitingOnPersonId(null);
+      setFollowUpOn(null);
       setBlocksIds([]);
       setDeliverableKind(null);
+      setDeliverableOptionsText('');
+      setDeliverableSetsAway(false);
       setFollowUpTaskEveryN(null);
       setFollowUpTaskTitle('');
       setFollowUpTaskOneAtATime(false);
@@ -884,6 +976,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       quotaIntervalMinutes: task ? (task.quotaIntervalMinutes ?? null) : (initialDraft?.quotaIntervalMinutes ?? null),
       quotaReminders: task ? (task.quotaReminders ?? false) : (initialDraft?.quotaReminders ?? false),
       quotaAlwaysVisible: task ? (task.quotaAlwaysVisible ?? false) : (initialDraft?.quotaAlwaysVisible ?? false),
+      followWaterTarget: task ? (task.followWaterTarget ?? false) : (initialDraft?.followWaterTarget ?? false),
       quotaPeriod: task?.quotaPeriod ?? 'day',
       supplyCount: task ? (task.supplyCount ?? null) : null,
       supplyUnit: task ? (task.supplyUnit ?? '') : '',
@@ -895,6 +988,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       reminderTime: task ? (task.reminderTime ?? null) : (initialDraft?.reminderTime?.toISOString() ?? null),
       reminderKind: task?.reminderKind ?? 'notification',
       reminderOffsetDays: task?.reminderOffsetDays ?? null,
+      reminderTracksVisibility: task?.reminderTracksVisibility ?? false,
       reminderTimeAnchor: task?.reminderTimeAnchor ?? 'wallClock',
       // Recomputed from the same instant reminderTime state is seeded with
       // (getTimezoneOffset of that Date), rather than read off
@@ -911,6 +1005,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       recurrenceInterval: task ? task.recurrenceInterval : (initialDraft?.recurrenceInterval ?? 1),
       recurrenceDays: task ? (task.recurrenceDays ?? []) : (initialDraft?.recurrenceDays ?? []),
       recurrenceMonthDay: task ? (task.recurrenceMonthDay ?? null) : (initialDraft?.recurrenceMonthDay ?? null),
+      recurrenceMonth: task ? (task.recurrenceMonth ?? null) : (initialDraft?.recurrenceMonth ?? null),
       recurrenceWeekOrdinal: task ? (task.recurrenceWeekOrdinal ?? null) : (initialDraft?.recurrenceWeekOrdinal ?? null),
       recurrenceFromCompletion: task ? task.recurrenceFromCompletion : (initialDraft?.recurrenceFromCompletion ?? false),
       recurrenceEndDate: task ? (task.recurrenceEndDate ?? null) : (initialDraft?.recurrenceEndDate?.toISOString() ?? null),
@@ -925,6 +1020,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       pinned: task?.pinned ?? false,
       chainEnabled: task ? task.chainEnabled : (initialDraft?.chainEnabled ?? false),
       chainItems: task ? task.chainItems : (initialDraft?.chainItems ?? []),
+      rotationItems: task ? task.rotationItems : (initialDraft?.rotationItems ?? []),
       chainIndex: task?.chainIndex ?? 0,
       chainStepOnSchedule: task?.chainStepOnSchedule ?? false,
       vacationPause: task?.vacationPause ?? false,
@@ -949,9 +1045,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       phoneNumber: task ? (task.phoneNumber ?? null) : (initialDraft?.phoneNumber ?? null),
       emailAddress: task ? (task.emailAddress ?? null) : (initialDraft?.emailAddress ?? null),
       location: task ? (task.location ?? null) : (initialDraft?.location ?? null),
-      blockedById: task?.blockedById ?? null,
+      blockerIds: task ? blockerIdsOf(task) : [],
       waitingOnPersonId: task?.waitingOnPersonId ?? null,
+      followUpOn: task?.followUpOn ?? null,
       deliverableKind: task?.deliverableKind ?? null,
+      deliverableOptionsText: (task?.deliverableOptions ?? []).join(', '),
+      deliverableSetsAway: task?.deliverableSetsAway ?? false,
       followUpTaskEveryN: task?.followUpTaskEveryN ?? null,
       followUpTaskTitle: task?.followUpTaskTitle ?? '',
       followUpTaskDraft: task?.followUpTaskDraft ?? null,
@@ -975,10 +1074,32 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   // same way the quick-add modal does. The phrase is highlighted and
   // described in a banner below the title; nothing is applied until tapped.
   const parsedSchedule = useMemo(
-    () => (title.trim() ? parseTaskInput(title, getLogicalNow(dayResetTime)) : null),
+    () => (title.trim() ? parseTaskInput(title, getLogicalNow(dayResetTime), new Date()) : null),
     [title, dayResetTime]
   );
-  const scheduleMatchEnd = parsedSchedule ? parsedSchedule.matchStart + parsedSchedule.matchedText.length : 0;
+  // The banner's own ✕ answers "not a date" for this one phrase — comparing
+  // by position+text (rather than a bare boolean) means editing the title so
+  // a *different* phrase parses brings the banner straight back, with no
+  // separate reset needed.
+  const scheduleDismissed = parsedSchedule != null
+    && dismissedScheduleSignature === `${parsedSchedule.matchStart}|${parsedSchedule.matchedText}`;
+  const activeParsedSchedule = scheduleDismissed ? null : parsedSchedule;
+  const scheduleMatchEnd = activeParsedSchedule
+    ? activeParsedSchedule.matchStart + activeParsedSchedule.matchedText.length
+    : 0;
+
+  // "#work", "#errand" — a category/tag token, same grammar and same single
+  // tooltip slot quick add uses (parseCategoryAndTagsInput), checked right
+  // after the schedule phrase so the two never compete for the banner.
+  const categoryTagsParsed = useMemo(
+    () => (!activeParsedSchedule && title.trim()
+      ? parseCategoryAndTagsInput(title, categories.map(c => c.name), allTags)
+      : null),
+    [title, activeParsedSchedule, categories, allTags]
+  );
+  const categoryTagsDismissed = categoryTagsParsed != null
+    && dismissedCategoryTagsSignature === `${categoryTagsParsed.matchStart}|${categoryTagsParsed.matchEnd}`;
+  const activeCategoryTags = categoryTagsDismissed ? null : categoryTagsParsed;
 
   // Purely visual: an "@name" mention in the title stays tinted while editing
   // too, but unlike quick add this field never parses one out of typed text —
@@ -996,21 +1117,22 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   );
   const titleHighlightRanges = useMemo(() => {
     const ranges = [...titleMentionRanges];
-    if (parsedSchedule) ranges.push([parsedSchedule.matchStart, scheduleMatchEnd]);
+    if (activeParsedSchedule) ranges.push([activeParsedSchedule.matchStart, scheduleMatchEnd]);
+    if (activeCategoryTags) ranges.push([activeCategoryTags.matchStart, activeCategoryTags.matchEnd]);
     return mergeRanges(ranges);
-  }, [titleMentionRanges, parsedSchedule, scheduleMatchEnd]);
-  const hasTitleOverlay = parsedSchedule != null || titleMentionRanges.length > 0;
+  }, [titleMentionRanges, activeParsedSchedule, scheduleMatchEnd, activeCategoryTags]);
+  const hasTitleOverlay = activeParsedSchedule != null || activeCategoryTags != null || titleMentionRanges.length > 0;
 
   // Unlike quick add, nothing here ever resolves a fresh "@name" on its own —
   // so a token that would be a unique, fully-typed match anywhere else still
   // gets a "tap to add" suggestion, not silence. Only offered when the
-  // schedule banner isn't already claiming the one tooltip slot below the
-  // title. See getEditorMentionSuggestions' doc comment.
+  // schedule banner or the category/tag banner isn't already claiming the one
+  // tooltip slot below the title. See getEditorMentionSuggestions' doc comment.
   const titleMentionSuggestion = useMemo(
-    () => (!parsedSchedule && title.trim()
+    () => (!activeParsedSchedule && !activeCategoryTags && title.trim()
       ? getEditorMentionSuggestions(title, people, personIds, groupMentionTokens())
       : null),
-    [title, parsedSchedule, people, personIds]
+    [title, activeParsedSchedule, activeCategoryTags, people, personIds]
   );
 
   // "Call Kristen", "Text the plumber", "Email the landlord" — a title that
@@ -1024,12 +1146,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   // Pop the banner in when a phrase is first detected (not on every keystroke
   // that merely extends it).
   useEffect(() => {
-    if (parsedSchedule && !hadScheduleParse.current) {
+    if (activeParsedSchedule && !hadScheduleParse.current) {
       scheduleTooltipAnim.setValue(0);
       Animated.spring(scheduleTooltipAnim, { toValue: 1, ...animation.spring.bouncy, useNativeDriver: true }).start();
     }
-    hadScheduleParse.current = parsedSchedule != null;
-  }, [parsedSchedule]);
+    hadScheduleParse.current = activeParsedSchedule != null;
+  }, [activeParsedSchedule]);
 
   useEffect(() => {
     if (titleMentionSuggestion && !hadMentionSuggestion.current) {
@@ -1038,6 +1160,30 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     }
     hadMentionSuggestion.current = titleMentionSuggestion != null;
   }, [titleMentionSuggestion]);
+
+  useEffect(() => {
+    if (activeCategoryTags && !hadCategoryTagsParse.current) {
+      categoryTagsTooltipAnim.setValue(0);
+      Animated.spring(categoryTagsTooltipAnim, { toValue: 1, ...animation.spring.bouncy, useNativeDriver: true }).start();
+    }
+    hadCategoryTagsParse.current = activeCategoryTags != null;
+  }, [activeCategoryTags]);
+
+  // Auto-accept a "#word" token the moment it names a real category or tag,
+  // rather than waiting on the banner tap — matches how an "@name" mention
+  // resolves live above, and mirrors quick add's own auto-accept
+  // (applyCategoryTags in QuickAddModal). Only fires once there's text past
+  // the matched token — another word, a space, a second tag — which is the
+  // signal the token itself is done growing rather than a still-being-typed
+  // prefix a further keystroke would have changed the meaning of. A token
+  // sitting at the very end of the title is still covered — proceedWithSave
+  // applies it as a fallback right before saving.
+  useEffect(() => {
+    if (categoryTagsParsed && categoryTagsParsed.matchEnd < title.length) {
+      applyCategoryTagsBanner();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [categoryTagsParsed]);
 
   // Splices a token in at the current cursor position, same as a normal
   // keypress would, rather than always appending to the end.
@@ -1085,6 +1231,41 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     setRecurrenceEndDate(parsedSchedule.schedule.recurrenceEndDate ? new Date(parsedSchedule.schedule.recurrenceEndDate) : null);
     setRecurrenceCount(parsedSchedule.schedule.recurrenceCount ?? null);
     setRecurrenceFromCompletion(parsedSchedule.schedule.recurrenceFromCompletion ?? false);
+  };
+
+  // "No, that's just part of the title" — leaves the title and every other
+  // field untouched, just drops the highlight and banner for this phrase.
+  const dismissParsedSchedule = () => {
+    if (!parsedSchedule) return;
+    haptics.tap();
+    animateLayout();
+    setDismissedScheduleSignature(`${parsedSchedule.matchStart}|${parsedSchedule.matchedText}`);
+  };
+
+  // Apply the detected "#category"/"#tag" tokens and strip them from the
+  // title — same as quick add's applyCategoryTags.
+  const applyCategoryTagsBanner = () => {
+    if (!categoryTagsParsed) return;
+    haptics.success();
+    animateLayout();
+    const nextTitle = withTrailingSpace(categoryTagsParsed.cleanTitle);
+    setTitle(nextTitle);
+    titleCaret.moveCaret(nextTitle);
+    if (categoryTagsParsed.category) setCategory(categoryTagsParsed.category);
+    if (categoryTagsParsed.tags.length > 0) {
+      setTags(prev => [...new Set([...prev, ...categoryTagsParsed.tags])]);
+    }
+  };
+
+  // The banner's own ✕ — same as dismissParsedSchedule, just hides the
+  // banner. Unlike the schedule phrase, a "#word" naming a real category/tag
+  // has no ambiguity to reject, so it still applies at save (see the
+  // auto-accept effect above and the fallback in proceedWithSave).
+  const dismissCategoryTagsBanner = () => {
+    if (!categoryTagsParsed) return;
+    haptics.tap();
+    animateLayout();
+    setDismissedCategoryTagsSignature(`${categoryTagsParsed.matchStart}|${categoryTagsParsed.matchEnd}`);
   };
 
   // A step or subtask typed into its "add new" field but never submitted
@@ -1143,13 +1324,18 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
 
   // ==== save ====
   const save = () => {
-    if (!title.trim()) return;
+    // A "#word" token still sitting at the very end of the title is applied
+    // here too, same as proceedWithSave — see applyCategoryTagsBanner's doc
+    // comment. Checked ahead of proceedWithSave so an archived-task match is
+    // looked up against the title the task will actually save with.
+    const resolvedTitleForSave = (categoryTagsParsed?.cleanTitle ?? title).trim();
+    if (!resolvedTitleForSave) return;
 
     const effectiveChainItems = commitPendingChainItemRename(commitPendingChainItem());
     const effectiveDraftSubtasks = commitPendingSubtaskRename(commitPendingSubtask());
 
     if (!task) {
-      const archivedMatch = findArchivedMatch(useTaskStore.getState().archivedTasks(), title.trim());
+      const archivedMatch = findArchivedMatch(useTaskStore.getState().archivedTasks(), resolvedTitleForSave);
       if (archivedMatch) {
         Alert.alert(
           'Resume archived task?',
@@ -1183,8 +1369,17 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     // it or with the repeat.
     const followUpTaskLive =
       recurrenceType !== 'none' && followUpTaskEveryN !== null && !!resolvedFollowUpTaskTitle;
+    // A "#word" token still sitting at the very end of the title (so the
+    // auto-accept effect above never got text past it to fire on) is applied
+    // here as a fallback, same as quick add's handleAdd — see
+    // applyCategoryTagsBanner's doc comment.
+    const resolvedTitle = (categoryTagsParsed?.cleanTitle ?? title).trim();
+    const resolvedCategory = categoryTagsParsed?.category ?? category;
+    const resolvedTags = categoryTagsParsed && categoryTagsParsed.tags.length > 0
+      ? [...new Set([...tags, ...categoryTagsParsed.tags])]
+      : tags;
     const data = {
-      title: title.trim(), notes, category, projectId: project, tags, personIds,
+      title: resolvedTitle, notes, category: resolvedCategory, projectId: project, tags: resolvedTags, personIds,
       dueDate: dueDate?.toISOString() ?? null,
       deadline: deadline?.toISOString() ?? null,
       deadlineOffsetDays,
@@ -1219,6 +1414,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       quotaIntervalMinutes: targetCount !== null ? quotaIntervalMinutes : null,
       quotaReminders: targetCount !== null ? quotaReminders : false,
       quotaAlwaysVisible: targetCount !== null ? quotaAlwaysVisible : false,
+      // Cleared when what it follows goes: it only means anything on a daily
+      // target that logs water.
+      followWaterTarget: followsWaterTarget ? followWaterTarget : false,
       // Cleared with the target, same as the flags around it: a period left
       // behind on a task that stopped being a target would decide the span of a
       // count that no longer exists.
@@ -1238,11 +1436,16 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       reminderTime: reminderTime?.toISOString() ?? null,
       reminderKind,
       reminderOffsetDays,
+      reminderTracksVisibility,
       reminderTimeAnchor,
       reminderUtcOffsetMinutes: reminderTime ? reminderTime.getTimezoneOffset() : null,
       recurrenceType, recurrenceInterval,
       recurrenceDays: recurrenceType === 'weekly' ? recurrenceDays : recurrenceType === 'monthly' && recurrenceWeekOrdinal !== null ? recurrenceDays : [],
-      recurrenceMonthDay: recurrenceType === 'monthly' && recurrenceWeekOrdinal === null ? recurrenceMonthDay : null,
+      // Yearly shares this anchor with monthly (see RecurrencePicker) — a
+      // yearly rule never sets recurrenceWeekOrdinal, so the guard is a no-op
+      // for it rather than a second condition.
+      recurrenceMonthDay: (recurrenceType === 'monthly' || recurrenceType === 'yearly') && recurrenceWeekOrdinal === null ? recurrenceMonthDay : null,
+      recurrenceMonth: recurrenceType === 'yearly' ? recurrenceMonth : null,
       recurrenceWeekOrdinal: recurrenceType === 'monthly' ? recurrenceWeekOrdinal : null,
       recurrenceEndDate: recurrenceType !== 'none' ? (recurrenceEndDate?.toISOString() ?? null) : null,
       recurrenceCount: recurrenceType !== 'none' ? recurrenceCount : null,
@@ -1259,11 +1462,19 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       // state yet if save() ran before its input blurred.
       chainEnabled: chainEnabled && effectiveChainItems.length >= 2,
       chainItems: effectiveChainItems,
+      // A set of one is not a rotation (MIN_ROTATION_ITEMS), the same floor
+      // chainEnabled applies just above and for the same reason: there would
+      // be nothing for the picker to ask. Enforced here at save rather than in
+      // taskKindOf, so the kind holds while the set is being typed.
+      rotationEnabled: rotationEnabled && rotationItems.length >= 2,
+      rotationItems: rotationItems.length >= 2 ? rotationItems : [],
       chainIndex,
       // Cleared whenever the control isn't on screen to set, same reasoning as
       // showStreak below: the mode only renders for a chain that has a repeat,
       // so a stale `true` left on a task whose chain or repeat was turned off
-      // would quietly turn it into a rotation if either came back.
+      // would quietly change how it steps if either came back. (This predates
+      // the Rotation kind and has nothing to do with it — it is about a chain
+      // advancing on its schedule rather than on completion.)
       chainStepOnSchedule:
         chainEnabled && effectiveChainItems.length >= 2 && recurrenceType !== 'none' && chainStepOnSchedule,
       vacationPause,
@@ -1296,9 +1507,15 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       phoneNumber: resolvePhoneNumber(),
       emailAddress: resolveEmailAddress(),
       location: resolveLocation(),
-      blockedById,
+      ...blockerFields(blockerIds),
       waitingOnPersonId,
+      // Only while waiting: the day is when to chase *this* wait.
+      followUpOn: waitingOnPersonId && followUpOn ? dayKeyOf(followUpOn) : null,
       deliverableKind,
+      // Only the kind that reads each: options belong to a Pick-one, and a
+      // departure can only come from a date answered inside a project.
+      deliverableOptions: deliverableKind === 'choice' ? parseDeliverableOptions(deliverableOptionsText) : [],
+      deliverableSetsAway: deliverableKind === 'date' && project !== null && deliverableSetsAway,
       followUpTaskEveryN: followUpTaskLive ? followUpTaskEveryN : null,
       followUpTaskTitle: followUpTaskLive ? resolvedFollowUpTaskTitle : null,
       // Both follow the rule they detail rather than surviving on their own:
@@ -1489,7 +1706,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
    * arrived from a template, an import or an older build reads as whatever it
    * already is, and there's nothing to migrate or keep in step.
    */
-  const kind = taskKindOf({ chainEnabled, targetCount, timedMinutes, healthMetric, healthTarget });
+  const kind = taskKindOf({ chainEnabled, targetCount, timedMinutes, healthMetric, healthTarget, rotationEnabled });
 
   // What the supply card reads back: the day the last unit gets spent, and the
   // day an order has to go in to beat it.
@@ -1511,6 +1728,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       recurrenceInterval,
       recurrenceDays,
       recurrenceMonthDay,
+      recurrenceMonth,
       recurrenceWeekOrdinal,
       recurrenceEndDate: recurrenceEndDate?.toISOString() ?? null,
       recurrenceCount,
@@ -1521,8 +1739,36 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     return { runOut: supplyRunOutDate(projected), orderBy: supplyOrderByDate(projected) };
   }, [
     task, supplyCount, supplyLeadDays, dueDate, recurrenceType, recurrenceInterval,
-    recurrenceDays, recurrenceMonthDay, recurrenceWeekOrdinal, recurrenceEndDate,
+    recurrenceDays, recurrenceMonthDay, recurrenceMonth, recurrenceWeekOrdinal, recurrenceEndDate,
     recurrenceCount, recurrenceFromCompletion,
+  ]);
+
+  // What the Repeat picker's On schedule / After completion choice actually
+  // resolves to, so it reads as a date rather than only a mechanism — see the
+  // doc comment on RecurrencePicker's previewNextDate prop. recurrenceAnchorDate/
+  // recurrenceAnchorDay carry over from the saved task (they're engine-managed,
+  // not editable here); a brand-new task has neither, so the schedule anchors
+  // to dueDate itself, same as getNextDueDate does for any task that predates them.
+  const recurrenceNextDatePreview = useMemo(() => {
+    if (recurrenceType === 'none' || !dueDate) return null;
+    return getNextDueDate({
+      recurrenceType,
+      recurrenceInterval,
+      recurrenceDays,
+      recurrenceMonthDay,
+      recurrenceMonth,
+      recurrenceWeekOrdinal,
+      recurrenceAnchorDay: task?.recurrenceAnchorDay ?? null,
+      recurrenceAnchorDate: task?.recurrenceAnchorDate ?? null,
+      recurrenceFromCompletion,
+      recurrenceEndDate: recurrenceEndDate?.toISOString() ?? null,
+      recurrenceCount,
+      dueDate: dueDate.toISOString(),
+    }, dayResetTime);
+  }, [
+    task, dueDate, recurrenceType, recurrenceInterval, recurrenceDays, recurrenceMonthDay, recurrenceMonth,
+    recurrenceWeekOrdinal, recurrenceFromCompletion, recurrenceEndDate, recurrenceCount,
+    dayResetTime,
   ]);
 
   /**
@@ -1541,6 +1787,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       kindMemory.current.targetUnit = targetUnit;
     }
     if (chainItems.length > 0) kindMemory.current.chainItems = chainItems;
+    if (rotationItems.length > 0) kindMemory.current.rotationItems = rotationItems;
     if (healthMetric !== null) {
       kindMemory.current.healthMetric = healthMetric;
       kindMemory.current.healthTarget = healthTarget;
@@ -1551,6 +1798,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       targetCount: kindMemory.current.targetCount ?? DEFAULT_TARGET_COUNT,
       targetUnit: kindMemory.current.targetUnit,
       chainItems: kindMemory.current.chainItems,
+      rotationEnabled: kind === 'rotation',
+      rotationItems: kindMemory.current.rotationItems,
       // Defaulted the way the other kinds are, so picking Health lands on a
       // goal rather than on an empty row: steps, because it is the reading
       // every iPhone has without a Watch.
@@ -1573,6 +1822,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     setTargetUnit(baked.targetUnit ?? '');
     setChainEnabled(baked.chainEnabled);
     setChainItems(baked.chainItems);
+    setRotationEnabled(baked.rotationEnabled);
+    setRotationItems(baked.rotationItems);
     setChainIndex(baked.chainIndex);
     setRecurrenceType(baked.recurrenceType);
     setEffort(baked.effort);
@@ -1627,11 +1878,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     setPickerMode(mode);
   };
 
-  const confirmPicker = (confirmed: Date, kind?: ReminderKind, offsetDays?: number | null, anchor?: 'wallClock' | 'fixed') => {
+  const confirmPicker = (confirmed: Date, kind?: ReminderKind, offsetDays?: number | null, anchor?: 'wallClock' | 'fixed', tracksVisibility?: boolean) => {
     if (pickerMode === 'reminder') {
       setReminderTime(confirmed);
       if (kind) setReminderKind(kind);
       setReminderOffsetDays(offsetDays ?? null);
+      setReminderTracksVisibility(tracksVisibility ?? false);
       if (anchor) setReminderTimeAnchor(anchor);
       setReminderTouched(true);
     }
@@ -1840,6 +2092,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       quotaIntervalMinutes: targetCount !== null ? quotaIntervalMinutes : null,
       quotaReminders: targetCount !== null ? quotaReminders : false,
       quotaAlwaysVisible: targetCount !== null ? quotaAlwaysVisible : false,
+      // Cleared when what it follows goes: it only means anything on a daily
+      // target that logs water.
+      followWaterTarget: followsWaterTarget ? followWaterTarget : false,
       // Cleared with the target, same as the flags around it: a period left
       // behind on a task that stopped being a target would decide the span of a
       // count that no longer exists.
@@ -1849,12 +2104,13 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       reminderTime: reminderTime?.toISOString() ?? null,
       reminderKind,
       reminderOffsetDays,
+      reminderTracksVisibility,
       reminderTimeAnchor,
       reminderUtcOffsetMinutes: reminderTime ? reminderTime.getTimezoneOffset() : null,
-      recurrenceType, recurrenceInterval, recurrenceDays, recurrenceMonthDay, recurrenceWeekOrdinal, recurrenceFromCompletion,
+      recurrenceType, recurrenceInterval, recurrenceDays, recurrenceMonthDay, recurrenceMonth, recurrenceWeekOrdinal, recurrenceFromCompletion,
       recurrenceEndDate: recurrenceEndDate?.toISOString() ?? null,
       recurrenceCount,
-      priority, effort, estimatedMinutes, actualMinutes, timedMinutes, healthMetric, healthTarget, pinned, chainEnabled, chainItems, chainIndex, chainStepOnSchedule, vacationPause,
+      priority, effort, estimatedMinutes, actualMinutes, timedMinutes, healthMetric, healthTarget, pinned, chainEnabled, chainItems, rotationItems, chainIndex, chainStepOnSchedule, vacationPause,
       excludeFromSuggestions,
       polarity,
       showStreak,
@@ -1871,9 +2127,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       phoneNumber,
       emailAddress,
       location,
-      blockedById,
+      blockerIds,
       waitingOnPersonId,
+      followUpOn: waitingOnPersonId && followUpOn ? dayKeyOf(followUpOn) : null,
       deliverableKind,
+      deliverableOptionsText,
+      deliverableSetsAway,
       followUpTaskEveryN,
       followUpTaskTitle,
       followUpTaskDraft,
@@ -1882,7 +2141,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     if (current !== initialStateRef.current) {
       Alert.alert(
         'Discard changes?',
-        'Your edits to this task will be lost.',
+        'You have unsaved changes. Are you sure you want to discard them?',
         [
           { text: 'Keep editing', style: 'cancel' },
           { text: 'Discard', style: 'destructive', onPress: onClose },
@@ -2067,6 +2326,33 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const timeOfDaySummary = timeSegments.length > 0
     ? timeSegments.map(capitalize).join(', ')
     : undefined;
+
+  // Whether "When it becomes visible" is even offered to the Remind me
+  // picker — mirrors how "Before due date" is gated on dueDate: there has to
+  // be something to become visible *from*.
+  const canTrackVisibility = !!deferUntil || timeSegments.length > 0;
+  // A live preview of what getVisibleAt currently resolves to, for the
+  // picker's "Fires …" hint — built against this session's own live
+  // deferUntil/timeSegments/dueDate rather than the saved task's, so editing
+  // one of those fields updates the preview before Save is even tapped.
+  // Only computed against an existing task: a brand-new one has no saved
+  // row to spread the rest of getVisibleAt's fields from (quota pace,
+  // category window, …), so the picker falls back to "now" for it and the
+  // next reanchorWallClockReminders pass corrects the real stored
+  // reminderTime once the task exists — the same eventual-consistency that
+  // pass already provides for wall-clock drift.
+  const visiblePreview = useMemo(() => {
+    if (!task || !canTrackVisibility) return null;
+    const previewTask: Task = {
+      ...task,
+      deferUntil: deferUntil?.toISOString() ?? null,
+      timeSegments,
+      dueDate: dueDate?.toISOString() ?? null,
+      windowStart,
+      category,
+    };
+    return getVisibleAt(previewTask);
+  }, [task, canTrackVisibility, deferUntil, timeSegments, dueDate, windowStart, category]);
   const timeWindowSummary = (windowStart || windowEnd)
     ? `${windowStart ? formatHHMM(windowStart) : 'Any'} – ${windowEnd ? formatHHMM(windowEnd) : 'Any'}`
     : undefined;
@@ -2287,9 +2573,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             kind={reminderKind}
             dueDate={dueDate}
             offsetDays={reminderOffsetDays}
+            canTrackVisibility={canTrackVisibility}
+            tracksVisibility={reminderTracksVisibility}
+            visiblePreview={visiblePreview}
             anchor={reminderTimeAnchor}
             onConfirm={confirmPicker}
-            onClear={reminderTime ? () => { setReminderTime(null); setReminderKind('notification'); setReminderOffsetDays(null); setReminderTimeAnchor('wallClock'); setReminderTouched(true); setPickerMode('none'); } : undefined}
+            onClear={reminderTime ? () => { setReminderTime(null); setReminderKind('notification'); setReminderOffsetDays(null); setReminderTracksVisibility(false); setReminderTimeAnchor('wallClock'); setReminderTouched(true); setPickerMode('none'); } : undefined}
             onCancel={() => setPickerMode('none')}
           />
           <WhenPicker
@@ -2300,6 +2589,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             // pickers below mount the same component and have nothing to do
             // with pushing a task out.
             postponeTaskId={task?.id}
+            // "2 weeks before the party": offered for a task in a project
+            // that has a deadline or a trip ahead of it.
+            projectAnchor={projectDateAnchor(projects.find(p => p.id === project), getLogicalToday())}
             taskId={task?.id}
             taskTitle={title}
             taskNotes={notes}
@@ -2374,6 +2666,18 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             onCancel={() => setShowEndDatePicker(false)}
           />
           <WhenPicker
+            visible={showFollowUpPicker}
+            value={followUpOn}
+            title="Follow up on"
+            showTimeOfDay={false}
+            showSuggest={false}
+            // A day to chase somebody is ahead, never behind.
+            allowPast={false}
+            onConfirm={(date) => { setFollowUpOn(date); setShowFollowUpPicker(false); }}
+            onClear={() => { setFollowUpOn(null); setShowFollowUpPicker(false); }}
+            onCancel={() => setShowFollowUpPicker(false)}
+          />
+          <WhenPicker
             visible={showDeadlinePicker}
             value={deadline}
             title="Deadline"
@@ -2391,9 +2695,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             // A task staged as blocked by this one can't also be what it waits
             // on — that's the one-hop loop, and neither draft is saved yet for
             // the sheet's own cycle check to see.
-            excludeIds={blocksIds}
+            excludeIds={blocksExcludeIds}
             onClose={() => setShowBlockerPicker(false)}
-            onSelect={setBlockedById}
+            onSelect={id => setBlockerIds(prev => (prev.includes(id) ? prev : [...prev, id]))}
           />
           <TaskRelationPickerSheet
             relation="blocks"
@@ -2431,6 +2735,22 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               c => (c.id === linkStepId ? { ...c, ...patch } : c),
             ))}
             onClose={() => setLinkStepId(null)}
+          />
+          {/* Its own instance rather than sharing linkStepId with the chain's:
+              the two lists have separate id spaces, and one piece of state
+              would let a member id resolve against chainItems. */}
+          <ChainStepLinkSheet
+            visible={linkMemberId !== null}
+            step={rotationItems.find(r => r.id === linkMemberId) ?? null}
+            // Null on purpose: a rotation's members are siblings pointing at
+            // different places, so one without a link of its own has none,
+            // where a chain step sensibly inherits the task's.
+            taskLinkUrl={null}
+            kitchenEnabled={kitchenEnabled}
+            onSave={patch => setRotationItems(prev => prev.map(
+              r => (r.id === linkMemberId ? { ...r, ...patch } : r),
+            ))}
+            onClose={() => setLinkMemberId(null)}
           />
           <FollowUpTaskSheet
             visible={showFollowUpTaskSheet}
@@ -2471,8 +2791,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
         <SearchField
           style={styles.fieldSearch}
           placeholder="Find a field"
-          value={searchQuery}
-          onChangeText={setSearchQuery}
+          field={searchFilter}
           autoFocus
           accessibilityLabel="Find a field"
         />
@@ -2521,8 +2840,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       </View>
       )}
 
-      {/* Schedule banner — detected date/recurrence phrase; tap to apply */}
-      {titleVisible && parsedSchedule && (
+      {/* Schedule banner — detected date/recurrence phrase; tap to apply,
+          or ✕ to say the phrase is just part of the title. */}
+      {titleVisible && activeParsedSchedule && (
         <Animated.View
           style={[styles.scheduleBanner, {
             opacity: scheduleTooltipAnim,
@@ -2532,22 +2852,76 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             ],
           }]}
         >
-          <PressableScale style={styles.scheduleBannerBtn} onPress={applyParsedSchedule}>
-            <Ionicons
-              name={
-                parsedSchedule.schedule.recurrenceType !== 'none'
-                  ? 'repeat'
-                  : parsedSchedule.schedule.deadline ? 'flag-outline' : 'calendar-outline'
-              }
-              size={14}
-              color={colors.onAccent}
-            />
-            <Text style={styles.scheduleBannerText} numberOfLines={1}>
-              {describeSchedule(parsedSchedule.schedule, getLogicalNow(dayResetTime))}
-            </Text>
-            <View style={styles.scheduleBannerDot} />
-            <Text style={styles.scheduleBannerHint}>Tap to set</Text>
-          </PressableScale>
+          <View style={styles.scheduleBannerPill}>
+            <PressableScale
+              style={[styles.scheduleBannerBtn, styles.scheduleBannerBtnJoined]}
+              onPress={applyParsedSchedule}
+            >
+              <Ionicons
+                name={
+                  activeParsedSchedule.schedule.recurrenceType !== 'none'
+                    ? 'repeat'
+                    : activeParsedSchedule.schedule.deadline ? 'flag-outline' : 'calendar-outline'
+                }
+                size={14}
+                color={colors.onAccent}
+              />
+              <Text style={styles.scheduleBannerText} numberOfLines={1}>
+                {describeSchedule(activeParsedSchedule.schedule, getLogicalNow(dayResetTime))}
+              </Text>
+              <View style={styles.scheduleBannerDot} />
+              <Text style={styles.scheduleBannerHint}>Tap to set</Text>
+            </PressableScale>
+            <View style={styles.scheduleBannerDivider} />
+            <PressableScale
+              style={styles.scheduleBannerDismiss}
+              onPress={dismissParsedSchedule}
+              accessibilityLabel="Not a date"
+            >
+              <Ionicons name="close" size={14} color={colors.onAccent} />
+            </PressableScale>
+          </View>
+        </Animated.View>
+      )}
+
+      {/* Category/tag banner — detected "#word" token(s); tap to apply,
+          or ✕ to hide the banner (the token still applies at save if it
+          names a real category/tag — see applyCategoryTagsBanner). */}
+      {titleVisible && activeCategoryTags && (
+        <Animated.View
+          style={[styles.scheduleBanner, {
+            opacity: categoryTagsTooltipAnim,
+            transform: [
+              { translateY: categoryTagsTooltipAnim.interpolate({ inputRange: [0, 1], outputRange: [-6, 0] }) },
+              { scale: categoryTagsTooltipAnim.interpolate({ inputRange: [0, 1], outputRange: [0.95, 1] }) },
+            ],
+          }]}
+        >
+          <View style={styles.scheduleBannerPill}>
+            <PressableScale
+              style={[styles.scheduleBannerBtn, styles.scheduleBannerBtnJoined]}
+              onPress={applyCategoryTagsBanner}
+            >
+              <Ionicons
+                name={activeCategoryTags.category ? 'pricetag-outline' : 'pricetags-outline'}
+                size={14}
+                color={colors.onAccent}
+              />
+              <Text style={styles.scheduleBannerText} numberOfLines={1}>
+                {categoryTagsLabel(activeCategoryTags, categories)}
+              </Text>
+              <View style={styles.scheduleBannerDot} />
+              <Text style={styles.scheduleBannerHint}>Tap to set</Text>
+            </PressableScale>
+            <View style={styles.scheduleBannerDivider} />
+            <PressableScale
+              style={styles.scheduleBannerDismiss}
+              onPress={dismissCategoryTagsBanner}
+              accessibilityLabel="Hide suggestion"
+            >
+              <Ionicons name="close" size={14} color={colors.onAccent} />
+            </PressableScale>
+          </View>
         </Animated.View>
       )}
 
@@ -3050,6 +3424,125 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               )}
             </>),
           }] : []),
+          ...(kind === 'rotation' ? [{
+            key: 'rotation', label: 'Rotation', set: true,
+            keywords: ['set', 'languages', 'week', 'weekly', 'any order', 'each', 'cover', 'cycle'],
+            node: (<>
+                <CollapsibleField
+                  label="Rotation"
+                  summary={
+                    rotationItems.length > 1
+                      ? `${rotationItems.length} things, one each a week`
+                      : rotationItems.length === 1
+                        ? '1 thing, add one more'
+                        : 'Nothing in the set yet'
+                  }
+                  hint={
+                    'A set of things to get through once each per week, in any order. '
+                    + 'Checking the task off asks which one you did, and it only shows up on Today when you fall behind.'
+                  }
+                  expanded={fieldOpen('rotationSet', true)}
+                  onToggle={() => toggleField('rotationSet', true)}
+                >
+                  <View>
+                    {/* Draggable because this order is the order the picker
+                        lists them in, and nothing ever re-ranks it — so the
+                        only way to express a preference is to set it here. */}
+                    <SortableList
+                      onDragStateChange={setDraggingRow}
+                      data={rotationItems}
+                      onReorder={setRotationItems}
+                      renderItem={(item, _displayIndex, drag) => (
+                      <View style={styles.rotationItemRow}>
+                        <TouchableOpacity
+                          onLongPress={drag}
+                          delayLongPress={interaction.delayLongPress}
+                          hitSlop={6}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Reorder ${item.title}`}
+                        >
+                          <Ionicons name="reorder-two-outline" size={iconSize.sm} color={colors.textTertiary} />
+                        </TouchableOpacity>
+                        <TextInput
+                          style={styles.rotationItemTitle}
+                          value={item.title}
+                          onChangeText={text => setRotationItems(prev => prev.map(
+                            r => (r.id === item.id ? { ...r, title: text } : r)))}
+                          placeholder="Name"
+                          placeholderTextColor={colors.textTertiary}
+                          maxLength={TITLE_MAX_LENGTH}
+                        />
+                        <StepLink
+                          step={item}
+                          taskLinkUrl={null}
+                          onPress={() => setLinkMemberId(item.id)}
+                        />
+                        <TouchableOpacity
+                          onPress={() => setRotationItems(prev => prev.filter(r => r.id !== item.id))}
+                          hitSlop={8}
+                          style={styles.chainItemDelete}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Remove ${item.title} from the rotation`}
+                        >
+                          <Ionicons name="close" size={14} color={colors.textSecondary} />
+                        </TouchableOpacity>
+                      </View>
+                      )}
+                    />
+                    {addingRotationItem ? (
+                      <View style={styles.rotationItemRow}>
+                        <Ionicons name="reorder-two-outline" size={iconSize.sm} color={colors.bgQuaternary} />
+                        <TextInput
+                          ref={rotationInputRef}
+                          autoFocus
+                          style={styles.rotationItemTitle}
+                          value={newRotationItemTitle}
+                          onChangeText={setNewRotationItemTitle}
+                          placeholder="e.g. Spanish"
+                          placeholderTextColor={colors.textTertiary}
+                          maxLength={TITLE_MAX_LENGTH}
+                          returnKeyType="done"
+                          onSubmitEditing={() => {
+                            rotationItemSavedRef.current = true;
+                            const t = newRotationItemTitle.trim();
+                            if (t) setRotationItems(prev => [...prev, { id: generateId(), title: t, linkUrl: null }]);
+                            setNewRotationItemTitle('');
+                            setTimeout(() => {
+                              rotationItemSavedRef.current = false;
+                              rotationInputRef.current?.focus();
+                            }, 50);
+                          }}
+                          onBlur={() => {
+                            if (rotationItemSavedRef.current) return;
+                            const t = newRotationItemTitle.trim();
+                            if (t) setRotationItems(prev => [...prev, { id: generateId(), title: t, linkUrl: null }]);
+                            setNewRotationItemTitle('');
+                            setAddingRotationItem(false);
+                          }}
+                        />
+                      </View>
+                    ) : (
+                      <InlineAction
+                        icon="add"
+                        label="Add to the set"
+                        onPress={() => setAddingRotationItem(true)}
+                        style={styles.addBtnSpacing}
+                      />
+                    )}
+                    {rotationItems.length === 1 && (
+                      <Text style={styles.chainCurrentHint}>
+                        Add a second one: a rotation needs at least 2 things to save.
+                      </Text>
+                    )}
+                    {rotationItems.length > 1 && (
+                      <Text style={styles.chainCurrentHint}>
+                        Drag to reorder. This is the order the picker lists them in, and nothing ever re-ranks it.
+                      </Text>
+                    )}
+                  </View>
+                </CollapsibleField>
+            </>),
+          }] : []),
           ...(kind === 'chain' ? [{
             key: 'chain', label: 'Chain', set: true,
             keywords: ['steps', 'sequence', 'routine', 'order', 'next'],
@@ -3296,6 +3789,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             key: 'deliverable', label: 'Ask on completion', set: deliverableKind !== null,
             keywords: ['decision', 'decide', 'answer', 'value', 'capture', 'record', 'prompt', 'question'],
             node: (
+              <>
               <CollapsibleField
                 label="Ask on completion"
                 summary={deliverableKind ? deliverableMeta(deliverableKind).label : undefined}
@@ -3313,6 +3807,53 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   onChange={kind => { setDeliverableKind(kind); closeField('deliverable'); }}
                 />
               </CollapsibleField>
+              {/* Outside the collapsible, so the options stay in view once a
+                  pick closes it: a Pick-one with no options is a question
+                  with nothing to pick. */}
+              {deliverableKind === 'choice' && (
+                <TextInput
+                  style={[styles.fieldBox, styles.followUpTaskTitleInput]}
+                  value={deliverableOptionsText}
+                  onChangeText={setDeliverableOptionsText}
+                  placeholder="e.g. Yes, No, Maybe"
+                  placeholderTextColor={colors.textTertiary}
+                  returnKeyType="done"
+                  accessibilityLabel="Options to pick from, separated by commas"
+                />
+              )}
+              {/* Fewer than two options and completing asks nothing
+                  (deliverableOptionsFor), so say so where they're typed. */}
+              {deliverableKind === 'choice' && parseDeliverableOptions(deliverableOptionsText).length < 2 && (
+                <Text style={styles.choiceOptionsHint}>
+                  Add at least two options, separated by commas. With fewer, completing the task asks nothing.
+                </Text>
+              )}
+              {deliverableKind === 'date' && project !== null && (
+                <TouchableOpacity
+                  style={styles.optionRow}
+                  onPress={() => { haptics.tap(); setDeliverableSetsAway(v => !v); }}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="switch"
+                  accessibilityState={{ checked: deliverableSetsAway }}
+                  accessibilityLabel="Use the answer as the project's leaving date"
+                >
+                  <Ionicons
+                    name="airplane-outline"
+                    size={18}
+                    color={deliverableSetsAway ? colors.accent : colors.textSecondary}
+                  />
+                  <View style={styles.optionContent}>
+                    <Text style={styles.optionLabel}>Sets the leaving date</Text>
+                    <Text style={styles.optionHint}>
+                      The date you answer becomes the project's Leaving date, if it doesn't have one yet
+                    </Text>
+                  </View>
+                  <View style={[styles.toggle, deliverableSetsAway && styles.toggleOn]}>
+                    <View style={[styles.toggleKnob, deliverableSetsAway && styles.toggleKnobOn]} />
+                  </View>
+                </TouchableOpacity>
+              )}
+              </>
             ),
           },
           // Another "what does completing this mean" question, and — like
@@ -3393,13 +3934,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   }
                   hint={
                     healthWriteEnabled
-                      ? isWater
-                        ? targetCount !== null
-                          ? 'Adds to today’s water in the food log, and writes it to Apple Health, each time you log a unit toward the daily target.'
-                          : 'Adds to today’s water in the food log, and writes it to Apple Health, each time you complete this task.'
-                        : targetCount !== null
-                          ? 'Writes one sample to Apple Health each time you log a unit toward the daily target.'
-                          : 'Writes one sample to Apple Health each time you complete this task.'
+                      ? targetCount !== null
+                        ? `Adds to today’s ${isWater ? 'water' : NUTRIENT_LABEL[logHealthMetric ?? 'waterMl'].label.toLowerCase()} in the food log, and writes it to Apple Health, each time you log a unit toward the daily target.`
+                        : `Adds to today’s ${isWater ? 'water' : NUTRIENT_LABEL[logHealthMetric ?? 'waterMl'].label.toLowerCase()} in the food log, and writes it to Apple Health, each time you complete this task.`
                       : 'Turn on writing to Health in Settings › Health first'
                   }
                   expanded={healthWriteEnabled && fieldOpen('logHealthValue')}
@@ -3483,6 +4020,27 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                       </View>
                     )}
                   </View>
+                  {followsWaterTarget && (
+                    <TouchableOpacity
+                      style={styles.optionRow}
+                      onPress={() => { haptics.tap(); setFollowWaterTarget(v => !v); }}
+                      activeOpacity={interaction.activeOpacity}
+                      accessibilityRole="switch"
+                      accessibilityLabel="Follow the water target"
+                      accessibilityState={{ checked: followWaterTarget }}
+                    >
+                      <Ionicons name="water-outline" size={18} color={followWaterTarget ? colors.accent : colors.textSecondary} />
+                      <View style={styles.optionContent}>
+                        <Text style={styles.optionLabel}>Follow the water target</Text>
+                        <Text style={styles.optionHint}>
+                          Sets the daily target from your water target in the food log, including the extra for exercise, divided by the amount above. The target you set here is replaced.
+                        </Text>
+                      </View>
+                      <View style={[styles.toggle, followWaterTarget && styles.toggleOn]}>
+                        <View style={[styles.toggleKnob, followWaterTarget && styles.toggleKnobOn]} />
+                      </View>
+                    </TouchableOpacity>
+                  )}
                 </CollapsibleField>
               );
             })(),
@@ -3524,6 +4082,23 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   returnKeyType="done"
                   accessibilityLabel="What this task records a dose of"
                 />
+                {/* Picking one of these is what makes it the *same* medication
+                    as an earlier dose — medicationKey does no fuzzy matching
+                    (see docs/arch/mood-log.md), so retyping "Sertraline" as
+                    "sertraline" would otherwise split one medicine's history
+                    into two untallied entries. */}
+                {medicationSuggestions.length > 0 && (
+                  <PillGroup
+                    noun="medication"
+                    surface="card"
+                    options={medicationSuggestions.map(name => ({
+                      key: medicationKey(name),
+                      label: name,
+                      selected: !!medicationName && medicationKey(name) === medicationKey(medicationName),
+                      onPress: () => { haptics.tap(); setMedicationName(name); },
+                    }))}
+                  />
+                )}
                 {/* Hidden until there's something to be the amount *of*, the
                     same rule the daily target's unit field follows: on its own
                     it labels nothing. */}
@@ -4129,16 +4704,18 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               }
               value={
                 reminderTime
-                  ? reminderOffsetDays !== null
-                    ? `${describeReminderOffset(reminderOffsetDays)}, ${formatTimeOfDay(reminderTime)}`
-                    : `${format(reminderTime, 'MMM d')} at ${formatTimeOfDay(reminderTime)}`
+                  ? reminderTracksVisibility
+                    ? describeReminderTracksVisibility()
+                    : reminderOffsetDays !== null
+                      ? `${describeReminderOffset(reminderOffsetDays)}, ${formatTimeOfDay(reminderTime)}`
+                      : `${format(reminderTime, 'MMM d')} at ${formatTimeOfDay(reminderTime)}`
                   : undefined
               }
               caption={reminderNudge
                 ? `Actually sends at ${formatTimeOfDay(reminderNudge.time, use24HourTime)}, moved past ${reminderNudge.meetingTitle ? `"${reminderNudge.meetingTitle}"` : 'a calendar event'}`
                 : undefined}
               onPress={() => openPicker('reminder')}
-              onClear={reminderTime ? () => { setReminderTime(null); setReminderKind('notification'); setReminderOffsetDays(null); setReminderTimeAnchor('wallClock'); setReminderTouched(true); } : undefined}
+              onClear={reminderTime ? () => { setReminderTime(null); setReminderKind('notification'); setReminderOffsetDays(null); setReminderTracksVisibility(false); setReminderTimeAnchor('wallClock'); setReminderTouched(true); } : undefined}
             />
               </>
             ),
@@ -4241,6 +4818,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 days: recurrenceDays,
                 monthDay: recurrenceMonthDay,
                 weekOrdinal: recurrenceWeekOrdinal,
+                month: recurrenceMonth,
               }) : undefined}
               onPress={enableRecurrence}
               onClear={recurrenceType !== 'none' ? () => setRecurrenceType('none') : undefined}
@@ -4256,6 +4834,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 recurrenceMonthDay={recurrenceMonthDay}
                 onChangeMonthDay={setRecurrenceMonthDay}
                 seedMonthDay={() => (dueDate ?? getLogicalToday()).getDate()}
+                recurrenceMonth={recurrenceMonth}
+                onChangeMonth={setRecurrenceMonth}
+                seedMonth={() => (dueDate ?? getLogicalToday()).getMonth() + 1}
                 recurrenceFromCompletion={recurrenceFromCompletion}
                 onChangeFromCompletion={setRecurrenceFromCompletion}
                 recurrenceCount={recurrenceCount}
@@ -4272,6 +4853,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   onSelect: setRecurrenceEndOnDate,
                   onOpenPicker: () => setShowEndDatePicker(true),
                 }}
+                previewNextDate={recurrenceNextDatePreview}
               />
             )}
               </>
@@ -4412,7 +4994,13 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                           <CollapsibleField
                             label="Stocked from"
                             hint="Put this on the shopping list instead of adding a task to order it."
-                            summary={groceryItems.find(i => i.id === supplyGroceryItemId)?.name}
+                            // A link naming a row since deleted from the
+                            // catalog says so rather than reading as "Not from
+                            // groceries": it asks through a reorder task now
+                            // (see supplyLinkActs), and a pick here relinks it.
+                            summary={supplyGroceryItemId
+                              ? groceryItems.find(i => i.id === supplyGroceryItemId)?.name ?? 'Item was deleted'
+                              : undefined}
                             emptySummary="Not from groceries"
                             expanded={showSupplySource}
                             onToggle={() => { animateLayout(); setShowSupplySource(v => !v); }}
@@ -4477,22 +5065,56 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
         onMatchCount={reportMatches}
         rows={[
           {
-            key: 'waitingOn', label: 'Waiting on', set: !!blockedById,
-            keywords: ['blocked', 'blocker', 'depends on', 'after', 'until'],
+            key: 'waitingOn', label: 'Waiting on', set: blockerIds.length > 0,
+            keywords: ['blocked', 'blocker', 'depends on', 'after', 'until', 'all of'],
             node: (
               <>
             <EditorRow
               icon="hourglass-outline"
               label="Waiting on"
-              hint="Stay hidden until another task is done."
-              value={
-                blockerTask
-                  ? displayTitleFor(blockerTask)
-                  : blockedById ? 'Task no longer exists' : undefined
-              }
-              onPress={() => setShowBlockerPicker(true)}
-              onClear={blockedById ? () => setBlockedById(null) : undefined}
+              hint="Stay hidden until other tasks are done. With several, it waits for all of them."
+              value={describeBlocks(blockerTitles)}
+              // Nothing picked yet: straight to the picker, as it always did.
+              // Once there's one, the row unfolds into the list, which is
+              // where a second is added and any is taken back off.
+              expanded={blockerIds.length > 0 ? showBlockers : undefined}
+              onPress={() => {
+                if (blockerIds.length === 0) { setShowBlockerPicker(true); return; }
+                animateLayout();
+                setShowBlockers(v => !v);
+              }}
+              onClear={blockerIds.length > 0
+                ? () => { animateLayout(); setBlockerIds([]); setShowBlockers(false); }
+                : undefined}
             />
+            {showBlockers && blockerIds.length > 0 && (
+              <View style={styles.blocksBlock}>
+                {blockerIds.map((id, i) => (
+                  <View key={id} style={styles.blocksRow}>
+                    <Ionicons name="hourglass-outline" size={16} color={colors.textSecondary} />
+                    <Text style={styles.blocksTitle} numberOfLines={1}>
+                      {blockerTitles[i] || 'Task no longer exists'}
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => { animateLayout(); setBlockerIds(prev => prev.filter(x => x !== id)); }}
+                      hitSlop={8}
+                      style={styles.blocksRemove}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Stop waiting on ${blockerTitles[i] || 'this task'}`}
+                    >
+                      <Ionicons name="close" size={14} color={colors.textSecondary} />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+                <InlineAction
+                  icon="add"
+                  label="Add task"
+                  accessibilityLabel="Add another task this one waits on"
+                  onPress={() => setShowBlockerPicker(true)}
+                  style={styles.addBtnSpacing}
+                />
+              </View>
+            )}
               </>
             ),
           },
@@ -4506,7 +5128,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           // with nothing in it is a prompt to start filing your friends.
           ...(people.length > 0 ? [{
             key: 'waitingOnPerson', label: 'Waiting on someone', set: !!waitingOnPersonId,
-            keywords: ['blocked', 'person', 'friend', 'owes', 'chase', 'reply'],
+            keywords: ['blocked', 'person', 'friend', 'owes', 'chase', 'reply', 'follow up', 'nudge'],
             node: (
               <>
               <CollapsibleField
@@ -4516,31 +5138,49 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 expanded={fieldOpen('waitingOnPerson')}
                 onToggle={() => toggleField('waitingOnPerson')}
               >
-                <View style={styles.pillRow}>
-                  {people.map(p => {
+                {/* A PillGroup, so the tenth recruiter can be added right here
+                    rather than on the People screen first, and a long list
+                    folds behind "N more" with a find field. Single-choice: a
+                    tap picks and closes, and tapping the chosen one clears it,
+                    the only way out of a wait nothing else ends. */}
+                <PillGroup
+                  noun="person"
+                  pluralNoun="people"
+                  options={people.map(p => {
                     const on = waitingOnPersonId === p.id;
-                    return (
-                      <TouchableOpacity
-                        key={p.id}
-                        style={[styles.pill, on && styles.pillActiveNeutral]}
-                        // Single-choice, so the field closes on a tap the way
-                        // the other one-answer pickers do — and tapping the
-                        // chosen one again clears it, which is the only way
-                        // out of a wait nothing else ends.
-                        onPress={() => {
-                          haptics.tap();
-                          setWaitingOnPersonId(on ? null : p.id);
-                          closeField('waitingOnPerson');
-                        }}
-                        accessibilityRole="radio"
-                        accessibilityState={{ selected: on }}
-                      >
-                        <Text style={[styles.pillText, on && styles.pillTextActive]}>{displayNameOf(p)}</Text>
-                      </TouchableOpacity>
-                    );
+                    return {
+                      key: p.id,
+                      label: displayNameOf(p),
+                      selected: on,
+                      onPress: () => {
+                        haptics.tap();
+                        setWaitingOnPersonId(on ? null : p.id);
+                        closeField('waitingOnPerson');
+                      },
+                    };
                   })}
-                </View>
+                  onCreate={name => {
+                    const person = usePersonStore.getState().createPerson(name);
+                    setWaitingOnPersonId(person.id);
+                    closeField('waitingOnPerson');
+                  }}
+                />
               </CollapsibleField>
+              {/* Outside the collapsible so it's in view once somebody is
+                  picked, like Pick one's options. Its own day rather than the
+                  task's Date, which says when the task is due. */}
+              {waitingOnPersonId !== null && (
+                <EditorRow
+                  icon="chatbubble-ellipses-outline"
+                  label="Follow up on"
+                  hint={followUpOn
+                    ? undefined
+                    : 'Adds a task to follow up with them on this day. Without one, the follow-up comes after a week if that is on in Settings'}
+                  value={followUpOn ? formatDeadlineDate(followUpOn.toISOString()) : undefined}
+                  onPress={() => setShowFollowUpPicker(true)}
+                  onClear={followUpOn ? () => setFollowUpOn(null) : undefined}
+                />
+              )}
               </>
             ),
           }] : []),
@@ -4742,6 +5382,63 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               </>
             ),
           }] : []),
+          // The other direction from the rule above: this task *is* one of
+          // those follow-up tasks, and its parent — the row actually holding
+          // followUpTaskEveryN — can still be found. Shown only then, since a
+          // stale pointer (see Task.followUpTaskSourceId) has nothing to edit.
+          ...(followUpSourceParent ? [{
+            key: 'followUpSource', label: 'Follow-up frequency', set: true,
+            keywords: ['every', 'nth', 'frequency', 'follow-up', 'parent', 'source', 'rosin'],
+            node: (
+              <>
+            <EditorRow
+              icon="sparkles-outline"
+              label="Follow-up frequency"
+              hint={`How often "${displayTitleFor(followUpSourceParent)}" adds a task like this one.`}
+              value={followUpTaskSummary(followUpSourceParent.followUpTaskEveryN)}
+              expanded={showFollowUpSource}
+              onPress={() => { animateLayout(); setShowFollowUpSource(v => !v); }}
+            />
+            {showFollowUpSource && (
+              // Writes straight to the parent row rather than staging local
+              // state — this isn't a field of the task being edited, it's a
+              // shortcut onto a different one, so there's nothing for Save or
+              // Cancel to do with it and nothing to guard on close.
+              <View style={styles.targetStepperRow}>
+                {followUpSourceParent.followUpTaskEveryN !== null && (
+                  <Text
+                    style={styles.stepperSentence}
+                    accessibilityElementsHidden
+                    importantForAccessibility="no"
+                  >
+                    Every
+                  </Text>
+                )}
+                <CountStepper
+                  value={followUpSourceParent.followUpTaskEveryN}
+                  onChange={n => useTaskStore.getState().updateTask(followUpSourceParent.id, { followUpTaskEveryN: n })}
+                  min={MIN_FOLLOW_UP_TASK_EVERY_N}
+                  max={MAX_FOLLOW_UP_TASK_EVERY_N}
+                  allowNull
+                  emptyLabel="Off"
+                  format={n => ordinal(n)}
+                  label="Follow-up task frequency"
+                  describeValue={n => (n === null ? 'off' : `every ${ordinal(n)} completion`)}
+                />
+                {followUpSourceParent.followUpTaskEveryN !== null && (
+                  <Text
+                    style={styles.stepperSentence}
+                    accessibilityElementsHidden
+                    importantForAccessibility="no"
+                  >
+                    completion
+                  </Text>
+                )}
+              </View>
+            )}
+              </>
+            ),
+          }] : []),
         ]}
       />
 
@@ -4837,23 +5534,33 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 expanded={fieldOpen('project')}
                 onToggle={() => toggleField('project')}
               >
-                <View style={styles.pillRow}>
-                  <TouchableOpacity
-                    style={[styles.pill, !project && styles.pillActiveNeutral]}
-                    onPress={() => { haptics.tap(); setProject(null); closeField('project'); }}
-                  >
-                    <Text style={[styles.pillText, !project && styles.pillTextActive]}>None</Text>
-                  </TouchableOpacity>
-                  {projects.map(p => (
-                    <TouchableOpacity
-                      key={p.id}
-                      style={[styles.pill, project === p.id && styles.pillActiveNeutral]}
-                      onPress={() => { haptics.tap(); setProject(p.id); closeField('project'); }}
-                    >
-                      <Text style={[styles.pillText, project === p.id && styles.pillTextActive]}>{p.title}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
+                {/* The user's own project order, finished projects left out
+                    (bar the one this task is already in), and capped with a
+                    find field once there are many: a flat row of every
+                    project ever made pushed the rest of the card away. */}
+                <PillGroup
+                  noun="project"
+                  surface="card"
+                  filterPlaceholder="Find a project"
+                  options={[
+                    {
+                      key: '',
+                      label: 'None',
+                      selected: !project,
+                      pinned: true,
+                      onPress: () => { haptics.tap(); setProject(null); closeField('project'); },
+                    },
+                    ...projects
+                      .filter(p => !p.completed || p.id === project)
+                      .sort((a, b) => a.sortOrder - b.sortOrder)
+                      .map(p => ({
+                        key: p.id,
+                        label: p.title,
+                        selected: project === p.id,
+                        onPress: () => { haptics.tap(); setProject(p.id); closeField('project'); },
+                      })),
+                  ]}
+                />
               </CollapsibleField>
               </>
             ),
@@ -5253,12 +5960,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               label="Link"
               hint="Open an app or link from the task."
               value={
-                KNOWN_LINK_APPS.find(app => app.scheme === linkUrl)?.name
+                knownLinkAppFor(linkUrl)?.name
                   ?? (linkUrl ?? undefined)
               }
               expanded={showLinkPicker}
               onPress={() => {
-                if (linkUrl && !KNOWN_LINK_APPS.some(app => app.scheme === linkUrl)) {
+                if (linkUrl && !knownLinkAppFor(linkUrl)) {
                   setCustomLinkText(linkUrl);
                 }
                 setShowLinkPicker(v => !v);
@@ -5652,6 +6359,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginBottom: spacing.sm,
     alignItems: 'flex-start',
   },
+  scheduleBannerPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    maxWidth: '100%',
+  },
   mentionSuggestionRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -5669,6 +6381,29 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: 7,
     borderRadius: radius.md,
     backgroundColor: colors.accentFill,
+  },
+  // Overrides for the schedule pill's own button, joined to the ✕ on its
+  // right: square that side off and let the text give way to it instead of
+  // pushing it past the row's edge.
+  scheduleBannerBtnJoined: {
+    flexShrink: 1,
+    borderTopRightRadius: 0,
+    borderBottomRightRadius: 0,
+  },
+  scheduleBannerDismiss: {
+    flexShrink: 0,
+    paddingVertical: 7,
+    paddingHorizontal: spacing.xsm,
+    borderTopRightRadius: radius.md,
+    borderBottomRightRadius: radius.md,
+    backgroundColor: colors.accentFill,
+  },
+  scheduleBannerDivider: {
+    width: 1,
+    alignSelf: 'stretch',
+    marginVertical: 7,
+    backgroundColor: colors.onAccent,
+    opacity: 0.25,
   },
   scheduleBannerText: {
     color: colors.onAccent,
@@ -5747,6 +6482,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   pillActiveNeutral: { backgroundColor: colors.bgQuaternary },
   kindBlock: { paddingHorizontal: spacing.md, paddingVertical: spacing.md },
+  choiceOptionsHint: { color: colors.textSecondary, fontSize: font.xs, marginHorizontal: spacing.md, marginTop: spacing.xs, marginBottom: spacing.sm },
   kindHint: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.sm, lineHeight: 16 },
   pillText: { color: colors.text, fontSize: font.sm, fontWeight: '500' },
   pillTextActive: { color: colors.text, fontWeight: '600' },
@@ -6084,6 +6820,20 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginTop: spacing.xs,
   },
   chainModeBlock: { marginTop: spacing.md },
+  rotationItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.xsm,
+  },
+  // No lineHeight on a TextInput — RN maps it onto the iOS paragraph style with
+  // no baseline compensation and the glyphs sit low in the box. See CLAUDE.md.
+  rotationItemTitle: {
+    flex: 1,
+    color: colors.text,
+    fontSize: font.md,
+    paddingVertical: spacing.xs,
+  },
   chainModeLabel: {
     color: colors.textSecondary, fontSize: font.xs, fontWeight: '700',
     textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: spacing.xs,

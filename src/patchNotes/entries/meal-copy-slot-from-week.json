@@ -1,0 +1,4 @@
+{
+  "message": "When a week on the meal plan has no lunches yet and the last week you planned had some, a button above the days copies those lunches across, even if the rest of the week is already planned. The same works for breakfasts, dinners and snacks. Leftover nights stay behind.",
+  "date": "2026-09-28"
+}

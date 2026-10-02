@@ -34,24 +34,35 @@ type InputMode = 'paste' | 'photo';
 interface Props {
   visible: boolean;
   onClose: () => void;
-  /** Called once extraction finds at least one event; the sheet closes itself right after. */
-  onImported: (events: ExtractedCalendarEvent[]) => void;
+  /**
+   * Called once extraction finds at least one event; the sheet closes itself
+   * right after. A caller that presents a native sheet returns a promise that
+   * settles when it is done, and this sheet stays open underneath until then:
+   * the native sheet presents from the top-most view controller, and closing
+   * this Modal in the same tick left it presenting from one that was
+   * mid-dismissal, which showed as a blank sheet and no event.
+   */
+  onImported: (events: ExtractedCalendarEvent[]) => void | Promise<void>;
 }
 
 /**
- * The capture step for importing a task from a photo or pasted text of a
+ * The capture step for importing an event from a photo or pasted text of a
  * confirmation, booking, or itinerary — reachable from the "+" menu's Import
  * entry (`AddTaskFab`).
  *
  * **This sheet only captures and extracts; it never reviews.** Unlike
  * `RecipeExtractSheet`/`ReceiptImportSheet`, there is no in-sheet list of
- * found fields to tick through — `TaskEditor` already is that review surface
- * for a single task, with a real Date row, a real Location row, a search bar,
- * and a Cancel that doesn't commit anything. Building a second review UI here
- * would duplicate it for no reason other than habit. So a successful read
- * hands the raw `ExtractedCalendarEvent[]` straight to `onImported` and
- * closes; the caller (`TodayScreen`) is what turns each one into a task
- * editor opened pre-filled, one at a time for an itinerary with several legs.
+ * found fields to tick through — a successful read hands the raw
+ * `ExtractedCalendarEvent[]` straight to `onImported` and closes, and the
+ * caller (`TodayScreen`) is what reviews each one, one at a time for an
+ * itinerary with several legs. An entry with a real date goes to Apple's own
+ * "new event" sheet (`presentEventCreate`, filled by
+ * `eventImportCreateFields` in `calendarEventImport.ts`), which is that
+ * review surface for an event: a real Date row, a Location row, an Alert row,
+ * and a Cancel that doesn't commit anything. An entry with no legible
+ * date can't become an event at all, so it falls back to `TaskEditor` instead
+ * (`draftFromExtractedEvent`) — building a second review UI of our own for
+ * either shape would duplicate one of those for no reason other than habit.
  *
  * Text or a photo, deliberately never a link: unlike a recipe, there's no
  * "the page builds itself in the browser" failure mode worth a fetch-and-read
@@ -71,7 +82,7 @@ interface Props {
 export function EventImportSheet({ visible, onClose, onImported }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
   const calendarImportEnabled = useSettingsStore(s => s.aiFeatureConfig.calendarImport.enabled);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
@@ -148,11 +159,14 @@ export function EventImportSheet({ visible, onClose, onImported }: Props) {
 
   const ready = mode === 'photo' ? !!photo : !!text.trim();
 
-  const finish = useCallback((events: ExtractedCalendarEvent[]) => {
+  const finish = useCallback(async (events: ExtractedCalendarEvent[]) => {
     haptics.success();
     Keyboard.dismiss();
-    onImported(events);
-    onClose();
+    try {
+      await onImported(events);
+    } finally {
+      onClose();
+    }
   }, [onImported, onClose]);
 
   /**
@@ -198,7 +212,7 @@ export function EventImportSheet({ visible, onClose, onImported }: Props) {
         setTriedEmpty(true);
         return;
       }
-      finish(events);
+      await finish(events);
     } catch (e) {
       if (visibleRef.current) setError(describeAIError(e));
     } finally {

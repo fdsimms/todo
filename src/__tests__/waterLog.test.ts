@@ -4,9 +4,11 @@ import {
   describeWaterMl,
   isWaterEntry,
   waterEntryOf,
+  waterEntryQuantity,
   waterHelping,
   waterInUnit,
   waterRange,
+  waterTargetRange,
   waterToMl,
   waterTotalMl,
   WATER_MAX_ML,
@@ -144,8 +146,14 @@ describe('the two units', () => {
   it('steps in whole fluid ounces rather than the millilitre step converted', () => {
     // 250ml is 8.45 fl oz, which would put a decimal on every figure. 8 is the
     // glass the unit is actually counted in.
-    expect(waterRange('ml')).toEqual({ min: 250, max: 6000, step: 250 });
-    expect(waterRange('flOz')).toEqual({ min: 8, max: 200, step: 8 });
+    expect(waterRange('ml')).toEqual({ min: 250, max: 6000, step: 250, default: 2000 });
+    // 2,000 ml is 67.6 fl oz, snapped onto the 8 oz grid.
+    expect(waterRange('flOz')).toEqual({ min: 8, max: 200, step: 8, default: 64 });
+  });
+
+  it('lets the daily target reach zero while a logged day keeps its floor', () => {
+    expect(waterTargetRange('ml')).toEqual({ ...waterRange('ml'), min: 0 });
+    expect(waterTargetRange('flOz')).toEqual({ ...waterRange('flOz'), min: 0 });
   });
 
   it('reads a stored volume as whole units of the picked one', () => {
@@ -235,5 +243,26 @@ describe('waterHelping', () => {
     expect(waterHelping(0, NOW)).toBeNull();
     expect(waterHelping(-250, NOW)).toBeNull();
     expect(waterHelping(Number.NaN, NOW)).toBeNull();
+  });
+});
+
+describe('waterEntryQuantity', () => {
+  // The row under the card said "1.89 L" while the card, stepped in ounces,
+  // said "64 fl oz" about the same water.
+  it('says the water entry in the picked unit rather than its stored words', () => {
+    const water = entry({ ...waterHelping(1893, NOW)! });
+    expect(water.quantity).toBe('1.89 L');
+    expect(waterEntryQuantity(water, 'flOz')).toBe('64 fl oz');
+    expect(waterEntryQuantity(water, 'ml')).toBe('1.89 L');
+  });
+
+  it('leaves a bottle logged as a catalog food in its own words', () => {
+    const bottle = entry({ itemId: 'i-bottle', quantity: '1 bottle' });
+    expect(waterEntryQuantity(bottle, 'flOz')).toBe('1 bottle');
+  });
+
+  it('leaves any other food alone', () => {
+    const toast = entry({ label: 'Toast', quantity: '2 slices', nutrition: panel({ calorieKcal: 260 }) });
+    expect(waterEntryQuantity(toast, 'flOz')).toBe('2 slices');
   });
 });

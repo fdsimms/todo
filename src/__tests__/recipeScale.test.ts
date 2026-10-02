@@ -3,8 +3,10 @@ import {
   describeUnscaled,
   factorForServings,
   formatScale,
+  householdScale,
   isUnscaled,
   normalizeScale,
+  rescaleForRecipe,
   scaleQuantity,
   scaleServings,
   targetServingsFor,
@@ -13,6 +15,27 @@ import {
 const text = (quantity: string, factor: number) => scaleQuantity(quantity, factor).text;
 
 describe('scaleQuantity', () => {
+  it('scales a whole number spaced apart from a Unicode fraction', () => {
+    expect(scaleQuantity('1 ½ cups', 2).text).toBe('3 cups');
+  });
+
+  it('scales both ends of an en-dash range', () => {
+    expect(text('1\u20132 cups', 2)).toBe('2-4 cups');
+  });
+
+  it('keeps a compound\'s hyphen against its number', () => {
+    expect(text('1-inch piece ginger', 2)).toBe('2-inch piece ginger');
+  });
+
+  it('counts a hyphenated bare container rather than growing the can', () => {
+    expect(text('14-oz can', 2)).toBe(text('14 oz can', 2));
+  });
+
+  it('keeps the space before a parenthesised container size', () => {
+    expect(scaleQuantity('2 (14 oz) cans', 2).text).toBe('4 (14 oz) cans');
+    expect(scaleQuantity('1, medium', 2).text).toBe('2, medium');
+  });
+
   it('scales a bare count', () => {
     expect(text('3', 2)).toBe('6');
     expect(text('12', 0.5)).toBe('6');
@@ -101,6 +124,30 @@ describe('scaleQuantity', () => {
     // "14 oz can" is one can of broth. Doubling must not make it a 28 oz can.
     expect(text('14 oz can', 2)).toBe('2 14 oz cans');
     expect(text('14 oz can', 3)).toBe('3 14 oz cans');
+  });
+
+  it('treats a British tin, packet, carton or tub as the container it is', () => {
+    // A 600 g tin is not something anybody sells.
+    expect(text('400 g tin', 2)).toBe('2 400 g tins');
+    expect(text('2 400 g tins', 1.5)).toBe('3 400 g tins');
+    expect(text('200 g packet', 2)).toBe('2 200 g packets');
+    expect(text('500 ml carton', 2)).toBe('2 500 ml cartons');
+    expect(text('150 g tub', 3)).toBe('3 150 g tubs');
+    expect(scaleQuantity('400 g tin', 1.5)).toEqual({ text: '400 g tin', scaled: false });
+  });
+
+  it('refuses a line carrying a second measure rather than scaling half of it', () => {
+    // Only the leading amount is parsed, so these used to come out with the
+    // first number scaled and the second left as written.
+    for (const compound of ['2 cups plus 2 tbsp', '2 cups, plus 2 tbsp', '2 tbsp + 1 tsp', '1 cup and 2 tbsp', '1 lb 2 oz', '200g/7oz', '200 g / 7 oz']) {
+      expect(scaleQuantity(compound, 2)).toEqual({ text: compound, scaled: false });
+    }
+  });
+
+  it('still scales a line whose trailing number is part of the food, not a measure', () => {
+    expect(text('1 cup 2% milk', 2)).toBe('2 cups 2% milk');
+    expect(text('2 (14 oz) cans', 2)).toBe('4 (14 oz) cans');
+    expect(text('1-inch piece', 2)).toBe('2-inch piece');
   });
 
   it('refuses to halve an uncounted sized container', () => {
@@ -237,6 +284,74 @@ describe('factorForServings / targetServingsFor', () => {
     expect(factorForServings(3, 0)).toBe(1);
     expect(factorForServings(3, -1)).toBe(1);
     expect(factorForServings(NaN, 8)).toBe(1);
+  });
+});
+
+describe('rescaleForRecipe', () => {
+  it('keeps the servings, not the factor, when one recipe replaces another', () => {
+    // 2x a pasta that serves 2 is four servings, which is 1x of a soup that
+    // serves 4. Carried over unchanged it was eight.
+    expect(rescaleForRecipe(2, 2, 4)).toBe(1);
+    // And the other way: four servings of a recipe that makes 8 is half of it.
+    expect(rescaleForRecipe(2, 2, 8)).toBe(0.5);
+  });
+
+  it('can land between the chip presets, the way a typed servings target does', () => {
+    // 1.5x of a recipe for 4 is six people, which is 6/9 of a recipe for 9.
+    expect(rescaleForRecipe(1.5, 4, 9)).toBe(6 / 9);
+  });
+
+  it('rounds the head count to whole people before converting', () => {
+    // 1.5x of 3 is 4.5 servings, which the stepper shows as 5.
+    expect(rescaleForRecipe(1.5, 3, 5)).toBe(1);
+  });
+
+  it('keeps the factor when either recipe states no servings', () => {
+    expect(rescaleForRecipe(2, null, 4)).toBe(2);
+    expect(rescaleForRecipe(2, 4, null)).toBe(2);
+    expect(rescaleForRecipe(2, 0, 4)).toBe(2);
+    expect(rescaleForRecipe(2, 4, undefined)).toBe(2);
+  });
+
+  it('leaves an as-written meal as written, since it never named a head count', () => {
+    expect(rescaleForRecipe(1, 2, 4)).toBe(1);
+    expect(rescaleForRecipe(null, 2, 4)).toBe(1);
+  });
+
+  it('normalizes a nonsense stored factor before anything else', () => {
+    expect(rescaleForRecipe(0, 2, 4)).toBe(1);
+    expect(rescaleForRecipe(-3, 2, 4)).toBe(1);
+  });
+});
+
+describe('householdScale', () => {
+  it('scales a recipe to the household when it serves a different number (#2910)', () => {
+    expect(householdScale(4, 2)).toBe(2);
+    expect(householdScale(3, 6)).toBe(0.5);
+    expect(householdScale(5, 4)).toBe(5 / 4);
+  });
+
+  it('leaves a recipe as written when it already serves the household', () => {
+    expect(householdScale(4, 4)).toBe(1);
+    // Inside a stated range is covered too: 1.25x of "serves 4-6" for five
+    // people would be buying for a household that isn't there.
+    expect(householdScale(5, 4, 6)).toBe(1);
+    expect(householdScale(6, 4, 6)).toBe(1);
+  });
+
+  it('measures from the low end of a range the household falls outside', () => {
+    // The number the servings stepper edits, so the default reads back as 8.
+    expect(householdScale(8, 4, 6)).toBe(2);
+    expect(householdScale(2, 4, 6)).toBe(0.5);
+  });
+
+  it('is as written with no household size, or a recipe that states no servings', () => {
+    expect(householdScale(0, 2)).toBe(1);
+    expect(householdScale(null, 2)).toBe(1);
+    expect(householdScale(undefined, 2)).toBe(1);
+    expect(householdScale(4, null)).toBe(1);
+    expect(householdScale(4, 0)).toBe(1);
+    expect(householdScale(NaN, 2)).toBe(1);
   });
 });
 

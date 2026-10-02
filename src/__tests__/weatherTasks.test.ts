@@ -1,5 +1,6 @@
 import type { Task, WeatherRule } from '../types';
 import {
+  clearWeatherMarksOnEdit,
   defaultWeatherRules,
   parseWeatherRules,
   ruleMatchesToday,
@@ -38,6 +39,30 @@ function makeRule(overrides: Partial<WeatherRule> = {}): WeatherRule {
     ...overrides,
   };
 }
+
+describe('clearWeatherMarksOnEdit', () => {
+  const considered = makeRule({ lastFiredDayKey: '2026-09-30', lastAheadDayKey: '2026-10-01' });
+
+  it('clears both marks when the condition or enabled flag changes', () => {
+    for (const change of [{ condition: 'rainy' as const }, { enabled: false }]) {
+      const [out] = clearWeatherMarksOnEdit([considered], [{ ...considered, ...change }]);
+      expect(out.lastFiredDayKey).toBeNull();
+      expect(out.lastAheadDayKey).toBeNull();
+    }
+  });
+
+  it('keeps the marks on a retitle', () => {
+    const [out] = clearWeatherMarksOnEdit([considered], [{ ...considered, title: 'Sunscreen' }]);
+    expect(out.lastFiredDayKey).toBe('2026-09-30');
+    expect(out.lastAheadDayKey).toBe('2026-10-01');
+  });
+
+  it('leaves a new rule alone', () => {
+    const fresh = makeRule({ id: 'rule-2', lastFiredDayKey: '2026-09-30' });
+    const out = clearWeatherMarksOnEdit([considered], [considered, fresh]);
+    expect(out[1].lastFiredDayKey).toBe('2026-09-30');
+  });
+});
 
 describe('defaultWeatherRules', () => {
   it('ships three enabled rules covering sunny, rainy and cold', () => {

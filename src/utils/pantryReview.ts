@@ -273,9 +273,12 @@ export function describeLastPurchase(item: Pick<GroceryItem, 'lastPurchasedAt'>)
  */
 export function describePantryDoubt(card: PantryReviewCard): string | null {
   if (card.doubt !== 'lapsed' || card.lapsedDays === null) return null;
-  if (card.lapsedDays <= 0) return 'Estimated use-by passed today';
-  if (card.lapsedDays === 1) return 'Estimated use-by passed yesterday';
-  return `Estimated use-by passed ${Math.round(card.lapsedDays)} days ago`;
+  // What lapsed is how long this usually lasts between purchases
+  // (`pantryGuessLapsedDays`), not a use-by date: "Estimated use-by passed"
+  // read as the food having gone off, on a jar of flour that hasn't.
+  if (card.lapsedDays <= 0) return 'Usually gone by now';
+  if (card.lapsedDays === 1) return 'Usually gone by yesterday';
+  return `Usually gone ${Math.round(card.lapsedDays)} days ago`;
 }
 
 /**

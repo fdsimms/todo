@@ -25,9 +25,12 @@ import { spacing, font, lineHeight, fontWeight, iconSize, radius, border, checkb
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { displayTitleFor, isTaskBlocked } from '../utils/visibilityUtils';
+import { blockerOf, isWaitingOnPerson, liveBlockersOf } from '../utils/blocking';
+import { resolveBlocker } from '../utils/blockerRegistry';
 import { describeBlockerWait } from '../utils/blockerStatus';
 import { asksOnCompletion } from '../utils/deliverables';
-import { formatTaskDate, getCurrentDayStart } from '../utils/dateUtils';
+import { formatTaskDate, getCurrentDayStart, getDayStart } from '../utils/dateUtils';
+import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import type { DriftEntry } from '../utils/postpone';
 import type { Person, Task } from '../types';
 
@@ -136,6 +139,7 @@ export function StuckScreen() {
   const people = usePersonStore(useShallow(s => s.people));
   const tasks = useTaskStore(s => s.tasks);
   const updateTask = useTaskStore(s => s.updateTask);
+  const setLastAction = useTaskStore(s => s.setLastAction);
   const completeTask = useTaskStore(s => s.completeTask);
   const archiveTask = useTaskStore(s => s.archiveTask);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
@@ -185,10 +189,11 @@ export function StuckScreen() {
       // because that is the wait that ends on its own — listing it under the
       // person too would show one row twice and offer to release it from a
       // wait that isn't the one actually holding it.
-      if (task.blockedById) {
-        const blocker = byId.get(task.blockedById);
-        if (!blocker) continue;
-        const key = task.blockedById;
+      // Filed under the first blocker still open: with several, that's the
+      // one it's waiting on right now. None open, and it's here for a person.
+      const blocker = blockerOf(task, id => byId.get(id));
+      if (blocker) {
+        const key = blocker.id;
         if (!byTask.has(key)) byTask.set(key, { kind: 'task', key, blocker, data: [] });
         byTask.get(key)!.data.push(task);
         continue;
@@ -246,8 +251,12 @@ export function StuckScreen() {
     // Both, always: a task held by a person and a task alike leaves this screen
     // by the same button, and clearing only the one the row happened to be
     // filed under would leave it waiting on the other with nothing on screen.
-    updateTask(task.id, { blockedById: null, waitingOnPersonId: null });
-  }, [updateTask]);
+    const snapshot = { ...task };
+    updateTask(task.id, { blockedById: null, blockedByIds: [], waitingOnPersonId: null });
+    // What it was waiting on is gone from the row once released, so the
+    // only way back from a slip is here.
+    setLastAction({ label: 'Released', undo: () => updateTask(snapshot.id, snapshot) });
+  }, [updateTask, setLastAction]);
 
   const finishBlocker = (blocker: Task) => {
     if (asksOnCompletion(blocker)) {
@@ -357,6 +366,8 @@ export function StuckScreen() {
                 task={task}
                 categoryLabel={labelForCategory(task.category, getCategoryByName)}
                 dateLabel={formatTaskDate(task, dayResetTime)}
+                projectTitle={task.projectId ? projectTitlesById.get(task.projectId) ?? null : null}
+                waitingLabel={waitingSinceLabel(task)}
                 onPress={openEditor}
                 onRelease={release}
                 styles={styles}
@@ -377,6 +388,8 @@ export function StuckScreen() {
     // header still lines up with the ones that do offer the box.
     const blockedItself = isTaskBlocked(section.blocker);
     const wait = describeBlockerWait(section.blocker, { blockedItself, dayResetTime });
+    const releasing = section.data.filter(t =>
+      liveBlockersOf(t, resolveBlocker).length === 1 && !isWaitingOnPerson(t, resolvePerson)).length;
     return (
       <TaskGroupTray>
         <View style={styles.blockerHeader}>
@@ -392,7 +405,9 @@ export function StuckScreen() {
               activeOpacity={interaction.activeOpacity}
               accessibilityRole="checkbox"
               accessibilityState={{ checked: false }}
-              accessibilityLabel={`Complete ${blockerTitle}, releasing ${section.data.length} ${section.data.length === 1 ? 'task' : 'tasks'}`}
+              // Only the ones this is the last hold on: a task also waiting
+              // on another task or on a person just moves on to that.
+              accessibilityLabel={`Complete ${blockerTitle}, releasing ${releasing} ${releasing === 1 ? 'task' : 'tasks'}`}
             />
           )}
           <TouchableOpacity
@@ -422,6 +437,8 @@ export function StuckScreen() {
               task={task}
               categoryLabel={labelForCategory(task.category, getCategoryByName)}
               dateLabel={formatTaskDate(task, dayResetTime)}
+              projectTitle={task.projectId ? projectTitlesById.get(task.projectId) ?? null : null}
+              waitingLabel={waitingSinceLabel(task)}
               onPress={openEditor}
               onRelease={release}
               styles={styles}
@@ -541,6 +558,14 @@ interface WaiterRowProps {
   task: Task;
   categoryLabel: string | null;
   dateLabel: string | null;
+  /** The project it's filed under, which Drift rows already showed. */
+  projectTitle: string | null;
+  /**
+   * How long this task has been waiting on its person ("Waiting 10 days").
+   * On the task, not on the person's heading: that would be a tally about
+   * somebody (see docs/arch/people.md); this is a fact about your own task.
+   */
+  waitingLabel: string | null;
   // Each takes the task it acts on rather than the screen closing over it once
   // per row, so one stable function serves every row and the memo holds.
   onPress: (task: Task) => void;
@@ -550,7 +575,14 @@ interface WaiterRowProps {
   cardShadow: object;
 }
 
-const WaiterRow = React.memo(function WaiterRow({ task, categoryLabel, dateLabel, onPress, onRelease, styles, colors, cardShadow }: WaiterRowProps) {
+function waitingSinceLabel(task: Task): string | null {
+  if (!task.waitingOnPersonId || !task.waitingOnPersonSince) return null;
+  const days = differenceInCalendarDays(getCurrentDayStart(), getDayStart(new Date(task.waitingOnPersonSince)));
+  if (days <= 0) return 'Waiting since today';
+  return `Waiting ${days} ${days === 1 ? 'day' : 'days'}`;
+}
+
+const WaiterRow = React.memo(function WaiterRow({ task, categoryLabel, dateLabel, projectTitle, waitingLabel, onPress, onRelease, styles, colors, cardShadow }: WaiterRowProps) {
   const title = displayTitleFor(task);
   return (
     <View style={[styles.card, cardShadow]}>
@@ -560,12 +592,24 @@ const WaiterRow = React.memo(function WaiterRow({ task, categoryLabel, dateLabel
         activeOpacity={interaction.activeOpacity}
         accessible
         accessibilityRole="button"
-        accessibilityLabel={[title, categoryLabel, dateLabel].filter(Boolean).join(', ')}
+        accessibilityLabel={[title, projectTitle, categoryLabel, dateLabel, waitingLabel].filter(Boolean).join(', ')}
         accessibilityHint="Double tap to open task"
       >
         <Text style={styles.taskTitle} numberOfLines={2}>{title}</Text>
-        {(categoryLabel || dateLabel) && (
+        {(categoryLabel || dateLabel || projectTitle || waitingLabel) && (
           <View style={styles.metaRow}>
+            {waitingLabel && (
+              <View style={styles.metaChip}>
+                <Ionicons name="hourglass-outline" size={iconSize.xs} color={colors.textSecondary} />
+                <Text style={styles.metaText} numberOfLines={1}>{waitingLabel}</Text>
+              </View>
+            )}
+            {projectTitle && (
+              <View style={styles.metaChip}>
+                <Ionicons name="briefcase-outline" size={iconSize.xs} color={colors.textSecondary} />
+                <Text style={styles.metaText} numberOfLines={1}>{projectTitle}</Text>
+              </View>
+            )}
             {categoryLabel && (
               <View style={styles.metaChip}>
                 <Ionicons name="folder-outline" size={iconSize.xs} color={colors.textSecondary} />

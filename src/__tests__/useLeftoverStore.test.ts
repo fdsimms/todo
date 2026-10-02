@@ -6,10 +6,15 @@ import {
   dbUpdateLeftover,
   dbDeleteLeftover,
   dbPurgeOldLeftovers,
+  dbGetMealPlanEntry,
+  dbGetMealPlanEntriesForLeftover,
 } from '../db/database';
 import type { Leftover, Task } from '../types';
 import { daysInFridge, isLiveLeftover, keepDaysBetween, needsAttention } from '../utils/leftovers';
 import { dayKeyOf, getLogicalToday } from '../utils/dateUtils';
+
+/** A local wall-clock time as the ISO instant the app stores, so the suite reads the same in any zone. */
+const localIso = (local: string) => new Date(local).toISOString();
 
 jest.mock('react-native', () => ({ Platform: { OS: 'ios' } }));
 
@@ -19,6 +24,8 @@ jest.mock('../db/database', () => ({
   dbUpdateLeftover: jest.fn(),
   dbDeleteLeftover: jest.fn(),
   dbPurgeOldLeftovers: jest.fn().mockReturnValue(0),
+  dbGetMealPlanEntry: jest.fn().mockReturnValue(null),
+  dbGetMealPlanEntriesForLeftover: jest.fn().mockReturnValue([]),
   dbGetFoodLogEntries: jest.fn().mockReturnValue([]),
   dbGetFoodLogEntry: jest.fn().mockReturnValue(null),
   dbCountFoodLogEntries: jest.fn().mockReturnValue(0),
@@ -74,9 +81,9 @@ const mockTaskState = {
   updateTask: (id: string, updates: Partial<Task>) => {
     mockTaskState.tasks = mockTaskState.tasks.map(t => (t.id === id ? { ...t, ...updates } : t));
   },
-  deleteTask: (id: string) => {
+  deleteTask: jest.fn((id: string, _options?: { skipGeneratedOptOut?: boolean }) => {
     mockTaskState.tasks = mockTaskState.tasks.filter(t => t.id !== id);
-  },
+  }),
   setLastAction: jest.fn(),
 };
 jest.mock('../store/useTaskStore', () => ({
@@ -91,13 +98,13 @@ function makeLeftover(overrides: Partial<Leftover> = {}): Leftover {
     title: 'Chilli',
     recipeId: null,
     sourceEntryId: null,
-    storedAt: '2026-08-10T09:00:00.000Z',
+    storedAt: localIso('2026-08-10T09:00'),
     keepUntil: '2026-08-13',
     finishedAt: null,
     outcome: null,
     frozenAt: null,
     weightG: null,
-    createdAt: '2026-08-10T09:00:00.000Z',
+    createdAt: localIso('2026-08-10T09:00'),
     useUpTask: null,
     ...overrides,
   };
@@ -111,6 +118,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   (dbGetAllLeftovers as jest.Mock).mockReturnValue([]);
   (dbPurgeOldLeftovers as jest.Mock).mockReturnValue(0);
+  (dbGetMealPlanEntriesForLeftover as jest.Mock).mockReturnValue([]);
   mockLeftoverUseUpTasks = false;
   mockLeftoverUseUpTaskCategory = null;
   mockTaskState.tasks = [];
@@ -378,6 +386,20 @@ describe('setFrozen', () => {
     expect(updated.keepUntil).toBe('2026-08-13');
   });
 
+  it('drops a live use-up task without writing the container\'s "never"', () => {
+    // A reconcile's delete stamps `useUpTask: false` through the real
+    // deleteTask, so a container frozen with a live task never got one again.
+    mockTaskState.tasks = [{
+      id: 't-lo', title: 'Use up Chilli', completed: false, archived: false,
+      generatedKind: 'leftoverUseUp', generatedSourceId: 'lo-a',
+    } as Task];
+    seed([makeLeftover({ id: 'lo-a' })]);
+
+    useLeftoverStore.getState().setFrozen('lo-a', true);
+
+    expect(mockTaskState.deleteTask).toHaveBeenCalledWith('t-lo', { skipGeneratedOptOut: true });
+  });
+
   it('does not close the container out — a frozen portion is still in the kitchen', () => {
     seed([makeLeftover({ id: 'lo-a' })]);
 
@@ -428,7 +450,7 @@ describe('splitLeftover', () => {
       title: 'Chilli',
       recipeId: 'r1',
       sourceEntryId: 'e1',
-      storedAt: '2026-08-10T09:00:00.000Z',
+      storedAt: localIso('2026-08-10T09:00'),
       keepUntil: '2026-08-13',
     });
     seed([original]);
@@ -448,12 +470,12 @@ describe('splitLeftover', () => {
   // The whole point: a pot logged whole on Sunday and split on Tuesday keeps
   // the two fridge days it already spent, rather than restarting from now.
   it('stamps the copy from the original\'s own storedAt, not now', () => {
-    seed([makeLeftover({ id: 'lo-a', storedAt: '2026-08-10T09:00:00.000Z', keepUntil: '2026-08-13' })]);
+    seed([makeLeftover({ id: 'lo-a', storedAt: localIso('2026-08-10T09:00'), keepUntil: '2026-08-13' })]);
 
     const copy = useLeftoverStore.getState().splitLeftover('lo-a')!;
 
-    expect(copy.storedAt).toBe('2026-08-10T09:00:00.000Z');
-    expect(copy.frozenAt).toBe('2026-08-10T09:00:00.000Z');
+    expect(copy.storedAt).toBe(localIso('2026-08-10T09:00'));
+    expect(copy.frozenAt).toBe(localIso('2026-08-10T09:00'));
     // The same window the original was given, not the days remaining.
     expect(keepDaysBetween(copy.storedAt, copy.keepUntil)).toBe(3);
   });
@@ -463,13 +485,13 @@ describe('splitLeftover', () => {
     const frozenCopy = useLeftoverStore.getState().splitLeftover('lo-fridge')!;
     expect(frozenCopy.frozenAt).not.toBeNull();
 
-    seed([makeLeftover({ id: 'lo-freezer', frozenAt: '2026-08-11T09:00:00.000Z' })]);
+    seed([makeLeftover({ id: 'lo-freezer', frozenAt: localIso('2026-08-11T09:00') })]);
     const fridgeCopy = useLeftoverStore.getState().splitLeftover('lo-freezer')!;
     expect(fridgeCopy.frozenAt).toBeNull();
   });
 
   it('refuses a closed-out container', () => {
-    seed([makeLeftover({ id: 'lo-a', finishedAt: '2026-08-12T09:00:00.000Z', outcome: 'eaten' })]);
+    seed([makeLeftover({ id: 'lo-a', finishedAt: localIso('2026-08-12T09:00'), outcome: 'eaten' })]);
 
     const result = useLeftoverStore.getState().splitLeftover('lo-a');
 
@@ -505,11 +527,11 @@ describe('finishLeftover', () => {
   });
 
   it('is idempotent — a second call does not restamp', () => {
-    seed([makeLeftover({ id: 'lo-a', finishedAt: '2026-08-11T18:00:00.000Z', outcome: 'eaten' })]);
+    seed([makeLeftover({ id: 'lo-a', finishedAt: localIso('2026-08-11T18:00'), outcome: 'eaten' })]);
 
     useLeftoverStore.getState().finishLeftover('lo-a', 'tossed');
 
-    expect(useLeftoverStore.getState().leftovers[0].finishedAt).toBe('2026-08-11T18:00:00.000Z');
+    expect(useLeftoverStore.getState().leftovers[0].finishedAt).toBe(localIso('2026-08-11T18:00'));
     expect(useLeftoverStore.getState().leftovers[0].outcome).toBe('eaten');
     expect(dbUpdateLeftover).not.toHaveBeenCalled();
   });
@@ -587,6 +609,33 @@ describe('the meal-log offer a finished container raises', () => {
     expect(pending?.grams).toBe(300);
   });
 
+  it('measures the container against the cooking it came from, at that cooking\'s scale', () => {
+    // A 900 g container from a doubled pot of a 600 g-as-written dish used to be
+    // measured against the dish as written, so the weight was more than the
+    // whole dish and the prompt refused it.
+    (dbGetMealPlanEntry as jest.Mock).mockReturnValueOnce({
+      id: 'e-1', recipeScale: 2, recipeChoices: ['serrano'],
+    });
+    seed([makeLeftover({ id: 'lo-a', title: 'Chili', recipeId: 'r-1', sourceEntryId: 'e-1', weightG: 900 })]);
+
+    useLeftoverStore.getState().finishLeftover('lo-a', 'eaten');
+
+    const pending = useFoodLogStore.getState().pendingMealLog;
+    expect(dbGetMealPlanEntry).toHaveBeenCalledWith('e-1');
+    expect(pending?.scale).toBe(2);
+    expect(pending?.choices).toEqual(['serrano']);
+  });
+
+  it('falls back to the dish as written when the cooking it came from is gone', () => {
+    seed([makeLeftover({ id: 'lo-a', recipeId: 'r-1', sourceEntryId: 'e-gone', weightG: 300 })]);
+
+    useLeftoverStore.getState().finishLeftover('lo-a', 'eaten');
+
+    const pending = useFoodLogStore.getState().pendingMealLog;
+    expect(pending?.scale).toBe(1);
+    expect(pending?.choices).toEqual([]);
+  });
+
   it('offers nothing to open on for a container nobody weighed', () => {
     seed([makeLeftover({ id: 'lo-a', title: 'Chilli', recipeId: 'r-1' })]);
 
@@ -622,11 +671,64 @@ describe('the meal-log offer a finished container raises', () => {
 
     expect(useFoodLogStore.getState().pendingManualMealLog).toBeNull();
   });
+
+  // Ticking a leftover-backed dinner's Eat step raises the plan's offer and
+  // then "was that the last of it?". Finishing it used to raise a second offer
+  // beside the plan's, or replace the plan's with a slotless one.
+  describe('when the meal it was eaten at has already offered', () => {
+    const planOffer = {
+      label: 'Chili', slot: 'dinner' as const, dayKey: '2026-04-02', mealPlanEntryId: 'e-plan',
+    };
+
+    it('leaves the plan\'s search-sheet offer alone for a container with no recipe', () => {
+      useFoodLogStore.setState({ pendingManualMealLog: planOffer });
+      seed([makeLeftover({ id: 'lo-a', title: 'Chili', recipeId: null })]);
+
+      useLeftoverStore.getState().finishLeftover('lo-a', 'eaten');
+
+      expect(useFoodLogStore.getState().pendingManualMealLog).toEqual(planOffer);
+      expect(useFoodLogStore.getState().pendingMealLog).toBeNull();
+    });
+
+    it('raises no second prompt beside the plan\'s for a container with a recipe', () => {
+      useFoodLogStore.setState({ pendingManualMealLog: planOffer });
+      seed([makeLeftover({ id: 'lo-a', title: 'Chili', recipeId: 'r-1', weightG: 300 })]);
+
+      useLeftoverStore.getState().finishLeftover('lo-a', 'eaten');
+
+      expect(useFoodLogStore.getState().pendingMealLog).toBeNull();
+      expect(useFoodLogStore.getState().pendingManualMealLog).toEqual(planOffer);
+    });
+
+    it('leaves a waiting recipe prompt alone too', () => {
+      const prompt = {
+        ...planOffer, recipeId: 'r-plan', scale: 1, choices: [], grams: null,
+      };
+      useFoodLogStore.setState({ pendingMealLog: prompt });
+      seed([makeLeftover({ id: 'lo-a', title: 'Chili', recipeId: 'r-1', weightG: 300 })]);
+
+      useLeftoverStore.getState().finishLeftover('lo-a', 'eaten');
+
+      expect(useFoodLogStore.getState().pendingMealLog).toEqual(prompt);
+      expect(useFoodLogStore.getState().pendingManualMealLog).toBeNull();
+    });
+
+    it('still finishes the container', () => {
+      useFoodLogStore.setState({ pendingManualMealLog: planOffer });
+      seed([makeLeftover({ id: 'lo-a', recipeId: null })]);
+
+      useLeftoverStore.getState().finishLeftover('lo-a', 'eaten');
+
+      const finished = useLeftoverStore.getState().leftovers.find(l => l.id === 'lo-a');
+      expect(finished?.finishedAt).not.toBeNull();
+      expect(finished?.outcome).toBe('eaten');
+    });
+  });
 });
 
 describe('reopenLeftover', () => {
   it('puts a mis-tapped close-out back in the fridge, clearing both columns', () => {
-    seed([makeLeftover({ id: 'lo-a', finishedAt: '2026-08-11T18:00:00.000Z', outcome: 'eaten' })]);
+    seed([makeLeftover({ id: 'lo-a', finishedAt: localIso('2026-08-11T18:00'), outcome: 'eaten' })]);
 
     useLeftoverStore.getState().reopenLeftover('lo-a');
 
@@ -682,10 +784,10 @@ describe('purgeOldLeftovers', () => {
 
   it('drops the closed-out rows the db took, and keeps every live one however old', () => {
     (dbPurgeOldLeftovers as jest.Mock).mockReturnValue(1);
-    const ancientButLive = makeLeftover({ id: 'live', storedAt: '2020-01-01T00:00:00.000Z' });
+    const ancientButLive = makeLeftover({ id: 'live', storedAt: localIso('2020-01-01T00:00') });
     const longFinished = makeLeftover({
       id: 'gone',
-      finishedAt: '2020-01-02T00:00:00.000Z',
+      finishedAt: localIso('2020-01-02T00:00'),
       outcome: 'eaten',
     });
     const justFinished = makeLeftover({
@@ -787,7 +889,7 @@ describe('use-up tasks', () => {
     seed([
       makeLeftover({ id: 'urgent', keepUntil: '2026-08-10' }),
       makeLeftover({ id: 'fresh', keepUntil: '2099-01-01' }),
-      makeLeftover({ id: 'closed', keepUntil: '2026-08-10', finishedAt: '2026-08-09T00:00:00.000Z', outcome: 'eaten' }),
+      makeLeftover({ id: 'closed', keepUntil: '2026-08-10', finishedAt: localIso('2026-08-09T00:00'), outcome: 'eaten' }),
     ]);
 
     useLeftoverStore.getState().reconcileAllLeftoverTasks();
@@ -795,6 +897,22 @@ describe('use-up tasks', () => {
     expect(mockTaskState.tasks.some(t => t.generatedSourceId === 'urgent')).toBe(true);
     expect(mockTaskState.tasks.some(t => t.generatedSourceId === 'fresh')).toBe(false);
     expect(mockTaskState.tasks.some(t => t.generatedSourceId === 'closed')).toBe(false);
+  });
+
+  it('reconcileLeftoverUseUpTask reconciles one live leftover and leaves a finished one alone', () => {
+    // The step the merged use-up sweep (useGroceryStore.reconcileAllUseUpTasks,
+    // #2924) takes for each leftover in its queue.
+    seed([
+      makeLeftover({ id: 'urgent', keepUntil: '2026-08-10' }),
+      makeLeftover({ id: 'closed', keepUntil: '2026-08-10', finishedAt: localIso('2026-08-09T00:00'), outcome: 'eaten' }),
+    ]);
+
+    useLeftoverStore.getState().reconcileLeftoverUseUpTask('closed');
+    useLeftoverStore.getState().reconcileLeftoverUseUpTask('missing');
+    expect(mockTaskState.tasks).toHaveLength(0);
+
+    useLeftoverStore.getState().reconcileLeftoverUseUpTask('urgent');
+    expect(mockTaskState.tasks.some(t => t.generatedSourceId === 'urgent')).toBe(true);
   });
 
   // #1953. The sweep above runs on startup and on every app foreground, because
@@ -807,7 +925,7 @@ describe('use-up tasks', () => {
     useLeftoverStore.getState().reconcileAllLeftoverTasks();
 
     const task = mockTaskState.tasks.find(t => t.generatedSourceId === 'chilli')!;
-    const tomorrow = '2099-06-01T12:00:00.000Z';
+    const tomorrow = localIso('2099-06-01T12:00');
     mockTaskState.updateTask(task.id, { dueDate: tomorrow });
 
     useLeftoverStore.getState().reconcileAllLeftoverTasks();
@@ -825,7 +943,7 @@ describe('use-up tasks', () => {
     useLeftoverStore.getState().reconcileAllLeftoverTasks();
 
     const task = mockTaskState.tasks.find(t => t.generatedSourceId === 'chilli')!;
-    const deferred = '2099-06-01T12:00:00.000Z';
+    const deferred = localIso('2099-06-01T12:00');
     mockTaskState.updateTask(task.id, { dueDate: deferred });
 
     useLeftoverStore.getState().setKeepDays('chilli', 6);
@@ -833,6 +951,64 @@ describe('use-up tasks', () => {
     const after = mockTaskState.tasks.find(t => t.generatedSourceId === 'chilli')!;
     expect(after.deadline).toBe(useLeftoverStore.getState().leftoverById('chilli')!.keepUntil);
     expect(after.dueDate).toBe(deferred);
+  });
+});
+
+// #2932: planning last night's chili for dinner put "Eat Chili" and "Use up
+// Chili" on Today together, two rows about one container.
+describe('use-up tasks for a leftover planned into a meal', () => {
+  beforeEach(() => {
+    mockLeftoverUseUpTasks = true;
+  });
+
+  const today = () => dayKeyOf(getLogicalToday());
+  const plantMealRow = (dayKey: string, slot: string) =>
+    mockTaskState.addTask({ generatedKind: 'mealSlot', generatedSourceId: `${dayKey}#${slot}`, title: 'Chilli' });
+  const planFor = (leftoverId: string, overrides: Record<string, unknown> = {}) =>
+    (dbGetMealPlanEntriesForLeftover as jest.Mock).mockReturnValue([
+      { id: 'e-1', date: today(), slot: 'dinner', leftoverId, cookedAt: null, ...overrides },
+    ]);
+  const useUpFor = (id: string) =>
+    mockTaskState.tasks.find(t => t.generatedKind === 'leftoverUseUp' && t.generatedSourceId === id);
+
+  it('drops the use-up task while a planned meal\'s own row says to eat it, and brings it back after', () => {
+    seed([makeLeftover({ id: 'chilli', keepUntil: today() })]);
+    useLeftoverStore.getState().reconcileAllLeftoverTasks();
+    expect(useUpFor('chilli')).toBeDefined();
+
+    plantMealRow(today(), 'dinner');
+    planFor('chilli');
+    useLeftoverStore.getState().reconcileLeftoverUseUpTask('chilli');
+    expect(useUpFor('chilli')).toBeUndefined();
+    // The app tidying up, not the user declining: no "never" is written.
+    expect(useLeftoverStore.getState().leftoverById('chilli')!.useUpTask).toBeNull();
+
+    // Unplanned again, so the container has nothing else reminding about it.
+    (dbGetMealPlanEntriesForLeftover as jest.Mock).mockReturnValue([]);
+    useLeftoverStore.getState().reconcileLeftoverUseUpTask('chilli');
+    expect(useUpFor('chilli')).toBeDefined();
+  });
+
+  it('keeps the use-up task when no meal task would say it', () => {
+    seed([makeLeftover({ id: 'chilli', keepUntil: today() })]);
+    planFor('chilli');
+    useLeftoverStore.getState().reconcileAllLeftoverTasks();
+    expect(useUpFor('chilli')).toBeDefined();
+  });
+
+  it('keeps it once that meal has been eaten, since some may be left', () => {
+    seed([makeLeftover({ id: 'chilli', keepUntil: today() })]);
+    plantMealRow(today(), 'dinner');
+    planFor('chilli', { cookedAt: localIso('2026-08-10T19:00') });
+    useLeftoverStore.getState().reconcileAllLeftoverTasks();
+    expect(useUpFor('chilli')).toBeDefined();
+  });
+
+  it('does nothing for a finished or unknown leftover', () => {
+    seed([makeLeftover({ id: 'done', keepUntil: today(), finishedAt: localIso('2026-08-09T00:00'), outcome: 'eaten' })]);
+    useLeftoverStore.getState().reconcileLeftoverUseUpTask('done');
+    useLeftoverStore.getState().reconcileLeftoverUseUpTask('nope');
+    expect(mockTaskState.tasks).toHaveLength(0);
   });
 });
 

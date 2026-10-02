@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SheetModal } from './SheetModal';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -49,11 +49,16 @@ export function TripBudgetPrompt({ visible, budgetMinor, currencySymbol, onSave,
   const colors = useColors();
   const styles = makeStyles(colors);
   const [text, setText] = useState('');
+  const inputRef = useRef<TextInput>(null);
 
   // Re-seeded on every open rather than held, so reopening after a cancel
   // offers what is actually saved rather than the abandoned edit.
   useEffect(() => {
-    if (visible) setText(budgetMinor === null ? '' : priceToInput(budgetMinor));
+    if (!visible) return;
+    setText(budgetMinor === null ? '' : priceToInput(budgetMinor));
+    // The sheet stays mounted across opens, so a bare `autoFocus` on the
+    // field would only ever fire once.
+    inputRef.current?.focus();
   }, [visible, budgetMinor]);
 
   const parsed = parsePriceInput(text);
@@ -94,15 +99,17 @@ export function TripBudgetPrompt({ visible, budgetMinor, currencySymbol, onSave,
           <View style={styles.field}>
             <Text style={styles.symbol}>{currencySymbol}</Text>
             <TextInput
+              ref={inputRef}
               style={styles.input}
               value={text}
               // Cents-first entry, the same rule every other price field in the
               // app follows, so the decimal point never has to be typed.
               onChangeText={t => setText(formatPriceInput(t))}
               keyboardType="number-pad"
-              placeholder="0.00"
+              // Names the field rather than showing "0.00", which in the
+              // placeholder grey reads as a budget of nothing already saved.
+              placeholder="Budget"
               placeholderTextColor={colors.textTertiary}
-              autoFocus
               inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
               accessibilityLabel="Trip budget"
             />

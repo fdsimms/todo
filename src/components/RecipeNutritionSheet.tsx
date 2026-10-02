@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
@@ -20,7 +20,7 @@ import {
 import {
   describeRecipeNutritionEstimate, type RecipeNutritionEstimate,
 } from '../utils/recipeNutritionEstimate';
-import { estimateRecipeNutrition, recipeNutritionEstimateAvailable } from '../services/aiSuggestions';
+import { describeAIError, estimateRecipeNutrition, recipeNutritionEstimateAvailable } from '../services/aiSuggestions';
 import { EditorSheet } from './EditorSheet';
 import { GroceryItemSheet } from './GroceryItemSheet';
 import { InlineAction } from './InlineAction';
@@ -57,11 +57,13 @@ import { SheetHeader } from './SheetHeader';
  * already offers for exactly this, in the same words: find the food in a
  * database, or copy the label off the packet. Figures that can't be measured
  * against the amount asked for get a scale, and only when `weighableLine` has
- * confirmed that weighing would actually settle it. **The two refusals
- * `unfixableQuantityReason` names — no amount at all ("several cloves"), or a
- * counted container ("2 14 oz cans")** — get neither "Edit these figures" nor
- * a scale: nothing on the food's side could ever relate either one to a
- * weight, and the actual fix is rewriting the recipe's own line. That fix
+ * confirmed that weighing would actually settle it. **The refusal
+ * `unfixableQuantityReason` names — no amount at all ("several cloves")** —
+ * gets neither "Edit these figures" nor a scale: nothing on the food's side
+ * could ever relate it to a weight, and the actual fix is rewriting the
+ * recipe's own line. (A counted container, "2 14 oz cans", used to be the
+ * second such refusal and asked how much one tin holds; it is measured now,
+ * #2918.) That fix
  * gets its own button, "Edit recipe", which opens `RecipeIngredientSheet` for
  * this line nested inside this one (rather than closing this sheet first) —
  * it has nothing typed to lose underneath, so there's no reason to make the
@@ -172,6 +174,25 @@ export function RecipeNutritionSheet({ visible, reading, recipeName, servings, o
 
   const { nutrition, gaps, excluded } = reading;
 
+  // A guess about the recipe as it stood when it was asked for, so it goes
+  // when the recipe changes: a line filled in, a scale or a servings count
+  // moved. Kept, it went on quoting a dish that no longer exists, and the
+  // header comment above promised a reset nothing performed. Keyed on the
+  // lines' text rather than on the array, which is rebuilt on every render
+  // of the screen underneath.
+  const estimateKey = useMemo(
+    () => [
+      recipeName,
+      servings ?? '',
+      ...reading.lines.map(line => `${line.quantity}|${line.name}|${line.prep ?? ''}`),
+    ].join('\n'),
+    [recipeName, servings, reading.lines]
+  );
+  useEffect(() => {
+    setEstimate(null);
+    setEstimateError(null);
+  }, [estimateKey]);
+
   const runEstimate = async () => {
     haptics.tap();
     setEstimating(true);
@@ -182,8 +203,10 @@ export function RecipeNutritionSheet({ visible, reading, recipeName, servings, o
       const next = await estimateRecipeNutrition(recipeName, servings, lines);
       setEstimate(next);
       haptics.success();
-    } catch {
-      setEstimateError("Couldn't estimate this recipe. Try again in a moment.");
+    } catch (e) {
+      // The reason, not a blanket "try again": no key, demo mode and a
+      // reply with nothing usable in it are not fixed by waiting.
+      setEstimateError(describeAIError(e));
       haptics.error();
     } finally {
       setEstimating(false);
@@ -210,7 +233,7 @@ export function RecipeNutritionSheet({ visible, reading, recipeName, servings, o
           ? weighableLine(line.quantity, line.prep, line.nutrition, line.item.name)
           : null,
       // Null whenever a food's figures (or a scale) could still answer the
-      // line — set only for the two refusals that are never about the food,
+      // line — set only for the refusal that is never about the food,
       // where nothing offered below can help and the fix is rewriting the
       // recipe's own line instead. See `unfixableQuantityReason`.
       unfixable: line.state === 'unmeasured' ? unfixableQuantityReason(line.quantity) : null,
@@ -384,6 +407,11 @@ export function RecipeNutritionSheet({ visible, reading, recipeName, servings, o
             <View style={styles.estimateBlock}>
               {estimate ? (
                 <>
+                  {/* Said outright because the real panel above this reads
+                      per serving whenever the recipe says how many it makes,
+                      and the model is asked for the whole dish: unlabeled,
+                      a four-serving stew's estimate read as one bowl. */}
+                  <Text style={styles.estimateLabel}>WHOLE RECIPE, ESTIMATED</Text>
                   {NUTRIENT_KEYS.filter(key => estimate.amounts[key] !== undefined).map(key => (
                     <View key={key} style={styles.nutrientRow}>
                       <Text style={styles.nutrientLabel}>{NUTRIENT_LABEL[key].label}</Text>
@@ -400,6 +428,7 @@ export function RecipeNutritionSheet({ visible, reading, recipeName, servings, o
                       onPress={runEstimate}
                       disabled={estimating}
                     />
+                    {estimating && <ActivityIndicator color={colors.textSecondary} />}
                   </View>
                 </>
               ) : (
@@ -493,9 +522,7 @@ export function RecipeNutritionSheet({ visible, reading, recipeName, servings, o
                       ? `No weight recorded for ${weighing.text}.`
                       : unfixable === 'noAmount'
                         ? "This amount doesn't have a number in it, so there's nothing to relate to a weight. Edit the ingredient in the recipe to give it one, like \"3 cloves\" instead of \"several\"."
-                        : unfixable === 'countedContainer'
-                          ? "This is a count of containers, not how much is in one, so there's no figure that answers it. Edit the ingredient in the recipe to say how much one holds."
-                          : "This amount can't be matched to its figures. Check the serving size on them."}
+                        : "This amount can't be matched to its figures. Check the serving size on them."}
                 </Text>
 
                 {weighingId === line.id && weighing ? (
@@ -695,6 +722,14 @@ function makeStyles(colors: Colors) {
     nutrientAmount: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
     emptyTotal: { fontSize: font.sm, color: colors.textSecondary, lineHeight: 18 },
     estimateBlock: { marginTop: spacing.md },
+    // `groupLabel`'s treatment, without the side inset it takes outside a card.
+    estimateLabel: {
+      fontSize: font.xs,
+      fontWeight: fontWeight.semibold,
+      letterSpacing: 0.8,
+      color: colors.textSecondary,
+      marginBottom: spacing.xs,
+    },
     countedRow: { paddingVertical: spacing.xs },
     countedHeader: {
       flexDirection: 'row',

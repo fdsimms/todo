@@ -1,10 +1,12 @@
 import { create } from 'zustand';
-import type { MealPlanEntry, MealSlot, Task } from '../types';
+import type { MealPlanEntry, MealSlot, Recipe, Task } from '../types';
 import {
   dbGetMealPlanEntries,
+  dbGetMealPlanEntriesForRecipe,
   dbGetMealPlanEntry,
   dbInsertMealPlanEntry,
   dbUpdateMealPlanEntry,
+  dbFillMealCalendarExternalIds,
   dbDeleteMealPlanEntry,
   dbPurgeOldMealPlanEntries,
   dbGetMealPlanAddedToList,
@@ -23,37 +25,51 @@ import { generatedTaskCountOf, hasAnyGeneratedTask, liveGeneratedTask } from '..
 import { derivedId, spawnSeed } from '../utils/syncIds';
 import { ensureGeneratedTaskCategory } from './useCategoryStore';
 import { deleteGeneratedTaskQuietly, dropGeneratedTask } from './generatedTaskSync';
-import { syncMealEvent } from '../utils/mealCalendarSync';
-import { deleteCalendarEvent } from '../utils/calendarSync';
+import { mealEventsAfterSync, syncMealEvent, mealEventLink, deleteMealEvent } from '../utils/mealCalendarSync';
+import type { ApplyReport } from '../utils/syncMerge';
+import { getCalendarPermission } from '../utils/calendarSync';
+import { filledExternalId } from '../utils/calendarEventLink';
 import {
   classifyPlanned,
   consumedRows,
+  mealCreditIds,
   plannedIngredientsForRecipe,
+  rowsLeftBehind,
   type ClassifiedIngredient,
+  type LeftBehindRow,
 } from '../utils/mealPlanGroceries';
 import { standingSwapMap } from '../utils/standingSwaps';
 import { onHandNameKeys } from '../utils/grocerySuggest';
 import { generateId } from '../utils/id';
-import { normalizeScale } from '../utils/recipeScale';
+import { householdScale, isUnscaled, normalizeScale, rescaleForRecipe } from '../utils/recipeScale';
 import { mealCookCounts, type CookingWindow, type MealCookCounts } from '../utils/cookingStats';
 import { totalMinutes } from '../utils/recipeUtils';
 import {
   cleanMealTitle,
   cookEntryForRecipe,
+  daysWithMeal,
   entriesForDay,
   entriesForSlot,
   isKeyInRange,
+  mealCopyDraft,
   mealPlanPurgeCutoffKey,
   nextSortOrder,
   recipeIndex,
+  recipeIsGone,
+  recipeNamedLike,
   resolveBulkMoveTargets,
   shiftDayKey,
+  slotCopyDrafts,
+  slotLabel,
+  slotPlural,
+  slotsToCopy,
   sortMealEntries,
   titleForEntry,
   weekCopyDrafts,
+  type MealCopyDraft,
 } from '../utils/mealPlan';
 import { countPlannedSlots } from '../utils/mealPlanNudge';
-import { mealSlotDrift, mealSlotSourceId, mealSlotTaskDraft } from '../utils/mealSlotTasks';
+import { mealSlotDrift, mealSlotSourceId, mealSlotTaskDraft, slotEntryForTask } from '../utils/mealSlotTasks';
 import { dayKeyOf, dayKeyToDate, getLogicalToday } from '../utils/dateUtils';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { setHours } from 'date-fns/setHours';
@@ -218,6 +234,15 @@ interface MealPlanStore extends UndoHistoryActions {
   entriesForDayLive: (dayKey: string) => MealPlanEntry[];
 
   /**
+   * One entry by id, read through the loaded window and SQLite when it isn't
+   * there — `resolveEntry` (internal, below), exposed for the one caller
+   * outside this store with the same cross-screen shape: a meal task's recipe
+   * link (`deepLinks`, #2931), tapped on Today with no week loaded, which
+   * opens the recipe on the meal's own scale and picks.
+   */
+  entryById: (id: string) => MealPlanEntry | null;
+
+  /**
    * How many of each day's three meals are planned, keyed by day key — what the
    * weekly nudge's per-day tasks show as "2/3 planned" (#1585). A day with no
    * key here is one nothing has asked about, and its row shows no counter at
@@ -331,6 +356,12 @@ interface MealPlanStore extends UndoHistoryActions {
    * rule as planMeal) and is a no-op on a recipe-backed entry — that title
    * comes from the recipe, and renaming it here would just be overwritten the
    * next time titleForEntry resolves the recipe again.
+   *
+   * **An entry whose recipe was deleted renames like free text**, since that's
+   * how it reads everywhere (titleForEntry falls back to `title`). The rename
+   * clears the dead `recipeId` with its `recipeChoices` and `recipeScale`: the
+   * meal is something else now, and leaving the pointer would have a recipe
+   * restored by sync rename it straight back.
    */
   renameEntry: (id: string, title: string) => void;
 
@@ -401,6 +432,13 @@ interface MealPlanStore extends UndoHistoryActions {
    * answered by the next sweep, which is seconds away on any foreground.
    */
   setShopTask: (id: string, value: boolean | null) => void;
+  /**
+   * Says whether this meal gets a "Take X out of the freezer" task, or hands
+   * the decision back to the `mealThawTasks` setting with `null` (#2926).
+   * `setShopTask`'s twin, for the same caller and with the same "write the flag
+   * and stop" reasoning: `checkMealThawTasks` owns creating one.
+   */
+  setThawTask: (id: string, value: boolean | null) => void;
   /**
    * Says whether finishing this meal offers to log what was eaten, or hands
    * the decision back to the `mealLogPrompt` setting with `null`.
@@ -518,12 +556,40 @@ interface MealPlanStore extends UndoHistoryActions {
    * keeps). `cookedAt` is left untouched: relabelling what a past night was
    * doesn't un-cook it.
    *
-   * `recipeScale` is left untouched too, which is the deliberate asymmetry with
+   * `recipeScale` survives too, which is the deliberate asymmetry with
    * `recipeChoices`: a choice group belongs to the recipe that defined it and
    * can't survive a swap, but "I'm feeding eight on Sunday" is a fact about the
-   * night and stays true whichever dish lands on it.
+   * night and stays true whichever dish lands on it. **What survives is the
+   * servings, not the multiplier** (`rescaleForRecipe`): the same factor means
+   * a different amount of food for a different recipe, so 2× a pasta that
+   * serves 2 becomes 1× a soup that serves 4 rather than eight servings of it.
+   * Where either recipe states no servings there is no head count to carry and
+   * the factor is kept as it was. A meal that was never scaled carries none
+   * either, so the new recipe starts where `planMeal` would start it: at the
+   * household size when one is set (`householdScale`, #2910), as written
+   * otherwise.
    */
   bulkReplaceItem: (ids: string[], replacement: { recipeId: string | null; title: string }) => void;
+
+  /**
+   * Makes a typed meal a recipe (#2929): points it at the recipe named after
+   * it, creating that recipe, name only, when the box has none. Returns the
+   * recipe and whether it was just made, or null when the entry isn't a typed
+   * meal (a live recipe already is one, and a leftover night is the
+   * container's) or the name can't be a recipe.
+   *
+   * A recipe already called that (`recipeNamedLike`) is the answer rather
+   * than a refusal: "Tacos" planned before the Tacos recipe existed was always
+   * going to mean that one. When only cookbooks hold the name, and more than
+   * one of them, nothing says which was meant, so a new recipe under no book
+   * is made instead.
+   *
+   * The pointer is written through `bulkReplaceItem`, so it keeps what that
+   * keeps and registers its undo. **Undo takes the meal back to typed text and
+   * leaves the recipe in the box**: by the time anybody shakes, it may have
+   * ingredients in it, and nothing here created them.
+   */
+  saveEntryAsRecipe: (id: string) => { recipe: Recipe; created: boolean } | null;
 
   /**
    * Bulk-toggles cookedAt across the selection — unlike the single-row
@@ -537,6 +603,33 @@ interface MealPlanStore extends UndoHistoryActions {
    * appears in this app.
    */
   bulkSetCooked: (ids: string[], cooked: boolean) => void;
+
+  /**
+   * The tail of `useRecipeStore.renameRecipe`: rewrites the captured `title` of
+   * every entry planned from this recipe, and with it the two replicas built
+   * off that title, the slot's task on Today ("Make X") and the shared calendar
+   * event ("Dinner: X").
+   *
+   * The plan never needed this, since titleForEntry reads the recipe's live
+   * name, which is how it went unnoticed: the calendar, the task and a copied
+   * week all read `title`, and kept the old name for good. Every date is
+   * rewritten, cooked nights included, because the plan row of a past night
+   * already shows the new name; it's the dish that was renamed, not what was
+   * eaten. Registers no undo, like the rename it finishes.
+   */
+  retitleRecipeEntries: (recipeId: string, name: string) => void;
+
+  /**
+   * The tail of `useRecipeStore.deleteRecipe`/`bulkDeleteRecipes`: brings the
+   * Today task of every meal planned from these recipes back in line.
+   *
+   * The entries keep pointing at the deleted recipe on purpose (see
+   * MealPlanEntry.recipeId), and their slot tasks now read that as a typed meal
+   * (slotEntryForTask), but a task only changes when something reconciles it,
+   * and nothing about the plan changed. Without this, Thursday's row kept
+   * saying "Make Chili" and linking to a recipe that was gone.
+   */
+  reconcileRecipeSlots: (recipeIds: readonly string[]) => void;
 
   /**
    * When "Add week to list" was last used for a given week, keyed by the
@@ -565,6 +658,67 @@ interface MealPlanStore extends UndoHistoryActions {
   copyWeek: (fromStartKey: string, toStartKey: string) => number;
 
   /**
+   * The slots `copySlotFromWeek` would take from one week into another, in day
+   * order (#2913): each one empty for the whole target week, with something
+   * copyable in the source. `slotsToCopy` is the rule, and says why it differs
+   * from the whole-week offer's. Both weeks are read out of SQLite, for
+   * `copyWeek`'s reason: the source is never the loaded window.
+   */
+  slotsToCopyFrom: (fromStartKey: string, toStartKey: string) => MealSlot[];
+
+  /**
+   * Copies one slot of a week onto another (#2913): last week's lunches into a
+   * week whose dinners are already planned, which the whole-week copy can't do
+   * because it's only offered into an empty week. Carries what a week copy
+   * carries (`slotCopyDrafts`), leftover nights excluded. Returns how many rows
+   * were written.
+   *
+   * **Writes nothing unless the slot is still empty for the whole target
+   * week**, checked here rather than trusted to the offer, since that emptiness
+   * is the only thing standing between this and the merge question the offer
+   * exists to avoid (see `slotsToCopy`).
+   *
+   * One `lastAction` for the whole copy, `copyWeek`'s "one action, one undo".
+   */
+  copySlotFromWeek: (fromStartKey: string, toStartKey: string, slot: MealSlot) => number;
+
+  /**
+   * Puts one planned meal on other days too, in the same slot (#2913): the
+   * same lunch Monday to Friday without a picker session per day. Each copy
+   * carries what a week copy carries (`mealCopyDraft`) and lands at the end of
+   * whatever that day's slot already holds, alongside it rather than instead
+   * of it, which is what planning it there by hand would do too. Returns how
+   * many were written.
+   *
+   * Skips the meal's own day, and a leftover night altogether: one container
+   * can't supply several dinners, the reason a week copy drops it. **Also
+   * skips a day that already has this meal in this slot** (`daysWithMeal`,
+   * read from SQLite for that day). The Also on chips show that by not taking
+   * the tap, but "Another date…" is a calendar that reaches any day, so the
+   * refusal has to live here; a caller learns of it from the count.
+   *
+   * One `lastAction` for the whole call, removing every row it wrote, the
+   * "one action, one undo" `copyWeek` keeps.
+   */
+  copyEntryTo: (id: string, dates: string[]) => number;
+
+  /**
+   * The grocery rows only these meals put on the list, asked once they've
+   * been removed or given a different recipe (#2912), for the screen to offer
+   * to take off. Writes nothing in either store: the offer is the screen's,
+   * and taking the rows off is the grocery store's `takeOffLists`.
+   *
+   * `gone` is the meals as they were before the change. One that was already
+   * cooked is past its shopping and adds nothing. **A recipe still planned on
+   * an uncooked night from today on keeps its rows**, the component recipes of
+   * one included (`mealCreditIds`): that is read from SQLite rather than
+   * `entries`, since the other nights wanting the same salsa are rarely all in
+   * the week on screen. The rest of the rule, which rows are only the meal's
+   * shopping, is `rowsLeftBehind`'s.
+   */
+  listRowsLeftBy: (gone: readonly MealPlanEntry[]) => LeftBehindRow[];
+
+  /**
    * The start of the most recent week at or before `beforeStartKey` that has
    * anything planned in it, looking back at most `maxWeeksBack` weeks — or
    * null if they're all empty.
@@ -580,6 +734,28 @@ interface MealPlanStore extends UndoHistoryActions {
 
   /** Enforces the 180-day horizon. Returns how many rows went. */
   purgeOldEntries: () => number;
+
+  /**
+   * Brings this device's meal calendar events in line with what a sync just
+   * applied (#2950): the event of each changed meal that holds one is
+   * rewritten through the same reconcile a local edit runs, and the event of
+   * each meal another device removed is deleted. Which meals, and why a meal
+   * with no event of this device's is left alone, is `mealEventsAfterSync`'s
+   * call; this does the device writes, fire-and-forget like every other meal
+   * event reconcile.
+   *
+   * Called after the stores reload from the sync (`registerSyncReload`), so
+   * the rows it reads and any link it writes back are the synced ones.
+   */
+  reconcileSyncedEvents: (applied: Pick<ApplyReport, 'mealEntryIds' | 'removedMealEvents'>) => void;
+  /**
+   * Fills in the calendar server id beside each meal's event id that `found`
+   * names and the meal has none for yet, across the whole plan in the database
+   * and in the loaded window in memory, without restamping the rows for sync
+   * (`dbFillTaskCalendarExternalIds` says why). The meal half of the one-time
+   * launch backfill (`backfillCalendarExternalIds`).
+   */
+  fillCalendarExternalIds: (found: Readonly<Record<string, string>>) => void;
 }
 
 export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
@@ -646,6 +822,10 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     return entriesForDay(source, dayKey);
   },
 
+  entryById(id) {
+    return resolveEntry(get, id);
+  },
+
   refreshPlannedSlotCounts(dayKeys) {
     const current = get().plannedSlotCounts;
     if (dayKeys.length === 0) {
@@ -661,8 +841,9 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     const sorted = [...dayKeys].sort();
     const rows = dbGetMealPlanEntries(sorted[0], sorted[sorted.length - 1]);
 
+    const slots = useSettingsStore.getState().mealPlanNudgeSlots;
     const next: Record<string, number> = {};
-    for (const dayKey of dayKeys) next[dayKey] = countPlannedSlots(rows, dayKey);
+    for (const dayKey of dayKeys) next[dayKey] = countPlannedSlots(rows, dayKey, slots);
 
     const keys = Object.keys(next);
     const unchanged =
@@ -718,6 +899,9 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
   planMeal(draft) {
     const title = cleanMealTitle(draft.title);
     if (!title) return null;
+    const recipe = draft.recipeId
+      ? useRecipeStore.getState().recipes.find(r => r.id === draft.recipeId)
+      : undefined;
 
     const entry: MealPlanEntry = {
       id: generateId(),
@@ -745,8 +929,16 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
       // same call MealPlanEntry.recipeId makes about naming a recipe at all.
       recipeChoices: [],
       // As written, for the same reason: how much of it you're making is a
-      // question a plan is allowed not to have answered.
-      recipeScale: 1,
+      // question a plan is allowed not to have answered. Unless the person has
+      // answered it once for every meal (#2910): "Usually cooking for 4" starts
+      // a recipe that serves 2 at 2x, through householdScale, which stays as
+      // written whenever the recipe states no servings or already covers them.
+      // A leftover or a typed meal has no recipe and no servings to scale.
+      recipeScale: householdScale(
+        useSettingsStore.getState().householdServings,
+        recipe?.servings,
+        recipe?.servingsMax,
+      ),
       // Unanswered, so the setting decides — see MealPlanEntry.cookTask. The
       // picker can pass an explicit answer, which is how "add a cook task" is
       // said at plan time.
@@ -850,11 +1042,21 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     const entry = get().entries.find(e => e.id === id);
     // A backed entry's title says what it's backed by — a recipe's live name, or
     // the leftover-and-its-age captured at plan time — so neither is
-    // independently editable here. Free text is the only thing this renames.
-    if (!entry || entry.recipeId || entry.leftoverId) return;
+    // independently editable here. Free text is the only thing this renames,
+    // and a meal whose recipe was deleted is free text in all but the pointer.
+    if (!entry || entry.leftoverId) return;
+    const dangling = recipeIsGone(entry, useRecipeStore.getState());
+    if (entry.recipeId && !dangling) return;
     const cleaned = cleanMealTitle(title);
     if (!cleaned || cleaned === entry.title) return;
-    const renamed: MealPlanEntry = { ...entry, title: cleaned };
+    // Renaming it says it's a different meal now, so the dead pointer goes and
+    // takes the two facts about cooking that recipe with it: its choice picks,
+    // and a scale nothing could change any more (Scale is only offered for a
+    // recipe that resolves), which would otherwise sit on "Tacos" as "2×" for
+    // good. A recipe that came back by sync afterwards isn't this meal.
+    const renamed: MealPlanEntry = dangling
+      ? { ...entry, title: cleaned, recipeId: null, recipeChoices: [], recipeScale: 1 }
+      : { ...entry, title: cleaned };
     dbUpdateMealPlanEntry(renamed);
     set(s => ({ entries: s.entries.map(e => e.id === id ? renamed : e) }));
     reconcileMealSlot(get, renamed);
@@ -944,6 +1146,15 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     // No reconcile and no create — see the interface note. The generator's own
     // sweep owns both directions here, and a `false` written by a delete has
     // already taken the row away by the time this runs.
+  },
+
+  setThawTask(id, value) {
+    const entry = resolveEntry(get, id);
+    if (!entry || (entry.thawTask ?? null) === value) return;
+    const next: MealPlanEntry = { ...entry, thawTask: value };
+    dbUpdateMealPlanEntry(next);
+    set(s => ({ entries: s.entries.map(e => e.id === id ? next : e) }));
+    // No reconcile and no create, for setShopTask's reason.
   },
 
   setLogMeal(id, value) {
@@ -1097,12 +1308,30 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     const toUpdate = get().entries.filter(e => idSet.has(e.id));
     if (toUpdate.length === 0) return;
 
+    const recipesById = recipeIndex(useRecipeStore.getState().recipes);
+    const toRecipe = replacement.recipeId ? recipesById.get(replacement.recipeId) : undefined;
+    const toServings = toRecipe?.servings ?? null;
+    const household = useSettingsStore.getState().householdServings;
     const updated = toUpdate.map((e): MealPlanEntry => ({
       ...e,
       recipeId: replacement.recipeId,
       title,
       recipeChoices: [],
       leftoverId: null,
+      // Same recipe, same factor: converting through its own servings would
+      // only round a 1.5× of 3 to a different number.
+      recipeScale: e.recipeId === replacement.recipeId && e.recipeId
+        ? e.recipeScale
+        // An as-written night names no head count of its own, so the new
+        // recipe starts where planning it would have (#2910): the household
+        // size when one is set, as written otherwise. Without this a household
+        // of four swapping a 1x recipe for 4 onto one for 2 was left cooking
+        // for two, while planning the same recipe fresh gave it 2x.
+        : isUnscaled(e.recipeScale)
+          ? householdScale(household, toServings, toRecipe?.servingsMax)
+          : e.recipeId
+            ? rescaleForRecipe(e.recipeScale, recipesById.get(e.recipeId)?.servings, toServings)
+            : e.recipeScale,
     }));
     updated.forEach(dbUpdateMealPlanEntry);
     const byId = new Map(updated.map(e => [e.id, e]));
@@ -1110,9 +1339,13 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     // Retitles the cook tasks, and can create or remove them outright: swapping
     // a free-text night for a recipe is exactly the change that makes a meal
     // qualify. `cookTask` is deliberately kept by the replace (see the note on
-    // recipeScale surviving a swap for the same reason), so an explicit
+    // the servings surviving a swap for the same reason), so an explicit
     // per-meal answer isn't quietly undone by changing what's cooked.
     updated.forEach(e => reconcileMealSlot(get, e));
+    // The replacement names no leftover, so the one each meal used to eat has
+    // to be asked about from the original: it isn't planned any more, and its
+    // use-up task may need to come back (#2932).
+    toUpdate.forEach(e => reconcileSlotLeftovers(get, e));
     updated.forEach(reconcileMealEvent);
 
     get().setLastAction({
@@ -1125,6 +1358,44 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
         toUpdate.forEach(reconcileMealEvent);
       },
     });
+  },
+
+  saveEntryAsRecipe(id) {
+    const entry = get().entries.find(e => e.id === id);
+    if (!entry || entry.leftoverId) return null;
+    const library = useRecipeStore.getState();
+    // Only a typed meal, which a meal whose recipe was deleted is (see
+    // renameEntry): one whose recipe still resolves has nothing to save.
+    if (entry.recipeId && !recipeIsGone(entry, library)) return null;
+    const existing = recipeNamedLike(entry.title, library.recipes);
+    const recipe = existing ?? library.addRecipe(entry.title);
+    if (!recipe) return null;
+    get().bulkReplaceItem([id], { recipeId: recipe.id, title: recipe.name });
+    return { recipe, created: !existing };
+  },
+
+  retitleRecipeEntries(recipeId, name) {
+    const title = cleanMealTitle(name);
+    if (!title) return;
+    // A leftover carrying a recipe id would be a row that somehow holds both
+    // backings (see MealPlanEntry.leftoverId); its title is the container's,
+    // captured with its age, and isn't the recipe's to rewrite.
+    const stale = dbGetMealPlanEntriesForRecipe(recipeId).filter(e => !e.leftoverId && e.title !== title);
+    if (stale.length === 0) return;
+    const retitled = stale.map((e): MealPlanEntry => ({ ...e, title }));
+    retitled.forEach(e => dbUpdateMealPlanEntry(e));
+    const byId = new Map(retitled.map(e => [e.id, e]));
+    set(s => ({ entries: s.entries.map(e => byId.get(e.id) ?? e) }));
+    retitled.forEach(e => reconcileMealSlot(get, e));
+    retitled.forEach(reconcileMealEvent);
+  },
+
+  reconcileRecipeSlots(recipeIds) {
+    for (const recipeId of new Set(recipeIds)) {
+      // reconcileMealSlot returns straight away for a slot with no live task,
+      // which is every past night, so reaching the whole history costs little.
+      dbGetMealPlanEntriesForRecipe(recipeId).forEach(e => reconcileMealSlot(get, e));
+    }
   },
 
   bulkSetCooked(ids, cooked) {
@@ -1171,30 +1442,69 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     const drafts = weekCopyDrafts(source, shift);
     if (drafts.length === 0) return 0;
 
-    const created: MealPlanEntry[] = drafts.map(draft => ({
-      ...draft,
-      id: generateId(),
-      createdAt: new Date().toISOString(),
-      // Its own event, never the source week's — see MealCopyDraft.
-      calendarEventId: null,
-    }));
-    created.forEach(dbInsertMealPlanEntry);
-    created.forEach(entry => patchInRange(set, get, entry));
-    created.forEach(e => reconcileMealSlot(get, e));
-    created.forEach(reconcileMealEvent);
+    const created = drafts.map(copyRow);
+    return writeCopies(set, get, created, `Copied ${created.length} meal${created.length === 1 ? '' : 's'}`);
+  },
 
-    const ids = new Set(created.map(e => e.id));
-    get().setLastAction({
-      label: `Copied ${created.length} meal${created.length === 1 ? '' : 's'}`,
-      undo: () => {
-        created.forEach(e => dropCookTask(e.id));
-        created.forEach(e => dropMealEvent(e.id));
-        created.forEach(e => dbDeleteMealPlanEntry(e.id));
-        set(s => ({ entries: s.entries.filter(e => !ids.has(e.id)) }));
-        created.forEach(e => reconcileMealSlot(get, e));
-      },
+  slotsToCopyFrom(fromStartKey, toStartKey) {
+    return slotsToCopy(
+      dbGetMealPlanEntries(fromStartKey, shiftDayKey(fromStartKey, 6)),
+      dbGetMealPlanEntries(toStartKey, shiftDayKey(toStartKey, 6)),
+    );
+  },
+
+  copySlotFromWeek(fromStartKey, toStartKey, slot) {
+    const source = dbGetMealPlanEntries(fromStartKey, shiftDayKey(fromStartKey, 6));
+    const target = dbGetMealPlanEntries(toStartKey, shiftDayKey(toStartKey, 6));
+    if (!slotsToCopy(source, target).includes(slot)) return 0;
+    const shift = differenceInCalendarDays(dayKeyToDate(toStartKey), dayKeyToDate(fromStartKey));
+    // The source's sortOrder carries, as in a week copy: the slot is empty
+    // all week on this side, so there's nothing for it to land among.
+    const created = slotCopyDrafts(source, slot, shift).map(copyRow);
+    const n = created.length;
+    return writeCopies(set, get, created, `Copied ${n} ${n === 1 ? slotLabel(slot).toLowerCase() : slotPlural(slot)}`);
+  },
+
+  copyEntryTo(id, dates) {
+    // Window-scoped like every read here but the cook-task link's (see
+    // resolveEntry): the meal being copied is one somebody has open.
+    const source = get().entries.find(e => e.id === id);
+    if (!source) return 0;
+    const targets = [...new Set(dates)].filter(date => date !== source.date);
+    const drafts = targets.flatMap(date => {
+      const day = dbGetMealPlanEntries(date, date);
+      if (daysWithMeal(day, source).has(date)) return [];
+      const draft = mealCopyDraft(source, date);
+      // At the end of what that day's slot already has, as planMeal places a
+      // meal; the source's own position means nothing on another day.
+      return draft ? [{ ...draft, sortOrder: nextSortOrder(day, date, draft.slot) }] : [];
     });
-    return created.length;
+    if (drafts.length === 0) return 0;
+
+    const created = drafts.map(copyRow);
+    return writeCopies(
+      set, get, created,
+      `Copied "${source.title}" to ${created.length} day${created.length === 1 ? '' : 's'}`,
+    );
+  },
+
+  listRowsLeftBy(gone) {
+    const recipesById = recipeIndex(useRecipeStore.getState().recipes);
+    const goneRecipeIds = new Set<string>();
+    for (const e of gone) {
+      if (e.cookedAt || !e.recipeId) continue;
+      for (const id of mealCreditIds(e.recipeId, recipesById)) goneRecipeIds.add(id);
+    }
+    if (goneRecipeIds.size === 0) return [];
+
+    const todayKey = dayKeyOf(getLogicalToday());
+    const neededRecipeIds = new Set<string>();
+    for (const e of dbGetMealPlanEntries(todayKey, shiftDayKey(todayKey, STILL_PLANNED_HORIZON_DAYS))) {
+      if (e.cookedAt || !e.recipeId) continue;
+      for (const id of mealCreditIds(e.recipeId, recipesById)) neededRecipeIds.add(id);
+    }
+    const { items, listEntries } = useGroceryStore.getState();
+    return rowsLeftBehind({ goneRecipeIds, neededRecipeIds, items, listEntries });
   },
 
   findPlannedWeekBefore(beforeStartKey, maxWeeksBack) {
@@ -1227,9 +1537,94 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
 
     return removed;
   },
+
+  fillCalendarExternalIds(found) {
+    const written = new Set(dbFillMealCalendarExternalIds(found));
+    if (written.size === 0) return;
+    set(s => ({
+      entries: s.entries.map(e => (written.has(e.id)
+        ? { ...e, calendarEventExternalId: filledExternalId(e.calendarEventId, e.calendarEventExternalId, found) }
+        : e)),
+    }));
+  },
+
+  reconcileSyncedEvents(applied) {
+    const plan = mealEventsAfterSync(applied, id => resolveEntry(get, id));
+    if (plan.reconcile.length === 0 && plan.remove.length === 0) return;
+    // Only with calendar access. Without it (revoked, or EventKit out of
+    // reach) `syncMealEvent`'s fallback deletes nothing, creates nothing and
+    // returns an empty link, and writing that over the stored one orphans an
+    // event this device can no longer name. A local edit has the same
+    // exposure, but this runs unasked, in the background, over every meal
+    // another device touched.
+    // Skipped, the links stay as they are, and the meal's next reconcile once
+    // access is back puts its event right.
+    void getCalendarPermission()
+      .then(permission => {
+        if (permission !== 'granted') return;
+        // Re-read after the await: the row may have moved on, or gone.
+        for (const entry of plan.reconcile) {
+          const current = resolveEntry(get, entry.id);
+          if (current) reconcileMealEvent(current);
+        }
+        for (const link of plan.remove) void deleteMealEvent(link);
+      })
+      .catch(() => {});
+  },
 }));
 
+/**
+ * How far ahead a planned night still counts as wanting its recipe's shopping,
+ * for `listRowsLeftBy`. A year: far enough that no real plan reaches past it,
+ * and a bound rather than an open end because the query takes one.
+ */
+const STILL_PLANNED_HORIZON_DAYS = 366;
+
 type SetState = (fn: (s: { entries: MealPlanEntry[] }) => { entries: MealPlanEntry[] }) => void;
+
+/** A copy's draft made into a row: its own id and stamp, and its own event. */
+function copyRow(draft: MealCopyDraft): MealPlanEntry {
+  return {
+    ...draft,
+    id: generateId(),
+    createdAt: new Date().toISOString(),
+    // Its own event, never the source's. See MealCopyDraft.
+    calendarEventId: null,
+    calendarEventExternalId: null,
+  };
+}
+
+/**
+ * The shared tail of the three copies (`copyWeek`, `copySlotFromWeek`,
+ * `copyEntryTo`): writes the rows, brings each night's task and event in
+ * line, and registers the one undo that takes every row back off. Returns how
+ * many were written.
+ */
+function writeCopies(
+  set: SetState,
+  get: () => MealPlanStore,
+  created: MealPlanEntry[],
+  label: string
+): number {
+  if (created.length === 0) return 0;
+  created.forEach(dbInsertMealPlanEntry);
+  created.forEach(entry => patchInRange(set, get, entry));
+  created.forEach(e => reconcileMealSlot(get, e));
+  created.forEach(reconcileMealEvent);
+
+  const ids = new Set(created.map(e => e.id));
+  get().setLastAction({
+    label,
+    undo: () => {
+      created.forEach(e => dropCookTask(e.id));
+      created.forEach(e => dropMealEvent(e.id));
+      created.forEach(e => dbDeleteMealPlanEntry(e.id));
+      set(s => ({ entries: s.entries.filter(e => !ids.has(e.id)) }));
+      created.forEach(e => reconcileMealSlot(get, e));
+    },
+  });
+  return created.length;
+}
 
 /**
  * Adds a written row to `entries` only when its day falls inside the loaded
@@ -1251,8 +1646,8 @@ function patchInRange(
  * isn't.
  *
  * Every other read in this store is deliberately window-scoped, and stays that
- * way. This exists for the cook-task link alone, which is inherently
- * cross-screen: a task ticked off on Today knows its entry's id and nothing
+ * way. This exists for the cook-task link (and its public face `entryById`,
+ * the recipe link on a meal task) alone, which is inherently cross-screen: a task ticked off on Today knows its entry's id and nothing
  * about which week Meal plan has open — usually none at all, since the store
  * only loads a range once that screen has been visited.
  */
@@ -1459,11 +1854,12 @@ function createMealSlotTask(get: () => MealPlanStore, entry: MealPlanEntry): voi
   const { tasks, addTask } = useTaskStore.getState();
   if (hasAnyGeneratedTask(tasks, 'mealSlot', sourceId)) return;
   ensureGeneratedTaskCategory('mealSlot');
+  const planned = slotEntryForTask(entry, useRecipeStore.getState());
   addTask(
     // Re-read after ensureGeneratedTaskCategory, which may have just filled it.
     mealSlotTaskDraft(
-      entry.date, entry.slot, entry, useSettingsStore.getState().mealCookTaskCategory, recipeMinutesFor(entry.recipeId),
-      useSettingsStore.getState().mealSlotStepEstimates
+      entry.date, entry.slot, planned, useSettingsStore.getState().mealCookTaskCategory,
+      recipeMinutesFor(planned?.recipeId ?? null), useSettingsStore.getState().mealSlotStepEstimates
     ),
     derivedId(spawnSeed.generated('mealSlot', sourceId, generatedTaskCountOf(tasks, 'mealSlot', sourceId))),
     { skipCategoryDefault: true, skipTitleRules: true },
@@ -1487,8 +1883,55 @@ function createMealSlotTask(get: () => MealPlanStore, entry: MealPlanEntry): voi
  *
  * **A cooked meal is left alone**, the same gate the cook task had: the night
  * has happened, and re-titling the task at that point edits history.
+ *
+ * Then the use-up tasks of any leftover the change concerns — see
+ * `reconcileSlotLeftovers`. The task half is `reconcileMealSlotTask`.
  */
-function reconcileMealSlot(get: () => MealPlanStore, entry: Pick<MealPlanEntry, 'date' | 'slot'>): void {
+function reconcileMealSlot(
+  get: () => MealPlanStore,
+  entry: Pick<MealPlanEntry, 'date' | 'slot'> & Partial<Pick<MealPlanEntry, 'leftoverId'>>
+): void {
+  reconcileMealSlotTask(get, entry);
+  reconcileSlotLeftovers(get, entry);
+}
+
+/**
+ * The leftovers a slot change concerns, their use-up tasks brought into line
+ * (#2932): a leftover planned into a meal whose task already says "Eat Chili"
+ * has no "Use up Chili" beside it, and moving or clearing that meal gives it
+ * back. The rule is `leftoverTasks.plannedMealRowFor`; this is only which
+ * leftovers to ask it about.
+ *
+ * Both halves of a change, the same reason `moveEntry` reconciles both slots:
+ * the entry handed in (planned, moved, or just removed, so no longer in the
+ * slot) and whatever the slot holds now. Every caller hands in a whole entry,
+ * which is where `leftoverId` comes from; the type only says what's read.
+ *
+ * Runs after the slot's own task, whose presence is half of the rule.
+ * Cooking isn't a caller: `setCooked` doesn't reconcile the slot, and a
+ * container with some left after the meal is picked up by the next sweep
+ * (`reconcileAllLeftoverTasks`, on every foreground) rather than asked about
+ * while the "was that the last of it?" prompt is still open.
+ */
+function reconcileSlotLeftovers(
+  get: () => MealPlanStore,
+  entry: Pick<MealPlanEntry, 'date' | 'slot'> & Partial<Pick<MealPlanEntry, 'leftoverId'>>
+): void {
+  const ids = new Set<string>();
+  if (entry.leftoverId) ids.add(entry.leftoverId);
+  for (const e of entriesForSlot(get().entriesForDayLive(entry.date), entry.date, entry.slot)) {
+    if (e.leftoverId) ids.add(e.leftoverId);
+  }
+  if (ids.size === 0) return;
+  // Required lazily, the way useRecipeStore reaches this store: the leftover
+  // store reaches the food log and through it the Health bridge at import, and
+  // only a slot holding a leftover needs it.
+  const { useLeftoverStore } = require('./useLeftoverStore') as typeof import('./useLeftoverStore');
+  const { reconcileLeftoverUseUpTask } = useLeftoverStore.getState();
+  ids.forEach(id => reconcileLeftoverUseUpTask(id));
+}
+
+function reconcileMealSlotTask(get: () => MealPlanStore, entry: Pick<MealPlanEntry, 'date' | 'slot'>): void {
   const { date: dayKey, slot } = entry;
   const live = liveMealSlotTask(dayKey, slot);
   if (!live) return;
@@ -1505,8 +1948,12 @@ function reconcileMealSlot(get: () => MealPlanStore, entry: Pick<MealPlanEntry, 
     return;
   }
 
+  // A meal whose recipe was deleted reads as the typed meal it now is — see
+  // slotEntryForTask. Its minutes come off the same copy, so a gone recipe has
+  // none to lend the step it no longer has.
+  const planned = slotEntryForTask(current, useRecipeStore.getState());
   const updates = mealSlotDrift(
-    live, dayKey, slot, current, recipeMinutesFor(current?.recipeId ?? null),
+    live, dayKey, slot, planned, recipeMinutesFor(planned?.recipeId ?? null),
     useSettingsStore.getState().mealSlotStepEstimates
   );
   // skipPostponeCount for reconcileGeneratedTask's reason: this row's date is
@@ -1585,17 +2032,22 @@ function syncCookTaskCompletion(entry: MealPlanEntry, cooked: boolean): void {
  * so nothing here awaits it and a failure is retried on the next reconcile
  * rather than surfaced.
  *
- * The two guards are what keep it cheap: most reconciles hand back the id the
- * entry already has and write nothing, and an entry deleted while the device
- * write was in flight is left alone rather than resurrected in SQLite.
+ * The two guards are what keep it cheap: most reconciles hand back the link
+ * the entry already has and write nothing, and an entry deleted while the
+ * device write was in flight is left alone rather than resurrected in SQLite.
+ * The link is both ids, the device's and the calendar server's (#2950), so a
+ * meal whose server id was read for the first time is written back too.
  */
 function reconcileMealEvent(entry: MealPlanEntry): void {
   syncMealEvent(entry)
-    .then(calendarEventId => {
-      if (calendarEventId === entry.calendarEventId) return;
+    .then(link => {
+      if (
+        link.eventId === entry.calendarEventId &&
+        link.externalId === (entry.calendarEventExternalId ?? null)
+      ) return;
       const current = resolveEntry(useMealPlanStore.getState, entry.id);
       if (!current) return;
-      const updated = { ...current, calendarEventId };
+      const updated = { ...current, calendarEventId: link.eventId, calendarEventExternalId: link.externalId };
       dbUpdateMealPlanEntry(updated);
       useMealPlanStore.setState(s => ({
         entries: s.entries.map(e => (e.id === entry.id ? updated : e)),
@@ -1621,5 +2073,6 @@ function reconcileMealEvent(entry: MealPlanEntry): void {
  */
 function dropMealEvent(entryId: string): void {
   const current = resolveEntry(useMealPlanStore.getState, entryId);
-  if (current?.calendarEventId) deleteCalendarEvent(current.calendarEventId);
+  // By its server id when the local one names nothing here (#2950).
+  if (current?.calendarEventId) void deleteMealEvent(mealEventLink(current));
 }

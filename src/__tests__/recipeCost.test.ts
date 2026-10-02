@@ -9,6 +9,9 @@ import {
   type CostEstimate,
 } from '../utils/recipeCost';
 
+/** A local wall-clock time as the ISO instant the app stores, so the suite reads the same in any zone. */
+const localIso = (local: string) => new Date(local).toISOString();
+
 // recipeCost reaches mealPlanGroceries for estimateWeekCost, which reaches
 // mealPlan.ts for isKeyInRange, which reaches dateUtils for dayKeyOf, which
 // reaches the settings store for dayResetTime — unneeded here, since a day
@@ -55,11 +58,12 @@ function recipe(name: string, ingredients: RecipeIngredient[], overrides: Partia
     tags: [],
     ingredients,
     emptySections: [],
+    emptyStepSections: [],
     components: [],
     prepTasks: [],
     steps: [],
     sortOrder: seq,
-    createdAt: '2026-01-01T00:00:00.000Z',
+    createdAt: localIso('2026-01-01T00:00'),
     cookCount: 0,
     lastCookedAt: null,
     vote: null,
@@ -92,7 +96,7 @@ function entry(date: string, recipeId: string | null, overrides: Partial<MealPla
     recipeId,
     title: overrides.title ?? 'Leftovers',
     sortOrder: 1,
-    createdAt: '2026-01-01T00:00:00.000Z',
+    createdAt: localIso('2026-01-01T00:00'),
     cookedAt: null,
     leftoverId: null,
     recipeChoices: [],
@@ -121,7 +125,7 @@ function item(overrides: Partial<GroceryItem> & { name: string }): GroceryItem {
     purchaseCount: 0,
     lastAddedAt: null,
     lastPurchasedAt: null,
-    createdAt: '2026-01-01T00:00:00.000Z',
+    createdAt: localIso('2026-01-01T00:00'),
     onHandUntil: null,
     sourceRecipeId: null,
     sourceRecipeTitle: null,
@@ -139,7 +143,7 @@ function item(overrides: Partial<GroceryItem> & { name: string }): GroceryItem {
 
 beforeEach(() => { seq = 0; });
 
-const NOW = new Date('2026-08-18T00:00:00.000Z');
+const NOW = new Date(localIso('2026-08-18T00:00'));
 
 describe('estimateRecipeCost', () => {
   it('is null for a recipe with no ingredients', () => {
@@ -228,6 +232,14 @@ describe('estimateRecipeCost', () => {
     expect(estimate!.totalMinor).toBe(150); // 500 * 3/10
   });
 
+  it('relates a bare count to a price per dozen', () => {
+    const dish = recipe('Frittata', [ing('Eggs', { quantity: '3' })]);
+    const catalog = [item({ name: 'Eggs', lastPriceMinor: 480, lastPriceQuantity: '1 dozen' })];
+    const estimate = estimateRecipeCost(dish, catalog);
+    expect(estimate).toMatchObject({ priced: 1, total: 1 });
+    expect(estimate!.totalMinor).toBe(120); // 480 * 3/12
+  });
+
   it('refuses to relate two different dimensions', () => {
     const dish = recipe('Soup', [
       ing('Stock', { quantity: '2 cups' }),
@@ -265,6 +277,47 @@ describe('estimateRecipeCost', () => {
     expect(doubled!.totalMinor).toBe(200);
   });
 
+  it('costs a canned line at the scale it is cooked at, whatever its scaled text reads (#2918)', () => {
+    // "14 oz can" can't be written at 1.5x, so its scaled text stays "14 oz
+    // can", and at 2x it becomes "2 14 oz cans". Costing those strings priced
+    // a can and a half as one can, and two cans against a per-tin price as
+    // nothing at all.
+    const chili = recipe('Chili', [ing('Black beans', { quantity: '14 oz can' })]);
+    const catalog = [item({ name: 'Black beans', lastPriceMinor: 120, lastPriceQuantity: '14 oz can' })];
+    const at = (scale: number) => estimateRecipeCost(chili, catalog, undefined, undefined, scale)!;
+    expect(at(1).totalMinor).toBe(120);
+    expect(at(1.5).totalMinor).toBe(180);
+    expect(at(2).totalMinor).toBe(240);
+    expect(at(0.5).totalMinor).toBe(60);
+  });
+
+  it('costs a line scaling can\'t rewrite at the scale it is cooked at', () => {
+    // A second measure ("1 lb 2 oz") is passed through unscaled as text.
+    const dish = recipe('Stew', [ing('Beef', { quantity: '1 lb 2 oz' })]);
+    const catalog = [item({ name: 'Beef', lastPriceMinor: 900, lastPriceQuantity: '18 oz' })];
+    expect(estimateRecipeCost(dish, catalog, undefined, undefined, 2)!.totalMinor).toBe(1800);
+  });
+
+  it('relates a counted sized container to a price by weight, both ways round', () => {
+    // "2 14 oz cans" is twenty-eight ounces, the reading nutrition gives it.
+    const chili = recipe('Chili', [ing('Black beans', { quantity: '2 14 oz cans' })]);
+    const perTin = [item({ name: 'Black beans', lastPriceMinor: 120, lastPriceQuantity: '14 oz can' })];
+    expect(estimateRecipeCost(chili, perTin)!.totalMinor).toBe(240);
+    const perPound = [item({ name: 'Black beans', lastPriceMinor: 160, lastPriceQuantity: '1 lb' })];
+    expect(estimateRecipeCost(chili, perPound)!.totalMinor).toBe(280); // 160 * 28/16
+
+    // And a single tin against a price recorded for a four-pack.
+    const one = recipe('Chili', [ing('Black beans', { quantity: '14 oz can' })]);
+    const pack = [item({ name: 'Black beans', lastPriceMinor: 400, lastPriceQuantity: '4 14 oz cans' })];
+    expect(estimateRecipeCost(one, pack)!.totalMinor).toBe(100);
+  });
+
+  it('still refuses a counted container against a price in a different dimension', () => {
+    const chili = recipe('Chili', [ing('Stock', { quantity: '2 14 oz cans' })]);
+    const catalog = [item({ name: 'Stock', lastPriceMinor: 300, lastPriceQuantity: '1 qt' })];
+    expect(estimateRecipeCost(chili, catalog)).toBeNull();
+  });
+
   it('carries the oldest contributing price forward', () => {
     const dish = recipe('Dinner', [
       ing('Flour', { quantity: '1 lb' }),
@@ -273,15 +326,15 @@ describe('estimateRecipeCost', () => {
     const catalog = [
       item({
         name: 'Flour', lastPriceMinor: 200, lastPriceQuantity: '2 lb', priceHistory: [],
-        lastPricedAt: '2026-08-01T00:00:00.000Z',
+        lastPricedAt: localIso('2026-08-01T00:00'),
       }),
       item({
         name: 'Sugar', lastPriceMinor: 300, lastPriceQuantity: '2 lb', priceHistory: [],
-        lastPricedAt: '2026-03-01T00:00:00.000Z',
+        lastPricedAt: localIso('2026-03-01T00:00'),
       }),
     ];
     const estimate = estimateRecipeCost(dish, catalog);
-    expect(estimate!.oldestPricedAt).toBe('2026-03-01T00:00:00.000Z');
+    expect(estimate!.oldestPricedAt).toBe(localIso('2026-03-01T00:00'));
   });
 
   it('includes a component\'s ingredients, priced through the same catalog', () => {
@@ -308,7 +361,7 @@ describe('estimateRecipeCost', () => {
     const swap: StandingSwap = {
       link: {
         itemId: milk.id, subItemId: oatMilk.id, standing: true, note: null,
-        ratioFrom: null, ratioTo: null, createdAt: '2026-01-01T00:00:00.000Z',
+        ratioFrom: null, ratioTo: null, createdAt: localIso('2026-01-01T00:00'),
       },
       from: milk,
       to: oatMilk,
@@ -355,10 +408,20 @@ describe('estimateWeekCost', () => {
     expect(estimate!.totalMinor).toBe(400); // "2 lb" is the full purchase amount
   });
 
+  it('costs a scaled entry\'s canned line at its scale, not its shopping text (#2918)', () => {
+    const chili = recipe('Chili', [ing('Black beans', { quantity: '14 oz can' })]);
+    const recipesById = new Map([[chili.id, chili]]);
+    const catalog = [item({ name: 'Black beans', lastPriceMinor: 120, lastPriceQuantity: '14 oz can' })];
+    const at = (recipeScale: number) =>
+      estimateWeekCost([entry('2026-08-10', chili.id, { recipeScale })], recipesById, catalog, RANGE)!;
+    expect(at(1.5).totalMinor).toBe(180);
+    expect(at(2).totalMinor).toBe(240);
+  });
+
   it('excludes a cooked entry, same as collectPlannedIngredients', () => {
     const soup = recipe('Soup', [ing('Stock', { quantity: '1 lb' })]);
     const recipesById = new Map([[soup.id, soup]]);
-    const entries = [entry('2026-08-10', soup.id, { cookedAt: '2026-08-10T00:00:00.000Z' })];
+    const entries = [entry('2026-08-10', soup.id, { cookedAt: localIso('2026-08-10T00:00') })];
     const catalog = [item({ name: 'Stock', lastPriceMinor: 400, lastPriceQuantity: '2 lb' })];
     expect(estimateWeekCost(entries, recipesById, catalog, RANGE)).toBeNull();
   });
@@ -399,7 +462,7 @@ describe('describeRecipeCost / describeWeekCost', () => {
 
   it('appends the oldest price\'s age', () => {
     const estimate: CostEstimate = {
-      totalMinor: 1400, priced: 3, total: 3, oldestPricedAt: '2026-03-01T00:00:00.000Z',
+      totalMinor: 1400, priced: 3, total: 3, oldestPricedAt: localIso('2026-03-01T00:00'),
     };
     expect(describeRecipeCost(estimate, '$', NOW)).toBe('≈ $14.00 · prices as of Mar');
   });

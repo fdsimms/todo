@@ -26,16 +26,24 @@ jest.mock('../store/useTaskStore', () => ({
 }));
 
 const mockCreateGroup = jest.fn();
+const mockUpdateGroup = jest.fn();
 jest.mock('../store/useTaskGroupStore', () => ({
-  useTaskGroupStore: { getState: () => ({ createGroup: mockCreateGroup }) },
+  useTaskGroupStore: { getState: () => ({ createGroup: mockCreateGroup, updateGroup: mockUpdateGroup }) },
 }));
 
 import { awayNoonIso } from '../utils/awayDates';
 
 const mockCreateProject = jest.fn();
 const mockUpdateProject = jest.fn();
+let mockTargetProject: { id: string; awayStart: string | null; deadline: string | null } | null = null;
 jest.mock('../store/useProjectStore', () => ({
-  useProjectStore: { getState: () => ({ createProject: mockCreateProject, updateProject: mockUpdateProject }) },
+  useProjectStore: {
+    getState: () => ({
+      createProject: mockCreateProject,
+      updateProject: mockUpdateProject,
+      getProjectById: (id: string) => (mockTargetProject?.id === id ? mockTargetProject : null),
+    }),
+  },
 }));
 
 // checkScheduledTemplates reads vacationMode/weekStartsOn/dayResetTime, and
@@ -67,6 +75,7 @@ const makeItem = (overrides: Partial<TemplateItem> = {}): TemplateItem => ({
   recurrenceInterval: 1,
   recurrenceDays: [],
   recurrenceMonthDay: null,
+  recurrenceMonth: null,
   recurrenceFromCompletion: false,
   recurrenceCount: null,
   vacationPause: false, excludeFromSuggestions: false,
@@ -82,6 +91,8 @@ const makeItem = (overrides: Partial<TemplateItem> = {}): TemplateItem => ({
   deliverableKind: null,
   chainEnabled: false,
   chainItems: [],
+  rotationEnabled: false,
+  rotationItems: [],
   chainIndex: 0,
   subtasks: [],
   groupId: null,
@@ -702,6 +713,23 @@ describe('applyTemplate — naming the run', () => {
     expect(mockAddTask.mock.calls[0][0].projectId).toBe('project-Denver');
   });
 
+  it("homes an item group's stack on the project as a section, a checklist if saved as one", () => {
+    mockUpdateGroup.mockClear();
+    useTemplateStore.setState({
+      templates: [makeTemplate({
+        applyContainer: 'stack',
+        schedule: null,
+        scheduleLastFiredKey: null,
+        anchorsAreAway: false,
+        itemGroups: [{ id: 'g1', title: 'Packing', sortOrder: 1, checklist: true }],
+        questions: [],
+        items: [makeItem({ id: 'a', title: 'Socks', groupId: 'g1' })],
+      })],
+    });
+    useTemplateStore.getState().applyTemplate('tpl-1', new Set(['a']), { start: null, end: null }, { runName: 'Denver' });
+    expect(mockUpdateGroup).toHaveBeenCalledWith(expect.any(String), { projectId: 'project-Denver', checklist: true });
+  });
+
   it('creates one run task and turns every item into a subtask of it when the template asks for a task', () => {
     useTemplateStore.setState({
       templates: [makeTemplate({
@@ -776,6 +804,37 @@ describe('applyTemplate — naming the run', () => {
     expect(mockCreateProject).not.toHaveBeenCalled();
     expect(mockAddTask.mock.calls[0][0]).toEqual(expect.objectContaining({ title: 'Denver', projectId: 'proj-1' }));
     expect(mockAddTask.mock.calls[1][0].projectId).toBeUndefined();
+  });
+});
+
+describe('applyTemplate — dates into an existing project', () => {
+  afterEach(() => { mockTargetProject = null; });
+  const start = new Date(2026, 9, 3, 12);
+  const end = new Date(2026, 9, 13, 12);
+
+  // The sheet asks for these dates either way; applied into a project that
+  // already existed, they used to be written nowhere.
+  it("fills in a trip template's span on a project that has none", () => {
+    mockTargetProject = { id: 'proj-1', awayStart: null, deadline: null };
+    useTemplateStore.setState({
+      templates: [makeTemplate({ applyContainer: 'project', anchorsAreAway: true, items: [makeItem({ id: 'a' })] })],
+    });
+    useTemplateStore.getState().applyTemplate('tpl-1', new Set(['a']), { start, end }, { targetProjectId: 'proj-1' });
+    expect(mockUpdateProject).toHaveBeenCalledWith('proj-1', expect.objectContaining({
+      awayStart: expect.any(String), awayEnd: expect.any(String),
+    }));
+  });
+
+  it("fills in the deadline from an ordinary template's end date, but never overwrites one", () => {
+    mockTargetProject = { id: 'proj-1', awayStart: null, deadline: null };
+    useTemplateStore.setState({ templates: [makeTemplate({ applyContainer: 'project', items: [makeItem({ id: 'a' })] })] });
+    useTemplateStore.getState().applyTemplate('tpl-1', new Set(['a']), { start: null, end }, { targetProjectId: 'proj-1' });
+    expect(mockUpdateProject).toHaveBeenCalledWith('proj-1', { deadline: end.toISOString() });
+
+    mockUpdateProject.mockClear();
+    mockTargetProject = { id: 'proj-1', awayStart: null, deadline: '2026-12-01T12:00:00.000Z' };
+    useTemplateStore.getState().applyTemplate('tpl-1', new Set(['a']), { start: null, end }, { targetProjectId: 'proj-1' });
+    expect(mockUpdateProject).not.toHaveBeenCalledWith('proj-1', expect.objectContaining({ deadline: expect.anything() }));
   });
 });
 

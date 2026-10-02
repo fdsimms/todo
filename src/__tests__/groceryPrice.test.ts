@@ -15,9 +15,11 @@ import {
   lastPricedAmountFor,
   parsePriceInput,
   pricedSince,
+  pricesRecordedSince,
   priceStandingFor,
   priceToInput,
   shopPricesFor,
+  tripPriceFor,
   typicalPriceFor,
   unitPricesFor,
 } from '../utils/groceryPrice';
@@ -76,6 +78,7 @@ function makeShop(name: string, sortOrder: number): Shop {
     excludeFromSuggestions: false,
     receiptStyle: 'itemized' as const,
     aisles: null,
+    aisleOrder: null,
   };
 }
 
@@ -377,6 +380,22 @@ describe('cheapestShopFor', () => {
     expect(cheapestShopFor('i1', links, SHOPS)?.shop.name).toBe('Costco');
   });
 
+  it('reads a dozen as twelve of a bare count', () => {
+    // A dozen is the one count word with a fixed size, so "18" against
+    // "1 dozen" is a comparison rather than two ways of counting.
+    const links = [
+      link({ itemId: 'i1', shopId: costco.id, lastPriceMinor: 540, lastPriceQuantity: '18' }),
+      link({ itemId: 'i1', shopId: safeway.id, lastPriceMinor: 429, lastPriceQuantity: '1 dozen' }),
+    ];
+    // 30c an egg against about 36c.
+    expect(cheapestShopFor('i1', links, SHOPS)?.shop.name).toBe('Costco');
+    expect(unitPricesFor(shopPricesFor('i1', links, SHOPS))).toEqual([
+      // Listed by the price on the tag, which is Safeway's.
+      expect.objectContaining({ minorPerUnit: 36, unit: '' }),
+      expect.objectContaining({ minorPerUnit: 30, unit: '' }),
+    ]);
+  });
+
   it('compares counts sharing a unit word', () => {
     const links = [
       link({ itemId: 'i1', shopId: costco.id, lastPriceMinor: 900, lastPriceQuantity: '3 cans' }),
@@ -448,6 +467,21 @@ describe('cheapestShopFor', () => {
     ];
     // Two of them is not fourteen ounces, and nothing here will pretend it is.
     expect(cheapestShopFor('i1', counted, SHOPS)).toBeNull();
+  });
+
+  it('refuses to rank counts of different-sized containers, but compares same-size ones', () => {
+    const mixed = [
+      link({ itemId: 'i1', shopId: costco.id, lastPriceMinor: 400, lastPriceQuantity: '2 28 oz cans' }),
+      link({ itemId: 'i1', shopId: safeway.id, lastPriceMinor: 300, lastPriceQuantity: '2 14 oz cans' }),
+    ];
+    // Both are "2 each", but the Costco tins hold twice as much.
+    expect(cheapestShopFor('i1', mixed, SHOPS)).toBeNull();
+
+    const same = [
+      link({ itemId: 'i1', shopId: costco.id, lastPriceMinor: 450, lastPriceQuantity: '3 14 oz cans' }),
+      link({ itemId: 'i1', shopId: safeway.id, lastPriceMinor: 400, lastPriceQuantity: '2 14 oz cans' }),
+    ];
+    expect(cheapestShopFor('i1', same, SHOPS)?.shop.name).toBe('Costco');
   });
 
   it('compares happily when the quantities match', () => {
@@ -652,6 +686,46 @@ describe('pricedSince', () => {
     const item = makeItem({ lastPriceMinor: 429, lastPricedAt: '2026-08-20T00:05:00.000Z' });
     const links = [link({ itemId: item.id, shopId: costco.id })];
     expect(pricedSince(item, costco.id, links, since)).toBe(true);
+  });
+});
+
+describe('tripPriceFor', () => {
+  // #2936: standing in a store with no price of its own, the row's price tag
+  // opened holding another store's number with nothing saying whose it was.
+  const since = '2026-08-20T00:00:00.000Z';
+
+  it('holds nothing for a store with no price of its own, rather than another store\'s', () => {
+    const item = makeItem({ lastPriceMinor: 1299, lastPricedAt: '2026-08-01T00:00:00.000Z' });
+    expect(tripPriceFor(item, costco.id, [], since)).toEqual({ minor: null, recorded: false });
+  });
+
+  it('holds the store\'s own price, recorded or not', () => {
+    const item = makeItem({ lastPriceMinor: 1299, lastPricedAt: '2026-08-01T00:00:00.000Z' });
+    const links = [
+      link({ itemId: item.id, shopId: costco.id, lastPriceMinor: 1049, lastPricedAt: '2026-08-01T00:00:00.000Z' }),
+    ];
+    expect(tripPriceFor(item, costco.id, links, since)).toEqual({ minor: 1049, recorded: false });
+  });
+
+  it('holds a price typed this trip onto the item when the store had no link', () => {
+    // setItemPrice files it on the item alone, since it never mints a link.
+    const item = makeItem({ lastPriceMinor: 1049, lastPricedAt: '2026-08-20T00:05:00.000Z' });
+    expect(tripPriceFor(item, costco.id, [], since)).toEqual({ minor: 1049, recorded: true });
+  });
+});
+
+describe('pricesRecordedSince', () => {
+  const since = '2026-08-20T00:00:00.000Z';
+
+  it('names only the rows priced during the trip, at the price the trip saw', () => {
+    const typedHere = makeItem({ id: 'a', lastPriceMinor: 1049, lastPricedAt: '2026-08-20T00:05:00.000Z' });
+    const pricedBefore = makeItem({ id: 'b', lastPriceMinor: 299, lastPricedAt: '2026-08-01T00:00:00.000Z' });
+    const linkedHere = makeItem({ id: 'c', lastPriceMinor: 500, lastPricedAt: '2026-08-01T00:00:00.000Z' });
+    const links = [
+      link({ itemId: 'c', shopId: costco.id, lastPriceMinor: 459, lastPricedAt: '2026-08-20T00:10:00.000Z' }),
+    ];
+    expect(pricesRecordedSince([typedHere, pricedBefore, linkedHere], costco.id, links, since))
+      .toEqual({ a: 1049, c: 459 });
   });
 });
 

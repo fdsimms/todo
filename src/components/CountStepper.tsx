@@ -104,7 +104,7 @@ export function CountStepper({
   const colors = useColors();
   const styles = makeStyles(colors);
 
-  const range: StepRange = { min, max, allowNull, start };
+  const range: StepRange = { min, max, allowNull, start, step };
 
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');

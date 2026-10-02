@@ -5,7 +5,10 @@ import {
   wantsShelfLifePrompt,
 } from '../utils/itemDisposal';
 
-const NOW = new Date('2026-08-23T12:00:00.000Z');
+/** A local wall-clock time as the ISO instant the app stores, so the suite reads the same in any zone. */
+const localIso = (local: string) => new Date(local).toISOString();
+
+const NOW = new Date(localIso('2026-08-23T12:00'));
 
 function record(overrides: Partial<{ usedUpCount: number; spoiledCount: number; lastSpoiledAt: string | null }> = {}) {
   return { usedUpCount: 0, spoiledCount: 0, lastSpoiledAt: null, ...overrides };
@@ -35,7 +38,7 @@ describe('describeDisposalHistory', () => {
   it('counts the spoiled side against every answer given', () => {
     expect(
       describeDisposalHistory(
-        record({ usedUpCount: 1, spoiledCount: 2, lastSpoiledAt: '2026-08-12T09:00:00.000Z' }),
+        record({ usedUpCount: 1, spoiledCount: 2, lastSpoiledAt: localIso('2026-08-12T09:00') }),
         NOW
       )
     ).toBe('Went bad 2 of 3 times, last on Aug 12.');
@@ -43,7 +46,7 @@ describe('describeDisposalHistory', () => {
 
   it('singularises a lone answer', () => {
     expect(
-      describeDisposalHistory(record({ spoiledCount: 1, lastSpoiledAt: '2026-08-12T09:00:00.000Z' }), NOW)
+      describeDisposalHistory(record({ spoiledCount: 1, lastSpoiledAt: localIso('2026-08-12T09:00') }), NOW)
     ).toBe('Went bad 1 of 1 time, last on Aug 12.');
   });
 
@@ -53,7 +56,7 @@ describe('describeDisposalHistory', () => {
     expect(describeDisposalHistory(record({ spoiledCount: 2, lastSpoiledAt: 'nonsense' }), NOW))
       .toBe('Went bad 2 of 2 times.');
     expect(
-      describeDisposalHistory(record({ spoiledCount: 2, lastSpoiledAt: '2027-01-01T00:00:00.000Z' }), NOW)
+      describeDisposalHistory(record({ spoiledCount: 2, lastSpoiledAt: localIso('2027-01-01T00:00') }), NOW)
     ).toBe('Went bad 2 of 2 times.');
   });
 

@@ -1,18 +1,15 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { SheetModal } from './SheetModal';
+import React, { useEffect, useMemo, useState } from 'react';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { CardSheet, useCardSheet } from './CardSheet';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { ChainItem, DeliverableKind } from '../types';
 import { deliverableMeta } from '../utils/deliverables';
-import { useColors, useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, animation, interaction, type Colors } from '../theme';
+import { useColors } from '../theme/ThemeContext';
+import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { DeliverableKindPicker } from './DeliverableKindPicker';
-import { SafeBlurView } from './SafeBlurView';
 import { SheetHeaderButton } from './SheetHeaderButton';
-import { SheetScrim } from './SheetScrim';
-import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
 
 interface Props {
   visible: boolean;
@@ -47,34 +44,21 @@ interface Props {
  */
 export function ChainStepQuestionSheet({ visible, step, nextStepTitle, onSave, onClose }: Props) {
   const colors = useColors();
-  const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
-  const hiddenY = useSheetHiddenOffset();
-  const translateY = useRef(new Animated.Value(hiddenY)).current;
-  const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const card = useCardSheet();
 
   const [kind, setKind] = useState<DeliverableKind | null>(null);
   const [datesNextStep, setDatesNextStep] = useState(false);
 
   useEffect(() => {
     if (!visible) return;
-    translateY.setValue(hiddenY);
-    backdropOpacity.setValue(0);
     setKind(step?.deliverableKind ?? null);
     setDatesNextStep(step?.deliverableDatesNextStep ?? false);
-    Animated.parallel([
-      Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
-    ]).start();
   }, [visible, step?.id]);
 
   const dismiss = (after: () => void) => {
-    Animated.parallel([
-      Animated.spring(translateY, { toValue: hiddenY, ...animation.spring.sheetDismiss, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
-    ]).start(() => {
-      // No re-arming setValue here — see useSheetHiddenOffset.
+    card.close(() => {
       after();
     });
   };
@@ -95,81 +79,68 @@ export function ChainStepQuestionSheet({ visible, step, nextStepTitle, onSave, o
   };
 
   return (
-    <SheetModal visible={visible} animationType="none" transparent onRequestClose={() => dismiss(onClose)}>
-      <Animated.View style={[StyleSheet.absoluteFill, { opacity: backdropOpacity }]} pointerEvents="none">
-        <SafeBlurView intensity={isDark ? 20 : 15} tint="dark" style={StyleSheet.absoluteFill} />
-        <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
-      </Animated.View>
-      <SheetScrim onPress={() => dismiss(onClose)} />
-
-      <Animated.View style={[styles.sheetOuter, { transform: [{ translateY }] }]}>
-        <View style={styles.card}>
-          <View style={styles.headerRow}>
-            <SheetHeaderButton label="Cancel" role="cancel" onPress={() => dismiss(onClose)} minWidth={56} />
-            <Text style={styles.heading} numberOfLines={2}>{step?.title ?? 'Step'}</Text>
-            <SheetHeaderButton label="Done" onPress={save} minWidth={56} style={styles.headerRight} />
-          </View>
-
-          <Text style={styles.label}>Ask on completion</Text>
-          <View style={styles.pickerWrap}>
-            <DeliverableKindPicker
-              value={kind}
-              onChange={next => {
-                animateLayout();
-                setKind(next);
-              }}
-            />
-            <Text style={styles.hint}>
-              {kind
-                ? deliverableMeta(kind).hint
-                : 'Completing this step is the whole answer. Pick one of the others to be asked a question.'}
-            </Text>
-          </View>
-
-          {canDateNextStep && (
-            <TouchableOpacity
-              style={styles.optionRow}
-              onPress={() => { haptics.tap(); setDatesNextStep(v => !v); }}
-              activeOpacity={interaction.activeOpacity}
-              accessibilityRole="switch"
-              accessibilityLabel="Schedule the next step for this date"
-              accessibilityState={{ checked: datesNextStep }}
-            >
-              <Ionicons
-                name="arrow-forward-circle-outline"
-                size={18}
-                color={datesNextStep ? colors.accent : colors.textSecondary}
-              />
-              <View style={styles.optionContent}>
-                <Text style={styles.optionLabel}>Schedule the next step for this date</Text>
-                <Text style={styles.optionHint}>
-                  {`“${nextStepTitle}” gets the date you answer with, instead of the day you finish this step.`}
-                </Text>
-              </View>
-              <View style={[styles.toggle, datesNextStep && styles.toggleOn]}>
-                <View style={[styles.toggleKnob, datesNextStep && styles.toggleKnobOn]} />
-              </View>
-            </TouchableOpacity>
-          )}
+    <CardSheet
+      name="ChainStepQuestionSheet"
+      visible={visible}
+      controller={card}
+      onRequestClose={() => dismiss(onClose)}
+    >
+      <View style={styles.card}>
+        <View style={styles.headerRow}>
+          <SheetHeaderButton label="Cancel" role="cancel" onPress={() => dismiss(onClose)} minWidth={56} />
+          <Text style={styles.heading} numberOfLines={2}>{step?.title ?? 'Step'}</Text>
+          <SheetHeaderButton label="Done" onPress={save} minWidth={56} style={styles.headerRight} />
         </View>
-      </Animated.View>
-    </SheetModal>
+
+        <Text style={styles.label}>Ask on completion</Text>
+        <View style={styles.pickerWrap}>
+          <DeliverableKindPicker
+            value={kind}
+            onChange={next => {
+              animateLayout();
+              setKind(next);
+            }}
+            exclude={['choice']}
+          />
+          <Text style={styles.hint}>
+            {kind
+              ? deliverableMeta(kind).hint
+              : 'Completing this step is the whole answer. Pick one of the others to be asked a question.'}
+          </Text>
+        </View>
+
+        {canDateNextStep && (
+          <TouchableOpacity
+            style={styles.optionRow}
+            onPress={() => { haptics.tap(); setDatesNextStep(v => !v); }}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="switch"
+            accessibilityLabel="Schedule the next step for this date"
+            accessibilityState={{ checked: datesNextStep }}
+          >
+            <Ionicons
+              name="arrow-forward-circle-outline"
+              size={18}
+              color={datesNextStep ? colors.accent : colors.textSecondary}
+            />
+            <View style={styles.optionContent}>
+              <Text style={styles.optionLabel}>Schedule the next step for this date</Text>
+              <Text style={styles.optionHint}>
+                {`“${nextStepTitle}” gets the date you answer with, instead of the day you finish this step.`}
+              </Text>
+            </View>
+            <View style={[styles.toggle, datesNextStep && styles.toggleOn]}>
+              <View style={[styles.toggleKnob, datesNextStep && styles.toggleKnobOn]} />
+            </View>
+          </TouchableOpacity>
+        )}
+      </View>
+    </CardSheet>
   );
 }
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
-  backdropDim: { backgroundColor: colors.backdrop },
-  sheetOuter: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    paddingHorizontal: spacing.md,
-    paddingBottom: 34,
-  },
   card: {
-    backgroundColor: colors.bgSecondary,
-    borderRadius: radius.lg,
     paddingBottom: spacing.md,
   },
   headerRow: {

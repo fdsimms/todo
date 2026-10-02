@@ -1,0 +1,4 @@
+{
+  "message": "Fixes: a reminder set for a fixed time no longer moves by an hour each time the app opens after you travel to another time zone, and the suggested day for a snoozed task now counts repeating tasks on the right days in time zones far ahead of UTC",
+  "date": "2026-09-25"
+}

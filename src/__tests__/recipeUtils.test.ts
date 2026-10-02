@@ -5,9 +5,17 @@ import {
   splitPrep,
   ingredientsFromText,
   mergeIngredients,
+  duplicateIngredientIn,
+  blockedIngredientNote,
+  alreadyInRecipeNote,
+  blockedReviewRows,
   remapIngredientKeyIn,
   describeRecipe,
   cleanRecipeName,
+  recipeByName,
+  sharedRecipeNameKeys,
+  recipeInBook,
+  recipeNameKey,
   rankRecipes,
   parsePrepTasks,
   normalizePrepTask,
@@ -37,6 +45,8 @@ import {
   scoreRecipeAgainstCatalog,
   suggestRecipesForEmptyNight,
   countLikelyInPantry,
+  countLikelyInPantryByRecipe,
+  samePantryCatalog,
   pantryCoverageForRecipe,
   describePantryCoverage,
   formatServingsRange,
@@ -47,7 +57,10 @@ import {
   recipeHasAttribution,
 } from '../utils/recipeUtils';
 import type { GroceryItem, ItemSubLink, Recipe, RecipeComponent, RecipeIngredient, RecipePrepTask } from '../types';
-import { RECIPE_STEP_NOTE_MAX_LENGTH } from '../types';
+import { RECIPE_INGREDIENT_QUANTITY_MAX_LENGTH, RECIPE_STEP_NOTE_MAX_LENGTH } from '../types';
+
+/** A local wall-clock time as the ISO instant the app stores, so the suite reads the same in any zone. */
+const localIso = (local: string) => new Date(local).toISOString();
 
 // recipeUtils now reaches mealPlanGroceries.ts (for countLikelyInPantry) and,
 // through it, mealPlan.ts → dateUtils.ts → the settings store — which
@@ -97,11 +110,12 @@ function recipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
     tags: [],
     ingredients: [],
     emptySections: [],
+    emptyStepSections: [],
     components: [],
     prepTasks: [],
     steps: [],
     sortOrder: seq,
-    createdAt: '2026-01-01T00:00:00.000Z',
+    createdAt: localIso('2026-01-01T00:00'),
     cookCount: 0,
     lastCookedAt: null,
     vote: null,
@@ -303,6 +317,21 @@ describe('normalizeIngredient', () => {
     expect(normalizeIngredient({ name: 'Flour', section: long })!.section).toHaveLength(40);
   });
 
+  it('keeps a quantity carrying a parenthetical source count on every read, not just the one an import stored it with', () => {
+    // Every stored ingredient is re-run through normalizeIngredient
+    // (parseRecipeIngredients), so a quantity clamped to the tighter grocery
+    // cap here would re-truncate an already-saved recipe on every load, not
+    // just at import time (#recipe-import-units-cutoff).
+    const quantity = '1 packet (1/4 ounce, 7 g)';
+    expect(normalizeIngredient({ name: 'Active dry yeast', quantity })!.quantity).toBe(quantity);
+  });
+
+  it('still clamps a quantity to RECIPE_INGREDIENT_QUANTITY_MAX_LENGTH', () => {
+    const long = 'x'.repeat(RECIPE_INGREDIENT_QUANTITY_MAX_LENGTH + 20);
+    expect(normalizeIngredient({ name: 'Flour', quantity: long })!.quantity)
+      .toHaveLength(RECIPE_INGREDIENT_QUANTITY_MAX_LENGTH);
+  });
+
   it('splits a "such as" clause out of a raw name — an AI extraction or a scraped page never split it itself', () => {
     const result = normalizeIngredient({ name: 'neutral oil, such as avocado oil' })!;
     expect(result.name).toBe('neutral oil');
@@ -501,6 +530,17 @@ describe('ingredientsFromText', () => {
   it('skips blank lines', () => {
     expect(ingredientsFromText('Milk\n\n\nEggs')).toHaveLength(2);
   });
+
+  it('keeps a second use of an ingredient that says what it is for (#2917)', () => {
+    // "flour for dusting" is a second use, not the dough's flour typed again.
+    const result = ingredientsFromText('2 cups flour\nflour for dusting\n3 cloves garlic, minced\n2 cloves garlic, sliced');
+    expect(result.map(i => [i.name, i.quantity, i.prep, i.purpose])).toEqual([
+      ['flour', '2 cups', null, null],
+      ['flour', '', null, 'dusting'],
+      ['garlic', '3 cloves', 'minced', null],
+      ['garlic', '2 cloves', 'sliced', null],
+    ]);
+  });
 });
 
 describe('mergeIngredients', () => {
@@ -523,6 +563,115 @@ describe('mergeIngredients', () => {
   it('dedupes within the incoming batch too', () => {
     const result = mergeIngredients([], [ing('Salt'), ing('salt')]);
     expect(result).toHaveLength(1);
+  });
+
+  it('keeps the same ingredient under two headings as two rows (#2917)', () => {
+    // Carnitas: garlic in the marinade and again in the sauce. Keyed on the
+    // name alone, the sauce's garlic vanished and the shop bought 3 cloves.
+    const marinade = ing('garlic', { quantity: '3 cloves', section: 'For the marinade' });
+    const sauce = ing('garlic', { quantity: '2 cloves', section: 'For the sauce' });
+
+    const imported = mergeIngredients([], [marinade, sauce]);
+    expect(imported.map(i => [i.section, i.quantity])).toEqual([
+      ['For the marinade', '3 cloves'],
+      ['For the sauce', '2 cloves'],
+    ]);
+    // And typed by hand onto a recipe that already has the marinade's.
+    expect(mergeIngredients([marinade], [sauce])).toHaveLength(2);
+  });
+
+  it('keeps the same ingredient with a different prep or purpose as two rows', () => {
+    const minced = ing('garlic', { prep: 'minced' });
+    expect(mergeIngredients([minced], [ing('garlic', { prep: 'sliced' })])).toHaveLength(2);
+    expect(mergeIngredients([ing('flour')], [ing('flour', { purpose: 'for dusting' })])).toHaveLength(2);
+    // Prep and purpose are notes, so case alone doesn't make a second use.
+    expect(mergeIngredients([minced], [ing('Garlic', { nameKey: 'garlic', prep: 'Minced ' })])).toHaveLength(1);
+  });
+
+  it('still treats one heading, one prep and a new amount as the same line', () => {
+    // A correction is as likely as a second use, and the existing row's amount
+    // may have been set by hand. The add field names the blocking row instead.
+    const existing = ing('garlic', { quantity: '3 cloves', section: 'For the sauce' });
+    const again = ing('garlic', { quantity: '2 cloves', section: 'For the sauce' });
+    expect(mergeIngredients([existing], [again])).toHaveLength(1);
+  });
+});
+
+describe('duplicateIngredientIn', () => {
+  it('names the row that would block an add, and nothing when it would go in', () => {
+    const marinade = ing('garlic', { quantity: '3 cloves', section: 'For the marinade' });
+    const onion = ing('onion');
+
+    expect(duplicateIngredientIn([onion, marinade], ing('garlic', { section: 'For the marinade' }))).toBe(marinade);
+    expect(duplicateIngredientIn([onion, marinade], ing('garlic', { section: 'For the sauce' }))).toBeNull();
+  });
+});
+
+describe('blockedIngredientNote', () => {
+  it('names the one row a refused line collided with, and where it sits', () => {
+    const marinade = ing('garlic', { quantity: '3 cloves', section: 'For the marinade' });
+    expect(blockedIngredientNote([marinade], 0))
+      .toBe('Already in this recipe under For the marinade: 3 cloves garlic. Edit that line to change it.');
+    expect(blockedIngredientNote([ing('salt')], 0))
+      .toBe('Already in this recipe: salt. Edit that line to change it.');
+  });
+
+  it('lists what a paste skipped', () => {
+    const rows = [ing('garlic', { quantity: '3 cloves' }), ing('olive oil')];
+    expect(blockedIngredientNote(rows, 4)).toBe('Skipped 2 lines already in this recipe: 3 cloves garlic, olive oil.');
+    expect(blockedIngredientNote([rows[1]], 4)).toBe('Skipped 1 line already in this recipe: olive oil.');
+  });
+
+  it('says nothing when nothing was blocked', () => {
+    expect(blockedIngredientNote([], 0)).toBeNull();
+  });
+});
+
+describe('alreadyInRecipeNote', () => {
+  it('is the single-row wording the add field uses', () => {
+    const marinade = ing('garlic', { quantity: '3 cloves', section: 'For the marinade' });
+    expect(alreadyInRecipeNote(marinade)).toBe(blockedIngredientNote([marinade], 0));
+    expect(alreadyInRecipeNote(ing('salt'))).toBe('Already in this recipe: salt. Edit that line to change it.');
+  });
+});
+
+describe('blockedReviewRows', () => {
+  it('names a second line under the same heading, with the first as its blocker', () => {
+    const first = ing('olive oil', { quantity: '3 tbsp' });
+    const second = ing('olive oil', { quantity: '2 tbsp' });
+    const blocked = blockedReviewRows([first, ing('garlic'), second]);
+    expect([...blocked.keys()]).toEqual([2]);
+    expect(blocked.get(2)).toBe(first);
+    expect(alreadyInRecipeNote(blocked.get(2)!))
+      .toBe('Already in this recipe: 3 tbsp olive oil. Edit that line to change it.');
+  });
+
+  it('names exactly the rows mergeIngredients drops', () => {
+    const rows = [
+      ing('olive oil', { quantity: '3 tbsp' }),
+      ing('olive oil', { quantity: '2 tbsp' }),
+      ing('olive oil', { quantity: '1 tbsp', section: 'For the dressing' }),
+      ing('garlic', { prep: 'minced' }),
+      ing('garlic', { prep: 'sliced' }),
+      ing('Garlic', { prep: 'Minced' }),
+    ];
+    const blocked = blockedReviewRows(rows);
+    const kept = mergeIngredients([], rows);
+    expect(rows.filter((_, i) => !blocked.has(i))).toEqual(kept);
+    expect([...blocked.keys()]).toEqual([1, 5]);
+  });
+
+  it('leaves out a row that isn\'t going in, so unticking the first frees the second', () => {
+    const first = ing('olive oil', { quantity: '3 tbsp' });
+    const second = ing('olive oil', { quantity: '2 tbsp' });
+    expect(blockedReviewRows([first, second]).size).toBe(1);
+    expect(blockedReviewRows([null, second]).size).toBe(0);
+  });
+
+  it('checks against the rows a recipe already has', () => {
+    const had = ing('garlic', { quantity: '3 cloves', section: 'For the marinade' });
+    const blocked = blockedReviewRows([ing('garlic', { section: 'For the marinade' })], [had]);
+    expect(blocked.get(0)).toBe(had);
   });
 });
 
@@ -775,6 +924,33 @@ describe('prepTaskDraftsForMeal', () => {
   });
 });
 
+describe('describeRecipe with a shared name', () => {
+  const soup = recipe('Lentil soup', {
+    mealType: 'dinner',
+    source: 'Plenty',
+    sourceType: 'cookbook',
+    sourcePage: '112',
+  });
+
+  it('leads with the book, where a one-line row can\'t cut it off', () => {
+    expect(describeRecipe(soup, null, { sharedName: true }).startsWith('Plenty, p. 112 · Dinner')).toBe(true);
+  });
+
+  it('keeps it last otherwise, and says it only once either way', () => {
+    const usual = describeRecipe(soup);
+    expect(usual.startsWith('Dinner')).toBe(true);
+    expect(usual.endsWith('Plenty, p. 112')).toBe(true);
+    expect(describeRecipe(soup, null, { sharedName: true }).split('Plenty').length).toBe(2);
+  });
+
+  it('finds the names more than one recipe has', () => {
+    const keys = sharedRecipeNameKeys([
+      { nameKey: 'lentil soup' }, { nameKey: 'ragu' }, { nameKey: 'lentil soup' },
+    ]);
+    expect([...keys]).toEqual(['lentil soup']);
+  });
+});
+
 describe('describeRecipe', () => {
   it('counts ingredients and singularises one', () => {
     expect(describeRecipe(recipe('A', { ingredients: [ing('Salt')] }))).toBe('1 ingredient');
@@ -931,16 +1107,16 @@ describe('sortRecipesBy', () => {
   });
 
   it('sorts by most recently cooked, with never-cooked trailing', () => {
-    const recent = recipe('Recent', { lastCookedAt: '2026-08-01T00:00:00.000Z' });
-    const older = recipe('Older', { lastCookedAt: '2026-07-01T00:00:00.000Z' });
+    const recent = recipe('Recent', { lastCookedAt: localIso('2026-08-01T00:00') });
+    const older = recipe('Older', { lastCookedAt: localIso('2026-07-01T00:00') });
     const never = recipe('Never', { lastCookedAt: null });
     expect(sortRecipesBy([never, older, recent], 'cooked-recent').map(r => r.name))
       .toEqual(['Recent', 'Older', 'Never']);
   });
 
   it('sorts by oldest cooked, with never-cooked still trailing', () => {
-    const recent = recipe('Recent', { lastCookedAt: '2026-08-01T00:00:00.000Z' });
-    const older = recipe('Older', { lastCookedAt: '2026-07-01T00:00:00.000Z' });
+    const recent = recipe('Recent', { lastCookedAt: localIso('2026-08-01T00:00') });
+    const older = recipe('Older', { lastCookedAt: localIso('2026-07-01T00:00') });
     const never = recipe('Never', { lastCookedAt: null });
     expect(sortRecipesBy([never, recent, older], 'cooked-oldest').map(r => r.name))
       .toEqual(['Older', 'Recent', 'Never']);
@@ -1071,6 +1247,51 @@ describe('recipeSectionKey', () => {
   it('is the mealType itself, or "untagged" for the null section', () => {
     expect(recipeSectionKey('breakfast')).toBe('breakfast');
     expect(recipeSectionKey(null)).toBe('untagged');
+  });
+});
+
+describe('recipeInBook / recipeByName', () => {
+  const named = (id: string, name: string, cookbookId: string | null = null) =>
+    ({ id, nameKey: recipeNameKey(name), cookbookId });
+  const mine = named('mine', 'Lentil soup');
+  const six = named('six', 'Lentil Soup', 'b-six');
+  const plenty = named('plenty', 'Lentil soup!', 'b-plenty');
+
+  it('asks one book, so another book\'s recipe of the name is no clash', () => {
+    expect(recipeInBook([six, plenty], 'lentil soup', 'b-six')).toBe(six);
+    expect(recipeInBook([six, plenty], 'lentil soup', null)).toBeNull();
+    expect(recipeInBook([six, mine], 'LENTIL SOUP', null)).toBe(mine);
+    expect(recipeInBook([six], '   ', 'b-six')).toBeNull();
+  });
+
+  it('prefers the named book, then a sole match, then the bookless one', () => {
+    expect(recipeByName([six, plenty, mine], 'Lentil soup', 'b-plenty')).toBe(plenty);
+    expect(recipeByName([six], 'Lentil soup')).toBe(six);
+    expect(recipeByName([six, plenty], 'Lentil soup', 'b-other')).toBeNull();
+    expect(recipeByName([six, plenty, mine], 'Lentil soup')).toBe(mine);
+  });
+
+  it('refuses to guess between two books', () => {
+    expect(recipeByName([six, plenty], 'Lentil soup')).toBeNull();
+  });
+});
+
+describe('recipeNameKey', () => {
+  it('treats spellings the box can only hold one of as one name', () => {
+    // A bare lowercase (what the AI sheets used to compare with) kept these
+    // apart, so an idea the box then refused looked new, and the lookup that
+    // followed the refusal couldn't find the recipe it was refused for.
+    expect(recipeNameKey('Crème brûlée')).toBe(recipeNameKey('creme brulee'));
+    expect(recipeNameKey('Chicken & Rice')).toBe(recipeNameKey('chicken rice'));
+    expect(recipeNameKey("  Mom's   Chili ")).toBe(recipeNameKey("mom's chili"));
+  });
+
+  it('keeps genuinely different names apart', () => {
+    expect(recipeNameKey('Chicken tacos')).not.toBe(recipeNameKey('Fish tacos'));
+  });
+
+  it('is empty only for a name that is not one', () => {
+    expect(recipeNameKey('   ')).toBe('');
   });
 });
 
@@ -1228,12 +1449,12 @@ describe('describeCookHistory', () => {
   });
 
   it('says "once" for a single cooking', () => {
-    const r = recipe('Ragù', { cookCount: 1, lastCookedAt: '2026-07-12T00:00:00.000Z' });
+    const r = recipe('Ragù', { cookCount: 1, lastCookedAt: localIso('2026-07-12T00:00') });
     expect(describeCookHistory(r)).toBe('Cooked once · last on Jul 12');
   });
 
   it('counts multiple cookings with a ×', () => {
-    const r = recipe('Ragù', { cookCount: 4, lastCookedAt: '2026-07-12T00:00:00.000Z' });
+    const r = recipe('Ragù', { cookCount: 4, lastCookedAt: localIso('2026-07-12T00:00') });
     expect(describeCookHistory(r)).toBe('Cooked 4× · last on Jul 12');
   });
 
@@ -1481,7 +1702,7 @@ function item(name: string, overrides: Partial<GroceryItem> & { nameKey?: string
     purchaseCount: 0,
     lastAddedAt: null,
     lastPurchasedAt: null,
-    createdAt: '2026-01-01T00:00:00.000Z',
+    createdAt: localIso('2026-01-01T00:00'),
     onHandUntil: null,
     sourceRecipeId: null,
     sourceRecipeTitle: null,
@@ -1492,7 +1713,7 @@ function item(name: string, overrides: Partial<GroceryItem> & { nameKey?: string
 
 // #1568 — a substitute link, for the "counts as covered" tests below.
 function sub(itemId: string, subItemId: string): ItemSubLink {
-  return { itemId, subItemId, note: null, createdAt: '2026-01-01T00:00:00.000Z', ratioFrom: null, ratioTo: null, standing: false };
+  return { itemId, subItemId, note: null, createdAt: localIso('2026-01-01T00:00'), ratioFrom: null, ratioTo: null, standing: false };
 }
 
 describe('scoreRecipeAgainstCatalog', () => {
@@ -1701,7 +1922,7 @@ describe('scoreRecipeAgainstCatalog', () => {
 });
 
 describe('countLikelyInPantry', () => {
-  const now = new Date('2026-08-11T12:00:00.000Z');
+  const now = new Date(localIso('2026-08-11T12:00'));
   function daysAgo(n: number): string {
     return new Date(now.getTime() - n * 86_400_000).toISOString();
   }
@@ -1814,10 +2035,160 @@ describe('countLikelyInPantry', () => {
   });
 });
 
+// #2922 — the recipe box counts every recipe at once, building the
+// catalog-wide lookups a single time. The answer per recipe must be exactly
+// the one-recipe form's, which is what these pin.
+describe('countLikelyInPantryByRecipe', () => {
+  const now = new Date(localIso('2026-08-11T12:00'));
+  function daysAgo(n: number): string {
+    return new Date(now.getTime() - n * 86_400_000).toISOString();
+  }
+  const recent = { purchaseCount: 3, createdAt: daysAgo(90), lastPurchasedAt: daysAgo(10) };
+
+  /** A box exercising every branch the count has: direct, staple, substitute, standing swap, variety, component, choice, nothing, empty. */
+  function box() {
+    const milk = item('Milk', { nameKey: 'milk', ...recent });
+    const oatMilk = item('Oat milk', { nameKey: 'oat milk', ...recent });
+    const salt = item('Salt', { nameKey: 'salt', isStaple: true });
+    const butter = item('Butter', { nameKey: 'butter' });
+    const margarine = item('Margarine', { nameKey: 'margarine', ...recent });
+    const whiteOnion = item('White onion', { nameKey: 'white onion', varietyOfKey: 'onion', ...recent });
+    const onList = item('Eggs', { nameKey: 'eggs', onList: true, ...recent });
+    const saffron = item('Saffron', { nameKey: 'saffron' });
+    const items = [milk, oatMilk, salt, butter, margarine, whiteOnion, onList, saffron];
+    const subs = [
+      sub(butter.id, margarine.id),
+      { ...sub(milk.id, oatMilk.id), standing: true },
+    ];
+
+    const mash = recipe('Mash', { ingredients: [ing('Milk', { nameKey: 'milk' }), ing('Butter', { nameKey: 'butter' })] });
+    const recipes = [
+      recipe('Cake', { ingredients: [ing('Butter', { nameKey: 'butter' }), ing('Salt', { nameKey: 'salt' }), ing('Eggs', { nameKey: 'eggs' })] }),
+      recipe('Soup', { ingredients: [ing('Onion', { nameKey: 'onion' }), ing('Saffron', { nameKey: 'saffron' })] }),
+      recipe('Latte', { ingredients: [ing('Milk', { nameKey: 'milk' })] }),
+      mash,
+      recipe('Steak dinner', { ingredients: [ing('Steak', { nameKey: 'steak' })], components: [component(mash.id, 'Mash')] }),
+      recipe('Either', {
+        ingredients: [
+          ing('Saffron', { nameKey: 'saffron', choiceGroup: 'spice' }),
+          ing('Salt', { nameKey: 'salt', choiceGroup: 'spice' }),
+        ],
+      }),
+      recipe('Paella', { ingredients: [ing('Saffron', { nameKey: 'saffron' })] }),
+      recipe('Toast', { ingredients: [] }),
+    ];
+    return { items, subs, recipes, recipesById: new Map(recipes.map(r => [r.id, r])) };
+  }
+
+  it('gives every recipe exactly the count countLikelyInPantry gives it alone', () => {
+    const { items, subs, recipes, recipesById } = box();
+    const expected = new Map<string, unknown>();
+    for (const r of recipes) {
+      const count = countLikelyInPantry(r, items, now, recipesById, subs);
+      if (count !== null) expected.set(r.id, count);
+    }
+    const counts = countLikelyInPantryByRecipe(recipes, items, now, recipesById, subs);
+    expect(counts).toEqual(expected);
+    // The fixture has to reach the branches it claims to, or the comparison
+    // above would pass on a box of nulls.
+    expect(counts.size).toBeGreaterThanOrEqual(5);
+    expect([...counts.values()].some(c => c.viaSubstitute > 0)).toBe(true);
+  });
+
+  it('leaves a recipe with nothing to say out rather than holding a zero for it', () => {
+    const { items, subs, recipes, recipesById } = box();
+    const counts = countLikelyInPantryByRecipe(recipes, items, now, recipesById, subs);
+    const paella = recipes.find(r => r.name === 'Paella')!;
+    const toast = recipes.find(r => r.name === 'Toast')!;
+    expect(counts.has(paella.id)).toBe(false);
+    expect(counts.has(toast.id)).toBe(false);
+  });
+
+  it('works without the library or the links, as the one-recipe form does', () => {
+    const { items, recipes } = box();
+    const expected = new Map<string, unknown>();
+    for (const r of recipes) {
+      const count = countLikelyInPantry(r, items, now);
+      if (count !== null) expected.set(r.id, count);
+    }
+    expect(countLikelyInPantryByRecipe(recipes, items, now)).toEqual(expected);
+  });
+
+  it('is empty for an empty box', () => {
+    expect(countLikelyInPantryByRecipe([], [item('Milk', { nameKey: 'milk', ...recent })], now).size).toBe(0);
+  });
+});
+
+// #2922 — the recipe box keeps its pantry counts through a check-off rather
+// than recounting every recipe, on the strength of this comparison.
+describe('samePantryCatalog', () => {
+  const now = new Date(localIso('2026-08-11T12:00'));
+  const lastWeek = new Date(now.getTime() - 7 * 86_400_000).toISOString();
+
+  it('is true for the same array', () => {
+    const items = [item('Milk')];
+    expect(samePantryCatalog(items, items)).toBe(true);
+  });
+
+  it('is true when rows differ only in checked, as a check-off leaves them', () => {
+    const milk = item('Milk', { onList: true, checked: false });
+    const eggs = item('Eggs');
+    expect(samePantryCatalog([milk, eggs], [{ ...milk, checked: true }, eggs])).toBe(true);
+  });
+
+  it('is false for any other change to a row', () => {
+    const milk = item('Milk', { onList: true });
+    const before = [milk];
+    expect(samePantryCatalog(before, [{ ...milk, onList: false }])).toBe(false);
+    expect(samePantryCatalog(before, [{ ...milk, purchaseCount: 1, lastPurchasedAt: lastWeek }])).toBe(false);
+    expect(samePantryCatalog(before, [{ ...milk, isStaple: true }])).toBe(false);
+    expect(samePantryCatalog(before, [{ ...milk, checked: true, frozenAt: lastWeek }])).toBe(false);
+  });
+
+  it('is false when a field appears or disappears, even one it has never heard of', () => {
+    const milk = item('Milk');
+    expect(samePantryCatalog([milk], [{ ...milk, somethingNew: 1 } as GroceryItem])).toBe(false);
+    const { aisle: _aisle, ...withoutAisle } = milk;
+    expect(samePantryCatalog([milk], [withoutAisle as GroceryItem])).toBe(false);
+  });
+
+  it('is false for a row added, removed or moved', () => {
+    const milk = item('Milk');
+    const eggs = item('Eggs');
+    expect(samePantryCatalog([milk], [milk, eggs])).toBe(false);
+    expect(samePantryCatalog([milk, eggs], [milk])).toBe(false);
+    expect(samePantryCatalog([milk, eggs], [eggs, milk])).toBe(false);
+  });
+
+  it('only says true where the counts really are unchanged', () => {
+    // The premise the comparison rests on: checking a listed row off moves no
+    // count, including a listed variety answering a generic line.
+    const recent = { purchaseCount: 3, createdAt: '2026-05-01T00:00:00.000Z', lastPurchasedAt: lastWeek };
+    const milk = item('Milk', { nameKey: 'milk', ...recent });
+    const eggs = item('Eggs', { nameKey: 'eggs', onList: true, ...recent });
+    const white = item('White onion', { nameKey: 'white onion', varietyOfKey: 'onion', onList: true, ...recent });
+    const red = item('Red onion', { nameKey: 'red onion', varietyOfKey: 'onion', ...recent });
+    const butter = item('Butter', { nameKey: 'butter' });
+    const margarine = item('Margarine', { nameKey: 'margarine', onList: true, ...recent });
+    const subs = [sub(butter.id, margarine.id)];
+    const recipes = [
+      recipe('Soup', { ingredients: [ing('Onion', { nameKey: 'onion' }), ing('Milk', { nameKey: 'milk' })] }),
+      recipe('Cake', { ingredients: [ing('Butter', { nameKey: 'butter' }), ing('Eggs', { nameKey: 'eggs' }), ing('Milk', { nameKey: 'milk' })] }),
+    ];
+    const before = [milk, eggs, white, red, butter, margarine];
+    const after = before.map(i => (i.onList ? { ...i, checked: true } : i));
+    expect(samePantryCatalog(before, after)).toBe(true);
+    const counts = countLikelyInPantryByRecipe(recipes, before, now, undefined, subs);
+    // Something to lose, or the equality below proves nothing.
+    expect(counts.size).toBe(2);
+    expect(countLikelyInPantryByRecipe(recipes, after, now, undefined, subs)).toEqual(counts);
+  });
+});
+
 // #1103 — the percentage form of countLikelyInPantry, plus enough of its
 // denominator to tell "checked, and it's low" apart from "nothing to check".
 describe('pantryCoverageForRecipe', () => {
-  const now = new Date('2026-08-11T12:00:00.000Z');
+  const now = new Date(localIso('2026-08-11T12:00'));
   function daysAgo(n: number): string {
     return new Date(now.getTime() - n * 86_400_000).toISOString();
   }

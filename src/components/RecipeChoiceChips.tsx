@@ -13,6 +13,13 @@ interface Props {
   /** A chip after the recipe's own options — RecipeToListSheet's "Decide at the store". */
   extraChip?: React.ReactNode;
   hint?: string | null;
+  /**
+   * What the chips sit on. `'page'` (the default) is the screen background, so
+   * an unpicked chip is a `bgSecondary` card; `'card'` is for chips inside a
+   * `bgSecondary` surface already (cook mode's ingredient panel), where that
+   * same fill would vanish into it.
+   */
+  surface?: 'page' | 'card';
 }
 
 /**
@@ -21,7 +28,9 @@ interface Props {
  * the store" chip) and `RecipeDetailScreen`'s own cost/nutrition picker, so
  * the two don't drift into two chip treatments for the one either/or concept.
  */
-export function RecipeChoiceChips({ group, activeOptionId, onPick, extraChip, hint }: Props) {
+export function RecipeChoiceChips({
+  group, activeOptionId, onPick, extraChip, hint, surface = 'page',
+}: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   return (
@@ -34,7 +43,7 @@ export function RecipeChoiceChips({ group, activeOptionId, onPick, extraChip, hi
           return (
             <TouchableOpacity
               key={option.id}
-              style={[styles.chip, on && styles.chipOn]}
+              style={[styles.chip, surface === 'card' && styles.chipOnCard, on && styles.chipOn]}
               activeOpacity={interaction.activeOpacity}
               onPress={() => { haptics.tap(); onPick(option.id); }}
               accessibilityRole="button"
@@ -69,6 +78,7 @@ function makeStyles(colors: Colors) {
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.sm,
     },
+    chipOnCard: { backgroundColor: colors.bgTertiary },
     chipOn: { backgroundColor: colors.accentFill },
     chipText: { color: colors.textSecondary, fontSize: font.sm },
     chipTextOn: { color: colors.onAccent, fontWeight: fontWeight.medium },

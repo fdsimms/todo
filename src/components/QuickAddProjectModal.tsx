@@ -14,13 +14,15 @@ import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeBlurView } from './SafeBlurView';
 import { WhenPicker } from './WhenPicker';
-import { InlineAction } from './InlineAction';
+import { PillGroup, type PillGroupOption } from './PillGroup';
 import { SheetScrim } from './SheetScrim';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, animation, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { useProjectStore } from '../store/useProjectStore';
+import { nudgeFieldsFor } from '../utils/nudgeCadence';
+import { awayNoonIso } from '../utils/awayDates';
 import { useTaskStore } from '../store/useTaskStore';
 import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
@@ -33,7 +35,23 @@ export interface ProjectDraft {
   title: string;
   category: string | null;
   deadline: string | null;
+  /** The "List" chip was on: a running list rather than work with an end. */
+  asList?: boolean;
+  /** The "Trip" chip's departure, stored the way the editor stores it. */
+  awayStart?: string | null;
 }
+
+/**
+ * What a project made as a list starts with, beyond its kind: no finish line
+ * (Project.ongoing) and left out of Pull from projects, since a list of books
+ * or gift ideas has no next task to pull and never gets "done". Both can be
+ * changed in the editor afterwards.
+ */
+export const LIST_PROJECT_FIELDS = {
+  kind: 'list' as const,
+  ongoing: true,
+  ...nudgeFieldsFor('never', 0),
+};
 
 interface Props {
   visible: boolean;
@@ -72,6 +90,8 @@ export function QuickAddProjectModal({
   const projects = useProjectStore(useShallow(s => s.projects));
   const createProject = useProjectStore(s => s.createProject);
   const unarchiveProject = useTaskStore(s => s.unarchiveProject);
+  const uncompleteProject = useTaskStore(s => s.uncompleteProject);
+  const startFreshFromProject = useTaskStore(s => s.startFreshFromProject);
   const categories = useProjectCategoryStore(useShallow(s => s.categories));
   const addCategory = useProjectCategoryStore(s => s.addCategory);
 
@@ -87,15 +107,24 @@ export function QuickAddProjectModal({
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState<string | null>(null);
   const [deadline, setDeadline] = useState<Date | null>(null);
+  const [asList, setAsList] = useState(false);
   const [activePanel, setActivePanel] = useState<ActivePanel>(null);
-  const [addingCategory, setAddingCategory] = useState(false);
-  const [newCategory, setNewCategory] = useState('');
   const [deadlinePickerVisible, setDeadlinePickerVisible] = useState(false);
+  // A trip's departure. Offered here because the only date this sheet had was
+  // Deadline, and a flight date typed there reaches none of the trip features
+  // (vacation mode, Look ahead, moving the trip's tasks), which all read
+  // the departure. The return and the rest are in the editor.
+  const [leaving, setLeaving] = useState<Date | null>(null);
+  const [leavingPickerVisible, setLeavingPickerVisible] = useState(false);
   const [seedActive, setSeedActive] = useState(false);
   // Read only when the sheet opens: a seed that changes identity mid-edit must
   // not reset the fields under the person typing.
   const seedRef = useRef(seed);
   seedRef.current = seed;
+  // Set once the sheet has created or restored something. The add button and
+  // the title's return key both stay live through the dismiss animation, so a
+  // second tap inside it created a second project with the same name.
+  const submittedRef = useRef(false);
 
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -123,13 +152,15 @@ export function QuickAddProjectModal({
 
   useEffect(() => {
     if (!visible) return;
+    submittedRef.current = false;
     setTitle('');
     setCategory(seedRef.current?.category ?? null);
     setSeedActive(!!seedRef.current);
     setDeadline(null);
+    setLeaving(null);
+    setLeavingPickerVisible(false);
+    setAsList(false);
     setActivePanel(null);
-    setAddingCategory(false);
-    setNewCategory('');
     setDeadlinePickerVisible(false);
     scaleAnim.setValue(0.95);
     translateYAnim.setValue(16);
@@ -157,50 +188,75 @@ export function QuickAddProjectModal({
     ]).start(() => { scaleAnim.setValue(0.95); sheetOpacity.setValue(0); onClose(); });
   };
 
-  const archivedProjects = useMemo(() => projects.filter(p => p.archived), [projects]);
+  // Archived and finished projects both: last year's party is usually just
+  // marked complete, and a second copy of its name beside it was the result.
+  const pastProjects = useMemo(() => projects.filter(p => p.archived || p.completed), [projects]);
 
-  // Add/Open full can fire before the new-category field's own blur or Enter
-  // has committed it — same race TaskEditor's resolveLinkUrl guards against.
-  // Read the live text box instead of trusting stale `category` state.
-  const resolveCategory = () => {
-    const c = newCategory.trim();
-    if (addingCategory && c) {
-      addCategory(c);
-      return c;
-    }
-    return category;
-  };
+  // A new category is created and picked the moment it's submitted in the
+  // pill grid below, so there's no half-typed name left to resolve here.
+  const resolveCategory = () => category;
 
   const create = (finalTitle: string) => {
+    if (submittedRef.current) return;
+    submittedRef.current = true;
     haptics.success();
     animateLayout();
     const resolvedCategory = resolveCategory();
-    const project = createProject(finalTitle, {
+    const created = createProject(finalTitle, {
       deadline: deadline ? deadline.toISOString() : null,
       category: resolvedCategory,
+      awayStart: leaving ? awayNoonIso(leaving) : null,
     });
+    if (asList) useProjectStore.getState().updateProject(created.id, LIST_PROJECT_FIELDS);
+    const project = useProjectStore.getState().getProjectById(created.id) ?? created;
     onCreated?.(project, seedActive);
     dismiss();
   };
 
   const handleAdd = () => {
     const finalTitle = title.trim();
-    if (!finalTitle) return;
+    if (!finalTitle || submittedRef.current) return;
 
-    const archivedMatch = findArchivedMatch(archivedProjects, finalTitle);
+    const archivedMatch = findArchivedMatch(pastProjects, finalTitle);
     if (archivedMatch) {
+      const wasArchived = archivedMatch.archived;
       Alert.alert(
-        'Restore archived project?',
-        `You archived "${archivedMatch.title}" a while ago. Restore it instead of starting a new one? Its tasks and progress come back with it.`,
+        wasArchived ? 'Restore archived project?' : 'Reopen finished project?',
+        wasArchived
+          ? `You archived "${archivedMatch.title}" a while ago. Restore it as it was, or start a fresh copy with the same tasks, all open and undated?`
+          : `You finished "${archivedMatch.title}" already. Reopen it as it was, or start a fresh copy with the same tasks, all open and undated?`,
         [
+          // The match is fuzzy, so a wrong guess has to be escapable without
+          // either answer: Cancel leaves the typed name in the field.
+          { text: 'Cancel', style: 'cancel' },
           { text: 'Create new', onPress: () => create(finalTitle) },
+          // Last year's party again: restoring brought back last year's
+          // ticks and dates, which is the one thing not wanted.
           {
-            text: 'Restore',
-            style: 'default',
+            text: 'Start fresh from it',
             onPress: () => {
+              if (submittedRef.current) return;
+              submittedRef.current = true;
               haptics.success();
               animateLayout();
-              unarchiveProject(archivedMatch.id);
+              const copy = startFreshFromProject(archivedMatch.id);
+              if (copy) onCreated?.(copy, false);
+              dismiss();
+            },
+          },
+          {
+            text: wasArchived ? 'Restore' : 'Reopen',
+            style: 'default',
+            onPress: () => {
+              if (submittedRef.current) return;
+              submittedRef.current = true;
+              haptics.success();
+              animateLayout();
+              if (wasArchived) unarchiveProject(archivedMatch.id);
+              // Unarchiving alone sent a project that was also completed to
+              // the Completed list, so Restore appeared to do nothing on the
+              // Active list the person was looking at.
+              if (archivedMatch.completed) uncompleteProject(archivedMatch.id);
               dismiss();
             },
           },
@@ -217,6 +273,8 @@ export function QuickAddProjectModal({
       title: title.trim(),
       category: resolveCategory(),
       deadline: deadline ? deadline.toISOString() : null,
+      asList,
+      awayStart: leaving ? awayNoonIso(leaving) : null,
     });
   };
 
@@ -233,13 +291,23 @@ export function QuickAddProjectModal({
     setActivePanel(null);
   };
 
-  const commitNewCategory = () => {
-    const c = newCategory.trim();
-    setNewCategory('');
-    setAddingCategory(false);
-    if (!c) return;
-    addCategory(c);
-    pickCategory(c);
+  // The category pool is one the user builds and has no ceiling, so it's a
+  // PillGroup: past eight it folds behind "N more" and grows a find-or-add
+  // field, where a hand-rolled row of chips took the sheet over. "None" is
+  // pinned so it's never the one buried.
+  const categoryOptions: PillGroupOption[] = [
+    { key: '__none__', label: 'None', pinned: true, selected: category === null, onPress: () => pickCategory(null) },
+    ...[...categories].sort((a, b) => a.sortOrder - b.sortOrder).map(cat => ({
+      key: cat.id,
+      label: cat.name,
+      selected: category === cat.name,
+      onPress: () => pickCategory(category === cat.name ? null : cat.name),
+    })),
+  ];
+  // addCategory answers a taken name with the existing row, so creating one
+  // that exists just picks it, in the stored case.
+  const createCategory = (name: string) => {
+    pickCategory(addCategory(name).name);
   };
 
   return (
@@ -316,7 +384,9 @@ export function QuickAddProjectModal({
               Whether the new project is a list isn't asked here any more —
               that's a toggle on the project's own screen now (Project.kind),
               set after creation rather than as a question every new project
-              answers up front. */}
+              answers up front. The List chip below is the opt-in exception:
+              a chip nobody has to touch, for the person who already knows,
+              who otherwise had to find an unlabeled icon on the next screen. */}
           <View style={styles.toolbar}>
             <TouchableOpacity
               style={[styles.toolChip, activePanel === 'category' && styles.toolChipActive, category !== null && styles.toolChipSet]}
@@ -343,47 +413,41 @@ export function QuickAddProjectModal({
                 {deadline != null ? formatDeadlineDate(deadline.toISOString()) : 'Deadline'}
               </Text>
             </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.toolChip, leaving != null && styles.toolChipSet]}
+              onPress={() => setLeavingPickerVisible(true)}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="button"
+              accessibilityLabel={leaving ? `Trip, leaving ${formatDeadlineDate(leaving.toISOString())}` : 'Set trip dates'}
+            >
+              <Ionicons name="airplane-outline" size={13} color={leaving ? colors.accent : colors.textTertiary} />
+              <Text style={[styles.toolChipText, leaving != null && styles.toolChipTextSet]} numberOfLines={1}>
+                {leaving != null ? `Leaves ${formatDeadlineDate(leaving.toISOString())}` : 'Trip'}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.toolChip, asList && styles.toolChipSet]}
+              onPress={() => { haptics.tap(); setAsList(v => !v); }}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: asList }}
+              accessibilityLabel="List, with no dates or finish line"
+            >
+              <Ionicons name="list-outline" size={13} color={asList ? colors.accent : colors.textTertiary} />
+              <Text style={[styles.toolChipText, asList && styles.toolChipTextSet]} numberOfLines={1}>List</Text>
+            </TouchableOpacity>
           </View>
 
           {activePanel === 'category' && (
             <View style={styles.panel}>
-              <View style={styles.presetRow}>
-                <TouchableOpacity
-                  style={[styles.presetChip, category === null && styles.presetChipActive]}
-                  onPress={() => pickCategory(null)}
-                  activeOpacity={interaction.activeOpacity}
-                >
-                  <Text style={[styles.presetChipText, category === null && styles.presetChipTextActive]}>None</Text>
-                </TouchableOpacity>
-                {categories.map(cat => (
-                  <TouchableOpacity
-                    key={cat.id}
-                    style={[styles.presetChip, category === cat.name && styles.presetChipActive]}
-                    onPress={() => pickCategory(category === cat.name ? null : cat.name)}
-                    activeOpacity={interaction.activeOpacity}
-                  >
-                    <Text style={[styles.presetChipText, category === cat.name && styles.presetChipTextActive]}>
-                      {cat.name}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-                {addingCategory ? (
-                  <TextInput
-                    autoFocus
-                    style={styles.categoryInput}
-                    value={newCategory}
-                    onChangeText={setNewCategory}
-                    onSubmitEditing={commitNewCategory}
-                    onBlur={commitNewCategory}
-                    placeholder="Category name"
-                    placeholderTextColor={colors.textTertiary}
-                    returnKeyType="done"
-                    autoCapitalize="words"
-                  />
-                ) : (
-                  <InlineAction icon="add" label="New" accessibilityLabel="New category" onPress={() => setAddingCategory(true)} />
-                )}
-              </View>
+              <PillGroup
+                options={categoryOptions}
+                noun="category"
+                pluralNoun="categories"
+                onCreate={createCategory}
+              />
             </View>
           )}
 
@@ -412,6 +476,16 @@ export function QuickAddProjectModal({
         onConfirm={date => { setDeadline(date); setDeadlinePickerVisible(false); }}
         onClear={() => { setDeadline(null); setDeadlinePickerVisible(false); }}
         onCancel={() => setDeadlinePickerVisible(false)}
+      />
+      <WhenPicker
+        visible={leavingPickerVisible}
+        value={leaving}
+        title="Leaving"
+        showTimeOfDay={false}
+        showSuggest={false}
+        onConfirm={date => { setLeaving(date); setLeavingPickerVisible(false); }}
+        onClear={() => { setLeaving(null); setLeavingPickerVisible(false); }}
+        onCancel={() => setLeavingPickerVisible(false)}
       />
     </SheetModal>
   );
@@ -509,40 +583,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   panel: {
     marginBottom: spacing.sm,
     paddingTop: spacing.xs,
-  },
-  presetRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.xs,
-    alignItems: 'center',
-  },
-  presetChip: {
-    paddingHorizontal: spacing.smd,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.full,
-    backgroundColor: colors.bgTertiary,
-    alignItems: 'center',
-  },
-  presetChipActive: {
-    backgroundColor: colors.accentFill,
-  },
-  presetChipText: {
-    color: colors.textSecondary,
-    fontSize: font.sm,
-    fontWeight: fontWeight.medium,
-  },
-  presetChipTextActive: {
-    color: colors.onAccent,
-    fontWeight: fontWeight.semibold,
-  },
-  categoryInput: {
-    color: colors.text,
-    fontSize: font.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.accent,
-    paddingVertical: 4,
-    paddingHorizontal: 4,
-    minWidth: 80,
   },
   moreBtn: {
     flexDirection: 'row',

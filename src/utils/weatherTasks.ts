@@ -3,6 +3,14 @@ import type { WeatherHour } from '../services/weatherLookup';
 import { classifyWeather, conditionNoun } from './weatherCondition';
 import { generatedSourceOf } from './generatedTasks';
 import { generateId } from './id';
+import { parseRuleEstimate } from './ruleEstimate';
+import { KNOWN_LINK_APPS } from '../constants/linkApps';
+
+/**
+ * The Apple Weather app's own scheme, opened by every weather task's link
+ * button — see the note on the `KNOWN_LINK_APPS` entry it's read from.
+ */
+export const WEATHER_LINK_URL = KNOWN_LINK_APPS.find(app => app.name === 'Weather')!.scheme;
 
 /**
  * Weather rules — "on a sunny day, add a task to put on sunscreen".
@@ -48,7 +56,7 @@ export function weatherConditionLabel(condition: WeatherCondition): string {
  * from an empty list — the app already knows the obvious answers, and typing
  * "sunny -> Put on sunscreen" from scratch is the trip a shipped default
  * saves. Each still has its own `enabled`, and the generator's own settings
- * toggle (`weatherEnabled`) ships off — see `GENERATED_KIND_SPECS.weather` —
+ * toggle (the `weatherTasks` setting) ships off — see `GENERATED_KIND_SPECS.weather` —
  * so nobody sees a task from these until they turn the feature on.
  */
 export function defaultWeatherRules(): WeatherRule[] {
@@ -57,6 +65,29 @@ export function defaultWeatherRules(): WeatherRule[] {
     { id: generateId(), condition: 'rainy', title: 'Bring an umbrella', enabled: true, lastFiredDayKey: null, lastAheadDayKey: null },
     { id: generateId(), condition: 'cold', title: 'Wear a coat', enabled: true, lastFiredDayKey: null, lastAheadDayKey: null },
   ];
+}
+
+/**
+ * The edited list with both day marks cleared on every rule whose condition or
+ * enabled flag changed.
+ *
+ * `checkWeatherTasks` spends `lastFiredDayKey` (and `lastAheadDayKey`) on the
+ * first look at a rule each day, matched or not, so a rule changed from
+ * "sunny" to "rainy" after that look was skipped until tomorrow. The mark
+ * answered the old question. A retitle keeps both, or renaming a task swiped
+ * away today would bring it straight back.
+ */
+export function clearWeatherMarksOnEdit(
+  before: readonly WeatherRule[],
+  after: readonly WeatherRule[],
+): WeatherRule[] {
+  const previous = new Map(before.map(r => [r.id, r]));
+  return after.map(rule => {
+    const old = previous.get(rule.id);
+    if (!old) return rule;
+    if (old.condition === rule.condition && old.enabled === rule.enabled) return rule;
+    return { ...rule, lastFiredDayKey: null, lastAheadDayKey: null };
+  });
 }
 
 /**
@@ -85,6 +116,7 @@ export function parseWeatherRules(raw: string | null | undefined): WeatherRule[]
       // Absent in every rule stored before the day-ahead pass existed, which
       // reads as "never fired ahead" and costs that rule one evening.
       lastAheadDayKey: typeof r.lastAheadDayKey === 'string' ? r.lastAheadDayKey : null,
+      ...parseRuleEstimate(r),
     });
   }
   return out;

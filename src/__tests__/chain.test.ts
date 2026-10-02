@@ -1,4 +1,4 @@
-import { activeChainStep, nextChainStep, nextChainStepTitle, parseChainItems, chainPreview, isChainFinish } from '../utils/chain';
+import { activeChainStep, nextChainStep, nextChainStepTitle, parseChainItems, chainPreview, isChainFinish, chainStepAdvancesInPlace } from '../utils/chain';
 import type { ChainItem } from '../types';
 
 const step = (title: string, estimatedMinutes: number | null = null): ChainItem =>
@@ -131,6 +131,40 @@ describe('nextChainStep', () => {
     expect(nextChainStep({ chainEnabled: false, chainIndex: 0, chainItems: items })).toBeNull();
     expect(nextChainStep({ chainEnabled: true, chainIndex: 0, chainItems: [items[0]] })).toBeNull();
     expect(nextChainStep({})).toBeNull();
+  });
+});
+
+describe('chainStepAdvancesInPlace', () => {
+  const items = [step('Chop vegetables'), step('Cook rice'), step('Plate up')];
+
+  it('is true mid-chain on a plain, non-recurring chain — the common case', () => {
+    expect(chainStepAdvancesInPlace({ chainEnabled: true, chainIndex: 0, chainItems: items, recurrenceType: 'none' })).toBe(true);
+  });
+
+  it('is false on the last step — it ends, or waits for the recurrence to wrap it', () => {
+    expect(chainStepAdvancesInPlace({ chainEnabled: true, chainIndex: 2, chainItems: items, recurrenceType: 'none' })).toBe(false);
+  });
+
+  it('is false mid-chain when the step is gated behind its own recurrence schedule', () => {
+    expect(chainStepAdvancesInPlace({
+      chainEnabled: true, chainIndex: 0, chainItems: items, recurrenceType: 'daily', chainStepOnSchedule: true,
+    })).toBe(false);
+  });
+
+  it('is true mid-chain when chainStepOnSchedule is set but the chain has no recurrence to wait for', () => {
+    expect(chainStepAdvancesInPlace({
+      chainEnabled: true, chainIndex: 0, chainItems: items, recurrenceType: 'none', chainStepOnSchedule: true,
+    })).toBe(true);
+  });
+
+  it('is false when the chain is off, or carries no items', () => {
+    expect(chainStepAdvancesInPlace({ chainEnabled: false, chainIndex: 0, chainItems: items })).toBe(false);
+    expect(chainStepAdvancesInPlace({ chainEnabled: true, chainIndex: 0, chainItems: [] })).toBe(false);
+    expect(chainStepAdvancesInPlace({})).toBe(false);
+  });
+
+  it('defaults a missing index to the first step', () => {
+    expect(chainStepAdvancesInPlace({ chainEnabled: true, chainItems: items, recurrenceType: 'none' })).toBe(true);
   });
 });
 

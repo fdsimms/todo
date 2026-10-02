@@ -30,7 +30,9 @@ import { useGroceryStore } from '../store/useGroceryStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { rankedCatalogItems, catalogPruneCandidates, rankGrocerySuggestions } from '../utils/grocerySuggest';
-import { linkCounts } from '../utils/groceryFacts';
+import { describeForgetLoss, linkCounts } from '../utils/groceryFacts';
+import { suppliesStockedFrom } from '../utils/supply';
+import { useTaskStore } from '../store/useTaskStore';
 import { itemIdsForShop, itemCountsByShop, primaryShopFor } from '../utils/groceryShops';
 import { formatPrice, describePriceContext, lastPriceFor } from '../utils/groceryPrice';
 import { SheetHeader } from './SheetHeader';
@@ -43,6 +45,7 @@ import { navigateToFoodSearchSettings } from './NutritionSearchSheet';
 import { haptics } from '../utils/haptics';
 import { confirmDelete } from '../utils/confirmDelete';
 import type { GroceryItem } from '../types';
+import { useFilterField } from '../hooks/useFilterField';
 
 const CHECKBOX_SIZE = 22;
 
@@ -86,7 +89,7 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
   const currencySymbol = useSettingsStore(s => s.currencySymbol);
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [query, setQuery] = useState('');
+  const { query, clear: clearQuery, props: filterField } = useFilterField();
   const [shopFilter, setShopFilter] = useState<string | null>(null);
   // Nested rather than a sibling — a Modal presents from its React parent's
   // view controller, so a sibling would ask this sheet's own presenter for a
@@ -98,7 +101,7 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
   useEffect(() => {
     if (visible) {
       setSelected(new Set());
-      setQuery('');
+      clearQuery();
       setShopFilter(null);
       setEditingId(null);
     }
@@ -106,12 +109,18 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
 
   const now = useMemo(() => new Date(), [visible]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const shopCounts = useMemo(() => itemCountsByShop(items, itemShops), [items, itemShops]);
+  // Counted over the rows this sheet can show, which leaves out whatever is
+  // already in the active trolley: counting those made "Costco 70" filter to 60.
+  const shopCounts = useMemo(
+    () => itemCountsByShop(items, itemShops, inTrolley),
+    [items, itemShops, inTrolley]
+  );
   // Only stores with something in them: a chip reading "Aldi (0)" is a filter
-  // whose only outcome is an empty list.
+  // whose only outcome is an empty list. The active one stays, so adding its
+  // last row can't take away the chip that turns the filter off.
   const filterShops = useMemo(
-    () => shops.filter(s => (shopCounts.get(s.id) ?? 0) > 0),
-    [shops, shopCounts]
+    () => shops.filter(s => (shopCounts.get(s.id) ?? 0) > 0 || s.id === shopFilter),
+    [shops, shopCounts, shopFilter]
   );
 
   // Wrapping pills, not a horizontal scroll row — the same call
@@ -156,17 +165,20 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
     return items.filter(i => ids.has(i.id));
   }, [items, itemShops, shopFilter]);
 
+  // No cap under a store filter: that set is already bounded, and its chip
+  // said how many rows it holds. Capping it hid everything past 40 behind a
+  // search nobody was told to make.
   const rows = useMemo(() => {
     if (query.trim()) {
-      return rankGrocerySuggestions(query, scoped, now, 50, inTrolley)
+      return rankGrocerySuggestions(query, scoped, now, shopFilter ? Infinity : 50, inTrolley)
         .filter(s => !s.onList)
         .map(s => s.item);
     }
     // Scoped to the active list, not to "on any list": a staple already on the
     // list at home is exactly what Buy again should offer while you're
     // stocking a rental kitchen.
-    return rankedCatalogItems(scoped, now, 40, inTrolley);
-  }, [query, scoped, now, inTrolley]);
+    return rankedCatalogItems(scoped, now, shopFilter ? Infinity : 40, inTrolley);
+  }, [query, scoped, now, inTrolley, shopFilter]);
 
   // Deliberately over `items` and not `scoped`: the prune offer is about the
   // whole catalog, and scoping it to a store would offer to forget a subset
@@ -206,8 +218,8 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
   const handleCancel = () => {
     if (selected.size === 0) { Keyboard.dismiss(); onClose(); return; }
     Alert.alert(
-      'Discard selection?',
-      `The ${selected.size} ${selected.size === 1 ? 'item' : 'items'} you picked won’t be added to your list.`,
+      'Discard changes?',
+      'You have unsaved changes. Are you sure you want to discard them?',
       [
         { text: 'Keep editing', style: 'cancel' },
         { text: 'Discard', style: 'destructive', onPress: () => { Keyboard.dismiss(); onClose(); } },
@@ -225,9 +237,20 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
   const confirmForget = () => {
     const names = items.filter(i => selected.has(i.id)).map(i => i.name);
     if (names.length === 0) return;
+    // Read at the tap rather than subscribed to: nothing else on this sheet
+    // needs the tasks or the aliases. See describeForgetLoss.
+    const ids = [...selected];
+    const grocery = useGroceryStore.getState();
+    const tasks = useTaskStore.getState().tasks;
+    const loss = describeForgetLoss(
+      ids,
+      { products: grocery.itemProducts, subs: grocery.itemSubs, aliases: grocery.storeAliases },
+      items,
+      ids.flatMap(id => suppliesStockedFrom(id, tasks)).map(t => t.title),
+    );
     confirmDelete({
       title: `Forget ${names.length} ${names.length === 1 ? 'item' : 'items'}?`,
-      message: `${names.slice(0, 6).join(', ')}${names.length > 6 ? '…' : ''}\n\nThis removes them from your catalog along with their purchase history, and can’t be undone.`,
+      message: `${names.slice(0, 6).join(', ')}${names.length > 6 ? '…' : ''}\n\nThis removes them from your catalog along with their purchase history, and can’t be undone.${loss ? `\n\n${loss}` : ''}`,
       confirmLabel: 'Forget',
       onConfirm: () => {
         deleteItems([...selected]);
@@ -333,8 +356,7 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
           <Ionicons name="search" size={iconSize.sm} color={colors.textTertiary} />
           <TextInput
             style={styles.search}
-            value={query}
-            onChangeText={setQuery}
+            {...filterField}
             placeholder="Search your grocery catalog"
             placeholderTextColor={colors.textTertiary}
             autoCorrect={false}
@@ -401,15 +423,27 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
             ) : null
           }
           ListEmptyComponent={
+            // Three different empties, told apart by whether there is a
+            // catalog to be empty of. The list hides what's already on it, so
+            // a catalog whose every item is on the list used to say it had
+            // nothing in it yet, beside a list full of those items.
             <EmptyState
               icon="basket-outline"
-              title={query.trim() ? 'Nothing matches' : 'Nothing in your catalog yet'}
+              title={query.trim()
+                ? 'Nothing matches'
+                : scoped.length > 0
+                  ? 'All on the list'
+                  : shopFilter ? 'Nothing from this store yet' : 'Nothing in your catalog yet'}
               subtitle={
-                shopFilter
-                  ? 'Everything you buy at this store is already on the list.'
-                  : query.trim()
-                    ? 'Everything matching is already on the list.'
-                    : 'Finish a shopping trip and the things you bought turn up here, best-first.'
+                query.trim()
+                  ? 'Everything matching is already on the list.'
+                  : scoped.length > 0
+                    ? shopFilter
+                      ? 'Everything you buy at this store is already on the list.'
+                      : 'Everything in your catalog is already on the list.'
+                    : shopFilter
+                      ? 'Finish a trip at this store and the things you bought turn up here.'
+                      : 'Finish a shopping trip and the things you bought turn up here, best-first.'
               }
             />
           }

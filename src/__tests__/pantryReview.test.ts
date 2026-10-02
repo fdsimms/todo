@@ -10,6 +10,9 @@ import { OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
 import { groceryNameKey } from '../utils/groceryParse';
 import type { GroceryItem, ItemProduct } from '../types';
 
+/** A local wall-clock time as the ISO instant the app stores, so the suite reads the same in any zone. */
+const localIso = (local: string) => new Date(local).toISOString();
+
 // pantryReview reaches pantryCheckTasks for its grace constant, which reaches
 // kitchenInventory and so dateUtils and the settings store (SQLite). Nothing
 // here reads a setting — the same stub pantryCheckTasks.test.ts uses.
@@ -17,7 +20,7 @@ jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: { getState: () => ({ dayResetTime: '00:00' }) },
 }));
 
-const NOW = new Date('2026-08-22T12:00:00.000Z');
+const NOW = new Date(localIso('2026-08-22T12:00'));
 
 function daysAgo(n: number): string {
   return new Date(NOW.getTime() - n * 86_400_000).toISOString();
@@ -282,12 +285,12 @@ describe('the cap', () => {
 describe('describePantryDoubt', () => {
   it('names the lapse in days', () => {
     const deck = buildPantryReviewDeck([makeItem({ name: 'Flour', lastPurchasedAt: daysAgo(130) })], NOW);
-    expect(describePantryDoubt(deck.cards[0])).toBe('Estimated use-by passed 8 days ago');
+    expect(describePantryDoubt(deck.cards[0])).toBe('Usually gone 8 days ago');
   });
 
   it('has a word for today and yesterday', () => {
-    expect(describePantryDoubt({ doubt: 'lapsed', lapsedDays: 0 } as never)).toBe('Estimated use-by passed today');
-    expect(describePantryDoubt({ doubt: 'lapsed', lapsedDays: 1 } as never)).toBe('Estimated use-by passed yesterday');
+    expect(describePantryDoubt({ doubt: 'lapsed', lapsedDays: 0 } as never)).toBe('Usually gone by now');
+    expect(describePantryDoubt({ doubt: 'lapsed', lapsedDays: 1 } as never)).toBe('Usually gone by yesterday');
   });
 
   it('says nothing on a card whose own reason line already says how sure the app is', () => {
@@ -298,7 +301,7 @@ describe('describePantryDoubt', () => {
 
 describe('describeLastPurchase', () => {
   it('dates the purchase in the same shape the reading itself uses', () => {
-    expect(describeLastPurchase({ lastPurchasedAt: '2026-08-12T09:00:00.000Z' })).toBe('Last bought Aug 12');
+    expect(describeLastPurchase({ lastPurchasedAt: localIso('2026-08-12T09:00') })).toBe('Last bought Aug 12');
   });
 
   it('is null for a row never bought, and for an unparseable stamp', () => {

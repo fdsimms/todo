@@ -30,6 +30,7 @@ import { DetailHeader } from '../components/DetailHeader';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, interaction, type Colors } from '../theme';
 import { getCurrentDayStart } from '../utils/dateUtils';
+import { confirmBulkSetWhen } from '../utils/scheduleMovePrompt';
 import { isHeldBack } from '../utils/visibilityUtils';
 import { describeSavedView, filterTasksForView } from '../utils/savedViews';
 import type { Task } from '../types';
@@ -66,7 +67,6 @@ export function SavedViewDetailScreen() {
   const bulkCompleteTasks = useTaskStore(s => s.bulkCompleteTasks);
   const bulkMarkMissed = useTaskStore(s => s.bulkMarkMissed);
   const bulkSetPriority = useTaskStore(s => s.bulkSetPriority);
-  const bulkSetWhen = useTaskStore(s => s.bulkSetWhen);
   const bulkSetCategory = useTaskStore(s => s.bulkSetCategory);
   const bulkAddTags = useTaskStore(s => s.bulkAddTags);
   const view = useSavedViewStore(s => s.views.find(v => v.id === viewId) ?? null);
@@ -302,7 +302,7 @@ export function SavedViewDetailScreen() {
             onComplete={handleBulkComplete}
             completableCount={completableCount}
             onDelete={handleBulkDelete}
-            onSetWhen={(date, segs) => { bulkSetWhen(Array.from(selectedIds), date, segs); exitSelection(); }}
+            onSetWhen={(date, segs) => confirmBulkSetWhen(Array.from(selectedIds), date, segs, exitSelection)}
             onSetCategory={cat => { bulkSetCategory(Array.from(selectedIds), cat); exitSelection(); }}
             onAddTags={tags => { bulkAddTags(Array.from(selectedIds), tags); exitSelection(); }}
             onSetPriority={p => { bulkSetPriority(Array.from(selectedIds), p); exitSelection(); }}

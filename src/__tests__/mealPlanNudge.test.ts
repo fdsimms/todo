@@ -139,16 +139,46 @@ describe('mealPlanNudgeSuppressed', () => {
 
   it('is false when nothing is planned in the target week', () => {
     expect(mealPlanNudgeSuppressed(due, [])).toBe(false);
-    expect(mealPlanNudgeSuppressed(due, [{ date: '2025-08-09' }, { date: '2025-08-17' }])).toBe(false);
+    expect(
+      mealPlanNudgeSuppressed(due, [
+        { date: '2025-08-09', slot: 'dinner' },
+        { date: '2025-08-17', slot: 'dinner' },
+      ])
+    ).toBe(false);
   });
 
   it('is true when anything at all is planned in the target week', () => {
-    expect(mealPlanNudgeSuppressed(due, [{ date: '2025-08-12' }])).toBe(true);
+    expect(mealPlanNudgeSuppressed(due, [{ date: '2025-08-12', slot: 'dinner' }])).toBe(true);
   });
 
-  it('treats both ends of the range as inclusive', () => {
-    expect(mealPlanNudgeSuppressed(due, [{ date: '2025-08-10' }])).toBe(true);
-    expect(mealPlanNudgeSuppressed(due, [{ date: '2025-08-16' }])).toBe(true);
+  it('treats the end of the range as inclusive', () => {
+    expect(mealPlanNudgeSuppressed(due, [{ date: '2025-08-16', slot: 'dinner' }])).toBe(true);
+  });
+
+  it('does not count an entry on the first day of the week', () => {
+    // The nudge fires on this same day by default, so a standing entry
+    // there would otherwise suppress the nudge every week (#1730).
+    expect(mealPlanNudgeSuppressed(due, [{ date: '2025-08-10', slot: 'dinner' }])).toBe(false);
+  });
+
+  it('still counts an entry on the first day alongside one on a later day', () => {
+    expect(
+      mealPlanNudgeSuppressed(due, [
+        { date: '2025-08-10', slot: 'dinner' },
+        { date: '2025-08-12', slot: 'dinner' },
+      ])
+    ).toBe(true);
+  });
+
+  it('only counts entries in the chosen slots', () => {
+    // Narrowed to dinner alone: a lunch entry elsewhere in the week hasn't
+    // touched the thing this nudge is actually asking about.
+    expect(
+      mealPlanNudgeSuppressed(due, [{ date: '2025-08-12', slot: 'lunch' }], ['dinner'])
+    ).toBe(false);
+    expect(
+      mealPlanNudgeSuppressed(due, [{ date: '2025-08-12', slot: 'dinner' }], ['dinner'])
+    ).toBe(true);
   });
 });
 
@@ -290,6 +320,19 @@ describe('countPlannedSlots', () => {
       entry('2025-08-11', 'dinner'),
     ];
     expect(countPlannedSlots(entries, '2025-08-11')).toBe(1);
+  });
+
+  it('counts only the given slots when narrowed', () => {
+    // Someone who only cares about dinner sets mealPlanNudgeSlots to
+    // ['dinner'], and a planned breakfast shouldn't count toward it.
+    const entries = [
+      entry('2025-08-11', 'breakfast'),
+      entry('2025-08-11', 'lunch'),
+    ];
+    expect(countPlannedSlots(entries, '2025-08-11', ['dinner'])).toBe(0);
+    expect(
+      countPlannedSlots([...entries, entry('2025-08-11', 'dinner')], '2025-08-11', ['dinner'])
+    ).toBe(1);
   });
 });
 

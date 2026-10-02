@@ -1,4 +1,9 @@
 import type { Person, Task } from '../types';
+
+const settingsState = { dayResetTime: '00:00', vacationMode: false };
+jest.mock('../store/useSettingsStore', () => ({
+  useSettingsStore: { getState: () => settingsState },
+}));
 import type { HistoryEntry } from '../utils/personHistory';
 import {
   declineHoldDays,
@@ -21,7 +26,7 @@ const TODAY = new Date(2026, 2, 20, 12);
 const daysAgo = (n: number) => new Date(TODAY.getTime() - n * 86_400_000);
 
 const person = (o: Partial<Person> = {}): Person => ({
-  id: 'p1', name: 'Sarah', nickname: '', notes: '', sortOrder: 1,
+  id: 'p1', name: 'Sarah', kind: 'individual', nickname: '', notes: '', sortOrder: 1,
   archived: false, archivedAt: null, createdAt: '2026-01-01T00:00:00.000Z',
   birthdayMonth: null, birthdayDay: null, birthYear: null, birthdayTaskOptOut: false, birthdayGiftTaskOptOut: false,
   phoneNumber: null, email: null, linkUrl: null,
@@ -141,6 +146,14 @@ describe('who wants a nudge', () => {
 
   it('skips somebody filed away', () => {
     expect(wantedReachOuts([due({ archived: true })], TODAY)).toEqual([]);
+  });
+
+  // See docs/arch/people.md, "Businesses don't get check-ins": the editor
+  // already forces nudgeOptIn/cadenceDays off for one, but this is the gate
+  // that decides who gets nudged, so it has to hold even for a business row
+  // that somehow still carries a cadence.
+  it('never speaks about a business, even one carrying a cadence', () => {
+    expect(wantedReachOuts([due({ kind: 'business' })], TODAY)).toEqual([]);
   });
 
   it('honours a recent swipe-away', () => {
@@ -347,5 +360,34 @@ describe('folding a couple\'s wants into one', () => {
     const collapsed = collapseGroupedReachOuts([sam, mom, jamie], groupIdOf, () => 'the Ortegas');
 
     expect(collapsed.map(w => w.sourceId)).toEqual(['g1', 'mom']);
+  });
+});
+
+describe('the day-reset grace window', () => {
+  afterEach(() => { settingsState.dayResetTime = '00:00'; });
+
+  // A catch-up at 01:30 on Mar 13 with a 02:00 reset belongs to logical Mar 12,
+  // so a weekly cadence comes round again on logical Mar 19, not Mar 20.
+  it('measures the cadence from the logical day of the last catch-up', () => {
+    settingsState.dayResetTime = '02:00';
+    const lastTogether = new Date(2026, 2, 13, 1, 30);
+    const today = new Date(2026, 2, 19, 2, 0);
+    const wants = wantedReachOuts([{ person: person({ cadenceDays: 7 }), lastTogether }], today);
+    expect(wants.map(w => w.personId)).toEqual(['p1']);
+  });
+
+  it('ends a decline hold on the logical day it was due to', () => {
+    settingsState.dayResetTime = '02:00';
+    const declinedAt = new Date(2026, 2, 13, 1, 30).toISOString();
+    const p = person({ cadenceDays: 7, reachOutDeclinedAt: declinedAt, reachOutOfferDeclinedAt: declinedAt });
+    const today = new Date(2026, 2, 19, 2, 0);
+    expect(declinedRecently(p, today)).toBe(false);
+    expect(offerDeclinedRecently(p, today)).toBe(false);
+  });
+
+  it('ends a completion hold on the logical day it was due to', () => {
+    settingsState.dayResetTime = '02:00';
+    const task = genTask({ completed: true, completedAt: new Date(2026, 2, 13, 1, 30).toISOString() });
+    expect(reachOutsHandledRecently([task], new Date(2026, 2, 19, 2, 0), 7).size).toBe(0);
   });
 });

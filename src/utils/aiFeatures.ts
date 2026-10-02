@@ -7,13 +7,13 @@ export type AiFeatureId =
   | 'taskBreakdown' | 'templateSuggestions' | 'projectTaskSuggestions' | 'groceryAisles'
   | 'recipeExtraction' | 'mealIdeas' | 'substitutes' | 'receiptImport' | 'calendarImport'
   | 'cookHelp' | 'nutritionEstimate' | 'nutritionLabelPhoto' | 'backfillSuggestions'
-  | 'cookbookChecklist' | 'recipeNutritionEstimate';
+  | 'recipeNutritionEstimate' | 'cookbookIndex';
 
 export const AI_FEATURE_IDS: AiFeatureId[] = [
   'taskBreakdown', 'templateSuggestions', 'projectTaskSuggestions', 'groceryAisles',
   'recipeExtraction', 'mealIdeas', 'substitutes', 'receiptImport', 'calendarImport',
   'cookHelp', 'nutritionEstimate', 'nutritionLabelPhoto', 'backfillSuggestions',
-  'cookbookChecklist', 'recipeNutritionEstimate',
+  'recipeNutritionEstimate', 'cookbookIndex',
 ];
 
 export type AiModelId = 'claude-haiku-4-5-20251001' | 'claude-sonnet-5' | 'claude-opus-5';
@@ -79,7 +79,9 @@ export const AI_FEATURES: AiFeatureMeta[] = [
   {
     id: 'recipeExtraction',
     label: 'Recipe import',
-    hint: 'Pulls a name, servings, and shopping list out of pasted recipe text or a photo',
+    // A link from most recipe sites imports without a key (recipePageOffline.ts),
+    // so this switch also governs that keyless path and the hint says so.
+    hint: 'Pulls a name, servings, and shopping list out of a recipe link, pasted text, or a photo. Links from most recipe sites work without an API key',
     kitchen: true,
   },
   {
@@ -142,17 +144,20 @@ export const AI_FEATURES: AiFeatureMeta[] = [
     hint: 'Falls back to Claude to read a nutrition panel photo the on-device reading could not',
   },
   {
-    id: 'cookbookChecklist',
-    label: 'Cookbook checklist from a photo',
-    hint: 'Reads a photo of a cookbook\'s table of contents into a checklist of its recipes',
-  },
-  {
     id: 'recipeNutritionEstimate',
     label: 'Estimate a recipe\'s nutrition',
     // Offered on the recipe's own nutrition sheet only once the ingredient
     // rollup has come back with too little to total — see
     // `recipeNutritionEstimate.ts`.
     hint: 'Reads a recipe\'s ingredient list into nutrition figures when too few of them have catalog data yet',
+    kitchen: true,
+  },
+  {
+    id: 'cookbookIndex',
+    label: 'Read a cookbook\'s index from a photo',
+    // "Scan the index" on a cookbook's page. It fills that book's index
+    // (CookbookIndexEntry), which only Cook with… and the book's page read.
+    hint: 'Reads photos of a cookbook\'s index into its dishes, pages and the ingredients they\'re listed under',
     kitchen: true,
   },
 ];
@@ -242,15 +247,15 @@ export function defaultAiFeatureConfig(): AiFeatureConfigMap {
     // user's own food packaging, not a third party's data, the same
     // distinction that keeps receiptImport on by default too.
     nutritionLabelPhoto: { enabled: true, model: 'claude-sonnet-5' },
-    // The default model: every title still passes in front of the user before
-    // a task is created from it, the same review this feature shares with
-    // recipeExtraction, so a mediocre read costs an edit rather than a wrong
-    // write.
-    cookbookChecklist: { enabled: true, model: DEFAULT_AI_MODEL },
     // Sonnet for the same reason `nutritionEstimate` picked it over the
     // default: this also wants real-world judgment about how ingredients
     // combine (a marinade mostly poured off, a batter's rise), which is where
     // a smaller model confabulates most confidently.
     recipeNutritionEstimate: { enabled: true, model: 'claude-sonnet-5' },
+    // Sonnet: an index is dense small type in two or three columns, with
+    // sub-entries that only make sense under the heading above them, which is
+    // the reading a smaller model gets wrong. Every line still passes a
+    // review before anything is written, and it's the user's own book.
+    cookbookIndex: { enabled: true, model: 'claude-sonnet-5' },
   };
 }

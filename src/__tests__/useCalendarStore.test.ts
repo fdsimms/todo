@@ -231,6 +231,27 @@ describe('a read that is no longer the current one', () => {
     expect(state.windowStart).toBeNull();
   });
 
+  // Same race as above, but the branch that has to win is `refresh()`'s own
+  // early return rather than `clear()` — no calendars left to read, reached
+  // while an earlier refresh is still in flight. That branch didn't used to
+  // invalidate the guard at all, so the earlier read's late result silently
+  // overwrote this intentional clear.
+  it('does not let a stale read overwrite refresh() clearing itself when no calendars are left to read', async () => {
+    const first = deferredRead();
+    const inFlight = useCalendarStore.getState().refresh();
+
+    useSettingsStore.setState({ calendarIds: [] });
+    await useCalendarStore.getState().refresh();
+
+    first.release(readResult());
+    await inFlight;
+
+    const state = useCalendarStore.getState();
+    expect(state.events).toEqual([]);
+    expect(state.calendarsById).toEqual({});
+    expect(state.loaded).toBe(false);
+  });
+
   it('does not put the past window back either', async () => {
     const first = deferredRead();
     const inFlight = useCalendarStore.getState().refreshPast();

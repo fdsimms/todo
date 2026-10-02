@@ -1,0 +1,4 @@
+{
+  "message": "A recipe's cost estimate now prices a canned ingredient correctly when you scale the recipe. A \"14 oz can\" at 1.5x used to be priced as one can. The week's cost and nutrition on the meal plan count it the same way, and a line like \"2 14 oz cans\" can now be priced from what one can or a pound cost.",
+  "date": "2026-09-28"
+}

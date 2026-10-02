@@ -4,9 +4,9 @@ Working a queue of tasks one at a time, against their own estimates, with
 breaks between them.
 
 Moved out of `CLAUDE.md` so it is read when it applies rather than on every
-task. The rules here are settled decisions with the reasoning attached: don't
-re-derive them from the code, and don't re-open one without a reason the note
-doesn't already cover.
+task. The rules here are strong defaults with the reasoning
+attached: read the reason before deviating from one. Where this note and the
+code disagree, the code is what ships, so fix the note.
 
 ---
 
@@ -280,9 +280,8 @@ The session sheet offers an inline "Undo" the moment a Skip, "Done for now",
 or Done tap takes a task out of the plan, and it goes away the moment
 anything else happens — another tap in the sheet, or leaving it. It is
 deliberately not multi-level and not wired into the app-wide undo/redo stacks
-(`src/utils/undoHistory.ts`, `UndoBar`, shake-to-undo): those cover tasks,
-groceries, meal plan and leftovers, and a fifth store joining that shared
-history would let a grocery clear and a focus-session skip contend for the
+(`src/utils/undoHistory.ts`, `UndoBar`, shake-to-undo): one more store joining
+that shared history would let a grocery clear and a focus-session skip contend for the
 same slot, which is a much bigger promise than "put back what I just did."
 
 **It's a plain restore, not `pruneFocusPlan` run backwards.** The session
@@ -422,14 +421,14 @@ objects and no store standing behind it.
 
 ## What is deliberately not here
 
-- **No session history.** The row is deleted when the session ends. Stats on
-  focus time is a real feature and a separate one; a `focus_sessions` table
-  accumulating finished rows would need its own retention rule (see
-  `src/utils/retention.ts` for why that isn't free).
-- **Not in the backup, and not synced.** It describes what one device is doing
-  right now, against task ids a restore is about to replace wholesale. Two
-  phones sharing one session's cursor is not a state this feature has, and
-  syncing the row would invent it. Both exclusions are argued in
+- **The live session row is not history.** It is deleted when the session ends;
+  what a finished session amounted to is written to `focus_session_log`
+  (`logFinishedSession` in `useFocusStore`), which Stats reads, which is synced
+  and backed up, and which `purgeHistoryBefore` trims to the retention window.
+- **The live row is not in the backup, and not synced.** It describes what one
+  device is doing right now, against task ids a restore is about to replace
+  wholesale. Two phones sharing one session's cursor is not a state this feature
+  has, and syncing the row would invent it. Both exclusions are argued in
   `BACKUP_EXCLUDED_TABLES` and `SYNC_EXCLUDED_TABLES`.
 - **The setup sheet's rows are reorderable** (a `SortableList` inside the
   sheet's own `ScrollView`, `scrollEnabled` switched off for the duration —

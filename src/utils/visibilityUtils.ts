@@ -1,17 +1,18 @@
 import { addDays } from 'date-fns/addDays';
 import type { Task, TimeOfDay, Category } from '../types';
-import { getCurrentDayStart, getTaskDayStart, getDayStart, hhmmToDate, getNextDueDate } from './dateUtils';
+import { getCurrentDayStart, getTaskDayStart, getDayStart, hhmmToDate, getNextDueDate, getLogicalDayKey, dayKeyToDate } from './dateUtils';
 import { effectiveWindowEndTime } from './clockTime';
 import type { ExpiredTaskGraceDays } from './expiredTaskGrace';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { isAwayPauseInForce } from './awayDates';
 import { activeChainStep } from './chain';
-import { isBlocked, isWaitingOnPerson } from './blocking';
+import { blockerIdsOf, isBlocked, isWaitingOnPerson } from './blocking';
 import { resolveBlocker } from './blockerRegistry';
 import { resolvePerson } from './peopleRegistry';
 import { quotaRunSpan, quotaWeekSpan } from './quotaSchedule';
 import { isNegativeTask } from './negativeHabits';
+import { isProjectPaused, projectPausedUntil } from './projectPause';
 
 /**
  * True while this task is waiting on another task that isn't done yet — the
@@ -24,6 +25,28 @@ import { isNegativeTask } from './negativeHabits';
 export function isTaskBlocked(task: Task): boolean {
   if (task.completed || task.archived) return false;
   return isBlocked(task, resolveBlocker) || isWaitingOnPerson(task, resolvePerson);
+}
+
+/**
+ * Whether the task's project is paused today (Project.pausedUntil). Its tasks
+ * are held off Today and Later until the pause's day arrives, repeating ones
+ * included, which is the whole point of pausing rather than archiving.
+ */
+export function isInPausedProject(task: Pick<Task, 'projectId'>): boolean {
+  if (!task.projectId) return false;
+  return isProjectPaused(task.projectId, getLogicalDayKey(new Date()));
+}
+
+/**
+ * Whether the app is standing a task down for a stretch: vacation mode hiding
+ * it, or its project paused. Every pass that acts on a task because a day went
+ * by (a quota rollover, a penalty, a pace nudge, a streak) asks this, since a
+ * task nobody can see mustn't be charged, closed out or nagged about. It used
+ * to be `isHiddenForVacation` at each of those sites, and pause, added later,
+ * reached none of them.
+ */
+export function isWithheld(task: Task): boolean {
+  return isHiddenForVacation(task) || (!task.completed && isInPausedProject(task));
 }
 
 /** Whether a task isn't actionable yet — what the daily lists gate on. */
@@ -90,9 +113,20 @@ function segmentStartHHMM(timeOfDay: TimeOfDay, pass?: VisibleAtPass): string {
 
 // The pass's todayStart is copied rather than used: setHours below mutates it,
 // and it is shared with every other task in the pass.
+//
+// Every segment but morning is placed with onLogicalDay, so an evening or
+// night start earlier than dayResetTime ("night from 01:00" under a 4 AM
+// reset) lands in the small hours at the day's end rather than before the day
+// began, which surfaced those tasks at the start of the day. Morning is the
+// exception because it is the first segment: a morning start before the
+// day's start means the morning has already begun, and rolling it would hide
+// morning tasks until the day's last hours.
 function getTimeOfDayThreshold(timeOfDay: TimeOfDay, pass?: VisibleAtPass): Date {
-  const t = pass ? new Date(pass.todayStart) : getCurrentDayStart();
-  const [h, m] = segmentStartHHMM(timeOfDay, pass).split(':').map(Number);
+  const dayStart = pass ? pass.todayStart : getCurrentDayStart();
+  const hhmm = segmentStartHHMM(timeOfDay, pass);
+  if (timeOfDay !== 'morning') return onLogicalDay(dayStart, hhmm);
+  const t = new Date(dayStart);
+  const [h, m] = hhmm.split(':').map(Number);
   t.setHours(h, m, 0, 0);
   return t;
 }
@@ -270,11 +304,36 @@ export function currentTimeSegment(segments: readonly TimeOfDay[], pass?: Visibl
 // against *today's* clock instant instead of the logical day (still
 // "yesterday") that's actually in progress — hiding an already-active
 // windowed task the instant the calendar flips, well before dayResetTime.
+//
+// Placed with onLogicalDay, so a time earlier than dayResetTime lands in the
+// small hours at the end of the logical day. Set on the day start's own date,
+// "before 1am" under a 4 AM reset closed at 01:00 *before* the day began, so
+// the task read as expired (and sweepable) from the moment its day started.
 function getWindowThreshold(hhmm: string, pass?: VisibleAtPass): Date {
-  const [h, m] = hhmm.split(':').map(Number);
-  const t = pass ? new Date(pass.todayStart) : getCurrentDayStart();
-  t.setHours(h, m, 0, 0);
-  return t;
+  return onLogicalDay(pass ? pass.todayStart : getCurrentDayStart(), hhmm);
+}
+
+// Whether `deferUntil` still holds a task back right now. Every other
+// recurrence steps in whole days, so the four call sites below all
+// day-truncate deferUntil before comparing it — "6pm today" and "11pm today"
+// read the same, both visible from the moment today's logical day starts. An
+// 'hours' recurrence (medication due again N hours after the last dose) needs
+// the exact instant deferUntil names instead: day-truncating "6pm today"
+// collapses it to "today", which is already visible, defeating the entire
+// point of a same-day gap.
+function deferBlocksNow(task: Task, now: Date, dayResetTime: string): boolean {
+  if (!task.deferUntil) return false;
+  if (task.recurrenceType === 'hours') return new Date(task.deferUntil) > now;
+  return getTaskDayStart(new Date(task.deferUntil), dayResetTime) > getCurrentDayStart();
+}
+
+// The moment deferUntil actually resolves at: the exact timestamp for an
+// 'hours' recurrence, the day-start every other type already used. Only
+// getVisibleAt and getBecameVisibleAt need the moment itself rather than a
+// yes/no answer.
+function deferMoment(task: Task, dayResetTime: string): Date {
+  const raw = new Date(task.deferUntil!);
+  return task.recurrenceType === 'hours' ? raw : getTaskDayStart(raw, dayResetTime);
 }
 
 // True once the task's own day (deferUntil / dueDate) has arrived — i.e. it's
@@ -284,10 +343,7 @@ function getWindowThreshold(hhmm: string, pass?: VisibleAtPass): Date {
 export function hasDayArrived(task: Task): boolean {
   const { dayResetTime } = useSettingsStore.getState();
   const todayStart = getCurrentDayStart();
-  if (task.deferUntil) {
-    const deferDayStart = getTaskDayStart(new Date(task.deferUntil), dayResetTime);
-    if (deferDayStart > todayStart) return false;
-  }
+  if (deferBlocksNow(task, new Date(), dayResetTime)) return false;
   if (task.dueDate) {
     const taskDayStart = getTaskDayStart(new Date(task.dueDate), dayResetTime);
     if (taskDayStart > todayStart) return false;
@@ -347,11 +403,13 @@ function streakWindowAnchor(task: Task): Date {
 function streakWindowEnd(task: Task): Date | null {
   const dayStart = streakWindowAnchor(task);
   const explicitEnd = effectiveWindowEnd(task);
-  if (explicitEnd) return hhmmToDate(explicitEnd, dayStart);
+  // onLogicalDay for getWindowThreshold's reason; the next segment is never
+  // morning, so it rolls the same way getTimeOfDayThreshold's do.
+  if (explicitEnd) return onLogicalDay(dayStart, explicitEnd);
   if (task.timeSegments.length === 0) return null;
   const lastIndex = Math.max(...task.timeSegments.map(s => TIME_SEGMENT_ORDER.indexOf(s)));
   const nextSegment = TIME_SEGMENT_ORDER[lastIndex + 1];
-  if (nextSegment) return hhmmToDate(segmentStartHHMM(nextSegment), dayStart);
+  if (nextSegment) return onLogicalDay(dayStart, segmentStartHHMM(nextSegment));
   return hhmmToDate(segmentStartHHMM('morning'), addDays(dayStart, 1));
 }
 
@@ -415,6 +473,9 @@ export function isTaskExpired(task: Task): boolean {
   const paused = isVacationPauseInForce();
   if (paused && task.vacationPause) return false;
   if (paused && categoryHidesOnVacation(task.category)) return false;
+  // A paused project's task isn't late for anything: the pause is the person
+  // saying "not until then", and the sweep behind this deletes what it flags.
+  if (isInPausedProject(task)) return false;
   if (!isPlacedOnADay(task)) return false;
   if (!hasDayArrived(task)) return false;
   return new Date() >= getWindowThreshold(end);
@@ -438,7 +499,8 @@ function windowClosedAt(task: Task, end: string): Date {
   const anchor = task.dueDate ?? task.deferUntil;
   if (!anchor) return getWindowThreshold(end);
   const { dayResetTime } = useSettingsStore.getState();
-  return hhmmToDate(end, getTaskDayStart(new Date(anchor), dayResetTime));
+  // onLogicalDay rather than hhmmToDate, for getWindowThreshold's reason.
+  return onLogicalDay(getTaskDayStart(new Date(anchor), dayResetTime), end);
 }
 
 // True once an expired task is old enough for sweepExpiredTasks to actually
@@ -675,7 +737,8 @@ export function isVisibleApartFromVacation(task: Task): boolean {
   // exemption from it — the row *is* the reminder, and one that disappeared
   // while you were doing well would be missing at exactly the moment it earns
   // its place. Archiving is how you stop tracking one, and vacation mode (the
-  // caller's own check, above this) is how you pause it.
+  // caller's own check, above this) or pausing its project is how you pause it.
+  if (isInPausedProject(task)) return false;
   if (isNegativeTask(task)) return true;
 
   // Ahead of the time gates deliberately: being blocked isn't a "not yet" that
@@ -685,11 +748,7 @@ export function isVisibleApartFromVacation(task: Task): boolean {
   const now = new Date();
   const { dayResetTime } = useSettingsStore.getState();
 
-  if (task.deferUntil) {
-    const deferDayStart = getTaskDayStart(new Date(task.deferUntil), dayResetTime);
-    const todayStart = getCurrentDayStart();
-    if (deferDayStart > todayStart) return false;
-  }
+  if (deferBlocksNow(task, now, dayResetTime)) return false;
 
   if (task.timeSegments.length > 0) {
     const threshold = earliestSegmentThreshold(task.timeSegments)!;
@@ -780,6 +839,9 @@ export function isTaskDeferred(task: Task): boolean {
   // itself to the top of the list under a meaningless header. A step waiting on
   // the one above it has no moment either.
   if (isHeldBack(task)) return false;
+  // Paused with its project, like vacation above: off Later as well as Today,
+  // and back on the day the pause ends.
+  if (isInPausedProject(task)) return false;
   // Undated project tasks aren't visible, but they don't belong in Later
   // either — they have no date to be deferred to, so they just live in their
   // project until one is assigned.
@@ -927,9 +989,14 @@ export function getVisibleAt(task: Task, pass: VisibleAtPass = beginVisibleAtPas
   };
 
   if (task.deferUntil) {
-    const deferDayStart = getTaskDayStart(new Date(task.deferUntil), dayResetTime);
-    if (deferDayStart > todayStart) {
-      candidates.push(applyTimeThreshold(deferDayStart));
+    const moment = deferMoment(task, dayResetTime);
+    // An 'hours' deferral is already the exact moment — no day-vs-time-of-day
+    // refinement to apply, and the compare base is "now" rather than the
+    // start of today, for the same reason deferBlocksNow uses "now".
+    if (task.recurrenceType === 'hours') {
+      if (moment > now) candidates.push(moment);
+    } else if (moment > todayStart) {
+      candidates.push(applyTimeThreshold(moment));
     }
   }
 
@@ -957,6 +1024,13 @@ export function getVisibleAt(task: Task, pass: VisibleAtPass = beginVisibleAtPas
       const nextWindow = getNextCategoryWindowStart(cat);
       if (nextWindow && nextWindow > now) candidates.push(nextWindow);
     }
+  }
+
+  // A paused project's task comes back no earlier than the day the pause
+  // lifts, which is what a gate armed ahead of time has to wait for.
+  if (task.projectId) {
+    const until = projectPausedUntil(task.projectId, getLogicalDayKey(now, dayResetTime));
+    if (until) candidates.push(getTaskDayStart(dayKeyToDate(until), dayResetTime));
   }
 
   // An on-pace quota task comes back when its next unit falls due rather than
@@ -996,8 +1070,10 @@ export function getVisibleAt(task: Task, pass: VisibleAtPass = beginVisibleAtPas
 function getReleasedFromHoldAt(task: Task): Date | null {
   const candidates: Date[] = [];
 
-  if (task.blockedById) {
-    const blocker = resolveBlocker(task.blockedById);
+  // Every blocker it waited on: waiting for all of them, it was let go by
+  // whichever finished last, which the latest-stamp reduce below picks out.
+  for (const blockerId of blockerIdsOf(task)) {
+    const blocker = resolveBlocker(blockerId);
     const stamp = blocker?.completed
       ? blocker.completedAt
       : blocker?.archived
@@ -1029,8 +1105,9 @@ function getBecameVisibleAt(task: Task): Date | null {
   const candidates: Date[] = [];
 
   if (task.deferUntil) {
-    const deferDayStart = getTaskDayStart(new Date(task.deferUntil), dayResetTime);
-    if (deferDayStart <= todayStart) candidates.push(deferDayStart);
+    const moment = deferMoment(task, dayResetTime);
+    const compareBase = task.recurrenceType === 'hours' ? now : todayStart;
+    if (moment <= compareBase) candidates.push(moment);
   }
 
   if (task.dueDate) {

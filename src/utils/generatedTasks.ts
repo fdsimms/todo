@@ -5,58 +5,32 @@ export type { GeneratedKind };
 /**
  * The one mechanism behind every task this app writes without being asked.
  *
- * Eleven features generate tasks unattended — each meal of the day becomes a
- * task, a perishable grocery becomes "Use up X", a leftover about to go bad
- * becomes "Use up X", an opt-in weekly trigger becomes "Plan meals for…", a
- * project that has gone quiet becomes "Review X", a pantry guess that has run
- * out becomes "Check if you still have X", a task's supply running low
- * becomes "Order more X", (once a day, when tomorrow has anything on it) the
- * calendar becomes "Review tomorrow's calendar", somebody's birthday becomes a
- * task a few days out (optionally with a second, earlier one to get them a
- * gift), and a planned meal the kitchen can't make becomes "Shop for Tue
- * ragu". The first four were each
- * built by copying the last, which is fine twice and had reached four: four
- * nullable back-pointer columns on `Task`, four hand-written "don't pile up"
- * rules, and three near-identical copies of the same three-input opt-out, two
- * of which said so in their own headers (#1524).
- *
- * The fifth is what that refactor was for. `projectReview` needed no
- * column and no reconcile of its own: a registry entry, a rules module
- * (`projectReviewTasks.ts`) and a firing beside the meal-plan nudge's, which is
- * the shape the note below promised. `pantryCheck` is the sixth and cost the
- * same: `pantryCheckTasks.ts`, an entry here, and a firing beside
- * `projectReview`'s — the one column it *did* add is on its source row
- * (`GroceryItem.pantryCheckDeclinedAt`), which is where the opt-out belongs and
- * not part of the mechanism at all. `supplyReorder` is the seventh, sourced
- * from a task rather than a row in another store (see `src/utils/supply.ts`).
- * `birthday` is the ninth. `mealShortfall` is the tenth, and is the first whose
- * source row is one the user edits freely and often, which is why its whole
- * staleness rule is the creation predicate re-run (see
- * `src/utils/mealShortfallTasks.ts`). `birthdayGift` is the eleventh, and costs
- * no new rules module at all — it lives beside `birthday` in
- * `src/utils/birthdayTasks.ts` and reuses everything but the lead setting and
- * the title (see that file's own header).
- * `calendarReview` is the eighth, and it costs the same shape again:
- * `calendarReviewTasks.ts`, an entry here, and a firing beside the other
- * time-based passes. It adds no column at all — its source is tomorrow's day
- * key rather than a row, the position `mealPlanNudge` is already in, so its
- * "don't hand it back" is a settings-level mark (`calendarReviewLastDayKey`)
- * rather than a stamp on anything.
+ * Every entry in `GENERATED_KINDS` below is a feature that writes tasks
+ * unattended: a meal of the day, "Use up X" for a perishable grocery or a
+ * leftover, "Review X" for a quiet project, "Order more X" for a running-low
+ * supply, birthdays, weather and Health rules, and the rest. The first four
+ * were each built by copying the last: four nullable back-pointer columns on
+ * `Task`, four hand-written "don't pile up" rules, and three near-identical
+ * copies of the same three-input opt-out (#1524). This module is what replaced
+ * that, and every generator since has cost a registry entry, a rules module and
+ * a firing in `maintenancePasses.ts` rather than a column and a reconcile of
+ * its own. A source with no row (`calendarReview`, `mealPlanNudge`: tomorrow's
+ * day key) keeps its "don't hand it back" mark in settings instead.
  *
  * What's shared is the *plumbing*, and only the plumbing:
  *
  * - **`Task.generatedKind` + `Task.generatedSourceId`** in place of
  *   `mealEntryId` / `groceryItemId` / `leftoverId`. Two columns instead of one
- *   per generator, and the fifth generator needs neither.
+ *   per generator, and a new generator needs neither.
  * - **`wantsGeneratedTask`** — the tri-state opt-out precedence, written once.
  * - **`liveGeneratedTask` / `hasAnyGeneratedTask`** — "is there already a task
- *   for this source", the question all four had their own answer to.
+ *   for this source", the question each generator used to answer its own way.
  *
  * What is deliberately **not** shared is every rule that makes a generator the
  * generator it is: which sources qualify, what the task is called, which fields
- * the source owns, and when a reconcile runs. Those live in `mealTasks.ts`,
- * `groceryExpiry.ts`, `leftoverTasks.ts` and `mealPlanNudge.ts` exactly as
- * before, and each still has its own tests. A registry that tried to hold them
+ * the source owns, and when a reconcile runs. Those live in each generator's
+ * own module (`groceryExpiry.ts`, `leftoverTasks.ts`, `mealSlotTasks.ts` and the
+ * rest), and each still has its own tests. A registry that tried to hold them
  * too would be the settings-as-config mistake `settingsIndex.ts` warns about,
  * one layer down: an abstraction able to express a time-of-day segment, a lead
  * time in days, a relative deadline and a week-range title is harder to read
@@ -93,7 +67,6 @@ export type { GeneratedKind };
  * they drain within a day or two of ordinary use.
  */
 export const GENERATED_KINDS: readonly GeneratedKind[] = [
-  'mealSlot',
   'groceryUseUp',
   // Beside the other generator that reads the grocery catalog, rather than
   // appended after the project one — the two are a pair from the list's side
@@ -109,6 +82,13 @@ export const GENERATED_KINDS: readonly GeneratedKind[] = [
   // one on without ever meeting the other.
   'pantryReview',
   'leftoverUseUp',
+  // With the other three meal-plan generators rather than first in the list,
+  // where it sat four grocery and pantry rows away from them. All four file
+  // under one category and ask about the same meals, and the weekly nudge
+  // carries its own set of meal switches (mealPlanNudgeSlots, deliberately a
+  // separate setting): somebody turning breakfast off here should meet that
+  // second set in the next row rather than never find it.
+  'mealSlot',
   'mealPlanNudge',
   // Beside the nudge rather than appended at the end, for the reason
   // pantryCheck sits beside groceryUseUp: the two are a pair from the list's
@@ -116,6 +96,11 @@ export const GENERATED_KINDS: readonly GeneratedKind[] = [
   // be cooked, they file under one category, and reading them together is how a
   // person meets the meal plan in Settings.
   'mealShortfall',
+  // Directly after mealShortfall, for the reason pantryCheck sits beside
+  // groceryUseUp: the two read one meal's ingredients against the kitchen and
+  // differ only in which answer they speak up about (lacking it, or having it
+  // only frozen), so they're one subject from the list's side.
+  'mealThaw',
   // Beside mealShortfall rather than appended at the end, for its own reason
   // restated: the two file under one category with mealSlot and mealPlanNudge,
   // and this is the fourth meal-plan generator a person meets there. It reads
@@ -161,7 +146,7 @@ export const GENERATED_KINDS: readonly GeneratedKind[] = [
   // and Health all report a number, where this one reads the words on an event
   // already sitting in the calendar. See src/utils/eventTasks.ts.
   'eventTask',
-  // The twenty-fourth, beside eventTask because it reads the same calendar
+  // Beside eventTask because it reads the same calendar
   // window and shares its occurrence key and handled record. It is not a rule
   // list, though: one switch and one number, since the trigger (an event has
   // a location) leaves nothing per-rule to vary. See src/utils/travelTasks.ts.
@@ -186,12 +171,9 @@ export const GENERATED_KINDS: readonly GeneratedKind[] = [
   // what puts it here, is the shape of the question: once in a while, record
   // something only you can record.
   'weighIn',
-  // The twenty-first, appended at the end rather than paired with anything.
-  // Every other generator here watches one thing and writes about it; this one
-  // watches the piles the other twenty leave behind and offers to walk them in
-  // an order. It has nothing in common with any single neighbour, and putting
-  // it beside one would suggest it did.
-  'weeklyReview',
+  // Appended, beside nothing: it is about a water target rather than a person,
+  // a project or a meal, and is the only generator that reads the food log.
+  'waterShortfall',
 ];
 
 /**
@@ -234,6 +216,7 @@ export type GeneratedEnabledKey =
   | 'leftoverUseUpTasks'
   | 'mealPlanNudgeEnabled'
   | 'mealShortfallTasks'
+  | 'mealThawTasks'
   | 'mealLogNudgeTasks'
   | 'projectReviewTasks'
   | 'supplyReorderTasks'
@@ -252,7 +235,7 @@ export type GeneratedEnabledKey =
   | 'moodNudgeTasks'
   | 'weekendNudgeTasks'
   | 'weighInTasks'
-  | 'weeklyReviewTasks';
+  | 'waterShortfallTasks';
 
 export interface GeneratedKindSpec {
   kind: GeneratedKind;
@@ -285,9 +268,13 @@ export interface GeneratedKindSpec {
    * its Settings row has to keep rendering, or it writes tasks nobody can turn
    * off (that was `birthday`, `reachOut`, `supplyReorder`, `projectReview` and
    * `calendarReview`, all five stranded behind Settings' own kitchen gate).
-   * `true` means the pass itself must refuse to run without the area, or it is
-   * the mirror failure: a hidden feature still writing rows onto Today, which
-   * `checkMealSlotTasks` did with three meal tasks a day.
+   * `true` means the pass itself must refuse to create anything without the
+   * area, or it is the mirror failure: a hidden feature still writing rows onto
+   * Today, which `checkMealSlotTasks` did with three meal tasks a day. Refuse
+   * to *create*, not to run: the clock-driven kitchen passes still clear rows
+   * whose reason has gone with the area (or their own switch) off, since
+   * returning above the clear left a row about a deleted meal on Today until
+   * somebody removed it by hand.
    *
    * Settings reads this flag directly (both the group gate and the row filter),
    * and `settingsIndex.test.ts` checks the search index against it — so the
@@ -333,7 +320,8 @@ export interface GeneratedKindSpec {
    * title in place, and the "Add subtask" field. What is left in its expanded
    * panel is whatever the kind itself has to show (`calendarReview`'s
    * events), so a notice with nothing to show does not expand at all.
-   * `isNoticeTask` is the read and `TaskItem` is the only caller.
+   * `isNoticeTask` is the read. `TaskItem` calls it, and so does `taskMoves.ts`,
+   * which refuses to bulk-move or deload a notice.
    *
    * True for the two kinds whose task is one question about one day and
    * nothing else: `calendarReview` ("what is on tomorrow") and
@@ -640,12 +628,30 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     // distinction only the code makes.
     defaultCategory: 'Meal Plan',
   },
+  mealThaw: {
+    kind: 'mealThaw',
+    pausedOnVacation: true,
+    enabledKey: 'mealThawTasks',
+    label: 'Freezer reminders for planned meals',
+    onHint: 'A meal today or tomorrow that uses something frozen adds a task to take it out of the freezer',
+    offHint: 'A meal that uses something frozen adds no task',
+    icon: 'snow-outline',
+    // Its source is a MealPlanEntry, and the opt-out it writes there
+    // (MealPlanEntry.thawTask) is mealShortfall's shopTask shape, for the same
+    // tombstone reason: every other way the row goes is the app noticing.
+    sourced: true,
+    notice: false,
+    kitchen: true,
+    categorized: true,
+    // With the other meal-plan generators, for mealShortfall's reason.
+    defaultCategory: 'Meal Plan',
+  },
   mealLogNudge: {
     kind: 'mealLogNudge',
     pausedOnVacation: true,
     enabledKey: 'mealLogNudgeTasks',
     label: 'Log reminders for planned meals',
-    onHint: 'A planned meal with nothing logged a few days later adds a task to log it',
+    onHint: 'A planned meal with nothing logged by the next day adds a task to log it',
     offHint: 'A planned meal with nothing logged adds no task',
     icon: 'journal-outline',
     // Its source is a MealPlanEntry, and the opt-out it writes there
@@ -665,7 +671,7 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     pausedOnVacation: true,
     enabledKey: 'mealPlanNudgeEnabled',
     label: 'Plan meals for the week',
-    onHint: 'Adds a task once a week to plan that week\'s meals',
+    onHint: 'Adds a stack once a week, with a task for each day of that week to plan its meals',
     offHint: 'No weekly task to plan the week\'s meals',
     icon: 'calendar-outline',
     sourced: false,
@@ -904,32 +910,6 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
   // the write to record the answer. So the settings row is the permission and
   // `checkWeighInTasks` is what refuses when the two Health switches aren't
   // there to back it.
-  weeklyReview: {
-    kind: 'weeklyReview',
-    pausedOnVacation: true,
-    enabledKey: 'weeklyReviewTasks',
-    label: 'Offer a weekly review',
-    onHint: 'Adds a task once a week to walk the inbox, what is stuck and what slipped',
-    offHint: 'Nothing offers a weekly review',
-    icon: 'reader-outline',
-    // The week's own Monday day key — a square on the calendar rather than a
-    // row anything could be written back to, the position weekendNudge and
-    // calendarReview are already in, and the reason `writeGeneratedOptOut` has
-    // nothing to write for it. What stops a swiped-away row coming straight
-    // back is `weeklyReviewLastWeekKey`.
-    sourced: false,
-    // Not a notice. There is plenty to decide about this row, and pushing it
-    // from Sunday to Monday is an ordinary thing to want to do with it.
-    notice: false,
-    // The review's nights stage is the only kitchen-shaped thing about it, and
-    // that stage drops out on its own when the area is off (see
-    // `weeklyReviewStages`). The other four stages are the core task list, so a
-    // generator that stopped running with the kitchen hidden would take the
-    // inbox and the slipped pile with it.
-    kitchen: false,
-    categorized: true,
-    defaultCategory: 'Personal',
-  },
   weighIn: {
     kind: 'weighIn',
     // Paused on vacation, unlike moodLog beside it. A mood log is a personal
@@ -944,13 +924,37 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     icon: 'scale-outline',
     // Its source id is the day key the request was raised on — a square on the
     // calendar rather than a row anything could be written back to, the same
-    // position moodLog is in, and the reason writeGeneratedOptOut has nothing
-    // to write for it. What stops a swiped-away one coming straight back is
-    // weighInLastDayKey.
+    // position moodLog is in. What stops a swiped-away one coming straight back
+    // is weighInLastDayKey for the rest of that day, and the settings stamp
+    // writeGeneratedOptOut writes for it (weighInDeclinedDayKey) for the rest
+    // of the window after.
     sourced: false,
     // Not a notice, for moodLog's reason: recording the weight is the work
     // rather than something the app is telling you, and moving the request to
     // tomorrow morning is the obvious thing to want to do with it.
+    notice: false,
+    kitchen: false,
+    categorized: true,
+    defaultCategory: 'Health',
+  },
+  // Ships off, like every generator that adds a surface. It only ever follows a
+  // water task that has already been completed for the day, so it can't pile
+  // up: at most one a day, and a completed or deleted one blocks the next.
+  waterShortfall: {
+    kind: 'waterShortfall',
+    // Work the app invents, so it stands down on vacation like the rest.
+    pausedOnVacation: true,
+    enabledKey: 'waterShortfallTasks',
+    label: 'Add a task for water still owed',
+    onHint: 'Adds a task for the water left to reach a raised target once the daily water task is done',
+    offHint: 'A raised water target adds no task after the daily one is done',
+    icon: 'water-outline',
+    // Its source id is the day key it was raised on, the same position weighIn
+    // is in. waterShortfallDeclinedDayKey is what stops a deleted one coming
+    // straight back the same day.
+    sourced: false,
+    // Not a notice: drinking the water is the work, and completing the row logs
+    // it, the same as the daily task would.
     notice: false,
     kitchen: false,
     categorized: true,
@@ -1019,12 +1023,12 @@ export function generatedTaskCounts(
  */
 export type GeneratedEnabledFlags =
   Record<GeneratedEnabledKey, boolean>
-  & { healthReadEnabled: boolean; calendarReadEnabled: boolean };
+  & { healthReadEnabled: boolean; healthWriteEnabled: boolean; calendarReadEnabled: boolean };
 
 /**
  * Whether this generator is switched on, counting the read it depends on.
  *
- * Four of them need the app to be allowed into a source before their own key
+ * Five of them need the app to be allowed into a source before their own key
  * can mean anything, and a row reading "on" over a closed read lies about itself.
  * `health` had that second gate and `calendarReview` did not, in *both* places
  * this question was being answered independently (Settings' own row and
@@ -1041,6 +1045,11 @@ export function generatorSwitchedOn(kind: GeneratedKind, flags: GeneratedEnabled
   if (kind === 'calendarReview' || kind === 'eventTask' || kind === 'travel') {
     return flags.calendarReadEnabled;
   }
+  // Both Health switches, the same pair `checkWeighInTasks` refuses to run
+  // without: the read to see whether a weight is already in, the write because
+  // the weight is recorded there. With either off the row read "on" and the
+  // task never came.
+  if (kind === 'weighIn') return flags.healthReadEnabled && flags.healthWriteEnabled;
   return true;
 }
 
@@ -1112,9 +1121,11 @@ export function liveGeneratedTasksOfKind<T extends Pick<Task, 'generatedKind' | 
 /**
  * Whether this source has *any* task on record, live or finished.
  *
- * The wider question, and only cook tasks ask it — deliberately. A meal is one
- * event, so a completed "Cook Tuesday's chilli" means the thing happened and a
- * second task for the same entry would be an invention. A grocery item and a
+ * The wider question, and only the generators whose source is one planned meal
+ * ask it (`blocksOnFinished`: mealShortfall, mealThaw, mealLogNudge, and the
+ * meal slot reading it directly) — deliberately. A meal is one event, so a
+ * completed task about Tuesday's chilli means the thing happened and a second
+ * task for the same entry would be an invention. A grocery item and a
  * leftover are the opposite: a catalog row is bought again and again, and last
  * month's ticked-off "Use up spinach" says nothing about the bag bought this
  * afternoon. Reading the wide set there would mean a staple got exactly one
@@ -1168,16 +1179,30 @@ export function generatedSourceOf(
 }
 
 /**
- * The two fields that mark a task as generated, for a draft.
+ * The fields that mark a task as generated, for a draft.
  *
  * Spread into a draft rather than set field by field so a generator can't
  * accidentally stamp a kind without a source, or the reverse.
+ *
+ * **A kind that pauses on vacation also stamps `vacationPause: true`**, for
+ * the same reason: every generator's draft goes through here, so none can
+ * forget it. The pass-level gate only stops *new* rows, and several of these
+ * write days ahead (a week of meal rows), so without the stamp a row written
+ * before a trip sat on Today for the whole of it. With it the row hides while
+ * vacation mode is on and comes back when it ends, the way any task set to
+ * pause on vacation does, and the user can still switch it off on one row. A
+ * kind that keeps running on vacation gets no key at all rather than `false`,
+ * so a draft's own default is left alone. `mealPlanNudge` overrides it after
+ * the spread when `mealPlanNudgeIgnoresVacation` is on, since those rows are
+ * written during a trip on purpose.
  */
 export function generatedBy(
   kind: GeneratedKind,
   sourceId: string | null = null
-): { generatedKind: GeneratedKind; generatedSourceId: string | null } {
-  return { generatedKind: kind, generatedSourceId: sourceId };
+): { generatedKind: GeneratedKind; generatedSourceId: string | null; vacationPause?: true } {
+  return GENERATED_KIND_SPECS[kind].pausedOnVacation
+    ? { generatedKind: kind, generatedSourceId: sourceId, vacationPause: true }
+    : { generatedKind: kind, generatedSourceId: sourceId };
 }
 
 /**
@@ -1196,8 +1221,8 @@ export function isNoticeTask(task: Pick<Task, 'generatedKind'>): boolean {
  *
  * Grocery and leftover use-up tasks are two independent producers of what a
  * person reads as one kind of nag, so a cap on the pile has to count them
- * together — cook tasks and the meal-plan nudge are exempt: a cook task is
- * one per planned dinner, which the user already chose by planning the meal,
+ * together — meal-slot tasks and the meal-plan nudge are exempt: a meal-slot
+ * task is one per planned meal, which the user already chose by planning the meal,
  * and the nudge is a single weekly stack. Neither floods the way two
  * unrelated expiry clocks can.
  */

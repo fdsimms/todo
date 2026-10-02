@@ -4,11 +4,23 @@ import { InlineAction } from './InlineAction';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, type Colors } from '../theme';
 import type { Task } from '../types';
-import { describeCreatedTaskPlacement, type CreatedTaskDestination } from '../utils/createdTaskPlacement';
+import {
+  describeCreatedTaskPlacement,
+  describeMovedTaskPlacement,
+  type CreatedTaskDestination,
+} from '../utils/createdTaskPlacement';
 
 interface Props {
   task: Task;
   destination: CreatedTaskDestination;
+  /**
+   * 'created' (the default) is a task that just came into existence;
+   * 'moved' is one that was already in the Inbox and left it by taking an
+   * in-row suggestion — see TodayScreen's presentMovedFromInbox. Only the
+   * wording and the Undo action differ; Undo restores the row rather than
+   * deleting it, which is TodayScreen's call, not this component's.
+   */
+  mode?: 'created' | 'moved';
   dayResetTime?: string;
   bottom: number;
   onGoToTask: () => void;
@@ -23,10 +35,15 @@ interface Props {
  * due today. This names where the task went and offers a way to it and a
  * way to undo the creation, so staying put costs nothing either.
  */
-export function CreatedTaskToast({ task, destination, dayResetTime, bottom, onGoToTask, onUndo }: Props) {
+export function CreatedTaskToast({ task, destination, mode = 'created', dayResetTime, bottom, onGoToTask, onUndo }: Props) {
   const { colors, shadows } = useTheme();
   const styles = makeStyles(colors);
-  const message = describeCreatedTaskPlacement(task, destination, dayResetTime);
+  const message = mode === 'moved'
+    ? describeMovedTaskPlacement(task, destination, dayResetTime)
+    : describeCreatedTaskPlacement(task, destination, dayResetTime);
+  const undoHint = mode === 'moved'
+    ? `Undo moving "${task.title}"`
+    : `Undo creating "${task.title}"`;
 
   return (
     <View style={[styles.wrap, { bottom }]} pointerEvents="box-none">
@@ -40,7 +57,7 @@ export function CreatedTaskToast({ task, destination, dayResetTime, bottom, onGo
             label="Undo"
             onPress={onUndo}
             variant="neutral"
-            accessibilityLabel={`Undo creating "${task.title}"`}
+            accessibilityLabel={undoHint}
           />
         </View>
       </View>

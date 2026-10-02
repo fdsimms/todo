@@ -1,0 +1,4 @@
+{
+  "message": "Fixed the weight goal's rate stepper getting stuck at 0.75/week instead of going lower. Its calorie target now also keeps the food log's calorie target in step automatically, including after a new weigh-in.",
+  "date": "2026-09-26"
+}

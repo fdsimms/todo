@@ -1,4 +1,4 @@
-import { buildProjectListItems } from '../utils/projectStacks';
+import { buildProjectListItems, projectCopyText, projectPageOrder, alphabeticalPageOrder, orderWithInserted, filterProjectListItems } from '../utils/projectStacks';
 import type { Task, TaskGroup } from '../types';
 
 const group = (id: string, overrides: Partial<TaskGroup> = {}): TaskGroup => ({
@@ -152,5 +152,119 @@ describe('buildProjectListItems', () => {
   it('keeps a homed stack once every member is complete', () => {
     const items = buildProjectListItems([], [group('g1', { projectId: 'p1', sortOrder: 5 })], 'p1');
     expect(titles(items)).toEqual(['[g1]']);
+  });
+});
+
+describe('projectCopyText', () => {
+  const t = (id: string, overrides: Partial<Task> = {}): Task =>
+    ({ id, title: id, projectId: 'p1', completed: false, sortOrder: 0, ...overrides } as Task);
+
+  it('keeps section headings and indents open subtasks', () => {
+    const items = [
+      { type: 'task' as const, task: t('Book flights') },
+      {
+        type: 'group' as const,
+        group: group('g1', { title: 'Packing' }),
+        children: [t('Passport'), t('Chargers'), t('From another project', { projectId: 'p2' })],
+      },
+      { type: 'task' as const, task: t('Pay deposit') },
+    ];
+    const subs: Record<string, Task[]> = {
+      'Book flights': [t('Aisle seat', { sortOrder: 2 }), t('Check bag', { sortOrder: 1 }), t('Done one', { completed: true })],
+    };
+    expect(projectCopyText(items, id => subs[id] ?? [], 'p1')).toBe(
+      ['Book flights', '  Check bag', '  Aisle seat', '', 'Packing', '  Passport', '  Chargers', '', 'Pay deposit'].join('\n'),
+    );
+  });
+
+  it('skips a section with none of this project\'s tasks', () => {
+    const items = [{ type: 'group' as const, group: group('g1'), children: [] }];
+    expect(projectCopyText(items, () => [], 'p1')).toBe('');
+  });
+});
+
+describe('projectPageOrder', () => {
+  it('flattens the page: loose tasks by their order, a section in its slot with its own tasks in theirs', () => {
+    const tasks = [task('late', null, 30), task('early', null, 10), task('s2', 'g', 2), task('s1', 'g', 1)];
+    const order = projectPageOrder(tasks, [group('g', { sortOrder: 20 })], 'p1');
+    expect(order.map(t => t.id)).toEqual(['early', 's1', 's2', 'late']);
+  });
+});
+
+describe('alphabeticalPageOrder', () => {
+  const titled = (id: string, title: string, groupId: string | null = null, sortOrder = 0): Task =>
+    ({ id, title, groupId, sortOrder } as Task);
+
+  it('sorts loose lines among their own slots and leaves a section where it is', () => {
+    const items = buildProjectListItems(
+      [titled('c', 'cherry', null, 1), titled('a', 'Apple', null, 2), titled('b', 'banana', null, 9)],
+      [group('g', { sortOrder: 5 })],
+      'p1',
+    );
+    // g is homed nowhere and holds nothing here, so only the three loose lines show.
+    expect(alphabeticalPageOrder(items).top).toEqual(['a', 'b', 'c']);
+  });
+
+  it('keeps a section in its slot and sorts inside it, numbers as numbers', () => {
+    const items = buildProjectListItems(
+      [
+        titled('z', 'Zucchini', null, 1),
+        titled('ch10', 'Chapter 10', 'g', 1),
+        titled('ch2', 'Chapter 2', 'g', 2),
+        titled('m', 'mango', null, 9),
+      ],
+      [group('g', { sortOrder: 5 })],
+      'p1',
+    );
+    const order = alphabeticalPageOrder(items);
+    expect(order.top).toEqual(['m', 'g', 'z']);
+    expect(order.sections).toEqual([{ groupId: 'g', ids: ['ch2', 'ch10'] }]);
+  });
+});
+
+describe('orderWithInserted', () => {
+  const titled = (id: string, groupId: string | null = null, sortOrder = 0): Task =>
+    ({ id, title: id, groupId, sortOrder } as Task);
+
+  it('puts a new loose line right after the one it follows', () => {
+    const items = buildProjectListItems([titled('a', null, 1), titled('b', null, 2)], [], 'p1');
+    expect(orderWithInserted(items, 'a', 'new')).toEqual({ groupId: null, ids: ['a', 'new', 'b'] });
+  });
+
+  it('puts it inside the section when the line it follows is in one', () => {
+    const items = buildProjectListItems(
+      [titled('x', null, 1), titled('s1', 'g', 1), titled('s2', 'g', 2)],
+      [group('g', { sortOrder: 5 })],
+      'p1',
+    );
+    expect(orderWithInserted(items, 's1', 'new')).toEqual({ groupId: 'g', ids: ['s1', 'new', 's2'] });
+  });
+
+  it('is null for a line that is not on the page', () => {
+    expect(orderWithInserted([], 'gone', 'new')).toBeNull();
+  });
+});
+
+describe('filterProjectListItems', () => {
+  const titled = (id: string, title: string, groupId: string | null = null, sortOrder = 0): Task =>
+    ({ id, title, groupId, sortOrder } as Task);
+  const items = () => buildProjectListItems(
+    [titled('a', 'Crème fraîche', null, 1), titled('b', 'Bread', null, 2), titled('c', 'Cream cheese', 'g', 1), titled('d', 'Eggs', 'g', 2)],
+    [group('g', { title: 'Dairy', sortOrder: 5 })],
+    'p1',
+  );
+
+  it('keeps matching lines, ignoring case and accents, and trims a section to its matches', () => {
+    const out = filterProjectListItems(items(), 'creme');
+    expect(titles(out)).toEqual(['a']);
+    const cream = filterProjectListItems(items(), 'CREAM');
+    expect(titles(cream)).toEqual(['[g]']);
+    expect(cream[0].type === 'group' && cream[0].children.map(t => t.id)).toEqual(['c']);
+  });
+
+  it('keeps a whole section whose title matches, and everything for an empty query', () => {
+    const dairy = filterProjectListItems(items(), 'dairy');
+    expect(dairy[0].type === 'group' && dairy[0].children).toHaveLength(2);
+    expect(filterProjectListItems(items(), '  ')).toHaveLength(items().length);
   });
 });

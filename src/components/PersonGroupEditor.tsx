@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { Person } from '../types';
@@ -44,6 +44,7 @@ export function PersonGroupEditor({ visible, person, onClose }: Props) {
 
   const [name, setName] = useState('');
   const [newGroupName, setNewGroupName] = useState('');
+  const newGroupInputRef = useRef<TextInput>(null);
 
   const currentGroup = person?.groupId ? groups.find(g => g.id === person.groupId) ?? null : null;
 
@@ -157,6 +158,9 @@ export function PersonGroupEditor({ visible, person, onClose }: Props) {
     <EditorSheet
       visible={visible}
       onRequestClose={onClose}
+      // The sheet stays mounted across opens, so a bare `autoFocus` on the
+      // field would only ever fire once.
+      onShow={() => newGroupInputRef.current?.focus()}
       rootStyle={styles.root}
       headerStyle={styles.header}
       scrollStyle={styles.scroll}
@@ -174,13 +178,13 @@ export function PersonGroupEditor({ visible, person, onClose }: Props) {
       <View style={styles.sectionCard}>
         <View style={styles.fieldRow}>
           <TextInput
+            ref={newGroupInputRef}
             style={styles.newGroupInput}
             value={newGroupName}
             onChangeText={setNewGroupName}
             placeholder="e.g. The Ortegas"
             placeholderTextColor={colors.textTertiary}
             maxLength={TITLE_MAX_LENGTH}
-            autoFocus
           />
         </View>
       </View>

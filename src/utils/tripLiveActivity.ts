@@ -3,7 +3,7 @@ import { AppState, Platform } from 'react-native';
 import type { Shop } from '../types';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { isTripLive } from './activeTrip';
+import { isTripLive, TRIP_MAX_MS } from './activeTrip';
 import { widgetBridge } from './widgetBridge';
 
 /**
@@ -29,6 +29,20 @@ const SHOP_NAME_MAX = 60;
 export interface TripRun {
   shopName: string;
   startedAtMs: number;
+  /**
+   * When the app stops considering this trip live (`TRIP_MAX_MS` after it
+   * started), handed to ActivityKit as the activity's `staleDate`.
+   *
+   * Nothing ends the activity while the app is closed: the sync runs on a
+   * store change or the app coming forward. So a trip abandoned at 6pm kept
+   * saying "Shopping at Costco" on the Lock Screen, its timer running past six
+   * hours, until the app was next opened (#2937). With a stale date the
+   * system flips `context.isStale` at that moment with nothing pushed, and
+   * TripLiveActivity.swift draws the ended state off it, the same mechanism
+   * FocusLiveActivity uses for a step that has run out. Sent from here rather
+   * than restated in Swift so the six hours have one home.
+   */
+  staleAtMs: number;
 }
 
 /**
@@ -50,7 +64,8 @@ export function buildTripRun(
   const shopName = shop.name.length > SHOP_NAME_MAX
     ? `${shop.name.slice(0, SHOP_NAME_MAX - 1)}…`
     : shop.name;
-  return { shopName, startedAtMs: Date.parse(tripStartedAt) };
+  const startedAtMs = Date.parse(tripStartedAt);
+  return { shopName, startedAtMs, staleAtMs: startedAtMs + TRIP_MAX_MS };
 }
 
 // Through widgetBridge(), same as the other two Live Activities. The demo
@@ -92,8 +107,17 @@ export function useTripLiveActivitySync(): void {
     // changes on a timer, so a resync only happens at a natural trigger
     // point. Same "no timer running to notice" reasoning checkTripExpiry
     // (useGroceryStore.ts) gives for resyncing only at natural trigger points.
+    //
+    // And the trip itself is ended here first, not just re-synced: the only
+    // other caller of checkTripExpiry is the grocery screen gaining focus,
+    // which coming back from the background isn't, so the banner, the row
+    // markers and the price chip on four screens kept acting for a store
+    // left hours ago. Ending it clears the fields every one of those reads,
+    // and the subscription above re-syncs the Live Activity off that.
     const subscription = AppState.addEventListener('change', state => {
-      if (state === 'active') sync();
+      if (state !== 'active') return;
+      useGroceryStore.getState().checkTripExpiry();
+      sync();
     });
 
     return () => {

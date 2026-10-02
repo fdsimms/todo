@@ -88,6 +88,26 @@ describe('redactSettings', () => {
     ]);
   });
 
+  it('drops the sync machinery\'s device id and cursors', () => {
+    const rows: BackupRow[] = [
+      { key: 'syncDeviceId', value: 'device-A' },
+      { key: 'syncCursor:cloudkit:pull', value: 'c1' },
+      { key: 'themeMode', value: 'dark' },
+    ];
+    expect(redactSettings(rows)).toEqual([{ key: 'themeMode', value: 'dark' }]);
+  });
+
+  it('drops settings naming a calendar or Reminders list on this device', () => {
+    const rows: BackupRow[] = [
+      { key: 'deadlineCalendarId', value: 'cal-1' },
+      { key: 'remindersImportListId', value: 'list-1' },
+      { key: 'groceryImportEnabled', value: 'true' },
+      { key: 'calendarHistoryHandled', value: '[]' },
+      { key: 'themeMode', value: 'dark' },
+    ];
+    expect(redactSettings(rows)).toEqual([{ key: 'themeMode', value: 'dark' }]);
+  });
+
   it('is a no-op on rows with no key column', () => {
     const rows: BackupRow[] = [{ id: '1' }];
     expect(redactSettings(rows)).toEqual(rows);
@@ -298,8 +318,15 @@ describe('summarizeBackup', () => {
     expect(summarizeBackup(backup)).toBe('1 task');
   });
 
+  it('counts the food and mood logs and people, which a restore replaces too', () => {
+    // A backup of only these used to read "no tasks or projects".
+    expect(summarizeBackup(build({ food_logs: [{ id: '1' }, { id: '2' }] }))).toBe('2 food log entries');
+    expect(summarizeBackup(build({ mood_logs: [{ id: '1' }], people: [{ id: 'p' }] })))
+      .toBe('1 mood log entry and 1 person');
+  });
+
   it('says so when there is nothing in it', () => {
-    expect(summarizeBackup(build({ tasks: [], projects: [] }))).toBe('no tasks or projects');
+    expect(summarizeBackup(build({ tasks: [], projects: [] }))).toBe('nothing');
   });
 
   it('uses the user-facing word for a stack, not the code word', () => {

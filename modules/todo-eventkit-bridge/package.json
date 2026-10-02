@@ -1,0 +1,7 @@
+{
+  "name": "todo-eventkit-bridge",
+  "version": "1.0.0",
+  "description": "Local Expo module that reads the server-side identifier of calendar events, so app-side notes about an event can follow it across devices.",
+  "main": "index.ts",
+  "private": true
+}

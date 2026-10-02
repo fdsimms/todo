@@ -49,6 +49,7 @@ function nthWeekdayOfMonth(monthDate: Date, weekday: number, ordinal: number): D
  *   "water plants every 3 days"   → "water plants", daily ×3
  *   "gym every mon and wed"       → "gym", weekly on Mon & Wed
  *   "journal every night at 10pm" → "journal", daily, evening segment
+ *   "take zaltrex every 8 hours"  → "take zaltrex", hourly ×8, from completion
  *
  * The phrase must extend to the end of the input (suffix-anchored), which is
  * what keeps mid-title words like "email tuesday the dog" from matching.
@@ -240,7 +241,19 @@ function unitToType(unit: string): RecurrenceType | null {
   if (/^week/.test(unit)) return 'weekly';
   if (/^month/.test(unit)) return 'monthly';
   if (/^year/.test(unit)) return 'yearly';
+  if (/^hour/.test(unit)) return 'hours';
   return null;
+}
+
+/**
+ * Sub-day recurrence has no calendar grid to anchor to — it's always
+ * measured from the moment you check the task off (see RecurrenceType's own
+ * doc comment on 'hours') — so a parsed 'hours' schedule forces
+ * recurrenceFromCompletion, the same thing RecurrencePicker.tsx forces when
+ * a person picks this type by hand.
+ */
+function forceFromCompletionIfHours(type: RecurrenceType, schedule: ParsedSchedule): ParsedSchedule {
+  return type === 'hours' ? { ...schedule, recurrenceFromCompletion: true } : schedule;
 }
 
 /** Anchored recurrence grammar; `segments` carries a previously peeled time-of-day. */
@@ -251,24 +264,25 @@ function matchRecurrenceCore(text: string, now: Date, segments: TimeOfDay[]): Pa
   if (/^(?:weekly|every week)$/.test(text)) return recurrence('weekly', 1, [], segments, now);
   if (/^(?:monthly|every month)$/.test(text)) return recurrence('monthly', 1, [], segments, now);
   if (/^(?:yearly|annually|every year)$/.test(text)) return recurrence('yearly', 1, [], segments, now);
+  if (/^every hour$/.test(text)) return forceFromCompletionIfHours('hours', recurrence('hours', 1, [], segments, now));
 
   // "every morning" — the day part IS the unit, and supplies the segment.
   if ((m = text.match(/^every (morning|afternoon|evening|night)$/))) {
     return recurrence('daily', 1, [], [DAY_PART_SEGMENT[m[1]]], now);
   }
 
-  // "every 3 days", "every 2 weeks"
-  if ((m = text.match(/^every (\d+) (days?|weeks?|months?|years?)$/))) {
+  // "every 3 days", "every 2 weeks", "every 8 hours"
+  if ((m = text.match(/^every (\d+) (days?|weeks?|months?|years?|hours?)$/))) {
     const type = unitToType(m[2])!;
     const n = parseInt(m[1], 10);
     if (n < 1) return null;
-    return recurrence(type, n, [], segments, now);
+    return forceFromCompletionIfHours(type, recurrence(type, n, [], segments, now));
   }
 
-  // "every other week", "every other tuesday"
+  // "every other week", "every other tuesday", "every other hour"
   if ((m = text.match(/^every other (.+)$/))) {
     const type = unitToType(m[1]);
-    if (type) return recurrence(type, 2, [], segments, now);
+    if (type) return forceFromCompletionIfHours(type, recurrence(type, 2, [], segments, now));
     const days = parseWeekdayList(m[1], false);
     if (days) return recurrence('weekly', 2, days, segments, now);
     return null;
@@ -375,7 +389,9 @@ function extractStartingClause(text: string, now: Date): { date: Date; rest: str
 
 /**
  * Peels a trailing "after completion" (or "on completion") clause, mapping to
- * recurrenceFromCompletion.
+ * recurrenceFromCompletion. "ac" is the same clause spelled as a shorthand
+ * ("every week ac") — its own alternative rather than folded into the
+ * "after"/"on" branch, since it has no leading word of its own to match.
  *
  * Case-insensitive so it can be run against original-cased input as well as the
  * lowercased suffix the parser normally hands it — see
@@ -383,7 +399,7 @@ function extractStartingClause(text: string, now: Date): { date: Date; rest: str
  * of `rest` and would mis-slice if this only matched lowercase.
  */
 function extractFromCompletionClause(text: string): { rest: string } | null {
-  const m = text.match(/^(.*?)\s+(?:after|on)\s+(?:completion|completing|finishing|finished|it'?s?\s+done|i\s+(?:complete|finish)\s+it|done)$/i);
+  const m = text.match(/^(.*?)\s+(?:(?:after|on)\s+(?:completion|completing|finishing|finished|it'?s?\s+done|i\s+(?:complete|finish)\s+it|done)|ac)$/i);
   return m ? { rest: m[1] } : null;
 }
 
@@ -501,7 +517,17 @@ function parseRecurrenceSuffix(text: string, now: Date): ParsedSchedule | null {
   if (!schedule) return null;
 
   if (starting) schedule = { ...schedule, dueDate: dueAt(starting.date) };
-  if (fromCompletion) schedule = { ...schedule, recurrenceFromCompletion: true };
+  if (fromCompletion) {
+    schedule = { ...schedule, recurrenceFromCompletion: true };
+  } else if (schedule.recurrenceType === 'daily' && schedule.timeSegments.length === 0) {
+    // A bare daily/every-N-days phrase with no clock time or day part
+    // defaults to after completion, same as RecurrencePicker.tsx defaults
+    // when a person picks Daily by hand — most daily tasks are habits where
+    // what matters is a day passing since the last one, not a calendar
+    // grid. "every day at 9am" (a real clock time) keeps its fixed
+    // schedule; only the ambiguous bare form gets the default.
+    schedule = { ...schedule, recurrenceFromCompletion: true };
+  }
   if (endMatch) {
     const { end } = endMatch;
     if (end.endDate) {
@@ -509,7 +535,10 @@ function parseRecurrenceSuffix(text: string, now: Date): ParsedSchedule | null {
     } else if (end.count !== undefined) {
       schedule = { ...schedule, recurrenceCount: end.count };
     } else if (end.durationN !== undefined && end.durationUnit) {
-      const endDate = durationAddFn(end.durationUnit)(schedule.dueDate, end.durationN);
+      // The end date is inclusive (getNextDueDate stops only past it), so the
+      // span ends the day before: "daily for 10 days" from the 10th is the
+      // 10th through the 19th, ten doses rather than eleven.
+      const endDate = addDays(durationAddFn(end.durationUnit)(schedule.dueDate, end.durationN), -1);
       schedule = { ...schedule, recurrenceEndDate: endDate.toISOString() };
     }
   }
@@ -517,7 +546,7 @@ function parseRecurrenceSuffix(text: string, now: Date): ParsedSchedule | null {
 }
 
 /** Try to parse an entire suffix as a one-off date/time or recurrence phrase. */
-function parseSuffix(text: string, now: Date, singleWord: boolean): ParsedSchedule | null {
+function parseSuffix(text: string, now: Date, singleWord: boolean, clockNow: Date = now): ParsedSchedule | null {
   // Recurrence first — it owns the "every"/plural/frequency-word triggers.
   const rec = parseRecurrenceSuffix(text, now);
   if (rec) return rec;
@@ -549,7 +578,7 @@ function parseSuffix(text: string, now: Date, singleWord: boolean): ParsedSchedu
   // Same as above — "@" has no meaning in this file and is no longer stripped as noise.
   t = t.replace(/\bat\b/g, ' ').replace(/\bin the\b/g, ' ').replace(/,/g, ' ').replace(/\s+/g, ' ').trim();
 
-  const datePart = t ? parseDatePart(t, now) : null;
+  const datePart = t ? parseDatePart(t, now, clockNow) : null;
   // Leftover words that aren't a date phrase → this suffix isn't a schedule.
   if (t && !datePart) return null;
   if (!datePart && !hasTime) return null;
@@ -576,7 +605,12 @@ function parseSuffix(text: string, now: Date, singleWord: boolean): ParsedSchedu
   };
 }
 
-export function parseTaskInput(input: string, now: Date = new Date()): ParsedTaskInput | null {
+/**
+ * `now` is the logical now (`getLogicalNow`) and `clockNow` the real instant,
+ * which "in 2 hours" and "tonight" count from; see parseDatePart. Omit it
+ * outside a caller that knows both, where they are the same instant.
+ */
+export function parseTaskInput(input: string, now: Date = new Date(), clockNow: Date = now): ParsedTaskInput | null {
   if (!input) return null;
   const tokens = [...input.matchAll(/\S+/g)];
   if (tokens.length < 2) return null;
@@ -585,12 +619,12 @@ export function parseTaskInput(input: string, now: Date = new Date()): ParsedTas
   // An input that is entirely a schedule phrase ("on tuesday", "every monday")
   // stays a literal title — quick add needs a title, and it's almost always
   // mid-typing.
-  if (parseSuffix(lower.trim(), now, false)) return null;
+  if (parseSuffix(lower.trim(), now, false, clockNow)) return null;
 
   for (let i = 1; i < tokens.length; i++) {
     const start = tokens[i].index!;
     const suffix = lower.slice(start).trim();
-    const schedule = parseSuffix(suffix, now, i === tokens.length - 1);
+    const schedule = parseSuffix(suffix, now, i === tokens.length - 1, clockNow);
     if (schedule) {
       const cleanTitle = input.slice(0, start).replace(/[\s,;:\-–—]+$/, '');
       if (!cleanTitle) return null;
@@ -774,6 +808,73 @@ export function parseDurationInput(input: string): ParsedDuration | null {
   const cleanTitle = (input.slice(0, matchStart) + input.slice(matchEnd)).replace(/\s+/g, ' ').trim();
 
   return { minutes, cleanTitle, matchStart, matchEnd };
+}
+
+/** One "->"-separated segment of a typed chain, already stripped of its own duration/link phrase. */
+export interface ParsedChainStep {
+  title: string;
+  estimatedMinutes: number | null;
+  linkUrl: string | null;
+}
+
+export interface ParsedChainInput {
+  /** First entry becomes the task's own title, the rest become `chainItems`. Always 2+. */
+  steps: ParsedChainStep[];
+  /** The whole trimmed input — a chain replaces the title outright rather than trimming a phrase off it. */
+  matchedText: string;
+  matchStart: number;
+}
+
+/**
+ * Splits a quick-add title on "->" into an ad hoc chain: "pick up dry
+ * cleaning -> drop off library books -> walk the dog" becomes a 3-step
+ * chain, one row per arrow-delimited segment. Unlike every other parser in
+ * this file, this doesn't strip a phrase out of the title — a detected chain
+ * replaces the title wholesale, since the whole line is the thing being
+ * restructured, not one token within it.
+ *
+ * Each step is independently run through `parseDurationInput` and
+ * `parseLinkInput` against its own segment text alone — "call the vet for 10
+ * min -> drop off the package https://usps.com/track" gives the first step a
+ * 10-minute estimate and the second its own link, rather than either phrase
+ * applying to the chain as a whole. This is deliberate: `ChainItem` has no
+ * category/tag/priority/date fields of its own (those ride on the `Task` row
+ * once, for the whole chain — see the "Chains" note in CLAUDE.md), so a
+ * sigil token or schedule phrase anywhere in the line is left for the
+ * existing whole-title parsers to resolve task-wide, same as it already does
+ * without any "->" present. Only duration and link have a natural per-step
+ * home, which is why they're the two pulled out here.
+ *
+ * A step that trims to nothing (a doubled arrow, a trailing "->", or a step
+ * that was *only* a duration/link phrase with no name of its own) refuses
+ * the whole match rather than silently dropping a step — same reasoning
+ * `parseSupplyInput` gives for refusing outright instead of guessing.
+ */
+export function parseChainInput(input: string): ParsedChainInput | null {
+  if (!input.includes('->')) return null;
+  const rawParts = input.split(/\s*->\s*/);
+  const steps: ParsedChainStep[] = [];
+  for (const raw of rawParts) {
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+    let stepTitle = trimmed;
+    let estimatedMinutes: number | null = null;
+    let linkUrl: string | null = null;
+    const duration = parseDurationInput(stepTitle);
+    if (duration) {
+      estimatedMinutes = duration.minutes;
+      stepTitle = duration.cleanTitle;
+    }
+    const link = parseLinkInput(stepTitle);
+    if (link) {
+      linkUrl = link.url;
+      stepTitle = link.cleanTitle;
+    }
+    if (!stepTitle) return null;
+    steps.push({ title: stepTitle, estimatedMinutes, linkUrl });
+  }
+  if (steps.length < 2) return null;
+  return { steps, matchedText: input.trim(), matchStart: 0 };
 }
 
 export interface ParsedSupply {
@@ -1065,6 +1166,13 @@ export interface PersonToken {
   id: string;
   name: string;
   nickname: string;
+  /**
+   * Optional so every existing caller (and test fixture) that only ever named
+   * people keeps compiling. `'business'` skips the first-word fallback below
+   * — a company name's first word isn't a first name, and "Eye Q" answering to
+   * "@eye" is exactly the bug a business marker exists to avoid.
+   */
+  kind?: 'individual' | 'business';
 }
 
 /**
@@ -1115,6 +1223,18 @@ const MIN_PREFIX_LENGTH = 3;
  * turns a set of ids back into `PersonToken`s in the person's own list order,
  * the order a pick-one list is offered in.
  */
+/**
+ * What typing a suggestion rewrites the token to: the nickname if there is
+ * one, else the whole name. `matchPersonMentions` reads a multi-word name
+ * spelled out after the "@" ("@Eye Q"), so nothing is cut down to a first word
+ * the person never chose. Shared by `getMentionSuggestions` and
+ * `getEditorMentionSuggestions`.
+ */
+function mentionResolveKey(person: PersonToken): string {
+  const nickname = person.nickname.trim();
+  return nickname || person.name.trim();
+}
+
 function buildPersonNameIndex(people: PersonToken[]) {
   // Built once per call rather than per token: a name can be reached three ways
   // and the last writer would otherwise depend on iteration order.
@@ -1127,18 +1247,74 @@ function buildPersonNameIndex(people: PersonToken[]) {
     else byName.set(k, [id]);
   };
   for (const person of people) {
-    add(person.name, person.id);
+    const name = person.name.trim();
+    // A "@" token can never contain a space (PERSON_TOKEN_PATTERN stops at the
+    // first non-word character), so a multi-word name can never be typed as an
+    // exact match anyway — indexing it as a key only feeds the *prefix* scan
+    // below, which would otherwise let "@eye" match "Eye Q" by treating its
+    // first word as though it were a first name. So a business's multi-word
+    // name is skipped outright rather than only its explicit first-word entry;
+    // a single-word business name (or nickname) still indexes normally.
+    if (person.kind !== 'business' || !/\s/.test(name)) add(name, person.id);
     add(person.nickname, person.id);
     // First word only, so "Dustin Reyes" answers to "@dustin". Skipped when the
-    // name is one word already, which the map above has covered.
-    const first = person.name.trim().split(/\s+/)[0];
-    if (first && first.toLowerCase() !== person.name.trim().toLowerCase()) add(first, person.id);
+    // name is one word already, which the map above has covered, and skipped
+    // outright for a business — its name's first word isn't a first name, and
+    // matching it would read "Eye Q" as though "Eye" were somebody given name.
+    if (person.kind === 'business') continue;
+    const first = name.split(/\s+/)[0];
+    if (first && first.toLowerCase() !== name.toLowerCase()) add(first, person.id);
   }
   const toCandidates = (ids: Iterable<string>): PersonToken[] => {
     const set = new Set(ids);
     return people.filter(p => set.has(p.id));
   };
   return { byName, toCandidates };
+}
+
+/**
+ * Names and nicknames that contain a space ("Eye Q"), which `PERSON_TOKEN_PATTERN`
+ * alone can never match because it stops at the first space. Kept apart from
+ * `buildPersonNameIndex` on purpose: that index also feeds the *prefix* scan,
+ * where a multi-word business name must not answer to its first word.
+ */
+function buildPhraseIndex(people: PersonToken[]): Map<string, string[]> {
+  const phrases = new Map<string, string[]>();
+  const add = (raw: string, id: string) => {
+    const k = raw.trim().replace(/\s+/g, ' ').toLowerCase();
+    if (!k.includes(' ')) return;
+    const held = phrases.get(k);
+    if (held) { if (!held.includes(id)) held.push(id); }
+    else phrases.set(k, [id]);
+  };
+  for (const person of people) {
+    add(person.name, person.id);
+    add(person.nickname, person.id);
+  }
+  return phrases;
+}
+
+/**
+ * The longest multi-word name spelled out right after the "@" at `atIndex`
+ * ("@Eye Q about..."), ending at a word boundary, or null. Longest wins so a
+ * full name beats the first word it starts with.
+ */
+function phraseAt(
+  input: string,
+  atIndex: number,
+  phrases: Map<string, string[]>
+): { end: number; ids: string[] } | null {
+  if (phrases.size === 0) return null;
+  const from = atIndex + 1;
+  let best: { end: number; ids: string[] } | null = null;
+  for (const [key, ids] of phrases) {
+    const end = from + key.length;
+    if (best && end <= best.end) continue;
+    if (input.slice(from, end).toLowerCase() !== key) continue;
+    if (/[\w'-]/.test(input.charAt(end))) continue;
+    best = { end, ids };
+  }
+  return best;
 }
 
 /**
@@ -1220,12 +1396,20 @@ export function matchPersonMentions(
   groups: GroupMentionToken[] = []
 ): PersonMention[] {
   const { byName } = buildPersonNameIndex(people);
+  const phrases = buildPhraseIndex(people);
   const groupByName = groups.length > 0 ? buildGroupNameIndex(groups) : null;
   const groupById = groups.length > 0 ? new Map(groups.map(g => [g.id, g])) : null;
   const mentions: PersonMention[] = [];
 
   for (const m of input.matchAll(PERSON_TOKEN_PATTERN)) {
     if (m.index === undefined) continue;
+    // A full multi-word name ("@Eye Q") is tried first; the single-word
+    // grammar below would only ever see "@Eye".
+    const phrase = phraseAt(input, m.index, phrases);
+    if (phrase && phrase.ids.length === 1) {
+      mentions.push({ start: m.index, end: phrase.end, personId: phrase.ids[0] });
+      continue;
+    }
     const token = m[1].toLowerCase();
     let hits = byName.get(token);
     // No exact answer yet: try a unique prefix, so a name still being typed
@@ -1294,9 +1478,11 @@ export function findAmbiguousMention(
   overrides: Record<string, string> = {}
 ): AmbiguousMention | null {
   const { byName, toCandidates } = buildPersonNameIndex(people);
+  const phrases = buildPhraseIndex(people);
 
   for (const m of input.matchAll(PERSON_TOKEN_PATTERN)) {
     if (m.index === undefined) continue;
+    if (phraseAt(input, m.index, phrases)) continue; // a full name, already resolved
     const token = m[1].toLowerCase();
     if (overrides[token]) continue;
     const hits = byName.get(token);
@@ -1403,7 +1589,7 @@ export function getMentionSuggestions(
       candidates: toCandidates(prefixIds).slice(0, 5).map(p => ({
         id: p.id,
         name: p.name,
-        resolveKey: p.nickname.trim() || p.name.trim().split(/\s+/)[0],
+        resolveKey: mentionResolveKey(p),
       })),
     };
   }
@@ -1472,7 +1658,7 @@ export function getEditorMentionSuggestions(
       candidates: toCandidates(prefixIds).slice(0, 5).map(p => ({
         id: p.id,
         name: p.name,
-        resolveKey: p.nickname.trim() || p.name.trim().split(/\s+/)[0],
+        resolveKey: mentionResolveKey(p),
       })),
     };
   }
@@ -1584,6 +1770,9 @@ export function describeSchedule(s: ParsedSchedule, now: Date = new Date()): str
       break;
     case 'yearly':
       label = n === 1 ? `Every ${format(s.dueDate, 'MMM d')}` : `Every ${n} years`;
+      break;
+    case 'hours':
+      label = n === 1 ? 'Every hour' : n === 2 ? 'Every other hour' : `Every ${n} hours`;
       break;
     default: {
       const d = s.dueDate;

@@ -53,10 +53,18 @@ async function processPendingWidgetCompletions(): Promise<void> {
   // the demo ends.
   const bridge = widgetBridge();
   if (!bridge) return;
+  // Its own try: a binary predating the times file throws here, and that must
+  // not also cost the ids. They then just complete as of now, as they used to.
+  let tappedAt: Record<string, string> = {};
+  try {
+    tappedAt = await bridge.drainPendingWidgetCompletionTimes();
+  } catch {
+    // A build predating drainPendingCompletionTimes.
+  }
   try {
     const ids = await bridge.drainPendingWidgetCompletions();
     if (ids.length === 0) return;
-    useWidgetCompletionStore.getState().enqueue(ids);
+    useWidgetCompletionStore.getState().enqueue(ids, tappedAt);
     resetToToday();
   } catch {
     // A build predating drainPendingCompletions — no-op.

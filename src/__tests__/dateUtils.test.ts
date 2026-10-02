@@ -11,6 +11,7 @@ import {
   describeDeadlineOffset,
   getReminderOffsetDate,
   describeReminderOffset,
+  describeReminderTracksVisibility,
   captureReminderOffset,
   reanchorReminderToWallClock,
   getLogicalToday,
@@ -22,6 +23,7 @@ import {
   isBeforeDayReset,
   getEffectiveTaskDate,
   formatTaskDate,
+  hoursUnlockLabel,
   seriesMonthDaysFrom,
   getNextSeriesDates,
   recurrenceAnchorDayFor,
@@ -60,6 +62,7 @@ const baseTask: Task = {
   recurrenceInterval: 1,
   recurrenceDays: [],
   recurrenceMonthDay: null,
+  recurrenceMonth: null,
   recurrenceWeekOrdinal: null,
   recurrenceAnchorDay: null,
   recurrenceAnchorDate: null,
@@ -103,12 +106,17 @@ const baseTask: Task = {
   allowOvershoot: false,
   quotaIntervalMinutes: null,
   quotaReminders: false,
-  quotaStartedAt: null, quotaAlwaysVisible: false,
+  quotaStartedAt: null, quotaAlwaysVisible: false, followWaterTarget: false,
   quotaPeriod: 'day',
+  rotationEnabled: false,
+  rotationItems: [],
+  rotationLog: [],
+  rotationPeriodStart: null,
+  rotationLastDone: {},
   progressCount: 0,
   reminderTime: null,
   reminderKind: 'notification',
-  reminderOffsetDays: null, reminderTimeAnchor: 'wallClock', reminderUtcOffsetMinutes: null,
+  reminderOffsetDays: null, reminderTracksVisibility: false, reminderTimeAnchor: 'wallClock', reminderUtcOffsetMinutes: null,
   parentId: null,
   groupId: null,
   projectId: null,
@@ -124,6 +132,7 @@ const baseTask: Task = {
   followUpTaskTally: 0,
   previousFollowUpTaskTally: 0,
   followUpTaskSourceTitle: null,
+  followUpTaskSourceId: null,
   vacationPause: false, excludeFromSuggestions: false,
   timerStartedAt: null,
   timedMinutes: null,
@@ -369,6 +378,45 @@ describe('formatTaskDate', () => {
   });
 });
 
+describe('hoursUnlockLabel', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('reads the clock time an hourly task next unlocks at', () => {
+    const task = {
+      recurrenceType: 'hours' as const,
+      deferUntil: new Date(2025, 5, 10, 15, 0, 0).toISOString(),
+    };
+    expect(hoursUnlockLabel(task, true)).toBe('15:00');
+  });
+
+  it('returns null once the unlock instant has passed', () => {
+    const task = {
+      recurrenceType: 'hours' as const,
+      deferUntil: new Date(2025, 5, 10, 9, 0, 0).toISOString(),
+    };
+    expect(hoursUnlockLabel(task, true)).toBeNull();
+  });
+
+  it('returns null for a task with no deferUntil', () => {
+    expect(hoursUnlockLabel({ recurrenceType: 'hours', deferUntil: null }, true)).toBeNull();
+  });
+
+  it('returns null for any other recurrence type', () => {
+    const task = {
+      recurrenceType: 'daily' as const,
+      deferUntil: new Date(2025, 5, 10, 15, 0, 0).toISOString(),
+    };
+    expect(hoursUnlockLabel(task, true)).toBeNull();
+  });
+});
+
 describe('formatGroupHeader', () => {
   beforeEach(() => {
     jest.useFakeTimers();
@@ -591,6 +639,27 @@ describe('getNextDueDate', () => {
     expect(result.getDate()).toBe(13);
   });
 
+  // Approximate only — see the doc comment on the 'hours' branch. The real
+  // successor's precise deferUntil is computed in taskCompletion.ts; this
+  // function is only asked whether a next occurrence exists at all.
+  it('hours steps from today\'s logical start, regardless of recurrenceFromCompletion', () => {
+    const task: Task = {
+      ...baseTask, recurrenceType: 'hours', recurrenceInterval: 8, recurrenceFromCompletion: false,
+    };
+    const result = getNextDueDate(task, '00:00')!;
+    expect(result.getFullYear()).toBe(2025);
+    expect(result.getMonth()).toBe(5);
+    expect(result.getDate()).toBe(10);
+    expect(result.getHours()).toBe(8);
+  });
+
+  it('hours respects recurrenceCount running out, same as any other type', () => {
+    const task: Task = {
+      ...baseTask, recurrenceType: 'hours', recurrenceInterval: 8, recurrenceCount: 1,
+    };
+    expect(getNextDueDate(task, '00:00')).toBeNull();
+  });
+
   it('weekly without specific days adds N weeks', () => {
     const task: Task = { ...baseTask, recurrenceType: 'weekly', recurrenceInterval: 2 };
     const result = getNextDueDate(task, '00:00')!;
@@ -732,6 +801,58 @@ describe('getNextDueDate', () => {
     const result = getNextDueDate(task, '00:00')!;
     expect(result.getFullYear()).toBe(2026);
     expect(result.getMonth()).toBe(5);
+    expect(result.getDate()).toBe(10);
+  });
+
+  it('yearly with recurrenceMonth repositions into the pinned month, keeping the due date\'s day', () => {
+    // NOW/dueDate is June 10. Pinned to December: the grid still steps a full
+    // year (addYears), then the month is put back to the one the rule pins,
+    // same as recurrenceMonthDay repositions the day.
+    const task: Task = { ...baseTask, recurrenceType: 'yearly', recurrenceInterval: 1, recurrenceMonth: 12 };
+    const result = getNextDueDate(task, '00:00')!;
+    expect(result.getFullYear()).toBe(2026);
+    expect(result.getMonth()).toBe(11); // December
+    expect(result.getDate()).toBe(10);
+  });
+
+  it('yearly combines a pinned month with an explicit day', () => {
+    const task: Task = {
+      ...baseTask, recurrenceType: 'yearly', recurrenceInterval: 1, recurrenceMonth: 12, recurrenceMonthDay: 25,
+    };
+    const result = getNextDueDate(task, '00:00')!;
+    expect(result.getFullYear()).toBe(2026);
+    expect(result.getMonth()).toBe(11); // December
+    expect(result.getDate()).toBe(25);
+  });
+
+  it('yearly combines a pinned month with the last-day sentinel', () => {
+    const task: Task = {
+      ...baseTask, recurrenceType: 'yearly', recurrenceInterval: 1, recurrenceMonth: 2, recurrenceMonthDay: -1,
+    };
+    const result = getNextDueDate(task, '00:00')!;
+    expect(result.getFullYear()).toBe(2026);
+    expect(result.getMonth()).toBe(1); // February
+    expect(result.getDate()).toBe(28); // 2026 is not a leap year
+  });
+
+  it('yearly clamps the due date\'s own day to a shorter pinned month', () => {
+    // dueDate's day (31) doesn't exist in February — same clamp
+    // getNextMonthDayOccurrence already applies for monthly.
+    const task: Task = {
+      ...baseTask, recurrenceType: 'yearly', recurrenceInterval: 1, recurrenceMonth: 2,
+      dueDate: new Date(2025, 0, 31, 0, 0, 0).toISOString(), // Jan 31
+    };
+    const result = getNextDueDate(task, '00:00')!;
+    expect(result.getFullYear()).toBe(2026);
+    expect(result.getMonth()).toBe(1); // February
+    expect(result.getDate()).toBe(28);
+  });
+
+  it('yearly with recurrenceMonth null keeps riding whatever month the due date falls in', () => {
+    const task: Task = { ...baseTask, recurrenceType: 'yearly', recurrenceInterval: 1, recurrenceMonth: null };
+    const result = getNextDueDate(task, '00:00')!;
+    expect(result.getFullYear()).toBe(2026);
+    expect(result.getMonth()).toBe(5); // June, same as the due date
     expect(result.getDate()).toBe(10);
   });
 
@@ -1095,6 +1216,41 @@ describe('getNextDueDate', () => {
     expect(caught.toDateString()).toBe(plain.toDateString());
     expect(caught.toDateString()).toBe('Fri Jun 13 2025');
   });
+
+  // ─── completedAt ──────────────────────────────────────────────────────────
+
+  const afterCompletion = (overrides: Partial<Task> = {}): Task => ({
+    ...baseTask,
+    recurrenceType: 'daily',
+    recurrenceInterval: 1,
+    recurrenceFromCompletion: true,
+    dueDate: new Date(2025, 5, 9, 12, 0, 0).toISOString(),
+    ...overrides,
+  });
+
+  it('measures a from-completion rule from a completion recorded after the fact', () => {
+    // Done Monday night, recorded Tuesday morning: next is Tuesday, not Wednesday.
+    const completedAt = new Date(2025, 5, 9, 22, 0, 0);
+    expect(getNextDueDate(afterCompletion(), '00:00', { completedAt })!.toDateString()).toBe('Tue Jun 10 2025');
+    expect(getNextDueDate(afterCompletion(), '00:00')!.toDateString()).toBe('Wed Jun 11 2025');
+  });
+
+  it('reads the completion moment through dayResetTime', () => {
+    // 01:30 Tuesday with a 02:00 reset is still Monday's logical day.
+    const completedAt = new Date(2025, 5, 10, 1, 30, 0);
+    expect(getNextDueDate(afterCompletion(), '02:00', { completedAt })!.toDateString()).toBe('Tue Jun 10 2025');
+  });
+
+  it('still catches a long-ago completion up to today', () => {
+    const completedAt = new Date(2025, 5, 5, 22, 0, 0);
+    expect(getNextDueDate(afterCompletion(), '00:00', { completedAt, catchUp: true })!.toDateString()).toBe('Tue Jun 10 2025');
+  });
+
+  it('leaves a fixed schedule on its own grid', () => {
+    const completedAt = new Date(2025, 5, 7, 22, 0, 0);
+    const task = afterCompletion({ recurrenceFromCompletion: false });
+    expect(getNextDueDate(task, '00:00', { completedAt })!.toDateString()).toBe('Tue Jun 10 2025');
+  });
 });
 
 // ─── recurrenceAnchorDayFor ─────────────────────────────────────────────────
@@ -1208,6 +1364,17 @@ describe('getStreakOutcome', () => {
   it('continues a monthly streak completed a calendar month later', () => {
     const task: Task = { ...baseTask, recurrenceType: 'monthly', recurrenceInterval: 1, streakDate: new Date(2025, 4, 10).toISOString() };
     expect(getStreakOutcome(task)).toBe('continued');
+  });
+
+  it('gives a month-end habit the same day of slack as a weekly one', () => {
+    // On the 31st, done one day late (Mar 1 for the Feb 28 occurrence), is two
+    // calendar months after Jan 31. A habit on the 1st could already be 27 days
+    // late and still read as one month.
+    const task: Task = { ...baseTask, recurrenceType: 'monthly', recurrenceInterval: 1, recurrenceAnchorDay: 31, streakDate: new Date(2026, 0, 31).toISOString() };
+    jest.setSystemTime(new Date(2026, 2, 1, 10, 0, 0));
+    expect(getStreakOutcome(task)).toBe('continued');
+    jest.setSystemTime(new Date(2026, 2, 2, 10, 0, 0));
+    expect(getStreakOutcome(task)).toBe('reset');
   });
 
   it('resets a monthly streak after skipping a month', () => {
@@ -1343,6 +1510,12 @@ describe('describeReminderOffset', () => {
   });
 });
 
+describe('describeReminderTracksVisibility', () => {
+  it('describes the mode in plain terms, with no numeric parameter', () => {
+    expect(describeReminderTracksVisibility()).toBe('When it becomes visible');
+  });
+});
+
 describe('captureReminderOffset', () => {
   it('returns null when there is no reminder', () => {
     expect(captureReminderOffset(null)).toBeNull();
@@ -1362,28 +1535,22 @@ describe('reanchorReminderToWallClock', () => {
   });
 
   it('re-expresses the same wall-clock reading under a new timezone', () => {
-    // This repo's Jest config carries no explicit TZ (Intl resolves to
-    // 'UTC'), but a Date constructed with local params still picks up
-    // process.env.TZ changed just before construction — verified above and
-    // in reanchorReminderToWallClock's own doc comment.
-    const originalTz = process.env.TZ;
-    try {
-      process.env.TZ = 'America/New_York';
-      const nineAm = new Date(2026, 0, 15, 9, 0, 0);
-      const offset = captureReminderOffset(nineAm.toISOString())!;
+    // 09:00 on Jan 15 as set on a device in Tokyo (or New York, if the suite
+    // itself runs in Tokyo): the instant plus the offset in force there, which
+    // is all the function reads. Built as data rather than by switching
+    // process.env.TZ mid-test, which Jest ignores, so the move is exercised in
+    // whatever zone the suite runs in.
+    const elsewhere = new Date(2026, 0, 15, 9).getTimezoneOffset() === -540 ? 300 : -540;
+    const iso = new Date(Date.UTC(2026, 0, 15, 9, 0, 0) + elsewhere * 60_000).toISOString();
 
-      process.env.TZ = 'Asia/Tokyo';
-      const reanchored = new Date(reanchorReminderToWallClock(nineAm.toISOString(), offset));
+    const reanchored = new Date(reanchorReminderToWallClock(iso, elsewhere));
 
-      expect(reanchored.getFullYear()).toBe(2026);
-      expect(reanchored.getMonth()).toBe(0);
-      expect(reanchored.getDate()).toBe(15);
-      expect(reanchored.getHours()).toBe(9);
-      expect(reanchored.getMinutes()).toBe(0);
-    } finally {
-      if (originalTz === undefined) delete process.env.TZ;
-      else process.env.TZ = originalTz;
-    }
+    expect(reanchored.toISOString()).not.toBe(iso);
+    expect(reanchored.getFullYear()).toBe(2026);
+    expect(reanchored.getMonth()).toBe(0);
+    expect(reanchored.getDate()).toBe(15);
+    expect(reanchored.getHours()).toBe(9);
+    expect(reanchored.getMinutes()).toBe(0);
   });
 });
 

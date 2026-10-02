@@ -1,25 +1,29 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
-import { useRoute } from '@react-navigation/native';
+import { useFocusEffect, useRoute } from '@react-navigation/native';
 import { navigationRef } from '../navigation/navigationRef';
 import { format } from 'date-fns/format';
 import { addDays } from 'date-fns/addDays';
 import { useShallow } from 'zustand/react/shallow';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useHealthStore, WEIGHT_HISTORY_DAYS } from '../store/useHealthStore';
+import { useDemoStore } from '../store/useDemoStore';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
-import { dayKeyToDate, getLogicalToday } from '../utils/dateUtils';
+import { dayKeyOf, dayKeyToDate, getCurrentDayStart, getLogicalToday } from '../utils/dateUtils';
 import { navigateToSettingsEntry } from '../utils/settingsIndex';
+import { openHealthApp } from '../utils/healthBridge';
 import {
   formatWeight,
   kgToUnit,
   latestWeight,
   weightChange,
   weightReadings,
+  weightTrendPoints,
   type WeightUnit,
 } from '../utils/weightLog';
 import {
@@ -44,17 +48,18 @@ import { SegmentedControl } from '../components/SegmentedControl';
  * `WEIGHT_HISTORY_DAYS` (`useHealthStore.ts`) is the fetch ceiling — one
  * Health query, taken once — and this is purely a display zoom over the
  * points already in memory, so switching ranges costs nothing. A closed set of
- * four is `SegmentedControl`'s job per CLAUDE.md's picker table, not a
- * `PillGroup`: there is no open-ended vocabulary here, just one of four fixed
+ * five is `SegmentedControl`'s job per CLAUDE.md's picker table, not a
+ * `PillGroup`: there is no open-ended vocabulary here, just one of five fixed
  * spans.
  */
-type WeightChartRangeDays = 30 | 90 | 180 | 365;
+type WeightChartRangeDays = 7 | 30 | 90 | 180 | 365;
 
 const WEIGHT_CHART_RANGES: readonly {
   days: WeightChartRangeDays;
   label: string;
   sectionTitle: string;
 }[] = [
+  { days: 7, label: '1W', sectionTitle: 'THE LAST WEEK' },
   { days: 30, label: '1M', sectionTitle: 'THE LAST MONTH' },
   { days: 90, label: '3M', sectionTitle: 'THE LAST 3 MONTHS' },
   { days: 180, label: '6M', sectionTitle: 'THE LAST 6 MONTHS' },
@@ -98,6 +103,7 @@ export function WeightScreen() {
 
   const unit = useSettingsStore(s => s.weightUnit);
   const healthReadEnabled = useSettingsStore(s => s.healthReadEnabled);
+  const demoActive = useDemoStore(s => s.active);
   const weightSeries = useHealthStore(s => s.weightSeries);
   const loadingWeight = useHealthStore(s => s.loadingWeight);
   const refreshWeight = useHealthStore(s => s.refreshWeight);
@@ -105,7 +111,12 @@ export function WeightScreen() {
   const [logOpen, setLogOpen] = useState(false);
   const [goalOpen, setGoalOpen] = useState(false);
   const [rangeDays, setRangeDays] = useState<WeightChartRangeDays>(DEFAULT_RANGE_DAYS);
-  const activeRange = WEIGHT_CHART_RANGES.find(r => r.days === rangeDays) ?? WEIGHT_CHART_RANGES[2];
+  const activeRange = WEIGHT_CHART_RANGES.find(r => r.days === rangeDays) ?? WEIGHT_CHART_RANGES[3];
+  // "6M" reads as ambiguous shorthand in a stat label with no other context
+  // around it; the section title above the chart already spells the same
+  // range out ("THE LAST 6 MONTHS"), so reuse that instead of inventing a
+  // second, abbreviated phrasing for the same thing.
+  const activeRangePhrase = activeRange.sectionTitle.replace(/^THE /, '').toLowerCase();
 
   // `dundundun://weight?log=1` — the weigh-in request's link button. Stamped
   // with the arrival time rather than a boolean, and tracked against what has
@@ -139,9 +150,15 @@ export function WeightScreen() {
     setGoalOpen(true);
   }, [route.params?.openGoal, handledOpenGoal]);
 
-  useEffect(() => {
-    if (healthReadEnabled) void refreshWeight();
-  }, [healthReadEnabled, refreshWeight]);
+  // On every visit, not only the first: the screen stays mounted for the
+  // session, so a weigh-in the scale sent to Health, or a day rolling over,
+  // never showed while the app stayed open. refreshWeight guards itself
+  // against overlapping reads.
+  useFocusEffect(
+    useCallback(() => {
+      if (healthReadEnabled) void refreshWeight();
+    }, [healthReadEnabled, refreshWeight]),
+  );
 
   const points = weightSeries ?? [];
   // Whether Health has anything at all, over the full fetch window — this is
@@ -151,6 +168,12 @@ export function WeightScreen() {
   // whatever span happens to be selected".
   const readings = useMemo(() => weightReadings(points), [points]);
   const latest = useMemo(() => latestWeight(points), [points]);
+  // Same reasoning as `latest`: the trailing average as of the most recent
+  // reading, not re-centred on whatever range the chart happens to be zoomed to.
+  const trend = useMemo(() => {
+    const trendPoints = weightTrendPoints(points);
+    return trendPoints.length > 0 ? trendPoints[trendPoints.length - 1] : null;
+  }, [points]);
 
   // The selected range is purely a slice of what's already in memory — no
   // second Health query. `slice`'s negative-safe `Math.max` handles a range
@@ -168,18 +191,27 @@ export function WeightScreen() {
   // far along you are when you tapped "1M" would be reporting the control
   // rather than the goal.
   const goal = useSettingsStore(useShallow(s => s.weightGoal));
-  const goalWeightKg = useMemo(
+  const goalReading = useMemo(
     () => (goal === null ? null : weightSinceGoalStart(goal, points)),
     [goal, points],
   );
+  const goalWeightKg = goalReading?.kilograms ?? null;
+  // Pace and the forecast are measured from the day the weight was taken, not
+  // from today: an old reading that sat on the pace line would otherwise read
+  // as behind by however long ago it was (see weightSinceGoalStart).
+  const readingDay = goalReading !== null ? dayKeyToDate(goalReading.dayKey) : null;
+  // Null while the reading is today's, which is when "now" is still true.
+  const readingDateLabel = readingDay === null || goalReading?.dayKey === dayKeyOf(getCurrentDayStart())
+    ? null
+    : format(readingDay, readingDay.getFullYear() === getLogicalToday().getFullYear() ? 'MMM d' : 'MMM d, yyyy');
   const progress = goal !== null && goalWeightKg !== null ? goalProgress(goal, goalWeightKg) : null;
-  const pace = goal !== null && goalWeightKg !== null
-    ? goalPace(goal, goalWeightKg, getLogicalToday())
+  const pace = goal !== null && goalWeightKg !== null && readingDay !== null
+    ? goalPace(goal, goalWeightKg, readingDay)
     : null;
   const remainingDays = goal !== null && goalWeightKg !== null
     ? daysToTarget(goal, goalWeightKg)
     : null;
-  const etaDate = remainingDays !== null ? addDays(getLogicalToday(), remainingDays) : null;
+  const etaDate = remainingDays !== null && readingDay !== null ? addDays(readingDay, remainingDays) : null;
 
   // Against the *visible* slice, since its vertices are indexed into whatever
   // the chart was handed. The goal card above reads the whole series instead,
@@ -212,15 +244,15 @@ export function WeightScreen() {
   // recorded by writing it to Health and a goal has nothing to measure against.
   // So the actions come off rather than sitting there doing nothing when
   // tapped, which is what "Record a weight" did before this. The empty state is
-  // what points at Settings.
+  // what points at Settings. The demo branch drops them for the same reason.
   const header = (
     <>
       <ScreenHeader
         title="Weight"
         subtitle={latest ? formatWeight(latest.kilograms, unit) : undefined}
-        actions={!healthReadEnabled ? [] : [
+        actions={!healthReadEnabled || demoActive ? [] : [
           {
-            icon: 'flag-outline' as const,
+            icon: 'target' as const,
             onPress: openGoal,
             // Tinted while a goal is set, the same way the Daily targets row
             // in Settings marks itself once something is set there.
@@ -237,6 +269,25 @@ export function WeightScreen() {
       <HubPills hub="health" active="Weight" />
     </>
   );
+
+  // Demo mode never reads or writes Health (healthBridge() refuses), so the
+  // Health-off copy below would send someone to a switch that cannot take
+  // effect here, and "No weigh-ins yet" would blame Health for our refusal.
+  // Checked first because the read switch can still be flipped on inside the
+  // demo database. No action: there is nothing to turn on.
+  if (demoActive) {
+    return (
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        {header}
+        <EmptyState
+          icon="scale-outline"
+          title="Not available in demo mode"
+          subtitle="Weight comes from Apple Health, which demo mode does not read or write. Leave demo mode to see your own weigh-ins."
+          bottomOffset={tabBarHeight}
+        />
+      </View>
+    );
+  }
 
   // Reading is off, so there is nothing to draw. The switch itself stays in
   // Settings — this screen must not flip it, and a sweep is never allowed to
@@ -311,17 +362,49 @@ export function WeightScreen() {
           />
           <Stat
             styles={styles}
+            value={trend ? kgToUnit(trend.kilograms, unit).toFixed(1) : '—'}
+            label={`7-day avg (${unit})`}
+            accessibilityLabel={trend
+              ? `7-day trailing average, ${formatWeight(trend.kilograms, unit)}`
+              : '7-day trailing average, nothing recorded'}
+          />
+          <Stat
+            styles={styles}
             value={changeValue}
-            label={`Change (${unit})`}
+            label={`Change (${unit}), ${activeRangePhrase}`}
             accessibilityLabel={change === null
-              ? 'Change, not enough readings in this range'
-              : `Change, ${kgToUnit(change.deltaKg, unit).toFixed(1)} ${unit} across ${change.readings} readings`}
+              ? `Change, not enough readings in the ${activeRangePhrase}`
+              : `Change over the ${activeRangePhrase}, ${kgToUnit(change.deltaKg, unit).toFixed(1)} ${unit} across ${change.readings} readings`}
           />
           <Stat
             styles={styles}
             value={String(visibleReadings.length)}
-            label="Weigh-ins"
-            accessibilityLabel={`${visibleReadings.length} weigh-ins in this range`}
+            label={`Weigh-ins, ${activeRangePhrase}`}
+            accessibilityLabel={`${visibleReadings.length} weigh-ins in the ${activeRangePhrase}`}
+          />
+        </View>
+
+        {/* Right under the stats it changes, rather than below the goal card
+            and the chart — those four numbers above are the only thing on
+            this screen a range switch visibly changes before you scroll
+            further, so the control has to sit next to them or the two read
+            as unrelated. */}
+        <View style={styles.rangeRow}>
+          <SegmentedControl
+            options={WEIGHT_CHART_RANGES.map(r => ({
+              value: r.days,
+              label: r.label,
+              // SegmentedControl reads a spoken label straight off the option
+              // (unlike SettingsSegments, which derives it) — computed here
+              // rather than left to the bare "1M"/"3M" a screen reader would
+              // otherwise read as literal letters.
+              accessibilityLabel: `Show the last ${
+                r.days === 7 ? 'week' : r.days === 30 ? 'month' : r.days === 365 ? 'year' : `${r.days / 30} months`
+              }`,
+            }))}
+            value={rangeDays}
+            onChange={next => { haptics.tap(); setRangeDays(next); }}
+            label="Chart range"
           />
         </View>
 
@@ -337,7 +420,7 @@ export function WeightScreen() {
               ) : (
                 <>
                   <Text style={styles.finding}>
-                    {formatWeight(goalWeightKg!, unit)} now, aiming for{' '}
+                    {formatWeight(goalWeightKg!, unit)} {readingDateLabel === null ? 'now' : `on ${readingDateLabel}`}, aiming for{' '}
                     {formatWeight(goal.targetKg, unit)}.
                   </Text>
 
@@ -379,7 +462,7 @@ export function WeightScreen() {
                             variant="card"
                             value={tile.value}
                             label={tile.label}
-                            accessibilityLabel={`${describePace(pace.aheadKg, unit)} Your pace would have put you at ${formatWeight(pace.paceKg, unit)} by now.`}
+                            accessibilityLabel={`${describePace(pace.aheadKg, unit)} Your pace would have put you at ${formatWeight(pace.paceKg, unit)} by ${readingDateLabel ?? 'now'}.`}
                           />
                         );
                       })()}
@@ -407,25 +490,6 @@ export function WeightScreen() {
             </View>
           </>
         )}
-
-        <View style={styles.rangeRow}>
-          <SegmentedControl
-            options={WEIGHT_CHART_RANGES.map(r => ({
-              value: r.days,
-              label: r.label,
-              // SegmentedControl reads a spoken label straight off the option
-              // (unlike SettingsSegments, which derives it) — computed here
-              // rather than left to the bare "1M"/"3M" a screen reader would
-              // otherwise read as literal letters.
-              accessibilityLabel: `Show the last ${
-                r.days === 30 ? 'month' : r.days === 365 ? 'year' : `${r.days / 30} months`
-              }`,
-            }))}
-            value={rangeDays}
-            onChange={next => { haptics.tap(); setRangeDays(next); }}
-            label="Chart range"
-          />
-        </View>
 
         <Text style={styles.sectionTitle}>{activeRange.sectionTitle}</Text>
         <View style={styles.card}>
@@ -468,6 +532,24 @@ export function WeightScreen() {
             </View>
           </>
         )}
+
+        {/* This screen keeps no copy of a weigh-in, so there is nothing here
+            to edit or delete (see docs/arch/health-data.md). Correcting or
+            removing one happens in the Health app itself, alongside whatever
+            else recorded it (a smart scale, another tracker) — this just
+            opens the door to it, same as the Health-permission rows do. */}
+        <TouchableOpacity
+          style={styles.healthLinkRow}
+          activeOpacity={interaction.activeOpacity}
+          onPress={() => { haptics.tap(); void openHealthApp(); }}
+          accessibilityRole="button"
+          accessibilityLabel="Open the Health app"
+          accessibilityHint="View or correct a past weigh-in in Apple Health, where your weight history is kept"
+        >
+          <Ionicons name="heart-outline" size={iconSize.sm} color={colors.textSecondary} />
+          <Text style={styles.healthLinkText}>View or edit past weigh-ins in Health</Text>
+          <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
+        </TouchableOpacity>
       </ScrollView>
       <LogWeightSheet visible={logOpen} onClose={closeLog} />
       <WeightGoalSheet
@@ -592,4 +674,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   goalStatValue: { fontSize: font.lg, fontWeight: fontWeight.bold, color: colors.text, textAlign: 'center' },
   finding: { fontSize: font.md, color: colors.text, lineHeight: 22 },
+  healthLinkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.bgSecondary,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.lg,
+  },
+  healthLinkText: { flex: 1, fontSize: font.sm, color: colors.textSecondary },
 });

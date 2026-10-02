@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -33,6 +33,7 @@ import { matchPersonMentions } from '../utils/parseTaskInput';
 import { mergeRanges } from '../utils/ranges';
 import { asksOnCompletion, formatTaskDeliverable } from '../utils/deliverables';
 import { formatQuotaProgress } from '../utils/quotaUnit';
+import { hoursUnlockLabel } from '../utils/dateUtils';
 import { tagColor } from '../utils/tagColor';
 import { categoryLabel } from '../utils/categoryLabel';
 import { useColors } from '../theme/ThemeContext';
@@ -43,7 +44,9 @@ import { SearchField } from '../components/SearchField';
 import { EmptyState } from '../components/EmptyState';
 import { HighlightedText } from '../components/HighlightedText';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
+import { useStableCallback } from '../hooks/useStableCallback';
 import { format } from 'date-fns/format';
+import { useFilterField } from '../hooks/useFilterField';
 
 // How long the field waits for typing to pause before the expensive
 // fuzzySearch recompute runs. The TextInput's own value/onChangeText stay
@@ -59,9 +62,11 @@ const SEARCH_DEBOUNCE_MS = 180;
  * their identity, so `onPress` takes what it opens rather than the screen
  * closing over it per row.
  */
-const SearchResultItem = React.memo(function SearchResultItem({ result, onPress, onTicked, categories, styles, colors }: {
+const SearchResultItem = React.memo(function SearchResultItem({ result, onPress, onOpenProject, onTicked, categories, styles, colors }: {
   result: CollapsedOccurrence<SearchResult>;
   onPress: (task: Task) => void;
+  /** Opens the project a result is filed under, from its chip. */
+  onOpenProject: (projectId: string) => void;
   onTicked: (taskId: string) => void;
   categories: Category[];
   styles: ReturnType<typeof makeStyles>;
@@ -78,6 +83,11 @@ const SearchResultItem = React.memo(function SearchResultItem({ result, onPress,
     ? format(new Date(task.completedAt), 'MMM d')
     : null;
 
+  // A primitive, so an unrelated project change doesn't re-render the row.
+  const projectIsList = useProjectStore(
+    st => (task.projectId ? st.projects.find(p => p.id === task.projectId)?.kind === 'list' : false),
+  );
+
   const displayTitle = displayTitleFor(task);
   // An "@name" mention stays literal in the title (see matchPersonMentions'
   // doc comment) and is tinted the same as a matched query term — merged
@@ -89,6 +99,10 @@ const SearchResultItem = React.memo(function SearchResultItem({ result, onPress,
   );
   const answer = formatTaskDeliverable(task);
   const category = categoryLabel(task.category, categories);
+  // An "every N hours" task never carries a dueDate (see hoursUnlockLabel's
+  // own comment), so the "Due" chip below never fires for one — this is the
+  // only fact this row has to say when it comes back.
+  const hoursUnlock = isCompleted ? null : hoursUnlockLabel(task);
   // What this row stands for besides itself, when it's one date of a repeat
   // (see collapseOccurrences). Null on an ordinary one-off, which is most rows.
   const countLabel = formatOccurrenceCount(occurrenceCount);
@@ -105,6 +119,7 @@ const SearchResultItem = React.memo(function SearchResultItem({ result, onPress,
       : null,
     isCompleted && asksOnCompletion(task) ? (answer !== null ? `answered ${answer}` : 'no answer') : null,
     !isCompleted && task.dueDate ? `due ${format(new Date(task.dueDate), 'MMM d')}` : null,
+    hoursUnlock ? `unlocks ${hoursUnlock}` : null,
     countLabel ? `and ${countLabel}` : null,
   ].filter(Boolean).join(', ');
 
@@ -148,9 +163,22 @@ const SearchResultItem = React.memo(function SearchResultItem({ result, onPress,
           {/* Ahead of the tags and dates, and highlighted like the title: a
               result can match on its project's name alone (fuzzySearch scores
               it), and until now that row gave no hint why it was in the list. */}
-          {projectName && (
-            <View style={styles.projectChip}>
-              <Ionicons name="briefcase-outline" size={iconSize.xs} color={colors.textSecondary} />
+          {/* Tappable: a result found on a list or project opened only the
+              task, with no way from here to the list it lives on. */}
+          {projectName && task.projectId && (
+            <TouchableOpacity
+              style={styles.projectChip}
+              onPress={() => onOpenProject(task.projectId!)}
+              hitSlop={6}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="button"
+              accessibilityLabel={`Open ${projectName}`}
+            >
+              <Ionicons
+                name={projectIsList ? 'list-outline' : 'briefcase-outline'}
+                size={iconSize.xs}
+                color={colors.textSecondary}
+              />
               <HighlightedText
                 text={projectName}
                 ranges={projectMatches}
@@ -158,7 +186,7 @@ const SearchResultItem = React.memo(function SearchResultItem({ result, onPress,
                 highlightStyle={styles.highlight}
                 numberOfLines={1}
               />
-            </View>
+            </TouchableOpacity>
           )}
           {/* Plain text with its emoji rather than a chip of its own: the
               project-chip-then-category pairing NewTasksBanner already uses.
@@ -196,6 +224,9 @@ const SearchResultItem = React.memo(function SearchResultItem({ result, onPress,
           )}
           {!isCompleted && task.dueDate && (
             <Text style={styles.metaText}>Due {format(new Date(task.dueDate), 'MMM d')}</Text>
+          )}
+          {hoursUnlock && (
+            <Text style={styles.metaText}>Unlocks {hoursUnlock}</Text>
           )}
           {/* Last of the chips and first of the wrapping ones: it's the least
               specific fact on the row, but it's the one that explains why the
@@ -339,14 +370,14 @@ export function SearchScreen() {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
-  const [query, setQuery] = useState('');
+  const searchFilter = useFilterField();
+  const query = searchFilter.query;
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [editorVisible, setEditorVisible] = useState(false);
   const [editorInitialDraft, setEditorInitialDraft] = useState<Partial<TaskDraft> | null>(null);
   const [quickAddVisible, setQuickAddVisible] = useState(false);
   const [editingGroup, setEditingGroup] = useState<TaskGroup | null>(null);
   const [groupEditorVisible, setGroupEditorVisible] = useState(false);
-  const inputRef = useRef<TextInput>(null);
 
   // Handed a query by quick search (see QuickSearchModal's footer row).
   // `at` is stamped fresh on every handoff, so searching the same term twice
@@ -359,14 +390,14 @@ export function SearchScreen() {
   const [handledQueryAt, setHandledQueryAt] = useState<number | undefined>(undefined);
   if (route.params?.at !== undefined && route.params.at !== handledQueryAt) {
     setHandledQueryAt(route.params.at);
-    setQuery(route.params.query ?? '');
+    searchFilter.seed(route.params.query ?? '');
   }
 
   // Retyping a query you just typed would make the handoff a net loss, so the
   // field arrives focused and ready to be refined.
   useEffect(() => {
     if (handledQueryAt === undefined) return;
-    const timer = setTimeout(() => inputRef.current?.focus(), 0);
+    const timer = setTimeout(() => searchFilter.inputRef.current?.focus(), 0);
     return () => clearTimeout(timer);
   }, [handledQueryAt]);
 
@@ -375,7 +406,7 @@ export function SearchScreen() {
   // opens — same "reset on the way out" CalendarScreen uses for its expanded
   // row. Cleared on blur rather than on focus so a handoff from quick search
   // (the `at` effect above) never races this and gets its own query wiped.
-  useFocusEffect(useCallback(() => () => setQuery(''), []));
+  useFocusEffect(useCallback(() => () => searchFilter.clear(), []));
 
   // KeyboardAvoidingView only checks the keyboard's real state once, in its
   // own componentDidMount — after that it trusts keyboardWillShow/
@@ -540,6 +571,10 @@ export function SearchScreen() {
     setEditorInitialDraft(draft);
     setEditorVisible(true);
   };
+  // Stable, because QuickAddModal is memoized and stays mounted while hidden:
+  // a fresh prop each render would re-render the hidden sheet with this screen.
+  const onQuickAddClose = useStableCallback(() => setQuickAddVisible(false));
+  const onQuickAddOpenFull = useStableCallback(handleQuickAddOpenFull);
 
   const renderItem = ({ item }: { item: ListItem }) => {
     if (item.type === 'sectionHeader') {
@@ -573,6 +608,7 @@ export function SearchScreen() {
       <SearchResultItem
         result={item.result}
         onPress={openTask}
+        onOpenProject={openProject}
         onTicked={hold}
         categories={categories}
         styles={styles}
@@ -589,11 +625,9 @@ export function SearchScreen() {
       <ScreenHeader title="Search" />
 
       <SearchField
-        ref={inputRef}
         style={styles.searchBar}
         placeholder="Search tasks"
-        value={query}
-        onChangeText={setQuery}
+        field={searchFilter}
         onSubmitEditing={rememberQuery}
       />
 
@@ -637,7 +671,7 @@ export function SearchScreen() {
                 <TouchableOpacity
                   key={q}
                   style={styles.recentRow}
-                  onPress={() => setQuery(q)}
+                  onPress={() => searchFilter.seed(q)}
                   activeOpacity={interaction.activeOpacity}
                   accessibilityRole="button"
                   accessibilityLabel={`Search again for ${q}`}
@@ -681,8 +715,8 @@ export function SearchScreen() {
 
       <QuickAddModal
         visible={quickAddVisible}
-        onClose={() => setQuickAddVisible(false)}
-        onOpenFull={handleQuickAddOpenFull}
+        onClose={onQuickAddClose}
+        onOpenFull={onQuickAddOpenFull}
         initialTitle={query}
       />
     </View>

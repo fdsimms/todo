@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   Alert,
   View,
@@ -23,7 +23,7 @@ import {
   checkboxRadius,
   type Colors,
 } from '../theme';
-import { itemsOnList } from '../utils/groceryLists';
+import { entryFor, itemsOnList } from '../utils/groceryLists';
 import { useGroceryStore } from '../store/useGroceryStore';
 import {
   suggestGroceryAisles,
@@ -40,6 +40,7 @@ import { EmptyState } from './EmptyState';
 import { RecipeSourcePicker } from './RecipeSourcePicker';
 import { describeImportError, isRetryableImportError } from '../services/recipePage';
 import { useRecipeImportSource } from '../hooks/useRecipeImportSource';
+import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { MAX_RECIPE_PHOTOS } from '../utils/recipePhoto';
 import { haptics } from '../utils/haptics';
 import { GROCERY_NAME_MAX_LENGTH } from '../types';
@@ -67,8 +68,8 @@ interface TidyRow {
  * Nothing here is load-bearing: the offline lexicon files the common shop
  * without a key or a network, and unrecognised items already land in "Other".
  * Both modes are gated at the call site, so a user who can't run them never
- * sees the entry points at all — `recipe` on `!!anthropicApiKey`, and `tidy`
- * on `useAiRoute('groceryAisles')`, since aisle sorting can also be answered by
+ * sees the entry points at all — `recipe` on `useAiRoute('recipeExtraction')`,
+ * and `tidy` on `useAiRoute('groceryAisles')`, since aisle sorting can also be answered by
  * the on-device model with no key at all (see `src/utils/aiRouting.ts`).
  *
  * Which engine answered is deliberately not shown here. The rows are the same
@@ -96,9 +97,14 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
   // a mistyped address fails identically however many times you ask.
   const [canRetry, setCanRetry] = useState(true);
   const [tidyRows, setTidyRows] = useState<TidyRow[]>([]);
+  // Whether a tidy has come back since the sheet opened. Until one has, an
+  // empty `tidyRows` means "not asked yet" rather than "nothing to move", and
+  // the body shows the spinner for the frame before the request starts.
+  const [tidyAnswered, setTidyAnswered] = useState(false);
   const [recipeRows, setRecipeRows] = useState<RecipeGroceryItem[]>([]);
   const [accepted, setAccepted] = useState<Set<number>>(new Set());
   const recipeInput = useRecipeImportSource('paste', undefined, MAX_RECIPE_PHOTOS);
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
   const { resolveSource: resolveRecipeSource, reset: resetRecipeInput } = recipeInput;
 
   // Anything currently sitting in the catch-all and on the list — the exact
@@ -112,6 +118,7 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
     setLoading(false);
     setError(null);
     setTidyRows([]);
+    setTidyAnswered(false);
     setRecipeRows([]);
     setAccepted(new Set());
     resetRecipeInput();
@@ -121,11 +128,22 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
     if (!visible) reset();
   }, [visible, reset]);
 
+  // Both runs below await a request that easily outlives a cancel — the sheet
+  // stays mounted (only its Modal hides), so nothing stops that promise once
+  // the user discards. Read inside the continuation, never as a dependency, so
+  // a cancel mid-request is seen without re-running either. Same guard
+  // RecipeExtractSheet and RecipeCreateSheet keep: without it the answer lands
+  // on the hidden sheet after the reset above, and the next open starts on a
+  // pre-ticked review of the input that was discarded.
+  const visibleRef = useRef(visible);
+  useEffect(() => { visibleRef.current = visible; }, [visible]);
+
   const runTidy = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const map = await suggestGroceryAisles(unsorted.map(i => i.name), [...aisleOrder]);
+      if (!visibleRef.current) return;
       const rows: TidyRow[] = [];
       for (const item of unsorted) {
         const aisle = map[item.name];
@@ -136,8 +154,11 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
       setTidyRows(rows);
       setAccepted(new Set(rows.map((_, i) => i)));
     } catch (e) {
-      setError(describeAIError(e));
+      if (visibleRef.current) setError(describeAIError(e));
     } finally {
+      // Guarded too: an answer stamped on a closed sheet would stop the next
+      // open from asking at all.
+      if (visibleRef.current) setTidyAnswered(true);
       setLoading(false);
     }
   }, [unsorted, aisleOrder]);
@@ -155,21 +176,27 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
       // it's dropped here rather than offered as something to buy.
       const rows = (await suggestRecipeGroceries(resolved.source, [...aisleOrder]))
         .filter(r => !r.excludeFromShoppingList);
+      if (!visibleRef.current) return;
       setRecipeRows(rows);
       setAccepted(new Set(rows.map((_, i) => i)));
     } catch (e) {
-      setError(describeImportError(e));
-      setCanRetry(isRetryableImportError(e));
+      if (visibleRef.current) {
+        setError(describeImportError(e));
+        setCanRetry(isRetryableImportError(e));
+      }
     } finally {
       setLoading(false);
     }
   }, [resolveRecipeSource, aisleOrder]);
 
   // Tidy has everything it needs the moment it opens; recipe needs text first.
+  // Also keyed on there being anything to sort, so the spinner the body shows
+  // before a first answer (`tidyAnswered`) always has a request behind it.
+  const hasUnsorted = unsorted.length > 0;
   useEffect(() => {
-    if (visible && mode === 'tidy' && unsorted.length > 0) void runTidy();
+    if (visible && mode === 'tidy' && hasUnsorted && !tidyAnswered) void runTidy();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible, mode]);
+  }, [visible, mode, hasUnsorted]);
 
   const toggle = (index: number) => {
     haptics.tap();
@@ -204,7 +231,10 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
         // row already on the list reads as one this apply added — and undo
         // would then take it off. Same lookup addManyFromText makes.
         const before = catalogItemForKey(key, useGroceryStore.getState().items) ?? undefined;
-        const wasOnList = before?.onList === true;
+        // On the list being added to, not on any list — same as addManyFromText.
+        // Read fresh: earlier rows in this loop have already been added.
+        const { listEntries: entriesNow, activeListId: listNow } = useGroceryStore.getState();
+        const wasOnList = !!before && entryFor(entriesNow, before.id, listNow) !== null;
         // addByName so an item already in the catalog is re-listed rather than
         // duplicated; the aisle and quantity are then applied on top of
         // whatever the lexicon guessed. An aisle the user has filed this item
@@ -263,7 +293,7 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
   const goBack = () => { setError(null); setRecipeRows([]); };
 
   const renderBody = () => {
-    if (loading) {
+    if (loading || (mode === 'tidy' && unsorted.length > 0 && !tidyAnswered && !error)) {
       return (
         <View style={styles.centered}>
           <ActivityIndicator color={colors.purple} />
@@ -293,7 +323,12 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
 
     if (mode === 'recipe' && recipeRows.length === 0) {
       return (
-        <ScrollView contentContainerStyle={styles.pasteWrap} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          ref={keyboardScroll.ref}
+          contentContainerStyle={styles.pasteWrap}
+          keyboardShouldPersistTaps="handled"
+          {...keyboardScroll.props}
+        >
           <RecipeSourcePicker
             intro="Open a recipe link, paste a recipe, or photograph the page. You’ll get back what to buy, named the way a store labels it rather than the way the recipe chops it."
             mode={recipeInput.mode}
@@ -317,11 +352,33 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
       );
     }
 
+    // Items were waiting in Other and the model moved none of them, which is
+    // every on-device failure as well as a genuine shrug. Saying "everything is
+    // already in an aisle" over a list that plainly isn't sorted read as the
+    // feature being broken; saying so, with a retry, reads as what happened.
+    if (rowCount === 0 && mode === 'tidy' && unsorted.length > 0) {
+      return (
+        <View style={styles.centered}>
+          <EmptyState
+            icon="help-circle-outline"
+            title="Couldn't place these"
+            subtitle={unsorted.length === 1
+              ? 'No aisle came back for this item, so it stays in Other.'
+              : `No aisle came back for these ${unsorted.length} items, so they stay in Other.`}
+            actionLabel="Try again"
+            onAction={() => { void runTidy(); }}
+          />
+        </View>
+      );
+    }
+
     if (rowCount === 0) {
       return (
         <View style={styles.centered}>
           <EmptyState
-            icon="checkmark-circle-outline"
+            // A tick is right for a list with nothing left to sort, and wrong
+            // for a paste that found nothing: that one didn't succeed.
+            icon={mode === 'tidy' ? 'checkmark-circle-outline' : 'search-outline'}
             title={mode === 'tidy' ? 'Nothing to sort' : 'Nothing found'}
             subtitle={
               mode === 'tidy'

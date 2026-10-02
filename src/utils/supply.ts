@@ -326,13 +326,34 @@ export interface SupplyReorderWant {
 }
 
 /**
+ * Whether a supply's grocery link can do the asking, so it needs no reorder
+ * task. `actingItemIds` is the catalog rows the list half can act on: every
+ * live item while the kitchen is on, none while it's off. A link naming a row
+ * outside it (deleted from the catalog, or a kitchen switched off) reads as no
+ * link at all, the resolve-or-shrug reading every other cross-row pointer gets.
+ * Without that the supply asked nowhere: the list half skips a dead item, and
+ * the reorder half skipped every linked task. Omitted, every link counts as
+ * acting.
+ */
+export function supplyLinkActs(
+  task: Pick<Task, 'supplyGroceryItemId'>,
+  actingItemIds?: ReadonlySet<string>,
+): boolean {
+  const itemId = task.supplyGroceryItemId;
+  if (!itemId) return false;
+  return actingItemIds === undefined || actingItemIds.has(itemId);
+}
+
+/**
  * Which supplies should have a reorder task right now, most urgent first.
  *
  * **Linked supplies are excluded here rather than by the caller**, because
  * their absence is the design rather than an omission: a supply that names a
  * grocery item is answered by putting that item on the shopping list, and a
  * task saying "buy X" beside a list entry saying "buy X" is two nags for one
- * errand. See `suppliesWantingList`.
+ * errand. See `suppliesWantingList`. Only a link that can act is excluded
+ * (`supplyLinkActs`): one naming a deleted item, or with the kitchen off, falls
+ * back to a reorder task.
  *
  * Urgency is the run-out day, soonest first, with the supplies that can't
  * project a day at all sorted last among the wanted — they're wanted on the
@@ -344,10 +365,11 @@ export function wantedSupplyReorders(
   tasks: readonly Task[],
   dayResetTime?: string,
   cap: number = MAX_SUPPLY_REORDER_TASKS,
+  actingItemIds?: ReadonlySet<string>,
 ): SupplyReorderWant[] {
   const wants: (SupplyReorderWant & { sortKey: string })[] = [];
   for (const task of tasks) {
-    if (task.supplyGroceryItemId) continue;
+    if (supplyLinkActs(task, actingItemIds)) continue;
     const reason = supplyReorderReason(task, dayResetTime);
     if (reason === null) continue;
     const runOut = supplyRunOutDate(task, dayResetTime);
@@ -359,8 +381,10 @@ export function wantedSupplyReorders(
       refillCount: clampSupplyRefillCount(task.supplyRefillCount),
       linkUrl: task.linkUrl ?? null,
       // '~' sorts after every digit, so an unprojectable supply lands at the
-      // back of the wanted set without a second comparator.
-      sortKey: runOut ? dayKeyOf(runOut) : '~',
+      // back of the wanted set without a second comparator. An empty supply
+      // also has no run-out date (nothing left to spend), but its urgency is
+      // known rather than unknown, so '' puts it ahead of every date.
+      sortKey: (task.supplyCount ?? 0) <= 0 ? '' : runOut ? dayKeyOf(runOut) : '~',
     });
   }
   wants.sort((a, b) => (a.sortKey < b.sortKey ? -1 : a.sortKey > b.sortKey ? 1 : 0));
@@ -389,10 +413,11 @@ export function wantedSupplyReorders(
 export function staleSupplyReorderTasks<T extends Task>(
   tasks: readonly T[],
   dayResetTime?: string,
+  actingItemIds?: ReadonlySet<string>,
 ): T[] {
   const stillWanting = new Set(
     tasks
-      .filter(t => !t.supplyGroceryItemId && supplyReorderReason(t, dayResetTime) !== null)
+      .filter(t => !supplyLinkActs(t, actingItemIds) && supplyReorderReason(t, dayResetTime) !== null)
       .map(t => t.id)
   );
   return liveGeneratedTasksOfKind(tasks, 'supplyReorder').filter(task => {
@@ -406,7 +431,10 @@ export function staleSupplyReorderTasks<T extends Task>(
  *
  * The other half of `wantedSupplyReorders`: same trigger, different answer. An
  * item already flagged low is left alone rather than re-stamped, so the flag
- * keeps saying when the app first noticed rather than when it last looked.
+ * keeps saying when the app first noticed rather than when it last looked, and
+ * so a row taken off the list by hand stays off while the supply is still low.
+ * What spends the flag is a restock: a home trip buying the item, or the count
+ * rising far enough to satisfy the supply (`supplyRestockReleasesItem`).
  */
 export function suppliesWantingList(
   tasks: readonly Task[],
@@ -423,6 +451,46 @@ export function suppliesWantingList(
     if (!out.includes(itemId)) out.push(itemId);
   }
   return out;
+}
+
+/**
+ * The grocery item whose "running low" flag a restock has just refuted, or
+ * null when there is none.
+ *
+ * `suppliesWantingList` leaves an item already flagged low alone, and that is
+ * what makes taking the row off the list a refusal that holds: the sweep won't
+ * put it straight back while the supply is still low. But the flag was the
+ * supply's own answer, and nothing used to take it back except a home trip
+ * buying the item. Top the count up any other way (the editor, after ordering
+ * online and swiping the row off) and the flag stood for good, so the next time
+ * the supply ran low it was "already handled" and asked nowhere at all (#2935).
+ *
+ * So a count that rose far enough for the supply to stop wanting more spends
+ * the flag, the same way a purchase refutes it in `finishShopping`. Two limits
+ * keep it from reaching past that:
+ *
+ * - **The count has to rise.** Same key the decline stamp uses in
+ *   `updateTask`: the editor writes the whole supply card on every save, and a
+ *   save that only moved the lead time is not a restock.
+ * - **The supply has to be satisfied afterwards.** A top-up that still leaves
+ *   it under the threshold is not "the next time it crosses the threshold",
+ *   and clearing there would have the sweep put a row the user just took off
+ *   the list straight back on it.
+ *
+ * Only a link names an item here; whether that item still exists is the
+ * caller's lookup to shrug at.
+ */
+export function supplyRestockReleasesItem(
+  before: Pick<Task, 'supplyCount'>,
+  after: Task,
+  dayResetTime?: string,
+): string | null {
+  const itemId = after.supplyGroceryItemId;
+  if (!itemId) return null;
+  if (before.supplyCount === null || after.supplyCount === null) return null;
+  if (after.supplyCount <= before.supplyCount) return null;
+  if (after.completed || after.archived) return null;
+  return supplyReorderReason(after, dayResetTime) === null ? itemId : null;
 }
 
 /**

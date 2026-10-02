@@ -30,8 +30,8 @@ import { groceryNameKey, parseGroceryInput } from './groceryParse';
  */
 
 /**
- * One mirrored pair. `name` and `checked` are the **shadow**: what both sides
- * said last time this ran, not what either says now. The whole conflict rule is
+ * One mirrored pair. `name`, `checked` and `note` are the **shadow**: what both
+ * sides said last time this ran, not what either says now. The whole conflict rule is
  * built on that — see `planGroceryReminderSync`.
  *
  * Keyed by list and stored device-local (`groceryImportLinks` in the settings
@@ -48,6 +48,18 @@ export interface GroceryReminderLink {
   name: string;
   /** The completion state the pair last agreed on. */
   checked: boolean;
+  /**
+   * The note the pair last agreed on: the item's `note` and the reminder's
+   * notes field (#2933). Diffed three-way exactly like `name`, so a note typed
+   * on either side crosses to the other.
+   *
+   * Empty is the default for a record from before notes were mirrored, and it
+   * is also the adoption shadow, because it is the one value that makes a note
+   * present on only one side read as *that* side having written it. Any other
+   * default would read the empty side as having cleared it, and push the
+   * clearing.
+   */
+  note: string;
   /**
    * Whether a fetch has ever handed this reminder back. False for the one gap
    * where it hasn't yet: the pass that created it, which knows the id only
@@ -100,6 +112,8 @@ export function parseGroceryLinks(raw: string | null | undefined): GroceryLinkIn
         itemId,
         name: typeof link.name === 'string' ? link.name : '',
         checked: link.checked === true,
+        // Absent means a record from before notes were mirrored. See `note`.
+        note: typeof link.note === 'string' ? link.note : '',
         // Absent means an older record, whose reminders have all been fetched
         // many times over by now. Defaulting it to false would read every one
         // of them as unconfirmed on the upgrade pass.
@@ -141,6 +155,8 @@ export interface MirrorItem {
   quantity: string | null;
   onList: boolean;
   checked: boolean;
+  /** `GroceryItem.note`, already trimmed by `setNote`. */
+  note: string;
 }
 
 /** What one reminder needs to be mirrored. A narrow view of `Reminder`. */
@@ -148,6 +164,19 @@ export interface MirrorReminder {
   id: string;
   title: string;
   completed: boolean;
+  /** The reminder's notes field, trimmed, and empty when it has none. See `mirrorNote`. */
+  notes: string;
+}
+
+/**
+ * A note as either side holds it, in the one form the shadow compares: trimmed,
+ * and empty rather than null. EventKit hands back `null` for a reminder with no
+ * notes and whatever whitespace the Reminders app left, and a shadow that
+ * compared raw would read either as a change on the next pass and write the
+ * same note back for ever.
+ */
+export function mirrorNote(raw: string | null | undefined): string {
+  return raw?.trim() ?? '';
 }
 
 /**
@@ -188,9 +217,19 @@ function itemKeyFor(name: string): string {
 
 export interface GroceryReminderPlan {
   /** A list row with no reminder yet. */
-  createReminders: { itemId: string; title: string }[];
-  /** A reminder whose title or completion no longer matches its row. */
-  updateReminders: { reminderId: string; itemId: string; title: string; completed: boolean }[];
+  createReminders: { itemId: string; title: string; notes: string }[];
+  /**
+   * A reminder whose title, completion or notes no longer matches its row.
+   * Always the whole of all three: `saveReminderAsync` assigns the title and
+   * the notes unconditionally, so an update that left either out would blank it.
+   */
+  updateReminders: {
+    reminderId: string;
+    itemId: string;
+    title: string;
+    completed: boolean;
+    notes: string;
+  }[];
   /**
    * A reminder whose row has left the list. Carries the link it came from, so
    * a delete that fails can put it back rather than dropping it — an
@@ -198,12 +237,17 @@ export interface GroceryReminderPlan {
    * straight back for.
    */
   deleteReminders: { reminderId: string; link: GroceryReminderLink }[];
-  /** A reminder with no row yet: import it, exactly as the drain would. */
-  addItems: { reminderId: string; title: string }[];
+  /**
+   * A reminder with no row yet: import it, exactly as the drain would, with
+   * its notes as the row's note when the row has none of its own.
+   */
+  addItems: { reminderId: string; title: string; notes: string }[];
   /** A row to tick or untick, because its reminder was. */
   setChecked: { itemId: string; checked: boolean }[];
   /** A row to rename, because its reminder was renamed. */
   renameItems: { itemId: string; name: string; quantity: string | null; title: string }[];
+  /** A row whose note to replace, because its reminder's notes were edited. */
+  setNotes: { itemId: string; note: string }[];
   /** A row to take off the list, because its reminder was deleted. */
   removeItems: { itemId: string }[];
   /**
@@ -222,6 +266,7 @@ const EMPTY_PLAN = (): GroceryReminderPlan => ({
   addItems: [],
   setChecked: [],
   renameItems: [],
+  setNotes: [],
   removeItems: [],
   links: [],
 });
@@ -283,7 +328,7 @@ export function planGroceryReminderSync(
   const reconcilePair = (
     reminder: MirrorReminder,
     item: MirrorItem,
-    shadow: { name: string; checked: boolean }
+    shadow: { name: string; checked: boolean; note: string }
   ): void => {
     claimedReminders.add(reminder.id);
     claimedItems.add(item.id);
@@ -307,6 +352,13 @@ export function planGroceryReminderSync(
       reminderChecked !== shadow.checked && item.checked === shadow.checked;
     const checked = takeReminderChecked ? reminderChecked : item.checked;
 
+    // The note, on the title's own rule (#2933): only a side that moved off the
+    // shadow gets to win, and the app wins when both did.
+    const reminderNote = mirrorNote(reminder.notes);
+    const itemNote = mirrorNote(item.note);
+    const takeReminderNote = reminderNote !== shadow.note && itemNote === shadow.note;
+    const note = takeReminderNote ? reminderNote : itemNote;
+
     if (takeReminderName) {
       plan.renameItems.push({
         itemId: item.id,
@@ -316,15 +368,17 @@ export function planGroceryReminderSync(
       });
     }
     if (checked !== item.checked) plan.setChecked.push({ itemId: item.id, checked });
-    if (title !== reminderTitle || checked !== reminderChecked) {
+    if (note !== itemNote) plan.setNotes.push({ itemId: item.id, note });
+    if (title !== reminderTitle || checked !== reminderChecked || note !== reminderNote) {
       plan.updateReminders.push({
         reminderId: reminder.id,
         itemId: item.id,
         title,
         completed: checked,
+        notes: note,
       });
     }
-    plan.links.push({ reminderId: reminder.id, itemId: item.id, name: title, checked, seen: true });
+    plan.links.push({ reminderId: reminder.id, itemId: item.id, name: title, checked, note, seen: true });
   };
 
   // Pass 1 — the links we already hold.
@@ -365,7 +419,11 @@ export function planGroceryReminderSync(
     // write anywhere comes from having taken custody of an open reminder.
     if (reminder.completed) continue;
 
-    const key = itemKeyFor(title);
+    // Keyed on the name the add field would file it under, quantity split
+    // off, the same reading addByName gives an import. Keyed on the raw title,
+    // "2 lb chicken" never matched the Chicken row it is, so the row was
+    // imported onto itself and pass 3 then wrote it a second reminder.
+    const key = itemKeyFor(normalizeMirrorTitle(title)?.name ?? title);
     if (!key || claimedKeys.has(key)) continue;
 
     const match = itemsByKey.get(key);
@@ -373,11 +431,14 @@ export function planGroceryReminderSync(
       // Already on both lists, just never linked: a second device's push, a
       // name typed into both apps, or the first pass after switching this on.
       // Adopting is the whole no-duplicates guarantee.
-      reconcilePair(reminder, match, { name: title, checked: reminder.completed });
+      // The note's shadow is empty rather than the reminder's own, so a note on
+      // only one side is carried to the other instead of the empty side
+      // winning as "the app". See `GroceryReminderLink.note`.
+      reconcilePair(reminder, match, { name: title, checked: reminder.completed, note: '' });
       continue;
     }
 
-    plan.addItems.push({ reminderId: reminder.id, title });
+    plan.addItems.push({ reminderId: reminder.id, title, notes: mirrorNote(reminder.notes) });
     claimedReminders.add(reminder.id);
     claimedKeys.add(key);
     if (match) claimedItems.add(match.id);
@@ -394,7 +455,7 @@ export function planGroceryReminderSync(
     if (item.checked) continue;
     const title = mirrorTitleFor(item);
     if (!title) continue;
-    plan.createReminders.push({ itemId: item.id, title });
+    plan.createReminders.push({ itemId: item.id, title, notes: mirrorNote(item.note) });
     claimedItems.add(item.id);
     if (item.nameKey) claimedKeys.add(item.nameKey);
   }

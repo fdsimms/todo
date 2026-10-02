@@ -9,6 +9,7 @@ import { generateId } from '../utils/id';
 import {
   WEATHER_CONDITIONS,
   WEATHER_RULE_TITLE_MAX_LENGTH,
+  clearWeatherMarksOnEdit,
   weatherConditionLabel,
 } from '../utils/weatherTasks';
 import {
@@ -72,7 +73,7 @@ export function WeatherRulesSheet({ visible, onClose }: Props) {
         + "day that's already passed."
       }
       rules={rules}
-      onChange={setRules}
+      onChange={next => setRules(clearWeatherMarksOnEdit(rules, next))}
       makeRule={() => ({
         id: generateId(),
         condition: 'sunny',

@@ -5,6 +5,7 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
+  type GestureResponderEvent,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
@@ -14,9 +15,10 @@ import { useShallow } from 'zustand/react/shallow';
 import { useTaskStore } from '../store/useTaskStore';
 import { useProjectStore, projectProgress, isProjectPastWindow } from '../store/useProjectStore';
 import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
+import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { groupProjectsByCategory, resolveProjectDrop, type ProjectListItem } from '../utils/projectGrouping';
 import { ProjectEditor } from '../components/ProjectEditor';
-import { QuickAddProjectModal, type ProjectDraft } from '../components/QuickAddProjectModal';
+import { QuickAddProjectModal, LIST_PROJECT_FIELDS, type ProjectDraft } from '../components/QuickAddProjectModal';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { TipHost } from '../components/TipHost';
 import { EmptyState } from '../components/EmptyState';
@@ -39,7 +41,7 @@ import { ReorderableList, type RowScroller } from '../components/ReorderableList
 import { useScrollToTopOnTabPress } from '../hooks/useScrollToTopOnTabPress';
 import { ProgressBar } from '../components/ProgressBar';
 import { ProjectsOptionsMenu, type ProjectFilter } from '../components/ProjectsOptionsMenu';
-import { CookbookChecklistSheet } from '../components/CookbookChecklistSheet';
+import type { CardAnchor } from '../components/CardSheet';
 import { ProjectCategoriesSheet } from '../components/ProjectCategoriesSheet';
 import { ListBulkBar } from '../components/ListBulkBar';
 import { SelectionDot } from '../components/SelectionDot';
@@ -50,36 +52,26 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, flattenOverlay, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
-import { formatDeadlineDate } from '../utils/dateUtils';
-import { describeAwaySpan } from '../utils/awayDates';
+import {
+  projectCardCaption,
+  projectMatchesQuery,
+  projectNextStepTitle,
+  projectListPreview,
+  projectProgressNote,
+  sortProjects,
+} from '../utils/projectList';
+import { useSettingsStore } from '../store/useSettingsStore';
+import { SearchField } from '../components/SearchField';
+import { useFilterField } from '../hooks/useFilterField';
+import { useLogicalDayKey } from '../hooks/useLogicalDayKey';
 import type { Project } from '../types';
 
-// One date, one shape. This used to render a range and both of its halves
-// separately, because a project carried a start date as well — see
-// Project.deadline for why the start half is gone.
-function deadlineLabel(project: Project): string | null {
-  return project.deadline ? `By ${formatDeadlineDate(project.deadline)}` : null;
-}
-
 /**
- * The one caption under a project's title: its away span if it has a live one,
- * otherwise its deadline.
- *
- * The span wins the slot rather than sitting beside the deadline, because for
- * a trip the two say nearly the same thing and the span says it better — the
- * date you have to be ready by is your departure, not a target you set. A
- * project holding both still shows its deadline once the trip is over, since
- * describeAwaySpan goes quiet then (see docs/arch/away-dates.md).
- *
- * `pastWindow` belongs to the deadline alone, so an away caption never wears
- * the Overdue prefix: a trip in three days is not late for anything.
+ * How many projects a list holds before it grows a search bar. Below this the
+ * whole list fits on a screen or two and a bar is one more thing to scroll
+ * past; the bar also stays while a query is typed, however few are left.
  */
-function projectCaption(project: Project): { text: string; overdue: boolean } | null {
-  const away = describeAwaySpan(project);
-  if (away) return { text: away, overdue: false };
-  const deadline = deadlineLabel(project);
-  return deadline ? { text: deadline, overdue: true } : null;
-}
+const SEARCH_BAR_MIN_PROJECTS = 8;
 
 // The add button, naming what a release right now would do.
 function AddProjectFabWithDropLabel({
@@ -114,15 +106,24 @@ export function ProjectsScreen() {
   const uncompleteProject = useTaskStore(s => s.uncompleteProject);
   const completeProject = useTaskStore(s => s.completeProject);
   const allTasks = useTaskStore(s => s.tasks);
+  const taskGroups = useTaskGroupStore(useShallow(s => s.groups));
   const projectCategories = useProjectCategoryStore(useShallow(s => s.categories));
   const addProjectCategory = useProjectCategoryStore(s => s.addCategory);
+  const projectSort = useSettingsStore(s => s.projectSortOption);
+  const setProjectSort = useSettingsStore(s => s.setProjectSortOption);
+  const dayResetTime = useSettingsStore(s => s.dayResetTime);
+  // Re-renders the list when the day rolls over, so a card's "Due tomorrow"
+  // becomes "Due today" without waiting for some unrelated store write.
+  useLogicalDayKey();
+  const search = useFilterField();
+  const query = search.query.trim();
 
   const [projectFilter, setProjectFilter] = useState<ProjectFilter>('active');
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [quickAddVisible, setQuickAddVisible] = useState(false);
   const [optionsMenuVisible, setOptionsMenuVisible] = useState(false);
+  const [optionsMenuAnchor, setOptionsMenuAnchor] = useState<CardAnchor | null>(null);
   const [categoriesSheetVisible, setCategoriesSheetVisible] = useState(false);
-  const [cookbookChecklistVisible, setCookbookChecklistVisible] = useState(false);
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
 
   // Also reachable from the header, since both of a project row's own
@@ -148,7 +149,7 @@ export function ProjectsScreen() {
 
   // A project that's both completed and archived reads as archived — archiving
   // is always the final resting state, so it can't show in two lists at once.
-  const visibleProjects = useMemo(
+  const listProjects = useMemo(
     () => projects.filter(p => {
       if (projectFilter === 'archived') return p.archived;
       if (projectFilter === 'completed') return p.completed && !p.archived;
@@ -156,6 +157,55 @@ export function ProjectsScreen() {
     }),
     [projects, projectFilter]
   );
+
+  // Every listed project's progress, computed once per store change rather
+  // than once per row per render. `renderRow` called projectProgress inline,
+  // and each call filters the whole task list, builds a Map and walks a
+  // previousOccurrenceId chain per member — so the list was O(projects × tasks)
+  // on every render of the list, not just when the tasks actually moved. The
+  // next step's title rides the same pass.
+  const cardFactsByProject = useMemo(() => {
+    const map = new Map<string, { progress: { done: number; total: number }; next: string | null; preview: string | null }>();
+    listProjects.forEach(p => map.set(p.id, {
+      progress: projectProgress(p.id, allTasks),
+      // Not for a list: "Next" reads as an order to work in, and a list of
+      // books or gift ideas has none.
+      next: projectFilter === 'active' && p.kind !== 'list' ? projectNextStepTitle(p.id, allTasks, taskGroups, p.inOrder) : null,
+      // A list shows its first lines instead, which is what it's for.
+      preview: projectFilter === 'active' && p.kind === 'list'
+        ? projectListPreview(p.id, allTasks, taskGroups).join(', ') || null
+        : null,
+    }));
+    return map;
+  }, [listProjects, allTasks, projectFilter, taskGroups]);
+  const progressByProject = useMemo(
+    () => new Map(Array.from(cardFactsByProject, ([id, facts]) => [id, facts.progress])),
+    [cardFactsByProject]
+  );
+
+  // Searched, then sorted, then grouped. The search reads open task titles
+  // too, so "passport" finds the trip it's filed under.
+  const visibleProjects = useMemo(() => {
+    let matched = listProjects;
+    if (query) {
+      const openTitles = new Map<string, string[]>();
+      for (const t of allTasks) {
+        if (!t.projectId || t.parentId !== null || t.completed || t.archived) continue;
+        const titles = openTitles.get(t.projectId);
+        if (titles) titles.push(t.title);
+        else openTitles.set(t.projectId, [t.title]);
+      }
+      matched = listProjects.filter(p => projectMatchesQuery(p, openTitles.get(p.id) ?? [], query));
+    }
+    return sortProjects(matched, projectSort, progressByProject);
+  }, [listProjects, query, allTasks, projectSort, progressByProject]);
+
+  // A drag writes the hand-set order, so it's only offered while that's the
+  // order on screen and nothing is filtered out of it: dropping a row between
+  // two search results, or into a list sorted by name, would put it somewhere
+  // the person can't see.
+  const canReorder = projectSort === 'manual' && !query;
+  const showSearch = listProjects.length >= SEARCH_BAR_MIN_PROJECTS || search.query.length > 0;
 
   const projectCategoryOrder = useMemo(
     () => [...projectCategories].sort((a, b) => a.sortOrder - b.sortOrder).map(c => c.name),
@@ -165,19 +215,19 @@ export function ProjectsScreen() {
     () => groupProjectsByCategory(visibleProjects, projectCategoryOrder),
     [visibleProjects, projectCategoryOrder]
   );
+  // How many projects sit under each heading, as listed right now (the search
+  // and the list filter included), for the count beside it.
+  const sectionCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    let heading: string | null = null;
+    for (const item of projectListItems) {
+      if (item.type === 'header') { heading = item.label; continue; }
+      if (heading !== null) counts.set(heading, (counts.get(heading) ?? 0) + 1);
+    }
+    return counts;
+  }, [projectListItems]);
   const archivedCount = useMemo(() => projects.filter(p => p.archived).length, [projects]);
   const completedCount = useMemo(() => projects.filter(p => p.completed && !p.archived).length, [projects]);
-
-  // Every visible project's progress, computed once per store change rather
-  // than once per row per render. `renderRow` called projectProgress inline,
-  // and each call filters the whole task list, builds a Map and walks a
-  // previousOccurrenceId chain per member — so the list was O(projects × tasks)
-  // on every render of the list, not just when the tasks actually moved.
-  const progressByProject = useMemo(() => {
-    const map = new Map<string, { done: number; total: number }>();
-    visibleProjects.forEach(p => map.set(p.id, projectProgress(p.id, allTasks)));
-    return map;
-  }, [visibleProjects, allTasks]);
 
   // What the bulk bar offers to file into: the registered categories, plus any
   // name a project still carries that was never registered — the list shows a
@@ -216,6 +266,8 @@ export function ProjectsScreen() {
   const handleBulkDelete = () => {
     const ids = Array.from(selectedIds);
     const plural = ids.length === 1 ? 'project' : 'projects';
+    const their = ids.length === 1 ? 'Its' : 'Their';
+    const them = ids.length === 1 ? 'it' : 'them';
     haptics.warning();
     const run = (cascade: boolean) => {
       animateLayout();
@@ -224,11 +276,11 @@ export function ProjectsScreen() {
     };
     Alert.alert(
       `Delete ${ids.length} ${plural}?`,
-      `Their tasks can stay in your list without a project, or be deleted with them. You can undo this by shaking your phone right after.`,
+      `${their} tasks can stay in your list without a project, or be deleted with ${them}. You can undo this by shaking your phone right after.`,
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete projects only', onPress: () => run(false) },
-        { text: 'Delete projects and tasks', style: 'destructive', onPress: () => run(true) },
+        { text: `Delete ${plural} only`, onPress: () => run(false) },
+        { text: `Delete ${plural} and tasks`, style: 'destructive', onPress: () => run(true) },
       ],
     );
   };
@@ -365,25 +417,33 @@ export function ProjectsScreen() {
     // The draft carries the seeded category; only the placement is let go of.
     closeQuickAdd();
     animateLayout();
-    const project = createProject(draft.title, {
+    const created = createProject(draft.title, {
       deadline: draft.deadline,
       category: draft.category,
+      awayStart: draft.awayStart ?? null,
     });
+    if (draft.asList) useProjectStore.getState().updateProject(created.id, LIST_PROJECT_FIELDS);
+    const project = useProjectStore.getState().getProjectById(created.id) ?? created;
     newProjectIdRef.current = project.id;
     setEditingProject(project);
   };
 
-  const handleEditorClose = () => {
+  // A project made for "More details" is kept only if it was saved with a
+  // name. When it was, the project opens, the same place the quick add's own
+  // Add button takes you; Done used to leave you on the list instead.
+  const handleEditorClose = (outcome?: 'discarded') => {
     const id = newProjectIdRef.current;
     newProjectIdRef.current = null;
-    if (id) {
-      const current = useProjectStore.getState().getProjectById(id);
-      if (current && current.title.trim() === '') {
-        animateLayout();
-        removeProjectRow(id);
-      }
-    }
     setEditingProject(null);
+    if (!id) return;
+    const current = useProjectStore.getState().getProjectById(id);
+    if (!current) return;
+    if (outcome === 'discarded' || current.title.trim() === '') {
+      animateLayout();
+      removeProjectRow(id);
+      return;
+    }
+    (navigation as any).navigate('ProjectDetail', { projectId: id });
   };
 
   // The row handlers are memoized and take the project they act on, rather
@@ -414,20 +474,30 @@ export function ProjectsScreen() {
     (navigation as any).navigate('ProjectDetail', { projectId: project.id });
   }, [selectionMode, toggleSelection, navigation]);
 
+  // Stable, like the other row callbacks, so ProjectRow's memo holds.
+  const handleAddLine = useCallback((project: Project) => {
+    haptics.tap();
+    (navigation as any).navigate('ProjectDetail', { projectId: project.id, addLine: Date.now() });
+  }, [navigation]);
+
   const handleEditProject = useCallback((project: Project) => setEditingProject(project), []);
 
   const renderRow = (item: ProjectListItem, drag?: () => void, isActive?: boolean) => {
     if (item.type === 'header') {
       return (
         <View style={styles.categorySectionHeader}>
-          <Text style={styles.categorySectionHeaderText}>{item.label}</Text>
+          <Text style={styles.categorySectionHeaderText} numberOfLines={1}>
+            {item.label}
+            <Text style={styles.categorySectionCount}> · {sectionCounts.get(item.label) ?? 0}</Text>
+          </Text>
         </View>
       );
     }
     const project = item.project;
-    const progress = progressByProject.get(project.id) ?? { done: 0, total: 0 };
+    const facts = cardFactsByProject.get(project.id);
+    const progress = facts?.progress ?? { done: 0, total: 0 };
     const pastWindow = isProjectPastWindow(project, progress);
-    const caption = projectCaption(project);
+    const caption = projectCardCaption(project, pastWindow, projectFilter, dayResetTime);
     const selected = selectedIds.has(project.id);
     // Only the active list needs this — completed projects already show their
     // own restore affordance, and an archived one is filed away regardless.
@@ -441,13 +511,18 @@ export function ProjectsScreen() {
         project={project}
         progress={progress}
         pastWindow={pastWindow}
-        caption={caption}
+        captionText={caption?.text ?? null}
+        captionOverdue={caption?.overdue ?? false}
+        captionSoon={caption?.soon ?? false}
+        progressNote={projectProgressNote(project, progress)}
+        nextStep={facts?.next ?? null}
+        preview={facts?.preview ?? null}
         projectFilter={projectFilter}
         allDone={allDone}
         selectionMode={selectionMode}
         selected={selected}
         isActive={isActive}
-        drag={drag}
+        drag={canReorder ? drag : undefined}
         colors={colors}
         styles={styles}
         onPress={handleOpenProject}
@@ -457,6 +532,7 @@ export function ProjectsScreen() {
         onQuickUncomplete={handleQuickUncomplete}
         onQuickComplete={handleQuickComplete}
         onEdit={handleEditProject}
+        onAddLine={handleAddLine}
       />
     );
   };
@@ -465,12 +541,8 @@ export function ProjectsScreen() {
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <ScreenHeader
         title="Projects"
-        subtitle={visibleProjects.length > 0
-          ? projectFilter === 'archived'
-            ? `${visibleProjects.length} archived`
-            : projectFilter === 'completed'
-              ? `${visibleProjects.length} completed`
-              : `${visibleProjects.length} active ${visibleProjects.length === 1 ? 'project' : 'projects'}`
+        subtitle={listProjects.length > 0
+          ? `${listProjects.length} ${projectFilter} ${listProjects.length === 1 ? 'project' : 'projects'}`
           : undefined}
         actions={[
           // Selecting is reached by swiping a row now, same as every other
@@ -482,7 +554,10 @@ export function ProjectsScreen() {
             ? []
             : [{
                 icon: 'ellipsis-horizontal' as const,
-                onPress: () => setOptionsMenuVisible(true),
+                onPress: (e: GestureResponderEvent) => {
+                  setOptionsMenuAnchor({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY });
+                  setOptionsMenuVisible(true);
+                },
                 active: projectFilter !== 'active',
                 accessibilityLabel: 'Project options',
               }]),
@@ -497,25 +572,60 @@ export function ProjectsScreen() {
         onIntentChange={fabIntentChannel.publish}
         scroller={scrollControl}
       >
-      {visibleProjects.length === 0 ? (
-        <EmptyState
-          icon={projectFilter === 'archived' ? 'archive-outline' : projectFilter === 'completed' ? 'checkmark-circle-outline' : 'briefcase-outline'}
-          title={projectFilter === 'archived' ? 'No archived projects' : projectFilter === 'completed' ? 'No completed projects' : 'No projects yet'}
-          subtitle={
-            projectFilter === 'archived'
-              ? 'Projects you archive will show up here'
-              : projectFilter === 'completed'
-                ? 'Projects you mark complete will show up here'
-                : 'Start a themed collection, like a summer bucket list, and pick tasks off it over time'
-          }
-          actionLabel={projectFilter === 'active' ? 'New project' : undefined}
-          onAction={projectFilter === 'active' ? () => setQuickAddVisible(true) : undefined}
-          bottomOffset={tabBarHeight}
+      {showSearch && (
+        <SearchField
+          field={search}
+          placeholder="Search projects and their tasks"
+          style={styles.searchBar}
+          accessibilityLabel="Search projects"
         />
+      )}
+      {visibleProjects.length === 0 ? (
+        query ? (
+          <EmptyState
+            icon="search-outline"
+            title="No matches"
+            subtitle={`No ${projectFilter} project or open task mentions “${query}”`}
+            actionLabel="Clear search"
+            onAction={search.clear}
+            bottomOffset={tabBarHeight}
+          />
+        ) : projectFilter === 'active' && archivedCount + completedCount > 0 ? (
+          // Everything has been finished or filed away. "No projects yet" was
+          // untrue here, and hid that the rest are one menu away.
+          <EmptyState
+            icon="briefcase-outline"
+            title="No active projects"
+            subtitle={`You have ${[
+              completedCount > 0 ? `${completedCount} completed` : null,
+              archivedCount > 0 ? `${archivedCount} archived` : null,
+            ].filter(Boolean).join(' and ')}. Switch lists from the menu at the top.`}
+            actionLabel="New project"
+            onAction={() => setQuickAddVisible(true)}
+            bottomOffset={tabBarHeight}
+          />
+        ) : (
+          <EmptyState
+            icon={projectFilter === 'archived' ? 'archive-outline' : projectFilter === 'completed' ? 'checkmark-circle-outline' : 'briefcase-outline'}
+            title={projectFilter === 'archived' ? 'No archived projects' : projectFilter === 'completed' ? 'No completed projects' : 'No projects yet'}
+            subtitle={
+              projectFilter === 'archived'
+                ? 'Projects you archive will show up here'
+                : projectFilter === 'completed'
+                  ? 'Projects you mark complete will show up here'
+                  : 'Start a themed collection, like a summer bucket list, and pick tasks off it over time'
+            }
+            // The button is hidden on these two lists, so this is the way back.
+            actionLabel={projectFilter === 'active' ? 'New project' : 'Show active projects'}
+            onAction={projectFilter === 'active' ? () => setQuickAddVisible(true) : () => setProjectFilter('active')}
+            bottomOffset={tabBarHeight}
+          />
+        )
       ) : (
         <ReorderableList
           data={projectListItems}
           keyExtractor={item => item.key}
+          scrollToTop={{ bottom: insets.bottom + tabBarHeight + spacing.md }}
           // The user can't scroll during an add-button drag (the button's
           // responder has the touch); the drag scrolls it instead, through the
           // control below. Same while a paint gesture owns the touch — see
@@ -556,8 +666,10 @@ export function ProjectsScreen() {
           onPress={() => setQuickAddVisible(true)}
           accessibilityLabel="Add project"
           bottom={insets.bottom + tabBarHeight + spacing.md}
-          drag={fabDrag}
-          dragHint="Drag onto the list to add a project there, or back to the button to cancel"
+          // Placing a new project by hand is a hand-set order, so it goes
+          // wherever a row drag does (see canReorder).
+          drag={canReorder ? fabDrag : undefined}
+          dragHint="Drag onto the list to add a project at that spot. Drop it back on the button to cancel."
         />
       )}
 
@@ -597,17 +709,14 @@ export function ProjectsScreen() {
         archivedCount={archivedCount}
         categoryCount={projectCategories.length}
         onManageCategories={() => setCategoriesSheetVisible(true)}
-        onScanCookbook={() => setCookbookChecklistVisible(true)}
+        sort={projectSort}
+        onSortChange={setProjectSort}
+        anchor={optionsMenuAnchor}
       />
 
       <ProjectCategoriesSheet
         visible={categoriesSheetVisible}
         onClose={() => setCategoriesSheetVisible(false)}
-      />
-
-      <CookbookChecklistSheet
-        visible={cookbookChecklistVisible}
-        onClose={() => setCookbookChecklistVisible(false)}
       />
 
       <QuickAddProjectModal
@@ -644,14 +753,24 @@ export function ProjectsScreen() {
  * follows on Today.
  */
 const ProjectRow = React.memo(function ProjectRow({
-  project, progress, pastWindow, caption, projectFilter, allDone,
+  project, progress, pastWindow, captionText, captionOverdue, captionSoon, progressNote, nextStep, preview, projectFilter, allDone,
   selectionMode, selected, isActive, drag, colors, styles,
-  onPress, onToggleSelect, onSwipeSelect, onQuickUnarchive, onQuickUncomplete, onQuickComplete, onEdit,
+  onPress, onToggleSelect, onSwipeSelect, onQuickUnarchive, onQuickUncomplete, onQuickComplete, onEdit, onAddLine,
 }: {
   project: Project;
   progress: { done: number; total: number };
   pastWindow: boolean;
-  caption: { text: string; overdue: boolean } | null;
+  // Two primitives rather than the caption object, which is rebuilt on every
+  // render of the list and would defeat the memo on its own.
+  captionText: string | null;
+  captionOverdue: boolean;
+  captionSoon: boolean;
+  /** Said in place of the bar: an empty project, or an ongoing one's open count. */
+  progressNote: string | null;
+  /** The top of the project's own order, named so the card says what's up. */
+  nextStep: string | null;
+  /** A list's first open lines, joined, in place of a "Next". */
+  preview: string | null;
   projectFilter: ProjectFilter;
   allDone: boolean;
   selectionMode: boolean;
@@ -667,6 +786,7 @@ const ProjectRow = React.memo(function ProjectRow({
   onQuickUncomplete: (project: Project) => void;
   onQuickComplete: (project: Project) => void;
   onEdit: (project: Project) => void;
+  onAddLine: (project: Project) => void;
 }) {
   // Excluded for the floating drag overlay's copy — it shares the dragged
   // row's id, and registering both would leave the real row's slot evicted
@@ -699,13 +819,23 @@ const ProjectRow = React.memo(function ProjectRow({
           accessibilityState={selectionMode ? { checked: selected } : undefined}
           accessibilityLabel={
             // The list glyph beside the title is decorative, so the kind has to
-            // be said here or a screen reader can't tell the two apart.
-            `${project.title}${project.kind === 'list' ? ', list' : ''}, ${progress.done} of ${progress.total} done`
+            // be said here or a screen reader can't tell the two apart. The
+            // caption and next step are read too: they're the rest of what the
+            // card shows.
+            [
+              project.title + (project.kind === 'list' ? ', list' : ''),
+              progressNote ?? `${progress.done} of ${progress.total} done`,
+              nextStep ? `next: ${nextStep}` : null,
+              preview,
+              captionText,
+            ].filter(Boolean).join(', ')
           }
           accessibilityHint={
             selectionMode
               ? 'Double tap to select project'
-              : 'Double tap to view tasks in this project. Long press to reorder.'
+              : drag
+                ? `Double tap to view ${project.kind === 'list' ? 'this list' : 'tasks in this project'}. Long press to reorder.`
+                : `Double tap to view ${project.kind === 'list' ? 'this list' : 'tasks in this project'}.`
           }
         >
           <View style={styles.projectInfo}>
@@ -715,7 +845,7 @@ const ProjectRow = React.memo(function ProjectRow({
                   them would make that order answer to something they didn't
                   choose. See Project.kind. */}
               {project.kind === 'list' && (
-                <Ionicons name="checkbox-outline" size={14} color={colors.textTertiary} />
+                <Ionicons name="list-outline" size={14} color={colors.textTertiary} />
               )}
               <Text style={styles.projectName} numberOfLines={1}>{project.title}</Text>
               {/* Nothing a row can do to itself while a selection is being
@@ -751,9 +881,21 @@ const ProjectRow = React.memo(function ProjectRow({
                     onPress={() => onQuickComplete(project)}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     accessibilityRole="button"
-                    accessibilityLabel={`Mark ${project.title} complete: every task is done`}
+                    accessibilityLabel={`Mark ${project.title} complete: ${project.kind === 'list' ? 'every item is checked' : 'every task is done'}`}
                   >
                     <Ionicons name="checkmark-circle" size={16} color={colors.green} />
+                  </TouchableOpacity>
+                )}
+                {/* Add to a list without hunting for its field: opens the
+                    list with the add field open. */}
+                {project.kind === 'list' && projectFilter === 'active' && (
+                  <TouchableOpacity
+                    onPress={() => onAddLine(project)}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Add an item to ${project.title}`}
+                  >
+                    <Ionicons name="add-circle-outline" size={16} color={colors.textTertiary} />
                   </TouchableOpacity>
                 )}
                 <TouchableOpacity
@@ -762,12 +904,16 @@ const ProjectRow = React.memo(function ProjectRow({
                   accessibilityRole="button"
                   accessibilityLabel={`Edit ${project.title}`}
                 >
-                  <Ionicons name="ellipsis-horizontal" size={16} color={colors.textTertiary} />
+                  {/* A pencil, like the project page's own: this opens the
+                      editor straight away rather than a menu. */}
+                  <Ionicons name="create-outline" size={16} color={colors.textTertiary} />
                 </TouchableOpacity>
                 </>
               )}
             </View>
-            {progress.total > 0 && (
+            {progressNote ? (
+              <Text style={styles.rangeText} numberOfLines={1}>{progressNote}</Text>
+            ) : (
               <View style={styles.progressRow}>
                 <View style={styles.progressBarWrap}>
                   <ProgressBar progress={progress.done / progress.total} />
@@ -775,12 +921,25 @@ const ProjectRow = React.memo(function ProjectRow({
                 <Text style={styles.progressText}>{progress.done}/{progress.total}</Text>
               </View>
             )}
-            {caption && (
+            {preview && (
+              <Text style={styles.nextText} numberOfLines={1}>{preview}</Text>
+            )}
+            {nextStep && (
+              <Text style={styles.nextText} numberOfLines={1}>
+                <Text style={styles.nextLabel}>Next </Text>
+                {nextStep}
+              </Text>
+            )}
+            {captionText && (
               <Text
-                style={[styles.rangeText, caption.overdue && pastWindow && { color: colors.orange }]}
+                style={[
+                  styles.rangeText,
+                  captionSoon && styles.rangeTextSoon,
+                  captionOverdue && pastWindow && { color: colors.orange },
+                ]}
                 numberOfLines={1}
               >
-                {caption.overdue && pastWindow ? `Overdue · ${caption.text}` : caption.text}
+                {captionText}
               </Text>
             )}
           </View>
@@ -810,6 +969,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontWeight: fontWeight.semibold,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
+  },
+  // Same grey as the heading, a weight lighter, so it reads as a note on the
+  // heading rather than part of the name.
+  categorySectionCount: {
+    fontWeight: fontWeight.regular,
   },
   // The card's margin and radius live here, on SwipeableRow's own `style`
   // prop, rather than on the row below — see the note on SwipeableRow for why
@@ -877,78 +1041,21 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textTertiary,
     fontSize: font.xs,
   },
-  detailRoot: {
-    flex: 1,
-    backgroundColor: colors.bg,
-  },
-  detailHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.separator,
-  },
-  detailTitleText: {
-    flex: 1,
-    textAlign: 'center',
+  rangeTextSoon: {
     color: colors.text,
-    fontSize: font.lg,
-    fontWeight: fontWeight.semibold,
-  },
-  detailFooter: {
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.xl,
-  },
-  completedSection: {
-    paddingBottom: spacing.sm,
-  },
-  completedToggle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.xs,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
-  },
-  completedToggleText: {
-    color: colors.textTertiary,
-    fontSize: font.sm,
     fontWeight: fontWeight.medium,
   },
-  searchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    backgroundColor: colors.bgSecondary,
+  nextText: {
+    color: colors.textSecondary,
+    fontSize: font.sm,
+  },
+  nextLabel: {
+    color: colors.textTertiary,
+    fontWeight: fontWeight.medium,
+  },
+  searchBar: {
     marginHorizontal: spacing.md,
-    marginTop: spacing.sm,
-    marginBottom: spacing.sm,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 8,
-  },
-  searchInput: {
-    flex: 1,
-    color: colors.text,
-    fontSize: font.md,
-    paddingVertical: 0,
-  },
-  pickerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: colors.bgSecondary,
-    marginHorizontal: spacing.md,
-    marginVertical: spacing.xxs,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.smd,
-  },
-  pickerRowText: {
-    flex: 1,
-    color: colors.text,
-    fontSize: font.md,
+    marginTop: spacing.xs,
+    marginBottom: spacing.xs,
   },
 });

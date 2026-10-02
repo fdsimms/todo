@@ -32,6 +32,12 @@ import { LeftoverSheet } from './LeftoverSheet';
  * the one moment this question is actually about. `markOutOfMany` records
  * the answer with the outcome already known, so it never raises
  * `disposalOffer` — that banner stays the ✕ tap's own, unrelated to this.
+ * "Froze it" is the third answer, and a common one to a use-up reminder:
+ * it's `setFrozen`, the same write the item sheet's freezer pill and a
+ * drag onto the Pantry's Freezer heading make, so the item stays on hand
+ * with its use-by day paused rather than being marked out. Before it, the
+ * only way to say so was "Not now" and a trip to the item's own sheet, while
+ * a leftover's use-up (LeftoverSheet, below) already had a freezer toggle.
  * Skipping the prompt (or an item that's already out, or gone) leaves the
  * pantry untouched, same as closing the old sheet without touching the
  * Pantry field did.
@@ -50,6 +56,7 @@ export function UseUpResolveSheet() {
   const setPendingUseUpItem = useGroceryStore(s => s.setPendingUseUpItem);
   const items = useGroceryStore(useShallow(s => s.items));
   const markOutOfMany = useGroceryStore(s => s.markOutOfMany);
+  const setFrozen = useGroceryStore(s => s.setFrozen);
 
   useEffect(() => {
     if (!pendingItemId) return;
@@ -60,15 +67,26 @@ export function UseUpResolveSheet() {
       setPendingUseUpItem(null);
       return;
     }
+    // Offered only while it isn't frozen already: an item in the freezer has
+    // nothing left for this answer to change.
+    const canFreeze = !item.frozenAt;
     Alert.alert(
       item.name,
-      'Used it up or went bad? Either stops it counting as on hand; went bad is recorded as waste.',
+      canFreeze
+        ? 'Used it up, froze it, or went bad? Used it up and went bad take it out of the pantry, and went bad is recorded as waste. Froze it keeps it in the pantry and pauses its use-by date.'
+        : 'Used it up or went bad? Either stops it counting as on hand; went bad is recorded as waste.',
       [
         { text: 'Not now', style: 'cancel', onPress: () => setPendingUseUpItem(null) },
         {
           text: 'Went bad',
           onPress: () => { markOutOfMany([item.id], 'spoiled'); setPendingUseUpItem(null); },
         },
+        ...(canFreeze
+          ? [{
+              text: 'Froze it',
+              onPress: () => { setFrozen(item.id, true); setPendingUseUpItem(null); },
+            }]
+          : []),
         {
           text: 'Used it up',
           onPress: () => { markOutOfMany([item.id], 'usedUp'); setPendingUseUpItem(null); },

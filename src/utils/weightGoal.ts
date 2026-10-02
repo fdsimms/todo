@@ -35,10 +35,24 @@
  * because it is not a measurement — HealthKit has nowhere to put it and nothing
  * else should read it back as one. The *weights* it is read against are still
  * Health's, and this module never stores one.
+ *
+ * **`autoCalorieTargetKcal` is a deliberate, asked-for exception to "stays a
+ * suggestion until the button is pressed."** The food log's calorie target
+ * used to go stale the moment the weight goal, the body profile, or the
+ * weight itself moved on: `WeightGoalSheet`'s own figure would recompute, but
+ * nothing carried the new number to `nutritionTargets.calorieKcal` short of
+ * opening the sheet and tapping "Use as my calorie target" again. This
+ * function is what `useSettingsStore.syncWeightGoalCalorieTarget` and
+ * `WeightGoalSheet`'s Save both call to keep the two in step automatically.
+ * It is scoped to the plain calorie figure alone — macros stay manual, same
+ * as before — and it always uses the multiplier basis (never the measured
+ * Apple Health one), since the measured figure needs a live read with nobody
+ * necessarily there to ask for it.
  */
 
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { dayKeyToDate } from './dateUtils';
+import { calorieBudget, type BodyProfile } from './energyBudget';
 import { MAX_WEIGHT_KG, unitToKg, type WeightPoint, type WeightUnit } from './weightLog';
 
 /**
@@ -86,8 +100,12 @@ export const RATE_RANGE: Record<WeightUnit, { min: number; max: number; step: nu
   kg: { min: 0.1, max: 1, step: 0.1, default: 0.5 },
 };
 
-/** The widest rate this app will store, in kg/week — the `lb` ceiling above. */
-export const MAX_RATE_KG_PER_WEEK = unitToKg(RATE_RANGE.lb.max, 'lb');
+/**
+ * The widest rate this app will store, in kg/week: whichever unit's stepper
+ * ceiling is wider. The `lb` one alone (0.907) clamped a 1.0 kg/week goal on
+ * every read back from settings, quietly moving the calorie target with it.
+ */
+export const MAX_RATE_KG_PER_WEEK = Math.max(RATE_RANGE.kg.max, unitToKg(RATE_RANGE.lb.max, 'lb'));
 
 /**
  * Which way the goal points, from the target against the starting weight.
@@ -114,6 +132,29 @@ export function signedRateKgPerWeek(goal: WeightGoal): number {
   if (direction === 'maintain') return 0;
   const magnitude = Math.abs(goal.rateKgPerWeek);
   return direction === 'lose' ? -magnitude : magnitude;
+}
+
+/**
+ * What the food log's calorie target should read, kept in step with the
+ * weight goal. Null when there is no goal, or the profile can't support an
+ * estimate — the caller leaves whatever is already stored alone in that case,
+ * rather than clearing a target the person may have set some other way.
+ *
+ * `currentKg` should be the latest weigh-in when one is known, falling back
+ * to the goal's own `startKg` — the same fallback `WeightGoalSheet` uses for
+ * its own "Daily calories" card, so a person with no weight logged since
+ * setting the goal still gets the figure the sheet itself would be showing.
+ */
+export function autoCalorieTargetKcal(
+  goal: WeightGoal | null,
+  profile: BodyProfile,
+  currentKg: number | null,
+  today: Date,
+): number | null {
+  if (goal === null) return null;
+  const weightKg = currentKg ?? goal.startKg;
+  const budget = calorieBudget(profile, weightKg, signedRateKgPerWeek(goal), today);
+  return budget?.proposedKcal ?? null;
 }
 
 /** How far along a goal is, in the plainest terms the numbers allow. */
@@ -204,6 +245,9 @@ export interface WeightGoalPace {
 /**
  * The chosen pace against what actually happened, as of `today`.
  *
+ * `today` is the day `currentKg` was measured on, which for a weigh-in is the
+ * reading's own day rather than the calendar's (see `weightSinceGoalStart`).
+ *
  * Null before the goal's own start day, which is the case a clock change or a
  * restored backup can produce: a pace line running backwards from day zero
  * would describe a plan that had not begun.
@@ -220,14 +264,11 @@ export function goalPace(goal: WeightGoal, currentKg: number, today: Date): Weig
  * How many days from `currentKg` to the target at the chosen rate, or null when
  * the arithmetic has no answer.
  *
- * Null for a maintain goal (no rate to divide by), for a target already
- * reached (nothing left to project), and — the one worth stating — for a weight
- * that has moved the *wrong* way past its own start: the rate still points at
- * the target from there, so a projection is arithmetically fine, and it is
- * withheld anyway. "You will reach 70kg in 340 days" said to somebody currently
- * heading away from it is the app's first opinion about how it is going, and
- * this module does not have those. The caller shows the pace gap instead, which
- * is a fact rather than a forecast.
+ * Null for a maintain goal (no rate to divide by) and for a target already
+ * reached or passed (nothing left to project). A weight on the wrong side of
+ * the goal's own start still gets a projection: it is further from the target,
+ * not past it, so the forecast is longer rather than withheld. It is the chosen
+ * rate's arithmetic from where they are now, not a judgment of the trend.
  */
 export function daysToTarget(goal: WeightGoal, currentKg: number): number | null {
   const rate = signedRateKgPerWeek(goal);
@@ -239,6 +280,12 @@ export function daysToTarget(goal: WeightGoal, currentKg: number): number | null
   return Math.ceil(Math.abs(remaining / rate) * 7);
 }
 
+/** A weigh-in the goal is read against, and the logical day it was taken on. */
+export interface GoalReading {
+  kilograms: number;
+  dayKey: string;
+}
+
 /**
  * The most recent reading at or after the goal's start day, or null.
  *
@@ -247,13 +294,21 @@ export function daysToTarget(goal: WeightGoal, currentKg: number): number | null
  * weights would otherwise read its progress from a number recorded before it
  * existed. A goal with no weigh-in since it was set has no progress to report,
  * which the caller renders as "nothing recorded yet" rather than as zero.
+ *
+ * **It carries its own day, and the pace and the forecast are measured from
+ * that day rather than from today.** A reading three weeks old sat on the pace
+ * line on the day it was taken; measured against today's pace instead it read
+ * as three weeks behind, and "at this rate" landed three weeks late, for a
+ * weight that was exactly on plan. `goalPace` and the forecast's base both take
+ * `dayKeyToDate(reading.dayKey)`, and the screen says which day the weight is
+ * from once that isn't today.
  */
-export function weightSinceGoalStart(goal: WeightGoal, points: WeightPoint[]): number | null {
-  let latest: number | null = null;
+export function weightSinceGoalStart(goal: WeightGoal, points: WeightPoint[]): GoalReading | null {
+  let latest: GoalReading | null = null;
   for (const point of points) {
     if (point.kilograms === null) continue;
     if (point.dayKey < goal.startDayKey) continue;
-    latest = point.kilograms;
+    latest = { kilograms: point.kilograms, dayKey: point.dayKey };
   }
   return latest;
 }

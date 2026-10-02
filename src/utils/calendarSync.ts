@@ -1,6 +1,11 @@
 import { Platform } from 'react-native';
 import { addDays } from 'date-fns/addDays';
-import type { Calendar as DeviceCalendar, Event } from 'expo-calendar/legacy';
+import type {
+  Alarm,
+  Calendar as DeviceCalendar,
+  Event,
+  RecurringEventOptions,
+} from 'expo-calendar/legacy';
 import type { BusyEvent } from './calendarBusy';
 
 /**
@@ -296,24 +301,183 @@ export async function createAllDayEvent(
 }
 
 /**
- * Rewrites an existing deadline event's title and date in place. Returns
- * false on any failure, including the event having been deleted out from
- * under the app — the caller falls back to creating a fresh one rather than
- * erroring, the same resolve-or-shrug rule as every other place a device id
- * can go stale.
+ * The fields of an existing event an update has to send back unchanged, in
+ * the shape the save takes.
+ *
+ * **Why an update has to send them at all.** expo-calendar's save
+ * (`initializeEvent` in its `CalendarModule.swift`) assigns `location`,
+ * `notes`, `alarms`, `isAllDay` and `availability` on every save, not only
+ * when the details carry them, and its `Event` record declares the first
+ * three non-optional with defaults of "" and [] (`Records/CalendarRecords.swift`).
+ * So an update naming only the title and the day reset a location, a note or
+ * an alert the user had added to the event by hand in the Calendar app, every
+ * time the app rewrote it. Everything else the save touches (the calendar, the
+ * dates, the URL, a repeat rule, the time zone) is assigned only when present,
+ * which is why none of those are here: left out, they're left alone.
+ *
+ * **The read and the write disagree on the alarm shape**, so this is a
+ * translation rather than a copy. The read (`serialize(alarms:)` in
+ * `Conversions.swift`) gives `relativeOffset` in minutes as a fraction and
+ * a location under `coord`; the write takes a whole number of minutes
+ * (`relativeOffset: Int?`) and the location under `coords`, with a
+ * non-optional `title`. A location alert whose coordinates didn't read back is
+ * left out rather than written as the plain "at the time of the event" alert
+ * its zero offset would otherwise make it.
+ *
+ * **Never null.** A null sent for one of the non-optional fields fails the
+ * whole save natively, so a field the read didn't hold is simply omitted and
+ * the save's own default applies, which is what it was going to be anyway.
  */
-export async function updateAllDayEvent(
+export type CarriedEventFields = Pick<
+  Partial<Event>,
+  'location' | 'notes' | 'alarms' | 'availability' | 'allDay'
+>;
+
+export function carriedEventFields(existing: unknown): CarriedEventFields {
+  if (!existing || typeof existing !== 'object') return {};
+  const event = existing as Record<string, unknown>;
+  const carried: CarriedEventFields = {};
+  if (typeof event.location === 'string') carried.location = event.location;
+  if (typeof event.notes === 'string') carried.notes = event.notes;
+  if (Array.isArray(event.alarms)) {
+    carried.alarms = event.alarms.map(writableAlarm).filter((a): a is Alarm => a !== null);
+  }
+  if (typeof event.availability === 'string' && event.availability) {
+    carried.availability = event.availability as Event['availability'];
+  }
+  if (typeof event.allDay === 'boolean') carried.allDay = event.allDay;
+  return carried;
+}
+
+function writableAlarm(raw: unknown): Alarm | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const alarm = raw as Record<string, unknown>;
+  const location = alarm.structuredLocation;
+  const place = writableAlarmLocation(location);
+  // A location alert that can't be written back as one is not an alert to
+  // turn into something else.
+  if (location && !place) return null;
+
+  const out: Alarm = {};
+  if (typeof alarm.absoluteDate === 'string' && alarm.absoluteDate) {
+    out.absoluteDate = alarm.absoluteDate;
+  } else if (typeof alarm.relativeOffset === 'number' && Number.isFinite(alarm.relativeOffset)) {
+    // Rounded because the write's field is an `Int`: a fraction of a minute
+    // would fail the save, and nothing Calendar offers is finer than a minute.
+    out.relativeOffset = Math.round(alarm.relativeOffset);
+  }
+  if (place) out.structuredLocation = place;
+  return out.absoluteDate !== undefined || out.relativeOffset !== undefined || out.structuredLocation
+    ? out
+    : null;
+}
+
+function writableAlarmLocation(raw: unknown): NonNullable<Alarm['structuredLocation']> | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const location = raw as Record<string, unknown>;
+  const coord = (location.coord ?? location.coords) as Record<string, unknown> | null | undefined;
+  const latitude = coord?.latitude;
+  const longitude = coord?.longitude;
+  if (typeof latitude !== 'number' || typeof longitude !== 'number') return null;
+  return {
+    title: typeof location.title === 'string' ? location.title : '',
+    ...(location.proximity === 'enter' || location.proximity === 'leave'
+      ? { proximity: location.proximity }
+      : {}),
+    ...(typeof location.radius === 'number' ? { radius: location.radius } : {}),
+    coords: { latitude, longitude },
+  };
+}
+
+/**
+ * Every rewrite of an existing event goes through here: it reads the event
+ * first and sends back what `carriedEventFields` says the save would otherwise
+ * reset, with the fields the caller owns written over the top, so an update
+ * changes only what the app owns.
+ *
+ * The read is best-effort. If it fails, the owned fields are still written,
+ * which costs what every update cost before this existed rather than the
+ * update itself; an event that has really gone fails the write too, and the
+ * caller's own fallback takes it from there. `options` is passed to both, so
+ * the instance read is the instance written.
+ *
+ * Throws whatever the write throws, for the caller to catch.
+ */
+async function rewriteEvent(
   eventId: string,
-  fields: AllDayEventFields
-): Promise<boolean> {
-  if (Platform.OS !== 'ios') return false;
+  owned: Omit<Partial<Event>, 'id'>,
+  options?: RecurringEventOptions
+): Promise<string> {
+  let carried: CarriedEventFields = {};
   try {
-    await calendar().updateEventAsync(eventId, {
+    carried = carriedEventFields(await calendar().getEventAsync(eventId, options));
+  } catch {
+    // Unread: write the owned fields alone.
+  }
+  return calendar().updateEventAsync(eventId, { ...carried, ...owned }, options);
+}
+
+/**
+ * Rewrites an existing all-day event's title and day, puts it in `calendarId`,
+ * and returns the id EventKit reports for it afterwards. Null on any failure,
+ * including the event having been deleted out from under the app: the caller
+ * falls back to writing a fresh one rather than erroring, the same
+ * resolve-or-shrug rule as every other place a device id can go stale.
+ *
+ * The calendar is in every rewrite because both mirrors write to a calendar
+ * that is a setting the user can change: without it, the event stayed wherever
+ * it was first created, so switching "Write meals to" (#2949) or "Write
+ * deadlines to" from a shared calendar to a private one kept rewriting the old
+ * events in the shared one. `EKCalendarItem.calendar` is settable, and
+ * expo-calendar's save path assigns it when the details carry a `calendarId`
+ * (`initializeEvent` in its `CalendarModule.swift`), so this is a move of the
+ * same event rather than a delete and a fresh write. When the event is already
+ * in that calendar it is a plain rewrite in place.
+ *
+ * **The id is read back rather than assumed.** The save returns
+ * `calendarItemIdentifier`, and nothing in Apple's documentation promises it
+ * survives a move to a calendar on another account; the caller links whatever
+ * this returns.
+ *
+ * A location, a note or an alert added to the event by hand stays with it:
+ * expo-calendar's save resets all three unless they're sent back, and
+ * `rewriteEvent` sends them back. Invitees, the URL and a repeat rule were
+ * never touched.
+ */
+export async function moveAllDayEvent(
+  eventId: string,
+  calendarId: string,
+  fields: AllDayEventFields
+): Promise<string | null> {
+  if (Platform.OS !== 'ios') return null;
+  try {
+    const id = await rewriteEvent(eventId, {
+      calendarId,
       title: fields.title,
       startDate: fields.date,
       endDate: addDays(fields.date, 1),
       allDay: true,
     });
+    return id || eventId;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether `eventId` still names an event on this device. False for an id that
+ * names nothing, and on any failure (no permission, not iOS), since from here
+ * those are one answer: there is no event under this id to act on.
+ *
+ * Its own read rather than something `deleteCalendarEvent` reports, because
+ * expo-calendar's delete returns quietly for an id that names nothing, and a
+ * caller that also holds the calendar server's id needs to know which of the
+ * two happened (`deleteLinkedEvent` in calendarEventLink.ts, #2950).
+ */
+export async function calendarEventExists(eventId: string): Promise<boolean> {
+  if (Platform.OS !== 'ios' || !eventId) return false;
+  try {
+    await calendar().getEventAsync(eventId, { futureEvents: false });
     return true;
   } catch {
     return false;
@@ -439,6 +603,53 @@ export async function presentTimeBlockCreate(fields: {
 }
 
 /**
+ * Presents the system "new event" sheet for a plain event rather than a task's
+ * block: the calendar-first half of the app, where the event is the thing
+ * being made and nothing on the task list points at it.
+ *
+ * Same sheet and the same reasoning as `presentTimeBlockCreate`: the user
+ * picks the calendar there (a Google account shows up in it like any other),
+ * so the event syncs wherever that calendar does, and nothing is written that
+ * they didn't watch being written. Anything the app wants to remember about
+ * the event (who it's with) is kept on its own side, see `eventPeople.ts`.
+ *
+ * `allDay` and `alarms` are optional because the sheet's other caller
+ * (`quickEvent.ts`) never needs either — a hand-typed line always resolves to
+ * a timed span with no default alert. `calendarEventImport.ts`'s
+ * `eventImportCreateFields` is what supplies both, for an event read off a
+ * confirmation.
+ */
+export async function presentEventCreate(fields: {
+  title: string;
+  start: Date;
+  end: Date;
+  allDay?: boolean;
+  location?: string;
+  notes?: string;
+  alarms?: Alarm[];
+}): Promise<TimeBlockSheetResult> {
+  if (Platform.OS !== 'ios') return NO_RESULT;
+  try {
+    const result = await calendar().createEventInCalendarAsync({
+      title: fields.title,
+      startDate: fields.start,
+      endDate: fields.end,
+      ...(fields.allDay ? { allDay: true } : {}),
+      ...(fields.location ? { location: fields.location } : {}),
+      ...(fields.notes ? { notes: fields.notes } : {}),
+      ...(fields.alarms ? { alarms: fields.alarms } : {}),
+    });
+    return {
+      saved: result.action === 'saved',
+      deleted: result.action === 'deleted',
+      eventId: result.id ?? null,
+    };
+  } catch {
+    return NO_RESULT;
+  }
+}
+
+/**
  * Presents the system sheet for an event that already exists, so the user can
  * move, resize or delete it.
  *
@@ -501,6 +712,12 @@ export async function readTimeBlockEvent(eventId: string): Promise<TimeBlockEven
  * the calendar, the alerts, the invitees and everything else the user set in
  * the sheet exactly as they left them.
  *
+ * The alerts, the location and the notes survive because `rewriteEvent` reads
+ * them back and sends them with the write, not because leaving them out of the
+ * details would: expo-calendar's save resets all three when they're missing,
+ * and until that read existed every retitle of a block cleared the alert the
+ * user had set on it in the sheet.
+ *
  * `futureEvents: false` again, and it matters more here than on the read: on a
  * series it confines the change to one instance rather than rewriting every
  * future one, which is the conservative half of a choice EventKit forces.
@@ -511,7 +728,7 @@ export async function updateTimeBlockEvent(
 ): Promise<boolean> {
   if (Platform.OS !== 'ios') return false;
   try {
-    await calendar().updateEventAsync(
+    await rewriteEvent(
       eventId,
       { title: fields.title, endDate: fields.endDate },
       { futureEvents: false }

@@ -1,0 +1,4 @@
+{
+  "message": "If you sync between devices, a task's deadline event, time block and completion event now stay linked on the device that wrote them. Editing or opening the task on another device used to disconnect them, which could leave a duplicate event behind.",
+  "date": "2026-09-28"
+}

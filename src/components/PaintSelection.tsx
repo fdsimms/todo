@@ -4,6 +4,7 @@ import {
   StyleSheet,
   View,
   type StyleProp,
+  type ViewProps,
   type ViewStyle,
 } from 'react-native';
 import {
@@ -71,6 +72,17 @@ export function usePaintSelectionRow(id: string | null) {
     // callback is too — React won't churn it with null/node on every render.
     [ctx, id],
   );
+}
+
+/**
+ * A plain `View` registered as one paintable row, for a list whose rows are
+ * drawn by a render function rather than a component of their own, so there
+ * is nowhere to call usePaintSelectionRow. Takes a View's props; `rowId`
+ * follows the hook's rule (null for a drag overlay's copy of a row).
+ */
+export function PaintSelectionRow({ rowId, ...viewProps }: ViewProps & { rowId: string | null }) {
+  const ref = usePaintSelectionRow(rowId);
+  return <View ref={ref} {...viewProps} />;
 }
 
 interface Props {
@@ -172,24 +184,52 @@ export function PaintSelectionProvider({
     // the list can't scroll while painting and selection doesn't change any
     // row's height, so the bands hold for the whole drag — and measuring per
     // move would cost a round trip a frame.
+    //
+    // `measureInWindow` is async per row, and the callbacks land in whatever
+    // order the bridge returns them, not top-to-bottom. A pending tap used to
+    // be replayed against `rectsRef.current` after *every* row's callback, so
+    // a touch near a row boundary could resolve — via rowIdAtY's slop
+    // fallback, which exists to catch a touch in the gap between two cards —
+    // against whichever neighboring row happened to measure first, before the
+    // actually-tapped row's own measurement had arrived. That mis-resolved a
+    // real id into `selectedIds` (the bulk bar's count was right) while the
+    // tapped row itself never got marked selected. Waiting for every row's
+    // measurement to land before replaying the pending tap means the slop
+    // fallback only ever runs against the complete picture.
     const measureRows = () => {
       rectsRef.current = [];
       const gesture = gestureIdRef.current;
+      let pending = rowsRef.current.size;
+      let resolved = false;
+      const tryResolve = () => {
+        if (resolved || gestureIdRef.current !== gesture) return;
+        resolved = true;
+        if (pendingYRef.current !== null) paintAt(pendingYRef.current);
+      };
+      const settle = () => {
+        pending -= 1;
+        if (pending <= 0) tryResolve();
+      };
       rowsRef.current.forEach((view, id) => {
-        if (typeof view?.measureInWindow !== 'function') return;
+        if (typeof view?.measureInWindow !== 'function') { settle(); return; }
         view.measureInWindow((_x, y, _w, h) => {
           // A measurement from a previous gesture describes where the row was
           // then; if the list has scrolled since, folding it in would leave one
           // band pointing at the wrong place.
           if (gestureIdRef.current !== gesture) return;
-          if (!Number.isFinite(y) || !(h > 0)) return;
-          const next = rectsRef.current.filter(r => r.id !== id);
-          next.push({ id, top: y, bottom: y + h });
-          next.sort((a, b) => a.top - b.top);
-          rectsRef.current = next;
-          if (pendingYRef.current !== null) paintAt(pendingYRef.current);
+          if (Number.isFinite(y) && h > 0) {
+            const next = rectsRef.current.filter(r => r.id !== id);
+            next.push({ id, top: y, bottom: y + h });
+            next.sort((a, b) => a.top - b.top);
+            rectsRef.current = next;
+          }
+          settle();
         });
       });
+      // Backstop: a row whose native view unmounted mid-measurement can leave
+      // its callback never firing, which would otherwise strand a tap waiting
+      // forever for every row to report in.
+      setTimeout(tryResolve, 100);
     };
 
     const endPaint = () => {

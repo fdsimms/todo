@@ -1,0 +1,4 @@
+{
+  "message": "Fixed the paste button in the task title bar not working for links copied from apps that put only a URL on the clipboard, with no plain text alongside it.",
+  "date": "2026-09-26"
+}

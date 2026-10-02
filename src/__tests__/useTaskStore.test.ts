@@ -1,7 +1,9 @@
 import { isStreakAtRecord } from '../utils/streakRecord';
+import { registerPausedProjectSource } from '../utils/projectPause';
 import { dayKeyOf, getCurrentDayStart } from '../utils/dateUtils';
-import { logTaskHealthValue } from '../utils/healthCompletionSync';
+import { logTaskHealthValue, unlogTaskNutrientFromFoodLog } from '../utils/healthCompletionSync';
 import { useTaskStore } from '../store/useTaskStore';
+import { useWidgetCompletionStore } from '../store/useWidgetCompletionStore';
 import { useMedicationStore } from '../store/useMedicationStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useMoodStore } from '../store/useMoodStore';
@@ -15,6 +17,7 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useProjectStore } from '../store/useProjectStore';
+import { useSavedViewStore } from '../store/useSavedViewStore';
 import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
 import { MAX_PROJECT_REVIEW_TASKS } from '../utils/projectReviewTasks';
 import { MAX_PANTRY_CHECK_TASKS } from '../utils/pantryCheckTasks';
@@ -25,6 +28,8 @@ import { useTemplateStore } from '../store/useTemplateStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useFoodLogStore } from '../store/useFoodLogStore';
+import { useUnattendedStore } from '../store/useUnattendedStore';
+import { useHealthStore } from '../store/useHealthStore';
 import { usePersonStore } from '../store/usePersonStore';
 import { normalizeTemplateItem } from '../utils/templateUtils';
 import {
@@ -50,6 +55,7 @@ import {
   dbTransaction,
   dbGetMealPlanEntries,
   dbGetMealPlanEntry,
+  dbGetFoodLogEntries,
 } from '../db/database';
 import {
   scheduleTaskReminder,
@@ -61,10 +67,12 @@ import { syncDeadlineEvent } from '../utils/deadlineCalendarSync';
 import { logTaskCompletionToCalendar } from '../utils/completionCalendarSync';
 import { deleteCalendarEvent } from '../utils/calendarSync';
 import { setDemoModeActive } from '../utils/demoState';
-import type { GroceryItem, Person, Project, Task, TaskGroup, TitleRule } from '../types';
+import type { FoodLogEntry, FoodNutrition, GroceryItem, Person, Project, Task, TaskGroup, TitleRule } from '../types';
 
 jest.mock('../db/database', () => ({
   initDatabase: jest.fn(),
+  // #2950's launch backfill: the ids of the rows the write filled.
+  dbFillTaskCalendarExternalIds: jest.fn().mockReturnValue([]),
   dbGetSetting: jest.fn().mockReturnValue(null),
   dbSetSetting: jest.fn(),
   dbGetAllTasks: jest.fn().mockReturnValue([]),
@@ -104,6 +112,12 @@ jest.mock('../db/database', () => ({
   dbInsertMilestone: jest.fn(),
   dbUpdateMilestone: jest.fn(),
   dbDeleteMilestone: jest.fn(),
+  // Event people links ride the same fan-out (useEventPeopleStore).
+  dbGetAllEventPeopleLinks: jest.fn().mockReturnValue([]),
+  dbUpsertEventPeopleLink: jest.fn(),
+  dbDeleteEventPeopleLinks: jest.fn(),
+  // ...and its one-time migration off the old setting deletes that setting.
+  dbDeleteSetting: jest.fn(),
   // The medication log rides the same fan-out, and completing a task carrying
   // a medication writes through it.
   dbGetAllMedicationLogs: jest.fn().mockReturnValue([]),
@@ -170,6 +184,10 @@ jest.mock('../db/database', () => ({
   // otherwise untouched by this file's subject.
   dbGetAllRecipes: jest.fn().mockReturnValue([]),
   dbGetAllCookbooks: jest.fn().mockReturnValue([]),
+  dbGetAllCookbookIndexEntries: jest.fn().mockReturnValue([]),
+  dbInsertCookbookIndexEntry: jest.fn(),
+  dbUpdateCookbookIndexEntry: jest.fn(),
+  dbDeleteCookbookIndexEntry: jest.fn(),
   dbInsertCookbook: jest.fn(),
   dbUpdateCookbook: jest.fn(),
   dbDeleteCookbook: jest.fn(),
@@ -221,6 +239,7 @@ jest.mock('../store/useCategoryStore', () => ({
   // generator ships on, so nobody flips the switch that would otherwise create
   // its category.
   ensureGeneratedTaskCategory: jest.fn(),
+  renameGeneratedCategorySettings: jest.fn(),
   useCategoryStore: {
     getState: jest.fn(() => ({
       categories: [],
@@ -246,12 +265,14 @@ jest.mock('../store/useSettingsStore', () => ({
       // The settings that name a category — renaming or deleting one has to
       // carry them with it (see renameCategory/deleteCategory).
       mealCookTaskCategory: null, groceryUseUpTaskCategory: null, leftoverUseUpTaskCategory: null,
-      calendarEventCategory: null, collapsedCategories: [], titleRules: [],
+      calendarEventCategory: null, healthCategory: null, collapsedCategories: [], titleRules: [], reminderCaptures: [],
       penaltyShieldEnabled: false, penaltyShieldUntil: null, setPenaltyShieldUntil: jest.fn(),
       // Read by offerMealLog, whose whole point is the meal-slot/log-nudge
       // completion tests further down this file — defaulting it off here
       // would silently disable every one of them.
       mealLogPrompt: true,
+      // Read by syncWaterQuotaTasks for a water task that follows the food log's target.
+      nutritionTargets: {}, waterExerciseBoost: null,
       setMealCookTaskCategory: jest.fn(), setGroceryUseUpTaskCategory: jest.fn(),
       setLeftoverUseUpTaskCategory: jest.fn(), setCalendarEventCategory: jest.fn(),
       setCollapsedCategories: jest.fn(),
@@ -283,19 +304,33 @@ jest.mock('../utils/notifications', () => ({
 }));
 
 jest.mock('../utils/deadlineCalendarSync', () => ({
-  syncDeadlineEvent: jest.fn().mockResolvedValue(null),
+  syncDeadlineEvent: jest.fn().mockResolvedValue({ eventId: null, externalId: null }),
+  // The real rule: it is pure, and which tasks the post-sync reconcile touches
+  // is what that block of tests is about.
+  taskEventsAfterSync: jest.requireActual('../utils/deadlineCalendarSync').taskEventsAfterSync,
+  // And the real delete, which reaches the mocked calendarSync below, so a
+  // delete asserts against `deleteCalendarEvent` as it did before #2950 gave
+  // it a server-id fallback.
+  deadlineEventLink: jest.requireActual('../utils/deadlineCalendarSync').deadlineEventLink,
+  deleteDeadlineEvent: jest.requireActual('../utils/deadlineCalendarSync').deleteDeadlineEvent,
 }));
 
 jest.mock('../utils/completionCalendarSync', () => ({
   logTaskCompletionToCalendar: jest.fn().mockResolvedValue(null),
+  completionEventLink: jest.requireActual('../utils/completionCalendarSync').completionEventLink,
+  deleteCompletionEvent: jest.requireActual('../utils/completionCalendarSync').deleteCompletionEvent,
 }));
 
 jest.mock('../utils/healthCompletionSync', () => ({
   logTaskHealthValue: jest.fn().mockResolvedValue(false),
+  unlogTaskNutrientFromFoodLog: jest.fn(),
 }));
 
 jest.mock('../utils/calendarSync', () => ({
   deleteCalendarEvent: jest.fn().mockResolvedValue(undefined),
+  // Every local id still names its event unless a test says otherwise (#2950).
+  calendarEventExists: jest.fn().mockResolvedValue(true),
+  getCalendarPermission: jest.fn().mockResolvedValue('granted'),
   // The #1492 half. Stubbed to "the user cancelled" / "no such event" by
   // default so nothing writes unless a test says so; the time-block block at
   // the bottom of this file drives them.
@@ -304,8 +339,17 @@ jest.mock('../utils/calendarSync', () => ({
   readTimeBlockEvent: jest.fn().mockResolvedValue(null),
   updateTimeBlockEvent: jest.fn().mockResolvedValue(true),
 }));
+// #2950: the native module that reads a calendar event's server id and finds
+// an event by one. No server ids and no matches unless a test says so.
+const mockExternalIds = jest.fn((_ids: string[]) => Promise.resolve({} as Record<string, string>));
+const mockEventsWithExternalId = jest.fn((_id: string) => Promise.resolve([] as unknown[]));
+jest.mock('todo-eventkit-bridge', () => ({
+  externalIdentifiers: (ids: string[]) => mockExternalIds(ids),
+  eventsWithExternalIdentifier: (id: string) => mockEventsWithExternalId(id),
+}), { virtual: true });
 jest.mock('../store/useCalendarStore', () => ({
-  useCalendarStore: { getState: jest.fn(() => ({ events: [], loaded: false })) },
+  // subscribe: useEventPeopleStore follows the calendar to read server ids.
+  useCalendarStore: { getState: jest.fn(() => ({ events: [], pastEvents: [], loaded: false })), subscribe: jest.fn() },
 }));
 jest.mock('../store/useWeatherStore', () => ({
   useWeatherStore: { getState: jest.fn(() => ({ snapshot: null, snapshotDayKey: null })) },
@@ -347,6 +391,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   recurrenceInterval: 1,
   recurrenceDays: [],
   recurrenceMonthDay: null,
+  recurrenceMonth: null,
   recurrenceWeekOrdinal: null,
   recurrenceAnchorDay: null,
   recurrenceAnchorDate: null,
@@ -366,7 +411,12 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   allowOvershoot: false,
   quotaIntervalMinutes: null,
   quotaReminders: false,
-  quotaStartedAt: null, quotaAlwaysVisible: false, quotaPeriod: 'day',
+  quotaStartedAt: null, quotaAlwaysVisible: false, followWaterTarget: false, quotaPeriod: 'day',
+  rotationEnabled: false,
+  rotationItems: [],
+  rotationLog: [],
+  rotationPeriodStart: null,
+  rotationLastDone: {},
   tags: [],
   category: null,
   sortOrder: 1,
@@ -398,7 +448,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   projectId: null,
   reminderTime: null,
   reminderKind: 'notification',
-  reminderOffsetDays: null, reminderTimeAnchor: 'wallClock', reminderUtcOffsetMinutes: null,
+  reminderOffsetDays: null, reminderTracksVisibility: false, reminderTimeAnchor: 'wallClock', reminderUtcOffsetMinutes: null,
   chainEnabled: false,
   chainIndex: 0,
   chainItems: [],
@@ -410,6 +460,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   followUpTaskTally: 0,
   previousFollowUpTaskTally: 0,
   followUpTaskSourceTitle: null,
+  followUpTaskSourceId: null,
   vacationPause: false, excludeFromSuggestions: false,
   timerStartedAt: null,
   timedMinutes: null,
@@ -488,6 +539,11 @@ const makeProject = (overrides: Partial<import('../types').Project> = {}): impor
   destination: null,
   awayListId: null,
   awayListDeclinedFor: null,
+  pausedUntil: null,
+  personIds: [],
+  links: [],
+  inOrder: false,
+  showChecked: false,
   ...overrides,
 });
 
@@ -523,6 +579,7 @@ beforeEach(() => {
     newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
     mealCookTaskCategory: null, groceryUseUpTaskCategory: null, leftoverUseUpTaskCategory: null,
     calendarEventCategory: null, collapsedCategories: [], titleRules: [],
+    nutritionTargets: {}, waterExerciseBoost: null,
     setMealCookTaskCategory: jest.fn(), setGroceryUseUpTaskCategory: jest.fn(),
     setLeftoverUseUpTaskCategory: jest.fn(), setCalendarEventCategory: jest.fn(),
     setCollapsedCategories: jest.fn(),
@@ -627,6 +684,56 @@ describe('completeTask: catching an overdue recurrence up', () => {
     useTaskStore.getState().completeTask('bins');
     const next = useTaskStore.getState().tasks.find(t => !t.completed)!;
     expect(new Date(next.dueDate!).toDateString()).toBe('Wed Jun 11 2025');
+  });
+});
+
+describe('completeTask: a queued widget tap', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2025, 5, 10, 8, 0, 0)); // Tue June 10 2025
+    useWidgetCompletionStore.setState({ pendingIds: [], tappedAt: {} });
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  const walk = () => makeTask({
+    id: 'walk',
+    recurrenceType: 'daily',
+    recurrenceInterval: 1,
+    recurrenceFromCompletion: true,
+    dueDate: new Date(2025, 5, 9, 12, 0, 0).toISOString(), // Mon
+  });
+
+  it('completes as of the tap, so the next one is not a day late', () => {
+    // Tapped Monday night, drained Tuesday morning.
+    useTaskStore.setState({ tasks: [walk()] });
+    const tapped = new Date(2025, 5, 9, 22, 0, 0).toISOString();
+    useWidgetCompletionStore.getState().enqueue(['walk'], { walk: tapped });
+    useWidgetCompletionStore.getState().dequeue('walk');
+    useTaskStore.getState().completeTask('walk');
+
+    const done = useTaskStore.getState().tasks.find(t => t.id === 'walk')!;
+    const next = useTaskStore.getState().tasks.find(t => !t.completed)!;
+    expect(done.completedAt).toBe(tapped);
+    expect(new Date(next.dueDate!).toDateString()).toBe('Tue Jun 10 2025');
+    expect(useWidgetCompletionStore.getState().tappedAt).toEqual({});
+  });
+
+  it('lets an explicit completedAt win over a queued tap', () => {
+    useTaskStore.setState({ tasks: [walk()] });
+    useWidgetCompletionStore.getState().enqueue(['walk'], { walk: new Date(2025, 5, 9, 22, 0, 0).toISOString() });
+    const given = new Date(2025, 5, 9, 20, 0, 0).toISOString();
+    useTaskStore.getState().completeTask('walk', { completedAt: given });
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'walk')!.completedAt).toBe(given);
+  });
+
+  it('does not stamp a miss with the tap time', () => {
+    useTaskStore.setState({ tasks: [walk()] });
+    useWidgetCompletionStore.getState().enqueue(['walk'], { walk: new Date(2025, 5, 9, 22, 0, 0).toISOString() });
+    useTaskStore.getState().completeTask('walk', { missed: true });
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'walk')!.completedAt).toBe(new Date(2025, 5, 10, 8, 0, 0).toISOString());
   });
 });
 
@@ -992,6 +1099,39 @@ describe('addTask', () => {
   it('reconciles the deadline calendar event', () => {
     const task = useTaskStore.getState().addTask({ title: 'Renew passport' });
     expect(syncDeadlineEvent).toHaveBeenCalledWith(task);
+  });
+
+  // #2950: the server id is what a restored backup finds the event by.
+  it('links the deadline event and its server id together', async () => {
+    (syncDeadlineEvent as jest.Mock).mockResolvedValueOnce({ eventId: 'evt-1', externalId: 'ext-1' });
+    const task = useTaskStore.getState().addTask({ title: 'Renew passport' });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(useTaskStore.getState().tasks.find(t => t.id === task.id))
+      .toMatchObject({ calendarEventId: 'evt-1', calendarEventExternalId: 'ext-1' });
+  });
+
+  it('writes a server id read for the first time even when the event id is the one it had', async () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', calendarEventId: 'evt-1' })] });
+    (syncDeadlineEvent as jest.Mock).mockResolvedValueOnce({ eventId: 'evt-1', externalId: 'ext-1' });
+    useTaskStore.getState().updateTask('t1', { title: 'Renew the passport' });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(dbUpdateTask).toHaveBeenLastCalledWith(expect.objectContaining({
+      id: 't1', calendarEventId: 'evt-1', calendarEventExternalId: 'ext-1',
+    }));
+  });
+
+  it('writes nothing when the reconcile hands back the link the task already has', async () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 't1', calendarEventId: 'evt-1', calendarEventExternalId: 'ext-1' })],
+    });
+    (syncDeadlineEvent as jest.Mock).mockResolvedValueOnce({ eventId: 'evt-1', externalId: 'ext-1' });
+    useTaskStore.getState().updateTask('t1', { title: 'Renew the passport' });
+    const writes = (dbUpdateTask as jest.Mock).mock.calls.length;
+    await Promise.resolve();
+    await Promise.resolve();
+    expect((dbUpdateTask as jest.Mock).mock.calls.length).toBe(writes);
   });
 });
 
@@ -1613,12 +1753,14 @@ describe('duplicateTask', () => {
   it('does not carry the original calendar event id onto the copy', () => {
     useTaskStore.setState({
       tasks: [makeTask({
-        id: 't1', calendarEventId: 'evt-1', deadlineOnCalendar: true,
+        id: 't1', calendarEventId: 'evt-1', calendarEventExternalId: 'ext-1', deadlineOnCalendar: true,
         deadline: new Date(2025, 5, 20).toISOString(),
       })],
     });
     const copy = useTaskStore.getState().duplicateTask('t1')!;
     expect(copy.calendarEventId).toBeNull();
+    // Nor its server id, which would find the original's event again (#2950).
+    expect(copy.calendarEventExternalId).toBeNull();
     // The preference carries; the event doesn't — two tasks must never point
     // at one device event.
     expect(copy.deadlineOnCalendar).toBe(true);
@@ -1681,6 +1823,78 @@ describe('completeTask', () => {
     expect(task?.completedAt).toBeTruthy();
   });
 
+  it('asks for Coming back once a Pick dates answer fills Leaving, and offers a move on a second answer', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'trip', awayStart: null, awayEnd: null })] });
+    useTaskStore.setState({
+      tripDatePrompt: null,
+      tasks: [makeTask({ id: 'pick', projectId: 'trip', deliverableKind: 'date', deliverableSetsAway: true } as Partial<Task>)],
+    });
+    try {
+      useTaskStore.getState().completeTask('pick', { deliverableValue: '2025-06-20' });
+      expect(useTaskStore.getState().tripDatePrompt).toEqual(expect.objectContaining({ kind: 'return', projectId: 'trip' }));
+      useTaskStore.getState().clearTripDatePrompt();
+      useTaskStore.getState().setDeliverableValue('pick', '2025-06-22');
+      expect(useTaskStore.getState().tripDatePrompt).toEqual(expect.objectContaining({ kind: 'moveLeaving', projectId: 'trip' }));
+    } finally {
+      useProjectStore.setState({ projects: [] });
+    }
+  });
+
+  it("keeps a repeating task's wait on its successor but drops the follow-up day", () => {
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'r', recurrenceType: 'weekly', recurrenceInterval: 1, dueDate: new Date(2025, 5, 10, 12).toISOString(),
+        waitingOnPersonId: 'p1', followUpOn: '2025-06-08',
+      } as Partial<Task>)],
+    });
+    useTaskStore.getState().completeTask('r');
+    const next = useTaskStore.getState().tasks.find(t => t.id !== 'r')!;
+    expect(next.waitingOnPersonId).toBe('p1');
+    expect(next.followUpOn ?? null).toBeNull();
+  });
+
+  it('moves an overdue routine to its next day on its grid, and undoes it', () => {
+    // Weekly from Tuesday June 3; today is Tuesday June 10.
+    const due = new Date(2025, 4, 20, 12).toISOString();
+    useTaskStore.setState({ tasks: [makeTask({ id: 'water', recurrenceType: 'weekly', recurrenceInterval: 1, dueDate: due } as Partial<Task>)] });
+    useTaskStore.getState().redateRoutines(['water']);
+    expect(dayKeyOf(new Date(useTaskStore.getState().tasks[0].dueDate!))).toBe('2025-06-10');
+    useTaskStore.getState().lastAction?.undo();
+    expect(useTaskStore.getState().tasks[0].dueDate).toBe(due);
+  });
+
+  it('offers a day to an undated task once its last blocker is done, and dates it on the answer', () => {
+    useTaskStore.setState({
+      readyOffer: null,
+      tasks: [
+        makeTask({ id: 'b1' }),
+        makeTask({ id: 'b2' }),
+        makeTask({ id: 'w', blockedById: 'b1', blockedByIds: ['b2'] } as Partial<Task>),
+        makeTask({ id: 'dated', blockedById: 'b2', dueDate: new Date(2025, 5, 20, 12).toISOString() } as Partial<Task>),
+      ],
+    });
+    useTaskStore.getState().completeTask('b1');
+    expect(useTaskStore.getState().readyOffer).toBeNull();
+    useTaskStore.getState().completeTask('b2');
+    expect(useTaskStore.getState().readyOffer?.taskIds).toEqual(['w']);
+    useTaskStore.getState().placeReadyTasks(new Date(2025, 5, 10, 9));
+    expect(useTaskStore.getState().readyOffer).toBeNull();
+    expect(dayKeyOf(new Date(useTaskStore.getState().tasks.find(t => t.id === 'w')!.dueDate!))).toBe('2025-06-10');
+  });
+
+  it('records a Maybe to a pick-one question without completing the task, and undoes it', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', deliverableKind: 'choice', deliverableOptions: ['Yes', 'No', 'Maybe'] } as Partial<Task>)] });
+    useTaskStore.getState().completeTask('t1', { deliverableValue: 'Maybe' });
+    let task = useTaskStore.getState().tasks.find(t => t.id === 't1');
+    expect(task?.completed).toBe(false);
+    expect(task?.deliverableValue).toBe('Maybe');
+    useTaskStore.getState().lastAction?.undo();
+    task = useTaskStore.getState().tasks.find(t => t.id === 't1');
+    expect(task?.deliverableValue ?? null).toBeNull();
+    useTaskStore.getState().completeTask('t1', { deliverableValue: 'Yes' });
+    expect(useTaskStore.getState().tasks.find(t => t.id === 't1')?.completed).toBe(true);
+  });
+
   it('reconciles the deadline calendar event for the completed row', () => {
     useTaskStore.setState({ tasks: [makeTask({ id: 't1', deadline: new Date(2025, 5, 20).toISOString() })] });
     useTaskStore.getState().completeTask('t1');
@@ -1695,10 +1909,25 @@ describe('completeTask', () => {
       expect.objectContaining({ id: 't1', completed: true }),
       expect.any(Date)
     );
-    await Promise.resolve();
-    await Promise.resolve();
+    for (let i = 0; i < 10; i++) await Promise.resolve();
     const task = useTaskStore.getState().tasks.find(t => t.id === 't1');
     expect(task?.completionCalendarEventId).toBe('log-evt');
+    // No server id read back (the bridge mock names none), so none is linked.
+    expect(task?.completionCalendarEventExternalId).toBeNull();
+  });
+
+  it('links the completion event\'s calendar server id beside it (#2950)', async () => {
+    (logTaskCompletionToCalendar as jest.Mock).mockResolvedValue('log-evt');
+    mockExternalIds.mockImplementationOnce(() => Promise.resolve({ 'log-evt': 'server-log' }));
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', logCompletionToCalendar: true })] });
+    useTaskStore.getState().completeTask('t1');
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+    const task = useTaskStore.getState().tasks.find(t => t.id === 't1');
+    expect(task?.completionCalendarEventId).toBe('log-evt');
+    expect(task?.completionCalendarEventExternalId).toBe('server-log');
+    expect(dbUpdateTask).toHaveBeenLastCalledWith(
+      expect.objectContaining({ id: 't1', completionCalendarEventId: 'log-evt', completionCalendarEventExternalId: 'server-log' })
+    );
   });
 
   it('does not call logTaskCompletionToCalendar when the flag is off', () => {
@@ -1902,7 +2131,7 @@ describe('completeTask', () => {
       recurrenceInterval: 1,
       dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
       reminderTime: new Date(2025, 5, 10, 9, 30, 0).toISOString(),
-      reminderOffsetDays: null, reminderTimeAnchor: 'wallClock', reminderUtcOffsetMinutes: null,
+      reminderOffsetDays: null, reminderTracksVisibility: false, reminderTimeAnchor: 'wallClock', reminderUtcOffsetMinutes: null,
     });
     useTaskStore.setState({ tasks: [task] });
     useTaskStore.getState().completeTask('recurring');
@@ -1912,6 +2141,30 @@ describe('completeTask', () => {
     expect(reminder.toDateString()).toBe(new Date(next!.dueDate!).toDateString());
     expect(reminder.getHours()).toBe(9);
     expect(reminder.getMinutes()).toBe(30);
+  });
+
+  it('recomputes a visibility-tracking reminder against the successor\'s own resulting placement, via getVisibleAt', () => {
+    const task = makeTask({
+      id: 'recurring',
+      recurrenceType: 'daily',
+      recurrenceInterval: 1,
+      dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
+      reminderTime: new Date(2025, 5, 10, 18, 0, 0).toISOString(),
+      reminderOffsetDays: null,
+      reminderTracksVisibility: true,
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().completeTask('recurring');
+
+    const next = useTaskStore.getState().tasks.find(t => t.id !== 'recurring');
+    expect(next?.reminderTracksVisibility).toBe(true);
+    expect(new Date(next!.dueDate!).toDateString()).toBe('Wed Jun 11 2025');
+    const reminder = new Date(next!.reminderTime!);
+    // Resolved through getVisibleAt against the successor's own dueDate
+    // (with no timeSegments/windowStart to refine it further, that's the
+    // day-start) rather than kept at the completed row's 6pm.
+    expect(reminder.toDateString()).toBe('Wed Jun 11 2025');
+    expect(reminder.getHours()).toBe(0);
   });
 
   it('stamps the next occurrence with previousOccurrenceId pointing back at the completed task', () => {
@@ -2643,6 +2896,19 @@ describe('completeTask', () => {
     });
   });
 
+  describe('a paused project', () => {
+    it('keeps its pinned task out of the Pinned block until the pause lifts', () => {
+      registerPausedProjectSource(() => [{ id: 'garden', pausedUntil: '2999-01-01', archived: false, completed: false }]);
+      try {
+        useTaskStore.setState({ tasks: [makeTask({ id: 't1', pinned: true, projectId: 'garden' }), makeTask({ id: 't2', pinned: true })] });
+        expect(useTaskStore.getState().pinnedTasks().map(t => t.id)).toEqual(['t2']);
+      } finally {
+        // Back to what the project store registered at load.
+        registerPausedProjectSource(() => useProjectStore.getState().projects);
+      }
+    });
+  });
+
   describe('completion collapse (batched gap close)', () => {
     const collapsed = () => [...useTaskStore.getState().completionCollapseIds].sort();
     const store = () => useTaskStore.getState();
@@ -3016,12 +3282,25 @@ describe('checkVacationExpiry', () => {
 
   it('does nothing when the end date has not passed yet', () => {
     const setVacationMode = jest.fn();
-    const future = new Date(Date.now() + 60_000).toISOString();
+    // A day, not an instant: every writer stores the return day (the settings
+    // picker at its reset time, a trip's awayEnd at noon).
+    const future = new Date(Date.now() + 86_400_000).toISOString();
     getSettingsMock().getState.mockReturnValue({
       dayResetTime: '00:00', vacationMode: true, vacationEnd: future, setVacationMode,
     });
     useTaskStore.getState().checkVacationExpiry();
     expect(setVacationMode).not.toHaveBeenCalled();
+  });
+
+  it('turns vacation off from the start of the return day, not at its clock time', () => {
+    const setVacationMode = jest.fn();
+    const laterToday = new Date();
+    laterToday.setHours(23, 59, 0, 0);
+    getSettingsMock().getState.mockReturnValue({
+      dayResetTime: '00:00', vacationMode: true, vacationEnd: laterToday.toISOString(), setVacationMode,
+    });
+    useTaskStore.getState().checkVacationExpiry();
+    expect(setVacationMode).toHaveBeenCalledWith(false);
   });
 
   it('turns vacation mode off and forgives streaks once the end date has passed', () => {
@@ -3069,6 +3348,26 @@ describe('uncompleteTask', () => {
     expect(deleteCalendarEvent).toHaveBeenCalledWith('log-evt');
     const task = useTaskStore.getState().tasks[0];
     expect(task.completionCalendarEventId).toBeNull();
+  });
+
+  it('deletes the event found by its server id when a restored phone\'s local id names nothing (#2950)', async () => {
+    const { calendarEventExists } = jest.requireMock('../utils/calendarSync') as { calendarEventExists: jest.Mock };
+    calendarEventExists.mockResolvedValueOnce(false);
+    mockEventsWithExternalId.mockResolvedValueOnce([{ id: 'log-evt-here', allDay: false, calendarId: null }]);
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 't1', completed: true, completedAt: 'now',
+        completionCalendarEventId: 'log-evt-old-phone', completionCalendarEventExternalId: 'ext-log',
+      })],
+    });
+    useTaskStore.getState().uncompleteTask('t1');
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+    expect(mockEventsWithExternalId).toHaveBeenCalledWith('ext-log');
+    expect(deleteCalendarEvent).toHaveBeenCalledWith('log-evt-here');
+    expect(deleteCalendarEvent).not.toHaveBeenCalledWith('log-evt-old-phone');
+    const task = useTaskStore.getState().tasks[0];
+    expect(task.completionCalendarEventId).toBeNull();
+    expect(task.completionCalendarEventExternalId).toBeNull();
   });
 
   it('does not call deleteCalendarEvent when there is no completion calendar event', () => {
@@ -4085,6 +4384,128 @@ describe('supplies', () => {
       expect(liveOrders()).toHaveLength(0);
     });
 
+    describe('with a grocery link', () => {
+      const catalogRow = (id: string): GroceryItem => ({
+        nameFromScan: false,
+        id, name: 'CPAP filters', nameKey: 'cpap filters', preferredProductId: null, productStrict: false,
+        aisle: 'Other', quantity: null, quantityFromRecipe: false, note: '',
+        onList: false, checked: false, sortOrder: 1,
+        purchaseCount: 0, lastAddedAt: null, lastPurchasedAt: null, createdAt: noon(-30),
+        onHandUntil: null, sourceRecipeId: null, sourceRecipeTitle: null, choiceGroup: null,
+        isStaple: false, expiresAt: null, frozenAt: null, openedAt: null, runningLowAt: null,
+        shelfLifeDays: null, useUpTask: null, pantryCheckDeclinedAt: null, pantryReviewedAt: null,
+        usedUpCount: 0, spoiledCount: 0, lastSpoiledAt: null, varietyOfKey: null, nutrition: null, backfillDismissedFields: [],
+        lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [],
+      });
+      const AWAY = { id: 'l-cabin', name: 'Cabin', sortOrder: 1, createdAt: noon(-30) };
+      const seedGrocery = (items: GroceryItem[], initialized = true) => {
+        useGroceryStore.setState({
+          items, aisleOrder: [], hiddenAisles: [], aisleOverrides: {},
+          shops: [], itemShops: [], lastShopId: null, cartHoldIds: [],
+          pendingUseUpItemId: null, initialized,
+          lists: [AWAY], listEntries: [], activeListId: AWAY.id,
+        });
+      };
+
+      it('puts a live linked item on the home list rather than the away one, and writes no order', () => {
+        useSettingsStore.getState.mockReturnValue(settings({ kitchenEnabled: true }));
+        seedGrocery([catalogRow('g-filter')]);
+        // The list write itself is covered in useGroceryStore.test.ts; this
+        // pins which list the sweep names.
+        const realSetRunningLow = useGroceryStore.getState().setRunningLow;
+        const setRunningLow = jest.fn();
+        useGroceryStore.setState({ setRunningLow });
+        try {
+          addSupplyTask({ supplyCount: 1, supplyGroceryItemId: 'g-filter' });
+
+          useTaskStore.getState().checkSupplyReorderTasks();
+
+          expect(setRunningLow).toHaveBeenCalledWith('g-filter', true, { registerUndo: false, listId: null });
+          expect(liveOrders()).toHaveLength(0);
+        } finally {
+          useGroceryStore.setState({ setRunningLow: realSetRunningLow });
+        }
+      });
+
+      it('asks again after a row taken off the list is restocked in the editor', () => {
+        // #2935: the flag the supply wrote outlived the row, so it read as
+        // already handled for good and the supply never asked again.
+        useSettingsStore.getState.mockReturnValue(settings({ kitchenEnabled: true }));
+        seedGrocery([catalogRow('g-filter')]);
+        const task = addSupplyTask({ supplyCount: 1, supplyGroceryItemId: 'g-filter' });
+        // Flagged low by the sweep, then swiped off the list: the flag stands,
+        // the row is on no list.
+        useGroceryStore.setState(s => ({
+          items: s.items.map(i => ({ ...i, runningLowAt: noon(-2) })),
+        }));
+        const realSetRunningLow = useGroceryStore.getState().setRunningLow;
+        const flagLow = jest.fn();
+        try {
+          // The refusal holds while the supply is still low.
+          useGroceryStore.setState({ setRunningLow: flagLow });
+          useTaskStore.getState().checkSupplyReorderTasks();
+          expect(flagLow).not.toHaveBeenCalled();
+
+          // Topped up in the editor: the restock refutes the flag.
+          useGroceryStore.setState({ setRunningLow: realSetRunningLow });
+          useTaskStore.getState().updateTask(task.id, { supplyCount: 6 });
+          expect(useGroceryStore.getState().items[0].runningLowAt).toBeNull();
+
+          // Runs low again later, and this time it asks.
+          useTaskStore.getState().updateTask(task.id, { supplyCount: 1 });
+          useGroceryStore.setState({ setRunningLow: flagLow });
+          useTaskStore.getState().checkSupplyReorderTasks();
+          expect(flagLow).toHaveBeenCalledWith('g-filter', true, { registerUndo: false, listId: null });
+        } finally {
+          useGroceryStore.setState({ setRunningLow: realSetRunningLow });
+        }
+      });
+
+      it('keeps the flag through a top-up that leaves the supply still low', () => {
+        useSettingsStore.getState.mockReturnValue(settings({ kitchenEnabled: true }));
+        seedGrocery([catalogRow('g-filter')]);
+        const task = addSupplyTask({ supplyCount: 0, supplyReorderAt: 2, supplyGroceryItemId: 'g-filter' });
+        useGroceryStore.setState(s => ({
+          items: s.items.map(i => ({ ...i, runningLowAt: noon(-2) })),
+        }));
+
+        useTaskStore.getState().updateTask(task.id, { supplyCount: 1 });
+
+        expect(useGroceryStore.getState().items[0].runningLowAt).toBe(noon(-2));
+      });
+
+      it('writes an order when the linked item has been deleted from the catalog', () => {
+        // Otherwise the supply asks nowhere: the list half skips a dead item.
+        useSettingsStore.getState.mockReturnValue(settings({ kitchenEnabled: true }));
+        seedGrocery([]);
+        const task = addSupplyTask({ supplyCount: 1, supplyGroceryItemId: 'g-gone' });
+
+        useTaskStore.getState().checkSupplyReorderTasks();
+
+        expect(liveOrders().map(o => o.generatedSourceId)).toEqual([task.id]);
+      });
+
+      it('writes an order when the kitchen is off', () => {
+        useSettingsStore.getState.mockReturnValue(settings({ kitchenEnabled: false }));
+        seedGrocery([catalogRow('g-filter')]);
+        addSupplyTask({ supplyCount: 1, supplyGroceryItemId: 'g-filter' });
+
+        useTaskStore.getState().checkSupplyReorderTasks();
+
+        expect(liveOrders()).toHaveLength(1);
+      });
+
+      it('trusts the link until the catalog has loaded', () => {
+        useSettingsStore.getState.mockReturnValue(settings({ kitchenEnabled: true }));
+        seedGrocery([], false);
+        addSupplyTask({ supplyCount: 1, supplyGroceryItemId: 'g-filter' });
+
+        useTaskStore.getState().checkSupplyReorderTasks();
+
+        expect(liveOrders()).toHaveLength(0);
+      });
+    });
+
     it('asks as soon as the supply is spent, without waiting for a sweep', () => {
       // Ticking the task off and being told nothing is the whole reason
       // completeTask runs the pass itself.
@@ -4281,6 +4702,27 @@ describe('checkPantryCheckTasks', () => {
     useTaskStore.getState().checkPantryCheckTasks();
 
     expect(checkTasks()).toHaveLength(0);
+  });
+
+  // Off stops the asking, not the tidying up. Returning above the clear left
+  // a row about an item bought again (or deleted) on Today until somebody
+  // removed it by hand.
+  it.each([
+    ['the setting', { pantryCheckTasks: false }],
+    ['the whole grocery area', { kitchenEnabled: false }],
+  ])('still clears a row whose reason has gone with %s off', (_, off) => {
+    seedItems(lapsedItem({ id: 'g-1' }), lapsedItem({ id: 'g-2', name: 'Rice', nameKey: 'rice' }));
+    useTaskStore.getState().checkPantryCheckTasks();
+    expect(checkTasks()).toHaveLength(2);
+
+    // Flour bought again; rice still lapsed.
+    seedItems(lapsedItem({ id: 'g-1', lastPurchasedAt: daysAgo(1) }), lapsedItem({ id: 'g-2', name: 'Rice', nameKey: 'rice' }));
+    useSettingsStore.getState.mockReturnValue(settings(off));
+    useTaskStore.getState().checkPantryCheckTasks();
+
+    // Only the row whose reason has gone: the rice row is still a true
+    // question, and switching the generator off is not a decline of it.
+    expect(checkTasks().map(t => t.generatedSourceId)).toEqual(['g-2']);
   });
 
   it('does not pile up a second task on the next sweep', () => {
@@ -4525,6 +4967,24 @@ describe('checkPantryReviewTasks', () => {
     expect(reviewTasks()).toHaveLength(0);
   });
 
+  it.each([
+    ['the setting', { pantryReviewTasks: false }],
+    ['the whole grocery area', { kitchenEnabled: false }],
+  ])('still clears its row once the deck empties with %s off', (_, off) => {
+    doubtfulCupboard();
+    useTaskStore.getState().checkPantryReviewTasks();
+    expect(reviewTasks()).toHaveLength(1);
+    setPantryReviewLastDayKey.mockClear();
+
+    seedItems(...Array.from({ length: 6 }, (_, i) => guessedItem(i, { onHandUntil: OUT_OF_IT_UNTIL })));
+    useSettingsStore.getState.mockReturnValue(settings(off));
+    useTaskStore.getState().checkPantryReviewTasks();
+
+    expect(reviewTasks()).toHaveLength(0);
+    // And no day is spent on an offer that could not have been made.
+    expect(setPantryReviewLastDayKey).not.toHaveBeenCalled();
+  });
+
   // Recorded the moment a day is considered, whatever the outcome — with no
   // source row this mark is the only thing between a swiped-away row and an
   // identical one on the very next foreground sweep.
@@ -4627,7 +5087,7 @@ describe('checkReachOutTasks', () => {
   // Opted in, cadence lapsed 15 days ago against cadenceSetAt (nobody has any
   // history with them yet), same shape as reachOutTasks.test.ts's own factory.
   const duePerson = (overrides: Partial<Person> = {}): Person => ({
-    id: 'p1', name: 'Sarah', nickname: '', notes: '', sortOrder: 1,
+    id: 'p1', name: 'Sarah', kind: 'individual', nickname: '', notes: '', sortOrder: 1,
     archived: false, archivedAt: null, createdAt: daysAgo(60),
     birthdayMonth: null, birthdayDay: null, birthYear: null,
     birthdayTaskOptOut: false, birthdayGiftTaskOptOut: false,
@@ -4734,7 +5194,7 @@ describe('checkWaitingFollowUpTasks', () => {
   const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString();
 
   const person = (overrides: Partial<Person> = {}): Person => ({
-    id: 'p1', name: 'Dustin', nickname: '', notes: '', sortOrder: 1,
+    id: 'p1', name: 'Dustin', kind: 'individual', nickname: '', notes: '', sortOrder: 1,
     archived: false, archivedAt: null, createdAt: daysAgo(60),
     birthdayMonth: null, birthdayDay: null, birthYear: null,
     birthdayTaskOptOut: false, birthdayGiftTaskOptOut: false,
@@ -4779,6 +5239,21 @@ describe('checkWaitingFollowUpTasks', () => {
     useSettingsStore.getState.mockReturnValue(settings({ waitingFollowUpTasks: false }));
     useTaskStore.getState().checkWaitingFollowUpTasks();
     expect(followUps()).toHaveLength(0);
+  });
+
+  it('still follows up on a day the person named, setting off, filed under the project', () => {
+    useSettingsStore.getState.mockReturnValue(settings({ waitingFollowUpTasks: false }));
+    const key = dayKeyOf(getCurrentDayStart());
+    useTaskStore.setState({ tasks: [waiting({ waitingOnPersonSince: daysAgo(1), followUpOn: key, projectId: 'kitchen' })] });
+    useTaskStore.getState().checkWaitingFollowUpTasks();
+    expect(followUps()).toHaveLength(1);
+    expect(followUps()[0].projectId).toBe('kitchen');
+  });
+
+  it('clears the follow-up day when the wait moves to somebody else or ends', () => {
+    useTaskStore.setState({ tasks: [waiting({ followUpOn: '2026-01-02' })] });
+    useTaskStore.getState().updateTask('w1', { waitingOnPersonId: null });
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'w1')?.followUpOn ?? null).toBeNull();
   });
 
   it('does nothing while vacation mode is on — a chore, not sunscreen', () => {
@@ -5324,6 +5799,49 @@ describe('checkWeatherTasks', () => {
     expect(task.category).toBe('Weather');
   });
 
+  it('starts the task with the estimate stored on its rule', () => {
+    useSettingsStore.getState.mockReturnValue(settings({
+      weatherRules: [{ ...rainyRule, estimatedMinutes: 1, effort: 1 }],
+    }));
+    useWeatherStore.getState.mockReturnValue({ snapshot: snapshot({ weatherCode: 61 }), snapshotDayKey: TODAY_KEY });
+
+    useTaskStore.getState().checkWeatherTasks();
+
+    const [task] = weatherTasks();
+    expect(task.estimatedMinutes).toBe(1);
+    expect(task.effort).toBe(1);
+  });
+
+  // The task is a fresh row each time the rule fires, so an estimate set on it
+  // has to land on the rule or the next one starts unestimated again.
+  it('writes an estimate edited on the task back onto its rule', () => {
+    const current = settings();
+    useSettingsStore.getState.mockReturnValue(current);
+    useWeatherStore.getState.mockReturnValue({ snapshot: snapshot({ weatherCode: 61 }), snapshotDayKey: TODAY_KEY });
+    useTaskStore.getState().checkWeatherTasks();
+    const [task] = weatherTasks();
+    // The pass saves the rules itself, to mark the day considered.
+    current.setWeatherRules.mockClear();
+
+    useTaskStore.getState().updateTask(task.id, { estimatedMinutes: 2, effort: 1 });
+
+    expect(current.setWeatherRules).toHaveBeenCalledWith([{ ...rainyRule, estimatedMinutes: 2, effort: 1 }]);
+  });
+
+  it('leaves the rule alone when a write names the estimate without changing it', () => {
+    const current = settings();
+    useSettingsStore.getState.mockReturnValue(current);
+    useWeatherStore.getState.mockReturnValue({ snapshot: snapshot({ weatherCode: 61 }), snapshotDayKey: TODAY_KEY });
+    useTaskStore.getState().checkWeatherTasks();
+    const [task] = weatherTasks();
+    // The pass saves the rules itself, to mark the day considered.
+    current.setWeatherRules.mockClear();
+
+    useTaskStore.getState().updateTask(task.id, { ...task, notes: 'undo snapshot' });
+
+    expect(current.setWeatherRules).not.toHaveBeenCalled();
+  });
+
   // The whole point of unioning against today's day-level forecast: a dry
   // reading at the moment of the fetch (typically the first open of the day)
   // must not be the only chance the rule gets to fire, or rain that starts
@@ -5654,7 +6172,8 @@ describe('checkMoodTasks', () => {
 
   const entry = (dayKey: string, mood: number | null) => ({
     id: `m-${dayKey}`,
-    loggedAt: `${dayKey}T09:00:00.000Z`,
+    // Local 09:00, like the clock these tests set, so the suite reads the same in any zone.
+    loggedAt: new Date(`${dayKey}T09:00`).toISOString(),
     dayKey,
     mood,
     symptoms: [],
@@ -5838,7 +6357,7 @@ describe('checkMoodTasks', () => {
 
     it('writes nothing for a segment already answered since it began', () => {
       // Logged at 19:30, after the 18:00 evening threshold.
-      setLogs([{ ...entry(TODAY, 3), loggedAt: '2026-08-25T19:30:00.000Z' }]);
+      setLogs([{ ...entry(TODAY, 3), loggedAt: new Date(2026, 7, 25, 19, 30).toISOString() }]);
       useSettingsStore.getState.mockReturnValue(morningAndEvening());
       jest.setSystemTime(new Date(2026, 7, 25, 20, 0, 0));
 
@@ -5943,6 +6462,108 @@ describe('checkMoodTasks', () => {
 });
 
 
+describe('checkWeighInTasks', () => {
+  const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as {
+    useSettingsStore: { getState: jest.Mock };
+  };
+
+  // The two marks the pass and the delete write, held here so a test can run
+  // the pass on several days and see each run act on what the last wrote.
+  let lastDayKey: string | null = null;
+  let declinedDayKey: string | null = null;
+  const settings = () => ({
+    dayResetTime: '00:00',
+    vacationMode: false,
+    weighInTasks: true,
+    weighInTaskCategory: 'Health',
+    weighInEveryDays: 7,
+    healthReadEnabled: true,
+    healthWriteEnabled: true,
+    get weighInLastDayKey() { return lastDayKey; },
+    setWeighInLastDayKey: (key: string | null) => { lastDayKey = key; },
+    get weighInDeclinedDayKey() { return declinedDayKey; },
+    setWeighInDeclinedDayKey: (key: string | null) => { declinedDayKey = key; },
+    newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
+    titleRules: [],
+    collapsedCategories: [],
+  });
+
+  const requests = () =>
+    useTaskStore.getState().tasks.filter(t => t.generatedKind === 'weighIn' && !t.completed && !t.archived);
+  const on = async (day: number) => {
+    jest.setSystemTime(new Date(2026, 8, day, 9, 0, 0));
+    await useTaskStore.getState().checkWeighInTasks();
+  };
+
+  const realRead = useHealthStore.getState().readRecentWeights;
+  beforeEach(() => {
+    jest.useFakeTimers();
+    lastDayKey = null;
+    declinedDayKey = null;
+    useSettingsStore.getState.mockReturnValue(settings());
+    useTaskStore.setState({ tasks: [] });
+    // Health asked and had nothing: the one answer that writes a request.
+    useHealthStore.setState({ readRecentWeights: jest.fn().mockResolvedValue([]) });
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    useHealthStore.setState({ readRecentWeights: realRead });
+  });
+
+  it('asks when the window has no weight in it', async () => {
+    await on(8);
+    expect(requests().map(t => t.generatedSourceId)).toEqual(['2026-09-08']);
+  });
+
+  it('holds a deleted request for the whole window rather than asking again tomorrow', async () => {
+    // Lee deletes the request on the 8th: it used to be back on the 9th, the
+    // 10th and the 11th, since the window still had no reading in it.
+    await on(8);
+    useTaskStore.getState().deleteTask(requests()[0].id);
+    expect(declinedDayKey).toBe('2026-09-08');
+
+    for (const day of [9, 10, 14]) {
+      await on(day);
+      expect(requests()).toHaveLength(0);
+    }
+
+    // A week on from the decline, with still nothing recorded, it asks again.
+    await on(15);
+    expect(requests().map(t => t.generatedSourceId)).toEqual(['2026-09-15']);
+  });
+
+  it('takes the decline back with the delete, on undo', async () => {
+    await on(8);
+    useTaskStore.getState().deleteTask(requests()[0].id);
+    useTaskStore.getState().lastAction!.undo();
+
+    expect(declinedDayKey).toBeNull();
+    expect(requests()).toHaveLength(1);
+  });
+
+  it('does not count a request nobody answered as a decline', async () => {
+    // Clearing yesterday's request is the pass tidying up. Stamped as a
+    // decline, an ignored request would go quiet for a week on its own.
+    await on(8);
+    await on(9);
+
+    expect(declinedDayKey).toBeNull();
+    expect(requests().map(t => t.generatedSourceId)).toEqual(['2026-09-09']);
+  });
+
+  it('skips the Health read while a decline holds', async () => {
+    await on(8);
+    useTaskStore.getState().deleteTask(requests()[0].id);
+    const read = useHealthStore.getState().readRecentWeights as jest.Mock;
+    read.mockClear();
+
+    await on(9);
+
+    expect(read).not.toHaveBeenCalled();
+  });
+});
+
 describe('checkMealPlanNudge', () => {
   const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as {
     useSettingsStore: { getState: jest.Mock };
@@ -5962,6 +6583,7 @@ describe('checkMealPlanNudge', () => {
     mealPlanNudgeTime: '09:00',
     mealPlanNudgeLastFiredWeekKey: null as string | null,
     setMealPlanNudgeLastFiredWeekKey: jest.fn(),
+    mealPlanNudgeSlots: ['breakfast', 'lunch', 'dinner'] as MealSlot[],
     mealPlanNudgeTaskCategory: null as string | null,
     mealPlanNudgeGroupId: null as string | null,
     setMealPlanNudgeGroupId: jest.fn(),
@@ -6047,6 +6669,20 @@ describe('checkMealPlanNudge', () => {
     useTaskStore.getState().checkMealPlanNudge();
 
     expect(useTaskStore.getState().tasks).toHaveLength(7);
+    // Written during the trip on purpose, so not paused by it either: the
+    // vacation stamp every paused kind's draft carries would hide them again.
+    expect(useTaskStore.getState().tasks.every(t => !t.vacationPause)).toBe(true);
+  });
+
+  it('pauses its rows on vacation otherwise, like every kind that stands down for it', () => {
+    jest.setSystemTime(new Date(2025, 7, 3, 9, 0, 0));
+    useSettingsStore.getState.mockReturnValue(settings());
+    useTaskStore.setState({ tasks: [] });
+
+    useTaskStore.getState().checkMealPlanNudge();
+
+    expect(useTaskStore.getState().tasks).toHaveLength(7);
+    expect(useTaskStore.getState().tasks.every(t => t.vacationPause)).toBe(true);
   });
 
   it('does nothing before the configured day/time arrives', () => {
@@ -6378,6 +7014,22 @@ describe('checkMealPlanNudge', () => {
     expect(s.setMealPlanNudgeLastFiredWeekKey).toHaveBeenCalledWith('2025-08-03');
   });
 
+  it('is not suppressed by a planned meal outside the chosen slots', () => {
+    // mealPlanNudgeSlots narrowed to dinner alone: a lunch already planned
+    // elsewhere in the week hasn't touched the thing being asked about.
+    jest.setSystemTime(new Date(2025, 7, 3, 9, 0, 0));
+    const s = settings({ mealPlanNudgeSlots: ['dinner'] as MealSlot[] });
+    useSettingsStore.getState.mockReturnValue(s);
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([
+      { id: 'm1', date: '2025-08-05', slot: 'lunch', recipeId: null, title: 'Salad', sortOrder: 1, createdAt: '2025-08-01T00:00:00.000Z', cookedAt: null, leftoverId: null, recipeChoices: [] },
+    ]);
+    useTaskStore.setState({ tasks: [] });
+
+    useTaskStore.getState().checkMealPlanNudge();
+
+    expect(useTaskStore.getState().tasks.filter(t => t.generatedKind === 'mealPlanNudge')).toHaveLength(7);
+  });
+
   it('leaves the undo slot alone, like the other unattended background writes', () => {
     jest.setSystemTime(new Date(2025, 7, 3, 9, 0, 0));
     useSettingsStore.getState.mockReturnValue(settings());
@@ -6429,7 +7081,7 @@ describe('checkMealSlotTasks', () => {
       id, name: 'Chili', nameKey: 'chili', notes: '', sourceUrl: null, sourceName: null,
       author: null, source: null, servings: null, servingsMax: null, recipeYield: null, cookedWeightG: null,
       leftoverKeepDays: null, imagePath: null, mealType: null, tags: [], ingredients: [],
-      emptySections: [], components: [], prepTasks: [], steps: [], sortOrder: 1,
+      emptySections: [], components: [], prepTasks: [], steps: [], emptyStepSections: [], sortOrder: 1,
       createdAt: '2026-01-01T00:00:00.000Z', cookCount: 0, lastCookedAt: null, vote: null,
       upNext: false, upNextOrder: 0,
       estimatedMinutes: null, timerStartedAt: null, timerElapsedSeconds: 0, lastCookMinutes: null,
@@ -6478,7 +7130,7 @@ describe('checkMealSlotTasks', () => {
     expect(today.timeSegments).toEqual([]);
     expect(today.category).toBe('Meal Plan');
     // Each row lands on its own day, so the week reads as a week.
-    expect(slotRows()[3].dueDate!.startsWith('2026-08-25')).toBe(true);
+    expect(dayKeyOf(new Date(slotRows()[3].dueDate!))).toBe('2026-08-25');
     expect(setWrittenThrough).toHaveBeenCalledWith('2026-08-28');
   });
 
@@ -6507,6 +7159,7 @@ describe('checkMealSlotTasks', () => {
   });
 
   it('skips the choosing for a slot that is already answered', () => {
+    useRecipeStore.setState({ recipes: [recipe('r1')] });
     (dbGetMealPlanEntries as jest.Mock).mockReturnValue([
       mealEntry('2026-08-25', 'dinner', { recipeId: 'r1', title: 'Chili' }),
     ]);
@@ -6520,6 +7173,25 @@ describe('checkMealSlotTasks', () => {
     expect(friday.title).toBe('Chili');
     // And the nights around it are still the choosing question.
     expect(slotRows().find(t => t.generatedSourceId === '2026-08-24#dinner')!.title).toBe('Dinner');
+  });
+
+  it('writes a meal whose recipe was deleted as the typed meal it now reads as', () => {
+    // The entry keeps pointing at the recipe on purpose, so a night planned
+    // before the delete and first reached by the pass after it would
+    // otherwise say "Make Chili" and link to "This recipe is gone".
+    useRecipeStore.setState({ recipes: [], initialized: true });
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([
+      mealEntry('2026-08-25', 'dinner', { recipeId: 'r-gone', title: 'Chili' }),
+    ]);
+    useSettingsStore.getState.mockReturnValue(settings({ mealSlotsEnabled: ['dinner'] }));
+    useTaskStore.setState({ tasks: [] });
+
+    useTaskStore.getState().checkMealSlotTasks();
+
+    const friday = slotRows().find(t => t.generatedSourceId === '2026-08-25#dinner')!;
+    expect(friday.title).toBe('Eat Chili');
+    expect(friday.chainEnabled).toBe(false);
+    expect(friday.linkUrl).toBe('dundundun://mealplan?date=2026-08-25');
   });
 
   it('carries the recipe\'s prep + cook time onto the Cook step', () => {
@@ -6573,10 +7245,119 @@ describe('checkMealSlotTasks', () => {
     expect(slotRows()).toHaveLength(7);
 
     // Tomorrow: one new day comes into range, and only that one is written.
+    // Yesterday's row, never started, goes as the new one arrives, so the
+    // window stays a week long rather than growing by a day each morning.
     jest.setSystemTime(new Date(2026, 7, 23, 9, 0, 0));
     useTaskStore.getState().checkMealSlotTasks();
-    expect(slotRows()).toHaveLength(8);
+    expect(slotRows()).toHaveLength(7);
     expect(sourceIds()).toContain('2026-08-29#lunch');
+    expect(sourceIds()).not.toContain('2026-08-22#lunch');
+  });
+
+  describe('a day that has gone by', () => {
+    const liveRows = () => slotRows().filter(t => !t.completed && !t.archived);
+    const liveSourceIds = () => liveRows().map(t => t.generatedSourceId);
+
+    it('drops the rows nobody started, a weekend away included', () => {
+      // Written on the Saturday, then the app isn't opened again until
+      // Tuesday: every meal from Saturday to Monday used to sit on Today as
+      // overdue for ever, since nothing but a person ever removed one.
+      useSettingsStore.getState.mockReturnValue(settings());
+      useTaskStore.setState({ tasks: [] });
+      useTaskStore.getState().checkMealSlotTasks();
+      const clearedSoFar = () => useUnattendedStore.getState().entries
+        .filter(e => e.action === 'cleared' && e.kind === 'mealSlot').length;
+      const before = clearedSoFar();
+
+      jest.setSystemTime(new Date(2026, 7, 25, 9, 0, 0));
+      useTaskStore.getState().checkMealSlotTasks();
+
+      expect(liveSourceIds().filter(id => id!.slice(0, 10) < '2026-08-25')).toEqual([]);
+      expect(liveSourceIds()).toContain('2026-08-25#breakfast');
+      // Three days of three meals, and the ledger says the app took them back.
+      expect(clearedSoFar() - before).toBe(9);
+    });
+
+    it('keeps a chain somebody started, and a row somebody moved', () => {
+      useSettingsStore.getState.mockReturnValue(settings({ mealSlotsEnabled: ['lunch', 'dinner'] }));
+      useTaskStore.setState({ tasks: [] });
+      useTaskStore.getState().checkMealSlotTasks();
+      // Chose lunch: the chain moved on to "Prepare lunch", which is the
+      // user's now, the same line mealSlotDrift draws.
+      const lunch = slotRows().find(t => t.generatedSourceId === '2026-08-22#lunch')!;
+      useTaskStore.getState().completeTask(lunch.id);
+      // Dinner pushed to Monday by hand.
+      const dinner = slotRows().find(t => t.generatedSourceId === '2026-08-22#dinner')!;
+      useTaskStore.getState().updateTask(dinner.id, { deferUntil: new Date(2026, 7, 24, 12).toISOString() });
+
+      jest.setSystemTime(new Date(2026, 7, 23, 9, 0, 0));
+      useTaskStore.getState().checkMealSlotTasks();
+
+      expect(liveSourceIds()).toContain('2026-08-22#lunch');
+      expect(liveSourceIds()).toContain('2026-08-22#dinner');
+    });
+
+    it('never writes a dropped day back', () => {
+      // The high-water mark is still the opt-out: the day is behind it, so
+      // clearing its row is not an invitation to write another.
+      useSettingsStore.getState.mockReturnValue(settings({ mealSlotsEnabled: ['lunch'] }));
+      useTaskStore.setState({ tasks: [] });
+      useTaskStore.getState().checkMealSlotTasks();
+      jest.setSystemTime(new Date(2026, 7, 23, 9, 0, 0));
+      useTaskStore.getState().checkMealSlotTasks();
+      useTaskStore.getState().checkMealSlotTasks();
+
+      expect(sourceIds()).not.toContain('2026-08-22#lunch');
+    });
+
+    it('still clears with the generator switched off, or the area hidden', () => {
+      // Off stops the pass writing. A row about a meal that has gone by is no
+      // more use because the switch changed, and returning above the clear
+      // left it overdue on Today with no row left in Settings to explain it.
+      useSettingsStore.getState.mockReturnValue(settings({ mealSlotsEnabled: ['lunch'] }));
+      useTaskStore.setState({ tasks: [] });
+      useTaskStore.getState().checkMealSlotTasks();
+
+      jest.setSystemTime(new Date(2026, 7, 23, 9, 0, 0));
+      useSettingsStore.getState.mockReturnValue(settings({ mealCookTasks: false }));
+      useTaskStore.getState().checkMealSlotTasks();
+      expect(liveSourceIds()).not.toContain('2026-08-22#lunch');
+
+      jest.setSystemTime(new Date(2026, 7, 24, 9, 0, 0));
+      useSettingsStore.getState.mockReturnValue(settings({ kitchenEnabled: false }));
+      useTaskStore.getState().checkMealSlotTasks();
+      expect(liveSourceIds()).not.toContain('2026-08-23#lunch');
+    });
+
+    it('leaves everything alone on vacation, when the rows are hidden anyway', () => {
+      useSettingsStore.getState.mockReturnValue(settings({ mealSlotsEnabled: ['lunch'] }));
+      useTaskStore.setState({ tasks: [] });
+      useTaskStore.getState().checkMealSlotTasks();
+
+      jest.setSystemTime(new Date(2026, 7, 23, 9, 0, 0));
+      useSettingsStore.getState.mockReturnValue(settings({ mealSlotsEnabled: ['lunch'], vacationMode: true }));
+      useTaskStore.getState().checkMealSlotTasks();
+
+      expect(liveSourceIds()).toContain('2026-08-22#lunch');
+    });
+  });
+
+  it('pauses its rows on vacation, so a week written before a trip hides during it', () => {
+    // The pass stops writing while vacation is on, but it writes a week ahead,
+    // so the rows written the day before leaving used to sit on Today for the
+    // first six days away.
+    useSettingsStore.getState.mockReturnValue(settings({ mealSlotsEnabled: ['lunch'] }));
+    useTaskStore.setState({ tasks: [] });
+    useTaskStore.getState().checkMealSlotTasks();
+    expect(slotRows().every(t => t.vacationPause)).toBe(true);
+
+    // And the step a chain moves on to keeps it.
+    const today = slotRows().find(t => t.generatedSourceId === '2026-08-22#lunch')!;
+    useTaskStore.getState().completeTask(today.id);
+    const next = useTaskStore.getState().tasks.find(
+      t => !t.completed && t.generatedSourceId === '2026-08-22#lunch'
+    )!;
+    expect(next.vacationPause).toBe(true);
   });
 
   it('never revisits a day it has written, so a deleted row stays deleted', () => {
@@ -6757,7 +7538,7 @@ describe('checkMealShortfallTasks', () => {
         id: `${id}-i${i}`, name: n, nameKey: n.toLowerCase(), quantity: '', aisle: null,
         prep: null, purpose: null, section: null, choiceGroup: null,
       })),
-      emptySections: [], components: [], prepTasks: [], steps: [], sortOrder: 1,
+      emptySections: [], components: [], prepTasks: [], steps: [], emptyStepSections: [], sortOrder: 1,
       createdAt: '2026-01-01T00:00:00.000Z', cookCount: 0, lastCookedAt: null, vote: null,
       upNext: false, upNextOrder: 0,
       estimatedMinutes: null, timerStartedAt: null, timerElapsedSeconds: 0, lastCookMinutes: null,
@@ -6869,6 +7650,41 @@ describe('checkMealShortfallTasks', () => {
     expect(shopRows()).toHaveLength(0);
   });
 
+  // Marco drops the ragu from the plan and turns the generator off: "Shop for
+  // Ragu" used to stay on Today, overdue, naming a meal that no longer existed.
+  it.each([
+    ['the setting', { mealShortfallTasks: false }],
+    ['the whole grocery area', { kitchenEnabled: false }],
+  ])('still clears a row whose meal is gone with %s off', (_, off) => {
+    useTaskStore.getState().checkMealShortfallTasks();
+    expect(shopRows()).toHaveLength(1);
+
+    replan();
+    useSettingsStore.getState.mockReturnValue(settings(off));
+    useTaskStore.getState().checkMealShortfallTasks();
+
+    expect(shopRows()).toHaveLength(0);
+  });
+
+  it('leaves a row whose meal still needs shopping for while off', () => {
+    // Off is not a decline of the meals already asked about, only an end to
+    // asking about new ones.
+    useTaskStore.getState().checkMealShortfallTasks();
+    useSettingsStore.getState.mockReturnValue(settings({ mealShortfallTasks: false }));
+    useTaskStore.getState().checkMealShortfallTasks();
+
+    expect(shopRows()).toHaveLength(1);
+  });
+
+  it('reads nothing while off with no row to clear', () => {
+    useSettingsStore.getState.mockReturnValue(settings({ mealShortfallTasks: false }));
+    (dbGetMealPlanEntries as jest.Mock).mockClear();
+
+    useTaskStore.getState().checkMealShortfallTasks();
+
+    expect(dbGetMealPlanEntries).not.toHaveBeenCalled();
+  });
+
   it('does not pile up a second task on the next sweep', () => {
     useTaskStore.getState().checkMealShortfallTasks();
     useTaskStore.getState().checkMealShortfallTasks();
@@ -6968,6 +7784,210 @@ describe('checkMealShortfallTasks', () => {
     useTaskStore.getState().checkMealShortfallTasks();
 
     expect(shopRows()).toHaveLength(MAX_MEAL_SHORTFALL_TASKS);
+  });
+});
+
+// #2926: a meal planned for tomorrow whose chicken is only in the freezer.
+describe('checkMealThawTasks', () => {
+  const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as {
+    useSettingsStore: { getState: jest.Mock };
+  };
+
+  const settings = (overrides: Record<string, unknown> = {}) => ({
+    dayResetTime: '00:00',
+    vacationMode: false,
+    kitchenEnabled: true,
+    mealThawTasks: true,
+    mealThawTaskCategory: 'Meal Plan',
+    newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
+    titleRules: [],
+    collapsedCategories: [],
+    ...overrides,
+  });
+
+  const stirFry: Recipe = {
+    backfillDismissedFields: [],
+    id: 'r1', name: 'Stir-fry', nameKey: 'stir-fry', notes: '', sourceUrl: null, sourceName: null,
+    author: null, source: null, servings: null, servingsMax: null, recipeYield: null, cookedWeightG: null,
+    leftoverKeepDays: null, imagePath: null, mealType: null, tags: [],
+    ingredients: [{
+      id: 'r1-i0', name: 'Chicken', nameKey: 'chicken', quantity: '', aisle: null,
+      prep: null, purpose: null, section: null, choiceGroup: null,
+    }],
+    emptySections: [], components: [], prepTasks: [], steps: [], emptyStepSections: [], sortOrder: 1,
+    createdAt: '2026-01-01T00:00:00.000Z', cookCount: 0, lastCookedAt: null, vote: null,
+    upNext: false, upNextOrder: 0,
+    estimatedMinutes: null, timerStartedAt: null, timerElapsedSeconds: 0, lastCookMinutes: null,
+    cookTimeCount: 0, totalCookMinutes: 0, sourceType: null, sourcePage: null, cookbookId: null, prepMinutes: null,
+    prepTimerStartedAt: null, prepTimerElapsedSeconds: 0, lastPrepMinutes: null, prepTimeCount: 0,
+    totalPrepMinutes: 0,
+  };
+
+  const chicken = (frozenAt: string | null) => ({
+    nameFromScan: false,
+    id: 'g-chicken', name: 'Chicken', nameKey: 'chicken', preferredProductId: null, productStrict: false,
+    aisle: 'Meat', quantity: null, quantityFromRecipe: false, note: '',
+    onList: false, checked: false, sortOrder: 1,
+    purchaseCount: 0, lastAddedAt: null, lastPurchasedAt: null, createdAt: '2026-01-01T00:00:00.000Z',
+    onHandUntil: null, sourceRecipeId: null, sourceRecipeTitle: null, choiceGroup: null,
+    isStaple: false, expiresAt: null, frozenAt, openedAt: null, runningLowAt: null,
+    shelfLifeDays: null, useUpTask: null, pantryCheckDeclinedAt: null, pantryReviewedAt: null,
+    usedUpCount: 0, spoiledCount: 0, lastSpoiledAt: null, varietyOfKey: null, nutrition: null, backfillDismissedFields: [],
+    lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [],
+  });
+
+  const tomorrowDinner: MealPlanEntry = {
+    id: 'm-sun', date: '2026-08-23', slot: 'dinner', recipeId: 'r1', title: 'Stir-fry',
+    sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z', cookedAt: null, leftoverId: null,
+    recipeChoices: [], recipeScale: 1, cookTask: null, shopTask: null, logMeal: null, calendarEventId: null,
+  };
+
+  const thawRows = () =>
+    useTaskStore.getState().tasks.filter(t => t.generatedKind === 'mealThaw' && !t.completed && !t.archived);
+
+  const groceries = (frozenAt: string | null) => useGroceryStore.setState({
+    items: [chicken(frozenAt)], aisleOrder: [], hiddenAisles: [], aisleOverrides: {},
+    shops: [], itemShops: [], lastShopId: null, cartHoldIds: [],
+    pendingUseUpItemId: null, initialized: true,
+  });
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2026, 7, 22, 9, 0, 0));
+    useSettingsStore.getState.mockReturnValue(settings());
+    useTaskStore.setState({ tasks: [] });
+    useMealPlanStore.setState({ entries: [{ ...tomorrowDinner }], rangeStart: null, rangeEnd: null });
+    useRecipeStore.setState({ recipes: [stirFry] });
+    useLeftoverStore.setState({ leftovers: [] });
+    groceries('2026-08-01T09:00:00.000Z');
+    // Read through to the store, for checkMealShortfallTasks' tests' reason:
+    // setThawTask writes there, and the sweep must see it.
+    (dbGetMealPlanEntries as jest.Mock).mockImplementation(() => useMealPlanStore.getState().entries);
+  });
+
+  afterEach(() => { jest.useRealTimers(); });
+
+  it('asks to take the chicken out for tomorrow\'s dinner, linked to its Pantry row', () => {
+    useTaskStore.getState().checkMealThawTasks();
+
+    const [row] = thawRows();
+    expect(row.title).toBe('Take chicken out of the freezer (Sunday Dinner)');
+    expect(row.generatedSourceId).toBe('m-sun');
+    expect(row.linkUrl).toBe('dundundun://kitchen?item=grocery-g-chicken');
+    expect(row.category).toBe('Meal Plan');
+    expect(dbGetMealPlanEntries).toHaveBeenCalledWith('2026-08-21', '2026-08-24');
+  });
+
+  it('writes nothing while off, or for chicken that is not frozen', () => {
+    useSettingsStore.getState.mockReturnValue(settings({ mealThawTasks: false }));
+    useTaskStore.getState().checkMealThawTasks();
+    expect(thawRows()).toHaveLength(0);
+
+    useSettingsStore.getState.mockReturnValue(settings());
+    groceries(null);
+    useTaskStore.getState().checkMealThawTasks();
+    expect(thawRows()).toHaveLength(0);
+  });
+
+  it('clears its row once the chicken is out of the freezer, without declining the meal', () => {
+    useTaskStore.getState().checkMealThawTasks();
+    expect(thawRows()).toHaveLength(1);
+
+    groceries(null);
+    useTaskStore.getState().checkMealThawTasks();
+
+    expect(thawRows()).toHaveLength(0);
+    expect(useMealPlanStore.getState().entries[0].thawTask ?? null).toBeNull();
+  });
+
+  it('takes a deleted row as a refusal for that meal, and does not hand it back', () => {
+    useTaskStore.getState().checkMealThawTasks();
+
+    useTaskStore.getState().deleteTask(thawRows()[0].id);
+    expect(useMealPlanStore.getState().entries[0].thawTask).toBe(false);
+
+    useTaskStore.getState().checkMealThawTasks();
+    expect(thawRows()).toHaveLength(0);
+  });
+
+  it('does not pile up a second row, or hand back one already ticked off', () => {
+    useTaskStore.getState().checkMealThawTasks();
+    useTaskStore.getState().checkMealThawTasks();
+    expect(thawRows()).toHaveLength(1);
+
+    useTaskStore.getState().completeTask(thawRows()[0].id);
+    useTaskStore.getState().checkMealThawTasks();
+    expect(thawRows()).toHaveLength(0);
+  });
+});
+
+describe('checkMealLogNudgeTasks', () => {
+  const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as {
+    useSettingsStore: { getState: jest.Mock };
+  };
+
+  const settings = (overrides: Record<string, unknown> = {}) => ({
+    dayResetTime: '00:00',
+    vacationMode: false,
+    kitchenEnabled: true,
+    mealLogNudgeTasks: true,
+    mealLogNudgeTaskCategory: 'Meal Plan',
+    newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
+    titleRules: [],
+    collapsedCategories: [],
+    ...overrides,
+  });
+
+  const yesterdaysDinner: MealPlanEntry = {
+    id: 'm-dinner', date: '2026-08-21', slot: 'dinner', recipeId: null, title: 'Ragu',
+    sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z', cookedAt: null, leftoverId: null,
+    recipeChoices: [], recipeScale: 1, cookTask: null, shopTask: null, logMeal: null, calendarEventId: null,
+  };
+  let planned: MealPlanEntry[] = [];
+
+  const nudgeRows = () =>
+    useTaskStore.getState().tasks.filter(t => t.generatedKind === 'mealLogNudge' && !t.completed && !t.archived);
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2026, 7, 22, 9, 0, 0));
+    planned = [yesterdaysDinner];
+    (dbGetMealPlanEntries as jest.Mock).mockImplementation(() => planned);
+    (dbGetFoodLogEntries as jest.Mock).mockReturnValue([]);
+    useSettingsStore.getState.mockReturnValue(settings());
+    useTaskStore.setState({ tasks: [] });
+  });
+
+  afterEach(() => { jest.useRealTimers(); });
+
+  it('asks about a meal from yesterday with nothing logged against it', () => {
+    useTaskStore.getState().checkMealLogNudgeTasks();
+
+    expect(nudgeRows().map(t => t.generatedSourceId)).toEqual(['m-dinner']);
+  });
+
+  it('writes nothing while off', () => {
+    useSettingsStore.getState.mockReturnValue(settings({ mealLogNudgeTasks: false }));
+
+    useTaskStore.getState().checkMealLogNudgeTasks();
+
+    expect(nudgeRows()).toHaveLength(0);
+  });
+
+  // Off stops the asking, not the tidying up: a row for a meal since deleted
+  // used to stay on Today until somebody removed it by hand.
+  it.each([
+    ['the setting', { mealLogNudgeTasks: false }],
+    ['the whole grocery area', { kitchenEnabled: false }],
+  ])('still clears a row whose meal is gone with %s off', (_, off) => {
+    useTaskStore.getState().checkMealLogNudgeTasks();
+    expect(nudgeRows()).toHaveLength(1);
+
+    planned = [];
+    useSettingsStore.getState.mockReturnValue(settings(off));
+    useTaskStore.getState().checkMealLogNudgeTasks();
+
+    expect(nudgeRows()).toHaveLength(0);
   });
 });
 
@@ -7134,6 +8154,28 @@ describe('skipNextRecurrence', () => {
     expect(new Date(updated.reminderTime!).toISOString()).toBe(new Date(2025, 5, 18, 20, 0, 0).toISOString());
   });
 
+  it('recomputes a visibility-tracking reminder against the skipped-to occurrence, via getVisibleAt', () => {
+    const task = makeTask({
+      id: 't1',
+      recurrenceType: 'daily',
+      recurrenceInterval: 1,
+      dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
+      reminderTime: new Date(2025, 5, 10, 18, 0, 0).toISOString(),
+      reminderTracksVisibility: true,
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().skipNextRecurrence('t1');
+    const updated = useTaskStore.getState().tasks[0];
+    expect(updated.reminderTracksVisibility).toBe(true);
+    expect(new Date(updated.dueDate!).toDateString()).toBe('Wed Jun 11 2025');
+    const reminder = new Date(updated.reminderTime!);
+    // The skipped-to occurrence's own day is what getVisibleAt resolves
+    // against — not an N-day offset kept from the row it was skipped from,
+    // which is what would have fired here before.
+    expect(reminder.toDateString()).toBe('Wed Jun 11 2025');
+    expect(reminder.getHours()).toBe(0);
+  });
+
   it('advances only the chain position on a mid-chain step, leaving the schedule untouched', () => {
     const task = makeTask({
       id: 't1',
@@ -7184,6 +8226,33 @@ describe('skipNextRecurrence', () => {
     expect(new Date(updated.dueDate!).toDateString()).toBe('Wed Jun 11 2025');
     // Still not a skipped *cycle*, same split as completeTask.
     expect(updated.recurrenceCount).toBe(5);
+  });
+
+  it('recomputes a visibility-tracking reminder against a mid-chain step\'s own resulting date', () => {
+    const task = makeTask({
+      id: 't1',
+      recurrenceType: 'daily',
+      recurrenceInterval: 1,
+      dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
+      recurrenceCount: 5,
+      chainEnabled: true,
+      chainStepOnSchedule: true,
+      chainItems: [
+        { id: 'a', title: 'Step A', estimatedMinutes: null },
+        { id: 'b', title: 'Step B', estimatedMinutes: null },
+        { id: 'c', title: 'Step C', estimatedMinutes: null },
+      ],
+      chainIndex: 0, // not the last step
+      reminderTime: new Date(2025, 5, 10, 18, 0, 0).toISOString(),
+      reminderTracksVisibility: true,
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().skipNextRecurrence('t1');
+    const updated = useTaskStore.getState().tasks[0];
+    expect(new Date(updated.dueDate!).toDateString()).toBe('Wed Jun 11 2025');
+    const reminder = new Date(updated.reminderTime!);
+    expect(reminder.toDateString()).toBe('Wed Jun 11 2025');
+    expect(reminder.getHours()).toBe(0);
   });
 
   it('advances the schedule and wraps the chain back to 0 when skipping the last step', () => {
@@ -7401,7 +8470,7 @@ describe('markMissed', () => {
     expect(next.recurrenceCount).toBe(2);
   });
 
-  it('ends the chain attempt on the spot instead of advancing to the next step, and burns a cycle', () => {
+  it('advances to the next step on a mid-chain miss, same as completing it, and does not burn a cycle', () => {
     useTaskStore.setState({ tasks: [recurring({
       recurrenceCount: 5,
       chainEnabled: true,
@@ -7413,9 +8482,44 @@ describe('markMissed', () => {
     })] });
     useTaskStore.getState().markMissed('t1');
     const next = useTaskStore.getState().tasks.find(t => t.id !== 't1')!;
-    // A missed step is not a completed one — the successor starts the whole
-    // chain over, not partway through it, and the missed cycle counts against
-    // a bounded recurrence the same as a missed non-chain occurrence does.
+    // A missed step still walks forward into the next one — only a miss on
+    // the real last step ends the run, and mid-chain never consults the
+    // recurrence's own bookkeeping (recurrenceCount) either way.
+    expect(next.chainIndex).toBe(1);
+    expect(next.recurrenceCount).toBe(5);
+  });
+
+  it('ends the chain attempt and burns a cycle on a miss at the real last step', () => {
+    useTaskStore.setState({ tasks: [recurring({
+      recurrenceCount: 5,
+      chainEnabled: true,
+      chainItems: [
+        { id: 'a', title: 'Step A', estimatedMinutes: null },
+        { id: 'b', title: 'Step B', estimatedMinutes: null },
+      ],
+      chainIndex: 1,
+    })] });
+    useTaskStore.getState().markMissed('t1');
+    const next = useTaskStore.getState().tasks.find(t => t.id !== 't1')!;
+    expect(next.chainIndex).toBe(0);
+    expect(next.recurrenceCount).toBe(4);
+  });
+
+  it('ends the whole chain on a mid-chain miss when wholeChain is set, instead of advancing', () => {
+    useTaskStore.setState({ tasks: [recurring({
+      recurrenceCount: 5,
+      chainEnabled: true,
+      chainItems: [
+        { id: 'a', title: 'Step A', estimatedMinutes: null },
+        { id: 'b', title: 'Step B', estimatedMinutes: null },
+      ],
+      chainIndex: 0,
+    })] });
+    useTaskStore.getState().markMissed('t1', { wholeChain: true });
+    const next = useTaskStore.getState().tasks.find(t => t.id !== 't1')!;
+    // Treated as if this were the real last step: the chain wraps back to
+    // its first item and the recurrence's own bookkeeping applies, rather
+    // than spawning Step B with nothing behind it.
     expect(next.chainIndex).toBe(0);
     expect(next.recurrenceCount).toBe(4);
   });
@@ -8031,6 +9135,23 @@ function makeTemplateWithItemCategories(id: string, categories: (string | null)[
 }
 
 describe('renameCategory', () => {
+  const getSettingsMock = () =>
+    (jest.requireMock('../store/useSettingsStore') as { useSettingsStore: { getState: jest.Mock } }).useSettingsStore;
+
+  // Every setting a rename can rewrite, since tests earlier in the file leave
+  // narrower settings mocks behind.
+  const settings = () => ({
+    dayResetTime: '00:00',
+    newTaskDefaults: { category: null as string | null },
+    calendarEventCategory: null as string | null, healthCategory: null as string | null,
+    collapsedCategories: [] as string[], titleRules: [], reminderCaptures: [],
+    setCalendarEventCategory: jest.fn(), setHealthCategory: jest.fn(), setNewTaskDefaults: jest.fn(),
+    setTitleRules: jest.fn(), setReminderCaptures: jest.fn(), setCollapsedCategories: jest.fn(),
+  });
+  beforeEach(() => {
+    getSettingsMock().getState.mockReturnValue(settings());
+  });
+
   it('updates the category on every task that had the old name', () => {
     useTaskStore.setState({
       tasks: [
@@ -8088,6 +9209,54 @@ describe('renameCategory', () => {
     });
     useTaskStore.getState().renameCategory('Work', 'Job');
     expect(useTemplateStore.getState().templates[0].items[0].category).toBe('Work');
+  });
+
+  // Each of these kept the old name after a rename and so quietly stopped
+  // filing into anything real.
+  it('carries the rename into series defaults and follow-up drafts, and saves them', () => {
+    const { dbUpdateTask } = jest.requireMock('../db/database') as { dbUpdateTask: jest.Mock };
+    dbUpdateTask.mockClear();
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 't1', category: 'Home', seriesDefaults: { category: 'Work' } }),
+        makeTask({ id: 't2', category: 'Home', followUpTaskDraft: { category: 'Work' } as never }),
+        makeTask({ id: 't3', category: 'Work' }),
+      ],
+    });
+    useTaskStore.getState().renameCategory('Work', 'Job');
+    const byId = new Map(useTaskStore.getState().tasks.map(t => [t.id, t]));
+    expect(byId.get('t1')?.seriesDefaults?.category).toBe('Job');
+    expect(byId.get('t2')?.followUpTaskDraft?.category).toBe('Job');
+    // t3's own column was renamed in SQL by the category store already.
+    expect(dbUpdateTask.mock.calls.map(c => c[0].id).sort()).toEqual(['t1', 't2']);
+  });
+
+  it('carries the rename into project defaults, saved views and the settings that name it', () => {
+    useProjectStore.setState({ projects: [{ id: 'p1', defaultTaskCategory: 'Work' } as never] });
+    const updateView = jest.fn();
+    useSavedViewStore.setState({
+      views: [{ id: 'v1', clauses: [{ kind: 'category', values: ['Work'] }] } as never],
+      updateView,
+    });
+    const s = {
+      ...settings(),
+      healthCategory: 'Work',
+      newTaskDefaults: { category: 'Work' },
+      titleRules: [{ id: 'r', category: 'Work' }],
+      reminderCaptures: [{ id: 'c', filing: { kind: 'category', category: 'Work' } }],
+    };
+    getSettingsMock().getState.mockReturnValue(s);
+
+    useTaskStore.getState().renameCategory('Work', 'Job');
+
+    expect(useProjectStore.getState().projects[0].defaultTaskCategory).toBe('Job');
+    expect(updateView).toHaveBeenCalledWith('v1', { clauses: [{ kind: 'category', values: ['Job'] }] });
+    expect(s.setHealthCategory).toHaveBeenCalledWith('Job');
+    expect(s.setNewTaskDefaults).toHaveBeenCalledWith({ category: 'Job' });
+    expect(s.setTitleRules).toHaveBeenCalledWith([{ id: 'r', category: 'Job' }]);
+    expect(s.setReminderCaptures).toHaveBeenCalledWith([{ id: 'c', filing: { kind: 'category', category: 'Job' } }]);
+    const { renameGeneratedCategorySettings } = jest.requireMock('../store/useCategoryStore') as { renameGeneratedCategorySettings: jest.Mock };
+    expect(renameGeneratedCategorySettings).toHaveBeenCalledWith('Work', 'Job');
   });
 });
 
@@ -9617,6 +10786,21 @@ describe('bulkSetWhen', () => {
     expect(useTaskStore.getState().tasks[0].pinned).toBe(true);
   });
 
+  it('keeps the grid anchor on a pull by default, and drops it when told to restart', () => {
+    const due = new Date(2025, 5, 10, 12).toISOString();
+    const daily = () => makeTask({ id: 'a', recurrenceType: 'daily', recurrenceInterval: 1, dueDate: due });
+
+    useTaskStore.setState({ tasks: [daily()] });
+    useTaskStore.getState().bulkSetWhen(['a'], new Date(2025, 5, 9, 12), []);
+    expect(useTaskStore.getState().tasks[0].recurrenceAnchorDate).toBe(due);
+
+    useTaskStore.setState({ tasks: [daily()] });
+    useTaskStore.getState().bulkSetWhen(['a'], new Date(2025, 5, 9, 12), [], { restartSchedules: true });
+    const restarted = useTaskStore.getState().tasks[0];
+    expect(restarted.recurrenceAnchorDate).toBeNull();
+    expect(new Date(restarted.dueDate!).toDateString()).toBe('Mon Jun 09 2025');
+  });
+
   it('leaves an unpinned task alone', () => {
     useTaskStore.setState({ tasks: [makeTask({ id: 'a', pinned: false })] });
     useTaskStore.getState().bulkSetWhen(['a'], new Date(2025, 5, 20), []);
@@ -9828,7 +11012,7 @@ describe('pinnedTasks', () => {
     const people = usePersonStore.getState().people;
     usePersonStore.setState({
       people: [{
-        id: 'p-1', name: 'Dustin', nickname: '', notes: '', sortOrder: 1,
+        id: 'p-1', name: 'Dustin', kind: 'individual', nickname: '', notes: '', sortOrder: 1,
         archived: false, archivedAt: null, createdAt: new Date().toISOString(),
         birthdayMonth: null, birthdayDay: null, birthYear: null,
         birthdayTaskOptOut: false, birthdayGiftTaskOptOut: false,
@@ -10006,6 +11190,24 @@ describe('sweepExpiredTasks', () => {
     useTaskStore.getState().sweepExpiredTasks();
     expect(useTaskStore.getState().tasks.map(t => t.id)).toEqual(['expired']);
     expect(dbBulkDeleteTasks).not.toHaveBeenCalled();
+  });
+
+  // An unattended delete isn't something the user did, so it must not be the
+  // thing their first shake of the session offers to undo.
+  it('does not arm shake-to-undo for the rows it deletes', () => {
+    settingsStoreMock().getState.mockReturnValue({
+      dayResetTime: '00:00',
+      autoCompleteProjectsOnDone: false,
+      autoRemoveExpiredTasks: 0,
+      vacationMode: false,
+    });
+    useTaskStore.setState({
+      lastAction: null,
+      tasks: [makeTask({ id: 'expired', windowStart: '08:00', windowEnd: '13:00' })],
+    });
+    useTaskStore.getState().sweepExpiredTasks();
+    expect(useTaskStore.getState().tasks).toHaveLength(0);
+    expect(useTaskStore.getState().lastAction).toBeNull();
   });
 
   it('deletes expired tasks when the setting is Immediately, leaving active ones', () => {
@@ -10374,6 +11576,43 @@ describe('timers', () => {
     useTaskStore.getState().dismissCompletionTimer('a');
     const task = useTaskStore.getState().tasks.find(t => t.id === 'a')!;
     expect(task.completionTimerStartedAt).toBeNull();
+  });
+
+  it('sweepExpiredCompletionTimers dismisses a countdown whose target has passed', () => {
+    const startedAt = new Date(Date.now() - 130 * 60000).toISOString(); // 130 minutes ago
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', completionTimerMinutes: 120, completionTimerStartedAt: startedAt })],
+    });
+    useTaskStore.getState().sweepExpiredCompletionTimers();
+    const task = useTaskStore.getState().tasks.find(t => t.id === 'a')!;
+    expect(task.completionTimerStartedAt).toBeNull();
+  });
+
+  it('sweepExpiredCompletionTimers leaves a countdown that has not reached its target yet', () => {
+    const startedAt = new Date(Date.now() - 10 * 60000).toISOString(); // 10 minutes ago
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', completionTimerMinutes: 120, completionTimerStartedAt: startedAt })],
+    });
+    useTaskStore.getState().sweepExpiredCompletionTimers();
+    const task = useTaskStore.getState().tasks.find(t => t.id === 'a')!;
+    expect(task.completionTimerStartedAt).toBe(startedAt);
+  });
+
+  it('sweepExpiredCompletionTimers leaves an archived task alone', () => {
+    const startedAt = new Date(Date.now() - 130 * 60000).toISOString();
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'a', completionTimerMinutes: 120, completionTimerStartedAt: startedAt, archived: true,
+      })],
+    });
+    useTaskStore.getState().sweepExpiredCompletionTimers();
+    const task = useTaskStore.getState().tasks.find(t => t.id === 'a')!;
+    expect(task.completionTimerStartedAt).toBe(startedAt);
+  });
+
+  it('sweepExpiredCompletionTimers is a no-op when nothing is running', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a' })] });
+    expect(() => useTaskStore.getState().sweepExpiredCompletionTimers()).not.toThrow();
   });
 
   // Timing a task exists to correct its estimate, so a measurement replaces
@@ -11045,6 +12284,13 @@ describe('addExistingToProject / removeFromProject', () => {
     expect(useTaskStore.getState().tasks.find(t => t.id === 'a')?.projectId).toBe('p1');
   });
 
+  it('writes nothing for a task already in that project', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1' })] });
+    const before = useTaskStore.getState().tasks;
+    useTaskStore.getState().addExistingToProject('a', 'p1');
+    expect(useTaskStore.getState().tasks).toBe(before);
+  });
+
   it('clears a task\'s project assignment', () => {
     useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1' })] });
     useTaskStore.getState().removeFromProject('a');
@@ -11097,6 +12343,37 @@ describe('unarchiveProject', () => {
 });
 
 // ─── completeProject / uncompleteProject ────────────────────────────────────
+
+describe('startFreshFromProject', () => {
+  it('copies the tasks and sections into a new project, open and undated, leaving the original alone', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1', title: 'Birthday party', deadline: '2026-06-15T12:00:00.000Z' })] });
+    useTaskGroupStore.setState({
+      groups: [{ id: 'food', title: 'Food', notes: '', tags: [], category: null, sortOrder: 5, collapsed: false, onToday: false, projectId: 'p1' }],
+      initialized: true,
+    });
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', title: 'Book the venue', projectId: 'p1', completed: true, completedAt: '2026-06-01T09:00:00.000Z', dueDate: '2026-06-01T12:00:00.000Z', sortOrder: 1 }),
+        makeTask({ id: 'b', title: 'Order cake', projectId: 'p1', groupId: 'food', sortOrder: 1 }),
+      ],
+      lastAction: null,
+    });
+
+    const copy = useTaskStore.getState().startFreshFromProject('p1')!;
+
+    expect(copy.id).not.toBe('p1');
+    expect(copy.title).toBe('Birthday party');
+    expect(copy.deadline).toBeNull();
+    const copied = useTaskStore.getState().tasks.filter(t => t.projectId === copy.id);
+    expect(copied.map(t => t.title).sort()).toEqual(['Book the venue', 'Order cake']);
+    expect(copied.every(t => !t.completed && t.dueDate === null)).toBe(true);
+    const section = useTaskGroupStore.getState().groups.find(g => g.projectId === copy.id);
+    expect(section?.title).toBe('Food');
+    expect(copied.find(t => t.title === 'Order cake')?.groupId).toBe(section?.id);
+    // The original is untouched.
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'a')?.completed).toBe(true);
+  });
+});
 
 describe('completeProject', () => {
   it('completes the project and is undoable', () => {
@@ -11193,6 +12470,16 @@ describe('completeTask auto-completing a finished project', () => {
     expect(project?.archived).toBe(false);
   });
 
+  // An ongoing project has no finish line; checking off the last line of a
+  // running list must not file it under Completed.
+  it('never completes an ongoing project', () => {
+    useSettingsStore.getState.mockReturnValue({ dayResetTime: '00:00', autoCompleteProjectsOnDone: true });
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1', ongoing: true })] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1' })] });
+    useTaskStore.getState().completeTask('a');
+    expect(useProjectStore.getState().projects.find(p => p.id === 'p1')?.completed).toBe(false);
+  });
+
   it('does not complete the project while other tasks in it are still incomplete', () => {
     useSettingsStore.getState.mockReturnValue({ dayResetTime: '00:00', autoCompleteProjectsOnDone: true });
     useProjectStore.setState({ projects: [makeProject({ id: 'p1' })] });
@@ -11270,6 +12557,150 @@ describe('quota tasks', () => {
 
   afterEach(() => {
     jest.useRealTimers();
+  });
+
+  // ---- rotations: a quota whose units have names (see utils/rotation.ts) ----
+
+  const LANGS = [
+    { id: 'es', title: 'Spanish', linkUrl: null },
+    { id: 'fr', title: 'French', linkUrl: null },
+    { id: 'de', title: 'German', linkUrl: null },
+  ];
+
+  const rotation = (overrides: Partial<Task> = {}) =>
+    makeTask({
+      id: 'pods',
+      title: 'Language podcast',
+      rotationEnabled: true,
+      rotationItems: LANGS,
+      // Derived from the set's size in the editor; stated here because the
+      // fixture bypasses it.
+      targetCount: LANGS.length,
+      progressCount: 0,
+      quotaPeriod: 'week',
+      recurrenceType: 'weekly',
+      dueDate: new Date(2025, 5, 10, 12, 0, 0).toISOString(),
+      ...overrides,
+    });
+
+  const pods = () => useTaskStore.getState().tasks.find(t => t.id === 'pods')!;
+
+  describe('logRotationUnit', () => {
+    it('records which member was done, not just that something was', () => {
+      useTaskStore.setState({ tasks: [rotation()] });
+      useTaskStore.getState().logRotationUnit('pods', 'fr');
+
+      expect(pods().progressCount).toBe(1);
+      expect(pods().rotationLog.map(e => e.itemId)).toEqual(['fr']);
+      expect(pods().rotationLastDone.fr).toBeTruthy();
+      expect(pods().completed).toBe(false);
+    });
+
+    it('stamps the period so the ledger can be told apart from a closed one', () => {
+      useTaskStore.setState({ tasks: [rotation()] });
+      useTaskStore.getState().logRotationUnit('pods', 'fr');
+      expect(pods().rotationPeriodStart).toBeTruthy();
+    });
+
+    it('logs a repeat without counting it toward the week', () => {
+      useTaskStore.setState({ tasks: [rotation()] });
+      const store = useTaskStore.getState();
+      store.logRotationUnit('pods', 'es');
+      store.logRotationUnit('pods', 'es');
+
+      // Two real listens, one language covered — the week is about coverage.
+      expect(pods().rotationLog).toHaveLength(2);
+      expect(pods().progressCount).toBe(1);
+      expect(pods().completed).toBe(false);
+    });
+
+    it('completes only once every member has been covered', () => {
+      useTaskStore.setState({ tasks: [rotation()] });
+      const store = useTaskStore.getState();
+      store.logRotationUnit('pods', 'es');
+      store.logRotationUnit('pods', 'fr');
+      expect(pods().completed).toBe(false);
+
+      store.logRotationUnit('pods', 'de');
+      expect(pods().completed).toBe(true);
+    });
+
+    it('closes the period over the whole ledger, including the pick that closed it', () => {
+      useTaskStore.setState({ tasks: [rotation()] });
+      const store = useTaskStore.getState();
+      store.logRotationUnit('pods', 'es');
+      store.logRotationUnit('pods', 'fr');
+      store.logRotationUnit('pods', 'de');
+
+      // The record would be one short if the completion ran before the write.
+      expect(pods().rotationLog.map(e => e.itemId)).toEqual(['es', 'fr', 'de']);
+      expect(pods().progressCount).toBe(LANGS.length);
+    });
+
+    it('spawns next week\'s occurrence with a clean ledger but the memory intact', () => {
+      useTaskStore.setState({ tasks: [rotation()] });
+      const store = useTaskStore.getState();
+      LANGS.forEach(l => store.logRotationUnit('pods', l.id));
+
+      const next = useTaskStore.getState().tasks.find(t => t.id !== 'pods')!;
+      expect(next.rotationLog).toEqual([]);
+      expect(next.rotationPeriodStart).toBeNull();
+      expect(next.progressCount).toBe(0);
+      // Configuration and history both carry.
+      expect(next.rotationItems.map(r => r.id)).toEqual(['es', 'fr', 'de']);
+      expect(Object.keys(next.rotationLastDone).sort()).toEqual(['de', 'es', 'fr']);
+    });
+
+    it('refuses a member the set does not hold', () => {
+      useTaskStore.setState({ tasks: [rotation()] });
+      useTaskStore.getState().logRotationUnit('pods', 'nope');
+      expect(pods().rotationLog).toEqual([]);
+      expect(pods().progressCount).toBe(0);
+    });
+
+    it('ignores a task that is not a rotation', () => {
+      useTaskStore.setState({ tasks: [makeTask({ id: 'plain' })] });
+      useTaskStore.getState().logRotationUnit('plain', 'es');
+      expect(useTaskStore.getState().tasks[0].progressCount).toBe(0);
+    });
+
+    it('is undoable one pick at a time', () => {
+      useTaskStore.setState({ tasks: [rotation()] });
+      const store = useTaskStore.getState();
+      store.logRotationUnit('pods', 'es');
+      store.logRotationUnit('pods', 'fr');
+
+      useTaskStore.getState().lastAction!.undo();
+      expect(pods().rotationLog.map(e => e.itemId)).toEqual(['es']);
+      expect(pods().progressCount).toBe(1);
+    });
+
+    it('undoing a repeat leaves the member covered', () => {
+      useTaskStore.setState({ tasks: [rotation()] });
+      const store = useTaskStore.getState();
+      store.logRotationUnit('pods', 'es');
+      store.logRotationUnit('pods', 'es');
+      expect(pods().progressCount).toBe(1);
+
+      useTaskStore.getState().unlogRotationUnit('pods');
+      // The first Spanish still counts, so the count must not fall.
+      expect(pods().rotationLog.map(e => e.itemId)).toEqual(['es']);
+      expect(pods().progressCount).toBe(1);
+    });
+  });
+
+  describe('recordRotationPick', () => {
+    it('writes the pick without completing, and says whether that covered the set', () => {
+      useTaskStore.setState({ tasks: [rotation()] });
+      const store = useTaskStore.getState();
+      expect(store.recordRotationPick('pods', 'es')).toBe(false);
+      expect(store.recordRotationPick('pods', 'fr')).toBe(false);
+      // The closing pick is recorded and reported, but nothing is completed —
+      // that is the row's job, so it can run the meter's own animation.
+      expect(store.recordRotationPick('pods', 'de')).toBe(true);
+      expect(pods().completed).toBe(false);
+      expect(pods().progressCount).toBe(LANGS.length);
+    });
   });
 
   describe('logQuotaUnit', () => {
@@ -11396,6 +12827,251 @@ describe('quota tasks', () => {
 
       store.unlogQuotaUnit('water');
       expect(useTaskStore.getState().tasks[0].progressCount).toBe(0);
+    });
+
+    it('takes the unit back off the food log too, for a task that logs a nutrient', () => {
+      useTaskStore.setState({
+        tasks: [quota({ progressCount: 4, logHealthMetric: 'waterMl', logHealthAmount: 250 })],
+      });
+      useTaskStore.getState().unlogQuotaUnit('water');
+      expect(unlogTaskNutrientFromFoodLog).toHaveBeenCalledWith('waterMl', 250, expect.any(Date));
+    });
+
+    it('does not touch the food log for a plain quota task', () => {
+      useTaskStore.setState({ tasks: [quota({ progressCount: 4 })] });
+      useTaskStore.getState().unlogQuotaUnit('water');
+      expect(unlogTaskNutrientFromFoodLog).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('syncWaterQuotaTasks', () => {
+    // A day-scoped water quota, matching the shape `quota()` builds — no
+    // allowOvershoot, no quotaIntervalMinutes, quotaPeriod defaulting to 'day'.
+    const waterQuota = (overrides: Partial<Task> = {}) =>
+      quota({ logHealthMetric: 'waterMl', logHealthAmount: 250, ...overrides });
+
+    const panel = (waterMl: number): FoodNutrition => ({
+      basis: 'perServing',
+      servingGrams: null,
+      servingText: null,
+      amounts: { waterMl },
+      source: 'manual',
+      sourceId: null,
+      portions: [],
+      recordedAt: new Date().toISOString(),
+    });
+
+    const waterEntry = (totalMl: number): FoodLogEntry => ({
+      id: 'w1',
+      dayKey: dayKeyOf(getCurrentDayStart()),
+      atISO: new Date().toISOString(),
+      slot: null,
+      label: 'Water',
+      recipeId: null,
+      itemId: null,
+      productId: null,
+      mealPlanEntryId: null,
+      quantity: `${totalMl} ml`,
+      grams: null,
+      nutrition: panel(totalMl),
+      healthSampleIds: [],
+      sortOrder: 0,
+      createdAt: new Date().toISOString(),
+    });
+
+    afterEach(() => {
+      (dbGetFoodLogEntries as jest.Mock).mockReturnValue([]);
+    });
+
+    it('catches progressCount up to what the food log actually says', () => {
+      useTaskStore.setState({ tasks: [waterQuota({ progressCount: 1 })] });
+      (dbGetFoodLogEntries as jest.Mock).mockReturnValue([waterEntry(1000)]); // 4 glasses
+      useTaskStore.getState().syncWaterQuotaTasks();
+      expect(useTaskStore.getState().tasks[0].progressCount).toBe(4);
+      expect(useTaskStore.getState().tasks[0].completed).toBe(false);
+    });
+
+    it('completes the task once the log alone reaches the target, without a tap', () => {
+      useTaskStore.setState({ tasks: [waterQuota({ progressCount: 6 })] });
+      (dbGetFoodLogEntries as jest.Mock).mockReturnValue([waterEntry(2000)]); // 8 glasses, the target
+      useTaskStore.getState().syncWaterQuotaTasks();
+      const task = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
+      expect(task.completed).toBe(true);
+      expect(task.progressCount).toBe(8);
+    });
+
+    it('does not double-write the food log when the log itself completed the task', () => {
+      useTaskStore.setState({ tasks: [waterQuota({ progressCount: 6 })] });
+      (dbGetFoodLogEntries as jest.Mock).mockReturnValue([waterEntry(2000)]);
+      useTaskStore.getState().syncWaterQuotaTasks();
+      expect(logTaskHealthValue).not.toHaveBeenCalled();
+    });
+
+    it('is a no-op when the log already matches progressCount', () => {
+      useTaskStore.setState({ tasks: [waterQuota({ progressCount: 4 })] });
+      (dbGetFoodLogEntries as jest.Mock).mockReturnValue([waterEntry(1000)]);
+      useTaskStore.getState().syncWaterQuotaTasks();
+      expect(dbUpdateTask).not.toHaveBeenCalled();
+    });
+
+    it('leaves an allowOvershoot water task to log purely from taps', () => {
+      useTaskStore.setState({ tasks: [waterQuota({ progressCount: 1, allowOvershoot: true })] });
+      (dbGetFoodLogEntries as jest.Mock).mockReturnValue([waterEntry(3000)]); // 12 glasses, past the target
+      useTaskStore.getState().syncWaterQuotaTasks();
+      const task = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
+      expect(task.progressCount).toBe(1);
+      expect(task.completed).toBe(false);
+    });
+
+    it('leaves a weekly water target alone — its span is not "today\'s food log"', () => {
+      useTaskStore.setState({ tasks: [waterQuota({ progressCount: 1, quotaPeriod: 'week' })] });
+      (dbGetFoodLogEntries as jest.Mock).mockReturnValue([waterEntry(2000)]);
+      useTaskStore.getState().syncWaterQuotaTasks();
+      expect(useTaskStore.getState().tasks[0].progressCount).toBe(1);
+    });
+
+    it('leaves a task deferred to a later day alone', () => {
+      const tomorrow = new Date(2025, 5, 11, 12, 0, 0).toISOString();
+      useTaskStore.setState({
+        tasks: [waterQuota({ progressCount: 1, dueDate: tomorrow, deferUntil: tomorrow })],
+      });
+      (dbGetFoodLogEntries as jest.Mock).mockReturnValue([waterEntry(2000)]);
+      useTaskStore.getState().syncWaterQuotaTasks();
+      expect(useTaskStore.getState().tasks[0].progressCount).toBe(1);
+    });
+
+    it('ignores a plain quota task with no logHealthMetric', () => {
+      useTaskStore.setState({ tasks: [quota({ progressCount: 1 })] });
+      (dbGetFoodLogEntries as jest.Mock).mockReturnValue([waterEntry(2000)]);
+      useTaskStore.getState().syncWaterQuotaTasks();
+      expect(useTaskStore.getState().tasks[0].progressCount).toBe(1);
+    });
+
+    describe('following the water target', () => {
+      const getState = useSettingsStore.getState as unknown as jest.Mock;
+      // The shared reset above re-arms the mock before each test, so there is
+      // nothing to put back for settings.
+      const withSettings = (extra: Record<string, unknown>) =>
+        getState.mockReturnValue({ ...getState(), ...extra });
+      const setExercise = (exerciseMinutes: number | null) =>
+        useHealthStore.setState({
+          today: { dayKey: dayKeyOf(getCurrentDayStart()), exerciseMinutes } as never,
+        });
+      const target = () => useTaskStore.getState().tasks.find(t => t.id === 'water')!.targetCount;
+
+      afterEach(() => {
+        useHealthStore.setState({ today: null });
+      });
+
+      it('counts the food log\'s target in the task\'s own unit', () => {
+        withSettings({ nutritionTargets: { waterMl: 2500 } });
+        useTaskStore.setState({ tasks: [waterQuota({ followWaterTarget: true })] });
+        useTaskStore.getState().syncWaterQuotaTasks();
+        expect(target()).toBe(10);
+      });
+
+      it('adds the exercise boost once today\'s minutes clear its threshold', () => {
+        withSettings({
+          nutritionTargets: { waterMl: 2000 },
+          waterExerciseBoost: { minExerciseMinutes: 30, boostMl: 500 },
+        });
+        setExercise(45);
+        useTaskStore.setState({ tasks: [waterQuota({ followWaterTarget: true })] });
+        useTaskStore.getState().syncWaterQuotaTasks();
+        expect(target()).toBe(10);
+      });
+
+      it('keeps the boosted count while no reading for today has arrived', () => {
+        withSettings({
+          nutritionTargets: { waterMl: 2000 },
+          waterExerciseBoost: { minExerciseMinutes: 30, boostMl: 500 },
+        });
+        useTaskStore.setState({ tasks: [waterQuota({ followWaterTarget: true, targetCount: 10, progressCount: 8 })] });
+        (dbGetFoodLogEntries as jest.Mock).mockReturnValue([waterEntry(2000)]);
+        useTaskStore.getState().syncWaterQuotaTasks();
+        // Recomputed against the base target, this would be 8 of 8 and complete.
+        const task = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
+        expect(task.targetCount).toBe(10);
+        expect(task.completed).toBe(false);
+      });
+
+      it('judges progress against the new count, not the old one', () => {
+        withSettings({ nutritionTargets: { waterMl: 2500 } });
+        useTaskStore.setState({ tasks: [waterQuota({ followWaterTarget: true, progressCount: 7 })] });
+        (dbGetFoodLogEntries as jest.Mock).mockReturnValue([waterEntry(2000)]); // 8 glasses
+        useTaskStore.getState().syncWaterQuotaTasks();
+        const task = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
+        expect(task.targetCount).toBe(10);
+        expect(task.progressCount).toBe(8);
+        expect(task.completed).toBe(false);
+      });
+
+      describe('the shortfall task', () => {
+        const finished = () => waterQuota({
+          followWaterTarget: true, completed: true, progressCount: 8,
+          completedAt: new Date().toISOString(),
+        });
+        const shortfallTasks = () =>
+          useTaskStore.getState().tasks.filter(t => t.generatedKind === 'waterShortfall');
+        const on = {
+          waterShortfallTasks: true, waterShortfallTaskCategory: 'Health', waterUnit: 'ml', vacationMode: false,
+        };
+
+        it('writes one for the water still owed once the followed task is done', () => {
+          withSettings({ ...on, nutritionTargets: { waterMl: 2500 } });
+          useTaskStore.setState({ tasks: [finished()] });
+          (dbGetFoodLogEntries as jest.Mock).mockReturnValue([waterEntry(2000)]);
+          useTaskStore.getState().syncWaterQuotaTasks();
+          expect(shortfallTasks()).toHaveLength(1);
+          expect(shortfallTasks()[0].title).toBe('Drink 500 ml more water');
+          // Completing it logs the water it asks for.
+          expect(shortfallTasks()[0].logHealthMetric).toBe('waterMl');
+          expect(shortfallTasks()[0].logHealthAmount).toBe(500);
+        });
+
+        it('writes nothing while the setting is off', () => {
+          withSettings({ ...on, waterShortfallTasks: false, nutritionTargets: { waterMl: 2500 } });
+          useTaskStore.setState({ tasks: [finished()] });
+          (dbGetFoodLogEntries as jest.Mock).mockReturnValue([waterEntry(2000)]);
+          useTaskStore.getState().syncWaterQuotaTasks();
+          expect(shortfallTasks()).toHaveLength(0);
+        });
+
+        it('writes nothing when today\'s total already meets the target', () => {
+          withSettings({ ...on, nutritionTargets: { waterMl: 2000 } });
+          useTaskStore.setState({ tasks: [finished()] });
+          (dbGetFoodLogEntries as jest.Mock).mockReturnValue([waterEntry(2000)]);
+          useTaskStore.getState().syncWaterQuotaTasks();
+          expect(shortfallTasks()).toHaveLength(0);
+        });
+
+        it('writes nothing while the followed task is still open', () => {
+          withSettings({ ...on, nutritionTargets: { waterMl: 2500 } });
+          useTaskStore.setState({ tasks: [waterQuota({ followWaterTarget: true, progressCount: 8 })] });
+          (dbGetFoodLogEntries as jest.Mock).mockReturnValue([waterEntry(2000)]);
+          useTaskStore.getState().syncWaterQuotaTasks();
+          expect(shortfallTasks()).toHaveLength(0);
+        });
+
+        it('does not write one back the day it was deleted', () => {
+          withSettings({
+            ...on,
+            nutritionTargets: { waterMl: 2500 },
+            waterShortfallDeclinedDayKey: dayKeyOf(getCurrentDayStart()),
+          });
+          useTaskStore.setState({ tasks: [finished()] });
+          (dbGetFoodLogEntries as jest.Mock).mockReturnValue([waterEntry(2000)]);
+          useTaskStore.getState().syncWaterQuotaTasks();
+          expect(shortfallTasks()).toHaveLength(0);
+        });
+      });
+
+      it('leaves the count alone when the task does not follow', () => {
+        withSettings({ nutritionTargets: { waterMl: 2500 } });
+        useTaskStore.setState({ tasks: [waterQuota()] });
+        useTaskStore.getState().syncWaterQuotaTasks();
+        expect(target()).toBe(8);
+      });
     });
   });
 
@@ -11793,6 +13469,27 @@ describe('quota tasks', () => {
       expect(useTaskStore.getState().tasks[0].completed).toBe(false);
     });
 
+    // The bug this guards: pushing a quota task out with deferUntil left its
+    // stored dueDate in the past, so the next rollover read it as an overdue
+    // shortfall — breaking the streak and spawning a duplicate for today even
+    // though the user had just moved this occurrence later.
+    it('leaves a quota task alone once it has been deferred to a future day', () => {
+      useTaskStore.setState({
+        tasks: [quota({
+          progressCount: 2,
+          streakCount: 12,
+          dueDate: new Date(2025, 5, 9, 12, 0, 0).toISOString(),
+          deferUntil: new Date(2025, 5, 12, 0, 0, 0).toISOString(),
+        })],
+      });
+      useTaskStore.getState().rolloverQuotas();
+
+      expect(useTaskStore.getState().tasks).toHaveLength(1);
+      const task = useTaskStore.getState().tasks[0];
+      expect(task.completed).toBe(false);
+      expect(task.streakCount).toBe(12);
+    });
+
     it('leaves a one-off quota with no repeat overdue instead of re-spawning it', () => {
       useTaskStore.setState({
         tasks: [quota({
@@ -11839,7 +13536,7 @@ describe('quota tasks', () => {
           allowOvershoot: true,
           quotaIntervalMinutes: null,
           quotaReminders: false,
-          quotaStartedAt: null, quotaAlwaysVisible: false,
+          quotaStartedAt: null, quotaAlwaysVisible: false, followWaterTarget: false,
           progressCount: 5,
           dueDate: new Date(2025, 5, 9, 12, 0, 0).toISOString(),
         })],
@@ -11926,80 +13623,75 @@ describe('quota tasks', () => {
   });
 
   describe('reanchorWallClockReminders', () => {
-    // A Date constructed with local params picks up process.env.TZ changed
-    // just before construction (verified in dateUtils.test.ts) — so a
-    // "device moved timezones" scenario is: capture a reminder's offset
-    // under one TZ, then switch TZ before calling the action, standing in
-    // for the device's clock having actually moved. Saved/restored per test
-    // so it can't leak into other test files sharing this worker.
-    let originalTz: string | undefined;
-
-    beforeEach(() => {
-      originalTz = process.env.TZ;
-    });
-
-    afterEach(() => {
-      if (originalTz === undefined) delete process.env.TZ;
-      else process.env.TZ = originalTz;
+    // A reminder set in another zone is just data: the instant it names plus
+    // the offset in force there, which is all the action reads. So the move is
+    // built as that pair rather than by switching process.env.TZ mid-test, which
+    // Jest ignores (it left every test here passing without anything moving).
+    // `elsewhere` is Tokyo, or New York if the suite itself runs in Tokyo, so
+    // the stored offset never matches the zone the suite runs in.
+    const localNine = new Date(2026, 0, 15, 9, 0, 0);
+    const elsewhere = localNine.getTimezoneOffset() === -540 ? 300 : -540;
+    /** 09:00 on Jan 15 as set on a device whose offset was `offset`. */
+    const nineAmSetAt = (offset: number) => ({
+      reminderTime: new Date(Date.UTC(2026, 0, 15, 9, 0, 0) + offset * 60_000).toISOString(),
+      reminderUtcOffsetMinutes: offset,
     });
 
     it('moves a wallClock reminder to the new zone\'s equivalent local time when the stored offset no longer matches', () => {
-      process.env.TZ = 'America/New_York';
-      const nineAm = new Date(2026, 0, 15, 9, 0, 0);
-      const capturedOffset = nineAm.getTimezoneOffset();
-
-      process.env.TZ = 'Asia/Tokyo';
+      const captured = nineAmSetAt(elsewhere);
       useTaskStore.setState({
-        tasks: [makeTask({
-          id: 'reminder-wallclock',
-          reminderTimeAnchor: 'wallClock',
-          reminderTime: nineAm.toISOString(),
-          reminderUtcOffsetMinutes: capturedOffset,
-        })],
+        tasks: [makeTask({ id: 'reminder-wallclock', reminderTimeAnchor: 'wallClock', ...captured })],
       });
 
       useTaskStore.getState().reanchorWallClockReminders();
 
       const updated = useTaskStore.getState().tasks.find(t => t.id === 'reminder-wallclock')!;
       const reminder = new Date(updated.reminderTime!);
+      expect(updated.reminderTime).not.toBe(captured.reminderTime);
+      expect(reminder.getDate()).toBe(15);
       expect(reminder.getHours()).toBe(9);
       expect(reminder.getMinutes()).toBe(0);
-      expect(updated.reminderUtcOffsetMinutes).toBe(new Date().getTimezoneOffset());
+      expect(updated.reminderUtcOffsetMinutes).toBe(reminder.getTimezoneOffset());
+    });
+
+    it('settles after one move, even when the reminder sits across a DST change from today', () => {
+      // Only discriminating in a zone with DST whose reminder date and today
+      // fall on opposite sides of it (npm run test:tz covers one): the pass
+      // used to stamp today's offset, which the next pass read as another zone
+      // move, shifting the reminder an hour on every launch.
+      useTaskStore.setState({
+        tasks: [makeTask({ id: 'reminder-dst', reminderTimeAnchor: 'wallClock', ...nineAmSetAt(elsewhere) })],
+      });
+
+      useTaskStore.getState().reanchorWallClockReminders();
+      const moved = useTaskStore.getState().tasks.find(t => t.id === 'reminder-dst')!;
+      expect(moved.reminderUtcOffsetMinutes).toBe(new Date(moved.reminderTime!).getTimezoneOffset());
+
+      useTaskStore.getState().reanchorWallClockReminders();
+      const again = useTaskStore.getState().tasks.find(t => t.id === 'reminder-dst')!;
+      expect(again.reminderTime).toBe(moved.reminderTime);
     });
 
     it('leaves a fixed-anchor reminder untouched even with an offset mismatch', () => {
-      process.env.TZ = 'America/New_York';
-      const nineAm = new Date(2026, 0, 15, 9, 0, 0);
-      const capturedOffset = nineAm.getTimezoneOffset();
-      const originalReminderTime = nineAm.toISOString();
-
-      process.env.TZ = 'Asia/Tokyo';
+      const captured = nineAmSetAt(elsewhere);
       useTaskStore.setState({
-        tasks: [makeTask({
-          id: 'reminder-fixed',
-          reminderTimeAnchor: 'fixed',
-          reminderTime: originalReminderTime,
-          reminderUtcOffsetMinutes: capturedOffset,
-        })],
+        tasks: [makeTask({ id: 'reminder-fixed', reminderTimeAnchor: 'fixed', ...captured })],
       });
 
       useTaskStore.getState().reanchorWallClockReminders();
 
       const unchanged = useTaskStore.getState().tasks.find(t => t.id === 'reminder-fixed')!;
-      expect(unchanged.reminderTime).toBe(originalReminderTime);
-      expect(unchanged.reminderUtcOffsetMinutes).toBe(capturedOffset);
+      expect(unchanged.reminderTime).toBe(captured.reminderTime);
+      expect(unchanged.reminderUtcOffsetMinutes).toBe(elsewhere);
     });
 
     it('leaves a task with no captured offset (a pre-migration row) untouched, without crashing', () => {
-      process.env.TZ = 'America/New_York';
-      const originalReminderTime = new Date(2026, 0, 15, 9, 0, 0).toISOString();
-
-      process.env.TZ = 'Asia/Tokyo';
+      const { reminderTime } = nineAmSetAt(elsewhere);
       useTaskStore.setState({
         tasks: [makeTask({
           id: 'reminder-legacy',
           reminderTimeAnchor: 'wallClock',
-          reminderTime: originalReminderTime,
+          reminderTime,
           reminderUtcOffsetMinutes: null,
         })],
       });
@@ -12007,66 +13699,87 @@ describe('quota tasks', () => {
       expect(() => useTaskStore.getState().reanchorWallClockReminders()).not.toThrow();
 
       const unchanged = useTaskStore.getState().tasks.find(t => t.id === 'reminder-legacy')!;
-      expect(unchanged.reminderTime).toBe(originalReminderTime);
+      expect(unchanged.reminderTime).toBe(reminderTime);
       expect(unchanged.reminderUtcOffsetMinutes).toBeNull();
     });
 
     it('leaves a completed task\'s and an archived task\'s reminders untouched', () => {
-      process.env.TZ = 'America/New_York';
-      const nineAm = new Date(2026, 0, 15, 9, 0, 0);
-      const capturedOffset = nineAm.getTimezoneOffset();
-      const originalReminderTime = nineAm.toISOString();
-
-      process.env.TZ = 'Asia/Tokyo';
+      const captured = nineAmSetAt(elsewhere);
       useTaskStore.setState({
         tasks: [
-          makeTask({
-            id: 'reminder-completed',
-            completed: true,
-            reminderTimeAnchor: 'wallClock',
-            reminderTime: originalReminderTime,
-            reminderUtcOffsetMinutes: capturedOffset,
-          }),
-          makeTask({
-            id: 'reminder-archived',
-            archived: true,
-            reminderTimeAnchor: 'wallClock',
-            reminderTime: originalReminderTime,
-            reminderUtcOffsetMinutes: capturedOffset,
-          }),
+          makeTask({ id: 'reminder-completed', completed: true, reminderTimeAnchor: 'wallClock', ...captured }),
+          makeTask({ id: 'reminder-archived', archived: true, reminderTimeAnchor: 'wallClock', ...captured }),
         ],
       });
 
       useTaskStore.getState().reanchorWallClockReminders();
 
       const tasks = useTaskStore.getState().tasks;
-      expect(tasks.find(t => t.id === 'reminder-completed')!.reminderTime).toBe(originalReminderTime);
-      expect(tasks.find(t => t.id === 'reminder-archived')!.reminderTime).toBe(originalReminderTime);
+      expect(tasks.find(t => t.id === 'reminder-completed')!.reminderTime).toBe(captured.reminderTime);
+      expect(tasks.find(t => t.id === 'reminder-archived')!.reminderTime).toBe(captured.reminderTime);
     });
 
     it('is idempotent: calling it twice with no timezone change in between makes no further change', () => {
-      process.env.TZ = 'America/New_York';
-      const nineAm = new Date(2026, 0, 15, 9, 0, 0);
-      const capturedOffset = nineAm.getTimezoneOffset();
-
-      process.env.TZ = 'Asia/Tokyo';
+      const captured = nineAmSetAt(elsewhere);
       useTaskStore.setState({
-        tasks: [makeTask({
-          id: 'reminder-idempotent',
-          reminderTimeAnchor: 'wallClock',
-          reminderTime: nineAm.toISOString(),
-          reminderUtcOffsetMinutes: capturedOffset,
-        })],
+        tasks: [makeTask({ id: 'reminder-idempotent', reminderTimeAnchor: 'wallClock', ...captured })],
       });
 
       useTaskStore.getState().reanchorWallClockReminders();
       const afterFirst = useTaskStore.getState().tasks.find(t => t.id === 'reminder-idempotent')!;
+      expect(afterFirst.reminderTime).not.toBe(captured.reminderTime);
 
       useTaskStore.getState().reanchorWallClockReminders();
       const afterSecond = useTaskStore.getState().tasks.find(t => t.id === 'reminder-idempotent')!;
 
       expect(afterSecond.reminderTime).toBe(afterFirst.reminderTime);
       expect(afterSecond.reminderUtcOffsetMinutes).toBe(afterFirst.reminderUtcOffsetMinutes);
+    });
+
+    it('recomputes a visibility-tracking reminder whenever getVisibleAt\'s own answer has moved on, unlike a wall-clock reminder which only reacts to a timezone change', () => {
+      jest.useFakeTimers();
+      jest.setSystemTime(new Date(2026, 0, 10, 9, 0, 0)); // Jan 10, 9am
+      useTaskStore.setState({
+        tasks: [makeTask({
+          id: 'reminder-visibility',
+          deferUntil: new Date(2026, 0, 12, 15, 0, 0).toISOString(), // Jan 12, 3pm
+          reminderTracksVisibility: true,
+          // Stale — left over from whatever getVisibleAt answered with before
+          // the defer date above was set.
+          reminderTime: new Date(2026, 0, 11, 0, 0, 0).toISOString(),
+        })],
+      });
+
+      useTaskStore.getState().reanchorWallClockReminders();
+
+      const updated = useTaskStore.getState().tasks.find(t => t.id === 'reminder-visibility')!;
+      // A plain (non-'hours') deferUntil resolves to its own day-start —
+      // getVisibleAt truncates the time-of-day away and only a timeSegments/
+      // windowStart entry would refine it further, same as isTaskVisible's
+      // own deferral gate.
+      expect(new Date(updated.reminderTime!).toISOString()).toBe(new Date(2026, 0, 12, 0, 0, 0).toISOString());
+      jest.useRealTimers();
+    });
+
+    it('leaves a completed task\'s visibility-tracking reminder untouched', () => {
+      jest.useFakeTimers();
+      jest.setSystemTime(new Date(2026, 0, 10, 9, 0, 0));
+      const staleReminder = new Date(2026, 0, 11, 0, 0, 0).toISOString();
+      useTaskStore.setState({
+        tasks: [makeTask({
+          id: 'reminder-visibility-done',
+          completed: true,
+          deferUntil: new Date(2026, 0, 12, 15, 0, 0).toISOString(),
+          reminderTracksVisibility: true,
+          reminderTime: staleReminder,
+        })],
+      });
+
+      useTaskStore.getState().reanchorWallClockReminders();
+
+      const unchanged = useTaskStore.getState().tasks.find(t => t.id === 'reminder-visibility-done')!;
+      expect(unchanged.reminderTime).toBe(staleReminder);
+      jest.useRealTimers();
     });
   });
 
@@ -12077,7 +13790,7 @@ describe('quota tasks', () => {
           allowOvershoot: true,
           quotaIntervalMinutes: null,
           quotaReminders: false,
-          quotaStartedAt: null, quotaAlwaysVisible: false,
+          quotaStartedAt: null, quotaAlwaysVisible: false, followWaterTarget: false,
           progressCount: 5,
           streakCount: 3,
           streakDate: new Date(2025, 5, 9).toISOString(),
@@ -12095,13 +13808,33 @@ describe('quota tasks', () => {
       expect(done.streakCount).toBe(4);
     });
 
+    it('closes the day as of its own end, so a repeat-after-completion target is not a day late', () => {
+      useTaskStore.setState({
+        tasks: [quota({
+          allowOvershoot: true,
+          quotaIntervalMinutes: null,
+          quotaReminders: false,
+          quotaStartedAt: null, quotaAlwaysVisible: false, followWaterTarget: false,
+          progressCount: 5,
+          recurrenceFromCompletion: true,
+          dueDate: new Date(2025, 5, 9, 12, 0, 0).toISOString(),
+        })],
+      });
+      useTaskStore.getState().sweepOvershootQuotas();
+
+      const done = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
+      const next = useTaskStore.getState().tasks.find(t => !t.completed)!;
+      expect(done.completedAt).toBe(new Date(2025, 5, 9, 23, 59, 59, 999).toISOString());
+      expect(new Date(next.dueDate!).toDateString()).toBe('Tue Jun 10 2025');
+    });
+
     it('completes an overshot day with the high count', () => {
       useTaskStore.setState({
         tasks: [quota({
           allowOvershoot: true,
           quotaIntervalMinutes: null,
           quotaReminders: false,
-          quotaStartedAt: null, quotaAlwaysVisible: false,
+          quotaStartedAt: null, quotaAlwaysVisible: false, followWaterTarget: false,
           progressCount: 13, // past the target of 8
           dueDate: new Date(2025, 5, 9, 12, 0, 0).toISOString(),
         })],
@@ -12119,7 +13852,7 @@ describe('quota tasks', () => {
           allowOvershoot: true,
           quotaIntervalMinutes: null,
           quotaReminders: false,
-          quotaStartedAt: null, quotaAlwaysVisible: false,
+          quotaStartedAt: null, quotaAlwaysVisible: false, followWaterTarget: false,
           progressCount: 0,
           dueDate: new Date(2025, 5, 9, 12, 0, 0).toISOString(),
         })],
@@ -12151,7 +13884,7 @@ describe('quota tasks', () => {
           allowOvershoot: true,
           quotaIntervalMinutes: null,
           quotaReminders: false,
-          quotaStartedAt: null, quotaAlwaysVisible: false,
+          quotaStartedAt: null, quotaAlwaysVisible: false, followWaterTarget: false,
           progressCount: 5,
           dueDate: new Date(2025, 5, 9, 12, 0, 0).toISOString(),
         })],
@@ -12179,7 +13912,7 @@ describe('quota tasks', () => {
           allowOvershoot: true,
           quotaIntervalMinutes: null,
           quotaReminders: false,
-          quotaStartedAt: null, quotaAlwaysVisible: false,
+          quotaStartedAt: null, quotaAlwaysVisible: false, followWaterTarget: false,
           category: 'Work',
           progressCount: 5,
           streakCount: 12,
@@ -12817,6 +14550,29 @@ describe('updateTask series fan-out', () => {
     expect(later.getMinutes()).toBe(15);
   });
 
+  it("re-anchors a fanned-out visibility-tracking reminder through getVisibleAt against each date's own placement", () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2025, 8, 1, 9, 0, 0)); // before either date in the set
+    const rows = useTaskStore.getState().addTaskSeries(
+      { title: 'Dog' },
+      [new Date(2025, 8, 10, 12, 0, 0), new Date(2025, 8, 15, 12, 0, 0)],
+    );
+    useTaskStore.getState().updateTask(rows[0].id, {
+      reminderTime: new Date(2025, 8, 10, 18, 0, 0).toISOString(),
+      reminderTracksVisibility: true,
+    });
+
+    const later = useTaskStore.getState().tasks.find(t => t.id === rows[1].id)!;
+    expect(later.reminderTracksVisibility).toBe(true);
+    const reminder = new Date(later.reminderTime!);
+    // Resolved against the 15th's own dueDate (with no timeSegments/
+    // windowStart to refine it, that's its day-start), not an offset from
+    // the row that was actually edited.
+    expect(reminder.getDate()).toBe(15);
+    expect(reminder.getHours()).toBe(0);
+    jest.useRealTimers();
+  });
+
   it('fans a blocker out to the whole set', () => {
     const errand = useTaskStore.getState().addTask({ title: 'Collect the key' });
     const rows = useTaskStore.getState().addTaskSeries({ title: 'Dog' }, [
@@ -13047,6 +14803,31 @@ describe('blocking', () => {
     const byId = (id: string) => useTaskStore.getState().tasks.find(t => t.id === id)!;
     expect(byId(rows[0].id).blockedById).toBeNull();
     expect(byId(rows[1].id).blockedById).toBe(blocker.id);
+  });
+
+  // A task can wait on several (Task.blockedByIds): adding or dropping one
+  // blocker keeps whatever else the waiter waits on.
+  it('adds itself beside a waiter\'s other blockers, and drops only itself', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'venue', dueDate: TODAY }),
+        makeTask({ id: 'guests', dueDate: TODAY }),
+        makeTask({ id: 'invites', dueDate: TODAY, blockedById: 'venue' }),
+      ],
+    });
+    const byId = (id: string) => useTaskStore.getState().tasks.find(t => t.id === id)!;
+
+    useTaskStore.getState().setBlockedTasks('guests', ['invites']);
+    expect(byId('invites').blockedById).toBe('venue');
+    expect(byId('invites').blockedByIds).toEqual(['guests']);
+
+    // Waits for all: finishing the venue alone doesn't free it.
+    useTaskStore.getState().completeTask('venue');
+    expect(useTaskStore.getState().visibleTasks().map(t => t.id)).not.toContain('invites');
+
+    useTaskStore.getState().setBlockedTasks('guests', []);
+    expect(byId('invites').blockedById).toBe('venue');
+    expect(byId('invites').blockedByIds).toEqual([]);
   });
 
   // The picker can't offer one, but the editor holds its set while the store
@@ -14824,6 +16605,71 @@ describe('putTaskOnCalendar', () => {
     // hold no pointer than a broken one.
     expect(rowOf('report').timeBlockEventId).toBeNull();
   });
+
+  // #2950: a backup restored on a new phone carries the old phone's block id,
+  // which names nothing there, while the block itself came down from the
+  // calendar account under the same server id.
+  describe('the calendar server id', () => {
+    const settle = async () => {
+      for (let i = 0; i < 12; i++) await Promise.resolve();
+    };
+    const NOTHING = { saved: false, deleted: false, eventId: null };
+    beforeEach(() => {
+      // Nothing queued by an earlier test may answer for this one.
+      mockExternalIds.mockReset().mockResolvedValue({});
+      mockEventsWithExternalId.mockReset().mockResolvedValue([]);
+      sync.presentTimeBlockCreate.mockReset().mockResolvedValue(NOTHING);
+      sync.presentTimeBlockEdit.mockReset().mockResolvedValue(NOTHING);
+      sync.readTimeBlockEvent.mockReset().mockResolvedValue(null);
+    });
+    const onDevice = { title: 'Write the report', start: new Date(), end: new Date(), allDay: false };
+
+    it('is kept beside the block once the sheet saves it', async () => {
+      useTaskStore.setState({ tasks: [blockable()] });
+      sync.presentTimeBlockCreate.mockResolvedValueOnce({ saved: true, deleted: false, eventId: 'ev-1' });
+      mockExternalIds.mockResolvedValueOnce({ 'ev-1': 'ext-1' });
+
+      await expect(useTaskStore.getState().putTaskOnCalendar('report')).resolves.toBe(true);
+      await settle();
+
+      expect(rowOf('report')).toMatchObject({ timeBlockEventId: 'ev-1', timeBlockExternalId: 'ext-1' });
+    });
+
+    it('finds a restored block by it and opens that, rather than offering a fresh one', async () => {
+      useTaskStore.setState({
+        tasks: [blockable({ timeBlockEventId: 'ev-old-phone', timeBlockExternalId: 'ext-1' })],
+      });
+      sync.presentTimeBlockEdit
+        .mockResolvedValueOnce(NOTHING)
+        .mockResolvedValueOnce({ saved: true, deleted: false, eventId: 'ev-this-phone' });
+      sync.readTimeBlockEvent.mockResolvedValueOnce(null).mockResolvedValueOnce(onDevice);
+      mockEventsWithExternalId.mockResolvedValueOnce([{ id: 'ev-this-phone', allDay: false, calendarId: null }]);
+
+      await expect(useTaskStore.getState().putTaskOnCalendar('report')).resolves.toBe(true);
+
+      expect(mockEventsWithExternalId).toHaveBeenCalledWith('ext-1');
+      expect(sync.presentTimeBlockEdit).toHaveBeenLastCalledWith('ev-this-phone');
+      expect(sync.presentTimeBlockCreate).not.toHaveBeenCalled();
+      expect(rowOf('report')).toMatchObject({ timeBlockEventId: 'ev-this-phone', timeBlockExternalId: 'ext-1' });
+    });
+
+    it('drops the pointer as before when it finds several events, and offers a fresh block', async () => {
+      useTaskStore.setState({
+        tasks: [blockable({ timeBlockEventId: 'ev-old-phone', timeBlockExternalId: 'ext-1' })],
+      });
+      sync.readTimeBlockEvent.mockResolvedValueOnce(null);
+      mockEventsWithExternalId.mockResolvedValueOnce([
+        { id: 'ev-a', allDay: false, calendarId: 'cal-home' },
+        { id: 'ev-b', allDay: false, calendarId: 'cal-work' },
+      ]);
+
+      await expect(useTaskStore.getState().putTaskOnCalendar('report')).resolves.toBe(false);
+
+      expect(sync.presentTimeBlockEdit).toHaveBeenCalledTimes(1);
+      expect(sync.presentTimeBlockCreate).toHaveBeenCalled();
+      expect(rowOf('report')).toMatchObject({ timeBlockEventId: null, timeBlockExternalId: null });
+    });
+  });
 });
 
 describe('time block reconcile', () => {
@@ -14909,6 +16755,283 @@ describe('time block reconcile', () => {
     // this app's to withdraw. See Task.timeBlockEventId.
     expect(rowOf('report').timeBlockEventId).toBe('ev-1');
   });
+
+  // #2950: a block's id stops resolving when a backup is restored on a new
+  // phone, and that is not a block the user deleted.
+  describe('the calendar server id', () => {
+    const settle = async () => {
+      for (let i = 0; i < 12; i++) await Promise.resolve();
+    };
+    beforeEach(() => {
+      // Nothing queued by an earlier test may answer for this one.
+      mockExternalIds.mockReset().mockResolvedValue({});
+      mockEventsWithExternalId.mockReset().mockResolvedValue([]);
+      sync.readTimeBlockEvent.mockReset().mockResolvedValue(null);
+      sync.updateTimeBlockEvent.mockReset().mockResolvedValue(true);
+    });
+
+    it('moves a restored task onto the block found by it, and retitles that one', async () => {
+      useTaskStore.setState({ tasks: [blocked({ timeBlockEventId: 'ev-old-phone', timeBlockExternalId: 'ext-1' })] });
+      sync.readTimeBlockEvent.mockResolvedValueOnce(null).mockResolvedValueOnce(onDevice());
+      mockEventsWithExternalId.mockResolvedValueOnce([{ id: 'ev-this-phone', allDay: false, calendarId: null }]);
+
+      useTaskStore.getState().updateTask('report', { title: 'Write the Q3 report' });
+      await settle();
+
+      expect(rowOf('report')).toMatchObject({ timeBlockEventId: 'ev-this-phone', timeBlockExternalId: 'ext-1' });
+      expect(sync.updateTimeBlockEvent).toHaveBeenCalledWith('ev-this-phone', {
+        title: 'Write the Q3 report',
+        endDate: new Date(2026, 7, 13, 14, 45),
+      });
+    });
+
+    it('still drops the pointer when it finds no single block', async () => {
+      useTaskStore.setState({ tasks: [blocked({ timeBlockEventId: 'ev-old-phone', timeBlockExternalId: 'ext-1' })] });
+      sync.readTimeBlockEvent.mockResolvedValueOnce(null);
+      mockEventsWithExternalId.mockResolvedValueOnce([]);
+
+      useTaskStore.getState().updateTask('report', { title: 'Renamed' });
+      await settle();
+
+      expect(rowOf('report')).toMatchObject({ timeBlockEventId: null, timeBlockExternalId: null });
+      expect(sync.updateTimeBlockEvent).not.toHaveBeenCalled();
+    });
+
+    it('is read for a block made before it was kept', async () => {
+      useTaskStore.setState({ tasks: [blocked()] });
+      sync.readTimeBlockEvent.mockResolvedValueOnce(onDevice());
+      mockExternalIds.mockResolvedValueOnce({ 'ev-1': 'ext-1' });
+
+      useTaskStore.getState().updateTask('report', { title: 'Write the Q3 report' });
+      await settle();
+
+      expect(rowOf('report')).toMatchObject({ timeBlockEventId: 'ev-1', timeBlockExternalId: 'ext-1' });
+    });
+
+    it('never lands on a block the task no longer points at', async () => {
+      useTaskStore.setState({ tasks: [blocked({ timeBlockEventId: 'ev-old-phone', timeBlockExternalId: 'ext-1' })] });
+      sync.readTimeBlockEvent.mockResolvedValueOnce(null).mockResolvedValueOnce(onDevice());
+      mockEventsWithExternalId.mockResolvedValueOnce([{ id: 'ev-this-phone', allDay: false, calendarId: null }]);
+
+      useTaskStore.getState().updateTask('report', { title: 'Write the Q3 report' });
+      // Meanwhile the user made a new block from the editor.
+      useTaskStore.setState(st => ({
+        tasks: st.tasks.map(t => ({ ...t, timeBlockEventId: 'ev-new', timeBlockExternalId: null })),
+      }));
+      await settle();
+
+      expect(rowOf('report')).toMatchObject({ timeBlockEventId: 'ev-new', timeBlockExternalId: null });
+    });
+  });
+});
+
+// #2950: a task's deadline event and time block are this device's, so a change
+// made on another device reaches them only through the reconcile the sync
+// reload runs.
+describe('reconcileSyncedEvents', () => {
+  const sync = jest.requireMock('../utils/calendarSync') as {
+    getCalendarPermission: jest.Mock;
+    deleteCalendarEvent: jest.Mock;
+    readTimeBlockEvent: jest.Mock;
+    updateTimeBlockEvent: jest.Mock;
+  };
+  const synced = (over: { taskIds?: string[]; removedTaskEvents?: { eventId: string; externalId: string | null }[] }) => ({
+    taskIds: [], removedTaskEvents: [], ...over,
+  });
+  // The permission read, then each device write behind it.
+  const settle = async () => {
+    for (let i = 0; i < 6; i++) await Promise.resolve();
+  };
+  const linked = (overrides: Partial<Task> = {}) =>
+    makeTask({
+      id: 'rent', title: 'Pay rent', deadlineOnCalendar: true,
+      deadline: '2026-08-20T00:00:00.000Z', calendarEventId: 'evt-1', ...overrides,
+    });
+
+  beforeEach(() => {
+    sync.getCalendarPermission.mockResolvedValue('granted');
+    (syncDeadlineEvent as jest.Mock).mockResolvedValue({ eventId: null, externalId: null });
+  });
+
+  it('rewrites this device\'s deadline event from the row another device changed', async () => {
+    (syncDeadlineEvent as jest.Mock).mockResolvedValue({ eventId: 'evt-1', externalId: null });
+    // The row as the reload re-read it: renamed elsewhere.
+    useTaskStore.setState({ tasks: [linked({ title: 'Pay the rent' })] });
+
+    useTaskStore.getState().reconcileSyncedEvents(synced({ taskIds: ['rent'] }));
+    await settle();
+
+    expect(syncDeadlineEvent).toHaveBeenCalledWith(expect.objectContaining({ id: 'rent', title: 'Pay the rent' }));
+    expect(rowOf('rent').calendarEventId).toBe('evt-1');
+  });
+
+  it('links the fresh event when the old one had gone, same as a local edit', async () => {
+    (syncDeadlineEvent as jest.Mock).mockResolvedValue({ eventId: 'evt-2', externalId: 'ext-2' });
+    useTaskStore.setState({ tasks: [linked()] });
+
+    useTaskStore.getState().reconcileSyncedEvents(synced({ taskIds: ['rent'] }));
+    await settle();
+
+    expect(rowOf('rent')).toMatchObject({ calendarEventId: 'evt-2', calendarEventExternalId: 'ext-2' });
+    expect(dbUpdateTask).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'rent', calendarEventId: 'evt-2', calendarEventExternalId: 'ext-2',
+    }));
+  });
+
+  it('drops the link once the reconcile deleted the event of a task completed elsewhere', async () => {
+    // syncDeadlineEvent deletes a completed task's event and reports null.
+    useTaskStore.setState({ tasks: [linked({ completed: true, completedAt: '2026-08-19T09:00:00.000Z' })] });
+
+    useTaskStore.getState().reconcileSyncedEvents(synced({ taskIds: ['rent'] }));
+    await settle();
+
+    expect(syncDeadlineEvent).toHaveBeenCalledWith(expect.objectContaining({ id: 'rent', completed: true }));
+    expect(rowOf('rent').calendarEventId).toBeNull();
+  });
+
+  it('writes no event for a synced task this device never wrote one for', async () => {
+    useTaskStore.setState({ tasks: [linked({ calendarEventId: null })] });
+
+    useTaskStore.getState().reconcileSyncedEvents(synced({ taskIds: ['rent'] }));
+    await settle();
+
+    expect(syncDeadlineEvent).not.toHaveBeenCalled();
+    expect(sync.getCalendarPermission).not.toHaveBeenCalled();
+    expect(dbUpdateTask).not.toHaveBeenCalled();
+  });
+
+  it('retitles and resizes this device\'s time block, keeping the time the user chose', async () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'report', title: 'Write the Q3 report', estimatedMinutes: 90, timeBlockEventId: 'block-1' })],
+    });
+    sync.readTimeBlockEvent.mockResolvedValue({
+      title: 'Write the report', start: new Date(2026, 7, 13, 14, 0), end: new Date(2026, 7, 13, 14, 45), allDay: false,
+    });
+
+    useTaskStore.getState().reconcileSyncedEvents(synced({ taskIds: ['report'] }));
+    await settle();
+
+    expect(sync.updateTimeBlockEvent).toHaveBeenCalledWith('block-1', {
+      title: 'Write the Q3 report',
+      endDate: new Date(2026, 7, 13, 15, 30),
+    });
+    // No deadline event here, so nothing asks for one.
+    expect(syncDeadlineEvent).not.toHaveBeenCalled();
+  });
+
+  // A local uncomplete deletes this device's completion event and clears the
+  // id; one made on another device used to leave both here.
+  it('deletes and unlinks this device\'s completion event when another device reopened the task', async () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'rent', title: 'Pay rent', completed: false, completionCalendarEventId: 'done-1' })],
+    });
+
+    useTaskStore.getState().reconcileSyncedEvents(synced({ taskIds: ['rent'] }));
+    await settle();
+
+    expect(sync.deleteCalendarEvent).toHaveBeenCalledWith('done-1');
+    expect(rowOf('rent').completionCalendarEventId).toBeNull();
+    expect(dbUpdateTask).toHaveBeenCalledWith(expect.objectContaining({ id: 'rent', completionCalendarEventId: null }));
+  });
+
+  it('keeps the completion event of a task still completed after a sync', async () => {
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'rent', title: 'Paid the rent', completed: true, completedAt: '2026-08-19T09:00:00.000Z',
+        completionCalendarEventId: 'done-1',
+      })],
+    });
+
+    useTaskStore.getState().reconcileSyncedEvents(synced({ taskIds: ['rent'] }));
+    await settle();
+
+    expect(sync.deleteCalendarEvent).not.toHaveBeenCalled();
+    expect(rowOf('rent').completionCalendarEventId).toBe('done-1');
+  });
+
+  it('leaves a completion event alone when the task was completed again while access was read', async () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'rent', completed: false, completionCalendarEventId: 'done-1' })],
+    });
+
+    useTaskStore.getState().reconcileSyncedEvents(synced({ taskIds: ['rent'] }));
+    useTaskStore.setState(st => ({
+      tasks: st.tasks.map(t => ({ ...t, completed: true, completedAt: '2026-08-20T09:00:00.000Z' })),
+    }));
+    await settle();
+
+    expect(sync.deleteCalendarEvent).not.toHaveBeenCalled();
+    expect(rowOf('rent').completionCalendarEventId).toBe('done-1');
+  });
+
+  it('touches no completion event without calendar access', async () => {
+    sync.getCalendarPermission.mockResolvedValue('denied');
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'rent', completed: false, completionCalendarEventId: 'done-1' })],
+    });
+
+    useTaskStore.getState().reconcileSyncedEvents(synced({ taskIds: ['rent'] }));
+    await settle();
+
+    expect(sync.deleteCalendarEvent).not.toHaveBeenCalled();
+    expect(rowOf('rent').completionCalendarEventId).toBe('done-1');
+  });
+
+  it('deletes the deadline event of a task another device removed, and never a block', async () => {
+    useTaskStore.setState({ tasks: [] });
+
+    useTaskStore.getState().reconcileSyncedEvents(synced({ removedTaskEvents: [{ eventId: 'evt-9', externalId: null }] }));
+    await settle();
+
+    expect(sync.deleteCalendarEvent).toHaveBeenCalledWith('evt-9');
+    expect(sync.deleteCalendarEvent).toHaveBeenCalledTimes(1);
+    expect(sync.updateTimeBlockEvent).not.toHaveBeenCalled();
+  });
+
+  // Without access the deadline move fails and its fallback returns null, and
+  // a block reads back as gone: either would be written over a good link.
+  it('touches nothing without calendar access, so no link is lost', async () => {
+    sync.getCalendarPermission.mockResolvedValue('denied');
+    useTaskStore.setState({ tasks: [linked({ timeBlockEventId: 'block-1' })] });
+
+    useTaskStore.getState().reconcileSyncedEvents(synced({ taskIds: ['rent'], removedTaskEvents: [{ eventId: 'evt-9', externalId: null }] }));
+    await settle();
+
+    expect(syncDeadlineEvent).not.toHaveBeenCalled();
+    expect(sync.readTimeBlockEvent).not.toHaveBeenCalled();
+    expect(sync.deleteCalendarEvent).not.toHaveBeenCalled();
+    expect(rowOf('rent')).toMatchObject({ calendarEventId: 'evt-1', timeBlockEventId: 'block-1' });
+  });
+
+  it('reads each row again after the permission check, and leaves one whose link went meanwhile', async () => {
+    useTaskStore.setState({ tasks: [linked(), linked({ id: 'tax', title: 'File taxes', calendarEventId: 'evt-t' })] });
+
+    useTaskStore.getState().reconcileSyncedEvents(synced({ taskIds: ['rent', 'tax'] }));
+    useTaskStore.setState(s => ({
+      tasks: s.tasks.map(t => (t.id === 'rent' ? { ...t, title: 'Pay the rent' } : { ...t, calendarEventId: null })),
+    }));
+    await settle();
+
+    expect(syncDeadlineEvent).toHaveBeenCalledTimes(1);
+    expect(syncDeadlineEvent).toHaveBeenCalledWith(expect.objectContaining({ id: 'rent', title: 'Pay the rent' }));
+  });
+
+  it('asks for nothing at all in demo mode', async () => {
+    setDemoModeActive(true);
+    try {
+      useTaskStore.setState({ tasks: [linked({ timeBlockEventId: 'block-1' })] });
+
+      useTaskStore.getState().reconcileSyncedEvents(synced({ taskIds: ['rent'], removedTaskEvents: [{ eventId: 'evt-9', externalId: null }] }));
+      await settle();
+
+      expect(sync.getCalendarPermission).not.toHaveBeenCalled();
+      expect(syncDeadlineEvent).not.toHaveBeenCalled();
+      expect(sync.readTimeBlockEvent).not.toHaveBeenCalled();
+      expect(sync.deleteCalendarEvent).not.toHaveBeenCalled();
+    } finally {
+      setDemoModeActive(false);
+    }
+  });
 });
 
 // The one path a user can actually write a draft through — TaskEditor hands
@@ -14933,6 +17056,103 @@ describe('updateTask: the followUp task draft', () => {
 
     useTaskStore.getState().updateTask('practice', { followUpTaskDraft: null });
     expect(useTaskStore.getState().tasks[0].followUpTaskDraft).toBeNull();
+  });
+});
+
+// A generated or follow-up task is a fresh row every time, so an estimate set
+// on one used to die with it. It now lives on the generator that writes the
+// next one, whatever that row ends up being called.
+describe('estimates kept on the generator', () => {
+  const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as { useSettingsStore: { getState: jest.Mock } };
+  const original = useSettingsStore.getState.getMockImplementation()!;
+  const rowOf = (id: string) => useTaskStore.getState().tasks.find(t => t.id === id)!;
+  const withEstimates = (generatorEstimates: Record<string, unknown>) => {
+    const current = { ...original(), generatorEstimates, setGeneratorEstimates: jest.fn() };
+    useSettingsStore.getState.mockImplementation(() => current);
+    return current;
+  };
+  afterEach(() => useSettingsStore.getState.mockImplementation(original));
+
+  it('starts a generated task from its kind\'s estimate, whatever its title says', () => {
+    withEstimates({ mealPlanNudge: { estimatedMinutes: 10, effort: 2 } });
+    useTaskStore.setState({ tasks: [] });
+
+    const added = useTaskStore.getState().addTask({ title: 'Plan meals for Oct 5-11', generatedKind: 'mealPlanNudge' });
+
+    expect(added.estimatedMinutes).toBe(10);
+    expect(added.effort).toBe(2);
+  });
+
+  it('leaves an estimate the generator wrote itself alone, and a typed task untouched', () => {
+    withEstimates({ mealPlanNudge: { estimatedMinutes: 10, effort: 2 } });
+    useTaskStore.setState({ tasks: [] });
+
+    expect(useTaskStore.getState().addTask({ title: 'x', generatedKind: 'mealPlanNudge', estimatedMinutes: 3 }).estimatedMinutes).toBe(3);
+    expect(useTaskStore.getState().addTask({ title: 'Plan meals' }).estimatedMinutes).toBeNull();
+  });
+
+  it('writes an estimate edited on a generated task back onto its kind', () => {
+    const current = withEstimates({});
+    useTaskStore.setState({ tasks: [makeTask({ id: 'nudge', generatedKind: 'mealPlanNudge', generatedSourceId: '2026-10-05' })] });
+
+    useTaskStore.getState().updateTask('nudge', { estimatedMinutes: 10, effort: 2 });
+
+    expect(current.setGeneratorEstimates).toHaveBeenCalledWith({ mealPlanNudge: { estimatedMinutes: 10, effort: 2 } });
+  });
+
+  it('keeps no kind estimate for meal tasks, which take theirs from the recipe', () => {
+    const current = withEstimates({});
+    useTaskStore.setState({ tasks: [makeTask({ id: 'dinner', generatedKind: 'mealSlot', generatedSourceId: 'x' })] });
+
+    useTaskStore.getState().updateTask('dinner', { estimatedMinutes: 45, effort: 3 });
+
+    expect(current.setGeneratorEstimates).not.toHaveBeenCalled();
+  });
+
+  it('writes an estimate edited on a follow-up task into the rule that adds it', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'laundry', recurrenceType: 'weekly', followUpTaskEveryN: 2, followUpTaskTitle: 'Put a new towel out' }),
+        makeTask({ id: 'towel', title: 'Put a new towel out', followUpTaskSourceId: 'laundry', followUpTaskSourceTitle: 'Laundry' }),
+      ],
+    });
+
+    useTaskStore.getState().updateTask('towel', { estimatedMinutes: 1, effort: 1 });
+
+    expect(rowOf('laundry').followUpTaskDraft).toEqual({ ...emptyFollowUpTaskDraft(), estimatedMinutes: 1, effort: 1 });
+  });
+
+  // The pointer names the row that was live when the follow-up landed. Leave
+  // the follow-up open across another cycle and that row is done; the rule
+  // has moved on to its successor, which is where the estimate belongs.
+  it('follows a stale source pointer forward to the row holding the rule now', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'laundry-1', recurrenceType: 'weekly', completed: true, followUpTaskEveryN: 2, followUpTaskTitle: 'Put a new towel out' }),
+        makeTask({ id: 'towel', title: 'Put a new towel out', previousOccurrenceId: 'laundry-0', followUpTaskSourceId: 'laundry-1', followUpTaskSourceTitle: 'Laundry' }),
+        makeTask({ id: 'laundry-2', recurrenceType: 'weekly', previousOccurrenceId: 'laundry-1', followUpTaskEveryN: 2, followUpTaskTitle: 'Put a new towel out' }),
+      ],
+    });
+
+    useTaskStore.getState().updateTask('towel', { estimatedMinutes: 1, effort: 1 });
+
+    expect(rowOf('laundry-1').followUpTaskDraft).toBeNull();
+    expect(rowOf('laundry-2').followUpTaskDraft).toEqual({ ...emptyFollowUpTaskDraft(), estimatedMinutes: 1, effort: 1 });
+  });
+
+  it('starts the next follow-up with the estimate written back', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'laundry', recurrenceType: 'weekly', followUpTaskEveryN: 2, followUpTaskTally: 1,
+        followUpTaskTitle: 'Put a new towel out',
+        followUpTaskDraft: { ...emptyFollowUpTaskDraft(), estimatedMinutes: 1, effort: 1 },
+      })],
+    });
+
+    useTaskStore.getState().completeTask('laundry');
+
+    const added = useTaskStore.getState().tasks.find(t => t.title === 'Put a new towel out' && !t.completed)!;
+    expect(added.estimatedMinutes).toBe(1);
   });
 });
 
@@ -15053,6 +17273,36 @@ describe('deleteProjectCategory', () => {
     useTaskStore.getState().deleteProjectCategory('Missing');
     expect(useProjectStore.getState().projects[0].category).toBe('Home');
     expect(useProjectCategoryStore.getState().categories).toHaveLength(1);
+  });
+});
+
+// ─── bulkMoveToProject ──────────────────────────────────────────────────────
+
+describe('bulkMoveToProject', () => {
+  it('files every selected task under the new project and leaves the rest', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', projectId: 'p1' }),
+        makeTask({ id: 'b', projectId: null }),
+        makeTask({ id: 'c', projectId: 'p1' }),
+      ],
+    });
+    useTaskStore.getState().bulkMoveToProject(['a', 'b'], 'p2');
+    const byId = (id: string) => useTaskStore.getState().tasks.find(t => t.id === id);
+    expect(byId('a')?.projectId).toBe('p2');
+    expect(byId('b')?.projectId).toBe('p2');
+    expect(byId('c')?.projectId).toBe('p1');
+  });
+
+  it('returns each task to wherever it was on one undo', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', projectId: 'p1' }), makeTask({ id: 'b', projectId: null })],
+    });
+    useTaskStore.getState().bulkMoveToProject(['a', 'b'], 'p2');
+    useTaskStore.getState().undoLastAction();
+    const byId = (id: string) => useTaskStore.getState().tasks.find(t => t.id === id);
+    expect(byId('a')?.projectId).toBe('p1');
+    expect(byId('b')?.projectId).toBeNull();
   });
 });
 
@@ -15585,6 +17835,18 @@ describe('sweepTaskPenalties', () => {
     expect(setShieldUntil).toHaveBeenCalledTimes(firstCallCount);
   });
 
+  it('gives the credit back to the block when the completion is unticked', () => {
+    useTaskStore.setState({ tasks: [walk()] });
+    useTaskStore.getState().sweepTaskPenalties();
+    expect(new Date(shieldUntil!)).toEqual(new Date(2026, 0, 10, 11, 0, 0));
+    useTaskStore.getState().completeTask('walk');
+    const credited = shieldUntil;
+    useTaskStore.getState().uncompleteTask('walk');
+    expect(shieldUntil).not.toEqual(credited);
+    expect(new Date(shieldUntil!)).toEqual(new Date(2026, 0, 10, 11, 0, 0));
+    expect(get().penaltyCreditedAt).toBeNull();
+  });
+
   it('charges nothing for a task that was done in time', () => {
     useTaskStore.setState({ tasks: [walk({ completed: true })] });
     useTaskStore.getState().sweepTaskPenalties();
@@ -15884,5 +18146,190 @@ describe('addCompletedTask', () => {
     const stored = useTaskStore.getState().tasks.find(t => t.id === task.id)!;
     expect(stored.parentId).toBeNull();
     expect(stored.recurrenceType).toBe('none');
+  });
+});
+
+// ─── Fixes from the completion-path audit ────────────────────────────────────
+
+describe('completion-path fixes', () => {
+  const notifications = jest.requireMock('../utils/notifications') as {
+    cancelQuotaNudges: jest.Mock; scheduleQuotaNudges: jest.Mock;
+  };
+  const get = (id: string) => useTaskStore.getState().tasks.find(t => t.id === id)!;
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2025, 5, 10, 10, 0, 0));
+    notifications.cancelQuotaNudges.mockClear();
+    (deleteCalendarEvent as jest.Mock).mockClear();
+    useMedicationStore.setState({ logs: [], initialized: false });
+  });
+  afterEach(() => jest.useRealTimers());
+
+  it('unticking a daily-target dose removes only the dose that completion logged', () => {
+    const dose = { name: 'Ibuprofen', amount: 200, unit: 'mg', taskId: 'm1' };
+    useMedicationStore.getState().addLog({ ...dose, at: new Date(2025, 5, 10, 8) });
+    useMedicationStore.getState().addLog({ ...dose, at: new Date(2025, 5, 10, 9) });
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'm1', targetCount: 3, progressCount: 2, recurrenceType: 'daily',
+        dueDate: new Date(2025, 5, 10, 12).toISOString(),
+        medicationName: 'Ibuprofen', medicationAmount: 200, medicationUnit: 'mg',
+      })],
+    });
+    useTaskStore.getState().completeTask('m1');
+    expect(useMedicationStore.getState().logs).toHaveLength(3);
+    useTaskStore.getState().uncompleteTask('m1');
+    expect(useMedicationStore.getState().logs).toHaveLength(2);
+  });
+
+  it('skipping a month-end task through February comes back to the 31st', () => {
+    jest.setSystemTime(new Date(2025, 0, 20, 10));
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'rent', recurrenceType: 'monthly', recurrenceAnchorDay: 31,
+        dueDate: new Date(2025, 0, 31, 12).toISOString(),
+      })],
+    });
+    useTaskStore.getState().skipNextRecurrence('rent');
+    expect(new Date(get('rent').dueDate!).getDate()).toBe(28);
+    useTaskStore.getState().skipNextRecurrence('rent');
+    expect(new Date(get('rent').dueDate!).getDate()).toBe(31);
+  });
+
+  it('skipping moves a relative deadline with the date', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'w', recurrenceType: 'weekly', recurrenceDays: [2],
+        dueDate: new Date(2025, 5, 10, 12).toISOString(),
+        deadline: new Date(2025, 5, 8, 12).toISOString(), deadlineOffsetDays: 2,
+      })],
+    });
+    const gapOf = (t: Task) => Math.round((+new Date(t.deadline!) - +new Date(t.dueDate!)) / 86_400_000);
+    const before = gapOf(get('w'));
+    useTaskStore.getState().skipNextRecurrence('w');
+    expect(new Date(get('w').dueDate!).getDate()).toBe(17);
+    expect(gapOf(get('w'))).toBe(before);
+  });
+
+  it('a daily target that fell short keeps its reminder firing and runs its repeat count down', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'q', targetCount: 8, progressCount: 3, recurrenceType: 'daily', recurrenceCount: 5,
+        dueDate: new Date(2025, 5, 9, 12).toISOString(),
+        reminderTime: new Date(2025, 5, 9, 9, 0).toISOString(),
+      })],
+    });
+    useTaskStore.getState().rolloverQuotas();
+    const next = useTaskStore.getState().tasks.find(t => t.id !== 'q')!;
+    expect(new Date(next.reminderTime!)).toEqual(new Date(2025, 5, 10, 9, 0));
+    expect(next.recurrenceCount).toBe(4);
+  });
+
+  it('completing or deleting a daily target cancels its nudges', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', targetCount: 2, progressCount: 1, quotaReminders: true }),
+        makeTask({ id: 'b', targetCount: 2, quotaReminders: true }),
+      ],
+    });
+    useTaskStore.getState().completeTask('a');
+    useTaskStore.getState().deleteTask('b');
+    expect(notifications.cancelQuotaNudges).toHaveBeenCalledWith('a');
+    expect(notifications.cancelQuotaNudges).toHaveBeenCalledWith('b');
+  });
+
+  it('deleting several tasks removes their deadline events from the calendar, as deleting one does', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', calendarEventId: 'evt-a' }), makeTask({ id: 'b' })],
+    });
+    useTaskStore.getState().bulkDeleteTasks(['a', 'b']);
+    expect(deleteCalendarEvent).toHaveBeenCalledWith('evt-a');
+  });
+
+  it('editing a series date away keeps the sibling already on the new date', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'A', seriesId: 's1', dueDate: new Date(2025, 5, 12, 12).toISOString() }),
+        makeTask({ id: 'B', seriesId: 's1', notes: 'bring the key', dueDate: new Date(2025, 5, 15, 12).toISOString() }),
+      ],
+    });
+    useTaskStore.getState().applyTaskDates('A', [new Date(2025, 5, 15, 12), new Date(2025, 5, 20, 12)]);
+    const b = useTaskStore.getState().tasks.find(t => t.id === 'B');
+    expect(b?.notes).toBe('bring the key');
+    const days = useTaskStore.getState().tasks
+      .filter(t => t.seriesId === 's1' && !t.completed)
+      .map(t => new Date(t.dueDate!).getDate())
+      .sort((x, y) => x - y);
+    expect(days).toEqual([15, 20]);
+  });
+
+  it('completing a stack files one undo entry, not one per task plus the batch', () => {
+    useTaskGroupStore.setState({ groups: [makeGroup({ id: 'g1' })] });
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', groupId: 'g1' }), makeTask({ id: 'b', groupId: 'g1' })],
+      undoStack: [], redoStack: [], lastAction: null,
+    });
+    useTaskStore.getState().completeGroup('g1');
+    expect(useTaskStore.getState().undoStack).toHaveLength(1);
+    useTaskStore.getState().undoLastAction();
+    expect(get('a').completed).toBe(false);
+    expect(get('b').completed).toBe(false);
+  });
+
+  it('undoing an order-more completion takes the restock back off the supply', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'pills', supplyCount: 1 }),
+        makeTask({ id: 'order', generatedKind: 'supplyReorder', generatedSourceId: 'pills', deliverableKind: 'number' }),
+      ],
+      undoStack: [], redoStack: [], lastAction: null,
+    });
+    useTaskStore.getState().completeTask('order', { deliverableValue: '10' });
+    expect(get('pills').supplyCount).toBe(11);
+    useTaskStore.getState().undoLastAction();
+    expect(get('pills').supplyCount).toBe(1);
+  });
+});
+
+// ─── fillCalendarExternalIds (#2950) ─────────────────────────────────────────
+
+describe('fillCalendarExternalIds', () => {
+  const { dbFillTaskCalendarExternalIds } = jest.requireMock('../db/database') as {
+    dbFillTaskCalendarExternalIds: jest.Mock;
+  };
+
+  it('fills in memory what the database write filled, for each of the three events', () => {
+    dbFillTaskCalendarExternalIds.mockReturnValueOnce(['t1']);
+    useTaskStore.setState({
+      tasks: [
+        makeTask({
+          id: 't1', calendarEventId: 'dl-1', timeBlockEventId: 'blk-1', timeBlockExternalId: 'blk-kept',
+          completionCalendarEventId: 'done-1',
+        }),
+        makeTask({ id: 't2', calendarEventId: 'dl-2' }),
+      ],
+    });
+    const found = { 'dl-1': 'ext-dl-1', 'blk-1': 'ext-blk-1', 'done-1': 'ext-done-1', 'dl-2': 'ext-dl-2' };
+
+    useTaskStore.getState().fillCalendarExternalIds(found);
+
+    expect(dbFillTaskCalendarExternalIds).toHaveBeenCalledWith(found);
+    const [t1, t2] = useTaskStore.getState().tasks;
+    expect(t1).toMatchObject({
+      calendarEventExternalId: 'ext-dl-1',
+      timeBlockExternalId: 'blk-kept',
+      completionCalendarEventExternalId: 'ext-done-1',
+    });
+    // Not a row the database wrote, so memory isn't told it was.
+    expect(t2.calendarEventExternalId ?? null).toBeNull();
+  });
+
+  it('leaves the task list untouched when nothing was written', () => {
+    dbFillTaskCalendarExternalIds.mockReturnValueOnce([]);
+    const tasks = [makeTask({ id: 't1', calendarEventId: 'dl-1' })];
+    useTaskStore.setState({ tasks });
+    useTaskStore.getState().fillCalendarExternalIds({ 'dl-1': 'ext' });
+    expect(useTaskStore.getState().tasks).toBe(tasks);
   });
 });

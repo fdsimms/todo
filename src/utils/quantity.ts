@@ -162,6 +162,13 @@ const UNIT_PLURALS: Record<string, string> = {
   link: 'links',
   pouch: 'pouches',
   package: 'packages',
+  // Container words `CONTAINER_UNITS` knows that groceryParse's whitelist
+  // doesn't — British recipes size a "400 g tin" the way American ones size a
+  // "14 oz can" — so a count added to one inflects like a can's does.
+  tin: 'tins',
+  packet: 'packets',
+  carton: 'cartons',
+  tub: 'tubs',
   deciliter: 'deciliters',
   sprig: 'sprigs',
   stalk: 'stalks',
@@ -242,6 +249,10 @@ export const SIZE_UNITS = new Set([
 export const CONTAINER_UNITS = new Set([
   'can', 'cans', 'jar', 'jars', 'box', 'boxes', 'bag', 'bags',
   'bottle', 'bottles', 'package', 'packages', 'pkg', 'pouch', 'pouches',
+  // The British words for the same shapes. Without them a "400 g tin
+  // tomatoes" read as 400 g of something, so scaling it by 1.5 asked for a
+  // 600 g tin nobody sells and converting it to US units restated the tin.
+  'tin', 'tins', 'packet', 'packets', 'carton', 'cartons', 'tub', 'tubs',
 ]);
 
 /** Whether `size`/`container` name a real container shape — "oz"/"can", not "cup"/"flour". */
@@ -351,15 +362,16 @@ const UNICODE_FRACTIONS: Record<string, Rational> = {
   '¼': rational(1, 4), '¾': rational(3, 4),
   '⅛': rational(1, 8), '⅜': rational(3, 8), '⅝': rational(5, 8), '⅞': rational(7, 8),
 };
-const UNICODE_FRACTION_CHARS = Object.keys(UNICODE_FRACTIONS).join('');
-// A whole number, glued straight to one of those glyphs with no space ("1½"),
+export const UNICODE_FRACTION_CHARS = Object.keys(UNICODE_FRACTIONS).join('');
+// A whole number followed by one of those glyphs, glued ("1½") or spaced
+// ("1 ½", which is what a decoded `1 &frac12;` off a recipe page reads as),
 // or the glyph alone ("½"). Tried before the other three for the same reason a
 // mixed number is tried before a bare decimal: without it, "1½ cups" reads as
 // amount 1 with "½ cups" left as unrecognized rest, since none of the other
 // notations expect a fraction with no digits and no "/" — losing the fraction
 // *and* the unit that followed it, since a leading unit word is read off
 // `rest`, not off the original text.
-const UNICODE_FRACTION = new RegExp(`^(\\d*)([${UNICODE_FRACTION_CHARS}])`);
+const UNICODE_FRACTION = new RegExp(`^(?:(\\d+)\\s*)?([${UNICODE_FRACTION_CHARS}])`);
 
 // The four notations, in this order and for this reason: a mixed number has
 // to be tried before a bare decimal, or "1 1/2 cups" is read as "1" with
@@ -389,22 +401,27 @@ const LEADING_WORD = /^[a-z]+/i;
  */
 const FLUID_OUNCE = /^fl\.?\s*oz\.?\b|^fluid\s+ounces?\b/i;
 
-/** A bare sized container's trailing half — "oz can" out of "14 oz can". */
-const BARE_CONTAINER = /^([a-z]+)\.?\s+([a-z]+)$/i;
+/**
+ * A bare sized container's trailing half — "oz can" out of "14 oz can", and
+ * "-oz can" out of "14-oz can", the same optional hyphen COUNTED_CONTAINER
+ * already allows between its size and unit.
+ */
+const BARE_CONTAINER = /^-?\s*([a-z]+)\.?\s+([a-z]+)$/i;
 
 /** A counted sized container's trailing half — "14 oz cans" out of "2 14 oz cans". */
 const COUNTED_CONTAINER = /^(\d+(?:\.\d+)?)\s*-?\s*([a-z]+)\.?\s+([a-z]+)$/i;
 
 /**
  * A range's separator, right after the first amount — "to " ("1 to 2 tbsp")
- * or a bare hyphen ("1-2 tbsp"). The mandatory trailing space on "to" is what
+ * or a bare hyphen ("1-2 tbsp"), en dash ("1–2 cups", what an imported page
+ * usually prints) or em dash. The mandatory trailing space on "to" is what
  * keeps this from firing on "to taste"'s "to" followed by a non-amount, or on
  * any other word that merely starts with "to"; a hyphen not followed by a
  * second amount (a compound like "1-inch piece") is ruled out the same way,
  * by the caller falling back to plain unit parsing when `readLeadingAmount`
  * finds nothing after it.
  */
-const RANGE_SEPARATOR = /^(?:to\s+|-\s*)/i;
+const RANGE_SEPARATOR = /^(?:to\s+|[-\u2013\u2014]\s*)/i;
 
 interface LeadingAmount {
   value: Rational;

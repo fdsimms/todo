@@ -1,0 +1,4 @@
+{
+  "message": "When scanning a receipt, a line the app couldn't match can now be matched to an item you already have, and the next receipt from that store will match it on its own. A line added as a new item can be renamed first",
+  "date": "2026-09-28"
+}

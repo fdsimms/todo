@@ -8,6 +8,7 @@ import type { Person } from '../types';
 const basePerson: Person = {
   id: 'p1',
   name: 'Dustin Reyes',
+  kind: 'individual',
   nickname: '',
   notes: '',
   sortOrder: 1,

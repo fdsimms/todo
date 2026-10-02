@@ -550,6 +550,31 @@ export function laterDaySections(
   };
 }
 
+/**
+ * The first `taskLimit` tasks' worth of Today rows — what the list mounts on
+ * the commit that switches to Today, before the rest is topped up a tick later
+ * (see todayTaskLimit in TodayScreen; laterDaySections is the same budget for
+ * Later). Counts what actually mounts a TaskItem: a task row is one, a stack
+ * is its visible children. Headers and context rows are free, so a day whose
+ * sections are mostly collapsed is never cut short of its real rows, and once
+ * the budget is spent the list is cut at the very next row of any kind — a
+ * header kept ahead of rows that were dropped would read as an empty section.
+ *
+ * Returns `items` itself when nothing is cut (no budget, or the list fits),
+ * so the render-time sync it feeds sees no change to reconcile.
+ */
+export function limitTodayItems<T extends TodayListItem>(items: T[], taskLimit?: number): T[] {
+  if (taskLimit === undefined) return items;
+  let placed = 0;
+  for (let i = 0; i < items.length; i++) {
+    if (placed >= taskLimit) return items.slice(0, i);
+    const item = items[i];
+    if (item.type === 'task') placed += 1;
+    else if (item.type === 'group') placed += Math.max(1, item.children.length);
+  }
+  return items;
+}
+
 /** Both halves at once, unbudgeted. */
 export function laterSections(deferredTasks: Task[]): LaterDaySection[] {
   return laterDaySections(laterVisibleOrder(deferredTasks)).sections;

@@ -11,6 +11,7 @@ import {
   dbUpdateFoodLogEntry,
 } from '../db/database';
 import { logFoodEntryToHealth, retractFoodEntryFromHealth } from '../utils/healthFoodSync';
+import { estimateAmountPatch } from '../utils/foodLog';
 import type { FoodLogEntry, FoodNutrition } from '../types';
 
 jest.mock('react-native', () => ({ Platform: { OS: 'ios' } }));
@@ -23,18 +24,27 @@ jest.mock('react-native', () => ({ Platform: { OS: 'ios' } }));
  * that every day is empty and pin every entry at 0 — which is the bug these
  * tests are here to hold down. Inserts land here and the range read filters
  * them, which is as much of a database as this file needs.
+ *
+ * The single-row read and the update go through it too, because a Health write
+ * that comes back re-reads the row before stamping its sample ids on it (see
+ * `recordHealthWrite`): a read that ignored what was written would make every
+ * write look like it landed on a deleted row.
  */
-const mockRows: { dayKey: string }[] = [];
+const mockRows: { id: string; dayKey: string }[] = [];
+const mockGetRow = (id: string) => mockRows.find(r => r.id === id) ?? null;
 
 jest.mock('../db/database', () => ({
   dbGetFoodLogEntries: jest.fn((startKey: string, endKey: string) =>
     mockRows.filter(r => r.dayKey >= startKey && r.dayKey <= endKey)),
   // Matches the real dbGetFoodLogEntry's own miss case (a null row reads as
   // null, never undefined) — see database.ts.
-  dbGetFoodLogEntry: jest.fn(() => null),
+  dbGetFoodLogEntry: jest.fn((id: string) => mockGetRow(id)),
   dbCountFoodLogEntries: jest.fn(() => 0),
-  dbInsertFoodLogEntry: jest.fn((entry: { dayKey: string }) => { mockRows.push(entry); }),
-  dbUpdateFoodLogEntry: jest.fn(),
+  dbInsertFoodLogEntry: jest.fn((entry: { id: string; dayKey: string }) => { mockRows.push(entry); }),
+  dbUpdateFoodLogEntry: jest.fn((entry: { id: string; dayKey: string }) => {
+    const i = mockRows.findIndex(r => r.id === entry.id);
+    if (i >= 0) mockRows[i] = entry;
+  }),
   dbDeleteFoodLogEntry: jest.fn(),
   dbBulkDeleteFoodLogEntries: jest.fn(),
   dbBulkSetFoodLogSlot: jest.fn(),
@@ -61,6 +71,26 @@ const mockSettingsState = {
 };
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: { getState: () => mockSettingsState },
+}));
+
+// Mocked purely to keep the real useTaskStore's expo-notifications import out
+// of this node environment (the useGroceryStore.test.ts pattern). Stable
+// jest.fn()s rather than one built fresh per getState() call, since the
+// "wrote today" tests below assert on them directly.
+const mockCheckHealthTasks = jest.fn();
+const mockSyncWaterQuotaTasks = jest.fn();
+jest.mock('../store/useTaskStore', () => ({
+  useTaskStore: {
+    getState: () => ({
+      checkHealthTasks: mockCheckHealthTasks,
+      syncWaterQuotaTasks: mockSyncWaterQuotaTasks,
+    }),
+  },
+}));
+
+const mockHealthRefresh = jest.fn(() => Promise.resolve());
+jest.mock('../store/useHealthStore', () => ({
+  useHealthStore: { getState: () => ({ refresh: mockHealthRefresh }) },
 }));
 
 jest.mock('../utils/dateUtils', () => ({
@@ -107,7 +137,7 @@ function draft(overrides: Partial<FoodLogDraft> = {}): FoodLogDraft {
 beforeEach(() => {
   jest.clearAllMocks();
   mockRows.length = 0;
-  (dbGetFoodLogEntry as jest.Mock).mockReturnValue(null);
+  (dbGetFoodLogEntry as jest.Mock).mockImplementation((id: string) => mockGetRow(id));
   useFoodLogStore.setState({
     entries: [], rangeStart: null, rangeEnd: null, totalCount: 0, initialized: false,
   });
@@ -126,6 +156,49 @@ describe('initialize', () => {
     (dbCountFoodLogEntries as jest.Mock).mockReturnValueOnce(42);
     state().initialize();
     expect(state().totalCount).toBe(42);
+  });
+});
+
+describe('loadWindow and loadInsightWindow', () => {
+  const row = (id: string, dayKey: string) => ({ id, dayKey, label: id }) as unknown as FoodLogEntry;
+
+  it('keeps the held array when a re-read finds the same rows, so a refocus re-renders nothing', () => {
+    mockRows.push(row('a', '2026-08-10') as never);
+    useFoodLogStore.getState().loadWindow('2026-08-01', '2026-08-31');
+    const held = useFoodLogStore.getState().windowEntries;
+    // A fresh copy of the same row, the way a real SQLite read hands one back.
+    mockRows[0] = { ...mockRows[0] };
+    useFoodLogStore.getState().loadWindow('2026-08-01', '2026-08-31');
+    expect(useFoodLogStore.getState().windowEntries).toBe(held);
+  });
+
+  it('replaces it when a row changed, arrived, or the range moved', () => {
+    mockRows.push(row('a', '2026-08-10') as never);
+    const { loadInsightWindow } = useFoodLogStore.getState();
+    loadInsightWindow('2026-08-01', '2026-08-31');
+    const first = useFoodLogStore.getState().insightEntries;
+    mockRows[0] = { ...mockRows[0], label: 'b' } as never;
+    loadInsightWindow('2026-08-01', '2026-08-31');
+    const second = useFoodLogStore.getState().insightEntries;
+    expect(second).not.toBe(first);
+    mockRows.push(row('c', '2026-08-11') as never);
+    loadInsightWindow('2026-08-01', '2026-08-31');
+    expect(useFoodLogStore.getState().insightEntries).toHaveLength(2);
+    loadInsightWindow('2026-08-02', '2026-08-31');
+    expect(useFoodLogStore.getState().insightStart).toBe('2026-08-02');
+  });
+});
+
+describe('entriesSince', () => {
+  it('reads from the given day onward, and leaves the loaded window alone', () => {
+    mockRows.push({ id: 'a', dayKey: '2026-03-01' } as never, { id: 'b', dayKey: '2026-04-01' } as never);
+    expect(state().entriesSince('2026-03-15').map(e => e.id)).toEqual(['b']);
+    expect(state().entries).toEqual([]);
+  });
+
+  it('reads the whole history for null', () => {
+    mockRows.push({ id: 'a', dayKey: '2020-01-01' } as never, { id: 'b', dayKey: '2026-04-01' } as never);
+    expect(state().entriesSince(null).map(e => e.id)).toEqual(['a', 'b']);
   });
 });
 
@@ -202,6 +275,133 @@ describe('addEntry, when Health refuses the write', () => {
   });
 });
 
+/**
+ * A written nutrient sample is the one thing that can newly satisfy a health
+ * rule, and `useHealthSync` only re-reads Health on mount, a settings change,
+ * or the app returning to the foreground — none of which a session spent
+ * entirely inside this app's own food log ever sees. Without this, logging a
+ * meal that pushes today's sodium (say) under a rule's floor left the rule
+ * reading a stale snapshot until the app happened to background and
+ * foreground again.
+ */
+describe('addEntry, when the write lands', () => {
+  const flush = () => new Promise(resolve => setTimeout(resolve, 0));
+
+  beforeEach(() => {
+    (logFoodEntryToHealth as jest.Mock).mockResolvedValue({ outcome: 'written', sampleIds: ['s1'] });
+  });
+
+  it('refreshes the Health reading and re-checks health rules for a same-day entry', async () => {
+    state().addEntry(draft({ at: new Date(2026, 3, 2, 9, 0) }));
+    await flush();
+
+    expect(mockHealthRefresh).toHaveBeenCalled();
+    expect(mockCheckHealthTasks).toHaveBeenCalled();
+  });
+
+  it('does nothing for a backdated entry, which cannot change today\'s reading', async () => {
+    state().addEntry(draft({ at: new Date(2026, 3, 1, 9, 0) }));
+    await flush();
+
+    expect(mockHealthRefresh).not.toHaveBeenCalled();
+    expect(mockCheckHealthTasks).not.toHaveBeenCalled();
+  });
+
+  it('re-checks only after the refresh resolves, so the rule reads the fresh snapshot', async () => {
+    let resolveRefresh: () => void = () => {};
+    mockHealthRefresh.mockReturnValueOnce(new Promise(resolve => { resolveRefresh = () => resolve(undefined); }));
+
+    state().addEntry(draft({ at: new Date(2026, 3, 2, 9, 0) }));
+    await flush();
+    expect(mockCheckHealthTasks).not.toHaveBeenCalled();
+
+    resolveRefresh();
+    await flush();
+    expect(mockCheckHealthTasks).toHaveBeenCalled();
+  });
+});
+
+/**
+ * The log-to-task half of `logHealthMetric: 'waterMl'` — see
+ * `syncWaterQuotaTasks`'s own doc comment in `useTaskStore.ts`. Fires
+ * synchronously, unlike the Health re-check above, since it never waits on a
+ * native round trip: the food log's own total is already known the moment
+ * the write lands.
+ */
+describe('syncing water-quota tasks after a food-log write', () => {
+  it('runs after a same-day addEntry', () => {
+    state().loadRange('2026-04-02', '2026-04-02');
+    state().addEntry(draft({ at: new Date(2026, 3, 2, 9, 0) }));
+    expect(mockSyncWaterQuotaTasks).toHaveBeenCalled();
+  });
+
+  it('does not run for a backdated addEntry', () => {
+    state().loadRange('2026-04-01', '2026-04-01');
+    state().addEntry(draft({ at: new Date(2026, 3, 1, 9, 0) }));
+    expect(mockSyncWaterQuotaTasks).not.toHaveBeenCalled();
+  });
+
+  it('runs after a same-day reviseEntry that actually changed a figure', () => {
+    const entry: FoodLogEntry = {
+      id: 'w1', dayKey: '2026-04-02', atISO: '2026-04-02T09:00:00.000Z', slot: null,
+      label: 'Water', recipeId: null, itemId: null, productId: null, mealPlanEntryId: null,
+      quantity: '500 ml', grams: null, nutrition: panel({ amounts: { waterMl: 500 } }),
+      healthSampleIds: [], sortOrder: 0, createdAt: '2026-04-02T09:00:00.000Z',
+    };
+    mockRows.push(entry);
+    useFoodLogStore.setState({ entries: [entry], rangeStart: '2026-04-02', rangeEnd: '2026-04-02' });
+
+    state().reviseEntry('w1', { nutrition: panel({ amounts: { waterMl: 750 } }) });
+    expect(mockSyncWaterQuotaTasks).toHaveBeenCalled();
+  });
+
+  it('does not run for a reviseEntry that changed nothing Health-relevant', () => {
+    const entry: FoodLogEntry = {
+      id: 'w1', dayKey: '2026-04-02', atISO: '2026-04-02T09:00:00.000Z', slot: 'breakfast',
+      label: 'Water', recipeId: null, itemId: null, productId: null, mealPlanEntryId: null,
+      quantity: '500 ml', grams: null, nutrition: panel({ amounts: { waterMl: 500 } }),
+      healthSampleIds: [], sortOrder: 0, createdAt: '2026-04-02T09:00:00.000Z',
+    };
+    mockRows.push(entry);
+    useFoodLogStore.setState({ entries: [entry], rangeStart: '2026-04-02', rangeEnd: '2026-04-02' });
+
+    state().reviseEntry('w1', { slot: 'lunch' });
+    expect(mockSyncWaterQuotaTasks).not.toHaveBeenCalled();
+  });
+
+  it('runs after a same-day removeEntry', () => {
+    (dbGetFoodLogEntry as jest.Mock).mockReturnValue({
+      id: 'w1', dayKey: '2026-04-02', healthSampleIds: [],
+    });
+    state().removeEntry('w1');
+    expect(mockSyncWaterQuotaTasks).toHaveBeenCalled();
+  });
+
+  it('does not run for a backdated removeEntry', () => {
+    (dbGetFoodLogEntry as jest.Mock).mockReturnValue({
+      id: 'w1', dayKey: '2026-04-01', healthSampleIds: [],
+    });
+    state().removeEntry('w1');
+    expect(mockSyncWaterQuotaTasks).not.toHaveBeenCalled();
+  });
+
+  it('runs after removeEntries when any removed row was today\'s', () => {
+    (dbGetFoodLogEntry as jest.Mock).mockImplementation((id: string) => ({
+      id, dayKey: id === 'a' ? '2026-04-01' : '2026-04-02', healthSampleIds: [],
+    }));
+    state().removeEntries(['a', 'b']);
+    expect(mockSyncWaterQuotaTasks).toHaveBeenCalled();
+  });
+
+  it('does not run for removeEntries when every removed row was backdated', () => {
+    (dbGetFoodLogEntry as jest.Mock).mockReturnValue({
+      id: 'a', dayKey: '2026-04-01', healthSampleIds: [],
+    });
+    state().removeEntries(['a']);
+    expect(mockSyncWaterQuotaTasks).not.toHaveBeenCalled();
+  });
+});
+
 describe('addEntry', () => {
   it('writes an entry and holds it in the loaded window', () => {
     state().loadRange('2026-04-02', '2026-04-02');
@@ -251,6 +451,17 @@ describe('addEntry', () => {
 
   it('writes no health samples, since nothing writes to Health yet', () => {
     expect(state().addEntry(draft())?.healthSampleIds).toEqual([]);
+  });
+
+  it('keeps the panel an unfiled database food was measured against (#2914)', () => {
+    const kept = panel({ basis: 'per100g', servingGrams: null, source: 'fdc', sourceId: '171077' });
+    const entry = state().addEntry(draft({ sourcePanel: kept }))!;
+    expect(entry.sourcePanel).toEqual(kept);
+    expect((dbInsertFoodLogEntry as jest.Mock).mock.calls[0][0].sourcePanel).toEqual(kept);
+  });
+
+  it('keeps none when the draft carries none, which is every linked food', () => {
+    expect(state().addEntry(draft())!.sourcePanel).toBeNull();
   });
 });
 
@@ -342,7 +553,7 @@ describe('reviseEntry', () => {
       createdAt: '2026-04-02T09:00:00.000Z',
       ...overrides,
     };
-    (dbGetFoodLogEntry as jest.Mock).mockReturnValue(entry);
+    mockRows.push(entry);
     useFoodLogStore.setState({ entries: [entry], rangeStart: '2026-04-02', rangeEnd: '2026-04-02' });
     return entry;
   }
@@ -358,6 +569,22 @@ describe('reviseEntry', () => {
     expect(state().entries[0].grams).toBe(500);
     expect(state().entries[0].nutrition.amounts.calorieKcal).toBe(400);
     expect(dbUpdateFoodLogEntry).toHaveBeenCalled();
+  });
+
+  it('clears a kept panel when the correction re-measures against a row', () => {
+    // Filed while it was being corrected: from here on it is measured against
+    // the catalog row, and the kept panel would describe how it used to be.
+    const entry = stored({ itemId: null, sourcePanel: panel({ basis: 'per100g', source: 'fdc' }) });
+    state().reviseEntry(entry.id, { itemId: 'item-chicken', sourcePanel: null });
+    expect(state().entries[0].sourcePanel).toBeNull();
+    expect(state().entries[0].itemId).toBe('item-chicken');
+  });
+
+  it('keeps a kept panel through a correction that does not mention it', () => {
+    const kept = panel({ basis: 'per100g', source: 'fdc' });
+    const entry = stored({ itemId: null, sourcePanel: kept });
+    state().reviseEntry(entry.id, { label: 'Chicken breast' });
+    expect(state().entries[0].sourcePanel).toEqual(kept);
   });
 
   it('leaves the instant and its day key alone, same as updateEntry', () => {
@@ -395,6 +622,48 @@ describe('reviseEntry', () => {
     expect(state().entries[0].healthSampleIds).toEqual(['sample-b']);
   });
 
+  it('takes a late add write back out when the entry was corrected before it landed', async () => {
+    // The add's own write is still in flight when the correction arrives, so
+    // the row holds no sample ids yet and the revise has nothing to retract.
+    // Stamping the add's snapshot when it lands used to write the old figures
+    // back over the correction and keep the old sample in Health.
+    let landAdd: (r: { outcome: 'written'; sampleIds: string[] }) => void = () => {};
+    (logFoodEntryToHealth as jest.Mock)
+      .mockImplementationOnce(() => new Promise(resolve => { landAdd = resolve; }))
+      .mockResolvedValueOnce({ outcome: 'written', sampleIds: ['sample-b'] });
+    state().loadRange('2026-04-02', '2026-04-02');
+    const added = state().addEntry(draft({ at: new Date(2026, 3, 2, 9, 0) }))!;
+
+    state().reviseEntry(added.id, { nutrition: panel({ amounts: { calorieKcal: 400 } }) });
+    await flush();
+    landAdd({ outcome: 'written', sampleIds: ['sample-a'] });
+    await flush();
+
+    expect(retractFoodEntryFromHealth).toHaveBeenCalledWith(['sample-a']);
+    const row = state().entries.find(e => e.id === added.id)!;
+    expect(row.nutrition.amounts.calorieKcal).toBe(400);
+    expect(row.healthSampleIds).toEqual(['sample-b']);
+  });
+
+  it('takes a late add write back out when the entry was deleted before it landed', async () => {
+    let landAdd: (r: { outcome: 'written'; sampleIds: string[] }) => void = () => {};
+    (logFoodEntryToHealth as jest.Mock)
+      .mockImplementationOnce(() => new Promise(resolve => { landAdd = resolve; }));
+    (dbDeleteFoodLogEntry as jest.Mock).mockImplementation((id: string) => {
+      const i = mockRows.findIndex(r => r.id === id);
+      if (i >= 0) mockRows.splice(i, 1);
+    });
+    state().loadRange('2026-04-02', '2026-04-02');
+    const added = state().addEntry(draft({ at: new Date(2026, 3, 2, 9, 0) }))!;
+
+    state().removeEntry(added.id);
+    landAdd({ outcome: 'written', sampleIds: ['sample-a'] });
+    await flush();
+
+    expect(retractFoodEntryFromHealth).toHaveBeenCalledWith(['sample-a']);
+    expect(dbUpdateFoodLogEntry).not.toHaveBeenCalled();
+  });
+
   it('writes the corrected figures even when the retract fails', async () => {
     // Health's own record is something the person can delete there. Skipping
     // the write would instead leave Health holding only what was just corrected.
@@ -420,6 +689,46 @@ describe('reviseEntry', () => {
     state().reviseEntry(entry.id, { label: 'Oatmeal' });
     await flush();
     expect(retractFoodEntryFromHealth).toHaveBeenCalledWith(['sample-a']);
+  });
+
+  it('writes a share of an estimate to Health in place of the whole, keeping the whole on the row', async () => {
+    const whole = panel({ amounts: { calorieKcal: 1250 }, source: 'estimated', servingGrams: null, servingText: '1 burger' });
+    const entry = stored({ itemId: null, quantity: '1 burger', grams: null, nutrition: whole, healthSampleIds: ['sample-a'] });
+    const patch = estimateAmountPatch(entry, 1 / 2)!;
+    state().reviseEntry(entry.id, patch);
+    await flush();
+    expect(retractFoodEntryFromHealth).toHaveBeenCalledWith(['sample-a']);
+    const written = (logFoodEntryToHealth as jest.Mock).mock.calls.at(-1)![0] as FoodLogEntry;
+    expect(written.nutrition.amounts.calorieKcal).toBe(625);
+    expect(state().entries[0].sourcePanel?.amounts.calorieKcal).toBe(1250);
+    // "1 burger" counts the meal, so half of it is said in its own count.
+    expect(state().entries[0].quantity).toBe('1/2 burger');
+  });
+
+  it('writes more of an estimate to Health, and the original back when the count is restored', async () => {
+    // "I actually ate 3 slices" of a 2-slice estimate, and then back to 2.
+    // Each change retracts what Health holds and writes the new figures, the
+    // same retract-then-rewrite a re-measured correction gets.
+    const whole = panel({ amounts: { calorieKcal: 600, proteinG: 26 }, source: 'estimated', servingGrams: null, servingText: '2 slices' });
+    const entry = stored({ itemId: null, quantity: '2 slices', grams: null, nutrition: whole, healthSampleIds: ['sample-a'] });
+    (logFoodEntryToHealth as jest.Mock).mockResolvedValue({ outcome: 'written', sampleIds: ['sample-b'] });
+
+    state().reviseEntry(entry.id, estimateAmountPatch(entry, 3 / 2)!);
+    await flush();
+    expect(retractFoodEntryFromHealth).toHaveBeenLastCalledWith(['sample-a']);
+    const up = (logFoodEntryToHealth as jest.Mock).mock.calls.at(-1)![0] as FoodLogEntry;
+    expect(up.nutrition.amounts).toEqual({ calorieKcal: 900, proteinG: 39 });
+    expect(up.nutrition.source).toBe('estimated');
+    expect(up.quantity).toBe('3 slices');
+    expect(state().entries[0].healthSampleIds).toEqual(['sample-b']);
+
+    const changed = state().entries[0];
+    state().reviseEntry(changed.id, estimateAmountPatch(changed, 1)!);
+    await flush();
+    expect(retractFoodEntryFromHealth).toHaveBeenLastCalledWith(['sample-b']);
+    const back = (logFoodEntryToHealth as jest.Mock).mock.calls.at(-1)![0] as FoodLogEntry;
+    expect(back.nutrition.amounts).toEqual({ calorieKcal: 600, proteinG: 26 });
+    expect(back.quantity).toBe('2 slices');
   });
 
   it('leaves Health alone when the correction changed nothing it holds', async () => {
@@ -594,6 +903,14 @@ describe('moveEntry', () => {
     expect(state().entries.find(e => e.id === moved.id)).toBeDefined();
   });
 
+  it('carries a kept panel to the new day, since it is the same food', () => {
+    state().loadRange('2026-04-01', '2026-04-03');
+    const kept = panel({ basis: 'per100g', source: 'fdc' });
+    const original = state().addEntry(draft({ at: new Date(2026, 3, 2, 9, 0), sourcePanel: kept }))!;
+    (dbGetFoodLogEntry as jest.Mock).mockReturnValue(original);
+    expect(state().moveEntry(original.id, new Date(2026, 3, 1, 9, 0))!.sourcePanel).toEqual(kept);
+  });
+
   it('retracts the old Health sample and writes a fresh one at the new instant', async () => {
     state().loadRange('2026-04-01', '2026-04-03');
     const original = state().addEntry(draft({ at: new Date(2026, 3, 2, 9, 0) }))!;
@@ -637,6 +954,14 @@ describe('duplicateEntry', () => {
     expect(dbDeleteFoodLogEntry).not.toHaveBeenCalled();
     expect(state().entries.find(e => e.id === original.id)).toBeDefined();
     expect(state().entries.find(e => e.id === copy.id)).toBeDefined();
+  });
+
+  it('copies a kept panel too, so the copy can be corrected like the original', () => {
+    state().loadRange('2026-04-01', '2026-04-03');
+    const kept = panel({ basis: 'per100g', source: 'fdc' });
+    const original = state().addEntry(draft({ at: new Date(2026, 3, 2, 9, 0), sourcePanel: kept }))!;
+    (dbGetFoodLogEntry as jest.Mock).mockReturnValue(original);
+    expect(state().duplicateEntry(original.id, new Date(2026, 3, 3, 9, 0))!.sourcePanel).toEqual(kept);
   });
 
   it('shrugs at an id that is not stored', () => {

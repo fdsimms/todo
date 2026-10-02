@@ -55,6 +55,7 @@ const makeItem = (overrides: Partial<TemplateItem> = {}): TemplateItem => ({
   recurrenceInterval: 1,
   recurrenceDays: [],
   recurrenceMonthDay: null,
+  recurrenceMonth: null,
   recurrenceFromCompletion: false,
   recurrenceCount: null,
   vacationPause: false, excludeFromSuggestions: false,
@@ -70,6 +71,8 @@ const makeItem = (overrides: Partial<TemplateItem> = {}): TemplateItem => ({
   deliverableKind: null,
   chainEnabled: false,
   chainItems: [],
+  rotationEnabled: false,
+  rotationItems: [],
   chainIndex: 0,
   subtasks: [],
   groupId: null,
@@ -242,6 +245,13 @@ describe('buildDraftsFromTemplate', () => {
   const end = new Date('2026-06-27T09:00:00');
   const noAnchors = { start: null, end: null };
 
+  it('carries a link onto the draft, and an older item without one reads as none', () => {
+    const [draft] = buildDraftsFromTemplate([makeItem({ linkUrl: 'https://example.com/book' })], noAnchors);
+    expect(draft.linkUrl).toBe('https://example.com/book');
+    const [plain] = buildDraftsFromTemplate([makeItem()], noAnchors);
+    expect(plain.linkUrl).toBeNull();
+  });
+
   it('carries a gate onto the draft', () => {
     // A morning-routine template whose point is that nothing else happens
     // before the walk would otherwise hand out tasks that gate nothing.
@@ -393,6 +403,13 @@ describe('anchorLabel', () => {
 });
 
 describe('formatOffsetWithAnchor', () => {
+  // A trip template's anchors are the days you leave and get back.
+  it('names a trip template\'s anchors as leaving and coming back', () => {
+    expect(formatOffsetWithAnchor(-42, 'start', true)).toBe('42 days before leaving');
+    expect(formatOffsetWithAnchor(1, 'end', true)).toBe("1 day after you're back");
+    expect(formatOffsetWithAnchor(0, 'start', true)).toBe('The day you leave');
+  });
+
   it.each([
     [null, 'start', 'No date'],
     [0, 'start', 'On start date'],

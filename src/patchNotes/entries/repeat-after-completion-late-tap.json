@@ -1,0 +1,4 @@
+{
+  "message": "A task set to repeat after completion no longer skips a day when you check it off from the widget, a notification or the morning check-in. The next one is counted from when you actually did it, not from when the app caught up",
+  "date": "2026-09-23"
+}

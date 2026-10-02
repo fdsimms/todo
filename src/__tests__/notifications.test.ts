@@ -129,6 +129,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   recurrenceInterval: 1,
   recurrenceDays: [],
   recurrenceMonthDay: null,
+  recurrenceMonth: null,
   recurrenceWeekOrdinal: null,
   recurrenceAnchorDay: null,
   recurrenceAnchorDate: null,
@@ -147,8 +148,13 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   allowOvershoot: false,
   quotaIntervalMinutes: null,
   quotaReminders: false,
-  quotaStartedAt: null, quotaAlwaysVisible: false,
+  quotaStartedAt: null, quotaAlwaysVisible: false, followWaterTarget: false,
   quotaPeriod: 'day',
+  rotationEnabled: false,
+  rotationItems: [],
+  rotationLog: [],
+  rotationPeriodStart: null,
+  rotationLastDone: {},
   progressCount: 0,
   tags: [],
   sortOrder: 1,
@@ -180,7 +186,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   projectId: null,
   reminderTime: null,
   reminderKind: 'notification',
-  reminderOffsetDays: null, reminderTimeAnchor: 'wallClock', reminderUtcOffsetMinutes: null,
+  reminderOffsetDays: null, reminderTracksVisibility: false, reminderTimeAnchor: 'wallClock', reminderUtcOffsetMinutes: null,
   chainEnabled: false,
   chainIndex: 0,
   chainItems: [],
@@ -192,6 +198,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   followUpTaskTally: 0,
   previousFollowUpTaskTally: 0,
   followUpTaskSourceTitle: null,
+  followUpTaskSourceId: null,
   category: null,
   vacationPause: false, excludeFromSuggestions: false,
   timerStartedAt: null,
@@ -650,6 +657,7 @@ const makeShop = (overrides: Partial<Shop> = {}): Shop => ({
   excludeFromSuggestions: false,
     receiptStyle: 'itemized' as const,
     aisles: null,
+    aisleOrder: null,
   ...overrides,
 });
 
@@ -1450,6 +1458,21 @@ describe('demo mode suppresses scheduling', () => {
     setDemoModeActive(true);
     await scheduleEventReminder(makeEventReminder());
     expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+
+  // docs/arch/away-dates.md leans on this: a demo trip can arm vacation mode,
+  // and the full reschedule that follows must not cancel the real per-task
+  // reminders the device is still holding. The two fixed-id summaries (daily
+  // agenda, trip reminder) are withdrawn rather than left announcing the real
+  // database's counts, and the reschedule on leaving demo mode lays them back.
+  it('schedules nothing and cancels no task reminder on a full reschedule', async () => {
+    setDemoModeActive(true);
+    jest.clearAllMocks();
+    await rescheduleAllReminders([makeTask({ id: 'real', reminderTime: FUTURE })]);
+    expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+    expect(Notifications.cancelAllScheduledNotificationsAsync).not.toHaveBeenCalled();
+    const cancelled = (Notifications.cancelScheduledNotificationAsync as jest.Mock).mock.calls.map(c => c[0]);
+    expect(cancelled).toEqual(['daily-agenda', 'active-trip-reminder']);
   });
 
   it('resumes scheduling normally once demo mode is cleared', async () => {

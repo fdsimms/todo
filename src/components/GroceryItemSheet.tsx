@@ -60,8 +60,10 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { editorSearchTerms, matchesEditorQuery, filterEditorRows, type EditorSearchable } from '../utils/editorSearch';
 import { describeShops, shopsForItem, unavailableShopsFor } from '../utils/groceryShops';
 import { describeSubstituteLink, describeSubstitutes, substitutesFor } from '../utils/itemSubs';
+import { describeForgetLoss } from '../utils/groceryFacts';
 import { genericNameSuggestions } from '../utils/itemVarieties';
 import { groceryNameKey } from '../utils/groceryParse';
+import { entryFor } from '../utils/groceryLists';
 import { SubstituteSheet } from './SubstituteSheet';
 import { featureHidden, groceryRowShown } from '../utils/simpleMode';
 import { ProductSheet } from './ProductSheet';
@@ -88,18 +90,22 @@ import {
 import {
   defaultOnHandUntil,
   OUT_OF_IT_UNTIL,
+  probablyHaveReason,
+  productHaveReason,
 } from '../utils/grocerySuggest';
 import { describeExpiry, expiryDaysFromNow, expiryKeyFor, liveExpiresAt } from '../utils/groceryShelfLife';
 import { wantsUseUpTask } from '../utils/groceryExpiry';
 import { dayKeyToDate } from '../utils/dateUtils';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { CountStepper } from './CountStepper';
+import { useFilterField } from '../hooks/useFilterField';
 import {
   GROCERY_EXPIRY_DAYS_MAX,
   GROCERY_BRAND_MAX_LENGTH,
   GROCERY_VARIANT_MAX_LENGTH,
   GROCERY_NAME_MAX_LENGTH,
   GROCERY_QUANTITY_MAX_LENGTH,
+  isPortionBox,
 } from '../types';
 
 /** "10000.00" — the widest thing GROCERY_PRICE_MINOR_MAX allows. */
@@ -110,6 +116,17 @@ const PRICE_INPUT_MAX_LENGTH = 8;
  * store's. This keys the first; a store keys itself by id.
  */
 const ITEM_PRICE_KEY = 'item';
+
+/**
+ * The Pantry field's collapsed summary with a frozen portion said after the
+ * item's own state ("Got it until Oct 12, some frozen"), or alone when the item
+ * has nothing of its own to say. Undefined in, undefined out, so an item with
+ * neither still reads "Automatic".
+ */
+function withFrozenPortion(summary: string | undefined, portionFrozen: boolean): string | undefined {
+  if (!portionFrozen) return summary;
+  return summary ? `${summary}, some frozen` : 'Some in the freezer';
+}
 
 /** The collapsible fields in the "More" card, in the order they render. */
 export type CollapsibleFieldKey = 'products' | 'aisle' | 'stores' | 'pantry' | 'useBy' | 'substitutes' | 'varietyOf' | 'usedIn' | 'nutrition';
@@ -156,9 +173,15 @@ export function GroceryItemSheet({
   // ==== store bindings ====
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
 
   const item = useGroceryStore(s => (itemId ? s.items.find(i => i.id === itemId) ?? null : null));
+  // On the list being viewed, which is the one "Remove from list" acts on.
+  // `item.onList` is "in any trolley", so milk on the home list offered a
+  // Remove on the Airbnb list that closed the sheet and changed nothing.
+  const onViewedList = useGroceryStore(s => (
+    itemId ? entryFor(s.listEntries, itemId, s.activeListId) !== null : false
+  ));
   const clearChoice = useGroceryStore(s => s.clearChoice);
   const setItemNutrition = useGroceryStore(s => s.setItemNutrition);
   // Named siblings, live ones only — the same read GroceryScreen does for the
@@ -191,6 +214,9 @@ export function GroceryItemSheet({
   const markOutOfMany = useGroceryStore(s => s.markOutOfMany);
   const setStaple = useGroceryStore(s => s.setStaple);
   const setFrozen = useGroceryStore(s => s.setFrozen);
+  const freezePortion = useGroceryStore(s => s.freezePortion);
+  const setProductFrozen = useGroceryStore(s => s.setProductFrozen);
+  const markProductsOutOf = useGroceryStore(s => s.markProductsOutOf);
   const setOpened = useGroceryStore(s => s.setOpened);
   const setRunningLow = useGroceryStore(s => s.setRunningLow);
   const setExpiresAt = useGroceryStore(s => s.setExpiresAt);
@@ -256,7 +282,8 @@ export function GroceryItemSheet({
   // and behind the header icon, so an item nobody is searching looks exactly
   // as it did.
   const [searchOpen, setSearchOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
+  const searchFilter = useFilterField();
+  const searchQuery = searchFilter.query;
   const searchTerms = useMemo(
     () => (searchOpen ? editorSearchTerms(searchQuery) : []),
     [searchOpen, searchQuery]
@@ -266,7 +293,7 @@ export function GroceryItemSheet({
     haptics.tap();
     animateLayout();
     setSearchOpen(open => !open);
-    setSearchQuery('');
+    searchFilter.clear();
   };
   // Where `initialField`'s section actually lands once it's laid out — the
   // card and the field within it each report their own y through onLayout,
@@ -577,6 +604,32 @@ export function GroceryItemSheet({
     setRunningLow(item.id, !item.runningLowAt);
   };
 
+  // "Freeze some" (#2925): part of a pack in the freezer while the rest stays
+  // out on its own clock, written as the item's one portion box rather than
+  // the item's own freezer bit — see ItemProduct.isPortion. Three states for
+  // the line under the pills: in the freezer, back out of it, or not yet.
+  // The offer needs the item to be on hand in its own right (a portion is
+  // *some* of something) and not frozen whole, which already says more.
+  const portion = itemProducts.find(p => p.itemId === item.id && isPortionBox(p)) ?? null;
+  const portionFrozen = !!portion?.frozenAt && productHaveReason(portion, new Date()) !== null;
+  const portionThawed = !!portion && !portion.frozenAt && productHaveReason(portion, new Date()) !== null;
+  const canFreezeSome = !frozen && !portionFrozen && !portionThawed
+    && probablyHaveReason(item, new Date()) !== null;
+  const freezeSome = () => {
+    haptics.tap();
+    freezePortion(item.id);
+  };
+  const takePortionOut = () => {
+    if (!portion) return;
+    haptics.tap();
+    setProductFrozen(portion.id, false);
+  };
+  const portionUsedUp = () => {
+    if (!portion) return;
+    haptics.tap();
+    markProductsOutOf([portion.id]);
+  };
+
   // The stepper talks in days from today and the row stores a day; a date
   // survives the app being closed for a week, where "5 days" would quietly
   // mean five days from whenever you next looked. Same conversion
@@ -671,9 +724,18 @@ export function GroceryItemSheet({
   };
 
   const handleForgetItem = () => {
+    // What else goes with the row, named from the data: a standing swap here
+    // changes how every recipe shops, and a supply stocked from it stops
+    // putting it on the list. See describeForgetLoss.
+    const loss = describeForgetLoss(
+      [item.id],
+      { products: itemProducts, subs: itemSubs, aliases: useGroceryStore.getState().storeAliases },
+      items,
+      stockedFor.map(t => t.title),
+    );
     confirmDelete({
       title: `Forget ${item.name}?`,
-      message: 'This removes it from your catalog along with its history, and can’t be undone. To just take it off this week’s list, use "Remove from list".',
+      message: `This removes it from your catalog along with its history, and can’t be undone.${loss ? `\n\n${loss}` : ''}\n\nTo just take it off this week’s list, use "Remove from list".`,
       confirmLabel: 'Forget',
       onConfirm: () => {
         deleteItem(item.id);
@@ -920,9 +982,10 @@ export function GroceryItemSheet({
   // toggles whether this item gets a use-up task, and a frozen item can't have
   // one whichever way the switch is set (see wantsUseUpTask). A live control
   // over a suspended mechanism is worse than no control.
-  const useUpTaskVisible = liveExpiresAt(item) !== null && (!searching
+  // Out of it is hidden for the same reason (wantsUseUpTask refuses it too).
+  const useUpTaskVisible = liveExpiresAt(item) !== null && !onHandPast && (!searching
     || matchesEditorQuery({ key: 'useUpTask', label: 'Use-up task', keywords: ['reminder', 'notification', 'task'] }, searchTerms));
-  const removeFromListVisible = item.onList && (!searching
+  const removeFromListVisible = onViewedList && (!searching
     || matchesEditorQuery({ key: 'removeFromList', label: 'Remove from list', keywords: ['take off', 'delete'] }, searchTerms));
   const mergeVisible = !searching
     || matchesEditorQuery({ key: 'merge', label: 'Merge with another item', keywords: ['duplicate', 'combine', 'same thing'] }, searchTerms);
@@ -1043,7 +1106,7 @@ export function GroceryItemSheet({
             {!!preferred && (
               <>
                 <View style={styles.brandStrictRow}>
-                  <PillGroup options={productStrictOptions} noun="option" surface="page" />
+                  <PillGroup options={productStrictOptions} noun="option" />
                 </View>
                 <Text style={styles.hint}>
                   {item.productStrict
@@ -1068,7 +1131,7 @@ export function GroceryItemSheet({
           <CollapsibleField
             label="Nutrition"
             summary={describeFoodPanel(item.nutrition) ?? undefined}
-            hint="What this food is made of. Used to estimate a recipe's nutrition."
+            hint="What this food is made of. Used to estimate a recipe's nutrition and to log this food in the food log."
             expanded={openField === 'nutrition'}
             onToggle={() => toggleField('nutrition')}
           >
@@ -1101,7 +1164,7 @@ export function GroceryItemSheet({
                 <Text style={styles.nutritionDetail}>
                   Nothing recorded. A recipe using this ingredient counts it as uncovered
                   rather than guessing at it. Search a food database, or copy the figures
-                  off the packet.
+                  off the package.
                 </Text>
               )}
               <View style={styles.nutritionActions}>
@@ -1203,7 +1266,7 @@ export function GroceryItemSheet({
     {
       key: 'pantry',
       label: 'Pantry',
-      keywords: ['staple', 'always have it', 'have it', 'on hand', 'got it', 'out of it', 'freezer', 'frozen', 'freeze', 'thaw', 'defrost', 'opened', 'open', 'running low', 'low', 'nearly out', 'almost out'],
+      keywords: ['staple', 'always have it', 'have it', 'on hand', 'got it', 'out of it', 'freezer', 'frozen', 'freeze', 'freeze some', 'portion', 'half', 'split', 'thaw', 'defrost', 'opened', 'open', 'running low', 'low', 'nearly out', 'almost out'],
       node: (
         <View onLayout={(e: LayoutChangeEvent) => {
           fieldYRefs.current.pantry = e.nativeEvent.layout.y;
@@ -1216,18 +1279,23 @@ export function GroceryItemSheet({
               // the state that changes what the app does, so a frozen staple
               // should summarise as frozen rather than as a staple.
               // Same order probablyHaveReason resolves in, so this summary and
-              // the Pantry row can't say different things about one item.
-              onHandPast
-                ? 'Out of it'
-                : runningLow
-                  ? 'Running low'
-                  : frozen
-                    ? 'In the freezer'
-                    : item.isStaple
-                      ? 'Always have it'
-                      : onHandFuture
-                        ? `Got it until ${format(new Date(item.onHandUntil!), 'MMM d')}`
-                        : undefined
+              // the Pantry row can't say different things about one item. A
+              // frozen portion is said after it, because it's a second thing
+              // rather than another state of this one.
+              withFrozenPortion(
+                onHandPast
+                  ? 'Out of it'
+                  : runningLow
+                    ? 'Running low'
+                    : frozen
+                      ? 'In the freezer'
+                      : item.isStaple
+                        ? 'Always have it'
+                        : onHandFuture
+                          ? `Got it until ${format(new Date(item.onHandUntil!), 'MMM d')}`
+                          : undefined,
+                portionFrozen
+              )
             }
             emptySummary="Automatic"
             hint={
@@ -1238,13 +1306,81 @@ export function GroceryItemSheet({
                   : item.isStaple
                     ? 'Treated as on hand at all times. When a recipe adds ingredients to your list, this is filed under Always have instead of the shopping list.'
                     : onHandPast
-                      ? 'Marked out of it. Won’t show as probably-have until you buy it again.'
+                      ? portionFrozen
+                        ? 'Marked out of it, apart from the portion in the freezer.'
+                        : 'Marked out of it. Won’t show as probably-have until you buy it again.'
                       : 'Decided automatically from purchase history when this comes up in a week plan.'
             }
             expanded={openField === 'pantry'}
             onToggle={() => toggleField('pantry')}
           >
             <PillGroup options={pantryOptions} noun="state" />
+            {/* The frozen half of a split pack, under the pills rather than
+                as a seventh one: the pills describe the item, and this is a
+                second thing in the kitchen with its own row in the pantry.
+                The sentence gets its own line and the actions wrap under it,
+                so neither can squeeze the other. */}
+            {portionFrozen && (
+              <View style={styles.portionBlock}>
+                <Text style={styles.portionText}>
+                  {/* "The rest" only while there is one: once the rest is
+                      marked out of it, the frozen portion is all there is. */}
+                  {`Some in the freezer since ${format(new Date(portion!.frozenAt!), 'MMM d')}.${
+                    onHandPast ? '' : ' The rest keeps its own use-by date.'
+                  }`}
+                </Text>
+                <View style={styles.productActions}>
+                  <InlineAction
+                    label="Take it out"
+                    icon="exit-outline"
+                    variant="neutral"
+                    onPress={takePortionOut}
+                    accessibilityLabel={`Take the frozen ${item.name} out of the freezer`}
+                  />
+                  <InlineAction
+                    label="Used it up"
+                    icon="checkmark-circle-outline"
+                    variant="neutral"
+                    onPress={portionUsedUp}
+                    accessibilityLabel={`Mark the frozen ${item.name} used up`}
+                  />
+                </View>
+              </View>
+            )}
+            {portionThawed && (
+              <View style={styles.portionBlock}>
+                <Text style={styles.portionText}>
+                  {portion!.expiresAt
+                    ? `Some out of the freezer. ${describeExpiry(portion!.expiresAt, new Date())}.`
+                    : 'Some out of the freezer.'}
+                </Text>
+                <View style={styles.productActions}>
+                  <InlineAction
+                    label="Used it up"
+                    icon="checkmark-circle-outline"
+                    variant="neutral"
+                    onPress={portionUsedUp}
+                    accessibilityLabel={`Mark the thawed ${item.name} used up`}
+                  />
+                </View>
+              </View>
+            )}
+            {canFreezeSome && (
+              <View style={styles.portionBlock}>
+                <View style={styles.productActions}>
+                  <InlineAction
+                    label="Freeze some"
+                    icon="snow-outline"
+                    variant="neutral"
+                    onPress={freezeSome}
+                    accessibilityLabel={`Put some of the ${item.name} in the freezer and keep the rest out`}
+                  />
+                </View>
+                <Text style={styles.portionHint}>
+                  Keeps part of it in the freezer. The rest keeps its use-by date and use-up task.
+                </Text>
+              </View>
+            )}
           </CollapsibleField>
         </View>
       ),
@@ -1468,7 +1604,7 @@ export function GroceryItemSheet({
   // reaching for a capability, it never hides one you're already using.
   const simpleRowSet: Record<string, boolean> = {
     products: products.length > 0,
-    pantry: item.isStaple || onHandFuture || frozen || opened || runningLow,
+    pantry: item.isStaple || onHandFuture || frozen || opened || runningLow || portionFrozen || portionThawed,
     useBy: !!item.expiresAt || frozen,
     substitutes: substitutes.length > 0,
     varietyOf: !!item.varietyOfKey,
@@ -1531,8 +1667,7 @@ export function GroceryItemSheet({
             <SearchField
               style={styles.fieldSearch}
               placeholder="Find a field"
-              value={searchQuery}
-              onChangeText={setSearchQuery}
+              field={searchFilter}
               autoFocus
               accessibilityLabel="Find a field"
             />
@@ -1687,7 +1822,7 @@ export function GroceryItemSheet({
               }
               onBlur={() => commitPrice(priceKey)}
               onSubmitEditing={() => commitPrice(priceKey)}
-              placeholder={priceHint === null ? '0.00' : `e.g. ${priceToInput(priceHint)}`}
+              placeholder={priceHint === null ? 'Price' : `e.g. ${priceToInput(priceHint)}`}
               placeholderTextColor={colors.textTertiary}
               keyboardType="number-pad"
               // The iOS number pad has no return key, so onSubmitEditing above
@@ -1812,9 +1947,16 @@ export function GroceryItemSheet({
               <View style={styles.actionBody}>
                 <Text style={styles.actionLabel}>Use-up task</Text>
                 <Text style={styles.actionHint}>
+                  {/* Two different "no"s, and they need different words: an
+                      item turned off here stays off whatever the setting
+                      says, while an item nobody chose for just follows the
+                      setting, which is off. Told the first when it was the
+                      second, somebody reads it as already opted out. */}
                   {hasUseUpTask
                     ? 'A task to use this up appears before the use-by date.'
-                    : 'No task for this item, whatever the setting says.'}
+                    : item.useUpTask === false
+                      ? 'No task for this item, whatever the setting says.'
+                      : 'Use-up tasks are off in Settings. Tap to get one for this item anyway.'}
                 </Text>
               </View>
             </TouchableOpacity>
@@ -1992,6 +2134,14 @@ function makeStyles(colors: Colors) {
       gap: spacing.xs,
       marginTop: spacing.sm,
     },
+    // The frozen portion's line under the Pantry pills. Its own top margin to
+    // clear the pills, and a bottom one so the field's edge doesn't sit on the
+    // last pill or the hint.
+    portionBlock: { marginTop: spacing.smd, marginBottom: spacing.xs },
+    // textSecondary rather than the hint grey: it states where some of the
+    // food is, which is information rather than an aside.
+    portionText: { fontSize: font.sm, color: colors.textSecondary },
+    portionHint: { fontSize: font.sm, color: colors.textTertiary, marginTop: spacing.xs },
     body: { padding: spacing.md, paddingBottom: spacing.xl },
     // No marginHorizontal on either — `body`'s own padding already insets them.
     fieldSearch: { marginBottom: spacing.md },

@@ -20,9 +20,11 @@ type IoniconName = keyof typeof Ionicons.glyphMap;
 
 /**
  * The sheet a list of user-authored "when X, add this task" rules is edited
- * in — the shell behind `WeatherRulesSheet` and `ScreenTimeRulesSheet`.
+ * in — the shell behind every rules sheet (`WeatherRulesSheet`,
+ * `ScreenTimeRulesSheet`, `HealthRulesSheet`, `EventRulesSheet`,
+ * `ReminderCapturesSheet`).
  *
- * Those two shipped as near-identical copies: one card, one row per rule with
+ * The first two shipped as near-identical copies: one card, one row per rule with
  * a title, a secondary line, a hand-rolled toggle and a chevron; tap to expand
  * into a control, a title field and a delete row; an `InlineAction` to add one;
  * an `EmptyState` when there are none. Sixty lines of styles were identical
@@ -128,7 +130,7 @@ export function RuleListSheet<T extends EditableRule>({
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const hideHelpText = useSettingsStore(s => s.hideHelpText);
-  const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
@@ -370,8 +372,8 @@ function makeStyles(colors: Colors) {
 }
 
 /**
- * The card shape both sheets use above their rule list — a permission notice,
- * or the app picker. Exported so the two callers can't drift apart on the one
+ * The card shape the rules sheets use above their rule list — a permission
+ * notice, or the app picker. Exported so the callers can't drift apart on the one
  * bit of `header` they have in common.
  */
 export function RuleSheetNoticeCard({

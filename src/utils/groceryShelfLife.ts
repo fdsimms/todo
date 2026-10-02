@@ -3,6 +3,7 @@ import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { dayKeyOf, dayKeyToDate } from './dateUtils';
 import { describeUseBy, liveUseBy } from './freshness';
 import { groceryNameKey } from './groceryParse';
+import { pluralKeyVariants } from './groceryPlural';
 import { GROCERY_EXPIRY_DAYS_MAX } from '../types';
 import type { GroceryItem } from '../types';
 
@@ -93,6 +94,9 @@ export const OPEN_SHELF_LIFE_LEXICON: Record<string, number> = {
   'sour cream': 14, 'creme fraiche': 10, yogurt: 7, yoghurt: 7,
   'greek yogurt': 7, ricotta: 5, buttermilk: 10, cream: 5, 'heavy cream': 7,
   'half and half': 7, milk: 7, 'oat milk': 7, 'almond milk': 7, 'soy milk': 7,
+  // Sauces and cans that go into the fridge once opened, where a jar of pesto
+  // or half a can of coconut milk is exactly the thing forgotten at the back.
+  pesto: 5, 'pasta sauce': 5, marinara: 5, 'tomato paste': 7, 'coconut milk': 4,
 
   // ─── Vacuum packs and deli ───
   bacon: 7, 'cold cuts': 4, ham: 4, 'sliced turkey': 4, tofu: 4,
@@ -104,9 +108,28 @@ export const OPEN_SHELF_LIFE_LEXICON: Record<string, number> = {
  * `shelfLifeDaysFor` uses and for the same reason.
  */
 export function openShelfLifeDaysFor(name: string): number | null {
+  return lexiconDays(OPEN_SHELF_LIFE_LEXICON, name);
+}
+
+/**
+ * A name's entry in one of the two tables, trying the other plural of its last
+ * word when the name itself misses: singular and plural are one shelf item
+ * (docs/arch/groceries.md), and the tables list both forms for some foods and
+ * only one for others, so "Cucumbers" and "Strawberry" got no use-by day at
+ * all. Two variants the table disagrees on refuse rather than pick, the same
+ * call `resolvePluralKey` makes.
+ */
+function lexiconDays(table: Record<string, number>, name: string): number | null {
   const key = groceryNameKey(name);
   if (!key) return null;
-  return OPEN_SHELF_LIFE_LEXICON[key] ?? null;
+  const exact = table[key];
+  if (exact !== undefined) return exact;
+  const found = new Set<number>();
+  for (const variant of pluralKeyVariants(key)) {
+    const days = table[variant];
+    if (days !== undefined) found.add(days);
+  }
+  return found.size === 1 ? [...found][0] : null;
 }
 
 /**
@@ -120,9 +143,7 @@ export function openShelfLifeDaysFor(name: string): number | null {
  * that's fine, which is the failure mode that gets a feature turned off.
  */
 export function shelfLifeDaysFor(name: string): number | null {
-  const key = groceryNameKey(name);
-  if (!key) return null;
-  return SHELF_LIFE_LEXICON[key] ?? null;
+  return lexiconDays(SHELF_LIFE_LEXICON, name);
 }
 
 /** A use-by count forced into the sayable range, mirroring clampKeepDays. */

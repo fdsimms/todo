@@ -17,7 +17,9 @@ const UNCATEGORIZED = '';
 export function groupProjectsByCategory(projects: Project[], categoryOrder: string[] = []): ProjectListItem[] {
   const byCategory = new Map<string, Project[]>();
   projects.forEach(p => {
-    const key = p.category ?? UNCATEGORIZED;
+    // A blank name is no category, and it groups as none rather than as a
+    // header with nothing written on it.
+    const key = p.category || UNCATEGORIZED;
     if (!byCategory.has(key)) byCategory.set(key, []);
     byCategory.get(key)!.push(p);
   });
@@ -29,7 +31,8 @@ export function groupProjectsByCategory(projects: Project[], categoryOrder: stri
   });
   Array.from(byCategory.keys())
     .filter(cat => cat !== UNCATEGORIZED && !order.includes(cat))
-    .sort()
+    // By locale rather than code unit, which put "Zoo" ahead of "apple".
+    .sort((a, b) => a.localeCompare(b))
     .forEach(cat => order.push(cat));
 
   const items: ProjectListItem[] = [];
@@ -67,8 +70,10 @@ export function resolveProjectDrop(reordered: ProjectListItem[], categoryOrder: 
     }
     projectIds.push(item.project.id);
     const target = currentSection;
-    const project = target === item.project.category ? item.project : { ...item.project, category: target };
-    if (target !== item.project.category) {
+    // '' already groups as uncategorized, so dropping one there is no change.
+    const current = item.project.category || null;
+    const project = target === current ? item.project : { ...item.project, category: target };
+    if (target !== current) {
       categoryUpdates.push({ id: item.project.id, category: target });
     }
     orderedProjects.push(project);

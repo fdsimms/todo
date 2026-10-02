@@ -8,7 +8,7 @@
 //
 // The small components above TodayScreen (SectionHeader, LaterTodaySection,
 // ExpiredSection, …) are its section furniture and are declared at module level.
-import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef, useOptimistic, startTransition } from 'react';
 import {
   View,
   Text,
@@ -33,6 +33,7 @@ import { PinIcon } from '../components/PinIcon';
 import { format } from 'date-fns/format';
 import type { ContextRow, SavedViewClause, Task, TaskGroup, TaskTemplate, Category, TimeOfDay } from '../types';
 import { isTaskNew, isTaskVisible, isUnscheduledTask, isInboxTask, isDismissedToday, isRelevantToGroupToday, groupRoster } from '../utils/visibilityUtils';
+import { confirmBulkSetWhen } from '../utils/scheduleMovePrompt';
 import { type CreatedTaskDestination } from '../utils/createdTaskPlacement';
 import { completedOnDay, describeAllClear } from '../utils/allClear';
 import {
@@ -44,6 +45,7 @@ import {
   LATER_TODAY_LABEL,
   laterVisibleOrder,
   laterDaySections,
+  limitTodayItems,
   laterDropZones,
   laterTodaySections as computeLaterTodaySections,
   applyCategoryCollapse as applyCategoryCollapseTo,
@@ -70,11 +72,16 @@ import { asksOnCompletion } from '../utils/deliverables';
 import { DeliverablePromptQueue } from '../components/DeliverablePromptQueue';
 import { useTaskStore } from '../store/useTaskStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
+import { useGroceryStore } from '../store/useGroceryStore';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { useWidgetCompletionStore } from '../store/useWidgetCompletionStore';
 import { useTaskSelection } from '../hooks/useTaskSelection';
+import { useStableCallback } from '../hooks/useStableCallback';
 import { featureHidden, featureShown, visibleLenses } from '../utils/simpleMode';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
+import { useKeyboardLift } from '../hooks/useKeyboardLift';
+import { InlineNameField } from '../components/InlineNameField';
+import { useScrollToTopVisibility } from '../hooks/useScrollToTopVisibility';
 import { useElevatedCellRenderer } from '../hooks/useElevatedCellRenderer';
 import { useMealPlanNudgeProgress } from '../hooks/useMealPlanNudgeProgress';
 import { useCategoryStore } from '../store/useCategoryStore';
@@ -90,9 +97,16 @@ import { TaskGroupHeader } from '../components/TaskGroupHeader';
 import { TaskGroupBody } from '../components/TaskGroupBody';
 import { TaskGroupTray } from '../components/TaskGroupTray';
 import { TaskGroupEditor } from '../components/TaskGroupEditor';
-import { ReorderableList, type RowScroller } from '../components/ReorderableList';
+import { ReorderableList, type RowScroller, type DropCapture } from '../components/ReorderableList';
+import { ScrollToTopButton } from '../components/ScrollToTopButton';
 import { PaintSelectionProvider } from '../components/PaintSelection';
 import { GroupDropTarget } from '../components/GroupDropTarget';
+import {
+  ChannelDropTarget,
+  useDropTargetAimed,
+  useDropTargetChannel,
+  type DropTargetChannel,
+} from '../components/DropTargetChannel';
 import {
   FabDropZone,
   FabDropZoneProvider,
@@ -113,7 +127,8 @@ import { QuickAddModal } from '../components/QuickAddModal';
 import { QuickSearchModal } from '../components/QuickSearchModal';
 import { EventImportSheet } from '../components/EventImportSheet';
 import type { ExtractedCalendarEvent } from '../services/aiSuggestions';
-import { draftFromExtractedEvent } from '../utils/calendarEventImport';
+import { draftFromExtractedEvent, eventImportCreateFields } from '../utils/calendarEventImport';
+import { presentEventCreate } from '../utils/calendarSync';
 import type { TaskKind } from '../utils/taskKinds';
 import { TemplatePickerSheet } from '../components/TemplatePickerSheet';
 import { ApplyTemplateSheet } from '../components/ApplyTemplateSheet';
@@ -123,9 +138,9 @@ import { SavedViewEditorSheet } from '../components/SavedViewEditorSheet';
 import { clausesFromFilters } from '../utils/savedViews';
 import { useSavedViewStore } from '../store/useSavedViewStore';
 import { TodayOptionsMenu } from '../components/TodayOptionsMenu';
+import type { CardAnchor } from '../components/CardSheet';
 import { CategoryOrderSheet } from '../components/CategoryOrderSheet';
 import { DeloadSheet } from '../components/DeloadSheet';
-import { WeeklyReviewSheet } from '../components/WeeklyReviewSheet';
 import { useMoodStore } from '../store/useMoodStore';
 import { buildMoodDays, lowMoodRun } from '../utils/moodInsights';
 import { lowMoodDeloadNote } from '../utils/moodTasks';
@@ -139,6 +154,9 @@ import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { selectTodayMealEntries, recipeIndex } from '../utils/mealPlan';
 import { getDayStart, getLogicalDayKey } from '../utils/dateUtils';
+import { QuickEventSheet } from '../components/QuickEventSheet';
+import { useEventTaskLinkStore } from '../store/useEventTaskLinkStore';
+import { eventTaskKey, movedEventContextRows, movedEventNote, movedLinkedEvents } from '../utils/eventTaskLinks';
 import { morningCheckInTasks } from '../utils/morningCheckIn';
 import { addDays } from 'date-fns/addDays';
 import { useCalendarStore } from '../store/useCalendarStore';
@@ -171,7 +189,7 @@ import { useFocusStore } from '../store/useFocusStore';
 import { PressableScale } from '../components/PressableScale';
 import { AddTaskFab, type AddTaskType } from '../components/AddTaskFab';
 import { type FabDragHandlers, FAB_SIZE } from '../components/Fab';
-import { useColors } from '../theme/ThemeContext';
+import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
@@ -207,10 +225,21 @@ const VIEW_BADGE_LABELS: Partial<Record<ViewMode, string>> = {
 // Task budgets for the Later list (see the laterTaskLimit block below for why
 // it has one at all). INITIAL is about a screenful — it's what the tap into
 // Later has to mount before anything paints; SETTLED is topped up once that
-// commit is done, and PAGE_SIZE is what each scroll to the bottom adds.
+// commit is done, and PAGE_SIZE is what each scroll toward the bottom adds.
+//
+// A page lands mid-scroll, usually mid-fling, and mounting it blocks the frame
+// it commits in, so pages are small and asked for early: thirty rows a screen
+// and a bit ahead of the end costs a short hitch where sixty at the last few
+// rows cost a visible one, and could let a fling hit the bottom before they
+// arrived.
 const LATER_INITIAL_TASK_LIMIT = 15;
 const LATER_SETTLED_TASK_LIMIT = 60;
-const LATER_TASK_PAGE_SIZE = 60;
+const LATER_TASK_PAGE_SIZE = 30;
+const LATER_END_REACHED_THRESHOLD = 900;
+// The same first-paint budget for the Today list, which is remounted from
+// scratch on every switch back to it (see the todayTaskLimit block below).
+// There is no settled size: once the switch has painted, the whole day mounts.
+const TODAY_INITIAL_TASK_LIMIT = 15;
 
 // How long the created-task toast stays up before it dismisses itself —
 // same span UndoBar uses, long enough to read and act on, short enough not
@@ -248,6 +277,9 @@ const NO_GROUP_CHILDREN: Task[] = [];
 // value but re-registers the payload every render, and the pinned block is one
 // zone rather than one per row.
 const PINNED_DROP_ZONE = { kind: 'pinned', key: '__pinned-header__' } as const;
+// The Pinned block's id on the drag's DropTargetChannel, where the stacks are
+// named by their own ids.
+const PINNED_DRAG_TARGET = '__pinned-header__';
 
 // Category section header. When `onToggle` is given, the header is a
 // tappable collapse/expand control for its category (chevron reflects
@@ -317,23 +349,24 @@ function SectionHeader({
 // untouched prop, so the row underneath doesn't re-render with the wrapper.
 
 // A stack row, lit by either drag that can land in it: an existing task dragged
-// onto it (`active`), or the add button aimed at it.
+// onto it (`dragTarget`), or the add button aimed at it.
 function GroupDropTargetRow({
   channel,
   groupId,
-  active,
+  dragTarget,
   children,
 }: {
   channel: FabIntentChannel;
   groupId: string;
-  active: boolean;
+  dragTarget: DropTargetChannel;
   children: React.ReactNode;
 }) {
   const aimed = useFabIntentSelector(
     channel,
     intent => intent?.kind === 'joinGroup' && intent.groupId === groupId,
   );
-  return <GroupDropTarget active={active || aimed}>{children}</GroupDropTarget>;
+  const dragAimed = useDropTargetAimed(dragTarget, groupId);
+  return <GroupDropTarget active={dragAimed || aimed}>{children}</GroupDropTarget>;
 }
 
 // The add button, naming what a release right now would do.
@@ -504,6 +537,91 @@ function ExpiredSection({
   );
 }
 
+// The view mode switcher. Its own component so a tap can light the pill on a
+// render of just this row: the switch itself (setViewMode) unmounts one list
+// and mounts another, the most expensive render this screen does, so it runs
+// as a transition and the optimistic highlight shows in the meantime. Without
+// that, the pill, the haptic's visual partner, waited out the whole new list.
+// A transition is also interruptible, so a second tap before the first list
+// has rendered abandons it rather than queueing behind it. Programmatic
+// switches (tabPress, a created task's jump) stay synchronous on purpose:
+// they scroll the destination list straight after, and need it mounted.
+// `onLeave` runs outside the transition: leaving selection mode calls
+// animateLayout(), which applies to whichever commit lands next, and inside the
+// transition that would be the pill's own render rather than the rows leaving.
+function ViewModePills({
+  modes,
+  viewMode,
+  inboxCount,
+  unscheduledCount,
+  onLeave,
+  onSelect,
+  styles,
+}: {
+  modes: ViewMode[];
+  viewMode: ViewMode;
+  inboxCount: number;
+  unscheduledCount: number;
+  onLeave: () => void;
+  onSelect: (mode: ViewMode) => void;
+  styles: ReturnType<typeof makeStyles>;
+}) {
+  const [shownMode, showMode] = useOptimistic(viewMode);
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      style={styles.viewModePillsScroll}
+      contentContainerStyle={styles.viewModePills}
+    >
+      {modes.map(mode => {
+        const active = shownMode === mode;
+        const badge = mode === 'inbox'
+          ? inboxCount
+          : mode === 'unscheduled' ? unscheduledCount : 0;
+        return (
+          <TouchableOpacity
+            key={mode}
+            style={[styles.viewModePill, active && styles.viewModePillActive]}
+            onPress={() => {
+              haptics.tap();
+              onLeave();
+              startTransition(() => {
+                showMode(mode);
+                onSelect(mode);
+              });
+            }}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: active }}
+            accessibilityLabel={
+              badge > 0
+                ? `${VIEW_TITLES[mode]} view, ${badge} ${VIEW_BADGE_LABELS[mode]}`
+                : `${VIEW_TITLES[mode]} view`
+            }
+          >
+            <Text style={[styles.viewModePillText, active && styles.viewModePillTextActive]}>
+              {VIEW_TITLES[mode]}
+            </Text>
+            {badge > 0 && (
+              <View style={[styles.viewModePillBadge, mode !== 'inbox' && styles.viewModePillBadgeQuiet]}>
+                <Text
+                  style={[
+                    styles.viewModePillBadgeText,
+                    mode !== 'inbox' && styles.viewModePillBadgeTextQuiet,
+                  ]}
+                >
+                  {badge}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        );
+      })}
+    </ScrollView>
+  );
+}
+
 export function TodayScreen() {
   // ==== store bindings, navigation, layout insets ====
   const insets = useSafeAreaInsets();
@@ -560,7 +678,6 @@ export function TodayScreen() {
   const bulkMarkMissed = useTaskStore(s => s.bulkMarkMissed);
   const bulkSetPriority = useTaskStore(s => s.bulkSetPriority);
   const bulkTogglePin = useTaskStore(s => s.bulkTogglePin);
-  const bulkSetWhen = useTaskStore(s => s.bulkSetWhen);
   const bulkSetCategory = useTaskStore(s => s.bulkSetCategory);
   const bulkAddTags = useTaskStore(s => s.bulkAddTags);
   const markTasksSeen = useTaskStore(s => s.markTasksSeen);
@@ -580,6 +697,7 @@ export function TodayScreen() {
   const addExistingToGroup = useTaskStore(s => s.addExistingToGroup);
   const removeFromGroup = useTaskStore(s => s.removeFromGroup);
   const colors = useColors();
+  const { shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const segmentColors: Record<string, string> = useMemo(
     () => ({
@@ -612,8 +730,16 @@ export function TodayScreen() {
   // A newly-created task that landed off Today shows a toast naming where it
   // went instead of switching the screen there outright (see
   // handleTaskCreated) — this is that toast's state, cleared either by its
-  // own timeout or by the two actions it offers.
-  const [createdToast, setCreatedToast] = useState<{ task: Task; destination: CreatedTaskDestination } | null>(null);
+  // own timeout or by the two actions it offers. The same toast covers an
+  // existing Inbox task that picked up a schedule from an in-row suggestion
+  // (the Reminders-import chip) and left the Inbox as a result — see
+  // presentMovedFromInbox — with `previous` carrying what Undo restores
+  // instead of deleting the row outright.
+  const [createdToast, setCreatedToast] = useState<
+    | { source: 'created'; task: Task; destination: CreatedTaskDestination }
+    | { source: 'moved'; task: Task; destination: CreatedTaskDestination; previous: Task }
+    | null
+  >(null);
   const createdToastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [autoCompletingIds, setAutoCompletingIds] = useState<Set<string>>(new Set());
   const [editorVisible, setEditorVisible] = useState(false);
@@ -631,6 +757,7 @@ export function TodayScreen() {
   // filters it was opened from stand for.
   const [saveViewClauses, setSaveViewClauses] = useState<SavedViewClause[] | null>(null);
   const [optionsMenuVisible, setOptionsMenuVisible] = useState(false);
+  const [optionsMenuAnchor, setOptionsMenuAnchor] = useState<CardAnchor | null>(null);
   const [focusSetupVisible, setFocusSetupVisible] = useState(false);
   // Which entry point opened the setup sheet — whether it should seed from
   // the pinned block instead of running the suggester. See FocusSetupSheet's
@@ -651,6 +778,9 @@ export function TodayScreen() {
   // undefined = unscoped (opened from the "…" menu's "Pull from projects");
   // set = opened from the quiet-project nudge, restricted to those projects.
   const [pullScopeProjectIds, setPullScopeProjectIds] = useState<string[] | undefined>(undefined);
+  // The day a link asked pulls to land on (the weekend nudge's Saturday), or
+  // null for the sheet's own choice. See projectReviewLinkUrl.
+  const [pullOnDay, setPullOnDay] = useState<string | null>(null);
   const [showUpcoming, setShowUpcoming] = useState(false);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const {
@@ -687,6 +817,8 @@ export function TodayScreen() {
   // each needs its own ref and its own record of where it last settled.
   const unscheduledScroll = useKeyboardInsetScroll<FlatList>();
   const inboxScroll = useKeyboardInsetScroll<FlatList>();
+  const unscheduledScrollTop = useScrollToTopVisibility();
+  const inboxScrollTop = useScrollToTopVisibility();
   // Lifts the expanded row's cell above the row below it — Unscheduled and
   // Inbox are genuine FlatLists, unlike Today/Later's own ReorderableList
   // (see useElevatedCellRenderer for why that one needs no equivalent).
@@ -703,6 +835,16 @@ export function TodayScreen() {
   // else" arrived collapsed) and that's the half people turned the feature off
   // over.
   const [othersHidden, setOthersHidden] = useState(false);
+  // Whether a pinned stack's *copy* in the Pinned Tasks block is open, per
+  // group, for the session. The copy and the stack's own tray used to share
+  // `group.collapsed`, so tapping either opened both — and with the pinned
+  // copy above the screen, its tray growing pushed every row in view down by
+  // its height, which read as the page scrolling as the stack opened. Same
+  // rule as a pinned task row's expansion (keyed on the row, not the task):
+  // the tray under the finger is the only one that moves. No entry means the
+  // copy still follows the stack's own flag, which is how a freshly pinned
+  // stack shows up; the first toggle of either tray records it here.
+  const [pinnedGroupOpen, setPinnedGroupOpen] = useState<ReadonlyMap<string, boolean>>(() => new Map());
   // The toggle lives on the pinned block's header, and the block itself
   // renders nothing once nothing is pinned — so if the last pin goes away
   // (Clear, or unpinning the last one) while this is still true, there's no
@@ -736,9 +878,15 @@ export function TodayScreen() {
   );
   const [editingGroup, setEditingGroup] = useState<TaskGroup | null>(null);
   const [groupEditorVisible, setGroupEditorVisible] = useState(false);
-  // Set while editingGroup is a stack freshly created from the add menu —
-  // discarded on close if it was never given a title.
-  const newStackIdRef = useRef<string | null>(null);
+  // The add menu's "Stack" name field, floating over the keyboard. See
+  // createNamedStack.
+  const [namingStack, setNamingStack] = useState(false);
+  const stackNameKeyboard = useKeyboardLift(namingStack);
+  // A stack just named there, while the quick add it opened is still up. An
+  // empty stack never draws on Today, so one left with no tasks when that
+  // sheet closes is dropped again (closeQuickAdd) rather than kept where
+  // only the Stacks screen would show it.
+  const namedStackIdRef = useRef<string | null>(null);
   // Two-step "add from a template" flow off the add menu: pick a template,
   // then the apply sheet takes over for anchors and the item checklist.
   const [templatePickerVisible, setTemplatePickerVisible] = useState(false);
@@ -825,6 +973,7 @@ export function TodayScreen() {
     // drops a review task whose project has stopped being quiet, and a project
     // that no longer exists has certainly stopped.
     setPullScopeProjectIds(projectId ? [projectId] : undefined);
+    setPullOnDay((route.params.pullOnDay as string | undefined) ?? null);
     setPullVisible(true);
   }, [route.params?.openProjectPull, route.params?.pullProjectId, handledOpenPull]);
 
@@ -851,17 +1000,6 @@ export function TodayScreen() {
     setHandledOpenDeload(route.params.openDeload);
     setDeloadVisible(true);
   }, [route.params?.openDeload, handledOpenDeload]);
-
-  // And again for the weekly review task's own link (dundundun://review — see
-  // utils/weeklyReview.ts). WeeklyReviewSheet reads every pile it walks live
-  // off the stores, so there is nothing to pass along beyond opening it.
-  const [weeklyReviewVisible, setWeeklyReviewVisible] = useState(false);
-  const [handledOpenReview, setHandledOpenReview] = useState<number | undefined>(undefined);
-  useEffect(() => {
-    if (route.params?.openWeeklyReview === undefined || route.params.openWeeklyReview === handledOpenReview) return;
-    setHandledOpenReview(route.params.openWeeklyReview);
-    setWeeklyReviewVisible(true);
-  }, [route.params?.openWeeklyReview, handledOpenReview]);
 
   // Claims completions queued by the Today widget's checkbox and by Live
   // Activity's Done button (see useWidgetCompletionStore / widgetSync.ts).
@@ -950,7 +1088,7 @@ export function TodayScreen() {
       // A row left spotlighted on the view being switched away from has no
       // match in the destination's rows, so the dimmed backdrop would stay
       // up with nothing lit — same reset the view-mode pills do on a manual
-      // switch (see the pill row's onPress below).
+      // switch (see leaveViewMode/selectViewMode below).
       setExpandedTaskId(null);
     }
     if (destination === 'later') {
@@ -976,7 +1114,18 @@ export function TodayScreen() {
   // comment on CreatedTaskToast for why.
   const showCreatedTaskToast = (task: Task, destination: CreatedTaskDestination) => {
     if (createdToastTimeoutRef.current) clearTimeout(createdToastTimeoutRef.current);
-    setCreatedToast({ task, destination });
+    setCreatedToast({ source: 'created', task, destination });
+    createdToastTimeoutRef.current = setTimeout(dismissCreatedToast, CREATED_TOAST_VISIBLE_MS);
+  };
+
+  // Same toast, for a task that was already in the Inbox and left it by
+  // taking a suggestion rather than being created — see presentMovedFromInbox.
+  // `previous` is the whole row from before the suggestion was applied, so
+  // Undo can restore it exactly rather than deleting a task the user didn't
+  // just create.
+  const showMovedTaskToast = (task: Task, destination: CreatedTaskDestination, previous: Task) => {
+    if (createdToastTimeoutRef.current) clearTimeout(createdToastTimeoutRef.current);
+    setCreatedToast({ source: 'moved', task, destination, previous });
     createdToastTimeoutRef.current = setTimeout(dismissCreatedToast, CREATED_TOAST_VISIBLE_MS);
   };
 
@@ -989,11 +1138,56 @@ export function TodayScreen() {
 
   const handleCreatedToastUndo = () => {
     if (!createdToast) return;
-    const { task } = createdToast;
+    const toast = createdToast;
     dismissCreatedToast();
     haptics.success();
-    useTaskStore.getState().deleteTask(task.id);
+    if (toast.source === 'moved') {
+      // Whole-snapshot revert, same as deferTask's own undo — the row goes
+      // back to exactly what it was before the suggestion was applied,
+      // pendingImport included.
+      useTaskStore.getState().updateTask(toast.task.id, toast.previous);
+    } else {
+      useTaskStore.getState().deleteTask(toast.task.id);
+    }
   };
+
+  // Mirrors handleTaskCreated's placement logic below, for a task that was
+  // already sitting in the Inbox and picked up a schedule from an in-row
+  // suggestion (the Reminders-import chip's "here's what I think you meant"
+  // chip, see TaskItem's importSuggestion) instead of being created just now.
+  // 'today' switches the screen there outright, same as a fresh task landing
+  // there does; anywhere else gets the same go-to/undo toast a creation does,
+  // unless the row never actually left the view already being looked at.
+  const presentMovedFromInbox = (previous: Task, updated: Task) => {
+    const destination: ViewMode = isInboxTask(updated)
+      ? 'inbox'
+      : isTaskVisible(updated) ? 'today'
+      : isUnscheduledTask(updated) ? 'unscheduled'
+      : 'later';
+    if (destination === 'inbox') return;
+    if (destination === 'today') {
+      if (destination !== viewMode) {
+        setViewMode(destination);
+        setExpandedTaskId(null);
+      }
+      revealTaskInToday(updated);
+      flashTask(updated.id);
+      return;
+    }
+    if (destination === viewMode) {
+      goToCreatedTask(updated, destination);
+      return;
+    }
+    showMovedTaskToast(updated, destination, previous);
+  };
+  // handleApplyImport (below) is cached with an empty dependency array, the
+  // same discipline the drag callbacks in this file follow and for the same
+  // reason — so TaskItem's memo holds across every unrelated re-render. This
+  // ref is how it reaches a version of presentMovedFromInbox that still sees
+  // the render it was actually called in, rather than the one it was first
+  // cached from.
+  const presentMovedFromInboxRef = useRef(presentMovedFromInbox);
+  presentMovedFromInboxRef.current = presentMovedFromInbox;
 
   // A quick-add with no organizing metadata at all is an Inbox task, whichever
   // view it was added from. Landing on Today reveals the row in place, same as
@@ -1059,39 +1253,49 @@ export function TodayScreen() {
   const [minuteTick, forceRefresh] = useState(0);
   useFocusEffect(
     useCallback(() => {
-      // On *focus* as well as on foreground below, which is this pass alone and
-      // deliberate: a pantry check is answered on another screen — its own link
-      // opens the item sheet — and the six writes that answer it (both Pantry
-      // pills, the kitchen row's ✕, the freezer, running low, marking a staple)
-      // are six call sites that would each have to remember to clear the row.
-      // That is the "four call sites and still missed one" the stacks note
-      // warns about, so the sweep hangs off the one place the stale row would
-      // actually be seen instead. Same move checkTripExpiry makes on focus, and
-      // for the same reason: it turns something already true into something
-      // visible. A no-op boolean check while the setting is off.
-      // Ahead of the drip at every call site, so the bulk offer gets to
-      // suppress the per-item rows in the same pass rather than one behind it.
-      useTaskStore.getState().checkPantryReviewTasks();
-      useTaskStore.getState().checkPantryCheckTasks();
-      // On focus as well, for the pantry check's exact reason: a shortfall task
-      // is answered somewhere else entirely — its link opens the Meal Plan
-      // screen, and the add-to-list sheet there is what clears it — so hanging
-      // the sweep off the one place the stale row would actually be seen beats
-      // asking every grocery and meal-plan write to remember it.
-      useTaskStore.getState().checkMealShortfallTasks();
-      // Same reasoning one row over: a supply crosses its lead time purely by
-      // time passing (the run-out day stops being far enough away), and it
-      // stops wanting anything the moment the user restocks it — including
-      // from the reorder task's own completion prompt, which completeTask
-      // already sweeps for. This is the half that catches the clock.
-      useTaskStore.getState().checkSupplyReorderTasks();
-      // On focus as well as on foreground below, and this one needs both: a
-      // negative habit's run is credited by the clock rather than by anything
-      // the user does (see rolloverNegativeStreaks), so a cold start the next
-      // morning has to catch it up — and that is exactly the case AppState's
-      // 'active' listener misses, since the app is already active by the time it
-      // is registered. A no-op on all but the first call of each day.
-      useTaskStore.getState().rolloverNegativeStreaks();
+      // After the switch onto Today has settled rather than in the focus
+      // commit itself: each pass below is a sweep over every task, and any
+      // one that writes re-renders this whole screen, so running them inline
+      // stacked that work on the frame the tab switch was trying to paint.
+      // A stale row they clear can show for that moment and no longer.
+      const sweeps = InteractionManager.runAfterInteractions(() => {
+        // On *focus* as well as on foreground below, which is this pass alone and
+        // deliberate: a pantry check is answered on another screen — its own link
+        // opens the item sheet — and the six writes that answer it (both Pantry
+        // pills, the kitchen row's ✕, the freezer, running low, marking a staple)
+        // are six call sites that would each have to remember to clear the row.
+        // That is the "four call sites and still missed one" the stacks note
+        // warns about, so the sweep hangs off the one place the stale row would
+        // actually be seen instead. Same move checkTripExpiry makes on focus, and
+        // for the same reason: it turns something already true into something
+        // visible. A no-op boolean check while the setting is off.
+        // Ahead of the drip at every call site, so the bulk offer gets to
+        // suppress the per-item rows in the same pass rather than one behind it.
+        useTaskStore.getState().checkPantryReviewTasks();
+        useTaskStore.getState().checkPantryCheckTasks();
+        // On focus as well, for the pantry check's exact reason: a shortfall task
+        // is answered somewhere else entirely — its link opens the Meal Plan
+        // screen, and the add-to-list sheet there is what clears it — so hanging
+        // the sweep off the one place the stale row would actually be seen beats
+        // asking every grocery and meal-plan write to remember it.
+        useTaskStore.getState().checkMealShortfallTasks();
+        // And its freezer sibling, for the same reason: taking the chicken out
+        // happens in the Pantry, which is where its row's link goes.
+        useTaskStore.getState().checkMealThawTasks();
+        // Same reasoning one row over: a supply crosses its lead time purely by
+        // time passing (the run-out day stops being far enough away), and it
+        // stops wanting anything the moment the user restocks it — including
+        // from the reorder task's own completion prompt, which completeTask
+        // already sweeps for. This is the half that catches the clock.
+        useTaskStore.getState().checkSupplyReorderTasks();
+        // On focus as well as on foreground below, and this one needs both: a
+        // negative habit's run is credited by the clock rather than by anything
+        // the user does (see rolloverNegativeStreaks), so a cold start the next
+        // morning has to catch it up — and that is exactly the case AppState's
+        // 'active' listener misses, since the app is already active by the time it
+        // is registered. A no-op on all but the first call of each day.
+        useTaskStore.getState().rolloverNegativeStreaks();
+      });
       const interval = setInterval(() => {
         // On the tick as well as on foreground, unlike every other maintenance
         // pass, because this is the one whose trigger can arrive while the
@@ -1102,6 +1306,20 @@ export function TodayScreen() {
         // routine that just finished. Idempotent and self-clearing: the
         // completion it writes is what stops it matching again.
         useTaskStore.getState().sweepFinishedQuotaRuns();
+        // Same reasoning as the quota sweep above, for a health rule's own
+        // checkpoint hour: "under 2,006mg sodium, from 12 PM" can go from
+        // not-yet-judgeable to judgeable by noon simply arriving while the
+        // app sits open and nobody touches it — logging a meal or the app
+        // backgrounding/foregrounding are the only other triggers, and
+        // neither has to happen that afternoon. Gated on the read switch
+        // rather than left to checkHealthTasks' own gate, so a person who
+        // never turned health reading on isn't paying for a HealthKit query
+        // every 30 seconds for a feature they don't use.
+        if (useSettingsStore.getState().healthReadEnabled) {
+          void useHealthStore.getState().refresh().then(() => {
+            useTaskStore.getState().checkHealthTasks();
+          });
+        }
         forceRefresh(n => n + 1);
       }, 30000);
       // Also refresh the instant the app comes back to the foreground
@@ -1180,6 +1398,9 @@ export function TodayScreen() {
           // still missed one" the stacks note warns about. This pass re-runs the
           // predicate instead. After checkMealSlotTasks, which can plan a meal.
           useTaskStore.getState().checkMealShortfallTasks();
+          // The freezer sibling, on the same trigger: tomorrow's dinner comes
+          // into range purely by the day turning over.
+          useTaskStore.getState().checkMealThawTasks();
           // The reverse-window sibling of the pass above, same trigger and the
           // same missing-cold-start problem: a planned meal a few days behind
           // that never got logged should ask about it without waiting for a
@@ -1214,6 +1435,11 @@ export function TodayScreen() {
           // Beside them, same trigger: which day is "today" rolls over purely
           // by time passing, and so does the length of a low run.
           useTaskStore.getState().checkMoodTasks();
+          // And the weigh-in, which shares the mood check-in's shape: a day
+          // rolling over is its whole trigger, so a phone that stays open for
+          // days would otherwise never be asked. Async (it takes its own
+          // Health read), fired and not awaited, as the launch sweep does.
+          void useTaskStore.getState().checkWeighInTasks();
           // Beside it, same trigger, and this is the firing that does the real
           // work: the calendar events it weighs Saturday and Sunday against are
           // whatever useCalendarSync has read by now, which at cold launch is
@@ -1229,8 +1455,19 @@ export function TodayScreen() {
           // A leftover can age from "fresh" into "soon" purely by time
           // passing, with no store mutation to trigger a reconcile — same
           // reason the other checks above run here rather than waiting for
-          // the next cold start.
-          useLeftoverStore.getState().reconcileAllLeftoverTasks();
+          // the next cold start. Grocery use-up tasks share the sweep, so an
+          // item the use-up cap turned away gets its task once a slot frees
+          // up, soonest use-by day first across both kinds (#2924).
+          useGroceryStore.getState().reconcileAllUseUpTasks();
+          // A completion timer's countdown ends purely by time passing too,
+          // and this is the case that matters most for it: the whole point of
+          // one is a short reminder a few minutes to a few hours after
+          // finishing a task, so most of them run their course while the
+          // phone is sitting closed for a normal length of time rather than
+          // across a cold launch. Without this the Live Activity it started
+          // sat on the Lock Screen at 0:00 until the next background refresh
+          // or force-quit got around to it.
+          useTaskStore.getState().sweepExpiredCompletionTimers();
           forceRefresh(n => n + 1);
           // The rows are memoized, so re-rendering this screen no longer
           // re-renders them. Their clock-derived text (deadline countdowns,
@@ -1240,6 +1477,7 @@ export function TodayScreen() {
         }
       });
       return () => {
+        sweeps.cancel();
         clearInterval(interval);
         subscription.remove();
       };
@@ -1451,6 +1689,17 @@ export function TodayScreen() {
   // Later and Inbox stay whatever the mode is: each is the only route to a set
   // of real tasks, and a lens that hides tasks isn't a simplification. Only
   // Unscheduled goes, and only while it's empty and isn't the view you're on.
+  // What a pill tap does: the first half at once, the second once its
+  // transition renders (see ViewModePills). Same reset goToCreatedTask does on
+  // a switch: an expanded or selected row on the view being left has no match
+  // in the destination's rows.
+  const leaveViewMode = () => {
+    if (selectionMode) exitSelection();
+  };
+  const selectViewMode = (mode: ViewMode) => {
+    setViewMode(mode);
+    setExpandedTaskId(null);
+  };
   const viewModes = useMemo(
     () => (featureHidden('unscheduledLens', simpleMode)
       ? visibleLenses(VIEW_MODES, { unscheduled: unscheduledCount }, viewMode)
@@ -1521,8 +1770,25 @@ export function TodayScreen() {
     setPullingToSearch(true);
     haptics.impactLight();
     setQuickSearchVisible(true);
-    setPullingToSearch(false);
+    // The reset back to false waits for the sheet to be on screen
+    // (`endPullToSearch`, from its onShow), and that wait is the fix.
+    //
+    // The pull has already put iOS's UIRefreshControl into its own refreshing
+    // state, and it stays there — reserving the spinner's space and firing no
+    // further onRefresh, so pulling again does nothing — until the `refreshing`
+    // prop makes a real true→false transition. The Fabric component only acts
+    // on a prop *diff* against what the UI thread last mounted, and the UI
+    // thread mounts the newest commit, not each one: a true and a false
+    // committed close together (same batch, or a `setTimeout(…, 0)` apart,
+    // which is what this used to do) can reach it as one "no change", and the
+    // control is stuck refreshing for the rest of the session. onShow fires
+    // on the UI thread after the commit carrying the true (and the sheet) has
+    // been mounted, so the false after it is always its own transition. It
+    // also lands after the sheet has taken the touch, so the control isn't
+    // ended mid-drag either.
   }, []);
+
+  const endPullToSearch = useCallback(() => setPullingToSearch(false), []);
 
   // Anything the card's five slots couldn't answer goes to the real Search
   // screen, carrying the query so it isn't typed twice.
@@ -1572,12 +1838,22 @@ export function TodayScreen() {
   // stable and TaskItem's memo keeps holding — the same reason every other row
   // handler here takes an id instead of being made per row.
   const handleApplyImport = useCallback((id: string) => {
+    const before = useTaskStore.getState().tasks.find(t => t.id === id);
+    if (!before) return;
     useTaskStore.getState().applyPendingImport(id);
+    const after = useTaskStore.getState().tasks.find(t => t.id === id);
+    if (after) presentMovedFromInboxRef.current(before, after);
   }, []);
 
   const handleDismissImport = useCallback((id: string) => {
     useTaskStore.getState().dismissPendingImport(id);
   }, []);
+
+  // A screen matched in quick search. The route names come from the side
+  // menu's own index, so each is one the navigator already registers.
+  const handleOpenDestination = useCallback((route: string) => {
+    navigation.navigate(route as never);
+  }, [navigation]);
 
   const handleOpenProject = useCallback((projectId: string) => {
     navigation.navigate({ name: 'ProjectDetail', params: { projectId } } as never);
@@ -1587,10 +1863,29 @@ export function TodayScreen() {
     // The draft carries everything the sheet had, including the seeded
     // category; only the placement is let go of, and the editor has no notion
     // of one anyway.
+    // A stack just named for this sheet stays: the draft is filed into it,
+    // and the editor hasn't saved it yet.
+    namedStackIdRef.current = null;
     closeQuickAdd();
     setEditingTask(null);
     setEditorInitialDraft(draft);
     setEditorVisible(true);
+  };
+
+  /**
+   * A stack named from the add menu's field. It has no tasks yet, and an empty
+   * stack doesn't draw on Today, so the quick add opens straight away filing
+   * into it (its "Add another" keeps the stack for each task after the first).
+   * The editor is still one tap away on the stack's header once it's there.
+   */
+  const createNamedStack = (name: string) => {
+    setNamingStack(false);
+    const group = createTaskGroup(name, null);
+    namedStackIdRef.current = group.id;
+    setQuickAddType('task');
+    setQuickAddSeed({ groupId: group.id });
+    setQuickAddSeedLabel(name);
+    setQuickAddVisible(true);
   };
 
   const handleAddMenuSelect = (type: AddTaskType) => {
@@ -1602,56 +1897,75 @@ export function TodayScreen() {
       case 'template':
         setTemplatePickerVisible(true);
         break;
-      // Quick add builds a chain end to end now, so this no longer has to
-      // open the full editor just to reach a step list.
-      case 'chain':
-        setQuickAddType('chain');
-        setQuickAddVisible(true);
+      // Named in a field over the keyboard rather than in the editor sheet;
+      // see createNamedStack for what happens next.
+      case 'stack':
+        setNamingStack(true);
         break;
-      case 'stack': {
-        const group = createTaskGroup('', null);
-        newStackIdRef.current = group.id;
-        setEditingGroup(group);
-        setGroupEditorVisible(true);
-        break;
-      }
       case 'import':
         setEventImportVisible(true);
+        break;
+      // No task: a one-line event ("lunch w/ @dustin sat 12pm") that fills
+      // Apple's new-event sheet, where the calendar (Google or otherwise) is
+      // picked. See QuickEventSheet.
+      case 'event':
+        setQuickEventVisible(true);
         break;
     }
   };
 
-  // Opens the full editor pre-filled from the first event a photo or paste
-  // read, queuing any the rest for the draining effect below. Goes straight
-  // to the editor rather than quick add: quick add's seed can't carry notes
-  // or a location, and an imported event routinely has both (a phone number,
-  // an address) — see the design note on EventImportSheet.
-  const handleEventsImported = (events: ExtractedCalendarEvent[]) => {
-    const [first, ...rest] = events;
-    if (!first) return;
-    setPendingEventImports(rest);
-    setEditingTask(null);
-    setEditorInitialDraft(draftFromExtractedEvent(first));
-    setEditorVisible(true);
-  };
-
-  // Drains the queue an itinerary import left behind: as soon as the editor
-  // closes — saved or cancelled, either is "done with this one" — and there's
-  // still something waiting, open the next. Deliberately a separate effect
-  // rather than special-cased inside the editor's own onClose: that callback
-  // fires while `editorVisible` is still true, and flipping it false then true
-  // again in the same handler nets out to no change at all, so TaskEditor's
-  // own seeding effect (keyed on `[visible, task]`) would never see a reason
-  // to re-run and the second event would silently reuse the first one's draft.
-  // Watching the close land as its own render is what makes the reopen real.
-  useEffect(() => {
-    if (editorVisible || pendingEventImports.length === 0) return;
-    const [next, ...rest] = pendingEventImports;
+  // Advances an itinerary import one entry at a time: an event with a real
+  // date goes straight to Apple's own "new event" sheet (`presentEventCreate`)
+  // and, once that closes, recurses into whatever's left — no state involved,
+  // since nothing else needs to know a native sheet is up. An entry with no
+  // date can't become an event at all (nothing to start it on), so that one
+  // opens the full task editor instead, pre-filled from
+  // `draftFromExtractedEvent`; quick add is skipped because its seed can't
+  // carry notes or a location, and an imported event routinely has both (a
+  // phone number, an address) — see the design note on EventImportSheet.
+  // The task branch hands the rest of the queue to `pendingEventImports`
+  // rather than recursing itself, because the editor closes on its own time
+  // (saved or cancelled) and there's no promise to chain off of the way there
+  // is for a native sheet.
+  // Returns a promise that settles once every native sheet in the run has
+  // closed, so `EventImportSheet` can stay open underneath them (a native
+  // sheet presented as that Modal dismisses comes up blank).
+  const advanceEventImportQueue = useCallback(async (queue: ExtractedCalendarEvent[]): Promise<void> => {
+    const [next, ...rest] = queue;
+    if (!next) return;
+    const eventFields = eventImportCreateFields(next);
+    if (eventFields) {
+      try {
+        await presentEventCreate(eventFields);
+      } finally {
+        await advanceEventImportQueue(rest);
+      }
+      return;
+    }
     setPendingEventImports(rest);
     setEditingTask(null);
     setEditorInitialDraft(draftFromExtractedEvent(next));
     setEditorVisible(true);
-  }, [editorVisible, pendingEventImports]);
+  }, []);
+
+  const handleEventsImported = (events: ExtractedCalendarEvent[]) => advanceEventImportQueue(events);
+
+  // Drains the queue an itinerary import left behind: as soon as the editor
+  // closes — saved or cancelled, either is "done with this one" — and there's
+  // still something waiting, advance to the next entry. Deliberately a
+  // separate effect rather than special-cased inside the editor's own
+  // onClose: that callback fires while `editorVisible` is still true, and
+  // flipping it false then true again in the same handler nets out to no
+  // change at all, so TaskEditor's own seeding effect (keyed on
+  // `[visible, task]`) would never see a reason to re-run and the second
+  // event would silently reuse the first one's draft. Watching the close
+  // land as its own render is what makes the reopen real.
+  useEffect(() => {
+    if (editorVisible || pendingEventImports.length === 0) return;
+    const queue = pendingEventImports;
+    setPendingEventImports([]);
+    advanceEventImportQueue(queue);
+  }, [editorVisible, pendingEventImports, advanceEventImportQueue]);
 
   // ==== the lists: store tasks narrowed to what this view mode shows ====
   const filtered = useMemo(() => {
@@ -1894,7 +2208,18 @@ export function TodayScreen() {
   // `checkMealSlotTasks` had already drawn this line for the tasks those meals
   // sit beside, with a comment naming the same failure. See CLAUDE.md on the
   // grace window.
-  const todayKey = useMemo(() => getLogicalDayKey(new Date(), dayResetTime), [dayResetTime]);
+  //
+  // `minuteTick` is in the deps so the key follows the clock. Memoized on the
+  // reset time alone it was frozen at the day the screen mounted, and since
+  // `todayCalendarDayEnd` below is keyed on it, an app left open past midnight
+  // asked for events between today's start and yesterday's end: an empty range
+  // that only an event spanning midnight overlaps. The key itself changes once
+  // a day, so everything keyed on it stays as stable as before.
+  const todayKey = useMemo(
+    () => getLogicalDayKey(new Date(), dayResetTime),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [dayResetTime, minuteTick],
+  );
   const mealEntries = useMealPlanStore(useShallow(s => s.entries));
   const mealRangeStart = useMealPlanStore(s => s.rangeStart);
   const mealRangeEnd = useMealPlanStore(s => s.rangeEnd);
@@ -1966,6 +2291,21 @@ export function TodayScreen() {
   const calendarIds = useSettingsStore(s => s.calendarIds);
   const eventCalendarTags = calendarIds.length > 1 ? calendarsById : undefined;
   const [eventsSheetVisible, setEventsSheetVisible] = useState(false);
+  const [quickEventVisible, setQuickEventVisible] = useState(false);
+
+  // The Today widget's "Add event" shortcut (openQuickAddEventFromShortcut()
+  // in navigationRef.ts, deep link dundundun://addevent) — the event
+  // counterpart of the openQuickAdd handoff above, popping QuickEventSheet
+  // instead. deepLinks.ts already keeps this from firing in demo mode.
+  const [handledOpenQuickAddEvent, setHandledOpenQuickAddEvent] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    if (
+      route.params?.openQuickAddEvent === undefined
+      || route.params.openQuickAddEvent === handledOpenQuickAddEvent
+    ) return;
+    setHandledOpenQuickAddEvent(route.params.openQuickAddEvent);
+    setQuickEventVisible(true);
+  }, [route.params?.openQuickAddEvent, handledOpenQuickAddEvent]);
   const todayCalendarDayEnd = useMemo(() => addDays(getDayStart(new Date()), 1), [todayKey]);
   const todayCalendarEvents = useMemo(
     () => (calendarReadEnabled && calendarLoaded && !demoActive
@@ -1994,14 +2334,40 @@ export function TodayScreen() {
     [hiddenEventsByKey]
   );
 
+  // Events that moved with tasks planned around them (eventTaskLinks.ts). The
+  // row only says so; the offer to move the tasks is in the events sheet the
+  // row opens.
+  const eventTaskLinks = useEventTaskLinkStore(s => s.links);
+  const calendarWindowStart = useCalendarStore(s => s.windowStart);
+  const calendarWindowEnd = useCalendarStore(s => s.windowEnd);
+  const liveTaskIds = useMemo(() => new Set(allTasks.map(t => t.id)), [allTasks]);
+  const movedEvents = useMemo(
+    () => (calendarWindowStart && calendarWindowEnd
+      ? movedLinkedEvents(eventTaskLinks, calendarEvents, new Date(calendarWindowStart), new Date(calendarWindowEnd))
+      : []),
+    [eventTaskLinks, calendarEvents, calendarWindowStart, calendarWindowEnd]
+  );
+  const movedEventNotes = useMemo(() => {
+    const notes = new Map<string, string>();
+    for (const moved of movedEvents) {
+      const note = movedEventNote(moved, liveTaskIds);
+      if (note) notes.set(eventTaskKey(moved.event), note);
+    }
+    return notes;
+  }, [movedEvents, liveTaskIds]);
+  // A moved-off-today event's row opens the events sheet on that one event,
+  // where the move offer is; null is the ordinary "today's events" sheet.
+  const [eventsSheetFor, setEventsSheetFor] = useState<BusyEvent | null>(null);
+
   const contextRows = useMemo(() => {
     const rows: ContextRow[] = [];
     // Leads, above the calendar and the food. It is the only one of the four
     // that is about the day as a whole rather than about a thing in it, and it
-    // is one line at most — `healthContextRows` draws nothing for a null or a
-    // zero, which is most mornings. Its own category by default, so in practice
-    // it leads a section of its own and this ordering only shows once somebody
-    // files it with something else.
+    // is at most one line per metric — `healthContextRows` draws nothing for a
+    // null or a zero reading, which is most mornings, for either of the two it
+    // now covers (steps, active calories). Its own category by default, so in
+    // practice it leads a section of its own and this ordering only shows once
+    // somebody files it with something else.
     //
     // Gated on the category for the reason the events below are: a row with
     // none goes to the very top of the list, above every section, which is the
@@ -2027,6 +2393,15 @@ export function TodayScreen() {
         use24Hour: use24HourTime,
         calendarsById: eventCalendarTags,
         isHidden: isEventHidden,
+        movedNote: event => movedEventNotes.get(eventTaskKey(event)) ?? null,
+      }));
+      // Events that moved off today, which today's own rows can't show.
+      const todayKeys = new Set(todayCalendarEvents.map(eventTaskKey));
+      rows.push(...movedEventContextRows(movedEvents, {
+        liveTaskIds,
+        category: calendarEventCategory,
+        use24Hour: use24HourTime,
+        isOnToday: event => todayKeys.has(eventTaskKey(event)),
       }));
     }
     if (mealsOnToday === 'inline' && todayMealEntries) {
@@ -2045,7 +2420,7 @@ export function TodayScreen() {
     return rows;
   }, [
     todayCalendarEvents, calendarEventCategory, use24HourTime, eventCalendarTags,
-    isEventHidden,
+    isEventHidden, movedEventNotes, movedEvents, liveTaskIds,
     mealsOnToday, todayMealEntries, recipesById, mealCookTaskCategory, allTasks,
     healthToday, healthCategory, dayResetTime,
     minuteTick,
@@ -2207,11 +2582,40 @@ export function TodayScreen() {
   // useEffect, so a `data` change — including the very first store load —
   // reaches the list in the same render as everything else on screen, instead
   // of landing a frame late and popping in after the rest of the UI.
-  const [draggableData, setDraggableData] = useState<ListItem[]>(data);
-  const syncedDataRef = useRef(data);
-  if (syncedDataRef.current !== data) {
-    syncedDataRef.current = data;
-    setDraggableData(data);
+  //
+  // Fed the budgeted list below rather than `data` itself: the Today list is
+  // unmounted while another sub-view is showing, so switching back to it
+  // mounts every row of the day in the same blocking commit as the tap — the
+  // same stall the Later list's own budget (laterTaskLimit) exists to avoid,
+  // and a day with stacks and a pinned block is easily sixty TaskItems. So the
+  // switch mounts one screenful first (`data` is untouched; only what the
+  // list is handed is cut short) and the effect below hands it the rest once
+  // that commit is done, by which time nothing past the first screen has had
+  // a chance to be scrolled to. Everything that reasons about the day's rows
+  // rather than rendering them — sectionTaskIds, the header pin toggles, the
+  // jump target — keeps reading `data`/`listItems`, so the budget can't hide
+  // a row from a decision, only briefly from the screen.
+  //
+  // Leaving Today drops the budget back, and both directions wait for the
+  // switch to settle for the reasons Later's block gives: the reset isn't
+  // needed a frame early (the list it prunes is already gone), and deferring
+  // it means switching out and straight back keeps the full list rather than
+  // paying to re-mount it in two steps, because the pending reset is cancelled
+  // by this effect's own cleanup.
+  const [todayTaskLimit, setTodayTaskLimit] = useState<number | undefined>(TODAY_INITIAL_TASK_LIMIT);
+  useEffect(() => {
+    const handle = InteractionManager.runAfterInteractions(() => {
+      setTodayTaskLimit(viewMode === 'today' ? undefined : TODAY_INITIAL_TASK_LIMIT);
+    });
+    return () => handle.cancel();
+  }, [viewMode]);
+  const mountedData = useMemo(() => limitTodayItems(data, todayTaskLimit), [data, todayTaskLimit]);
+
+  const [draggableData, setDraggableData] = useState<ListItem[]>(mountedData);
+  const syncedDataRef = useRef(mountedData);
+  if (syncedDataRef.current !== mountedData) {
+    syncedDataRef.current = mountedData;
+    setDraggableData(mountedData);
   }
 
   // The settled layout a drop hands back, with the day's context rows put back
@@ -2281,12 +2685,24 @@ export function TodayScreen() {
    * ago that landed somewhere else entirely.
    */
   const closeQuickAdd = () => {
+    // A task created from the sheet is already in the store by now (onClose
+    // runs after addTask), so an empty stack here is one nothing went into.
+    const namedStackId = namedStackIdRef.current;
+    namedStackIdRef.current = null;
+    if (namedStackId && !useTaskStore.getState().tasks.some(t => t.groupId === namedStackId)) {
+      removeGroupRow(namedStackId);
+    }
     setQuickAddVisible(false);
     setQuickAddSeed(undefined);
     setQuickAddSeedLabel(null);
     setQuickAddType('task');
     pendingDropRef.current = null;
   };
+  // Stable, because QuickAddModal is memoized and stays mounted while hidden:
+  // a fresh prop each render would re-render the hidden sheet with this screen.
+  const onQuickAddClose = useStableCallback(closeQuickAdd);
+  const onQuickAddOpenFull = useStableCallback(handleQuickAddOpenFull);
+  const onQuickAddCreated = useStableCallback(handleTaskCreated);
 
   // One list now, so one source of zones. The pinned block isn't in this data
   // (it's the list's header) and registers its own 'pinned' zone directly —
@@ -2511,6 +2927,27 @@ export function TodayScreen() {
   // Same deal one level down: a drag of the inline subtask list inside an
   // expanded row (see TaskItem.onSubtaskDragStateChange).
   const [draggingSubtask, setDraggingSubtask] = useState(false);
+
+  // Each of the three above already resets on its own gesture's release *and*
+  // termination (SortableList, PaintSelection's own AppState backstop is the
+  // model this follows) — but a touch cannot survive the app backgrounding,
+  // so any drag still marked live when the app returns to the foreground is
+  // stale by definition, whether or not the responder that owned it heard
+  // about the cancellation in time. Left stuck true, any of these disables
+  // the Today list's scrolling for the rest of the session (see its
+  // `scrollEnabled`), with reopening the app the only way out — the same
+  // shape as #2811. This is a backstop, not the primary reset.
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', state => {
+      if (state === 'active') {
+        setFabDragging(false);
+        setDraggingStackChildGroupId(null);
+        setDraggingPin(false);
+        setDraggingSubtask(false);
+      }
+    });
+    return () => subscription.remove();
+  }, []);
   // The group whose long-press is currently calling drag(), handed to
   // onDragBegin so the state above is only ever set once the list has
   // actually taken the drag.
@@ -2524,18 +2961,41 @@ export function TodayScreen() {
   // still false), so collapsing and expanding again appears to lose the
   // tasks.
   const pendingGroupDragRef = useRef<string | null>(null);
-  const startGroupDrag = (groupId: string, drag: () => void) => {
+  const startGroupDrag = useCallback((groupId: string, drag: () => void) => {
     pendingGroupDragRef.current = groupId;
     drag();
     pendingGroupDragRef.current = null;
+  }, []);
+
+  // The wrapper above, cached per stack — the same thing ReorderableList's own
+  // `dragHandlerFor` does for its rows, and for the same reason one level up:
+  // TaskGroupHeader is memoized, and building this inline in the render map
+  // handed every header a fresh function identity on every render of the list,
+  // which is enough on its own to defeat the memo. The row's `drag` is already
+  // stable per key, so the cache only has to notice the rare case where it
+  // isn't (a stack that changed slot) and rebuild that one entry.
+  const groupDragWrappersRef = useRef(new Map<string, { drag: () => void; wrapped: () => void }>());
+  const groupDragHandlerFor = (groupId: string, drag: () => void) => {
+    const cached = groupDragWrappersRef.current.get(groupId);
+    if (cached && cached.drag === drag) return cached.wrapped;
+    const wrapped = () => startGroupDrag(groupId, drag);
+    groupDragWrappersRef.current.set(groupId, { drag, wrapped });
+    return wrapped;
   };
 
   // Tracks a "drag onto a group to join it" gesture while a plain loose task
   // is being dragged: set from onDragMove below whenever the dragged card
   // sits over a group — header or children — and cleared the moment it isn't.
   // Read once at drop time in onDragEnd.
+  //
+  // The highlight and the list's freeze don't go through screen state: as
+  // state, every crossing re-rendered all of Today mid-drag. The stack (or the
+  // Pinned block, below) reads dropTargetChannel and the list is told through
+  // dropCapture, so a crossing repaints only the target it lit. See
+  // DropTargetChannel.
   const joinGroupIntentRef = useRef<string | null>(null);
-  const [joinGroupIntentId, setJoinGroupIntentId] = useState<string | null>(null);
+  const dropTargetChannel = useDropTargetChannel();
+  const dropCapture = useRef<DropCapture>(null);
   // Task the drop just handed to a group (set in onDragEnd, which runs before
   // onReorder), so the placement pass below leaves it alone — it belongs to
   // the group now, not to whatever slot it was let go over.
@@ -2547,7 +3007,6 @@ export function TodayScreen() {
   // here, the pinned block — so there's no group id to track, just whether
   // the drop is currently aimed there.
   const pinIntentRef = useRef(false);
-  const [pinIntentActive, setPinIntentActive] = useState(false);
   const pinnedTaskIdRef = useRef<string | null>(null);
   // Index (within draggableData) of the row currently being dragged in the
   // main list — kept up to date from dragRange (called every hover update)
@@ -2603,6 +3062,57 @@ export function TodayScreen() {
     });
   }, [completeGroup, requestComplete]);
   const handleGroupDefer = useCallback((groupId: string, date: Date) => deferGroup(groupId, date), [deferGroup]);
+  // Id-bound like the rest, and here it earns it twice over: TaskGroupHeader
+  // is memoized, so a fresh arrow per group per render would defeat that
+  // outright — and the one thing a stack header must not do is re-commit
+  // while its own collapse is animating (see AnimatedCollapsible).
+  //
+  // No animateLayout(): AnimatedCollapsible already owns a smooth
+  // Reanimated-driven height transition for this row, and stacking a
+  // LayoutAnimation on the same commit fights it — LayoutAnimation grabs the
+  // view's current committed frame to animate from, which can race the
+  // in-progress Reanimated value and leave the row frozen at zero height
+  // until something else (a remount) forces a fresh layout. Inbox's copy of
+  // this handler called it for a while, which is most of why an Inbox stack
+  // read worse than a Today one.
+  //
+  // Clearing draggingGroupId doubles as the recovery path if a header drag
+  // ever ends without onDragEnd: a tap landing here means no drag is in
+  // flight, and without it the stack would stay bodiless no matter how many
+  // times it's collapsed and expanded. A no-op on the surfaces that can't
+  // drag a header.
+  //
+  // Dismissing the spotlight first is why the tap can't fall through to the
+  // collapse: a stack header is a big target sitting right beside a
+  // spotlighted row, and tapping the dimmed-out page around that row means
+  // "put it back", not "and also fold this stack away". Later Today's own
+  // copy of this handler was the one that missed the guard, so a stack down
+  // there collapsed under a tap the other four read as a dismissal.
+  const handleGroupToggleCollapse = useCallback((groupId: string) => {
+    if (expandedTaskId !== null) { setExpandedTaskId(null); return; }
+    haptics.tap();
+    setDraggingGroupId(null);
+    const group = useTaskGroupStore.getState().getGroupById(groupId);
+    if (!group) return;
+    // A pinned copy still following this flag keeps the state it has now,
+    // rather than opening along with this tray (see pinnedGroupOpen).
+    const hasPinnedCopy = useTaskStore.getState().tasks
+      .some(t => t.pinned && t.groupId === groupId && !t.completed);
+    if (hasPinnedCopy) {
+      setPinnedGroupOpen(prev => (prev.has(groupId) ? prev : new Map(prev).set(groupId, !group.collapsed)));
+    }
+    setGroupCollapsed(groupId, !group.collapsed);
+  }, [expandedTaskId, setGroupCollapsed]);
+  // The pinned copy's own toggle: session state only, never `group.collapsed`,
+  // so the stack's tray down in its category stays exactly as it was.
+  const handlePinnedGroupToggleCollapse = useCallback((groupId: string) => {
+    if (expandedTaskId !== null) { setExpandedTaskId(null); return; }
+    haptics.tap();
+    setDraggingGroupId(null);
+    const group = useTaskGroupStore.getState().getGroupById(groupId);
+    if (!group) return;
+    setPinnedGroupOpen(prev => new Map(prev).set(groupId, !(prev.get(groupId) ?? !group.collapsed)));
+  }, [expandedTaskId]);
   const handleGroupPin = useCallback((groupId: string) => { animateLayout(); pinGroup(groupId); }, [pinGroup]);
   const handleGroupPressEdit = useCallback((groupId: string) => {
     const group = useTaskGroupStore.getState().getGroupById(groupId);
@@ -2746,35 +3256,19 @@ export function TodayScreen() {
         <GroupDropTargetRow
           channel={fabIntentChannel}
           groupId={item.group.id}
-          active={joinGroupIntentId === item.group.id}
+          dragTarget={dropTargetChannel}
         >
           <TaskGroupTray>
             <TaskGroupHeader
+              selectionMode={selectionMode}
               group={item.group}
               allChildren={allChildren}
               filtered={groupTallyFiltered}
               pinned={groupPinInfo.get(item.group.id)?.pinned ?? false}
               pinDisabled={!(groupPinInfo.get(item.group.id)?.pinnable ?? false)}
-              onToggleCollapse={() => {
-                if (expandedTaskId !== null) { setExpandedTaskId(null); return; }
-                haptics.tap();
-                // No animateLayout() here: AnimatedCollapsible already owns a
-                // smooth Reanimated-driven height transition for this row, and
-                // stacking a LayoutAnimation on the same commit fights it —
-                // LayoutAnimation grabs the view's current committed frame to
-                // animate from, which can race the in-progress Reanimated
-                // value and leave the row frozen at zero height until
-                // something else (a remount) forces a fresh layout.
-                //
-                // A tap landing here means no drag is in flight, so this
-                // doubles as the recovery path if one ever ends without
-                // onDragEnd — otherwise the stack would stay bodiless no
-                // matter how many times it's collapsed and expanded.
-                setDraggingGroupId(null);
-                setGroupCollapsed(item.group.id, !item.group.collapsed);
-              }}
+              onToggleCollapse={handleGroupToggleCollapse}
               {...groupHeaderProps}
-              onDrag={!selectionMode && drag ? () => startGroupDrag(item.group.id, drag) : undefined}
+              onDrag={!selectionMode && drag ? groupDragHandlerFor(item.group.id, drag) : undefined}
             />
             <TaskGroupBody
               expanded={!item.group.collapsed && draggingGroupId !== item.group.id}
@@ -2816,7 +3310,13 @@ export function TodayScreen() {
         <DayContextRow
           row={item.row}
           onPress={
-            item.row.kind === 'event' ? () => setEventsSheetVisible(true)
+            item.row.kind === 'event' ? () => {
+              const moved = item.row.id.startsWith('moved-')
+                ? movedEvents.find(m => `moved-${eventTaskKey(m.event)}` === item.row.id)
+                : undefined;
+              setEventsSheetFor(moved?.event ?? null);
+              setEventsSheetVisible(true);
+            }
             // A health row has nowhere to go, which the prop supports and which
             // is the honest answer here: the number came from another app, this
             // one holds no detail behind it, and opening Health would be a task
@@ -2890,18 +3390,13 @@ export function TodayScreen() {
     return (
       <TaskGroupTray>
         <TaskGroupHeader
+          selectionMode={selectionMode}
           group={group}
           allChildren={allChildren}
           dueTodayOverride={children}
           pinned={groupPinInfo.get(group.id)?.pinned ?? false}
           pinDisabled={!(groupPinInfo.get(group.id)?.pinnable ?? false)}
-          onToggleCollapse={() => {
-            haptics.tap();
-            // See the main list's group onToggleCollapse: no animateLayout()
-            // here either, for the same reason — AnimatedCollapsible drives
-            // this row's own transition already.
-            setGroupCollapsed(group.id, !group.collapsed);
-          }}
+          onToggleCollapse={handleGroupToggleCollapse}
           {...groupHeaderProps}
         />
         <TaskGroupBody expanded={!group.collapsed} hasChildren={children.length > 0}>
@@ -2957,17 +3452,13 @@ export function TodayScreen() {
     return (
       <TaskGroupTray>
         <TaskGroupHeader
+          selectionMode={selectionMode}
           group={group}
           allChildren={allChildren}
           filtered={filterHasReminder}
           pinned={groupPinInfo.get(group.id)?.pinned ?? false}
           pinDisabled={!(groupPinInfo.get(group.id)?.pinnable ?? false)}
-          onToggleCollapse={() => {
-            if (expandedTaskId !== null) { setExpandedTaskId(null); return; }
-            haptics.tap();
-            animateLayout();
-            setGroupCollapsed(group.id, !group.collapsed);
-          }}
+          onToggleCollapse={handleGroupToggleCollapse}
           {...groupHeaderProps}
         />
         <TaskGroupBody expanded={!group.collapsed} hasChildren={children.length > 0}>
@@ -3031,27 +3522,27 @@ export function TodayScreen() {
 
   // A stack's header inside the pinned block. Deliberately plainer than the
   // main list's 'group' branch: no drag (moving a whole stack's position in
-  // the pinned order isn't wired up — see reorderPinnedItems) and no
+  // the pinned order isn't wired up — see reorderPinnedItems above) and no
   // GroupDropTargetRow (there's nothing here for a dragged task to join).
   // filtered is passed unconditionally: the "N/M done today" tally is
   // computed from the full roster, which would overstate what's actually
   // shown under a header rendering only its pinned members.
-  const renderPinnedGroup = (group: TaskGroup, children: Task[]) => (
+  const renderPinnedGroup = (group: TaskGroup, children: Task[]) => {
+    const open = pinnedGroupOpen.get(group.id) ?? !group.collapsed;
+    return (
     <TaskGroupTray>
       <TaskGroupHeader
+        selectionMode={selectionMode}
         group={group}
         allChildren={children}
         filtered
         pinned={groupPinInfo.get(group.id)?.pinned ?? false}
         pinDisabled={!(groupPinInfo.get(group.id)?.pinnable ?? false)}
-        onToggleCollapse={() => {
-          if (expandedTaskId !== null) { setExpandedTaskId(null); return; }
-          haptics.tap();
-          setGroupCollapsed(group.id, !group.collapsed);
-        }}
+        expanded={open}
+        onToggleCollapse={handlePinnedGroupToggleCollapse}
         {...groupHeaderProps}
       />
-      <TaskGroupBody expanded={!group.collapsed} hasChildren={children.length > 0}>
+      <TaskGroupBody expanded={open} hasChildren={children.length > 0}>
         {children.map(child => (
           <React.Fragment key={child.id}>
             {renderTaskRow(child, {
@@ -3065,7 +3556,8 @@ export function TodayScreen() {
         ))}
       </TaskGroupBody>
     </TaskGroupTray>
-  );
+    );
+  };
 
   /**
    * The Pinned block — Today's list header, and deliberately NOT part of the
@@ -3101,7 +3593,7 @@ export function TodayScreen() {
     // the next task's card sit back to back with only the ordinary 2px
     // inter-row gap, reading as one section.
     <>
-    <GroupDropTarget active={pinIntentActive}>
+    <ChannelDropTarget channel={dropTargetChannel} id={PINNED_DRAG_TARGET}>
     <FabDropZone zone={PINNED_DROP_ZONE}>
       <Pressable style={styles.focusSectionHeader} onPress={() => setExpandedTaskId(null)}>
         <View style={styles.focusSectionTitleRow}>
@@ -3212,7 +3704,7 @@ export function TodayScreen() {
         }
       />
     </FabDropZone>
-    </GroupDropTarget>
+    </ChannelDropTarget>
     <View style={styles.pinnedBlockFooter}>
       <SpotlightScrim />
     </View>
@@ -3356,6 +3848,11 @@ export function TodayScreen() {
       });
     }
     if (unhide) setOthersHidden(false);
+    // The row being jumped to has to be in the data the list is about to
+    // scroll, and a jump can arrive in the same batch as the switch to Today
+    // (handleTaskCreated) — so lift the first-paint budget outright, the way
+    // goToCreatedTask does for Later, rather than waiting for the top-up.
+    setTodayTaskLimit(undefined);
     // The scroll lands on the stack's header, which doesn't move when the
     // stack opens — but the row the user asked for is inside it, so open it.
     // (No animateLayout here, for the reason TaskGroupHeader's own toggle
@@ -3562,7 +4059,10 @@ export function TodayScreen() {
     ...(viewMode === 'today'
       ? [{
           icon: 'ellipsis-horizontal' as const,
-          onPress: () => setOptionsMenuVisible(true),
+          onPress: (e: GestureResponderEvent) => {
+            setOptionsMenuAnchor({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY });
+            setOptionsMenuVisible(true);
+          },
           active: hideCategories,
           accessibilityLabel: 'More options',
         }]
@@ -3588,56 +4088,15 @@ export function TodayScreen() {
           }
         />
 
-        {/* View mode switcher */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.viewModePillsScroll}
-          contentContainerStyle={styles.viewModePills}
-        >
-          {viewModes.map(mode => {
-            const active = viewMode === mode;
-            const badge = mode === 'inbox'
-              ? inboxTasks.length
-              : mode === 'unscheduled' ? unscheduledCount : 0;
-            return (
-              <TouchableOpacity
-                key={mode}
-                style={[styles.viewModePill, active && styles.viewModePillActive]}
-                onPress={() => {
-                  haptics.tap();
-                  setViewMode(mode);
-                  setExpandedTaskId(null);
-                  if (selectionMode) exitSelection();
-                }}
-                activeOpacity={interaction.activeOpacity}
-                accessibilityRole="tab"
-                accessibilityState={{ selected: active }}
-                accessibilityLabel={
-                  badge > 0
-                    ? `${VIEW_TITLES[mode]} view, ${badge} ${VIEW_BADGE_LABELS[mode]}`
-                    : `${VIEW_TITLES[mode]} view`
-                }
-              >
-                <Text style={[styles.viewModePillText, active && styles.viewModePillTextActive]}>
-                  {VIEW_TITLES[mode]}
-                </Text>
-                {badge > 0 && (
-                  <View style={[styles.viewModePillBadge, mode !== 'inbox' && styles.viewModePillBadgeQuiet]}>
-                    <Text
-                      style={[
-                        styles.viewModePillBadgeText,
-                        mode !== 'inbox' && styles.viewModePillBadgeTextQuiet,
-                      ]}
-                    >
-                      {badge}
-                    </Text>
-                  </View>
-                )}
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
+        <ViewModePills
+          modes={viewModes}
+          viewMode={viewMode}
+          inboxCount={inboxTasks.length}
+          unscheduledCount={unscheduledCount}
+          onLeave={leaveViewMode}
+          onSelect={selectViewMode}
+          styles={styles}
+        />
 
         {/* Outside the `viewMode` gate on purpose: a session runs against the
             tasks, not against a lens over them, so switching to Later must
@@ -3698,6 +4157,7 @@ export function TodayScreen() {
           <ReorderableList
             scrollEnabled={!painting && !draggingSubtask}
             rowScrollerRef={laterRowScroller}
+            scrollToTop={{ bottom: insets.bottom + 64 }}
             data={laterDraggableData}
             keyExtractor={item => item.key}
             // See the Today list's own note: an expanded row's card shadow
@@ -3768,7 +4228,7 @@ export function TodayScreen() {
               reorderTasks(laterTaskOrder(reordered));
             }}
             onEndReached={handleLaterEndReached}
-            onEndReachedThreshold={400}
+            onEndReachedThreshold={LATER_END_REACHED_THRESHOLD}
             contentContainerStyle={
               laterDraggableData.length === 0
                 ? styles.emptyContainer
@@ -3825,6 +4285,7 @@ export function TodayScreen() {
             scrollEnabled={!painting && !fabDragging && !draggingStackChildGroupId && !draggingSubtask && !draggingPin}
             scrollControlRef={todayScrollControl}
             rowScrollerRef={todayRowScroller}
+            scrollToTop={{ bottom: insets.bottom + 64 }}
             data={draggableData}
             keyExtractor={listItemKey}
             renderItem={renderItem}
@@ -3839,12 +4300,17 @@ export function TodayScreen() {
               (item.type === 'task' && item.task.id === expandedTaskId)
             }
             ListHeaderComponent={todayListHeader}
+            // Pinning a task far down the list grows the pinned block while
+            // it's scrolled out of view; this keeps the rows you're looking at
+            // from being shoved down by it.
+            holdRowsOnHeaderResize
             onDragBegin={() => {
               setExpandedTaskId(null);
               joinedTaskIdRef.current = null;
               pinnedTaskIdRef.current = null;
               pinIntentRef.current = false;
-              setPinIntentActive(false);
+              joinGroupIntentRef.current = null;
+              dropTargetChannel.publish(null);
               // Fires synchronously inside drag(), so this is the group whose
               // header started this drag — or null for any other row, which
               // also clears a previous group drag that somehow outlived its
@@ -3854,10 +4320,10 @@ export function TodayScreen() {
             onDragEnd={({ committed }) => {
               const joinGroupId = joinGroupIntentRef.current;
               joinGroupIntentRef.current = null;
-              setJoinGroupIntentId(null);
               const pinTarget = pinIntentRef.current;
               pinIntentRef.current = false;
-              setPinIntentActive(false);
+              dropTargetChannel.publish(null);
+              dropCapture.current?.capture(null);
               // The join/pin lands here rather than in onReorder: a drop onto a
               // group or the pinned block leaves the list order untouched (the
               // list stops reordering once it's aimed at either), and onReorder
@@ -3895,31 +4361,22 @@ export function TodayScreen() {
               const over = overIndex !== null ? draggableData[overIndex] : null;
               const target = over?.type === 'group' ? over.group : null;
               const nextId = target ? target.id : null;
-              if (nextId !== joinGroupIntentRef.current) {
-                joinGroupIntentRef.current = nextId;
-                setJoinGroupIntentId(nextId);
-                if (nextId) haptics.impactLight();
-              }
               // Already-pinned task hovering its own block would be a no-op
               // write, so it's left out of the intent rather than treated as a
               // target.
               const wantsPin = nextId === null && overHeader && !draggedItem.task.pinned;
-              if (wantsPin !== pinIntentRef.current) {
-                pinIntentRef.current = wantsPin;
-                setPinIntentActive(wantsPin);
-                if (wantsPin) haptics.impactLight();
-              }
+              if (nextId === joinGroupIntentRef.current && wantsPin === pinIntentRef.current) return;
+              joinGroupIntentRef.current = nextId;
+              pinIntentRef.current = wantsPin;
+              dropTargetChannel.publish(nextId ?? (wantsPin ? PINNED_DRAG_TARGET : null));
+              // Aiming at a group or the pinned block takes the drag over: the
+              // list stops opening a reorder gap, so the target stays put under
+              // the card instead of sliding away from the finger chasing it,
+              // and a drop settles into it.
+              dropCapture.current?.capture(nextId !== null ? overIndex : wantsPin ? 'header' : null);
+              if (nextId || wantsPin) haptics.impactLight();
             }}
-            // Aiming at a group or the pinned block takes the drag over: the
-            // list stops opening a reorder gap, so the target stays put under
-            // the card instead of sliding away from the finger chasing it.
-            dropDisabled={joinGroupIntentId !== null || pinIntentActive}
-            dropIntoIndex={
-              joinGroupIntentId === null
-                ? null
-                : draggableData.findIndex(i => i.type === 'group' && i.group.id === joinGroupIntentId)
-            }
-            dropIntoHeader={pinIntentActive}
+            dropCaptureRef={dropCapture}
             // Only here to record which row is in flight (onDragMove reads it);
             // every draggable row on this list may go anywhere in it. Section
             // headers aren't draggable at all — their order is set from the "…"
@@ -4047,6 +4504,8 @@ export function TodayScreen() {
                 unscheduledScroll.ref.current?.scrollToIndex({ index: info.index, animated: true, viewPosition: 0.3 });
               }, 100);
             }}
+            onScroll={unscheduledScrollTop.onScroll}
+            scrollEventThrottle={16}
             {...unscheduledScroll.props}
             renderItem={({ item }) => {
               const subs = subtasksByParent.get(item.id) ?? NO_SUBTASKS;
@@ -4141,6 +4600,8 @@ export function TodayScreen() {
                 inboxScroll.ref.current?.scrollToIndex({ index: info.index, animated: true, viewPosition: 0.3 });
               }, 100);
             }}
+            onScroll={inboxScrollTop.onScroll}
+            scrollEventThrottle={16}
             {...inboxScroll.props}
             renderItem={({ item }) => {
               const content =
@@ -4201,7 +4662,25 @@ export function TodayScreen() {
         </PaintSelectionProvider>
         </View>
 
-        {!selectionMode && (
+        {/* Today and Later get their own scroll-to-top button from
+            ReorderableList's scrollToTop prop; Unscheduled and Inbox are
+            plain FlatLists, so they need one wired by hand. */}
+        {viewMode === 'unscheduled' && (
+          <ScrollToTopButton
+            visible={unscheduledScrollTop.visible}
+            bottom={insets.bottom + 64}
+            onPress={() => unscheduledScroll.ref.current?.scrollToOffset({ offset: 0, animated: true })}
+          />
+        )}
+        {viewMode === 'inbox' && (
+          <ScrollToTopButton
+            visible={inboxScrollTop.visible}
+            bottom={insets.bottom + 64}
+            onPress={() => inboxScroll.ref.current?.scrollToOffset({ offset: 0, animated: true })}
+          />
+        )}
+
+        {!selectionMode && !namingStack && (
           <AddTaskFabWithDropLabel
             channel={fabIntentChannel}
             categories={categories}
@@ -4213,10 +4692,31 @@ export function TodayScreen() {
           />
         )}
 
+        {/* Over the keyboard, since a new stack has no row on any of the four
+            lists to sit under until it has a task. Before the keyboard is up
+            it waits above the tab bar, where the add button is. */}
+        {namingStack && (
+          <View
+            style={[
+              styles.stackNameBar,
+              { bottom: stackNameKeyboard.height > 0 ? stackNameKeyboard.height + spacing.sm : insets.bottom + 64 },
+            ]}
+          >
+            <InlineNameField
+              placeholder="Stack name"
+              onSubmit={createNamedStack}
+              onCancel={() => setNamingStack(false)}
+              accessibilityLabel="New stack name"
+              style={shadows.card}
+            />
+          </View>
+        )}
+
         {createdToast && (
           <CreatedTaskToast
             task={createdToast.task}
             destination={createdToast.destination}
+            mode={createdToast.source}
             dayResetTime={dayResetTime}
             bottom={insets.bottom + 64 + FAB_SIZE + spacing.md}
             onGoToTask={handleCreatedToastGoTo}
@@ -4226,10 +4726,10 @@ export function TodayScreen() {
 
         <QuickAddModal
           visible={quickAddVisible}
-          onClose={closeQuickAdd}
-          onOpenFull={handleQuickAddOpenFull}
+          onClose={onQuickAddClose}
+          onOpenFull={onQuickAddOpenFull}
           context={viewMode}
-          onCreated={handleTaskCreated}
+          onCreated={onQuickAddCreated}
           seed={quickAddSeed}
           seedLabel={quickAddSeedLabel}
           initialType={quickAddType}
@@ -4239,8 +4739,12 @@ export function TodayScreen() {
             Unscheduled and Inbox all wire the same refreshControl to it. */}
         <QuickSearchModal
           visible={quickSearchVisible}
-          onClose={() => setQuickSearchVisible(false)}
+          onClose={() => { setQuickSearchVisible(false); endPullToSearch(); }}
+          onShown={endPullToSearch}
           onSelectTask={openEditor}
+          onSelectGroup={group => handleGroupPressEdit(group.id)}
+          onSelectProject={handleOpenProject}
+          onSelectDestination={handleOpenDestination}
           onOpenFullSearch={handleOpenFullSearch}
         />
 
@@ -4344,9 +4848,11 @@ export function TodayScreen() {
           categoryCount={allCategories.length}
           onManageEvents={calendarReadEnabled && calendarLoaded && !demoActive ? () => {
             setOptionsMenuVisible(false);
+            setEventsSheetFor(null);
             setEventsSheetVisible(true);
           } : undefined}
           eventCount={todayCalendarEvents.length}
+          anchor={optionsMenuAnchor}
         />
 
         <CategoryOrderSheet
@@ -4354,11 +4860,20 @@ export function TodayScreen() {
           onClose={() => setCategoryOrderVisible(false)}
         />
 
+        <QuickEventSheet
+          visible={quickEventVisible}
+          onClose={() => setQuickEventVisible(false)}
+        />
+
         <TodayEventsSheet
           visible={eventsSheetVisible}
           onClose={() => setEventsSheetVisible(false)}
-          events={todayCalendarEvents}
+          events={eventsSheetFor ? [eventsSheetFor] : todayCalendarEvents}
           calendarsById={eventCalendarTags}
+          title={eventsSheetFor
+            ? new Date(eventsSheetFor.start).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })
+            : undefined}
+          day={eventsSheetFor ? new Date(eventsSheetFor.start) : undefined}
         />
 
         <DeloadSheet
@@ -4371,11 +4886,6 @@ export function TodayScreen() {
         <LookAheadSheet
           visible={lookAheadVisible}
           onClose={() => setLookAheadVisible(false)}
-        />
-
-        <WeeklyReviewSheet
-          visible={weeklyReviewVisible}
-          onClose={() => setWeeklyReviewVisible(false)}
         />
 
         <MorningCheckInSheet
@@ -4415,25 +4925,20 @@ export function TodayScreen() {
           visible={pullVisible}
           todaysTasks={visibleTasks}
           scopeProjectIds={pullScopeProjectIds}
+          landOnDayKey={pullOnDay}
           onOpenProject={projectId => navigation.navigate({ name: 'ProjectDetail', params: { projectId } } as never)}
           onClose={() => {
             setPullVisible(false);
             setPullScopeProjectIds(undefined);
+            setPullOnDay(null);
           }}
         />
 
         <TaskGroupEditor
           visible={groupEditorVisible}
           group={editingGroup}
-          isNew={newStackIdRef.current !== null}
           onClose={() => {
             setGroupEditorVisible(false);
-            if (newStackIdRef.current) {
-              const id = newStackIdRef.current;
-              newStackIdRef.current = null;
-              const current = useTaskGroupStore.getState().getGroupById(id);
-              if (current && current.title.trim() === '') removeGroupRow(id);
-            }
             setEditingGroup(null);
           }}
         />
@@ -4446,7 +4951,7 @@ export function TodayScreen() {
             onComplete={handleBulkComplete}
             completableCount={completableCount}
             onDelete={handleBulkDelete}
-            onSetWhen={(date, segs) => { bulkSetWhen(Array.from(selectedIds), date, segs); exitSelection(); }}
+            onSetWhen={(date, segs) => confirmBulkSetWhen(Array.from(selectedIds), date, segs, exitSelection)}
             onSetCategory={category => { bulkSetCategory(Array.from(selectedIds), category); exitSelection(); }}
             onAddTags={tags => { bulkAddTags(Array.from(selectedIds), tags); exitSelection(); }}
             onSetPriority={p => { bulkSetPriority(Array.from(selectedIds), p); exitSelection(); }}
@@ -4631,6 +5136,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // The footer stretches to fill any space left below the last task so a tap
   // anywhere under the list dismisses the expanded-task spotlight.
   listFooterCell: { flexGrow: 1 },
+  stackNameBar: { position: 'absolute', left: 0, right: 0 },
   listFooter: { flexGrow: 1, minHeight: 120 },
   // On an empty list there is no expanded row to dismiss and nothing below to
   // reach for, so the tap catcher collapses entirely: any height it kept would

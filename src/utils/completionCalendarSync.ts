@@ -2,6 +2,7 @@ import { addMinutes } from 'date-fns/addMinutes';
 import type { Task } from '../types';
 import { displayTitleFor } from './visibilityUtils';
 import { createTimedEvent } from './calendarSync';
+import { completionEventMatch, deleteLinkedEvent, type CalendarEventLink } from './calendarEventLink';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { isDemoModeActive } from './demoState';
 
@@ -40,4 +41,24 @@ export async function logTaskCompletionToCalendar(task: Task, completedAt: Date)
   };
 
   return createTimedEvent(completionCalendarId, fields);
+}
+
+/** The completion event a task is linked to on this device. */
+export function completionEventLink(task: Task): CalendarEventLink {
+  return {
+    eventId: task.completionCalendarEventId ?? null,
+    externalId: task.completionCalendarEventExternalId ?? null,
+  };
+}
+
+/**
+ * Deletes a task's completion event, which reopening it does wherever it is
+ * reopened (`uncompleteTask`, and the reload after a sync that reopened it). By
+ * its server id when the local one names nothing here, a backup restored on a
+ * new phone (#2950), narrowed by the completion calendar the way a meal's or a
+ * deadline's is by theirs. Fire-and-forget, never throws.
+ */
+export function deleteCompletionEvent(link: CalendarEventLink): Promise<void> {
+  const calendarId = useSettingsStore.getState().completionCalendarId ?? '';
+  return deleteLinkedEvent(link, matches => completionEventMatch(matches, calendarId));
 }
