@@ -511,6 +511,17 @@ function healthFiguresDiffer(before: FoodLogEntry, after: FoodLogEntry): boolean
   return NUTRIENT_KEYS.some(key => before.nutrition.amounts[key] !== after.nutrition.amounts[key]);
 }
 
+/**
+ * Whether a re-read of a window came back with exactly the rows already held.
+ * The rows carry no updated stamp, so this compares contents; a row built in
+ * memory with its keys in another order merely reads as changed, which costs
+ * the re-render this exists to skip and nothing worse.
+ */
+export function sameEntries(held: FoodLogEntry[], read: FoodLogEntry[]): boolean {
+  if (held.length !== read.length) return false;
+  return held.every((e, i) => e === read[i] || JSON.stringify(e) === JSON.stringify(read[i]));
+}
+
 export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
   entries: [],
   rangeStart: null,
@@ -553,11 +564,12 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
   },
 
   loadWindow(startKey, endKey) {
-    set({
-      windowEntries: dbGetFoodLogEntries(startKey, endKey),
-      windowStart: startKey,
-      windowEnd: endKey,
-    });
+    const entries = dbGetFoodLogEntries(startKey, endKey);
+    const s = get();
+    // Called on every focus of Stats; a fresh array of identical rows would
+    // re-render the whole screen for nothing (see sameEntries).
+    if (s.windowStart === startKey && s.windowEnd === endKey && sameEntries(s.windowEntries, entries)) return;
+    set({ windowEntries: entries, windowStart: startKey, windowEnd: endKey });
   },
 
   recentEntries(startKey, endKey) {
@@ -565,11 +577,11 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
   },
 
   loadInsightWindow(startKey, endKey) {
-    set({
-      insightEntries: dbGetFoodLogEntries(startKey, endKey),
-      insightStart: startKey,
-      insightEnd: endKey,
-    });
+    const entries = dbGetFoodLogEntries(startKey, endKey);
+    const s = get();
+    // Called on every focus of Mood, for loadWindow's reason.
+    if (s.insightStart === startKey && s.insightEnd === endKey && sameEntries(s.insightEntries, entries)) return;
+    set({ insightEntries: entries, insightStart: startKey, insightEnd: endKey });
   },
 
   addEntry(draft) {
