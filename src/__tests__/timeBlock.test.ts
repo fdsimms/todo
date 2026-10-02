@@ -190,6 +190,14 @@ describe('timeBlockFieldsFor', () => {
     expect(fields?.end).toEqual(new Date(2026, 7, 20, 9, 20));
   });
 
+  it("prefills the task's location, and leaves it out when there is none", () => {
+    const dueDate = new Date(2026, 7, 20).toISOString();
+    const placed = timeBlockFieldsFor(makeTask({ estimatedMinutes: 30, dueDate, location: ' 7 Carmine St ' }), ctx());
+    expect(placed?.location).toBe('7 Carmine St');
+    const blank = timeBlockFieldsFor(makeTask({ estimatedMinutes: 30, dueDate, location: '   ' }), ctx());
+    expect(blank).not.toHaveProperty('location');
+  });
+
   it('returns null for a task that cannot be blocked', () => {
     expect(timeBlockFieldsFor(makeTask(), ctx())).toBeNull();
   });

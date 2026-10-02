@@ -3474,6 +3474,9 @@ export interface TemplateItem {
   // Task.linkUrl, seeded onto the task: a booking page, the form to fill in.
   // Optional so a template stored before it reads as having none.
   linkUrl?: string | null;
+  // Task.location, seeded onto the task: the clinic, the venue. Optional for
+  // the same reason as linkUrl.
+  location?: string | null;
   // Minutes before the item's *resolved* due date. Only meaningful (and only
   // editable) when dueOffsetDays is set — there's no date to count back from
   // otherwise.

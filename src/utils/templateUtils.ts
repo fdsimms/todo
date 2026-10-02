@@ -44,6 +44,7 @@ export function normalizeTemplateItem(raw: Partial<TemplateItem>): TemplateItem 
     windowStart: raw.windowStart ?? null,
     windowEnd: raw.windowEnd ?? null,
     linkUrl: raw.linkUrl ?? null,
+    location: raw.location ?? null,
     reminderOffsetMinutes: raw.reminderOffsetMinutes ?? null,
     timeSegments: raw.timeSegments ?? [],
     tags: raw.tags ?? [],
@@ -182,6 +183,7 @@ export function buildDraftsFromTemplate(
       windowStart: item.windowStart,
       windowEnd: item.windowEnd,
       linkUrl: item.linkUrl ?? null,
+      location: item.location ?? null,
       reminderTime,
       timeSegments: [...item.timeSegments],
       tags: [...item.tags],
@@ -684,7 +686,7 @@ function placeholderNamesIn(text: string): string[] {
 
 /**
  * Every distinct placeholder the given items declare across their titles,
- * notes, subtasks and chain steps — in first-appearance order, so the apply
+ * notes, locations, subtasks and chain steps — in first-appearance order, so the apply
  * sheet's inputs read in the same order as the checklist. `run` is excluded:
  * it's bound to the run name rather than filled by hand.
  */
@@ -698,6 +700,7 @@ export function extractPlaceholders(items: TemplateItem[]): string[] {
   for (const item of items) {
     add(item.title);
     add(item.notes);
+    add(item.location ?? '');
     item.subtasks.forEach(s => add(s.title));
     item.chainItems.forEach(c => add(c.title));
   }
@@ -705,16 +708,16 @@ export function extractPlaceholders(items: TemplateItem[]): string[] {
 }
 
 /**
- * The blanks one item declares, across the same four fields
+ * The blanks one item declares, across the same fields
  * `extractPlaceholders` reads — but `run` included, since the item editor is
  * where a `{run}` gets written and hiding it there would make it look as if
  * the text had nothing in it.
  *
- * Takes the four fields rather than a whole `TemplateItem` so the editor can
+ * Takes the fields rather than a whole `TemplateItem` so the editor can
  * ask it about the draft it's holding in state, which isn't an item yet.
  */
 export function itemPlaceholders(
-  item: Pick<TemplateItem, 'title' | 'notes' | 'subtasks' | 'chainItems'>,
+  item: Pick<TemplateItem, 'title' | 'notes' | 'location' | 'subtasks' | 'chainItems'>,
 ): string[] {
   const found: string[] = [];
   const add = (text: string) => {
@@ -724,6 +727,7 @@ export function itemPlaceholders(
   };
   add(item.title);
   add(item.notes);
+  add(item.location ?? '');
   item.subtasks.forEach(s => add(s.title));
   item.chainItems.forEach(c => add(c.title));
   return found;
@@ -778,6 +782,7 @@ export function declaresRunPlaceholder(items: TemplateItem[]): boolean {
   return items.some(item =>
     hasRun(item.title) ||
     hasRun(item.notes) ||
+    hasRun(item.location ?? '') ||
     item.subtasks.some(s => hasRun(s.title)) ||
     item.chainItems.some(c => hasRun(c.title))
   );
@@ -822,6 +827,8 @@ export function substituteDraftPlaceholders(
     ...draft,
     title: draft.title === undefined ? draft.title : substitutePlaceholders(draft.title, values),
     notes: draft.notes === undefined ? draft.notes : substitutePlaceholders(draft.notes, values),
+    // A location that was only a blank left unfilled is no location at all.
+    location: draft.location == null ? draft.location : substitutePlaceholders(draft.location, values).trim() || null,
     chainItems: draft.chainItems?.map(c => ({
       ...c,
       title: substitutePlaceholders(c.title, values),

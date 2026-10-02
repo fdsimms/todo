@@ -252,6 +252,13 @@ describe('buildDraftsFromTemplate', () => {
     expect(plain.linkUrl).toBeNull();
   });
 
+  it('carries a location onto the draft, and an older item without one reads as none', () => {
+    const [draft] = buildDraftsFromTemplate([makeItem({ location: '156 William Street' })], noAnchors);
+    expect(draft.location).toBe('156 William Street');
+    const [plain] = buildDraftsFromTemplate([makeItem()], noAnchors);
+    expect(plain.location).toBeNull();
+  });
+
   it('carries a gate onto the draft', () => {
     // A morning-routine template whose point is that nothing else happens
     // before the walk would otherwise hand out tasks that gate nothing.
@@ -631,6 +638,10 @@ describe('buildApplyTree / flattenApplyTree / expandSelectionWithAncestors', () 
 });
 
 describe('extractPlaceholders', () => {
+  it("reads a blank that appears only in an item's location", () => {
+    expect(extractPlaceholders([makeItem({ title: 'Check in', location: '{hotel}' })])).toEqual(['hotel']);
+  });
+
   it('returns distinct names in first-appearance order', () => {
     const items = [
       makeItem({ id: 'i1', title: 'Book {where}' }),
@@ -663,14 +674,15 @@ describe('extractPlaceholders', () => {
 });
 
 describe('itemPlaceholders', () => {
-  it('reads all four fields of one item, in first-appearance order', () => {
+  it('reads every field of one item, in first-appearance order', () => {
     const item = makeItem({
       title: 'Pack for {where}',
       notes: 'ask {who}',
+      location: '{hotel}, {where}',
       subtasks: [{ id: 's1', title: 'Charge the {device}' }],
       chainItems: [{ id: 'c1', title: 'Confirm with {who}', estimatedMinutes: null }],
     });
-    expect(itemPlaceholders(item)).toEqual(['where', 'who', 'device']);
+    expect(itemPlaceholders(item)).toEqual(['where', 'who', 'hotel', 'device']);
   });
 
   // The apply sheet hides `run` (it's bound to the run name); the editor can't,
@@ -840,6 +852,13 @@ describe('substitutePlaceholders', () => {
 });
 
 describe('substituteDraftPlaceholders', () => {
+  it('fills a location, and drops one that was only an unfilled blank', () => {
+    expect(substituteDraftPlaceholders({ location: '{hotel}, {where}' }, { hotel: 'The Brown', where: 'Denver' }).location)
+      .toBe('The Brown, Denver');
+    expect(substituteDraftPlaceholders({ location: '{hotel}' }, {}).location).toBeNull();
+    expect(substituteDraftPlaceholders({ location: null }, {}).location).toBeNull();
+  });
+
   it('substitutes into title, notes and chain steps', () => {
     const out = substituteDraftPlaceholders({
       title: 'Pack for {trip}',
@@ -860,6 +879,7 @@ describe('declaresRunPlaceholder', () => {
   it('is true when {run} appears anywhere on an item', () => {
     expect(declaresRunPlaceholder([makeItem({ title: 'PTO for {run}' })])).toBe(true);
     expect(declaresRunPlaceholder([makeItem({ notes: 'for {run}' })])).toBe(true);
+    expect(declaresRunPlaceholder([makeItem({ location: '{run} venue' })])).toBe(true);
     expect(declaresRunPlaceholder([makeItem({
       subtasks: [{ id: 's', title: '{run}' }],
     })])).toBe(true);
