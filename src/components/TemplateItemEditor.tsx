@@ -475,10 +475,10 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setAddingTag(false);
   };
 
-  // Every blank this item declares, across all four fields that can hold one.
+  // Every blank this item declares, across every field that can hold one.
   const blanks = useMemo(
-    () => itemPlaceholders({ title, notes, subtasks, chainItems }),
-    [title, notes, subtasks, chainItems]
+    () => itemPlaceholders({ title, notes, location: locationText, subtasks, chainItems }),
+    [title, notes, locationText, subtasks, chainItems]
   );
 
   // The new blank goes on the end of the title: it's the field every item has,
@@ -496,6 +496,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     haptics.tap();
     setTitle(prev => withoutPlaceholder(prev, name));
     setNotes(prev => withoutPlaceholder(prev, name));
+    setLocationText(prev => withoutPlaceholder(prev, name));
     // A subtask or step whose whole title was the blank has nothing left to be,
     // so it goes with it rather than sitting there as an untitled row.
     setSubtasks(subtasks
