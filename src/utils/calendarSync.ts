@@ -582,6 +582,7 @@ export async function presentTimeBlockCreate(fields: {
   title: string;
   start: Date;
   end: Date;
+  location?: string;
   notes?: string;
 }): Promise<TimeBlockSheetResult> {
   if (Platform.OS !== 'ios') return NO_RESULT;
@@ -590,6 +591,7 @@ export async function presentTimeBlockCreate(fields: {
       title: fields.title,
       startDate: fields.start,
       endDate: fields.end,
+      ...(fields.location ? { location: fields.location } : {}),
       notes: fields.notes,
     });
     return {

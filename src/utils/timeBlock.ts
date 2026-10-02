@@ -39,6 +39,8 @@ export interface TimeBlockFields {
   title: string;
   start: Date;
   end: Date;
+  /** The task's own `location`, as typed. Absent when the task has none. */
+  location?: string;
 }
 
 /** Everything `proposeTimeBlockStart` needs that isn't on the task. */
@@ -167,6 +169,9 @@ export function timeBlockFieldsFor(task: Task, ctx: TimeBlockContext): TimeBlock
     title: blockTitleFor(task) || 'Task',
     start,
     end: addMinutes(start, minutes),
+    // Prefill only: `timeBlockUpdateFor` never pushes it, so a location
+    // changed in the calendar afterward stays the calendar's.
+    ...(task.location?.trim() ? { location: task.location.trim() } : {}),
   };
 }
 
