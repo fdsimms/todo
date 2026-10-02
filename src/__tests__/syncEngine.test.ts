@@ -13,6 +13,8 @@ import {
   hasChanges,
   imagesSentKey,
   IMAGE_PAYLOAD_BUDGET_CHARS,
+  pushCursorKey,
+  withholdChanges,
   type SyncLocal,
   type SyncTransport,
 } from '../utils/syncEngine';
@@ -160,6 +162,61 @@ describe('hasChanges', () => {
 
   it('is true for a deletion alone', () =>
     expect(hasChanges({ ...base, deletions: [{ table: 'tasks', rowKey: 'a', deletedAt: 'x' }] })).toBe(true));
+});
+
+describe('withholdChanges', () => {
+  const changes: SyncChangeSet = {
+    since: 'a',
+    until: 'b',
+    tables: {
+      tasks: [{ id: 't1', updated_at: 'x' }],
+      mood_logs: [{ id: 'm1', updated_at: 'x' }],
+      settings: [
+        { key: 'theme', value: 'dark', updated_at: 'x' },
+        { key: 'medication_archived', value: '["ibuprofen"]', updated_at: 'x' },
+      ],
+    },
+    deletions: [
+      { table: 'tasks', rowKey: 't2', deletedAt: 'x' },
+      { table: 'mood_logs', rowKey: 'm2', deletedAt: 'x' },
+      { table: 'settings', rowKey: 'medication_archived', deletedAt: 'x' },
+      { table: 'settings', rowKey: 'theme', deletedAt: 'x' },
+    ],
+  };
+  const health = { tables: ['mood_logs'], settingKeys: ['medication_archived'] };
+
+  it('passes everything through when nothing is withheld', () => {
+    expect(withholdChanges(changes, undefined)).toBe(changes);
+  });
+
+  it('drops a withheld table, its deletions included', () => {
+    const out = withholdChanges(changes, health);
+    expect(out.tables.mood_logs).toBeUndefined();
+    expect(out.tables.tasks).toEqual(changes.tables.tasks);
+    expect(out.deletions.map(d => d.rowKey)).toEqual(['t2', 'theme']);
+  });
+
+  it('drops only the named settings rows, not the whole settings table', () => {
+    expect(withholdChanges(changes, health).tables.settings.map(r => r.key)).toEqual(['theme']);
+  });
+
+  it('keeps the window it was read over, so the cursor still covers it', () => {
+    const out = withholdChanges(changes, health);
+    expect([out.since, out.until]).toEqual(['a', 'b']);
+  });
+
+  it('is applied by runSync: a withheld row is refused, not left pending', async () => {
+    const device = new FakeDevice('phone');
+    device.write('t1', 'Took a dose', '2026-01-01T00:00:00.000Z');
+    const cloud = new FakeCloud();
+    Object.defineProperty(cloud, 'withhold', { value: { tables: ['tasks'], settingKeys: [] } });
+
+    await runSync(cloud, device);
+
+    expect(cloud.entries).toHaveLength(0);
+    // Advanced past the row: sending it later takes a deliberate rewind.
+    expect(device.getCursor(pushCursorKey('fake'))).not.toBeNull();
+  });
 });
 
 describe('runSync', () => {

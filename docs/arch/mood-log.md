@@ -809,6 +809,16 @@ tracked beside it for the same reason: a before/after split has to read the
 same on every phone, or it isn't a fact about the person, just about which
 device answered.
 
+**But not through iCloud.** `mood_logs`, `medication_logs` and `food_logs` are
+in `HEALTH_SYNC_TABLES`, which iCloud never receives (App Review 5.1.3(ii): no
+personal health information in iCloud), and which a sync server receives only
+with "Include health logs" on. So for somebody syncing through iCloud alone,
+the split this section warns about is exactly what they get: each phone holds
+the logs entered on it. That was chosen knowingly over the guideline risk, and
+the full reasoning is in `docs/arch/mcp-server.md`. `milestones` still travel
+through iCloud; they are named by the person and are not a health record in
+themselves.
+
 The Mood screen is a `contentScreen` in `simpleMode` — like People and Stacks,
 it holds rows that live nowhere else, so hiding it while it holds any would
 strand them.

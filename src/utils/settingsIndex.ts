@@ -813,6 +813,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['self-hosted', 'url', 'address', 'mcp', 'claude', 'computer', 'replica', 'privacy', 'copy'] },
   { id: 'syncServerToken', groupId: 'dataReset', label: 'Sync server token', section: 'Sync',
     keywords: ['self-hosted', 'password', 'secret', 'key', 'auth'] },
+  { id: 'syncServerHealthLogs', groupId: 'dataReset', label: 'Include health logs', section: 'Sync',
+    keywords: ['mood', 'medication', 'food', 'symptoms', 'privacy', 'server', 'mcp', 'claude'] },
   { id: 'exportBackup', groupId: 'dataReset', label: 'Export all data', section: 'Backup',
     keywords: ['backup', 'json', 'save', 'share'] },
   { id: 'restoreBackup', groupId: 'dataReset', label: 'Restore from a backup', section: 'Backup',

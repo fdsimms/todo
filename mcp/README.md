@@ -98,6 +98,10 @@ For the same reason `remove_from_grocery_list` parks rather than deletes, and th
 no tool that deletes a shelf item: dropping one destroys a substitute or a price history with no
 undo, and it is not the sort of thing to do on a model's say-so.
 
+The three log tools are **empty until the phone sends the logs**: they reach the server only with
+Settings → Sync → **Include health logs** turned on, which is off by default. See "The health logs
+have their own switch" in the arch doc.
+
 The three log tools take the same range: `days` counts back from today (7 by default), or pass
 `from`/`to` as `YYYY-MM-DD`. There is deliberately **no weight tool** — weight lives in Apple
 Health and the app stores no copy, so a replica over SQLite has nothing to read. See the arch doc.

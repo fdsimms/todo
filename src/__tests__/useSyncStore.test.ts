@@ -1,5 +1,15 @@
-import { registerSyncReload, useSyncStore, isSyncSupported } from '../store/useSyncStore';
-import { dbGetSetting, dbSetSetting } from '../db/database';
+import {
+  registerSyncReload,
+  useSyncStore,
+  isSyncSupported,
+  markHealthLogsWithheld,
+  settleHealthLogResend,
+  NOTHING_OWED,
+  SERVER_HEALTH_RESEND_KEY,
+  SYNC_EPOCH,
+} from '../store/useSyncStore';
+import { dbGetSetting, dbGetSyncCursor, dbSetSetting, dbSetSyncCursor } from '../db/database';
+import { HEALTH_SYNC_TABLES } from '../db/syncTracking';
 import { cloudKitTransport, cloudKitUnavailableReason, isCloudKitSyncAvailable } from '../utils/cloudKitTransport';
 import { databaseSyncLocal } from '../utils/syncLocal';
 import { runSyncAll } from '../utils/syncEngine';
@@ -9,6 +19,8 @@ import { emptyApplyReport } from '../utils/syncMerge';
 jest.mock('../db/database', () => ({
   dbGetSetting: jest.fn().mockReturnValue(null),
   dbSetSetting: jest.fn(),
+  dbGetSyncCursor: jest.fn().mockReturnValue(null),
+  dbSetSyncCursor: jest.fn(),
 }));
 
 jest.mock('../utils/cloudKitTransport', () => ({
@@ -74,7 +86,9 @@ beforeEach(() => {
     recipeImagesVersion: 0,
     serverUrl: '',
     hasServerToken: false,
+    serverHealthLogs: false,
   });
+  (dbGetSyncCursor as jest.Mock).mockReturnValue(null);
   (loadSecureKey as jest.Mock).mockResolvedValue('');
   (saveSecureKey as jest.Mock).mockResolvedValue(true);
 });
@@ -305,6 +319,158 @@ describe('the payload store as a second destination', () => {
     expect(saveSecureKey).toHaveBeenCalledWith('syncServerToken', 'a-token');
     expect(dbSetSetting).not.toHaveBeenCalledWith('syncServerToken', expect.anything());
     expect(useSyncStore.getState().hasServerToken).toBe(true);
+  });
+});
+
+/**
+ * Settings and cursors in a Map, so a test can read back what a step wrote.
+ * The server's push cursor is stored under `server:push`.
+ */
+const storedSettings = () => {
+  const settings = new Map<string, string>();
+  const cursors = new Map<string, string>();
+  (dbGetSetting as jest.Mock).mockImplementation((k: string) => settings.get(k) ?? null);
+  (dbSetSetting as jest.Mock).mockImplementation((k: string, v: string) => settings.set(k, v));
+  (dbGetSyncCursor as jest.Mock).mockImplementation((k: string) => cursors.get(k) ?? null);
+  (dbSetSyncCursor as jest.Mock).mockImplementation((k: string, v: string) => cursors.set(k, v));
+  return { settings, cursors };
+};
+
+const transportsPassed = (): { withhold?: { tables: readonly string[] } }[] =>
+  (runSyncAll as jest.Mock).mock.calls[0][0];
+
+describe('health logs', () => {
+  it('are never sent to iCloud', async () => {
+    (runSyncAll as jest.Mock).mockResolvedValue(runs(okResult()));
+    useSyncStore.setState({ enabled: true });
+
+    await useSyncStore.getState().syncNow();
+    expect(transportsPassed()[0].withhold?.tables).toEqual(HEALTH_SYNC_TABLES);
+  });
+
+  it('are withheld from the server by default', async () => {
+    (runSyncAll as jest.Mock).mockResolvedValue(runs(okResult()));
+    withServer();
+
+    await useSyncStore.getState().syncNow();
+    expect(transportsPassed()[0].withhold?.tables).toEqual(HEALTH_SYNC_TABLES);
+  });
+
+  it('go to the server once the switch is on, while iCloud still withholds them', async () => {
+    (runSyncAll as jest.Mock).mockResolvedValue(runs(okResult()));
+    (loadSecureKey as jest.Mock).mockResolvedValue('a-token');
+    useSyncStore.setState({ enabled: true, serverUrl: 'https://sync.example.com', serverHealthLogs: true });
+
+    await useSyncStore.getState().syncNow();
+    const [icloud, server] = transportsPassed();
+    expect(icloud.withhold).toBeDefined();
+    expect(server.withhold).toBeUndefined();
+  });
+
+  it('switch is stored per device and read back on launch', () => {
+    const { settings } = storedSettings();
+    useSyncStore.getState().setServerHealthLogs(true);
+    expect(settings.get('syncServerHealthLogs')).toBe('1');
+
+    useSyncStore.setState({ serverHealthLogs: false });
+    useSyncStore.getState().initialize();
+    expect(useSyncStore.getState().serverHealthLogs).toBe(true);
+  });
+
+  it('turned on rewinds nothing until the next sync, which is when it is safe to', async () => {
+    const { cursors } = storedSettings();
+    cursors.set('server:push', '2026-09-01T00:00:00.000Z');
+
+    useSyncStore.getState().setServerHealthLogs(true);
+    // A run already in the air would write its own cursor over a rewind made now.
+    expect(cursors.get('server:push')).toBe('2026-09-01T00:00:00.000Z');
+
+    (runSyncAll as jest.Mock).mockResolvedValue(runs(okResult()));
+    (loadSecureKey as jest.Mock).mockResolvedValue('a-token');
+    useSyncStore.setState({ serverUrl: 'https://sync.example.com' });
+    await useSyncStore.getState().syncNow();
+    expect(cursors.get('server:push')).toBe(SYNC_EPOCH);
+  });
+});
+
+describe('settleHealthLogResend', () => {
+  it('rewinds to the very start when nothing was ever sent', () => {
+    const { settings, cursors } = storedSettings();
+    cursors.set('server:push', '2026-09-01T00:00:00.000Z');
+
+    settleHealthLogResend();
+    expect(cursors.get('server:push')).toBe(SYNC_EPOCH);
+    expect(settings.get(SERVER_HEALTH_RESEND_KEY)).toBe(NOTHING_OWED);
+  });
+
+  it('rewinds to where withholding began', () => {
+    const { settings, cursors } = storedSettings();
+    cursors.set('server:push', '2026-09-01T00:00:00.000Z');
+    settings.set(SERVER_HEALTH_RESEND_KEY, '2026-08-01T00:00:00.000Z');
+
+    settleHealthLogResend();
+    expect(cursors.get('server:push')).toBe('2026-08-01T00:00:00.000Z');
+  });
+
+  it('does nothing once caught up', () => {
+    const { settings, cursors } = storedSettings();
+    cursors.set('server:push', '2026-09-01T00:00:00.000Z');
+    settings.set(SERVER_HEALTH_RESEND_KEY, NOTHING_OWED);
+
+    settleHealthLogResend();
+    expect(cursors.get('server:push')).toBe('2026-09-01T00:00:00.000Z');
+  });
+
+  it('never moves a cursor forward, and leaves a server never synced to read everything', () => {
+    const { settings, cursors } = storedSettings();
+    cursors.set('server:push', '2026-07-01T00:00:00.000Z');
+    settings.set(SERVER_HEALTH_RESEND_KEY, '2026-08-01T00:00:00.000Z');
+    settleHealthLogResend();
+    expect(cursors.get('server:push')).toBe('2026-07-01T00:00:00.000Z');
+
+    cursors.clear();
+    settings.delete(SERVER_HEALTH_RESEND_KEY);
+    settleHealthLogResend();
+    expect(cursors.has('server:push')).toBe(false);
+  });
+});
+
+describe('markHealthLogsWithheld', () => {
+  it('records where the server cursor stood when they were flowing', () => {
+    const { settings, cursors } = storedSettings();
+    cursors.set('server:push', '2026-09-01T00:00:00.000Z');
+    settings.set(SERVER_HEALTH_RESEND_KEY, NOTHING_OWED);
+
+    markHealthLogsWithheld();
+    expect(settings.get(SERVER_HEALTH_RESEND_KEY)).toBe('2026-09-01T00:00:00.000Z');
+  });
+
+  it('keeps an earlier mark, which covers more', () => {
+    const { settings, cursors } = storedSettings();
+    cursors.set('server:push', '2026-09-01T00:00:00.000Z');
+    settings.set(SERVER_HEALTH_RESEND_KEY, '2026-08-01T00:00:00.000Z');
+
+    markHealthLogsWithheld();
+    expect(settings.get(SERVER_HEALTH_RESEND_KEY)).toBe('2026-08-01T00:00:00.000Z');
+  });
+
+  it('owes everything when the server was never synced', () => {
+    const { settings } = storedSettings();
+    settings.set(SERVER_HEALTH_RESEND_KEY, NOTHING_OWED);
+
+    markHealthLogsWithheld();
+    expect(settings.get(SERVER_HEALTH_RESEND_KEY)).toBe(SYNC_EPOCH);
+  });
+
+  it('is what turning the switch off does', () => {
+    const { settings, cursors } = storedSettings();
+    cursors.set('server:push', '2026-09-01T00:00:00.000Z');
+    settings.set(SERVER_HEALTH_RESEND_KEY, NOTHING_OWED);
+    useSyncStore.setState({ serverHealthLogs: true });
+
+    useSyncStore.getState().setServerHealthLogs(false);
+    expect(settings.get(SERVER_HEALTH_RESEND_KEY)).toBe('2026-09-01T00:00:00.000Z');
+    expect(settings.get('syncServerHealthLogs')).toBe('0');
   });
 });
 
