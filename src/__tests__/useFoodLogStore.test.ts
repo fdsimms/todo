@@ -159,6 +159,36 @@ describe('initialize', () => {
   });
 });
 
+describe('loadWindow and loadInsightWindow', () => {
+  const row = (id: string, dayKey: string) => ({ id, dayKey, label: id }) as unknown as FoodLogEntry;
+
+  it('keeps the held array when a re-read finds the same rows, so a refocus re-renders nothing', () => {
+    mockRows.push(row('a', '2026-08-10') as never);
+    useFoodLogStore.getState().loadWindow('2026-08-01', '2026-08-31');
+    const held = useFoodLogStore.getState().windowEntries;
+    // A fresh copy of the same row, the way a real SQLite read hands one back.
+    mockRows[0] = { ...mockRows[0] };
+    useFoodLogStore.getState().loadWindow('2026-08-01', '2026-08-31');
+    expect(useFoodLogStore.getState().windowEntries).toBe(held);
+  });
+
+  it('replaces it when a row changed, arrived, or the range moved', () => {
+    mockRows.push(row('a', '2026-08-10') as never);
+    const { loadInsightWindow } = useFoodLogStore.getState();
+    loadInsightWindow('2026-08-01', '2026-08-31');
+    const first = useFoodLogStore.getState().insightEntries;
+    mockRows[0] = { ...mockRows[0], label: 'b' } as never;
+    loadInsightWindow('2026-08-01', '2026-08-31');
+    const second = useFoodLogStore.getState().insightEntries;
+    expect(second).not.toBe(first);
+    mockRows.push(row('c', '2026-08-11') as never);
+    loadInsightWindow('2026-08-01', '2026-08-31');
+    expect(useFoodLogStore.getState().insightEntries).toHaveLength(2);
+    loadInsightWindow('2026-08-02', '2026-08-31');
+    expect(useFoodLogStore.getState().insightStart).toBe('2026-08-02');
+  });
+});
+
 describe('entriesSince', () => {
   it('reads from the given day onward, and leaves the loaded window alone', () => {
     mockRows.push({ id: 'a', dayKey: '2026-03-01' } as never, { id: 'b', dayKey: '2026-04-01' } as never);

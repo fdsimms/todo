@@ -1252,42 +1252,49 @@ export function TodayScreen() {
   const [minuteTick, forceRefresh] = useState(0);
   useFocusEffect(
     useCallback(() => {
-      // On *focus* as well as on foreground below, which is this pass alone and
-      // deliberate: a pantry check is answered on another screen — its own link
-      // opens the item sheet — and the six writes that answer it (both Pantry
-      // pills, the kitchen row's ✕, the freezer, running low, marking a staple)
-      // are six call sites that would each have to remember to clear the row.
-      // That is the "four call sites and still missed one" the stacks note
-      // warns about, so the sweep hangs off the one place the stale row would
-      // actually be seen instead. Same move checkTripExpiry makes on focus, and
-      // for the same reason: it turns something already true into something
-      // visible. A no-op boolean check while the setting is off.
-      // Ahead of the drip at every call site, so the bulk offer gets to
-      // suppress the per-item rows in the same pass rather than one behind it.
-      useTaskStore.getState().checkPantryReviewTasks();
-      useTaskStore.getState().checkPantryCheckTasks();
-      // On focus as well, for the pantry check's exact reason: a shortfall task
-      // is answered somewhere else entirely — its link opens the Meal Plan
-      // screen, and the add-to-list sheet there is what clears it — so hanging
-      // the sweep off the one place the stale row would actually be seen beats
-      // asking every grocery and meal-plan write to remember it.
-      useTaskStore.getState().checkMealShortfallTasks();
-      // And its freezer sibling, for the same reason: taking the chicken out
-      // happens in the Pantry, which is where its row's link goes.
-      useTaskStore.getState().checkMealThawTasks();
-      // Same reasoning one row over: a supply crosses its lead time purely by
-      // time passing (the run-out day stops being far enough away), and it
-      // stops wanting anything the moment the user restocks it — including
-      // from the reorder task's own completion prompt, which completeTask
-      // already sweeps for. This is the half that catches the clock.
-      useTaskStore.getState().checkSupplyReorderTasks();
-      // On focus as well as on foreground below, and this one needs both: a
-      // negative habit's run is credited by the clock rather than by anything
-      // the user does (see rolloverNegativeStreaks), so a cold start the next
-      // morning has to catch it up — and that is exactly the case AppState's
-      // 'active' listener misses, since the app is already active by the time it
-      // is registered. A no-op on all but the first call of each day.
-      useTaskStore.getState().rolloverNegativeStreaks();
+      // After the switch onto Today has settled rather than in the focus
+      // commit itself: each pass below is a sweep over every task, and any
+      // one that writes re-renders this whole screen, so running them inline
+      // stacked that work on the frame the tab switch was trying to paint.
+      // A stale row they clear can show for that moment and no longer.
+      const sweeps = InteractionManager.runAfterInteractions(() => {
+        // On *focus* as well as on foreground below, which is this pass alone and
+        // deliberate: a pantry check is answered on another screen — its own link
+        // opens the item sheet — and the six writes that answer it (both Pantry
+        // pills, the kitchen row's ✕, the freezer, running low, marking a staple)
+        // are six call sites that would each have to remember to clear the row.
+        // That is the "four call sites and still missed one" the stacks note
+        // warns about, so the sweep hangs off the one place the stale row would
+        // actually be seen instead. Same move checkTripExpiry makes on focus, and
+        // for the same reason: it turns something already true into something
+        // visible. A no-op boolean check while the setting is off.
+        // Ahead of the drip at every call site, so the bulk offer gets to
+        // suppress the per-item rows in the same pass rather than one behind it.
+        useTaskStore.getState().checkPantryReviewTasks();
+        useTaskStore.getState().checkPantryCheckTasks();
+        // On focus as well, for the pantry check's exact reason: a shortfall task
+        // is answered somewhere else entirely — its link opens the Meal Plan
+        // screen, and the add-to-list sheet there is what clears it — so hanging
+        // the sweep off the one place the stale row would actually be seen beats
+        // asking every grocery and meal-plan write to remember it.
+        useTaskStore.getState().checkMealShortfallTasks();
+        // And its freezer sibling, for the same reason: taking the chicken out
+        // happens in the Pantry, which is where its row's link goes.
+        useTaskStore.getState().checkMealThawTasks();
+        // Same reasoning one row over: a supply crosses its lead time purely by
+        // time passing (the run-out day stops being far enough away), and it
+        // stops wanting anything the moment the user restocks it — including
+        // from the reorder task's own completion prompt, which completeTask
+        // already sweeps for. This is the half that catches the clock.
+        useTaskStore.getState().checkSupplyReorderTasks();
+        // On focus as well as on foreground below, and this one needs both: a
+        // negative habit's run is credited by the clock rather than by anything
+        // the user does (see rolloverNegativeStreaks), so a cold start the next
+        // morning has to catch it up — and that is exactly the case AppState's
+        // 'active' listener misses, since the app is already active by the time it
+        // is registered. A no-op on all but the first call of each day.
+        useTaskStore.getState().rolloverNegativeStreaks();
+      });
       const interval = setInterval(() => {
         // On the tick as well as on foreground, unlike every other maintenance
         // pass, because this is the one whose trigger can arrive while the
@@ -1464,6 +1471,7 @@ export function TodayScreen() {
         }
       });
       return () => {
+        sweeps.cancel();
         clearInterval(interval);
         subscription.remove();
       };
