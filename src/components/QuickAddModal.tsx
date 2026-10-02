@@ -73,7 +73,7 @@ import { TitleTokenAccessory } from './TitleTokenAccessory';
 import { HighlightedText } from './HighlightedText';
 import { suggestTitles } from '../utils/titleSuggestions';
 import { findArchivedMatch } from '../utils/archiveMatch';
-import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, parseDurationInput, parseSupplyInput, parseTargetInput, stripRemindPrefix, parseCategoryAndTagsInput, parsePriorityInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, applyMentionOverrides, withTrailingSpace, type ParsedCategoryAndTags, type ParsedTaskInput, type MentionSuggestionCandidate } from '../utils/parseTaskInput';
+import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, parseDurationInput, parseSupplyInput, parseTargetInput, parseEstimateInput, stripRemindPrefix, parseCategoryAndTagsInput, parsePriorityInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, applyMentionOverrides, withTrailingSpace, type ParsedCategoryAndTags, type ParsedTaskInput, type MentionSuggestionCandidate } from '../utils/parseTaskInput';
 import { mergeRanges } from '../utils/ranges';
 import { aimTooltip } from '../utils/tooltipAim';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
@@ -88,6 +88,7 @@ import { KNOWN_LINK_APPS, linkAppsFor } from '../constants/linkApps';
 import { tagColor } from '../utils/tagColor';
 import { formatPhoneInput } from '../utils/phone';
 import { format } from 'date-fns/format';
+import { isSameDay } from 'date-fns/isSameDay';
 import { getLogicalToday, getLogicalTomorrow, getLogicalNow, getCurrentDayStart, formatTimeOfDay } from '../utils/dateUtils';
 import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration } from '../utils/effort';
 import { TaskEditor, type TaskDraft } from './TaskEditor';
@@ -241,6 +242,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   initialType = 'task', initialTitle, intoProjectId = null,
 }: Props) {
   const addTask = useTaskStore(s => s.addTask);
+  const applyTaskDates = useTaskStore(s => s.applyTaskDates);
   const unarchiveTask = useTaskStore(s => s.unarchiveTask);
   const allTags = useTaskStore(useShallow(s => (visible ? s.allTags() : NO_TAGS)));
   const categories = useCategoryStore(useShallow(s => s.categories));
@@ -405,6 +407,11 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   // above, which only applies while its chip is active: this one is the
   // title's, and lasts until another schedule phrase replaces it.
   const [titleWindowStart, setTitleWindowStart] = useState<string | null>(null);
+  // "on the 10th and the 15th" off the schedule tooltip: the rest of the set,
+  // and the due date it was parsed beside. Created as a series only while the
+  // due date is still that day, so picking a different date afterwards drops
+  // the set rather than splicing a picked date into a typed one.
+  const [titleSeries, setTitleSeries] = useState<{ anchor: Date; extraDates: Date[] } | null>(null);
   const [tags, setTags] = useState<string[]>([]);
   // Manual picks off the ambiguous-"@name" tooltip, keyed by lowercased token
   // text — see applyAmbiguousCandidate and applyMentionOverrides.
@@ -543,6 +550,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     setTargetCount(initialType === 'target' ? DEFAULT_TARGET_COUNT : null);
     setQuotaPeriod('day');
     setTitleWindowStart(null);
+    setTitleSeries(null);
     setChainItems([]);
     setNewStepTitle('');
     setCustomLinkText('');
@@ -891,6 +899,16 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     if (result.period === 'week' && recurrenceType === 'daily') return null;
     return plainWeekly ? { ...result, period: 'week' as const } : result;
   }, [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, chainParsed, linkParsed, phoneParsed, emailParsed, durationParsed, supplyParsed, type, recurrenceType, recurrenceInterval, recurrenceDays]);
+  // "clean the garage ~2h" — an estimate, not a timer. Last in the chain, so
+  // "for 15 minutes" (a timer) and everything above still win the one slot.
+  // Hidden in Timed for the reason the Effort chip is: there the countdown
+  // already is the estimate.
+  const estimateParsed = useMemo(
+    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !chainParsed && !linkParsed && !phoneParsed && !emailParsed
+      && !durationParsed && !supplyParsed && !targetParsed && isChipVisible(type, 'effort') && title.trim()
+      ? parseEstimateInput(title) : null),
+    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, chainParsed, linkParsed, phoneParsed, emailParsed, durationParsed, supplyParsed, targetParsed, type]
+  );
   const rawMatch = parsed
     ? { matchStart: parsed.matchStart, matchedText: parsed.matchedText }
     : categoryTagsParsed
@@ -936,7 +954,12 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                       matchStart: targetParsed.matchStart,
                       matchedText: title.slice(targetParsed.matchStart, targetParsed.matchEnd),
                     }
-                  : null;
+                  : estimateParsed
+                    ? {
+                        matchStart: estimateParsed.matchStart,
+                        matchedText: title.slice(estimateParsed.matchStart, estimateParsed.matchEnd),
+                      }
+                    : null;
   // The tooltip's own ✕ answers "not that" for this one phrase — comparing
   // by position+text (rather than a bare boolean) means editing the title so
   // a *different* phrase parses brings the tooltip straight back, with no
@@ -1029,6 +1052,9 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     setDueDate(parsed.schedule.dueDate);
     setDeadline(parsed.schedule.deadline ?? null);
     setTitleWindowStart(parsed.schedule.windowStart ?? null);
+    setTitleSeries(parsed.schedule.extraDates?.length
+      ? { anchor: parsed.schedule.dueDate, extraDates: parsed.schedule.extraDates }
+      : null);
     setTimeSegments(parsed.schedule.timeSegments);
     setRecurrenceType(parsed.schedule.recurrenceType);
     setRecurrenceInterval(parsed.schedule.recurrenceInterval);
@@ -1241,6 +1267,21 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     setRecurrenceType(targetParsed.period === 'week' ? 'weekly' : 'daily');
   };
 
+  // Fills the Effort chip's custom field, exactly as typing the minutes into
+  // it would, so the chip reads the estimate and the panel shows where it
+  // came from.
+  const applyEstimate = () => {
+    if (!estimateParsed) return;
+    haptics.success();
+    animateLayout();
+    const nextTitle = withTrailingSpace(estimateParsed.cleanTitle);
+    setTitle(nextTitle);
+    titleCaret.moveCaret(nextTitle);
+    setEstimatedMinutes(estimateParsed.minutes);
+    setEffort(minutesToEffort(estimateParsed.minutes));
+    setCustomEffortText(EFFORT_MINUTES.includes(estimateParsed.minutes) ? '' : String(estimateParsed.minutes));
+  };
+
   // Whichever single tooltip is currently up, applied — shared by the
   // tooltip bubble's own tap and the accessory bar's confirm checkmark
   // (TitleTokenAccessory), a second way to accept it without looking away
@@ -1257,6 +1298,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     else if (durationParsed) applyDuration();
     else if (supplyParsed) applySupply();
     else if (targetParsed) applyTarget();
+    else if (estimateParsed) applyEstimate();
   };
   const confirmVisible = activeMatch !== null && !ambiguousMention && !mentionSuggestion;
 
@@ -1294,6 +1336,12 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     () => (pendingStep ? [...chainItems, { id: generateId(), title: pendingStep, estimatedMinutes: null }] : chainItems),
     [chainItems, pendingStep],
   );
+
+  // The set's other dates, while the due date is still the day they were
+  // typed beside (see titleSeries).
+  const seriesExtraDates = titleSeries && dueDate && isSameDay(dueDate, titleSeries.anchor)
+    ? titleSeries.extraDates
+    : [];
 
   const typeValues: TypeValues = {
     // Always empty here, for the same reason healthMetric is null: quick add
@@ -1432,6 +1480,11 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     // and visibly — re-running them here would put back a category the ✕ on
     // the rule caption just took off.
     }, undefined, { skipTitleRules: true });
+    // A typed set of dates becomes a series around the row just made, through
+    // the editor's own entry point, so it's the same N rows sharing a seriesId
+    // any other set is (and the repeat, if one was also set, is stripped the
+    // same way: a series never carries one).
+    if (dueDate && seriesExtraDates.length > 0) applyTaskDates(task.id, [dueDate, ...seriesExtraDates]);
     // Files the task exactly as before either way; the setting only decides
     // whether the sheet hands off straight into the full editor for it
     // (postCreateTask, rendered below) instead of just closing. Deferred
@@ -1534,6 +1587,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
       ...baked,
       dueDate,
       deadline,
+      extraDates: seriesExtraDates,
       timeSegments,
       windowStart: titleWindowStart,
       reminderTime,
@@ -1696,7 +1750,9 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   const chipDescriptors: ToolChipDescriptor[] = [
     {
       key: 'date', icon: 'calendar-outline',
-      value: dueDate != null ? formatDate(dueDate) : null,
+      value: dueDate != null
+        ? `${formatDate(dueDate)}${seriesExtraDates.length > 0 ? ` +${seriesExtraDates.length}` : ''}`
+        : null,
       // Keyboard dismissed first for the reason the category chip gives:
       // WhenPicker takes no focus when it opens, so without this the title keeps
       // the keyboard behind it and comes back with its token bar gone.
@@ -2070,7 +2126,9 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                                           ? 'timer-outline'
                                           : supplyParsed
                                             ? 'cube-outline'
-                                            : 'speedometer-outline'
+                                            : targetParsed
+                                              ? 'speedometer-outline'
+                                              : 'barbell'
                         }
                         size={14}
                         color={colors.onAccent}
@@ -2094,7 +2152,9 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                                         ? `Timer · ${formatDuration(durationParsed.minutes)}`
                                         : supplyParsed
                                           ? `Supply · ${formatSupplyLeft(supplyParsed.count, supplyParsed.unit)}`
-                                          : `${targetParsed!.period === 'week' ? 'Weekly' : 'Daily'} target · ${formatQuotaTarget(targetParsed!.count, null)}`}
+                                          : targetParsed
+                                            ? `${targetParsed.period === 'week' ? 'Weekly' : 'Daily'} target · ${formatQuotaTarget(targetParsed.count, null)}`
+                                            : `Estimate · ${formatDuration(estimateParsed!.minutes)}`}
                       </Text>
                       <View style={styles.tooltipDot} />
                       <Text style={styles.tooltipHint}>Tap to set</Text>
