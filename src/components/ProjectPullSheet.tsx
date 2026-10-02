@@ -25,6 +25,7 @@ import {
   type ProjectPullProposal,
 } from '../utils/projectPull';
 import { useTaskStore } from '../store/useTaskStore';
+import { useTasksWhileOpen } from '../hooks/useTasksWhileOpen';
 import { useProjectStore } from '../store/useProjectStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { liveGeneratedTask } from '../utils/generatedTasks';
@@ -94,7 +95,7 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, landOn
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
 
-  const allTasks = useTaskStore(s => s.tasks);
+  const allTasks = useTasksWhileOpen(visible);
   const projects = useProjectStore(s => s.projects);
   const pullProjectTasks = useTaskStore(s => s.pullProjectTasks);
   const forgivVacationStreaks = useTaskStore(s => s.forgivVacationStreaks);

@@ -18,8 +18,7 @@ import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { formatPhoneInput } from '../utils/phone';
 import { birthdayInYear, hasBirthday } from '../utils/birthdayTasks';
-import { useTaskStore } from '../store/useTaskStore';
-import { useShallow } from 'zustand/react/shallow';
+import { useTasksWhileOpen } from '../hooks/useTasksWhileOpen';
 import { CountStepper } from './CountStepper';
 import { SegmentedControl } from './SegmentedControl';
 import {
@@ -105,7 +104,7 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
   // Read here so the cadence offer can be built from this person's own history
   // — the number in the offer has to come from what actually happened, which is
   // the whole reason it is not the app's opinion (rule 5).
-  const allTasks = useTaskStore(useShallow(s => s.tasks));
+  const allTasks = useTasksWhileOpen(visible, { shallow: true });
   const observed = useMemo(() => {
     if (!person) return null;
     const theirs = allTasks.filter(t => t.personIds.includes(person.id));
