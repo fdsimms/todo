@@ -50,6 +50,13 @@ describe('quickEventSaveFields', () => {
     expect(quickEventSaveFields({ ...base, repeat: null }).recurrence).toBeUndefined();
   });
 
+  it('carries a picked place coordinate only alongside a location', () => {
+    const place = { latitude: 40.7, longitude: -74 };
+    expect(quickEventSaveFields({ ...base, location: "Joe's", place }).place).toEqual(place);
+    expect(quickEventSaveFields({ ...base, location: '  ', place }).place).toBeUndefined();
+    expect(quickEventSaveFields({ ...base, location: "Joe's" }).place).toBeUndefined();
+  });
+
   it('trims the location and carries free time through', () => {
     const f = quickEventSaveFields({ ...base, location: '  Joe\'s ', availability: 'free', notesOrLink: 'https://x.co/a' });
     expect(f.location).toBe("Joe's");

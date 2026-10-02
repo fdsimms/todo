@@ -627,6 +627,12 @@ system sheet, then links the people. The rows Apple's form asked for are chips
 on the card (calendar, alert, Busy/Free) that start as the last saved event
 left them (`quickEventDefaults.ts`), plus a Notes or link field and a trailing
 `at (place)` and `alert 30m` in the line, which win over a chip's earlier pick.
+With "Suggest places" on (`placeSuggestionsEnabled`, off by default because it
+sends what is typed to Apple), the location is looked up in Apple Maps as you
+type (`src/services/placeSearch.ts`, MapKit through `todo-eventkit-bridge`). A
+picked place is written as its name and address, and its coordinate becomes
+the event's structured location, so Calendar draws a map and can estimate
+travel time. Nothing about the place is kept in the app.
 A repeat phrase ("every monday") saves a repeat rule (`eventRecurrenceFor`);
 "every 8 hours" and "3 days after completion" have no event counterpart and
 read as their first day. Invitees and travel time are not set here: EventKit

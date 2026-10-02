@@ -436,6 +436,9 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
  * - `calendarEventTasks` — which tasks were planned around each event, keyed
  *   by the EventKit id, so wrong on another device for `calendarHistoryHandled`'s
  *   reason.
+ * - `placeSuggestionsEnabled` — sends what is typed into an event's location
+ *   to Apple. An opt-in to network traffic is made on the device that sends
+ *   it, not inherited from another one.
  * - `aiFeatureConfig` — the API key it depends on is device-local by design,
  *   so syncing the config turns features on for a device that cannot run them.
  * - `activeListDrivenBy` — a pointer into `grocery_active_list`, so it is per

@@ -66,6 +66,8 @@ export function CalendarSettings() {
   const use24HourTime = useSettingsStore(s => s.use24HourTime);
   const mapsApp = useSettingsStore(s => s.mapsApp);
   const setMapsApp = useSettingsStore(s => s.setMapsApp);
+  const placeSuggestionsEnabled = useSettingsStore(s => s.placeSuggestionsEnabled);
+  const setPlaceSuggestionsEnabled = useSettingsStore(s => s.setPlaceSuggestionsEnabled);
   const events = useCalendarStore(s => s.events);
   const loaded = useCalendarStore(s => s.loaded);
   const perCalendar = useCalendarStore(s => s.perCalendar);
@@ -541,6 +543,19 @@ export function CalendarSettings() {
         selected={mapsApp}
         onSelect={setMapsApp}
         accessibilityLabelFor={o => `Open directions in ${o.label}`}
+      />
+      <View style={styles.sep} />
+      <SettingsRow
+        entryId="placeSuggestions"
+        icon="location-outline"
+        iconColor={placeSuggestionsEnabled ? colors.accent : undefined}
+        label="Suggest places"
+        hint={placeSuggestionsEnabled
+          ? "Typing a new event's location looks it up in Apple Maps. What you type is sent to Apple."
+          : "A new event's location is saved as you type it. Nothing is looked up."}
+        toggle={placeSuggestionsEnabled}
+        onPress={() => setPlaceSuggestionsEnabled(!placeSuggestionsEnabled)}
+        accessibilityLabel="Suggest places"
       />
     </SettingsSection>
   );
