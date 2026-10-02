@@ -15,10 +15,12 @@ Pod::Spec.new do |s|
   s.static_framework = true
 
   s.dependency 'ExpoModulesCore'
-  # EventKit only. No config plugin and no Info.plist key of its own: it reads
-  # events the app can already read, under the calendar usage string the
-  # expo-calendar plugin already writes (app.json).
-  s.frameworks = 'EventKit'
+  # No config plugin and no Info.plist key of its own: it reads and writes
+  # events under the calendar usage string the expo-calendar plugin already
+  # writes (app.json). MapKit's place search needs no permission (it is not
+  # given the user's location), and CoreLocation is only for the coordinate
+  # types.
+  s.frameworks = 'EventKit', 'MapKit', 'CoreLocation'
 
   s.source_files = '**/*.{h,m,swift}'
 end

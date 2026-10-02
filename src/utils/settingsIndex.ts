@@ -504,6 +504,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['notification', 'event', 'busy', 'nudge', 'delay', 'push back'] },
   { id: 'mapsApp', groupId: 'capture', label: 'Directions', section: 'Calendar',
     keywords: ['maps', 'apple maps', 'google maps', 'waze', 'navigation', 'navigate', 'location', 'address', 'route'] },
+  { id: 'placeSuggestions', groupId: 'capture', label: 'Suggest places', section: 'Calendar',
+    keywords: ['location', 'address', 'apple maps', 'autocomplete', 'search', 'venue', 'restaurant'] },
   { id: 'calendarPeopleHistory', groupId: 'capture', label: 'Match events to people', section: 'Calendar',
     keywords: ['friends', 'family', 'history', 'together', 'name', 'title', 'suggest', 'past'] },
   { id: 'deadlineCalendar', groupId: 'capture', label: 'Write deadlines to', section: 'Deadlines on your calendar',

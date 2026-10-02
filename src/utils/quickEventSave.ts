@@ -27,6 +27,8 @@ export interface QuickEventSaveInput {
   location?: string | null;
   notesOrLink?: string;
   repeat?: EventRecurrence | null;
+  /** The coordinate of a place picked for `location`; dropped when there is no location. */
+  place?: { latitude: number; longitude: number } | null;
   alertMinutes: number | null;
   availability: EventAvailability;
   calendarId: string | null;
@@ -47,6 +49,7 @@ export function quickEventSaveFields(input: QuickEventSaveInput): EventSaveField
     end,
     allDay,
     ...(location ? { location } : {}),
+    ...(location && input.place ? { place: { latitude: input.place.latitude, longitude: input.place.longitude } } : {}),
     ...splitNotesAndLink(input.notesOrLink ?? ''),
     ...(input.alertMinutes !== null
       ? { alarms: [{ relativeOffset: alertRelativeOffset(input.alertMinutes, allDay) }] }

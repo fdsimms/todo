@@ -664,6 +664,12 @@ export interface EventSaveFields {
   alarms?: Alarm[];
   /** A repeat rule, as `eventRecurrenceFor` builds it. */
   recurrence?: EventRecurrence;
+  /**
+   * The coordinate of a place picked from Apple Maps for `location`. Written
+   * as the event's structured location after the save, so Calendar can draw
+   * its map and estimate travel time. Ignored without a `location`.
+   */
+  place?: { latitude: number; longitude: number };
   availability?: 'busy' | 'free';
   /** The calendar to write to. A missing or stale id falls back to the default. */
   calendarId?: string | null;
@@ -730,7 +736,18 @@ export async function saveEventDirect(
           ? calendar().Availability.FREE
           : calendar().Availability.BUSY,
     });
-    return id ? { id, calendarId: target.id } : null;
+    if (!id) return null;
+    // A second write, since expo-calendar's save has no structured location.
+    // Best-effort: the event is saved either way, it just has no map.
+    if (fields.place && fields.location) {
+      try {
+        const bridge = require('todo-eventkit-bridge') as typeof import('todo-eventkit-bridge');
+        await bridge.setStructuredLocation(id, fields.location, fields.place.latitude, fields.place.longitude);
+      } catch {
+        // No bridge (an older build): the location text alone.
+      }
+    }
+    return { id, calendarId: target.id };
   } catch {
     return null;
   }

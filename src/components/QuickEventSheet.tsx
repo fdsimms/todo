@@ -25,6 +25,7 @@ import { HighlightedText } from './HighlightedText';
 import { TitleTokenAccessory } from './TitleTokenAccessory';
 import { CalendarPicker } from './CalendarPicker';
 import { EventOptionSheet, type EventOption } from './EventOptionSheet';
+import { InlineAction } from './InlineAction';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, interaction, animation, type Colors } from '../theme';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
@@ -48,6 +49,13 @@ import {
   resolveEventCalendar,
 } from '../utils/calendarSync';
 import type { Calendar as DeviceCalendar } from 'expo-calendar/legacy';
+import { searchPlaces } from '../services/placeSearch';
+import {
+  PLACE_QUERY_MIN_LENGTH,
+  placeLocationText,
+  placeSubtitle,
+  type PlaceResult,
+} from '../utils/places';
 import {
   findAmbiguousMention,
   getMentionSuggestions,
@@ -64,6 +72,8 @@ import { TITLE_MAX_LENGTH } from '../types';
 import { TextField } from './TextField';
 
 const EVENT_TOKEN_ACCESSORY_ID = 'quickEventTitleTokenAccessory';
+/** Long enough that a word being typed is one request, not one per letter. */
+const PLACE_SEARCH_DEBOUNCE_MS = 350;
 /** "#" and "!" name a category and a priority, which an event doesn't have. */
 const EVENT_TOKENS = ['@'] as const;
 
@@ -127,6 +137,8 @@ export function QuickEventSheet({ visible, onClose, seed }: Props) {
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
   const use24Hour = useSettingsStore(s => s.use24HourTime);
   const saveEvent = useEventPeopleStore(s => s.saveEvent);
+  const placeSuggestionsEnabled = useSettingsStore(s => s.placeSuggestionsEnabled);
+  const setPlaceSuggestionsEnabled = useSettingsStore(s => s.setPlaceSuggestionsEnabled);
 
   // ==== sheet-level state (keyboard, open/close animation) ====
   const inputRef = useRef<TextInput>(null);
@@ -194,6 +206,12 @@ export function QuickEventSheet({ visible, onClose, seed }: Props) {
   // The repeat a schedule phrase read, kept once the phrase's words leave the
   // line (tapping the tooltip, or picking the date by hand). A live phrase wins.
   const [repeatPick, setRepeatPick] = useState<EventRecurrence | null>(null);
+  // Apple Maps' answers for the location being typed, and the one picked. A
+  // pick holds only while the location still reads exactly as it was written,
+  // so an edit afterward saves the edited text without the old coordinate.
+  const [placeResults, setPlaceResults] = useState<PlaceResult[]>([]);
+  const [pickedPlace, setPickedPlace] = useState<(PlaceResult & { text: string }) | null>(null);
+  const placeQueryRef = useRef('');
   const [calendarPickerVisible, setCalendarPickerVisible] = useState(false);
   const [alertPickerVisible, setAlertPickerVisible] = useState(false);
   const titleCaret = useTitleSelection(text);
@@ -240,6 +258,8 @@ export function QuickEventSheet({ visible, onClose, seed }: Props) {
     setLocation('');
     setNotesOrLink('');
     setRepeatPick(null);
+    setPlaceResults([]);
+    setPickedPlace(null);
     const remembered = readQuickEventDefaults();
     setCalendarId(remembered.calendarId);
     setAlertDefault(remembered.alertMinutes);
@@ -351,10 +371,47 @@ export function QuickEventSheet({ visible, onClose, seed }: Props) {
   // A place or alert typed in the line is live, the same as a typed day: it
   // wins over an earlier pick without anyone tapping it.
   const effectiveLocation = draft.location ?? (location.trim() || null);
+  const placeQuery = effectiveLocation ?? '';
+  const placePicked = pickedPlace !== null && pickedPlace.text === placeQuery;
+  const wantsPlaces = placeQuery.length >= PLACE_QUERY_MIN_LENGTH && !placePicked;
   const effectiveAlert =
     draft.alertMinutes !== undefined ? draft.alertMinutes : alertPick !== undefined ? alertPick : alertDefault;
   const alertSet = effectiveAlert !== null;
   const canAdd = draft.title.trim().length > 0 && !busy;
+
+  // ==== place suggestions ====
+  // Debounced, and checked against the query once the answer is back: a slow
+  // answer for an older query must not replace the list for the current one.
+  useEffect(() => {
+    placeQueryRef.current = placeQuery;
+    if (!visible || !placeSuggestionsEnabled || !wantsPlaces) {
+      setPlaceResults([]);
+      return;
+    }
+    const timer = setTimeout(() => {
+      void searchPlaces(placeQuery).then(results => {
+        if (placeQueryRef.current === placeQuery) setPlaceResults(results.slice(0, 3));
+      });
+    }, PLACE_SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [visible, placeSuggestionsEnabled, placeQuery, wantsPlaces]);
+
+  const pickPlace = (place: PlaceResult) => {
+    haptics.tap();
+    animateLayout();
+    const placeText = placeLocationText(place);
+    // A place read from the line ("at joe's") comes out of the line, the way an
+    // alert picked from its chip does, or the typed words would outrank it.
+    if (draft.location !== null && draft.clauseSpans.length > 0) {
+      const [from, to] = draft.clauseSpans[0];
+      const next = withTrailingSpace((text.slice(0, from).trimEnd() + text.slice(to)).trimEnd());
+      setText(next);
+      titleCaret.moveCaret(next);
+    }
+    setLocation(placeText);
+    setPickedPlace({ ...place, text: placeText });
+    setPlaceResults([]);
+  };
 
   // ==== applying what was read ====
   const insertToken = (token: string) => {
@@ -422,6 +479,7 @@ export function QuickEventSheet({ visible, onClose, seed }: Props) {
         end: effectiveEnd,
         allDay,
         location: effectiveLocation,
+        place: placePicked ? pickedPlace : null,
         notesOrLink,
         repeat: effectiveRepeat,
         alertMinutes: effectiveAlert,
@@ -602,7 +660,44 @@ export function QuickEventSheet({ visible, onClose, seed }: Props) {
               keyboardAppearance={isDark ? 'dark' : 'light'}
               accessibilityLabel="Location"
             />
+            {placePicked && (
+              <Ionicons name="checkmark-circle" size={iconSize.sm} color={colors.accent} accessibilityLabel="Place from Apple Maps" />
+            )}
           </View>
+
+          {placeResults.length > 0 && (
+            <View style={styles.placeList}>
+              {placeResults.map((place, index) => {
+                const subtitle = placeSubtitle(place);
+                return (
+                  <TouchableOpacity
+                    key={`${place.latitude},${place.longitude},${index}`}
+                    style={[styles.placeRow, index > 0 && styles.placeRowRuled]}
+                    onPress={() => pickPlace(place)}
+                    activeOpacity={interaction.activeOpacity}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Use ${placeLocationText(place)}`}
+                  >
+                    <Text style={styles.placeName} numberOfLines={1}>{place.name ?? place.address}</Text>
+                    {subtitle && <Text style={styles.placeAddress} numberOfLines={1}>{subtitle}</Text>}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
+
+          {!placeSuggestionsEnabled && wantsPlaces && (
+            <View style={styles.placeOffer}>
+              <InlineAction
+                icon="search-outline"
+                label="Suggest places"
+                variant="neutral"
+                onPress={() => setPlaceSuggestionsEnabled(true)}
+                accessibilityLabel="Turn on place suggestions from Apple Maps"
+              />
+              <Text style={styles.placeOfferText}>Looks up what you type in Apple Maps.</Text>
+            </View>
+          )}
 
           <View style={styles.locationRow}>
             <Ionicons name="document-text-outline" size={iconSize.sm} color={colors.textSecondary} />
@@ -855,6 +950,19 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
   locationInput: { flex: 1, fontSize: font.sm, color: colors.text, paddingVertical: spacing.xs },
   locationInputRead: { color: colors.accent },
   calendarDot: { width: 10, height: 10, borderRadius: 5 },
+  placeList: {
+    borderRadius: radius.md,
+    backgroundColor: colors.bgTertiary,
+    marginTop: -spacing.xs,
+    marginBottom: spacing.sm,
+    overflow: 'hidden',
+  },
+  placeRow: { paddingHorizontal: 10, paddingVertical: spacing.sm, gap: spacing.xxs },
+  placeRowRuled: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator },
+  placeName: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.medium },
+  placeAddress: { color: colors.textSecondary, fontSize: font.xs },
+  placeOffer: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.sm },
+  placeOfferText: { flex: 1, color: colors.textSecondary, fontSize: font.xs },
   captionRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginBottom: spacing.sm },
   captionText: { flex: 1, color: colors.textSecondary, fontSize: font.xs },
   toolbar: { flexDirection: 'row', gap: spacing.xs, marginBottom: spacing.sm },
