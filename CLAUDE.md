@@ -640,8 +640,9 @@ There is no backend: every piece of user data lives in a local SQLite file on de
 network call lives in `src/services/`, plus the two sync transports** (`cloudKitTransport.ts`,
 `httpSyncTransport.ts`), and each answers to a switch the user can turn off. The rule that keeps
 that true: "no key, no traffic" is not a privacy answer on its own, because several calls need no
-key (`productLookup.ts`, `foodSearch.ts`, `recipePage.ts`'s `schema.org/Recipe` path, and the
-Open-Meteo forecast and geocoding in `weatherLookup.ts`/`geocode.ts`). **A new call that needs no
+key (`productLookup.ts`, `foodSearch.ts`, `recipePage.ts`'s `schema.org/Recipe` path, the
+Open-Meteo forecast and geocoding in `weatherLookup.ts`/`geocode.ts`, and Apple Maps place search in
+`placeSearch.ts`). **A new call that needs no
 key ships with its own switch, or rides an existing one that already means "don't do this"**
 (the recipe page answers to Recipe import's own `aiFeatureConfig.recipeExtraction.enabled`). The
 Anthropic key unlocks `aiSuggestions.ts` and nothing else, and every fetch the user didn't trigger
