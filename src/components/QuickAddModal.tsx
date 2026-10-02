@@ -62,7 +62,7 @@ import {
 import { isSimpleChip } from '../utils/simpleTaskForm';
 import { featureShown } from '../utils/simpleMode';
 import { resolvePillOverflow } from '../utils/pillOverflow';
-import { MAX_TARGET_UNIT_LENGTH } from '../utils/quotaUnit';
+import { MAX_TARGET_UNIT_LENGTH, formatQuotaTarget } from '../utils/quotaUnit';
 import { WhenPicker } from './WhenPicker';
 import { projectDateAnchor } from '../utils/projectDateShortcuts';
 import { WeekdaySelector } from './WeekdaySelector';
@@ -73,7 +73,7 @@ import { TitleTokenAccessory } from './TitleTokenAccessory';
 import { HighlightedText } from './HighlightedText';
 import { suggestTitles } from '../utils/titleSuggestions';
 import { findArchivedMatch } from '../utils/archiveMatch';
-import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, parseDurationInput, parseSupplyInput, parseCategoryAndTagsInput, parsePriorityInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, applyMentionOverrides, withTrailingSpace, type ParsedCategoryAndTags, type MentionSuggestionCandidate } from '../utils/parseTaskInput';
+import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, parseDurationInput, parseSupplyInput, parseTargetInput, parseCategoryAndTagsInput, parsePriorityInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, applyMentionOverrides, withTrailingSpace, type ParsedCategoryAndTags, type MentionSuggestionCandidate } from '../utils/parseTaskInput';
 import { mergeRanges } from '../utils/ranges';
 import { aimTooltip } from '../utils/tooltipAim';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
@@ -849,6 +849,20 @@ export const QuickAddModal = React.memo(function QuickAddModal({
       ? parseSupplyInput(title) : null),
     [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, chainParsed, linkParsed, phoneParsed, emailParsed, durationParsed, recurrenceType]
   );
+  // "drink water 8 times a day" — a daily target. Last in the chain, behind
+  // supply, so every phrase above still wins the one slot.
+  //
+  // Same type gate as durationParsed: accepting it switches the sheet into
+  // Target, so it's only offered from the plain type. And only while the
+  // repeat is unset or daily, because a target resets by repeating daily: on
+  // a sheet already set to "every week" (from "3 times every week"), a daily
+  // target of 3 isn't what was said.
+  const targetParsed = useMemo(
+    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !chainParsed && !linkParsed && !phoneParsed && !emailParsed
+      && !durationParsed && !supplyParsed && type === 'task' && (recurrenceType === 'none' || recurrenceType === 'daily') && title.trim()
+      ? parseTargetInput(title) : null),
+    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, chainParsed, linkParsed, phoneParsed, emailParsed, durationParsed, supplyParsed, type, recurrenceType]
+  );
   const rawMatch = parsed
     ? { matchStart: parsed.matchStart, matchedText: parsed.matchedText }
     : categoryTagsParsed
@@ -889,7 +903,12 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                     matchStart: supplyParsed.matchStart,
                     matchedText: title.slice(supplyParsed.matchStart, supplyParsed.matchEnd),
                   }
-                : null;
+                : targetParsed
+                  ? {
+                      matchStart: targetParsed.matchStart,
+                      matchedText: title.slice(targetParsed.matchStart, targetParsed.matchEnd),
+                    }
+                  : null;
   // The tooltip's own ✕ answers "not that" for this one phrase — comparing
   // by position+text (rather than a bare boolean) means editing the title so
   // a *different* phrase parses brings the tooltip straight back, with no
@@ -1167,6 +1186,22 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     setSupplyUnit(supplyParsed.unit ?? '');
   };
 
+  // Same as applyDuration: typing "8 times a day" is describing a daily
+  // target, so accepting it switches the sheet into Target with the count set
+  // and the repeat on (a target resets by repeating daily, as resetForm does
+  // when the sheet opens straight into Target).
+  const applyTarget = () => {
+    if (!targetParsed) return;
+    haptics.success();
+    animateLayout();
+    const nextTitle = withTrailingSpace(targetParsed.cleanTitle);
+    setTitle(nextTitle);
+    titleCaret.moveCaret(nextTitle);
+    setType('target');
+    setTargetCount(targetParsed.count);
+    setRecurrenceType('daily');
+  };
+
   // Whichever single tooltip is currently up, applied — shared by the
   // tooltip bubble's own tap and the accessory bar's confirm checkmark
   // (TitleTokenAccessory), a second way to accept it without looking away
@@ -1182,6 +1217,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     else if (emailParsed) applyEmail();
     else if (durationParsed) applyDuration();
     else if (supplyParsed) applySupply();
+    else if (targetParsed) applyTarget();
   };
   const confirmVisible = activeMatch !== null && !ambiguousMention && !mentionSuggestion;
 
@@ -1985,7 +2021,9 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                                         ? 'mail-outline'
                                         : durationParsed
                                           ? 'timer-outline'
-                                          : 'cube-outline'
+                                          : supplyParsed
+                                            ? 'cube-outline'
+                                            : 'speedometer-outline'
                         }
                         size={14}
                         color={colors.onAccent}
@@ -2007,7 +2045,9 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                                       ? `Email ${emailParsed.address}`
                                       : durationParsed
                                         ? `Timer · ${formatDuration(durationParsed.minutes)}`
-                                        : `Supply · ${formatSupplyLeft(supplyParsed!.count, supplyParsed!.unit)}`}
+                                        : supplyParsed
+                                          ? `Supply · ${formatSupplyLeft(supplyParsed.count, supplyParsed.unit)}`
+                                          : `Daily target · ${formatQuotaTarget(targetParsed!.count, null)}`}
                       </Text>
                       <View style={styles.tooltipDot} />
                       <Text style={styles.tooltipHint}>Tap to set</Text>
