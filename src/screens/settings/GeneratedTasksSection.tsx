@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Alert, StyleSheet, View } from 'react-native';
 import { useSettingsStore, type WeekStart } from '../../store/useSettingsStore';
 import { useTaskStore } from '../../store/useTaskStore';
+import { useCalendarStore } from '../../store/useCalendarStore';
 import { ensureGeneratedTaskCategory, useCategoryStore } from '../../store/useCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
 import { categoryLabel } from '../../utils/categoryLabel';
@@ -141,6 +142,9 @@ export function GeneratedTasksSection() {
 
   const s = useSettingsStore();
   const categories = useCategoryStore(useShallow(state => state.categories));
+  // Names for the per-calendar leave-by rows. Filled by the calendar read, so a
+  // picked calendar it hasn't reached yet shows a plain fallback.
+  const calendarsById = useCalendarStore(state => state.calendarsById);
 
   // Built here rather than handed down, now that this is a screen of its own
   // rather than a section inside Tasks & projects. Not a segmented control: the
@@ -918,6 +922,49 @@ export function GeneratedTasksSection() {
               describeValue={n => `${n ?? TRAVEL_LEAD_MINUTES_DEFAULT} minutes before the event`}
             />
           </View>
+          {s.calendarIds.length > 1 && (
+            <>
+              <View style={styles.sep} />
+              <SettingsRow
+                entryId="travelLeadByCalendar"
+                icon="calendar-outline"
+                label="Per calendar"
+                hint="A different reminder time for events on one calendar. A calendar left on Default uses the time above."
+                tight
+              />
+              {s.calendarIds.map(calendarId => {
+                const calendar = calendarsById[calendarId];
+                const title = calendar?.title || 'Calendar';
+                const override = s.travelLeadByCalendar[calendarId] ?? null;
+                return (
+                  <SettingsRow
+                    key={calendarId}
+                    icon="ellipse"
+                    iconColor={calendar?.color}
+                    label={title}
+                    tight
+                    trailing={
+                      <CountStepper
+                        value={override}
+                        onChange={next => s.setTravelLeadForCalendar(calendarId, next)}
+                        min={TRAVEL_LEAD_MINUTES_MIN}
+                        max={TRAVEL_LEAD_MINUTES_MAX}
+                        step={TRAVEL_LEAD_MINUTES_STEP}
+                        allowNull
+                        start={s.travelLeadMinutes}
+                        emptyLabel="Default"
+                        format={n => `${n}m`}
+                        label={`Minutes before events on ${title}`}
+                        describeValue={n => n === null
+                          ? `Default, ${s.travelLeadMinutes} minutes before`
+                          : `${n} minutes before events on ${title}`}
+                      />
+                    }
+                  />
+                );
+              })}
+            </>
+          )}
           <View style={styles.sep} />
           <SettingsRow
             entryId="transitAlerts"

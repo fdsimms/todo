@@ -5525,6 +5525,7 @@ describe('checkTravelTasks', () => {
     calendarReadEnabled: true,
     travelTaskCategory: 'Calendar',
     travelLeadMinutes: 30,
+    travelLeadByCalendar: {} as Record<string, number>,
     travelTaskHandled: {} as Record<string, string>,
     setTravelTaskHandled,
     transitAlerts: false,
@@ -5620,6 +5621,12 @@ describe('checkTravelTasks', () => {
     useSettingsStore.getState.mockReturnValue(settings({ travelTaskHandled: { [sourceId]: dentist().end } }));
     useTaskStore.getState().checkTravelTasks();
     expect(travelTasks()).toHaveLength(1);
+  });
+
+  it('uses the lead set for the event\'s calendar', () => {
+    useSettingsStore.getState.mockReturnValue(settings({ travelLeadByCalendar: { 'cal-1': 60 } }));
+    useTaskStore.getState().checkTravelTasks();
+    expect(travelTasks()[0].reminderTime).toBe(new Date(2026, 9, 5, 13, 0, 0).toISOString());
   });
 
   it('moves the reminder when the lead changes', () => {

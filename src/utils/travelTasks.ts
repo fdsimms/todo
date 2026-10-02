@@ -48,6 +48,47 @@ export function clampTravelLeadMinutes(value: unknown): number {
 }
 
 /**
+ * A lead per calendar, by EventKit calendar id: "events on Work get 45
+ * minutes". Holds overrides only; a calendar with no entry uses the default.
+ *
+ * The calendar is the one way to vary the lead that needs no guessing. The
+ * alternative, reading a neighborhood or a distance out of the location, is
+ * the inference this module refuses (see the header): a calendar is a choice
+ * the user already made about where an event belongs.
+ */
+export type TravelLeadByCalendar = Record<string, number>;
+
+/**
+ * `travelLeadByCalendar` off settings, defensively: anything that isn't a
+ * calendar id mapped to a usable number is dropped, and every value is clamped
+ * to the stepper's range so a value from a peer on another build still reads.
+ */
+export function parseTravelLeadByCalendar(raw: unknown): TravelLeadByCalendar {
+  let value = raw;
+  if (typeof value === 'string') {
+    try { value = JSON.parse(value); } catch { return {}; }
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const out: TravelLeadByCalendar = {};
+  for (const [calendarId, minutes] of Object.entries(value as Record<string, unknown>)) {
+    if (!calendarId || typeof minutes !== 'number' || !Number.isFinite(minutes)) continue;
+    out[calendarId] = clampTravelLeadMinutes(minutes);
+  }
+  return out;
+}
+
+/** The leads a sweep reads: the default, and the per-calendar overrides on top. */
+export interface TravelLeads {
+  defaultMinutes: number;
+  byCalendar: Readonly<TravelLeadByCalendar>;
+}
+
+/** An event's lead: its calendar's override if it has one, else the default. */
+export function travelLeadFor(event: Pick<BusyEvent, 'calendarId'>, leads: TravelLeads): number {
+  return leads.byCalendar[event.calendarId] ?? leads.defaultMinutes;
+}
+
+/**
  * The words a calendar puts in the location field for a video call, compared
  * whole and case-insensitively. A closed list rather than a pattern: these are
  * the exact strings Outlook, Zoom and Google write there, and anything looser
@@ -152,7 +193,7 @@ export interface TravelMatch {
  * out of Today until then). Ordered by start so a sweep is deterministic.
  */
 export function matchedTravelTasks(
-  leadMinutes: number,
+  leads: TravelLeads,
   events: readonly BusyEvent[],
   now: Date,
   horizonEnd: Date,
@@ -164,7 +205,7 @@ export function matchedTravelTasks(
     .sort((a, b) => Date.parse(a.start) - Date.parse(b.start));
   for (const event of eligible) {
     const sourceId = travelSourceId(event);
-    const leaveAt = travelLeaveAt(event, leadMinutes);
+    const leaveAt = travelLeaveAt(event, travelLeadFor(event, leads));
     if (!leaveAt) continue;
     out.push({
       sourceId,

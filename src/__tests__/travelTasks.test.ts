@@ -5,6 +5,8 @@ import {
   eventIsTravelEligible,
   isTravelTaskStale,
   matchedTravelTasks,
+  parseTravelLeadByCalendar,
+  travelLeadFor,
   travelLeaveAt,
   travelSourceId,
   travelSourceOf,
@@ -32,6 +34,7 @@ function event(overrides: Partial<BusyEvent> = {}): BusyEvent {
 
 const NOW = new Date('2026-10-05T09:00:00.000Z');
 const HORIZON = new Date('2026-10-07T04:00:00.000Z');
+const LEADS = { defaultMinutes: 30, byCalendar: {} };
 
 describe('eventHasLocation', () => {
   it('reads empty, blank and null all as no location', () => {
@@ -123,7 +126,7 @@ describe('travelSourceId', () => {
 
 describe('matchedTravelTasks', () => {
   it('writes one task per eligible event, with the reminder at the leave time', () => {
-    const matches = matchedTravelTasks(30, [event()], NOW, HORIZON, {});
+    const matches = matchedTravelTasks(LEADS, [event()], NOW, HORIZON, {});
     expect(matches).toEqual([{
       sourceId: travelSourceId(event()),
       event: event(),
@@ -135,12 +138,12 @@ describe('matchedTravelTasks', () => {
 
   it('writes nothing past the horizon', () => {
     const later = event({ id: 'far', start: '2026-10-08T14:00:00.000Z', end: '2026-10-08T15:00:00.000Z' });
-    expect(matchedTravelTasks(30, [later], NOW, HORIZON, {})).toEqual([]);
+    expect(matchedTravelTasks(LEADS, [later], NOW, HORIZON, {})).toEqual([]);
   });
 
   it('flags an occurrence already handled, so the sweep can update its row but never recreate it', () => {
     const handled = { [travelSourceId(event())]: event().end };
-    const [match] = matchedTravelTasks(30, [event()], NOW, HORIZON, handled);
+    const [match] = matchedTravelTasks(LEADS, [event()], NOW, HORIZON, handled);
     expect(match.handled).toBe(true);
   });
 
@@ -148,14 +151,44 @@ describe('matchedTravelTasks', () => {
     const early = event({ id: 'early', start: '2026-10-05T11:00:00.000Z', end: '2026-10-05T12:00:00.000Z' });
     const noPlace = event({ id: 'nowhere', location: '' });
     const allDay = event({ id: 'allday', allDay: true });
-    const ids = matchedTravelTasks(30, [event(), noPlace, early, allDay], NOW, HORIZON, {}).map(m => m.event.id);
+    const ids = matchedTravelTasks(LEADS, [event(), noPlace, early, allDay], NOW, HORIZON, {}).map(m => m.event.id);
     expect(ids).toEqual(['early', 'evt-1']);
   });
 
   it('still writes a task whose leave time has just passed, while the event has not started', () => {
     const now = new Date('2026-10-05T13:45:00.000Z');
-    const [match] = matchedTravelTasks(30, [event()], now, HORIZON, {});
+    const [match] = matchedTravelTasks(LEADS, [event()], now, HORIZON, {});
     expect(match.leaveAt).toBe('2026-10-05T13:30:00.000Z');
+  });
+});
+
+describe('per-calendar leads', () => {
+  it('uses a calendar\'s own lead and falls back to the default', () => {
+    const leads = { defaultMinutes: 30, byCalendar: { work: 45 } };
+    expect(travelLeadFor({ calendarId: 'work' }, leads)).toBe(45);
+    expect(travelLeadFor({ calendarId: 'home' }, leads)).toBe(30);
+  });
+
+  it('puts each event\'s reminder at its own calendar\'s lead', () => {
+    const work = event({ id: 'w', calendarId: 'work' });
+    const home = event({ id: 'h', calendarId: 'home', start: '2026-10-05T16:00:00.000Z', end: '2026-10-05T17:00:00.000Z' });
+    const matches = matchedTravelTasks(
+      { defaultMinutes: 30, byCalendar: { work: 60 } }, [work, home], NOW, HORIZON, {});
+    expect(matches.map(m => m.leaveAt)).toEqual([
+      '2026-10-05T13:00:00.000Z',
+      '2026-10-05T15:30:00.000Z',
+    ]);
+  });
+
+  it('parses stored overrides, clamping values and dropping junk', () => {
+    expect(parseTravelLeadByCalendar('{"work":47,"far":9999,"bad":"x","":20}')).toEqual({
+      work: 45,
+      far: TRAVEL_LEAD_MINUTES_MAX,
+    });
+    expect(parseTravelLeadByCalendar({ a: 15 })).toEqual({ a: 15 });
+    expect(parseTravelLeadByCalendar('[object Object]')).toEqual({});
+    expect(parseTravelLeadByCalendar(null)).toEqual({});
+    expect(parseTravelLeadByCalendar(['x'])).toEqual({});
   });
 });
 

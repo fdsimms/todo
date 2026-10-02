@@ -6949,7 +6949,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // the clock: at 1am under a 2am reset, "tomorrow" is still a day away.
     const horizonEnd = addDays(getCurrentDayStart(), 2);
     const matches = matchedTravelTasks(
-      settings.travelLeadMinutes, calendar.events, now, horizonEnd, handled);
+      { defaultMinutes: settings.travelLeadMinutes, byCalendar: settings.travelLeadByCalendar },
+      calendar.events, now, horizonEnd, handled);
     // Read only while the switch is on, so turning it off takes the notes off
     // on the next sweep even if a snapshot is still held.
     const transit = settings.transitAlerts ? useTransitStore.getState().snapshot : null;

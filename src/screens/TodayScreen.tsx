@@ -1424,6 +1424,10 @@ export function TodayScreen() {
           // reads both land asynchronously, so useTravelTaskSync re-runs it
           // when either arrives rather than this firing being the only one.
           useTaskStore.getState().checkTravelTasks();
+          // And the event rules, which read the same window. They ran only at
+          // launch and in background refresh, so a rule whose lead day arrived
+          // while the app sat open waited for the next cold start.
+          useTaskStore.getState().checkEventTasks();
           // Beside it, same trigger — the crossings this checks against are
           // kept current by useScreenTimeSync's own AppState listener.
           useTaskStore.getState().checkScreenTimeTasks();

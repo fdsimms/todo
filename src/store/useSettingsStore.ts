@@ -104,7 +104,12 @@ import {
   pruneHandledEventTasks,
   type HandledEventTasks,
 } from '../utils/eventTasks';
-import { clampTravelLeadMinutes, TRAVEL_LEAD_MINUTES_DEFAULT } from '../utils/travelTasks';
+import {
+  clampTravelLeadMinutes,
+  parseTravelLeadByCalendar,
+  TRAVEL_LEAD_MINUTES_DEFAULT,
+  type TravelLeadByCalendar,
+} from '../utils/travelTasks';
 import { parseTransitLines } from '../utils/transitAlerts';
 import { parseScreenTimeRules, defaultScreenTimeRules, serializeScreenTimeRules } from '../utils/screenTimeRules';
 import { parseHealthRules, defaultHealthRules, serializeHealthRules } from '../utils/healthRules';
@@ -1381,6 +1386,10 @@ interface SettingsStore {
   // travel time, typed rather than worked out — see travelTasks.ts for why no
   // routing service is asked. Clamped by clampTravelLeadMinutes.
   travelLeadMinutes: number;
+  // Per-calendar overrides of that lead, by EventKit calendar id: "events on
+  // Work get 45 minutes". Holds only the calendars someone set; the rest use
+  // travelLeadMinutes. See TravelLeadByCalendar.
+  travelLeadByCalendar: TravelLeadByCalendar;
   // eventTaskHandled's shape and reason, keyed by occurrence alone since there
   // is one rule. Written by checkTravelTasks, never by anything a person taps.
   travelTaskHandled: HandledEventTasks;
@@ -1803,6 +1812,7 @@ interface SettingsStore {
   setTravelTasks: (on: boolean) => void;
   setTravelTaskCategory: (category: string | null) => void;
   setTravelLeadMinutes: (minutes: number) => void;
+  setTravelLeadForCalendar: (calendarId: string, minutes: number | null) => void;
   setTravelTaskHandled: (handled: HandledEventTasks) => void;
   setTransitAlerts: (on: boolean) => void;
   setTransitLines: (lines: string[]) => void;
@@ -2424,6 +2434,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   travelTasks: false,
   travelTaskCategory: null,
   travelLeadMinutes: TRAVEL_LEAD_MINUTES_DEFAULT,
+  travelLeadByCalendar: {},
   travelTaskHandled: {},
   transitAlerts: false,
   transitLines: [],
@@ -2844,6 +2855,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const travelLeadMinutes = clampTravelLeadMinutes(
       Number.isFinite(storedTravelLead) ? storedTravelLead : undefined,
     );
+    const travelLeadByCalendar = parseTravelLeadByCalendar(dbGetSetting('travelLeadByCalendar'));
     // Pruned on load for eventTaskHandled's reason, directly above.
     const travelTaskHandled = pruneHandledEventTasks(
       parseHandledEventTasks(dbGetSetting('travelTaskHandled')),
@@ -3178,6 +3190,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       titleRules,
       transitAlerts,
       transitLines,
+      travelLeadByCalendar,
       travelLeadMinutes,
       travelTaskCategory,
       travelTaskHandled,
@@ -3751,6 +3764,17 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const clamped = clampTravelLeadMinutes(minutes);
     dbSetSetting('travelLeadMinutes', String(clamped));
     set({ travelLeadMinutes: clamped });
+  },
+
+  // Null puts the calendar back on the default lead, by removing its entry
+  // rather than storing the default: a stored copy would stop following the
+  // default when the user next changed it.
+  setTravelLeadForCalendar(calendarId: string, minutes: number | null) {
+    const next = { ...get().travelLeadByCalendar };
+    if (minutes === null) delete next[calendarId];
+    else next[calendarId] = clampTravelLeadMinutes(minutes);
+    dbSetSetting('travelLeadByCalendar', JSON.stringify(next));
+    set({ travelLeadByCalendar: next });
   },
 
   // State rather than a preference, like setEventTaskHandled.

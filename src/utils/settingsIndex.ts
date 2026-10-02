@@ -598,6 +598,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { id: 'travelLeadMinutes', groupId: 'generated', label: 'Remind me', section: 'Leave-by reminders',
     keywords: ['travel time', 'commute', 'minutes before', 'lead time', 'leave', 'when to leave',
       'reminder', 'notification', 'trip'] },
+  { id: 'travelLeadByCalendar', groupId: 'generated', label: 'Per calendar', section: 'Leave-by reminders',
+    keywords: ['work calendar', 'different time', 'travel time', 'commute', 'minutes before', 'leave'] },
   { id: 'transitAlerts', groupId: 'generated', label: 'Subway alerts', section: 'Leave-by reminders',
     keywords: ['mta', 'train', 'delay', 'delays', 'planned work', 'service change',
       'transit', 'commute', 'new york', 'nyc'] },

@@ -1022,9 +1022,14 @@ argued out before it was built; read them before reopening one.
   eligibility gate and handled record by importing them, and deliberately not its rules engine.
   That engine's lead is whole days on purpose (`leadTimeReached`) where travel is minutes, and
   `parseEventRules` drops a rule with no cue, which a location trigger would be. With no per-rule
-  title or cue there is nothing for a rule to vary, so `RuleListSheet` would be a list of one. If
-  different leads for different places are ever wanted, `BusyEvent.calendarId` is the honest key
-  ("Work calendar events get 45 minutes"). Parsing a neighborhood out of an address is not.
+  title or cue there is nothing for a rule to vary, so `RuleListSheet` would be a list of one.
+- **The lead can differ per calendar, and that is the only way it varies.**
+  `travelLeadByCalendar` maps a calendar id to its own minutes ("Work events get 45 minutes"),
+  holding overrides only, so a calendar left on Default keeps following the default when it
+  changes; clearing an override deletes the entry rather than storing the default. The calendar is
+  the honest key because it is a choice the user already made about where an event belongs.
+  Parsing a neighborhood or a distance out of an address is not. The rows appear only once more
+  than one calendar is picked, since with one there is nothing to tell apart.
 - **All-day events are refused**, the one place this departs from `eventIsRuleEligible`: there is
   no start time to subtract from.
 - **The reminder is what makes it useful, and it is deterministic.** Start less lead is known the
