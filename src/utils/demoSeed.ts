@@ -597,6 +597,23 @@ export function seedDemoData(): void {
   // Part-done, so the meter on the row reads as a meter rather than an empty bar.
   updateTask(water.id, { progressCount: 2 });
 
+  // The same target counted off the food log instead of typed in: it logs 250ml
+  // a glass and follows the 2,000ml water target seeded with the food log, so
+  // its count is 8 and moves when that target does. Without a row like this the
+  // toggle reads as a setting nobody has used.
+  addTask({
+    title: 'Reach my water target',
+    category: 'Health',
+    dueDate: today.toISOString(),
+    targetCount: 8,
+    targetUnit: 'glasses',
+    recurrenceType: 'daily',
+    recurrenceInterval: 1,
+    logHealthMetric: 'waterMl',
+    logHealthAmount: 250,
+    followWaterTarget: true,
+  });
+
   // The other kind of daily target: one whose cadence is the point and whose
   // count is arithmetic. Invisible as a capability without a row using it —
   // the interval, the nudges and the window all read as ordinary quota fields

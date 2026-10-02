@@ -166,6 +166,9 @@ export const GENERATED_KINDS: readonly GeneratedKind[] = [
   // what puts it here, is the shape of the question: once in a while, record
   // something only you can record.
   'weighIn',
+  // Appended, beside nothing: it is about a water target rather than a person,
+  // a project or a meal, and is the only generator that reads the food log.
+  'waterShortfall',
 ];
 
 /**
@@ -225,7 +228,8 @@ export type GeneratedEnabledKey =
   | 'moodLogTasks'
   | 'moodNudgeTasks'
   | 'weekendNudgeTasks'
-  | 'weighInTasks';
+  | 'weighInTasks'
+  | 'waterShortfallTasks';
 
 export interface GeneratedKindSpec {
   kind: GeneratedKind;
@@ -889,6 +893,29 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     // Not a notice, for moodLog's reason: recording the weight is the work
     // rather than something the app is telling you, and moving the request to
     // tomorrow morning is the obvious thing to want to do with it.
+    notice: false,
+    kitchen: false,
+    categorized: true,
+    defaultCategory: 'Health',
+  },
+  // Ships off, like every generator that adds a surface. It only ever follows a
+  // water task that has already been completed for the day, so it can't pile
+  // up: at most one a day, and a completed or deleted one blocks the next.
+  waterShortfall: {
+    kind: 'waterShortfall',
+    // Work the app invents, so it stands down on vacation like the rest.
+    pausedOnVacation: true,
+    enabledKey: 'waterShortfallTasks',
+    label: 'Add a task for water still owed',
+    onHint: 'Adds a task for the water left to reach a raised target once the daily water task is done',
+    offHint: 'A raised water target adds no task after the daily one is done',
+    icon: 'water-outline',
+    // Its source id is the day key it was raised on, the same position weighIn
+    // is in. waterShortfallDeclinedDayKey is what stops a deleted one coming
+    // straight back the same day.
+    sourced: false,
+    // Not a notice: drinking the water is the work, and completing the row logs
+    // it, the same as the daily task would.
     notice: false,
     kitchen: false,
     categorized: true,

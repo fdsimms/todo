@@ -32,6 +32,7 @@ const mockTaskState = {
   checkAwayVacation: mockRecord('checkAwayVacation'),
   rolloverQuotas: mockRecord('rolloverQuotas'),
   sweepOvershootQuotas: mockRecord('sweepOvershootQuotas'),
+  syncWaterQuotaTasks: mockRecord('syncWaterQuotaTasks'),
   dripStalledProjects: mockRecord('dripStalledProjects'),
   checkMealPlanNudge: mockRecord('checkMealPlanNudge'),
   checkProjectReviewTasks: mockRecord('checkProjectReviewTasks'),
@@ -178,7 +179,7 @@ describe('runBackgroundRefresh', () => {
     // hand-written expectation here is exactly how that would stop being true.
     const passNames = [
       'checkVacationExpiry', 'checkAwayVacation', 'checkAwayGroceryList',
-      'rolloverQuotas', 'sweepOvershootQuotas',
+      'rolloverQuotas', 'sweepOvershootQuotas', 'syncWaterQuotaTasks',
       'dripStalledProjects',
       'checkMealPlanNudge', 'checkProjectReviewTasks', 'checkMealSlotTasks',
       'checkPantryReviewTasks', 'checkPantryCheckTasks', 'checkMealShortfallTasks',

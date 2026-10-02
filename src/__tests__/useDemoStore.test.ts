@@ -1007,6 +1007,15 @@ describe('demo mode', () => {
     expect(paced!.progressCount).toBeLessThan(paced!.targetCount!);
   });
 
+  it('seeds a water target that follows the food log, at the seeded target', () => {
+    useDemoStore.getState().enterDemoMode();
+    const followed = useTaskStore.getState().tasks.find(t => t.followWaterTarget);
+    expect(followed).toBeDefined();
+    expect(followed!.logHealthMetric).toBe('waterMl');
+    // 2,000ml seeded as the water target, in 250ml glasses.
+    expect(followed!.targetCount).toBe(8);
+  });
+
   it('seeds a daily target that stays visible on pace, on pace', () => {
     useDemoStore.getState().enterDemoMode();
     const { tasks } = useTaskStore.getState();

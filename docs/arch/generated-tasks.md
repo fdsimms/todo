@@ -1208,3 +1208,45 @@ that answers it, and `completeWeighInTaskForToday` ticks the request off when a
 weight is saved. Both are copied from `moodLog`, and the reason is sharper
 here: a mood entry recorded late is still roughly true, while a weight that
 was never typed is a number nobody can reconstruct afterwards.
+
+## `waterShortfall` — the water still owed after the daily task was finished
+
+A daily water task can follow the food log's water target (`Task.followWaterTarget`,
+a toggle under "Log to Health" in the editor). While the task is open,
+`syncWaterQuotaTasks` writes `followedWaterTargetCount` onto its `targetCount`
+(the target, plus the exercise boost when today qualifies, over the amount one
+unit logs), so a workout at noon just makes the day's task longer. This
+generator covers the case that can't: the task was finished at 3 PM and the
+target rose at 5.
+
+- **The finished task stays finished.** Reopening it would undo a streak and a
+  successor row for a rise nobody could have planned for, and "completed" is a
+  record of something that was done. What is owed becomes its own one-off task
+  ("Drink 500 ml more water"), written in the unit the person reads water in.
+- **The amount is measured against the food log, not the finished task.**
+  `waterShortfallMl` is today's target less today's total, rounded up to the
+  stepper's step, and null under one step (rounding is not a task). Whatever got
+  the day to where it is (the task, the stepper, a bottle logged as food) is the
+  same answer.
+- **Completing it logs the water it asks for.** The draft carries
+  `logHealthMetric: 'waterMl'` and `logHealthAmount`, so it goes through the same
+  `logTaskWaterToFoodLog` path the daily task does and moves the same bar.
+  `drift` keeps the title and amount current as the total changes.
+- **Day-keyed with no source row, `weighIn`'s position.** At most one a day:
+  `blocksOnFinished` stops a completed one from being followed by a second, and
+  `waterShortfallDeclinedDayKey` (written by `writeGeneratedOptOut`'s
+  `waterShortfall` case) stops a deleted one from coming straight back, since the
+  target is still above the total. One from a past day is dropped rather than
+  deleted quietly, because nobody declined it.
+- **A target that can't be known is left alone.** With the exercise boost
+  configured and no Health reading for today yet, neither the followed count nor
+  this generator acts: an unread value is not "no exercise", and acting on it
+  would shrink a boosted target and complete or clear things the day had not
+  earned. The same reason `followedWaterTargetCount` returns null.
+- **It runs from `syncWaterQuotaTasks`**, which is already called whenever today's
+  total, the water target or today's exercise changes (a settings subscription
+  and a Health-store subscription in `useHealthSync`, plus the catch-up passes at
+  launch). It needs no pass of its own and reads nothing outside the app.
+- Ships off, pauses on vacation, and files under its own category setting like
+  the rest. Rules are in `src/utils/waterShortfallTasks.ts` and the target
+  arithmetic in `src/utils/waterTargetUnits.ts`.
