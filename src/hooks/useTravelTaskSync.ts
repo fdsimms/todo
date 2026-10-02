@@ -8,6 +8,7 @@ import {
   transitReadWanted,
   useTransitStore,
 } from '../store/useTransitStore';
+import { travelEstimatesWanted, useTravelTimeStore } from '../store/useTravelTimeStore';
 
 /** How often an open, foregrounded app asks the MTA again. Matches the stale threshold. */
 const FOREGROUND_REFRESH_INTERVAL_MS = TRANSIT_SNAPSHOT_STALE_MS;
@@ -35,6 +36,11 @@ const FOREGROUND_REFRESH_INTERVAL_MS = TRANSIT_SNAPSHOT_STALE_MS;
  * foreground. For a forecast that costs nothing. For a delay it is the whole
  * feature, since a note one foreground late can arrive after the time to go.
  *
+ * **It keeps the trip estimates fresh too** (`useTravelTimeStore`), on the
+ * same triggers plus a calendar change, since a new event is a new trip to
+ * estimate. The store only asks for events with no estimate or a stale one,
+ * so the extra triggers cost nothing once each trip is known.
+ *
  * It lives here rather than in either store because it is the one place that
  * needs all of them, and `useTaskStore` already imports the calendar and
  * transit stores, so a subscription inside either reaching back into
@@ -46,8 +52,19 @@ export function useTravelTaskSync(): void {
   useEffect(() => {
     const check = () => useTaskStore.getState().checkTravelTasks();
 
+    const refreshEstimates = () => {
+      const s = useSettingsStore.getState();
+      if (s.initialized && travelEstimatesWanted(s)) void useTravelTimeStore.getState().refresh();
+    };
+
     const unsubscribeCalendar = useCalendarStore.subscribe((state, prev) => {
-      if (state.events !== prev.events || state.loaded !== prev.loaded) check();
+      if (state.events !== prev.events || state.loaded !== prev.loaded) {
+        check();
+        refreshEstimates();
+      }
+    });
+    const unsubscribeEstimates = useTravelTimeStore.subscribe((state, prev) => {
+      if (state.estimates !== prev.estimates) check();
     });
     const unsubscribeTransit = useTransitStore.subscribe((state, prev) => {
       if (state.snapshot !== prev.snapshot) check();
@@ -60,9 +77,21 @@ export function useTravelTaskSync(): void {
         state.travelTaskCategory !== prev.travelTaskCategory ||
         state.transitAlerts !== prev.transitAlerts ||
         state.transitLines !== prev.transitLines ||
+        state.travelEstimates !== prev.travelEstimates ||
+        state.travelMode !== prev.travelMode ||
         state.calendarReadEnabled !== prev.calendarReadEnabled
       ) {
         check();
+      }
+      if (
+        state.initialized !== prev.initialized ||
+        state.travelTasks !== prev.travelTasks ||
+        state.travelEstimates !== prev.travelEstimates ||
+        state.travelMode !== prev.travelMode ||
+        state.calendarReadEnabled !== prev.calendarReadEnabled
+      ) {
+        if (travelEstimatesWanted(state)) void useTravelTimeStore.getState().refresh();
+        else useTravelTimeStore.getState().clear();
       }
       if (
         state.initialized !== prev.initialized ||
@@ -79,6 +108,7 @@ export function useTravelTaskSync(): void {
       return () => {
         unsubscribeCalendar();
         unsubscribeTransit();
+        unsubscribeEstimates();
         unsubscribeSettings();
       };
     }
@@ -86,6 +116,7 @@ export function useTravelTaskSync(): void {
     const refreshIfWanted = () => {
       const s = useSettingsStore.getState();
       if (s.initialized && transitReadWanted(s)) useTransitStore.getState().refresh();
+      refreshEstimates();
     };
     refreshIfWanted();
 
@@ -111,6 +142,7 @@ export function useTravelTaskSync(): void {
     return () => {
       unsubscribeCalendar();
       unsubscribeTransit();
+      unsubscribeEstimates();
       unsubscribeSettings();
       subscription.remove();
       stopInterval();

@@ -357,6 +357,9 @@ jest.mock('../store/useWeatherStore', () => ({
 jest.mock('../store/useTransitStore', () => ({
   useTransitStore: { getState: jest.fn(() => ({ snapshot: null })) },
 }));
+jest.mock('../store/useTravelTimeStore', () => ({
+  useTravelTimeStore: { getState: jest.fn(() => ({ estimates: {} })) },
+}));
 
 jest.mock('react-native', () => ({
   Platform: { OS: 'ios' },
@@ -5621,6 +5624,31 @@ describe('checkTravelTasks', () => {
     useSettingsStore.getState.mockReturnValue(settings({ travelTaskHandled: { [sourceId]: dentist().end } }));
     useTaskStore.getState().checkTravelTasks();
     expect(travelTasks()).toHaveLength(1);
+  });
+
+  it('sets the reminder from an Apple Maps estimate while estimates are on, and says so', () => {
+    const { useTravelTimeStore } = jest.requireMock('../store/useTravelTimeStore') as {
+      useTravelTimeStore: { getState: jest.Mock };
+    };
+    useTravelTimeStore.getState.mockReturnValue({
+      estimates: { [sourceId]: { minutes: 41, location: '123 Main St', mode: 'transit', at: NOW.getTime() } },
+    });
+    useSettingsStore.getState.mockReturnValue(settings({ travelEstimates: true, travelMode: 'transit' }));
+    useTaskStore.getState().checkTravelTasks();
+    const [task] = travelTasks();
+    // 41 minutes plus the 5-minute margin, up to the next 5: 50 minutes ahead.
+    expect(task.reminderTime).toBe(new Date(2026, 9, 5, 13, 10, 0).toISOString());
+    expect(task.title).toBe('Leave for Dentist (41 min by transit)');
+
+    // Switched off, the same held estimate is ignored and the typed lead returns.
+    useSettingsStore.getState.mockReturnValue(settings({
+      travelEstimates: false,
+      travelTaskHandled: { [sourceId]: dentist().end },
+    }));
+    useTaskStore.getState().checkTravelTasks();
+    expect(travelTasks()[0].reminderTime).toBe(new Date(2026, 9, 5, 13, 30, 0).toISOString());
+    expect(travelTasks()[0].title).toBe('Leave for Dentist');
+    useTravelTimeStore.getState.mockReturnValue({ estimates: {} });
   });
 
   it('uses the lead set for the event\'s calendar', () => {

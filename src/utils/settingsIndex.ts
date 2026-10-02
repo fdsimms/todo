@@ -599,6 +599,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { id: 'eventRules', groupId: 'generated', label: 'Rules', section: 'Calendar event tasks',
     keywords: ['calendar', 'event', 'meeting', 'appointment', 'flight', 'travel', 'title',
       'word', 'match', 'days before', 'lead time', 'prep', 'pack', 'event rule'] },
+  { id: 'travelEstimates', groupId: 'generated', label: 'Estimate travel time', section: 'Leave-by reminders',
+    keywords: ['apple maps', 'eta', 'commute', 'traffic', 'driving', 'transit', 'walking', 'how long', 'leave'] },
   { id: 'travelLeadMinutes', groupId: 'generated', label: 'Remind me', section: 'Leave-by reminders',
     keywords: ['travel time', 'commute', 'minutes before', 'lead time', 'leave', 'when to leave',
       'reminder', 'notification', 'trip'] },

@@ -333,10 +333,12 @@ import {
   matchedTravelTasks,
   travelSourceOf,
   travelTaskTitle,
+  describeTravelEstimate,
 } from '../utils/travelTasks';
 import { describeDisruptions, journeyDisruptions } from '../utils/transitAlerts';
 import { dateToHHMM } from '../utils/clockTime';
 import { useTransitStore } from './useTransitStore';
+import { useTravelTimeStore } from './useTravelTimeStore';
 import { useScreenTimeStore } from './useScreenTimeStore';
 import { useHealthStore } from './useHealthStore';
 import { screenTimeSourceId, parseScreenTimeSourceId, crossingWantsTask, screenTimeRuleIdOf } from '../utils/screenTimeRules';
@@ -6948,9 +6950,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // enough to queue a morning reminder. Off getCurrentDayStart rather than
     // the clock: at 1am under a 2am reset, "tomorrow" is still a day away.
     const horizonEnd = addDays(getCurrentDayStart(), 2);
+    // Read only while the switch is on, for the transit snapshot's reason
+    // below: turning it off puts every reminder back on the typed lead on the
+    // next sweep, even if estimates are still held.
+    const estimated = settings.travelEstimates
+      ? { estimates: useTravelTimeStore.getState().estimates, mode: settings.travelMode }
+      : undefined;
     const matches = matchedTravelTasks(
       { defaultMinutes: settings.travelLeadMinutes, byCalendar: settings.travelLeadByCalendar },
-      calendar.events, now, horizonEnd, handled);
+      calendar.events, now, horizonEnd, handled, estimated);
     // Read only while the switch is on, so turning it off takes the notes off
     // on the next sweep even if a snapshot is still held.
     const transit = settings.transitAlerts ? useTransitStore.getState().snapshot : null;
@@ -6966,7 +6974,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // Judged over the trip itself, leaving to arriving — see alertOverlaps.
       const note = describeDisruptions(
         journeyDisruptions(transit, settings.transitLines, leaveMs, startMs, nowMs));
-      const title = travelTaskTitle(match.event.title, note);
+      const estimateNote = match.estimate
+        ? describeTravelEstimate(match.estimate.minutes, match.estimate.mode)
+        : null;
+      const title = travelTaskTitle(match.event.title, note, estimateNote);
 
       reconcileGeneratedTask({
         kind: 'travel',

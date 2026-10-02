@@ -1,6 +1,11 @@
 import type { BusyEvent } from '../utils/calendarBusy';
 import {
   clampTravelLeadMinutes,
+  describeTravelEstimate,
+  estimatedLeadMinutes,
+  estimateFor,
+  needsTravelEstimate,
+  TRAVEL_ESTIMATE_STALE_MS,
   eventHasLocation,
   eventIsTravelEligible,
   isTravelTaskStale,
@@ -131,6 +136,7 @@ describe('matchedTravelTasks', () => {
       sourceId: travelSourceId(event()),
       event: event(),
       leaveAt: '2026-10-05T13:30:00.000Z',
+      estimate: null,
       endsAt: '2026-10-05T15:00:00.000Z',
       handled: false,
     }]);
@@ -257,5 +263,63 @@ describe('travelTaskTitle', () => {
 
   it('still says something for an untitled event', () => {
     expect(travelTaskTitle('   ', null)).toBe('Leave for your next event');
+  });
+});
+
+describe('travel estimates', () => {
+  const at = NOW.getTime();
+  const held = (overrides = {}) => ({
+    [travelSourceId(event())]: { minutes: 22, location: '123 Main St', mode: 'transit' as const, at, ...overrides },
+  });
+
+  it('turns an estimate into a lead: plus 5 minutes, up to the next 5, within the stepper', () => {
+    expect(estimatedLeadMinutes(22)).toBe(30);
+    expect(estimatedLeadMinutes(25)).toBe(30);
+    expect(estimatedLeadMinutes(26)).toBe(35);
+    expect(estimatedLeadMinutes(0)).toBe(TRAVEL_LEAD_MINUTES_MIN);
+    expect(estimatedLeadMinutes(500)).toBe(TRAVEL_LEAD_MINUTES_MAX);
+  });
+
+  it('uses an estimate only for the place and mode it was asked about', () => {
+    expect(estimateFor(event(), held(), 'transit')?.minutes).toBe(22);
+    expect(estimateFor(event(), held(), 'driving')).toBeNull();
+    expect(estimateFor(event({ location: '9 Other Ave' }), held(), 'transit')).toBeNull();
+    expect(estimateFor(event({ location: '  123 Main St ' }), held(), 'transit')?.minutes).toBe(22);
+  });
+
+  it('asks again for a missing, mismatched or stale estimate', () => {
+    expect(needsTravelEstimate(event(), {}, 'transit', NOW)).toBe(true);
+    expect(needsTravelEstimate(event(), held(), 'transit', NOW)).toBe(false);
+    expect(needsTravelEstimate(event(), held(), 'walking', NOW)).toBe(true);
+    expect(needsTravelEstimate(event(), held({ at: at - TRAVEL_ESTIMATE_STALE_MS }), 'transit', NOW)).toBe(true);
+  });
+
+  it('describes an estimate the way the title says it', () => {
+    expect(describeTravelEstimate(22.4, 'transit')).toBe('22 min by transit');
+    expect(describeTravelEstimate(60, 'driving')).toBe('1 hr by car');
+    expect(describeTravelEstimate(70, 'driving')).toBe('1 hr 10 min by car');
+    expect(describeTravelEstimate(0.2, 'walking')).toBe('1 min on foot');
+  });
+
+  it('sets the reminder from the estimate when one is held, and from the typed lead otherwise', () => {
+    const other = event({ id: 'evt-2', start: '2026-10-05T16:00:00.000Z', end: '2026-10-05T17:00:00.000Z' });
+    const [first, second] = matchedTravelTasks(LEADS, [event(), other], NOW, HORIZON, {},
+      { estimates: held(), mode: 'transit' });
+    expect(first.estimate?.minutes).toBe(22);
+    expect(first.leaveAt).toBe('2026-10-05T13:30:00.000Z');
+    expect(second.estimate).toBeNull();
+    expect(second.leaveAt).toBe('2026-10-05T15:30:00.000Z');
+  });
+
+  it('ignores held estimates when none are passed (the switch is off)', () => {
+    const [match] = matchedTravelTasks({ defaultMinutes: 45, byCalendar: {} }, [event()], NOW, HORIZON, {});
+    expect(match.estimate).toBeNull();
+    expect(match.leaveAt).toBe('2026-10-05T13:15:00.000Z');
+  });
+
+  it('puts the estimate ahead of the transit note in the title', () => {
+    expect(travelTaskTitle('Dentist', 'L delayed', '22 min by transit')).toBe('Leave for Dentist (22 min by transit, L delayed)');
+    expect(travelTaskTitle('Dentist', null, '22 min by transit')).toBe('Leave for Dentist (22 min by transit)');
+    expect(travelTaskTitle('Dentist', null)).toBe('Leave for Dentist');
   });
 });
