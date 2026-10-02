@@ -1373,6 +1373,29 @@ describe('placeSuggestionsEnabled', () => {
   });
 });
 
+describe('travel estimates', () => {
+  it('are off and driving by default, so nothing is sent until someone turns them on', () => {
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().travelEstimates).toBe(false);
+    expect(useSettingsStore.getState().travelMode).toBe('driving');
+  });
+
+  it('round-trip, and an unknown mode falls back to driving', () => {
+    useSettingsStore.getState().setTravelEstimates(true);
+    useSettingsStore.getState().setTravelMode('transit');
+    expect(dbSetSetting).toHaveBeenCalledWith('travelEstimates', 'true');
+    expect(dbSetSetting).toHaveBeenCalledWith('travelMode', 'transit');
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'travelEstimates' ? 'true' : key === 'travelMode' ? 'transit' : null);
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().travelEstimates).toBe(true);
+    expect(useSettingsStore.getState().travelMode).toBe('transit');
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) => (key === 'travelMode' ? 'teleport' : null));
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().travelMode).toBe('driving');
+  });
+});
+
 describe('hapticsEnabled', () => {
   // Defaults on rather than off, so an install predating the setting doesn't
   // silently lose the haptics it already had.

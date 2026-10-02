@@ -18,6 +18,7 @@ interface TodoEventKitBridgeNativeModule {
   eventsWithExternalIdentifier(externalId: string): Promise<unknown>;
   searchPlaces?(query: string): Promise<unknown>;
   setStructuredLocation?(eventId: string, title: string, latitude: number, longitude: number): Promise<boolean>;
+  estimateTravelTime?(eventId: string, address: string, departAt: number, mode: string): Promise<number>;
 }
 
 // requireNativeModule throws when the module isn't linked (Android, web,
@@ -123,5 +124,28 @@ export async function setStructuredLocation(
   } catch (error) {
     console.warn('[todo-eventkit-bridge] structured location write failed', error);
     return false;
+  }
+}
+
+/**
+ * Minutes to travel from the phone's current position to an event's place,
+ * leaving at `departAt`, from Apple Maps. Null for every failure (module
+ * missing, an older build, no permission, nothing found, no route). Only ever
+ * called through `estimateTravelMinutes` in src/services/travelTime.ts, behind
+ * its setting, since it sends the address and the position to Apple.
+ */
+export async function estimateTravelTime(
+  eventId: string,
+  address: string,
+  departAt: Date,
+  mode: 'driving' | 'transit' | 'walking'
+): Promise<number | null> {
+  if (!nativeModule || typeof nativeModule.estimateTravelTime !== 'function') return null;
+  try {
+    const minutes = await nativeModule.estimateTravelTime(eventId, address, departAt.getTime(), mode);
+    return typeof minutes === 'number' && Number.isFinite(minutes) && minutes >= 0 ? minutes : null;
+  } catch (error) {
+    console.warn('[todo-eventkit-bridge] travel estimate failed', error);
+    return null;
   }
 }

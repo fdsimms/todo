@@ -57,12 +57,20 @@ import {
   TRAVEL_LEAD_MINUTES_MAX,
   TRAVEL_LEAD_MINUTES_MIN,
   TRAVEL_LEAD_MINUTES_STEP,
+  type TravelMode,
 } from '../../utils/travelTasks';
 import { TRANSIT_LINES } from '../../utils/transitAlerts';
 import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
 import { SettingsSegments } from './SettingsSegments';
 import { InlineTimePicker } from './InlineTimePicker';
+import { requestLocationPermission } from '../../utils/weatherLocation';
+
+const TRAVEL_MODE_OPTIONS: SegmentOption<TravelMode>[] = [
+  { value: 'driving', label: 'Driving', icon: 'car-outline' },
+  { value: 'transit', label: 'Transit', icon: 'subway-outline' },
+  { value: 'walking', label: 'Walking', icon: 'walk-outline' },
+];
 import { WeatherRulesSheet } from '../../components/WeatherRulesSheet';
 import { EventRulesSheet } from '../../components/EventRulesSheet';
 import { ScreenTimeRulesSheet } from '../../components/ScreenTimeRulesSheet';
@@ -924,7 +932,9 @@ export function GeneratedTasksSection() {
             entryId="travelLeadMinutes"
             icon="time-outline"
             label="Remind me"
-            hint="How long before the event the reminder goes off. Set it to how long the trip usually takes you."
+            hint={s.travelEstimates
+              ? "Used for any event Apple Maps couldn't estimate a trip to."
+              : 'How long before the event the reminder goes off. Set it to how long the trip usually takes you.'}
             value={`${s.travelLeadMinutes} min before`}
             tight
           />
@@ -940,6 +950,40 @@ export function GeneratedTasksSection() {
               describeValue={n => `${n ?? TRAVEL_LEAD_MINUTES_DEFAULT} minutes before the event`}
             />
           </View>
+          <View style={styles.sep} />
+          <SettingsRow
+            entryId="travelEstimates"
+            icon="navigate-outline"
+            iconColor={s.travelEstimates ? colors.accent : undefined}
+            label="Estimate travel time"
+            hint={s.travelEstimates
+              ? "Sets each reminder from Apple Maps' estimate of the trip from where you are, plus 5 minutes. Sends the event's address and your location to Apple while the app is open."
+              : 'Reminders use the time above. Nothing is sent anywhere.'}
+            toggle={s.travelEstimates}
+            onPress={async () => {
+              if (s.travelEstimates) { s.setTravelEstimates(false); return; }
+              // The estimate starts from where the phone is, so it needs
+              // location access; asked here, on the tap that wants it.
+              if (await requestLocationPermission()) {
+                s.setTravelEstimates(true);
+                return;
+              }
+              Alert.alert(
+                'Location access is off',
+                'Estimating the trip needs to know where you are. Turn on location access for this app in the Settings app, then try again.',
+              );
+            }}
+            tight={s.travelEstimates}
+          />
+          {s.travelEstimates && (
+            <SettingsSegments
+              attached
+              options={TRAVEL_MODE_OPTIONS}
+              selected={s.travelMode}
+              onSelect={s.setTravelMode}
+              accessibilityLabelFor={o => `Estimate the trip ${o.label.toLowerCase()}`}
+            />
+          )}
           {s.calendarIds.length > 1 && (
             <>
               <View style={styles.sep} />
