@@ -137,6 +137,18 @@ export type WeekStart = 0 | 1;
 export type FabHand = 'right' | 'left';
 
 /**
+ * Which app a directions button opens (an event's or a task's location). iOS
+ * has no default-maps setting that a link can follow, so a link always opens
+ * Apple Maps unless the app asks for another. Each value builds a universal
+ * `https://` link (`directionsUrl` in `maps.ts`), which opens that app when it
+ * is installed and its website when it isn't, so no URL scheme has to be
+ * declared or checked. Device-local: which apps are installed is a fact about
+ * one phone.
+ */
+export type MapsApp = 'apple' | 'google' | 'waze';
+const MAPS_APPS: readonly MapsApp[] = ['apple', 'google', 'waze'];
+
+/**
  * Whether Today shows the day's meals at all (#1402, #1571).
  *
  * Two shapes came before this. `block` was a bold caption over a tray of meal
@@ -251,6 +263,7 @@ interface SettingsStore {
   use24HourTime: boolean; // render clock times as "17:30" rather than "5:30 PM"
   weekStartsOn: WeekStart;
   fabHand: FabHand;
+  mapsApp: MapsApp;
   hapticsEnabled: boolean;
   // The accelerometer-driven "shake to undo" gesture (src/utils/useShakeToUndo.ts).
   // On by default, like hapticsEnabled, so an existing install keeps the
@@ -1640,6 +1653,7 @@ interface SettingsStore {
   setUse24HourTime: (on: boolean) => void;
   setWeekStartsOn: (day: WeekStart) => void;
   setFabHand: (hand: FabHand) => void;
+  setMapsApp: (app: MapsApp) => void;
   setHapticsEnabled: (on: boolean) => void;
   setShakeToUndoEnabled: (on: boolean) => void;
   setConfirmBeforeDeleting: (on: boolean) => void;
@@ -1879,6 +1893,7 @@ const DEFAULT_SETTINGS = {
   use24HourTime: false,
   weekStartsOn: 0 as WeekStart,
   fabHand: 'right' as FabHand,
+  mapsApp: 'apple' as MapsApp,
   hapticsEnabled: true,
   shakeToUndoEnabled: true,
   confirmBeforeDeleting: true,
@@ -2274,6 +2289,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   use24HourTime: false,
   weekStartsOn: 0,
   fabHand: 'right',
+  mapsApp: 'apple',
   hapticsEnabled: true,
   shakeToUndoEnabled: true,
   confirmBeforeDeleting: true,
@@ -2517,6 +2533,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const use24HourTime = dbGetSetting('use24HourTime') === 'true';
     const weekStartsOn: WeekStart = dbGetSetting('weekStartsOn') === '1' ? 1 : 0;
     const fabHand: FabHand = dbGetSetting('fabHand') === 'left' ? 'left' : 'right';
+    const storedMapsApp = dbGetSetting('mapsApp');
+    const mapsApp: MapsApp = MAPS_APPS.find(a => a === storedMapsApp) ?? 'apple';
     // Defaults on rather than off, so an install that predates the setting
     // keeps the haptics it already had.
     const hapticsEnabled = dbGetSetting('hapticsEnabled') !== 'false';
@@ -3107,6 +3125,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       lastVisitedScreen,
       leftoverUseUpTaskCategory,
       leftoverUseUpTasks,
+      mapsApp,
       mealCalendarId,
       mealCookTaskCategory,
       mealCookTasks,
@@ -3353,6 +3372,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setFabHand(hand: FabHand) {
     dbSetSetting('fabHand', hand);
     set({ fabHand: hand });
+  },
+
+  setMapsApp(app: MapsApp) {
+    dbSetSetting('mapsApp', app);
+    set({ mapsApp: app });
   },
 
   setHapticsEnabled(on: boolean) {

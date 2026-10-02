@@ -37,6 +37,29 @@ describe('directionsUrl', () => {
   });
 });
 
+describe('directionsUrl with a chosen app', () => {
+  it('sends Google Maps a universal directions link', () => {
+    expect(directionsUrl("Joe's Pizza", 'google')).toBe(
+      "https://www.google.com/maps/dir/?api=1&destination=Joe's%20Pizza",
+    );
+  });
+
+  it('sends Waze a universal link that starts navigation', () => {
+    expect(directionsUrl('Penn Station', 'waze')).toBe('https://waze.com/ul?q=Penn%20Station&navigate=yes');
+  });
+
+  it('defaults to Apple Maps on iOS', () => {
+    expect(directionsUrl('Penn Station')).toBe('https://maps.apple.com/?daddr=Penn%20Station');
+  });
+
+  it('falls back to Google Maps for Apple Maps off iOS', () => {
+    mockPlatform = 'android';
+    expect(directionsUrl('Penn Station', 'apple')).toBe(
+      'https://www.google.com/maps/dir/?api=1&destination=Penn%20Station',
+    );
+  });
+});
+
 describe('isMappable', () => {
   it('mirrors directionsUrl', () => {
     expect(isMappable('221B Baker Street')).toBe(true);

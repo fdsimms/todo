@@ -160,7 +160,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/liveActivity.ts` — TimerRunKind, TimerRun, buildTimerRuns, useTimerLiveActivitySync
 - `src/utils/lookAhead.ts` — LookAheadWindow, LookAheadDay, AwayEntry, TightDeadline, LookAheadTotals, LookAhead, BuildLookAheadOptions, buildLookAhead, carriedOverTasks, awayEntries, +8 more
 - `src/utils/maintenancePasses.ts` — MaintenanceStep, expiryPasses, catchUpPasses, retentionPasses, rebuildNotificationQueue
-- `src/utils/maps.ts` — directionsUrl, isMappable
+- `src/utils/maps.ts` — DirectionsApp, directionsUrl, isMappable
 - `src/utils/mealCalendarSync.ts` — mealEventTitle, mealEventFields, syncMealEvent, mealEventLink, deleteMealEvent, MealEventSyncPlan, mealEventsAfterSync
 - `src/utils/mealIdeas.ts` — MIN_MEAL_IDEAS, MAX_MEAL_IDEAS, RECENT_MEAL_DAYS, MealIdea, RawMealIdea, mealTitleKey, clampIdeaCount, dedupeMealIdeas, MealSuggestion, mergeMealSuggestions, +6 more
 - `src/utils/mealLog.ts` — DishFigures, MealHelping, wantsMealLogPrompt, defaultHelpings, mealHelping, servingGrams, weighedHelping, cookedDishGrams, describeCookedWeight, COOKED_WEIGHT_MIN_G, +5 more
@@ -400,7 +400,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/useSavedMealsStore.ts` — useSavedMealsStore
 - `src/store/useSavedViewStore.ts` — useSavedViewStore
 - `src/store/useScreenTimeStore.ts` — useScreenTimeStore, useScreenTimeSync
-- `src/store/useSettingsStore.ts` — PatchNoteQaStatus, WeekStart, FabHand, MealsOnToday, NewTaskDefaults, DEFAULT_REMINDER_LEAD_OPTIONS, useSettingsStore
+- `src/store/useSettingsStore.ts` — PatchNoteQaStatus, WeekStart, FabHand, MapsApp, MealsOnToday, NewTaskDefaults, DEFAULT_REMINDER_LEAD_OPTIONS, useSettingsStore
 - `src/store/useSharedLinkStore.ts` — useSharedLinkStore
 - `src/store/useStepTimerStore.ts` — useStepTimerStore
 - `src/store/useSyncStore.ts` — SERVER_HEALTH_LOGS_KEY, SERVER_HEALTH_RESEND_KEY, NOTHING_OWED, SYNC_EPOCH, markHealthLogsWithheld, settleHealthLogResend, SyncPhase, registerSyncReload, useSyncStore, isSyncSupported
