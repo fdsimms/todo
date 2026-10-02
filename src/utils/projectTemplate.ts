@@ -153,6 +153,7 @@ export function templateFromProject(
     windowStart: task.windowStart,
     windowEnd: task.windowEnd,
     linkUrl: task.linkUrl ?? null,
+    location: task.location ?? null,
     estimatedMinutes: task.estimatedMinutes,
     recurrenceType: task.recurrenceType,
     recurrenceInterval: task.recurrenceInterval,

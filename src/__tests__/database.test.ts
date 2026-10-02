@@ -1627,6 +1627,7 @@ describe('Templates', () => {
     windowStart: null,
     windowEnd: null,
     linkUrl: null,
+    location: null,
     reminderOffsetMinutes: null,
     timeSegments: [],
     tags: [],

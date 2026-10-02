@@ -94,7 +94,7 @@ const MEDICATION_NAME_MAX_LENGTH = 60;
 /** Matches TaskEditor's own cap on the completion timer's note. */
 const COMPLETION_TIMER_NOTE_MAX_LENGTH = 120;
 
-type FieldKey = 'blanks' | 'conditions' | 'category' | 'tags' | 'priority' | 'effort' | 'subtasks' | 'chainSteps' | 'rotationSet' | 'deliverable' | 'completionTimer' | 'penalty' | 'medication' | 'logMealSlot' | 'link';
+type FieldKey = 'blanks' | 'conditions' | 'category' | 'tags' | 'priority' | 'effort' | 'subtasks' | 'chainSteps' | 'rotationSet' | 'deliverable' | 'completionTimer' | 'penalty' | 'medication' | 'logMealSlot' | 'link' | 'location';
 
 interface Props {
   visible: boolean;
@@ -156,6 +156,8 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   // Task.linkUrl as typed: read the way a list line is ("Booking https://…"
   // keeps the url), and a bare domain gets its https://.
   const [linkText, setLinkText] = useState('');
+  // Task.location as typed; blank saves as none.
+  const [locationText, setLocationText] = useState('');
   const [windowEnd, setWindowEnd] = useState<string | null>(null);
   const [windowPickerMode, setWindowPickerMode] = useState<'none' | 'start' | 'end'>('none');
   const [windowPickerDate, setWindowPickerDate] = useState(new Date());
@@ -238,6 +240,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setDeadlineOffsetDays(item?.deadlineOffsetDays ?? draft?.deadlineOffsetDays ?? null);
     setWindowStart(item?.windowStart ?? draft?.windowStart ?? null);
     setLinkText(item?.linkUrl ?? draft?.linkUrl ?? '');
+    setLocationText(item?.location ?? draft?.location ?? '');
     setWindowEnd(item?.windowEnd ?? draft?.windowEnd ?? null);
     setReminderOffsetMinutes(item?.reminderOffsetMinutes ?? draft?.reminderOffsetMinutes ?? null);
     setTimeSegments(item?.timeSegments ?? draft?.timeSegments ?? []);
@@ -395,6 +398,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       windowStart,
       windowEnd,
       linkUrl: parseLabelledLink(linkText)?.url ?? null,
+      location: locationText.trim() || null,
       reminderOffsetMinutes: dueOffsetDays !== null ? reminderOffsetMinutes : null,
       timeSegments,
       tags: resolvePendingTags(),
@@ -1821,6 +1825,27 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           {linkText.trim() !== '' && !parseLabelledLink(linkText) && (
             <Text style={styles.choiceOptionsHint}>That isn't a link yet, so it won't be saved.</Text>
           )}
+        </CollapsibleField>
+
+        <View style={styles.cardSep} />
+
+        <CollapsibleField
+          label="Location"
+          summary={locationText.trim() || undefined}
+          hint="Where each task made from this item happens, like an appointment's address or a venue."
+          expanded={fieldOpen('location')}
+          onToggle={() => toggleField('location')}
+        >
+          <TextField
+            style={[styles.fieldBox, styles.deliverableOptionsInput]}
+            value={locationText}
+            onChangeText={setLocationText}
+            placeholder="e.g. 156 William Street"
+            placeholderTextColor={colors.textTertiary}
+            autoCorrect={false}
+            returnKeyType="done"
+            accessibilityLabel="Location"
+          />
         </CollapsibleField>
       </View>
 

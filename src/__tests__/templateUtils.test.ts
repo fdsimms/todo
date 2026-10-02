@@ -252,6 +252,13 @@ describe('buildDraftsFromTemplate', () => {
     expect(plain.linkUrl).toBeNull();
   });
 
+  it('carries a location onto the draft, and an older item without one reads as none', () => {
+    const [draft] = buildDraftsFromTemplate([makeItem({ location: '156 William Street' })], noAnchors);
+    expect(draft.location).toBe('156 William Street');
+    const [plain] = buildDraftsFromTemplate([makeItem()], noAnchors);
+    expect(plain.location).toBeNull();
+  });
+
   it('carries a gate onto the draft', () => {
     // A morning-routine template whose point is that nothing else happens
     // before the walk would otherwise hand out tasks that gate nothing.

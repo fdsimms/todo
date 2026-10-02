@@ -2643,6 +2643,9 @@ function seedTemplates(): void {
     { title: 'Take the trash out', category: 'Home', dueOffsetDays: 0, timeSegments: ['evening'] },
     { title: 'Plan the week', category: 'Work', dueOffsetDays: 0, priority: 3 },
     { title: 'Water the plants', category: 'Home', dueOffsetDays: 0, optional: true },
+    // The one template item with a location, so the editor's Location row
+    // isn't empty on every item in the demo.
+    { title: 'Drop off dry cleaning', category: 'Home', dueOffsetDays: 0, optional: true, location: 'Main Street Cleaners' },
   ];
   RESET_ITEMS.forEach(item => addItem(reset.id, item));
   useTemplateStore.getState().setTemplateContainer(reset.id, 'stack');

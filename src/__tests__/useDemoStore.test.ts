@@ -1131,6 +1131,12 @@ describe('demo mode', () => {
     expect(scheduled.applyContainer).not.toBe('none');
   });
 
+  it('seeds a template item with a location', () => {
+    useDemoStore.getState().enterDemoMode();
+    const items = useTemplateStore.getState().templates.flatMap(t => t.items);
+    expect(items.some(i => !!i.location)).toBe(true);
+  });
+
   // A template that asks nothing looks exactly like an app that can't ask, and
   // every kind of question is invisible until one is declared — so the seed
   // needs a count read off the dates, a choice that decides an item, and a
