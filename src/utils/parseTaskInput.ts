@@ -110,6 +110,13 @@ export interface ParsedSchedule {
    * able to remove a task.
    */
   windowStart?: string | null;
+  /**
+   * The rest of a set of dates ("on the 10th and the 15th"), each at noon like
+   * `dueDate`, which holds the earliest. Absent for a single date. A caller
+   * turns the whole set into a series (`applyTaskDates`), never into separate
+   * unlinked tasks: see the Series note in CLAUDE.md.
+   */
+  extraDates?: Date[];
 }
 
 export interface ParsedTaskInput {
@@ -556,6 +563,63 @@ function parseRecurrenceSuffix(text: string, now: Date): ParsedSchedule | null {
   return schedule;
 }
 
+/**
+ * The next date falling on day-of-month `day`, today included. A month too
+ * short for it is skipped rather than clamped ("the 31st" in late September is
+ * October 31st, not September 30th), the same call `getNextSeriesDates` makes
+ * about a set's anchor days.
+ */
+function nextMonthDay(day: number, now: Date): Date | null {
+  if (day < 1 || day > 31) return null;
+  const today = startOfDay(now);
+  for (let i = 0; i < 12; i++) {
+    const candidate = new Date(today.getFullYear(), today.getMonth() + i, day);
+    if (candidate.getDate() !== day) continue;
+    if (candidate < today) continue;
+    return candidate;
+  }
+  return null;
+}
+
+/**
+ * One date for a title's schedule: everything `parseDatePart` reads, plus a
+ * day of the month said as an ordinal ("the 10th", "15th", "the 1st"), and an
+ * ordinal on a month ("october 10th"), neither of which it has a grammar for.
+ * A bare "10" isn't accepted without "the": a number on its own is far more
+ * often a quantity than a date.
+ */
+function parseTitleDate(text: string, now: Date, clockNow: Date): Date | null {
+  const direct = parseDatePart(text, now, clockNow);
+  if (direct) return direct.date;
+  const unsuffixed = text.replace(/\b(\d{1,2})(?:st|nd|rd|th)\b/, '$1');
+  if (unsuffixed !== text) {
+    const withMonth = parseDatePart(unsuffixed, now, clockNow);
+    if (withMonth) return withMonth.date;
+  }
+  const m = text.match(/^(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)$/) ?? text.match(/^the\s+(\d{1,2})$/);
+  return m ? nextMonthDay(parseInt(m[1], 10), now) : null;
+}
+
+/**
+ * "the 10th and the 15th", "mon, wed and fri", "oct 10 & oct 20": two or more
+ * dates, every one of which has to parse on its own. One that doesn't refuses
+ * the lot ("call mom and dad" is not a date list), and so does a list that
+ * comes out as a single day.
+ */
+function parseDateList(text: string, now: Date, clockNow: Date): Date[] | null {
+  if (!/,|\band\b|&/.test(text)) return null;
+  const parts = text.split(/\s*,\s*(?:and\s+)?|\s+and\s+|\s*&\s*/).map(p => p.trim());
+  if (parts.length < 2 || parts.some(p => !p)) return null;
+  const dates: Date[] = [];
+  for (const part of parts) {
+    const date = parseTitleDate(part, now, clockNow);
+    if (!date) return null;
+    if (!dates.some(d => isSameDay(d, date))) dates.push(date);
+  }
+  if (dates.length < 2) return null;
+  return dates.sort((a, b) => +a - +b);
+}
+
 function hhmm(t: ClockTime): string {
   return `${String(t.h).padStart(2, '0')}:${String(t.m).padStart(2, '0')}`;
 }
@@ -643,12 +707,35 @@ function parseSuffix(text: string, now: Date, singleWord: boolean, clockNow: Dat
     }
   }
   // Same as above — "@" has no meaning in this file and is no longer stripped as noise.
-  t = t.replace(/\bat\b/g, ' ').replace(/\bin the\b/g, ' ').replace(/,/g, ' ').replace(/\s+/g, ' ').trim();
+  t = t.replace(/\bat\b/g, ' ').replace(/\bin the\b/g, ' ').replace(/\s+/g, ' ').trim();
+  // "this morning", "this evening": the day part was lifted out above, and
+  // "this" is what's left of saying it's today.
+  if (hasTime && t === 'this') t = '';
+
+  // A set of dates, before the commas go: they're what separates one. Only
+  // for a plain or "on" phrase. "by the 10th and the 15th" is two deadlines,
+  // which a task can't hold, and a window applies to one day.
+  if (t && (!connector || connector[1] === 'on') && !between) {
+    const list = parseDateList(t, now, clockNow);
+    if (list) {
+      return {
+        dueDate: dueAt(list[0]),
+        extraDates: list.slice(1).map(dueAt),
+        timeSegments: segments,
+        recurrenceType: 'none',
+        recurrenceInterval: 1,
+        recurrenceDays: [],
+        explicitClockTime,
+      };
+    }
+  }
+  t = t.replace(/,/g, ' ').replace(/\s+/g, ' ').trim();
 
   const datePart = t ? parseDatePart(t, now, clockNow) : null;
+  const titleDate = t && !datePart ? parseTitleDate(t, now, clockNow) : null;
   // Leftover words that aren't a date phrase → this suffix isn't a schedule.
-  if (t && !datePart) return null;
-  if (!datePart && !hasTime) return null;
+  if (t && !datePart && !titleDate) return null;
+  if (!datePart && !titleDate && !hasTime) return null;
 
   let due: Date;
   if (datePart) {
@@ -657,6 +744,8 @@ function parseSuffix(text: string, now: Date, singleWord: boolean, clockNow: Dat
       // "tonight", "in 1 hour" — the embedded time implies a segment.
       segments = [segmentForHour(datePart.date.getHours())];
     }
+  } else if (titleDate) {
+    due = dueAt(titleDate);
   } else {
     due = dueAt(now); // time-only input ("at 3pm") → today
   }
@@ -694,6 +783,11 @@ export function parseTaskInput(input: string, now: Date = new Date(), clockNow: 
     const suffix = lower.slice(start).trim();
     const schedule = parseSuffix(suffix, now, i === tokens.length - 1, clockNow);
     if (schedule) {
+      // A set of dates can't be a deadline (see parseSuffix), so once "by the
+      // 10th and the 15th" has been refused whole, no shorter suffix of it may
+      // be read as a set either: each would leave a title ending "pay by" or
+      // "pay by the". Nothing is offered rather than half of it.
+      if (schedule.extraDates && /\b(?:by|due|before|after|between|the)$/i.test(input.slice(0, start).trim())) return null;
       const cleanTitle = input.slice(0, start).replace(/[\s,;:\-–—]+$/, '');
       if (!cleanTitle) return null;
       return { cleanTitle, matchedText: input.slice(start).trim(), matchStart: start, schedule };
@@ -1117,6 +1211,50 @@ export function parseTargetInput(input: string): ParsedTarget | null {
   return { count, period, cleanTitle, matchStart, matchEnd };
 }
 
+export interface ParsedEstimate {
+  /** The estimate in whole minutes. */
+  minutes: number;
+  /** Input minus the matched phrase, whitespace collapsed and trimmed. */
+  cleanTitle: string;
+  matchStart: number;
+  matchEnd: number;
+}
+
+// "~30m", "~ 1.5 hours", "takes 30 min", "takes about an hour".
+//
+// Kept apart from DURATION_PATTERN's "for 15 minutes" on purpose: that one
+// makes a timer, which counts down and is a kind of task of its own, while
+// this only says how long the work should take. "~" is how an estimate is
+// written by hand, and "takes" is how it's said.
+const ESTIMATE_PATTERN = /(?:(?<![\w~])~\s*|\btakes\s+(?:about\s+|around\s+)?)(\d+(?:\.\d+)?|an?)\s*(minutes|minute|mins|min|m|hours|hour|hrs|hr|h)\b/i;
+
+/**
+ * Pulls an estimate out of a quick-add title, so "clean the garage ~2h"
+ * becomes a two-hour task titled "clean the garage". Same shape as
+ * `parseDurationInput`, and the same bounds for the same reasons.
+ */
+export function parseEstimateInput(input: string): ParsedEstimate | null {
+  const match = input.match(ESTIMATE_PATTERN);
+  if (!match || match.index === undefined) return null;
+
+  const raw = match[1].toLowerCase();
+  // "an hour", "a minute": only after "takes", since "~a h" isn't anything.
+  if ((raw === 'a' || raw === 'an') && !/^takes/i.test(match[0])) return null;
+  const value = raw === 'a' || raw === 'an' ? 1 : parseFloat(raw);
+  if (!Number.isFinite(value) || value <= 0) return null;
+
+  const isHours = /^h/i.test(match[2]);
+  const minutes = Math.round(isHours ? value * 60 : value);
+  if (minutes < 1 || minutes > 24 * 60) return null;
+
+  const matchStart = match.index;
+  const matchEnd = matchStart + match[0].length;
+  const cleanTitle = (input.slice(0, matchStart) + input.slice(matchEnd)).replace(/\s+/g, ' ').trim();
+  if (!cleanTitle) return null;
+
+  return { minutes, cleanTitle, matchStart, matchEnd };
+}
+
 // "remind me to call mom at 4pm" — the words asking for a reminder, which are
 // a request rather than part of the task's name.
 const REMIND_PREFIX = /^\s*(?:remind me to|remind me about|remind me|reminder to|reminder:|don'?t forget to)\s+/i;
@@ -1255,6 +1393,181 @@ export function parseCategoryAndTagsInput(
     matchStart: consumed[0].start,
     matchEnd: consumed[0].end,
   };
+}
+
+export interface ParsedProject {
+  projectId: string;
+  /** The project's own title, for the tooltip. */
+  title: string;
+  /** Input minus the matched "+word" token, whitespace collapsed and trimmed. */
+  cleanTitle: string;
+  matchStart: number;
+  matchEnd: number;
+}
+
+// "+" immediately followed by a word that starts with a letter, not itself
+// preceded by a word character or another "+": "+trip" and "+japan-trip", but
+// not "+1", "2+2" or "C++". "#" is category-or-tag and "@" is a person (see
+// PERSON_TOKEN_PATTERN), so this is the third and last sigil.
+const PROJECT_TOKEN_PATTERN = /(?<![\w+])\+([a-z][\w-]*)/gi;
+
+/** A title with case, spaces and punctuation gone: "Japan Trip!" → "japantrip". */
+function projectKey(text: string): string {
+  return text.toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
+/**
+ * Pulls a "+project" token out of a quick-add title, so "book hotel +japan"
+ * files the task under "Japan Trip".
+ *
+ * Matched the way "#" matches a category, and for the same reason (the
+ * tooltip can fire mid-word): an exact name first, spaces and punctuation
+ * ignored so "+japantrip" and "+japan-trip" both find "Japan Trip"; then an
+ * unambiguous prefix of the whole name; then an unambiguous prefix of any one
+ * word in it, so "+trip" finds "Japan Trip" too. Each tier needs exactly one
+ * project, and a prefix needs three characters. Two candidates means keep
+ * typing, never a guess. Only the first "+word" that resolves counts: a task
+ * has one project.
+ *
+ * `projects` is the live set the caller wants offered (archived and finished
+ * ones left out), passed in to keep this module store-free.
+ */
+export function parseProjectInput(input: string, projects: { id: string; title: string }[]): ParsedProject | null {
+  for (const m of input.matchAll(PROJECT_TOKEN_PATTERN)) {
+    if (m.index === undefined) continue;
+    const token = projectKey(m[1]);
+    if (!token) continue;
+    const exact = projects.filter(p => projectKey(p.title) === token);
+    let hit = exact.length === 1 ? exact[0] : null;
+    if (!hit && exact.length === 0 && token.length >= MIN_CATEGORY_PREFIX_LENGTH) {
+      const whole = projects.filter(p => projectKey(p.title).startsWith(token));
+      if (whole.length === 1) hit = whole[0];
+      else if (whole.length === 0) {
+        const word = projects.filter(p => p.title.toLowerCase().split(/[^a-z0-9]+/).some(w => w.startsWith(token)));
+        if (word.length === 1) hit = word[0];
+      }
+    }
+    if (!hit) continue;
+    const matchStart = m.index;
+    const matchEnd = matchStart + m[0].length;
+    const cleanTitle = (input.slice(0, matchStart) + input.slice(matchEnd)).replace(/\s+/g, ' ').trim();
+    return { projectId: hit.id, title: hit.title, cleanTitle, matchStart, matchEnd };
+  }
+  return null;
+}
+
+export interface ParsedWaitingOn {
+  /** The task this one would wait on. */
+  taskId: string;
+  /** Its title as stored, for the tooltip. */
+  title: string;
+  /** Input minus "after …", trailing punctuation trimmed. */
+  cleanTitle: string;
+  matchStart: number;
+  matchEnd: number;
+}
+
+// Words that carry nothing about which task is meant, on either side: "after
+// the taxes are done" names the same task as "after taxes".
+const WAITING_STOPWORDS = new Set([
+  'a', 'an', 'the', 'my', 'our', 'to', 'for', 'from', 'of', 'with', 'on', 'in', 'at', 'and',
+  'is', 'are', 'its', "it's", 'done', 'finished', 'complete', 'completed', 'i', 'we',
+]);
+
+function waitingWords(text: string): string[] {
+  return text.toLowerCase()
+    // "W-2" and "W2" are one word, and so are "e-mail" and "email".
+    .replace(/(\w)[-'’](\w)/g, '$1$2')
+    .split(/[^a-z0-9]+/)
+    .filter(w => w && !WAITING_STOPWORDS.has(w));
+}
+
+/**
+ * "file taxes after get W-2" → waits on the task "Get W-2 from employer".
+ *
+ * Fuzzy, but only as far as it can stay sure, because what it sets holds the
+ * task back until the other one is done, which is costly to get silently
+ * wrong. A candidate matches when **every** word after "after" starts a
+ * different word of its title (order free, so "after w2 get" works too), and
+ * those words cover **at least half** of the title's own words. Exactly one
+ * candidate has to match: two means the phrase didn't pick one, and nothing
+ * is offered. Filler on both sides ("the", "my", "is done") is ignored.
+ *
+ * The half rule is what keeps "go for a walk after work" from naming "Finish
+ * work report" (one word of three). A clock time, a date or "completion" never
+ * reaches here: the schedule tooltip claims those first.
+ *
+ * `candidates` are the tasks the caller is willing to wait on (live, top
+ * level), passed in to keep this module store-free.
+ */
+export function parseWaitingOnInput(input: string, candidates: { id: string; title: string }[]): ParsedWaitingOn | null {
+  const re = /\bafter\s+/gi;
+  let last: RegExpExecArray | null = null;
+  for (let m = re.exec(input); m; m = re.exec(input)) last = m;
+  if (!last) return null;
+
+  const cleanTitle = input.slice(0, last.index).replace(/[\s,;:\-–—]+$/, '');
+  if (!cleanTitle) return null;
+  const phrase = waitingWords(input.slice(last.index + last[0].length));
+  if (phrase.length === 0 || phrase.some(w => w.length < 2 && !/^\d$/.test(w))) return null;
+
+  const matches = candidates.filter(c => {
+    const words = waitingWords(c.title);
+    if (words.length === 0) return false;
+    const used = new Set<number>();
+    for (const w of phrase) {
+      // Prefer an exact word, then the first unused word it starts.
+      let i = words.findIndex((t, j) => !used.has(j) && t === w);
+      if (i < 0) i = words.findIndex((t, j) => !used.has(j) && t.startsWith(w));
+      if (i < 0) return false;
+      used.add(i);
+    }
+    return used.size * 2 >= words.length;
+  });
+  if (matches.length !== 1) return null;
+
+  return {
+    taskId: matches[0].id,
+    title: matches[0].title,
+    cleanTitle,
+    matchStart: last.index,
+    matchEnd: input.trimEnd().length,
+  };
+}
+
+export interface ParsedSubtasks {
+  /** Each item, in the order typed. Always 2+. */
+  subtasks: string[];
+  /** What came before the colon: the parent task's title. */
+  cleanTitle: string;
+  matchStart: number;
+  matchEnd: number;
+}
+
+/** Longer than this and an "item" is a sentence, not a step. */
+const SUBTASK_MAX_LENGTH = 60;
+
+/**
+ * "pack: socks, charger, passport" → a task titled "pack" with three
+ * subtasks. The same idea as "->" making chain steps, for things done in any
+ * order rather than one after another.
+ *
+ * Needs a colon followed by a space ("3:30" and "https:" don't qualify), then
+ * two or more items separated by commas, with an optional "and" before the
+ * last. One item ("Re: invoice") isn't a list. An empty item, or one long
+ * enough to be a sentence, refuses the lot rather than guessing which part
+ * was meant, the same call `parseChainInput` makes.
+ */
+export function parseSubtasksInput(input: string): ParsedSubtasks | null {
+  const colon = input.match(/:\s+/);
+  if (!colon || colon.index === undefined) return null;
+  const cleanTitle = input.slice(0, colon.index).trim();
+  if (!cleanTitle) return null;
+  const rest = input.slice(colon.index + colon[0].length).trim();
+  if (!rest.includes(',')) return null;
+  const items = rest.split(/\s*,\s*(?:and\s+|&\s*)?|\s+(?:and|&)\s+(?=[^,]*$)/).map(i => i.trim());
+  if (items.length < 2 || items.some(i => !i || i.length > SUBTASK_MAX_LENGTH)) return null;
+  return { subtasks: items, cleanTitle, matchStart: colon.index, matchEnd: input.trimEnd().length };
 }
 
 export interface ParsedPriority {
@@ -1950,6 +2263,10 @@ export function describeSchedule(s: ParsedSchedule, now: Date = new Date()): str
       break;
     default: {
       const d = s.dueDate;
+      if (s.extraDates?.length) {
+        label = [d, ...s.extraDates].map(day => format(day, 'MMM d')).join(', ');
+        break;
+      }
       label = isSameDay(d, now)
         ? 'Today'
         : isSameDay(d, addDays(startOfDay(now), 1))

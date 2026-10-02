@@ -73,7 +73,7 @@ import { TitleTokenAccessory } from './TitleTokenAccessory';
 import { HighlightedText } from './HighlightedText';
 import { suggestTitles } from '../utils/titleSuggestions';
 import { findArchivedMatch } from '../utils/archiveMatch';
-import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, parseDurationInput, parseSupplyInput, parseTargetInput, stripRemindPrefix, parseCategoryAndTagsInput, parsePriorityInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, applyMentionOverrides, withTrailingSpace, type ParsedCategoryAndTags, type ParsedTaskInput, type MentionSuggestionCandidate } from '../utils/parseTaskInput';
+import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, parseDurationInput, parseSupplyInput, parseTargetInput, parseEstimateInput, parseProjectInput, parseWaitingOnInput, parseSubtasksInput, stripRemindPrefix, parseCategoryAndTagsInput, parsePriorityInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, applyMentionOverrides, withTrailingSpace, type ParsedCategoryAndTags, type ParsedTaskInput, type MentionSuggestionCandidate } from '../utils/parseTaskInput';
 import { mergeRanges } from '../utils/ranges';
 import { aimTooltip } from '../utils/tooltipAim';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
@@ -88,7 +88,9 @@ import { KNOWN_LINK_APPS, linkAppsFor } from '../constants/linkApps';
 import { tagColor } from '../utils/tagColor';
 import { formatPhoneInput } from '../utils/phone';
 import { format } from 'date-fns/format';
-import { getLogicalToday, getLogicalTomorrow, getLogicalNow, getCurrentDayStart, formatTimeOfDay } from '../utils/dateUtils';
+import { isSameDay } from 'date-fns/isSameDay';
+import { getLogicalToday, getLogicalTomorrow, getLogicalNow, getCurrentDayStart, formatTimeOfDay, formatHHMM } from '../utils/dateUtils';
+import { blockerFields } from '../utils/blocking';
 import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration } from '../utils/effort';
 import { TaskEditor, type TaskDraft } from './TaskEditor';
 import { RECURRENCE_LABELS, onlyNewestWeekday } from './RecurrencePicker';
@@ -241,6 +243,8 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   initialType = 'task', initialTitle, intoProjectId = null,
 }: Props) {
   const addTask = useTaskStore(s => s.addTask);
+  const applyTaskDates = useTaskStore(s => s.applyTaskDates);
+  const addSubtask = useTaskStore(s => s.addSubtask);
   const unarchiveTask = useTaskStore(s => s.unarchiveTask);
   const allTags = useTaskStore(useShallow(s => (visible ? s.allTags() : NO_TAGS)));
   const categories = useCategoryStore(useShallow(s => s.categories));
@@ -405,6 +409,15 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   // above, which only applies while its chip is active: this one is the
   // title's, and lasts until another schedule phrase replaces it.
   const [titleWindowStart, setTitleWindowStart] = useState<string | null>(null);
+  // "on the 10th and the 15th" off the schedule tooltip: the rest of the set,
+  // and the due date it was parsed beside. Created as a series only while the
+  // due date is still that day, so picking a different date afterwards drops
+  // the set rather than splicing a picked date into a typed one.
+  const [titleSeries, setTitleSeries] = useState<{ anchor: Date; extraDates: Date[] } | null>(null);
+  // Off the waiting-on and subtask tooltips. Neither has a chip, so each
+  // shows as a line under the title once accepted (see the applied lines).
+  const [blockerIds, setBlockerIds] = useState<string[]>([]);
+  const [subtaskTitles, setSubtaskTitles] = useState<string[]>([]);
   const [tags, setTags] = useState<string[]>([]);
   // Manual picks off the ambiguous-"@name" tooltip, keyed by lowercased token
   // text — see applyAmbiguousCandidate and applyMentionOverrides.
@@ -543,6 +556,9 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     setTargetCount(initialType === 'target' ? DEFAULT_TARGET_COUNT : null);
     setQuotaPeriod('day');
     setTitleWindowStart(null);
+    setTitleSeries(null);
+    setBlockerIds([]);
+    setSubtaskTitles([]);
     setChainItems([]);
     setNewStepTitle('');
     setCustomLinkText('');
@@ -792,6 +808,23 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && title.trim() ? parsePriorityInput(title) : null),
     [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion]
   );
+  // "book hotel +japan" — the "+" sigil for a project, resolved against the
+  // live ones only (see parseProjectInput). A sigil like "#" and "!", so it's
+  // checked beside them, ahead of the chain: a "+trip" inside a line that
+  // also splits into steps belongs to the task, not to one step.
+  //
+  // Not offered on a sheet opened inside a project: createTask files the task
+  // there whatever this says, and a tooltip setting a project that would then
+  // be ignored is an input the save drops.
+  const liveProjects = useMemo(
+    () => projects.filter(p => !p.archived && !p.completedAt),
+    [projects]
+  );
+  const projectParsed = useMemo(
+    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !intoProjectId && title.trim()
+      ? parseProjectInput(title, liveProjects) : null),
+    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, intoProjectId, liveProjects]
+  );
   // "call mom -> buy milk -> walk the dog" — the "->" token for an ad hoc
   // chain, each segment becoming its own step (see parseChainInput's own doc
   // comment for why a step's duration/link phrase binds to that step while
@@ -804,18 +837,18 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   // accepting it commits the sheet to Chain, so it's only offered from the
   // plain type.
   const chainParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed
+    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !projectParsed
       && type === 'task' && title.trim()
       ? parseChainInput(title) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, type]
+    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, type]
   );
   // Pasted URL/app-link detection — same tooltip mechanism as the schedule
   // parse above, just not suffix-anchored. Only checked when no schedule
   // phrase, category/tag token, ambiguous mention, priority token, or chain
   // matched, so the tooltips never compete for the same slot.
   const linkParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !chainParsed && title.trim() ? parseLinkInput(title) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, chainParsed]
+    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !projectParsed && !chainParsed && title.trim() ? parseLinkInput(title) : null),
+    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed]
   );
   // "call the doctor 555-123-4567" — the same mechanism again, for the number
   // rather than the URL. Checked after the link so a tel: URL someone pasted
@@ -823,8 +856,8 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   // looksLikePhoneNumber): this one is reading prose full of digits, so a
   // year or a price must not light it up.
   const phoneParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !chainParsed && !linkParsed && title.trim() ? parsePhoneInput(title) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, chainParsed, linkParsed]
+    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !projectParsed && !chainParsed && !linkParsed && title.trim() ? parsePhoneInput(title) : null),
+    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed, linkParsed]
   );
   // "email jane@example.com about the invoice" — the same mechanism again,
   // for an address rather than a number. Checked after phone so a title that
@@ -832,8 +865,8 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   // priority chain, and email addresses don't collide with the phone pattern
   // since "@" and letters aren't dial digits.
   const emailParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !chainParsed && !linkParsed && !phoneParsed && title.trim() ? parseEmailInput(title) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, chainParsed, linkParsed, phoneParsed]
+    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !projectParsed && !chainParsed && !linkParsed && !phoneParsed && title.trim() ? parseEmailInput(title) : null),
+    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed, linkParsed, phoneParsed]
   );
   // "play violin for 15 minutes" — a duration, not a schedule. Same single
   // tooltip slot, checked last, so a schedule, category/tag token, link or
@@ -844,8 +877,8 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   // is one. Someone already part-way through a Chain or a Target has said what
   // they're making, and a tooltip shouldn't overrule it.
   const durationParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !chainParsed && !linkParsed && !phoneParsed && !emailParsed && type === 'task' && title.trim() ? parseDurationInput(title) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, chainParsed, linkParsed, phoneParsed, emailParsed, type]
+    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !projectParsed && !chainParsed && !linkParsed && !phoneParsed && !emailParsed && type === 'task' && title.trim() ? parseDurationInput(title) : null),
+    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed, linkParsed, phoneParsed, emailParsed, type]
   );
   // "replace cpap filter 6 filters left" — a stock this task spends, not a
   // schedule. Last in the chain, so everything above still wins the one slot.
@@ -862,10 +895,10 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   // and the schedule tooltip comes first (it needs the trailing text); tapping
   // it shortens the title, sets the repeat, and this fires on the remainder.
   const supplyParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !chainParsed && !linkParsed && !phoneParsed && !emailParsed
+    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !projectParsed && !chainParsed && !linkParsed && !phoneParsed && !emailParsed
       && !durationParsed && recurrenceType !== 'none' && title.trim()
       ? parseSupplyInput(title) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, chainParsed, linkParsed, phoneParsed, emailParsed, durationParsed, recurrenceType]
+    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed, linkParsed, phoneParsed, emailParsed, durationParsed, recurrenceType]
   );
   // "drink water 8 times a day" — a daily target, or "run 3 times a week", a
   // weekly one. Last in the chain, behind supply, so every phrase above still
@@ -881,7 +914,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   // first) is three a week; "3 times a week" on a daily repeat is refused
   // rather than letting either half overrule the other.
   const targetParsed = useMemo(() => {
-    if (parsed || categoryTagsParsed || ambiguousMention || mentionSuggestion || priorityParsed || chainParsed || linkParsed || phoneParsed || emailParsed
+    if (parsed || categoryTagsParsed || ambiguousMention || mentionSuggestion || priorityParsed || projectParsed || chainParsed || linkParsed || phoneParsed || emailParsed
       || durationParsed || supplyParsed || type !== 'task' || !title.trim()) return null;
     const plainWeekly = recurrenceType === 'weekly' && recurrenceInterval === 1 && recurrenceDays.length === 0;
     if (recurrenceType !== 'none' && recurrenceType !== 'daily' && !plainWeekly) return null;
@@ -890,7 +923,48 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     if (!result) return null;
     if (result.period === 'week' && recurrenceType === 'daily') return null;
     return plainWeekly ? { ...result, period: 'week' as const } : result;
-  }, [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, chainParsed, linkParsed, phoneParsed, emailParsed, durationParsed, supplyParsed, type, recurrenceType, recurrenceInterval, recurrenceDays]);
+  }, [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed, linkParsed, phoneParsed, emailParsed, durationParsed, supplyParsed, type, recurrenceType, recurrenceInterval, recurrenceDays]);
+  // "clean the garage ~2h" — an estimate, not a timer. Last in the chain, so
+  // "for 15 minutes" (a timer) and everything above still win the one slot.
+  // Hidden in Timed for the reason the Effort chip is: there the countdown
+  // already is the estimate.
+  const estimateParsed = useMemo(
+    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !projectParsed && !chainParsed && !linkParsed && !phoneParsed && !emailParsed
+      && !durationParsed && !supplyParsed && !targetParsed && isChipVisible(type, 'effort') && title.trim()
+      ? parseEstimateInput(title) : null),
+    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed, linkParsed, phoneParsed, emailParsed, durationParsed, supplyParsed, targetParsed, type]
+  );
+  // "file taxes after get W-2" — waiting on another task. Matched strictly
+  // (see parseWaitingOnInput) against live top-level tasks, one row per
+  // series so a dated set doesn't read as several tasks of the same name.
+  // Behind every other phrase: "after 3pm" and "after completion" are the
+  // schedule tooltip's, which comes first.
+  const waitCandidates = useMemo(() => {
+    if (!visible) return [];
+    const seen = new Set<string>();
+    return tasks.filter(t => {
+      if (t.parentId || t.completed || t.archived) return false;
+      if (t.seriesId) {
+        if (seen.has(t.seriesId)) return false;
+        seen.add(t.seriesId);
+      }
+      return true;
+    });
+  }, [tasks, visible]);
+  const waitingParsed = useMemo(
+    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !projectParsed && !chainParsed && !linkParsed && !phoneParsed && !emailParsed
+      && !durationParsed && !supplyParsed && !targetParsed && !estimateParsed && title.trim()
+      ? parseWaitingOnInput(title, waitCandidates) : null),
+    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed, linkParsed, phoneParsed, emailParsed, durationParsed, supplyParsed, targetParsed, estimateParsed, waitCandidates]
+  );
+  // "pack: socks, charger, passport" — subtasks. Last of all: a colon list is
+  // the loosest shape here, so anything more specific in the line wins first.
+  const subtasksParsed = useMemo(
+    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !projectParsed && !chainParsed && !linkParsed && !phoneParsed && !emailParsed
+      && !durationParsed && !supplyParsed && !targetParsed && !estimateParsed && !waitingParsed && title.trim()
+      ? parseSubtasksInput(title) : null),
+    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed, linkParsed, phoneParsed, emailParsed, durationParsed, supplyParsed, targetParsed, estimateParsed, waitingParsed]
+  );
   const rawMatch = parsed
     ? { matchStart: parsed.matchStart, matchedText: parsed.matchedText }
     : categoryTagsParsed
@@ -912,6 +986,11 @@ export const QuickAddModal = React.memo(function QuickAddModal({
         ? {
             matchStart: priorityParsed.matchStart,
             matchedText: title.slice(priorityParsed.matchStart, priorityParsed.matchEnd),
+          }
+      : projectParsed
+        ? {
+            matchStart: projectParsed.matchStart,
+            matchedText: title.slice(projectParsed.matchStart, projectParsed.matchEnd),
           }
       : chainParsed
         ? { matchStart: chainParsed.matchStart, matchedText: chainParsed.matchedText }
@@ -936,7 +1015,22 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                       matchStart: targetParsed.matchStart,
                       matchedText: title.slice(targetParsed.matchStart, targetParsed.matchEnd),
                     }
-                  : null;
+                  : estimateParsed
+                    ? {
+                        matchStart: estimateParsed.matchStart,
+                        matchedText: title.slice(estimateParsed.matchStart, estimateParsed.matchEnd),
+                      }
+                    : waitingParsed
+                      ? {
+                          matchStart: waitingParsed.matchStart,
+                          matchedText: title.slice(waitingParsed.matchStart, waitingParsed.matchEnd),
+                        }
+                      : subtasksParsed
+                        ? {
+                            matchStart: subtasksParsed.matchStart,
+                            matchedText: title.slice(subtasksParsed.matchStart, subtasksParsed.matchEnd),
+                          }
+                        : null;
   // The tooltip's own ✕ answers "not that" for this one phrase — comparing
   // by position+text (rather than a bare boolean) means editing the title so
   // a *different* phrase parses brings the tooltip straight back, with no
@@ -1029,6 +1123,9 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     setDueDate(parsed.schedule.dueDate);
     setDeadline(parsed.schedule.deadline ?? null);
     setTitleWindowStart(parsed.schedule.windowStart ?? null);
+    setTitleSeries(parsed.schedule.extraDates?.length
+      ? { anchor: parsed.schedule.dueDate, extraDates: parsed.schedule.extraDates }
+      : null);
     setTimeSegments(parsed.schedule.timeSegments);
     setRecurrenceType(parsed.schedule.recurrenceType);
     setRecurrenceInterval(parsed.schedule.recurrenceInterval);
@@ -1241,6 +1338,51 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     setRecurrenceType(targetParsed.period === 'week' ? 'weekly' : 'daily');
   };
 
+  // Fills the Effort chip's custom field, exactly as typing the minutes into
+  // it would, so the chip reads the estimate and the panel shows where it
+  // came from.
+  const applyEstimate = () => {
+    if (!estimateParsed) return;
+    haptics.success();
+    animateLayout();
+    const nextTitle = withTrailingSpace(estimateParsed.cleanTitle);
+    setTitle(nextTitle);
+    titleCaret.moveCaret(nextTitle);
+    setEstimatedMinutes(estimateParsed.minutes);
+    setEffort(minutesToEffort(estimateParsed.minutes));
+    setCustomEffortText(EFFORT_MINUTES.includes(estimateParsed.minutes) ? '' : String(estimateParsed.minutes));
+  };
+
+  const applyProject = () => {
+    if (!projectParsed) return;
+    haptics.success();
+    animateLayout();
+    const nextTitle = withTrailingSpace(projectParsed.cleanTitle);
+    setTitle(nextTitle);
+    titleCaret.moveCaret(nextTitle);
+    setProjectId(projectParsed.projectId);
+  };
+
+  const applyWaiting = () => {
+    if (!waitingParsed) return;
+    haptics.success();
+    animateLayout();
+    const nextTitle = withTrailingSpace(waitingParsed.cleanTitle);
+    setTitle(nextTitle);
+    titleCaret.moveCaret(nextTitle);
+    setBlockerIds(prev => (prev.includes(waitingParsed.taskId) ? prev : [...prev, waitingParsed.taskId]));
+  };
+
+  const applySubtasks = () => {
+    if (!subtasksParsed) return;
+    haptics.success();
+    animateLayout();
+    const nextTitle = withTrailingSpace(subtasksParsed.cleanTitle);
+    setTitle(nextTitle);
+    titleCaret.moveCaret(nextTitle);
+    setSubtaskTitles(prev => [...prev, ...subtasksParsed.subtasks]);
+  };
+
   // Whichever single tooltip is currently up, applied — shared by the
   // tooltip bubble's own tap and the accessory bar's confirm checkmark
   // (TitleTokenAccessory), a second way to accept it without looking away
@@ -1250,6 +1392,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     if (parsed) applyParse();
     else if (categoryTagsParsed) applyCategoryTags();
     else if (priorityParsed) applyPriority();
+    else if (projectParsed) applyProject();
     else if (chainParsed) applyChain();
     else if (linkParsed) applyLink();
     else if (phoneParsed) applyPhone();
@@ -1257,6 +1400,9 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     else if (durationParsed) applyDuration();
     else if (supplyParsed) applySupply();
     else if (targetParsed) applyTarget();
+    else if (estimateParsed) applyEstimate();
+    else if (waitingParsed) applyWaiting();
+    else if (subtasksParsed) applySubtasks();
   };
   const confirmVisible = activeMatch !== null && !ambiguousMention && !mentionSuggestion;
 
@@ -1294,6 +1440,12 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     () => (pendingStep ? [...chainItems, { id: generateId(), title: pendingStep, estimatedMinutes: null }] : chainItems),
     [chainItems, pendingStep],
   );
+
+  // The set's other dates, while the due date is still the day they were
+  // typed beside (see titleSeries).
+  const seriesExtraDates = titleSeries && dueDate && isSameDay(dueDate, titleSeries.anchor)
+    ? titleSeries.extraDates
+    : [];
 
   const typeValues: TypeValues = {
     // Always empty here, for the same reason healthMetric is null: quick add
@@ -1428,10 +1580,20 @@ export const QuickAddModal = React.memo(function QuickAddModal({
       ...(seedActive && seed?.windowStart ? { windowStart: seed.windowStart, windowEnd: seed.windowEnd ?? null } : {}),
       // After the seed's, so the title's own "after 3pm" wins over a drop.
       ...(titleWindowStart ? { windowStart: titleWindowStart } : {}),
+      ...(blockerIds.length > 0 ? blockerFields(blockerIds) : {}),
     // skipTitleRules: this sheet already resolved them, a keystroke at a time
     // and visibly — re-running them here would put back a category the ✕ on
     // the rule caption just took off.
     }, undefined, { skipTitleRules: true });
+    // A typed set of dates becomes a series around the row just made, through
+    // the editor's own entry point, so it's the same N rows sharing a seriesId
+    // any other set is (and the repeat, if one was also set, is stripped the
+    // same way: a series never carries one).
+    if (dueDate && seriesExtraDates.length > 0) applyTaskDates(task.id, [dueDate, ...seriesExtraDates]);
+    // Subtasks hang off the first row only, the way the editor's draft
+    // subtasks do (proceedWithSave): applyTaskDates has already run, so the
+    // set's other dates don't get copies of them.
+    subtaskTitles.forEach(t => addSubtask(task.id, t));
     // Files the task exactly as before either way; the setting only decides
     // whether the sheet hands off straight into the full editor for it
     // (postCreateTask, rendered below) instead of just closing. Deferred
@@ -1534,8 +1696,11 @@ export const QuickAddModal = React.memo(function QuickAddModal({
       ...baked,
       dueDate,
       deadline,
+      extraDates: seriesExtraDates,
       timeSegments,
       windowStart: titleWindowStart,
+      blockerIds,
+      subtaskTitles,
       reminderTime,
       tags: resolveTags(),
       personIds,
@@ -1693,10 +1858,27 @@ export const QuickAddModal = React.memo(function QuickAddModal({
    * (the accent tint, the label the chip reads, the overflow exemption)
    * follows from it.
    */
+  const appliedLine = (icon: React.ComponentProps<typeof Ionicons>['name'], text: string, clearLabel: string, onClear: () => void) => (
+    <View style={styles.reminderRow}>
+      <Ionicons name={icon} size={13} color={colors.accent} />
+      <Text style={styles.reminderText} numberOfLines={1}>{text}</Text>
+      <TouchableOpacity
+        onPress={() => { haptics.tap(); animateLayout(); onClear(); }}
+        hitSlop={8}
+        accessibilityRole="button"
+        accessibilityLabel={clearLabel}
+      >
+        <Ionicons name="close-circle" size={15} color={colors.textTertiary} />
+      </TouchableOpacity>
+    </View>
+  );
+
   const chipDescriptors: ToolChipDescriptor[] = [
     {
       key: 'date', icon: 'calendar-outline',
-      value: dueDate != null ? formatDate(dueDate) : null,
+      value: dueDate != null
+        ? `${formatDate(dueDate)}${seriesExtraDates.length > 0 ? ` +${seriesExtraDates.length}` : ''}`
+        : null,
       // Keyboard dismissed first for the reason the category chip gives:
       // WhenPicker takes no focus when it opens, so without this the title keeps
       // the keyboard behind it and comes back with its token bar gone.
@@ -2058,6 +2240,8 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                               ? (categoryTagsParsed.category ? 'pricetag-outline' : 'pricetags-outline')
                               : priorityParsed
                                 ? 'alert-circle-outline'
+                                : projectParsed
+                                ? 'briefcase-outline'
                                 : chainParsed
                                   ? 'git-commit-outline'
                                   : linkParsed
@@ -2070,7 +2254,13 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                                           ? 'timer-outline'
                                           : supplyParsed
                                             ? 'cube-outline'
-                                            : 'speedometer-outline'
+                                            : targetParsed
+                                              ? 'speedometer-outline'
+                                              : estimateParsed
+                                                ? 'barbell'
+                                                : waitingParsed
+                                                  ? 'hourglass-outline'
+                                                  : 'list-outline'
                         }
                         size={14}
                         color={colors.onAccent}
@@ -2082,6 +2272,8 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                             ? categoryTagsLabel(categoryTagsParsed, categories)
                             : priorityParsed
                               ? `Priority · ${PRIORITY_LABELS_SHORT[priorityParsed.priority]}`
+                              : projectParsed
+                              ? `Project · ${projectParsed.title}`
                               : chainParsed
                                 ? `Chain · ${chainParsed.steps.length} steps`
                                 : linkParsed
@@ -2094,7 +2286,13 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                                         ? `Timer · ${formatDuration(durationParsed.minutes)}`
                                         : supplyParsed
                                           ? `Supply · ${formatSupplyLeft(supplyParsed.count, supplyParsed.unit)}`
-                                          : `${targetParsed!.period === 'week' ? 'Weekly' : 'Daily'} target · ${formatQuotaTarget(targetParsed!.count, null)}`}
+                                          : targetParsed
+                                            ? `${targetParsed.period === 'week' ? 'Weekly' : 'Daily'} target · ${formatQuotaTarget(targetParsed.count, null)}`
+                                            : estimateParsed
+                                              ? `Estimate · ${formatDuration(estimateParsed.minutes)}`
+                                              : waitingParsed
+                                                ? `Waiting on · ${waitingParsed.title}`
+                                                : `${subtasksParsed!.subtasks.length} subtasks`}
                       </Text>
                       <View style={styles.tooltipDot} />
                       <Text style={styles.tooltipHint}>Tap to set</Text>
@@ -2160,6 +2358,27 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                 <Ionicons name="close-circle" size={15} color={colors.textTertiary} />
               </TouchableOpacity>
             </View>
+          )}
+
+          {/* What a title tooltip set that has no chip of its own to show it.
+              Same row as the reminder above, and the same way out. */}
+          {!!titleWindowStart && appliedLine(
+            'time-outline',
+            `Hidden until ${formatHHMM(titleWindowStart)}`,
+            'Remove the start time',
+            () => setTitleWindowStart(null),
+          )}
+          {blockerIds.length > 0 && appliedLine(
+            'hourglass-outline',
+            `Waiting on ${blockerIds.map(id => tasks.find(t => t.id === id)?.title ?? 'a task').join(', ')}`,
+            'Stop waiting',
+            () => setBlockerIds([]),
+          )}
+          {subtaskTitles.length > 0 && appliedLine(
+            'list-outline',
+            `${subtaskTitles.length} subtasks: ${subtaskTitles.join(', ')}`,
+            'Remove the subtasks',
+            () => setSubtaskTitles([]),
           )}
 
           {/* What a title rule just filled in. Not a tooltip: the tooltips

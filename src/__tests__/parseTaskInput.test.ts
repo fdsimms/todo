@@ -1,4 +1,4 @@
-import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, detectContactIntent, parseDurationInput, parseSupplyInput, parseTargetInput, stripRemindPrefix, parseCategoryAndTagsInput, parsePriorityInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, getEditorMentionSuggestions, applyMentionOverrides, parseFromCompletionSuffix, type ParsedSchedule } from '../utils/parseTaskInput';
+import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, detectContactIntent, parseDurationInput, parseSupplyInput, parseTargetInput, parseEstimateInput, parseProjectInput, parseWaitingOnInput, parseSubtasksInput, stripRemindPrefix, parseCategoryAndTagsInput, parsePriorityInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, getEditorMentionSuggestions, applyMentionOverrides, parseFromCompletionSuffix, type ParsedSchedule } from '../utils/parseTaskInput';
 
 // Tuesday, June 10 2025, 10:00 AM — same anchor as parseNaturalDate.test.ts
 const NOW = new Date(2025, 5, 10, 10, 0, 0);
@@ -1729,5 +1729,243 @@ describe('parseTaskInput time windows', () => {
     expect(describeSchedule(r.schedule, NOW)).toBe('Today · After 3 PM');
     const b = parseTaskInput('call the bank between 2:30 and 4pm', NOW)!;
     expect(describeSchedule(b.schedule, NOW)).toBe('Today · Deadline · After 2:30 PM');
+  });
+});
+
+describe('parseTaskInput date sets', () => {
+  // NOW is Tue Jun 10 2025, 10am.
+  const days = (r: ReturnType<typeof parseTaskInput>) =>
+    r ? [r.schedule.dueDate, ...(r.schedule.extraDates ?? [])].map(d => `${d.getMonth() + 1}/${d.getDate()}`) : null;
+
+  it('reads two ordinal days as a set, earliest first', () => {
+    const r = parseTaskInput('walk the dog on the 15th and the 12th', NOW)!;
+    expect(r.cleanTitle).toBe('walk the dog');
+    expect(days(r)).toEqual(['6/12', '6/15']);
+    expect(r.schedule.recurrenceType).toBe('none');
+  });
+
+  it('reads a comma list, with or without "on"', () => {
+    expect(days(parseTaskInput('walk the dog the 12th, 15th and 20th', NOW))).toEqual(['6/12', '6/15', '6/20']);
+    expect(days(parseTaskInput('walk the dog on the 12th, 15th, and 20th', NOW))).toEqual(['6/12', '6/15', '6/20']);
+  });
+
+  it('reads weekdays and month dates as a set', () => {
+    expect(days(parseTaskInput('meet on sat and sun', NOW))).toEqual(['6/14', '6/15']);
+    expect(days(parseTaskInput('vet jun 20 & jul 1', NOW))).toEqual(['6/20', '7/1']);
+  });
+
+  it('keeps a clock time across the set', () => {
+    const r = parseTaskInput('vet on the 12th and the 20th at 3pm', NOW)!;
+    expect(days(r)).toEqual(['6/12', '6/20']);
+    expect(r.schedule.explicitClockTime).toEqual({ h: 15, m: 0 });
+  });
+
+  it('refuses a list with a part that is not a date', () => {
+    expect(parseTaskInput('watch tom and jerry', NOW)).toBeNull();
+    expect(parseTaskInput('call mom and dad tomorrow', NOW)!.cleanTitle).toBe('call mom and dad');
+    expect(parseTaskInput('salt and pepper tomorrow', NOW)!.schedule.extraDates).toBeUndefined();
+  });
+
+  it('refuses a list that comes out as one day', () => {
+    expect(parseTaskInput('walk the dog on the 12th and the 12th', NOW)?.schedule.extraDates).toBeUndefined();
+  });
+
+  it('never reads a set as a deadline, nor leaves "by" behind', () => {
+    const r = parseTaskInput('pay by the 12th and the 15th', NOW);
+    expect(r?.schedule.extraDates).toBeUndefined();
+    expect(r?.cleanTitle).not.toBe('pay by');
+  });
+
+  it('labels the set by its dates', () => {
+    expect(describeSchedule(parseTaskInput('walk the dog on the 12th and the 15th', NOW)!.schedule, NOW)).toBe('Jun 12, Jun 15');
+  });
+});
+
+describe('parseTaskInput ordinal days', () => {
+  it('reads "on the 1st" as the next 1st', () => {
+    const r = parseTaskInput('pay rent on the 1st', NOW)!;
+    expect(r.cleanTitle).toBe('pay rent');
+    expect(r.schedule.dueDate.getMonth()).toBe(6);
+    expect(r.schedule.dueDate.getDate()).toBe(1);
+  });
+
+  it('keeps a day later this month in this month, today included', () => {
+    expect(parseTaskInput('pay rent on the 10th', NOW)!.schedule.dueDate.getMonth()).toBe(5);
+    expect(parseTaskInput('pay rent the 20th', NOW)!.schedule.dueDate.getDate()).toBe(20);
+  });
+
+  it('skips a month too short for the day rather than clamping', () => {
+    // June has 30 days, so "the 31st" is July 31st.
+    const d = parseTaskInput('pay rent on the 31st', NOW)!.schedule.dueDate;
+    expect([d.getMonth(), d.getDate()]).toEqual([6, 31]);
+  });
+
+  it('reads an ordinal on a month name', () => {
+    const d = parseTaskInput('party july 4th', NOW)!.schedule.dueDate;
+    expect([d.getMonth(), d.getDate()]).toEqual([6, 4]);
+  });
+
+  it('works as a deadline too', () => {
+    expect(parseTaskInput('pay rent by the 15th', NOW)!.schedule.deadline).toBeDefined();
+  });
+
+  it('refuses a bare ordinal with nothing to say it is a date', () => {
+    expect(parseTaskInput('pay rent 1st', NOW)).toBeNull();
+    expect(parseTaskInput('read the 5th book', NOW)).toBeNull();
+  });
+});
+
+describe('parseTaskInput "this" with a day part', () => {
+  it('reads "this morning" and "this evening" as today', () => {
+    const r = parseTaskInput('call mom this morning', NOW)!;
+    expect(r.cleanTitle).toBe('call mom');
+    expect(r.schedule.timeSegments).toEqual(['morning']);
+    expect(r.schedule.dueDate.getDate()).toBe(NOW.getDate());
+    expect(parseTaskInput('gym this evening', NOW)!.schedule.timeSegments).toEqual(['evening']);
+  });
+});
+
+describe('parseEstimateInput', () => {
+  it('reads "~" followed by a duration', () => {
+    expect(parseEstimateInput('clean the garage ~2h')).toMatchObject({ minutes: 120, cleanTitle: 'clean the garage' });
+    expect(parseEstimateInput('clean the garage ~ 45 min')).toMatchObject({ minutes: 45, cleanTitle: 'clean the garage' });
+    expect(parseEstimateInput('~1.5 hours clean the garage')).toMatchObject({ minutes: 90, cleanTitle: 'clean the garage' });
+  });
+
+  it('reads "takes"', () => {
+    expect(parseEstimateInput('taxes takes 3 hours')).toMatchObject({ minutes: 180, cleanTitle: 'taxes' });
+    expect(parseEstimateInput('taxes takes about an hour')).toMatchObject({ minutes: 60, cleanTitle: 'taxes' });
+    expect(parseEstimateInput('stretch takes around 10m')).toMatchObject({ minutes: 10, cleanTitle: 'stretch' });
+  });
+
+  it('marks where the phrase sat', () => {
+    const r = parseEstimateInput('clean the garage ~2h')!;
+    expect('clean the garage ~2h'.slice(r.matchStart, r.matchEnd)).toBe('~2h');
+  });
+
+  it('leaves "for 15 minutes" to the timer parser', () => {
+    expect(parseEstimateInput('play violin for 15 minutes')).toBeNull();
+  });
+
+  it('refuses what is not an estimate', () => {
+    expect(parseEstimateInput('clean ~/Downloads')).toBeNull();
+    expect(parseEstimateInput('takes a nap')).toBeNull();
+    expect(parseEstimateInput('read ~0 min')).toBeNull();
+    expect(parseEstimateInput('hike ~30 hours')).toBeNull();
+    expect(parseEstimateInput('~30m')).toBeNull();
+  });
+});
+
+describe('parseProjectInput', () => {
+  const projects = [
+    { id: 'p1', title: 'Japan Trip' },
+    { id: 'p2', title: 'Kitchen Remodel' },
+    { id: 'p3', title: 'Kitchen Garden' },
+    { id: 'p4', title: 'Taxes' },
+  ];
+
+  it('matches a whole name, ignoring case, spaces and punctuation', () => {
+    expect(parseProjectInput('book hotel +japantrip', projects)).toMatchObject({ projectId: 'p1', cleanTitle: 'book hotel' });
+    expect(parseProjectInput('book hotel +Japan-Trip', projects)?.projectId).toBe('p1');
+    expect(parseProjectInput('+taxes find receipts', projects)).toMatchObject({ projectId: 'p4', cleanTitle: 'find receipts' });
+  });
+
+  it('matches an unambiguous prefix of the name, or of one word in it', () => {
+    expect(parseProjectInput('book hotel +jap', projects)?.projectId).toBe('p1');
+    expect(parseProjectInput('book hotel +trip', projects)?.projectId).toBe('p1');
+    expect(parseProjectInput('buy tiles +remod', projects)?.projectId).toBe('p2');
+  });
+
+  it('refuses a prefix two projects share, and one too short to guess from', () => {
+    expect(parseProjectInput('buy tiles +kitchen', projects)).toBeNull();
+    expect(parseProjectInput('book hotel +ja', projects)).toBeNull();
+  });
+
+  it('marks where the token sat', () => {
+    const r = parseProjectInput('book +jap hotel', projects)!;
+    expect('book +jap hotel'.slice(r.matchStart, r.matchEnd)).toBe('+jap');
+    expect(r.cleanTitle).toBe('book hotel');
+  });
+
+  it('does not read a plus that is not a sigil', () => {
+    expect(parseProjectInput('learn C++ basics', [{ id: 'x', title: 'Basics' }])).toBeNull();
+    expect(parseProjectInput('reply +1 to taxes', projects)).toBeNull();
+    expect(parseProjectInput('2+taxes', projects)).toBeNull();
+  });
+
+  it('skips an unknown token and keeps looking', () => {
+    expect(parseProjectInput('+nothing book hotel +japan', projects)?.projectId).toBe('p1');
+  });
+});
+
+describe('parseWaitingOnInput', () => {
+  const tasks = [
+    { id: 't1', title: 'Get W-2 from employer' },
+    { id: 't2', title: 'Finish work report' },
+    { id: 't3', title: 'Call mom' },
+    { id: 't4', title: 'Call dentist' },
+    { id: 't5', title: 'Book flights' },
+  ];
+
+  it('finds a task from the words after "after"', () => {
+    expect(parseWaitingOnInput('file taxes after get W-2', tasks)).toMatchObject({ taskId: 't1', cleanTitle: 'file taxes' });
+    expect(parseWaitingOnInput('file taxes after get w2', tasks)?.taskId).toBe('t1');
+    expect(parseWaitingOnInput('book hotel after flights', tasks)?.taskId).toBe('t5');
+  });
+
+  it('takes prefixes and any order, and ignores filler', () => {
+    expect(parseWaitingOnInput('book hotel after the flights are booked', tasks)).toBeNull();
+    expect(parseWaitingOnInput('book hotel after the flights are done', tasks)?.taskId).toBe('t5');
+    expect(parseWaitingOnInput('book hotel after fli boo', tasks)?.taskId).toBe('t5');
+    expect(parseWaitingOnInput('file taxes after w2 get', tasks)?.taskId).toBe('t1');
+  });
+
+  it('needs every word to land, and at least half the title covered', () => {
+    expect(parseWaitingOnInput('go for a walk after work', tasks)).toBeNull();
+    expect(parseWaitingOnInput('file taxes after w2', tasks)).toBeNull();
+    expect(parseWaitingOnInput('file taxes after get the forms', tasks)).toBeNull();
+  });
+
+  it('offers nothing when two tasks match', () => {
+    expect(parseWaitingOnInput('send card after call', tasks)).toBeNull();
+    expect(parseWaitingOnInput('send card after call mom', tasks)?.taskId).toBe('t3');
+  });
+
+  it('covers from "after" to the end of the title', () => {
+    const r = parseWaitingOnInput('send card after call mom', tasks)!;
+    expect('send card after call mom'.slice(r.matchStart, r.matchEnd)).toBe('after call mom');
+  });
+
+  it('needs a title before it and a phrase after it', () => {
+    expect(parseWaitingOnInput('after call mom', tasks)).toBeNull();
+    expect(parseWaitingOnInput('send card after', tasks)).toBeNull();
+    expect(parseWaitingOnInput('send card after the', tasks)).toBeNull();
+  });
+});
+
+describe('parseSubtasksInput', () => {
+  it('splits a colon list into subtasks', () => {
+    expect(parseSubtasksInput('pack: socks, charger, passport')).toMatchObject({
+      cleanTitle: 'pack', subtasks: ['socks', 'charger', 'passport'],
+    });
+  });
+
+  it('takes "and" before the last item, with or without the comma', () => {
+    expect(parseSubtasksInput('pack: socks, charger and passport')?.subtasks).toEqual(['socks', 'charger', 'passport']);
+    expect(parseSubtasksInput('pack: socks, charger, and passport')?.subtasks).toEqual(['socks', 'charger', 'passport']);
+  });
+
+  it('marks from the colon to the end', () => {
+    const r = parseSubtasksInput('pack: socks, charger')!;
+    expect('pack: socks, charger'.slice(r.matchStart, r.matchEnd)).toBe(': socks, charger');
+  });
+
+  it('refuses what is not a list', () => {
+    expect(parseSubtasksInput('Re: invoice')).toBeNull();
+    expect(parseSubtasksInput('meet at 3:30, bring notes')).toBeNull();
+    expect(parseSubtasksInput('read https://x.com/a,b')).toBeNull();
+    expect(parseSubtasksInput(': socks, charger')).toBeNull();
+    expect(parseSubtasksInput('pack: socks,, charger')).toBeNull();
+    expect(parseSubtasksInput(`pack: socks, ${'x'.repeat(61)}`)).toBeNull();
   });
 });
