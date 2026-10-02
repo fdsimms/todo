@@ -1,4 +1,4 @@
-import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, detectContactIntent, parseDurationInput, parseSupplyInput, parseTargetInput, parseEstimateInput, parseProjectInput, parseWaitingOnInput, parseSubtasksInput, stripRemindPrefix, parseCategoryAndTagsInput, parsePriorityInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, getEditorMentionSuggestions, applyMentionOverrides, parseFromCompletionSuffix, type ParsedSchedule } from '../utils/parseTaskInput';
+import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, detectContactIntent, parseDurationInput, parseSupplyInput, parseTargetInput, parseEstimateInput, parseProjectInput, parseWaitingOnInput, parseSubtasksInput, parseAvoidInput, stripRemindPrefix, parseCategoryAndTagsInput, parsePriorityInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, getEditorMentionSuggestions, applyMentionOverrides, parseFromCompletionSuffix, type ParsedSchedule } from '../utils/parseTaskInput';
 
 // Tuesday, June 10 2025, 10:00 AM — same anchor as parseNaturalDate.test.ts
 const NOW = new Date(2025, 5, 10, 10, 0, 0);
@@ -1967,5 +1967,71 @@ describe('parseSubtasksInput', () => {
     expect(parseSubtasksInput(': socks, charger')).toBeNull();
     expect(parseSubtasksInput('pack: socks,, charger')).toBeNull();
     expect(parseSubtasksInput(`pack: socks, ${'x'.repeat(61)}`)).toBeNull();
+  });
+});
+
+describe('parseTaskInput expiry', () => {
+  it('reads "only today" as expiring at the end of the day', () => {
+    const r = parseTaskInput('grab the free coffee only today', NOW)!;
+    expect(r.cleanTitle).toBe('grab the free coffee');
+    expect(r.matchedText).toBe('only today');
+    expect(r.schedule.windowEnd).toBe('23:59');
+    expect(r.schedule.deadline).toBeUndefined();
+    expect(r.schedule.dueDate.getDate()).toBe(NOW.getDate());
+  });
+
+  it('reads "expires friday at 5pm" with the time as the end, not a segment', () => {
+    const r = parseTaskInput('use the coupon expires friday at 5pm', NOW)!;
+    expect(r.cleanTitle).toBe('use the coupon');
+    expect(r.schedule.windowEnd).toBe('17:00');
+    expect(r.schedule.timeSegments).toEqual([]);
+    expect(r.schedule.explicitClockTime).toBeNull();
+  });
+
+  it('takes "only on" and "expires on"', () => {
+    expect(parseTaskInput('farmers market only on saturday', NOW)!.schedule.windowEnd).toBe('23:59');
+    expect(parseTaskInput('use the coupon expires on the 20th', NOW)!.schedule.dueDate.getDate()).toBe(20);
+  });
+
+  it('is never set by softer words', () => {
+    expect(parseTaskInput('pay rent before 5pm', NOW)!.schedule.windowEnd).toBeUndefined();
+    expect(parseTaskInput('call between 2 and 4pm', NOW)!.schedule.windowEnd).toBeUndefined();
+    expect(parseTaskInput('pay rent by friday', NOW)!.schedule.windowEnd).toBeUndefined();
+  });
+
+  it('says "Expires" in the label', () => {
+    expect(describeSchedule(parseTaskInput('coffee only today', NOW)!.schedule, NOW)).toBe('Expires today');
+    expect(describeSchedule(parseTaskInput('coupon expires tomorrow at 5pm', NOW)!.schedule, NOW)).toBe('Expires tomorrow at 5 PM');
+    expect(describeSchedule(parseTaskInput('coupon expires on the 20th', NOW)!.schedule, NOW)).toBe('Expires Fri, Jun 20');
+  });
+});
+
+describe('parseAvoidInput', () => {
+  const said = (s: string) => {
+    const r = parseAvoidInput(s);
+    return r ? s.slice(r.matchStart, r.matchEnd) : null;
+  };
+
+  it('reads don\'t, do not and never on their own', () => {
+    expect(said("Don't check Twitter")).toBe("Don't");
+    expect(said('dont check twitter')).toBe('dont');
+    expect(said('Do not eat after 8')).toBe('Do not');
+    expect(said('Never skip breakfast')).toBe('Never');
+  });
+
+  it('reads no, stop, quit and avoid before an -ing word', () => {
+    expect(said('No snacking after 8pm')).toBe('No snacking');
+    expect(said('quit vaping')).toBe('quit vaping');
+    expect(said('Stop doomscrolling')).toBe('Stop doomscrolling');
+    expect(said('avoid drinking soda')).toBe('avoid drinking');
+  });
+
+  it('leaves ordinary tasks that open the same way alone', () => {
+    expect(said('stop by the bank')).toBeNull();
+    expect(said('no school friday')).toBeNull();
+    expect(said('avoid traffic on 95')).toBeNull();
+    expect(said('no morning meetings')).toBeNull();
+    expect(said("don't forget to call mom")).toBeNull();
+    expect(said('call mom, never mind')).toBeNull();
   });
 });

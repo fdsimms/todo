@@ -39,7 +39,7 @@ import { categoryLabel } from '../utils/categoryLabel';
 import { CategoryPickerSheet } from './CategoryPicker';
 import { ProjectPickerSheet } from './ProjectPickerSheet';
 import { useShallow } from 'zustand/react/shallow';
-import type { Priority, Effort, TimeOfDay, RecurrenceType, Task, ChainItem, QuotaPeriod } from '../types';
+import type { Priority, Effort, TimeOfDay, RecurrenceType, Task, ChainItem, QuotaPeriod, Polarity } from '../types';
 import { PRIORITY_COLORS, EFFORT_LABELS, TITLE_MAX_LENGTH } from '../types';
 import { generateId } from '../utils/id';
 import {
@@ -73,7 +73,7 @@ import { TitleTokenAccessory } from './TitleTokenAccessory';
 import { HighlightedText } from './HighlightedText';
 import { suggestTitles } from '../utils/titleSuggestions';
 import { findArchivedMatch } from '../utils/archiveMatch';
-import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, parseDurationInput, parseSupplyInput, parseTargetInput, parseEstimateInput, parseProjectInput, parseWaitingOnInput, parseSubtasksInput, stripRemindPrefix, parseCategoryAndTagsInput, parsePriorityInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, applyMentionOverrides, withTrailingSpace, type ParsedCategoryAndTags, type ParsedTaskInput, type MentionSuggestionCandidate } from '../utils/parseTaskInput';
+import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, parseDurationInput, parseSupplyInput, parseTargetInput, parseEstimateInput, parseProjectInput, parseWaitingOnInput, parseSubtasksInput, parseAvoidInput, stripRemindPrefix, parseCategoryAndTagsInput, parsePriorityInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, applyMentionOverrides, withTrailingSpace, type ParsedCategoryAndTags, type ParsedTaskInput, type MentionSuggestionCandidate } from '../utils/parseTaskInput';
 import { mergeRanges } from '../utils/ranges';
 import { aimTooltip } from '../utils/tooltipAim';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
@@ -417,6 +417,10 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   // Off the waiting-on and subtask tooltips. Neither has a chip, so each
   // shows as a line under the title once accepted (see the applied lines).
   const [blockerIds, setBlockerIds] = useState<string[]>([]);
+  // "only today" / "expires friday" off the schedule tooltip, and "don't …"
+  // off the avoid tooltip. Same applied-line treatment as the two above.
+  const [titleWindowEnd, setTitleWindowEnd] = useState<string | null>(null);
+  const [polarity, setPolarity] = useState<Polarity>('positive');
   const [subtaskTitles, setSubtaskTitles] = useState<string[]>([]);
   const [tags, setTags] = useState<string[]>([]);
   // Manual picks off the ambiguous-"@name" tooltip, keyed by lowercased token
@@ -559,6 +563,8 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     setTitleSeries(null);
     setBlockerIds([]);
     setSubtaskTitles([]);
+    setTitleWindowEnd(null);
+    setPolarity('positive');
     setChainItems([]);
     setNewStepTitle('');
     setCustomLinkText('');
@@ -965,6 +971,20 @@ export const QuickAddModal = React.memo(function QuickAddModal({
       ? parseSubtasksInput(title) : null),
     [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed, linkParsed, phoneParsed, emailParsed, durationParsed, supplyParsed, targetParsed, estimateParsed, waitingParsed]
   );
+  // "Don't check Twitter", "No snacking" — a habit to avoid. Strips nothing
+  // (the words are its name), so it stops being offered once accepted rather
+  // than when the phrase leaves the title. Plain kind only, like the Goal
+  // control in the editor.
+  const avoidParsed = useMemo(
+    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !mentionSuggestion && !priorityParsed && !projectParsed && !chainParsed && !linkParsed && !phoneParsed && !emailParsed
+      && !durationParsed && !supplyParsed && !targetParsed && !estimateParsed && !waitingParsed && !subtasksParsed
+      && type === 'task' && polarity !== 'negative' && title.trim()
+      ? parseAvoidInput(title) : null),
+    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, priorityParsed, projectParsed, chainParsed, linkParsed, phoneParsed, emailParsed, durationParsed, supplyParsed, targetParsed, estimateParsed, waitingParsed, subtasksParsed, type, polarity]
+  );
+  // Whether the task being built is an avoid-task: the flag, on the one kind
+  // that can hold it (a later switch to Timed or Target leaves it unset).
+  const avoidsHere = polarity === 'negative' && type === 'task';
   const rawMatch = parsed
     ? { matchStart: parsed.matchStart, matchedText: parsed.matchedText }
     : categoryTagsParsed
@@ -1030,7 +1050,12 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                             matchStart: subtasksParsed.matchStart,
                             matchedText: title.slice(subtasksParsed.matchStart, subtasksParsed.matchEnd),
                           }
-                        : null;
+                        : avoidParsed
+                          ? {
+                              matchStart: avoidParsed.matchStart,
+                              matchedText: title.slice(avoidParsed.matchStart, avoidParsed.matchEnd),
+                            }
+                          : null;
   // The tooltip's own ✕ answers "not that" for this one phrase — comparing
   // by position+text (rather than a bare boolean) means editing the title so
   // a *different* phrase parses brings the tooltip straight back, with no
@@ -1123,6 +1148,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     setDueDate(parsed.schedule.dueDate);
     setDeadline(parsed.schedule.deadline ?? null);
     setTitleWindowStart(parsed.schedule.windowStart ?? null);
+    setTitleWindowEnd(parsed.schedule.windowEnd ?? null);
     setTitleSeries(parsed.schedule.extraDates?.length
       ? { anchor: parsed.schedule.dueDate, extraDates: parsed.schedule.extraDates }
       : null);
@@ -1383,6 +1409,14 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     setSubtaskTitles(prev => [...prev, ...subtasksParsed.subtasks]);
   };
 
+  // Leaves the title alone: "No snacking after 8pm" is the habit's name.
+  const applyAvoid = () => {
+    if (!avoidParsed) return;
+    haptics.success();
+    animateLayout();
+    setPolarity('negative');
+  };
+
   // Whichever single tooltip is currently up, applied — shared by the
   // tooltip bubble's own tap and the accessory bar's confirm checkmark
   // (TitleTokenAccessory), a second way to accept it without looking away
@@ -1403,6 +1437,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     else if (estimateParsed) applyEstimate();
     else if (waitingParsed) applyWaiting();
     else if (subtasksParsed) applySubtasks();
+    else if (avoidParsed) applyAvoid();
   };
   const confirmVisible = activeMatch !== null && !ambiguousMention && !mentionSuggestion;
 
@@ -1581,6 +1616,10 @@ export const QuickAddModal = React.memo(function QuickAddModal({
       // After the seed's, so the title's own "after 3pm" wins over a drop.
       ...(titleWindowStart ? { windowStart: titleWindowStart } : {}),
       ...(blockerIds.length > 0 ? blockerFields(blockerIds) : {}),
+      ...(titleWindowEnd ? { windowEnd: titleWindowEnd } : {}),
+      // Plain kind only, the editor's rule: every other kind is a way of
+      // completing something, and an avoid-task is never completed.
+      ...(avoidsHere ? { polarity: 'negative' as const, showStreak: true } : {}),
     // skipTitleRules: this sheet already resolved them, a keystroke at a time
     // and visibly — re-running them here would put back a category the ✕ on
     // the rule caption just took off.
@@ -1701,6 +1740,8 @@ export const QuickAddModal = React.memo(function QuickAddModal({
       windowStart: titleWindowStart,
       blockerIds,
       subtaskTitles,
+      windowEnd: titleWindowEnd,
+      polarity: avoidsHere ? 'negative' : 'positive',
       reminderTime,
       tags: resolveTags(),
       personIds,
@@ -2260,7 +2301,9 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                                                 ? 'barbell'
                                                 : waitingParsed
                                                   ? 'hourglass-outline'
-                                                  : 'list-outline'
+                                                  : subtasksParsed
+                                                    ? 'list-outline'
+                                                    : 'shield-checkmark-outline'
                         }
                         size={14}
                         color={colors.onAccent}
@@ -2292,7 +2335,9 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                                               ? `Estimate · ${formatDuration(estimateParsed.minutes)}`
                                               : waitingParsed
                                                 ? `Waiting on · ${waitingParsed.title}`
-                                                : `${subtasksParsed!.subtasks.length} subtasks`}
+                                                : subtasksParsed
+                                                  ? `${subtasksParsed.subtasks.length} subtasks`
+                                                  : 'Avoid this habit'}
                       </Text>
                       <View style={styles.tooltipDot} />
                       <Text style={styles.tooltipHint}>Tap to set</Text>
@@ -2373,6 +2418,18 @@ export const QuickAddModal = React.memo(function QuickAddModal({
             `Waiting on ${blockerIds.map(id => tasks.find(t => t.id === id)?.title ?? 'a task').join(', ')}`,
             'Stop waiting',
             () => setBlockerIds([]),
+          )}
+          {!!titleWindowEnd && appliedLine(
+            'alarm-outline',
+            titleWindowEnd === '23:59' ? 'Expires at the end of its day' : `Expires at ${formatHHMM(titleWindowEnd)}`,
+            'Remove the expiry',
+            () => setTitleWindowEnd(null),
+          )}
+          {avoidsHere && appliedLine(
+            'shield-checkmark-outline',
+            'Avoid this: counts the days you go without it',
+            'Make it a task to do',
+            () => setPolarity('positive'),
           )}
           {subtaskTitles.length > 0 && appliedLine(
             'list-outline',
