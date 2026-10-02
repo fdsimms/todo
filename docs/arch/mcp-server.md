@@ -437,7 +437,8 @@ for everything, which is adequate for a laptop and is not adequate for that.
 ### The health logs have their own switch, and iCloud never gets them
 
 Decided, and built. `HEALTH_SYNC_TABLES` (`src/db/syncTracking.ts`) names the mood, medication and
-food logs, and `HEALTH_SYNC_SETTING_KEYS` adds `medication_archived`, a list of medicine names. A
+food logs plus the milestones read against the mood log ("started sertraline" is a common one), and
+`HEALTH_SYNC_SETTING_KEYS` adds `medication_archived`, a list of medicine names. A
 transport can withhold tables (`SyncTransport.withhold`, applied by `withholdChanges` in
 `syncEngine.ts`), and two transports do:
 
@@ -464,9 +465,9 @@ Pushes only. A health row arriving *from* a transport is still applied, so a pee
 does no harm, and the replica's own medication dose (written by `complete_task`) still reaches the
 phone that asked for it.
 
-What is deliberately not withheld: `milestones` (named by the person, and as often a new job as a
-new prescription), a task's `medication_name` (a task titled "Take sertraline" says the same thing
-whatever column is withheld), and `saved_meals` (logging shortcuts, not a record of what was eaten).
+What is deliberately not withheld: a task's `medication_name` (a task titled "Take sertraline" says
+the same thing whatever column is withheld), and `saved_meals` (logging shortcuts, not a record of
+what was eaten).
 
 ### What the privacy label has to say
 
@@ -492,11 +493,12 @@ Taking each destination in turn:
 | Recipe page fetch | **No** | A request for a page the user pasted, served in real time. |
 | Anthropic, on the user's own key | **Unclear** | Anthropic keeps requests past real time and is arguably an external vendor, but no code of theirs is bundled and the developer has no account there and no access. |
 
-So the defensible label is **Data Not Collected**, with the Anthropic row the one judgment call. The
-earlier rule in this file still holds for it: where this is ambiguous, the honest declaration beats
-the narrow one. Declaring it would be **Other User Content** (task titles and notes, tag and category
-names), purpose **App Functionality**, **linked to the user** (it travels on their own Anthropic
-account) and **not used for tracking**.
+**Decided: declare the Anthropic row, and nothing else.** The earlier rule in this file holds for
+it: where this is ambiguous, the honest declaration beats the narrow one. So the label is one entry,
+**Other User Content** (task titles and notes, tag and category names, and the other text an AI
+feature sends), purpose **App Functionality**, **linked to the user** (it travels on their own
+Anthropic account) and **not used for tracking**. A privacy manifest should carry the matching
+`NSPrivacyCollectedDataTypes` entry so the two agree.
 
 If the sync server ever became one the developer ran for people, every answer above flips. It would
 then be **Health** ("any other user provided health or medical data", the three logs, only when

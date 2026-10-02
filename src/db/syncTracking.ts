@@ -478,17 +478,18 @@ export function isSyncedSettingKey(key: string): boolean {
  * separate decision from a hosted copy of their task list (docs/arch/
  * mcp-server.md, "The privacy consequence, stated plainly").
  *
+ * `milestones` are here because they exist to be read against the mood log,
+ * and "started sertraline" is as common a one as "new job".
  * `medication_archived` is here because it is a list of medicine names, which
  * says what somebody takes as plainly as the dose log does. What is not here,
- * and why: `milestones` are named by the person and are as often a new job as
- * a new prescription; a task's `medication_name` rides on a task, and a task
- * titled "Take sertraline" says the same thing whatever column is withheld;
- * `saved_meals` are shortcuts for logging, not a record of what was eaten.
+ * and why: a task's `medication_name` rides on a task, and a task titled "Take
+ * sertraline" says the same thing whatever column is withheld; `saved_meals`
+ * are shortcuts for logging, not a record of what was eaten.
  *
  * Pushes only. A row of these arriving from a transport is still applied, so
  * a peer on an older build that still sends them does no harm.
  */
-export const HEALTH_SYNC_TABLES: readonly string[] = ['mood_logs', 'medication_logs', 'food_logs'];
+export const HEALTH_SYNC_TABLES: readonly string[] = ['mood_logs', 'milestones', 'medication_logs', 'food_logs'];
 export const HEALTH_SYNC_SETTING_KEYS: readonly string[] = ['medication_archived'];
 
 /** Where deletions go. A row here is the only evidence a row ever existed. */
