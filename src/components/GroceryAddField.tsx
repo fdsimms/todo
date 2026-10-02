@@ -38,6 +38,7 @@ import {
 import { describePreferredProduct } from '../utils/groceryProduct';
 import { generateId } from '../utils/id';
 import { useFilterField } from '../hooks/useFilterField';
+import { TextField } from './TextField';
 
 interface Props {
   /**
@@ -611,7 +612,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
             size={16}
             color={colors.textSecondary}
           />
-          <TextInput
+          <TextField
             style={styles.attributeInput}
             value={activePanel === 'brand' ? brand : variant}
             onChangeText={activePanel === 'brand' ? setBrand : setVariant}

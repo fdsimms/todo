@@ -3,7 +3,6 @@ import {
   View,
   Text,
   Image,
-  TextInput,
   TouchableOpacity,
   ActivityIndicator,
   ScrollView,
@@ -27,6 +26,7 @@ import { haptics } from '../utils/haptics';
 import { looksLikeBareUrl } from '../utils/recipeUtils';
 import { normalizeRecipeUrl } from '../utils/recipeUrl';
 import type { RecipePhoto, RecipePhotoSource } from '../utils/recipePhoto';
+import { TextField } from './TextField';
 
 export type RecipeInputMode = 'paste' | 'link' | 'photo';
 
@@ -180,7 +180,7 @@ export function RecipeSourcePicker({
       )}
 
       {paste ? (
-        <TextInput
+        <TextField
           style={styles.pasteInput}
           value={text}
           onChangeText={onChangeText}
@@ -192,7 +192,7 @@ export function RecipeSourcePicker({
         />
       ) : link ? (
         <View style={styles.linkWrap}>
-          <TextInput
+          <TextField
             style={styles.linkInput}
             value={url}
             onChangeText={onChangeUrl}

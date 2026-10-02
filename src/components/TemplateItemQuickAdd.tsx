@@ -28,6 +28,7 @@ import { PRIORITY_COLORS, TITLE_MAX_LENGTH } from '../types';
 import { SegmentedControl } from './SegmentedControl';
 import { SheetScrim } from './SheetScrim';
 import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
+import { TextField } from './TextField';
 
 /** Same short labels the main quick add uses, so the two priority rows read alike. */
 const PRIORITY_LABELS_SHORT = ['None', 'Low', 'Med', 'High', 'Urgent'] as const;
@@ -227,7 +228,7 @@ export function TemplateItemQuickAdd({ visible, templateId, templateName, onClos
 
           {/* Title input row */}
           <View style={styles.row}>
-            <TextInput
+            <TextField
               ref={inputRef}
               style={styles.input}
               value={title}

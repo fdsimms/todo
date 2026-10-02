@@ -122,6 +122,7 @@ import {
 import { formatOffsetLabel } from '../utils/templateUtils';
 import { splitAlternativeNames, splitGroceryLines } from '../utils/groceryParse';
 import { dayKeyOf, getCurrentDayStart } from '../utils/dateUtils';
+import { TextField } from '../components/TextField';
 
 type RootStackParamList = {
   /**
@@ -2023,7 +2024,7 @@ export function RecipeDetailScreen() {
             >
               {cookedWeightDraft || 'e.g. 1450'}
             </Text>
-            <TextInput
+            <TextField
               style={[styles.weightEditInput, { width: cookedWeightWidth.width || undefined }]}
               value={cookedWeightDraft}
               onChangeText={setCookedWeightDraft}
@@ -2218,7 +2219,7 @@ export function RecipeDetailScreen() {
         )}
 
         <View style={styles.addRow}>
-          <TextInput
+          <TextField
             ref={draftInputRef}
             style={styles.addInput}
             value={draft}
@@ -2322,7 +2323,7 @@ export function RecipeDetailScreen() {
         )}
 
         <View style={styles.addRow}>
-          <TextInput
+          <TextField
             ref={stepInputRef}
             style={styles.addInput}
             value={stepDraft}
@@ -2387,7 +2388,7 @@ export function RecipeDetailScreen() {
                 already showing. Committed on blur rather than per keystroke. */}
             <View style={styles.stepNoteEditRow}>
               <Text style={styles.stepNoteEditLabel}>Note</Text>
-              <TextInput
+              <TextField
                 style={styles.stepNoteInput}
                 value={noteDraft}
                 onChangeText={setNoteDraft}
@@ -2462,7 +2463,7 @@ export function RecipeDetailScreen() {
         )}
 
         <View style={styles.addRow}>
-          <TextInput
+          <TextField
             style={styles.addInput}
             value={prepDraft}
             onChangeText={setPrepDraft}

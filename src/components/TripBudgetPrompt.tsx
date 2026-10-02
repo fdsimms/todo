@@ -7,6 +7,7 @@ import { useColors } from '../theme/ThemeContext';
 import { border, font, fontWeight, radius, spacing, type Colors } from '../theme';
 import { formatPriceInput, parsePriceInput, priceToInput } from '../utils/groceryPrice';
 import { haptics } from '../utils/haptics';
+import { TextField } from './TextField';
 
 interface Props {
   visible: boolean;
@@ -98,7 +99,7 @@ export function TripBudgetPrompt({ visible, budgetMinor, currencySymbol, onSave,
 
           <View style={styles.field}>
             <Text style={styles.symbol}>{currencySymbol}</Text>
-            <TextInput
+            <TextField
               ref={inputRef}
               style={styles.input}
               value={text}

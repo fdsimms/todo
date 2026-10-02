@@ -2,7 +2,6 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   StyleSheet,
   Alert,
@@ -19,6 +18,7 @@ import { spacing, radius, font, fontWeight, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { confirmDelete } from '../utils/confirmDelete';
 import { RECIPE_SOURCE_MAX_LENGTH, type Cookbook } from '../types';
+import { TextField } from './TextField';
 
 interface Props {
   visible: boolean;
@@ -164,7 +164,7 @@ export function CookbookEditor({ visible, cookbookId: liveCookbookId, onClose }:
 
       <View style={styles.body}>
         <Text style={styles.fieldLabel}>TITLE</Text>
-        <TextInput
+        <TextField
           style={styles.input}
           value={title}
           onChangeText={setTitle}
@@ -176,7 +176,7 @@ export function CookbookEditor({ visible, cookbookId: liveCookbookId, onClose }:
           accessibilityLabel="Cookbook title"
         />
         <Text style={[styles.fieldLabel, styles.fieldLabelSpaced]}>AUTHOR</Text>
-        <TextInput
+        <TextField
           style={styles.input}
           value={author}
           onChangeText={setAuthor}

@@ -25,6 +25,7 @@ import { SortableList } from './SortableList';
 import { EditorSheet } from './EditorSheet';
 import { CountStepper } from './CountStepper';
 import { capitalize } from '../utils/capitalize';
+import { TextField } from './TextField';
 
 // Ten hours, well past any real estimate. CountStepper needs a bound to
 // disable its + key at; the hand-rolled version it replaced had none.
@@ -196,7 +197,7 @@ export function FollowUpTaskSheet({ visible, taskTitle, draft, onSave, onClose }
       }
     >
       <View style={styles.sectionCard}>
-        <TextInput
+        <TextField
           ref={notesInputRef}
           style={styles.notesInput}
           value={notes}
@@ -295,7 +296,7 @@ export function FollowUpTaskSheet({ visible, taskTitle, draft, onSave, onClose }
               </TouchableOpacity>
             ))}
             {addingTag ? (
-              <TextInput
+              <TextField
                 autoFocus
                 style={styles.tagInput}
                 value={newTag}
@@ -488,7 +489,7 @@ export function FollowUpTaskSheet({ visible, taskTitle, draft, onSave, onClose }
           />
           {addingSubtask ? (
             <View style={styles.subtaskInputRow}>
-              <TextInput
+              <TextField
                 ref={subtaskInputRef}
                 autoFocus
                 style={styles.subtaskInput}

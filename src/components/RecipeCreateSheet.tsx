@@ -14,7 +14,6 @@ import {
   Keyboard,
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
@@ -82,6 +81,7 @@ import { MAX_RECIPE_PHOTOS } from '../utils/recipePhoto';
 import { haptics } from '../utils/haptics';
 import { capitalize } from '../utils/capitalize';
 import { InlineAction } from './InlineAction';
+import { TextField } from './TextField';
 
 interface Props {
   visible: boolean;
@@ -892,7 +892,7 @@ export function RecipeCreateSheet({
       >
         <View style={styles.nameCard}>
           <Text style={styles.nameLabel}>NAME</Text>
-          <TextInput
+          <TextField
             style={styles.nameInput}
             value={name}
             onChangeText={setName}
@@ -1173,7 +1173,7 @@ export function RecipeCreateSheet({
               </TouchableOpacity>
             ))}
             {addingTag ? (
-              <TextInput
+              <TextField
                 autoFocus
                 style={styles.tagInput}
                 value={newTag}

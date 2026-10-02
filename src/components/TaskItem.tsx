@@ -125,6 +125,7 @@ import { StepMinutes } from './StepMinutes';
 import { NumberPadAccessory } from './NumberPadAccessory';
 import { SpotlightScrim, useSpotlightLinger } from './SpotlightOverlay';
 import { ProgressBar } from './ProgressBar';
+import { TextField } from './TextField';
 
 const CHECKBOX_SIZE = 20;
 const SUBTASK_CHECKBOX_SIZE = 16;
@@ -2463,7 +2464,7 @@ export const TaskItem = React.memo(function TaskItem({
         }
       >
         {isEditingTitle ? (
-          <TextInput
+          <TextField
             ref={titleInputRef}
             style={styles.titleInput}
             value={titleEdit}
@@ -3289,7 +3290,7 @@ export const TaskItem = React.memo(function TaskItem({
                         </View>
                       </TouchableOpacity>
                       {editingSubtaskId === sub.id ? (
-                        <TextInput
+                        <TextField
                           ref={subtaskTitleInputRef}
                           style={styles.subtaskTitleInput}
                           value={subtaskTitleEdit}
@@ -3363,7 +3364,7 @@ export const TaskItem = React.memo(function TaskItem({
               {!notice && (
               <View style={[styles.subtaskRow, styles.subtaskRowLast]}>
                 <View style={styles.subtaskCheck} />
-                <TextInput
+                <TextField
                   ref={newSubtaskInputRef}
                   style={styles.subtaskTitleInput}
                   value={newSubtaskTitle}

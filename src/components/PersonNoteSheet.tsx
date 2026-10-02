@@ -19,6 +19,7 @@ import {
   describeNoteDay,
 } from '../utils/personNotes';
 import { getCurrentDayStart } from '../utils/dateUtils';
+import { TextField } from './TextField';
 
 const NOTE_MAX_LENGTH = 240;
 
@@ -136,7 +137,7 @@ export function PersonNoteSheet({ visible, personId, personName, note, initialKi
         />
       }
     >
-      <TextInput
+      <TextField
         ref={textInputRef}
         style={styles.textInput}
         value={text}

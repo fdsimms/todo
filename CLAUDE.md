@@ -929,6 +929,12 @@ right.
   replacement taking the same props, which dismisses the keyboard before it lets the modal close
   (see the freeze note under list rows below). Rendering `react-native`'s `Modal` directly fails
   `noRawModal.test.ts`.
+- `TextField` (`src/components/TextField.tsx`) — **every** text field that takes a `value`. Same
+  props and ref as `TextInput`, but the native field is the only writer while someone types, so the
+  keystroke echo that drops the caret mid-word on iOS can't happen ("rutabaga" typed as
+  "utabagar"); `value` reaches the field only when it differs from what the field last reported.
+  `noControlledTextInput.test.ts` fails the build on a `TextInput` given `value=`. A filter field
+  still uses `useFilterField`, which has no `value` at all.
 - `CardSheet` (`src/components/CardSheet.tsx`) — the quick-add shape for any short sheet: a card
   that scales in at the middle of the screen and fades out in a blink. **Reach for it before a
   bottom sheet when the sheet is one small decision** (a field or two, a closed set of options, a

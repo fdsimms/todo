@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { SheetModal } from './SheetModal';
@@ -41,6 +41,7 @@ import {
   type SavedViewClause,
   type SavedViewClauseKind,
 } from '../types';
+import { TextField } from './TextField';
 
 interface Props {
   visible: boolean;
@@ -275,7 +276,7 @@ export function SavedViewEditorSheet({ visible, view, onClose, onCreated, onDele
         >
           <Text style={styles.groupLabel}>NAME</Text>
           <View style={styles.card}>
-            <TextInput
+            <TextField
               style={styles.nameInput}
               value={name}
               onChangeText={setName}

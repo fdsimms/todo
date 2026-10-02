@@ -22,6 +22,7 @@ import { EMOJI_GROUPS, searchEmoji } from '../utils/emojiCatalog';
 import { firstEmoji } from '../utils/emojiInput';
 import { useSheetMotion } from '../hooks/useSheetMotion';
 import { useFilterField } from '../hooks/useFilterField';
+import { TextField } from './TextField';
 
 interface Props {
   visible: boolean;
@@ -264,7 +265,7 @@ export function EmojiPickerSheet({ visible, value, title = 'Choose an emoji', hi
           {/* Invisible: the row above owns the tap and only raises the keyboard.
               Value stays empty so every keystroke arrives on its own, and
               anything that isn't an emoji is dropped rather than stored. */}
-          <TextInput
+          <TextField
             ref={keyboardInputRef}
             style={styles.hiddenInput}
             value=""

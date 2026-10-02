@@ -13,6 +13,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { getLogicalToday } from '../utils/dateUtils';
+import { TextField } from './TextField';
 
 const LABEL_MAX_LENGTH = 80;
 
@@ -126,7 +127,7 @@ export function MilestoneSheet({ visible, milestone, onClose }: Props) {
         />
       }
     >
-      <TextInput
+      <TextField
         style={styles.textInput}
         value={label}
         onChangeText={setLabel}

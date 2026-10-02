@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, StyleSheet, Text, View } from 'react-native';
 import { useShallow } from 'zustand/react/shallow';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useColors } from '../theme/ThemeContext';
@@ -50,6 +50,7 @@ import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { CountStepper } from './CountStepper';
 import { InlineAction } from './InlineAction';
+import { TextField } from './TextField';
 
 // The feet stepper's bounds, derived from the same cm bounds the kg stepper
 // uses — so the two units can't drift into disagreeing about the range.
@@ -410,7 +411,7 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
                 <View style={styles.field}>
                   <Text style={styles.fieldLabel}>Target weight</Text>
                   <View style={styles.inputRow}>
-                    <TextInput
+                    <TextField
                       style={styles.input}
                       value={targetText}
                       onChangeText={setTargetText}

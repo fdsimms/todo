@@ -1,10 +1,11 @@
 import React, { useRef, useState } from 'react';
-import { View, TextInput, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
+import { View, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, radius, iconSize } from '../theme';
 import { useScrollFieldIntoView } from '../hooks/useKeyboardInsetScroll';
 import { TITLE_MAX_LENGTH } from '../types';
+import { TextField } from './TextField';
 
 /**
  * A one-line field that names a new thing where it's about to appear: a
@@ -49,7 +50,7 @@ export function InlineNameField({
   return (
     <View style={[styles.row, { backgroundColor: colors.bgSecondary }, style]}>
       <Ionicons name={icon} size={iconSize.sm} color={colors.textSecondary} />
-      <TextInput
+      <TextField
         style={[styles.input, { color: colors.text }]}
         value={text}
         onChangeText={next => { textRef.current = next; setText(next); }}

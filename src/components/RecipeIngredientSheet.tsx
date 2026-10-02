@@ -2,7 +2,6 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   StyleSheet,
 } from 'react-native';
@@ -42,6 +41,7 @@ import { navigateToFoodSearchSettings } from './NutritionSearchSheet';
 import { CatalogLinkPicker } from './CatalogLinkPicker';
 import { InlineAction } from './InlineAction';
 import { useSheetSubject } from '../hooks/useSheetSubject';
+import { TextField } from './TextField';
 
 interface Props {
   visible: boolean;
@@ -453,7 +453,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
     >
       <View style={styles.sectionCard}>
         <Text style={styles.groupLabel}>What to buy</Text>
-        <TextInput
+        <TextField
           style={styles.input}
           value={name}
           onChangeText={setName}
@@ -580,7 +580,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
         <View style={styles.separator} />
 
         <Text style={styles.groupLabel}>How much</Text>
-        <TextInput
+        <TextField
           style={styles.input}
           value={quantity}
           onChangeText={setQuantity}
@@ -597,7 +597,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
         <View style={styles.separator} />
 
         <Text style={styles.groupLabel}>Prep</Text>
-        <TextInput
+        <TextField
           style={styles.input}
           value={prep}
           onChangeText={setPrep}
@@ -611,7 +611,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
         <View style={styles.separator} />
 
         <Text style={styles.groupLabel}>For</Text>
-        <TextInput
+        <TextField
           style={styles.input}
           value={purpose}
           onChangeText={setPurpose}
@@ -881,7 +881,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
         {!!groupLabel && (
           editingGroupName ? (
             <View style={styles.groupNameEditRow}>
-              <TextInput
+              <TextField
                 style={styles.groupNameInput}
                 value={groupNameDraft}
                 onChangeText={setGroupNameDraft}

@@ -1,6 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
+  ActivityIndicator,
+  Alert,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -24,6 +30,7 @@ import {
   type IndexDraft, type IndexEntryFields,
 } from '../utils/cookbookIndex';
 import { RECIPE_NAME_MAX_LENGTH, RECIPE_PAGE_MAX_LENGTH } from '../types';
+import { TextField } from './TextField';
 
 /** Index pages one scan reads. An index runs a few pages; a book's whole one is a few scans. */
 const MAX_INDEX_PHOTOS = 8;
@@ -288,7 +295,7 @@ export function CookbookIndexScanSheet({ visible, cookbookId, onClose, onApplied
                   <View key={`${draft.title}-${i}`} style={[styles.row, i > 0 && styles.rowDivided]}>
                     {editing === i ? (
                       <View style={styles.editFields}>
-                        <TextInput
+                        <TextField
                           style={styles.input}
                           value={editFields.title}
                           onChangeText={title => setEditFields(f => ({ ...f, title }))}
@@ -298,7 +305,7 @@ export function CookbookIndexScanSheet({ visible, cookbookId, onClose, onApplied
                           accessibilityLabel="Dish name"
                           autoFocus
                         />
-                        <TextInput
+                        <TextField
                           style={styles.input}
                           value={editFields.page}
                           onChangeText={page => setEditFields(f => ({ ...f, page }))}
@@ -307,7 +314,7 @@ export function CookbookIndexScanSheet({ visible, cookbookId, onClose, onApplied
                           placeholderTextColor={colors.textTertiary}
                           accessibilityLabel="Page number"
                         />
-                        <TextInput
+                        <TextField
                           style={styles.input}
                           value={editFields.ingredients}
                           onChangeText={ingredients => setEditFields(f => ({ ...f, ingredients }))}

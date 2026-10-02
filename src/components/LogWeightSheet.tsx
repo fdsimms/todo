@@ -21,6 +21,7 @@ import { InlineAction } from './InlineAction';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { WhenPicker } from './WhenPicker';
+import { TextField } from './TextField';
 
 /**
  * Recording a weight, which writes a body-mass sample to Apple Health.
@@ -217,7 +218,7 @@ export function LogWeightSheet({ visible, onClose }: Props) {
         <View style={styles.field}>
           <Text style={styles.fieldLabel}>Weight</Text>
           <View style={styles.inputRow}>
-            <TextInput
+            <TextField
               ref={weightInputRef}
               style={styles.input}
               value={text}

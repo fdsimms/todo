@@ -132,6 +132,7 @@ import { describeRecurrence } from '../utils/recurrenceLabels';
 import { knownLinkAppFor, linkAppsFor } from '../constants/linkApps';
 import { capitalize } from '../utils/capitalize';
 import { useFilterField } from '../hooks/useFilterField';
+import { TextField } from './TextField';
 
 /** The kind picker's segments. The hint under the track says what the pick does. */
 const TASK_KIND_SEGMENTS = TASK_KIND_META.map(meta => ({
@@ -2812,7 +2813,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             pointerEvents="none"
           />
         )}
-        <TextInput
+        <TextField
           ref={titleRef}
           style={[styles.titleInput, hasTitleOverlay && styles.titleInputHidden]}
           value={title}
@@ -2950,7 +2951,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
         </Animated.View>
       )}
       {notesVisible && (
-      <TextInput
+      <TextField
         style={styles.notesInput}
         value={notes}
         onChangeText={setNotes}
@@ -3121,7 +3122,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 ))}
               </View>
               <View style={styles.customEffortRow}>
-                <TextInput
+                <TextField
                   style={styles.customEffortInput}
                   value={durationText}
                   onChangeText={t => { setDurationText(t); applyDuration(t, durationUnit); }}
@@ -3202,7 +3203,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                         next to it too — and it's hidden while there's no count,
                         since on its own it labels nothing. */}
                     {targetCount !== null && (
-                      <TextInput
+                      <TextField
                         style={[styles.fieldBox, styles.targetUnitInput]}
                         value={targetUnit}
                         onChangeText={setTargetUnit}
@@ -3463,7 +3464,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                         >
                           <Ionicons name="reorder-two-outline" size={iconSize.sm} color={colors.textTertiary} />
                         </TouchableOpacity>
-                        <TextInput
+                        <TextField
                           style={styles.rotationItemTitle}
                           value={item.title}
                           onChangeText={text => setRotationItems(prev => prev.map(
@@ -3492,7 +3493,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                     {addingRotationItem ? (
                       <View style={styles.rotationItemRow}>
                         <Ionicons name="reorder-two-outline" size={iconSize.sm} color={colors.bgQuaternary} />
-                        <TextInput
+                        <TextField
                           ref={rotationInputRef}
                           autoFocus
                           style={styles.rotationItemTitle}
@@ -3600,7 +3601,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                               </View>
                             </TouchableOpacity>
                             {editingChainItemId === item.id ? (
-                              <TextInput
+                              <TextField
                                 ref={chainItemTitleEditRef}
                                 style={styles.chainItemTitleInput}
                                 value={chainItemTitleEdit}
@@ -3682,7 +3683,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                         <View style={styles.chainItemDot}>
                           <Text style={styles.chainItemDotText}>{chainItems.length + 1}</Text>
                         </View>
-                        <TextInput
+                        <TextField
                           ref={chainInputRef}
                           autoFocus
                           style={styles.chainInput}
@@ -3811,7 +3812,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   pick closes it: a Pick-one with no options is a question
                   with nothing to pick. */}
               {deliverableKind === 'choice' && (
-                <TextInput
+                <TextField
                   style={[styles.fieldBox, styles.followUpTaskTitleInput]}
                   value={deliverableOptionsText}
                   onChangeText={setDeliverableOptionsText}
@@ -4072,7 +4073,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 expanded={fieldOpen('medication')}
                 onToggle={() => toggleField('medication')}
               >
-                <TextInput
+                <TextField
                   style={styles.fieldBox}
                   value={medicationName ?? ''}
                   onChangeText={text => setMedicationName(text || null)}
@@ -4104,7 +4105,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                     it labels nothing. */}
                 {medicationName !== null && (
                   <>
-                    <TextInput
+                    <TextField
                       style={[styles.fieldBox, styles.medicationAmountInput]}
                       value={medicationAmount}
                       onChangeText={setMedicationAmount}
@@ -4747,7 +4748,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 describeValue={n => (n === null ? 'off' : formatDuration(n))}
               />
               {completionTimerMinutes !== null && (
-                <TextInput
+                <TextField
                   style={[styles.fieldBox, styles.completionTimerNoteInput]}
                   value={completionTimerNote ?? ''}
                   onChangeText={text => setCompletionTimerNote(text || null)}
@@ -4784,7 +4785,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             {showLocationField && (
               <View style={[styles.linkCustomRow, styles.linkCustomRowSpaced]}>
                 <Ionicons name="location-outline" size={16} color={colors.textSecondary} />
-                <TextInput
+                <TextField
                   style={styles.linkCustomInput}
                   value={locationText}
                   onChangeText={setLocationText}
@@ -4907,7 +4908,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                         describeValue={n => (n === null ? 'not a supply' : formatSupplyLeft(n, supplyUnit))}
                       />
                       {supplyCount !== null && (
-                        <TextInput
+                        <TextField
                           style={[styles.fieldBox, styles.targetUnitInput]}
                           value={supplyUnit}
                           onChangeText={setSupplyUnit}
@@ -5321,7 +5322,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                     Hidden until there's a count, since on its own a title names
                     a task nothing will ever create. */}
                 {followUpTaskEveryN !== null && (
-                  <TextInput
+                  <TextField
                     style={[styles.fieldBox, styles.followUpTaskTitleInput]}
                     value={followUpTaskTitle}
                     onChangeText={setFollowUpTaskTitle}
@@ -5590,7 +5591,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 </TouchableOpacity>
               ))}
               {addingTag ? (
-                <TextInput
+                <TextField
                   autoFocus
                   style={styles.tagInput}
                   value={newTag}
@@ -5704,7 +5705,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   </View>
                   </TouchableOpacity>
                   {editingSubtaskId === sub.id ? (
-                    <TextInput
+                    <TextField
                       ref={subtaskTitleEditRef}
                       style={styles.subtaskTitleInput}
                       value={subtaskTitleEdit}
@@ -5761,7 +5762,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               <View style={styles.subtaskCheck}>
                 <View style={styles.subtaskBox} />
               </View>
-              <TextInput
+              <TextField
                 ref={newSubtaskInputRef}
                 style={styles.subtaskInput}
                 value={newSubtaskTitle}
@@ -5866,7 +5867,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             </View>
             {customEffortOpen && (
               <View style={styles.customEffortRow}>
-                <TextInput
+                <TextField
                   style={styles.customEffortInput}
                   value={customEffortText}
                   onChangeText={t => { setCustomEffortText(t); applyCustomEffort(t, customEffortUnit); }}
@@ -5994,7 +5995,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 </View>
                 <View style={styles.linkCustomRow}>
                   <Ionicons name="globe-outline" size={16} color={colors.textSecondary} />
-                  <TextInput
+                  <TextField
                     style={styles.linkCustomInput}
                     value={customLinkText}
                     onChangeText={setCustomLinkText}
@@ -6036,7 +6037,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             {showPhoneField && (
               <View style={[styles.linkCustomRow, styles.linkCustomRowSpaced]}>
                 <Ionicons name="call-outline" size={16} color={colors.textSecondary} />
-                <TextInput
+                <TextField
                   style={styles.linkCustomInput}
                   value={phoneText}
                   onChangeText={t => setPhoneText(formatPhoneInput(t))}
@@ -6090,7 +6091,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             {showEmailField && (
               <View style={[styles.linkCustomRow, styles.linkCustomRowSpaced]}>
                 <Ionicons name="mail-outline" size={16} color={colors.textSecondary} />
-                <TextInput
+                <TextField
                   style={styles.linkCustomInput}
                   value={emailText}
                   onChangeText={setEmailText}

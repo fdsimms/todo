@@ -4,7 +4,6 @@ import {
   Keyboard,
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
@@ -63,6 +62,7 @@ import { generateId } from '../utils/id';
 import { haptics } from '../utils/haptics';
 import { GROCERY_NAME_MAX_LENGTH } from '../types';
 import type { ReceiptMatchConfidence } from '../utils/receiptMatch';
+import { TextField } from './TextField';
 
 /** Matches the shopping list's own checkbox, same as the receipt sheet's. */
 const CHECK_SIZE = 22;
@@ -986,7 +986,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                     </TouchableOpacity>
 
                     <View style={styles.rowBody}>
-                      <TextInput
+                      <TextField
                         style={styles.rowInput}
                         value={row.name}
                         editable={nameable}
@@ -1246,7 +1246,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
 
           <Text style={styles.label}>NO BARCODE</Text>
           <View style={styles.manualRow}>
-            <TextInput
+            <TextField
               style={styles.manualInput}
               value={manual}
               onChangeText={setManual}

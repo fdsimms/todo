@@ -16,7 +16,6 @@ import {
   View,
   Text,
   ScrollView,
-  TextInput,
   TouchableOpacity,
   StyleSheet,
 } from 'react-native';
@@ -62,6 +61,7 @@ import { onHandNameKeys } from '../utils/grocerySuggest';
 import { formatScale, isUnscaled, scaleQuantity } from '../utils/recipeScale';
 import { convertQuantity } from '../utils/unitConvert';
 import { ingredientWeightText, weightLookups as buildWeightLookups } from '../utils/lineWeight';
+import { TextField } from './TextField';
 
 interface Props {
   visible: boolean;
@@ -670,7 +670,7 @@ export function CookModeSheet({
                     />
                   ) : (
                     <>
-                      <TextInput
+                      <TextField
                         style={styles.askInput}
                         value={question}
                         onChangeText={setQuestion}

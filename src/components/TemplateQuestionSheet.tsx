@@ -2,7 +2,6 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   StyleSheet,
   Alert,
@@ -23,6 +22,7 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { SegmentedControl } from './SegmentedControl';
 import { InlineAction } from './InlineAction';
 import { TemplateQuestionItemsSheet } from './TemplateQuestionItemsSheet';
+import { TextField } from './TextField';
 
 interface Props {
   visible: boolean;
@@ -173,7 +173,7 @@ export function TemplateQuestionSheet({ visible, templateId, question, onClose }
         />
       }
     >
-      <TextInput
+      <TextField
         style={styles.titleInput}
         value={prompt}
         onChangeText={setPrompt}
@@ -200,7 +200,7 @@ export function TemplateQuestionSheet({ visible, templateId, question, onClose }
           <Text style={styles.note}>The first one is what a run starts on.</Text>
           {options.map((option, index) => (
             <View key={index} style={styles.optionRow}>
-              <TextInput
+              <TextField
                 style={styles.optionInput}
                 value={option}
                 onChangeText={text => setOption(index, text)}
@@ -264,7 +264,7 @@ export function TemplateQuestionSheet({ visible, templateId, question, onClose }
       {kind !== 'choice' && kind !== 'people' && fromDates === 'none' && (
         <View style={styles.sectionCard}>
           <Text style={styles.fieldLabel}>DEFAULT</Text>
-          <TextInput
+          <TextField
             style={styles.valueInput}
             value={defaultValue}
             onChangeText={setDefaultValue}
@@ -285,7 +285,7 @@ export function TemplateQuestionSheet({ visible, templateId, question, onClose }
           <Text style={styles.fieldLabel}>FILLS THE BLANK</Text>
           <View style={styles.blankRow}>
             <Text style={styles.brace}>{'{'}</Text>
-            <TextInput
+            <TextField
               style={styles.valueInput}
               value={name}
               onChangeText={setName}

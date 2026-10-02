@@ -7,7 +7,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -32,6 +31,7 @@ import { PillGroup, type PillGroupOption } from './PillGroup';
 import { SegmentedControl } from './SegmentedControl';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { TextField } from './TextField';
 
 interface Props {
   visible: boolean;
@@ -289,7 +289,7 @@ export function ProductSheet({ visible, itemId, editingProductId = null, onClose
           {...keyboardScroll.props}
         >
           <Text style={styles.label}>BRAND</Text>
-          <TextInput
+          <TextField
             style={styles.input}
             value={brand}
             onChangeText={t => { setBrand(t); setClash(false); }}
@@ -303,7 +303,7 @@ export function ProductSheet({ visible, itemId, editingProductId = null, onClose
           <Chips values={brandChips} onPick={v => { setBrand(v); setClash(false); }} noun="brand" styles={styles} />
 
           <Text style={[styles.label, styles.labelSpaced]}>VARIANT</Text>
-          <TextInput
+          <TextField
             style={styles.input}
             value={variant}
             onChangeText={t => { setVariant(t); setClash(false); }}
@@ -350,7 +350,7 @@ export function ProductSheet({ visible, itemId, editingProductId = null, onClose
           </Text>
 
           <Text style={[styles.label, styles.labelSpaced]}>NOTE</Text>
-          <TextInput
+          <TextField
             style={[styles.input, styles.noteInput]}
             value={note}
             onChangeText={setNote}

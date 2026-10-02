@@ -44,6 +44,7 @@ import { resolveActiveTrip } from '../utils/activeTrip';
 import { haptics } from '../utils/haptics';
 import { confirmDelete } from '../utils/confirmDelete';
 import { AISLE_NAME_MAX_LENGTH, SHOP_NAME_MAX_LENGTH, type GroceryGroupBy, type Shop } from '../types';
+import { TextField } from './TextField';
 
 interface Props {
   visible: boolean;
@@ -516,7 +517,7 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
                 <Ionicons name="reorder-three-outline" size={iconSize.md} color={colors.textTertiary} />
 
                 {editing ? (
-                  <TextInput
+                  <TextField
                     style={styles.renameInput}
                     value={editingName}
                     onChangeText={setEditingName}
@@ -579,7 +580,7 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
               </View>
 
               <View style={styles.addWrap}>
-                <TextInput
+                <TextField
                   ref={newAisleInputRef}
                   style={styles.addInput}
                   value={newAisle}
@@ -721,7 +722,7 @@ function StoresTab({
               <Ionicons name="reorder-three-outline" size={iconSize.md} color={colors.textTertiary} />
 
               {editing ? (
-                <TextInput
+                <TextField
                   style={styles.renameInput}
                   value={editingName}
                   onChangeText={setEditingName}
@@ -855,7 +856,7 @@ function StoresTab({
         }
         ListFooterComponent={
           <View style={styles.addWrap}>
-            <TextInput
+            <TextField
               ref={newShopInputRef}
               style={styles.addInput}
               value={newShop}

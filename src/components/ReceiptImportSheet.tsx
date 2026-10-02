@@ -3,7 +3,6 @@ import {
   Alert,
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
@@ -56,6 +55,7 @@ import { EmptyState } from './EmptyState';
 import { formatScheduledDate } from '../utils/dateUtils';
 import { haptics } from '../utils/haptics';
 import { GROCERY_NAME_MAX_LENGTH, SHOP_NAME_MAX_LENGTH, type GroceryItem, type ReceiptStyle } from '../types';
+import { TextField } from './TextField';
 
 /**
  * One "Left alone" line the user opted to add as bought instead — either
@@ -1057,7 +1057,7 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
                         checkbox, the way BarcodeScanSheet's row controls are. */}
                     <View style={styles.rowControls}>
                       {showNameField && (
-                        <TextInput
+                        <TextField
                           style={styles.nameInput}
                           value={nameEdits.get(i) ?? match.line.name}
                           onChangeText={text => renameFor(i, text)}

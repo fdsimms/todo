@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState, useEffect } from 'react';
-import { Alert, Keyboard, Platform, View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import { Alert, Keyboard, Platform, View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
@@ -37,6 +37,7 @@ import { resolveShoppingSubstitutes, substitutesFor } from '../utils/itemSubs';
 import { describeShopAisles, isOutOfRange } from '../utils/groceryShops';
 import { featureShown } from '../utils/simpleMode';
 import { GROCERY_NAME_MAX_LENGTH, SHOP_NAME_MAX_LENGTH } from '../types';
+import { TextField } from './TextField';
 
 /** Matches the shopping list's own checkbox, so the shape reads as familiar. */
 const CHECK_SIZE = 22;
@@ -881,7 +882,7 @@ export function FinishShoppingSheet({
                         </View>
                         <View style={styles.priceField}>
                           <Text style={styles.priceSymbol}>{currencySymbol}</Text>
-                          <TextInput
+                          <TextField
                             style={styles.priceInput}
                             value={priceText[row.id] ?? ''}
                             onChangeText={text =>

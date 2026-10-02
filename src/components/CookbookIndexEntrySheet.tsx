@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, TextInput, ScrollView, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SheetModal } from './SheetModal';
@@ -13,6 +13,7 @@ import { haptics } from '../utils/haptics';
 import { confirmDelete } from '../utils/confirmDelete';
 import { cleanIndexIngredients, splitIngredientText } from '../utils/cookbookIndex';
 import { RECIPE_NAME_MAX_LENGTH, RECIPE_PAGE_MAX_LENGTH } from '../types';
+import { TextField } from './TextField';
 
 interface Props {
   visible: boolean;
@@ -134,7 +135,7 @@ export function CookbookIndexEntrySheet({ visible, cookbookId, entryId, onClose 
           {...keyboardScroll.props}
         >
           <Text style={styles.fieldLabel}>DISH</Text>
-          <TextInput
+          <TextField
             style={styles.input}
             value={title}
             onChangeText={setTitle}
@@ -147,7 +148,7 @@ export function CookbookIndexEntrySheet({ visible, cookbookId, entryId, onClose 
           />
 
           <Text style={[styles.fieldLabel, styles.fieldLabelSpaced]}>PAGE</Text>
-          <TextInput
+          <TextField
             style={styles.input}
             value={page}
             onChangeText={setPage}
@@ -159,7 +160,7 @@ export function CookbookIndexEntrySheet({ visible, cookbookId, entryId, onClose 
           />
 
           <Text style={[styles.fieldLabel, styles.fieldLabelSpaced]}>INGREDIENTS</Text>
-          <TextInput
+          <TextField
             style={styles.input}
             value={ingredients}
             onChangeText={setIngredients}

@@ -12,6 +12,7 @@ import { PillGroup } from './PillGroup';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { TextField } from './TextField';
 
 interface Props {
   visible: boolean;
@@ -121,7 +122,7 @@ export function PersonGroupEditor({ visible, person, onClose }: Props) {
           />
         }
       >
-        <TextInput
+        <TextField
           style={styles.titleInput}
           value={name}
           onChangeText={setName}
@@ -177,7 +178,7 @@ export function PersonGroupEditor({ visible, person, onClose }: Props) {
       <Text style={styles.groupLabel}>NEW GROUP</Text>
       <View style={styles.sectionCard}>
         <View style={styles.fieldRow}>
-          <TextInput
+          <TextField
             ref={newGroupInputRef}
             style={styles.newGroupInput}
             value={newGroupName}

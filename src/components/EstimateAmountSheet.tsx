@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { CardSheet, useCardSheet } from './CardSheet';
 import type { FoodLogEntry } from '../types';
 import { useColors } from '../theme/ThemeContext';
@@ -23,6 +23,7 @@ import { formatQuantityAmount } from '../utils/quantity';
 import { CountStepper } from './CountStepper';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { TextField } from './TextField';
 
 interface Props {
   visible: boolean;
@@ -208,7 +209,7 @@ export function EstimateAmountSheet({ visible, entry, onSave, onClose }: Props) 
           ) : (
             <View style={styles.amountBlock}>
               <View style={styles.amountRow}>
-                <TextInput
+                <TextField
                   style={styles.amountInput}
                   value={fieldText}
                   onChangeText={text => { setTyped(text); }}

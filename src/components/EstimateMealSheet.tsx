@@ -6,7 +6,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -70,6 +69,7 @@ import { PressableScale } from './PressableScale';
 import { SegmentedControl } from './SegmentedControl';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
+import { TextField } from './TextField';
 
 /**
  * "Cheeseburger and fries at Five Guys", read into figures to confirm.
@@ -894,7 +894,7 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
         return (
           <View style={styles.confirmWeightRow}>
             <Text style={styles.confirmWeightLabel}>Amount to log</Text>
-            <TextInput
+            <TextField
               style={styles.confirmWeightInput}
               value={amount.weight}
               onChangeText={text => editPending({ weight: text })}
@@ -1021,7 +1021,7 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
           keyboardDismissMode="interactive"
           {...keyboardScroll.props}
         >
-          <TextInput
+          <TextField
             style={styles.input}
             value={description}
             onChangeText={setDescription}
@@ -1132,7 +1132,7 @@ export function EstimateMealSheet({ visible, slot, at, mealPlanEntryId, initialD
                 </TouchableOpacity>
               ) : (
                 <View style={styles.amountRow}>
-                  <TextInput
+                  <TextField
                     style={styles.amountInput}
                     value={amountDraft}
                     onChangeText={setAmountDraft}

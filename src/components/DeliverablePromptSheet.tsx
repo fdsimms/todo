@@ -31,6 +31,7 @@ import {
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { WhenPicker } from './WhenPicker';
 import { useSheetMount } from '../hooks/useSheetMount';
+import { TextField } from './TextField';
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -274,7 +275,7 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
         ) : (
           <View style={styles.field}>
             <Ionicons name={meta.icon as IoniconName} size={iconSize.sm} color={colors.textSecondary} />
-            <TextInput
+            <TextField
               ref={inputRef}
               style={styles.input}
               value={draft}

@@ -5,7 +5,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import { SheetModal } from './SheetModal';
@@ -45,6 +44,7 @@ import { SegmentedControl } from './SegmentedControl';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
+import { TextField } from './TextField';
 
 /**
  * Typing in a label panel by hand, for the food no database has.
@@ -529,7 +529,7 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
             <View style={styles.card}>
               <View style={styles.field}>
                 <Text style={styles.fieldLabel}>Serving size</Text>
-                <TextInput
+                <TextField
                   style={styles.textInput}
                   value={form.servingText}
                   onChangeText={t => setForm(f => ({ ...f, servingText: t }))}
@@ -542,7 +542,7 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
               <View style={styles.field}>
                 <Text style={styles.fieldLabel}>Serving weight</Text>
                 <View style={styles.numberRow}>
-                  <TextInput
+                  <TextField
                     style={[styles.numberInput, bad.includes('servingGrams') && styles.inputBad]}
                     value={weightText}
                     onChangeText={setWeightAmount}
@@ -594,7 +594,7 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
 
             <Text style={styles.groupLabel}>NUTRIENTS</Text>
             <View style={styles.divideRow}>
-              <TextInput
+              <TextField
                 style={styles.divideInput}
                 value={servingsText}
                 onChangeText={setServingsText}
@@ -621,7 +621,7 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
                 <View key={key} style={styles.field}>
                   <Text style={styles.fieldLabel}>{NUTRIENT_LABEL[key].label}</Text>
                   <View style={styles.numberRow}>
-                    <TextInput
+                    <TextField
                       style={[styles.numberInput, bad.includes(key) && styles.inputBad]}
                       value={form.amounts[key]}
                       onChangeText={t => setAmount(key, t)}

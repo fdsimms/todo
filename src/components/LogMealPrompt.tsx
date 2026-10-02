@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Keyboard, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Keyboard, KeyboardAvoidingView, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SheetModal } from './SheetModal';
 import { useShallow } from 'zustand/react/shallow';
 import { useColors } from '../theme/ThemeContext';
@@ -26,6 +26,7 @@ import { CountStepper } from './CountStepper';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { TextField } from './TextField';
 
 /** The two ways of saying how much of a dish was eaten. */
 type Measure = 'weight' | 'servings';
@@ -276,7 +277,7 @@ export function LogMealPrompt() {
           {measure === 'weight' && canWeigh ? (
             <>
               <View style={styles.weightRow}>
-                <TextInput
+                <TextField
                   style={styles.weightInput}
                   value={platedText}
                   onChangeText={setPlatedText}

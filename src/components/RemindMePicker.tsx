@@ -3,7 +3,6 @@ import {
   Keyboard,
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   StyleSheet,
   Dimensions,
@@ -35,6 +34,7 @@ import { CountStepper } from './CountStepper';
 import { ScrollEdgeFade } from './ScrollEdgeFade';
 import { SheetScrim } from './SheetScrim';
 import type { ReminderKind } from '../types';
+import { TextField } from './TextField';
 
 type Mode = 'date' | 'before' | 'visible';
 
@@ -255,7 +255,7 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
               <>
             {/* Natural language input */}
             <View style={styles.nlSection}>
-              <TextInput
+              <TextField
                 style={styles.nlInput}
                 value={nlText}
                 onChangeText={onNlChange}

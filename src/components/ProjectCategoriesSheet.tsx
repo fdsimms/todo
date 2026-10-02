@@ -4,7 +4,6 @@ import {
   Keyboard,
   View,
   Text,
-  TextInput,
   ScrollView,
   TouchableOpacity,
   StyleSheet,
@@ -27,6 +26,7 @@ import { SortableList } from './SortableList';
 import { confirmDelete } from '../utils/confirmDelete';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
+import { TextField } from './TextField';
 
 interface Props {
   visible: boolean;
@@ -255,7 +255,7 @@ export function ProjectCategoriesSheet({ visible, onClose }: Props) {
                       </View>
                       <View style={styles.rowInfo}>
                         {editing ? (
-                          <TextInput
+                          <TextField
                             autoFocus
                             style={styles.rowInput}
                             value={draft}
@@ -308,7 +308,7 @@ export function ProjectCategoriesSheet({ visible, onClose }: Props) {
 
           <View style={styles.addRow}>
             {addingNew ? (
-              <TextInput
+              <TextField
                 autoFocus
                 style={styles.addInput}
                 value={newName}

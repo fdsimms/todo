@@ -75,6 +75,7 @@ import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessor
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { useFilterField } from '../hooks/useFilterField';
+import { TextField } from './TextField';
 
 /**
  * Writing down something eaten.
@@ -1255,7 +1256,7 @@ export function FoodLogEntrySheet({
               const selectedFoodUnit = usingFoodUnitPills ? foodUnitOptions.find(o => o.key === amountUnit) : undefined;
               return (
                 <View style={usingFoodUnitPills ? styles.inputRow : undefined}>
-                  <TextInput
+                  <TextField
                     style={usingFoodUnitPills ? styles.inputWithSuffix : styles.input}
                     value={usingFoodUnitPills ? amountNumber : amount}
                     onChangeText={text => {
@@ -1386,7 +1387,7 @@ export function FoodLogEntrySheet({
                   <Text style={styles.weighHeaderLabel}>{`Weight (${weighUnitLabel})`}</Text>
                 </View>
                 <View style={styles.weighRow}>
-                  <TextInput
+                  <TextField
                     style={styles.weighInput}
                     value={weighGrams}
                     onChangeText={setWeighGrams}
@@ -1487,7 +1488,7 @@ export function FoodLogEntrySheet({
                 {varyingResolved.map(({ line, typed, resolved }) => (
                   <View key={line.id} style={styles.varyingRow}>
                     <Text style={styles.varyingName} numberOfLines={1}>{line.name}</Text>
-                    <TextInput
+                    <TextField
                       style={styles.varyingInput}
                       value={varyingAmounts[line.id] ?? ''}
                       onChangeText={text => setVaryingAmounts(a => ({ ...a, [line.id]: text }))}

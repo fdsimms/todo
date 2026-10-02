@@ -1,8 +1,9 @@
 import React from 'react';
-import { Platform, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Platform, StyleSheet, Text, View } from 'react-native';
 import { useColors } from '../theme/ThemeContext';
 import { font, radius, spacing, type Colors } from '../theme';
 import { NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
+import { TextField } from './TextField';
 
 interface Props {
   /** Minutes on this row; null = none set, and whatever the fallback is applies. */
@@ -38,7 +39,7 @@ export function StepMinutes({ value, label, what = 'Time estimate', onChange }: 
 
   return (
     <View style={styles.wrap}>
-      <TextInput
+      <TextField
         style={[styles.input, value != null && styles.inputSet]}
         value={value != null ? String(value) : ''}
         onChangeText={text => {

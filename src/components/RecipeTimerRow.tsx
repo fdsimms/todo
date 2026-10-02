@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Alert, Platform, View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
+import { Alert, Platform, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors } from '../theme';
@@ -9,6 +9,7 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { haptics } from '../utils/haptics';
 import { ProgressBar } from './ProgressBar';
 import { NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
+import { TextField } from './TextField';
 
 interface Props {
   /** "Prep" or "Cook" — drives the idle/counting-down copy ("Prep for 15m", "Time this cook"). */
@@ -178,7 +179,7 @@ export function RecipeTimerRow({
           {!inProgress && (
             <View style={styles.manualRow}>
               <Text style={styles.manualLabel}>or log a time</Text>
-              <TextInput
+              <TextField
                 style={styles.manualInput}
                 value={manualMinutes}
                 onChangeText={text => setManualMinutes(text.replace(/[^0-9]/g, ''))}

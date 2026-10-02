@@ -17,6 +17,7 @@ import { SheetScrim } from './SheetScrim';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, animation, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { TextField } from './TextField';
 
 interface Props {
   visible: boolean;
@@ -172,7 +173,7 @@ export function QuickAddNameSheet({
                 )}
               </TouchableOpacity>
             )}
-            <TextInput
+            <TextField
               ref={inputRef}
               style={styles.input}
               placeholder={placeholder}

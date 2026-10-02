@@ -27,6 +27,7 @@ import { formatPrice, formatPriceInput, parsePriceInput, priceToInput } from '..
 import { groceryNameKey } from '../utils/groceryParse';
 import { groceryRowNameSpace, quantityFitsBesideName } from '../utils/groceryRowQuantity';
 import { haptics } from '../utils/haptics';
+import { TextField } from './TextField';
 
 // Matches GroceryItemSheet's own price field — "10000.00" is the longest a
 // price this app allows (GROCERY_PRICE_MINOR_MAX) ever renders as.
@@ -426,7 +427,7 @@ export const GroceryRow = React.memo(function GroceryRow({
       >
         <View style={styles.body}>
           {renaming ? (
-            <TextInput
+            <TextField
               style={styles.nameInput}
               value={draftName}
               onChangeText={editDraftName}
@@ -583,7 +584,7 @@ export const GroceryRow = React.memo(function GroceryRow({
               {pricingActive ? (
                 <View style={styles.priceField}>
                   <Text style={styles.priceSymbol}>{currencySymbol}</Text>
-                  <TextInput
+                  <TextField
                     style={styles.priceInput}
                     value={draftPrice}
                     onChangeText={text => setDraftPrice(formatPriceInput(text))}

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, TextInput, StyleSheet, Alert } from 'react-native';
+import { View, Text, StyleSheet, Alert } from 'react-native';
 import { SheetModal } from './SheetModal';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -8,6 +8,7 @@ import { spacing, radius, font, fontWeight, type Colors } from '../theme';
 import { parseGuestNames } from '../utils/rsvp';
 import { RSVP_OPTIONS, parseDeliverableOptions } from '../utils/deliverables';
 import { haptics } from '../utils/haptics';
+import { TextField } from './TextField';
 
 interface Props {
   visible: boolean;
@@ -81,7 +82,7 @@ export function AddGuestsSheet({ visible, onClose, onAdd }: Props) {
         />
         <View style={styles.body}>
           <Text style={styles.label}>Names</Text>
-          <TextInput
+          <TextField
             style={[styles.input, styles.names]}
             value={names}
             onChangeText={setNames}
@@ -92,7 +93,7 @@ export function AddGuestsSheet({ visible, onClose, onAdd }: Props) {
             accessibilityLabel="Names, one per line"
           />
           <Text style={styles.label}>Ask each one</Text>
-          <TextInput
+          <TextField
             style={styles.input}
             value={options}
             onChangeText={setOptions}

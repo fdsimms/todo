@@ -27,6 +27,7 @@ import { InlineAction } from './InlineAction';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { haptics } from '../utils/haptics';
 import { recipeInBook, recipeNameKey } from '../utils/recipeUtils';
+import { TextField } from './TextField';
 
 interface Props {
   visible: boolean;
@@ -299,7 +300,7 @@ export function InventRecipeSheet({ visible, onClose, onCreated }: Props) {
           )}
 
           {!generating && (
-            <TextInput
+            <TextField
               ref={hintsInputRef}
               style={styles.hintInput}
               value={hints}

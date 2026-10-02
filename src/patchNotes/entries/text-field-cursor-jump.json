@@ -1,0 +1,1 @@
+{ "message": "Fixed the cursor sometimes jumping while you type, so a word like \"rutabaga\" no longer comes out as \"utabagar\". This covers every text field in the app, including quick add and the task editor.", "date": "2026-10-02" }
