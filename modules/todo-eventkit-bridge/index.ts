@@ -19,6 +19,7 @@ interface TodoEventKitBridgeNativeModule {
   searchPlaces?(query: string): Promise<unknown>;
   setStructuredLocation?(eventId: string, title: string, latitude: number, longitude: number): Promise<boolean>;
   estimateTravelTime?(eventId: string, address: string, departAt: number, mode: string): Promise<number>;
+  eventCoordinates?(eventIds: string[]): Promise<unknown>;
 }
 
 // requireNativeModule throws when the module isn't linked (Android, web,
@@ -147,5 +148,22 @@ export async function estimateTravelTime(
   } catch (error) {
     console.warn('[todo-eventkit-bridge] travel estimate failed', error);
     return null;
+  }
+}
+
+/**
+ * The map pin (structured location coordinate) of each event that has one, by
+ * event id, unvalidated: `eventCoordinate` in src/utils/calendarSync.ts checks
+ * the shape. Empty when the module is missing, the build predates this
+ * function, or the call fails.
+ */
+export async function eventCoordinatesRaw(eventIds: string[]): Promise<Record<string, unknown>> {
+  if (!nativeModule || eventIds.length === 0 || typeof nativeModule.eventCoordinates !== 'function') return {};
+  try {
+    const result = await nativeModule.eventCoordinates(eventIds);
+    return result && typeof result === 'object' ? (result as Record<string, unknown>) : {};
+  } catch (error) {
+    console.warn('[todo-eventkit-bridge] event coordinate read failed', error);
+    return {};
   }
 }

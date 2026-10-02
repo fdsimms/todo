@@ -72,6 +72,8 @@ import { telUrl, smsUrl } from '../utils/phone';
 import { type ReachOutKind } from '../utils/reachOutIntent';
 import { mailtoUrl } from '../utils/email';
 import { directionsUrl } from '../utils/maps';
+import { eventCoordinate } from '../utils/calendarSync';
+import { travelSourceEventId } from '../utils/travelTasks';
 import { animateLayout } from '../utils/layoutAnimation';
 import { nextMeasuredHeight } from '../utils/measuredHeight';
 import { describePendingImport } from '../utils/remindersImport';
@@ -482,9 +484,15 @@ export const TaskItem = React.memo(function TaskItem({
   // change doesn't re-render every row on the list.
   const mapsUrl = directionsUrl(task.location);
   const handleDirections = async () => {
-    const url = directionsUrl(task.location, useSettingsStore.getState().mapsApp);
-    if (!url) return;
+    if (!mapsUrl) return;
     haptics.tap();
+    // A "Leave for X" row was written for one calendar event, so it can route
+    // to that event's map pin when it has one; any other row searches the text.
+    const sourceId = task.generatedKind === 'travel' ? task.generatedSourceId : null;
+    const eventId = sourceId ? travelSourceEventId(sourceId) : null;
+    const coordinate = eventId ? await eventCoordinate(eventId) : null;
+    const url = directionsUrl(task.location, useSettingsStore.getState().mapsApp, coordinate);
+    if (!url) return;
     try {
       await Linking.openURL(url);
     } catch {
