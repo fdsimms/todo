@@ -8,6 +8,7 @@ import { setHours } from 'date-fns/setHours';
 import { setMinutes } from 'date-fns/setMinutes';
 import { setSeconds } from 'date-fns/setSeconds';
 import { setMilliseconds } from 'date-fns/setMilliseconds';
+import { isSameDay } from 'date-fns/isSameDay';
 import { startOfDay } from 'date-fns/startOfDay';
 import { nextDay } from 'date-fns/nextDay';
 import { isSameWeek } from 'date-fns/isSameWeek';
@@ -111,7 +112,7 @@ function twelveHourClock(hour: number, min: number, meridiem: string): ClockTime
 }
 
 /** Pull a clock time ("3pm", "5p", "3:30pm", "15:00", "noon", "midnight") out of the text. */
-export function extractTime(text: string): { time: ClockTime; rest: string } | null {
+export function extractTime(text: string): { time: ClockTime; rest: string; ambiguous?: boolean } | null {
   let m: RegExpMatchArray | null;
 
   if ((m = text.match(/\bnoon\b/))) return { time: { h: 12, m: 0 }, rest: strip(text, m) };
@@ -149,7 +150,9 @@ export function extractTime(text: string): { time: ClockTime; rest: string } | n
     const h = parseInt(m[1], 10);
     const min = parseInt(m[2], 10);
     if (h > 23 || min > 59) return null;
-    return { time: { h, m: min }, rest: strip(text, m) };
+    // "5:30" with no am/pm could be either half of the day; a caller dating it
+    // today can use that to pick the one that hasn't passed yet.
+    return { time: { h, m: min }, rest: strip(text, m), ...(h >= 1 && h <= 11 ? { ambiguous: true } : {}) };
   }
 
   return null;
@@ -378,6 +381,9 @@ export function parseNaturalDate(input: string, now: Date = new Date(), clockNow
 
   if (time) {
     date = atTime(date, time.h, time.m);
+    if (clock?.ambiguous && date.getTime() <= clockNow.getTime() && isSameDay(date, clockNow)) {
+      date = addHours(date, 12);
+    }
     // Pure time in the past (e.g. "3pm" typed at 5pm) rolls to tomorrow.
     if (!datePart && date.getTime() <= clockNow.getTime()) {
       date = addDays(date, 1);

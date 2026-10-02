@@ -692,6 +692,7 @@ function parseSuffix(text: string, now: Date, singleWord: boolean, clockNow: Dat
   let segments: TimeOfDay[] = [];
   let hasTime = false;
   let explicitClockTime: ClockTime | null = null;
+  let ambiguousClock = false;
   let windowStart: string | null = null;
   let windowEnd: string | null = null;
   const clock = extractTime(t);
@@ -725,6 +726,7 @@ function parseSuffix(text: string, now: Date, singleWord: boolean, clockNow: Dat
     t = clock.rest;
     hasTime = true;
     explicitClockTime = clock.time;
+    ambiguousClock = clock.ambiguous === true;
   } else {
     const part = extractDayPart(t);
     if (part) {
@@ -775,6 +777,16 @@ function parseSuffix(text: string, now: Date, singleWord: boolean, clockNow: Dat
     due = dueAt(titleDate);
   } else {
     due = dueAt(now); // time-only input ("at 3pm") → today
+  }
+
+  // "today at 5:30" typed at 9am means 5:30 PM: an unmarked clock that has
+  // already passed today reads as the other half of the day.
+  if (ambiguousClock && explicitClockTime && isSameDay(due, clockNow)) {
+    const at = new Date(due.getFullYear(), due.getMonth(), due.getDate(), explicitClockTime.h, explicitClockTime.m);
+    if (at.getTime() <= clockNow.getTime() && explicitClockTime.h < 12) {
+      explicitClockTime = { h: explicitClockTime.h + 12, m: explicitClockTime.m };
+      segments = [segmentForHour(explicitClockTime.h)];
+    }
   }
 
   return {
