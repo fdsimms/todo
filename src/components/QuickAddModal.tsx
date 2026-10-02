@@ -1617,7 +1617,10 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     {
       key: 'date', icon: 'calendar-outline',
       value: dueDate != null ? formatDate(dueDate) : null,
-      onPress: () => setWhenPickerVisible(true),
+      // Keyboard dismissed first for the reason the category chip gives:
+      // WhenPicker takes no focus when it opens, so without this the title keeps
+      // the keyboard behind it and comes back with its token bar gone.
+      onPress: () => { Keyboard.dismiss(); setWhenPickerVisible(true); },
     },
     {
       key: 'repeat', icon: 'repeat', panel: 'repeat',
