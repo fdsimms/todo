@@ -223,6 +223,7 @@ export interface TaskDraft {
   quotaIntervalMinutes?: number | null;
   quotaReminders?: boolean;
   quotaAlwaysVisible?: boolean;
+  followWaterTarget?: boolean;
   supplyCount?: number | null;
   supplyUnit?: string | null;
   supplyRefillCount?: number | null;
@@ -470,6 +471,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [quotaIntervalMinutes, setQuotaIntervalMinutes] = useState<number | null>(null);
   const [quotaReminders, setQuotaReminders] = useState(false);
   const [quotaAlwaysVisible, setQuotaAlwaysVisible] = useState(false);
+  const [followWaterTarget, setFollowWaterTarget] = useState(false);
   const [showTargetCount, setShowTargetCount] = useState(false);
   const [showHealthTarget, setShowHealthTarget] = useState(false);
   const [supplyCount, setSupplyCount] = useState<number | null>(null);
@@ -620,6 +622,10 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [showStreak, setShowStreak] = useState(false);
   const [polarity, setPolarity] = useState<Polarity>('positive');
   const [quotaPeriod, setQuotaPeriod] = useState<QuotaPeriod>('day');
+  // Whether "follow the water target" can mean anything for this task right
+  // now: a daily target that logs water, with an amount per unit to divide by.
+  const followsWaterTarget =
+    targetCount !== null && quotaPeriod === 'day' && logHealthMetric === 'waterMl' && logHealthAmount !== null;
   const [streakRequiresWindow, setStreakRequiresWindow] = useState(false);
 
   // Every picker section starts collapsed to its current value; opening one is
@@ -809,6 +815,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setQuotaIntervalMinutes(task.quotaIntervalMinutes ?? null);
       setQuotaReminders(task.quotaReminders ?? false);
       setQuotaAlwaysVisible(task.quotaAlwaysVisible ?? false);
+      setFollowWaterTarget(task.followWaterTarget ?? false);
       setSupplyCount(task.supplyCount ?? null);
       setSupplyUnit(task.supplyUnit ?? '');
       setSupplyRefillCount(task.supplyRefillCount ?? null);
@@ -872,7 +879,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     } else {
       setTitle(initialDraft?.title ?? ''); titleCaret.resetCaret(initialDraft?.title ?? ''); setNotes(initialDraft?.notes ?? ''); setCategory(initialDraft?.category ?? null); setProject(initialDraft?.projectId ?? null); setTags(initialDraft?.tags ?? []);
       setGroupId(initialDraft?.groupId ?? null);
-      setDueDate(initialDraft?.dueDate ?? null); setExtraDates([]); setSeriesRepeats(false); setDeadline(null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(null); setWindowEnd(null); setPenaltyMinutes(initialDraft?.penaltyMinutes ?? null); setGatesApps(initialDraft?.gatesApps ?? false); setPenaltyCutoffTime(initialDraft?.penaltyCutoffTime ?? null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setQuotaAlwaysVisible(initialDraft?.quotaAlwaysVisible ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setReminderTime(initialDraft?.reminderTime ?? null); setReminderKind('notification'); setReminderTimeAnchor('wallClock'); setReminderTouched(false);
+      setDueDate(initialDraft?.dueDate ?? null); setExtraDates([]); setSeriesRepeats(false); setDeadline(null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(null); setWindowEnd(null); setPenaltyMinutes(initialDraft?.penaltyMinutes ?? null); setGatesApps(initialDraft?.gatesApps ?? false); setPenaltyCutoffTime(initialDraft?.penaltyCutoffTime ?? null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setQuotaAlwaysVisible(initialDraft?.quotaAlwaysVisible ?? false); setFollowWaterTarget(initialDraft?.followWaterTarget ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setReminderTime(initialDraft?.reminderTime ?? null); setReminderKind('notification'); setReminderTimeAnchor('wallClock'); setReminderTouched(false);
       setRecurrenceType(initialDraft?.recurrenceType ?? 'none'); setRecurrenceInterval(initialDraft?.recurrenceInterval ?? 1);
       setRecurrenceDays(initialDraft?.recurrenceDays ?? []);
       setRecurrenceMonthDay(initialDraft?.recurrenceMonthDay ?? null);
@@ -968,6 +975,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       quotaIntervalMinutes: task ? (task.quotaIntervalMinutes ?? null) : (initialDraft?.quotaIntervalMinutes ?? null),
       quotaReminders: task ? (task.quotaReminders ?? false) : (initialDraft?.quotaReminders ?? false),
       quotaAlwaysVisible: task ? (task.quotaAlwaysVisible ?? false) : (initialDraft?.quotaAlwaysVisible ?? false),
+      followWaterTarget: task ? (task.followWaterTarget ?? false) : (initialDraft?.followWaterTarget ?? false),
       quotaPeriod: task?.quotaPeriod ?? 'day',
       supplyCount: task ? (task.supplyCount ?? null) : null,
       supplyUnit: task ? (task.supplyUnit ?? '') : '',
@@ -1405,6 +1413,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       quotaIntervalMinutes: targetCount !== null ? quotaIntervalMinutes : null,
       quotaReminders: targetCount !== null ? quotaReminders : false,
       quotaAlwaysVisible: targetCount !== null ? quotaAlwaysVisible : false,
+      // Cleared when what it follows goes: it only means anything on a daily
+      // target that logs water.
+      followWaterTarget: followsWaterTarget ? followWaterTarget : false,
       // Cleared with the target, same as the flags around it: a period left
       // behind on a task that stopped being a target would decide the span of a
       // count that no longer exists.
@@ -2080,6 +2091,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       quotaIntervalMinutes: targetCount !== null ? quotaIntervalMinutes : null,
       quotaReminders: targetCount !== null ? quotaReminders : false,
       quotaAlwaysVisible: targetCount !== null ? quotaAlwaysVisible : false,
+      // Cleared when what it follows goes: it only means anything on a daily
+      // target that logs water.
+      followWaterTarget: followsWaterTarget ? followWaterTarget : false,
       // Cleared with the target, same as the flags around it: a period left
       // behind on a task that stopped being a target would decide the span of a
       // count that no longer exists.
@@ -4005,6 +4019,27 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                       </View>
                     )}
                   </View>
+                  {followsWaterTarget && (
+                    <TouchableOpacity
+                      style={styles.optionRow}
+                      onPress={() => { haptics.tap(); setFollowWaterTarget(v => !v); }}
+                      activeOpacity={interaction.activeOpacity}
+                      accessibilityRole="switch"
+                      accessibilityLabel="Follow the water target"
+                      accessibilityState={{ checked: followWaterTarget }}
+                    >
+                      <Ionicons name="water-outline" size={18} color={followWaterTarget ? colors.accent : colors.textSecondary} />
+                      <View style={styles.optionContent}>
+                        <Text style={styles.optionLabel}>Follow the water target</Text>
+                        <Text style={styles.optionHint}>
+                          Sets the daily target from your water target in the food log, including the extra for exercise, divided by the amount above. The target you set here is replaced.
+                        </Text>
+                      </View>
+                      <View style={[styles.toggle, followWaterTarget && styles.toggleOn]}>
+                        <View style={[styles.toggleKnob, followWaterTarget && styles.toggleKnobOn]} />
+                      </View>
+                    </TouchableOpacity>
+                  )}
                 </CollapsibleField>
               );
             })(),

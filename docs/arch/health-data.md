@@ -864,6 +864,19 @@ Three things about it are worth not re-deriving:
   ids the previous write had not finished stamping back. The day view holds the
   pending figure for 600ms and lands it once.
 
+- **A task can follow the target this card shows.** `Task.followWaterTarget` makes
+  a daily water task's count the effective target (`effectiveWaterTargetMl`, so
+  the exercise boost included) over its per-unit amount, written by
+  `syncWaterQuotaTasks`. Display-time stays display-time: nothing here writes
+  `nutritionTargets.waterMl`, and an exercise reading that has not arrived leaves
+  the count alone rather than reading as "no exercise". What is owed after the
+  task was already finished is the `waterShortfall` generator, in
+  `docs/arch/generated-tasks.md`.
+- **The water row names no source.** Its `manual` source only records that no
+  label or database was asked, and "typed in" read as a claim about how the row
+  got there when a task, the stepper or a bottle all write into it
+  (`describeFoodLogEntry`).
+
 `waterUnit` in settings decides whether the two water steppers — the card and a
 task's "log to Health" amount — show millilitres or fluid ounces. It is display
 only, exactly as `weightUnit` is against what HealthKit hands back: `waterMl` is
