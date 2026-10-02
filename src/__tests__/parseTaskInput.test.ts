@@ -1,4 +1,4 @@
-import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, detectContactIntent, parseDurationInput, parseSupplyInput, parseCategoryAndTagsInput, parsePriorityInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, getEditorMentionSuggestions, applyMentionOverrides, parseFromCompletionSuffix, type ParsedSchedule } from '../utils/parseTaskInput';
+import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, detectContactIntent, parseDurationInput, parseSupplyInput, parseTargetInput, parseCategoryAndTagsInput, parsePriorityInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, getEditorMentionSuggestions, applyMentionOverrides, parseFromCompletionSuffix, type ParsedSchedule } from '../utils/parseTaskInput';
 
 // Tuesday, June 10 2025, 10:00 AM — same anchor as parseNaturalDate.test.ts
 const NOW = new Date(2025, 5, 10, 10, 0, 0);
@@ -1203,6 +1203,73 @@ describe('parseSupplyInput', () => {
   it('is case insensitive, and stores the unit the way the app renders it', () => {
     expect(parseSupplyInput('Replace Filter 6 Filters LEFT')?.count).toBe(6);
     expect(parseSupplyInput('Replace Filter 6 Filters LEFT')?.unit).toBe('filters');
+  });
+});
+
+describe('parseTargetInput', () => {
+  it('reads "N times a day" and strips it from the title', () => {
+    const r = parseTargetInput('drink water 8 times a day')!;
+    expect(r.count).toBe(8);
+    expect(r.cleanTitle).toBe('drink water');
+    expect('drink water 8 times a day'.slice(r.matchStart, r.matchEnd)).toBe('8 times a day');
+  });
+
+  it('takes a bare "N times", with the day implied', () => {
+    expect(parseTargetInput('drink water 8 times')).toMatchObject({ count: 8, cleanTitle: 'drink water' });
+  });
+
+  it('accepts the other ways of saying per day', () => {
+    expect(parseTargetInput('stretch 3 times daily')?.cleanTitle).toBe('stretch');
+    expect(parseTargetInput('stretch 3 times per day')?.cleanTitle).toBe('stretch');
+    expect(parseTargetInput('stretch 3 times each day')?.cleanTitle).toBe('stretch');
+  });
+
+  it('reads a glued-on x the way the app renders a target', () => {
+    expect(parseTargetInput('pushups 3x')).toMatchObject({ count: 3, cleanTitle: 'pushups' });
+    expect(parseTargetInput('pushups 3× a day')).toMatchObject({ count: 3, cleanTitle: 'pushups' });
+  });
+
+  it('reads spelled-out counts, twice and thrice', () => {
+    expect(parseTargetInput('eat fruit five times a day')?.count).toBe(5);
+    expect(parseTargetInput('stretch twice a day')).toMatchObject({ count: 2, cleanTitle: 'stretch' });
+    expect(parseTargetInput('Brush teeth Thrice')?.count).toBe(3);
+  });
+
+  it('finds the phrase anywhere and tidies the punctuation it leaves', () => {
+    expect(parseTargetInput('meds three times per day, after meals')?.cleanTitle).toBe('meds, after meals');
+  });
+
+  it('leaves a schedule phrase for the schedule parser', () => {
+    const target = parseTargetInput('drink water 8 times every day')!;
+    expect(target.cleanTitle).toBe('drink water every day');
+    expect(parseTaskInput(target.cleanTitle, NOW)!.schedule.recurrenceType).toBe('daily');
+  });
+
+  it('refuses a count spread over a longer period, which is not a daily target', () => {
+    expect(parseTargetInput('run 3 times a week')).toBeNull();
+    expect(parseTargetInput('call mom 2 times per month')).toBeNull();
+    expect(parseTargetInput('water plants twice weekly')).toBeNull();
+  });
+
+  it('refuses the recurrence end condition "for N times"', () => {
+    expect(parseTargetInput('water plants every day for 5 times')).toBeNull();
+  });
+
+  it('refuses counts outside the target range', () => {
+    expect(parseTargetInput('floss 1 times')).toBeNull();
+    expect(parseTargetInput('floss 0x')).toBeNull();
+    expect(parseTargetInput('jumping jacks 100 times')).toBeNull();
+  });
+
+  it('does not read a dimension or a word as a count', () => {
+    expect(parseTargetInput('hang the 8 x 10 frame')).toBeNull();
+    expect(parseTargetInput('buy 2x4s')).toBeNull();
+    expect(parseTargetInput('read the times')).toBeNull();
+    expect(parseTargetInput('fix 4xx errors')).toBeNull();
+  });
+
+  it('refuses a phrase with no title left', () => {
+    expect(parseTargetInput('8 times a day')).toBeNull();
   });
 });
 

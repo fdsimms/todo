@@ -968,6 +968,77 @@ export function parseSupplyInput(input: string): ParsedSupply | null {
   return { count, unit: rawUnit ? rawUnit.toLowerCase() : null, cleanTitle, matchStart, matchEnd };
 }
 
+export interface ParsedTarget {
+  /** How many times a day, already inside the target stepper's range. */
+  count: number;
+  /** Input minus the matched phrase, whitespace collapsed and trimmed. */
+  cleanTitle: string;
+  matchStart: number;
+  matchEnd: number;
+}
+
+// Kept in step with MIN_TARGET_COUNT / MAX_TARGET_COUNT in taskKinds.ts, which
+// this file can't import for the reason parseSupplyInput gives about supply.ts.
+// Out of range is refused rather than clamped: "1 time" isn't a quota, and
+// "500 times" is more likely a sentence than a habit.
+const TARGET_MIN = 2;
+const TARGET_MAX = 99;
+
+// "8 times", "8 times a day", "eight times daily", "8x", "twice a day".
+//
+// "times" (or a glued-on "x"/"×", which is how the app itself renders a daily
+// target: see formatQuotaTarget) is what turns a number into a count of
+// repetitions. "8 x" with a space is deliberately not accepted, since that's a
+// dimension ("8 x 10 frame") far more often than a count.
+//
+// A preceding "for" is refused: "every day for 5 times" is the recurrence
+// grammar's own end condition (extractEndCondition), and reading it here would
+// turn "stop after five" into "five a day".
+const TARGET_PATTERN = new RegExp(
+  `(?<!\\bfor\\s+)(?<!\\w)(?:(\\d{1,3}|${NUMBER_WORD_ALT})\\s+times|(\\d{1,3})[x×]|(twice|thrice))`
+    + `(?:\\s+(?:a|per|each)\\s+day|\\s+daily)?(?!\\w)`,
+  'i',
+);
+
+// What follows the phrase when it's counting across something longer than a
+// day. "3 times a week" is a real target, but not a *daily* one, and a daily
+// target of 3 would be the wrong answer to it, so the whole match is refused.
+const TARGET_LONGER_PERIOD = /^\s*(?:(?:a|per|each|every)\s+(?:week|month|year|fortnight)|weekly|monthly|yearly|annually)\b/i;
+
+/**
+ * Pulls a repetition count out of a quick-add title, so "drink water 8 times a
+ * day" becomes a daily target of 8 titled "drink water".
+ *
+ * Same shape as `parseDurationInput`: the phrase can sit anywhere, and the
+ * schedule parser keeps its own suffix. "8 times daily" is read here whole,
+ * but "8 times every day" leaves "every day" for the schedule tooltip, and
+ * whichever is accepted first shortens the title so the other fires next.
+ */
+export function parseTargetInput(input: string): ParsedTarget | null {
+  const match = input.match(TARGET_PATTERN);
+  if (!match || match.index === undefined) return null;
+
+  let count: number;
+  if (match[3]) count = match[3].toLowerCase() === 'twice' ? 2 : 3;
+  else count = parseCount((match[1] ?? match[2]).toLowerCase());
+  if (!Number.isFinite(count) || count < TARGET_MIN || count > TARGET_MAX) return null;
+
+  const matchStart = match.index;
+  const matchEnd = matchStart + match[0].length;
+  if (TARGET_LONGER_PERIOD.test(input.slice(matchEnd))) return null;
+
+  const cleanTitle = (input.slice(0, matchStart) + input.slice(matchEnd))
+    .replace(/\s*,\s*,\s*/g, ', ')
+    .replace(/\s+/g, ' ')
+    .replace(/ ,/g, ',')
+    .replace(/^[,\s]+|[,\s]+$/g, '')
+    .trim();
+  // "8 times" on its own names no task.
+  if (!cleanTitle) return null;
+
+  return { count, cleanTitle, matchStart, matchEnd };
+}
+
 export interface ParsedCategoryAndTags {
   /** The first token's category, if any matched — a task has one. */
   category: string | null;
