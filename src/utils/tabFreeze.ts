@@ -21,3 +21,17 @@
 export function shouldFreezeTab(opts: { focused: boolean; sheetPresented: boolean }): boolean {
   return !opts.focused && !opts.sheetPresented;
 }
+
+/**
+ * How long a tab keeps rendering after the rule above first says to freeze it.
+ *
+ * Blurring is not always the end of what the tab has to do. A sheet closes in
+ * two commits (`SheetModal` holds the real `Modal` open one more), a blur
+ * listener clears state the row then reacts to (an inline title edit saved and
+ * the keyboard dismissed), and a screen that navigates away as it closes a sheet
+ * does both in one tick. A freeze that landed in the same batch would strand
+ * the second half until the tab came back. The wait is longer than iOS's
+ * sheet dismissal, and thawing is never delayed: a tab being returned to
+ * renders in the commit that focused it.
+ */
+export const TAB_FREEZE_DELAY_MS = 600;

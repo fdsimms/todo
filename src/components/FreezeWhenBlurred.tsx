@@ -1,7 +1,7 @@
-import React, { Suspense, useCallback, useContext, useMemo, useSyncExternalStore } from 'react';
+import React, { Suspense, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { useNavigationState, useRoute } from '@react-navigation/native';
 import { PresentationLevelContext, subscribePresentation } from '../utils/sheetModal';
-import { shouldFreezeTab } from '../utils/tabFreeze';
+import { shouldFreezeTab, TAB_FREEZE_DELAY_MS } from '../utils/tabFreeze';
 
 /**
  * Stops a blurred tab from rendering, which `freezeOnBlur` cannot do here.
@@ -22,7 +22,15 @@ import { shouldFreezeTab } from '../utils/tabFreeze';
  * applied when it unfreezes, and nothing renders in between. Layout effects
  * clean up on freeze and run again on unfreeze.
  *
- * The rule for when to freeze is `shouldFreezeTab`.
+ * The rule for when to freeze is `shouldFreezeTab`, and how long it waits is
+ * `TAB_FREEZE_DELAY_MS`.
+ *
+ * **A frozen tab runs no effects**, so work the app needs while another tab is
+ * focused cannot live in a screen. Everything audited when this was added
+ * already sits in an app-level hook, or is reached by a navigation that focuses
+ * the screen first (every widget, deep-link and notification handoff ends in a
+ * `resetTo*`). The one that did not was the focus session's reconcile, now
+ * `useFocusPlanReconcile` in App.tsx.
  */
 const never = { then() {} };
 
@@ -51,12 +59,24 @@ export function freezeWhenBlurred<P extends object>(Screen: React.ComponentType<
       useCallback((onChange: () => void) => subscribePresentation(level, onChange), [level]),
       () => level.presented.size > 0,
     );
+    const wantFrozen = shouldFreezeTab({ focused, sheetPresented });
+    // Freezing waits out `TAB_FREEZE_DELAY_MS`; thawing does not, because
+    // `wantFrozen && settled` is false in the very render that focused the tab.
+    const [settled, setSettled] = useState(false);
+    useEffect(() => {
+      if (!wantFrozen) {
+        setSettled(false);
+        return;
+      }
+      const timer = setTimeout(() => setSettled(true), TAB_FREEZE_DELAY_MS);
+      return () => clearTimeout(timer);
+    }, [wantFrozen]);
     // The same element while the props are, so this wrapper re-rendering on a
     // sheet opening somewhere does not re-render the screen inside it.
     const screen = useMemo(() => <Screen {...props} />, [props]);
     return (
       <Suspense fallback={null}>
-        <Hold frozen={shouldFreezeTab({ focused, sheetPresented })}>{screen}</Hold>
+        <Hold frozen={wantFrozen && settled}>{screen}</Hold>
       </Suspense>
     );
   }
