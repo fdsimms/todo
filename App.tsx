@@ -25,6 +25,7 @@ import { useFocusLiveActivitySync } from './src/utils/focusLiveActivity';
 import { useRemindersImportSync } from './src/utils/remindersImportSync';
 import { useCalendarSync } from './src/store/useCalendarStore';
 import { useWeatherSync } from './src/store/useWeatherStore';
+import { useTravelTaskSync } from './src/hooks/useTravelTaskSync';
 import { useScreenTimeSync } from './src/store/useScreenTimeStore';
 import { useHealthSync } from './src/store/useHealthStore';
 import { useAppShieldSync } from './src/hooks/useAppShieldSync';
@@ -199,6 +200,10 @@ function AppRoot() {
   // inert until weatherTasks is switched on, and never requests location
   // permission itself (see getCurrentLocation).
   useWeatherSync();
+  // Keeps the MTA subway alerts current while the app is in front (inert
+  // until travel tasks, the transit switch and a line are all on), and re-runs
+  // the travel task check when the calendar window or the alerts land.
+  useTravelTaskSync();
   // Keeps the OS usage monitor armed against the current rules and drains
   // what it has reported. Inert until screenTimeTasks is switched on.
   useScreenTimeSync();

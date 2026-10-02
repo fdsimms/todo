@@ -161,6 +161,11 @@ export const GENERATED_KINDS: readonly GeneratedKind[] = [
   // and Health all report a number, where this one reads the words on an event
   // already sitting in the calendar. See src/utils/eventTasks.ts.
   'eventTask',
+  // The twenty-fourth, beside eventTask because it reads the same calendar
+  // window and shares its occurrence key and handled record. It is not a rule
+  // list, though: one switch and one number, since the trigger (an event has
+  // a location) leaves nothing per-rule to vary. See src/utils/travelTasks.ts.
+  'travel',
   // The sixteenth and seventeenth, appended as a pair for the reason birthday
   // and birthdayGift sit together: one subject with two lead-ins. Nothing else
   // here reads the mood log, so there is no existing generator either belongs
@@ -240,6 +245,7 @@ export type GeneratedEnabledKey =
   | 'pantryReviewTasks'
   | 'weatherTasks'
   | 'eventTasks'
+  | 'travelTasks'
   | 'screenTimeTasks'
   | 'healthTasks'
   | 'moodLogTasks'
@@ -336,6 +342,12 @@ export interface GeneratedKindSpec {
    * anything a reschedule could mean — tomorrow's calendar moved to Thursday
    * is not a thing, and next Monday is a different question rather than this
    * one later.
+   *
+   * And `travel` ("leave for the dentist"), on the same test from a different
+   * side: it isn't day-keyed and its title does vary (the MTA note), but it is
+   * pinned to an event's start, and leaving for it on Thursday instead has
+   * nothing to mean. Its reminder and title are rewritten by every sweep, so an
+   * edit would not survive one anyway.
    *
    * False everywhere else, and not because the rest are less automatic. A
    * pantry review deferred to Saturday is that generator working as designed,
@@ -783,6 +795,33 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     categorized: true,
     defaultCategory: 'Calendar',
   },
+  // "Leave for X" ahead of an event with a location — see
+  // src/utils/travelTasks.ts. `writeGeneratedOptOut` has nothing to write for
+  // it, for eventTask's reason: the source is an event in EventKit, and the
+  // handled record is what keeps a deleted row deleted.
+  //
+  // A notice, unlike eventTask: the row is pinned to a moment, so a reschedule,
+  // a duplicate or an edit has nothing to mean. "Leave for the dentist" moved to
+  // Thursday is not a thing. Its reminder and title are the event's and the
+  // lead's, and both are rewritten on every sweep.
+  //
+  // `pausedOnVacation: false`: an event on the calendar is happening anyway,
+  // and the trip a vacation starts with is exactly one worth leaving on time
+  // for. Ships off, because it adds a surface rather than replacing one.
+  travel: {
+    kind: 'travel',
+    pausedOnVacation: false,
+    enabledKey: 'travelTasks',
+    label: 'Leave-by reminders',
+    onHint: 'An event with a location adds a task to leave, with a reminder at the time to go',
+    offHint: 'Events with a location add no tasks',
+    icon: 'walk-outline',
+    sourced: false,
+    notice: true,
+    kitchen: false,
+    categorized: true,
+    defaultCategory: 'Calendar',
+  },
   // Ships off, like pantryCheck, mealShortfall and birthdayGift, and for the
   // reason all three do: it adds a surface nobody had rather than replacing one
   // that was already on screen. There is no recorded intent it could point at
@@ -985,8 +1024,8 @@ export type GeneratedEnabledFlags =
 /**
  * Whether this generator is switched on, counting the read it depends on.
  *
- * Two of them need the app to be allowed into a source before their own key can
- * mean anything, and a row reading "on" over a closed read lies about itself.
+ * Four of them need the app to be allowed into a source before their own key
+ * can mean anything, and a row reading "on" over a closed read lies about itself.
  * `health` had that second gate and `calendarReview` did not, in *both* places
  * this question was being answered independently (Settings' own row and
  * `useCategoryStore`) — so this is the one answer all of them ask, rather than
@@ -995,7 +1034,13 @@ export type GeneratedEnabledFlags =
 export function generatorSwitchedOn(kind: GeneratedKind, flags: GeneratedEnabledFlags): boolean {
   if (!flags[GENERATED_KIND_SPECS[kind].enabledKey]) return false;
   if (kind === 'health') return flags.healthReadEnabled;
-  if (kind === 'calendarReview') return flags.calendarReadEnabled;
+  // The three that read the calendar window, and all three passes refuse to run
+  // without it (`checkCalendarReviewTasks`, `checkEventTasks`,
+  // `checkTravelTasks`). eventTask was missing here for a while, so its switch
+  // read "on" over a closed read while writing nothing.
+  if (kind === 'calendarReview' || kind === 'eventTask' || kind === 'travel') {
+    return flags.calendarReadEnabled;
+  }
   return true;
 }
 

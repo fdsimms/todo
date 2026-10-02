@@ -332,16 +332,17 @@ describe('the registry', () => {
     // one task written entirely on the app's own schedule landed loose at the
     // top of Today however the other three were filed.
     expect(GENERATED_KIND_LIST.filter(s => s.categorized).map(s => s.kind))
-      .toEqual(['mealSlot', 'groceryUseUp', 'pantryCheck', 'pantryReview', 'leftoverUseUp', 'mealPlanNudge', 'mealShortfall', 'mealLogNudge', 'projectReview', 'supplyReorder', 'calendarReview', 'birthday', 'birthdayGift', 'reachOut', 'waitingFollowUp', 'weather', 'screenTime', 'health', 'eventTask', 'moodLog', 'moodNudge', 'weekendNudge', 'weighIn', 'weeklyReview']);
+      .toEqual(['mealSlot', 'groceryUseUp', 'pantryCheck', 'pantryReview', 'leftoverUseUp', 'mealPlanNudge', 'mealShortfall', 'mealLogNudge', 'projectReview', 'supplyReorder', 'calendarReview', 'birthday', 'birthdayGift', 'reachOut', 'waitingFollowUp', 'weather', 'screenTime', 'health', 'eventTask', 'travel', 'moodLog', 'moodNudge', 'weekendNudge', 'weighIn', 'weeklyReview']);
   });
 
-  it('marks exactly the two day-shaped questions as notices', () => {
+  it('marks exactly the two day-shaped questions and the leave reminder as notices', () => {
     // A notice is a row with nothing to decide about it: it says what it is
     // about, you tick it, and that is the whole interaction (see
-    // GeneratedKindSpec.notice). Both of these are day-keyed with a title that
-    // never varies, and neither has anything a reschedule could mean.
+    // GeneratedKindSpec.notice). The first two are day-keyed with a title that
+    // never varies; the third is pinned to an event's start, and leaving for
+    // the dentist on Thursday instead is not a thing a reschedule could mean.
     expect(GENERATED_KIND_LIST.filter(s => s.notice).map(s => s.kind))
-      .toEqual(['mealPlanNudge', 'calendarReview']);
+      .toEqual(['mealPlanNudge', 'calendarReview', 'travel']);
     // The retired kind answers too, since a legacy row still carries it.
     expect(GENERATED_KIND_SPECS.mealCook.notice).toBe(false);
   });

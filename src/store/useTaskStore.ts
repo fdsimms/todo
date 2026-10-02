@@ -286,6 +286,15 @@ import {
   type HandledEventTasks,
 } from '../utils/eventTasks';
 import { taskFieldsFromEvent } from '../utils/calendarEventImport';
+import {
+  isTravelTaskStale,
+  matchedTravelTasks,
+  travelSourceOf,
+  travelTaskTitle,
+} from '../utils/travelTasks';
+import { describeDisruptions, journeyDisruptions } from '../utils/transitAlerts';
+import { dateToHHMM } from '../utils/clockTime';
+import { useTransitStore } from './useTransitStore';
 import { useScreenTimeStore } from './useScreenTimeStore';
 import { useHealthStore } from './useHealthStore';
 import { screenTimeSourceId, parseScreenTimeSourceId, crossingWantsTask } from '../utils/screenTimeRules';
@@ -546,6 +555,11 @@ function writeGeneratedOptOut(task: Task, value: false | null): void {
       // `eventTaskHandled`, written by checkEventTasks as it creates the task
       // — which is also what stops a swiped-away one coming back, since the
       // entry outlives the task and is pruned on the occurrence's own end.
+      return;
+    case 'travel':
+      // The same answer as eventTask, for the same reason: the source is an
+      // event in EventKit. `travelTaskHandled` is the mark, written as the task
+      // is created, and outlives the task until the occurrence ends.
       return;
     case 'screenTime':
       // Nothing to write either, and for the same reason: the source is a
@@ -1573,6 +1587,12 @@ interface TaskStore extends UndoHistoryActions {
   checkCalendarReviewTasks: () => void;
   checkWeatherTasks: () => void;
   checkEventTasks: () => void;
+  /**
+   * "Leave for X" for each upcoming event with a location, its reminder at the
+   * event's start less `travelLeadMinutes`, and an MTA note in its title when
+   * the transit snapshot has one. See src/utils/travelTasks.ts.
+   */
+  checkTravelTasks: () => void;
   checkScreenTimeTasks: () => void;
   checkHealthTasks: () => void;
   /**
@@ -5688,6 +5708,110 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       || Object.keys(nextHandled).length !== Object.keys(settings.eventTaskHandled).length;
     if (changed) settings.setEventTaskHandled(nextHandled);
     // No setLastAction, same reasoning as every other generator's sweep.
+  },
+
+  /**
+   * The twenty-fourth generator — see `src/utils/travelTasks.ts`. Structurally
+   * `checkEventTasks`, whose occurrence key and handled record it shares, and
+   * it departs from it in two places, both because this row has to stay true
+   * to something that moves after it is written.
+   *
+   * **It drifts.** An event task's title is the rule's and never changes, so
+   * that sweep has nothing to say to a row it already wrote. This one's title
+   * carries the MTA note and its reminder carries the lead, so every handled
+   * occurrence that still has a live row is reconciled again. A handled one
+   * with *no* live row is skipped: the user deleted it or finished it, and the
+   * handled entry is what keeps that answer.
+   *
+   * **It clears on a change, never on the event happening.** A row is deleted
+   * when its event is cancelled, moved or loses its location while still
+   * ahead, which is the creation predicate turning false. Once the start has
+   * passed, the row is left to the `windowEnd` it carries and the user's own
+   * expiry setting; `isTravelTaskStale` has the reasoning, and it is the line
+   * `checkEventTasks` draws for the same reason.
+   */
+  checkTravelTasks() {
+    const settings = useSettingsStore.getState();
+    if (!settings.travelTasks) return;
+    // checkEventTasks' refusal, for its reason: a task written here would sit
+    // in the demo database as a claim about the real calendar.
+    if (isDemoModeActive()) return;
+    if (!settings.calendarReadEnabled) return;
+    if (!settings.travelTaskCategory) return;
+
+    const calendar = useCalendarStore.getState();
+    // An unread window is not an empty one — and here, reading it as empty
+    // would clear every row whose event is still ahead.
+    if (!calendar.loaded) return;
+
+    const now = new Date();
+    const nowMs = now.getTime();
+
+    liveGeneratedTasksOfKind(get().tasks, 'travel')
+      .filter(task => {
+        const sourceId = travelSourceOf(task);
+        return !sourceId || isTravelTaskStale(sourceId, calendar.events, now);
+      })
+      .forEach(task => deleteGeneratedTaskQuietly(task.id));
+
+    const handled = pruneHandledEventTasks(settings.travelTaskHandled, now);
+    // Through the end of the logical tomorrow, so the evening before is
+    // enough to queue a morning reminder. Off getCurrentDayStart rather than
+    // the clock: at 1am under a 2am reset, "tomorrow" is still a day away.
+    const horizonEnd = addDays(getCurrentDayStart(), 2);
+    const matches = matchedTravelTasks(
+      settings.travelLeadMinutes, calendar.events, now, horizonEnd, handled);
+    // Read only while the switch is on, so turning it off takes the notes off
+    // on the next sweep even if a snapshot is still held.
+    const transit = settings.transitAlerts ? useTransitStore.getState().snapshot : null;
+
+    const nextHandled: HandledEventTasks = { ...handled };
+    let wroteNew = false;
+
+    for (const match of matches) {
+      if (match.handled && !liveGeneratedTask(get().tasks, 'travel', match.sourceId)) continue;
+
+      const leaveMs = Date.parse(match.leaveAt);
+      const startMs = Date.parse(match.event.start);
+      // Judged over the trip itself, leaving to arriving — see alertOverlaps.
+      const note = describeDisruptions(
+        journeyDisruptions(transit, settings.transitLines, leaveMs, startMs, nowMs));
+      const title = travelTaskTitle(match.event.title, note);
+
+      reconcileGeneratedTask({
+        kind: 'travel',
+        sourceId: match.sourceId,
+        wanted: true,
+        // The title and the reminder follow the feed and the lead. The date is
+        // the occurrence's own and never moves (a moved event is a new key),
+        // so there is no date to chase and the #1953 rule is not in play.
+        drift: existing => {
+          const patch: Partial<Task> = {};
+          if (existing.title !== title) patch.title = title;
+          if (existing.reminderTime !== match.leaveAt) patch.reminderTime = match.leaveAt;
+          return Object.keys(patch).length > 0 ? patch : null;
+        },
+        draft: () => ({
+          ...taskFieldsFromEvent(match.event, 0),
+          title,
+          reminderTime: match.leaveAt,
+          // The event's start as the window's close, so the row expires once
+          // leaving is no longer possible and the user's expiry setting
+          // decides what happens to it then.
+          windowEnd: dateToHHMM(new Date(startMs)),
+          category: settings.travelTaskCategory,
+          ...generatedBy('travel', match.sourceId),
+        }),
+      });
+      if (!match.handled) {
+        nextHandled[match.sourceId] = match.endsAt;
+        wroteNew = true;
+      }
+    }
+
+    const changed = wroteNew
+      || Object.keys(nextHandled).length !== Object.keys(settings.travelTaskHandled).length;
+    if (changed) settings.setTravelTaskHandled(nextHandled);
   },
 
   /**

@@ -30,7 +30,7 @@ import type { DeliverableKind, FocusSession, GroceryItem, MealSlot, MoodLevel, R
 import { dbGetFocusSessionLog, dbInsertFocusSessionRecord, dbSetGtinLookup } from '../db/database';
 import { advanceFocusSession, buildFocusPlan, closeFocusSession } from './focusPlan';
 import { buildWeekDays } from './calendarGrid';
-import { getCurrentDayStart, dayKeyOf } from './dateUtils';
+import { getCurrentDayStart, dayKeyOf, dateToHHMM } from './dateUtils';
 import { awayNoonIso } from './awayDates';
 import { generatedBy } from './generatedTasks';
 import {
@@ -65,6 +65,7 @@ import {
 import { weatherSourceId, defaultWeatherRules, describeWeatherWindow, weatherTaskTitle } from './weatherTasks';
 import { screenTimeSourceId, defaultScreenTimeRules } from './screenTimeRules';
 import { defaultEventRules, eventOccurrenceKey, eventTaskSourceId } from './eventTasks';
+import { TRAVEL_LEAD_MINUTES_DEFAULT, travelSourceId, travelTaskTitle } from './travelTasks';
 import { healthSourceId, defaultHealthRules } from './healthRules';
 import { dueMealPlanNudge, mealPlanNudgeLinkUrl } from './mealPlanNudge';
 import { groceryNameKey } from './groceryParse';
@@ -1243,6 +1244,31 @@ export function seedDemoData(): void {
       'eventTask',
       eventTaskSourceId(eventOccurrenceKey(demoFlight), packRule.id),
     ),
+  });
+
+  // A leave-by task, seeded directly for the event task's reason just above:
+  // checkTravelTasks refuses in demo mode, and the demo never reads a calendar
+  // or the MTA feed. What it shows is the shape: an appointment with an
+  // address becoming "Leave for…" with its reminder at the time to go, and a
+  // note in brackets when planned work is on a line the user rides.
+  //
+  // The occurrence key is invented, as the flight's is, and goes through
+  // `travelSourceId` so the row can't drift from what the sweep reads back.
+  // Nothing is marked handled, for the same reason eventTaskHandled isn't.
+  useSettingsStore.getState().setTravelTaskCategory('Calendar');
+  useSettingsStore.getState().setTransitLines(['L']);
+  const demoDentistStart = new Date(today);
+  demoDentistStart.setHours(15, 0, 0, 0);
+  const demoDentist = { id: 'demo-dentist', start: demoDentistStart.toISOString() };
+  const demoLeaveAt = new Date(demoDentistStart.getTime() - TRAVEL_LEAD_MINUTES_DEFAULT * 60 * 1000);
+  addTask({
+    title: travelTaskTitle('Dentist', 'L running local'),
+    dueDate: today.toISOString(),
+    reminderTime: demoLeaveAt.toISOString(),
+    windowEnd: dateToHHMM(demoDentistStart),
+    location: '123 Court St, Brooklyn',
+    category: 'Calendar',
+    ...generatedBy('travel', travelSourceId(demoDentist)),
   });
 
   // A health task, seeded directly for the screen-time row's reason: the gate

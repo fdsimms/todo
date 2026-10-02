@@ -1,3 +1,11 @@
+// Settings' "Automatic tasks" section: one switch per generator in
+// GENERATED_KIND_LIST, the category each files under, and whatever extra rows
+// a switched-on generator needs. One component of ~900 lines, so grep a
+// landmark rather than reading it start to finish:
+//
+//   ==== <name> ====        the section banners through the logic half
+//   extrasFor               the per-generator rows, one `if (kind === …)` each
+//   makeStyles              styles, at the bottom
 import React, { useMemo, useState } from 'react';
 import { Alert, StyleSheet, View } from 'react-native';
 import { useSettingsStore, type WeekStart } from '../../store/useSettingsStore';
@@ -45,6 +53,13 @@ import {
   MAX_BIRTHDAY_LEAD_DAYS,
 } from '../../utils/birthdayTasks';
 import { describeWeekendNudgeLead } from '../../utils/weekendTasks';
+import {
+  TRAVEL_LEAD_MINUTES_DEFAULT,
+  TRAVEL_LEAD_MINUTES_MAX,
+  TRAVEL_LEAD_MINUTES_MIN,
+  TRAVEL_LEAD_MINUTES_STEP,
+} from '../../utils/travelTasks';
+import { TRANSIT_LINES } from '../../utils/transitAlerts';
 import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
 import { SettingsSegments } from './SettingsSegments';
@@ -114,6 +129,7 @@ function weekdayOptions(weekStartsOn: WeekStart): SegmentOption<number>[] {
 }
 
 export function GeneratedTasksSection() {
+  // ==== store bindings and local state ====
   const colors = useColors();
   const styles = useMemo(() => makeSettingsStyles(colors), [colors]);
   const sectionStyles = useMemo(() => makeStyles(colors), [colors]);
@@ -176,6 +192,7 @@ export function GeneratedTasksSection() {
 
   const weekdaySegmentOptions = useMemo(() => weekdayOptions(s.weekStartsOn), [s.weekStartsOn]);
 
+  // ==== on/off, and what has to be on first ====
   // Each generator's on/off answer and its category still live under their own
   // settings keys. Renaming them to a generic pair would be a migration over
   // preferences people have already set, for no gain a person can see — the
@@ -192,10 +209,11 @@ export function GeneratedTasksSection() {
 
   /**
    * What a generator needs turned on before its own switch can mean anything,
-   * or null for the sixteen that need nothing.
+   * or null for the rest, which need nothing.
    *
-   * Two of them read a source the app has to be allowed into first, and
-   * `enabledOf` refuses to show either as on while that read is shut. That is
+   * Four of them read a source the app has to be allowed into first (Apple
+   * Health, or the calendar for the three that read its window), and
+   * `enabledOf` refuses to show any of them as on while that read is shut. That is
    * right (a row reading "on" over a closed read would be lying about itself)
    * and it left the switch untappable: `toggle` computes `!enabledOf(kind)`, so
    * the tap wrote true, `enabledOf` still answered false, and the switch sprang
@@ -206,7 +224,7 @@ export function GeneratedTasksSection() {
     if (kind === 'health' && !s.healthReadEnabled) {
       return { setting: 'Read Apple Health', screen: 'Health' };
     }
-    if (kind === 'calendarReview' && !s.calendarReadEnabled) {
+    if ((kind === 'calendarReview' || kind === 'eventTask' || kind === 'travel') && !s.calendarReadEnabled) {
       return { setting: 'Read my calendar', screen: 'Calendar' };
     }
     return null;
@@ -241,6 +259,7 @@ export function GeneratedTasksSection() {
       case 'waitingFollowUp': s.setWaitingFollowUpTasks(next); break;
       case 'weather': s.setWeatherTasks(next); break;
       case 'eventTask': s.setEventTasks(next); break;
+      case 'travel': s.setTravelTasks(next); break;
       case 'screenTime': s.setScreenTimeTasks(next); break;
       case 'health': s.setHealthTasks(next); break;
       case 'moodLog': s.setMoodLogTasks(next); break;
@@ -248,6 +267,12 @@ export function GeneratedTasksSection() {
       case 'weekendNudge': s.setWeekendNudgeTasks(next); break;
       case 'weeklyReview': s.setWeeklyReviewTasks(next); break;
       case 'weighIn': s.setWeighInTasks(next); break;
+      // Exhaustive for setCategory's reason below: this returns void, so a
+      // missing arm would be a switch that silently does nothing.
+      default: {
+        const exhaustive: never = kind;
+        void exhaustive;
+      }
     }
     // Switching one on gives it somewhere to file, so the "File them under"
     // row that appears directly below already has an answer in it rather than
@@ -257,6 +282,7 @@ export function GeneratedTasksSection() {
     if (next) ensureGeneratedTaskCategory(kind, { force: true });
   };
 
+  // ==== which category each generator files under ====
   const categoryOf = (kind: GeneratedKind): string | null => {
     switch (kind) {
       case 'mealSlot':
@@ -277,6 +303,7 @@ export function GeneratedTasksSection() {
       case 'waitingFollowUp': return s.waitingFollowUpTaskCategory;
       case 'weather': return s.weatherTaskCategory;
       case 'eventTask': return s.eventTaskCategory;
+      case 'travel': return s.travelTaskCategory;
       case 'screenTime': return s.screenTimeTaskCategory;
       case 'health': return s.healthTaskCategory;
       case 'moodLog': return s.moodLogTaskCategory;
@@ -308,6 +335,7 @@ export function GeneratedTasksSection() {
       case 'waitingFollowUp': s.setWaitingFollowUpTaskCategory(category); break;
       case 'weather': s.setWeatherTaskCategory(category); break;
       case 'eventTask': s.setEventTaskCategory(category); break;
+      case 'travel': s.setTravelTaskCategory(category); break;
       case 'screenTime': s.setScreenTimeTaskCategory(category); break;
       case 'health': s.setHealthTaskCategory(category); break;
       case 'moodLog': s.setMoodLogTaskCategory(category); break;
@@ -329,6 +357,7 @@ export function GeneratedTasksSection() {
     }
   };
 
+  // ==== the nudge time picker, and the hint under each switch ====
   const confirmTime = () => {
     s.setMealPlanNudgeTime(dateToHHMM(pickerDate));
     setTimePickerOpen(false);
@@ -373,6 +402,7 @@ export function GeneratedTasksSection() {
    * header states: `extrasFor` is JSX precisely so the knobs one generator has
    * don't have to be expressible in config.
    */
+  // ==== per-generator extras: the rows under a switched-on generator ====
   const timeSegmentExtra = (
     entryId: string,
     value: TimeOfDay | null,
@@ -797,6 +827,75 @@ export function GeneratedTasksSection() {
       );
     }
 
+    if (kind === 'travel') {
+      const lines = s.transitLines;
+      return (
+        <>
+          <View style={styles.sep} />
+          <SettingsRow
+            entryId="travelLeadMinutes"
+            icon="time-outline"
+            label="Remind me"
+            hint="How long before the event the reminder goes off. Set it to how long the trip usually takes you."
+            value={`${s.travelLeadMinutes} min before`}
+            tight
+          />
+          <View style={styles.cadenceRow}>
+            <CountStepper
+              value={s.travelLeadMinutes}
+              onChange={next => s.setTravelLeadMinutes(next ?? TRAVEL_LEAD_MINUTES_DEFAULT)}
+              min={TRAVEL_LEAD_MINUTES_MIN}
+              max={TRAVEL_LEAD_MINUTES_MAX}
+              step={TRAVEL_LEAD_MINUTES_STEP}
+              format={n => `${n}m`}
+              label="Minutes before the event"
+              describeValue={n => `${n ?? TRAVEL_LEAD_MINUTES_DEFAULT} minutes before the event`}
+            />
+          </View>
+          <View style={styles.sep} />
+          <SettingsRow
+            entryId="transitAlerts"
+            icon="subway-outline"
+            label="Subway alerts"
+            hint="Adds MTA delays and planned work on your lines to the task, like “L delayed”. Reads the MTA's service alerts over the internet while the app is open."
+            toggle={s.transitAlerts}
+            onPress={() => s.setTransitAlerts(!s.transitAlerts)}
+          />
+          {s.transitAlerts && (
+            <>
+              <View style={styles.sep} />
+              <SettingsRow
+                entryId="transitLines"
+                icon="train-outline"
+                label="Lines"
+                hint="Only alerts on these lines are added to a task."
+                value={lines.length === 0 ? 'None' : lines.join(', ')}
+                tight
+              />
+              <View style={styles.pillGroupRow}>
+                <PillGroup
+                  noun="line"
+                  limit={TRANSIT_LINES.length}
+                  options={TRANSIT_LINES.map(line => ({
+                    key: line.key,
+                    label: line.key,
+                    selected: lines.includes(line.key),
+                    accessibilityLabel: `${line.key} train`,
+                    onPress: () => {
+                      haptics.tap();
+                      s.setTransitLines(
+                        lines.includes(line.key) ? lines.filter(l => l !== line.key) : [...lines, line.key],
+                      );
+                    },
+                  }))}
+                />
+              </View>
+            </>
+          )}
+        </>
+      );
+    }
+
     if (kind === 'screenTime') {
       return (
         <>
@@ -841,6 +940,8 @@ export function GeneratedTasksSection() {
 
     return null;
   };
+
+  // ==== render: the background switch, then one block per listed generator ====
 
   return (
     <>

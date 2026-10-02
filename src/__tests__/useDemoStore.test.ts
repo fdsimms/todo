@@ -103,6 +103,7 @@ import { shouldNudgePostpone, DEFAULT_POSTPONE_THRESHOLD, driftingTasks } from '
 import { initDatabase, isUsingDemoDatabase } from '../db/database';
 import { dayKeyOf, dayKeyToDate, getCurrentDayStart, getLogicalToday } from '../utils/dateUtils';
 import { eventTaskRuleIdOf } from '../utils/eventTasks';
+import { TRAVEL_LEAD_MINUTES_DEFAULT, travelSourceOf, travelSourceStart } from '../utils/travelTasks';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { countPlannedSlots, MEAL_PLAN_NUDGE_SLOT_COUNT } from '../utils/mealPlanNudge';
 import { RECIPE_MEAL_TYPES, LEFTOVER_KEEP_DAYS_DEFAULT } from '../types';
@@ -3697,6 +3698,30 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // Nothing is marked handled: the demo never ran the sweep, and a seeded
     // mark would be a claim about an occurrence that does not exist.
     expect(settings.eventTaskHandled).toEqual({});
+  });
+
+  it('seeds a leave-by task with its reminder and an MTA note', () => {
+    const { tasks } = useTaskStore.getState();
+    const settings = useSettingsStore.getState();
+
+    const task = tasks.find(t => t.generatedKind === 'travel');
+    expect(task).toBeDefined();
+    expect(task!.title).toBe('Leave for Dentist (L running local)');
+    expect(task!.category).toBe('Calendar');
+    expect(settings.travelTaskCategory).toBe('Calendar');
+    expect(settings.transitLines).toEqual(['L']);
+
+    // The reminder is the event's start less the default lead, and the row
+    // expires at the start: the two fields the sweep writes, reached without
+    // touching EventKit.
+    expect(task!.reminderTime).not.toBeNull();
+    expect(task!.windowEnd).toBe('15:00');
+    const startMs = travelSourceStart(travelSourceOf(task!)!);
+    expect(startMs).not.toBeNull();
+    expect(Date.parse(task!.reminderTime!)).toBe(startMs! - TRAVEL_LEAD_MINUTES_DEFAULT * 60 * 1000);
+
+    // Nothing is marked handled, for the event task's reason.
+    expect(settings.travelTaskHandled).toEqual({});
   });
 
   it('seeds a health task and the rules alongside it', () => {

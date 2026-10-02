@@ -592,7 +592,7 @@ was switched on to stop, so it pauses: `mealSlot`, `groceryUseUp`, `leftoverUseU
 `pantryReview`, `projectReview`, `supplyReorder`, `mealShortfall`, `mealPlanNudge`, `weekendNudge`.
 A generator about your body, your mood, the weather, your own phone use, the people you care about,
 or what is on tomorrow is not work and keeps running: `weather`, `screenTime`, `health`, `moodLog`,
-`moodNudge`, `birthday`, `birthdayGift`, `reachOut`, `calendarReview`. A birthday missed because you
+`moodNudge`, `birthday`, `birthdayGift`, `reachOut`, `calendarReview`, `eventTask`, `travel`. A birthday missed because you
 were away is the exact failure that feature exists to prevent, and what is on tomorrow matters more
 when you are travelling, not less.
 
@@ -839,6 +839,107 @@ events at once, where every other rule generator asks one question a day.**
 - **It is gated on `isDemoModeActive()`** like the other real-device readers, and in demo mode it
   would have nothing to read anyway — the demo database's calendar is never read. `demoSeed.ts`
   seeds the shape directly.
+
+## `travel` — leave-by reminders, with the MTA as a footnote
+
+An upcoming event with a location becomes "Leave for Dentist", with a reminder at the event's start
+less `travelLeadMinutes`. `src/utils/travelTasks.ts` holds the rules and `checkTravelTasks` the
+sweep. If the user turns on Subway alerts and picks lines, an MTA disruption on one of them during
+the trip is appended in brackets: "Leave for Dentist (L running local)". `src/utils/transitAlerts.ts`
+reads the feed, `src/services/transitLookup.ts` fetches it, and `useTransitStore` holds it.
+
+It is two features, and the first is useful without the second. The decisions below were each
+argued out before it was built; read them before reopening one.
+
+- **An event with a location is the whole trigger, and the app has no home address.** An event
+  somebody put an address on is one they travel to. `BusyEvent.location` was already read from
+  EventKit and consumed by nothing, so this needed no new permission or read. The location is
+  checked for presence and copied onto the task's own `location` field. It is never geocoded or
+  sent anywhere.
+- **A video call's "location" is not a place.** Calendar apps put the meeting link, or the name of
+  the service, in that field, and a "Leave for…" row in front of a Zoom call would be the mistake
+  this makes every day. `eventHasLocation` refuses a field that is a link and a closed list of
+  exact service names ("Microsoft Teams Meeting", "Zoom", "Google Meet"…). It is a closed list on
+  purpose: a pattern would start deciding which real places are really places, and "Zoom Cafe, 12
+  Bedford Ave" is somewhere you walk to.
+- **The travel time is the user's number.** No routing service is asked. Asking one means sending
+  the addresses of somebody's appointments to a third party (`geocode.ts` already shows what that
+  costs: its own switch, off by default), and a computed figure can be wrong in a way the user's
+  own estimate isn't. `travelLeadMinutes` is a `CountStepper` in 5-minute steps.
+- **It is one switch and one number, not a rule list.** It shares `eventTask`'s occurrence key,
+  eligibility gate and handled record by importing them, and deliberately not its rules engine.
+  That engine's lead is whole days on purpose (`leadTimeReached`) where travel is minutes, and
+  `parseEventRules` drops a rule with no cue, which a location trigger would be. With no per-rule
+  title or cue there is nothing for a rule to vary, so `RuleListSheet` would be a list of one. If
+  different leads for different places are ever wanted, `BusyEvent.calendarId` is the honest key
+  ("Work calendar events get 45 minutes"). Parsing a neighborhood out of an address is not.
+- **All-day events are refused**, the one place this departs from `eventIsRuleEligible`: there is
+  no start time to subtract from.
+- **The reminder is what makes it useful, and it is deterministic.** Start less lead is known the
+  moment the event is, so the evening before is enough to queue a morning reminder. The sweep
+  writes through the end of the logical tomorrow, and the row is dated to the event's day, so it
+  stays off Today until then.
+- **It drifts, unlike `eventTask`.** That generator's title is the rule's and never changes. This
+  one's carries the MTA note and its reminder follows the lead, so every handled occurrence that
+  still has a live row is reconciled again. `matchedTravelTasks` returns handled occurrences
+  flagged rather than skipped, and a handled one with no live row is left alone: the user deleted
+  or finished it, and the handled entry is what keeps that answer. `updateTask` requeues the
+  reminder on a title change, which is how a note reaches a notification already in the queue.
+- **It clears on a change, never on the event happening.** `isTravelTaskStale` clears a row
+  whose event was cancelled, moved (a new start is a new key) or lost its location while it is
+  still ahead. Once the start has passed it reads nothing into the occurrence leaving the window,
+  for `eventTask`'s reason above. The row carries `windowEnd` set to the event's start instead, so
+  it expires once leaving is no longer possible and the user's own expiry setting decides what
+  happens to it. The start comes back out of the source id (the occurrence key ends in it), so
+  the decision needs no calendar read.
+- **It is a notice** (`notice: true`). A leave reminder moved to Thursday has nothing to mean, and
+  its title and reminder are rewritten by every sweep, so an edit would not survive one anyway.
+
+### The MTA note
+
+- **The feed is `camsys/subway-alerts.json`**, the MTA's keyless JSON rendering of GTFS-realtime
+  alerts with its "Mercury" extension carrying `alert_type`. Its own switch (`transitAlerts`, off
+  by default) is what stands in front of it, `productLookupEnabled`'s reason: there is no key to
+  paste. The request is a plain GET for the whole city's alerts. Nothing about the user's lines,
+  trips or calendar is sent; matching happens on the device. `src/__tests__/fixtures/mtaSubwayAlerts.json`
+  is a real response, recorded 2026-09-16 and trimmed, so the parser is tested against what the
+  MTA actually serves rather than against a remembered schema.
+- **Planned work and live incidents are different answers, and that split is the feature.**
+  Planned work (an entity id starting `lmm:planned_work:`, or an `alert_type` starting
+  "Planned") is published days or weeks ahead, so a 10am read already knows about 11am's and the
+  note is still true when the reminder fires. A live delay's `active_period` ends minutes out. So
+  `alertIsFresh` gives a live alert 30 minutes from the read and planned work a day.
+- **An alert is judged against the trip, not the moment of reading.** `alertOverlaps` asks whether
+  any period overlaps leaving-to-arriving. That is what lets planned work starting at 11am show on
+  an 11:30 trip read at 10am, and what stops a delay the MTA expects to clear by 10:20 being pinned
+  to the same trip.
+- **It only reports what can make you late.** Delays, suspensions, skipped stops, reroutes,
+  express-to-local and reduced service. Extra service, station notices, boarding changes, adjusted
+  schedules and any `alert_type` this doesn't know are dropped, since a note on a "Leave for" row
+  is a claim the trip may take longer.
+- **The note never alerts on its own, and that is a constraint rather than a choice.**
+  `backgroundRefresh.ts` is a `BGProcessingTask` iOS mostly runs overnight, so nothing can re-read
+  the feed at 10:55 for an 11:30 reminder while the app is closed. The background run still calls
+  `checkTravelTasks` on the last snapshot, which is enough for planned work. A live incident is
+  only seen while the app is open: `useTravelTaskSync` refreshes on foreground and every ten
+  minutes while it stays in front, the one poll in the app, justified because a delay goes stale
+  in minutes where a forecast holds for hours. A reliable push for live incidents would need a
+  server, which is the "no backend" promise, and is deliberately not built.
+- **The check re-runs when its data lands.** Every other generator checks on the launch sequence
+  and the Today foreground sweep, which fire before the calendar read resolves. For a forecast a
+  late answer costs nothing; for a delay it is the feature. `useTravelTaskSync` subscribes to the
+  calendar, transit and settings stores and re-runs the check on change. It lives in `src/hooks/`
+  because `useTaskStore` already imports the calendar and transit stores, so a subscription in
+  either reaching back would be an import cycle.
+- **Lines are picked globally**, the shape of Screen Time's app selection. Which line serves which
+  event can't be known without routing. `TRANSIT_LINES` maps a rider's name for a line to its route
+  ids, since "the 6" is two routes and "the S" is three shuttles.
+
+It ships off, does not pause on vacation (an event on the calendar is happening anyway), refuses in
+demo mode like the other calendar readers, and is gated on `calendarReadEnabled`. That last gate
+turned up a bug: `generatorSwitchedOn` gated `calendarReview` on the calendar read but not
+`eventTask`, whose pass also refuses without it, so its switch read "on" over a closed read while
+writing nothing. Both are gated now.
 
 ## `weekendNudge` — the eighteenth, and the first that asks about a *span*
 

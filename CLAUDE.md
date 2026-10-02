@@ -326,6 +326,7 @@ file: the two maps are indexes, not write-ups.
 | a task the app writes unasked, and the quiet-project offer | `src/utils/generatedTasks.ts` + `src/utils/projectReviewTasks.ts` — see `docs/arch/generated-tasks.md` (twenty generators now: `weighIn` is the newest and the only one that fires on *missing* data, `moodNudge` the only one whose trigger is a trend in the user's own answers rather than a date, a row or a one-off threshold, and `weekendNudge` the only one that asks about a span of days rather than a single one) |
 | a bare weekend, and the project it offers to fill it from | `src/utils/weekendTasks.ts` + `Project.weekendSource` — see `docs/arch/generated-tasks.md` |
 | a calendar event's title turning into a task, by rule or by tap | `src/utils/eventTasks.ts` (the rules) + `taskFieldsFromEvent` in `src/utils/calendarEventImport.ts` (the fields either path writes) — see `docs/arch/generated-tasks.md`. The second reader of an event title after `calendarHistory.ts`, and it deliberately parses nothing: the user supplies the word and the task, which is what keeps it clear of "a guess is never written down" |
+| "Leave for X" ahead of an event with a location, and the MTA delay note on it | `src/utils/travelTasks.ts` (the rules) + `src/utils/transitAlerts.ts` (the feed) + `src/hooks/useTravelTaskSync.ts` (what keeps both current) — see `docs/arch/generated-tasks.md`. The travel time is a number the user types, nothing is geocoded, and the note can never be a notification on its own: nothing can re-read the feed while the app is closed |
 | a weather rule ("sunny -> sunscreen") and the location/forecast read behind it | `src/utils/weatherTasks.ts` + `src/utils/weatherCondition.ts` + `src/store/useWeatherStore.ts` — see `docs/arch/generated-tasks.md` |
 | anything read out of Apple Health | `src/store/useHealthStore.ts` + `src/utils/healthBridge.ts` + `modules/todo-health-bridge/` — see `docs/arch/health-data.md`. Read it first: three of its four rules are about what a reader may *claim*, and the big one is that a refused read and a day with nothing recorded are one answer |
 | writing a logged meal back to Apple Health | `src/utils/healthFoodSync.ts` + `writeFoodSamples`/`deleteHealthSamples` in `modules/todo-health-bridge/` — see `docs/arch/health-data.md`. The only write in the app that can be un-written, which is why it keeps sample ids; absent stays absent, never a zero |
@@ -467,11 +468,11 @@ are over 1,000 lines, and the ten biggest source files by name. It is generated 
 and checked in CI, so it is the one place those numbers are worth reading. They used to sit in
 this file as a marked block; see the note on `.gitattributes` above for why they moved.
 
-**The fourteen single-component files carry their own map.** `TaskEditor.tsx`, `TodayScreen.tsx`,
+**The fifteen single-component files carry their own map.** `TaskEditor.tsx`, `TodayScreen.tsx`,
 `TaskItem.tsx`, `QuickAddModal.tsx`, `MealPlanScreen.tsx`, `RecipeDetailScreen.tsx`,
 `RecipeCreateSheet.tsx`, `GroceryItemSheet.tsx`, `TemplateItemEditor.tsx`, `LogbookScreen.tsx`,
-`GroceryScreen.tsx`, `SuggestMealsSheet.tsx`, `FoodLogEntrySheet.tsx` and `CookModeSheet.tsx` are
-each one component holding most of the file, so there are almost no top-level symbols to grep
+`GroceryScreen.tsx`, `SuggestMealsSheet.tsx`, `FoodLogEntrySheet.tsx`, `CookModeSheet.tsx` and
+`GeneratedTasksSection.tsx` are each one component holding most of the file, so there are almost no top-level symbols to grep
 for — `TaskEditor.tsx` has six in 4,200 lines and `RecipeDetailScreen.tsx` has two in 1,900.
 Each opens with a short header comment saying what's where, and its logic half is divided by
 `// ==== <name> ====` banners; `grep -n '// ===='` on one of them is its table of contents. The
