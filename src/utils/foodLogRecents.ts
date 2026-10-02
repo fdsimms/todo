@@ -1,7 +1,7 @@
 import type { FoodLogEntry, FoodNutrition } from '../types';
 import { foodLogEntryEdit, type FoodLogEntryEdit } from './foodLog';
 import { groceryNameKey } from './groceryParse';
-import { isWaterEntry } from './waterLog';
+import { isNutrientOnlyEntry } from './nutrientLog';
 
 /**
  * What somebody actually eats, for the list they pick it from.
@@ -185,7 +185,7 @@ export function recentUnlinkedHelpings(
   for (const entry of newestFirst) {
     if (out.length >= limit) break;
     if (entry.recipeId || entry.itemId || entry.productId) continue;
-    if (isWaterEntry(entry)) continue;
+    if (isNutrientOnlyEntry(entry)) continue;
     const key = groceryNameKey(entry.label);
     if (!key) continue;
     if (queryKey && !key.includes(queryKey)) continue;

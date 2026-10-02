@@ -827,23 +827,32 @@ bridge already mapped `waterMl` onto `.dietaryWater` in the same
 
 Three things about it are worth not re-deriving:
 
-- **A water-logging task rides this same write rather than getting a second
-  one of its own.** This shipped as two mechanisms for one fact — a task
-  recording a nutrient when it is ticked, and somebody saying what they drank
-  — and for a while the two were kept deliberately apart, on the reasoning
-  that folding the task side in would make a caffeine task a meal. That held
-  right up until a real report: a "Drink water" task that logged to Health on
-  every completion and never once showed up in the food log a person actually
-  looks at, which reads as broken even though it was working as designed.
-  `logTaskWaterToFoodLog` (`src/utils/healthCompletionSync.ts`) is the fix,
-  and it's scoped to exactly the one nutrient that already had a food-log home
-  to reuse: it accumulates the task's amount onto today's row the same way a
-  second glass would, then calls the same `addEntry`/`reviseEntry` this
-  stepper does, so the Health write still happens in exactly one place
-  (`logFoodEntryToHealth`) rather than twice. Every other nutrient a task can
-  log (caffeine, protein, …) keeps writing to Health only — there is no
-  food-log entry a caffeine task could reuse without becoming a meal, so the
-  original reasoning still holds for the rest.
+- **A task that logs a nutrient rides this same write rather than getting a
+  second one of its own.** This shipped as two mechanisms for one fact (a task
+  recording a nutrient when it is ticked, and somebody saying what they
+  drank), kept apart on the reasoning that folding the task side in would make
+  a caffeine task a meal. That broke on a real report: a "Drink water" task
+  logged to Health on every completion and never showed up in the food log a
+  person looks at. The same applies to sodium: a task logging it to Health but
+  not to the food log left the day's sodium total, its target and the mood
+  insights blind to it. So `logTaskHealthValue`
+  (`src/utils/healthCompletionSync.ts`) now sends **every** nutrient through
+  the food log, and the "a caffeine task becomes a meal" worry is answered by
+  `nutrientLog.ts`: the entry is unslotted, states one nutrient, wears that
+  nutrient's own name ("Sodium"), and every reader that cares what a meal is
+  (`nutritionCounts`, the averages' completeness bar, the most-logged board,
+  `foodDayInputs`, `countsAsMealLog`, the recents) skips it through
+  `isNutrientOnlyEntry`. Its figure still counts toward that nutrient's day
+  total. It accumulates onto one entry per nutrient per day, like water, so
+  four caffeine completions are one row, and undoing a quota tap takes the unit
+  back. **The name is part of the test on purpose**: a restaurant estimate of
+  "600 calories" also states exactly one nutrient and is a food. Water is
+  still recognized by what it states alone. Health is still written in one
+  place (`logFoodEntryToHealth`), which means a nutrient excluded in
+  `healthWriteNutrients` lands in the food log but not in Health, and
+  `writeNutrientSample` is no longer called by anything a task does. Only
+  water has the log-to-task direction (`syncWaterQuotaTasks`); other nutrients
+  aren't a count of identical units a day's log could finish.
 - **One entry a day, stepped, rather than one per glass.** Eight glasses is
   eight rows in the meal sections the day view exists to show. What that costs
   is that the Health sample is dated at the first glass and carries the day's

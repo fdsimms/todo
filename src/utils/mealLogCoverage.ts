@@ -2,7 +2,7 @@ import type { FoodLogEntry, MealPlanEntry, MealSlot } from '../types';
 import { MEAL_SLOTS } from '../types';
 import { foodLogTotals, type FoodLogTotals } from './foodLog';
 import { mealSlotKey, slotLabel } from './mealPlan';
-import { isWaterEntry } from './waterLog';
+import { isNutrientOnlyEntry } from './nutrientLog';
 
 /**
  * What the meal plan and the food log have to say about the same meal.
@@ -71,7 +71,7 @@ export interface SlotCoverage {
  * one — and says nothing about any square on the plan.
  */
 export function countsAsMealLog(entry: FoodLogEntry): boolean {
-  return entry.slot !== null && !isWaterEntry(entry);
+  return entry.slot !== null && !isNutrientOnlyEntry(entry);
 }
 
 /**

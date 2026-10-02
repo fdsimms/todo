@@ -4,7 +4,7 @@ import { NUTRIENT_KEYS } from '../types';
 import { dayKeyToDate } from './dateUtils';
 import type { CookingWindow } from './cookingStats';
 import type { FoodDayInput } from './moodInsights';
-import { isWaterEntry } from './waterLog';
+import { isNutrientOnlyEntry } from './nutrientLog';
 
 /**
  * What the Stats screen can say about eating, derived from food log entries
@@ -171,9 +171,10 @@ export function nutritionCounts(
   let count = 0;
   for (const entry of inWindow(entries, window)) {
     count += 1;
-    // The day's water is not a meal (it is filed unslotted, and would otherwise
-    // be the second "meal" that makes breakfast alone read as a complete day).
-    if (isWaterEntry(entry)) continue;
+    // The day's water, or any other nutrient a task logged on its own, is not a
+    // meal (it is filed unslotted, and would otherwise be the second "meal"
+    // that makes breakfast alone read as a complete day).
+    if (isNutrientOnlyEntry(entry)) continue;
     // An unslotted entry is its own bucket rather than being pooled: two snacks
     // outside any meal are one moment of logging, not two.
     const slot = entry.slot ?? 'none';
@@ -252,12 +253,15 @@ export function nutrientAverages(
     const day = totals.get(entry.dayKey) ?? {};
     totals.set(entry.dayKey, day);
 
-    // Water feeds the water average and nothing else. It is not a meal, so it
-    // never counts toward a day's completeness (see nutritionCounts), and it
-    // is not a food, so it never vetoes another nutrient's coverage.
-    if (isWaterEntry(entry)) {
-      const ml = entry.nutrition.amounts.waterMl;
-      if (ml !== undefined) day.waterMl = (day.waterMl ?? 0) + ml;
+    // A nutrient logged on its own (the day's water, a task's sodium) feeds
+    // that nutrient's average and nothing else. It is not a meal, so it never
+    // counts toward a day's completeness (see nutritionCounts), and it is not
+    // a food, so it never vetoes another nutrient's coverage.
+    if (isNutrientOnlyEntry(entry)) {
+      for (const key of NUTRIENT_KEYS) {
+        const amount = entry.nutrition.amounts[key];
+        if (amount !== undefined) day[key] = (day[key] ?? 0) + amount;
+      }
       continue;
     }
 
@@ -418,8 +422,9 @@ export function mostLoggedFoods(
   const byKey = new Map<string, LoggedFood>();
   for (const entry of inWindow(entries, window)) {
     // The day's water is a running total, not a food, and logged daily it
-    // topped this list for anybody who drank anything.
-    if (isWaterEntry(entry)) continue;
+    // topped this list for anybody who drank anything. A task's nutrient is
+    // the same shape.
+    if (isNutrientOnlyEntry(entry)) continue;
     const label = entry.label.trim();
     const key = keyOf(entry);
     if (!label || !key) continue;
@@ -459,8 +464,9 @@ export function sourceMix(
   const mix = { ...EMPTY_SOURCE_MIX };
   for (const entry of inWindow(entries, window)) {
     // Water states a volume, not figures anybody sourced, and it read as the
-    // largest "typed" share of every water drinker's record.
-    if (isWaterEntry(entry)) continue;
+    // largest "typed" share of every water drinker's record. A task's logged
+    // nutrient is the same.
+    if (isNutrientOnlyEntry(entry)) continue;
     mix[SOURCE_FIELD[entry.nutrition.source]] += 1;
     if (entry.recipeId) mix.fromRecipe += 1;
   }
@@ -507,11 +513,23 @@ export function sourceMix(
 export function foodDayInputs(entries: readonly FoodLogEntry[]): FoodDayInput[] {
   const keyOf = foodKeyResolver(entries);
   const byDay = new Map<string, FoodLogEntry[]>();
+  const standaloneByDay = new Map<string, Partial<Record<NutrientKey, number>>>();
   for (const entry of entries) {
     // The day's water is not a food: counted as one it completed a breakfast-
     // only day, joined the contrasts as a label, and (stating nothing but
-    // water) vetoed every other nutrient under the coverage rule below.
-    if (isWaterEntry(entry)) continue;
+    // water) vetoed every other nutrient under the coverage rule below. A
+    // nutrient a task logged on its own is the same: not a food, but what it
+    // states is still eaten or drunk, so it is added to that nutrient's day
+    // total below without counting toward coverage.
+    if (isNutrientOnlyEntry(entry)) {
+      const extra = standaloneByDay.get(entry.dayKey) ?? {};
+      standaloneByDay.set(entry.dayKey, extra);
+      for (const key of NUTRIENT_KEYS) {
+        const amount = entry.nutrition.amounts[key];
+        if (amount !== undefined) extra[key] = (extra[key] ?? 0) + amount;
+      }
+      continue;
+    }
     const list = byDay.get(entry.dayKey);
     if (list) list.push(entry);
     else byDay.set(entry.dayKey, [entry]);
@@ -535,7 +553,7 @@ export function foodDayInputs(entries: readonly FoodLogEntry[]): FoodDayInput[] 
         total += amount;
         stated += 1;
       }
-      if (stated === dayEntries.length) nutrients[key] = round(total);
+      if (stated === dayEntries.length) nutrients[key] = round(total + (standaloneByDay.get(dayKey)?.[key] ?? 0));
     }
 
     // Which foods, keyed by what each entry is rather than by what it was
