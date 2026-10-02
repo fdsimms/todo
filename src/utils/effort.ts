@@ -1,6 +1,5 @@
-import type { Effort, Task } from '../types';
+import type { Effort } from '../types';
 import { activeChainStep, isChainFinish, type ChainCarrier, type ChainCompletionCarrier } from './chain';
-import { normalizeTitle } from './taskInstances';
 
 /**
  * Field updates to apply when a task's duration is measured by the stopwatch.
@@ -160,51 +159,12 @@ export type SuggestionCarrier = ChainCompletionCarrier & {
 export function measuredTimeWorthSuggesting(task: SuggestionCarrier): boolean {
   if ((task.recurrenceType ?? 'none') !== 'none') return true;
   // A one-off the app wrote (a generated task, a follow-up) comes round again
-  // as a fresh row, and that row reads its estimate back off this one through
-  // `rememberedEstimate` (and off its rule, where it has one). So a correction
-  // here does have a future reader, which is the whole test.
+  // as a fresh row, which starts from the estimate its generator keeps, and a
+  // correction here is written back there (ruleEstimate.ts). So it does have a
+  // future reader, which is the whole test.
   if (task.generatedKind || task.followUpTaskSourceTitle) return true;
   if (task.seriesId) return false;
   return task.chainEnabled === true && !isChainFinish(task);
-}
-
-/**
- * The estimate a task the app is about to write should start with, read off
- * the last task carrying the same title.
- *
- * Generated and follow-up tasks are fresh one-off rows every time, so an
- * estimate set or timed on one of them used to die with that row: "Put a new
- * towel out" came back unestimated every week and was charged as a default
- * stretch of work. Matching on the title is what makes the correction stick
- * without each generator growing a place to store it.
- *
- * Newest wins (completion time, else creation time), so a later correction
- * replaces an earlier one. Subtasks and rows stepping through a chain are
- * skipped: a chain's task-level estimate covers every step and its title is
- * the routine's, not the step's. Only the task-level fields are copied, both
- * verbatim, so the pair round-trips exactly as it was set. Null when no row
- * with that title carries either.
- *
- * Only for a task the app creates unasked. A task somebody typed keeps exactly
- * what they typed.
- */
-export function rememberedEstimate(
-  title: string,
-  tasks: readonly Pick<Task, 'title' | 'parentId' | 'estimatedMinutes' | 'effort' | 'completedAt' | 'createdAt' | 'chainEnabled' | 'chainItems' | 'chainIndex'>[],
-): { estimatedMinutes: number | null; effort: Effort } | null {
-  const key = normalizeTitle(title);
-  if (!key) return null;
-  let best: (typeof tasks)[number] | null = null;
-  let bestAt = '';
-  for (const t of tasks) {
-    if (t.parentId) continue;
-    if (t.estimatedMinutes == null && !t.effort) continue;
-    if (normalizeTitle(t.title) !== key) continue;
-    if (activeChainStep(t)) continue;
-    const at = t.completedAt ?? t.createdAt;
-    if (best === null || at > bestAt) { best = t; bestAt = at; }
-  }
-  return best ? { estimatedMinutes: best.estimatedMinutes, effort: best.effort } : null;
 }
 
 /** Whether a draft already says how long it takes, so nothing should be filled in. */

@@ -60,7 +60,6 @@ import { chainStepDatedByAnswer, deliverableDate } from './deliverables';
 import { parseMealSlotSource, mealSlotStepTimeSegments } from './mealSlotTasks';
 import { derivedId, spawnSeed } from './syncIds';
 import { newTaskFromDraft, buildSeriesRow } from './taskDraft';
-import { draftHasEstimate, rememberedEstimate } from './effort';
 
 /** The five things a caller can say about a completion. Identical to `completeTask`'s. */
 export interface CompletionOptions {
@@ -771,10 +770,6 @@ export function buildCompletion(
   if (followUpRule && followUpAdvance?.spawns && !followUpSuppression) {
     const maxOrder = allTasks.reduce((m, t) => Math.max(m, t.sortOrder), 0);
     const spec = followUpRule.draft;
-    // The rule's draft names the estimate when it has one (an edit on an
-    // earlier follow-up writes back into it); otherwise the last task with
-    // this title does, so a follow-up whose source has gone stale keeps it too.
-    const remembered = spec && draftHasEstimate(spec) ? null : rememberedEstimate(followUpRule.title, allTasks);
     followUpTask = newTaskFromDraft({
       title: followUpRule.title,
       dueDate: nextTask?.dueDate ?? getCurrentDayStart().toISOString(),
@@ -787,8 +782,10 @@ export function buildCompletion(
       // undefined, not 0, when there's no draft: 0 is a real answer here
       // and would override a configured new-task default.
       priority: spec?.priority,
-      effort: remembered ? remembered.effort : spec?.effort,
-      estimatedMinutes: remembered ? remembered.estimatedMinutes : spec?.estimatedMinutes ?? null,
+      // An estimate edited on an earlier follow-up is written back into this
+      // draft (writeEstimateToSource), which is how the next one starts with it.
+      effort: spec?.effort,
+      estimatedMinutes: spec?.estimatedMinutes ?? null,
       timeSegments: spec?.timeSegments ?? [],
       // Written onto the row, not merely consulted at spawn time: a
       // vacation that starts after this landed should hide it too, the

@@ -1,20 +1,51 @@
-import type { Effort, RuleTaskEstimate } from '../types';
+import type { Effort, GeneratedKind, RuleTaskEstimate } from '../types';
 
 /**
- * The estimate a "when X, add this task" rule hands the task it writes.
+ * The estimate a generator hands the task it writes, kept on the generator.
  *
- * Weather, Screen Time, Health and calendar-event rules each write a fresh
- * one-off row every time they fire, so an estimate set or timed on that row
- * used to be lost with it. Editing the row's estimate writes it back onto the
- * rule (see `updateTask`), and the rule's draft carries it into every task it
- * writes after that. There is no control for it on the rule sheets: the task
- * is where somebody notices how long it took, so the task is where it is set.
+ * Every generated task (and every follow-up) is a fresh one-off row, so an
+ * estimate set or timed on one used to be lost with it. Editing the row's
+ * estimate now writes it back onto whatever wrote the row
+ * (`writeEstimateToSource` in `useTaskStore`), and the next row reads it from
+ * there. The title plays no part, so a title carrying a date or a forecast
+ * changes nothing.
  *
- * `rememberedEstimate` (`effort.ts`) covers the same ground by title for every
- * generator, and this exists beside it because a weather task's title carries
- * the day's forecast ("Put on sunscreen (sunny, 24°)") and so never matches
- * itself, and because a rule keeps its estimate across a rename.
+ * Three homes, by what the generator is:
+ *
+ * - **A rule somebody wrote** (weather, Screen Time, Health, calendar events):
+ *   on the rule, since each rule is its own generator.
+ * - **A follow-up rule**: in its `followUpTaskDraft`, which already had the
+ *   two fields.
+ * - **Every other generator**: one entry per kind in the `generatorEstimates`
+ *   setting. "Use up milk" and "Use up rice" share it, because it's the same
+ *   job.
+ *
+ * There is no control for any of these on a settings screen: the task is where
+ * somebody finds out how long it takes, so the task is where it is set.
  */
+
+/** What every home stores: the task-level pair, verbatim. */
+export interface GeneratorEstimate {
+  estimatedMinutes: number | null;
+  effort: Effort;
+}
+
+/** One estimate per generator kind that has no rule of its own to hold one. */
+export type GeneratorEstimates = Partial<Record<GeneratedKind, GeneratorEstimate>>;
+
+/**
+ * Kinds that keep no generator-level estimate. The four rule kinds hold theirs
+ * on each rule. A meal task already arrives estimated from its recipe and the
+ * per-step `mealSlotStepEstimates`, and one figure across every meal of the
+ * week would be wrong for all but one recipe.
+ */
+const NO_KIND_ESTIMATE: ReadonlySet<GeneratedKind> = new Set<GeneratedKind>([
+  'weather', 'screenTime', 'health', 'eventTask', 'mealSlot', 'mealCook',
+]);
+
+export function holdsKindEstimate(kind: GeneratedKind): boolean {
+  return !NO_KIND_ESTIMATE.has(kind);
+}
 
 function isEffort(v: unknown): v is Effort {
   return typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= 6;
@@ -49,7 +80,7 @@ export function ruleEstimateDraft(rule: RuleTaskEstimate): { estimatedMinutes?: 
 export function withRuleEstimate<R extends RuleTaskEstimate & { id: string }>(
   rules: readonly R[],
   ruleId: string,
-  estimate: { estimatedMinutes: number | null; effort: Effort },
+  estimate: GeneratorEstimate,
 ): R[] | null {
   const rule = rules.find(r => r.id === ruleId);
   if (!rule) return null;
@@ -62,4 +93,43 @@ export function withRuleEstimate<R extends RuleTaskEstimate & { id: string }>(
     const { estimatedMinutes: _m, effort: _e, ...rest } = r;
     return { ...rest, ...next } as R;
   });
+}
+
+/**
+ * `generatorEstimates` off its setting, tolerantly: unreadable reads as empty,
+ * and an entry that says nothing is dropped.
+ */
+export function parseGeneratorEstimates(raw: string | null | undefined): GeneratorEstimates {
+  if (!raw) return {};
+  let parsed: unknown;
+  try { parsed = JSON.parse(raw); } catch { return {}; }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+  const out: GeneratorEstimates = {};
+  for (const [kind, value] of Object.entries(parsed as Record<string, unknown>)) {
+    if (!value || typeof value !== 'object') continue;
+    const estimate = parseRuleEstimate(value as Partial<RuleTaskEstimate>);
+    if (estimate.estimatedMinutes === undefined) continue;
+    out[kind as GeneratedKind] = { estimatedMinutes: estimate.estimatedMinutes, effort: estimate.effort ?? 0 };
+  }
+  return out;
+}
+
+/**
+ * The map with one kind's estimate replaced (or removed, when cleared), or
+ * null when nothing would change.
+ */
+export function withGeneratorEstimate(
+  estimates: GeneratorEstimates,
+  kind: GeneratedKind,
+  estimate: GeneratorEstimate,
+): GeneratorEstimates | null {
+  const stored = estimates[kind];
+  const next = parseRuleEstimate(estimate);
+  if (next.estimatedMinutes === undefined) {
+    if (!stored) return null;
+    const { [kind]: _gone, ...rest } = estimates;
+    return rest;
+  }
+  if (stored && stored.estimatedMinutes === next.estimatedMinutes && stored.effort === next.effort) return null;
+  return { ...estimates, [kind]: { estimatedMinutes: next.estimatedMinutes, effort: next.effort ?? 0 } };
 }

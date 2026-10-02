@@ -28,6 +28,7 @@ import {
 } from '../utils/energyBudget';
 import { DEFAULT_WEIGH_IN_EVERY_DAYS, clampWeighInEveryDays } from '../utils/weightTasks';
 import { DEFAULT_APP_FONT, isAppFont, pickRandomAppFont, type AppFont } from '../theme/fonts';
+import { parseGeneratorEstimates, type GeneratorEstimates } from '../utils/ruleEstimate';
 import type { SortOption, RecipeSortOption, ProjectSortOption, Priority, Effort, MealSlot, TimeOfDay, TitleRule, WeatherRule, EventTaskRule, ScreenTimeRule, HealthRule, NutrientKey, ReminderCapture } from '../types';
 import {
   parseNutritionTargets,
@@ -1355,6 +1356,11 @@ interface SettingsStore {
   // Kept out of DEFAULT_SETTINGS/resetToDefaults for the mechanical reason
   // weatherRules is: it's an array, and String(value) doesn't round-trip one.
   eventRules: EventTaskRule[];
+  // How long each generator's task takes, for the generators with no rule of
+  // their own to hold it. Written back from a generated task's estimate, never
+  // set here directly; see ruleEstimate.ts. Kept out of DEFAULT_SETTINGS for
+  // the reason eventRules is: it's an object, and String(value) loses it.
+  generatorEstimates: GeneratorEstimates;
   // What the event generator has already written a task for, or considered and
   // answered — keyed by `${eventId}|${eventStart}#${ruleId}`, valued by the
   // occurrence's end instant so it prunes itself. This is the one rule
@@ -1759,6 +1765,7 @@ interface SettingsStore {
   setEventTasks: (on: boolean) => void;
   setEventTaskCategory: (category: string | null) => void;
   setEventRules: (rules: EventTaskRule[]) => void;
+  setGeneratorEstimates: (estimates: GeneratorEstimates) => void;
   setEventTaskHandled: (handled: HandledEventTasks) => void;
   setScreenTimeTasks: (on: boolean) => void;
   setScreenTimeTaskCategory: (category: string | null) => void;
@@ -2370,6 +2377,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   eventTasks: false,
   eventTaskCategory: null,
   eventRules: [],
+  generatorEstimates: {},
   eventTaskHandled: {},
   screenTimeTasks: false,
   screenTimeTaskCategory: null,
@@ -2768,6 +2776,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     // explicitly emptied list still wins.
     const storedEventRules = dbGetSetting('eventRules');
     const eventRules = storedEventRules ? parseEventRules(storedEventRules) : defaultEventRules();
+    const generatorEstimates = parseGeneratorEstimates(dbGetSetting('generatorEstimates'));
     // Pruned on load rather than only on the sweep, so an install that sat
     // closed across a fortnight doesn't carry a window's worth of finished
     // occurrences around until the next foreground — the same call
@@ -2989,6 +2998,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       focusWorkCapMinutes,
       foodLogPinnedNutrients,
       gateShieldEnabled,
+      generatorEstimates,
       groceryImportConfirmedListId,
       groceryImportDelete,
       groceryImportEnabled,
@@ -3634,6 +3644,12 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setEventRules(rules: EventTaskRule[]) {
     dbSetSetting('eventRules', JSON.stringify(rules));
     set({ eventRules: rules });
+  },
+
+  // Written whole, like setEventRules.
+  setGeneratorEstimates(estimates: GeneratorEstimates) {
+    dbSetSetting('generatorEstimates', JSON.stringify(estimates));
+    set({ generatorEstimates: estimates });
   },
 
   // State rather than a preference, the position mealPlanNudgeGroupId is in:

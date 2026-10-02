@@ -157,8 +157,10 @@ import { buildCompletion, completionSettings } from '../utils/taskCompletion';
 import { derivedId, spawnSeed } from '../utils/syncIds';
 import { reorderSubset } from '../utils/reorder';
 import { liveProjectSteps, slotUpdates } from '../utils/projectOrder';
-import { applyMeasuredTime, draftHasEstimate, rememberedEstimate } from '../utils/effort';
-import { ruleEstimateDraft, withRuleEstimate } from '../utils/ruleEstimate';
+import { applyMeasuredTime, draftHasEstimate } from '../utils/effort';
+import {
+  ruleEstimateDraft, withRuleEstimate, withGeneratorEstimate, holdsKindEstimate,
+} from '../utils/ruleEstimate';
 import { chainStepDatedByAnswer, deliverableDate, deliverableKindFor, isTentativeAnswer } from '../utils/deliverables';
 import { totalMinutes } from '../utils/recipeUtils';
 import { normalizeTargetUnit } from '../utils/quotaUnit';
@@ -2140,21 +2142,36 @@ interface TaskStore extends UndoHistoryActions {
 }
 
 /**
- * Carry an estimate edited on an app-written task back to whatever writes the
- * next one, so it is there the next time rather than dying with this row.
+ * The row holding the follow-up rule that wrote `task`, now.
  *
- * A follow-up task writes into its rule's draft on the live row holding the
- * rule (`followUpTaskSourceId`; a stale pointer, or a completed row, writes
- * nothing). A weather, Screen Time, Health or calendar-event task writes onto
- * its rule (`ruleEstimate.ts`). Every other generated task has no source to
- * hold it and is covered by title instead (`rememberedEstimate`).
+ * `followUpTaskSourceId` names the successor that was live when the follow-up
+ * landed, and goes stale once that row is completed in turn. Each completion's
+ * successor points back at it through `previousOccurrenceId`, so the walk
+ * steps forward along those until it reaches a row still open. A follow-up
+ * task points back the same way, which is why rows carrying
+ * `followUpTaskSourceTitle` are passed over. Null when the chain ends (the
+ * rule's task stopped repeating, or a purge took a link).
+ */
+function liveFollowUpSource(task: Task, tasks: readonly Task[]): Task | null {
+  let row = tasks.find(t => t.id === task.followUpTaskSourceId);
+  for (let steps = 0; row && row.completed && steps < 1000; steps++) {
+    const prev: Task = row;
+    row = tasks.find(t => t.previousOccurrenceId === prev.id && !t.followUpTaskSourceTitle);
+  }
+  return row && !row.completed && followUpTaskRule(row) ? row : null;
+}
+
+/**
+ * Carry an estimate edited on an app-written task back to the generator that
+ * writes the next one, so it is there next time rather than dying with this
+ * row. Where each kind of generator keeps it is in `ruleEstimate.ts`.
  */
 function writeEstimateToSource(task: Task): void {
   const estimate = { estimatedMinutes: task.estimatedMinutes, effort: task.effort };
   if (task.followUpTaskSourceId) {
     const store = useTaskStore.getState();
-    const source = store.tasks.find(t => t.id === task.followUpTaskSourceId);
-    if (source && !source.completed && followUpTaskRule(source)) {
+    const source = liveFollowUpSource(task, store.tasks);
+    if (source) {
       const draft = source.followUpTaskDraft ?? emptyFollowUpTaskDraft();
       if (draft.estimatedMinutes !== estimate.estimatedMinutes || draft.effort !== estimate.effort) {
         const next = { ...draft, ...estimate };
@@ -2187,6 +2204,11 @@ function writeEstimateToSource(task: Task): void {
       const next = ruleId ? withRuleEstimate(settings.eventRules, ruleId, estimate) : null;
       if (next) settings.setEventRules(next);
       break;
+    }
+    default: {
+      if (!task.generatedKind || !holdsKindEstimate(task.generatedKind)) break;
+      const next = withGeneratorEstimate(settings.generatorEstimates ?? {}, task.generatedKind, estimate);
+      if (next) settings.setGeneratorEstimates(next);
     }
   }
 }
@@ -2554,13 +2576,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   addTask(draft, id, options) {
     const now = new Date().toISOString();
     const maxOrder = get().tasks.reduce((m, t) => Math.max(m, t.sortOrder), 0);
-    // A generated task is a fresh row each time, so an estimate somebody set
-    // or timed on the last one is carried over by title (rememberedEstimate).
-    const remembered = draft.generatedKind && draft.title && !draftHasEstimate(draft)
-      ? rememberedEstimate(draft.title, get().tasks)
+    // A generated task is a fresh row each time, so it starts from the
+    // estimate its generator keeps (ruleEstimate.ts). A rule's own estimate
+    // is already on the draft; this is the per-kind one.
+    const kindEstimate = draft.generatedKind && !draftHasEstimate(draft) && holdsKindEstimate(draft.generatedKind)
+      ? useSettingsStore.getState().generatorEstimates?.[draft.generatedKind] ?? null
       : null;
     const task = newTaskFromDraft(
-      applyTitleRulesToDraft(remembered ? { ...draft, ...remembered } : draft, options),
+      applyTitleRulesToDraft(kindEstimate ? { ...draft, ...kindEstimate } : draft, options),
       now, maxOrder + 1, true, id, options?.skipCategoryDefault);
     dbInsertTask(task);
     set(s => ({ tasks: [...s.tasks, task] }));

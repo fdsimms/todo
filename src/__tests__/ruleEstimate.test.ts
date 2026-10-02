@@ -1,4 +1,7 @@
-import { parseRuleEstimate, ruleEstimateDraft, withRuleEstimate } from '../utils/ruleEstimate';
+import {
+  parseRuleEstimate, ruleEstimateDraft, withRuleEstimate, parseGeneratorEstimates, withGeneratorEstimate,
+  holdsKindEstimate,
+} from '../utils/ruleEstimate';
 import { parseWeatherRules } from '../utils/weatherTasks';
 
 describe('parseRuleEstimate', () => {
@@ -44,5 +47,42 @@ describe('withRuleEstimate', () => {
   it('is null when nothing would change or the rule is gone', () => {
     expect(withRuleEstimate(rules, 'b', { estimatedMinutes: 5, effort: 1 })).toBeNull();
     expect(withRuleEstimate(rules, 'gone', { estimatedMinutes: 1, effort: 1 })).toBeNull();
+  });
+});
+
+describe('parseGeneratorEstimates', () => {
+  it('reads a stored map and drops what says nothing or is not one', () => {
+    expect(parseGeneratorEstimates(null)).toEqual({});
+    expect(parseGeneratorEstimates('not json')).toEqual({});
+    expect(parseGeneratorEstimates('[1]')).toEqual({});
+    expect(parseGeneratorEstimates(JSON.stringify({
+      groceryUseUp: { estimatedMinutes: 2, effort: 1 },
+      projectReview: { estimatedMinutes: null, effort: 0 },
+      pantryCheck: 'junk',
+    }))).toEqual({ groceryUseUp: { estimatedMinutes: 2, effort: 1 } });
+  });
+});
+
+describe('withGeneratorEstimate', () => {
+  it('sets, replaces and clears one kind', () => {
+    const one = withGeneratorEstimate({}, 'groceryUseUp', { estimatedMinutes: 2, effort: 1 })!;
+    expect(one).toEqual({ groceryUseUp: { estimatedMinutes: 2, effort: 1 } });
+    expect(withGeneratorEstimate(one, 'groceryUseUp', { estimatedMinutes: 5, effort: 1 }))
+      .toEqual({ groceryUseUp: { estimatedMinutes: 5, effort: 1 } });
+    expect(withGeneratorEstimate(one, 'groceryUseUp', { estimatedMinutes: null, effort: 0 })).toEqual({});
+  });
+
+  it('is null when nothing would change', () => {
+    const one = { groceryUseUp: { estimatedMinutes: 2, effort: 1 as const } };
+    expect(withGeneratorEstimate(one, 'groceryUseUp', { estimatedMinutes: 2, effort: 1 })).toBeNull();
+    expect(withGeneratorEstimate({}, 'groceryUseUp', { estimatedMinutes: null, effort: 0 })).toBeNull();
+  });
+});
+
+describe('holdsKindEstimate', () => {
+  it('is false for the rule kinds and meal tasks, true for the rest', () => {
+    expect(holdsKindEstimate('weather')).toBe(false);
+    expect(holdsKindEstimate('mealSlot')).toBe(false);
+    expect(holdsKindEstimate('groceryUseUp')).toBe(true);
   });
 });
