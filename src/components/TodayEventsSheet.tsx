@@ -27,8 +27,8 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { taskFieldsFromEvent } from '../utils/calendarEventImport';
 import { useEventPeopleStore } from '../store/useEventPeopleStore';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
-import { peopleForEvent, suggestedEventPeople, defaultNewEventSpan } from '../utils/eventPeople';
-import { getCurrentDayStart } from '../utils/dateUtils';
+import { peopleForEvent, suggestedEventPeople } from '../utils/eventPeople';
+import { QuickEventSheet } from './QuickEventSheet';
 import { isDemoModeActive } from '../utils/demoState';
 import { InlineAction } from './InlineAction';
 import { TemplatePickerSheet } from './TemplatePickerSheet';
@@ -126,7 +126,7 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById, titl
   const [openPanel, setOpenPanel] = useState<OpenPanel | null>(null);
   const eventPeople = useEventPeopleStore(s => s.links);
   const setEventPeople = useEventPeopleStore(s => s.setPeople);
-  const createEvent = useEventPeopleStore(s => s.createEvent);
+  const [newEventOpen, setNewEventOpen] = useState(false);
   const allPeople = usePersonStore(useShallow(s => s.people));
   const people = useMemo(() => allPeople.filter(p => !p.archived), [allPeople]);
   const hasTemplates = useTemplateStore(s => s.templates.length > 0);
@@ -198,13 +198,11 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById, titl
     rekeyEventTasks(moved.link.key, moved.event);
   };
 
-  // Today, at the next whole hour; the system sheet is where the user changes
-  // any of it, including which calendar (Google or otherwise) it goes in.
-  const newEvent = async () => {
+  // The quick-add card, on this sheet's day (or today) at the next whole hour.
+  // It is rendered inside this sheet's Modal below, never beside it.
+  const newEvent = () => {
     haptics.tap();
-    const today = getCurrentDayStart();
-    const { start, end } = defaultNewEventSpan(day ?? today, today, new Date());
-    await createEvent({ title: '', start, end });
+    setNewEventOpen(true);
   };
 
   // Same no-canOpenURL, silently-ignore-failure pattern as TaskItem's
@@ -480,6 +478,11 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById, titl
             if (planningFor && tasks.length > 0) addEventTasks(planningFor, tasks.map(t => t.id));
             setPlanningFor(null);
           }}
+        />
+        <QuickEventSheet
+          visible={newEventOpen}
+          onClose={() => setNewEventOpen(false)}
+          seed={day ? { day } : null}
         />
         <AwayShiftSheet
           visible={shifting !== null}

@@ -44,6 +44,12 @@ describe('quickEventSaveFields', () => {
     expect(f.alarms).toEqual([{ relativeOffset: 540 }]);
   });
 
+  it('carries a repeat rule through to the write', () => {
+    const rule = { frequency: 'weekly' as const, interval: 1, daysOfTheWeek: [{ dayOfTheWeek: 2 }] };
+    expect(quickEventSaveFields({ ...base, repeat: rule }).recurrence).toEqual(rule);
+    expect(quickEventSaveFields({ ...base, repeat: null }).recurrence).toBeUndefined();
+  });
+
   it('trims the location and carries free time through', () => {
     const f = quickEventSaveFields({ ...base, location: '  Joe\'s ', availability: 'free', notesOrLink: 'https://x.co/a' });
     expect(f.location).toBe("Joe's");

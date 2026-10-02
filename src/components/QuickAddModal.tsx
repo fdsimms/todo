@@ -1696,6 +1696,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
         start: draft.start,
         end: draft.end,
         location: draft.location,
+        repeat: draft.repeat,
         alertMinutes: draft.alertMinutes !== undefined ? draft.alertMinutes : remembered.alertMinutes,
         availability: remembered.availability,
         calendarId: remembered.calendarId,

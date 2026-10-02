@@ -1,4 +1,4 @@
-import { alertRelativeOffset, eventMarkerText, parseAlertClause, parseQuickEvent } from '../utils/quickEvent';
+import { alertRelativeOffset, describeEventRepeat, eventMarkerText, parseAlertClause, parseQuickEvent } from '../utils/quickEvent';
 import { findAmbiguousMention } from '../utils/parseTaskInput';
 
 jest.mock('../store/useSettingsStore', () => ({
@@ -160,6 +160,51 @@ describe('parseAlertClause', () => {
 
   it('only reads a suffix', () => {
     expect(parseAlertClause('alert 30m dinner')).toBeNull();
+  });
+});
+
+describe('parseQuickEvent, repeats', () => {
+  it('reads "every monday" as a weekly rule starting next Monday', () => {
+    const draft = parseQuickEvent('standup every monday 9am', opts);
+    expect(draft.repeat).toEqual({ frequency: 'weekly', interval: 1, daysOfTheWeek: [{ dayOfTheWeek: 2 }] });
+    expect(draft.start).toEqual(new Date(2026, 8, 28, 9, 0));
+  });
+
+  it('reads an interval and several weekdays', () => {
+    const draft = parseQuickEvent('gym every 2 weeks', opts);
+    expect(draft.repeat).toEqual({ frequency: 'weekly', interval: 2 });
+  });
+
+  it('reads "daily"', () => {
+    expect(parseQuickEvent('walk daily 7am', opts).repeat).toEqual({ frequency: 'daily', interval: 1 });
+  });
+
+  it('has no repeat for a one-off day', () => {
+    expect(parseQuickEvent('dentist monday', opts).repeat).toBeNull();
+  });
+
+  it('has none for a task-only repeat: every few hours, or counted from completion', () => {
+    expect(parseQuickEvent('stretch every 3 hours', opts).repeat).toBeNull();
+    expect(parseQuickEvent('water plants 3 days after completion', opts).repeat).toBeNull();
+  });
+
+  it('keeps the repeat when the phrase is followed by a place and an alert', () => {
+    const draft = parseQuickEvent("standup every monday 9am at Zoom alert 10m", opts);
+    expect(draft.repeat?.frequency).toBe('weekly');
+    expect(draft.location).toBe('Zoom');
+    expect(draft.alertMinutes).toBe(10);
+  });
+});
+
+describe('describeEventRepeat', () => {
+  it.each([
+    [{ frequency: 'daily', interval: 1 }, 'Repeats every day'],
+    [{ frequency: 'weekly', interval: 2 }, 'Repeats every 2 weeks'],
+    [{ frequency: 'weekly', interval: 1, daysOfTheWeek: [{ dayOfTheWeek: 2 }, { dayOfTheWeek: 4 }] }, 'Repeats every week on Mon, Wed'],
+    [{ frequency: 'monthly', interval: 1 }, 'Repeats every month'],
+    [{ frequency: 'yearly', interval: 1 }, 'Repeats every year'],
+  ] as const)('%j', (rule, text) => {
+    expect(describeEventRepeat(rule as never)).toBe(text);
   });
 });
 

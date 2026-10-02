@@ -10,12 +10,7 @@ import {
   staleEventPeopleIds,
 } from '../utils/eventPeople';
 import type { EventPeopleLink } from '../types';
-import {
-  presentEventCreate,
-  readTimeBlockEvent,
-  saveEventDirect,
-  type EventSaveFields,
-} from '../utils/calendarSync';
+import { saveEventDirect, type EventSaveFields } from '../utils/calendarSync';
 import { isDemoModeActive } from '../utils/demoState';
 import { generateId } from '../utils/id';
 import {
@@ -70,22 +65,11 @@ interface EventPeopleState {
   peopleFor: (event: Pick<BusyEvent, 'id' | 'start'>) => string[];
   setPeople: (event: Pick<BusyEvent, 'id' | 'start' | 'end' | 'title'>, personIds: readonly string[]) => void;
   /**
-   * Opens the system new-event sheet and, once the user saves, links the event
-   * to `personIds`. Resolves true when an event was saved.
-   *
-   * **Off in demo mode**: the event would land in the real calendar, which is
-   * exactly the write outside the demo database `CLAUDE.md` rules out. The
-   * time block's own create makes the same refusal.
-   */
-  createEvent: (
-    fields: { title: string; start: Date; end: Date; allDay?: boolean; location?: string },
-    personIds?: readonly string[]
-  ) => Promise<boolean>;
-  /**
    * Writes the event straight into the calendar, with no system sheet, and
    * links it to `personIds`. Resolves the id and calendar it went into, or null
    * when nothing was saved (access refused, no writable calendar, demo mode).
-   * Off in demo mode for `createEvent`'s reason.
+   * **Off in demo mode**: the event would land in the real calendar, which is
+   * exactly the write outside the demo database `CLAUDE.md` rules out.
    */
   saveEvent: (
     fields: EventSaveFields,
@@ -146,44 +130,13 @@ export const useEventPeopleStore = create<EventPeopleState>((set, get) => ({
     set({ rows, links: indexEventPeople(rows, get().links.externalIds) });
   },
 
-  createEvent: async (fields, personIds = []) => {
-    if (isDemoModeActive()) return false;
-    const result = await presentEventCreate(fields);
-    if (!result.saved) return false;
-
-    if (result.eventId && personIds.length > 0) {
-      // Read back rather than trusting the prefill: the sheet let the user
-      // move it, and the link is keyed on the start they actually saved. The
-      // server id is read first, so the link is written under the key the
-      // other device will look for.
-      const saved = await readTimeBlockEvent(result.eventId);
-      if (saved) {
-        await get().resolveExternalIds([{ id: result.eventId }]);
-        get().setPeople(
-          {
-            id: result.eventId,
-            start: saved.start.toISOString(),
-            end: saved.end.toISOString(),
-            title: saved.title,
-          },
-          personIds
-        );
-      }
-    }
-    // So the new event shows on Today, the calendar and the person's screen
-    // without waiting for the next foreground.
-    void useCalendarStore.getState().refresh();
-    return true;
-  },
-
   saveEvent: async (fields, personIds = []) => {
     if (isDemoModeActive()) return null;
     const saved = await saveEventDirect(fields);
     if (!saved) return null;
 
     if (personIds.length > 0) {
-      // The span is what was just written, so there is nothing to read back
-      // (`createEvent` reads because its sheet let the user move the event).
+      // The span is what was just written, so there is nothing to read back.
       // The server id is resolved first so the link is keyed the way the
       // other device will look for it.
       await get().resolveExternalIds([{ id: saved.id }]);

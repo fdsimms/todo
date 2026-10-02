@@ -573,11 +573,13 @@ from the list an event is with, from the person button on a row in Today's
 events sheet, or by starting the event from a person's page ("Plan something").
 
 - **The event lives in the calendar; the link lives in the app.** New events
-  are written into a device calendar, either through Apple's own sheet
-  (`presentEventCreate`: the calendar screen, a person's page, Today's events
-  sheet) or straight from quick add (`saveEventDirect`, below). Either way they
-  land in a real calendar, Google included, and sync wherever that calendar
-  does. The link is metadata only this app reads. Owning events
+  are written straight into a device calendar (`saveEventDirect`) from the
+  quick-add card, which the calendar screen, a person's "Plan something" and
+  Today's events sheet open too (`QuickEventSeed`: a day, a title, the people).
+  They land in a real calendar, Google included, and sync wherever that
+  calendar does. Apple's own sheet (`presentEventCreate`) is left for the
+  itinerary import, which wants a form to check what was read off a
+  confirmation. The link is metadata only this app reads. Owning events
   in an app table was the alternative, and would have been a second calendar
   that Google and iCloud never see.
 - **A link is never an attendee.** Inviting sends mail and publishes an
@@ -625,8 +627,11 @@ system sheet, then links the people. The rows Apple's form asked for are chips
 on the card (calendar, alert, Busy/Free) that start as the last saved event
 left them (`quickEventDefaults.ts`), plus a Notes or link field and a trailing
 `at (place)` and `alert 30m` in the line, which win over a chip's earlier pick.
-Invitees, travel time and a repeat rule are not set here: the first two cannot
-be written through EventKit, and a repeat phrase gives only its first day. It is its own
+A repeat phrase ("every monday") saves a repeat rule (`eventRecurrenceFor`);
+"every 8 hours" and "3 days after completion" have no event counterpart and
+read as their first day. Invitees and travel time are not set here: EventKit
+cannot write either. A person's link is keyed on the first occurrence of a
+repeating event. It is its own
 sheet rather than a mode of `QuickAddModal`, since almost nothing that sheet
 sets means anything for an event. Regular quick add reaches the same path
 with a leading `event:` (`eventMarkerText`): the rest of the line is read the

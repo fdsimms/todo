@@ -4,9 +4,11 @@ import type {
   Alarm,
   Calendar as DeviceCalendar,
   Event,
+  RecurrenceRule,
   RecurringEventOptions,
 } from 'expo-calendar/legacy';
 import type { BusyEvent } from './calendarBusy';
+import type { EventRecurrence } from './quickEvent';
 
 /**
  * The EventKit half of the calendar read and (as of #1493) the all-day
@@ -615,11 +617,10 @@ export async function presentTimeBlockCreate(fields: {
  * they didn't watch being written. Anything the app wants to remember about
  * the event (who it's with) is kept on its own side, see `eventPeople.ts`.
  *
- * `allDay` and `alarms` are optional because the sheet's other caller
- * (`quickEvent.ts`) never needs either — a hand-typed line always resolves to
- * a timed span with no default alert. `calendarEventImport.ts`'s
- * `eventImportCreateFields` is what supplies both, for an event read off a
- * confirmation.
+ * Its one caller now is the itinerary import (`calendarEventImport.ts`'s
+ * `eventImportCreateFields`), which supplies `allDay` and `alarms` for an event
+ * read off a confirmation and wants the form to check them. Quick add and the
+ * screens that start a blank event save through `saveEventDirect` instead.
  */
 export async function presentEventCreate(fields: {
   title: string;
@@ -661,6 +662,8 @@ export interface EventSaveFields {
   notes?: string;
   url?: string;
   alarms?: Alarm[];
+  /** A repeat rule, as `eventRecurrenceFor` builds it. */
+  recurrence?: EventRecurrence;
   availability?: 'busy' | 'free';
   /** The calendar to write to. A missing or stale id falls back to the default. */
   calendarId?: string | null;
@@ -719,6 +722,9 @@ export async function saveEventDirect(
       ...(fields.notes ? { notes: fields.notes } : {}),
       ...(fields.url ? { url: fields.url } : {}),
       ...(fields.alarms ? { alarms: fields.alarms } : {}),
+      // Plain data to the library's enum-typed rule: the frequency words and
+      // day numbers are the same values its enums hold.
+      ...(fields.recurrence ? { recurrenceRule: fields.recurrence as unknown as RecurrenceRule } : {}),
       availability:
         fields.availability === 'free'
           ? calendar().Availability.FREE

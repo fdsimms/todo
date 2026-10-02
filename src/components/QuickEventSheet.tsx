@@ -33,7 +33,8 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useEventPeopleStore } from '../store/useEventPeopleStore';
 import { useTitleSelection } from '../hooks/useTitleSelection';
 import { groupMentionTokens } from '../utils/peopleRegistry';
-import { parseQuickEvent } from '../utils/quickEvent';
+import { describeEventRepeat, parseQuickEvent, type EventRecurrence } from '../utils/quickEvent';
+import { defaultNewEventSpan } from '../utils/eventPeople';
 import {
   readQuickEventDefaults,
   writeQuickEventDefaults,
@@ -66,9 +67,21 @@ const EVENT_TOKEN_ACCESSORY_ID = 'quickEventTitleTokenAccessory';
 /** "#" and "!" name a category and a priority, which an event doesn't have. */
 const EVENT_TOKENS = ['@'] as const;
 
+/**
+ * What a caller that already knows something about the event starts the card
+ * with: the day the screen it was opened from is on, a title, and the people
+ * it is with (a person's "Plan something"). All optional, and all editable.
+ */
+export interface QuickEventSeed {
+  day?: Date;
+  title?: string;
+  personIds?: readonly string[];
+}
+
 interface Props {
   visible: boolean;
   onClose: () => void;
+  seed?: QuickEventSeed | null;
 }
 
 /**
@@ -103,7 +116,7 @@ interface Props {
  * This one closes only once the event is saved. A failed save (calendar
  * access refused, no writable calendar) says so and leaves the line intact.
  */
-export function QuickEventSheet({ visible, onClose }: Props) {
+export function QuickEventSheet({ visible, onClose, seed }: Props) {
   const colors = useColors();
   const { isDark, shadows } = useTheme();
   const { height: windowHeight } = useWindowDimensions();
@@ -178,6 +191,9 @@ export function QuickEventSheet({ visible, onClose }: Props) {
   const [availability, setAvailability] = useState<EventAvailability>('busy');
   const [calendars, setCalendars] = useState<DeviceCalendar[]>([]);
   const [targetCalendar, setTargetCalendar] = useState<DeviceCalendar | null>(null);
+  // The repeat a schedule phrase read, kept once the phrase's words leave the
+  // line (tapping the tooltip, or picking the date by hand). A live phrase wins.
+  const [repeatPick, setRepeatPick] = useState<EventRecurrence | null>(null);
   const [calendarPickerVisible, setCalendarPickerVisible] = useState(false);
   const [alertPickerVisible, setAlertPickerVisible] = useState(false);
   const titleCaret = useTitleSelection(text);
@@ -219,9 +235,11 @@ export function QuickEventSheet({ visible, onClose }: Props) {
   // ==== effects: resetting on open ====
   useEffect(() => {
     if (!visible) return;
-    setText('');
+    const seededText = seed?.title ?? '';
+    setText(seededText);
     setLocation('');
     setNotesOrLink('');
+    setRepeatPick(null);
     const remembered = readQuickEventDefaults();
     setCalendarId(remembered.calendarId);
     setAlertDefault(remembered.alertMinutes);
@@ -230,9 +248,11 @@ export function QuickEventSheet({ visible, onClose }: Props) {
     setCalendarPickerVisible(false);
     setAlertPickerVisible(false);
     void loadCalendars(remembered.calendarId, false);
-    titleCaret.resetCaret('');
+    titleCaret.resetCaret(seededText);
     setBusy(false);
-    setStartOverride(null);
+    setStartOverride(
+      seed?.day ? defaultNewEventSpan(seed.day, getCurrentDayStart(), new Date()).start : null
+    );
     setAllDay(false);
     setPickerVisible(false);
     setDismissedSignature(null);
@@ -324,7 +344,10 @@ export function QuickEventSheet({ visible, onClose }: Props) {
   const describeStart = (d: Date) => (allDay ? dayLabel(d) : `${dayLabel(d)}, ${formatTimeOfDay(d, use24Hour)}`);
   const when = describeStart(effectiveStart);
   const whenSet = phrase !== null || startOverride !== null;
-  const namedPeople = people.filter(p => draft.personIds.includes(p.id)).map(displayNameOf);
+  const effectiveRepeat = phrase ? draft.repeat : repeatPick;
+  // The people the line names plus any the opener already knew (a person's page).
+  const allPersonIds = [...new Set([...draft.personIds, ...(seed?.personIds ?? [])])];
+  const namedPeople = people.filter(p => allPersonIds.includes(p.id)).map(displayNameOf);
   // A place or alert typed in the line is live, the same as a typed day: it
   // wins over an earlier pick without anyone tapping it.
   const effectiveLocation = draft.location ?? (location.trim() || null);
@@ -348,6 +371,7 @@ export function QuickEventSheet({ visible, onClose }: Props) {
     setText(next);
     titleCaret.moveCaret(next);
     setStartOverride(draft.start);
+    setRepeatPick(draft.repeat);
   };
 
   const dismissPhrase = () => {
@@ -382,6 +406,7 @@ export function QuickEventSheet({ visible, onClose }: Props) {
       titleCaret.moveCaret(next);
     }
     setStartOverride(date);
+    if (phrase) setRepeatPick(draft.repeat);
     setPickerVisible(false);
   };
 
@@ -398,11 +423,12 @@ export function QuickEventSheet({ visible, onClose }: Props) {
         allDay,
         location: effectiveLocation,
         notesOrLink,
+        repeat: effectiveRepeat,
         alertMinutes: effectiveAlert,
         availability,
         calendarId: targetCalendar?.id ?? calendarId,
       }),
-      draft.personIds
+      allPersonIds
     );
     setBusy(false);
     // A demo's event is refused on purpose (it would reach the real calendar),
@@ -599,6 +625,23 @@ export function QuickEventSheet({ visible, onClose }: Props) {
             <View style={styles.captionRow}>
               <Ionicons name="people-outline" size={13} color={colors.textSecondary} />
               <Text style={styles.captionText} numberOfLines={1}>With {namedPeople.join(', ')}</Text>
+            </View>
+          )}
+
+          {effectiveRepeat && (
+            <View style={styles.captionRow}>
+              <Ionicons name="repeat-outline" size={13} color={colors.textSecondary} />
+              <Text style={styles.captionText} numberOfLines={1}>{describeEventRepeat(effectiveRepeat)}</Text>
+              {!phrase && (
+                <TouchableOpacity
+                  onPress={() => { haptics.tap(); animateLayout(); setRepeatPick(null); }}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Don't repeat"
+                >
+                  <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
+                </TouchableOpacity>
+              )}
             </View>
           )}
 

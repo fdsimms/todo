@@ -1,5 +1,5 @@
 import { addHours } from 'date-fns/addHours';
-import { alertRelativeOffset } from './quickEvent';
+import { alertRelativeOffset, type EventRecurrence } from './quickEvent';
 import { parseLinkInput } from './parseTaskInput';
 import type { EventSaveFields } from './calendarSync';
 import type { EventAvailability } from './quickEventDefaults';
@@ -26,6 +26,7 @@ export interface QuickEventSaveInput {
   allDay?: boolean;
   location?: string | null;
   notesOrLink?: string;
+  repeat?: EventRecurrence | null;
   alertMinutes: number | null;
   availability: EventAvailability;
   calendarId: string | null;
@@ -50,6 +51,7 @@ export function quickEventSaveFields(input: QuickEventSaveInput): EventSaveField
     ...(input.alertMinutes !== null
       ? { alarms: [{ relativeOffset: alertRelativeOffset(input.alertMinutes, allDay) }] }
       : {}),
+    ...(input.repeat ? { recurrence: input.repeat } : {}),
     availability: input.availability,
     calendarId: input.calendarId,
   };

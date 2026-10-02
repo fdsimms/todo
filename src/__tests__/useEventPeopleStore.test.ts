@@ -8,7 +8,7 @@ import {
   dbGetSetting,
   dbSetSetting,
 } from '../db/database';
-import { presentEventCreate, readTimeBlockEvent, saveEventDirect } from '../utils/calendarSync';
+import { saveEventDirect } from '../utils/calendarSync';
 import { isDemoModeActive } from '../utils/demoState';
 import { useCalendarStore } from '../store/useCalendarStore';
 import type { BusyEvent } from '../utils/calendarBusy';
@@ -32,8 +32,6 @@ jest.mock('../db/database', () => ({
   }),
 }));
 jest.mock('../utils/calendarSync', () => ({
-  presentEventCreate: jest.fn(),
-  readTimeBlockEvent: jest.fn(),
   saveEventDirect: jest.fn(),
 }));
 jest.mock('../utils/demoState', () => ({ isDemoModeActive: jest.fn().mockReturnValue(false) }));
@@ -61,7 +59,6 @@ const event = (overrides: Partial<BusyEvent> = {}): BusyEvent => ({
   ...overrides,
 });
 
-const fields = { title: 'With Dustin', start: new Date(2099, 0, 10, 18), end: new Date(2099, 0, 10, 19) };
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -149,49 +146,6 @@ describe('resolveExternalIds', () => {
   });
 });
 
-describe('createEvent', () => {
-  it('does nothing in demo mode, so no event reaches the real calendar', async () => {
-    (isDemoModeActive as jest.Mock).mockReturnValue(true);
-    await expect(useEventPeopleStore.getState().createEvent(fields, ['p1'])).resolves.toBe(false);
-    expect(presentEventCreate).not.toHaveBeenCalled();
-  });
-
-  it('links nobody when the sheet is cancelled', async () => {
-    (presentEventCreate as jest.Mock).mockResolvedValue({ saved: false, deleted: false, eventId: null });
-    await expect(useEventPeopleStore.getState().createEvent(fields, ['p1'])).resolves.toBe(false);
-    expect(mockTable).toEqual([]);
-    expect(useCalendarStore.getState().refresh).not.toHaveBeenCalled();
-  });
-
-  it('links the saved event at the start the user saved, under its server id', async () => {
-    (presentEventCreate as jest.Mock).mockResolvedValue({ saved: true, deleted: false, eventId: 'new' });
-    const movedStart = new Date(2099, 0, 11, 19);
-    (readTimeBlockEvent as jest.Mock).mockResolvedValue({
-      title: 'Dinner with Dustin', start: movedStart, end: new Date(2099, 0, 11, 21), allDay: false,
-    });
-    mockExternalIds.mockResolvedValue({ new: 'google-new' });
-    await expect(useEventPeopleStore.getState().createEvent(fields, ['p1'])).resolves.toBe(true);
-    expect(mockTable).toHaveLength(1);
-    expect(mockTable[0].eventKey).toBe(`google-new#${movedStart.toISOString()}`);
-    expect(mockTable[0].title).toBe('Dinner with Dustin');
-    expect(useCalendarStore.getState().refresh).toHaveBeenCalled();
-  });
-
-  it('saves without linking when nobody was named', async () => {
-    (presentEventCreate as jest.Mock).mockResolvedValue({ saved: true, deleted: false, eventId: 'new' });
-    await expect(useEventPeopleStore.getState().createEvent(fields)).resolves.toBe(true);
-    expect(readTimeBlockEvent).not.toHaveBeenCalled();
-    expect(mockTable).toEqual([]);
-  });
-
-  it('keeps the event but skips the link when it cannot be read back', async () => {
-    (presentEventCreate as jest.Mock).mockResolvedValue({ saved: true, deleted: false, eventId: 'new' });
-    (readTimeBlockEvent as jest.Mock).mockResolvedValue(null);
-    await expect(useEventPeopleStore.getState().createEvent(fields, ['p1'])).resolves.toBe(true);
-    expect(mockTable).toEqual([]);
-  });
-});
-
 describe('saveEvent', () => {
   const saveFields = { title: 'Dinner', start: new Date(2099, 0, 10, 18), end: new Date(2099, 0, 10, 19) };
 
@@ -212,7 +166,6 @@ describe('saveEvent', () => {
     (saveEventDirect as jest.Mock).mockResolvedValue({ id: 'new', calendarId: 'cal1' });
     mockExternalIds.mockResolvedValue({ new: 'google-new' });
     await expect(useEventPeopleStore.getState().saveEvent(saveFields, ['p1'])).resolves.toEqual({ id: 'new', calendarId: 'cal1' });
-    expect(readTimeBlockEvent).not.toHaveBeenCalled();
     expect(mockTable).toHaveLength(1);
     expect(mockTable[0].eventKey).toBe(`google-new#${saveFields.start.toISOString()}`);
     expect(useCalendarStore.getState().refresh).toHaveBeenCalled();
