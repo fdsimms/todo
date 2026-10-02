@@ -471,7 +471,9 @@ export function QuickEventSheet({ visible, onClose }: Props) {
           <View style={styles.toolbar}>
             <TouchableOpacity
               style={[styles.toolChip, styles.toolChipWide, whenSet && styles.toolChipSet]}
-              onPress={() => { haptics.tap(); setPickerVisible(true); }}
+              // Keyboard down first, or the title's token bar is lost behind the
+              // picker's window — see the category chip in QuickAddModal.
+              onPress={() => { haptics.tap(); Keyboard.dismiss(); setPickerVisible(true); }}
               activeOpacity={interaction.activeOpacity}
               accessibilityRole="button"
               accessibilityLabel={`${allDay ? 'Date' : 'Date and time'}: ${when}`}
