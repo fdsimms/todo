@@ -10,7 +10,7 @@ import {
   staleEventPeopleIds,
 } from '../utils/eventPeople';
 import type { EventPeopleLink } from '../types';
-import { saveEventDirect, type EventSaveFields } from '../utils/calendarSync';
+import { deleteEventDirect, saveEventDirect, updateEventDirect, type EventSaveFields } from '../utils/calendarSync';
 import { isDemoModeActive } from '../utils/demoState';
 import { generateId } from '../utils/id';
 import {
@@ -75,6 +75,24 @@ interface EventPeopleState {
     fields: EventSaveFields,
     personIds?: readonly string[]
   ) => Promise<{ id: string; calendarId: string } | null>;
+  /**
+   * Saves the edit card's changes to an existing event (one occurrence of a
+   * repeating one) and moves its people links along with it: they are keyed
+   * by the occurrence's start, so a moved event would otherwise lose who it
+   * is with. Resolves the event's id, or null when nothing was saved.
+   */
+  updateEvent: (
+    eventId: string,
+    before: Pick<BusyEvent, 'start' | 'end' | 'title'>,
+    fields: EventSaveFields,
+    personIds: readonly string[],
+    occurrenceStart?: string | null,
+  ) => Promise<string | null>;
+  /**
+   * Deletes an event (one occurrence of a repeating one) and the people links
+   * on it. Only ever called from the edit card's Delete, once confirmed.
+   */
+  deleteEvent: (eventId: string, occurrence: Pick<BusyEvent, 'start' | 'end' | 'title'>) => Promise<boolean>;
 }
 
 export const useEventPeopleStore = create<EventPeopleState>((set, get) => ({
@@ -152,5 +170,29 @@ export const useEventPeopleStore = create<EventPeopleState>((set, get) => ({
     }
     void useCalendarStore.getState().refresh();
     return saved;
+  },
+
+  updateEvent: async (eventId, before, fields, personIds, occurrenceStart) => {
+    if (isDemoModeActive()) return null;
+    const id = await updateEventDirect(eventId, fields, occurrenceStart);
+    if (!id) return null;
+    const old = { id: eventId, start: before.start, end: before.end, title: before.title };
+    const moved = id !== eventId || old.start !== fields.start.toISOString();
+    if (moved) get().setPeople(old, []);
+    get().setPeople(
+      { id, start: fields.start.toISOString(), end: fields.end.toISOString(), title: fields.title },
+      personIds,
+    );
+    void useCalendarStore.getState().refresh();
+    return id;
+  },
+
+  deleteEvent: async (eventId, occurrence) => {
+    if (isDemoModeActive()) return false;
+    const deleted = await deleteEventDirect(eventId, occurrence.start);
+    if (!deleted) return false;
+    get().setPeople({ id: eventId, start: occurrence.start, end: occurrence.end, title: occurrence.title }, []);
+    void useCalendarStore.getState().refresh();
+    return true;
   },
 }));

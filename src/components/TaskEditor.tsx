@@ -72,7 +72,7 @@ import {
 } from '../utils/followUpTask';
 import { ordinal } from '../utils/ordinal';
 import { tagColor } from '../utils/tagColor';
-import { useTaskStore, CONTENT_FIELDS, derivedTargetCount } from '../store/useTaskStore';
+import { useTaskStore, CONTENT_FIELDS, derivedTargetCount, type TimeBlockPlan } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { nudgeReminderPastMeeting } from '../utils/reminderNudge';
@@ -120,6 +120,7 @@ import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessor
 import { TitleTokenAccessory } from './TitleTokenAccessory';
 import { FollowUpTaskSheet } from './FollowUpTaskSheet';
 import { CalendarChoiceSheet } from './CalendarChoiceSheet';
+import { QuickEventSheet } from './QuickEventSheet';
 import { TaskRelationPickerSheet } from './TaskRelationPickerSheet';
 import { blockerFields, blockerIdsOf, describeBlocks } from '../utils/blocking';
 import { displayTitleFor, isMissableMealPlanTask, getVisibleAt } from '../utils/visibilityUtils';
@@ -346,7 +347,14 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const addSubtask = useTaskStore(s => s.addSubtask);
   const toggleSubtask = useTaskStore(s => s.toggleSubtask);
   const deleteSubtask = useTaskStore(s => s.deleteSubtask);
-  const putTaskOnCalendar = useTaskStore(s => s.putTaskOnCalendar);
+  const planTimeBlock = useTaskStore(s => s.planTimeBlock);
+  const linkTimeBlock = useTaskStore(s => s.linkTimeBlock);
+  const unlinkTimeBlock = useTaskStore(s => s.unlinkTimeBlock);
+  // The time block the in-app event card is open on: a new one with a
+  // proposed slot, or the task's existing block to edit. Kept after closing so
+  // the card has its contents for the commit it spends fading out.
+  const [timeBlockPlan, setTimeBlockPlan] = useState<TimeBlockPlan | null>(null);
+  const [timeBlockOpen, setTimeBlockOpen] = useState(false);
   const reorderSubtasks = useTaskStore(s => s.reorderSubtasks);
   const subtasksOf = useTaskStore(s => s.subtasksOf);
   const seriesRowsOf = useTaskStore(s => s.seriesRowsOf);
@@ -712,8 +720,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const calendarEvents = useCalendarStore(s => s.events);
   const calendarLoaded = useCalendarStore(s => s.loaded);
 
-  // Read off the store rather than the `task` prop: putTaskOnCalendar writes
-  // the id after the system sheet closes, and the row has to change from
+  // Read off the store rather than the `task` prop: linkTimeBlock writes
+  // the id after the event card saves, and the row has to change from
   // "put this on my calendar" to "it's on your calendar" without waiting for
   // whichever screen owns the prop to hand down a new object.
   const taskId = task?.id ?? null;
@@ -721,7 +729,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     s => (taskId ? s.tasks.find(t => t.id === taskId)?.timeBlockEventId ?? null : null)
   );
   // The length a block would get, chain-aware, off the saved row — what
-  // putTaskOnCalendar will actually use. Null means the task has no length to
+  // planTimeBlock will actually propose. Null means the task has no length to
   // block out, which is what disables the row.
   const savedEstimateMinutes = task ? estimatedMinutesFor(task) : null;
 
@@ -2785,6 +2793,16 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             onSave={setFollowUpTaskDraft}
             onClose={() => setShowFollowUpTaskSheet(false)}
           />
+          <QuickEventSheet
+            visible={timeBlockOpen && timeBlockPlan !== null}
+            onClose={() => setTimeBlockOpen(false)}
+            seed={timeBlockPlan?.mode === 'create'
+              ? { title: timeBlockPlan.fields.title, start: timeBlockPlan.fields.start, end: timeBlockPlan.fields.end }
+              : null}
+            editing={timeBlockPlan?.mode === 'edit' ? { eventId: timeBlockPlan.eventId } : null}
+            onSaved={eventId => { if (task && timeBlockPlan?.mode === 'create') linkTimeBlock(task.id, eventId); }}
+            onDeleted={() => { if (task) unlinkTimeBlock(task.id); }}
+          />
           <CalendarChoiceSheet
             visible={calendarPickerFor !== null}
             title={calendarPickerFor === 'deadline' ? 'Add deadlines to' : 'Log completions to'}
@@ -4668,8 +4686,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               </>
             ),
           }] : []),
-          // Only for a saved top-level task: the action opens a system sheet
-          // that writes an event against a task id, and there isn't one yet
+          // Only for a saved top-level task: the action opens the event card,
+          // which writes an event against a task id, and there isn't one yet
           // while a task is being composed. Reads the *saved* estimate rather
           // than the editor's live one for the same reason — but a later Save
           // reconciles the block's title and length anyway (see
@@ -4681,10 +4699,13 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             node: (
               <TouchableOpacity
                 style={styles.optionRow}
-                onPress={() => {
+                onPress={async () => {
                   if (!savedEstimateMinutes) return;
                   haptics.tap();
-                  putTaskOnCalendar(task.id);
+                  const plan = await planTimeBlock(task.id);
+                  if (!plan) return;
+                  setTimeBlockPlan(plan);
+                  setTimeBlockOpen(true);
                 }}
                 activeOpacity={interaction.activeOpacity}
                 disabled={!savedEstimateMinutes}
@@ -4705,7 +4726,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                     {!savedEstimateMinutes
                       ? 'Set an estimate or effort first. A block needs a length'
                       : timeBlockEventId
-                      ? 'Opens the event to move, resize or delete it'
+                      ? 'Move, resize or delete the event'
                       : `Blocks out ${formatDuration(savedEstimateMinutes)} in your calendar to do this`}
                   </Text>
                 </View>

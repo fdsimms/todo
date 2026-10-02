@@ -8,7 +8,7 @@ import {
   dbGetSetting,
   dbSetSetting,
 } from '../db/database';
-import { saveEventDirect } from '../utils/calendarSync';
+import { deleteEventDirect, saveEventDirect, updateEventDirect } from '../utils/calendarSync';
 import { isDemoModeActive } from '../utils/demoState';
 import { useCalendarStore } from '../store/useCalendarStore';
 import type { BusyEvent } from '../utils/calendarBusy';
@@ -33,6 +33,8 @@ jest.mock('../db/database', () => ({
 }));
 jest.mock('../utils/calendarSync', () => ({
   saveEventDirect: jest.fn(),
+  updateEventDirect: jest.fn(),
+  deleteEventDirect: jest.fn(),
 }));
 jest.mock('../utils/demoState', () => ({ isDemoModeActive: jest.fn().mockReturnValue(false) }));
 jest.mock('../store/useCalendarStore', () => {
@@ -175,6 +177,68 @@ describe('saveEvent', () => {
     (saveEventDirect as jest.Mock).mockResolvedValue({ id: 'new', calendarId: 'cal1' });
     await expect(useEventPeopleStore.getState().saveEvent(saveFields)).resolves.not.toBeNull();
     expect(mockTable).toEqual([]);
+  });
+});
+
+// Links are keyed by occurrence (id + start), so an edit that moves the event
+// has to move its people with it, or they stay behind on the old slot.
+describe('updateEvent and deleteEvent', () => {
+  const before = event();
+  const moved = { title: 'Dinner', start: new Date('2099-01-11T18:00:00.000Z'), end: new Date('2099-01-11T20:00:00.000Z') };
+
+  beforeEach(() => {
+    mockExternalIds.mockResolvedValue({});
+    useEventPeopleStore.getState().setPeople(before, ['p1']);
+  });
+
+  it('moves the people to the new time when the edit moved the event', async () => {
+    (updateEventDirect as jest.Mock).mockResolvedValue('e1');
+
+    await expect(useEventPeopleStore.getState().updateEvent('e1', before, moved, ['p1', 'p2'], before.start)).resolves.toBe('e1');
+
+    expect(updateEventDirect).toHaveBeenCalledWith('e1', moved, before.start);
+    expect(useEventPeopleStore.getState().peopleFor(before)).toEqual([]);
+    expect(useEventPeopleStore.getState().peopleFor({ id: 'e1', start: moved.start.toISOString() })).toEqual(['p1', 'p2']);
+    expect(useCalendarStore.getState().refresh).toHaveBeenCalled();
+  });
+
+  it('follows a new id EventKit handed back for the occurrence', async () => {
+    (updateEventDirect as jest.Mock).mockResolvedValue('e1-detached');
+    const same = { title: 'Dinner', start: new Date(before.start), end: new Date(before.end) };
+
+    await useEventPeopleStore.getState().updateEvent('e1', before, same, ['p1']);
+
+    expect(useEventPeopleStore.getState().peopleFor(before)).toEqual([]);
+    expect(useEventPeopleStore.getState().peopleFor({ id: 'e1-detached', start: before.start })).toEqual(['p1']);
+  });
+
+  it('leaves the links alone when the save fails', async () => {
+    (updateEventDirect as jest.Mock).mockResolvedValue(null);
+
+    await expect(useEventPeopleStore.getState().updateEvent('e1', before, moved, [])).resolves.toBeNull();
+
+    expect(useEventPeopleStore.getState().peopleFor(before)).toEqual(['p1']);
+  });
+
+  it('clears the people with the event it deletes, and only once it went', async () => {
+    (deleteEventDirect as jest.Mock).mockResolvedValueOnce(false);
+    await expect(useEventPeopleStore.getState().deleteEvent('e1', before)).resolves.toBe(false);
+    expect(useEventPeopleStore.getState().peopleFor(before)).toEqual(['p1']);
+
+    (deleteEventDirect as jest.Mock).mockResolvedValueOnce(true);
+    await expect(useEventPeopleStore.getState().deleteEvent('e1', before)).resolves.toBe(true);
+    expect(deleteEventDirect).toHaveBeenLastCalledWith('e1', before.start);
+    expect(useEventPeopleStore.getState().peopleFor(before)).toEqual([]);
+  });
+
+  it('touches nothing in demo mode', async () => {
+    (isDemoModeActive as jest.Mock).mockReturnValue(true);
+
+    await expect(useEventPeopleStore.getState().updateEvent('e1', before, moved, [])).resolves.toBeNull();
+    await expect(useEventPeopleStore.getState().deleteEvent('e1', before)).resolves.toBe(false);
+
+    expect(updateEventDirect).not.toHaveBeenCalled();
+    expect(deleteEventDirect).not.toHaveBeenCalled();
   });
 });
 

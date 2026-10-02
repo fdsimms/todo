@@ -292,8 +292,6 @@ import {
 import { effectiveWaterTargetMl } from '../utils/waterExerciseBoost';
 import {
   getCalendarPermission,
-  presentTimeBlockCreate,
-  presentTimeBlockEdit,
   readTimeBlockEvent,
   updateTimeBlockEvent,
   type TimeBlockEvent,
@@ -306,7 +304,7 @@ import {
   readExternalEventId,
   type CalendarEventLink,
 } from '../utils/calendarEventLink';
-import { timeBlockFieldsFor, timeBlockUpdateFor } from '../utils/timeBlock';
+import { timeBlockFieldsFor, timeBlockUpdateFor, type TimeBlockFields } from '../utils/timeBlock';
 import { useCalendarStore } from './useCalendarStore';
 import { useWeatherStore } from './useWeatherStore';
 import { classifyWeather } from '../utils/weatherCondition';
@@ -991,6 +989,11 @@ function writeMealSlotTasks(
  * write only lands while the task still points at it: an answer about one
  * block can't be written over the next one the user made meanwhile.
  */
+/** What the time-block action opens: see `planTimeBlock`. */
+export type TimeBlockPlan =
+  | { mode: 'edit'; eventId: string }
+  | { mode: 'create'; fields: TimeBlockFields };
+
 function setTimeBlockLink(taskId: string, link: CalendarEventLink, from?: string | null): boolean {
   const current = useTaskStore.getState().tasks.find(t => t.id === taskId);
   if (!current) return false;
@@ -1041,27 +1044,6 @@ function recordTimeBlockExternalId(taskId: string, eventId: string): void {
       if (externalId) setTimeBlockLink(taskId, { eventId, externalId }, eventId);
     })
     .catch(() => {});
-}
-
-/**
- * Opens the system edit sheet on a task's block and says what came of it:
- * `'deleted'` (the user deleted it there, and the task's pointer went with it),
- * `'kept'` (saved, or closed with the event still there) or `'gone'` (there was
- * no event under that id to open).
- */
-async function editTimeBlock(taskId: string, eventId: string): Promise<'deleted' | 'kept' | 'gone'> {
-  const result = await presentTimeBlockEdit(eventId);
-  if (result.deleted) {
-    setTimeBlockLink(taskId, NO_EVENT_LINK);
-    return 'deleted';
-  }
-  if (result.saved) return 'kept';
-
-  // Nothing came back: either the user closed the sheet without changing
-  // anything, or it never opened. Only one of those is worth acting on, so
-  // ask whether the event is actually still there before assuming the
-  // worst — `presentTimeBlockEdit` deliberately doesn't guess (see there).
-  return (await readTimeBlockEvent(eventId)) ? 'kept' : 'gone';
 }
 
 /**
@@ -1576,12 +1558,17 @@ interface TaskStore extends UndoHistoryActions {
    */
   addCompletedTask: (title: string, at: Date, personIds: string[]) => Task;
   /**
-   * Opens the system event sheet to block out time for a task — the new-event
-   * sheet when it has no block yet, the edit sheet for the one it has. Resolves
-   * to whether the task now has a block; nothing is written unless the user
-   * saves, and the sheet is the only thing in the app that deletes one.
+   * What the time-block action should open for a task: the in-app event card
+   * editing the block it has, or creating one with a proposed slot. Null when
+   * there is nothing to open (demo mode, no such task, no length to block out).
+   * Writes nothing itself except dropping a pointer it finds stale; the card
+   * writes the event, then calls `linkTimeBlock` or `unlinkTimeBlock`.
    */
-  putTaskOnCalendar: (id: string) => Promise<boolean>;
+  planTimeBlock: (id: string) => Promise<TimeBlockPlan | null>;
+  /** Records the event the card just saved as this task's block. */
+  linkTimeBlock: (id: string, eventId: string) => void;
+  /** Drops this task's block pointer, once the user has deleted the event from the card. */
+  unlinkTimeBlock: (id: string) => void;
   // scope 'occurrence' ("this task only") applies `updates` to this row but
   // preserves whatever content-field values existed before the edit in
   // seriesDefaults, so the next occurrence (see completeTask) reverts to
@@ -3046,76 +3033,62 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   /**
-   * The one entry point that creates a time block, and it does so by handing
-   * the decision to Apple's own event sheet — see the #1492 section of
-   * `calendarSync.ts` for why the write goes through the system UI rather than
-   * `createEventAsync`.
+   * The time-block action's plan. Creating and editing both happen in the
+   * in-app event card (`QuickEventSheet`), which saves through `rewriteEvent`
+   * like every other event write; this only says which one to open.
    *
    * The proposed slot is only a prefill. `timeBlockFieldsFor` reads the
-   * calendar window to find a gap the task actually fits in, but the user is
-   * looking at a real calendar UI by the time it matters, so a poor guess
-   * costs a drag rather than a wrong event.
-   *
+   * calendar window to find a gap the task actually fits in, and the card shows
+   * it on its date chip, so a poor guess costs a tap rather than a wrong event.
    * `loaded` is what's passed rather than `events`, for the reason the flag
    * exists: an empty window and a calendar we couldn't open are both `[]`, and
    * only one of them means the day is free.
    */
-  async putTaskOnCalendar(id) {
-    // The same guard the three automatic calendar syncs keep, and the one
-    // write past SQLite that had been missing it. A system sheet asking for
-    // confirmation is not the exemption it looks like: the demo database is
-    // thrown away, so a block created from seeded fiction leaves a real event
-    // on a real calendar with the only pointer to it (timeBlockEventId) about
-    // to be discarded — undeletable from inside the app, by the rule that a
-    // block is deleted from the edit sheet this id opens.
-    if (isDemoModeActive()) return false;
+  async planTimeBlock(id) {
+    // The same guard the three automatic calendar syncs keep: the demo
+    // database is thrown away, so a block made from seeded fiction would leave
+    // a real event on a real calendar with the only pointer to it discarded.
+    if (isDemoModeActive()) return null;
 
     const task = get().tasks.find(t => t.id === id);
-    if (!task) return false;
+    if (!task) return null;
 
-    // Already has one — this is the edit sheet, and the only place in the app
-    // a block can be deleted.
     if (task.timeBlockEventId) {
-      const outcome = await editTimeBlock(id, task.timeBlockEventId);
-      if (outcome !== 'gone') return outcome === 'kept';
-
+      if (await readTimeBlockEvent(task.timeBlockEventId)) {
+        return { mode: 'edit', eventId: task.timeBlockEventId };
+      }
       // Not there under its own id. A backup restored on a new phone looks
       // exactly like this, with the block still on the calendar under the
       // server's id, so look for it by that before giving up on it (#2950).
       const adopted = await adoptTimeBlock(task);
-      if (adopted) {
-        const again = await editTimeBlock(id, adopted.eventId);
-        if (again !== 'gone') return again === 'kept';
-      }
-
-      // Genuinely gone — deleted from the Calendar app, or on a calendar that
-      // was removed from the device. Drop the stale pointer and fall through
-      // to offering a fresh block, so the tap that found the rot also fixes it.
+      if (adopted) return { mode: 'edit', eventId: adopted.eventId };
+      // Genuinely gone: deleted from the Calendar app, or on a calendar that
+      // was removed. Drop the stale pointer and offer a fresh block instead,
+      // so the tap that found the rot also fixes it.
       setTimeBlockLink(id, NO_EVENT_LINK);
     }
 
     const { activeHoursStart, activeHoursEnd } = useSettingsStore.getState();
     const { events, loaded } = useCalendarStore.getState();
-    const fields = timeBlockFieldsFor(task, {
+    const fields = timeBlockFieldsFor(get().tasks.find(t => t.id === id) ?? task, {
       now: new Date(),
       activeHoursStart,
       activeHoursEnd,
       events: loaded ? events : null,
     });
-    if (!fields) return false;
+    return fields ? { mode: 'create', fields } : null;
+  },
 
-    const result = await presentTimeBlockCreate(fields);
-    // A saved event with no id — which iOS can return — is a real event we
-    // simply can't point at. Claiming a block we can't reconcile or reopen
-    // would be worse than admitting we have none, so the pointer stays null
-    // and the action offers to create another.
-    if (!result.saved || !result.eventId) return false;
-    setTimeBlockLink(id, { eventId: result.eventId, externalId: null });
+  linkTimeBlock(id, eventId) {
+    setTimeBlockLink(id, { eventId, externalId: null });
     // And the server's id for it, so a backup restored on a new phone can find
-    // the block again (#2950). In the background: the sheet is closed and the
-    // block is made whether or not the read answers.
-    recordTimeBlockExternalId(id, result.eventId);
-    return true;
+    // the block again (#2950). In the background: the block is made whether or
+    // not the read answers.
+    recordTimeBlockExternalId(id, eventId);
+  },
+
+  unlinkTimeBlock(id) {
+    setTimeBlockLink(id, NO_EVENT_LINK);
   },
 
   updateTask(id, updates, options) {

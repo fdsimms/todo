@@ -44,12 +44,14 @@ import {
   writeQuickEventDefaults,
   type EventAvailability,
 } from '../utils/quickEventDefaults';
-import { ALERT_CHOICES, describeAlert, quickEventSaveFields } from '../utils/quickEventSave';
+import { ALERT_CHOICES, alertMinutesFromOffset, describeAlert, quickEventSaveFields } from '../utils/quickEventSave';
 import {
   getCalendarPermission,
   listWritableCalendars,
   requestCalendarPermission,
+  readEventForEdit,
   resolveEventCalendar,
+  type EventForEdit,
 } from '../utils/calendarSync';
 import type { Calendar as DeviceCalendar } from 'expo-calendar/legacy';
 import { searchPlaces } from '../services/placeSearch';
@@ -87,14 +89,30 @@ const EVENT_TOKENS = ['@'] as const;
  */
 export interface QuickEventSeed {
   day?: Date;
+  /** An exact span, for a task's time block proposed in a free gap. Wins over `day`. */
+  start?: Date;
+  end?: Date;
   title?: string;
   personIds?: readonly string[];
+}
+
+/** An existing event to open the card on, instead of a new one. */
+export interface QuickEventEditTarget {
+  eventId: string;
+  /** The occurrence tapped, for a repeating event: the edit applies to it alone. */
+  occurrenceStart?: string | null;
 }
 
 interface Props {
   visible: boolean;
   onClose: () => void;
   seed?: QuickEventSeed | null;
+  /** Opens the card on an existing event: its fields filled in, Save writes them back, and Delete is offered. */
+  editing?: QuickEventEditTarget | null;
+  /** Called with the event's id once it is saved (a new event or an edited one). */
+  onSaved?: (eventId: string) => void;
+  /** Called once the user has deleted the event from the card. */
+  onDeleted?: () => void;
 }
 
 /**
@@ -129,12 +147,18 @@ interface Props {
  * This one closes only once the event is saved. A failed save (calendar
  * access refused, no writable calendar) says so and leaves the line intact.
  *
+ * **`editing` opens it on an event already on the calendar** (Today's events
+ * sheet, a task's time block): the same fields, read in by
+ * `readEventForEdit`, saved by `updateEventDirect`, with a Delete. The title
+ * is read plain until it changes, and a repeating event is changed one
+ * occurrence at a time. `docs/arch/people.md` has the rules.
+ *
  * One component; `grep -n '// ===='` is its table of contents: sheet state,
- * the draft, calendars, the reset on open, parsing the line, what the event
+ * the draft, editing an existing event, calendars, the reset on open, parsing the line, what the event
  * resolves to (remembered values, length, the free slot, conflicts), place
  * suggestions, applying what was read, the write, then the JSX.
  */
-export function QuickEventSheet({ visible, onClose, seed }: Props) {
+export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDeleted }: Props) {
   const colors = useColors();
   const { isDark, shadows } = useTheme();
   const { height: windowHeight } = useWindowDimensions();
@@ -145,6 +169,9 @@ export function QuickEventSheet({ visible, onClose, seed }: Props) {
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
   const use24Hour = useSettingsStore(s => s.use24HourTime);
   const saveEvent = useEventPeopleStore(s => s.saveEvent);
+  const updateEvent = useEventPeopleStore(s => s.updateEvent);
+  const deleteEvent = useEventPeopleStore(s => s.deleteEvent);
+  const peopleForEvent = useEventPeopleStore(s => s.peopleFor);
   const placeSuggestionsEnabled = useSettingsStore(s => s.placeSuggestionsEnabled);
   const setPlaceSuggestionsEnabled = useSettingsStore(s => s.setPlaceSuggestionsEnabled);
 
@@ -220,6 +247,14 @@ export function QuickEventSheet({ visible, onClose, seed }: Props) {
   const [eventMemory, setEventMemory] = useState<EventMemory>({});
   // The title whose remembered values the user waved off for this event.
   const [memoryDismissedKey, setMemoryDismissedKey] = useState<string | null>(null);
+  // ==== editing an existing event ====
+  // The event as it was read when the card opened on it, null while it loads
+  // (or for a new event). Save compares against it, and the people links move
+  // from its start to the new one.
+  const [original, setOriginal] = useState<EventForEdit | null>(null);
+  const [originalNotesField, setOriginalNotesField] = useState('');
+  const [originalPeople, setOriginalPeople] = useState<string[]>([]);
+  const isEditing = !!editing;
   const [calendars, setCalendars] = useState<DeviceCalendar[]>([]);
   const [targetCalendar, setTargetCalendar] = useState<DeviceCalendar | null>(null);
   // The repeat a schedule phrase read, kept once the phrase's words leave the
@@ -269,6 +304,37 @@ export function QuickEventSheet({ visible, onClose, seed }: Props) {
     return true;
   };
 
+  // Fills the card from the event being edited. A read that finds nothing
+  // (deleted elsewhere since the list was drawn) says so and closes.
+  const loadForEdit = async (target: QuickEventEditTarget) => {
+    const event = await readEventForEdit(target.eventId, target.occurrenceStart);
+    if (!event) {
+      Alert.alert("This event isn't on your calendar any more", 'It may have been deleted in another app.');
+      dismiss();
+      return;
+    }
+    if (!event.editable) {
+      Alert.alert("This event can't be changed here", "Its calendar is read-only. Edit it in the app it came from.");
+      dismiss();
+      return;
+    }
+    const notesField = event.notes ?? event.url ?? '';
+    setOriginal(event);
+    setOriginalNotesField(notesField);
+    setText(event.title);
+    titleCaret.resetCaret(event.title);
+    setStartOverride(event.start);
+    setAllDay(event.allDay);
+    if (!event.allDay) setDurationPick(Math.max(1, Math.round((event.end.getTime() - event.start.getTime()) / 60000)));
+    setLocation(event.location ?? '');
+    setNotesOrLink(notesField);
+    setCalendarPick(event.calendarId);
+    setAlertPick(alertMinutesFromOffset(event.alertOffset, event.allDay));
+    setAvailabilityPick(event.availability);
+    const people = peopleForEvent({ id: target.eventId, start: event.start.toISOString() });
+    setOriginalPeople(people);
+  };
+
   // ==== effects: resetting on open ====
   useEffect(() => {
     if (!visible) return;
@@ -295,9 +361,16 @@ export function QuickEventSheet({ visible, onClose, seed }: Props) {
     titleCaret.resetCaret(seededText);
     setBusy(false);
     setStartOverride(
-      seed?.day ? defaultNewEventSpan(seed.day, getCurrentDayStart(), new Date()).start : null
+      seed?.start ?? (seed?.day ? defaultNewEventSpan(seed.day, getCurrentDayStart(), new Date()).start : null)
     );
+    if (seed?.start && seed.end && seed.end > seed.start) {
+      setDurationPick(Math.round((seed.end.getTime() - seed.start.getTime()) / 60000));
+    }
     setAllDay(false);
+    setOriginal(null);
+    setOriginalNotesField('');
+    setOriginalPeople([]);
+    if (editing) void loadForEdit(editing);
     setPickerVisible(false);
     setDismissedSignature(null);
     setPersonOverrides({});
@@ -327,10 +400,14 @@ export function QuickEventSheet({ visible, onClose, seed }: Props) {
       wallClock: new Date(),
       mentionOverrides: personOverrides,
     };
+    // An edit opens on the event's own title, and a time block on its task's,
+    // read as plain text until changed: a title isn't an instruction to parse.
+    const openedTitle = original?.title ?? (seed?.start ? seed.title : undefined);
+    if (openedTitle !== undefined && text === openedTitle) return parseQuickEvent(text, { ...base, plain: true });
     const read = parseQuickEvent(text, base);
     const dismissed = read.phrase !== null && `${read.phrase.start}|${read.phrase.text}` === dismissedSignature;
     return dismissed ? parseQuickEvent(text, { ...base, ignoreSchedule: true }) : read;
-  }, [text, people, groupTokens, dayResetTime, personOverrides, dismissedSignature]);
+  }, [text, people, groupTokens, dayResetTime, personOverrides, dismissedSignature, original, seed]);
 
   const phrase = draft.phrase;
   // The two "@name" states that need a pick, checked only when no schedule
@@ -381,7 +458,7 @@ export function QuickEventSheet({ visible, onClose, seed }: Props) {
   // ==== what the event resolves to: memory, length, free slot, conflicts ====
   // The last event saved with this title, unless waved off for this one.
   const memoryKey = eventMemoryKey(draft.title);
-  const recalled = memoryKey && memoryKey !== memoryDismissedKey ? eventMemory[memoryKey] ?? null : null;
+  const recalled = !isEditing && memoryKey && memoryKey !== memoryDismissedKey ? eventMemory[memoryKey] ?? null : null;
   // Typed length, then one kept from the line, then last time's, then an hour.
   const effectiveDuration =
     draft.durationMinutes ?? durationPick ?? recalled?.durationMinutes ?? DEFAULT_EVENT_MINUTES;
@@ -421,7 +498,7 @@ export function QuickEventSheet({ visible, onClose, seed }: Props) {
   const whenSet = phrase !== null || startOverride !== null;
   const effectiveRepeat = phrase ? draft.repeat : repeatPick;
   // The people the line names plus any the opener already knew (a person's page).
-  const allPersonIds = [...new Set([...draft.personIds, ...(seed?.personIds ?? [])])];
+  const allPersonIds = [...new Set([...draft.personIds, ...(seed?.personIds ?? []), ...originalPeople])];
   const namedPeople = people.filter(p => allPersonIds.includes(p.id)).map(displayNameOf);
   // A place or alert typed in the line is live, the same as a typed day: it
   // wins over an earlier pick without anyone tapping it.
@@ -448,7 +525,7 @@ export function QuickEventSheet({ visible, onClose, seed }: Props) {
     || calendarPick === null || availabilityPick === null || alertPick === undefined
   );
   const alertSet = effectiveAlert !== null;
-  const canAdd = draft.title.trim().length > 0 && !busy;
+  const canAdd = draft.title.trim().length > 0 && !busy && (!isEditing || original !== null);
 
   // ==== place suggestions ====
   // Debounced, and checked against the query once the answer is back: a slow
@@ -547,6 +624,10 @@ export function QuickEventSheet({ visible, onClose, seed }: Props) {
   const next = async () => {
     if (!canAdd) return;
     haptics.tap();
+    if (editing && original) {
+      await saveEdit(editing, original);
+      return;
+    }
     setBusy(true);
     const saved = await saveEvent(
       quickEventSaveFields({
@@ -585,7 +666,84 @@ export function QuickEventSheet({ visible, onClose, seed }: Props) {
       availability: effectiveAvailability,
       at: Date.now(),
     }));
+    onSaved?.(saved.id);
     dismiss();
+  };
+
+  // Writes the card back over the event it opened on. The notes field is
+  // written only if it was touched, so a note and a link the card shows one of
+  // aren't merged or dropped by a save that changed something else.
+  const saveEdit = async (target: QuickEventEditTarget, before: EventForEdit) => {
+    setBusy(true);
+    const fields = quickEventSaveFields({
+      title: draft.title,
+      start: effectiveStart,
+      end: effectiveEnd,
+      allDay,
+      location: effectiveLocation,
+      place: effectivePlace,
+      notesOrLink,
+      alertMinutes: effectiveAlert,
+      availability: effectiveAvailability,
+      calendarId: effectiveCalendar?.id ?? before.calendarId,
+    });
+    if (notesOrLink.trim() === originalNotesField.trim()) {
+      delete fields.notes;
+      delete fields.url;
+    } else {
+      fields.notes = fields.notes ?? '';
+      fields.url = fields.url ?? '';
+    }
+    const id = await updateEvent(
+      target.eventId,
+      { start: before.start.toISOString(), end: before.end.toISOString(), title: before.title },
+      fields,
+      allPersonIds,
+      before.recurring ? target.occurrenceStart ?? before.start.toISOString() : null,
+    );
+    setBusy(false);
+    if (!id) {
+      if (isDemoModeActive()) return;
+      Alert.alert(
+        "Couldn't save the event",
+        'Check that this app can edit your calendar in the Settings app, then try again. Your changes are still here.'
+      );
+      return;
+    }
+    onSaved?.(id);
+    dismiss();
+  };
+
+  const confirmDelete = () => {
+    if (!editing || !original) return;
+    haptics.warning();
+    Keyboard.dismiss();
+    Alert.alert(
+      'Delete this event?',
+      original.recurring
+        ? 'Only this occurrence is deleted. The rest of the series stays on your calendar.'
+        : 'It is removed from your calendar.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            const deleted = await deleteEvent(editing.eventId, {
+              start: (original.recurring && editing.occurrenceStart) || original.start.toISOString(),
+              end: original.end.toISOString(),
+              title: original.title,
+            });
+            if (!deleted) {
+              Alert.alert("Couldn't delete the event", 'Check that this app can edit your calendar in the Settings app, then try again.');
+              return;
+            }
+            onDeleted?.();
+            dismiss();
+          },
+        },
+      ],
+    );
   };
 
   const openCalendarPicker = async () => {
@@ -615,7 +773,7 @@ export function QuickEventSheet({ visible, onClose, seed }: Props) {
         <SafeBlurView intensity={isDark ? 20 : 15} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
       </Animated.View>
-      <SheetScrim onPress={dismiss} label="Close new event" />
+      <SheetScrim onPress={dismiss} label={isEditing ? 'Close event' : 'Close new event'} />
       {keyboardHeight > 0 && (
         <View pointerEvents="none" style={[styles.keyboardBacking, { height: keyboardHeight }]} />
       )}
@@ -635,7 +793,7 @@ export function QuickEventSheet({ visible, onClose, seed }: Props) {
               <TextField
                 ref={inputRef}
                 style={[styles.input, hasOverlay && styles.inputHidden]}
-                placeholder="New event…"
+                placeholder={isEditing ? "Event title" : "New event…"}
                 placeholderTextColor={colors.textTertiary}
                 value={text}
                 onChangeText={setText}
@@ -670,7 +828,7 @@ export function QuickEventSheet({ visible, onClose, seed }: Props) {
               onPress={next}
               disabled={!canAdd}
               accessibilityRole="button"
-              accessibilityLabel="Add event"
+              accessibilityLabel={isEditing ? 'Save changes' : 'Add event'}
             >
               <Ionicons name="checkmark" size={18} color={colors.onAccent} />
             </TouchableOpacity>
@@ -920,8 +1078,23 @@ export function QuickEventSheet({ visible, onClose, seed }: Props) {
             </View>
           )}
 
+          {isEditing && original && (
+            <View style={styles.deleteRow}>
+              <InlineAction
+                icon="trash-outline"
+                label="Delete event"
+                variant="neutral"
+                tint={colors.red}
+                onPress={confirmDelete}
+                accessibilityLabel="Delete this event"
+              />
+            </View>
+          )}
+
           <Text style={styles.hint}>
-            Saves to your calendar. End the line with "at (place)", "for 90m" or "alert 30m" to fill those in.
+            {isEditing
+              ? 'Saves your changes to the calendar. Invitees and anything else this card doesn\'t show are kept.'
+              : 'Saves to your calendar. End the line with "at (place)", "for 90m" or "alert 30m" to fill those in.'}
           </Text>
         </Animated.View>
       </View>
@@ -1079,6 +1252,7 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
   captionText: { flex: 1, color: colors.textSecondary, fontSize: font.xs },
   // The icon carries the orange; orange text on a light card is too faint to read.
   captionWarning: { color: colors.text },
+  deleteRow: { flexDirection: 'row', marginBottom: spacing.sm },
   toolbar: { flexDirection: 'row', gap: spacing.xs, marginBottom: spacing.sm },
   toolChip: {
     flexDirection: 'row',
