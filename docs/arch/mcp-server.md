@@ -86,6 +86,12 @@ Two consequences worth knowing before editing either side:
   `mcp/node_modules`. Everything else is held to the same typecheck as the app, which is the point.
 - **Root `npm test` runs `mcp/src/__tests__/`** — the repo's jest has no `roots` narrowing, so it
   collects them for free. Nothing under that directory may import the MCP SDK, for the same reason.
+- **Any `fetch` in `src/` that `mcp/` reaches has to typecheck under Node's types as well as React
+  Native's**, and CI checks only the second. Pass the abort signal as
+  `controller.signal as unknown as RequestInit['signal']`, and give a `json()` result an explicit
+  type, since Node's is `unknown` where React Native's is `any`. `httpSyncTransport.ts`,
+  `weatherLookup.ts` and `aiSuggestions.ts` all do this. Run `npm run typecheck` in `mcp/` after
+  adding one.
 
 ## The replica
 
