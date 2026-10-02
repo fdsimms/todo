@@ -44,6 +44,7 @@ import { CategoryDetailScreen } from '../screens/CategoryDetailScreen';
 import { PersonDetailScreen } from '../screens/PersonDetailScreen';
 import { TipsScreen } from '../screens/TipsScreen';
 import { SideMenuDrawer } from '../components/SideMenuDrawer';
+import { freezeWhenBlurred } from '../components/FreezeWhenBlurred';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { SettingsGroupScreen } from '../screens/SettingsGroupScreen';
 import { DemoBanner } from '../components/DemoBanner';
@@ -205,7 +206,7 @@ const MainTabs = React.memo(function MainTabs({
     <Tab.Navigator initialRouteName={initialRouteName} screenOptions={screenOptions}>
       <Tab.Screen
         name="Today"
-        component={TodayScreen}
+        component={freezeWhenBlurred(TodayScreen)}
         listeners={tabPressHaptic}
         options={{
           tabBarAccessibilityLabel: 'Today',
@@ -214,7 +215,7 @@ const MainTabs = React.memo(function MainTabs({
       />
       <Tab.Screen
         name="Groceries"
-        component={GroceryScreen}
+        component={freezeWhenBlurred(GroceryScreen)}
         listeners={tabPressHaptic}
         // Drops out of the tab bar (rather than losing its icon/label) while
         // kitchenEnabled is off, same gate SideMenuDrawer's "Groceries &
@@ -227,7 +228,7 @@ const MainTabs = React.memo(function MainTabs({
       />
       <Tab.Screen
         name="Projects"
-        component={ProjectsScreen}
+        component={freezeWhenBlurred(ProjectsScreen)}
         listeners={tabPressHaptic}
         options={{
           tabBarAccessibilityLabel: 'Projects',
@@ -264,29 +265,29 @@ const MainTabs = React.memo(function MainTabs({
       />
 
       {/* Drawer-only screens — not visible in the tab bar */}
-      <Tab.Screen name="Search" component={SearchScreen} options={HIDDEN} />
-      <Tab.Screen name="Recipes" component={RecipesScreen} options={HIDDEN} />
-      <Tab.Screen name="Cookbooks" component={CookbooksScreen} options={HIDDEN} />
-      <Tab.Screen name="MealPlan" component={MealPlanScreen} options={HIDDEN} />
-      <Tab.Screen name="Kitchen" component={KitchenScreen} options={HIDDEN} />
-      <Tab.Screen name="Calendar" component={CalendarScreen} options={HIDDEN} />
-      <Tab.Screen name="Categories" component={CategoriesScreen} options={HIDDEN} />
-      <Tab.Screen name="Tags" component={TagsScreen} options={HIDDEN} />
-      <Tab.Screen name="People" component={PeopleScreen} options={HIDDEN} />
-      <Tab.Screen name="Stacks" component={StacksScreen} options={HIDDEN} />
-      <Tab.Screen name="Templates" component={TemplatesScreen} options={HIDDEN} />
-      <Tab.Screen name="Logbook" component={LogbookScreen} options={HIDDEN} />
-      <Tab.Screen name="Stats" component={StatsScreen} options={HIDDEN} />
-      <Tab.Screen name="Mood" component={MoodScreen} options={HIDDEN} />
-      <Tab.Screen name="Medications" component={MedicationScreen} options={HIDDEN} />
-      <Tab.Screen name="Weight" component={WeightScreen} options={HIDDEN} />
-      <Tab.Screen name="FoodLog" component={FoodLogScreen} options={HIDDEN} />
-      <Tab.Screen name="Stuck" component={StuckScreen} options={HIDDEN} />
-      <Tab.Screen name="Backfill" component={BackfillScreen} options={HIDDEN} />
-      <Tab.Screen name="Reminders" component={RemindersScreen} options={HIDDEN} />
-      <Tab.Screen name="Archived" component={ArchivedScreen} options={HIDDEN} />
-      <Tab.Screen name="UnattendedLog" component={UnattendedLogScreen} options={HIDDEN} />
-      <Tab.Screen name="Tips" component={TipsScreen} options={HIDDEN} />
+      <Tab.Screen name="Search" component={freezeWhenBlurred(SearchScreen)} options={HIDDEN} />
+      <Tab.Screen name="Recipes" component={freezeWhenBlurred(RecipesScreen)} options={HIDDEN} />
+      <Tab.Screen name="Cookbooks" component={freezeWhenBlurred(CookbooksScreen)} options={HIDDEN} />
+      <Tab.Screen name="MealPlan" component={freezeWhenBlurred(MealPlanScreen)} options={HIDDEN} />
+      <Tab.Screen name="Kitchen" component={freezeWhenBlurred(KitchenScreen)} options={HIDDEN} />
+      <Tab.Screen name="Calendar" component={freezeWhenBlurred(CalendarScreen)} options={HIDDEN} />
+      <Tab.Screen name="Categories" component={freezeWhenBlurred(CategoriesScreen)} options={HIDDEN} />
+      <Tab.Screen name="Tags" component={freezeWhenBlurred(TagsScreen)} options={HIDDEN} />
+      <Tab.Screen name="People" component={freezeWhenBlurred(PeopleScreen)} options={HIDDEN} />
+      <Tab.Screen name="Stacks" component={freezeWhenBlurred(StacksScreen)} options={HIDDEN} />
+      <Tab.Screen name="Templates" component={freezeWhenBlurred(TemplatesScreen)} options={HIDDEN} />
+      <Tab.Screen name="Logbook" component={freezeWhenBlurred(LogbookScreen)} options={HIDDEN} />
+      <Tab.Screen name="Stats" component={freezeWhenBlurred(StatsScreen)} options={HIDDEN} />
+      <Tab.Screen name="Mood" component={freezeWhenBlurred(MoodScreen)} options={HIDDEN} />
+      <Tab.Screen name="Medications" component={freezeWhenBlurred(MedicationScreen)} options={HIDDEN} />
+      <Tab.Screen name="Weight" component={freezeWhenBlurred(WeightScreen)} options={HIDDEN} />
+      <Tab.Screen name="FoodLog" component={freezeWhenBlurred(FoodLogScreen)} options={HIDDEN} />
+      <Tab.Screen name="Stuck" component={freezeWhenBlurred(StuckScreen)} options={HIDDEN} />
+      <Tab.Screen name="Backfill" component={freezeWhenBlurred(BackfillScreen)} options={HIDDEN} />
+      <Tab.Screen name="Reminders" component={freezeWhenBlurred(RemindersScreen)} options={HIDDEN} />
+      <Tab.Screen name="Archived" component={freezeWhenBlurred(ArchivedScreen)} options={HIDDEN} />
+      <Tab.Screen name="UnattendedLog" component={freezeWhenBlurred(UnattendedLogScreen)} options={HIDDEN} />
+      <Tab.Screen name="Tips" component={freezeWhenBlurred(TipsScreen)} options={HIDDEN} />
     </Tab.Navigator>
   );
 });
