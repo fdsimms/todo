@@ -2203,7 +2203,18 @@ export function TodayScreen() {
   // `checkMealSlotTasks` had already drawn this line for the tasks those meals
   // sit beside, with a comment naming the same failure. See CLAUDE.md on the
   // grace window.
-  const todayKey = useMemo(() => getLogicalDayKey(new Date(), dayResetTime), [dayResetTime]);
+  //
+  // `minuteTick` is in the deps so the key follows the clock. Memoized on the
+  // reset time alone it was frozen at the day the screen mounted, and since
+  // `todayCalendarDayEnd` below is keyed on it, an app left open past midnight
+  // asked for events between today's start and yesterday's end: an empty range
+  // that only an event spanning midnight overlaps. The key itself changes once
+  // a day, so everything keyed on it stays as stable as before.
+  const todayKey = useMemo(
+    () => getLogicalDayKey(new Date(), dayResetTime),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [dayResetTime, minuteTick],
+  );
   const mealEntries = useMealPlanStore(useShallow(s => s.entries));
   const mealRangeStart = useMealPlanStore(s => s.rangeStart);
   const mealRangeEnd = useMealPlanStore(s => s.rangeEnd);
