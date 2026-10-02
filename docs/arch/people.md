@@ -573,9 +573,11 @@ from the list an event is with, from the person button on a row in Today's
 events sheet, or by starting the event from a person's page ("Plan something").
 
 - **The event lives in the calendar; the link lives in the app.** New events
-  go through Apple's own sheet (`presentEventCreate`), so they land in
-  whichever calendar the user picks there, Google included, and sync wherever
-  that calendar does. The link is metadata only this app reads. Owning events
+  are written into a device calendar, either through Apple's own sheet
+  (`presentEventCreate`: the calendar screen, a person's page, Today's events
+  sheet) or straight from quick add (`saveEventDirect`, below). Either way they
+  land in a real calendar, Google included, and sync wherever that calendar
+  does. The link is metadata only this app reads. Owning events
   in an app table was the alternative, and would have been a second calendar
   that Google and iCloud never see.
 - **A link is never an attendee.** Inviting sends mail and publishes an
@@ -618,8 +620,13 @@ events sheet, or by starting the event from a person's page ("Plan something").
 "Event". One line ("lunch w/ @dustin sat 12pm") read by quick add's own two
 parsers (`parseTaskInput` for the day and time, `matchPersonMentions` for
 "@name"), so it reads exactly as a task line does, refusals included. It fills
-the system sheet and links the people once the event is saved. A repeat phrase
-gives only its first day; repeating is set in the system sheet. It is its own
+the card and saves straight into the calendar (`saveEventDirect`), with no
+system sheet, then links the people. The rows Apple's form asked for are chips
+on the card (calendar, alert, Busy/Free) that start as the last saved event
+left them (`quickEventDefaults.ts`), plus a Notes or link field and a trailing
+`at (place)` and `alert 30m` in the line, which win over a chip's earlier pick.
+Invitees, travel time and a repeat rule are not set here: the first two cannot
+be written through EventKit, and a repeat phrase gives only its first day. It is its own
 sheet rather than a mode of `QuickAddModal`, since almost nothing that sheet
 sets means anything for an event. Regular quick add reaches the same path
 with a leading `event:` (`eventMarkerText`): the rest of the line is read the
