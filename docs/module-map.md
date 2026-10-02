@@ -339,7 +339,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/titleSuggestions.ts` — TitleSuggestion, suggestTitles
 - `src/utils/tooltipAim.ts` — TOOLTIP_CARET_W, aimTooltip
 - `src/utils/transitAlerts.ts` — TransitEffect, TransitAlert, TransitSnapshot, TRANSIT_LINES, parseTransitLines, effectOfAlertType, parseSubwayAlerts, alertOverlaps, LIVE_ALERT_MAX_AGE_MS, PLANNED_ALERT_MAX_AGE_MS, +4 more
-- `src/utils/travelTasks.ts` — TRAVEL_LEAD_MINUTES_DEFAULT, TRAVEL_LEAD_MINUTES_MIN, TRAVEL_LEAD_MINUTES_MAX, TRAVEL_LEAD_MINUTES_STEP, TRAVEL_EVENT_TITLE_MAX_LENGTH, clampTravelLeadMinutes, eventHasLocation, eventIsTravelEligible, travelLeaveAt, travelSourceId, +6 more
+- `src/utils/travelTasks.ts` — TRAVEL_LEAD_MINUTES_DEFAULT, TRAVEL_LEAD_MINUTES_MIN, TRAVEL_LEAD_MINUTES_MAX, TRAVEL_LEAD_MINUTES_STEP, TRAVEL_EVENT_TITLE_MAX_LENGTH, clampTravelLeadMinutes, TravelLeadByCalendar, parseTravelLeadByCalendar, TravelLeads, travelLeadFor, +10 more
 - `src/utils/tripForecast.ts` — TripForecast, summarizeTripForecast, describeTripForecast, describeForecastGap
 - `src/utils/tripLiveActivity.ts` — TripRun, buildTripRun, useTripLiveActivitySync
 - `src/utils/unattendedLedger.ts` — UnattendedActionSpec, UNATTENDED_ACTION_SPECS, unattendedIcon, unattendedSource, describeUnattendedEntry, UnattendedDay, unattendedDays, unattendedDayLabel, unattendedSummary, unattendedKinds, +1 more
