@@ -1466,6 +1466,10 @@ export function initDatabase(): void {
     // Task.quotaAlwaysVisible. 0 on every existing row: a quota task has
     // always hidden while on pace, and this column only ever turns that off.
     'ALTER TABLE tasks ADD COLUMN quota_always_visible INTEGER NOT NULL DEFAULT 0',
+    // Whether a water target task's count follows the food log's water target
+    // (Task.followWaterTarget). 0 on every existing row: a target has always
+    // been the number it was typed as.
+    'ALTER TABLE tasks ADD COLUMN follow_water_target INTEGER NOT NULL DEFAULT 0',
     // NULL on every existing row — the review deck has never answered for one,
     // which is exactly what "no answer to keep quiet" means for this column.
     // See GroceryItem.pantryReviewedAt.
@@ -3181,6 +3185,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     quotaReminders: Boolean(row.quota_reminders),
     quotaStartedAt: (row.quota_started_at as string | null) ?? null,
     quotaAlwaysVisible: Boolean(row.quota_always_visible),
+    followWaterTarget: Boolean(row.follow_water_target),
     // Anything but the one known alternative reads as 'day', which is both the
     // pre-column default and the safe way round: a weekly target misread as
     // daily is merely owed its whole count today, where a daily one misread as
@@ -3360,7 +3365,7 @@ export function dbInsertTask(task: Task): void {
       supply_count, supply_unit, supply_refill_count, supply_reorder_at,
       supply_lead_days, supply_declined_at_count, supply_grocery_item_id,
       person_ids, waiting_on_person_id, reminder_offset_days, exclude_from_suggestions,
-      quota_interval_minutes, quota_reminders, quota_started_at, quota_always_visible, quota_period,
+      quota_interval_minutes, quota_reminders, quota_started_at, quota_always_visible, follow_water_target, quota_period,
       rotation_enabled, rotation_items, rotation_log, rotation_period_start, rotation_last_done, location,
       prior_best_streak, reminder_time_anchor, reminder_utc_offset_minutes, polarity, slip_count, slip_date,
       health_metric, health_target, completion_timer_minutes, completion_timer_note, completion_timer_started_at, log_health_metric, log_health_amount,
@@ -3369,7 +3374,7 @@ export function dbInsertTask(task: Task): void {
       estimate_before_timing, waiting_on_person_since, waiting_follow_up_declined_at,
       reminder_tracks_visibility, recurrence_month,
       blocked_by_ids, deliverable_options, deliverable_sets_away, follow_up_on, extra_task_source_id
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -3442,6 +3447,7 @@ export function dbInsertTask(task: Task): void {
       task.quotaReminders ? 1 : 0,
       task.quotaStartedAt ?? null,
       task.quotaAlwaysVisible ? 1 : 0,
+      task.followWaterTarget ? 1 : 0,
       task.quotaPeriod,
       task.rotationEnabled ? 1 : 0,
       JSON.stringify(task.rotationItems),
@@ -3508,7 +3514,7 @@ export function dbUpdateTask(task: Task): void {
       supply_count=?, supply_unit=?, supply_refill_count=?, supply_reorder_at=?,
       supply_lead_days=?, supply_declined_at_count=?, supply_grocery_item_id=?,
       person_ids=?, waiting_on_person_id=?, reminder_offset_days=?, exclude_from_suggestions=?,
-      quota_interval_minutes=?, quota_reminders=?, quota_started_at=?, quota_always_visible=?, quota_period=?,
+      quota_interval_minutes=?, quota_reminders=?, quota_started_at=?, quota_always_visible=?, follow_water_target=?, quota_period=?,
       rotation_enabled=?, rotation_items=?, rotation_log=?, rotation_period_start=?, rotation_last_done=?, location=?,
       prior_best_streak=?, reminder_time_anchor=?, reminder_utc_offset_minutes=?, polarity=?, slip_count=?, slip_date=?,
       health_metric=?, health_target=?, completion_timer_minutes=?, completion_timer_note=?, completion_timer_started_at=?, log_health_metric=?, log_health_amount=?,
@@ -3590,6 +3596,7 @@ export function dbUpdateTask(task: Task): void {
       task.quotaReminders ? 1 : 0,
       task.quotaStartedAt ?? null,
       task.quotaAlwaysVisible ? 1 : 0,
+      task.followWaterTarget ? 1 : 0,
       task.quotaPeriod,
       task.rotationEnabled ? 1 : 0,
       JSON.stringify(task.rotationItems),

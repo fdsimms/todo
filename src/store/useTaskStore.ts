@@ -279,6 +279,11 @@ import type { ApplyReport } from '../utils/syncMerge';
 import { logTaskCompletionToCalendar, completionEventLink, deleteCompletionEvent } from '../utils/completionCalendarSync';
 import { logTaskHealthValue, unlogTaskWaterFromFoodLog } from '../utils/healthCompletionSync';
 import { waterTotalMl } from '../utils/waterLog';
+import { followedWaterTargetCount } from '../utils/waterTargetUnits';
+import {
+  followedWaterTaskDoneOn, waterShortfallMl, waterShortfallTitle, WATER_SHORTFALL_NOTES,
+} from '../utils/waterShortfallTasks';
+import { effectiveWaterTargetMl } from '../utils/waterExerciseBoost';
 import {
   getCalendarPermission,
   presentTimeBlockCreate,
@@ -676,6 +681,13 @@ function writeGeneratedOptOut(task: Task, value: false | null): void {
     case 'weighIn':
       useSettingsStore.getState()
         .setWeighInDeclinedDayKey(value === false ? dayKeyOf(getCurrentDayStart()) : null);
+      return;
+    // A settings stamp for the same reason weighIn's is, and a shorter one: the
+    // task is about today's water, so deleting it means "not today". `null` is
+    // the undo path and clears what the delete wrote.
+    case 'waterShortfall':
+      useSettingsStore.getState()
+        .setWaterShortfallDeclinedDayKey(value === false ? dayKeyOf(getCurrentDayStart()) : null);
       return;
     // A stamp, not a `false`, and the one generator whose opt-out expires. The
     // fields a project could carry a permanent "no" on are nudgeOptIn and
@@ -2131,6 +2143,75 @@ interface TaskStore extends UndoHistoryActions {
   subtasksOf: (parentId: string) => Task[];
   allTags: () => string[];
   tasksByTag: (tag: string) => Task[];
+}
+
+/**
+ * The `waterShortfall` generator's whole pass: a one-off task for the water
+ * still owed, once the daily water task that follows the food log's target was
+ * finished before the target rose. See `src/utils/waterShortfallTasks.ts`.
+ *
+ * Runs at the end of `syncWaterQuotaTasks`, the one place already called
+ * whenever today's water total, the target or today's exercise changes, rather
+ * than on a clock of its own.
+ */
+function reconcileWaterShortfall(args: {
+  todayKey: string;
+  totalMl: number;
+  exerciseReadToday: boolean;
+  exerciseMinutes: number | null;
+  tasks: Task[];
+}): void {
+  const settings = useSettingsStore.getState();
+  if (!settings.waterShortfallTasks || !settings.waterShortfallTaskCategory) return;
+  if (generatorPausedForVacation('waterShortfall', settings.vacationMode)) return;
+  // A configured boost with no reading for today can't say what the target is,
+  // and a target that is unknown is not a target that is lower. Same refusal
+  // followedWaterTargetCount makes: leave whatever is there alone.
+  if (settings.waterExerciseBoost && !args.exerciseReadToday) return;
+
+  const targetMl = effectiveWaterTargetMl(
+    settings.nutritionTargets.waterMl, args.exerciseMinutes, settings.waterExerciseBoost,
+  );
+  const owedMl = waterShortfallMl(targetMl, args.totalMl);
+  const wanted =
+    owedMl !== null &&
+    followedWaterTaskDoneOn(args.tasks, args.todayKey) &&
+    settings.waterShortfallDeclinedDayKey !== args.todayKey;
+
+  const dueDate = getCurrentDayStart();
+  dueDate.setHours(12, 0, 0, 0);
+
+  // A request from a day that has gone is dropped rather than deleted quietly
+  // with an opt-out: nobody declined it, the day just ended.
+  liveGeneratedTasksOfKind(args.tasks, 'waterShortfall')
+    .filter(t => t.generatedSourceId !== args.todayKey)
+    .forEach(t => dropGeneratedTask('waterShortfall', t.generatedSourceId));
+
+  reconcileGeneratedTask({
+    kind: 'waterShortfall',
+    sourceId: args.todayKey,
+    wanted,
+    // A completed one blocks a second today, which is what stops completing it
+    // (and logging only part of what it asked for) from asking again.
+    blocksOnFinished: true,
+    drift: existing => {
+      if (owedMl === null) return null;
+      const title = waterShortfallTitle(owedMl, settings.waterUnit);
+      if (existing.title === title && existing.logHealthAmount === owedMl) return null;
+      return { title, logHealthAmount: owedMl };
+    },
+    draft: () => ({
+      title: waterShortfallTitle(owedMl ?? 0, settings.waterUnit),
+      notes: WATER_SHORTFALL_NOTES,
+      dueDate: dueDate.toISOString(),
+      category: settings.waterShortfallTaskCategory,
+      // Completing it logs the water it asked for, through the same path the
+      // daily task uses, so the food log and the target both move.
+      logHealthMetric: 'waterMl',
+      logHealthAmount: owedMl ?? undefined,
+      ...generatedBy('waterShortfall', args.todayKey),
+    }),
+  });
 }
 
 export const useTaskStore = create<TaskStore>((set, get) => ({
@@ -4468,6 +4549,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const todayStart = getCurrentDayStart();
     const todayKey = dayKeyOf(todayStart);
     const totalMl = waterTotalMl(dbGetFoodLogEntries(todayKey, todayKey));
+    // What the followed target is judged against. The reading counts only for
+    // the logical today: `today` outlives the day reset until the next refresh.
+    const { nutritionTargets, waterExerciseBoost } = useSettingsStore.getState();
+    const healthToday = useHealthStore.getState().today;
+    const exerciseReadToday = healthToday?.dayKey === todayKey;
+    const exerciseMinutes = exerciseReadToday ? healthToday?.exerciseMinutes ?? null : null;
 
     for (const task of get().tasks) {
       if (
@@ -4490,10 +4577,26 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         continue;
       }
 
-      const units = Math.min(task.targetCount!, Math.floor(totalMl / task.logHealthAmount));
-      if (units === task.progressCount) continue;
+      // A task following the food log's water target takes its count from it
+      // first, so progress below is judged against today's target and not
+      // yesterday's. Only an occurrence still open gets here (the guard above),
+      // which is the point: a day already completed keeps the count it
+      // finished against.
+      const followed = followedWaterTargetCount(
+        task, nutritionTargets.waterMl, exerciseMinutes, waterExerciseBoost, exerciseReadToday,
+      );
+      const current = followed !== null && followed !== task.targetCount
+        ? { ...task, targetCount: followed }
+        : task;
+      if (current !== task) {
+        dbUpdateTask(current);
+        set(s => ({ tasks: s.tasks.map(t => (t.id === task.id ? current : t)) }));
+      }
 
-      if (units >= task.targetCount!) {
+      const units = Math.min(current.targetCount!, Math.floor(totalMl / current.logHealthAmount!));
+      if (units === current.progressCount) continue;
+
+      if (units >= current.targetCount!) {
         // buildCompletion stamps progressCount to targetCount on its own —
         // see taskCompletion.ts — so there's nothing to write here first.
         // skipHealthLog: the amount that got the log to this total is
@@ -4501,11 +4604,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         // it a second time.
         get().completeTask(task.id, { skipHealthLog: true });
       } else {
-        const updated = { ...task, progressCount: units };
+        const updated = { ...current, progressCount: units };
         dbUpdateTask(updated);
         set(s => ({ tasks: s.tasks.map(t => (t.id === task.id ? updated : t)) }));
       }
     }
+
+    reconcileWaterShortfall({
+      todayKey, totalMl, exerciseReadToday, exerciseMinutes,
+      tasks: get().tasks,
+    });
   },
 
   holdQuotaOnToday(id) {
@@ -7703,6 +7811,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       quotaReminders: false,
       quotaStartedAt: null,
       quotaAlwaysVisible: false,
+      followWaterTarget: false,
       quotaPeriod: 'day',
       rotationEnabled: false,
       rotationItems: [],
@@ -7920,6 +8029,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       quotaReminders: false,
       quotaStartedAt: null,
       quotaAlwaysVisible: false,
+      followWaterTarget: false,
       quotaPeriod: 'day',
       rotationEnabled: false,
       rotationItems: [],

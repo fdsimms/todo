@@ -321,6 +321,8 @@ const GENERATED_KEYWORDS: Record<GeneratedKind, string[]> = {
   // actually types, and neither is in the label.
   weighIn: ['scale', 'scales', 'weight', 'body', 'mass', 'kg', 'lb', 'pounds',
     'health', 'track', 'log', 'generated', 'automatic'],
+  waterShortfall: ['hydration', 'drink', 'target', 'exercise', 'health', 'food log',
+    'generated', 'automatic'],
 };
 
 /**

@@ -271,6 +271,7 @@ export function GeneratedTasksSection() {
       case 'moodNudge': s.setMoodNudgeTasks(next); break;
       case 'weekendNudge': s.setWeekendNudgeTasks(next); break;
       case 'weighIn': s.setWeighInTasks(next); break;
+      case 'waterShortfall': s.setWaterShortfallTasks(next); break;
     }
     // Switching one on gives it somewhere to file, so the "File them under"
     // row that appears directly below already has an answer in it rather than
@@ -307,6 +308,7 @@ export function GeneratedTasksSection() {
       case 'moodNudge': return s.moodNudgeTaskCategory;
       case 'weekendNudge': return s.weekendNudgeTaskCategory;
       case 'weighIn': return s.weighInTaskCategory;
+      case 'waterShortfall': return s.waterShortfallTaskCategory;
     }
   };
 
@@ -338,6 +340,7 @@ export function GeneratedTasksSection() {
       case 'moodNudge': s.setMoodNudgeTaskCategory(category); break;
       case 'weekendNudge': s.setWeekendNudgeTaskCategory(category); break;
       case 'weighIn': s.setWeighInTaskCategory(category); break;
+      case 'waterShortfall': s.setWaterShortfallTaskCategory(category); break;
       case 'supplyReorder': s.setSupplyReorderTaskCategory(category); break;
       // Exhaustive, unlike the switches above it, which are only exhaustive
       // because they return a value. This one returns void, so a missing arm is

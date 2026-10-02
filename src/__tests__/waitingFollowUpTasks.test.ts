@@ -47,7 +47,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   supplyCount: null, supplyUnit: null, supplyRefillCount: null, supplyReorderAt: 1,
   supplyLeadDays: null, supplyDeclinedAtCount: null, supplyGroceryItemId: null,
   targetCount: null, targetUnit: null, allowOvershoot: false,
-  quotaIntervalMinutes: null, quotaReminders: false, quotaStartedAt: null, quotaAlwaysVisible: false,
+  quotaIntervalMinutes: null, quotaReminders: false, quotaStartedAt: null, quotaAlwaysVisible: false, followWaterTarget: false,
   quotaPeriod: 'day', progressCount: 0,
   rotationEnabled: false,
   rotationItems: [],

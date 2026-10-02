@@ -33,6 +33,7 @@ describe('the three maintenance groups', () => {
       'check away grocery list',
       'roll over quotas',
       'sweep overshoot quotas',
+      'sync water quotas',
       'drip stalled projects',
       'check meal plan nudge',
       'check project review tasks',
