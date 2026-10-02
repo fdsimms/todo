@@ -86,6 +86,12 @@ Two consequences worth knowing before editing either side:
   `mcp/node_modules`. Everything else is held to the same typecheck as the app, which is the point.
 - **Root `npm test` runs `mcp/src/__tests__/`** — the repo's jest has no `roots` narrowing, so it
   collects them for free. Nothing under that directory may import the MCP SDK, for the same reason.
+- **Any `fetch` in `src/` that `mcp/` reaches has to typecheck under Node's types as well as React
+  Native's**, and CI checks only the second. Pass the abort signal as
+  `controller.signal as unknown as RequestInit['signal']`, and give a `json()` result an explicit
+  type, since Node's is `unknown` where React Native's is `any`. `httpSyncTransport.ts`,
+  `weatherLookup.ts` and `aiSuggestions.ts` all do this. Run `npm run typecheck` in `mcp/` after
+  adding one.
 
 ## The replica
 
@@ -431,43 +437,90 @@ PR body.
 **The log tools sharpen it rather than sitting alongside it.** A copy of somebody's tasks is one
 thing; a copy that also holds every symptom they have recorded, every dose they have taken and
 every meal they have eaten is health data in the sense a privacy label means it, and a hosted
-replica puts all of it on a machine with a public address. The read surface is all-or-nothing
-behind one bearer token today, which is adequate for a laptop and is not adequate for that. Phase 3
-should decide whether the health logs need their own consent separate from the rest, and the honest
-default is that they do.
+replica puts all of it on a machine with a public address. The read surface is one bearer token
+for everything, which is adequate for a laptop and is not adequate for that.
+
+### The health logs have their own switch, and iCloud never gets them
+
+Decided, and built. `HEALTH_SYNC_TABLES` (`src/db/syncTracking.ts`) names the mood, medication and
+food logs plus the milestones read against the mood log ("started sertraline" is a common one), and
+`HEALTH_SYNC_SETTING_KEYS` adds `medication_archived`, a list of medicine names. A
+transport can withhold tables (`SyncTransport.withhold`, applied by `withholdChanges` in
+`syncEngine.ts`), and two transports do:
+
+- **The sync server withholds them unless "Include health logs" is on.** Off by default and per
+  device, like the server address. So the replica, and so Claude, has no health logs until somebody
+  has said yes to that specifically, separately from saying yes to a hosted copy of their tasks. The
+  three log tools say so in their descriptions, so an empty result is not read as "nothing logged".
+- **iCloud always withholds them.** App Review guideline 5.1.3(ii) says an app "may not store
+  personal health information in iCloud". It sits among the HealthKit rules and may not reach a mood
+  log somebody typed, but the strict reading costs only cross-device sync of these three logs for
+  somebody with no server, and the loose one risks the app. Records already pushed to CloudKit by an
+  earlier build stay there: the CloudKit store holds mixed payloads, and pushing deletions to clear
+  them would delete the logs on every other device.
+
+Withholding is a refusal, not a deferral: the push cursor moves past a withheld row like any other.
+That is what makes turning the switch on a deliberate act rather than a free one. Turning it off
+records where the server's cursor stood (`markHealthLogsWithheld`), and the first sync after it is
+turned back on rewinds to there, or to the very start if the logs were never sent
+(`settleHealthLogResend`). The rewind runs inside the sync lock rather than from the switch, because
+a run already pushing writes its own `until` over the cursor when it lands and would undo a rewind
+made while it was in flight. Resending rows the server already has is a no-op under the tie rule.
+
+Pushes only. A health row arriving *from* a transport is still applied, so a peer on an older build
+does no harm, and the replica's own medication dose (written by `complete_task`) still reaches the
+phone that asked for it.
+
+What is deliberately not withheld: a task's `medication_name` (a task titled "Take sertraline" says
+the same thing whatever column is withheld), and `saved_meals` (logging shortcuts, not a record of
+what was eaten).
 
 ### What the privacy label has to say
 
-Concretely, so phase 3 is not left deriving it under deadline. The app ships no privacy manifest
-today (`app.json` carries none), so this is the whole of the record.
+A draft, from Apple's guidance as read on 2026-10-02. The quotes below came through a page
+summarizer: check them against the live pages before entering anything in App Store Connect, and
+re-read the guidance if this is acted on much later. The app ships no privacy manifest today
+(`app.json` carries none).
 
-**Nothing changes while no sync server is configured.** The URL and the token are both required and
-both empty by default, iCloud is a private CloudKit database on the user's own Apple ID, and the
-three existing network calls are unchanged. The label question is entirely about the sync server
-being switched on.
+**Apple's test for "collect" is whether the developer can get at the data.** From
+https://developer.apple.com/app-store/app-privacy-details/: "'Collect' refers to transmitting data
+off the device in a way that allows you and/or your third-party partners to access it for a period
+longer than what is necessary to service the transmitted request in real time", where third-party
+partners are "analytics tools, advertising networks, third-party SDKs, or other external vendors
+whose code you've added to your app". Apple says nothing anywhere about a server the user runs.
 
-**What leaves the device when it is.** `SYNC_TRACKED_TABLES` is the authority, and it is broad: the
-tasks and their notes, projects, categories, tags and templates, the people layer (names, and the
-phone numbers and email addresses a task or a person carries), the grocery catalog with its prices
-and purchase history, recipes and the meal plan, and the three day-keyed logs. In Apple's
-categories that is at least **User Content**, **Contact Info**, **Health & Fitness** and
-**Purchases**, all of it linked to the person using the app.
+Taking each destination in turn:
 
-**The log tables are the reason this is not a routine declaration.** Mood, medication and food are
-health records in the sense a label means it. Weight is the one thing that cannot travel, because
-HealthKit is the record and there is no table to sync; that is the health model working rather than
-an omission.
+| Destination | Collected? | Why |
+|---|---|---|
+| Sync server | **No** | The box, the address and the token are the user's. The developer receives nothing and runs nothing, and nothing reports back. That fails both halves of the test above. |
+| iCloud | **No** | A private CloudKit database the developer cannot read. The same page: "You are not responsible for disclosing data collected by Apple." |
+| Barcode lookups | **No** | Public product databases asked what a barcode is. No user data travels, only the barcode. |
+| Recipe page fetch | **No** | A request for a page the user pasted, served in real time. |
+| Anthropic, on the user's own key | **Unclear** | Anthropic keeps requests past real time and is arguably an external vendor, but no code of theirs is bundled and the developer has no account there and no access. |
 
-**The open question is whether a server the user runs counts as collection at all.** Apple asks
-what the developer and its partners collect, and here the developer receives nothing: the box is
-the user's, the address is theirs, and nothing reports back. That is a real argument and it is not
-obviously the winning one, because the data does leave the device and is stored beyond the session.
-**Do not settle this from the code.** It wants Apple's current guidance read at the time, and if it
-stays ambiguous the safe declaration is the honest one rather than the narrow one.
+**Decided: declare the Anthropic row, and nothing else.** The earlier rule in this file holds for
+it: where this is ambiguous, the honest declaration beats the narrow one. So the label is one entry,
+**Other User Content** (task titles and notes, tag and category names, and the other text an AI
+feature sends), purpose **App Functionality**, **linked to the user** (it travels on their own
+Anthropic account) and **not used for tracking**. A privacy manifest should carry the matching
+`NSPrivacyCollectedDataTypes` entry so the two agree.
 
-**A second consent for the health logs is still undecided**, and the section above already says the
-honest default is that they need one. Worth noting that the Settings copy now names them explicitly
-on both destinations, which is the minimum; a separate switch would be the next step up from that.
+If the sync server ever became one the developer ran for people, every answer above flips. It would
+then be **Health** ("any other user provided health or medical data", the three logs, only when
+included), **Contacts** (the people records, which are other people's details, not the user's own
+**Contact Info**), **Other User Content** and **Purchase History**, all linked to the user and none
+used for tracking, with matching `NSPrivacyCollectedDataTypes` entries in a privacy manifest.
+
+Two obligations apply whatever the label says:
+
+- **5.1.2(i):** "You must clearly disclose where personal data will be shared with third parties,
+  including with third-party AI, and obtain explicit permission before doing so." The AI section in
+  Settings states what each call sends, and nothing is sent until the user pastes their own key and
+  leaves a feature on. That is the app's case for explicit permission.
+- **5.1.1(i):** the privacy policy must "Identify what data, if any, the app/service collects… and
+  all uses of that data". It should describe all five destinations in the table, including the ones
+  the label leaves out.
 
 ## Phases
 
@@ -481,4 +534,5 @@ on both destinations, which is the minimum; a separate switch would be the next 
   `create_task`, which moved `newTaskFromDraft` out of the store, then `complete_task` and
   `defer_task`, which moved the completion core out after it, and then the grocery list, which
   moved `addByName`'s core out.
-- **Phase 3. Hosting.** Real OAuth, a deployment, and the Settings surface that admits to the copy.
+- **Phase 3. Hosting.** Real OAuth and a deployment. The Settings surface that admits to the copy,
+  the health logs' own switch and the privacy-label draft are done (see above).

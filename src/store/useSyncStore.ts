@@ -13,17 +13,80 @@
  * device must not be able to switch the feature on for another one.
  */
 import { create } from 'zustand';
-import { dbGetSetting, dbSetSetting } from '../db/database';
+import { dbGetSetting, dbGetSyncCursor, dbSetSetting, dbSetSyncCursor } from '../db/database';
+import { HEALTH_SYNC_SETTING_KEYS, HEALTH_SYNC_TABLES } from '../db/syncTracking';
 import { cloudKitTransport, cloudKitUnavailableReason, isCloudKitSyncAvailable } from '../utils/cloudKitTransport';
-import { httpSyncTransport, isHttpSyncConfigured } from '../utils/httpSyncTransport';
+import { HTTP_SYNC_SOURCE, httpSyncTransport, isHttpSyncConfigured } from '../utils/httpSyncTransport';
 import { loadSecureKey, saveSecureKey, SYNC_TOKEN_SECURE_KEY } from '../utils/secureApiKey';
 import { databaseSyncLocal } from '../utils/syncLocal';
-import { runSyncAll, summarizeRuns, type SyncSummary, type SyncTransport } from '../utils/syncEngine';
+import {
+  pushCursorKey,
+  runSyncAll,
+  summarizeRuns,
+  type SyncSummary,
+  type SyncTransport,
+  type SyncWithholding,
+} from '../utils/syncEngine';
 import { describeApply, type ApplyReport } from '../utils/syncMerge';
 
 const ENABLED_KEY = 'syncEnabled';
 const LAST_SYNCED_KEY = 'syncLastSyncedAt';
 const SERVER_URL_KEY = 'syncServerUrl';
+export const SERVER_HEALTH_LOGS_KEY = 'syncServerHealthLogs';
+/**
+ * Where the server's push cursor has to go back to before health logs are
+ * next sent. Absent means from the very start, which is the default: off
+ * since the first sync, so nothing was ever sent. `NOTHING_OWED` means they
+ * are on and caught up.
+ */
+export const SERVER_HEALTH_RESEND_KEY = 'syncServerHealthResendFrom';
+export const NOTHING_OWED = 'none';
+
+/** A push cursor older than every row, so a rewind to it resends everything. */
+export const SYNC_EPOCH = '1970-01-01T00:00:00.000Z';
+
+const HEALTH_WITHHOLDING: SyncWithholding = {
+  tables: HEALTH_SYNC_TABLES,
+  settingKeys: HEALTH_SYNC_SETTING_KEYS,
+};
+
+/**
+ * Turning health logs off: remember where the server's cursor stood.
+ *
+ * A withheld row is refused rather than left pending, so the cursor moves past
+ * it like any other, and turning the switch back on has to rewind to here (see
+ * `settleHealthLogResend`). An existing mark is kept, since an earlier one
+ * covers more. Safe to run mid-sync: a run in flight can only move the cursor
+ * forward past this mark, which makes the eventual resend larger, never short.
+ */
+export function markHealthLogsWithheld(): void {
+  if (dbGetSetting(SERVER_HEALTH_RESEND_KEY) !== NOTHING_OWED) return;
+  dbSetSetting(SERVER_HEALTH_RESEND_KEY, dbGetSyncCursor(pushCursorKey(HTTP_SYNC_SOURCE)) ?? SYNC_EPOCH);
+}
+
+/**
+ * With health logs on, rewind the server's cursor to whatever is owed.
+ *
+ * Run at the start of a sync, under its lock, never from the switch itself: a
+ * run already pushing writes its own `until` over the cursor when it lands, and
+ * would undo a rewind made while it was in the air, losing every log written
+ * while the switch was off. Only ever moves the cursor back; a server never
+ * synced has no cursor and reads everything anyway.
+ *
+ * The resend repeats rows the server already has. Applying a row twice is a
+ * no-op under `remoteRowWins`' tie rule, so that costs bandwidth and nothing
+ * else.
+ */
+export function settleHealthLogResend(): void {
+  const owed = dbGetSetting(SERVER_HEALTH_RESEND_KEY);
+  if (owed === NOTHING_OWED) return;
+
+  const key = pushCursorKey(HTTP_SYNC_SOURCE);
+  const from = owed || SYNC_EPOCH;
+  const current = dbGetSyncCursor(key);
+  if (current !== null && from < current) dbSetSyncCursor(key, from);
+  dbSetSetting(SERVER_HEALTH_RESEND_KEY, NOTHING_OWED);
+}
 
 export type SyncPhase = 'idle' | 'syncing';
 
@@ -55,11 +118,18 @@ interface SyncState {
   serverUrl: string;
   /** Whether a token is stored, which is all a settings row may say about one. */
   hasServerToken: boolean;
+  /**
+   * Whether the mood, medication and food logs go to the sync server. Off by
+   * default, and per device like the server address itself. iCloud never gets
+   * them either way (see HEALTH_SYNC_TABLES).
+   */
+  serverHealthLogs: boolean;
 
   initialize: () => void;
   setEnabled: (enabled: boolean) => Promise<void>;
   setServerUrl: (url: string) => void;
   setServerToken: (token: string) => Promise<boolean>;
+  setServerHealthLogs: (on: boolean) => void;
   /** Runs a sync if one isn't already running. Safe to call on every foreground. */
   syncNow: () => Promise<SyncSummary | null>;
 }
@@ -71,13 +141,20 @@ interface SyncState {
  * is most likely to be transient; a server the user runs is the one they can go
  * and restart. Neither depends on the other, and either may be absent.
  */
-async function configuredTransports(state: { enabled: boolean; serverUrl: string }): Promise<SyncTransport[]> {
+async function configuredTransports(
+  state: { enabled: boolean; serverUrl: string; serverHealthLogs: boolean }
+): Promise<SyncTransport[]> {
   const transports: SyncTransport[] = [];
-  if (state.enabled && isCloudKitSyncAvailable()) transports.push(cloudKitTransport());
+  if (state.enabled && isCloudKitSyncAvailable()) {
+    transports.push({ ...cloudKitTransport(), withhold: HEALTH_WITHHOLDING });
+  }
 
   const token = await loadSecureKey(SYNC_TOKEN_SECURE_KEY);
   const config = { url: state.serverUrl, token };
-  if (isHttpSyncConfigured(config)) transports.push(httpSyncTransport(config));
+  if (isHttpSyncConfigured(config)) {
+    const server = httpSyncTransport(config);
+    transports.push(state.serverHealthLogs ? server : { ...server, withhold: HEALTH_WITHHOLDING });
+  }
 
   return transports;
 }
@@ -118,6 +195,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
 
   serverUrl: '',
   hasServerToken: false,
+  serverHealthLogs: false,
 
   initialize: () => {
     set({
@@ -126,6 +204,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
       supported: isCloudKitSyncAvailable(),
       lastSyncedAt: dbGetSetting(LAST_SYNCED_KEY),
       serverUrl: dbGetSetting(SERVER_URL_KEY) ?? '',
+      serverHealthLogs: dbGetSetting(SERVER_HEALTH_LOGS_KEY) === '1',
     });
     // The keychain read is async and initialize is not, so the flag lands a
     // tick later. Nothing gates on it except a settings row's subtitle, and a
@@ -143,6 +222,13 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     const saved = await saveSecureKey(SYNC_TOKEN_SECURE_KEY, token.trim());
     if (saved) set({ hasServerToken: !!token.trim(), problem: null });
     return saved;
+  },
+
+  setServerHealthLogs: (on: boolean) => {
+    if (on === get().serverHealthLogs) return;
+    if (!on) markHealthLogsWithheld();
+    dbSetSetting(SERVER_HEALTH_LOGS_KEY, on ? '1' : '0');
+    set({ serverHealthLogs: on });
   },
 
   setEnabled: async (enabled: boolean) => {
@@ -175,7 +261,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
   },
 
   syncNow: async () => {
-    const { enabled, phase, serverUrl } = get();
+    const { enabled, phase, serverUrl, serverHealthLogs } = get();
     if (phase === 'syncing' || syncInFlight) return null;
     // Claimed before the first await rather than by `phase`, which is only set
     // once the transports are known: the keychain read in between left a window
@@ -184,21 +270,24 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     // transports sequentially exists to prevent.
     syncInFlight = true;
     try {
-      return await syncOnce(enabled, serverUrl);
+      return await syncOnce({ enabled, serverUrl, serverHealthLogs });
     } finally {
       syncInFlight = false;
     }
   },
 }));
 
-async function syncOnce(enabled: boolean, serverUrl: string): Promise<SyncSummary | null> {
+async function syncOnce(
+  state: { enabled: boolean; serverUrl: string; serverHealthLogs: boolean }
+): Promise<SyncSummary | null> {
   const set = useSyncStore.setState;
 
   // No longer gated on `enabled` alone: that flag is iCloud's, and a device
   // with only a payload store configured still has somewhere to sync to.
   // `configuredTransports` is what decides, and an empty list is a no-op
   // rather than a failure.
-  const transports = await configuredTransports({ enabled, serverUrl });
+  if (state.serverHealthLogs) settleHealthLogResend();
+  const transports = await configuredTransports(state);
   if (transports.length === 0) return null;
 
   set({ phase: 'syncing' });

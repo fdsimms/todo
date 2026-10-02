@@ -130,7 +130,9 @@ async function callAnthropic(
       // No `temperature` override — Opus 5/Sonnet 5 reject a non-default
       // value, and the tool-forced extraction below doesn't need one.
       body: JSON.stringify({ model, ...body }),
-      signal: controller.signal,
+      // Cast for the reason httpSyncTransport.ts gives: mcp/ typechecks this file
+      // against Node's AbortSignal, which disagrees with React Native's.
+      signal: controller.signal as unknown as RequestInit['signal'],
     });
   } catch (e) {
     if (e instanceof Error && e.name === 'AbortError') throw new Error('Request timed out');

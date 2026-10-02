@@ -38,6 +38,50 @@ export interface SyncTransport {
   push(payload: string): Promise<void>;
   /** Everything other devices have published since `since`. */
   pull(since: string | null): Promise<PullResult>;
+  /**
+   * Rows this transport is never sent. Pushes only: what it hands back is
+   * still applied, since a row arriving on this device is already the
+   * person's own data on their own device.
+   */
+  readonly withhold?: SyncWithholding;
+}
+
+/** Tables, and keys of the `settings` table, held back from a transport. */
+export interface SyncWithholding {
+  tables: readonly string[];
+  settingKeys: readonly string[];
+}
+
+/**
+ * `changes` without what `withholding` names, deletions included.
+ *
+ * Applied after the read rather than inside it, so the cursor still covers the
+ * whole window: a withheld row is not pending, it is refused. Sending it later
+ * is a deliberate rewind of the cursor by whoever lifts the refusal (see
+ * `rewindForHealthLogs` in useSyncStore), not something this does by itself.
+ */
+export function withholdChanges(changes: SyncChangeSet, withholding: SyncWithholding | undefined): SyncChangeSet {
+  if (!withholding) return changes;
+  const tables = new Set(withholding.tables);
+  const keys = new Set(withholding.settingKeys);
+  const held = (table: string, key: unknown) =>
+    tables.has(table) || (table === 'settings' && typeof key === 'string' && keys.has(key));
+
+  const kept: SyncChangeSet['tables'] = {};
+  for (const [name, rows] of Object.entries(changes.tables)) {
+    if (tables.has(name)) continue;
+    kept[name] = name === 'settings' ? rows.filter(r => !held(name, r.key)) : rows;
+  }
+  return {
+    ...changes,
+    tables: kept,
+    deletions: changes.deletions.filter(d => !held(d.table, d.rowKey)),
+  };
+}
+
+/** The setting a transport's outgoing cursor is stored under, by way of `SyncLocal`. */
+export function pushCursorKey(transportName: string): string {
+  return `${transportName}:push`;
 }
 
 export interface PullResult {
@@ -229,7 +273,7 @@ export async function runSync(
     };
   }
 
-  const pushKey = `${transport.name}:push`;
+  const pushKey = pushCursorKey(transport.name);
   const pullKey = `${transport.name}:pull`;
   let pushed = false;
   let unreadable = 0;
@@ -239,7 +283,10 @@ export async function runSync(
   let pushWindow: Pick<SyncChangeSet, 'since' | 'until'>;
 
   try {
-    const changes = local.changesSince(local.getCursor(pushKey), transport.name);
+    const changes = withholdChanges(
+      local.changesSince(local.getCursor(pushKey), transport.name),
+      transport.withhold
+    );
     if (hasChanges(changes)) {
       await transport.push(serializePayload(buildPayload(changes, local.deviceId())));
       pushed = true;

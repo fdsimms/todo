@@ -453,11 +453,44 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
  *   `mealPlanNudgeLastFiredWeekKey` has never synced either.
  * - `syncDeviceId`, `syncCursor:*` — the sync machinery itself. Two devices
  *   sharing a device id would each ignore the other's payloads as their own.
+ * - `syncServerHealthLogs`, `syncServerHealthResendFrom` — per device, like the
+ *   server address they qualify. Synced, one phone could start sending another
+ *   one's health logs to a server, which is the decision the switch exists to
+ *   leave with the person holding the phone; and the resend mark is a position
+ *   in this device's own push cursor, meaningless anywhere else.
  * - Anything ending `_done` — the migration flags above.
  */
 export function isSyncedSettingKey(key: string): boolean {
   return SYNCED_SETTING_KEYS.includes(key);
 }
+
+/**
+ * The health record: tables and settings that are tracked like any other but
+ * that iCloud never receives, and a sync server only once the person has said
+ * so (`syncServerHealthLogs`).
+ *
+ * iCloud because App Review guideline 5.1.3(ii) says an app "may not store
+ * personal health information in iCloud". Whether a mood or food log someone
+ * typed in is that is genuinely unclear, since the guideline sits among the
+ * HealthKit rules, but the strict reading costs only cross-device sync of
+ * these logs for somebody with no server, and the loose one risks the app.
+ * The server because a hosted copy of somebody's symptoms and doses is a
+ * separate decision from a hosted copy of their task list (docs/arch/
+ * mcp-server.md, "The privacy consequence, stated plainly").
+ *
+ * `milestones` are here because they exist to be read against the mood log,
+ * and "started sertraline" is as common a one as "new job".
+ * `medication_archived` is here because it is a list of medicine names, which
+ * says what somebody takes as plainly as the dose log does. What is not here,
+ * and why: a task's `medication_name` rides on a task, and a task titled "Take
+ * sertraline" says the same thing whatever column is withheld; `saved_meals`
+ * are shortcuts for logging, not a record of what was eaten.
+ *
+ * Pushes only. A row of these arriving from a transport is still applied, so
+ * a peer on an older build that still sends them does no harm.
+ */
+export const HEALTH_SYNC_TABLES: readonly string[] = ['mood_logs', 'milestones', 'medication_logs', 'food_logs'];
+export const HEALTH_SYNC_SETTING_KEYS: readonly string[] = ['medication_archived'];
 
 /** Where deletions go. A row here is the only evidence a row ever existed. */
 export const SYNC_DELETIONS_TABLE = 'sync_deletions';

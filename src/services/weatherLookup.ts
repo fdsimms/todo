@@ -146,9 +146,13 @@ export async function fetchWeatherSnapshot(location: DeviceLocation): Promise<We
       '&daily=weather_code,temperature_2m_max,temperature_2m_min' +
       '&hourly=weather_code,temperature_2m' +
       '&forecast_days=2&temperature_unit=fahrenheit&timezone=auto';
-    const response = await fetch(url, { signal: controller.signal });
+    // Cast for the reason httpSyncTransport.ts gives: mcp/ typechecks this file
+    // against Node's AbortSignal, which disagrees with React Native's.
+    const response = await fetch(url, { signal: controller.signal as unknown as RequestInit['signal'] });
     if (!response.ok) return null;
-    const body = await response.json();
+    // Untyped on purpose: every field is typeof-checked where it's read, and this
+    // is what React Native's own `json()` returns (Node's says `unknown`).
+    const body: any = await response.json();
     const weatherCode = body?.current?.weather_code;
     const tempF = body?.current?.temperature_2m;
     if (typeof weatherCode !== 'number' || typeof tempF !== 'number') return null;
@@ -234,9 +238,9 @@ export async function fetchDestinationForecast(
       '&daily=weather_code,temperature_2m_min,temperature_2m_max' +
       '&temperature_unit=fahrenheit&timezone=auto' +
       `&start_date=${startDayKey}&end_date=${endDayKey}`;
-    const response = await fetch(url, { signal: controller.signal });
+    const response = await fetch(url, { signal: controller.signal as unknown as RequestInit['signal'] });
     if (!response.ok) return null;
-    const daily = (await response.json())?.daily;
+    const daily = ((await response.json()) as any)?.daily;
     const days: unknown[] = daily?.time ?? [];
     const codes: unknown[] = daily?.weather_code ?? [];
     const lows: unknown[] = daily?.temperature_2m_min ?? [];

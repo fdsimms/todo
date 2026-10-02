@@ -31,10 +31,12 @@ import { describeLastSynced } from '../../utils/syncStatus';
  * of user data lives on device; a sync server ends that, and the row that turns
  * one on is the last place a person can decide whether they want it to. So the
  * footer says the server holds a complete copy rather than only describing the
- * mechanism, and both hints name the mood, medication and food logs explicitly:
- * they are sync-tracked (see SYNC_TRACKED_TABLES), so "tasks, lists and
- * recipes" was an undercount on the iCloud side too. Weight is the one thing
- * that genuinely cannot travel — HealthKit is the record and there is no table.
+ * mechanism, and the mood, medication and food logs are named wherever they go
+ * or don't. iCloud never gets them (HEALTH_SYNC_TABLES, App Review 5.1.3(ii)),
+ * and the server gets them only behind their own switch, off by default, since
+ * a hosted copy of somebody's symptoms and doses is a separate decision from a
+ * hosted copy of their tasks. Weight is the one thing that cannot travel at
+ * all — HealthKit is the record and there is no table.
  *
  * The pattern is the app's own: PrivacyAiSettings states in each section footer
  * exactly what leaves the device, and this is the same obligation for a bigger
@@ -49,9 +51,11 @@ export function SyncSettings() {
   const problem = useSyncStore(s => s.problem);
   const serverUrl = useSyncStore(s => s.serverUrl);
   const hasServerToken = useSyncStore(s => s.hasServerToken);
+  const serverHealthLogs = useSyncStore(s => s.serverHealthLogs);
   const setEnabled = useSyncStore(s => s.setEnabled);
   const setServerUrl = useSyncStore(s => s.setServerUrl);
   const setServerToken = useSyncStore(s => s.setServerToken);
+  const setServerHealthLogs = useSyncStore(s => s.setServerHealthLogs);
   const syncNow = useSyncStore(s => s.syncNow);
 
   const colors = useColors();
@@ -81,7 +85,7 @@ export function SyncSettings() {
   return (
     <SettingsSection
       label="Sync"
-      footer="Changes are exchanged when you open the app on each device. iCloud keeps them in your private iCloud database, on the Apple ID this device is signed in to. A sync server is not the same: it holds a complete copy of everything in this app, your mood, medication and food logs included, on whatever machine you point it at. Set one up only if you want that copy to exist."
+      footer="Changes are exchanged when you open the app on each device. iCloud keeps them in your private iCloud database, on the Apple ID this device is signed in to, and never receives your mood, medication or food logs or your milestones. A sync server is not the same: it holds a complete copy of everything else in this app on whatever machine you point it at, and your health logs too if you include them. Set one up only if you want that copy to exist."
     >
       {supported && (
         <SettingsRow
@@ -89,7 +93,7 @@ export function SyncSettings() {
           icon="cloud-outline"
           iconColor={enabled ? colors.accent : undefined}
           label="Sync with iCloud"
-          hint="Keeps this app's data the same on every device signed in to this Apple ID, your mood, medication and food logs included."
+          hint="Keeps this app's data the same on every device signed in to this Apple ID. Your mood, medication and food logs and your milestones aren't sent to iCloud, so they stay on the device you added them on."
           toggle={enabled}
           value={enabled ? 'On' : 'Off'}
           onPress={onToggle}
@@ -102,7 +106,7 @@ export function SyncSettings() {
         icon="server-outline"
         iconColor={serverUrl ? colors.accent : undefined}
         label="Sync server"
-        hint="A server you run, so something that isn't an Apple device can sync with this app. It keeps a full copy of your data, health logs included. Both this and the token are needed."
+        hint="A server you run, so something that isn't an Apple device can sync with this app. It keeps a full copy of your data. Both this and the token are needed."
       >
         <TextInput
           style={[styles.apiKeyInput, { color: colors.text, borderBottomColor: colors.separator }]}
@@ -142,6 +146,20 @@ export function SyncSettings() {
           accessibilityLabel="Sync server token"
         />
       </SettingsRow>
+
+      <View style={styles.sep} />
+
+      <SettingsRow
+        entryId="syncServerHealthLogs"
+        icon="heart-outline"
+        iconColor={serverHealthLogs ? colors.accent : undefined}
+        label="Include health logs"
+        hint="Also send your mood, medication and food logs and your milestones to the sync server. Turning this off stops new entries going there. Ones already sent stay on the server."
+        toggle={serverHealthLogs}
+        value={serverHealthLogs ? 'On' : 'Off'}
+        onPress={() => setServerHealthLogs(!serverHealthLogs)}
+        accessibilityLabel="Include health logs on the sync server"
+      />
 
       {anyDestination && (
         <SettingsRow

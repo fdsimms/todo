@@ -179,21 +179,21 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'list_food_log',
-    'Logged food over a range of days, with summed nutrients. A nutrient nobody logged is absent rather than zero. Defaults to the last 7 days.',
+    'Logged food over a range of days, with summed nutrients. A nutrient nobody logged is absent rather than zero. Defaults to the last 7 days. Empty unless the person has turned on Include health logs for the sync server on their phone, so an empty result is not evidence that nothing was logged.',
     logRange,
     async input => json(await withFresh(() => listFoodLog(replica, input)))
   );
 
   server.tool(
     'list_mood_logs',
-    'Mood check-ins over a range of days: the 1 to 5 rating, any symptoms and their severity, context tags and notes. Defaults to the last 7 days.',
+    'Mood check-ins over a range of days: the 1 to 5 rating, any symptoms and their severity, context tags and notes. Defaults to the last 7 days. Empty unless the person has turned on Include health logs for the sync server on their phone, so an empty result is not evidence that nothing was logged.',
     logRange,
     async input => json(await withFresh(() => listMoodLogs(replica, input)))
   );
 
   server.tool(
     'list_medication_logs',
-    'Doses recorded over a range of days, including as-needed ones. Defaults to the last 7 days.',
+    'Doses recorded over a range of days, including as-needed ones. Defaults to the last 7 days. Empty unless the person has turned on Include health logs for the sync server on their phone, so an empty result is not evidence that nothing was logged.',
     logRange,
     async input => json(await withFresh(() => listMedicationLogs(replica, input)))
   );
