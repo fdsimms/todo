@@ -5573,6 +5573,49 @@ describe('checkWeatherTasks', () => {
     expect(task.category).toBe('Weather');
   });
 
+  it('starts the task with the estimate stored on its rule', () => {
+    useSettingsStore.getState.mockReturnValue(settings({
+      weatherRules: [{ ...rainyRule, estimatedMinutes: 1, effort: 1 }],
+    }));
+    useWeatherStore.getState.mockReturnValue({ snapshot: snapshot({ weatherCode: 61 }), snapshotDayKey: TODAY_KEY });
+
+    useTaskStore.getState().checkWeatherTasks();
+
+    const [task] = weatherTasks();
+    expect(task.estimatedMinutes).toBe(1);
+    expect(task.effort).toBe(1);
+  });
+
+  // The task is a fresh row each time the rule fires, so an estimate set on it
+  // has to land on the rule or the next one starts unestimated again.
+  it('writes an estimate edited on the task back onto its rule', () => {
+    const current = settings();
+    useSettingsStore.getState.mockReturnValue(current);
+    useWeatherStore.getState.mockReturnValue({ snapshot: snapshot({ weatherCode: 61 }), snapshotDayKey: TODAY_KEY });
+    useTaskStore.getState().checkWeatherTasks();
+    const [task] = weatherTasks();
+    // The pass saves the rules itself, to mark the day considered.
+    current.setWeatherRules.mockClear();
+
+    useTaskStore.getState().updateTask(task.id, { estimatedMinutes: 2, effort: 1 });
+
+    expect(current.setWeatherRules).toHaveBeenCalledWith([{ ...rainyRule, estimatedMinutes: 2, effort: 1 }]);
+  });
+
+  it('leaves the rule alone when a write names the estimate without changing it', () => {
+    const current = settings();
+    useSettingsStore.getState.mockReturnValue(current);
+    useWeatherStore.getState.mockReturnValue({ snapshot: snapshot({ weatherCode: 61 }), snapshotDayKey: TODAY_KEY });
+    useTaskStore.getState().checkWeatherTasks();
+    const [task] = weatherTasks();
+    // The pass saves the rules itself, to mark the day considered.
+    current.setWeatherRules.mockClear();
+
+    useTaskStore.getState().updateTask(task.id, { ...task, notes: 'undo snapshot' });
+
+    expect(current.setWeatherRules).not.toHaveBeenCalled();
+  });
+
   // The whole point of unioning against today's day-level forecast: a dry
   // reading at the moment of the fetch (typically the first open of the day)
   // must not be the only chance the rule gets to fire, or rain that starts
@@ -16787,6 +16830,103 @@ describe('updateTask: the followUp task draft', () => {
 
     useTaskStore.getState().updateTask('practice', { followUpTaskDraft: null });
     expect(useTaskStore.getState().tasks[0].followUpTaskDraft).toBeNull();
+  });
+});
+
+// A generated or follow-up task is a fresh row every time, so an estimate set
+// on one used to die with it. It now lives on the generator that writes the
+// next one, whatever that row ends up being called.
+describe('estimates kept on the generator', () => {
+  const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as { useSettingsStore: { getState: jest.Mock } };
+  const original = useSettingsStore.getState.getMockImplementation()!;
+  const rowOf = (id: string) => useTaskStore.getState().tasks.find(t => t.id === id)!;
+  const withEstimates = (generatorEstimates: Record<string, unknown>) => {
+    const current = { ...original(), generatorEstimates, setGeneratorEstimates: jest.fn() };
+    useSettingsStore.getState.mockImplementation(() => current);
+    return current;
+  };
+  afterEach(() => useSettingsStore.getState.mockImplementation(original));
+
+  it('starts a generated task from its kind\'s estimate, whatever its title says', () => {
+    withEstimates({ mealPlanNudge: { estimatedMinutes: 10, effort: 2 } });
+    useTaskStore.setState({ tasks: [] });
+
+    const added = useTaskStore.getState().addTask({ title: 'Plan meals for Oct 5-11', generatedKind: 'mealPlanNudge' });
+
+    expect(added.estimatedMinutes).toBe(10);
+    expect(added.effort).toBe(2);
+  });
+
+  it('leaves an estimate the generator wrote itself alone, and a typed task untouched', () => {
+    withEstimates({ mealPlanNudge: { estimatedMinutes: 10, effort: 2 } });
+    useTaskStore.setState({ tasks: [] });
+
+    expect(useTaskStore.getState().addTask({ title: 'x', generatedKind: 'mealPlanNudge', estimatedMinutes: 3 }).estimatedMinutes).toBe(3);
+    expect(useTaskStore.getState().addTask({ title: 'Plan meals' }).estimatedMinutes).toBeNull();
+  });
+
+  it('writes an estimate edited on a generated task back onto its kind', () => {
+    const current = withEstimates({});
+    useTaskStore.setState({ tasks: [makeTask({ id: 'nudge', generatedKind: 'mealPlanNudge', generatedSourceId: '2026-10-05' })] });
+
+    useTaskStore.getState().updateTask('nudge', { estimatedMinutes: 10, effort: 2 });
+
+    expect(current.setGeneratorEstimates).toHaveBeenCalledWith({ mealPlanNudge: { estimatedMinutes: 10, effort: 2 } });
+  });
+
+  it('keeps no kind estimate for meal tasks, which take theirs from the recipe', () => {
+    const current = withEstimates({});
+    useTaskStore.setState({ tasks: [makeTask({ id: 'dinner', generatedKind: 'mealSlot', generatedSourceId: 'x' })] });
+
+    useTaskStore.getState().updateTask('dinner', { estimatedMinutes: 45, effort: 3 });
+
+    expect(current.setGeneratorEstimates).not.toHaveBeenCalled();
+  });
+
+  it('writes an estimate edited on a follow-up task into the rule that adds it', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'laundry', recurrenceType: 'weekly', followUpTaskEveryN: 2, followUpTaskTitle: 'Put a new towel out' }),
+        makeTask({ id: 'towel', title: 'Put a new towel out', followUpTaskSourceId: 'laundry', followUpTaskSourceTitle: 'Laundry' }),
+      ],
+    });
+
+    useTaskStore.getState().updateTask('towel', { estimatedMinutes: 1, effort: 1 });
+
+    expect(rowOf('laundry').followUpTaskDraft).toEqual({ ...emptyFollowUpTaskDraft(), estimatedMinutes: 1, effort: 1 });
+  });
+
+  // The pointer names the row that was live when the follow-up landed. Leave
+  // the follow-up open across another cycle and that row is done; the rule
+  // has moved on to its successor, which is where the estimate belongs.
+  it('follows a stale source pointer forward to the row holding the rule now', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'laundry-1', recurrenceType: 'weekly', completed: true, followUpTaskEveryN: 2, followUpTaskTitle: 'Put a new towel out' }),
+        makeTask({ id: 'towel', title: 'Put a new towel out', previousOccurrenceId: 'laundry-0', followUpTaskSourceId: 'laundry-1', followUpTaskSourceTitle: 'Laundry' }),
+        makeTask({ id: 'laundry-2', recurrenceType: 'weekly', previousOccurrenceId: 'laundry-1', followUpTaskEveryN: 2, followUpTaskTitle: 'Put a new towel out' }),
+      ],
+    });
+
+    useTaskStore.getState().updateTask('towel', { estimatedMinutes: 1, effort: 1 });
+
+    expect(rowOf('laundry-1').followUpTaskDraft).toBeNull();
+    expect(rowOf('laundry-2').followUpTaskDraft).toEqual({ ...emptyFollowUpTaskDraft(), estimatedMinutes: 1, effort: 1 });
+  });
+
+  it('starts the next follow-up with the estimate written back', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'laundry', recurrenceType: 'weekly', followUpTaskEveryN: 2, followUpTaskTally: 1,
+        followUpTaskTitle: 'Put a new towel out',
+        followUpTaskDraft: { ...emptyFollowUpTaskDraft(), estimatedMinutes: 1, effort: 1 },
+      })],
+    });
+
+    useTaskStore.getState().completeTask('laundry');
+
+    const added = useTaskStore.getState().tasks.find(t => t.title === 'Put a new towel out' && !t.completed)!;
+    expect(added.estimatedMinutes).toBe(1);
   });
 });
 

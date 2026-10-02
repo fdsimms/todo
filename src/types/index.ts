@@ -340,7 +340,18 @@ export type WeatherCondition = 'sunny' | 'rainy' | 'snowy' | 'cold' | 'hot';
  * settings, not a row anything could stamp a decline onto (see the
  * `'weather'` case of `GeneratedKind` above).
  */
-export interface WeatherRule {
+/**
+ * How long the task a rule writes takes, carried on the rule so each task it
+ * writes starts with it. Written back from the task, never asked for on the
+ * rule sheet; see `src/utils/ruleEstimate.ts`. Both absent on a rule nobody
+ * has estimated.
+ */
+export interface RuleTaskEstimate {
+  estimatedMinutes?: number | null;
+  effort?: Effort;
+}
+
+export interface WeatherRule extends RuleTaskEstimate {
   id: string;
   condition: WeatherCondition;
   /** The task's title, e.g. "Put on sunscreen". */
@@ -389,7 +400,7 @@ export interface WeatherRule {
  * Group as opaque tokens iOS never resolves for the app, so every rule watches
  * the same one selection — see modules/todo-screentime-bridge.
  */
-export interface ScreenTimeRule {
+export interface ScreenTimeRule extends RuleTaskEstimate {
   id: string;
   /** Minutes of use across the chosen apps that trips this rule. */
   thresholdMinutes: number;
@@ -443,7 +454,7 @@ export type HealthRuleMetric =
  * both, and `docs/arch/health-data.md` for why a missing reading can never
  * match.
  */
-export interface HealthRule {
+export interface HealthRule extends RuleTaskEstimate {
   id: string;
   /** Which reading this rule watches. */
   metric: HealthRuleMetric;
@@ -521,7 +532,7 @@ export interface HealthRule {
  * this reads titles where `calendarHistory.ts` — which infers — may only
  * offer.
  */
-export interface EventTaskRule {
+export interface EventTaskRule extends RuleTaskEstimate {
   id: string;
   /**
    * The words or phrases looked for in an event's title — the rule fires if

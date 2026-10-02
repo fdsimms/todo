@@ -782,6 +782,8 @@ export function buildCompletion(
       // undefined, not 0, when there's no draft: 0 is a real answer here
       // and would override a configured new-task default.
       priority: spec?.priority,
+      // An estimate edited on an earlier follow-up is written back into this
+      // draft (writeEstimateToSource), which is how the next one starts with it.
       effort: spec?.effort,
       estimatedMinutes: spec?.estimatedMinutes ?? null,
       timeSegments: spec?.timeSegments ?? [],

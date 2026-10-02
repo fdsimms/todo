@@ -1,5 +1,6 @@
 import type { ScreenTimeRule, Task } from '../types';
 import { generateId } from './id';
+import { parseRuleEstimate } from './ruleEstimate';
 import { generatedSourceOf } from './generatedTasks';
 
 /**
@@ -88,6 +89,7 @@ export function parseScreenTimeRules(raw: string | null | undefined): ScreenTime
       title: rule.title.slice(0, SCREEN_TIME_RULE_TITLE_MAX_LENGTH),
       enabled: rule.enabled !== false,
       lastFiredDayKey: typeof rule.lastFiredDayKey === 'string' ? rule.lastFiredDayKey : null,
+      ...parseRuleEstimate(rule),
     }];
   });
 }

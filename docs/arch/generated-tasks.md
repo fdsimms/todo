@@ -647,6 +647,28 @@ one. Those three rules and the reasoning behind them are in
   - **There is no row cap**: unlike a shortfall it isn't competing for shelf space, and the window
     already bounds it.
 
+## An estimate set on one is kept on its generator
+
+Every generated task (and every follow-up task) is a fresh one-off row, so an
+estimate set or timed on one used to die with it. Editing a generated row's
+estimate now writes it back onto the generator that wrote it, and the next row
+starts from there. The title plays no part, so a title carrying a date or a
+forecast changes nothing. `src/utils/ruleEstimate.ts` has the three homes:
+
+- **A rule somebody wrote** (weather, Screen Time, Health, calendar events):
+  on the rule itself, via `ruleEstimateDraft` in each rule's draft.
+- **A follow-up rule**: in `followUpTaskDraft`. The source pointer goes stale
+  after another cycle, so the write walks forward along `previousOccurrenceId`
+  to the row holding the rule now (`liveFollowUpSource`).
+- **Every other generator**: one entry per kind in the `generatorEstimates`
+  setting, filled in by `addTask` when a draft carrying a `generatedKind` names
+  no estimate. Meal tasks are left out (`holdsKindEstimate`): they arrive
+  estimated from the recipe, and one figure for every meal would be wrong.
+
+The write-back compares values, not the patch's keys, because an undo snapshot
+names both fields without changing them. Only a draft with no estimate of its
+own is ever filled, and a task somebody typed never is.
+
 ## Vacation mode: which of them stand down
 
 `GeneratedKindSpec.pausedOnVacation` is every generator's answer, required the way `kitchen` is
