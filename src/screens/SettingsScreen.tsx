@@ -131,6 +131,7 @@ export function SettingsScreen() {
       waitingFollowUpTasks: settings.waitingFollowUpTasks,
       weatherTasks: settings.weatherTasks,
       eventTasks: settings.eventTasks,
+      travelTasks: settings.travelTasks,
       screenTimeTasks: settings.screenTimeTasks,
     healthTasks: settings.healthTasks,
       moodLogTasks: settings.moodLogTasks,

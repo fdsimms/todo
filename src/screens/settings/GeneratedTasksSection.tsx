@@ -2,11 +2,13 @@ import React, { useMemo, useState } from 'react';
 import { Alert, StyleSheet, View } from 'react-native';
 import { useSettingsStore, type WeekStart } from '../../store/useSettingsStore';
 import { useTaskStore } from '../../store/useTaskStore';
+import { useCalendarStore } from '../../store/useCalendarStore';
 import { ensureGeneratedTaskCategory, useCategoryStore } from '../../store/useCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
 import { categoryLabel } from '../../utils/categoryLabel';
 import { haptics } from '../../utils/haptics';
 import {
+  CALENDAR_READ_KINDS,
   generatorSwitchedOn,
   listedGeneratedKinds,
   type GeneratedKind,
@@ -49,6 +51,13 @@ import {
   MAX_BIRTHDAY_LEAD_DAYS,
 } from '../../utils/birthdayTasks';
 import { describeWeekendNudgeLead, describeWeekendNudgePlanThreshold } from '../../utils/weekendTasks';
+import {
+  TRAVEL_LEAD_MINUTES_DEFAULT,
+  TRAVEL_LEAD_MINUTES_MAX,
+  TRAVEL_LEAD_MINUTES_MIN,
+  TRAVEL_LEAD_MINUTES_STEP,
+} from '../../utils/travelTasks';
+import { TRANSIT_LINES } from '../../utils/transitAlerts';
 import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
 import { SettingsSegments } from './SettingsSegments';
@@ -134,6 +143,9 @@ export function GeneratedTasksSection() {
 
   const s = useSettingsStore();
   const categories = useCategoryStore(useShallow(state => state.categories));
+  // Names for the per-calendar leave-by rows. Filled by the calendar read, so a
+  // picked calendar it hasn't reached yet shows a plain fallback.
+  const calendarsById = useCalendarStore(state => state.calendarsById);
 
   // Built here rather than handed down, now that this is a screen of its own
   // rather than a section inside Tasks & projects. Not a segmented control: the
@@ -208,10 +220,11 @@ export function GeneratedTasksSection() {
 
   /**
    * What a generator needs turned on before its own switch can mean anything,
-   * or null for the sixteen that need nothing.
+   * or null for the rest, which need nothing.
    *
-   * Two of them read a source the app has to be allowed into first, and
-   * `enabledOf` refuses to show either as on while that read is shut. That is
+   * Five of them read a source the app has to be allowed into first (Apple
+   * Health for two, the calendar for the three that read its window), and
+   * `enabledOf` refuses to show any of them as on while that read is shut. That is
    * right (a row reading "on" over a closed read would be lying about itself)
    * and it left the switch untappable: `toggle` computes `!enabledOf(kind)`, so
    * the tap wrote true, `enabledOf` still answered false, and the switch sprang
@@ -222,7 +235,7 @@ export function GeneratedTasksSection() {
     if (kind === 'health' && !s.healthReadEnabled) {
       return { setting: 'Read Apple Health', screen: 'Health' };
     }
-    if (kind === 'calendarReview' && !s.calendarReadEnabled) {
+    if (CALENDAR_READ_KINDS.includes(kind) && !s.calendarReadEnabled) {
       return { setting: 'Read my calendar', screen: 'Calendar' };
     }
     // The weigh-in needs both Health switches — see generatorSwitchedOn.
@@ -265,6 +278,7 @@ export function GeneratedTasksSection() {
       case 'waitingFollowUp': s.setWaitingFollowUpTasks(next); break;
       case 'weather': s.setWeatherTasks(next); break;
       case 'eventTask': s.setEventTasks(next); break;
+      case 'travel': s.setTravelTasks(next); break;
       case 'screenTime': s.setScreenTimeTasks(next); break;
       case 'health': s.setHealthTasks(next); break;
       case 'moodLog': s.setMoodLogTasks(next); break;
@@ -272,6 +286,12 @@ export function GeneratedTasksSection() {
       case 'weekendNudge': s.setWeekendNudgeTasks(next); break;
       case 'weighIn': s.setWeighInTasks(next); break;
       case 'waterShortfall': s.setWaterShortfallTasks(next); break;
+      // Exhaustive for setCategory's reason below: this returns void, so a
+      // missing arm would be a switch that silently does nothing.
+      default: {
+        const exhaustive: never = kind;
+        void exhaustive;
+      }
     }
     // Switching one on gives it somewhere to file, so the "File them under"
     // row that appears directly below already has an answer in it rather than
@@ -302,6 +322,7 @@ export function GeneratedTasksSection() {
       case 'waitingFollowUp': return s.waitingFollowUpTaskCategory;
       case 'weather': return s.weatherTaskCategory;
       case 'eventTask': return s.eventTaskCategory;
+      case 'travel': return s.travelTaskCategory;
       case 'screenTime': return s.screenTimeTaskCategory;
       case 'health': return s.healthTaskCategory;
       case 'moodLog': return s.moodLogTaskCategory;
@@ -334,6 +355,7 @@ export function GeneratedTasksSection() {
       case 'waitingFollowUp': s.setWaitingFollowUpTaskCategory(category); break;
       case 'weather': s.setWeatherTaskCategory(category); break;
       case 'eventTask': s.setEventTaskCategory(category); break;
+      case 'travel': s.setTravelTaskCategory(category); break;
       case 'screenTime': s.setScreenTimeTaskCategory(category); break;
       case 'health': s.setHealthTaskCategory(category); break;
       case 'moodLog': s.setMoodLogTaskCategory(category); break;
@@ -872,6 +894,118 @@ export function GeneratedTasksSection() {
             }
             onPress={() => { haptics.tap(); setEventRulesVisible(true); }}
           />
+        </>
+      );
+    }
+
+    if (kind === 'travel') {
+      const lines = s.transitLines;
+      return (
+        <>
+          <View style={styles.sep} />
+          <SettingsRow
+            entryId="travelLeadMinutes"
+            icon="time-outline"
+            label="Remind me"
+            hint="How long before the event the reminder goes off. Set it to how long the trip usually takes you."
+            value={`${s.travelLeadMinutes} min before`}
+            tight
+          />
+          <View style={styles.cadenceRow}>
+            <CountStepper
+              value={s.travelLeadMinutes}
+              onChange={next => s.setTravelLeadMinutes(next ?? TRAVEL_LEAD_MINUTES_DEFAULT)}
+              min={TRAVEL_LEAD_MINUTES_MIN}
+              max={TRAVEL_LEAD_MINUTES_MAX}
+              step={TRAVEL_LEAD_MINUTES_STEP}
+              format={n => `${n}m`}
+              label="Minutes before the event"
+              describeValue={n => `${n ?? TRAVEL_LEAD_MINUTES_DEFAULT} minutes before the event`}
+            />
+          </View>
+          {s.calendarIds.length > 1 && (
+            <>
+              <View style={styles.sep} />
+              <SettingsRow
+                entryId="travelLeadByCalendar"
+                icon="calendar-outline"
+                label="Per calendar"
+                hint="A different reminder time for events on one calendar. A calendar left on Default uses the time above."
+                tight
+              />
+              {s.calendarIds.map(calendarId => {
+                const calendar = calendarsById[calendarId];
+                const title = calendar?.title || 'Calendar';
+                const override = s.travelLeadByCalendar[calendarId] ?? null;
+                return (
+                  <SettingsRow
+                    key={calendarId}
+                    icon="ellipse"
+                    iconColor={calendar?.color}
+                    label={title}
+                    tight
+                    trailing={
+                      <CountStepper
+                        value={override}
+                        onChange={next => s.setTravelLeadForCalendar(calendarId, next)}
+                        min={TRAVEL_LEAD_MINUTES_MIN}
+                        max={TRAVEL_LEAD_MINUTES_MAX}
+                        step={TRAVEL_LEAD_MINUTES_STEP}
+                        allowNull
+                        start={s.travelLeadMinutes}
+                        emptyLabel="Default"
+                        format={n => `${n}m`}
+                        label={`Minutes before events on ${title}`}
+                        describeValue={n => n === null
+                          ? `Default, ${s.travelLeadMinutes} minutes before`
+                          : `${n} minutes before events on ${title}`}
+                      />
+                    }
+                  />
+                );
+              })}
+            </>
+          )}
+          <View style={styles.sep} />
+          <SettingsRow
+            entryId="transitAlerts"
+            icon="subway-outline"
+            label="Subway alerts"
+            hint="Adds MTA delays and planned work on your lines to the task, like “L delayed”. Reads the MTA's service alerts over the internet while the app is open."
+            toggle={s.transitAlerts}
+            onPress={() => s.setTransitAlerts(!s.transitAlerts)}
+          />
+          {s.transitAlerts && (
+            <>
+              <View style={styles.sep} />
+              <SettingsRow
+                entryId="transitLines"
+                icon="train-outline"
+                label="Lines"
+                hint="Only alerts on these lines are added to a task."
+                value={lines.length === 0 ? 'None' : lines.join(', ')}
+                tight
+              />
+              <View style={styles.pillGroupRow}>
+                <PillGroup
+                  noun="line"
+                  limit={TRANSIT_LINES.length}
+                  options={TRANSIT_LINES.map(line => ({
+                    key: line.key,
+                    label: line.key,
+                    selected: lines.includes(line.key),
+                    accessibilityLabel: `${line.key} train`,
+                    onPress: () => {
+                      haptics.tap();
+                      s.setTransitLines(
+                        lines.includes(line.key) ? lines.filter(l => l !== line.key) : [...lines, line.key],
+                      );
+                    },
+                  }))}
+                />
+              </View>
+            </>
+          )}
         </>
       );
     }

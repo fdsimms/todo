@@ -316,6 +316,10 @@ const GENERATED_KEYWORDS: Record<GeneratedKind, string[]> = {
     'location', 'temperature', 'generated', 'automatic'],
   eventTask: ['meeting', 'appointment', 'flight', 'travel', 'title', 'rule', 'rules', 'match',
     'prep', 'prepare', 'lead time', 'days before', 'generated', 'automatic'],
+  // No 'leave': already in this generator's own label. The rest are the trip
+  // and the train, which is what somebody looking for it would type.
+  travel: ['travel', 'commute', 'subway', 'train', 'mta', 'transit', 'delay', 'delays',
+    'location', 'address', 'late', 'on time', 'generated', 'automatic'],
   // No bare 'weigh': already a substring of this generator's own label
   // ("Ask for a weigh-in"). 'scale' and 'weight' are the words somebody
   // actually types, and neither is in the label.
@@ -591,6 +595,16 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { id: 'eventRules', groupId: 'generated', label: 'Rules', section: 'Calendar event tasks',
     keywords: ['calendar', 'event', 'meeting', 'appointment', 'flight', 'travel', 'title',
       'word', 'match', 'days before', 'lead time', 'prep', 'pack', 'event rule'] },
+  { id: 'travelLeadMinutes', groupId: 'generated', label: 'Remind me', section: 'Leave-by reminders',
+    keywords: ['travel time', 'commute', 'minutes before', 'lead time', 'leave', 'when to leave',
+      'reminder', 'notification', 'trip'] },
+  { id: 'travelLeadByCalendar', groupId: 'generated', label: 'Per calendar', section: 'Leave-by reminders',
+    keywords: ['work calendar', 'different time', 'travel time', 'commute', 'minutes before', 'leave'] },
+  { id: 'transitAlerts', groupId: 'generated', label: 'Subway alerts', section: 'Leave-by reminders',
+    keywords: ['mta', 'train', 'delay', 'delays', 'planned work', 'service change',
+      'transit', 'commute', 'new york', 'nyc'] },
+  { id: 'transitLines', groupId: 'generated', label: 'Lines', section: 'Leave-by reminders',
+    keywords: ['mta', 'subway', 'train', 'route', 'which train', 'transit'] },
   { id: 'screenTimeRules', groupId: 'generated', label: 'Rules', section: 'Screen time tasks',
     keywords: ['screen time', 'usage', 'phone', 'apps', 'threshold', 'minutes', 'distraction',
       'social media', 'doomscroll', 'limit', 'screen time rule'] },

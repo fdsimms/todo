@@ -1,3 +1,5 @@
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import {
   GENERATED_KINDS,
   GENERATED_KIND_LIST,
@@ -6,6 +8,7 @@ import {
   generatedSourceOf,
   generatedTaskCountOf,
   generatorPausedForVacation,
+  CALENDAR_READ_KINDS,
   generatorSwitchedOn,
   hasAnyGeneratedTask,
   isNoticeTask,
@@ -348,16 +351,17 @@ describe('the registry', () => {
     // one task written entirely on the app's own schedule landed loose at the
     // top of Today however the other three were filed.
     expect(GENERATED_KIND_LIST.filter(s => s.categorized).map(s => s.kind))
-      .toEqual(['groceryUseUp', 'pantryCheck', 'pantryReview', 'leftoverUseUp', 'mealSlot', 'mealPlanNudge', 'mealShortfall', 'mealThaw', 'mealLogNudge', 'projectReview', 'supplyReorder', 'calendarReview', 'birthday', 'birthdayGift', 'reachOut', 'waitingFollowUp', 'weather', 'screenTime', 'health', 'eventTask', 'moodLog', 'moodNudge', 'weekendNudge', 'weighIn', 'waterShortfall']);
+      .toEqual(['groceryUseUp', 'pantryCheck', 'pantryReview', 'leftoverUseUp', 'mealSlot', 'mealPlanNudge', 'mealShortfall', 'mealThaw', 'mealLogNudge', 'projectReview', 'supplyReorder', 'calendarReview', 'birthday', 'birthdayGift', 'reachOut', 'waitingFollowUp', 'weather', 'screenTime', 'health', 'eventTask', 'travel', 'moodLog', 'moodNudge', 'weekendNudge', 'weighIn', 'waterShortfall']);
   });
 
-  it('marks exactly the two day-shaped questions as notices', () => {
+  it('marks exactly the two day-shaped questions and the leave reminder as notices', () => {
     // A notice is a row with nothing to decide about it: it says what it is
     // about, you tick it, and that is the whole interaction (see
-    // GeneratedKindSpec.notice). Both of these are day-keyed with a title that
-    // never varies, and neither has anything a reschedule could mean.
+    // GeneratedKindSpec.notice). The first two are day-keyed with a title that
+    // never varies; the third is pinned to an event's start, and leaving for
+    // the dentist on Thursday instead is not a thing a reschedule could mean.
     expect(GENERATED_KIND_LIST.filter(s => s.notice).map(s => s.kind))
-      .toEqual(['mealPlanNudge', 'calendarReview']);
+      .toEqual(['mealPlanNudge', 'calendarReview', 'travel']);
     // The retired kind answers too, since a legacy row still carries it.
     expect(GENERATED_KIND_SPECS.mealCook.notice).toBe(false);
   });
@@ -459,6 +463,29 @@ describe('generatorSwitchedOn', () => {
     expect(generatorSwitchedOn('weighIn', flags({ healthReadEnabled: false }))).toBe(false);
     expect(generatorSwitchedOn('weighIn', flags({ healthWriteEnabled: false }))).toBe(false);
     expect(generatorSwitchedOn('weighIn', flags())).toBe(true);
+  });
+
+  it('needs the calendar read for every kind whose pass refuses without it', () => {
+    for (const kind of CALENDAR_READ_KINDS) {
+      expect(generatorSwitchedOn(kind, flags({ calendarReadEnabled: false }))).toBe(false);
+      expect(generatorSwitchedOn(kind, flags())).toBe(true);
+    }
+  });
+
+  it('lists exactly the kinds whose pass refuses without the calendar read', () => {
+    // Reads the store's source rather than running it, the way
+    // settingsEntryWiring.test.ts reads the settings JSX: what matters is which
+    // passes return early on `!settings.calendarReadEnabled`, and a pass that
+    // gains or loses that refusal must take CALENDAR_READ_KINDS with it, or the
+    // switch reads "on" over a pass that does nothing (eventTask did, for a while).
+    const source = readFileSync(join(__dirname, '..', 'store', 'useTaskStore.ts'), 'utf8');
+    const methods = source.split(/\n  (?:async )?(?=check\w+\(\) \{)/).slice(1);
+    const gated = new Set<string>();
+    for (const body of methods) {
+      if (!body.includes('if (!settings.calendarReadEnabled) return;')) continue;
+      for (const m of body.matchAll(/generatedBy\('(\w+)'|kind: '(\w+)'/g)) gated.add(m[1] ?? m[2]);
+    }
+    expect([...gated].sort()).toEqual([...CALENDAR_READ_KINDS].sort());
   });
 
   it('leaves the other generators alone when a read is off', () => {

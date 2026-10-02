@@ -163,6 +163,12 @@ export function catchUpPasses(): MaintenanceStep[] {
     // behind, exactly as checkCalendarReviewTasks' is, and it refuses on
     // `!calendar.loaded` rather than reading an unread window as an empty one.
     ['check event tasks', () => tasks().checkEventTasks()],
+    // Beside it, reading the same window under the same `!calendar.loaded`
+    // refusal. In the background this is what lets a reminder be queued (or
+    // its title brought up to date) without the app being opened, on whatever
+    // window and transit snapshot the last foreground left behind; it never
+    // fetches either, for the reason the weather pass above doesn't.
+    ['check travel tasks', () => tasks().checkTravelTasks()],
     // Beside it, same trigger and the same near-no-op at cold launch: the
     // crossings it reads are only ever drained by useScreenTimeSync's own
     // effect, which has not run yet on the very first pass.

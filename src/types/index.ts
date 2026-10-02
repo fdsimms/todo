@@ -1817,6 +1817,13 @@ export type GeneratedKind =
   // mark lives in settings (`eventTaskHandled`), the position calendarReview
   // and the other three rule generators are already in.
   | 'eventTask'
+  // A calendar event with a location becomes "Leave for X", its reminder set
+  // to the event's start less a lead the user typed — see
+  // src/utils/travelTasks.ts. Its source id is the occurrence key alone
+  // (`${eventId}|${eventStart}`), eventTask's without a rule id after it,
+  // since there is one rule. Not `sourced`, for eventTask's reason: the
+  // handled record in settings (`travelTaskHandled`) is the mark.
+  | 'travel'
   // A recurring task whose supply of a consumable is nearly spent becomes
   // "Order more X". The first generator whose source is a *task* rather than a
   // row in another store — see src/utils/supply.ts.

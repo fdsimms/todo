@@ -354,6 +354,9 @@ jest.mock('../store/useCalendarStore', () => ({
 jest.mock('../store/useWeatherStore', () => ({
   useWeatherStore: { getState: jest.fn(() => ({ snapshot: null, snapshotDayKey: null })) },
 }));
+jest.mock('../store/useTransitStore', () => ({
+  useTransitStore: { getState: jest.fn(() => ({ snapshot: null })) },
+}));
 
 jest.mock('react-native', () => ({
   Platform: { OS: 'ios' },
@@ -5499,6 +5502,236 @@ describe('checkCalendarReviewTasks', () => {
     useTaskStore.getState().checkCalendarReviewTasks();
 
     expect(reviewTasks()).toHaveLength(0);
+  });
+});
+
+// ─── checkTravelTasks ───────────────────────────────────────────────────────
+
+describe('checkTravelTasks', () => {
+  const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as {
+    useSettingsStore: { getState: jest.Mock };
+  };
+  const { useCalendarStore } = jest.requireMock('../store/useCalendarStore') as {
+    useCalendarStore: { getState: jest.Mock };
+  };
+  const { useTransitStore } = jest.requireMock('../store/useTransitStore') as {
+    useTransitStore: { getState: jest.Mock };
+  };
+
+  const setTravelTaskHandled = jest.fn();
+  const settings = (overrides: Record<string, unknown> = {}) => ({
+    dayResetTime: '00:00',
+    travelTasks: true,
+    calendarReadEnabled: true,
+    travelTaskCategory: 'Calendar',
+    travelLeadMinutes: 30,
+    travelLeadByCalendar: {} as Record<string, number>,
+    travelTaskHandled: {} as Record<string, string>,
+    setTravelTaskHandled,
+    transitAlerts: false,
+    transitLines: [] as string[],
+    vacationMode: false,
+    newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
+    titleRules: [],
+    collapsedCategories: [],
+    ...overrides,
+  });
+
+  // Oct 5 2026, 9am local, with a 2pm dentist appointment the same day.
+  const NOW = new Date(2026, 9, 5, 9, 0, 0);
+  const START = new Date(2026, 9, 5, 14, 0, 0);
+  const dentist = (overrides: Record<string, unknown> = {}) => ({
+    id: 'e-1',
+    title: 'Dentist',
+    start: START.toISOString(),
+    end: new Date(2026, 9, 5, 15, 0, 0).toISOString(),
+    allDay: false,
+    calendarId: 'cal-1',
+    location: '123 Main St',
+    status: 'confirmed',
+    availability: 'busy',
+    ...overrides,
+  });
+  const sourceId = `e-1|${START.toISOString()}`;
+
+  const travelTasks = () =>
+    useTaskStore.getState().tasks.filter(t => t.generatedKind === 'travel' && !t.completed && !t.archived);
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW);
+    setTravelTaskHandled.mockClear();
+    useSettingsStore.getState.mockReturnValue(settings());
+    useCalendarStore.getState.mockReturnValue({ events: [dentist()], loaded: true });
+    useTransitStore.getState.mockReturnValue({ snapshot: null });
+    useTaskStore.setState({ tasks: [] });
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    useCalendarStore.getState.mockReturnValue({ events: [], loaded: false });
+    useTransitStore.getState.mockReturnValue({ snapshot: null });
+  });
+
+  it('writes a leave task with its reminder at the start less the lead', () => {
+    useTaskStore.getState().checkTravelTasks();
+
+    const [task] = travelTasks();
+    expect(task.title).toBe('Leave for Dentist');
+    expect(task.generatedSourceId).toBe(sourceId);
+    expect(task.reminderTime).toBe(new Date(2026, 9, 5, 13, 30, 0).toISOString());
+    expect(task.windowEnd).toBe('14:00');
+    expect(task.location).toBe('123 Main St');
+    expect(task.category).toBe('Calendar');
+    expect(task.dueDate).not.toBeNull();
+    expect(setTravelTaskHandled).toHaveBeenCalledWith({ [sourceId]: dentist().end });
+  });
+
+  it('writes nothing for an event with no location', () => {
+    useCalendarStore.getState.mockReturnValue({ events: [dentist({ location: '' })], loaded: true });
+    useTaskStore.getState().checkTravelTasks();
+    expect(travelTasks()).toHaveLength(0);
+  });
+
+  it('writes nothing while switched off or with the calendar read off', () => {
+    useSettingsStore.getState.mockReturnValue(settings({ travelTasks: false }));
+    useTaskStore.getState().checkTravelTasks();
+    useSettingsStore.getState.mockReturnValue(settings({ calendarReadEnabled: false }));
+    useTaskStore.getState().checkTravelTasks();
+    expect(travelTasks()).toHaveLength(0);
+  });
+
+  it('neither writes nor clears while the window is unread', () => {
+    useTaskStore.getState().checkTravelTasks();
+    expect(travelTasks()).toHaveLength(1);
+
+    useCalendarStore.getState.mockReturnValue({ events: [], loaded: false });
+    useTaskStore.getState().checkTravelTasks();
+    expect(travelTasks()).toHaveLength(1);
+  });
+
+  it('does not bring back a task the user deleted', () => {
+    useSettingsStore.getState.mockReturnValue(settings({ travelTaskHandled: { [sourceId]: dentist().end } }));
+    useTaskStore.getState().checkTravelTasks();
+    expect(travelTasks()).toHaveLength(0);
+  });
+
+  it('runs twice without writing a second task', () => {
+    useTaskStore.getState().checkTravelTasks();
+    useSettingsStore.getState.mockReturnValue(settings({ travelTaskHandled: { [sourceId]: dentist().end } }));
+    useTaskStore.getState().checkTravelTasks();
+    expect(travelTasks()).toHaveLength(1);
+  });
+
+  it('uses the lead set for the event\'s calendar', () => {
+    useSettingsStore.getState.mockReturnValue(settings({ travelLeadByCalendar: { 'cal-1': 60 } }));
+    useTaskStore.getState().checkTravelTasks();
+    expect(travelTasks()[0].reminderTime).toBe(new Date(2026, 9, 5, 13, 0, 0).toISOString());
+  });
+
+  it('moves the reminder when the lead changes', () => {
+    useTaskStore.getState().checkTravelTasks();
+    useSettingsStore.getState.mockReturnValue(settings({
+      travelLeadMinutes: 60,
+      travelTaskHandled: { [sourceId]: dentist().end },
+    }));
+    useTaskStore.getState().checkTravelTasks();
+    expect(travelTasks()[0].reminderTime).toBe(new Date(2026, 9, 5, 13, 0, 0).toISOString());
+  });
+
+  describe('the MTA note', () => {
+    const snapshot = (planned: boolean, fetchedAt = NOW) => ({
+      snapshot: {
+        fetchedAt: fetchedAt.toISOString(),
+        alerts: [{
+          id: planned ? 'lmm:planned_work:1' : 'lmm:alert:1',
+          routeIds: ['L'],
+          effect: planned ? 'local' : 'delays',
+          planned,
+          periods: [{ start: new Date(2026, 9, 5, 13, 0).getTime(), end: new Date(2026, 9, 5, 16, 0).getTime() }],
+        }],
+      },
+    });
+    const withTransit = (overrides: Record<string, unknown> = {}) =>
+      settings({ transitAlerts: true, transitLines: ['L'], ...overrides });
+
+    it('adds planned work on a picked line to the title', () => {
+      useSettingsStore.getState.mockReturnValue(withTransit());
+      useTransitStore.getState.mockReturnValue(snapshot(true));
+      useTaskStore.getState().checkTravelTasks();
+      expect(travelTasks()[0].title).toBe('Leave for Dentist (L running local)');
+    });
+
+    it('adds the note to a task already written, and takes it off again', () => {
+      useTaskStore.getState().checkTravelTasks();
+      expect(travelTasks()[0].title).toBe('Leave for Dentist');
+
+      const handled = { [sourceId]: dentist().end };
+      useSettingsStore.getState.mockReturnValue(withTransit({ travelTaskHandled: handled }));
+      useTransitStore.getState.mockReturnValue(snapshot(true));
+      useTaskStore.getState().checkTravelTasks();
+      expect(travelTasks()[0].title).toBe('Leave for Dentist (L running local)');
+
+      useTransitStore.getState.mockReturnValue({ snapshot: { fetchedAt: NOW.toISOString(), alerts: [] } });
+      useTaskStore.getState().checkTravelTasks();
+      expect(travelTasks()[0].title).toBe('Leave for Dentist');
+    });
+
+    it('says nothing about a line the user does not ride', () => {
+      useSettingsStore.getState.mockReturnValue(withTransit({ transitLines: ['G'] }));
+      useTransitStore.getState.mockReturnValue(snapshot(true));
+      useTaskStore.getState().checkTravelTasks();
+      expect(travelTasks()[0].title).toBe('Leave for Dentist');
+    });
+
+    it('says nothing with its switch off, even holding a snapshot', () => {
+      useSettingsStore.getState.mockReturnValue(withTransit({ transitAlerts: false }));
+      useTransitStore.getState.mockReturnValue(snapshot(true));
+      useTaskStore.getState().checkTravelTasks();
+      expect(travelTasks()[0].title).toBe('Leave for Dentist');
+    });
+
+    it('drops a live delay once the read is too old to trust', () => {
+      useSettingsStore.getState.mockReturnValue(withTransit());
+      useTransitStore.getState.mockReturnValue(snapshot(false, new Date(2026, 9, 5, 8, 0)));
+      useTaskStore.getState().checkTravelTasks();
+      expect(travelTasks()[0].title).toBe('Leave for Dentist');
+    });
+  });
+
+  describe('clearing', () => {
+    const written = () => {
+      useTaskStore.getState().checkTravelTasks();
+      useSettingsStore.getState.mockReturnValue(settings({ travelTaskHandled: { [sourceId]: dentist().end } }));
+    };
+
+    it('clears the task when the event is cancelled before it happens', () => {
+      written();
+      useCalendarStore.getState.mockReturnValue({ events: [dentist({ status: 'canceled' })], loaded: true });
+      useTaskStore.getState().checkTravelTasks();
+      expect(travelTasks()).toHaveLength(0);
+    });
+
+    it('replaces the task when the event moves', () => {
+      written();
+      const later = new Date(2026, 9, 5, 16, 0, 0);
+      useCalendarStore.getState.mockReturnValue({
+        events: [dentist({ start: later.toISOString(), end: new Date(2026, 9, 5, 17, 0, 0).toISOString() })],
+        loaded: true,
+      });
+      useTaskStore.getState().checkTravelTasks();
+      const tasks = travelTasks();
+      expect(tasks).toHaveLength(1);
+      expect(tasks[0].generatedSourceId).toBe(`e-1|${later.toISOString()}`);
+    });
+
+    it('leaves the task alone once the event has started', () => {
+      written();
+      jest.setSystemTime(new Date(2026, 9, 5, 14, 30, 0));
+      useCalendarStore.getState.mockReturnValue({ events: [], loaded: true });
+      useTaskStore.getState().checkTravelTasks();
+      expect(travelTasks()).toHaveLength(1);
+    });
   });
 });
 

@@ -104,6 +104,13 @@ import {
   pruneHandledEventTasks,
   type HandledEventTasks,
 } from '../utils/eventTasks';
+import {
+  clampTravelLeadMinutes,
+  parseTravelLeadByCalendar,
+  TRAVEL_LEAD_MINUTES_DEFAULT,
+  type TravelLeadByCalendar,
+} from '../utils/travelTasks';
+import { parseTransitLines } from '../utils/transitAlerts';
 import { parseScreenTimeRules, defaultScreenTimeRules, serializeScreenTimeRules } from '../utils/screenTimeRules';
 import { parseHealthRules, defaultHealthRules, serializeHealthRules } from '../utils/healthRules';
 import { parseReminderCaptures, serializeReminderCaptures } from '../utils/reminderCaptures';
@@ -1370,6 +1377,31 @@ interface SettingsStore {
   // `HandledEventTasks` in eventTasks.ts for why a bounded record is allowed
   // where generatedTasks.ts rules out a generic one.
   eventTaskHandled: HandledEventTasks;
+  // Whether an event with a location gets a "Leave for X" task (see
+  // src/utils/travelTasks.ts). Off for the reason eventTasks is, and like it
+  // reads nothing new: the calendar window it matches against is already read.
+  travelTasks: boolean;
+  travelTaskCategory: string | null;
+  // Minutes before an event's start that its reminder fires. The user's own
+  // travel time, typed rather than worked out — see travelTasks.ts for why no
+  // routing service is asked. Clamped by clampTravelLeadMinutes.
+  travelLeadMinutes: number;
+  // Per-calendar overrides of that lead, by EventKit calendar id: "events on
+  // Work get 45 minutes". Holds only the calendars someone set; the rest use
+  // travelLeadMinutes. See TravelLeadByCalendar.
+  travelLeadByCalendar: TravelLeadByCalendar;
+  // eventTaskHandled's shape and reason, keyed by occurrence alone since there
+  // is one rule. Written by checkTravelTasks, never by anything a person taps.
+  travelTaskHandled: HandledEventTasks;
+  // Whether the MTA subway alerts feed is read to add a note to a travel task.
+  // Its own switch, off by default, because it is the one part of the feature
+  // that reaches the network: no key stands in front of it the way one does
+  // for the Anthropic calls, the reason productLookupEnabled has its own.
+  transitAlerts: boolean;
+  // The subway lines the user rides, as transitAlerts.ts's TRANSIT_LINES keys.
+  // An alert on any other line is never reported. Kept out of the reset path's
+  // String() round trip the way the other arrays here are.
+  transitLines: string[];
   // Whether a Screen Time rule the OS reports crossed gets its task (see
   // src/utils/screenTimeRules.ts). Off for the same reason weatherTasks is,
   // with one more on top: it wants a Screen Time authorization the app doesn't
@@ -1777,6 +1809,13 @@ interface SettingsStore {
   setEventRules: (rules: EventTaskRule[]) => void;
   setGeneratorEstimates: (estimates: GeneratorEstimates) => void;
   setEventTaskHandled: (handled: HandledEventTasks) => void;
+  setTravelTasks: (on: boolean) => void;
+  setTravelTaskCategory: (category: string | null) => void;
+  setTravelLeadMinutes: (minutes: number) => void;
+  setTravelLeadForCalendar: (calendarId: string, minutes: number | null) => void;
+  setTravelTaskHandled: (handled: HandledEventTasks) => void;
+  setTransitAlerts: (on: boolean) => void;
+  setTransitLines: (lines: string[]) => void;
   setScreenTimeTasks: (on: boolean) => void;
   setScreenTimeTaskCategory: (category: string | null) => void;
   setScreenTimeRules: (rules: ScreenTimeRule[]) => void;
@@ -2392,6 +2431,13 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   eventRules: [],
   generatorEstimates: {},
   eventTaskHandled: {},
+  travelTasks: false,
+  travelTaskCategory: null,
+  travelLeadMinutes: TRAVEL_LEAD_MINUTES_DEFAULT,
+  travelLeadByCalendar: {},
+  travelTaskHandled: {},
+  transitAlerts: false,
+  transitLines: [],
   screenTimeTasks: false,
   screenTimeTaskCategory: null,
   screenTimeRules: [],
@@ -2801,6 +2847,22 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       parseHandledEventTasks(dbGetSetting('eventTaskHandled')),
       new Date(),
     );
+    const travelTasks = dbGetSetting('travelTasks') === 'true';
+    const travelTaskCategory = dbGetSetting('travelTaskCategory') || null;
+    // Clamped on read as well as on write, weekendNudgeLeadDays' reason: a
+    // value can arrive from a peer on a different build.
+    const storedTravelLead = parseInt(dbGetSetting('travelLeadMinutes') ?? '', 10);
+    const travelLeadMinutes = clampTravelLeadMinutes(
+      Number.isFinite(storedTravelLead) ? storedTravelLead : undefined,
+    );
+    const travelLeadByCalendar = parseTravelLeadByCalendar(dbGetSetting('travelLeadByCalendar'));
+    // Pruned on load for eventTaskHandled's reason, directly above.
+    const travelTaskHandled = pruneHandledEventTasks(
+      parseHandledEventTasks(dbGetSetting('travelTaskHandled')),
+      new Date(),
+    );
+    const transitAlerts = dbGetSetting('transitAlerts') === 'true';
+    const transitLines = parseTransitLines(dbGetSetting('transitLines'));
     const moodLogTasks = dbGetSetting('moodLogTasks') === 'true';
     const moodLogTaskCategory = dbGetSetting('moodLogTaskCategory') || null;
     const moodLogLastDayKey = dbGetSetting('moodLogLastDayKey') || null;
@@ -3126,6 +3188,13 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       timerLiveActivity,
       tipsEnabled,
       titleRules,
+      transitAlerts,
+      transitLines,
+      travelLeadByCalendar,
+      travelLeadMinutes,
+      travelTaskCategory,
+      travelTaskHandled,
+      travelTasks,
       tripLiveActivity,
       tripReminderEnabled,
       unitSystem,
@@ -3679,6 +3748,52 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setEventTaskHandled(handled: HandledEventTasks) {
     dbSetSetting('eventTaskHandled', JSON.stringify(handled));
     set({ eventTaskHandled: handled });
+  },
+
+  setTravelTasks(on: boolean) {
+    dbSetSetting('travelTasks', on ? 'true' : 'false');
+    set({ travelTasks: on });
+  },
+
+  setTravelTaskCategory(category: string | null) {
+    dbSetSetting('travelTaskCategory', category ?? '');
+    set({ travelTaskCategory: category });
+  },
+
+  setTravelLeadMinutes(minutes: number) {
+    const clamped = clampTravelLeadMinutes(minutes);
+    dbSetSetting('travelLeadMinutes', String(clamped));
+    set({ travelLeadMinutes: clamped });
+  },
+
+  // Null puts the calendar back on the default lead, by removing its entry
+  // rather than storing the default: a stored copy would stop following the
+  // default when the user next changed it.
+  setTravelLeadForCalendar(calendarId: string, minutes: number | null) {
+    const next = { ...get().travelLeadByCalendar };
+    if (minutes === null) delete next[calendarId];
+    else next[calendarId] = clampTravelLeadMinutes(minutes);
+    dbSetSetting('travelLeadByCalendar', JSON.stringify(next));
+    set({ travelLeadByCalendar: next });
+  },
+
+  // State rather than a preference, like setEventTaskHandled.
+  setTravelTaskHandled(handled: HandledEventTasks) {
+    dbSetSetting('travelTaskHandled', JSON.stringify(handled));
+    set({ travelTaskHandled: handled });
+  },
+
+  setTransitAlerts(on: boolean) {
+    dbSetSetting('transitAlerts', on ? 'true' : 'false');
+    set({ transitAlerts: on });
+  },
+
+  // Normalized through the same parse the load uses, so what is held is always
+  // known lines in the picker's order whatever the caller passed.
+  setTransitLines(lines: string[]) {
+    const normalized = parseTransitLines(lines);
+    dbSetSetting('transitLines', JSON.stringify(normalized));
+    set({ transitLines: normalized });
   },
 
   setScreenTimeTasks(on: boolean) {

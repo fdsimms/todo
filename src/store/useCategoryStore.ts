@@ -337,6 +337,8 @@ function generatedCategorySetting(kind: GeneratedKind): {
       return { key: 'weatherTaskCategory', current: s.weatherTaskCategory, assign: s.setWeatherTaskCategory };
     case 'eventTask':
       return { key: 'eventTaskCategory', current: s.eventTaskCategory, assign: s.setEventTaskCategory };
+    case 'travel':
+      return { key: 'travelTaskCategory', current: s.travelTaskCategory, assign: s.setTravelTaskCategory };
     case 'screenTime':
       return { key: 'screenTimeTaskCategory', current: s.screenTimeTaskCategory, assign: s.setScreenTimeTaskCategory };
     case 'health':
