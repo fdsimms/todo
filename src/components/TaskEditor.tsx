@@ -181,6 +181,10 @@ export interface TaskDraft {
   timeSegments: TimeOfDay[];
   /** `"HH:MM"`, carried over when quick add parses "after 3pm". */
   windowStart?: string | null;
+  /** `"HH:MM"`, carried over when quick add parses "only today" or "expires friday". */
+  windowEnd?: string | null;
+  /** Carried over when quick add reads "don't …" or "no snacking" as a habit to avoid. */
+  polarity?: Polarity;
   /** What it waits on, carried over when quick add parses "after <another task>". */
   blockerIds?: string[];
   /** Carried over when quick add parses "pack: socks, charger". */
@@ -891,9 +895,14 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setFollowUpTaskDraft(task.followUpTaskDraft ?? null);
       setFollowUpTaskOneAtATime(task.followUpTaskOneAtATime ?? false);
     } else {
+      // Every field the branch above loads from `task` must be set again here
+      // (from `initialDraft`, or to its default). The sheet stays mounted
+      // between tasks, so a field skipped here keeps whatever the last task
+      // edited had: a new task opened as a weekly target, or as "Avoid this",
+      // because the one before it was. A new field goes in both branches.
       setTitle(initialDraft?.title ?? ''); titleCaret.resetCaret(initialDraft?.title ?? ''); setNotes(initialDraft?.notes ?? ''); setCategory(initialDraft?.category ?? null); setProject(initialDraft?.projectId ?? null); setTags(initialDraft?.tags ?? []);
       setGroupId(initialDraft?.groupId ?? null);
-      setDueDate(initialDraft?.dueDate ?? null); setExtraDates(initialDraft?.extraDates ?? []); setSeriesRepeats(false); setDeadline(initialDraft?.deadline ?? null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(initialDraft?.windowStart ?? null); setWindowEnd(null); setPenaltyMinutes(initialDraft?.penaltyMinutes ?? null); setGatesApps(initialDraft?.gatesApps ?? false); setPenaltyCutoffTime(initialDraft?.penaltyCutoffTime ?? null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setQuotaPeriod(initialDraft?.quotaPeriod ?? 'day'); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setQuotaAlwaysVisible(initialDraft?.quotaAlwaysVisible ?? false); setFollowWaterTarget(initialDraft?.followWaterTarget ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setReminderTime(initialDraft?.reminderTime ?? null); setReminderKind('notification'); setReminderTimeAnchor('wallClock'); setReminderTouched(false);
+      setDueDate(initialDraft?.dueDate ?? null); setExtraDates(initialDraft?.extraDates ?? []); setSeriesRepeats(false); setDeadline(initialDraft?.deadline ?? null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(initialDraft?.windowStart ?? null); setWindowEnd(initialDraft?.windowEnd ?? null); setPenaltyMinutes(initialDraft?.penaltyMinutes ?? null); setGatesApps(initialDraft?.gatesApps ?? false); setPenaltyCutoffTime(initialDraft?.penaltyCutoffTime ?? null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setQuotaPeriod(initialDraft?.quotaPeriod ?? 'day'); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setQuotaAlwaysVisible(initialDraft?.quotaAlwaysVisible ?? false); setFollowWaterTarget(initialDraft?.followWaterTarget ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setReminderTime(initialDraft?.reminderTime ?? null); setReminderKind('notification'); setReminderTimeAnchor('wallClock'); setReminderTouched(false);
       setRecurrenceType(initialDraft?.recurrenceType ?? 'none'); setRecurrenceInterval(initialDraft?.recurrenceInterval ?? 1);
       setRecurrenceDays(initialDraft?.recurrenceDays ?? []);
       setRecurrenceMonthDay(initialDraft?.recurrenceMonthDay ?? null);
@@ -912,7 +921,11 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setRotationEnabled(initialDraft?.rotationEnabled ?? false); setRotationItems(initialDraft?.rotationItems ?? []);
       setVacationPause(false);
       setExcludeFromSuggestions(false);
-      setShowStreak(false);
+      // A new task starts as "Do this" unless the draft says otherwise: left
+      // unset, it kept whatever the last task edited had.
+      setPolarity(initialDraft?.polarity ?? 'positive');
+      // An avoid-task's streak is its only feedback (see the Goal control).
+      setShowStreak(initialDraft?.polarity === 'negative');
       setStreakRequiresWindow(false);
       setLinkUrl(initialDraft?.linkUrl ?? null);
       setCompletionTimerMinutes(initialDraft?.completionTimerMinutes ?? null);
@@ -979,7 +992,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       logCompletionToCalendar: task?.logCompletionToCalendar ?? false,
       timeSegments: task ? (task.timeSegments ?? []) : (initialDraft?.timeSegments ?? []),
       windowStart: task ? (task.windowStart ?? null) : (initialDraft?.windowStart ?? null),
-      windowEnd: task?.windowEnd ?? null,
+      windowEnd: task ? (task.windowEnd ?? null) : (initialDraft?.windowEnd ?? null),
       penaltyMinutes: task ? (task.penaltyMinutes ?? null) : (initialDraft?.penaltyMinutes ?? null),
       gatesApps: task ? (task.gatesApps ?? false) : (initialDraft?.gatesApps ?? false),
       penaltyCutoffTime: task ? (task.penaltyCutoffTime ?? null) : (initialDraft?.penaltyCutoffTime ?? null),
@@ -1038,8 +1051,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       chainStepOnSchedule: task?.chainStepOnSchedule ?? false,
       vacationPause: task?.vacationPause ?? false,
       excludeFromSuggestions: task?.excludeFromSuggestions ?? false,
-      polarity: task?.polarity ?? 'positive',
-      showStreak: task?.showStreak ?? false,
+      polarity: task ? (task.polarity ?? 'positive') : (initialDraft?.polarity ?? 'positive'),
+      showStreak: task ? (task.showStreak ?? false) : initialDraft?.polarity === 'negative',
       streakRequiresWindow: task?.streakRequiresWindow ?? false,
       linkUrl: task ? (task.linkUrl ?? null) : (initialDraft?.linkUrl ?? null),
       completionTimerMinutes: task ? (task.completionTimerMinutes ?? null) : (initialDraft?.completionTimerMinutes ?? null),

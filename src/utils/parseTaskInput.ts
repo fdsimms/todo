@@ -111,6 +111,19 @@ export interface ParsedSchedule {
    */
   windowStart?: string | null;
   /**
+   * `"HH:MM"`, set only by the explicit expiry words "only" and "expires"
+   * ("only today", "expires friday at 5pm"): the task moves to Expired once
+   * it passes (`Task.windowEnd`), and the expiry sweep deletes it if the user
+   * has turned that on. With no clock time it's 23:59, the end of the day.
+   *
+   * Nothing else here sets it, and that's the point of the two words: "before
+   * 5pm" and "between 2 and 4pm" are a deadline, because a guess at what a
+   * phrase meant must not be able to remove a task (see `windowStart`). These
+   * say "and then it's gone" outright, and the tooltip says "Expires" before
+   * it's accepted.
+   */
+  windowEnd?: string | null;
+  /**
    * The rest of a set of dates ("on the 10th and the 15th"), each at noon like
    * `dueDate`, which holds the earliest. Absent for a single date. A caller
    * turns the whole set into a series (`applyTaskDates`), never into separate
@@ -668,15 +681,29 @@ function parseSuffix(text: string, now: Date, singleWord: boolean, clockNow: Dat
   // in it ("after 3pm"), where it sets the window start; "after friday" names
   // no moment to hide the task until, and stays part of the title.
   const between = text.match(BETWEEN_START);
-  const connector = between ? null : text.match(/^(on|by|due|before|after)\s+/);
-  const isDeadlinePhrasing = between != null || (connector != null && connector[1] !== 'on' && connector[1] !== 'after');
+  //
+  // "only today" and "expires friday" are the one way to a window end; see
+  // ParsedSchedule.windowEnd for why nothing softer is.
+  const connector = between ? null : text.match(/^(on|by|due|before|after|expires(?:\s+on)?|only(?:\s+on)?)\s+/);
+  const isExpiry = connector != null && /^(?:expires|only)/.test(connector[1]);
+  const isDeadlinePhrasing = between != null
+    || (connector != null && connector[1] !== 'on' && connector[1] !== 'after' && !isExpiry);
   let t = between ? text.slice(between[0].length) : connector ? text.slice(connector[0].length) : text;
   let segments: TimeOfDay[] = [];
   let hasTime = false;
   let explicitClockTime: ClockTime | null = null;
   let windowStart: string | null = null;
+  let windowEnd: string | null = null;
   const clock = extractTime(t);
-  if (between) {
+  if (isExpiry) {
+    // The clock time, if any, is when it ends, not when it shows up, so it
+    // sets no segment and offers no reminder.
+    windowEnd = clock ? hhmm(clock.time) : '23:59';
+    if (clock) {
+      t = clock.rest;
+      hasTime = true;
+    }
+  } else if (between) {
     if (!clock) return null;
     const start = betweenStart(parseInt(between[1], 10), between[2] ? parseInt(between[2], 10) : 0, between[3], clock.time);
     if (!start) return null;
@@ -759,6 +786,7 @@ function parseSuffix(text: string, now: Date, singleWord: boolean, clockNow: Dat
     recurrenceDays: [],
     explicitClockTime,
     ...(windowStart ? { windowStart } : {}),
+    ...(windowEnd ? { windowEnd } : {}),
   };
 }
 
@@ -1570,6 +1598,48 @@ export function parseSubtasksInput(input: string): ParsedSubtasks | null {
   return { subtasks: items, cleanTitle, matchStart: colon.index, matchEnd: input.trimEnd().length };
 }
 
+export interface ParsedAvoid {
+  /** The opening words that say it ("Don't", "No snacking"), for the highlight. */
+  matchStart: number;
+  matchEnd: number;
+}
+
+// Words ending in "ing" that aren't something a person does: "no morning
+// meetings" and "stop the bleeding" aside, these are the ones that turn up.
+const NOT_GERUNDS = new Set([
+  'thing', 'things', 'nothing', 'something', 'anything', 'everything', 'king', 'ring', 'spring',
+  'string', 'wing', 'morning', 'evening', 'ceiling', 'building', 'meeting', 'meetings', 'wedding',
+  'ping', 'sling', 'swing', 'sting', 'bring', 'sing',
+]);
+
+/**
+ * "Don't check Twitter", "No snacking after 8pm", "Quit vaping": a habit
+ * about *not* doing something, which the app keeps as a task that is never
+ * completed (`Task.polarity`, see negativeHabits.ts).
+ *
+ * Unlike every other parser here this strips nothing: the words are the
+ * habit's name, so the title stays exactly as typed and only the Goal flips.
+ * "Don't forget to …" is the one opening left out: that's a reminder.
+ *
+ * Deliberately narrow, since a plain task read this way can no longer be
+ * checked off. "don't", "do not" and "never" count on their own. "no",
+ * "stop", "quit" and "avoid" only count before a word ending in "ing" ("no
+ * snacking", "stop vaping"), which leaves "stop by the bank", "no school
+ * friday" and "avoid traffic on 95" alone. Only at the start of the title.
+ */
+export function parseAvoidInput(input: string): ParsedAvoid | null {
+  const lead = input.match(/^\s*/)![0].length;
+  const rest = input.slice(lead);
+  // "Don't forget to …" is a reminder (see REMIND_PREFIX), not a habit.
+  const plain = rest.match(/^(?:don'?t|don’t|do not|never)\s+(?!forget\b)(?=[a-z])/i);
+  if (plain) return { matchStart: lead, matchEnd: lead + plain[0].trimEnd().length };
+  const gerund = rest.match(/^(?:no|stop|quit|avoid)\s+([a-z]+ing)\b/i);
+  if (gerund && !NOT_GERUNDS.has(gerund[1].toLowerCase())) {
+    return { matchStart: lead, matchEnd: lead + gerund[0].length };
+  }
+  return null;
+}
+
 export interface ParsedPriority {
   priority: Priority;
   /** Input minus the matched "!word" token, whitespace collapsed and trimmed. */
@@ -2276,6 +2346,10 @@ export function describeSchedule(s: ParsedSchedule, now: Date = new Date()): str
       // accepting the chip doesn't silently add a field the label never
       // mentioned.
       if (s.deadline) label = `${label} · Deadline`;
+      if (s.windowEnd) {
+        label = `Expires ${label === 'Today' || label === 'Tomorrow' ? label.toLowerCase() : label}`;
+        if (s.windowEnd !== '23:59') label += ` at ${formatHhmm(s.windowEnd)}`;
+      }
     }
   }
   // The window start replaces the segment in the label rather than joining
