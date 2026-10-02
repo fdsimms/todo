@@ -632,7 +632,9 @@ sends what is typed to Apple), the location is looked up in Apple Maps as you
 type (`src/services/placeSearch.ts`, MapKit through `todo-eventkit-bridge`). A
 picked place is written as its name and address, and its coordinate becomes
 the event's structured location, so Calendar draws a map and can estimate
-travel time. Nothing about the place is kept in the app.
+travel time. The events list's directions button (and a "Leave for X" row's) routes to that pin
+(`eventCoordinate`, read for one event on the tap) rather than searching the text. Nothing about
+the place is kept in the app.
 A repeat phrase ("every monday") saves a repeat rule (`eventRecurrenceFor`);
 "every 8 hours" and "3 days after completion" have no event counterpart and
 read as their first day. Invitees and travel time are not set here: EventKit

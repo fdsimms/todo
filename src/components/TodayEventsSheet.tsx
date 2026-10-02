@@ -6,6 +6,9 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import type { BusyEvent } from '../utils/calendarBusy';
 import { formatTimeOfDay } from '../utils/dateUtils';
 import { directionsUrl } from '../utils/maps';
+import { eventCoordinate } from '../utils/calendarSync';
+import { describeTravelEstimate, estimateFor } from '../utils/travelTasks';
+import { useTravelTimeStore } from '../store/useTravelTimeStore';
 import { haptics } from '../utils/haptics';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
@@ -127,6 +130,12 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById, titl
   const eventPeople = useEventPeopleStore(s => s.links);
   const setEventPeople = useEventPeopleStore(s => s.setPeople);
   const [newEventOpen, setNewEventOpen] = useState(false);
+  // The Leave-by reminders' trip estimates, shown under an event's location
+  // while that setting is on. Nothing is asked from here: the travel store
+  // estimates the same upcoming events and this only reads what it holds.
+  const travelEstimates = useSettingsStore(s => s.travelEstimates);
+  const travelMode = useSettingsStore(s => s.travelMode);
+  const estimates = useTravelTimeStore(s => s.estimates);
   const allPeople = usePersonStore(useShallow(s => s.people));
   const people = useMemo(() => allPeople.filter(p => !p.archived), [allPeople]);
   const hasTemplates = useTemplateStore(s => s.templates.length > 0);
@@ -230,8 +239,11 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById, titl
     setAddedKeys(keys => (keys.includes(key) ? keys : [...keys, key]));
   };
 
-  const openDirections = async (location: string) => {
-    const url = directionsUrl(location, useSettingsStore.getState().mapsApp);
+  // Routes to the event's map pin when it has one (a place picked in quick
+  // add), read for this one event on the tap, else searches for the text.
+  const openDirections = async (event: BusyEvent) => {
+    const coordinate = await eventCoordinate(event.id);
+    const url = directionsUrl(event.location, useSettingsStore.getState().mapsApp, coordinate);
     if (!url) return;
     haptics.tap();
     try {
@@ -299,7 +311,7 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById, titl
                       <View style={styles.locationRow}>
                         <Text style={styles.rowLocation} numberOfLines={1}>{event.location}</Text>
                         <PressableScale
-                          onPress={() => openDirections(event.location!)}
+                          onPress={() => { void openDirections(event); }}
                           hitSlop={8}
                           accessibilityLabel={`Get directions to ${event.location}`}
                         >
@@ -307,6 +319,14 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById, titl
                         </PressableScale>
                       </View>
                     )}
+                    {(() => {
+                      const estimate = travelEstimates && event.location ? estimateFor(event, estimates, travelMode) : null;
+                      return estimate ? (
+                        <Text style={styles.rowEstimate} numberOfLines={1}>
+                          {describeTravelEstimate(estimate.minutes, estimate.mode)}
+                        </Text>
+                      ) : null;
+                    })()}
                   </TouchableOpacity>
                   <View style={styles.rowActions}>
                     <PressableScale hitSlop={8}
@@ -551,6 +571,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   calendarDot: { width: 6, height: 6, borderRadius: radius.full },
   locationRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   rowLocation: { flexShrink: 1, color: colors.textTertiary, fontSize: font.xs },
+  rowEstimate: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.xxs },
   rowPeople: { color: colors.textSecondary, fontSize: font.xs },
   panelHint: { color: colors.textSecondary, fontSize: font.xs, marginBottom: spacing.sm },
   pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },

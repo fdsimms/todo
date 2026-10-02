@@ -60,6 +60,29 @@ describe('directionsUrl with a chosen app', () => {
   });
 });
 
+describe('directionsUrl with a map pin', () => {
+  const pin = { latitude: 40.7306, longitude: -74.0021 };
+
+  it('routes each app to the exact point instead of searching the text', () => {
+    expect(directionsUrl("Joe's Pizza", 'apple', pin)).toBe('https://maps.apple.com/?daddr=40.7306,-74.0021');
+    expect(directionsUrl("Joe's Pizza", 'google', pin)).toBe(
+      'https://www.google.com/maps/dir/?api=1&destination=40.7306,-74.0021',
+    );
+    expect(directionsUrl("Joe's Pizza", 'waze', pin)).toBe('https://waze.com/ul?ll=40.7306,-74.0021&navigate=yes');
+  });
+
+  it('falls back to the text for a missing or impossible pin', () => {
+    expect(directionsUrl('Penn Station', 'apple', null)).toBe('https://maps.apple.com/?daddr=Penn%20Station');
+    expect(directionsUrl('Penn Station', 'apple', { latitude: 91, longitude: 0 })).toBe(
+      'https://maps.apple.com/?daddr=Penn%20Station',
+    );
+  });
+
+  it('still needs a location to have anything to route to', () => {
+    expect(directionsUrl('', 'apple', pin)).toBeNull();
+  });
+});
+
 describe('isMappable', () => {
   it('mirrors directionsUrl', () => {
     expect(isMappable('221B Baker Street')).toBe(true);

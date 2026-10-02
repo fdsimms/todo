@@ -179,6 +179,20 @@ public class TodoEventKitBridgeModule: Module {
       }
     }
 
+    /// Each event's map pin, for the directions button: event id -> `latitude`
+    /// and `longitude`, for every id whose event has a structured location
+    /// with a coordinate. Events with none (most typed locations) are simply
+    /// absent, and the caller routes by the location text as before.
+    AsyncFunction("eventCoordinates") { (eventIds: [String]) -> [String: [String: Double]] in
+      var out: [String: [String: Double]] = [:]
+      for eventId in eventIds where !eventId.isEmpty {
+        let pinned: CLLocation? = self.store.event(withIdentifier: eventId)?.structuredLocation?.geoLocation
+        guard let coordinate = pinned?.coordinate, CLLocationCoordinate2DIsValid(coordinate) else { continue }
+        out[eventId] = ["latitude": coordinate.latitude, "longitude": coordinate.longitude]
+      }
+      return out
+    }
+
     /// Minutes from where the phone is now to an event's place, leaving at
     /// `departAt` (ms since 1970), by `mode` ("driving", "transit" or
     /// "walking"). The destination is the event's structured location when it

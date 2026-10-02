@@ -8,6 +8,7 @@ import type {
   RecurringEventOptions,
 } from 'expo-calendar/legacy';
 import type { BusyEvent } from './calendarBusy';
+import { isDemoModeActive } from './demoState';
 import type { EventRecurrence } from './quickEvent';
 
 /**
@@ -649,6 +650,30 @@ export async function presentEventCreate(fields: {
     };
   } catch {
     return NO_RESULT;
+  }
+}
+
+/**
+ * An event's map pin, for its directions button: the coordinate of its
+ * structured location, which a place picked from Apple Maps writes. Null for
+ * an event with none (most typed locations), in demo mode, and on any failure,
+ * all of which mean "route by the location text".
+ *
+ * Read one event at a time, when its button is tapped, rather than for every
+ * event a list shows: a pin is only worth reading for the trip about to start.
+ */
+export async function eventCoordinate(eventId: string): Promise<{ latitude: number; longitude: number } | null> {
+  if (Platform.OS !== 'ios' || !eventId || isDemoModeActive()) return null;
+  try {
+    const bridge = require('todo-eventkit-bridge') as typeof import('todo-eventkit-bridge');
+    const raw = (await bridge.eventCoordinatesRaw([eventId]))[eventId];
+    if (!raw || typeof raw !== 'object') return null;
+    const { latitude, longitude } = raw as Record<string, unknown>;
+    if (typeof latitude !== 'number' || typeof longitude !== 'number') return null;
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+    return { latitude, longitude };
+  } catch {
+    return null;
   }
 }
 

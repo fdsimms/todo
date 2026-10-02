@@ -323,6 +323,12 @@ export function travelSourceStart(sourceId: string): number | null {
   return Number.isFinite(start) ? start : null;
 }
 
+/** The EventKit event id a travel source id was written for: everything before the last `|`. */
+export function travelSourceEventId(sourceId: string): string | null {
+  const i = sourceId.lastIndexOf('|');
+  return i > 0 ? sourceId.slice(0, i) : null;
+}
+
 /**
  * Whether a live travel task should be cleared, given the calendar window.
  *

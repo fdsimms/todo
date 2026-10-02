@@ -17,9 +17,16 @@ const mockCalendar = {
 jest.mock('expo-calendar/legacy', () => mockCalendar);
 
 jest.mock('react-native', () => ({ Platform: { OS: 'ios' } }));
+const mockCoordinates = jest.fn();
+jest.mock('todo-eventkit-bridge', () => ({
+  eventCoordinatesRaw: (ids: string[]) => mockCoordinates(ids),
+}), { virtual: true });
+const mockDemo = jest.fn(() => false);
+jest.mock('../utils/demoState', () => ({ isDemoModeActive: () => mockDemo() }));
 
 import {
   carriedEventFields,
+  eventCoordinate,
   moveAllDayEvent,
   updateTimeBlockEvent,
 } from '../utils/calendarSync';
@@ -229,5 +236,35 @@ describe('updateTimeBlockEvent', () => {
       title: 'Write report',
       endDate,
     }, { futureEvents: false });
+  });
+});
+
+describe('eventCoordinate', () => {
+  beforeEach(() => {
+    mockCoordinates.mockReset();
+    mockDemo.mockReturnValue(false);
+  });
+
+  it("reads the event's map pin", async () => {
+    mockCoordinates.mockResolvedValue({ 'evt-1': { latitude: 40.73, longitude: -74.0 } });
+    await expect(eventCoordinate('evt-1')).resolves.toEqual({ latitude: 40.73, longitude: -74.0 });
+    expect(mockCoordinates).toHaveBeenCalledWith(['evt-1']);
+  });
+
+  it('is null for an event with no pin, a malformed answer, or a failed read', async () => {
+    mockCoordinates.mockResolvedValue({});
+    await expect(eventCoordinate('evt-1')).resolves.toBeNull();
+    mockCoordinates.mockResolvedValue({ 'evt-1': { latitude: 'x', longitude: 2 } });
+    await expect(eventCoordinate('evt-1')).resolves.toBeNull();
+    mockCoordinates.mockRejectedValue(new Error('no access'));
+    await expect(eventCoordinate('evt-1')).resolves.toBeNull();
+  });
+
+  it('reads nothing in demo mode or for no id', async () => {
+    mockDemo.mockReturnValue(true);
+    await expect(eventCoordinate('evt-1')).resolves.toBeNull();
+    mockDemo.mockReturnValue(false);
+    await expect(eventCoordinate('')).resolves.toBeNull();
+    expect(mockCoordinates).not.toHaveBeenCalled();
   });
 });

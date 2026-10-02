@@ -16,6 +16,7 @@ import {
   travelSourceId,
   travelSourceOf,
   travelSourceStart,
+  travelSourceEventId,
   travelTaskTitle,
   TRAVEL_LEAD_MINUTES_DEFAULT,
   TRAVEL_LEAD_MINUTES_MAX,
@@ -321,5 +322,17 @@ describe('travel estimates', () => {
     expect(travelTaskTitle('Dentist', 'L delayed', '22 min by transit')).toBe('Leave for Dentist (22 min by transit, L delayed)');
     expect(travelTaskTitle('Dentist', null, '22 min by transit')).toBe('Leave for Dentist (22 min by transit)');
     expect(travelTaskTitle('Dentist', null)).toBe('Leave for Dentist');
+  });
+});
+
+describe('travelSourceEventId', () => {
+  it('takes the event id off the front of the occurrence key', () => {
+    expect(travelSourceEventId(travelSourceId(event()))).toBe('evt-1');
+    expect(travelSourceEventId('AB:12|x|2026-10-05T14:00:00.000Z')).toBe('AB:12|x');
+  });
+
+  it('is null for a key with no event id', () => {
+    expect(travelSourceEventId('no-separator')).toBeNull();
+    expect(travelSourceEventId('|2026-10-05T14:00:00.000Z')).toBeNull();
   });
 });
