@@ -10,7 +10,7 @@ import { setHours } from 'date-fns/setHours';
 import { startOfDay } from 'date-fns/startOfDay';
 import { startOfMonth } from 'date-fns/startOfMonth';
 import type { Day } from 'date-fns';
-import type { Priority, RecurrenceType, TimeOfDay } from '../types';
+import type { Priority, QuotaPeriod, RecurrenceType, TimeOfDay } from '../types';
 import { extractDayPart, extractTime, MONTHS, monthDay, NUMBER_WORD_ALT, parseCount, parseDatePart, WEEKDAYS, type ClockTime } from './parseNaturalDate';
 import { looksLikePhoneNumber } from './phone';
 
@@ -99,6 +99,17 @@ export interface ParsedSchedule {
    * bucket, so without this the clock reading itself is discarded entirely.
    */
   explicitClockTime?: ClockTime | null;
+  /**
+   * `"HH:MM"`, set only by "after 3pm" and the start of "between 2 and 4pm":
+   * the task stays hidden until then on its day (`Task.windowStart`).
+   *
+   * There's deliberately no `windowEnd` counterpart. A window end makes a task
+   * *expire* once it passes, and the sweep can delete what has expired, so
+   * "before 5pm" and the end of a "between" are read as a deadline instead
+   * (see `deadline` above): a typed phrase is a guess, and a guess must not be
+   * able to remove a task.
+   */
+  windowStart?: string | null;
 }
 
 export interface ParsedTaskInput {
@@ -545,6 +556,38 @@ function parseRecurrenceSuffix(text: string, now: Date): ParsedSchedule | null {
   return schedule;
 }
 
+function hhmm(t: ClockTime): string {
+  return `${String(t.h).padStart(2, '0')}:${String(t.m).padStart(2, '0')}`;
+}
+
+// "between 2 and 4pm", "between 9am and noon", "between 14:00 - 16:00". The
+// start is matched here and the end left for extractTime, so the start can
+// omit its am/pm the way people say it and borrow one from the end.
+const BETWEEN_START = /^between\s+(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?|a|p)?\s+(?:and|to|-)\s+/;
+
+/**
+ * The start of a "between" phrase, given the end it ran up to. A start with no
+ * am/pm takes whichever reading falls before the end, preferring the end's own
+ * half of the day: "between 2 and 4pm" is 2pm, "between 11 and 1pm" is 11am.
+ */
+function betweenStart(hour: number, minute: number, meridiem: string | undefined, end: ClockTime): ClockTime | null {
+  if (minute > 59) return null;
+  const endMinutes = end.h * 60 + end.m;
+  const before = (h: number) => h * 60 + minute < endMinutes;
+  if (meridiem) {
+    if (hour < 1 || hour > 12) return null;
+    const h = (hour % 12) + (meridiem.startsWith('p') ? 12 : 0);
+    return before(h) ? { h, m: minute } : null;
+  }
+  if (hour > 23) return null;
+  if (hour > 12 || hour === 0) return before(hour) ? { h: hour, m: minute } : null;
+  const am = hour % 12;
+  const pm = am + 12;
+  const preferred = end.h >= 12 ? [pm, am] : [am, pm];
+  const h = preferred.find(before);
+  return h === undefined ? null : { h, m: minute };
+}
+
 /** Try to parse an entire suffix as a one-off date/time or recurrence phrase. */
 function parseSuffix(text: string, now: Date, singleWord: boolean, clockNow: Date = now): ParsedSchedule | null {
   // Recurrence first — it owns the "every"/plural/frequency-word triggers.
@@ -555,14 +598,38 @@ function parseSuffix(text: string, now: Date, singleWord: boolean, clockNow: Dat
 
   // One-off date phrase: optional connector, then mirror parseNaturalDate's
   // pipeline but map clock times / day parts to visibility segments.
-  const connector = text.match(/^(on|by|due)\s+/);
-  const isDeadlinePhrasing = connector != null && connector[1] !== 'on';
-  let t = connector ? text.slice(connector[0].length) : text;
+  //
+  // "before" reads as "by" (a deadline, never a window end: see
+  // ParsedSchedule.windowStart). "after" is only a schedule with a clock time
+  // in it ("after 3pm"), where it sets the window start; "after friday" names
+  // no moment to hide the task until, and stays part of the title.
+  const between = text.match(BETWEEN_START);
+  const connector = between ? null : text.match(/^(on|by|due|before|after)\s+/);
+  const isDeadlinePhrasing = between != null || (connector != null && connector[1] !== 'on' && connector[1] !== 'after');
+  let t = between ? text.slice(between[0].length) : connector ? text.slice(connector[0].length) : text;
   let segments: TimeOfDay[] = [];
   let hasTime = false;
   let explicitClockTime: ClockTime | null = null;
+  let windowStart: string | null = null;
   const clock = extractTime(t);
-  if (clock) {
+  if (between) {
+    if (!clock) return null;
+    const start = betweenStart(parseInt(between[1], 10), between[2] ? parseInt(between[2], 10) : 0, between[3], clock.time);
+    if (!start) return null;
+    windowStart = hhmm(start);
+    // The segment follows the start, since that's when the task appears.
+    segments = [segmentForHour(start.h)];
+    t = clock.rest;
+    hasTime = true;
+    explicitClockTime = clock.time;
+  } else if (connector?.[1] === 'after') {
+    if (!clock) return null;
+    windowStart = hhmm(clock.time);
+    segments = [segmentForHour(clock.time.h)];
+    t = clock.rest;
+    hasTime = true;
+    explicitClockTime = clock.time;
+  } else if (clock) {
     segments = [segmentForHour(clock.time.h)];
     t = clock.rest;
     hasTime = true;
@@ -602,6 +669,7 @@ function parseSuffix(text: string, now: Date, singleWord: boolean, clockNow: Dat
     recurrenceInterval: 1,
     recurrenceDays: [],
     explicitClockTime,
+    ...(windowStart ? { windowStart } : {}),
   };
 }
 
@@ -969,8 +1037,14 @@ export function parseSupplyInput(input: string): ParsedSupply | null {
 }
 
 export interface ParsedTarget {
-  /** How many times a day, already inside the target stepper's range. */
+  /** How many times per period, already inside the target stepper's range. */
   count: number;
+  /**
+   * 'week' only when the phrase said so ("3 times a week", "twice weekly").
+   * A bare "3 times" is 'day', which a caller with a weekly repeat already set
+   * is free to read as the week instead.
+   */
+  period: QuotaPeriod;
   /** Input minus the matched phrase, whitespace collapsed and trimmed. */
   cleanTitle: string;
   matchStart: number;
@@ -984,7 +1058,8 @@ export interface ParsedTarget {
 const TARGET_MIN = 2;
 const TARGET_MAX = 99;
 
-// "8 times", "8 times a day", "eight times daily", "8x", "twice a day".
+// "8 times", "8 times a day", "eight times daily", "8x", "twice a day",
+// "3 times a week", "twice weekly".
 //
 // "times" (or a glued-on "x"/"×", which is how the app itself renders a daily
 // target: see formatQuotaTarget) is what turns a number into a count of
@@ -996,14 +1071,15 @@ const TARGET_MAX = 99;
 // turn "stop after five" into "five a day".
 const TARGET_PATTERN = new RegExp(
   `(?<!\\bfor\\s+)(?<!\\w)(?:(\\d{1,3}|${NUMBER_WORD_ALT})\\s+times|(\\d{1,3})[x×]|(twice|thrice))`
-    + `(?:\\s+(?:a|per|each)\\s+day|\\s+daily)?(?!\\w)`,
+    + `(?:\\s+(?:a|per|each)\\s+(day|week)|\\s+(daily|weekly))?(?!\\w)`,
   'i',
 );
 
-// What follows the phrase when it's counting across something longer than a
-// day. "3 times a week" is a real target, but not a *daily* one, and a daily
-// target of 3 would be the wrong answer to it, so the whole match is refused.
-const TARGET_LONGER_PERIOD = /^\s*(?:(?:a|per|each|every)\s+(?:week|month|year|fortnight)|weekly|monthly|yearly|annually)\b/i;
+// What follows the phrase when it's counting across a period a target can't
+// have. Day and week are the two `QuotaPeriod`s; "twice a month" is a real
+// thing to want, but a daily or weekly target of 2 would be the wrong answer
+// to it, so the whole match is refused.
+const TARGET_UNSUPPORTED_PERIOD = /^\s*(?:(?:a|per|each|every)\s+(?:month|year|fortnight)|monthly|yearly|annually|biweekly)\b/i;
 
 /**
  * Pulls a repetition count out of a quick-add title, so "drink water 8 times a
@@ -1025,7 +1101,9 @@ export function parseTargetInput(input: string): ParsedTarget | null {
 
   const matchStart = match.index;
   const matchEnd = matchStart + match[0].length;
-  if (TARGET_LONGER_PERIOD.test(input.slice(matchEnd))) return null;
+  if (TARGET_UNSUPPORTED_PERIOD.test(input.slice(matchEnd))) return null;
+  const periodWord = (match[4] ?? match[5] ?? '').toLowerCase();
+  const period: QuotaPeriod = periodWord.startsWith('week') ? 'week' : 'day';
 
   const cleanTitle = (input.slice(0, matchStart) + input.slice(matchEnd))
     .replace(/\s*,\s*,\s*/g, ', ')
@@ -1036,7 +1114,25 @@ export function parseTargetInput(input: string): ParsedTarget | null {
   // "8 times" on its own names no task.
   if (!cleanTitle) return null;
 
-  return { count, cleanTitle, matchStart, matchEnd };
+  return { count, period, cleanTitle, matchStart, matchEnd };
+}
+
+// "remind me to call mom at 4pm" — the words asking for a reminder, which are
+// a request rather than part of the task's name.
+const REMIND_PREFIX = /^\s*(?:remind me to|remind me about|remind me|reminder to|reminder:|don'?t forget to)\s+/i;
+
+/**
+ * Strips a leading "remind me to" from a title. Not a tooltip of its own: the
+ * schedule tooltip uses it when accepting a phrase with a clock time in it,
+ * because "remind me to … at 4pm" names both the reminder and its moment.
+ * Without a time there's no moment to remind at, so a caller leaves the title
+ * alone rather than dropping the words and the request with them.
+ */
+export function stripRemindPrefix(input: string): string | null {
+  const match = input.match(REMIND_PREFIX);
+  if (!match) return null;
+  const rest = input.slice(match[0].length).trim();
+  return rest || null;
 }
 
 export interface ParsedCategoryAndTags {
@@ -1805,6 +1901,13 @@ function ordinalLabel(n: number): string {
 }
 
 /** Human label for the parse chip: "Tue, Jun 17", "Every Mon & Wed", "Daily · morning". */
+/** "15:00" → "3 PM", "09:30" → "9:30 AM". */
+function formatHhmm(value: string): string {
+  const [h, m] = value.split(':').map(n => parseInt(n, 10));
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}${m ? `:${String(m).padStart(2, '0')}` : ''} ${h < 12 ? 'AM' : 'PM'}`;
+}
+
 export function describeSchedule(s: ParsedSchedule, now: Date = new Date()): string {
   const n = s.recurrenceInterval;
   let label: string;
@@ -1858,6 +1961,9 @@ export function describeSchedule(s: ParsedSchedule, now: Date = new Date()): str
       if (s.deadline) label = `${label} · Deadline`;
     }
   }
-  if (s.timeSegments.length > 0) label += ` · ${s.timeSegments[0]}`;
+  // The window start replaces the segment in the label rather than joining
+  // it: "after 3 PM" already says which part of the day.
+  if (s.windowStart) label += ` · After ${formatHhmm(s.windowStart)}`;
+  else if (s.timeSegments.length > 0) label += ` · ${s.timeSegments[0]}`;
   return label;
 }

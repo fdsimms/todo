@@ -173,7 +173,11 @@ export interface TaskDraft {
   /** Countdown target, carried over when quick add parses "for 15 minutes". */
   timedMinutes?: number | null;
   dueDate: Date | null;
+  /** Carried over when quick add parses "by friday" or "before 5pm". */
+  deadline?: Date | null;
   timeSegments: TimeOfDay[];
+  /** `"HH:MM"`, carried over when quick add parses "after 3pm". */
+  windowStart?: string | null;
   tags: string[];
   /** Who the task involves, carried over when quick add parses "@dustin" (#2045). */
   personIds?: string[];
@@ -219,6 +223,8 @@ export interface TaskDraft {
   location?: string | null;
   targetCount?: number | null;
   targetUnit?: string | null;
+  /** Carried over when quick add parses "3 times a week". */
+  quotaPeriod?: QuotaPeriod;
   allowOvershoot?: boolean;
   quotaIntervalMinutes?: number | null;
   quotaReminders?: boolean;
@@ -880,7 +886,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     } else {
       setTitle(initialDraft?.title ?? ''); titleCaret.resetCaret(initialDraft?.title ?? ''); setNotes(initialDraft?.notes ?? ''); setCategory(initialDraft?.category ?? null); setProject(initialDraft?.projectId ?? null); setTags(initialDraft?.tags ?? []);
       setGroupId(initialDraft?.groupId ?? null);
-      setDueDate(initialDraft?.dueDate ?? null); setExtraDates([]); setSeriesRepeats(false); setDeadline(null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(null); setWindowEnd(null); setPenaltyMinutes(initialDraft?.penaltyMinutes ?? null); setGatesApps(initialDraft?.gatesApps ?? false); setPenaltyCutoffTime(initialDraft?.penaltyCutoffTime ?? null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setQuotaAlwaysVisible(initialDraft?.quotaAlwaysVisible ?? false); setFollowWaterTarget(initialDraft?.followWaterTarget ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setReminderTime(initialDraft?.reminderTime ?? null); setReminderKind('notification'); setReminderTimeAnchor('wallClock'); setReminderTouched(false);
+      setDueDate(initialDraft?.dueDate ?? null); setExtraDates([]); setSeriesRepeats(false); setDeadline(initialDraft?.deadline ?? null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(initialDraft?.windowStart ?? null); setWindowEnd(null); setPenaltyMinutes(initialDraft?.penaltyMinutes ?? null); setGatesApps(initialDraft?.gatesApps ?? false); setPenaltyCutoffTime(initialDraft?.penaltyCutoffTime ?? null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setQuotaPeriod(initialDraft?.quotaPeriod ?? 'day'); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setQuotaAlwaysVisible(initialDraft?.quotaAlwaysVisible ?? false); setFollowWaterTarget(initialDraft?.followWaterTarget ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setReminderTime(initialDraft?.reminderTime ?? null); setReminderKind('notification'); setReminderTimeAnchor('wallClock'); setReminderTouched(false);
       setRecurrenceType(initialDraft?.recurrenceType ?? 'none'); setRecurrenceInterval(initialDraft?.recurrenceInterval ?? 1);
       setRecurrenceDays(initialDraft?.recurrenceDays ?? []);
       setRecurrenceMonthDay(initialDraft?.recurrenceMonthDay ?? null);
@@ -959,13 +965,13 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             : task.deadlineMonthDay !== null && task.deadlineMonthDay !== undefined && task.dueDate
             ? getDeadlineFromMonthDay(new Date(task.dueDate), task.deadlineMonthDay).toISOString()
             : task.deadline ?? null)
-        : null,
+        : (initialDraft?.deadline?.toISOString() ?? null),
       deadlineOffsetDays: task?.deadlineOffsetDays ?? null,
       deadlineMonthDay: task?.deadlineMonthDay ?? null,
       deadlineOnCalendar: task?.deadlineOnCalendar ?? false,
       logCompletionToCalendar: task?.logCompletionToCalendar ?? false,
       timeSegments: task ? (task.timeSegments ?? []) : (initialDraft?.timeSegments ?? []),
-      windowStart: task?.windowStart ?? null,
+      windowStart: task ? (task.windowStart ?? null) : (initialDraft?.windowStart ?? null),
       windowEnd: task?.windowEnd ?? null,
       penaltyMinutes: task ? (task.penaltyMinutes ?? null) : (initialDraft?.penaltyMinutes ?? null),
       gatesApps: task ? (task.gatesApps ?? false) : (initialDraft?.gatesApps ?? false),
@@ -977,7 +983,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       quotaReminders: task ? (task.quotaReminders ?? false) : (initialDraft?.quotaReminders ?? false),
       quotaAlwaysVisible: task ? (task.quotaAlwaysVisible ?? false) : (initialDraft?.quotaAlwaysVisible ?? false),
       followWaterTarget: task ? (task.followWaterTarget ?? false) : (initialDraft?.followWaterTarget ?? false),
-      quotaPeriod: task?.quotaPeriod ?? 'day',
+      quotaPeriod: task ? (task.quotaPeriod ?? 'day') : (initialDraft?.quotaPeriod ?? 'day'),
       supplyCount: task ? (task.supplyCount ?? null) : null,
       supplyUnit: task ? (task.supplyUnit ?? '') : '',
       supplyRefillCount: task ? (task.supplyRefillCount ?? null) : null,
