@@ -340,5 +340,8 @@ describe('parseLengthClause', () => {
     expect(parseLengthClause('x for 1.5 hours')?.minutes).toBe(90);
     expect(parseLengthClause('for 2h of rest')).toBeNull();
     expect(parseLengthClause('x for 30 hours')).toBeNull();
+    expect(parseLengthClause('lunch with Sam for an hour')?.minutes).toBe(60);
+    expect(parseLengthClause('lunch with Sam for two hours')).toEqual({ start: 14, minutes: 120 });
+    expect(parseLengthClause('call for half an hour')?.minutes).toBe(30);
   });
 });
