@@ -35,6 +35,12 @@ interface RewardStore {
   /** Cheapest first. */
   rewards: Reward[];
   initialized: boolean;
+  /**
+   * The last earning or loss that happened just now, for `CoinToast`. Null
+   * until one does. `at` is a wall-clock ms, so two equal amounts in a row
+   * still read as two changes.
+   */
+  lastChange: { amount: number; kind: 'earn' | 'loss'; at: number } | null;
   initialize: () => void;
   /** The balance, summed off `entries`. */
   balance: () => number;
@@ -64,6 +70,9 @@ interface RewardStore {
   unclaim: (entryId: string) => void;
 }
 
+/** How recent an entry's own time has to be for `CoinToast` to announce it. */
+const ANNOUNCE_WINDOW_MS = 60_000;
+
 function enabled(): boolean {
   return useSettingsStore.getState().rewardsEnabled;
 }
@@ -72,6 +81,16 @@ export const useRewardStore = create<RewardStore>((set, get) => {
   const write = (entry: CoinEntry) => {
     dbUpsertCoinEntry(entry);
     set(s => ({ entries: sortCoinEntries([entry, ...s.entries.filter(e => e.id !== entry.id)]) }));
+  };
+  // Only a change happening now is announced. A backdated one (the morning
+  // check-in, a widget tap drained later, the demo seed) is something nobody
+  // is watching happen, and a "+3" for it would land on whatever screen
+  // they've since moved to.
+  const announce = (entry: CoinEntry) => {
+    if (entry.kind === 'spend') return;
+    const now = Date.now();
+    if (Math.abs(now - Date.parse(entry.at)) > ANNOUNCE_WINDOW_MS) return;
+    set({ lastChange: { amount: entry.amount, kind: entry.kind, at: now } });
   };
   const remove = (ids: string[]) => {
     if (ids.length === 0) return;
@@ -84,6 +103,7 @@ export const useRewardStore = create<RewardStore>((set, get) => {
     entries: [],
     rewards: [],
     initialized: false,
+    lastChange: null,
 
     initialize() {
       set({ entries: dbGetAllCoinEntries(), rewards: dbGetAllRewards(), initialized: true });
@@ -95,17 +115,23 @@ export const useRewardStore = create<RewardStore>((set, get) => {
 
     recordEarn(taskId, amount, label, at) {
       if (!enabled() || amount <= 0) return;
-      write({ id: derivedId(spawnSeed.coinEarn(taskId)), kind: 'earn', amount, at, taskId, rewardId: null, label });
+      const entry: CoinEntry = { id: derivedId(spawnSeed.coinEarn(taskId)), kind: 'earn', amount, at, taskId, rewardId: null, label };
+      write(entry);
+      announce(entry);
     },
 
     recordMiss(taskId, amount, label, at) {
       if (!enabled() || amount <= 0) return;
-      write({ id: derivedId(spawnSeed.coinMiss(taskId)), kind: 'loss', amount, at, taskId, rewardId: null, label });
+      const entry: CoinEntry = { id: derivedId(spawnSeed.coinMiss(taskId)), kind: 'loss', amount, at, taskId, rewardId: null, label };
+      write(entry);
+      announce(entry);
     },
 
     recordSlip(taskId, amount, label) {
       if (!enabled() || amount <= 0) return;
-      write({ id: generateId(), kind: 'loss', amount, at: new Date().toISOString(), taskId, rewardId: null, label });
+      const entry: CoinEntry = { id: generateId(), kind: 'loss', amount, at: new Date().toISOString(), taskId, rewardId: null, label };
+      write(entry);
+      announce(entry);
     },
 
     // Not gated on `rewardsEnabled`: an entry written while the feature was on

@@ -61,6 +61,7 @@ type HttpTransportModule = typeof import('../../src/utils/httpSyncTransport');
 type FoodLogModule = typeof import('../../src/utils/foodLog');
 type MoodHistoryModule = typeof import('../../src/utils/moodHistory');
 type MedicationModule = typeof import('../../src/utils/medicationLog');
+type RewardsModule = typeof import('../../src/utils/rewards');
 type TemplateUtilsModule = typeof import('../../src/utils/templateUtils');
 type TaskDraftModule = typeof import('../../src/utils/taskDraft');
 type TaskCompletionModule = typeof import('../../src/utils/taskCompletion');
@@ -390,6 +391,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   const foodLog = require('../../src/utils/foodLog') as FoodLogModule;
   const moodHistory = require('../../src/utils/moodHistory') as MoodHistoryModule;
   const medication = require('../../src/utils/medicationLog') as MedicationModule;
+  const rewards = require('../../src/utils/rewards') as RewardsModule;
   const syncEngine = require('../../src/utils/syncEngine') as SyncEngineModule;
   const syncLocal = require('../../src/utils/syncLocal') as SyncLocalModule;
   const httpTransport = require('../../src/utils/httpSyncTransport') as HttpTransportModule;
@@ -402,6 +404,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   const parse = require('../../src/utils/groceryParse') as GroceryParseModule;
   const { generateId } = require('../../src/utils/id') as IdModule;
   const { useMedicationStore } = require('../../src/store/useMedicationStore') as typeof import('../../src/store/useMedicationStore');
+  const { useRewardStore } = require('../../src/store/useRewardStore') as typeof import('../../src/store/useRewardStore');
   const { registerTaskSource } = require('../../src/utils/blockerRegistry') as typeof import('../../src/utils/blockerRegistry');
   const { registerPersonSource } = require('../../src/utils/peopleRegistry') as typeof import('../../src/utils/peopleRegistry');
   const { registerPausedProjectSource } = require('../../src/utils/projectPause') as typeof import('../../src/utils/projectPause');
@@ -635,6 +638,21 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       // chain step carrying its own medication records that one.
       const dose = medication.medicationFor(task);
       if (dose) useMedicationStore.getState().addLog({ ...dose, taskId: id, at: new Date() });
+
+      // Coins, kept for the same reason: the ledger is a record, and a task
+      // finished here should earn what it would have earned on the phone.
+      // Through the app's own store and rules, keyed by the completed row, so
+      // the device that later syncs this completion converges on one entry.
+      // A no-op while rewards are off (the setting syncs, so this replica
+      // reads the same answer the phone does).
+      if (rewards.taskEarnsCoins(task)) {
+        useRewardStore.getState().recordEarn(
+          id,
+          rewards.coinsForCompletion(task, built.completed.streakCount),
+          visibility.displayTitleFor(task),
+          new Date().toISOString(),
+        );
+      }
 
       refresh();
       return {

@@ -62,24 +62,34 @@ export function RewardsScreen() {
   const rewards = useRewardStore(s => s.rewards);
   const balance = useMemo(() => coinBalance(entries), [entries]);
 
-  const [adding, setAdding] = useState(false);
+  // One form for both jobs: 'new' while adding, a reward's id while editing
+  // that reward in place, null while neither. Opening one closes the other,
+  // so two half-typed drafts can't be open at once.
+  const [editing, setEditing] = useState<'new' | string | null>(null);
   const [draftTitle, setDraftTitle] = useState('');
   const [draftCost, setDraftCost] = useState('');
   const parsedCost = parseRewardCost(draftCost);
   const canSave = draftTitle.trim().length > 0 && parsedCost !== null;
 
   const closeDraft = useCallback(() => {
-    setAdding(false);
+    setEditing(null);
     setDraftTitle('');
     setDraftCost('');
   }, []);
 
+  const openDraft = useCallback((reward: Reward | null) => {
+    setEditing(reward ? reward.id : 'new');
+    setDraftTitle(reward?.title ?? '');
+    setDraftCost(reward ? String(reward.cost) : '');
+  }, []);
+
   const saveDraft = useCallback(() => {
-    if (!canSave) return;
+    if (!canSave || editing === null) return;
     haptics.tap();
-    useRewardStore.getState().addReward(draftTitle, parsedCost!);
+    if (editing === 'new') useRewardStore.getState().addReward(draftTitle, parsedCost!);
+    else useRewardStore.getState().updateReward(editing, { title: draftTitle, cost: parsedCost! });
     closeDraft();
-  }, [canSave, draftTitle, parsedCost, closeDraft]);
+  }, [canSave, editing, draftTitle, parsedCost, closeDraft]);
 
   const claim = useCallback((reward: Reward) => {
     const entry = useRewardStore.getState().claimReward(reward.id);
@@ -142,6 +152,38 @@ export function RewardsScreen() {
 
   const history = entries.slice(0, HISTORY_LIMIT);
 
+  // Not a component: a component defined in render remounts on every
+  // keystroke and drops the field's focus with it.
+  const renderDraft = () => (
+    <View style={styles.card}>
+      <TextField
+        style={styles.input}
+        value={draftTitle}
+        onChangeText={setDraftTitle}
+        placeholder="e.g. An episode of a show"
+        placeholderTextColor={colors.textTertiary}
+        autoFocus
+        returnKeyType="next"
+        accessibilityLabel="Reward"
+      />
+      <TextField
+        style={styles.input}
+        value={draftCost}
+        onChangeText={setDraftCost}
+        placeholder="Cost in coins"
+        placeholderTextColor={colors.textTertiary}
+        keyboardType="number-pad"
+        returnKeyType="done"
+        onSubmitEditing={saveDraft}
+        accessibilityLabel="Cost in coins"
+      />
+      <View style={styles.rewardActions}>
+        <InlineAction label={editing === 'new' ? 'Add' : 'Save'} icon="checkmark" onPress={saveDraft} disabled={!canSave} />
+        <InlineAction label="Cancel" variant="neutral" onPress={closeDraft} />
+      </View>
+    </View>
+  );
+
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <ScreenHeader title="Rewards" subtitle={formatCoins(balance)} actions={actions} />
@@ -167,10 +209,11 @@ export function RewardsScreen() {
         </View>
 
         <Text style={styles.sectionHeader}>Rewards</Text>
-        {rewards.length === 0 && !adding && (
+        {rewards.length === 0 && editing !== 'new' && (
           <EmptyNote icon="gift-outline">No rewards yet. Add something to save your coins for.</EmptyNote>
         )}
         {rewards.map(reward => {
+          if (editing === reward.id) return <React.Fragment key={reward.id}>{renderDraft()}</React.Fragment>;
           const affordable = canClaimReward(balance, reward.cost);
           return (
             <View key={reward.id} style={styles.card}>
@@ -187,6 +230,12 @@ export function RewardsScreen() {
                     : `${reward.title} needs ${formatCoins(reward.cost - balance)} more`}
                 />
                 <InlineAction
+                  icon="pencil"
+                  variant="neutral"
+                  onPress={() => openDraft(reward)}
+                  accessibilityLabel={`Edit ${reward.title}`}
+                />
+                <InlineAction
                   icon="trash-outline"
                   variant="neutral"
                   onPress={() => remove(reward)}
@@ -196,39 +245,12 @@ export function RewardsScreen() {
             </View>
           );
         })}
-        {adding ? (
-          <View style={styles.card}>
-            <TextField
-              style={styles.input}
-              value={draftTitle}
-              onChangeText={setDraftTitle}
-              placeholder="e.g. An episode of a show"
-              placeholderTextColor={colors.textTertiary}
-              autoFocus
-              returnKeyType="next"
-              accessibilityLabel="Reward"
-            />
-            <TextField
-              style={styles.input}
-              value={draftCost}
-              onChangeText={setDraftCost}
-              placeholder="Cost in coins"
-              placeholderTextColor={colors.textTertiary}
-              keyboardType="number-pad"
-              returnKeyType="done"
-              onSubmitEditing={saveDraft}
-              accessibilityLabel="Cost in coins"
-            />
-            <View style={styles.rewardActions}>
-              <InlineAction label="Add" icon="checkmark" onPress={saveDraft} disabled={!canSave} />
-              <InlineAction label="Cancel" variant="neutral" onPress={closeDraft} />
-            </View>
-          </View>
-        ) : (
+        {editing === 'new' ? renderDraft() : (
           <View style={styles.addRow}>
-            <InlineAction label="New reward" icon="add" onPress={() => setAdding(true)} />
+            <InlineAction label="New reward" icon="add" onPress={() => openDraft(null)} />
           </View>
         )}
+
 
         <Text style={styles.sectionHeader}>History</Text>
         {history.length === 0 ? (

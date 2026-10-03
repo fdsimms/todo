@@ -28,7 +28,7 @@ const AT = '2026-10-01T09:00:00.000Z';
 beforeEach(() => {
   jest.clearAllMocks();
   settings.rewardsEnabled = true;
-  useRewardStore.setState({ entries: [], rewards: [], initialized: false });
+  useRewardStore.setState({ entries: [], rewards: [], initialized: false, lastChange: null });
 });
 
 const state = () => useRewardStore.getState();
@@ -76,6 +76,28 @@ describe('earning and losing', () => {
   it('ignores a zero amount', () => {
     state().recordEarn('t1', 0, 'Run', AT);
     expect(state().entries).toEqual([]);
+  });
+});
+
+describe('announcing a change', () => {
+  it('announces an earning or a loss that happens now', () => {
+    state().recordEarn('t1', 3, 'Run', new Date().toISOString());
+    expect(state().lastChange).toMatchObject({ kind: 'earn', amount: 3 });
+    state().recordSlip('neg', 2, 'Smoke');
+    expect(state().lastChange).toMatchObject({ kind: 'loss', amount: 2 });
+  });
+
+  it('stays quiet for a backdated entry', () => {
+    state().recordEarn('t1', 3, 'Run', AT);
+    state().recordMiss('t2', 3, 'Run', AT);
+    expect(state().lastChange).toBeNull();
+  });
+
+  it('does not announce a claim', () => {
+    state().recordEarn('t1', 12, 'Run', AT);
+    const r = state().addReward('Episode', 10)!;
+    state().claimReward(r.id);
+    expect(state().lastChange).toBeNull();
   });
 });
 

@@ -50,6 +50,7 @@ import { SettingsScreen } from '../screens/SettingsScreen';
 import { SettingsGroupScreen } from '../screens/SettingsGroupScreen';
 import { DemoBanner } from '../components/DemoBanner';
 import { UndoBar } from '../components/UndoBar';
+import { CoinToast } from '../components/CoinToast';
 import { ReadyOfferBar } from '../components/ReadyOfferBar';
 import { TripDatePrompt } from '../components/TripDatePrompt';
 import { UseUpResolveSheet } from '../components/UseUpResolveSheet';
@@ -519,6 +520,9 @@ export default function AppNavigator() {
           the app is in for a few seconds, not a screen — see UndoBar's own
           doc comment for why it belongs beside DemoBanner. */}
       <UndoBar />
+      {/* Beside it: the coins a tick just earned are a moment, not a screen.
+          See CoinToast. */}
+      <CoinToast />
       {/* Beside it, for the same reason: "X is ready" is a moment after a
           tap, not a screen. See ReadyOfferBar. */}
       <ReadyOfferBar />

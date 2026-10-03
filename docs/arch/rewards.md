@@ -38,7 +38,13 @@ default (`rewardsEnabled`), switched on from the Rewards screen (History hub). T
   `rewardsEnabled` is off. The `takeBack*` actions are not gated, so an entry written while it was on
   still goes when its completion is undone after it was switched off.
 
-## Not built yet
+## Where it shows
 
-MCP completions (`mcp/`, through `taskCompletion.ts`) earn nothing, since they don't reach the
-store. Rewards can't be edited in place (`updateReward` exists; the screen offers delete and re-add).
+- **The Rewards screen** (History hub): the balance, the rule spelled out, the rewards (add, edit in
+  place, claim, delete) and the history.
+- **`CoinToast`**, mounted at the navigator root beside `UndoBar`: a "+3 coins" pill after a
+  completion, red for a loss. It is driven by `lastChange`, which the store sets only for an entry
+  dated within the last minute, so a backdated one (the morning check-in, a widget tap drained
+  later, the demo seed) never announces itself on whatever screen comes next.
+- **The MCP replica** earns through the same store and rules when it completes a task
+  (`mcp/src/replica.ts`), keyed by the completed row like everything else.
