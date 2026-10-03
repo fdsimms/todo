@@ -2305,6 +2305,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
 
   // Whether the current estimate is a precise value that isn't one of the presets.
   const customEffortActive = estimatedMinutes != null && estimatedMinutes !== effortToMinutes(effort);
+  // A countdown no preset names, so it came from the typed field.
+  const customDurationActive = timedMinutes != null && !(DURATION_PRESETS as readonly number[]).includes(timedMinutes);
 
   const applyEffortPreset = (e: Effort) => {
     setEffort(e);
@@ -3177,10 +3179,31 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                     </Text>
                   </TouchableOpacity>
                 ))}
+                {/* A typed duration gets a pill of its own among the presets,
+                    so it reads as picked rather than as a number sitting in a
+                    box. Tapping it clears, same as an active preset. */}
+                {customDurationActive && timedMinutes != null && (
+                  <TouchableOpacity
+                    style={[styles.pill, styles.pillCustomActive]}
+                    onPress={() => {
+                      haptics.tap();
+                      setTimedMinutes(null);
+                      setDurationText('');
+                    }}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: true }}
+                    accessibilityLabel={`Custom duration, ${formatDuration(timedMinutes)}. Tap to clear.`}
+                  >
+                    <View style={styles.pillCustomInner}>
+                      <Ionicons name="checkmark" size={iconSize.sm} color={colors.accentText} />
+                      <Text style={styles.pillCustomText}>{formatDuration(timedMinutes)}</Text>
+                    </View>
+                  </TouchableOpacity>
+                )}
               </View>
               <View style={styles.customEffortRow}>
                 <TextField
-                  style={styles.customEffortInput}
+                  style={[styles.customEffortInput, customDurationActive && durationText !== '' && styles.customInputActive]}
                   value={durationText}
                   onChangeText={t => { setDurationText(t); applyDuration(t, durationUnit); }}
                   keyboardType="number-pad"
@@ -5936,19 +5959,24 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 );
               })}
               <TouchableOpacity
-                style={[styles.pill, customEffortActive && styles.pillActiveNeutral]}
+                style={[styles.pill, customEffortActive && styles.pillCustomActive]}
                 onPress={openCustomEffort}
               >
-                <Text style={[styles.pillText, customEffortActive && styles.pillTextActive]}>
-                  {customEffortActive && estimatedMinutes != null ? formatDuration(estimatedMinutes) : 'Custom'}
-                </Text>
+                {customEffortActive && estimatedMinutes != null ? (
+                  <View style={styles.pillCustomInner}>
+                    <Ionicons name="checkmark" size={iconSize.sm} color={colors.accentText} />
+                    <Text style={styles.pillCustomText}>{formatDuration(estimatedMinutes)}</Text>
+                  </View>
+                ) : (
+                  <Text style={styles.pillText}>Custom</Text>
+                )}
                 <Text style={styles.pillHint}>exact</Text>
               </TouchableOpacity>
             </View>
             {customEffortOpen && (
               <View style={styles.customEffortRow}>
                 <TextField
-                  style={styles.customEffortInput}
+                  style={[styles.customEffortInput, customEffortActive && customEffortText !== '' && styles.customInputActive]}
                   value={customEffortText}
                   onChangeText={t => { setCustomEffortText(t); applyCustomEffort(t, customEffortUnit); }}
                   keyboardType="number-pad"
@@ -6594,7 +6622,16 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.text, fontSize: font.md, fontWeight: '600',
     backgroundColor: colors.bgTertiary, borderRadius: radius.sm,
     paddingHorizontal: spacing.smd, paddingVertical: 8, minWidth: 72, textAlign: 'center',
+    // Reserved so the active outline below doesn't nudge the row.
+    borderWidth: border.md, borderColor: 'transparent',
   },
+  // A typed value that is the live one. Accent rather than the presets'
+  // neutral fill, because a number in a box otherwise reads as a draft: the
+  // outline on the field and the checked pill above it are what say "set".
+  customInputActive: { borderColor: colors.accent, backgroundColor: colors.accentSubtle, color: colors.accentText },
+  pillCustomActive: { backgroundColor: colors.accentSubtle, borderWidth: border.md, borderColor: colors.accent, paddingHorizontal: 14 - border.md },
+  pillCustomInner: { flexDirection: 'row', alignItems: 'center', gap: spacing.xxs },
+  pillCustomText: { color: colors.accentText, fontSize: font.sm, fontWeight: '600' },
   // A track next to the number it labels, so it takes a width rather than
   // stretching across the row the way one owning a line does.
   unitToggle: { width: 104 },
