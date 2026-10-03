@@ -1835,10 +1835,32 @@ export interface CoinEntry {
 /** Something you've decided to treat yourself to, for a price in coins. */
 export interface Reward {
   id: string;
+  /**
+   * What it's called. For a reward made from a wish list item this is a
+   * snapshot taken when it was priced, shown only if the item is gone; the
+   * item's own title is what's displayed (see `rewardDisplay`).
+   */
   title: string;
   /** Coins it costs to claim. A positive whole number. */
   cost: number;
   createdAt: string;
+  /** An app or URL to open for it ("Uber Eats" for takeout). Same values as `Task.linkUrl`. */
+  linkUrl: string | null;
+  /** A line of context ("the Thai place on 5th"). */
+  note: string | null;
+  /**
+   * Claimed once, then gone from the list. Whether it has been is read off
+   * the ledger (a spend naming it), not stored, so undoing the claim brings
+   * it back without a second field to keep in step.
+   */
+  oneTime: boolean;
+  /**
+   * The wish list item this reward is, when it is one. Its title, notes and
+   * link are the reward's, claiming it checks the item off, and checking the
+   * item off by hand retires the reward. Always one-time. Carries no foreign
+   * key, like every other provenance pointer in the ledger.
+   */
+  taskId: string | null;
 }
 
 /**

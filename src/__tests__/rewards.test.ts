@@ -8,6 +8,11 @@ import {
   REWARD_FREQUENCIES,
   REWARD_IDEAS,
   rewardIdeas,
+  describeLastClaimed,
+  goalProgress,
+  lastClaimedAt,
+  rewardDisplay,
+  rewardIsOpen,
   canClaimReward,
   coinBalance,
   describeRewardPace,
@@ -305,5 +310,56 @@ describe('rewardIdeas', () => {
   it('names only frequencies that exist', () => {
     const ids = new Set(REWARD_FREQUENCIES.map(f => f.id));
     expect(REWARD_IDEAS.every(i => ids.has(i.frequency))).toBe(true);
+  });
+});
+
+describe('a reward on the list', () => {
+  const spend = (rewardId: string, at: string) => entry({ id: `s-${at}`, kind: 'spend', rewardId, at });
+  const item = (over = {}) => ({ title: 'Headphones', notes: 'The blue ones', linkUrl: 'https://example.com', completed: false, archived: false, ...over });
+  const reward = (over = {}) => ({ id: 'r', title: 'Old title', note: null, linkUrl: null, oneTime: false, taskId: null, ...over });
+
+  it('finds when a reward was last claimed', () => {
+    const entries = [spend('r', '2026-10-01T09:00:00.000Z'), spend('r', '2026-10-02T09:00:00.000Z'), spend('x', '2026-10-03T09:00:00.000Z')];
+    expect(lastClaimedAt(entries, 'r')).toBe('2026-10-02T09:00:00.000Z');
+    expect(lastClaimedAt(entries, 'none')).toBeNull();
+  });
+
+  it('keeps a repeatable reward open after a claim', () => {
+    expect(rewardIsOpen(reward(), [spend('r', '2026-10-01T09:00:00.000Z')], null)).toBe(true);
+  });
+
+  it('retires a one-time reward once claimed, and brings it back when the claim is undone', () => {
+    const r = reward({ oneTime: true });
+    expect(rewardIsOpen(r, [spend('r', '2026-10-01T09:00:00.000Z')], null)).toBe(false);
+    expect(rewardIsOpen(r, [], null)).toBe(true);
+  });
+
+  it('retires a list reward whose item is checked off, archived or gone', () => {
+    const r = reward({ taskId: 't', oneTime: true });
+    expect(rewardIsOpen(r, [], item())).toBe(true);
+    expect(rewardIsOpen(r, [], item({ completed: true }))).toBe(false);
+    expect(rewardIsOpen(r, [], item({ archived: true }))).toBe(false);
+    expect(rewardIsOpen(r, [], null)).toBe(false);
+  });
+
+  it('shows a list reward as its item, and its own fields otherwise', () => {
+    expect(rewardDisplay(reward({ taskId: 't' }), item())).toEqual({ title: 'Headphones', note: 'The blue ones', linkUrl: 'https://example.com' });
+    expect(rewardDisplay(reward({ taskId: 't' }), item({ notes: '  ' })).note).toBeNull();
+    expect(rewardDisplay(reward({ taskId: 't' }), null).title).toBe('Old title');
+    expect(rewardDisplay(reward({ note: 'n', linkUrl: 'ubereats://' }), null)).toEqual({ title: 'Old title', note: 'n', linkUrl: 'ubereats://' });
+  });
+
+  it('says when it was last claimed by calendar day', () => {
+    const now = new Date(2026, 9, 3, 9);
+    expect(describeLastClaimed(new Date(2026, 9, 3, 1).toISOString(), now)).toBe('Claimed today');
+    expect(describeLastClaimed(new Date(2026, 9, 2, 23).toISOString(), now)).toBe('Claimed yesterday');
+    expect(describeLastClaimed(new Date(2026, 8, 28, 12).toISOString(), now)).toBe('Last claimed 5 days ago');
+  });
+
+  it('measures progress toward a goal, clamped', () => {
+    expect(goalProgress(30, 120)).toBe(0.25);
+    expect(goalProgress(500, 120)).toBe(1);
+    expect(goalProgress(-10, 120)).toBe(0);
+    expect(goalProgress(10, 0)).toBe(0);
   });
 });

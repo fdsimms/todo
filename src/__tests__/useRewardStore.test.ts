@@ -193,6 +193,36 @@ describe('rewards', () => {
     expect(state().balance()).toBe(12);
   });
 
+  it('stores a link, a note and one-time, cleaning blank text to null', () => {
+    const r = state().addReward('Takeout', 70, { linkUrl: ' ubereats:// ', note: '   ', oneTime: true })!;
+    expect(r).toMatchObject({ linkUrl: 'ubereats://', note: null, oneTime: true, taskId: null });
+  });
+
+  it('makes a list reward one-time whatever it is told', () => {
+    const r = state().addReward('Headphones', 300, { taskId: 't1', oneTime: false })!;
+    expect(r).toMatchObject({ taskId: 't1', oneTime: true });
+    state().updateReward(r.id, { oneTime: false });
+    expect(state().rewards[0].oneTime).toBe(true);
+  });
+
+  it('edits the details', () => {
+    const r = state().addReward('Takeout', 70)!;
+    state().updateReward(r.id, { note: 'Thai place', linkUrl: 'doordash://' });
+    expect(state().rewards[0]).toMatchObject({ note: 'Thai place', linkUrl: 'doordash://' });
+    state().updateReward(r.id, { note: '' });
+    expect(state().rewards[0].note).toBeNull();
+  });
+
+  it('claims a one-time reward only once', () => {
+    state().recordEarn('t1', 50, 'Run', AT);
+    const r = state().addReward('Book', 10, { oneTime: true })!;
+    const first = state().claimReward(r.id)!;
+    expect(first).not.toBeNull();
+    expect(state().claimReward(r.id)).toBeNull();
+    state().unclaim(first.id);
+    expect(state().claimReward(r.id)).not.toBeNull();
+  });
+
   it('keeps coins spent on a reward that is later deleted', () => {
     state().recordEarn('t1', 12, 'Run', AT);
     const r = state().addReward('Episode', 10)!;

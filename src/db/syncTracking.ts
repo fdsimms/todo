@@ -348,6 +348,10 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   // Coins and rewards. Synced because the ledger it writes is: a phone with it
   // off would stop earning on completions the other phone is paying for.
   'rewardsEnabled',
+  // The goal and the wish list feeding Rewards: ids of synced rows, so they
+  // mean the same thing on every device.
+  'rewardGoalId',
+  'rewardListProjectId',
   'autoRemoveExpiredTasks',
   'completedRetentionDays',
   'postponeCheckEnabled',

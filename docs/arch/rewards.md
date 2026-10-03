@@ -62,10 +62,27 @@ days at your current pace").
   frequency, not a price, so it's priced by the same rule; until there's a week of history that rule
   uses `DEFAULT_EARN_RATE_PER_DAY`, which prices ideas only and never describes a pace.
 
+## A reward's details
+
+- **Link and note** are plain optional fields. The link takes the same values as `Task.linkUrl` (a
+  `KNOWN_LINK_APPS` scheme or a URL) and opens the way a task row's does, with no `canOpenURL`.
+  Opening is its own tap: you might claim now and order later.
+- **One-time is read off the ledger.** A one-time reward with a spend naming it is claimed
+  (`rewardIsOpen`), so undoing the claim brings it back with nothing else to reset. `claimReward`
+  refuses a second claim for a device that hadn't synced the first.
+- **"Saving for" is one setting** (`rewardGoalId`), not a flag per reward, because saving for
+  something means choosing it over the rest. A goal pointing at a claimed or deleted reward is ignored.
+- **A wish list item can be a reward** (`Reward.taskId`), from the one list chosen on the screen
+  (`rewardListProjectId`). The item stays the source: `rewardDisplay` shows its title, notes and
+  link, so editing it edits the reward. Claiming checks the item off with `{ neutral: true }`, or
+  checking off the thing you just spent coins on would also earn coins; the undo takes both back.
+  Checking it off by hand (you bought it without coins) retires the reward. Always one-time.
+
 ## Where it shows
 
-- **The Rewards screen** (menu row under Tasks): the balance, the rule spelled out, the rewards (add, edit in
-  place, claim, delete) and the history.
+- **The Rewards screen** (menu row under Tasks): the balance with the goal's progress, the rule
+  spelled out, the rewards (add, edit in place, claim, open the link, set as goal, delete), the
+  chosen list's items, starter ideas and the history.
 - **`CoinToast`**, mounted at the navigator root beside `UndoBar`: a "+3 coins" pill after a
   completion, red for a loss. It is driven by `lastChange`, which the store sets only for an entry
   dated within the last minute, so a backdated one (the morning check-in, a widget tap drained

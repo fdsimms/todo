@@ -2488,8 +2488,28 @@ function seedRewards(today: Date): void {
   useSettingsStore.getState().setRewardsEnabled(true);
   const rewards = useRewardStore.getState();
   const episode = rewards.addReward('An episode of a show', 15);
-  rewards.addReward('Takeout dinner', 120);
-  rewards.addReward('A new book', 300);
+  // Every optional field shows up once: a link and a note on takeout, and a
+  // one-time reward. Takeout is also the goal, so the balance card has
+  // progress to draw.
+  const takeout = rewards.addReward('Takeout dinner', 120, {
+    linkUrl: 'ubereats://',
+    note: 'The Thai place on 5th, get the pad see ew',
+  });
+  rewards.addReward('A new book', 300, { oneTime: true });
+  if (takeout) useSettingsStore.getState().setRewardGoalId(takeout.id);
+
+  // A wish list feeding the screen: one item already priced as a reward, the
+  // others waiting to be. Through the stores, like everything else here.
+  const { addTask, addExistingToProject } = useTaskStore.getState();
+  const wishList = useProjectStore.getState().createProject('Wish list', { kind: 'list' });
+  useProjectStore.getState().updateProject(wishList.id, { ongoing: true });
+  const wishes = ['Noise-canceling headphones', 'A cast iron pan', 'Concert tickets'].map(title => {
+    const t = addTask({ title });
+    addExistingToProject(t.id, wishList.id);
+    return t;
+  });
+  useSettingsStore.getState().setRewardListProjectId(wishList.id);
+  rewards.addReward(wishes[0].title, 400, { taskId: wishes[0].id });
   // Provenance ids for earlier days' completions; the rows they name are
   // history the seed doesn't otherwise lay down.
   const earned: [string, number, number][] = [

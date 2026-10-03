@@ -1,4 +1,5 @@
-import type { CoinEntry } from '../types';
+import type { CoinEntry, Reward, Task } from '../types';
+import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { estimatedMinutesFor, minutesToEffort, type EstimateSource } from './effort';
 
 /**
@@ -316,4 +317,64 @@ export function rewardIdeas(existingTitles: readonly string[], ratePerDay: numbe
     out.push({ ...idea, frequencyLabel: frequency.label, cost: suggestRewardCost(rate, frequency.days)! });
   }
   return out;
+}
+
+// ==== A reward on the list ====
+
+/** What a reward made from a wish list item reads off the item. */
+export type RewardSourceTask = Pick<Task, 'title' | 'notes' | 'linkUrl' | 'completed' | 'archived'>;
+
+/** When a reward was last claimed: its newest spend, or null if it never was. */
+export function lastClaimedAt(entries: readonly CoinEntry[], rewardId: string): string | null {
+  let latest: string | null = null;
+  for (const e of entries) {
+    if (e.kind !== 'spend' || e.rewardId !== rewardId) continue;
+    if (latest === null || e.at > latest) latest = e.at;
+  }
+  return latest;
+}
+
+/**
+ * Whether a reward belongs on the list. A one-time reward goes once claimed
+ * (undoing the claim removes the spend, so it comes back). A wish list
+ * reward also goes when its item is checked off, archived or deleted by hand:
+ * the item was the reward, and it's been dealt with.
+ */
+export function rewardIsOpen(
+  reward: Pick<Reward, 'id' | 'oneTime' | 'taskId'>,
+  entries: readonly CoinEntry[],
+  task: RewardSourceTask | null | undefined,
+): boolean {
+  if (reward.oneTime && lastClaimedAt(entries, reward.id) !== null) return false;
+  if (reward.taskId && (!task || task.completed || task.archived)) return false;
+  return true;
+}
+
+/**
+ * The title, note and link to show. A wish list reward reads all three off its
+ * item, so editing the item edits the reward; the stored title is only the
+ * fallback for an item that's gone.
+ */
+export function rewardDisplay(
+  reward: Pick<Reward, 'title' | 'note' | 'linkUrl' | 'taskId'>,
+  task: RewardSourceTask | null | undefined,
+): { title: string; note: string | null; linkUrl: string | null } {
+  if (reward.taskId && task) {
+    return { title: task.title, note: task.notes?.trim() || null, linkUrl: task.linkUrl ?? null };
+  }
+  return { title: reward.title, note: reward.note, linkUrl: reward.linkUrl };
+}
+
+/** "Claimed today", "Claimed yesterday", "Last claimed 5 days ago", by calendar day. */
+export function describeLastClaimed(at: string, now: Date): string {
+  const days = differenceInCalendarDays(now, new Date(at));
+  if (days <= 0) return 'Claimed today';
+  if (days === 1) return 'Claimed yesterday';
+  return `Last claimed ${days} days ago`;
+}
+
+/** How far the balance is toward a goal's cost, 0..1. */
+export function goalProgress(balance: number, cost: number): number {
+  if (!(cost > 0)) return 0;
+  return Math.min(1, Math.max(0, balance / cost));
 }

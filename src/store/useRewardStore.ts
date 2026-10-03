@@ -14,6 +14,7 @@ import { derivedId, spawnSeed } from '../utils/syncIds';
 import {
   canClaimReward,
   coinBalance,
+  lastClaimedAt,
   latestLossFor,
   sortCoinEntries,
 } from '../utils/rewards';
@@ -56,8 +57,12 @@ interface RewardStore {
   /** Undoing a slip: drop the newest slip entry for the task. */
   takeBackSlip: (taskId: string) => void;
 
-  addReward: (title: string, cost: number) => Reward | null;
-  updateReward: (id: string, patch: Partial<Pick<Reward, 'title' | 'cost'>>) => void;
+  /**
+   * `details` carries the optional fields. A reward made from a wish list item
+   * passes its `taskId` and is always one-time, whatever `oneTime` says.
+   */
+  addReward: (title: string, cost: number, details?: Partial<RewardDetails>) => Reward | null;
+  updateReward: (id: string, patch: Partial<Pick<Reward, 'title' | 'cost'> & RewardDetails>) => void;
   /** Deletes the reward. Coins already spent on it stay spent. */
   deleteReward: (id: string) => void;
   /**
@@ -72,6 +77,14 @@ interface RewardStore {
 
 /** How recent an entry's own time has to be for `CoinToast` to announce it. */
 const ANNOUNCE_WINDOW_MS = 60_000;
+
+/** The optional half of a reward, as the form edits it. */
+export type RewardDetails = Pick<Reward, 'linkUrl' | 'note' | 'oneTime' | 'taskId'>;
+
+/** Blank text is no value, so a cleared field stores null rather than "". */
+function cleanText(text: string | null | undefined): string | null {
+  return text?.trim() || null;
+}
 
 function enabled(): boolean {
   return useSettingsStore.getState().rewardsEnabled;
@@ -147,10 +160,20 @@ export const useRewardStore = create<RewardStore>((set, get) => {
       if (entry) remove([entry.id]);
     },
 
-    addReward(title, cost) {
+    addReward(title, cost, details) {
       const trimmed = title.trim();
       if (!trimmed || !(cost > 0)) return null;
-      const reward: Reward = { id: generateId(), title: trimmed, cost: Math.round(cost), createdAt: new Date().toISOString() };
+      const taskId = details?.taskId ?? null;
+      const reward: Reward = {
+        id: generateId(),
+        title: trimmed,
+        cost: Math.round(cost),
+        createdAt: new Date().toISOString(),
+        linkUrl: cleanText(details?.linkUrl),
+        note: cleanText(details?.note),
+        oneTime: !!taskId || !!details?.oneTime,
+        taskId,
+      };
       dbInsertReward(reward);
       set(s => ({ rewards: sortRewards([...s.rewards, reward]) }));
       return reward;
@@ -162,7 +185,16 @@ export const useRewardStore = create<RewardStore>((set, get) => {
       const title = patch.title !== undefined ? patch.title.trim() : current.title;
       const cost = patch.cost !== undefined ? Math.round(patch.cost) : current.cost;
       if (!title || !(cost > 0)) return;
-      const next = { ...current, title, cost };
+      const taskId = patch.taskId !== undefined ? patch.taskId : current.taskId;
+      const next: Reward = {
+        ...current,
+        title,
+        cost,
+        linkUrl: patch.linkUrl !== undefined ? cleanText(patch.linkUrl) : current.linkUrl,
+        note: patch.note !== undefined ? cleanText(patch.note) : current.note,
+        oneTime: !!taskId || (patch.oneTime !== undefined ? patch.oneTime : current.oneTime),
+        taskId,
+      };
       dbUpdateReward(next);
       set(s => ({ rewards: sortRewards(s.rewards.map(r => (r.id === id ? next : r))) }));
     },
@@ -176,6 +208,9 @@ export const useRewardStore = create<RewardStore>((set, get) => {
       if (!enabled()) return null;
       const reward = get().rewards.find(r => r.id === id);
       if (!reward || !canClaimReward(get().balance(), reward.cost)) return null;
+      // A one-time reward is claimed once. The list hides it after, so this is
+      // the guard for a second device that claimed it before the first synced.
+      if (reward.oneTime && lastClaimedAt(get().entries, reward.id) !== null) return null;
       const entry: CoinEntry = {
         id: generateId(),
         kind: 'spend',

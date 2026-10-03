@@ -464,7 +464,11 @@ export function initDatabase(): void {
       id TEXT PRIMARY KEY NOT NULL,
       title TEXT NOT NULL,
       cost INTEGER NOT NULL,
-      created_at TEXT NOT NULL
+      created_at TEXT NOT NULL,
+      link_url TEXT,
+      note TEXT,
+      one_time INTEGER NOT NULL DEFAULT 0,
+      task_id TEXT
     );
 
     -- One thing eaten, at one moment — see FoodLogEntry in types/index.ts and
@@ -6463,6 +6467,10 @@ function rowToReward(row: Record<string, unknown>): Reward {
     title: row.title as string,
     cost: Math.max(1, Math.round(Number(row.cost) || 1)),
     createdAt: row.created_at as string,
+    linkUrl: (row.link_url as string | null) || null,
+    note: (row.note as string | null) || null,
+    oneTime: row.one_time === 1 || !!row.task_id,
+    taskId: (row.task_id as string | null) || null,
   };
 }
 
@@ -6474,13 +6482,16 @@ export function dbGetAllRewards(): Reward[] {
 
 export function dbInsertReward(reward: Reward): void {
   db.runSync(
-    'INSERT INTO rewards (id, title, cost, created_at) VALUES (?, ?, ?, ?)',
-    [reward.id, reward.title, reward.cost, reward.createdAt]
+    'INSERT INTO rewards (id, title, cost, created_at, link_url, note, one_time, task_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    [reward.id, reward.title, reward.cost, reward.createdAt, reward.linkUrl, reward.note, reward.oneTime ? 1 : 0, reward.taskId]
   );
 }
 
 export function dbUpdateReward(reward: Reward): void {
-  db.runSync('UPDATE rewards SET title=?, cost=? WHERE id=?', [reward.title, reward.cost, reward.id]);
+  db.runSync(
+    'UPDATE rewards SET title=?, cost=?, link_url=?, note=?, one_time=?, task_id=? WHERE id=?',
+    [reward.title, reward.cost, reward.linkUrl, reward.note, reward.oneTime ? 1 : 0, reward.taskId, reward.id]
+  );
 }
 
 export function dbDeleteReward(id: string): void {
