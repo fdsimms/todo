@@ -4169,11 +4169,20 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
   });
 
   it('seeds a health-target task, the fifth kind', () => {
-    const task = useTaskStore.getState().tasks.find(t => t.healthMetric !== null);
+    const task = useTaskStore.getState().tasks.find(t => t.healthMetric === 'steps');
     expect(task).toBeDefined();
     expect(task!.healthTarget).toBe(8000);
     // The kind is derived, never stored, so this is also the assertion that the
     // pair reads back as the shape it is meant to be.
+    expect(taskKindOf(task!)).toBe('health');
+  });
+
+  it('seeds a health-target task that reads one of the Activity rings', () => {
+    const task = useTaskStore.getState().tasks.find(t => t.healthMetric === 'standHours');
+    expect(task).toBeDefined();
+    expect(task!.healthTarget).toBe(12);
+    // Follows the ring's own goal, so the demo shows the option exists.
+    expect(task!.healthFollowGoal).toBe(true);
     expect(taskKindOf(task!)).toBe('health');
   });
 

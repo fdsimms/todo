@@ -6,6 +6,7 @@ import type { CategoryListItem, TodayListItem } from './taskGrouping';
 import { LATER_TODAY_LABEL } from './taskGrouping';
 import { formatTimeOfDay } from './dateUtils';
 import { titleForEntry } from './mealPlan';
+import { ringsSummaryLine, type ActivityRings } from './activityRings';
 
 /**
  * The day's calendar events and planned meals, as rows in the task list
@@ -215,12 +216,18 @@ export function mealContextRows(
  * `useCalendarStore`.
  */
 export function healthContextRows(
-  reading: { dayKey: string; steps: number | null; activeEnergyKcal: number | null } | null,
+  reading: {
+    dayKey: string;
+    steps: number | null;
+    activeEnergyKcal: number | null;
+    /** Optional so a reading without the Activity rings still satisfies this. */
+    rings?: ActivityRings | null;
+  } | null,
   opts: { todayKey: string; category: string | null },
 ): ContextRow[] {
   if (!reading) return [];
   if (reading.dayKey !== opts.todayKey) return [];
-  const { steps, activeEnergyKcal } = reading;
+  const { steps, activeEnergyKcal, rings } = reading;
   const rows: ContextRow[] = [];
 
   if (steps !== null && steps > 0) {
@@ -249,6 +256,23 @@ export function healthContextRows(
       kind: 'health',
       title: `${Math.round(activeEnergyKcal).toLocaleString()} active cal`,
       caption: 'So far today',
+      category: opts.category,
+      now: false,
+      calendarTag: null,
+    });
+  }
+
+  // The rings' own line, in Fitness's wording, once any ring has moved. No row
+  // for a null summary or one with every ring at zero, for the reason steps
+  // gives above: both are what a day looks like before anything has landed.
+  const ringsLine = rings ? ringsSummaryLine(rings) : null;
+  if (ringsLine !== null) {
+    rows.push({
+      id: 'health-rings',
+      sourceId: '',
+      kind: 'health',
+      title: ringsLine,
+      caption: 'Activity rings, so far today',
       category: opts.category,
       now: false,
       calendarTag: null,

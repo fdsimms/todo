@@ -279,7 +279,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   timedMinutes: null,
   timerElapsedSeconds: 0,
   healthMetric: null,
-  healthTarget: null, completionTimerMinutes: null, completionTimerNote: null, completionTimerStartedAt: null, logHealthMetric: null, logHealthAmount: null, medicationName: null, medicationAmount: null, medicationUnit: null, logMealSlot: null, estimateBeforeTiming: null,
+  healthTarget: null, healthFollowGoal: false, completionTimerMinutes: null, completionTimerNote: null, completionTimerStartedAt: null, logHealthMetric: null, logHealthAmount: null, medicationName: null, medicationAmount: null, medicationUnit: null, logMealSlot: null, estimateBeforeTiming: null,
   actualMinutes: null,
   previousOccurrenceId: null,
   seriesId: null,
@@ -679,6 +679,27 @@ describe('dbInsertTask + rowToTask round-trip', () => {
     const [t] = dbGetAllTasks();
     expect(t.healthMetric).toBe('steps');
     expect(t.healthTarget).toBe(8000);
+  });
+
+  it('round-trips whether a ring task follows the Fitness goal, on insert and update', () => {
+    dbInsertTask(makeTask({ id: 'follow', healthMetric: 'standHours', healthTarget: 12, healthFollowGoal: true }));
+    dbInsertTask(makeTask({ id: 'follow2', healthMetric: 'standHours', healthTarget: 12 }));
+    dbUpdateTask(makeTask({ id: 'follow2', healthMetric: 'standHours', healthTarget: 12, healthFollowGoal: true }));
+    const read = new Map(dbGetAllTasks().map(t => [t.id, t.healthFollowGoal]));
+    expect(read.get('follow')).toBe(true);
+    expect(read.get('follow2')).toBe(true);
+    dbInsertTask(makeTask({ id: 'plain' }));
+    expect(dbGetAllTasks().find(t => t.id === 'plain')!.healthFollowGoal).toBe(false);
+  });
+
+  it('round-trips each Activity ring metric', () => {
+    for (const metric of ['exerciseMinutes', 'activeEnergyKcal', 'standHours'] as const) {
+      dbInsertTask(makeTask({ id: `ring-${metric}`, healthMetric: metric, healthTarget: 10 }));
+    }
+    const read = new Map(dbGetAllTasks().map(t => [t.id, t.healthMetric]));
+    expect(read.get('ring-exerciseMinutes')).toBe('exerciseMinutes');
+    expect(read.get('ring-activeEnergyKcal')).toBe('activeEnergyKcal');
+    expect(read.get('ring-standHours')).toBe('standHours');
   });
 
   it('round-trips a health target through an update', () => {

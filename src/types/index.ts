@@ -423,6 +423,19 @@ export interface ScreenTimeRule extends RuleTaskEstimate {
 }
 
 /**
+ * What a health-target task ("walk 8,000 steps", "close the Stand ring") can
+ * read: the mood axis's two readings plus the three Activity rings' figures.
+ *
+ * Its own type rather than a widened `HealthMetric` or `HealthRuleMetric`, for
+ * the reason the latter gives: a target is a number to reach, and the mood
+ * axes and the rules each answer a different question about different fields.
+ * `activeEnergyKcal` is the Move ring's calories and `standHours` exists only
+ * on the Activity summary. See `utils/healthTarget.ts`.
+ */
+export type HealthTargetMetric =
+  | 'steps' | 'sleepHours' | 'exerciseMinutes' | 'activeEnergyKcal' | 'standHours';
+
+/**
  * The metrics a health rule can watch — a superset of `HealthMetric`
  * (`moodInsights.ts`'s steps/sleep axis) plus eight nutrients, none of which
  * have a mood axis of their own since `MoodDay` carries no nutrient fields.
@@ -3221,8 +3234,13 @@ export interface Task {
   // not: `progressCount` is stored state written by a tap, `logQuotaUnit`
   // auto-completes on reaching the target, and the pace ramp would nudge per
   // step. See docs/arch/health-data.md.
-  healthMetric: 'steps' | 'sleepHours' | null;  // null = not a health-target task
-  healthTarget: number | null;                  // in the metric's own unit: steps, or whole hours
+  healthMetric: HealthTargetMetric | null;  // null = not a health-target task
+  healthTarget: number | null;              // in the metric's own unit: steps, hours, minutes or calories
+  // For the three Activity-ring metrics only: read the target from the goal the
+  // person set in Fitness instead of from `healthTarget`, which stays as what
+  // is used until that goal has been read. False on every other task. See
+  // `effectiveHealthTarget` in utils/healthTarget.ts.
+  healthFollowGoal: boolean;
 
   // Optional reminder scheduled a fixed number of minutes after this task is
   // completed — "take the iron pill" -> "eat, 2 hours later". Null means the

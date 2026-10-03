@@ -136,6 +136,12 @@ public class TodoHealthBridgeModule: Module {
     if let bodyMass = HKQuantityType.quantityType(forIdentifier: .bodyMass) {
       types.insert(bodyMass)
     }
+    // The Activity rings' own daily record: the three totals *and the goals the
+    // person set in Fitness*, which no quantity type carries. Read-only by
+    // construction (HealthKit has no way to share one), so it never appears in
+    // `writeTypes`. Like every addition here, an install that already answered
+    // the sheet gets no rings until somebody taps the access row again.
+    types.insert(HKObjectType.activitySummaryType())
     return types
   }
 
@@ -1152,6 +1158,92 @@ public class TodoHealthBridgeModule: Module {
       if !started { promise.resolve("[]") }
       #else
       promise.resolve("[]")
+      #endif
+    }
+
+    /// The Activity rings for the calendar day `anchorISO` falls on: each ring's
+    /// total so far and the goal the person set for it.
+    ///
+    /// Its own call rather than three more columns on `readDailyHealth`, because
+    /// the goals exist only on `HKActivitySummary` and a summary is read with an
+    /// `HKActivitySummaryQuery` rather than a statistics collection. It is also
+    /// Apple's own account of the rings, so the day's Move/Exercise figures here
+    /// are whatever Fitness shows, de-duplicated across devices by Apple, which
+    /// is the one thing `bestSum` has to guess at for every other cumulative read.
+    ///
+    /// Resolves the string `"null"` when there is no summary to report, for every
+    /// reason at once (a refused read, a day with no summary, a device with no
+    /// rings), which HealthKit does not let this tell apart.
+    ///
+    /// **Goals of zero or less are sent as null**, since a ring nobody set a goal
+    /// for has no target to measure against. **When the Move ring counts Move
+    /// Time instead of calories (people under 18 may choose it), the Move figures
+    /// are null and `moveMode` says why**: sending that ring's minutes under a
+    /// kilocalories name would be a wrong number rather than a missing one.
+    ///
+    /// The summary is keyed by calendar date, not by this app's logical day, so
+    /// with a late `dayResetTime` the rings are the calendar day's. That is how
+    /// Fitness itself closes them.
+    ///
+    /// Everything is whole numbers, for the same hand-built-JSON reason the
+    /// other reads give.
+    AsyncFunction("readActivitySummary") { (anchorISO: String, promise: Promise) in
+      #if canImport(HealthKit)
+      let calendar = Calendar.current
+      guard HKHealthStore.isHealthDataAvailable(), let anchor = Self.parseISO(anchorISO) else {
+        promise.resolve("null")
+        return
+      }
+      // A summary predicate wants era, year, month and day with the calendar
+      // attached; a bare year/month/day matches nothing.
+      var components = calendar.dateComponents([.era, .year, .month, .day], from: anchor)
+      components.calendar = calendar
+      let predicate = HKQuery.predicateForActivitySummary(with: components)
+
+      var started = false
+      TodoHealthExceptionCatcher.runCatchingExceptions {
+        let query = HKActivitySummaryQuery(predicate: predicate) { _, summaries, _ in
+          guard let summary = summaries?.first else {
+            promise.resolve("null")
+            return
+          }
+          let whole: (Double?) -> String = { value in
+            guard let value = value, value.isFinite, value >= 0 else { return "null" }
+            return "\(Int(value.rounded()))"
+          }
+          let goal: (Double?) -> String = { value in
+            guard let value = value, value.isFinite, value > 0 else { return "null" }
+            return "\(Int(value.rounded()))"
+          }
+          // iOS 16 added optional goal properties beside the older non-optional
+          // ones (which read 0 when no goal is set). Both land in an
+          // `HKQuantity?` so the read below is the same either way.
+          let exerciseGoalQuantity: HKQuantity?
+          let standGoalQuantity: HKQuantity?
+          if #available(iOS 16.0, *) {
+            exerciseGoalQuantity = summary.exerciseTimeGoal
+            standGoalQuantity = summary.standHoursGoal
+          } else {
+            exerciseGoalQuantity = summary.appleExerciseTimeGoal
+            standGoalQuantity = summary.appleStandHoursGoal
+          }
+          let movesByTime = summary.activityMoveMode == .appleMoveTime
+          let moveKcal = movesByTime ? nil : summary.activeEnergyBurned.doubleValue(for: .kilocalorie())
+          let moveGoalKcal = movesByTime ? nil : summary.activeEnergyBurnedGoal.doubleValue(for: .kilocalorie())
+          let json = "{\"moveMode\":\"\(movesByTime ? "moveTime" : "activeEnergy")\","
+            + "\"moveKcal\":\(whole(moveKcal)),\"moveGoalKcal\":\(goal(moveGoalKcal)),"
+            + "\"exerciseMinutes\":\(whole(summary.appleExerciseTime.doubleValue(for: .minute()))),"
+            + "\"exerciseGoalMinutes\":\(goal(exerciseGoalQuantity?.doubleValue(for: .minute()))),"
+            + "\"standHours\":\(whole(summary.appleStandHours.doubleValue(for: .count()))),"
+            + "\"standGoalHours\":\(goal(standGoalQuantity?.doubleValue(for: .count())))}"
+          promise.resolve(json)
+        }
+        self.store.execute(query)
+        started = true
+      }
+      if !started { promise.resolve("null") }
+      #else
+      promise.resolve("null")
       #endif
     }
   }

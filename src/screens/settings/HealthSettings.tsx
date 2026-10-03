@@ -9,6 +9,7 @@ import { useDemoStore } from '../../store/useDemoStore';
 import { useCategoryStore, ensureHealthCategory } from '../../store/useCategoryStore';
 import { categoryLabel } from '../../utils/categoryLabel';
 import { PillGroup } from '../../components/PillGroup';
+import { ActivityRingsCard } from '../../components/ActivityRingsCard';
 import { NUTRIENT_KEYS } from '../../types';
 import { NUTRIENT_LABEL } from '../../utils/foodNutrition';
 import { healthBridge, isHealthSupported, openHealthApp } from '../../utils/healthBridge';
@@ -289,7 +290,7 @@ export function HealthSettings() {
         iconColor={healthReadEnabled ? colors.accent : undefined}
         label="Read Apple Health"
         hint={healthReadEnabled
-          ? "Reads your step count for today, and shows it on Today"
+          ? "Reads today's steps, active calories and Activity rings, and shows them on Today"
           : 'Nothing is read from Health'}
         toggle={healthReadEnabled}
         onPress={onToggle}
@@ -355,14 +356,19 @@ export function HealthSettings() {
             accessibilityLabel={`Steps today, ${stepsValue}`}
           />
 
+          {/* Drawn only when a summary arrived. No summary is no card rather
+              than three empty rings: HealthKit serves a refused read, a day
+              with nothing recorded and a device with no rings alike. */}
+          {reading?.rings ? <ActivityRingsCard rings={reading.rings} /> : null}
+
           <View style={styles.sep} />
           <SettingsRow
             entryId="healthCategory"
             icon="pricetag-outline"
-            label="Show steps under"
+            label="Show Health readings under"
             hint={healthCategory
-              ? "Today's step count shows as a row in this category"
-              : "Steps don't show on Today"}
+              ? 'Steps, active calories and your Activity rings show as rows in this category'
+              : "Health readings don't show on Today"}
             value={healthCategory ? categoryLabel(healthCategory, categories) : 'Nowhere'}
             tight
           />
@@ -377,7 +383,7 @@ export function HealthSettings() {
                 label: o.label,
                 selected: o.value === healthCategory,
                 pinned: o.value === null,
-                accessibilityLabel: `Show steps under: ${o.label}`,
+                accessibilityLabel: `Show Health readings under: ${o.label}`,
                 onPress: () => { haptics.tap(); setHealthCategory(o.value); },
               }))}
             />

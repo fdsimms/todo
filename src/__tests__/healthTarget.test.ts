@@ -1,5 +1,9 @@
 import {
+  HEALTH_TARGET_METRICS,
+  effectiveHealthTarget,
+  followsRingGoal,
   HEALTH_TARGET_RANGES,
+  describeHealthGoalAmount,
   describeHealthTarget,
   hasHealthTarget,
   healthTargetProgress,
@@ -132,5 +136,104 @@ describe('HEALTH_TARGET_RANGES', () => {
       expect(range.default).toBeLessThanOrEqual(range.max);
       expect(range.default % range.step).toBe(0);
     }
+  });
+});
+
+describe('the Activity ring metrics', () => {
+  const rings = {
+    move: { value: 312, goal: 500 },
+    exercise: { value: 18, goal: 30 },
+    stand: { value: 7, goal: 12 },
+    moveByTime: false,
+  };
+
+  it('reads the ring summary for each of the three', () => {
+    const r = reading({ rings, exerciseMinutes: 25, activeEnergyKcal: 300 });
+    expect(healthTargetValue(target({ healthMetric: 'exerciseMinutes', healthTarget: 30 }), r, TODAY)).toBe(18);
+    expect(healthTargetValue(target({ healthMetric: 'activeEnergyKcal', healthTarget: 500 }), r, TODAY)).toBe(312);
+    expect(healthTargetValue(target({ healthMetric: 'standHours', healthTarget: 12 }), r, TODAY)).toBe(7);
+  });
+
+  // An install that allowed Health before the rings existed gets an empty
+  // summary, and its quantity totals still read.
+  it('falls back to the quantity total for exercise and active energy, never for stand', () => {
+    const r = reading({ rings: null, exerciseMinutes: 25, activeEnergyKcal: 300 });
+    expect(healthTargetValue(target({ healthMetric: 'exerciseMinutes', healthTarget: 30 }), r, TODAY)).toBe(25);
+    expect(healthTargetValue(target({ healthMetric: 'activeEnergyKcal', healthTarget: 500 }), r, TODAY)).toBe(300);
+    expect(healthTargetValue(target({ healthMetric: 'standHours', healthTarget: 12 }), r, TODAY)).toBeNull();
+  });
+
+  it('answers null for a ring figure that did not arrive, not zero', () => {
+    const r = reading({ rings: { ...rings, stand: { value: null, goal: 12 } } });
+    expect(healthTargetValue(target({ healthMetric: 'standHours', healthTarget: 12 }), r, TODAY)).toBeNull();
+  });
+
+  it('is ready at the target and reads its readout in its own unit', () => {
+    const t = target({ healthMetric: 'standHours', healthTarget: 12 });
+    expect(isHealthTargetReady(t, 12)).toBe(true);
+    expect(isHealthTargetReady(t, 11)).toBe(false);
+    expect(describeHealthTarget(t, 7)).toBe('7 / 12 stand hrs');
+    expect(describeHealthTarget(target({ healthMetric: 'exerciseMinutes', healthTarget: 30 }), 18))
+      .toBe('18 / 30 min exercise');
+    expect(describeHealthTarget(target({ healthMetric: 'activeEnergyKcal', healthTarget: 500 }), 312))
+      .toBe('312 / 500 active cal');
+  });
+
+  it('has a range for every metric it lists', () => {
+    for (const metric of HEALTH_TARGET_METRICS) {
+      const range = HEALTH_TARGET_RANGES[metric];
+      expect(range.default).toBeGreaterThanOrEqual(range.min);
+      expect(range.default).toBeLessThanOrEqual(range.max);
+    }
+  });
+
+  it('names the goal for the editor', () => {
+    expect(describeHealthGoalAmount('steps', 8000)).toBe('8,000 steps');
+    expect(describeHealthGoalAmount('sleepHours', 1)).toBe('1 hour asleep');
+    expect(describeHealthGoalAmount('exerciseMinutes', 30)).toBe('30 minutes of exercise');
+    expect(describeHealthGoalAmount('activeEnergyKcal', 500)).toBe('500 active calories');
+    expect(describeHealthGoalAmount('standHours', 12)).toBe('12 stand hours');
+  });
+});
+
+describe('following the Fitness goal', () => {
+  const rings = {
+    move: { value: 312, goal: 600 },
+    exercise: { value: 18, goal: 45 },
+    stand: { value: 7, goal: 10 },
+    moveByTime: false,
+  };
+  const follow = (healthMetric: HealthTargetState['healthMetric'], over: Partial<HealthTargetState> = {}) =>
+    target({ healthMetric, healthTarget: 12, healthFollowGoal: true, ...over });
+
+  it('uses the ring goal when the task follows it and the goal has been read', () => {
+    const r = reading({ rings });
+    expect(effectiveHealthTarget(follow('standHours'), r, TODAY)).toBe(10);
+    expect(effectiveHealthTarget(follow('exerciseMinutes'), r, TODAY)).toBe(45);
+    expect(effectiveHealthTarget(follow('activeEnergyKcal'), r, TODAY)).toBe(600);
+  });
+
+  it('keeps the typed number until a goal has arrived', () => {
+    expect(effectiveHealthTarget(follow('standHours'), reading({ rings: null }), TODAY)).toBe(12);
+    expect(effectiveHealthTarget(follow('standHours'), null, TODAY)).toBe(12);
+    const noGoal = reading({ rings: { ...rings, stand: { value: 7, goal: null } } });
+    expect(effectiveHealthTarget(follow('standHours'), noGoal, TODAY)).toBe(12);
+  });
+
+  it("does not use a goal read on another day", () => {
+    const r = reading({ rings, dayKey: '2026-09-01' });
+    expect(effectiveHealthTarget(follow('standHours'), r, TODAY)).toBe(12);
+  });
+
+  it('ignores the flag on a task that is not following, and on a metric with no ring', () => {
+    const r = reading({ rings });
+    expect(effectiveHealthTarget(follow('standHours', { healthFollowGoal: false }), r, TODAY)).toBe(12);
+    expect(effectiveHealthTarget(follow('steps'), r, TODAY)).toBe(12);
+    expect(followsRingGoal('steps')).toBe(false);
+    expect(followsRingGoal('standHours')).toBe(true);
+  });
+
+  it('says nothing for a task with no target', () => {
+    expect(effectiveHealthTarget(follow('standHours', { healthTarget: null }), reading({ rings }), TODAY)).toBeNull();
   });
 });

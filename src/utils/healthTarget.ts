@@ -1,4 +1,5 @@
-import type { HealthMetric } from './moodInsights';
+import type { HealthTargetMetric } from '../types';
+import type { ActivityRings } from './activityRings';
 
 /**
  * A task that is ready to check off once Apple Health reaches a number.
@@ -35,10 +36,21 @@ import type { HealthMetric } from './moodInsights';
  * `TaskKind` is for.
  */
 
+/**
+ * Every metric a target may name, as a runtime list: the database narrows a
+ * stored column against it, so a row naming a metric this build doesn't know
+ * reads as "not a health-target task" rather than a task nothing can judge.
+ */
+export const HEALTH_TARGET_METRICS: readonly HealthTargetMetric[] = [
+  'steps', 'sleepHours', 'exerciseMinutes', 'activeEnergyKcal', 'standHours',
+];
+
 /** The two fields, as much of a task as any of this needs. */
 export interface HealthTargetState {
-  healthMetric: HealthMetric | null;
+  healthMetric: HealthTargetMetric | null;
   healthTarget: number | null;
+  /** Optional so a caller that never follows a goal need not name it. */
+  healthFollowGoal?: boolean;
 }
 
 /** Today's reading, as much of it as any of this needs. */
@@ -46,6 +58,10 @@ export interface HealthTargetReading {
   dayKey: string;
   steps: number | null;
   sleepHours: number | null;
+  /** Optional so a reading that predates the ring metrics still satisfies this. */
+  exerciseMinutes?: number | null;
+  activeEnergyKcal?: number | null;
+  rings?: ActivityRings | null;
 }
 
 /**
@@ -60,11 +76,17 @@ export interface HealthTargetReading {
  * number anybody meant.
  */
 export const HEALTH_TARGET_RANGES: Record<
-  HealthMetric,
+  HealthTargetMetric,
   { min: number; max: number; step: number; default: number }
 > = {
   steps: { min: 500, max: 50000, step: 500, default: 8000 },
   sleepHours: { min: 4, max: 12, step: 1, default: 8 },
+  // The Fitness defaults, since the goal most people set a task against is the
+  // ring they already have: 30 minutes, 12 hours, and a Move goal that is
+  // theirs to change (500 is the stepper's start, not Apple's figure).
+  exerciseMinutes: { min: 5, max: 300, step: 5, default: 30 },
+  activeEnergyKcal: { min: 50, max: 3000, step: 50, default: 500 },
+  standHours: { min: 1, max: 24, step: 1, default: 12 },
 };
 
 /** Does this task's readiness come from a Health reading? */
@@ -88,7 +110,58 @@ export function healthTargetValue(
 ): number | null {
   if (!hasHealthTarget(task)) return null;
   if (!reading || reading.dayKey !== todayKey) return null;
-  return task.healthMetric === 'steps' ? reading.steps : reading.sleepHours;
+  switch (task.healthMetric) {
+    case 'steps':
+      return reading.steps;
+    case 'sleepHours':
+      return reading.sleepHours;
+    // The ring figures prefer the Activity summary, which is Apple's own
+    // de-duplicated total, so the row agrees with the rings drawn elsewhere.
+    // They fall back to the quantity total where it exists, because an install
+    // that allowed Health before the rings were added has not been asked for
+    // the summary and gets an empty one. Stand hours have no such fallback.
+    case 'exerciseMinutes':
+      return reading.rings?.exercise.value ?? reading.exerciseMinutes ?? null;
+    case 'activeEnergyKcal':
+      return reading.rings?.move.value ?? reading.activeEnergyKcal ?? null;
+    case 'standHours':
+      return reading.rings?.stand.value ?? null;
+    default:
+      return null;
+  }
+}
+
+/** The three metrics a ring's goal can stand in for. */
+export function followsRingGoal(metric: HealthTargetMetric | null): boolean {
+  return metric === 'exerciseMinutes' || metric === 'activeEnergyKcal' || metric === 'standHours';
+}
+
+/**
+ * The number this task is reaching for today: the goal the person set in
+ * Fitness when the task follows it and that goal has been read, otherwise the
+ * task's own `healthTarget`.
+ *
+ * The typed number is the fallback rather than being replaced, for the same
+ * reason the ring figures fall back to the quantity totals: an install that
+ * allowed Health before the rings were added gets no summary, and a task that
+ * suddenly had no target would stop being a health task. A goal read from a day
+ * that has turned over is not used either; Fitness goals can change by weekday.
+ * Everything below judges a task against whatever this returns.
+ */
+export function effectiveHealthTarget(
+  task: HealthTargetState,
+  reading: HealthTargetReading | null,
+  todayKey: string,
+): number | null {
+  if (!hasHealthTarget(task)) return null;
+  if (task.healthFollowGoal && followsRingGoal(task.healthMetric)
+      && reading && reading.dayKey === todayKey && reading.rings) {
+    const ring = task.healthMetric === 'exerciseMinutes' ? reading.rings.exercise
+      : task.healthMetric === 'activeEnergyKcal' ? reading.rings.move
+        : reading.rings.stand;
+    if (ring.goal !== null && ring.goal > 0) return ring.goal;
+  }
+  return task.healthTarget;
 }
 
 /**
@@ -133,10 +206,48 @@ export function describeHealthTarget(
 ): string | null {
   if (!hasHealthTarget(task) || value === null) return null;
   const target = task.healthTarget as number;
-  return task.healthMetric === 'steps'
-    ? `${Math.round(value).toLocaleString()} / ${target.toLocaleString()} steps`
-    : `${roundHalf(value)} / ${target} hrs asleep`;
+  switch (task.healthMetric) {
+    case 'steps':
+      return `${Math.round(value).toLocaleString()} / ${target.toLocaleString()} steps`;
+    case 'exerciseMinutes':
+      return `${Math.round(value).toLocaleString()} / ${target.toLocaleString()} min exercise`;
+    case 'activeEnergyKcal':
+      return `${Math.round(value).toLocaleString()} / ${target.toLocaleString()} active cal`;
+    case 'standHours':
+      return `${Math.round(value)} / ${target} stand hrs`;
+    default:
+      return `${roundHalf(value)} / ${target} hrs asleep`;
+  }
 }
+
+/**
+ * The goal alone, as the editor and the type summary say it: "8,000 steps",
+ * "8 hours asleep", "30 minutes of exercise", "500 active calories",
+ * "12 stand hours".
+ */
+export function describeHealthGoalAmount(metric: HealthTargetMetric, goal: number): string {
+  switch (metric) {
+    case 'steps':
+      return `${goal.toLocaleString()} steps`;
+    case 'sleepHours':
+      return `${goal} ${goal === 1 ? 'hour' : 'hours'} asleep`;
+    case 'exerciseMinutes':
+      return `${goal.toLocaleString()} ${goal === 1 ? 'minute' : 'minutes'} of exercise`;
+    case 'activeEnergyKcal':
+      return `${goal.toLocaleString()} active ${goal === 1 ? 'calorie' : 'calories'}`;
+    case 'standHours':
+      return `${goal} stand ${goal === 1 ? 'hour' : 'hours'}`;
+  }
+}
+
+/** How a metric is named on the editor's picker. */
+export const HEALTH_TARGET_LABELS: Record<HealthTargetMetric, string> = {
+  steps: 'Steps',
+  sleepHours: 'Hours asleep',
+  exerciseMinutes: 'Exercise',
+  activeEnergyKcal: 'Active cal',
+  standHours: 'Stand',
+};
 
 /** One decimal, and no trailing ".0" — "7" and "6.5", never "6.50". */
 function roundHalf(hours: number): string {

@@ -2,6 +2,7 @@ import * as SQLite from 'expo-sqlite';
 // One name per line, deliberately, and not to be re-joined. See the note
 // on the settings load in useSettingsStore.ts: a list every new type is added to, so one line is a guaranteed conflict.
 import type {
+  HealthTargetMetric,
   Cookbook,
   CookbookIndexEntry,
   DeliverableKind,
@@ -60,6 +61,7 @@ import type {
   UnattendedAction,
   UnattendedEntry,
 } from '../types';
+import { HEALTH_TARGET_METRICS } from '../utils/healthTarget';
 import { DEFAULT_NUDGE_CADENCE_DAYS, MEAL_SLOTS, NUTRIENT_KEYS, PERSON_NOTE_KINDS, RECIPE_MEAL_TYPES, RECIPE_SOURCE_TYPES, isReceiptStyle } from '../types';
 import { generateId } from '../utils/id';
 import { appendPriceObservation, parsePriceHistory } from '../utils/priceHistory';
@@ -1547,6 +1549,9 @@ export function initDatabase(): void {
     // of zero.
     'ALTER TABLE tasks ADD COLUMN health_metric TEXT',
     'ALTER TABLE tasks ADD COLUMN health_target INTEGER',
+    // Task.healthFollowGoal. 0 on every existing row: a target has always been
+    // the number typed into the task.
+    'ALTER TABLE tasks ADD COLUMN health_follow_goal INTEGER NOT NULL DEFAULT 0',
     // 0 on every existing row, deliberately: nominating a project as somewhere
     // to look for weekend plans is a statement nobody has made yet, and
     // backfilling it true would have the weekend nudge quoting projects at
@@ -3251,10 +3256,11 @@ function rowToTask(row: Record<string, unknown>): Task {
     // Narrowed rather than cast: a column holding anything else is a row this
     // build doesn't understand, and "not a health-target task" is the safe read
     // of it — the alternative is a task whose readiness nothing can compute.
-    healthMetric: row.health_metric === 'steps' || row.health_metric === 'sleepHours'
-      ? row.health_metric
+    healthMetric: (HEALTH_TARGET_METRICS as readonly unknown[]).includes(row.health_metric)
+      ? (row.health_metric as HealthTargetMetric)
       : null,
     healthTarget: (row.health_target as number | null) ?? null,
+    healthFollowGoal: Boolean(row.health_follow_goal),
     completionTimerMinutes: (row.completion_timer_minutes as number | null) ?? null,
     completionTimerNote: (row.completion_timer_note as string | null) ?? null,
     completionTimerStartedAt: (row.completion_timer_started_at as string | null) ?? null,
@@ -3368,13 +3374,13 @@ export function dbInsertTask(task: Task): void {
       quota_interval_minutes, quota_reminders, quota_started_at, quota_always_visible, follow_water_target, quota_period,
       rotation_enabled, rotation_items, rotation_log, rotation_period_start, rotation_last_done, location,
       prior_best_streak, reminder_time_anchor, reminder_utc_offset_minutes, polarity, slip_count, slip_date,
-      health_metric, health_target, completion_timer_minutes, completion_timer_note, completion_timer_started_at, log_health_metric, log_health_amount,
+      health_metric, health_target, health_follow_goal, completion_timer_minutes, completion_timer_note, completion_timer_started_at, log_health_metric, log_health_amount,
       penalty_minutes, penalty_cutoff_time, penalty_fired_at, penalty_credited_at, gates_apps,
       medication_name, medication_amount, medication_unit, log_meal_slot,
       estimate_before_timing, waiting_on_person_since, waiting_follow_up_declined_at,
       reminder_tracks_visibility, recurrence_month,
       blocked_by_ids, deliverable_options, deliverable_sets_away, follow_up_on, extra_task_source_id
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -3463,6 +3469,7 @@ export function dbInsertTask(task: Task): void {
       task.slipDate ?? null,
       task.healthMetric ?? null,
       task.healthTarget ?? null,
+      task.healthFollowGoal ? 1 : 0,
       task.completionTimerMinutes ?? null,
       task.completionTimerNote ?? null,
       task.completionTimerStartedAt ?? null,
@@ -3517,7 +3524,7 @@ export function dbUpdateTask(task: Task): void {
       quota_interval_minutes=?, quota_reminders=?, quota_started_at=?, quota_always_visible=?, follow_water_target=?, quota_period=?,
       rotation_enabled=?, rotation_items=?, rotation_log=?, rotation_period_start=?, rotation_last_done=?, location=?,
       prior_best_streak=?, reminder_time_anchor=?, reminder_utc_offset_minutes=?, polarity=?, slip_count=?, slip_date=?,
-      health_metric=?, health_target=?, completion_timer_minutes=?, completion_timer_note=?, completion_timer_started_at=?, log_health_metric=?, log_health_amount=?,
+      health_metric=?, health_target=?, health_follow_goal=?, completion_timer_minutes=?, completion_timer_note=?, completion_timer_started_at=?, log_health_metric=?, log_health_amount=?,
       penalty_minutes=?, penalty_cutoff_time=?, penalty_fired_at=?, penalty_credited_at=?, gates_apps=?,
       medication_name=?, medication_amount=?, medication_unit=?, log_meal_slot=?,
       estimate_before_timing=?, waiting_on_person_since=?, waiting_follow_up_declined_at=?,
@@ -3612,6 +3619,7 @@ export function dbUpdateTask(task: Task): void {
       task.slipDate ?? null,
       task.healthMetric ?? null,
       task.healthTarget ?? null,
+      task.healthFollowGoal ? 1 : 0,
       task.completionTimerMinutes ?? null,
       task.completionTimerNote ?? null,
       task.completionTimerStartedAt ?? null,

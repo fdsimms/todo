@@ -1,6 +1,7 @@
 import type { ChainItem, Effort, QuotaPeriod, RecurrenceType, RotationItem } from '../types';
 import { MIN_ROTATION_ITEMS } from './rotation';
-import type { HealthMetric } from './moodInsights';
+import type { HealthTargetMetric } from '../types';
+import { describeHealthGoalAmount } from './healthTarget';
 import { formatDuration, minutesToEffort } from './effort';
 import { formatQuotaTarget, normalizeTargetUnit } from './quotaUnit';
 
@@ -68,7 +69,7 @@ export function taskKindOf(v: {
   chainEnabled: boolean;
   targetCount: number | null;
   timedMinutes: number | null;
-  healthMetric: HealthMetric | null;
+  healthMetric: HealthTargetMetric | null;
   healthTarget: number | null;
   rotationEnabled?: boolean;
 }): TaskKind {
@@ -237,7 +238,7 @@ export interface TypeValues {
   targetUnit: string | null;
   /** The stretch a target counts across. Omitted reads as 'day'. */
   quotaPeriod?: QuotaPeriod;
-  healthMetric: HealthMetric | null;
+  healthMetric: HealthTargetMetric | null;
   healthTarget: number | null;
   chainItems: ChainItem[];
   recurrenceType: RecurrenceType;
@@ -310,7 +311,7 @@ export interface BakedFields {
   timedMinutes: number | null;
   targetCount: number | null;
   targetUnit: string | null;
-  healthMetric: HealthMetric | null;
+  healthMetric: HealthTargetMetric | null;
   healthTarget: number | null;
   chainEnabled: boolean;
   chainItems: ChainItem[];
@@ -410,9 +411,9 @@ export function bakedFields(type: TaskKind, v: TypeValues): BakedFields {
   }
 }
 
-/** "8,000 steps" / "8 hours of sleep" — the goal, as the type summary says it. */
-function describeHealthGoal(metric: HealthMetric, goal: number): string {
-  return metric === 'steps'
-    ? `${goal.toLocaleString()} steps`
-    : `${goal} ${goal === 1 ? 'hour' : 'hours'} of sleep`;
+/** "8,000 steps" / "8 hours of sleep" / "30 minutes of exercise": the goal, as the type summary says it. */
+function describeHealthGoal(metric: HealthTargetMetric, goal: number): string {
+  if (metric === 'steps') return `${goal.toLocaleString()} steps`;
+  if (metric === 'sleepHours') return `${goal} ${goal === 1 ? 'hour' : 'hours'} of sleep`;
+  return describeHealthGoalAmount(metric, goal);
 }

@@ -61,9 +61,10 @@ import {
   MAX_TARGET_COUNT, MIN_TARGET_COUNT, MIN_QUOTA_INTERVAL_MINUTES, MAX_QUOTA_INTERVAL_MINUTES, TASK_KIND_META,
   type TaskKind,
 } from '../utils/taskKinds';
-import { HEALTH_TARGET_RANGES } from '../utils/healthTarget';
-import { healthMetricLabel } from '../utils/healthRules';
-import type { HealthMetric } from '../utils/moodInsights';
+import {
+  HEALTH_TARGET_LABELS, HEALTH_TARGET_METRICS, HEALTH_TARGET_RANGES, describeHealthGoalAmount, followsRingGoal,
+} from '../utils/healthTarget';
+import type { HealthTargetMetric } from '../types';
 import { featureShown, taskKindsForMode } from '../utils/simpleMode';
 import { MAX_TARGET_UNIT_LENGTH, formatQuotaProgress, formatQuotaTarget, normalizeTargetUnit } from '../utils/quotaUnit';
 import {
@@ -546,8 +547,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [customEffortUnit, setCustomEffortUnit] = useState<'min' | 'hr'>('min');
   const [actualMinutes, setActualMinutes] = useState<number | null>(null);
   const [timedMinutes, setTimedMinutes] = useState<number | null>(null);
-  const [healthMetric, setHealthMetric] = useState<HealthMetric | null>(null);
+  const [healthMetric, setHealthMetric] = useState<HealthTargetMetric | null>(null);
   const [healthTarget, setHealthTarget] = useState<number | null>(null);
+  const [healthFollowGoal, setHealthFollowGoal] = useState(false);
   const [durationText, setDurationText] = useState('');
   const [durationUnit, setDurationUnit] = useState<'min' | 'hr'>('min');
   const [pinned, setPinned] = useState(false);
@@ -786,7 +788,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const kindMemory = useRef<{
     timedMinutes: number | null; targetCount: number | null;
     targetUnit: string; chainItems: ChainItem[]; rotationItems: RotationItem[];
-    healthMetric: HealthMetric | null; healthTarget: number | null;
+    healthMetric: HealthTargetMetric | null; healthTarget: number | null;
   }>({
     timedMinutes: null, targetCount: null, targetUnit: '', chainItems: [], rotationItems: [],
     healthMetric: null, healthTarget: null,
@@ -868,6 +870,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setTimedMinutes(task.timedMinutes ?? null);
       setHealthMetric(task.healthMetric ?? null);
       setHealthTarget(task.healthTarget ?? null);
+      setHealthFollowGoal(task.healthFollowGoal ?? false);
       setChainEnabled(task.chainEnabled); setChainItems(task.chainItems);
       setRotationEnabled(task.rotationEnabled); setRotationItems(task.rotationItems);
       setChainIndex(task.chainIndex);
@@ -925,6 +928,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       // No initialDraft counterpart: quick add has no Health kind to pass one.
       setHealthMetric(null);
       setHealthTarget(null);
+      setHealthFollowGoal(false);
       setChainEnabled(initialDraft?.chainEnabled ?? false); setChainItems(initialDraft?.chainItems ?? []); setChainIndex(0);
       setRotationEnabled(initialDraft?.rotationEnabled ?? false); setRotationItems(initialDraft?.rotationItems ?? []);
       setVacationPause(false);
@@ -1051,6 +1055,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       timedMinutes: task ? (task.timedMinutes ?? null) : (initialDraft?.timedMinutes ?? null),
       healthMetric: task?.healthMetric ?? null,
       healthTarget: task?.healthTarget ?? null,
+      healthFollowGoal: task?.healthFollowGoal ?? false,
       pinned: task?.pinned ?? false,
       chainEnabled: task ? task.chainEnabled : (initialDraft?.chainEnabled ?? false),
       chainItems: task ? task.chainItems : (initialDraft?.chainItems ?? []),
@@ -1487,6 +1492,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       sortOrder: task?.sortOrder ?? 0,
       pinned, priority, effort, estimatedMinutes, actualMinutes, timedMinutes,
       healthMetric, healthTarget,
+      // Cleared when what it follows goes, like followWaterTarget below: it
+      // only means anything on one of the three ring metrics.
+      healthFollowGoal: followsRingGoal(healthMetric) ? healthFollowGoal : false,
       // A chain needs at least 2 steps — activeChainStep() (src/utils/chain.ts)
       // already treats a single-item chain as equivalent to a plain task, so
       // saving with fewer than 2 items quietly turns Chain back off rather
@@ -2144,7 +2152,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       recurrenceType, recurrenceInterval, recurrenceDays, recurrenceMonthDay, recurrenceMonth, recurrenceWeekOrdinal, recurrenceFromCompletion,
       recurrenceEndDate: recurrenceEndDate?.toISOString() ?? null,
       recurrenceCount,
-      priority, effort, estimatedMinutes, actualMinutes, timedMinutes, healthMetric, healthTarget, pinned, chainEnabled, chainItems, rotationItems, chainIndex, chainStepOnSchedule, vacationPause,
+      priority, effort, estimatedMinutes, actualMinutes, timedMinutes, healthMetric, healthTarget,
+      healthFollowGoal: followsRingGoal(healthMetric) ? healthFollowGoal : false,
+      pinned, chainEnabled, chainItems, rotationItems, chainIndex, chainStepOnSchedule, vacationPause,
       excludeFromSuggestions,
       polarity,
       showStreak,
@@ -3410,7 +3420,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           }] : []),
           ...(kind === 'health' ? [{
             key: 'healthTarget', label: 'Health target', set: true,
-            keywords: ['apple health', 'steps', 'sleep', 'walk', 'goal', 'ready', 'number', 'fitness'],
+            keywords: ['apple health', 'steps', 'sleep', 'walk', 'goal', 'ready', 'number', 'fitness', 'rings', 'activity', 'exercise', 'stand', 'move', 'calories', 'active energy'],
             node: (<>
               <EditorRow
                 icon="footsteps-outline"
@@ -3420,24 +3430,25 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 // hint is the only in-app documentation the kind has.
                 hint="The task reads as ready once Apple Health reaches this today. It is never checked off for you."
                 value={healthTarget !== null && healthMetric !== null
-                  ? (healthMetric === 'steps'
-                    ? `${healthTarget.toLocaleString()} steps`
-                    : `${healthTarget} ${healthTarget === 1 ? 'hour' : 'hours'} asleep`)
+                  ? (followsRingGoal(healthMetric) && healthFollowGoal
+                    ? 'Your Fitness goal'
+                    : describeHealthGoalAmount(healthMetric, healthTarget))
                   : undefined}
                 expanded={showHealthTarget}
                 onPress={() => { animateLayout(); setShowHealthTarget(v => !v); }}
               />
               {showHealthTarget && (
                 <View style={styles.healthTargetControls}>
-                  <SegmentedControl<HealthMetric>
-                    options={[
-                      { value: 'steps', label: healthMetricLabel('steps') },
-                      { value: 'sleepHours', label: healthMetricLabel('sleepHours') },
-                    ]}
+                  <SegmentedControl<HealthTargetMetric>
+                    options={HEALTH_TARGET_METRICS.map(value => ({
+                      value, label: HEALTH_TARGET_LABELS[value],
+                    }))}
+                    columns={3}
                     value={healthMetric ?? 'steps'}
                     onChange={next => {
                       haptics.tap();
                       setHealthMetric(next);
+                      if (!followsRingGoal(next)) setHealthFollowGoal(false);
                       // Re-defaulted rather than clamped, unlike the rules
                       // sheet: there the number somebody typed is the rule and
                       // is worth keeping in range, where here switching from
@@ -3460,10 +3471,29 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                       ? `${n} ${n === 1 ? 'hr' : 'hrs'}`
                       : n.toLocaleString())}
                     label="Health target"
-                    describeValue={n => (healthMetric === 'sleepHours'
-                      ? `${n} hours asleep`
-                      : `${n} steps`)}
+                    describeValue={n => (n === null ? 'No target' : describeHealthGoalAmount(healthMetric ?? 'steps', n))}
                   />
+                  {followsRingGoal(healthMetric) && (
+                    <TouchableOpacity
+                      style={styles.optionRow}
+                      onPress={() => { haptics.tap(); setHealthFollowGoal(v => !v); }}
+                      activeOpacity={interaction.activeOpacity}
+                      accessibilityRole="switch"
+                      accessibilityLabel="Follow my Fitness goal"
+                      accessibilityState={{ checked: healthFollowGoal }}
+                    >
+                      <Ionicons name="fitness-outline" size={18} color={healthFollowGoal ? colors.accent : colors.textSecondary} />
+                      <View style={styles.optionContent}>
+                        <Text style={styles.optionLabel}>Follow my Fitness goal</Text>
+                        <Text style={styles.optionHint}>
+                          Uses the goal you set for this ring in Fitness. The number above is used until that goal has been read.
+                        </Text>
+                      </View>
+                      <View style={[styles.toggle, healthFollowGoal && styles.toggleOn]}>
+                        <View style={[styles.toggleKnob, healthFollowGoal && styles.toggleKnobOn]} />
+                      </View>
+                    </TouchableOpacity>
+                  )}
                 </View>
               )}
             </>),

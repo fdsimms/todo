@@ -294,6 +294,26 @@ describe('healthContextRows', () => {
     expect(healthContextRows(null, opts)).toEqual([]);
   });
 
+  describe('the Activity rings line', () => {
+    const rings = (move: number, exercise: number, stand: number) => ({
+      move: { value: move, goal: 500 },
+      exercise: { value: exercise, goal: 30 },
+      stand: { value: stand, goal: 12 },
+      moveByTime: false,
+    });
+
+    it('is one more row, in the wording Fitness uses', () => {
+      const rows = healthContextRows({ ...reading(null, null), rings: rings(312, 18, 7) }, opts);
+      expect(rows.map(r => [r.id, r.title]))
+        .toEqual([['health-rings', '312/500 cal \u00B7 18/30 min \u00B7 7/12 hr']]);
+    });
+
+    it('draws nothing while every ring is still at zero, or with no summary', () => {
+      expect(healthContextRows({ ...reading(null, null), rings: rings(0, 0, 0) }, opts)).toEqual([]);
+      expect(healthContextRows({ ...reading(null, null), rings: null }, opts)).toEqual([]);
+    });
+  });
+
   it('says nothing about a reading from another day', () => {
     // The store holds one day-keyed snapshot, and one taken before the day
     // turned over is not an answer about this day.

@@ -1513,6 +1513,20 @@ export function seedDemoData(): void {
     recurrenceType: 'daily',
   });
 
+  // The same kind reading one of the Activity rings. Stand hours are the metric
+  // that exists only on the ring summary, so this is the one that shows the
+  // rings are a thing a task can wait on. No reading behind it, for the reason
+  // the steps task above gives.
+  addTask({
+    title: 'Close the Stand ring',
+    dueDate: today.toISOString(),
+    category: 'Health',
+    healthMetric: 'standHours',
+    healthTarget: 12,
+    healthFollowGoal: true,
+    recurrenceType: 'daily',
+  });
+
   // Marked complete rather than archived — demonstrates Project.completed,
   // which has its own Completed list (see ProjectEditor's Mark complete row)
   // instead of disappearing into Archived the way finishing a project used to.

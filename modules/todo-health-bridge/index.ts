@@ -193,6 +193,7 @@ interface TodoHealthNativeModule {
   requestAuthorization(): Promise<HealthAuthorizationResult>;
   readDailyHealth(anchorISO: string, days: number): Promise<string>;
   readWeightSeries(anchorISO: string, days: number): Promise<string>;
+  readActivitySummary(anchorISO: string): Promise<string>;
   writeAuthorizationStatus(kind: HealthWriteKind): HealthWriteStatus;
   requestWriteAuthorization(): Promise<HealthAuthorizationResult>;
   writeNutrientSample(key: string, amount: number): Promise<boolean>;
@@ -506,4 +507,23 @@ export async function readWeightSeries(
   } catch {
     return [];
   }
+}
+
+/**
+ * The Activity rings for the calendar day `anchorISO` falls on, as the raw JSON
+ * the native side wrote, or the string `"null"` for every reason there is
+ * nothing to say (no native half, a build predating this call, a refused read,
+ * a day with no summary).
+ *
+ * **Returned unparsed on purpose.** Everything else in this module parses its
+ * own wire format, but the parse here is the part with rules worth testing (a
+ * zero goal is no goal, a Move ring counting minutes has no calories, an absent
+ * figure is never a zero), and tests can reach `src/` and not this folder. So
+ * the rules live in `parseActivitySummary` (`src/utils/activityRings.ts`) and
+ * this stays the thin door the other reads are.
+ *
+ * Nothing is cached, for the reason `readDailyHealth` gives.
+ */
+export function readActivitySummary(anchorISO: string): Promise<string> {
+  return degradeOnReject(() => nativeModule!.readActivitySummary(anchorISO), 'null');
 }
