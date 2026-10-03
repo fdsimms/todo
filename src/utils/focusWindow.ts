@@ -1,5 +1,5 @@
 import type { BusyEvent } from './calendarBusy';
-import { nextEventAfter } from './calendarBusy';
+import { nextEventAfter, occupiesTime } from './calendarBusy';
 
 /**
  * "Until my next meeting" as a focus window.
@@ -66,4 +66,42 @@ export function calendarWindow(
     title: event.title.trim() === '' ? 'your next event' : event.title,
     startsAt,
   };
+}
+
+/** How long before the next meeting a running focus session hears about it. */
+export const FOCUS_MEETING_LEAD_MINUTES = 5;
+
+/** How far ahead the heads-up looks. A session rarely runs past this. */
+export const FOCUS_MEETING_HORIZON_MINUTES = 12 * 60;
+
+export interface FocusMeetingHeadsUp {
+  /** When to say so: the lead before it starts. */
+  at: Date;
+  /** The event's own title, or empty for an untitled one. */
+  title: string;
+  startsAt: Date;
+}
+
+/**
+ * The heads-up a focus session owes before the next meeting, or null.
+ *
+ * A session started with "Until my next meeting" already ends there, but most
+ * don't, and a stretch of work is exactly when the clock stops being watched.
+ * Only events that take time (`occupiesTime`) count, so a Free placeholder
+ * doesn't interrupt anybody. Null when the lead time has already passed: a
+ * meeting four minutes off is one the person can see coming on their own.
+ */
+export function focusMeetingHeadsUp(
+  events: readonly BusyEvent[],
+  now: Date,
+  leadMinutes = FOCUS_MEETING_LEAD_MINUTES,
+  horizonMinutes = FOCUS_MEETING_HORIZON_MINUTES,
+): FocusMeetingHeadsUp | null {
+  const rangeEnd = new Date(now.getTime() + horizonMinutes * 60_000);
+  const event = nextEventAfter(events.filter(occupiesTime), now, rangeEnd);
+  if (!event) return null;
+  const startsAt = new Date(event.start);
+  const at = new Date(startsAt.getTime() - leadMinutes * 60_000);
+  if (at <= now) return null;
+  return { at, title: event.title.trim(), startsAt };
 }

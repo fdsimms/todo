@@ -36,6 +36,8 @@ const mockCancelAlarm = jest.fn().mockResolvedValue(undefined);
 jest.mock('../utils/notifications', () => ({
   scheduleFocusStepAlarm: (...args: unknown[]) => mockScheduleAlarm(...args),
   cancelFocusStepAlarm: (...args: unknown[]) => mockCancelAlarm(...args),
+  scheduleFocusMeetingHeadsUp: jest.fn().mockResolvedValue(undefined),
+  cancelFocusMeetingHeadsUp: jest.fn().mockResolvedValue(undefined),
 }));
 
 import { useFocusStore } from '../store/useFocusStore';

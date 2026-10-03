@@ -169,7 +169,7 @@ export function isHiddenForVacation(task: Task): boolean {
 // drop off Today and re-advertise themselves as "Tomorrow". Same bug the
 // per-task gates had before they were anchored (see getWindowThreshold), and
 // the same fix.
-function onLogicalDay(dayStart: Date, hhmm: string): Date {
+export function onLogicalDay(dayStart: Date, hhmm: string): Date {
   const [h, m] = hhmm.split(':').map(Number);
   const t = new Date(dayStart);
   t.setHours(h, m, 0, 0);

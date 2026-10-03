@@ -293,6 +293,8 @@ jest.mock('../utils/notifications', () => ({
   // useFocusStore so a stored session can be reconciled against it.
   scheduleFocusStepAlarm: jest.fn().mockResolvedValue(undefined),
   cancelFocusStepAlarm: jest.fn().mockResolvedValue(undefined),
+  scheduleFocusMeetingHeadsUp: jest.fn().mockResolvedValue(undefined),
+  cancelFocusMeetingHeadsUp: jest.fn().mockResolvedValue(undefined),
   // Not exercised by this suite's grocery-store tests (they only touch
   // useUpTask fields), but useGroceryStore.ts imports these unconditionally —
   // an incomplete mock would leave them undefined the moment a test does call
