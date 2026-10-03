@@ -39,7 +39,7 @@ import { MEAL_SLOT_ICONS, MEAL_SLOT_LABELS, PRIORITY_COLORS, TITLE_MAX_LENGTH } 
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animation, interaction, checkboxRadius, type Colors } from '../theme';
-import { formatDeadlineDate, formatScheduledDate, formatTaskDate, formatHHMM, dateToHHMM, formatWindowRemaining, getDeadlineCountdown, getEffectiveTaskDate, getTaskDayStart, getCurrentDayStart, getLogicalDayKey, dayKeyToDate, formatTimeOfDay, hoursUnlockLabel } from '../utils/dateUtils';
+import { formatDeadlineDate, formatScheduledDate, formatTaskDate, formatHHMM, formatWindowRemaining, getDeadlineCountdown, getEffectiveTaskDate, getTaskDayStart, getCurrentDayStart, getLogicalDayKey, dayKeyToDate, formatTimeOfDay, hoursUnlockLabel } from '../utils/dateUtils';
 import { isNegativeTask, isCleanToday, slipsToday } from '../utils/negativeHabits';
 import { scheduleMoveUpdates } from '../utils/taskMoves';
 import { confirmScheduleMove, confirmSegmentScope } from '../utils/scheduleMovePrompt';
@@ -53,7 +53,7 @@ import {
 import { useHealthStore } from '../store/useHealthStore';
 import { activeSegment, segmentPhase, segmentRemaining, timerSegments } from '../utils/timerSegments';
 import { isStreakAtRecord } from '../utils/streakRecord';
-import { isTaskWindowActive, isTaskExpired, effectiveWindowEnd, isRecurrenceNotYetDue, isMissableMealPlanTask, isTaskNew, isTaskVisible, isQuotaTask, isQuotaPartial, quotaRidesOutTheDay, isOnPaceQuota, quotaLeavesTodayAfterLog, quotaNextDueAt, quotaFraction, quotaPaceFraction, quotaUnitsToPace, activeChainStepTitle, displayTitleFor } from '../utils/visibilityUtils';
+import { isTaskWindowActive, isTaskExpired, effectiveWindowEnd, isRecurrenceNotYetDue, isMissableMealPlanTask, isTaskNew, isTaskVisible, isQuotaTask, isQuotaPartial, quotaRidesOutTheDay, isOnPaceQuota, quotaLeavesTodayAfterLog, quotaNextDueAt, formatQuotaNextDue, quotaFraction, quotaPaceFraction, quotaUnitsToPace, activeChainStepTitle, displayTitleFor } from '../utils/visibilityUtils';
 import { asksOnCompletion, deliverableKindFor, isTentativeAnswer } from '../utils/deliverables';
 import { offersMealLogOnCompletion } from '../utils/completionTap';
 import { describeTaskRecurrence } from '../utils/recurrenceLabels';
@@ -1390,11 +1390,7 @@ export const TaskItem = React.memo(function TaskItem({
   // "next at 14:30" but "next Thu". Reading the day out as "next at Thu" is the
   // giveaway that a clock-shaped label is being asked to do a calendar's job.
   const quotaReturnAt = quotaSettled || isOnPaceQuota(task)
-    ? (() => {
-        const next = quotaNextDueAt(task);
-        const sameDay = getTaskDayStart(next).getTime() === getCurrentDayStart().getTime();
-        return sameDay ? `at ${formatHHMM(dateToHHMM(next))}` : format(next, 'EEE');
-      })()
+    ? formatQuotaNextDue(quotaNextDueAt(task))
     : '';
   // A completion that came from the meter keeps it — the fill topping out *is*
   // that row's animation. Bulk selection doesn't take it away either: the row

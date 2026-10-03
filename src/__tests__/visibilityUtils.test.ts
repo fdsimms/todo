@@ -23,6 +23,8 @@ import {
   quotaRidesOutTheDay,
   quotaLeavesTodayAfterLog,
   quotaNextDueAt,
+  quotaNextDueLabel,
+  formatQuotaNextDue,
   isQuotaPartial,
   isOnPaceQuota,
   isDismissedToday,
@@ -1977,6 +1979,24 @@ describe('quota tasks', () => {
       expect(getVisibleAt({ ...quotaTask, progressCount: 2 })).toEqual(
         new Date(2025, 5, 10, 11, 30, 0)
       );
+    });
+  });
+
+  describe('quotaNextDueLabel', () => {
+    it('names the clock time for an on-pace target', () => {
+      expect(quotaNextDueLabel({ ...quotaTask, progressCount: 2 })).toBe('at 11:30 AM');
+    });
+
+    it('is null while the target is behind pace, or not a target at all', () => {
+      expect(quotaNextDueLabel({ ...quotaTask, progressCount: 1 })).toBeNull();
+      expect(quotaNextDueLabel(baseTask)).toBeNull();
+    });
+  });
+
+  describe('formatQuotaNextDue', () => {
+    it('names the weekday when the next unit is on another day', () => {
+      // Jun 12 2025 is a Thursday.
+      expect(formatQuotaNextDue(new Date(2025, 5, 12, 9, 0, 0))).toBe('Thu');
     });
   });
 
