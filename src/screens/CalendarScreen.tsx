@@ -3,14 +3,14 @@ import { useStableCallback } from '../hooks/useStableCallback';
 import { View, Text, ScrollView, StyleSheet, Dimensions, TouchableOpacity } from 'react-native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { addDays } from 'date-fns/addDays';
 import { addMonths } from 'date-fns/addMonths';
 import { format } from 'date-fns/format';
 import { isSameMonth } from 'date-fns/isSameMonth';
 import { startOfMonth } from 'date-fns/startOfMonth';
-import type { Task } from '../types';
+import { MEAL_SLOT_LABELS, type MealPlanEntry, type Task } from '../types';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { ScreenHeader } from '../components/ScreenHeader';
@@ -48,12 +48,20 @@ import { useMealPlanStore } from '../store/useMealPlanStore';
 import { DayTimeline } from '../components/DayTimeline';
 import { buildDayTimeline } from '../utils/dayTimeline';
 import { eventsIn } from '../utils/calendarBusy';
-import { describeWeekRange } from '../utils/mealPlan';
 import { isDemoModeActive } from '../utils/demoState';
 import { QuickEventSheet } from '../components/QuickEventSheet';
 import { useProjectStore } from '../store/useProjectStore';
 import { useShallow } from 'zustand/react/shallow';
-import { awaySpanOf, type AwaySpan } from '../utils/awayDates';
+import { describeWeekRange } from '../utils/mealPlan';
+import { usePersonStore } from '../store/usePersonStore';
+import {
+  buildDayExtras,
+  calendarTrips,
+  completedRows,
+  hasDayNotes,
+  tripBandLanes,
+  type DayExtras,
+} from '../utils/calendarExtras';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const CELL_SIZE = Math.floor((SCREEN_WIDTH - spacing.md * 2) / 7);
@@ -72,6 +80,10 @@ const WEIGHT_SLOT_GAP = 2;
 // One shared empty array for a task with no subtasks — a fresh `[]` per row per
 // render is exactly the identity churn the grouping below exists to avoid.
 const NO_SUBTASKS: Task[] = [];
+const NO_MEALS: MealPlanEntry[] = [];
+// A trip band's height, and the gap above it. One lane per overlapping trip.
+const TRIP_BAND_HEIGHT = 16;
+const TRIP_BAND_GAP = 2;
 
 type CalendarViewMode = 'month' | 'week' | 'day';
 const VIEW_MODES: { value: CalendarViewMode; label: string }[] = [
@@ -122,6 +134,9 @@ export function CalendarScreen() {
   const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
   const calendarReadEnabled = useSettingsStore(s => s.calendarReadEnabled);
+  const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
+  const people = usePersonStore(s => s.people);
+  const navigation = useNavigation<any>();
   // Same rule as Today's: which calendar an event came from is only worth a
   // tag once more than one is being read.
   const calendarIds = useSettingsStore(s => s.calendarIds);
@@ -159,10 +174,10 @@ export function CalendarScreen() {
   useFocusEffect(useCallback(() => { setFocusCount(n => n + 1); }, []));
 
   const use24Hour = useSettingsStore(s => s.use24HourTime);
-  // Subscribed only so a meal edited in the loaded window redraws; the day's
-  // own entries come through entriesForDayLive.
+  // Subscribed only so a meal edited in the loaded window redraws; the grid's
+  // own meals come through entriesInRangeLive.
   const mealEntries = useMealPlanStore(useShallow(s => s.entries));
-  const entriesForDayLive = useMealPlanStore(s => s.entriesForDayLive);
+  const entriesInRangeLive = useMealPlanStore(s => s.entriesInRangeLive);
 
 
   const projects = useProjectStore(useShallow(s => s.projects));
@@ -175,13 +190,8 @@ export function CalendarScreen() {
    * months and can reach past whichever trip is next. A span already over is
    * kept: a month view of last month is entitled to say you were away.
    */
-  const awaySpans = useMemo(
-    () => projects
-      .filter(p => !p.archived && !p.completed)
-      .map(p => awaySpanOf(p, dayResetTime))
-      .filter((span): span is AwaySpan => span !== null),
-    [projects, dayResetTime],
-  );
+  const trips = useMemo(() => calendarTrips(projects, dayResetTime), [projects, dayResetTime]);
+  const awaySpans = useMemo(() => trips.map(t => t.span), [trips]);
   const dayHeaders = useMemo(() => weekdayHeaders(weekStartsOn), [weekStartsOn]);
 
   const buckets = useMemo(
@@ -195,6 +205,25 @@ export function CalendarScreen() {
   );
 
   const taskById = useMemo(() => new Map(allTasks.map(t => [t.id, t])), [allTasks]);
+
+  /**
+   * Everything else the app knows about the grid's days: trips, meals,
+   * birthdays, project deadlines and completions (`calendarExtras.ts`).
+   *
+   * Built one day wider on each side than the grid, so the first and last
+   * rows can tell whether a trip band carries on past them. The meals come
+   * through the range read, never the loaded window alone, which is only the
+   * week Meal Plan last opened; `mealEntries` and `focusCount` aren't read,
+   * they're what tells the memo to read again.
+   */
+  const extras = useMemo(() => {
+    const wide = [addDays(days[0], -1), ...days, addDays(days[days.length - 1], 1)];
+    const meals = kitchenEnabled
+      ? entriesInRangeLive(dayKeyOf(wide[0]), dayKeyOf(wide[wide.length - 1]))
+      : [];
+    return buildDayExtras(wide, { trips, meals, people, projects, tasks: allTasks, dayResetTime });
+  }, [days, kitchenEnabled, entriesInRangeLive, mealEntries, focusCount, trips, people, projects, allTasks, dayResetTime]);
+  const selectedExtras = extras.get(selectedKey);
   const detail = useMemo(() => dayDetail(buckets.get(selectedKey), taskById), [buckets, selectedKey, taskById]);
   const summary = summarizeDay(detail);
   // Noon-anchored, never the key's midnight: under a non-midnight reset the
@@ -227,13 +256,7 @@ export function CalendarScreen() {
     return buildDayTimeline({ dayStart: selectedDayStart, tasks: dayRows(detail), events: dayEvents });
   }, [detail, selectedDayStart, dayEvents]);
 
-  // Through the live read, not `entries`: that holds only the week Meal Plan
-  // last loaded, so any other day drew no meals at all. `mealEntries` and
-  // `focusCount` aren't read; they're what tells the memo to read again.
-  const dayMeals = useMemo(
-    () => entriesForDayLive(selectedKey),
-    [entriesForDayLive, mealEntries, focusCount, selectedKey],
-  );
+  const dayMeals = selectedExtras?.meals ?? NO_MEALS;
 
 
 
@@ -315,10 +338,16 @@ export function CalendarScreen() {
   // ==== the selected day's empty state and the month's totals ====
   // A day holding an event or a meal is not an empty day, even with no task on
   // it, and one the calendar could not be read for has something to say too.
+  // Completed rows already on the day's lists (a task due and ticked today)
+  // aren't listed again.
+  const dayCompleted = completedRows(selectedExtras, dayRows(detail), taskById);
+  const monthEmpty = detail.isEmpty && !hasDayNotes(selectedExtras, true) && dayCompleted.length === 0;
   const dayEmpty = detail.isEmpty
     && dayTimeline.entries.length === 0
     && dayTimeline.allDay.length === 0
     && dayMeals.length === 0
+    && !hasDayNotes(selectedExtras, false)
+    && dayCompleted.length === 0
     && dayBusyKnown;
   const selectedDate = dayKeyToDate(selectedKey);
 
@@ -482,6 +511,134 @@ export function CalendarScreen() {
     );
   };
 
+  // The month as six rows of seven, so each row can carry its own trip band.
+  const gridRows = useMemo(
+    () => Array.from({ length: Math.ceil(days.length / 7) }, (_, i) => days.slice(i * 7, i * 7 + 7)),
+    [days],
+  );
+
+  /**
+   * The trips under one row of cells, a band per run of days with the trip's
+   * name on it, the way a multi-day event draws in a calendar app. Ends that
+   * carry on into the next or previous row are left square, so a trip across
+   * a weekend reads as one band broken by the row rather than two trips.
+   *
+   * Not tappable: the cells above it are what a tap is for, and the day's list
+   * names the trip with a link to its project.
+   */
+  const renderTripBands = (row: readonly Date[]) => {
+    const keys = row.map(dayKeyOf);
+    const lanes = tripBandLanes(
+      keys,
+      extras,
+      dayKeyOf(addDays(row[0], -1)),
+      dayKeyOf(addDays(row[row.length - 1], 1)),
+    );
+    if (lanes.length === 0) return null;
+    return (
+      <View pointerEvents="none" importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
+        {lanes.map((lane, i) => (
+          <View key={i} style={styles.tripLane}>
+            {lane.map(segment => (
+              <View
+                key={segment.projectId}
+                style={[
+                  styles.tripBand,
+                  {
+                    left: segment.startCol * CELL_SIZE + (segment.continuesBefore ? 0 : 3),
+                    width: segment.span * CELL_SIZE - (segment.continuesBefore ? 0 : 3) - (segment.continuesAfter ? 0 : 3),
+                  },
+                  segment.continuesBefore && styles.tripBandOpenStart,
+                  segment.continuesAfter && styles.tripBandOpenEnd,
+                ]}
+              >
+                <Ionicons name="airplane" size={10} color={colors.text} />
+                {/* One cell can't hold a name, only its first letters, so a
+                    one-day piece (usually a trip's tail spilling into the
+                    next row) is the plane alone. */}
+                {segment.span > 1 && (
+                  <Text style={styles.tripBandText} numberOfLines={1}>{segment.name}</Text>
+                )}
+              </View>
+            ))}
+          </View>
+        ))}
+      </View>
+    );
+  };
+
+  /**
+   * The day's "On this day" card: the trip you're on, the meals planned,
+   * whose birthday it is and which project is due. Facts about the day rather
+   * than work on it, so a card of plain lines rather than task rows. A line
+   * with somewhere to go (a project, a person) opens it.
+   *
+   * The day view passes `includeMeals: false`, since its timeline band already
+   * draws them.
+   */
+  const renderNotes = (dayExtras: DayExtras | undefined, includeMeals: boolean) => {
+    if (!dayExtras || !hasDayNotes(dayExtras, includeMeals)) return null;
+    const lines: { key: string; icon: React.ComponentProps<typeof Ionicons>['name']; text: string; onPress?: () => void; label?: string }[] = [
+      ...dayExtras.trips.map(t => ({
+        key: `trip-${t.projectId}`,
+        icon: 'airplane-outline' as const,
+        text: `Away: ${t.name}`,
+        onPress: () => navigation.navigate('ProjectDetail', { projectId: t.projectId }),
+        label: `Away: ${t.name}. Opens the project.`,
+      })),
+      ...(includeMeals ? dayExtras.meals : []).map(m => ({
+        key: `meal-${m.id}`,
+        icon: 'restaurant-outline' as const,
+        text: `${MEAL_SLOT_LABELS[m.slot]}: ${m.title}`,
+      })),
+      ...dayExtras.birthdays.map(b => ({
+        key: `bday-${b.personId}`,
+        icon: 'gift-outline' as const,
+        text: b.title,
+        onPress: () => navigation.navigate('PersonDetail', { personId: b.personId }),
+        label: `${b.title}. Opens their page.`,
+      })),
+      ...dayExtras.projectDeadlines.map(d => ({
+        key: `deadline-${d.projectId}`,
+        icon: 'flag-outline' as const,
+        text: `${d.name} deadline`,
+        onPress: () => navigation.navigate('ProjectDetail', { projectId: d.projectId }),
+        label: `${d.name} deadline. Opens the project.`,
+      })),
+    ];
+    return (
+      <View style={styles.section}>
+        <Text style={styles.sectionLabel}>On this day</Text>
+        <View style={styles.notesCard}>
+          {lines.map((line, i) => {
+            const body = (
+              <>
+                <Ionicons name={line.icon} size={16} color={colors.textSecondary} />
+                <Text style={styles.noteText} numberOfLines={1}>{line.text}</Text>
+                {line.onPress && <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />}
+              </>
+            );
+            const rowStyle = [styles.noteRow, i > 0 && styles.noteRowDivided];
+            return line.onPress ? (
+              <TouchableOpacity
+                key={line.key}
+                style={rowStyle}
+                activeOpacity={interaction.activeOpacity}
+                onPress={() => { haptics.tap(); line.onPress!(); }}
+                accessibilityRole="button"
+                accessibilityLabel={line.label}
+              >
+                {body}
+              </TouchableOpacity>
+            ) : (
+              <View key={line.key} style={rowStyle}>{body}</View>
+            );
+          })}
+        </View>
+      </View>
+    );
+  };
+
   const renderExpected = (expected: { taskId: string; title: string }[]) => {
     if (expected.length === 0) return null;
     return (
@@ -519,6 +676,32 @@ export function CalendarScreen() {
     const shown = new Set<string>();
     return weekDetails.map(({ day, key, detail: dayInfo }) => {
       const rows = dayRows(dayInfo);
+      const dayExtras = extras.get(key);
+      const completed = completedRows(dayExtras, rows, taskById);
+      const renderWeekRow = (task: Task) => {
+        const subs = subtasksOf(task.id);
+        const rowKey = `${key}:${task.id}`;
+        const elevated = expandedTaskId === rowKey;
+        const duplicate = shown.has(task.id);
+        shown.add(task.id);
+        return (
+          <View key={rowKey} style={elevated && styles.rowElevated}>
+            <TaskItem
+              task={task}
+              rowKey={rowKey}
+              duplicateRow={duplicate}
+              onPress={handleRowPress}
+              expanded={elevated}
+              onEdit={handleRowEdit}
+              subtaskCount={subs.length}
+              subtaskDoneCount={subs.filter(t => t.completed).length}
+              subtasks={subs}
+              onSubtaskDragStateChange={setDraggingSubtask}
+              showCategory
+            />
+          </View>
+        );
+      };
       const daySummary = summarizeDay(dayInfo);
       const dayLoad = describeDayLoad(dayLoads.get(key));
       const isToday = key === todayKey;
@@ -542,35 +725,19 @@ export function CalendarScreen() {
             {daySummary !== '' && <Text style={styles.detailSummary}>{daySummary}</Text>}
           </View>
           {dayLoad !== '' && <Text style={styles.detailLoad}>{dayLoad}</Text>}
-          {dayInfo.isEmpty ? (
+          {dayInfo.isEmpty && !hasDayNotes(dayExtras, true) && completed.length === 0 ? (
             <Text style={styles.weekDayEmpty}>Nothing on this day.</Text>
           ) : (
             <View style={styles.weekDayRows}>
-              {rows.map(task => {
-                const subs = subtasksOf(task.id);
-                const rowKey = `${key}:${task.id}`;
-                const elevated = expandedTaskId === rowKey;
-                const duplicate = shown.has(task.id);
-                shown.add(task.id);
-                return (
-                  <View key={rowKey} style={elevated && styles.rowElevated}>
-                    <TaskItem
-                      task={task}
-                      rowKey={rowKey}
-                      duplicateRow={duplicate}
-                      onPress={handleRowPress}
-                      expanded={elevated}
-                      onEdit={handleRowEdit}
-                      subtaskCount={subs.length}
-                      subtaskDoneCount={subs.filter(t => t.completed).length}
-                      subtasks={subs}
-                      onSubtaskDragStateChange={setDraggingSubtask}
-                      showCategory
-                    />
-                  </View>
-                );
-              })}
+              {renderNotes(dayExtras, true)}
+              {rows.map(renderWeekRow)}
               {renderExpected(dayInfo.expected)}
+              {completed.length > 0 && (
+                <>
+                  <Text style={[styles.sectionLabel, styles.weekCompletedLabel]}>Completed</Text>
+                  {completed.map(renderWeekRow)}
+                </>
+              )}
             </View>
           )}
         </View>
@@ -673,26 +840,33 @@ export function CalendarScreen() {
           ))}
         </View>
 
-        <View style={styles.grid}>
-          {days.map(day => {
-            const key = dayKeyOf(day);
-            const bucket = buckets.get(key);
-            return (
-              <DayCell
-                key={key}
-                dayKey={key}
-                day={day}
-                bucket={bucket}
-                weight={weightFor(dayLoads.get(key))}
-                inMonth={isSameMonth(day, displayMonth)}
-                isToday={key === todayKey}
-                isSelected={key === selectedKey}
-                colors={colors}
-                styles={styles}
-                onSelect={selectDay}
-              />
-            );
-          })}
+        <View>
+          {gridRows.map(row => (
+            <View key={dayKeyOf(row[0])}>
+              <View style={styles.gridRow}>
+                {row.map(day => {
+                  const key = dayKeyOf(day);
+                  return (
+                    <DayCell
+                      key={key}
+                      dayKey={key}
+                      day={day}
+                      bucket={buckets.get(key)}
+                      weight={weightFor(dayLoads.get(key))}
+                      hasMeal={(extras.get(key)?.meals.length ?? 0) > 0}
+                      inMonth={isSameMonth(day, displayMonth)}
+                      isToday={key === todayKey}
+                      isSelected={key === selectedKey}
+                      colors={colors}
+                      styles={styles}
+                      onSelect={selectDay}
+                    />
+                  );
+                })}
+              </View>
+              {renderTripBands(row)}
+            </View>
+          ))}
         </View>
       </View>
       )}
@@ -716,6 +890,7 @@ export function CalendarScreen() {
                 day={day}
                 bucket={buckets.get(key)}
                 weight={weightFor(dayLoads.get(key))}
+                hasMeal={(extras.get(key)?.meals.length ?? 0) > 0}
                 // A week is read whole: a day across the month line is not a
                 // neighbour's day here the way it is on the month grid.
                 inMonth
@@ -728,6 +903,7 @@ export function CalendarScreen() {
             );
           })}
         </View>
+        {renderTripBands(weekDays)}
       </View>
       )}
 
@@ -751,13 +927,13 @@ export function CalendarScreen() {
         style={[styles.detail, viewMode === 'week' && styles.weekList]}
         scrollEnabled={!draggingSubtask}
         contentContainerStyle={
-          viewMode !== 'week' && detail.isEmpty
+          viewMode !== 'week' && (viewMode === 'day' ? dayEmpty : monthEmpty)
             ? { flexGrow: 1, paddingBottom: tabBarHeight + spacing.xl }
             : { paddingBottom: tabBarHeight + spacing.xl }
         }
         showsVerticalScrollIndicator={false}
       >
-        {viewMode === 'week' ? renderWeek() : (viewMode === 'day' ? dayEmpty : detail.isEmpty) ? (
+        {viewMode === 'week' ? renderWeek() : (viewMode === 'day' ? dayEmpty : monthEmpty) ? (
           <EmptyState
             icon="calendar-clear-outline"
             title="Nothing on this day"
@@ -768,6 +944,7 @@ export function CalendarScreen() {
           />
         ) : (
           <>
+            {renderNotes(selectedExtras, viewMode !== 'day')}
             {viewMode === 'day' && (
               <>
                 <DayTimeline
@@ -788,6 +965,7 @@ export function CalendarScreen() {
             {viewMode === 'month' && renderRows('Deadline', detail.deadline)}
             {viewMode === 'month' && renderRows('Returning', detail.defer)}
             {renderExpected(detail.expected)}
+            {renderRows('Completed', dayCompleted)}
           </>
         )}
       </ScrollView>
@@ -859,12 +1037,14 @@ function dotColor(kind: DayMarkKind, colors: Colors): string {
  * Today.
  */
 const DayCell = React.memo(function DayCell({
-  dayKey, day, bucket, weight, inMonth, isToday, isSelected, colors, styles, onSelect,
+  dayKey, day, bucket, weight, hasMeal, inMonth, isToday, isSelected, colors, styles, onSelect,
 }: {
   dayKey: string;
   day: Date;
   bucket: DayBucket | undefined;
   weight: DayWeight | null;
+  /** A planned meal on the day: one more dot, after the task kinds. */
+  hasMeal: boolean;
   inMonth: boolean;
   isToday: boolean;
   isSelected: boolean;
@@ -881,7 +1061,7 @@ const DayCell = React.memo(function DayCell({
       onPress={onPress}
       accessibilityRole="button"
       accessibilityState={{ selected: isSelected }}
-      accessibilityLabel={cellLabel(day, bucket, weight)}
+      accessibilityLabel={cellLabel(day, bucket, weight, hasMeal)}
     >
       <View style={styles.inlineWrap}>
         <View style={styles.dayStack}>
@@ -903,26 +1083,18 @@ const DayCell = React.memo(function DayCell({
               carried would sit their circles a couple of points higher than
               their neighbours', and a grid is read by its rows. */}
           <View style={styles.weightSlot}>
-            {weight && (
-              weight === 'away' ? (
-                // Two segments with a gap, matching WhenPicker's cell exactly:
-                // one visual language for "what does this day already hold",
-                // and a run of them reads across the row as the stretch of days
-                // it is.
-                <View style={styles.weightAway}>
-                  <View style={styles.weightAwayDash} />
-                  <View style={styles.weightAwayDash} />
-                </View>
-              ) : (
-                <View style={[
-                  styles.weightBar,
-                  weight === 'full' ? styles.weightBarFull : styles.weightBarBusy,
-                ]} />
-              )
+            {/* An away day draws nothing here: the trip's named band under
+                the row says it, where WhenPicker's cell (no room for a band)
+                still uses its two dashes. */}
+            {weight && weight !== 'away' && (
+              <View style={[
+                styles.weightBar,
+                weight === 'full' ? styles.weightBarFull : styles.weightBarBusy,
+              ]} />
             )}
           </View>
         </View>
-        {dots.length > 0 && (
+        {(dots.length > 0 || hasMeal) && (
           <View style={styles.dotColumn}>
             {dots.map(dot => (
               <View
@@ -933,6 +1105,9 @@ const DayCell = React.memo(function DayCell({
                 ]}
               />
             ))}
+            {/* Green, the kitchen's colour, and always solid: a meal isn't
+                work, so it has no done or projected state to show. */}
+            {hasMeal && <View style={[styles.dot, { backgroundColor: colors.green }]} />}
           </View>
         )}
       </View>
@@ -957,11 +1132,11 @@ function dotStyle(state: DotState, color: string) {
   return { borderWidth: 1, borderColor: color };
 }
 
-function cellLabel(day: Date, bucket: DayBucket | undefined, weight: DayWeight | null): string {
+function cellLabel(day: Date, bucket: DayBucket | undefined, weight: DayWeight | null, hasMeal: boolean): string {
   const date = format(day, 'MMMM d');
   // The cue is drawn, so it has to be spoken — and it can be the only thing a
   // cell carries, since a day made heavy by meetings alone has no dots.
-  const suffix = weight ? `, ${describeDayWeight(weight)}` : '';
+  const suffix = (hasMeal ? ', meal planned' : '') + (weight ? `, ${describeDayWeight(weight)}` : '');
   if (!bucket || bucket.marks.length === 0) return `${date}${suffix}`;
   const parts = bucket.dots.map(dot => {
     const noun = dot.kind === 'due' ? 'due' : dot.kind === 'deadline' ? 'deadline' : 'returning';
@@ -1027,10 +1202,43 @@ function makeStyles(colors: Colors) {
       fontWeight: fontWeight.semibold,
       letterSpacing: 0.8,
     },
-    grid: {
+    gridRow: {
       flexDirection: 'row',
-      flexWrap: 'wrap',
-      height: CELL_HEIGHT * 6,
+      height: CELL_HEIGHT,
+    },
+    // A lane is positioned by its segments, which sit at their columns'
+    // offsets; the lane only reserves the height.
+    tripLane: {
+      height: TRIP_BAND_HEIGHT,
+      marginTop: TRIP_BAND_GAP,
+    },
+    // Neutral grey: being away is context for the day, not a kind of work, so
+    // it borrows none of the dots' hues. bgQuaternary rather than bgTertiary,
+    // which all but vanishes against the light theme's background.
+    tripBand: {
+      position: 'absolute',
+      top: 0,
+      height: TRIP_BAND_HEIGHT,
+      borderRadius: TRIP_BAND_HEIGHT / 2,
+      backgroundColor: colors.bgQuaternary,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      paddingHorizontal: spacing.xsm,
+    },
+    tripBandOpenStart: {
+      borderTopLeftRadius: 0,
+      borderBottomLeftRadius: 0,
+    },
+    tripBandOpenEnd: {
+      borderTopRightRadius: 0,
+      borderBottomRightRadius: 0,
+    },
+    tripBandText: {
+      flex: 1,
+      color: colors.text,
+      fontSize: font.xxs,
+      fontWeight: fontWeight.medium,
     },
     // One row of the month's cells, so the week reads as a slice of the grid.
     weekStrip: {
@@ -1083,17 +1291,6 @@ function makeStyles(colors: Colors) {
     weightBarFull: {
       width: 21,
       height: 3,
-      backgroundColor: colors.textSecondary,
-    },
-    weightAway: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 3,
-    },
-    weightAwayDash: {
-      width: 5,
-      height: 3,
-      borderRadius: 1.5,
       backgroundColor: colors.textSecondary,
     },
     dayCircleSelected: {
@@ -1207,6 +1404,30 @@ function makeStyles(colors: Colors) {
       textTransform: 'uppercase',
       marginBottom: spacing.xs,
       marginHorizontal: spacing.md,
+    },
+    notesCard: {
+      marginHorizontal: spacing.md,
+      backgroundColor: colors.bgSecondary,
+      borderRadius: radius.md,
+      paddingHorizontal: spacing.smd,
+    },
+    noteRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      paddingVertical: spacing.smd,
+    },
+    noteRowDivided: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.separator,
+    },
+    noteText: {
+      flex: 1,
+      color: colors.text,
+      fontSize: font.md,
+    },
+    weekCompletedLabel: {
+      marginTop: spacing.sm,
     },
     expectedCard: {
       marginHorizontal: spacing.md,
