@@ -1,6 +1,6 @@
 import type { Task } from '../types';
 import type { BusyEvent } from './calendarBusy';
-import { busyMinutesIn } from './calendarBusy';
+import { busyMinutesIn, hasWholeDayBlockIn } from './calendarBusy';
 import type { DayBucket } from './calendarMonth';
 import { dayKeyOf, dayKeyToDate, getDayStart } from './dateUtils';
 import { isAwayDay, type AwaySpan } from './awayDates';
@@ -117,6 +117,14 @@ export interface DayLoad {
   /** Meeting minutes on the day; 0 when unknown. */
   busyMinutes: number;
   /**
+   * An all-day event left busy covers the day (`blocksWholeDay`: a conference,
+   * "out of office"); false when unknown. Its own flag rather than minutes, for
+   * the same reason `away` is: nobody typed a duration, and every reader that
+   * sums `rankedMinutes` must go on reading the number it always did. It
+   * makes the day's cue `full` all the same, since that is what the user said.
+   */
+  busyAllDay: boolean;
+  /**
    * Everything that will occupy the day, in minutes, with a stand-in for what
    * isn't estimated. **For ranking only** — `weightFor` reads it for a day's
    * cue, and `lookAhead.tightDeadlines` sums it across a span to compare
@@ -179,6 +187,7 @@ const emptyLoad = (key: string): DayLoad => ({
   projected: 0,
   busyKnown: false,
   busyMinutes: 0,
+  busyAllDay: false,
   rankedMinutes: 0,
   away: false,
 });
@@ -255,6 +264,7 @@ export function buildDayLoads(
       if (dayStart >= busyWindow.start && dayEnd <= busyWindow.end) {
         load.busyKnown = true;
         load.busyMinutes = busyMinutesIn(busyEvents, dayStart, dayEnd);
+        load.busyAllDay = hasWholeDayBlockIn(busyEvents, dayStart, dayEnd);
       }
     }
 
@@ -279,7 +289,7 @@ export function weightFor(load: DayLoad | undefined): DayWeight | null {
   // Ahead of both minute thresholds: a day inside a trip may also be busy, and
   // "you are away" is the more useful of the two things to say about it.
   if (load.away) return 'away';
-  if (load.rankedMinutes >= FULL_DAY_MINUTES) return 'full';
+  if (load.busyAllDay || load.rankedMinutes >= FULL_DAY_MINUTES) return 'full';
   if (load.rankedMinutes >= BUSY_DAY_MINUTES) return 'busy';
   return null;
 }
@@ -323,6 +333,7 @@ export function describeDayLoad(load: DayLoad | undefined): string {
     const total = formatDuration(load.taskMinutes);
     parts.push(partial ? `at least ${total}` : `~${total}`);
   }
+  if (load.busyAllDay) parts.push('busy all day');
   if (load.busyMinutes > 0) parts.push(`${formatDuration(load.busyMinutes)} of events`);
 
   return parts.join(' · ');

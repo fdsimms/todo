@@ -38,7 +38,7 @@ import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { computeSnoozeSuggestion } from '../utils/snoozeEngine';
 import { buildDayBuckets } from '../utils/calendarMonth';
 import { assumedMinutesFor, buildDayLoads, describeDayWeight, weightFor, type DayLoad } from '../utils/dayLoad';
-import { awaySpanOf, type AwaySpan } from '../utils/awayDates';
+import { liveAwaySpans } from '../utils/awayDates';
 import { useProjectStore } from '../store/useProjectStore';
 import { useShallow } from 'zustand/react/shallow';
 import { shouldNudgePostpone } from '../utils/postpone';
@@ -336,12 +336,7 @@ export function WhenPicker({
    * a picker showing last month is entitled to say you were away.
    */
   const awaySpans = useMemo(
-    () => (visible
-      ? projects
-          .filter(p => !p.archived && !p.completed)
-          .map(p => awaySpanOf(p, dayResetTime))
-          .filter((span): span is AwaySpan => span !== null)
-      : []),
+    () => (visible ? liveAwaySpans(projects, dayResetTime) : []),
     [visible, projects, dayResetTime],
   );
 
@@ -468,7 +463,7 @@ export function WhenPicker({
         estimatedMinutes: taskEstimatedMinutes ?? null,
       };
       const busyEvents = calendarReadEnabled && calendarLoaded ? calendarEvents : [];
-      const res = computeSnoozeSuggestion(draftTask, tasks, busyEvents);
+      const res = computeSnoozeSuggestion(draftTask, tasks, busyEvents, awaySpans);
       setSuggestion({ key: dayKeyOf(res.date), reason: res.reason });
       setDisplayMonth(startOfMonth(res.date));
       haptics.success();

@@ -2,6 +2,7 @@ import type { Task } from '../types';
 import { computeSnoozeSuggestion } from './snoozeEngine';
 import { estimatedMinutesFor } from './effort';
 import { getLogicalTomorrow } from './dateUtils';
+import type { AwaySpan } from './awayDates';
 import type { BusyEvent } from './calendarBusy';
 import { useSettingsStore } from '../store/useSettingsStore';
 import {
@@ -102,6 +103,8 @@ export function buildDeloadPlan(
   // Forwarded straight to computeSnoozeSuggestion — see its own doc comment.
   // Omitted (not just empty) is the caller saying "don't factor calendar in".
   busyEvents?: readonly BusyEvent[],
+  // Also forwarded: days inside a trip rank last (snoozeEngine's AWAY_PENALTY).
+  awaySpans: readonly AwaySpan[] = [],
 ): DeloadPlan {
   const resetTime = dayResetTime ?? useSettingsStore.getState().dayResetTime;
   const movable = todaysTasks.filter(t => !t.parentId && !t.completed && !t.archived);
@@ -153,7 +156,7 @@ export function buildDeloadPlan(
     }
 
     const tomorrow: DeloadDestination = { date: tomorrowDate, dayLabel: 'Tomorrow', reason: null };
-    const pick = computeSnoozeSuggestion(task, working, busyEvents ?? []);
+    const pick = computeSnoozeSuggestion(task, working, busyEvents ?? [], awaySpans);
     // A pick past the deadline drops only that option — tomorrow still stands,
     // and the sheet lists the row under whichever mode can take it.
     const suggested: DeloadDestination | null = wouldMissDeadline(task, pick.date, resetTime)
