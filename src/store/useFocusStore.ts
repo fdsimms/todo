@@ -21,7 +21,7 @@ import {
   resumeFocusSession,
   type FocusPlanOptions,
 } from '../utils/focusPlan';
-import { cancelFocusStepAlarm, scheduleFocusStepAlarm } from '../utils/notifications';
+import { cancelFocusMeetingHeadsUp, cancelFocusStepAlarm, scheduleFocusMeetingHeadsUp, scheduleFocusStepAlarm } from '../utils/notifications';
 
 /**
  * The one focus session in flight.
@@ -119,6 +119,7 @@ function persist(session: FocusSession | null, set: (s: { session: FocusSession 
   else dbSaveFocusSession(session);
   set({ session });
   void scheduleFocusStepAlarm(session);
+  void scheduleFocusMeetingHeadsUp(session);
 }
 
 /**
@@ -157,6 +158,7 @@ export const useFocusStore = create<FocusStore>((set, get) => ({
     set({ session: stored, history: dbGetFocusSessionLog(), initialized: true });
     if (stored === null) {
       void cancelFocusStepAlarm();
+      void cancelFocusMeetingHeadsUp();
       return;
     }
     // Reconciled rather than trusted: the app may have been shut for a day,
@@ -165,7 +167,10 @@ export const useFocusStore = create<FocusStore>((set, get) => ({
     // syncWithTasks only writes when something changed, so a session that came
     // back intact still needs its alarm put back — the pending notification
     // did not survive whatever ended the last run.
-    if (get().session === stored) void scheduleFocusStepAlarm(stored);
+    if (get().session === stored) {
+      void scheduleFocusStepAlarm(stored);
+      void scheduleFocusMeetingHeadsUp(stored);
+    }
   },
 
   startSession(tasks, options, hideTimers = false) {

@@ -21,7 +21,8 @@ import { isAlarmKitAvailable, requestAlarmAuthorization, scheduleNativeAlarm, ca
 import { ALARM_MAX_RINGS, alarmChainIds, alarmChainTimes, stepTimerAlarmUuid, taskAlarmUuid } from './alarmChain';
 import { isDemoModeActive } from './demoState';
 import { quotaRunSpan, quotaDueTimesAfter } from './quotaSchedule';
-import { getDayStart } from './dateUtils';
+import { formatTimeOfDay, getDayStart } from './dateUtils';
+import { focusMeetingHeadsUp } from './focusWindow';
 import { resolveActiveTrip } from './activeTrip';
 import type { Shop } from '../types';
 import type { EventReminder } from './eventReminders';
@@ -790,6 +791,49 @@ export async function scheduleFocusStepAlarm(session: FocusSession | null): Prom
 
 export async function cancelFocusStepAlarm(): Promise<void> {
   await Notifications.cancelScheduledNotificationAsync(FOCUS_STEP_ALARM_ID).catch(() => {});
+}
+
+// One id for the same reason the step chime has one: one session, one next
+// meeting, and rescheduling replaces rather than stacks.
+const FOCUS_MEETING_ID = 'focus-meeting';
+
+/**
+ * A heads-up shortly before the next meeting while a focus session is on
+ * (`focusMeetingHeadsUp`), paused or running, since a paused session is still
+ * one you mean to get back to. Rescheduled on every session write, beside the
+ * step chime, and a null or finished session cancels it.
+ *
+ * Gated like every calendar reader: reading on, and the last read succeeded.
+ * Suppressed inside quiet hours, as the step chime is.
+ */
+export async function scheduleFocusMeetingHeadsUp(session: FocusSession | null): Promise<void> {
+  if (isDemoModeActive()) return;
+  await cancelFocusMeetingHeadsUp();
+  if (session === null || isFocusSessionFinished(session)) return;
+  const { calendarReadEnabled, quietHoursStart, quietHoursEnd, use24HourTime } = useSettingsStore.getState();
+  if (!calendarReadEnabled) return;
+  const { events, loaded } = useCalendarStore.getState();
+  if (!loaded) return;
+
+  const headsUp = focusMeetingHeadsUp(events, new Date());
+  if (!headsUp || isWithinQuietHours(headsUp.at, quietHoursStart, quietHoursEnd)) return;
+
+  const time = formatTimeOfDay(headsUp.startsAt, use24HourTime);
+  await Notifications.scheduleNotificationAsync({
+    identifier: FOCUS_MEETING_ID,
+    content: {
+      title: 'Meeting soon',
+      body: headsUp.title ? `"${headsUp.title}" starts at ${time}.` : `A calendar event starts at ${time}.`,
+      data: { focusSessionId: session.id },
+      sound: true,
+      interruptionLevel: REMINDER_INTERRUPTION_LEVEL,
+    },
+    trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: headsUp.at },
+  });
+}
+
+export async function cancelFocusMeetingHeadsUp(): Promise<void> {
+  await Notifications.cancelScheduledNotificationAsync(FOCUS_MEETING_ID).catch(() => {});
 }
 
 // ─── Daily-target pace nudges ────────────────────────────────────────────────
