@@ -1,4 +1,4 @@
-import { meetingSignature, nudgeReminderPastMeeting } from '../utils/reminderNudge';
+import { meetingAtStart, meetingSignature, nudgeReminderPastMeeting } from '../utils/reminderNudge';
 import type { BusyEvent } from '../utils/calendarBusy';
 
 const DAY_START = new Date('2026-08-12T00:00:00Z');
@@ -127,5 +127,16 @@ describe('meetingSignature', () => {
       ev(at(11), at(12), { availability: 'free' }),
       ev(at(12), at(13), { status: 'canceled' }),
     ])).toBe(base);
+
+describe('meetingAtStart', () => {
+  it('names the meeting a start time falls inside, and when it ends', () => {
+    const review = ev(at(13, 30), at(15), { title: 'Design review' });
+    expect(meetingAtStart([review], atDate(14))).toEqual({ title: 'Design review', until: atDate(15) });
+  });
+
+  it('is null for a start time between meetings, or at the moment one ends', () => {
+    const review = ev(at(13, 30), at(15));
+    expect(meetingAtStart([review], atDate(15))).toBeNull();
+    expect(meetingAtStart([review], atDate(9))).toBeNull();
   });
 });
