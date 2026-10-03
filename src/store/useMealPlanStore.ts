@@ -234,6 +234,14 @@ interface MealPlanStore extends UndoHistoryActions {
   entriesForDayLive: (dayKey: string) => MealPlanEntry[];
 
   /**
+   * Every entry across an inclusive day-key range, read the same way: from the
+   * loaded window when it holds the whole range, from SQLite otherwise. Never
+   * replaces the window, which is Meal Plan's own. The Calendar's grid is the
+   * caller, asking about six weeks at once.
+   */
+  entriesInRangeLive: (startKey: string, endKey: string) => MealPlanEntry[];
+
+  /**
    * One entry by id, read through the loaded window and SQLite when it isn't
    * there — `resolveEntry` (internal, below), exposed for the one caller
    * outside this store with the same cross-screen shape: a meal task's recipe
@@ -820,6 +828,14 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
       ? entries
       : dbGetMealPlanEntries(dayKey, dayKey);
     return entriesForDay(source, dayKey);
+  },
+
+  entriesInRangeLive(startKey, endKey) {
+    const { entries, rangeStart, rangeEnd } = get();
+    if (rangeStart && rangeEnd && isKeyInRange(startKey, rangeStart, rangeEnd) && isKeyInRange(endKey, rangeStart, rangeEnd)) {
+      return entries.filter(e => isKeyInRange(e.date, startKey, endKey));
+    }
+    return sortMealEntries(dbGetMealPlanEntries(startKey, endKey));
   },
 
   entryById(id) {

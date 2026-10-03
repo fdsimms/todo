@@ -26,6 +26,7 @@ import {
 } from '../utils/projectPull';
 import { useTaskStore } from '../store/useTaskStore';
 import { useTasksWhileOpen } from '../hooks/useTasksWhileOpen';
+import { useCalendarStore } from '../store/useCalendarStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { liveGeneratedTask } from '../utils/generatedTasks';
@@ -102,6 +103,12 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, landOn
   const setVacationMode = useSettingsStore(s => s.setVacationMode);
   const completeTask = useTaskStore(s => s.completeTask);
   const updateProject = useProjectStore(s => s.updateProject);
+  const calendarReadEnabled = useSettingsStore(s => s.calendarReadEnabled);
+  const calendarEvents = useCalendarStore(s => s.events);
+  const calendarLoaded = useCalendarStore(s => s.loaded);
+  // Meetings weigh on the days a pull can land on, the same gate DeloadSheet
+  // applies before handing them to the same engine.
+  const busyEvents = calendarReadEnabled && calendarLoaded ? calendarEvents : undefined;
 
   // The one review task this opening is answering, when it's scoped to a
   // single project — i.e. opened from that project's own "Review X" task
@@ -158,7 +165,7 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, landOn
   const showAllProjects = () => {
     haptics.tap();
     animateLayout();
-    const next = buildProjectPullPlan(projects, allTasks, todaysTasks, scopeProjectIds, landOnDayKey, Number.MAX_SAFE_INTEGER);
+    const next = buildProjectPullPlan(projects, allTasks, todaysTasks, scopeProjectIds, landOnDayKey, Number.MAX_SAFE_INTEGER, busyEvents);
     setLimit(Number.MAX_SAFE_INTEGER);
     setPlan(next);
     setSelectedIds(initialSelectedIds(next));
@@ -167,7 +174,7 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, landOn
   useEffect(() => {
     if (!visible) return;
     setLimit(MAX_PULLED_PROJECTS);
-    const next = buildProjectPullPlan(projects, allTasks, todaysTasks, scopeProjectIds, landOnDayKey, limit);
+    const next = buildProjectPullPlan(projects, allTasks, todaysTasks, scopeProjectIds, landOnDayKey, limit, busyEvents);
     setPlan(next);
     setSelectedIds(initialSelectedIds(next));
     setCandidateIndex({});
@@ -231,7 +238,7 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, landOn
     const override = overrides[task.id];
     if (override) return { date: override, dayLabel: null, reason: 'moved by hand' };
     if (task.id === p.candidates[0].id) return p.suggestion;
-    return suggestPullDate(task, allTasks, todaysTasks, p.quietDays, landOnDayKey);
+    return suggestPullDate(task, allTasks, todaysTasks, p.quietDays, landOnDayKey, busyEvents);
   };
 
   const toggle = (taskId: string) => {
@@ -327,7 +334,7 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, landOn
     haptics.tap();
     forgivVacationStreaks();
     setVacationMode(false);
-    const next = buildProjectPullPlan(projects, allTasks, todaysTasks, scopeProjectIds, landOnDayKey, limit);
+    const next = buildProjectPullPlan(projects, allTasks, todaysTasks, scopeProjectIds, landOnDayKey, limit, busyEvents);
     setPlan(next);
     setSelectedIds(initialSelectedIds(next));
   };
