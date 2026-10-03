@@ -24,7 +24,6 @@ import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useSettingsStore, type WeekStart } from '../store/useSettingsStore';
 import { supplyReorderTitle } from './supply';
-import { nudgeFieldsFor } from './nudgeCadence';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { useFocusStore } from '../store/useFocusStore';
 import { useSharedLinkStore } from '../store/useSharedLinkStore';
@@ -1090,14 +1089,10 @@ export function seedDemoData(): void {
   // the demo rather than only the behaviour — a list drawn as a project is a
   // feature the demo says the app doesn't have.
   //
-  // Set to Never below, so it never trips the gone-quiet nudge or shows up in
-  // "Pull from projects". See Project.nudgeOptIn.
+  // Being a list makes it ongoing and never nudged (see projectKind.ts), so it
+  // never offers to mark itself complete or shows up in "Pull from projects".
   const giftIdeas = createProject('Gift ideas', { kind: 'list' });
-  // A running list nobody expects to finish — see Project.ongoing. Never
-  // offers to mark itself complete, however many ideas on it get used.
-  // Set to Never by hand: a new project starts at "When I ask", and a list of
-  // gift ideas is exactly the kind nobody wants in the Pull sheet.
-  updateProject(giftIdeas.id, { category: 'Ideas', ongoing: true, ...nudgeFieldsFor('never', 0) });
+  updateProject(giftIdeas.id, { category: 'Ideas' });
   ['Something for Mom\'s birthday', 'Housewarming idea for the Chens', 'Stocking stuffers'].forEach(title => {
     const t = addTask({ title });
     addExistingToProject(t.id, giftIdeas.id);

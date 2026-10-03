@@ -25,7 +25,6 @@ import { describeProjectActivity, overdueRoutines, projectActivity, projectCardC
 import { nextPullCandidate } from '../utils/projectPull';
 import { isPausedOn } from '../utils/projectPause';
 import { ProjectPullSheet } from '../components/ProjectPullSheet';
-import { LIST_PROJECT_FIELDS } from '../components/QuickAddProjectModal';
 import { LookAheadSheet } from '../components/LookAheadSheet';
 import { LinkedText } from '../components/LinkedText';
 import { format } from 'date-fns/format';
@@ -151,9 +150,11 @@ const ADD_MENU_ITEMS: FabMenuItem[] = [
 // Template is offered after all: a packing template applied to a packing list
 // is exactly a line-per-item list, and leaving it out meant the only place to
 // apply one was a project that wasn't a list.
+//
+// Track replies is left out: it adds a task per person, waiting on each, which
+// is follow-up work with a date to chase, not a line on a list.
 const LIST_ADD_MENU_ITEMS: FabMenuItem[] = [
   { key: 'existing', label: 'Add existing task', icon: 'albums-outline' },
-  { key: 'replies', label: 'Track replies', icon: 'people-outline' },
   { key: 'stack', label: 'New section', icon: 'layers' },
   { key: 'template', label: 'Template', icon: 'copy' },
   { key: 'new', label: 'New item', icon: 'checkbox' },
@@ -163,15 +164,17 @@ const LIST_ADD_MENU_ITEMS: FabMenuItem[] = [
 // shape as Today's and Projects' own add buttons.
 function AddProjectTaskFabWithDropLabel({
   channel,
+  isList,
   ...props
 }: {
   channel: FabIntentChannel;
+  isList: boolean;
 } & Omit<React.ComponentProps<typeof FabMenu>, 'dragLabel'>) {
   const label = useFabIntentSelector(channel, intent => {
     switch (intent?.kind) {
       case 'cancel': return 'Cancel';
       case 'joinGroup': return `Add to ${intent.groupTitle.trim() || 'section'}`;
-      case 'insert': return 'New task here';
+      case 'insert': return isList ? 'New item here' : 'New task here';
       default: return null;
     }
   });
@@ -300,6 +303,7 @@ export function ProjectDetailScreen() {
   const bulkRemoveFromProject = useTaskStore(s => s.bulkRemoveFromProject);
   const bulkMoveToProject = useTaskStore(s => s.bulkMoveToProject);
   const bulkUncompleteTasks = useTaskStore(s => s.bulkUncompleteTasks);
+  const deleteCheckedListItems = useTaskStore(s => s.deleteCheckedListItems);
   const uncompleteProject = useTaskStore(s => s.uncompleteProject);
   const unarchiveProject = useTaskStore(s => s.unarchiveProject);
   const reorderGroupChildren = useTaskStore(s => s.reorderGroupChildren);
@@ -1217,7 +1221,10 @@ export function ProjectDetailScreen() {
         // blank fields — the task still has the field, and the editor still
         // offers it, for the line that turns out to be a real errand.
         // A checklist section's lines are the same: checked off, not dated.
-        showDate={!isList && !checklistSectionIds.has(task.groupId ?? '')}
+        // A list row has no date to show, unless an item came in carrying one
+        // (Add existing task, Move to project, a template). That item is on
+        // Today too, so the row says why rather than hiding it.
+        showDate={(!isList || !!task.dueDate) && !checklistSectionIds.has(task.groupId ?? '')}
         showPin={false}
         highlighted={task.id === flashTaskId}
         listRow={isList || checklistSectionIds.has(task.groupId ?? '')}
@@ -1474,30 +1481,19 @@ export function ProjectDetailScreen() {
           actions={
             <View style={styles.detailHeaderActions}>
               {/*
-                Presentation only — see Project.kind. Same shape as Recipes'
-                own grid-outline toggle in its header: an icon button that
-                flips a display switch right where its effect shows, rather
-                than a setting buried in the full editor.
+                The kind, right where its effect shows. Same shape as Recipes'
+                own grid-outline toggle in its header. The editor has the same
+                choice with its explanation; this is the quick way.
               */}
               {!!project && (
                 <TouchableOpacity
                   onPress={() => {
                     haptics.tap();
-                    if (isList) { updateProject(project.id, { kind: 'project' }); return; }
-                    updateProject(project.id, { kind: 'list' });
-                    // A list usually has no finish line and nothing to pull,
-                    // and without asking it kept a progress bar, a "Mark
-                    // complete" banner and a place in Pull from projects until
-                    // the right two settings were found in the editor.
-                    if (project.ongoing && !project.nudgeOptIn) return;
-                    Alert.alert(
-                      'Make it a running list?',
-                      "It won't offer to be marked complete, and won't come up in Pull from projects. You can change either in the editor.",
-                      [
-                        { text: 'Just show as a list', style: 'cancel' },
-                        { text: 'Running list', onPress: () => updateProject(project.id, LIST_PROJECT_FIELDS) },
-                      ],
-                    );
+                    // The store brings the kind's own defaults along (a list
+                    // never finishes and is never pulled; a project gets both
+                    // back), so either direction lands where creating that
+                    // kind fresh would. See kindSwitchFields.
+                    updateProject(project.id, { kind: isList ? 'project' : 'list' });
                   }}
                   hitSlop={8}
                   accessibilityRole="switch"
@@ -1533,7 +1529,7 @@ export function ProjectDetailScreen() {
                   onPress={() => { haptics.tap(); setSuggestionsVisible(true); }}
                   hitSlop={8}
                   accessibilityRole="button"
-                  accessibilityLabel="Suggest tasks with AI"
+                  accessibilityLabel={isList ? 'Suggest items with AI' : 'Suggest tasks with AI'}
                 >
                   <Ionicons name="sparkles-outline" size={20} color={colors.purple} />
                 </TouchableOpacity>
@@ -1553,14 +1549,14 @@ export function ProjectDetailScreen() {
 
         {allDone && !completeOfferDismissed && (
           <OfferBanner
-            lead="Every task in this project"
-            rest="is complete."
+            lead={isList ? 'Every item on this list' : 'Every task in this project'}
+            rest={isList ? 'is checked.' : 'is complete.'}
             actionLabel="Mark complete"
             onAction={handleMarkComplete}
             onDismiss={() => setCompleteOfferDismissed(true)}
-            accessibilityLabel="Every task in this project is complete"
+            accessibilityLabel={isList ? 'Every item on this list is checked' : 'Every task in this project is complete'}
             actionAccessibilityLabel={`Mark ${project?.title ?? 'this project'} complete`}
-            dismissAccessibilityLabel="Dismiss project complete notice"
+            dismissAccessibilityLabel={isList ? 'Dismiss list complete notice' : 'Dismiss project complete notice'}
           />
         )}
 
@@ -2152,6 +2148,34 @@ export function ProjectDetailScreen() {
                           }}
                           accessibilityLabel={`Uncheck all ${completedProjectTasks.length} items`}
                         />
+                        {/* Checked items on a list are never purged on their
+                            own (see retention.ts), so this is how they go. */}
+                        <InlineAction
+                          icon="trash-outline"
+                          label="Delete checked"
+                          variant="neutral"
+                          onPress={() => {
+                            haptics.tap();
+                            const n = completedProjectTasks.length;
+                            Alert.alert(
+                              `Delete ${n} checked item${n === 1 ? '' : 's'}?`,
+                              'They are removed from this list and from the Logbook.',
+                              [
+                                { text: 'Cancel', style: 'cancel' },
+                                {
+                                  text: 'Delete',
+                                  style: 'destructive',
+                                  onPress: () => {
+                                    if (!project) return;
+                                    animateLayout();
+                                    deleteCheckedListItems(project.id);
+                                  },
+                                },
+                              ],
+                            );
+                          }}
+                          accessibilityLabel={`Delete all ${completedProjectTasks.length} checked items`}
+                        />
                       </View>
                     )}
                     {completedShown && completedProjectTasks.map(task => {
@@ -2176,7 +2200,7 @@ export function ProjectDetailScreen() {
                           // finished lines don't grow the chips its open ones
                           // leave out.
                           showCategory={!isList}
-                          showDate={!isList}
+                          showDate={!isList || !!task.dueDate}
                           showGroup
                           showPin={false}
                           listRow={isList}
@@ -2330,6 +2354,7 @@ export function ProjectDetailScreen() {
 
         {!selectionMode && (
           <AddProjectTaskFabWithDropLabel
+            isList={isList}
             channel={fabIntentChannel}
             items={addMenuItems}
             onSelect={handleAddMenuSelect}
@@ -2337,7 +2362,7 @@ export function ProjectDetailScreen() {
             accessibilityLabel={isList ? 'Add to this list' : 'Add task to project'}
             drag={fabDrag}
             dragHint={isList
-              ? 'Drag onto the list to add a line at that spot. Drop it on a section to add it there, or back on the button to cancel.'
+              ? 'Drag onto the list to add an item at that spot. Drop it on a section to add it there, or back on the button to cancel.'
               : 'Drag onto the list to add a task at that spot. Drop it on a section to add it there, or back on the button to cancel.'}
           />
         )}
@@ -2392,6 +2417,7 @@ export function ProjectDetailScreen() {
         {templateAppliedCount !== null && (
           <TemplateAppliedToast
             count={templateAppliedCount}
+            noun={isList ? 'item' : 'task'}
             bottom={insets.bottom + spacing.xl + FAB_SIZE + spacing.md}
             onDismiss={() => setTemplateAppliedCount(null)}
           />
@@ -2570,7 +2596,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   uncheckAllRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     justifyContent: 'center',
+    gap: spacing.sm,
     paddingBottom: spacing.sm,
   },
   pickerMore: {

@@ -465,7 +465,7 @@ file: the two maps are indexes, not write-ups.
 | exporting or restoring a backup | `src/utils/backup.ts` + `src/utils/backupFile.ts` |
 | writing tasks to the system calendar | `src/utils/calendarSync.ts` (+ `deadlineCalendarSync.ts`, `mealCalendarSync.ts`). Meal and deadline events go through `writeAllDayEvent` (`src/utils/calendarEventLink.ts`) and deletes through `deleteLinkedEvent`, both of which keep and fall back to the calendar server's id |
 | reading free/busy out of the system calendar | `src/utils/calendarBusy.ts` + `src/store/useCalendarStore.ts` |
-| a running list of things with no date (doctor questions, a wish list) | `Project.kind` in `src/types/index.ts` — a project drawn as a list; the members are ordinary undated tasks |
+| a running list of things with no date (doctor questions, a wish list) | `Project.kind` in `src/types/index.ts` + `src/utils/projectKind.ts` — see `docs/arch/lists.md`. A project drawn as a list; the members are ordinary undated tasks |
 | pulling tasks out of a project | `src/utils/projectPull.ts` |
 | what a task is waiting on, and what it blocks | `src/utils/blocking.ts` + `src/utils/blockerRegistry.ts`. A task can wait on several, so **read blockers only through `blockerIdsOf` / `liveBlockersOf` / `isBlocked`, and write them only through `blockerFields`**: `blockedById` alone is just the first, and a finished blocker holds nothing |
 | how loaded a day is, and lightening an overloaded one | `src/utils/dayLoad.ts` + `src/utils/deloadPlan.ts` |
@@ -628,6 +628,7 @@ decided, and the design system every screen is built from. Individual features a
 | `docs/arch/focus-sessions.md` | Focus sessions: the plan, its breaks, and why a step that runs out waits |
 | `docs/arch/reminders-import.md` | Apple Reminders import, and the data it deletes elsewhere |
 | `docs/arch/app-lock.md` | The Face ID gate and the API key in the keychain |
+| `docs/arch/lists.md` | Lists: a project drawn as a running list, and what the kind does and doesn't change |
 | `docs/arch/people.md` | The people layer: why it never scores or ranks anybody, and how birthdays work |
 | `docs/arch/mood-log.md` | The mood/symptom log, what its insights may claim, and the nudge's three rules |
 | `docs/arch/health-data.md` | Reading Apple Health: why nothing is stored, and why a refusal is invisible |

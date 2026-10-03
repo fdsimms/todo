@@ -848,21 +848,61 @@ describe('kind', () => {
     expect(dbInsertProject).toHaveBeenCalledWith(expect.objectContaining({ kind: 'project' }));
   });
 
-  it('creates a list when asked', () => {
+  // Whichever caller makes it: a Reminders capture filing and the demo seed
+  // both pass only the kind, and used to get a list with a progress bar and a
+  // place in Pull from projects.
+  it('creates a list when asked, with the list defaults', () => {
     useProjectStore.setState({ projects: [] });
     const project = useProjectStore.getState().createProject('Questions for Dr. Okafor', { kind: 'list' });
     expect(project.kind).toBe('list');
+    expect(project.ongoing).toBe(true);
+    expect(nudgeModeOf(project)).toBe('never');
   });
 
   // The escape hatch for a project that turned out to be a list, or the
   // reverse — otherwise the only way across is delete and retype, which loses
-  // every item. Presentation only, so nothing about the members changes.
+  // every item. Nothing about the members changes.
   it('switches an existing project between the two', () => {
     useProjectStore.setState({ projects: [makeProject({ id: 'p1', kind: 'project' })] });
     useProjectStore.getState().updateProject('p1', { kind: 'list' });
     expect(useProjectStore.getState().getProjectById('p1')?.kind).toBe('list');
     useProjectStore.getState().updateProject('p1', { kind: 'project' });
     expect(useProjectStore.getState().getProjectById('p1')?.kind).toBe('project');
+  });
+
+  it('brings each kind\'s defaults along when switching, both ways', () => {
+    useSettingsStore.setState({ defaultProjectNudgeCadenceDays: 0 });
+    useProjectStore.setState({
+      projects: [makeProject({ id: 'p1', kind: 'project', ongoing: false, nudgeOptIn: true, nudgeCadenceDays: 0 })],
+    });
+    useProjectStore.getState().updateProject('p1', { kind: 'list' });
+    let p = useProjectStore.getState().getProjectById('p1')!;
+    expect(p.ongoing).toBe(true);
+    expect(nudgeModeOf(p)).toBe('never');
+    // Back to a project: a finish line again, and the Settings default for
+    // nudges, rather than a project that silently can't finish.
+    useProjectStore.getState().updateProject('p1', { kind: 'project' });
+    p = useProjectStore.getState().getProjectById('p1')!;
+    expect(p.ongoing).toBe(false);
+    expect(nudgeModeOf(p)).toBe('on-ask');
+  });
+
+  it('lets a patch that names the fields keep them', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1', kind: 'project', ongoing: false })] });
+    useProjectStore.getState().updateProject('p1', { kind: 'list', ongoing: false });
+    const p = useProjectStore.getState().getProjectById('p1')!;
+    expect(p.ongoing).toBe(false);
+    expect(nudgeModeOf(p)).toBe('never');
+  });
+
+  it('leaves the defaults alone on an edit that keeps the kind', () => {
+    useProjectStore.setState({
+      projects: [makeProject({ id: 'p1', kind: 'list', ongoing: false, nudgeOptIn: true, nudgeCadenceDays: 7 })],
+    });
+    useProjectStore.getState().updateProject('p1', { kind: 'list', title: 'Renamed' });
+    const p = useProjectStore.getState().getProjectById('p1')!;
+    expect(p.ongoing).toBe(false);
+    expect(p.nudgeCadenceDays).toBe(7);
   });
 
   // A list is an ordinary project in every respect that isn't drawing: its

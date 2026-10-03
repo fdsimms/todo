@@ -115,7 +115,9 @@ export function ProjectTaskSuggestionsSheet({
     dbTransaction(() => {
       suggestions.forEach((s, i) => {
         if (!accepted.has(i)) return;
-        addTask({ title: s.title, notes: s.notes, projectId }, undefined, { skipTitleRules: isList });
+        // On a list, the same two opt-outs its own add field passes: a
+        // category would put the item under a header on Today.
+        addTask({ title: s.title, notes: s.notes, projectId }, undefined, { skipTitleRules: isList, skipCategoryDefault: isList });
       });
     });
     haptics.success();
@@ -149,7 +151,7 @@ export function ProjectTaskSuggestionsSheet({
     >
       <View style={styles.root}>
         <SheetHeader
-          title="Suggested tasks"
+          title={isList ? 'Suggested items' : 'Suggested tasks'}
           icon="sparkles"
           left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} />}
           right={
@@ -164,7 +166,7 @@ export function ProjectTaskSuggestionsSheet({
         {loading ? (
           <View style={styles.centered}>
             <ActivityIndicator size="large" color={colors.purple} />
-            <Text style={styles.loadingText}>Generating tasks for “{projectTitle}”…</Text>
+            <Text style={styles.loadingText}>Generating {isList ? 'items' : 'tasks'} for “{projectTitle}”…</Text>
           </View>
         ) : error ? (
           <EmptyState

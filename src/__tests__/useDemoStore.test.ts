@@ -611,6 +611,11 @@ describe('demo mode', () => {
       // The property the whole design rests on: an undated project task is
       // absent from Today, Inbox and Unscheduled with no special-casing.
       expect(members.every(t => !isTaskVisible(t))).toBe(true);
+      // Every list carries the list defaults, whichever route made it: no
+      // finish line and never pulled. Two of the three seeded lists used to
+      // miss them. See projectKind.ts.
+      expect(list.ongoing).toBe(true);
+      expect(list.nudgeOptIn).toBe(false);
     }
 
     useDemoStore.getState().exitDemoMode();

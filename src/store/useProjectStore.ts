@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import type { Project, ProjectKind, Task } from '../types';
 import { getCurrentDayStart } from '../utils/dateUtils';
-import { nudgeFieldsFor } from '../utils/nudgeCadence';
+import { kindFields, kindSwitchFields } from '../utils/projectKind';
 import { isRealCompletion } from '../utils/missed';
 import { useSettingsStore } from './useSettingsStore';
 import {
@@ -419,11 +419,12 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       archivedAt: null,
       completed: false,
       completedAt: null,
-      ongoing: false,
       createdAt: new Date().toISOString(),
-      // Seeded from the global default at creation time only — changing the
-      // default in Settings later never touches a project already created.
-      ...nudgeFieldsFor(defaultCadenceDays > 0 ? 'scheduled' : 'on-ask', defaultCadenceDays),
+      // `ongoing` and the nudge pair, seeded from the global default at
+      // creation time only — changing the default in Settings later never
+      // touches a project already created. A list gets its own (no finish
+      // line, never pulled) whichever caller made it. See projectKind.ts.
+      ...kindFields(options.kind ?? 'project', defaultCadenceDays),
       autoSchedule: false,
       // Off, like every other opt-in here: the weekend nudge may quote a project
       // only once somebody has said it is one to quote. See
@@ -432,8 +433,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       reviewDeclinedAt: null,
       reviewedAt: null,
       backfillDismissedFields: [],
-      // Presentation only — a list's members are ordinary tasks in an ordinary
-      // project, and every field above means the same thing either way. See
+      // A list's members are ordinary tasks in an ordinary project. See
       // Project.kind.
       kind: options.kind ?? 'project',
       // No span unless a caller brought one. A project is a trip only once
@@ -465,7 +465,14 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   updateProject(id, patch) {
     const project = get().projects.find(p => p.id === id);
     if (!project) return;
-    const updated = { ...project, ...patch };
+    // Switching kind brings that kind's defaults along unless the patch names
+    // them itself. See kindSwitchFields.
+    const kindSwitch = kindSwitchFields(
+      project.kind,
+      patch,
+      useSettingsStore.getState().defaultProjectNudgeCadenceDays,
+    );
+    const updated = { ...project, ...kindSwitch, ...patch };
     dbUpdateProject(updated);
     set(s => ({ projects: s.projects.map(p => (p.id === id ? updated : p)) }));
   },

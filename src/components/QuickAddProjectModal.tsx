@@ -21,7 +21,6 @@ import { spacing, radius, font, fontWeight, animation, interaction, type Colors 
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { useProjectStore } from '../store/useProjectStore';
-import { nudgeFieldsFor } from '../utils/nudgeCadence';
 import { awayNoonIso } from '../utils/awayDates';
 import { useTaskStore } from '../store/useTaskStore';
 import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
@@ -41,18 +40,6 @@ export interface ProjectDraft {
   /** The "Trip" chip's departure, stored the way the editor stores it. */
   awayStart?: string | null;
 }
-
-/**
- * What a project made as a list starts with, beyond its kind: no finish line
- * (Project.ongoing) and left out of Pull from projects, since a list of books
- * or gift ideas has no next task to pull and never gets "done". Both can be
- * changed in the editor afterwards.
- */
-export const LIST_PROJECT_FIELDS = {
-  kind: 'list' as const,
-  ongoing: true,
-  ...nudgeFieldsFor('never', 0),
-};
 
 interface Props {
   visible: boolean;
@@ -207,8 +194,8 @@ export function QuickAddProjectModal({
       deadline: deadline ? deadline.toISOString() : null,
       category: resolvedCategory,
       awayStart: leaving ? awayNoonIso(leaving) : null,
+      kind: asList ? 'list' : 'project',
     });
-    if (asList) useProjectStore.getState().updateProject(created.id, LIST_PROJECT_FIELDS);
     const project = useProjectStore.getState().getProjectById(created.id) ?? created;
     onCreated?.(project, seedActive);
     dismiss();

@@ -10,6 +10,8 @@ interface Props {
   count: number;
   bottom: number;
   onDismiss: () => void;
+  /** What to call them: "item" on a list, "task" everywhere else. */
+  noun?: 'task' | 'item';
 }
 
 /**
@@ -18,7 +20,7 @@ interface Props {
  * many tasks landed and auto-dismisses; there's nothing to undo here
  * that shake-to-undo doesn't already cover.
  */
-export function TemplateAppliedToast({ count, bottom, onDismiss }: Props) {
+export function TemplateAppliedToast({ count, bottom, onDismiss, noun = 'task' }: Props) {
   const { colors, shadows } = useTheme();
   const styles = makeStyles(colors);
 
@@ -28,7 +30,7 @@ export function TemplateAppliedToast({ count, bottom, onDismiss }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const message = count === 1 ? 'Created 1 task' : `Created ${count} tasks`;
+  const message = count === 1 ? `Created 1 ${noun}` : `Created ${count} ${noun}s`;
 
   return (
     <View style={[styles.wrap, { bottom }]} pointerEvents="none">
