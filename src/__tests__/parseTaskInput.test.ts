@@ -883,6 +883,37 @@ describe('parseDurationInput', () => {
   it('is case insensitive', () => {
     expect(parseDurationInput('Meditate For 20 Minutes')?.minutes).toBe(20);
   });
+
+  it('reads a spelled-out count', () => {
+    const result = parseDurationInput('Practice rolling Rs for two minutes');
+    expect(result?.minutes).toBe(2);
+    expect(result?.cleanTitle).toBe('Practice rolling Rs');
+    expect(parseDurationInput('read for twenty minutes')?.minutes).toBe(20);
+    expect(parseDurationInput('walk for forty-five mins')?.minutes).toBe(45);
+    expect(parseDurationInput('walk for forty five minutes')?.minutes).toBe(45);
+    expect(parseDurationInput('nap for one hour')?.minutes).toBe(60);
+    expect(parseDurationInput('Stretch For Ten Minutes')?.minutes).toBe(10);
+  });
+
+  it('reads "an hour", "a minute" and "half an hour"', () => {
+    expect(parseDurationInput('read for an hour')?.minutes).toBe(60);
+    expect(parseDurationInput('breathe for a minute')?.minutes).toBe(1);
+    expect(parseDurationInput('tidy for half an hour')?.minutes).toBe(30);
+  });
+
+  it('needs a unit word after a spelled-out count', () => {
+    // "tenth" is ten + "h" with no space: not ten hours.
+    expect(parseDurationInput('save for tenth anniversary')).toBeNull();
+    expect(parseDurationInput('pick a gift for a mom')).toBeNull();
+    expect(parseDurationInput('shop for a hat')).toBeNull();
+    expect(parseDurationInput('wait for half an h')).toBeNull();
+  });
+
+  it('still leaves the schedule to its own parser alongside a spelled-out duration', () => {
+    const result = parseDurationInput('Practice rolling Rs for two minutes every day');
+    expect(result?.minutes).toBe(2);
+    expect(result?.cleanTitle).toBe('Practice rolling Rs every day');
+  });
 });
 
 describe('parseChainInput', () => {

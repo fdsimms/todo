@@ -11,7 +11,7 @@ import { startOfDay } from 'date-fns/startOfDay';
 import { startOfMonth } from 'date-fns/startOfMonth';
 import type { Day } from 'date-fns';
 import type { Priority, QuotaPeriod, RecurrenceType, TimeOfDay } from '../types';
-import { extractDayPart, extractTime, MONTHS, monthDay, NUMBER_WORD_ALT, parseCount, parseDatePart, WEEKDAYS, type ClockTime } from './parseNaturalDate';
+import { extractDayPart, extractTime, MONTHS, monthDay, NUMBER_WORD_ALT, NUMBER_WORDS, parseCount, parseDatePart, WEEKDAYS, type ClockTime } from './parseNaturalDate';
 import { looksLikePhoneNumber } from './phone';
 
 /**
@@ -975,14 +975,74 @@ export interface ParsedDuration {
   matchEnd: number;
 }
 
-// "for 15 minutes", "for 1.5 hours", "for 45m", "for 2 hrs".
+// "for 15 minutes", "for 1.5 hours", "for 45m", "for 2 hrs", and the same
+// spelled out: "for two minutes", "for twenty minutes", "for an hour", "for
+// half an hour" (which is how it comes out when dictated).
 //
 // The leading "for" is doing real work and isn't optional: without it, "in 1
 // hour" and "15 min" would collide head-on with the relative-date grammar
 // above, where those already mean *when* the task is due rather than how long
 // it should run. "for" is unambiguous — nobody writes "pay rent for 2 hours"
 // meaning a due date.
-const DURATION_PATTERN = /\bfor\s+(\d+(?:\.\d+)?)\s*(minutes|minute|mins|min|m|hours|hour|hrs|hr|h)\b/i;
+//
+// A word needs whitespace before its unit, or "for tenth" reads as ten hours.
+const DURATION_WORDS: Record<string, number> = {
+  ...NUMBER_WORDS, one: 1, a: 1, an: 1, fifteen: 15, twenty: 20, thirty: 30,
+  forty: 40, 'forty-five': 45, 'forty five': 45, fifty: 50, sixty: 60, ninety: 90,
+};
+const DURATION_WORD_ALT = Object.keys(DURATION_WORDS)
+  .sort((a, b) => b.length - a.length)
+  .map((w) => w.replace(' ', '\\s+'))
+  .join('|');
+const DURATION_UNIT = '(minutes|minute|mins|min|m|hours|hour|hrs|hr|h)\\b';
+const DURATION_PATTERN = new RegExp(
+  `\\bfor\\s+(?:(\\d+(?:\\.\\d+)?)\\s*|(half\\s+an|${DURATION_WORD_ALT})\\s+)${DURATION_UNIT}`,
+  'i',
+);
+// The same phrase held to the end of the line, after whitespace: quick add's
+// event length ("lunch with Sam for an hour"), where it's one suffix clause
+// among several rather than a phrase that can sit anywhere.
+const DURATION_TAIL_PATTERN = new RegExp(`\\s+${DURATION_PATTERN.source}\\s*$`, 'i');
+
+/**
+ * A trailing duration phrase ("for 90m", "for two hours"), as minutes, with
+ * where its leading whitespace begins. Same words and bounds as
+ * `parseDurationInput`; null when the line doesn't end on one.
+ */
+export function parseDurationTail(input: string): { start: number; minutes: number } | null {
+  const match = input.match(DURATION_TAIL_PATTERN);
+  if (!match || match.index === undefined) return null;
+  const minutes = durationMatchMinutes(match);
+  return minutes === null ? null : { start: match.index, minutes };
+}
+
+/**
+ * The minutes a DURATION_PATTERN match names, or null when it names none a
+ * timer could use: under a minute once rounded ("for 0.2 min"), or past a day
+ * (a fat-fingered "for 9999 hours"). "a"/"an" only count before a whole unit
+ * word, since "for a m" isn't anything.
+ */
+function durationMatchMinutes(match: RegExpMatchArray): number | null {
+  const unit = match[3];
+  const isHours = /^h/i.test(unit);
+  let value: number;
+  if (match[1] !== undefined) {
+    value = parseFloat(match[1]);
+  } else {
+    const word = match[2].toLowerCase().replace(/\s+/g, ' ');
+    if (word === 'half an') {
+      if (!/^hours?$/i.test(unit)) return null;
+      value = 0.5;
+    } else {
+      if ((word === 'a' || word === 'an') && !/^(minute|hour)$/i.test(unit)) return null;
+      value = DURATION_WORDS[word];
+    }
+  }
+  if (!Number.isFinite(value) || value <= 0) return null;
+  const minutes = Math.round(isHours ? value * 60 : value);
+  if (minutes < 1 || minutes > 24 * 60) return null;
+  return minutes;
+}
 
 /**
  * Pulls a duration phrase out of a quick-add title, so "play violin for 15
@@ -995,15 +1055,8 @@ export function parseDurationInput(input: string): ParsedDuration | null {
   const match = input.match(DURATION_PATTERN);
   if (!match || match.index === undefined) return null;
 
-  const value = parseFloat(match[1]);
-  if (!Number.isFinite(value) || value <= 0) return null;
-
-  const isHours = /^h/i.test(match[2]);
-  const minutes = Math.round(isHours ? value * 60 : value);
-  // A rounded-to-nothing duration ("for 0.2 min") isn't a timer.
-  if (minutes < 1) return null;
-  // Guard against a fat-fingered "for 9999 hours" becoming a real countdown.
-  if (minutes > 24 * 60) return null;
+  const minutes = durationMatchMinutes(match);
+  if (minutes === null) return null;
 
   const matchStart = match.index;
   const matchEnd = matchStart + match[0].length;

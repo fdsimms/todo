@@ -8,7 +8,7 @@ import {
   type PersonToken,
 } from './parseTaskInput';
 import { defaultNewEventSpan } from './eventPeople';
-import type { ParsedSchedule } from './parseTaskInput';
+import { parseDurationTail, type ParsedSchedule } from './parseTaskInput';
 import type { TimeOfDay } from '../types';
 import type { ClockTime } from './parseNaturalDate';
 
@@ -168,18 +168,12 @@ export function alertRelativeOffset(minutes: number, allDay: boolean): number {
 /** An event's length when the line names none. */
 export const DEFAULT_EVENT_MINUTES = 60;
 
-// "for 90m", "for 1.5 hours", "for 2h": quick add's own duration grammar
-// (parseDurationInput), held to a suffix like the other clauses.
-const LENGTH_CLAUSE = /\s+for\s+(\d+(?:\.\d+)?)\s*(minutes|minute|mins|min|m|hours|hour|hrs|hr|h)\s*$/i;
+// "for 90m", "for 1.5 hours", "for an hour": quick add's own duration grammar
+// (parseDurationTail), held to a suffix like the other clauses.
 
 /** A trailing "for 90m", as minutes, with where its leading space begins. Null past a day or under a minute. */
 export function parseLengthClause(input: string): { start: number; minutes: number } | null {
-  const m = LENGTH_CLAUSE.exec(input);
-  if (!m) return null;
-  const value = parseFloat(m[1]);
-  const minutes = Math.round(/^h/i.test(m[2]) ? value * 60 : value);
-  if (!Number.isFinite(minutes) || minutes < 1 || minutes > 24 * 60) return null;
-  return { start: m.index, minutes };
+  return parseDurationTail(input);
 }
 
 // "12-1:30pm", "12pm–1:30pm", "from 6 to 8pm", "9:30-11". A suffix, and it
