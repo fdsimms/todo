@@ -455,6 +455,26 @@ export function dayDetail(
 }
 
 /**
+ * A day's real rows, each task once: due first, then deadline, then returning.
+ *
+ * A task can sit in more than one of the three lists (due today with a
+ * deadline today), and anything drawing the day as one list — the day view's
+ * clock, the week view's per-day section — still wants it as one row. The
+ * order is the same one the month view's sections use, so a task's position
+ * doesn't depend on which view you read the day in.
+ */
+export function dayRows(detail: DayDetail): Task[] {
+  const seen = new Set<string>();
+  const out: Task[] = [];
+  for (const task of [...detail.due, ...detail.deadline, ...detail.defer]) {
+    if (seen.has(task.id)) continue;
+    seen.add(task.id);
+    out.push(task);
+  }
+  return out;
+}
+
+/**
  * "3 due · 1 deadline" — the one-line summary above a day's detail.
  *
  * Counts real, *outstanding* rows — the same "still work to do" reading the
