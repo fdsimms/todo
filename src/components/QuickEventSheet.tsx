@@ -27,6 +27,8 @@ import { TitleTokenAccessory } from './TitleTokenAccessory';
 import { CalendarPicker } from './CalendarPicker';
 import { EventOptionSheet, type EventOption } from './EventOptionSheet';
 import { InlineAction } from './InlineAction';
+import { ScrollEdgeFade } from './ScrollEdgeFade';
+import { useScrollEdgeFade } from '../hooks/useScrollEdgeFade';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, interaction, animation, type Colors } from '../theme';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
@@ -174,6 +176,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
   const { isDark, shadows } = useTheme();
   const { height: windowHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  const scrollFade = useScrollEdgeFade();
   const people = usePersonStore(useShallow(s => s.people.filter(p => !p.archived)));
   const groups = usePersonGroupStore(useShallow(s => s.groups));
   const groupTokens = useMemo(() => groupMentionTokens(), [people, groups]);
@@ -984,10 +987,11 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
 
           {/* The card's height is capped to the room above the keyboard, so what
               sits below the title scrolls rather than spilling out of it. */}
+          <View style={styles.body}>
           <ScrollView
-            style={styles.body}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
+            {...scrollFade.scrollProps}
           >
             <View style={styles.locationRow}>
               <Ionicons name="location-outline" size={iconSize.sm} color={colors.textSecondary} />
@@ -1250,6 +1254,8 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
                 : 'Saves to your calendar. End the line with "at (place)", "for 90m" or "alert 30m" to fill those in.'}
             </Text>
           </ScrollView>
+          <ScrollEdgeFade edge="bottom" opacity={scrollFade.bottomOpacity} color={colors.bgSecondary} />
+          </View>
         </Animated.View>
       </View>
       <TitleTokenAccessory
@@ -1319,7 +1325,7 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     maxHeight: sheetMaxHeight,
   },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.sm },
-  body: { flexShrink: 1 },
+  body: { flexShrink: 1, position: 'relative' },
   savedPlaceName: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   inputWrap: { flex: 1, position: 'relative' },
   input: { fontSize: font.md, color: colors.text, paddingVertical: spacing.sm },
