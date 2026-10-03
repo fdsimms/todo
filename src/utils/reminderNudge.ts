@@ -58,3 +58,20 @@ export function nudgeReminderPastMeeting(
 
   return { time: new Date(interval.end), nudged: true, meetingTitle: meeting?.title || null };
 }
+
+/**
+ * The meeting a task's start time falls inside, on the day it's for, or null.
+ *
+ * For the editor's Time window row: "From 2pm" set on a day with a 1:30 to
+ * 3:00 meeting means the task opens while you're in it. Said, never acted on:
+ * the window still opens when the user set it to. Uses the same "inside a
+ * meeting" test as the reminder nudge, so the two rows can't disagree about
+ * what counts.
+ */
+export function meetingAtStart(
+  events: readonly BusyEvent[],
+  start: Date,
+): { title: string | null; until: Date } | null {
+  const nudge = nudgeReminderPastMeeting(start, events);
+  return nudge.nudged ? { title: nudge.meetingTitle, until: nudge.time } : null;
+}

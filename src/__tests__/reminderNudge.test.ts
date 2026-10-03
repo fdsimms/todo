@@ -1,4 +1,4 @@
-import { nudgeReminderPastMeeting } from '../utils/reminderNudge';
+import { meetingAtStart, nudgeReminderPastMeeting } from '../utils/reminderNudge';
 import type { BusyEvent } from '../utils/calendarBusy';
 
 const DAY_START = new Date('2026-08-12T00:00:00Z');
@@ -101,5 +101,18 @@ describe('nudgeReminderPastMeeting', () => {
     const events = [ev(at(9), at(10))];
     const result = nudgeReminderPastMeeting(atDate(9, 45), events);
     expect(result.time.getTime()).toBeGreaterThanOrEqual(atDate(9, 45).getTime());
+  });
+});
+
+describe('meetingAtStart', () => {
+  it('names the meeting a start time falls inside, and when it ends', () => {
+    const review = ev(at(13, 30), at(15), { title: 'Design review' });
+    expect(meetingAtStart([review], atDate(14))).toEqual({ title: 'Design review', until: atDate(15) });
+  });
+
+  it('is null for a start time between meetings, or at the moment one ends', () => {
+    const review = ev(at(13, 30), at(15));
+    expect(meetingAtStart([review], atDate(15))).toBeNull();
+    expect(meetingAtStart([review], atDate(9))).toBeNull();
   });
 });
