@@ -1,1 +1,1 @@
-{ "message": "In the new event card, the date and time now has its own full-width chip so it no longer gets cut off. The Busy/Free toggle is now a \"Show as Busy\" chip that opens a picker explaining what Busy and Free mean.", "date": "2026-10-03" }
+{ "message": "In the new event card, the date and time now has its own full-width chip so it no longer gets cut off, and the Busy/Free toggle is now a plain Busy switch that is highlighted when on, like All day.", "date": "2026-10-03" }

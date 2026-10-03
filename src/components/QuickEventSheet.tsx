@@ -290,7 +290,6 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
   const [typedBeforePick, setTypedBeforePick] = useState('');
   const [calendarPickerVisible, setCalendarPickerVisible] = useState(false);
   const [alertPickerVisible, setAlertPickerVisible] = useState(false);
-  const [availabilityPickerVisible, setAvailabilityPickerVisible] = useState(false);
   const titleCaret = useTitleSelection(text);
   const [busy, setBusy] = useState(false);
   // A start set by hand (the chip's picker) or by tapping the tooltip. A
@@ -383,7 +382,6 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
     setMemoryDismissedKey(null);
     setCalendarPickerVisible(false);
     setAlertPickerVisible(false);
-    setAvailabilityPickerVisible(false);
     void loadCalendars(defaults.calendarId, false);
     titleCaret.resetCaret(seededText);
     setBusy(false);
@@ -570,6 +568,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
     || (draft.durationMinutes === null && durationPick === null && recalled.durationMinutes !== null)
     || calendarPick === null || availabilityPick === null || alertPick === undefined
   );
+  const isBusy = effectiveAvailability === 'busy';
   const alertSet = effectiveAlert !== null;
   const canAdd = draft.title.trim().length > 0 && !busy && (!isEditing || original !== null);
 
@@ -1179,7 +1178,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
 
             <View style={styles.toolbar}>
               <TouchableOpacity
-                style={[styles.toolChip, allDay && styles.toolChipSet]}
+                style={[styles.toolChip, styles.toolChipWide, allDay && styles.toolChipSet]}
                 onPress={() => { haptics.tap(); setAllDay(v => !v); }}
                 activeOpacity={interaction.activeOpacity}
                 accessibilityRole="switch"
@@ -1190,16 +1189,16 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
                 <Text style={[styles.toolChipText, allDay && styles.toolChipTextSet]}>All day</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.toolChip, styles.toolChipWide]}
-                onPress={() => { haptics.tap(); Keyboard.dismiss(); setAvailabilityPickerVisible(true); }}
+                style={[styles.toolChip, styles.toolChipWide, isBusy && styles.toolChipSet]}
+                onPress={() => { haptics.tap(); setAvailabilityPick(isBusy ? 'free' : 'busy'); }}
                 activeOpacity={interaction.activeOpacity}
-                accessibilityRole="button"
-                accessibilityLabel={`Show as ${effectiveAvailability === 'busy' ? 'busy' : 'free'}. Tap to change.`}
+                accessibilityRole="switch"
+                accessibilityLabel="Busy"
+                accessibilityHint="On blocks this time on your calendar. Off leaves the time free."
+                accessibilityState={{ checked: isBusy }}
               >
-                <Ionicons name="eye-outline" size={iconSize.sm} color={colors.textSecondary} />
-                <Text style={styles.toolChipText} numberOfLines={1}>
-                  {effectiveAvailability === 'busy' ? 'Show as Busy' : 'Show as Free'}
-                </Text>
+                <Ionicons name={isBusy ? 'eye' : 'eye-outline'} size={iconSize.sm} color={isBusy ? colors.accent : colors.textSecondary} />
+                <Text style={[styles.toolChipText, isBusy && styles.toolChipTextSet]}>Busy</Text>
               </TouchableOpacity>
             </View>
 
@@ -1296,17 +1295,6 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
           setAlertPick(key === 'none' ? null : Number(key));
         }}
         onClose={() => setAlertPickerVisible(false)}
-      />
-      <EventOptionSheet
-        visible={availabilityPickerVisible}
-        title="Show me as"
-        options={[
-          { key: 'busy', label: 'Busy (blocks the time on your calendar)' },
-          { key: 'free', label: 'Free (the time stays open)' },
-        ]}
-        selectedKey={effectiveAvailability}
-        onSelect={key => setAvailabilityPick(key === 'free' ? 'free' : 'busy')}
-        onClose={() => setAvailabilityPickerVisible(false)}
       />
     </SheetModal>
   );
