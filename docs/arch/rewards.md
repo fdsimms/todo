@@ -2,7 +2,7 @@
 
 A light, Habitica-style economy over the tasks you already have. Completing a task earns coins,
 marking one missed or logging a slip costs coins, and coins buy rewards you define yourself. Off by
-default (`rewardsEnabled`), switched on from the Rewards screen (History hub). The rules live in
+default (`rewardsEnabled`), switched on from the Rewards screen (its own menu row, under Tasks). The rules live in
 `src/utils/rewards.ts`, the ledger in `src/store/useRewardStore.ts`, and the four hooks in
 `useTaskStore` (`completeTask`, `uncompleteTask`, `logSlip`, `undoSlip`).
 
@@ -40,7 +40,7 @@ default (`rewardsEnabled`), switched on from the Rewards screen (History hub). T
 
 ## Where it shows
 
-- **The Rewards screen** (History hub): the balance, the rule spelled out, the rewards (add, edit in
+- **The Rewards screen** (menu row under Tasks): the balance, the rule spelled out, the rewards (add, edit in
   place, claim, delete) and the history.
 - **`CoinToast`**, mounted at the navigator root beside `UndoBar`: a "+3 coins" pill after a
   completion, red for a loss. It is driven by `lastChange`, which the store sets only for an entry

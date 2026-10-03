@@ -7,7 +7,6 @@ import { parseISO } from 'date-fns/parseISO';
 import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
 import { EmptyNote } from '../components/EmptyNote';
-import { HubPills } from '../components/HubPills';
 import { InlineAction } from '../components/InlineAction';
 import { TextField } from '../components/TextField';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
@@ -134,7 +133,6 @@ export function RewardsScreen() {
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
         <ScreenHeader title="Rewards" />
-        <HubPills hub="history" active="Rewards" />
         <EmptyState
           icon="trophy-outline"
           title="Coins and rewards"
@@ -187,7 +185,6 @@ export function RewardsScreen() {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <ScreenHeader title="Rewards" subtitle={formatCoins(balance)} actions={actions} />
-      <HubPills hub="history" active="Rewards" />
       <ScrollView
         ref={keyboardScroll.ref}
         contentContainerStyle={{ paddingBottom: tabBarHeight + spacing.xl }}

@@ -44,7 +44,7 @@ components below.
 - `src/screens/RecipeDetailScreen.tsx` — ComponentChoiceSheet, CookModeSheet, CountStepper, DetailHeader, EmptyState, IngredientCatalogMatchSheet, InlineAction, ListBulkBar, NumberPadAccessory, OverlapPickerSheet, PaintSelection, PillGroup, +18 more
 - `src/screens/RecipesScreen.tsx` — ActiveTripBanner, CookWithSheet, EmptyState, Fab, FabDropZones, HubPills, InventRecipeSheet, ListBulkBar, OverlapPickerSheet, PaintSelection, PlanMealSheet, QuickAddNameSheet, +11 more
 - `src/screens/RemindersScreen.tsx` — EmptyState, ScreenHeader, TaskEditor
-- `src/screens/RewardsScreen.tsx` — EmptyNote, EmptyState, HubPills, InlineAction, ScreenHeader, TextField
+- `src/screens/RewardsScreen.tsx` — EmptyNote, EmptyState, InlineAction, ScreenHeader, TextField
 - `src/screens/SavedViewDetailScreen.tsx` — BulkActionBar, DeliverablePromptQueue, DetailHeader, EmptyState, PaintSelection, SavedViewEditorSheet, SpotlightOverlay, TaskEditor, TaskItem
 - `src/screens/SavedViewsScreen.tsx` — DetailHeader, EmptyState, ReorderableList, SavedViewEditorSheet
 - `src/screens/SearchScreen.tsx` — EmptyState, HighlightedText, QuickAddModal, ScreenHeader, SearchField, TaskCheckbox, TaskEditor, TaskGroupEditor
@@ -153,7 +153,7 @@ Where each component can appear.
 - `src/components/HealthRulesSheet.tsx` — on SettingsGroupScreen
 - `src/components/HealthWriteRefusedNotice.tsx` — on app shell
 - `src/components/HighlightedText.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, LogbookScreen, PersonDetailScreen, ProjectDetailScreen, RemindersScreen, SavedViewDetailScreen, SearchScreen, SettingsScreen, StacksScreen, StuckScreen, +2 more
-- `src/components/HubPills.tsx` — on ArchivedScreen, CategoriesScreen, FoodLogScreen, GroceryScreen, KitchenScreen, LogbookScreen, MealPlanScreen, MedicationScreen, MoodScreen, PeopleScreen, RecipesScreen, RewardsScreen, +6 more
+- `src/components/HubPills.tsx` — on ArchivedScreen, CategoriesScreen, FoodLogScreen, GroceryScreen, KitchenScreen, LogbookScreen, MealPlanScreen, MedicationScreen, MoodScreen, PeopleScreen, RecipesScreen, StacksScreen, +5 more
 - `src/components/ImportApplyRow.tsx` — on RecipeDetailScreen, RecipesScreen
 - `src/components/ImportedComponentRow.tsx` — on RecipeDetailScreen, RecipesScreen
 - `src/components/IngredientCatalogMatchSheet.tsx` — on RecipeDetailScreen
