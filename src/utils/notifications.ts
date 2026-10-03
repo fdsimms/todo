@@ -12,7 +12,8 @@ import {
   isFocusSessionFinished,
 } from './focusPlan';
 import { displayTitleFor, isHeldBack, isInPausedProject, isWithheld } from './visibilityUtils';
-import { agendaCounts, agendaBody, agendaSpokenBody, nextAgendaTime } from './dailyAgenda';
+import { agendaCounts, agendaBody, agendaMeetings, agendaSpokenBody, nextAgendaTime } from './dailyAgenda';
+import { calendarCovers } from './eventConflicts';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { nudgeReminderPastMeeting } from './reminderNudge';
@@ -567,6 +568,7 @@ function agendaRequest(
 ): { when: Date; body: string; spoken: string | null } | null {
   const {
     dailyAgendaEnabled, dailyAgendaTime, dayResetTime, quietHoursStart, quietHoursEnd,
+    calendarReadEnabled, use24HourTime,
   } = useSettingsStore.getState();
   if (!dailyAgendaEnabled) return null;
 
@@ -589,7 +591,18 @@ function agendaRequest(
   // store reads so it can be tested directly. Neither can be done today, so
   // counting them "due" and then "carried over" every morning was noise.
   const counts = agendaCounts(tasks.filter(t => !isWithheld(t) && !isHeldBack(t)), when, dayResetTime);
-  const body = agendaBody(counts);
+  // The day's meetings, when the calendar was read for it; a day it wasn't
+  // read for says nothing about meetings rather than claiming none.
+  if (calendarReadEnabled) {
+    const { events, loaded, windowStart, windowEnd } = useCalendarStore.getState();
+    const dayStart = getDayStart(when, dayResetTime);
+    const dayEnd = new Date(dayStart);
+    dayEnd.setDate(dayEnd.getDate() + 1);
+    if (loaded && calendarCovers(windowStart, windowEnd, dayStart, dayEnd)) {
+      counts.meetings = agendaMeetings(events, dayStart, dayEnd);
+    }
+  }
+  const body = agendaBody(counts, use24HourTime);
   // Composed here and carried on the notification rather than recomputed when
   // it is tapped, which is what makes the spoken line trustworthy: it says what
   // this notification said, about the day this notification was for. A handler
@@ -597,7 +610,7 @@ function agendaRequest(
   // the tap — possibly empty, since a tap is also a cold launch — and would
   // drift from the words on screen the moment anything was ticked off between
   // the notification arriving and somebody reaching the phone.
-  const spoken = agendaSpokenBody(counts);
+  const spoken = agendaSpokenBody(counts, use24HourTime);
   return body ? { when, body, spoken } : null;
 }
 
