@@ -2440,7 +2440,14 @@ export function TodayScreen() {
     // copy, not a relocation — which is what stops the list reflowing when one
     // is pinned, and what lets stacks keep working while pins exist (the old
     // pinned layout dropped visibleGroupItems on the floor and flattened them).
-    const ungrouped = filtered.filter(t => !t.groupId);
+    //
+    // The one exception is a task with no category: it has no section to stay
+    // in, so its second row would just sit in the headerless block at the top
+    // of the list beside the pinned block it is already in.
+    const pinnedIds = new Set(pinnedTasks.map(t => t.id));
+    const ungrouped = filtered.filter(
+      t => !t.groupId && !(t.category === null && pinnedIds.has(t.id)),
+    );
     // Stacks slot into the task order by sortOrder (see makeCategoryGroups) —
     // but only while the list is in its hand-ordered state. Any other sort
     // reorders the tasks by something sortOrder says nothing about, so the
@@ -2453,7 +2460,7 @@ export function TodayScreen() {
     // It's also what lets a category holding nothing but events have a header
     // at all — makeCategoryGroups only knows about tasks and stacks.
     return insertContextRows(grouped, contextRows, { categoryOrder: allCategories });
-  }, [filtered, allCategories, visibleGroupItems, sort, contextRows]);
+  }, [filtered, allCategories, visibleGroupItems, sort, contextRows, pinnedTasks]);
 
   // The rows under each category header, for the header's own pin toggle and
   // the pin glyph that reports its state. Built from `listItems` rather than
