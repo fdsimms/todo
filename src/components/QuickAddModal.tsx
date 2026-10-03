@@ -81,7 +81,11 @@ import { usePersonGroupStore } from '../store/usePersonGroupStore';
 import { groupMentionTokens } from '../utils/peopleRegistry';
 import { eventMarkerText, parseQuickEvent } from '../utils/quickEvent';
 import { readQuickEventDefaults, writeQuickEventDefaults } from '../utils/quickEventDefaults';
-import { quickEventSaveFields } from '../utils/quickEventSave';
+import { quickEventFromLine, quickEventSaveFields } from '../utils/quickEventSave';
+import { readEventMemory, recallEvent, rememberEvent, writeEventMemory } from '../utils/eventMemory';
+import { useCalendarStore } from '../store/useCalendarStore';
+import { addDays } from 'date-fns/addDays';
+import { calendarCovers, firstFreeSlot } from '../utils/eventConflicts';
 import { useEventPeopleStore } from '../store/useEventPeopleStore';
 import { isDemoModeActive } from '../utils/demoState';
 import { clampSupplyCount, formatSupplyLeft, MAX_SUPPLY_COUNT } from '../utils/supply';
@@ -1689,20 +1693,21 @@ export const QuickAddModal = React.memo(function QuickAddModal({
       today: getCurrentDayStart(),
       wallClock: new Date(),
     });
-    const remembered = readQuickEventDefaults();
-    const saved = await useEventPeopleStore.getState().saveEvent(
-      quickEventSaveFields({
-        title: draft.title,
-        start: draft.start,
-        end: draft.end,
-        location: draft.location,
-        repeat: draft.repeat,
-        alertMinutes: draft.alertMinutes !== undefined ? draft.alertMinutes : remembered.alertMinutes,
-        availability: remembered.availability,
-        calendarId: remembered.calendarId,
-      }),
-      draft.personIds
-    );
+    const defaults = readQuickEventDefaults();
+    const memory = readEventMemory();
+    // Read once, here, rather than subscribed to: the line is only resolved on Add.
+    const calendar = useCalendarStore.getState();
+    const input = quickEventFromLine(draft, {
+      recalled: recallEvent(memory, draft.title),
+      defaults,
+      freeSlotFor: minutes => {
+        const d = draft.start;
+        const dayStart = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+        if (!calendarCovers(calendar.windowStart, calendar.windowEnd, dayStart, addDays(dayStart, 1))) return null;
+        return firstFreeSlot(d, minutes, calendar.events, new Date());
+      },
+    });
+    const saved = await useEventPeopleStore.getState().saveEvent(quickEventSaveFields(input), draft.personIds);
     if (!saved) {
       Alert.alert(
         "Couldn't add the event",
@@ -1711,10 +1716,19 @@ export const QuickAddModal = React.memo(function QuickAddModal({
       return;
     }
     writeQuickEventDefaults({
-      ...remembered,
+      ...defaults,
       calendarId: saved.calendarId,
-      alertMinutes: draft.alertMinutes !== undefined ? draft.alertMinutes : remembered.alertMinutes,
+      alertMinutes: input.alertMinutes,
     });
+    writeEventMemory(rememberEvent(memory, draft.title, {
+      location: input.location ?? null,
+      place: input.place ?? null,
+      durationMinutes: input.durationMinutes,
+      calendarId: saved.calendarId,
+      alertMinutes: input.alertMinutes,
+      availability: input.availability,
+      at: Date.now(),
+    }));
     dismiss();
   };
 

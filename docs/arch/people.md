@@ -635,6 +635,14 @@ the event's structured location, so Calendar draws a map and can estimate
 travel time. The events list's directions button (and a "Leave for X" row's) routes to that pin
 (`eventCoordinate`, read for one event on the tap) rather than searching the text. Nothing about
 the place is kept in the app.
+The line also reads a length ("for 90m", "12-1:30pm", "between 4 and 5:30pm"; an
+hour otherwise). Against the calendar it already reads (`src/utils/eventConflicts.ts`) the card
+warns when the event overlaps a busy one, and an untimed line ("lunch fri") starts at the first
+free slot that day, 9am to 9pm, shown on the date chip. Both only offer: the warning never blocks
+a save, and both stay quiet outside the window the calendar was read for, where silence would be a
+guess. The last event saved with the same title fills in what the line leaves out (place, pin,
+length, calendar, alert, Busy/Free) from `src/utils/eventMemory.ts`; the card says so and its ✕
+waves it off for this event, and anything typed or picked wins over it.
 A repeat phrase ("every monday") saves a repeat rule (`eventRecurrenceFor`);
 "every 8 hours" and "3 days after completion" have no event counterpart and
 read as their first day. Invitees and travel time are not set here: EventKit
