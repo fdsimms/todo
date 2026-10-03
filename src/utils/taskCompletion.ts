@@ -575,7 +575,10 @@ export function buildCompletion(
         // patched through updateTask, so the rule there doesn't reach it.
         recurrenceAnchorDate: null,
         timeSegments: nextTimeSegments,
-        pinned: chainStepStaysPinned, // stays pinned through an immediate chain step; resets otherwise
+        // Stays pinned through an immediate chain step, and starts pinned when
+        // the task asked for every occurrence to (pinEachOccurrence); resets
+        // otherwise. The inherited pinnedOrder keeps its place in the section.
+        pinned: chainStepStaysPinned || (recurs && !!task.pinEachOccurrence),
         progressCount: 0, // a quota starts the new day empty
         // The ledger is per-period, so it does not ride `...effective` onto the
         // next one. `activeRotationLog` would ignore a stale stamp anyway

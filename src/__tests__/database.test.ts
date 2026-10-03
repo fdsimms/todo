@@ -1201,6 +1201,16 @@ describe('dbInsertTask + rowToTask round-trip', () => {
     expect(tasks.find(t => t.id === 'plain-suggest')!.excludeFromSuggestions).toBe(false);
   });
 
+  it('round-trips pinEachOccurrence, and reads it as off when never set', () => {
+    dbInsertTask(makeTask({ id: 'pin-each', pinEachOccurrence: true }));
+    dbInsertTask(makeTask({ id: 'pin-plain' }));
+    const tasks = dbGetAllTasks();
+    expect(tasks.find(t => t.id === 'pin-each')!.pinEachOccurrence).toBe(true);
+    expect(tasks.find(t => t.id === 'pin-plain')!.pinEachOccurrence).toBe(false);
+    dbUpdateTask({ ...tasks.find(t => t.id === 'pin-each')!, pinEachOccurrence: false });
+    expect(dbGetAllTasks().find(t => t.id === 'pin-each')!.pinEachOccurrence).toBe(false);
+  });
+
   it('persists excludeFromSuggestions through an update', () => {
     dbInsertTask(makeTask({ id: 'quiet-upd' }));
     const [before] = dbGetAllTasks();
@@ -1663,7 +1673,7 @@ describe('Templates', () => {
     recurrenceMonth: null,
     recurrenceFromCompletion: false,
     recurrenceCount: null,
-    vacationPause: false, excludeFromSuggestions: false,
+    vacationPause: false, excludeFromSuggestions: false, pinEachOccurrence: false,
     estimatedMinutes: null,
     completionTimerMinutes: null, completionTimerNote: null,
     penaltyMinutes: null,
