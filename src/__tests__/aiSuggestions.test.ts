@@ -16,6 +16,7 @@ import {
   suggestMealIdeas,
   draftMealRecipe,
   suggestSubstitutes,
+  suggestSubtasks,
   describeAIError,
   readLabelPhotoWithAi,
   nutritionLabelPhotoAiAvailable,
@@ -41,6 +42,7 @@ const TEST_AI_FEATURE_CONFIG = {
   calendarImport: { enabled: true, model: 'claude-sonnet-5' },
   nutritionLabelPhoto: { enabled: true, model: 'claude-sonnet-5' },
   recipeNutritionEstimate: { enabled: true, model: 'claude-sonnet-5' },
+  taskBreakdown: { enabled: true, model: 'claude-haiku-4-5-20251001' },
 };
 
 /**
@@ -327,6 +329,40 @@ describe('suggestTemplateItems', () => {
     expect(content).toContain('Camping trip');
     expect(content).toContain('Pitch the tent');
     expect(body.tool_choice).toEqual({ type: 'tool', name: 'suggest_tasks' });
+  });
+});
+
+// ============================================================================
+// suggestSubtasks
+// ============================================================================
+
+describe('suggestSubtasks', () => {
+  it('sends what the person said the task means, framed as outranking the title', async () => {
+    const fetchSpy = mockFetchOnce(toolUseResponse('suggest_subtasks', { steps: [{ title: 'Empty the trunk' }] }));
+
+    const result = await suggestSubtasks('Clean bags', '', [], '  the grocery bags in the car  ');
+
+    const content = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string).messages[0].content as string;
+    expect(content).toContain('What the person means by this task');
+    expect(content).toContain('the grocery bags in the car');
+    expect(result).toEqual([{ title: 'Empty the trunk' }]);
+  });
+
+  it('leaves the line out when nothing was typed', async () => {
+    const fetchSpy = mockFetchOnce(toolUseResponse('suggest_subtasks', { steps: [] }));
+
+    await suggestSubtasks('Clean bags', '', [], '   ');
+
+    const content = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string).messages[0].content as string;
+    expect(content).not.toContain('What the person means');
+  });
+
+  it('drops a drafted step matching one the person already typed', async () => {
+    mockFetchOnce(toolUseResponse('suggest_subtasks', { steps: [{ title: 'wash the totes' }, { title: 'Dry them' }] }));
+
+    const result = await suggestSubtasks('Clean bags', '', ['Wash the totes']);
+
+    expect(result).toEqual([{ title: 'Dry them' }]);
   });
 });
 

@@ -372,6 +372,8 @@ const MIN_SUBTASK_SUGGESTIONS = 3;
 const MAX_SUBTASK_SUGGESTIONS = 6;
 /** Characters of the task's own notes we'll send along for context. */
 const MAX_BREAKDOWN_NOTES_CHARS = 1_000;
+/** Characters of the sheet's "what this task means" field we'll send along. */
+const MAX_BREAKDOWN_CONTEXT_CHARS = 500;
 
 /**
  * Break a task that keeps getting put off into the steps it's actually made of.
@@ -385,15 +387,22 @@ const MAX_BREAKDOWN_NOTES_CHARS = 1_000;
  * Returns titles only. The template equivalent asks for notes as well, but a
  * subtask row doesn't render them, so asking would spend tokens on something
  * nothing displays.
+ *
+ * `context` is what the person typed into the sheet to say what the task
+ * actually means ("the reusable grocery bags in the car"). A short title is
+ * often ambiguous, and without this the model can only guess at the generic
+ * reading, so it is framed as outranking the title rather than as one more note.
  */
 export async function suggestSubtasks(
   taskTitle: string,
   taskNotes: string,
   existingTitles: string[],
+  context = '',
 ): Promise<SubtaskSuggestion[]> {
   const { apiKey, model } = requireFeature('taskBreakdown');
 
   const notes = taskNotes.trim().slice(0, MAX_BREAKDOWN_NOTES_CHARS);
+  const meaning = context.trim().slice(0, MAX_BREAKDOWN_CONTEXT_CHARS);
   const existingPart = existingTitles.length > 0
     ? `It already has these steps — do NOT repeat or rephrase them:\n${existingTitles.map(t => `- ${t}`).join('\n')}`
     : 'It has no steps yet.';
@@ -430,6 +439,7 @@ export async function suggestSubtasks(
       content: [
         `Break this task into the concrete steps it's actually made of: "${taskTitle}".`,
         notes ? `Notes on the task:\n${notes}` : null,
+        meaning ? `What the person means by this task, in their own words. Follow this over your own reading of the title, and make the steps specific to it:\n${meaning}` : null,
         `The person asking has put this task off several times, which usually means it's vaguer or larger than it looks. The first step should be something they could finish in a couple of minutes — a phone number to find, a single email to send, one document to open. Keep every title short and concrete, skip vague filler like "plan" or "research", and aim for ${MIN_SUBTASK_SUGGESTIONS}–${MAX_SUBTASK_SUGGESTIONS} steps.`,
         existingPart,
       ].filter(Boolean).join('\n\n'),
