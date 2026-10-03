@@ -72,7 +72,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   vacationPause: false, excludeFromSuggestions: false,
   archived: false, archivedAt: null,
   timerStartedAt: null, actualMinutes: null, timedMinutes: null, timerElapsedSeconds: 0,
-  healthMetric: null, healthTarget: null, completionTimerMinutes: null, completionTimerNote: null,
+  healthMetric: null, healthTarget: null, healthFollowGoal: false, completionTimerMinutes: null, completionTimerNote: null,
   completionTimerStartedAt: null, logHealthMetric: null, logHealthAmount: null,
   medicationName: null, medicationAmount: null, medicationUnit: null, logMealSlot: null,
   estimateBeforeTiming: null,

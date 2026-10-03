@@ -3236,6 +3236,11 @@ export interface Task {
   // step. See docs/arch/health-data.md.
   healthMetric: HealthTargetMetric | null;  // null = not a health-target task
   healthTarget: number | null;              // in the metric's own unit: steps, hours, minutes or calories
+  // For the three Activity-ring metrics only: read the target from the goal the
+  // person set in Fitness instead of from `healthTarget`, which stays as what
+  // is used until that goal has been read. False on every other task. See
+  // `effectiveHealthTarget` in utils/healthTarget.ts.
+  healthFollowGoal: boolean;
 
   // Optional reminder scheduled a fixed number of minutes after this task is
   // completed — "take the iron pill" -> "eat, 2 hours later". Null means the

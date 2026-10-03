@@ -4181,6 +4181,8 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const task = useTaskStore.getState().tasks.find(t => t.healthMetric === 'standHours');
     expect(task).toBeDefined();
     expect(task!.healthTarget).toBe(12);
+    // Follows the ring's own goal, so the demo shows the option exists.
+    expect(task!.healthFollowGoal).toBe(true);
     expect(taskKindOf(task!)).toBe('health');
   });
 

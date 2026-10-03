@@ -942,7 +942,10 @@ holds for them. What follows is only where they differ.
   `activeEnergyKcal` and `standHours` are health-target metrics
   (`HealthTargetMetric`, `HEALTH_TARGET_METRICS`). Reaching the number derives
   *ready* and nothing more, the rule `healthTarget.ts` opens with. A target is a
-  number typed into the task, not a live link to the ring's goal.
+  number typed into the task unless the task opts in to `healthFollowGoal`, which
+  reads the goal from the ring summary (`effectiveHealthTarget`). The typed number
+  stays as the fallback and is used until a goal has been read, and a goal read on
+  another day is not used, for the reason the fallback above gives.
 - **An older build narrows an unknown metric to "not a health-target task".**
   `rowToTask` accepts only metrics in `HEALTH_TARGET_METRICS`, so a task synced
   from a newer device reads as an ordinary task on a build that predates its

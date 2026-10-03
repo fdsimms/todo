@@ -49,6 +49,8 @@ export const HEALTH_TARGET_METRICS: readonly HealthTargetMetric[] = [
 export interface HealthTargetState {
   healthMetric: HealthTargetMetric | null;
   healthTarget: number | null;
+  /** Optional so a caller that never follows a goal need not name it. */
+  healthFollowGoal?: boolean;
 }
 
 /** Today's reading, as much of it as any of this needs. */
@@ -127,6 +129,39 @@ export function healthTargetValue(
     default:
       return null;
   }
+}
+
+/** The three metrics a ring's goal can stand in for. */
+export function followsRingGoal(metric: HealthTargetMetric | null): boolean {
+  return metric === 'exerciseMinutes' || metric === 'activeEnergyKcal' || metric === 'standHours';
+}
+
+/**
+ * The number this task is reaching for today: the goal the person set in
+ * Fitness when the task follows it and that goal has been read, otherwise the
+ * task's own `healthTarget`.
+ *
+ * The typed number is the fallback rather than being replaced, for the same
+ * reason the ring figures fall back to the quantity totals: an install that
+ * allowed Health before the rings were added gets no summary, and a task that
+ * suddenly had no target would stop being a health task. A goal read from a day
+ * that has turned over is not used either; Fitness goals can change by weekday.
+ * Everything below judges a task against whatever this returns.
+ */
+export function effectiveHealthTarget(
+  task: HealthTargetState,
+  reading: HealthTargetReading | null,
+  todayKey: string,
+): number | null {
+  if (!hasHealthTarget(task)) return null;
+  if (task.healthFollowGoal && followsRingGoal(task.healthMetric)
+      && reading && reading.dayKey === todayKey && reading.rings) {
+    const ring = task.healthMetric === 'exerciseMinutes' ? reading.rings.exercise
+      : task.healthMetric === 'activeEnergyKcal' ? reading.rings.move
+        : reading.rings.stand;
+    if (ring.goal !== null && ring.goal > 0) return ring.goal;
+  }
+  return task.healthTarget;
 }
 
 /**

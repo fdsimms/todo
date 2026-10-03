@@ -290,7 +290,7 @@ export function HealthSettings() {
         iconColor={healthReadEnabled ? colors.accent : undefined}
         label="Read Apple Health"
         hint={healthReadEnabled
-          ? "Reads your step count for today, and shows it on Today"
+          ? "Reads today's steps, active calories and Activity rings, and shows them on Today"
           : 'Nothing is read from Health'}
         toggle={healthReadEnabled}
         onPress={onToggle}
@@ -365,10 +365,10 @@ export function HealthSettings() {
           <SettingsRow
             entryId="healthCategory"
             icon="pricetag-outline"
-            label="Show steps under"
+            label="Show Health readings under"
             hint={healthCategory
-              ? "Today's step count shows as a row in this category"
-              : "Steps don't show on Today"}
+              ? 'Steps, active calories and your Activity rings show as rows in this category'
+              : "Health readings don't show on Today"}
             value={healthCategory ? categoryLabel(healthCategory, categories) : 'Nowhere'}
             tight
           />
@@ -383,7 +383,7 @@ export function HealthSettings() {
                 label: o.label,
                 selected: o.value === healthCategory,
                 pinned: o.value === null,
-                accessibilityLabel: `Show steps under: ${o.label}`,
+                accessibilityLabel: `Show Health readings under: ${o.label}`,
                 onPress: () => { haptics.tap(); setHealthCategory(o.value); },
               }))}
             />

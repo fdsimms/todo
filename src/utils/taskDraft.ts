@@ -362,6 +362,7 @@ export function newTaskFromDraft(
     timerElapsedSeconds: draft.timerElapsedSeconds ?? 0,
     healthMetric: draft.healthMetric ?? null,
     healthTarget: draft.healthTarget ?? null,
+    healthFollowGoal: draft.healthFollowGoal ?? false,
     completionTimerMinutes: draft.completionTimerMinutes ?? null,
     completionTimerNote: draft.completionTimerNote ?? null,
     completionTimerStartedAt: null,

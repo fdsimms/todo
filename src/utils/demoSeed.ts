@@ -1523,6 +1523,7 @@ export function seedDemoData(): void {
     category: 'Health',
     healthMetric: 'standHours',
     healthTarget: 12,
+    healthFollowGoal: true,
     recurrenceType: 'daily',
   });
 

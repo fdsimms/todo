@@ -48,7 +48,7 @@ import { confirmSlip } from '../utils/slipConfirm';
 import { scheduleCompletionTimer } from '../utils/notifications';
 import { isTimedTask, timerRemaining, timerProgress, timerElapsed } from '../utils/timer';
 import {
-  describeHealthTarget, hasHealthTarget, healthTargetProgress, healthTargetValue, isHealthTargetReady,
+  describeHealthTarget, effectiveHealthTarget, followsRingGoal, hasHealthTarget, healthTargetProgress, healthTargetValue, isHealthTargetReady,
 } from '../utils/healthTarget';
 import { useHealthStore } from '../store/useHealthStore';
 import { activeSegment, segmentPhase, segmentRemaining, timerSegments } from '../utils/timerSegments';
@@ -931,9 +931,14 @@ export const TaskItem = React.memo(function TaskItem({
   // every foreground refresh, which is exactly what the memo around this
   // component exists to prevent.
   const healthValue = useHealthStore(s => healthTargetValue(task, s.today, getLogicalDayKey(new Date())));
+  // The goal is a number or null for the same reason: a task that follows its
+  // Fitness goal re-renders when that goal moves, and no other row does.
+  const healthGoal = useHealthStore(s => effectiveHealthTarget(task, s.today, getLogicalDayKey(new Date())));
   const healthTargeted = hasHealthTarget(task) && task.parentId === null;
-  const healthReady = healthTargeted && isHealthTargetReady(task, healthValue);
-  const healthLabel = healthTargeted ? describeHealthTarget(task, healthValue) : null;
+  const healthState = { healthMetric: task.healthMetric, healthTarget: healthGoal };
+  const healthReady = healthTargeted && isHealthTargetReady(healthState, healthValue);
+  const healthLabel = healthTargeted ? describeHealthTarget(healthState, healthValue) : null;
+  const healthIcon = followsRingGoal(task.healthMetric) ? 'fitness-outline' : 'footsteps-outline';
 
   // One day of the weekly meal-plan nudge (#1585): how many of that day's three
   // meals are planned, and whether that's all of them.
@@ -2836,7 +2841,7 @@ export const TaskItem = React.memo(function TaskItem({
                   : healthLabel}
               >
                 <Ionicons
-                  name={healthReady ? 'checkmark-circle' : 'footsteps-outline'}
+                  name={healthReady ? 'checkmark-circle' : healthIcon}
                   size={iconSize.xs}
                   color={healthReady ? colors.green : colors.textSecondary}
                 />
@@ -3603,7 +3608,7 @@ export const TaskItem = React.memo(function TaskItem({
               ]}>
                 <View style={styles.countdownHeader}>
                   <Ionicons
-                    name={healthReady ? 'checkmark-circle' : 'footsteps-outline'}
+                    name={healthReady ? 'checkmark-circle' : healthIcon}
                     size={12}
                     color={healthReady ? colors.green : colors.textSecondary}
                   />
@@ -3615,7 +3620,7 @@ export const TaskItem = React.memo(function TaskItem({
                         : healthLabel}
                   </Text>
                 </View>
-                <ProgressBar progress={healthTargetProgress(task, healthValue)} height={4} />
+                <ProgressBar progress={healthTargetProgress(healthState, healthValue)} height={4} />
               </View>
             )}
 
