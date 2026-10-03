@@ -1,4 +1,5 @@
 import {
+  buildUpcomingEvents,
   buildGroceries,
   buildKitchen,
   buildMeals,
@@ -16,6 +17,7 @@ import type {
   Task,
 } from '../types';
 import type { KitchenEntry } from '../utils/kitchenInventory';
+import type { BusyEvent } from '../utils/calendarBusy';
 
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: { getState: () => ({ dayResetTime: '00:00' }) },
@@ -93,6 +95,8 @@ const snapshotInput = (overrides: Partial<Parameters<typeof buildWidgetSnapshot>
   meals: null,
   recipes: [] as Recipe[],
   kitchen: null,
+  events: null as readonly BusyEvent[] | null,
+  dayEnd: new Date(2026, 7, 7),
   ...overrides,
 });
 
@@ -284,5 +288,34 @@ describe('buildWidgetSnapshot', () => {
 
   it('stamps the write time so the widget can tell a stale snapshot', () => {
     expect(buildWidgetSnapshot(snapshotInput()).updatedAt).toBe(NOW.toISOString());
+  });
+});
+
+describe('buildUpcomingEvents', () => {
+  const at = (h: number, m = 0) => new Date(2026, 7, 6, h, m).toISOString();
+  const event = (id: string, start: string, end: string, over: Partial<BusyEvent> = {}): BusyEvent => ({
+    id, title: ` ${id} `, start, end, allDay: false, calendarId: 'c', location: null,
+    status: 'confirmed', availability: 'busy', ...over,
+  });
+
+  it('lists the meetings still to start today, soonest first, trimmed and capped', () => {
+    const events = [
+      event('late', at(16), at(17)),
+      event('soon', at(10), at(11)),
+      event('started', at(8, 30), at(9, 30)),
+      event('lunch', at(12), at(13)),
+      event('evening', at(18), at(19)),
+      event('tomorrow', new Date(2026, 7, 7, 9).toISOString(), new Date(2026, 7, 7, 10).toISOString()),
+      event('free', at(11), at(12), { availability: 'free' }),
+      event('allday', at(0), new Date(2026, 7, 7).toISOString(), { allDay: true }),
+    ];
+    const result = buildUpcomingEvents(events, NOW, new Date(2026, 7, 7));
+    expect(result.map(e => e.title)).toEqual(['soon', 'lunch', 'late']);
+    expect(result[0]).toEqual({ title: 'soon', start: at(10), end: at(11) });
+  });
+
+  it('is null in the snapshot when there is no trustworthy read, and empty when the day is done', () => {
+    expect(buildWidgetSnapshot(snapshotInput()).upcomingEvents).toBeNull();
+    expect(buildWidgetSnapshot(snapshotInput({ events: [] })).upcomingEvents).toEqual([]);
   });
 });

@@ -11,7 +11,12 @@ import { useWidgetCompletionStore } from '../store/useWidgetCompletionStore';
 import { resetToKitchen, resetToToday } from '../navigation/navigationRef';
 import { buildWidgetSnapshot } from './widgetSnapshot';
 import { completedOnDay } from './allClear';
-import { getLogicalDayKey } from './dateUtils';
+import { getDayStart, getLogicalDayKey } from './dateUtils';
+import { addDays } from 'date-fns/addDays';
+import { useCalendarStore } from '../store/useCalendarStore';
+import { useHiddenEventsStore } from '../store/useHiddenEventsStore';
+import { hiddenEventKey } from './hiddenEvents';
+import type { BusyEvent } from './calendarBusy';
 import { kitchenInventory } from './kitchenInventory';
 import { listedAnywhere } from './groceryLists';
 import { buildPantryIndex, parseQueuedDisposals, resolveQueuedPantryItem } from './pantryIndex';
@@ -169,6 +174,20 @@ export function writeWidgetSnapshotNow(): void {
  * `runBackgroundRefresh` relies on) — so this guard is about a build or a test
  * that never opened the database at all rather than about the background pass.
  */
+/**
+ * The calendar read for the widget's meeting line, or null when there isn't a
+ * trustworthy one: reading off, or a read that hasn't succeeded (which is
+ * always the case in a background run). Events hidden from Today stay off the
+ * widget too, which is Today on the home screen.
+ */
+function widgetEvents(calendarReadEnabled: boolean): readonly BusyEvent[] | null {
+  if (!calendarReadEnabled) return null;
+  const { events, loaded } = useCalendarStore.getState();
+  if (!loaded) return null;
+  const hidden = useHiddenEventsStore.getState().hiddenByKey;
+  return events.filter(e => !(hiddenEventKey(e) in hidden));
+}
+
 function writeSnapshotNow(): void {
   if (Platform.OS !== 'ios') return;
   const now = new Date();
@@ -216,6 +235,8 @@ function writeSnapshotNow(): void {
             listedAnywhere(grocery.listEntries)
           )
         : null,
+    events: widgetEvents(settings.calendarReadEnabled),
+    dayEnd: addDays(getDayStart(now, dayResetTime), 1),
   });
 
   writeToNativeBridge(JSON.stringify(snapshot));
@@ -285,6 +306,12 @@ function subscribeToStores(): () => void {
     }),
     useRecipeStore.subscribe((s, p) => {
       if (s.recipes !== p.recipes) scheduleSnapshotWrite();
+    }),
+    useCalendarStore.subscribe((s, p) => {
+      if (s.events !== p.events || s.loaded !== p.loaded) scheduleSnapshotWrite();
+    }),
+    useHiddenEventsStore.subscribe((s, p) => {
+      if (s.hiddenByKey !== p.hiddenByKey) scheduleSnapshotWrite();
     }),
   ];
   return () => {
