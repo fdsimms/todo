@@ -58,3 +58,23 @@ export function nudgeReminderPastMeeting(
 
   return { time: new Date(interval.end), nudged: true, meetingTitle: meeting?.title || null };
 }
+
+/**
+ * Everything about a calendar read that `nudgeReminderPastMeeting` can see,
+ * as one comparable string: the events that occupy time, by id and span.
+ *
+ * The nudge is applied when a reminder is scheduled, so a meeting added or
+ * moved afterward never reached the reminder it now overlaps. The fix is to
+ * rebuild the queue when the meetings change, and this is what says whether
+ * they did: the calendar store refreshes on every foreground with a fresh
+ * array either way, and rebuilding the whole notification queue on each of
+ * those would be work for nothing most times. Order-free, so a read that
+ * returns the same events in another order isn't a change.
+ */
+export function meetingSignature(events: readonly BusyEvent[]): string {
+  return events
+    .filter(occupiesTime)
+    .map(e => `${e.id}|${e.start}|${e.end}`)
+    .sort()
+    .join('\n');
+}
