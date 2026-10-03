@@ -63,6 +63,16 @@ export function quickEventSaveFields(input: QuickEventSaveInput): EventSaveField
   };
 }
 
+/**
+ * The minutes-before an existing alert stands for: `alertRelativeOffset` run
+ * backwards, so the edit card's chip reads what the event already has. An
+ * alert set after the start (which the chip can't show) reads as at the start.
+ */
+export function alertMinutesFromOffset(offset: number | null, allDay: boolean): number | null {
+  if (offset === null || !Number.isFinite(offset)) return null;
+  return Math.max(0, Math.round((allDay ? 9 * 60 : 0) - offset));
+}
+
 /** "None", "At start", "30 min before", "1 hour before", "2 days before". */
 export function describeAlert(minutes: number | null, allDay = false): string {
   if (minutes === null) return 'None';

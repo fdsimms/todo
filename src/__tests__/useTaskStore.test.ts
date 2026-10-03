@@ -334,8 +334,6 @@ jest.mock('../utils/calendarSync', () => ({
   // The #1492 half. Stubbed to "the user cancelled" / "no such event" by
   // default so nothing writes unless a test says so; the time-block block at
   // the bottom of this file drives them.
-  presentTimeBlockCreate: jest.fn().mockResolvedValue({ saved: false, deleted: false, eventId: null }),
-  presentTimeBlockEdit: jest.fn().mockResolvedValue({ saved: false, deleted: false, eventId: null }),
   readTimeBlockEvent: jest.fn().mockResolvedValue(null),
   updateTimeBlockEvent: jest.fn().mockResolvedValue(true),
 }));
@@ -16510,134 +16508,81 @@ describe('setDeliverableValue', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Time blocks (#1492) — the wiring between the system event sheet and the task
+// Time blocks (#1492) — the wiring between the in-app event card and the task
 // row. What slot gets proposed is timeBlock.test.ts's job; this is only about
-// which pointer ends up on the task.
+// what the card is opened on and which pointer ends up on the task.
 
 const rowOf = (id: string) => useTaskStore.getState().tasks.find(t => t.id === id)!;
 
-describe('putTaskOnCalendar', () => {
+describe('planTimeBlock', () => {
   const sync = jest.requireMock('../utils/calendarSync') as {
-    presentTimeBlockCreate: jest.Mock;
-    presentTimeBlockEdit: jest.Mock;
     readTimeBlockEvent: jest.Mock;
-    updateTimeBlockEvent: jest.Mock;
   };
 
   const blockable = (overrides: Partial<Task> = {}) =>
     makeTask({ id: 'report', title: 'Write the report', estimatedMinutes: 45, ...overrides });
+  const onDevice = { title: 'Write the report', start: new Date(), end: new Date(), allDay: false };
 
-  it('stores the event id once the user saves the sheet', async () => {
-    useTaskStore.setState({ tasks: [blockable()] });
-    sync.presentTimeBlockCreate.mockResolvedValueOnce({ saved: true, deleted: false, eventId: 'ev-1' });
-
-    await expect(useTaskStore.getState().putTaskOnCalendar('report')).resolves.toBe(true);
-
-    expect(rowOf('report').timeBlockEventId).toBe('ev-1');
-  });
-
-  it('writes nothing when the sheet is cancelled', async () => {
+  it('proposes a fresh block for a task that has none', async () => {
     useTaskStore.setState({ tasks: [blockable()] });
 
-    await expect(useTaskStore.getState().putTaskOnCalendar('report')).resolves.toBe(false);
+    const plan = await useTaskStore.getState().planTimeBlock('report');
 
+    expect(plan).toMatchObject({ mode: 'create', fields: { title: 'Write the report' } });
+    if (plan?.mode !== 'create') throw new Error('expected a create plan');
+    expect(plan.fields.end.getTime() - plan.fields.start.getTime()).toBe(45 * 60000);
+    // Planning writes nothing; the pointer waits for the card to save.
     expect(rowOf('report').timeBlockEventId).toBeNull();
-    expect(sync.presentTimeBlockCreate).toHaveBeenCalled();
   });
 
   it('refuses a task with no length to block out', async () => {
     useTaskStore.setState({ tasks: [blockable({ estimatedMinutes: null, effort: 0 })] });
 
-    await expect(useTaskStore.getState().putTaskOnCalendar('report')).resolves.toBe(false);
-
-    expect(sync.presentTimeBlockCreate).not.toHaveBeenCalled();
+    await expect(useTaskStore.getState().planTimeBlock('report')).resolves.toBeNull();
   });
 
-  // The guard the three automatic calendar syncs already had, and the one
-  // write past SQLite that was missing it. The system sheet asking for
-  // confirmation is not an exemption: the demo database is discarded, so a
-  // block created from seeded fiction strands a real event on a real calendar
-  // with the only pointer to it about to go.
-  it('never opens the event sheet while demo mode is active', async () => {
-    setDemoModeActive(true);
-    try {
-      useTaskStore.setState({ tasks: [blockable()] });
-
-      await expect(useTaskStore.getState().putTaskOnCalendar('report')).resolves.toBe(false);
-
-      expect(sync.presentTimeBlockCreate).not.toHaveBeenCalled();
-      expect(sync.presentTimeBlockEdit).not.toHaveBeenCalled();
-      expect(rowOf('report').timeBlockEventId).toBeNull();
-    } finally {
-      setDemoModeActive(false);
-    }
-  });
-
-  it('does not reopen an existing block in demo mode either', async () => {
+  // The guard the three automatic calendar syncs already had. The demo
+  // database is discarded, so a block created from seeded fiction strands a
+  // real event on a real calendar with the only pointer to it about to go.
+  it('opens nothing while demo mode is active', async () => {
     setDemoModeActive(true);
     try {
       useTaskStore.setState({ tasks: [blockable({ timeBlockEventId: 'ev-1' })] });
 
-      await expect(useTaskStore.getState().putTaskOnCalendar('report')).resolves.toBe(false);
+      await expect(useTaskStore.getState().planTimeBlock('report')).resolves.toBeNull();
 
-      expect(sync.presentTimeBlockEdit).not.toHaveBeenCalled();
+      expect(sync.readTimeBlockEvent).not.toHaveBeenCalled();
     } finally {
       setDemoModeActive(false);
     }
   });
 
-  it('opens the edit sheet, not a second sheet, once a block exists', async () => {
+  it('opens the existing block for editing, not a second one', async () => {
     useTaskStore.setState({ tasks: [blockable({ timeBlockEventId: 'ev-1' })] });
-    sync.presentTimeBlockEdit.mockResolvedValueOnce({ saved: true, deleted: false, eventId: 'ev-1' });
+    sync.readTimeBlockEvent.mockResolvedValueOnce(onDevice);
 
-    await expect(useTaskStore.getState().putTaskOnCalendar('report')).resolves.toBe(true);
+    await expect(useTaskStore.getState().planTimeBlock('report')).resolves.toEqual({ mode: 'edit', eventId: 'ev-1' });
 
-    expect(sync.presentTimeBlockEdit).toHaveBeenCalledWith('ev-1');
-    expect(sync.presentTimeBlockCreate).not.toHaveBeenCalled();
     expect(rowOf('report').timeBlockEventId).toBe('ev-1');
   });
 
-  it('drops the pointer when the user deletes the event from the sheet', async () => {
-    useTaskStore.setState({ tasks: [blockable({ timeBlockEventId: 'ev-1' })] });
-    sync.presentTimeBlockEdit.mockResolvedValueOnce({ saved: false, deleted: true, eventId: null });
+  it('drops a block deleted in the Calendar app and proposes a fresh one', async () => {
+    useTaskStore.setState({ tasks: [blockable({ timeBlockEventId: 'gone' })] });
+    sync.readTimeBlockEvent.mockResolvedValueOnce(null);
 
-    await expect(useTaskStore.getState().putTaskOnCalendar('report')).resolves.toBe(false);
+    const plan = await useTaskStore.getState().planTimeBlock('report');
 
+    expect(plan?.mode).toBe('create');
     expect(rowOf('report').timeBlockEventId).toBeNull();
   });
 
-  it('keeps the pointer when the edit sheet closes and the event is still there', async () => {
-    useTaskStore.setState({ tasks: [blockable({ timeBlockEventId: 'ev-1' })] });
-    // Cancelled, or the sheet failed to present — either way the event lives.
-    sync.readTimeBlockEvent.mockResolvedValueOnce({
-      title: 'Write the report', start: new Date(), end: new Date(), allDay: false,
-    });
-
-    await expect(useTaskStore.getState().putTaskOnCalendar('report')).resolves.toBe(true);
-
-    expect(rowOf('report').timeBlockEventId).toBe('ev-1');
-  });
-
-  it('replaces a block that was deleted in the Calendar app', async () => {
-    useTaskStore.setState({ tasks: [blockable({ timeBlockEventId: 'gone' })] });
-    // Edit sheet does nothing, and the event genuinely isn't there any more.
-    sync.readTimeBlockEvent.mockResolvedValueOnce(null);
-    sync.presentTimeBlockCreate.mockResolvedValueOnce({ saved: true, deleted: false, eventId: 'ev-2' });
-
-    await expect(useTaskStore.getState().putTaskOnCalendar('report')).resolves.toBe(true);
-
-    // The stale pointer is gone and the same tap produced a fresh block.
-    expect(rowOf('report').timeBlockEventId).toBe('ev-2');
-  });
-
-  it('ignores a saved event iOS gave us no id for', async () => {
+  it('records the event the card saved, and drops it once the card deletes it', () => {
     useTaskStore.setState({ tasks: [blockable()] });
-    sync.presentTimeBlockCreate.mockResolvedValueOnce({ saved: true, deleted: false, eventId: null });
 
-    await expect(useTaskStore.getState().putTaskOnCalendar('report')).resolves.toBe(false);
+    useTaskStore.getState().linkTimeBlock('report', 'ev-1');
+    expect(rowOf('report').timeBlockEventId).toBe('ev-1');
 
-    // An event we can't point at is one we can't reconcile or reopen; better to
-    // hold no pointer than a broken one.
+    useTaskStore.getState().unlinkTimeBlock('report');
     expect(rowOf('report').timeBlockEventId).toBeNull();
   });
 
@@ -16648,23 +16593,18 @@ describe('putTaskOnCalendar', () => {
     const settle = async () => {
       for (let i = 0; i < 12; i++) await Promise.resolve();
     };
-    const NOTHING = { saved: false, deleted: false, eventId: null };
     beforeEach(() => {
       // Nothing queued by an earlier test may answer for this one.
       mockExternalIds.mockReset().mockResolvedValue({});
       mockEventsWithExternalId.mockReset().mockResolvedValue([]);
-      sync.presentTimeBlockCreate.mockReset().mockResolvedValue(NOTHING);
-      sync.presentTimeBlockEdit.mockReset().mockResolvedValue(NOTHING);
       sync.readTimeBlockEvent.mockReset().mockResolvedValue(null);
     });
-    const onDevice = { title: 'Write the report', start: new Date(), end: new Date(), allDay: false };
 
-    it('is kept beside the block once the sheet saves it', async () => {
+    it('is kept beside the block once the card saves it', async () => {
       useTaskStore.setState({ tasks: [blockable()] });
-      sync.presentTimeBlockCreate.mockResolvedValueOnce({ saved: true, deleted: false, eventId: 'ev-1' });
       mockExternalIds.mockResolvedValueOnce({ 'ev-1': 'ext-1' });
 
-      await expect(useTaskStore.getState().putTaskOnCalendar('report')).resolves.toBe(true);
+      useTaskStore.getState().linkTimeBlock('report', 'ev-1');
       await settle();
 
       expect(rowOf('report')).toMatchObject({ timeBlockEventId: 'ev-1', timeBlockExternalId: 'ext-1' });
@@ -16674,34 +16614,28 @@ describe('putTaskOnCalendar', () => {
       useTaskStore.setState({
         tasks: [blockable({ timeBlockEventId: 'ev-old-phone', timeBlockExternalId: 'ext-1' })],
       });
-      sync.presentTimeBlockEdit
-        .mockResolvedValueOnce(NOTHING)
-        .mockResolvedValueOnce({ saved: true, deleted: false, eventId: 'ev-this-phone' });
       sync.readTimeBlockEvent.mockResolvedValueOnce(null).mockResolvedValueOnce(onDevice);
       mockEventsWithExternalId.mockResolvedValueOnce([{ id: 'ev-this-phone', allDay: false, calendarId: null }]);
 
-      await expect(useTaskStore.getState().putTaskOnCalendar('report')).resolves.toBe(true);
+      await expect(useTaskStore.getState().planTimeBlock('report'))
+        .resolves.toEqual({ mode: 'edit', eventId: 'ev-this-phone' });
 
       expect(mockEventsWithExternalId).toHaveBeenCalledWith('ext-1');
-      expect(sync.presentTimeBlockEdit).toHaveBeenLastCalledWith('ev-this-phone');
-      expect(sync.presentTimeBlockCreate).not.toHaveBeenCalled();
       expect(rowOf('report')).toMatchObject({ timeBlockEventId: 'ev-this-phone', timeBlockExternalId: 'ext-1' });
     });
 
-    it('drops the pointer as before when it finds several events, and offers a fresh block', async () => {
+    it('drops the pointer when it finds several events, and offers a fresh block', async () => {
       useTaskStore.setState({
         tasks: [blockable({ timeBlockEventId: 'ev-old-phone', timeBlockExternalId: 'ext-1' })],
       });
-      sync.readTimeBlockEvent.mockResolvedValueOnce(null);
       mockEventsWithExternalId.mockResolvedValueOnce([
         { id: 'ev-a', allDay: false, calendarId: 'cal-home' },
         { id: 'ev-b', allDay: false, calendarId: 'cal-work' },
       ]);
 
-      await expect(useTaskStore.getState().putTaskOnCalendar('report')).resolves.toBe(false);
+      const plan = await useTaskStore.getState().planTimeBlock('report');
 
-      expect(sync.presentTimeBlockEdit).toHaveBeenCalledTimes(1);
-      expect(sync.presentTimeBlockCreate).toHaveBeenCalled();
+      expect(plan?.mode).toBe('create');
       expect(rowOf('report')).toMatchObject({ timeBlockEventId: null, timeBlockExternalId: null });
     });
   });

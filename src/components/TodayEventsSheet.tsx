@@ -31,7 +31,7 @@ import { taskFieldsFromEvent } from '../utils/calendarEventImport';
 import { useEventPeopleStore } from '../store/useEventPeopleStore';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { peopleForEvent, suggestedEventPeople } from '../utils/eventPeople';
-import { QuickEventSheet } from './QuickEventSheet';
+import { QuickEventSheet, type QuickEventEditTarget } from './QuickEventSheet';
 import { isDemoModeActive } from '../utils/demoState';
 import { InlineAction } from './InlineAction';
 import { TemplatePickerSheet } from './TemplatePickerSheet';
@@ -130,6 +130,10 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById, titl
   const eventPeople = useEventPeopleStore(s => s.links);
   const setEventPeople = useEventPeopleStore(s => s.setPeople);
   const [newEventOpen, setNewEventOpen] = useState(false);
+  // The event open in the edit card. Kept set while the card fades out, so
+  // its contents don't empty mid-exit; `editOpen` is what shows it.
+  const [editingEvent, setEditingEvent] = useState<QuickEventEditTarget | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
   // The Leave-by reminders' trip estimates, shown under an event's location
   // while that setting is on. Nothing is asked from here: the travel store
   // estimates the same upcoming events and this only reads what it holds.
@@ -412,16 +416,20 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById, titl
 
                 {detailsOpen && (
                   <View style={styles.reminderPanel}>
-                    {plannedCount > 0 && (
-                      <Text style={styles.panelHint}>
-                        {plannedCount === 1 ? '1 task' : `${plannedCount} tasks`} planned around this event.
-                      </Text>
-                    )}
-                    {hasTemplates && (
-                      <View style={[styles.pillRow, people.length > 0 && styles.panelSection]}>
+                    <View style={[styles.pillRow, people.length > 0 && styles.panelSection]}>
+                      <InlineAction
+                        icon="create-outline"
+                        label="Edit event"
+                        onPress={() => {
+                          haptics.tap();
+                          setEditingEvent({ eventId: event.id, occurrenceStart: event.start });
+                          setEditOpen(true);
+                        }}
+                      />
+                      {hasTemplates && (
                         <InlineAction icon="copy-outline" label="Plan from a template" onPress={() => planFromTemplate(event)} />
-                      </View>
-                    )}
+                      )}
+                    </View>
                     {people.length > 0 && (
                     <>
                     <Text style={styles.panelHint}>
@@ -503,6 +511,14 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById, titl
           visible={newEventOpen}
           onClose={() => setNewEventOpen(false)}
           seed={day ? { day } : null}
+        />
+        <QuickEventSheet
+          visible={editOpen && editingEvent !== null}
+          onClose={() => setEditOpen(false)}
+          seed={null}
+          editing={editingEvent}
+          onSaved={() => setOpenPanel(null)}
+          onDeleted={() => setOpenPanel(null)}
         />
         <AwayShiftSheet
           visible={shifting !== null}

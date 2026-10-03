@@ -655,6 +655,33 @@ same way and the Add button says "Add event". A leading word plus a colon, so
 it cannot fire mid-title, and it is off in demo mode, where the line stays a
 task.
 
+### Changing an event
+
+The same card edits an event that is already on the calendar, from "Edit event" in an event's
+details on Today's events sheet and from a task's "Time block" row, so moving, retiming or
+deleting one never goes through Apple's sheet. `readEventForEdit` fills it, `updateEventDirect`
+saves it and `deleteEventDirect` removes it (`calendarSync.ts`, under the section for events the
+user writes). The rules:
+
+- **The save goes through `rewriteEvent`**, so invitees, a repeat rule, a time zone and every
+  alert past the first come back unchanged. The fields the card shows are written as they stand;
+  notes and the URL are written only when their one field changed, since the card shows them as
+  one field and an event can hold both.
+- **A repeating event is edited and deleted one occurrence at a time**, the one tapped
+  (`futureEvents: false` with its start). "This and future" was the alternative and is the one
+  answer that can't be undone from the card.
+- **The title is a title until it changes.** An opened event's title is read plain (`plain` in
+  `parseQuickEvent`), or "Dinner at 7" would move it to 7pm the moment it opened.
+- **A read-only calendar refuses at open**, not at Save (`EventForEdit.editable`).
+- **Nothing deletes an event on its own.** `deleteEventDirect` runs only from the card's Delete,
+  after a confirm; every other path that loses track of an event drops its pointer instead.
+- **People move with the event** (`useEventPeopleStore.updateEvent`), since a link is keyed by
+  occurrence and a moved event would otherwise leave them on the old slot.
+- **A time block is the same card**: `planTimeBlock` answers whether to open the block for editing
+  or propose a new one (the slot `timeBlockFieldsFor` found), and `linkTimeBlock` /
+  `unlinkTimeBlock` record what the card saved or deleted. The reconcile that moves a block with
+  its task is unchanged.
+
 ### Tasks planned around an event
 
 `src/utils/eventTaskLinks.ts` + `useEventTaskLinkStore`, the sibling record.

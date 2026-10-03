@@ -257,6 +257,13 @@ export function parseQuickEvent(
     ignoreSchedule?: boolean;
     /** Picks made for an "@name" more than one person answers to, by token. */
     mentionOverrides?: Record<string, string>;
+    /**
+     * Read the line as a plain title: no clauses, no schedule. The edit card
+     * opens on an event's own title this way, so a title that happens to read
+     * like an instruction ("Dinner at Joe's tomorrow") doesn't move the event
+     * or lose words until the user actually types something.
+     */
+    plain?: boolean;
   }
 ): QuickEventDraft {
   // Peel the trailing clauses off the right of the line, in whatever order
@@ -274,7 +281,7 @@ export function parseQuickEvent(
   let clausesFrom: number | null = null;
   const spanOf = (from: number, to: number): [number, number] =>
     [from + (/^\s*/.exec(input.slice(from, to))?.[0].length ?? 0), to];
-  for (let guard = 0; guard < 3; guard++) {
+  for (let guard = 0; guard < 3 && !opts.plain; guard++) {
     const to = body.length;
     const alert: { start: number; minutes: number | null } | null = alertClause ? null : parseAlertClause(body);
     if (alert) {
@@ -313,10 +320,10 @@ export function parseQuickEvent(
   // A clock range ("12-1:30pm", "from 6 to 8pm") is the end of the schedule
   // phrase rather than a clause of its own: it sets the start and the end
   // together, and taking the date out of the line takes it out too.
-  const range = opts.ignoreSchedule ? null : parseClockRange(body);
+  const range = opts.ignoreSchedule || opts.plain ? null : parseClockRange(body);
   const scheduleBody = range ? body.slice(0, range.start) : body;
 
-  const parsed = opts.ignoreSchedule ? null : parseTaskInput(scheduleBody, opts.now, opts.wallClock);
+  const parsed = opts.ignoreSchedule || opts.plain ? null : parseTaskInput(scheduleBody, opts.now, opts.wallClock);
   const mentions = applyMentionOverrides(
     body,
     matchPersonMentions(body, [...opts.people], [...(opts.groups ?? [])]),

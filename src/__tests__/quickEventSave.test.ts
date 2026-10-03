@@ -1,4 +1,4 @@
-import { describeAlert, quickEventFromLine, quickEventSaveFields, splitNotesAndLink } from '../utils/quickEventSave';
+import { alertMinutesFromOffset, describeAlert, quickEventFromLine, quickEventSaveFields, splitNotesAndLink } from '../utils/quickEventSave';
 
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: {
@@ -122,5 +122,24 @@ describe('quickEventFromLine', () => {
     // A timed line keeps its own time.
     const timed = quickEventFromLine({ ...draft, timed: true }, { recalled, defaults, freeSlotFor });
     expect(timed.start).toEqual(draft.start);
+  });
+});
+
+describe('alertMinutesFromOffset', () => {
+  it('reads a timed event\'s offset as minutes before it', () => {
+    expect(alertMinutesFromOffset(-15, false)).toBe(15);
+    expect(alertMinutesFromOffset(0, false)).toBe(0);
+  });
+
+  // An all-day event's alert is measured from midnight, and the card counts
+  // its choices back from 9 AM on the day.
+  it('reads an all-day offset against 9 AM', () => {
+    expect(alertMinutesFromOffset(540, true)).toBe(0);
+    expect(alertMinutesFromOffset(-900, true)).toBe(1440);
+  });
+
+  it('never answers a negative lead, for an alert after the start', () => {
+    expect(alertMinutesFromOffset(30, false)).toBe(0);
+    expect(alertMinutesFromOffset(null, false)).toBeNull();
   });
 });

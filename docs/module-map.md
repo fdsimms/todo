@@ -48,7 +48,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/calendarIdBackfill.ts` — CALENDAR_ID_BACKFILL_KEY, backfillCalendarExternalIds
 - `src/utils/calendarMonth.ts` — DayMarkKind, MARK_KINDS, DayMark, DotState, DayDot, DayBucket, MAX_PROJECTION_STEPS, canProject, projectOccurrences, nthOccurrence, +7 more
 - `src/utils/calendarReviewTasks.ts` — CALENDAR_REVIEW_TITLE, calendarReviewDayKey, wantsCalendarReview, calendarReviewEventsFor
-- `src/utils/calendarSync.ts` — CalendarPermission, getCalendarPermission, requestCalendarPermission, listEventCalendars, validCalendarIds, CalendarReadStatus, CalendarInfo, FetchEventsResult, fetchEvents, listWritableCalendars, +20 more
+- `src/utils/calendarSync.ts` — CalendarPermission, getCalendarPermission, requestCalendarPermission, listEventCalendars, validCalendarIds, CalendarReadStatus, CalendarInfo, FetchEventsResult, fetchEvents, listWritableCalendars, +22 more
 - `src/utils/capitalize.ts` — capitalize
 - `src/utils/cardAnchor.ts` — CardAnchor, CardPlacement, ANCHOR_GAP, ANCHOR_REACH, ANCHOR_EDGE, cardAnchorPlacement
 - `src/utils/categoryBackfill.ts` — CategoryBackfillFieldId, CategoryBackfillFieldDef, CATEGORY_BACKFILL_FIELDS, isCategoryFieldMissing, isCategoryBackfillDismissed, categoryBackfillCandidates, categoryBackfillFieldCounts, dismissCategoryBackfillField
@@ -237,7 +237,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/quickActions.ts` — quickActionsFor, handleQuickActionId, useHomeScreenQuickActions
 - `src/utils/quickEvent.ts` — QuickEventDraft, EventRecurrence, eventRecurrenceFor, describeEventRepeat, parseAlertClause, alertRelativeOffset, DEFAULT_EVENT_MINUTES, parseLengthClause, parseClockRange, parseQuickEvent, +1 more
 - `src/utils/quickEventDefaults.ts` — QUICK_EVENT_DEFAULTS_KEY, EventAvailability, QuickEventDefaults, INITIAL_QUICK_EVENT_DEFAULTS, parseQuickEventDefaults, readQuickEventDefaults, writeQuickEventDefaults
-- `src/utils/quickEventSave.ts` — splitNotesAndLink, QuickEventSaveInput, quickEventSaveFields, describeAlert, ALERT_CHOICES, quickEventFromLine
+- `src/utils/quickEventSave.ts` — splitNotesAndLink, QuickEventSaveInput, quickEventSaveFields, alertMinutesFromOffset, describeAlert, ALERT_CHOICES, quickEventFromLine
 - `src/utils/quickSearch.ts` — QUICK_SEARCH_LIMIT, QuickSearchOutcome, quickSearch, QUICK_DESTINATION_LIMIT, quickDestinations
 - `src/utils/quotaSchedule.ts` — QuotaSpan, QuotaSpanInput, quotaRunSpan, quotaWeekStart, quotaWeekSpan, quotaTargetForInterval, quotaDueTimes, quotaDueTimesAfter, isQuotaRunOver
 - `src/utils/quotaUnit.ts` — MAX_TARGET_UNIT_LENGTH, normalizeTargetUnit, formatQuotaProgress, formatQuotaCatchUp, formatQuotaTarget
@@ -408,7 +408,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/useStepTimerStore.ts` — useStepTimerStore
 - `src/store/useSyncStore.ts` — SERVER_HEALTH_LOGS_KEY, SERVER_HEALTH_RESEND_KEY, NOTHING_OWED, SYNC_EPOCH, markHealthLogsWithheld, settleHealthLogResend, SyncPhase, registerSyncReload, useSyncStore, isSyncSupported
 - `src/store/useTaskGroupStore.ts` — useTaskGroupStore
-- `src/store/useTaskStore.ts` — CONTENT_FIELDS, derivedTargetCount, useTaskStore
+- `src/store/useTaskStore.ts` — CONTENT_FIELDS, TimeBlockPlan, derivedTargetCount, useTaskStore
 - `src/store/useTemplateCategoryStore.ts` — useTemplateCategoryStore
 - `src/store/useTemplateStore.ts` — ApplyTemplateOptions, useTemplateStore
 - `src/store/useTransitStore.ts` — TRANSIT_SNAPSHOT_STALE_MS, transitReadWanted, useTransitStore

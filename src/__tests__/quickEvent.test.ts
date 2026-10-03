@@ -18,6 +18,15 @@ const names: Record<string, string> = { p1: 'Dustin', p2: 'Ansley' };
 const opts = { people, nameOf: (id: string) => names[id] ?? null, now, today, wallClock: now };
 
 describe('parseQuickEvent', () => {
+  // An event opened for editing keeps its title as written: "Dinner at 7 for
+  // Sam's birthday" is a name, not an instruction to move it to 7pm.
+  it('reads a plain line as nothing but a title', () => {
+    const draft = parseQuickEvent('Dinner at Luigi tomorrow 7pm for 2h', { ...opts, plain: true });
+    expect(draft.title).toBe('Dinner at Luigi tomorrow 7pm for 2h');
+    expect(draft.scheduled).toBe(false);
+    expect(draft.location).toBeNull();
+  });
+
   it('reads a day, a clock time and a person', () => {
     const draft = parseQuickEvent('lunch w/ @dustin sat 12pm', opts);
     expect(draft.title).toBe('lunch w/ Dustin');
