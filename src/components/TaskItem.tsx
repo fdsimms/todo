@@ -1513,6 +1513,16 @@ export const TaskItem = React.memo(function TaskItem({
   // Computed once and reused by the expandable step list (#1237) and the row's
   // step-forward/back controls (#786) — same reasoning as chainStepIndex above.
   const chainStepPreview = chainStep ? chainPreview(task) : null;
+  // Whether the expanded panel has any of its one-line fact rows, which share
+  // a single divider (see the block in the render).
+  const hasFactRows =
+    task.recurrenceType !== 'none' ||
+    otherSeriesDates !== '' ||
+    chainStepPreview !== null ||
+    task.generatedKind === 'calendarReview' ||
+    timed ||
+    healthTargeted ||
+    task.actualMinutes != null;
   // task.title is the chain's own name (what the editor's name field actually
   // edits — see handleTitleTap's comment above), distinct from the active
   // step's title the row displays. Nothing else on the row ever showed it, so
@@ -3398,312 +3408,289 @@ export const TaskItem = React.memo(function TaskItem({
             </View>
             )}
 
-            {task.recurrenceType !== 'none' && (
-              <View style={[
-                styles.recurrenceRow,
-                // The subtask section above always renders (it always carries
-                // the add-subtask field), so there's normally something above
-                // this row to divide from — see panelSectionAbove for the one
-                // row treatment that drops it.
-                panelSectionAbove && styles.sectionDivider,
-              ]}>
-                <Ionicons name="repeat" size={12} color={colors.textSecondary} />
-                <Text style={styles.expandMeta}>{describeTaskRecurrence(task)}</Text>
-                {hoursUnlockTime && (
-                  <>
-                    <Text style={styles.expandMeta}> · </Text>
-                    <Text style={styles.expandMeta}>Unlocks {hoursUnlockTime}</Text>
-                  </>
-                )}
-                {task.streakCount > 0 && (
-                  <>
-                    <Text style={styles.expandMeta}> · </Text>
-                    <View style={styles.streakBadge}>
-                      <Ionicons name="flame" size={12} color={streakColor} />
-                      <Text style={styles.expandMeta}>{task.streakCount}</Text>
-                    </View>
-                  </>
-                )}
-              </View>
-            )}
-
-            {otherSeriesDates !== '' && (
-              <View style={[
-                styles.recurrenceRow,
-                // The subtask section always renders (see above), so this
-                // normally has something above it.
-                panelSectionAbove && styles.sectionDivider,
-              ]}>
-                <Ionicons name="calendar-number-outline" size={12} color={colors.textSecondary} />
-                <Text style={styles.expandMeta}>Also on {otherSeriesDates}</Text>
-              </View>
-            )}
-
-            {chainStepPreview && (
-              <TouchableOpacity
-                style={[
-                  styles.recurrenceRow,
-                  panelSectionAbove && styles.sectionDivider,
-                ]}
-                onPress={() => { haptics.tap(); setChainStepsExpanded(v => !v); }}
-                activeOpacity={interaction.activeOpacity}
-                accessibilityRole="button"
-                accessibilityState={{ expanded: chainStepsExpanded }}
-                accessibilityLabel={
-                  chainStepsExpanded
-                    ? `Collapse the ${chainStepPreview.total}-step chain${chainName ? ` "${chainName}"` : ''}`
-                    : `Show all ${chainStepPreview.total} steps of the chain${chainName ? ` "${chainName}"` : ''}, currently on ${chainStepPreview.currentTitle}`
-                }
-              >
-                <Ionicons name="git-commit" size={12} color={colors.textSecondary} />
-                {chainStepsExpanded ? (
-                  <Text style={styles.expandMeta}>
-                    {chainName ? `${chainName} · ` : ''}Chain · {chainStepPreview.total} steps
-                  </Text>
-                ) : (
-                  <Text style={styles.expandMeta} numberOfLines={1}>
-                    {chainName ? `${chainName} · ` : ''}Chain {chainStepPreview.currentIdx + 1}/{chainStepPreview.total}:{' '}
-                    <Text style={styles.expandMetaActive}>On: {chainStepPreview.currentTitle}</Text>
-                    {chainStepPreview.nextTitle ? ` → Next: ${chainStepPreview.nextTitle}` : ''}
-                  </Text>
-                )}
-                <View style={styles.chainExpandSpacer} />
-                <Ionicons
-                  name={chainStepsExpanded ? 'chevron-up' : 'chevron-down'}
-                  size={12}
-                  color={colors.textSecondary}
-                />
-              </TouchableOpacity>
-            )}
-
-            {chainStepsExpanded && chainStepPreview && (
-              <View style={styles.chainStepsList}>
-                {task.chainItems.map((item, i) => {
-                  const isDone = i < chainStepIndex;
-                  const isCurrent = i === chainStepIndex;
-                  return (
-                    <View key={item.id} style={styles.chainStepListRow}>
-                      <View style={[
-                        styles.chainStepListDot,
-                        isDone && styles.chainStepListDotDone,
-                        isCurrent && styles.chainStepListDotActive,
-                      ]}>
-                        {isDone ? (
-                          <Ionicons name="checkmark" size={9} color={colors.onAccent} />
-                        ) : (
-                          <Text style={[
-                            styles.chainStepListDotText,
-                            isCurrent && styles.chainStepListDotTextActive,
-                          ]}>
-                            {i + 1}
-                          </Text>
-                        )}
+            {/* The one-line facts about the task (repeat, series, chain,
+                countdown, time spent) read as one block under one divider.
+                Each row used to draw its own, which stacked four hairlines on
+                a recurring timed task and made the panel look ruled. */}
+            {hasFactRows && (
+            <View style={panelSectionAbove ? styles.sectionDivider : undefined}>
+              {task.recurrenceType !== 'none' && (
+                <View style={styles.recurrenceRow}>
+                  <Ionicons name="repeat" size={12} color={colors.textSecondary} />
+                  <Text style={styles.expandMeta}>{describeTaskRecurrence(task)}</Text>
+                  {hoursUnlockTime && (
+                    <>
+                      <Text style={styles.expandMeta}> · </Text>
+                      <Text style={styles.expandMeta}>Unlocks {hoursUnlockTime}</Text>
+                    </>
+                  )}
+                  {task.streakCount > 0 && (
+                    <>
+                      <Text style={styles.expandMeta}> · </Text>
+                      <View style={styles.streakBadge}>
+                        <Ionicons name="flame" size={12} color={streakColor} />
+                        <Text style={styles.expandMeta}>{task.streakCount}</Text>
                       </View>
-                      <Text style={[
-                        styles.chainStepListTitle,
-                        isDone && styles.chainStepListTitleDone,
-                        isCurrent && styles.chainStepListTitleActive,
-                      ]} numberOfLines={2}>
-                        {item.title}
-                      </Text>
-                    </View>
-                  );
-                })}
-              </View>
-            )}
+                    </>
+                  )}
+                </View>
+              )}
 
-            {/* The task's own answer, read live off the calendar store — see
-                the calendarReviewEvents comment above. This is the whole of a
-                review task's panel now (the subtask section and the action row
-                are both gone on a notice), which is why the divider asks
-                whether anything is actually above it. */}
-            {task.generatedKind === 'calendarReview' && (
-              <View style={[
-                styles.expandSection,
-                panelSectionAbove && styles.sectionDivider,
-              ]}>
-                {calendarReviewEvents.length > 0 ? (
-                  calendarReviewEvents.map(event => (
-                    <View key={event.id} style={styles.calendarReviewEventRow}>
-                      <Ionicons name="calendar-outline" size={12} color={colors.textSecondary} />
-                      <Text style={[styles.expandMeta, styles.calendarReviewEventTitle]} numberOfLines={1}>
-                        {event.allDay ? 'All day' : formatTimeOfDay(new Date(event.start))}
-                        {' · '}
-                        {event.title || 'Event'}
-                      </Text>
-                      {/* The one thing this panel could never do: answer its
-                          own question with work. Reaches the stores directly
-                          rather than taking a callback prop, the same way the
-                          Sync row below does — a fresh closure per row would
-                          cost every TaskItem on the list its memo. */}
+              {otherSeriesDates !== '' && (
+                <View style={styles.recurrenceRow}>
+                  <Ionicons name="calendar-number-outline" size={12} color={colors.textSecondary} />
+                  <Text style={styles.expandMeta}>Also on {otherSeriesDates}</Text>
+                </View>
+              )}
+
+              {chainStepPreview && (
+                <TouchableOpacity
+                  style={styles.recurrenceRow}
+                  onPress={() => { haptics.tap(); setChainStepsExpanded(v => !v); }}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded: chainStepsExpanded }}
+                  accessibilityLabel={
+                    chainStepsExpanded
+                      ? `Collapse the ${chainStepPreview.total}-step chain${chainName ? ` "${chainName}"` : ''}`
+                      : `Show all ${chainStepPreview.total} steps of the chain${chainName ? ` "${chainName}"` : ''}, currently on ${chainStepPreview.currentTitle}`
+                  }
+                >
+                  <Ionicons name="git-commit" size={12} color={colors.textSecondary} />
+                  {chainStepsExpanded ? (
+                    <Text style={styles.expandMeta}>
+                      {chainName ? `${chainName} · ` : ''}Chain · {chainStepPreview.total} steps
+                    </Text>
+                  ) : (
+                    <Text style={styles.expandMeta} numberOfLines={1}>
+                      {chainName ? `${chainName} · ` : ''}Chain {chainStepPreview.currentIdx + 1}/{chainStepPreview.total}:{' '}
+                      <Text style={styles.expandMetaActive}>On: {chainStepPreview.currentTitle}</Text>
+                      {chainStepPreview.nextTitle ? ` → Next: ${chainStepPreview.nextTitle}` : ''}
+                    </Text>
+                  )}
+                  <View style={styles.chainExpandSpacer} />
+                  <Ionicons
+                    name={chainStepsExpanded ? 'chevron-up' : 'chevron-down'}
+                    size={12}
+                    color={colors.textSecondary}
+                  />
+                </TouchableOpacity>
+              )}
+
+              {chainStepsExpanded && chainStepPreview && (
+                <View style={styles.chainStepsList}>
+                  {task.chainItems.map((item, i) => {
+                    const isDone = i < chainStepIndex;
+                    const isCurrent = i === chainStepIndex;
+                    return (
+                      <View key={item.id} style={styles.chainStepListRow}>
+                        <View style={[
+                          styles.chainStepListDot,
+                          isDone && styles.chainStepListDotDone,
+                          isCurrent && styles.chainStepListDotActive,
+                        ]}>
+                          {isDone ? (
+                            <Ionicons name="checkmark" size={9} color={colors.onAccent} />
+                          ) : (
+                            <Text style={[
+                              styles.chainStepListDotText,
+                              isCurrent && styles.chainStepListDotTextActive,
+                            ]}>
+                              {i + 1}
+                            </Text>
+                          )}
+                        </View>
+                        <Text style={[
+                          styles.chainStepListTitle,
+                          isDone && styles.chainStepListTitleDone,
+                          isCurrent && styles.chainStepListTitleActive,
+                        ]} numberOfLines={2}>
+                          {item.title}
+                        </Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
+
+              {/* The task's own answer, read live off the calendar store — see
+                  the calendarReviewEvents comment above. This is the whole of a
+                  review task's panel now (the subtask section and the action row
+                  are both gone on a notice), which is why the divider asks
+                  whether anything is actually above it. */}
+              {task.generatedKind === 'calendarReview' && (
+                <View style={styles.expandSection}>
+                  {calendarReviewEvents.length > 0 ? (
+                    calendarReviewEvents.map(event => (
+                      <View key={event.id} style={styles.calendarReviewEventRow}>
+                        <Ionicons name="calendar-outline" size={12} color={colors.textSecondary} />
+                        <Text style={[styles.expandMeta, styles.calendarReviewEventTitle]} numberOfLines={1}>
+                          {event.allDay ? 'All day' : formatTimeOfDay(new Date(event.start))}
+                          {' · '}
+                          {event.title || 'Event'}
+                        </Text>
+                        {/* The one thing this panel could never do: answer its
+                            own question with work. Reaches the stores directly
+                            rather than taking a callback prop, the same way the
+                            Sync row below does — a fresh closure per row would
+                            cost every TaskItem on the list its memo. */}
+                        <TouchableOpacity
+                          onPress={() => {
+                            haptics.success();
+                            const category = useSettingsStore.getState().calendarEventCategory;
+                            useTaskStore.getState().addTask({
+                              ...taskFieldsFromEvent(event),
+                              category: category ?? undefined,
+                            });
+                          }}
+                          hitSlop={8}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Add a task for ${event.title || 'this event'}`}
+                        >
+                          <Ionicons name="add-circle-outline" size={12} color={colors.accent} />
+                        </TouchableOpacity>
+                      </View>
+                    ))
+                  ) : (
+                    <Text style={styles.expandMeta}>No events found</Text>
+                  )}
+                  {/* Forces a fresh read off the device calendar right from the
+                      review task, rather than only whatever's already sitting
+                      in the store — see useCalendarStore's own refresh(). */}
+                  <TouchableOpacity
+                    onPress={() => { haptics.tap(); useCalendarStore.getState().refresh(); }}
+                    style={styles.calendarReviewSyncRow}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel="Sync calendar now"
+                  >
+                    <Ionicons name="refresh-outline" size={12} color={colors.accent} />
+                    <Text style={[styles.expandMeta, { color: colors.accent }]}>Sync now</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {timed && (
+                <View style={styles.countdownRow}>
+                  <View style={styles.countdownHeader}>
+                    <Ionicons
+                      name={timerReady ? 'checkmark-circle' : 'timer-outline'}
+                      size={12}
+                      color={timerReady ? colors.green : colors.textSecondary}
+                    />
+                    <Text style={styles.expandMeta}>
+                      {timerReady
+                        ? `Ready to complete · ${formatDuration(task.timedMinutes!)} done`
+                        : `${formatStopwatch(remainingSeconds)} left of ${formatDuration(task.timedMinutes!)}`}
+                    </Text>
+                  </View>
+                  <ProgressBar progress={countdownProgress} height={4} />
+                </View>
+              )}
+
+              {/* The same shape for a health target, and deliberately so: it is
+                  the same idea (a number the row is waiting on) and a second
+                  treatment would be two vocabularies for one thing. What differs
+                  is the "no reading" state, which the timer cannot have — the
+                  bar draws empty and the line says nothing was recorded rather
+                  than reporting a zero somebody might have walked. */}
+              {healthTargeted && (
+                <View style={styles.countdownRow}>
+                  <View style={styles.countdownHeader}>
+                    <Ionicons
+                      name={healthReady ? 'checkmark-circle' : healthIcon}
+                      size={12}
+                      color={healthReady ? colors.green : colors.textSecondary}
+                    />
+                    <Text style={styles.expandMeta}>
+                      {healthLabel === null
+                        ? 'Nothing recorded in Apple Health for today yet'
+                        : healthReady
+                          ? `Ready to complete · ${healthLabel}`
+                          : healthLabel}
+                    </Text>
+                  </View>
+                  <ProgressBar progress={healthTargetProgress(healthState, healthValue)} height={4} />
+                </View>
+              )}
+
+              {/* The stopwatch and a focus session's Done tap are the only
+                  writers of `actualMinutes`, so this readout is also the only
+                  place a mistimed run can be put right — stop it ten minutes
+                  late and the number is wrong for good otherwise, estimate
+                  included (`applyMeasuredTime`). Editing in place rather than
+                  back in the editor because this is where you are when you
+                  notice. */}
+              {task.actualMinutes != null && (
+                <View style={styles.recurrenceRow}>
+                  <Ionicons name="timer-outline" size={12} color={colors.textSecondary} />
+                  {editingTimed ? (
+                    <>
+                      <Text style={styles.expandMeta}>Timed ·</Text>
+                      <StepMinutes
+                        value={timedDraft}
+                        label={task.title}
+                        what="Time spent"
+                        onChange={setTimedDraft}
+                      />
                       <TouchableOpacity
                         onPress={() => {
-                          haptics.success();
-                          const category = useSettingsStore.getState().calendarEventCategory;
-                          useTaskStore.getState().addTask({
-                            ...taskFieldsFromEvent(event),
-                            category: category ?? undefined,
-                          });
+                          if (timedDraft == null) return;
+                          haptics.tap();
+                          setMeasuredTime(task.id, timedDraft);
+                          setEditingTimed(false);
                         }}
+                        disabled={timedDraft == null}
                         hitSlop={8}
+                        activeOpacity={interaction.activeOpacity}
                         accessibilityRole="button"
-                        accessibilityLabel={`Add a task for ${event.title || 'this event'}`}
+                        accessibilityLabel={`Save time spent on ${task.title}`}
                       >
-                        <Ionicons name="add-circle-outline" size={12} color={colors.accent} />
+                        <Text style={[
+                          styles.timedEditAction,
+                          timedDraft == null && styles.timedEditActionDisabled,
+                        ]}>
+                          Save
+                        </Text>
                       </TouchableOpacity>
-                    </View>
-                  ))
-                ) : (
-                  <Text style={styles.expandMeta}>No events found</Text>
-                )}
-                {/* Forces a fresh read off the device calendar right from the
-                    review task, rather than only whatever's already sitting
-                    in the store — see useCalendarStore's own refresh(). */}
-                <TouchableOpacity
-                  onPress={() => { haptics.tap(); useCalendarStore.getState().refresh(); }}
-                  style={styles.calendarReviewSyncRow}
-                  hitSlop={8}
-                  accessibilityRole="button"
-                  accessibilityLabel="Sync calendar now"
-                >
-                  <Ionicons name="refresh-outline" size={12} color={colors.accent} />
-                  <Text style={[styles.expandMeta, { color: colors.accent }]}>Sync now</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-
-            {timed && (
-              <View style={[
-                styles.countdownRow,
-                // The subtask section normally renders above (see
-                // panelSectionAbove).
-                panelSectionAbove && styles.sectionDivider,
-              ]}>
-                <View style={styles.countdownHeader}>
-                  <Ionicons
-                    name={timerReady ? 'checkmark-circle' : 'timer-outline'}
-                    size={12}
-                    color={timerReady ? colors.green : colors.textSecondary}
-                  />
-                  <Text style={styles.expandMeta}>
-                    {timerReady
-                      ? `Ready to complete · ${formatDuration(task.timedMinutes!)} done`
-                      : `${formatStopwatch(remainingSeconds)} left of ${formatDuration(task.timedMinutes!)}`}
-                  </Text>
-                </View>
-                <ProgressBar progress={countdownProgress} height={4} />
-              </View>
-            )}
-
-            {/* The same shape for a health target, and deliberately so: it is
-                the same idea (a number the row is waiting on) and a second
-                treatment would be two vocabularies for one thing. What differs
-                is the "no reading" state, which the timer cannot have — the
-                bar draws empty and the line says nothing was recorded rather
-                than reporting a zero somebody might have walked. */}
-            {healthTargeted && (
-              <View style={[
-                styles.countdownRow,
-                panelSectionAbove && styles.sectionDivider,
-              ]}>
-                <View style={styles.countdownHeader}>
-                  <Ionicons
-                    name={healthReady ? 'checkmark-circle' : healthIcon}
-                    size={12}
-                    color={healthReady ? colors.green : colors.textSecondary}
-                  />
-                  <Text style={styles.expandMeta}>
-                    {healthLabel === null
-                      ? 'Nothing recorded in Apple Health for today yet'
-                      : healthReady
-                        ? `Ready to complete · ${healthLabel}`
-                        : healthLabel}
-                  </Text>
-                </View>
-                <ProgressBar progress={healthTargetProgress(healthState, healthValue)} height={4} />
-              </View>
-            )}
-
-            {/* The stopwatch and a focus session's Done tap are the only
-                writers of `actualMinutes`, so this readout is also the only
-                place a mistimed run can be put right — stop it ten minutes
-                late and the number is wrong for good otherwise, estimate
-                included (`applyMeasuredTime`). Editing in place rather than
-                back in the editor because this is where you are when you
-                notice. */}
-            {task.actualMinutes != null && (
-              <View style={[
-                styles.recurrenceRow,
-                // The subtask section normally renders above (see
-                // panelSectionAbove).
-                panelSectionAbove && styles.sectionDivider,
-              ]}>
-                <Ionicons name="timer-outline" size={12} color={colors.textSecondary} />
-                {editingTimed ? (
-                  <>
-                    <Text style={styles.expandMeta}>Timed ·</Text>
-                    <StepMinutes
-                      value={timedDraft}
-                      label={task.title}
-                      what="Time spent"
-                      onChange={setTimedDraft}
-                    />
+                      <TouchableOpacity
+                        onPress={() => { haptics.tap(); setEditingTimed(false); }}
+                        hitSlop={8}
+                        activeOpacity={interaction.activeOpacity}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Cancel editing time spent on ${task.title}`}
+                      >
+                        <Text style={styles.timedEditCancel}>Cancel</Text>
+                      </TouchableOpacity>
+                      {/* StepMinutes above asks for this bar by nativeID, and a
+                          row is the one place that ask had nothing answering it
+                          — the task and template editors mount their own, but a
+                          row edits inline on whichever screen it's on. Mounted
+                          here rather than on those five screens so it can't be
+                          missed off a sixth, and gated on editingTimed because
+                          that's exactly when the field exists. */}
+                      <NumberPadAccessory />
+                    </>
+                  ) : (
                     <TouchableOpacity
                       onPress={() => {
-                        if (timedDraft == null) return;
                         haptics.tap();
-                        setMeasuredTime(task.id, timedDraft);
-                        setEditingTimed(false);
+                        setTimedDraft(task.actualMinutes);
+                        setEditingTimed(true);
                       }}
-                      disabled={timedDraft == null}
                       hitSlop={8}
                       activeOpacity={interaction.activeOpacity}
                       accessibilityRole="button"
-                      accessibilityLabel={`Save time spent on ${task.title}`}
+                      accessibilityLabel={`Time spent on ${task.title}: ${formatDuration(task.actualMinutes)}. Tap to correct.`}
                     >
-                      <Text style={[
-                        styles.timedEditAction,
-                        timedDraft == null && styles.timedEditActionDisabled,
-                      ]}>
-                        Save
+                      <Text style={styles.expandMeta}>
+                        Timed · {formatDuration(task.actualMinutes)}
                       </Text>
                     </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() => { haptics.tap(); setEditingTimed(false); }}
-                      hitSlop={8}
-                      activeOpacity={interaction.activeOpacity}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Cancel editing time spent on ${task.title}`}
-                    >
-                      <Text style={styles.timedEditCancel}>Cancel</Text>
-                    </TouchableOpacity>
-                    {/* StepMinutes above asks for this bar by nativeID, and a
-                        row is the one place that ask had nothing answering it
-                        — the task and template editors mount their own, but a
-                        row edits inline on whichever screen it's on. Mounted
-                        here rather than on those five screens so it can't be
-                        missed off a sixth, and gated on editingTimed because
-                        that's exactly when the field exists. */}
-                    <NumberPadAccessory />
-                  </>
-                ) : (
-                  <TouchableOpacity
-                    onPress={() => {
-                      haptics.tap();
-                      setTimedDraft(task.actualMinutes);
-                      setEditingTimed(true);
-                    }}
-                    hitSlop={8}
-                    activeOpacity={interaction.activeOpacity}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Time spent on ${task.title}: ${formatDuration(task.actualMinutes)}. Tap to correct.`}
-                  >
-                    <Text style={styles.expandMeta}>
-                      Timed · {formatDuration(task.actualMinutes)}
-                    </Text>
-                  </TouchableOpacity>
-                )}
-              </View>
+                  )}
+                </View>
+              )}
+            </View>
             )}
 
             {/* Every control in here is task management — the reschedule
