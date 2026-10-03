@@ -42,8 +42,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/blocking.ts` — TaskResolver, resolverFor, canBlock, blockerIdsOf, blockerFields, liveBlockersOf, blockerOf, isBlocked, PersonResolver, canWaitOn, +12 more
 - `src/utils/bulkCompletion.ts` — tasksAskingOnCompletion, unansweredCompletionCopy
 - `src/utils/busyEvenings.ts` — BUSY_EVENING_MIN_MINUTES, BusyEvening, busyEveningOn, describeBusyEvening
-- `src/utils/calendarBusy.ts` — BusyEvent, BusyInterval, isLiveEvent, occupiesTime, busyIntervalsIn, busyMinutesIn, freeGapsIn, freeMinutesIn, eventsIn, blocksWholeDay, +2 more
-- `src/utils/calendarBusy.ts` — BusyEvent, BusyInterval, isLiveEvent, occupiesTime, allDayRangeMs, busyIntervalsIn, busyMinutesIn, freeGapsIn, freeMinutesIn, eventsIn, +1 more
+- `src/utils/calendarBusy.ts` — BusyEvent, BusyInterval, isLiveEvent, occupiesTime, allDayRangeMs, busyIntervalsIn, busyMinutesIn, freeGapsIn, freeMinutesIn, eventsIn, +3 more
 - `src/utils/calendarDrag.ts` — CellRect, cellAt, isMoveDrop
 - `src/utils/calendarEventImport.ts` — CalendarEventDraft, draftFromExtractedEvent, EventImportCreateFields, eventImportCreateFields, EventTaskFields, eventDayDueDate, taskFieldsFromEvent
 - `src/utils/calendarEventLink.ts` — CalendarEventLink, NO_EVENT_LINK, ExternalEventMatch, readExternalEventId, canReadExternalEventIds, readExternalEventIds, eventsWithExternalId, filledExternalId, uniqueLinks, adoptableEventId, +5 more
@@ -274,8 +273,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/recurrenceLabels.ts` — recurrenceUnitLabel, ORDINAL_OPTIONS, MONTH_NAMES, MONTH_ABBREVIATIONS, RecurrenceRule, describeTaskRecurrence, recurrenceRuleOf, describeRecurrence
 - `src/utils/refreshGuard.ts` — RefreshGuard, createRefreshGuard
 - `src/utils/reminderCaptures.ts` — CAPTURE_TITLE_MAX_LENGTH, MAX_REMINDER_CAPTURES, makeReminderCapture, parseReminderCaptures, serializeReminderCaptures, activeReminderCaptures, drainableReminderCaptures, captureListIds, captureDraftFields, describeReminderCaptureFiling
-- `src/utils/reminderNudge.ts` — ReminderNudge, nudgeReminderPastMeeting, meetingSignature
-- `src/utils/reminderNudge.ts` — ReminderNudge, nudgeReminderPastMeeting, meetingAtStart
+- `src/utils/reminderNudge.ts` — ReminderNudge, nudgeReminderPastMeeting, meetingSignature, meetingAtStart
 - `src/utils/remindersImport.ts` — draftFromReminder, recurrenceFromRule, reminderTimeFromAlarms, scheduleToDraft, pendingImportFor, describePendingImport, isImportableList, reminderListOptions, findReminderList, reminderCreatedAt, +13 more
 - `src/utils/remindersImportSync.ts` — RemindersPermission, ImportOutcome, lastImportOutcome, getRemindersPermission, requestRemindersPermission, listReminderLists, countImportableReminders, groceryMirrorSignature, importReminders, useRemindersImportSync
 - `src/utils/reorder.ts` — moveItem, dropIndexFromTranslation, cumulativeOffsets, rowDragOffset, rowIndexAtContentY, dragRange, dragTranslation, clampCardToSlots, reorderSubset
@@ -365,8 +363,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/useSyncOnForeground.ts` — useSyncOnForeground
 - `src/utils/useUpRecipes.ts` — UseUpRecipe, useUpRecipes, describeUseUpRecipe
 - `src/utils/useUpSweep.ts` — UseUpSweepSource, useUpSweepOrder
-- `src/utils/visibilityUtils.ts` — isTaskBlocked, isInPausedProject, isWithheld, isHeldBack, VisibleAtPass, beginVisibleAtPass, isHiddenForVacation, isCategoryScheduledDay, sameTimeSegments, timeSegmentThreshold, +38 more
-- `src/utils/visibilityUtils.ts` — isTaskBlocked, isInPausedProject, isWithheld, isHeldBack, VisibleAtPass, beginVisibleAtPass, isHiddenForVacation, onLogicalDay, isCategoryScheduledDay, sameTimeSegments, +37 more
+- `src/utils/visibilityUtils.ts` — isTaskBlocked, isInPausedProject, isWithheld, isHeldBack, VisibleAtPass, beginVisibleAtPass, isHiddenForVacation, onLogicalDay, isCategoryScheduledDay, sameTimeSegments, +39 more
 - `src/utils/waitingFollowUpTasks.ts` — MAX_WAITING_FOLLOW_UP_TASKS, WAITING_FOLLOW_UP_DECLINE_DAYS, WAITING_FOLLOW_UP_THRESHOLD_DAYS, waitingFollowUpTaskId, waitingFollowUpTitle, waitingFollowUpsHandledRecently, followUpDue, WaitingFollowUpWant, wantedWaitingFollowUps, staleWaitingFollowUpTasks
 - `src/utils/waterExerciseBoost.ts` — WaterExerciseBoost, WATER_EXERCISE_BOOST_MINUTES_RANGE, WATER_EXERCISE_BOOST_ML_RANGE, parseWaterExerciseBoost, serializeWaterExerciseBoost, effectiveWaterTargetMl, waterExerciseBoostApplies
 - `src/utils/waterLog.ts` — WaterUnit, WATER_STEP_ML, WATER_MIN_ML, WATER_MAX_ML, WATER_STEP_FL_OZ, WATER_MIN_FL_OZ, WATER_MAX_FL_OZ, isWaterEntry, waterEntryOf, waterTotalMl, +10 more
