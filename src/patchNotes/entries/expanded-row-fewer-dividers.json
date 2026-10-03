@@ -1,1 +1,1 @@
-{ "message": "An open task shows its repeat, timer and chain details together under one divider instead of a line between each.", "date": "2026-10-03" }
+{ "message": "An open task has fewer lines across it. Its repeat, timer and chain details sit together under one divider, the action buttons have no line above them, and a timer's progress bar appears once it has started.", "date": "2026-10-03" }

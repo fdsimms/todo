@@ -3584,7 +3584,11 @@ export const TaskItem = React.memo(function TaskItem({
                         : `${formatStopwatch(remainingSeconds)} left of ${formatDuration(task.timedMinutes!)}`}
                     </Text>
                   </View>
-                  <ProgressBar progress={countdownProgress} height={4} />
+                  {/* An empty track before the timer has run only repeats
+                      the line above, and drew one more rule across the panel. */}
+                  {(timerRunning || task.timerElapsedSeconds > 0) && (
+                    <ProgressBar progress={countdownProgress} height={4} />
+                  )}
                 </View>
               )}
 
@@ -3701,9 +3705,9 @@ export const TaskItem = React.memo(function TaskItem({
             {onEdit && !notice && (
               <View style={[
                 styles.editSection,
-                // The subtask section normally renders above (see
-                // panelSectionAbove).
-                panelSectionAbove && styles.sectionDivider,
+                // No divider: the buttons read as controls without a rule
+                // over them, and a gap is enough to set them off the content.
+                panelSectionAbove && styles.editSectionSpaced,
               ]}>
                 <View style={styles.editSectionLeft}>
                   {showActions && timed && (
@@ -4984,6 +4988,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingTop: spacing.sm,
     paddingBottom: spacing.xs,
     gap: spacing.xs,
+  },
+  editSectionSpaced: {
+    marginTop: spacing.xs,
   },
   editSectionLeft: { flexDirection: 'row', gap: spacing.xs },
   editSectionRight: { flexDirection: 'row', gap: spacing.xs, flexGrow: 1, justifyContent: 'flex-end', alignItems: 'center' },
