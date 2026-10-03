@@ -17,6 +17,7 @@ import {
   Platform,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { PinIcon } from './PinIcon';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import type { Priority, Effort, TimeOfDay, TemplateAnchor, TemplateItem, TemplateItemCondition, RecurrenceType, ChainItem, RotationItem, DeliverableKind, Polarity, MealSlot } from '../types';
 import { PRIORITY_LABELS, EFFORT_LABELS, EFFORT_HINTS, TITLE_MAX_LENGTH, MEAL_SLOTS, MEAL_SLOT_LABELS } from '../types';
@@ -183,6 +184,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const [penaltyPickerDate, setPenaltyPickerDate] = useState(new Date());
   const [vacationPause, setVacationPause] = useState(false);
   const [excludeFromSuggestions, setExcludeFromSuggestions] = useState(false);
+  const [pinEachOccurrence, setPinEachOccurrence] = useState(false);
   const [polarity, setPolarity] = useState<Polarity>('positive');
   const [recurrenceType, setRecurrenceType] = useState<RecurrenceType>('none');
   const [recurrenceInterval, setRecurrenceInterval] = useState(1);
@@ -263,6 +265,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setPenaltyCutoffTime(item?.penaltyCutoffTime ?? draft?.penaltyCutoffTime ?? null);
     setVacationPause(item?.vacationPause ?? draft?.vacationPause ?? false);
     setExcludeFromSuggestions(item?.excludeFromSuggestions ?? draft?.excludeFromSuggestions ?? false);
+    setPinEachOccurrence(item?.pinEachOccurrence ?? draft?.pinEachOccurrence ?? false);
     setPolarity(item?.polarity ?? draft?.polarity ?? 'positive');
     setRecurrenceType(item?.recurrenceType ?? draft?.recurrenceType ?? 'none');
     setRecurrenceInterval(item?.recurrenceInterval ?? draft?.recurrenceInterval ?? 1);
@@ -423,6 +426,8 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       penaltyCutoffTime: penaltyMinutes !== null && polarity !== 'negative' ? penaltyCutoffTime : null,
       vacationPause,
       excludeFromSuggestions,
+      // Cleared with the schedule: it only means anything on a repeating task.
+      pinEachOccurrence: recurrenceType !== 'none' ? pinEachOccurrence : false,
       // Belt and braces with the row above being hidden for a chain: the two
       // are mutually exclusive, and this is what an item saved by an older
       // build carrying both is normalized by on its next save.
@@ -990,6 +995,28 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           </View>
         </TouchableOpacity>
         <View style={styles.sep} />
+        {recurrenceType !== 'none' && (
+          <>
+            <TouchableOpacity
+              style={styles.optionRow}
+              onPress={() => { haptics.tap(); setPinEachOccurrence(!pinEachOccurrence); }}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="switch"
+              accessibilityLabel="Pin every occurrence"
+              accessibilityState={{ checked: pinEachOccurrence }}
+            >
+              <PinIcon filled={pinEachOccurrence} size={18} color={pinEachOccurrence ? colors.orange : colors.textSecondary} />
+              <View style={styles.optionContent}>
+                <Text style={styles.optionLabel}>Pin every occurrence</Text>
+                <Text style={styles.optionHint}>Each occurrence of tasks created from this item starts out pinned to Today</Text>
+              </View>
+              <View style={[styles.toggle, pinEachOccurrence && styles.toggleOn]}>
+                <View style={[styles.toggleKnob, pinEachOccurrence && styles.toggleKnobOn]} />
+              </View>
+            </TouchableOpacity>
+            <View style={styles.sep} />
+          </>
+        )}
         <TouchableOpacity
           style={styles.optionRow}
           onPress={() => { haptics.tap(); setExcludeFromSuggestions(!excludeFromSuggestions); }}

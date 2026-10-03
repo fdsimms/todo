@@ -553,6 +553,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [durationText, setDurationText] = useState('');
   const [durationUnit, setDurationUnit] = useState<'min' | 'hr'>('min');
   const [pinned, setPinned] = useState(false);
+  const [pinEachOccurrence, setPinEachOccurrence] = useState(false);
   const [vacationPause, setVacationPause] = useState(false);
   const [excludeFromSuggestions, setExcludeFromSuggestions] = useState(false);
   const [linkUrl, setLinkUrl] = useState<string | null>(null);
@@ -865,7 +866,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setRecurrenceFromCompletion(task.recurrenceFromCompletion);
       setRecurrenceEndDate(task.recurrenceEndDate ? new Date(task.recurrenceEndDate) : null);
       setRecurrenceCount(task.recurrenceCount ?? null);
-      setPriority(task.priority); setEffort(task.effort); setEstimatedMinutes(task.estimatedMinutes ?? null); setPinned(task.pinned);
+      setPriority(task.priority); setEffort(task.effort); setEstimatedMinutes(task.estimatedMinutes ?? null); setPinned(task.pinned); setPinEachOccurrence(task.pinEachOccurrence ?? false);
       setActualMinutes(task.actualMinutes ?? null);
       setTimedMinutes(task.timedMinutes ?? null);
       setHealthMetric(task.healthMetric ?? null);
@@ -922,7 +923,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setRecurrenceFromCompletion(initialDraft?.recurrenceFromCompletion ?? false);
       setRecurrenceEndDate(initialDraft?.recurrenceEndDate ?? null);
       setRecurrenceCount(initialDraft?.recurrenceCount ?? null);
-      setPriority(initialDraft?.priority ?? 0); setEffort(initialDraft?.effort ?? 0); setEstimatedMinutes(initialDraft?.estimatedMinutes ?? null); setPinned(false);
+      setPriority(initialDraft?.priority ?? 0); setEffort(initialDraft?.effort ?? 0); setEstimatedMinutes(initialDraft?.estimatedMinutes ?? null); setPinned(false); setPinEachOccurrence(false);
       setActualMinutes(null);
       setTimedMinutes(initialDraft?.timedMinutes ?? null);
       // No initialDraft counterpart: quick add has no Health kind to pass one.
@@ -1057,6 +1058,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       healthTarget: task?.healthTarget ?? null,
       healthFollowGoal: task?.healthFollowGoal ?? false,
       pinned: task?.pinned ?? false,
+      pinEachOccurrence: task ? (task.recurrenceType !== 'none' && (task.pinEachOccurrence ?? false)) : false,
       chainEnabled: task ? task.chainEnabled : (initialDraft?.chainEnabled ?? false),
       chainItems: task ? task.chainItems : (initialDraft?.chainItems ?? []),
       rotationItems: task ? task.rotationItems : (initialDraft?.rotationItems ?? []),
@@ -1491,6 +1493,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       recurrenceFromCompletion,
       sortOrder: task?.sortOrder ?? 0,
       pinned, priority, effort, estimatedMinutes, actualMinutes, timedMinutes,
+      // Cleared with the schedule: it only means anything on a repeating task.
+      pinEachOccurrence: recurrenceType !== 'none' ? pinEachOccurrence : false,
       healthMetric, healthTarget,
       // Cleared when what it follows goes, like followWaterTarget below: it
       // only means anything on one of the three ring metrics.
@@ -2154,7 +2158,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       recurrenceCount,
       priority, effort, estimatedMinutes, actualMinutes, timedMinutes, healthMetric, healthTarget,
       healthFollowGoal: followsRingGoal(healthMetric) ? healthFollowGoal : false,
-      pinned, chainEnabled, chainItems, rotationItems, chainIndex, chainStepOnSchedule, vacationPause,
+      pinned, pinEachOccurrence: recurrenceType !== 'none' ? pinEachOccurrence : false, chainEnabled, chainItems, rotationItems, chainIndex, chainStepOnSchedule, vacationPause,
       excludeFromSuggestions,
       polarity,
       showStreak,
@@ -5969,7 +5973,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           },
           {
             key: 'pin', label: 'Pin to Today',
-            keywords: ['pinned', 'top', 'stick', 'favourite', 'favorite'],
+            keywords: ['pinned', 'top', 'stick', 'favourite', 'favorite', 'repeat', 'recurring', 'every', 'occurrence', 'always'],
             node: (
               <>
             <TouchableOpacity
@@ -5989,6 +5993,25 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 <View style={[styles.toggleKnob, pinned && styles.toggleKnobOn]} />
               </View>
             </TouchableOpacity>
+            {recurrenceType !== 'none' && (
+              <TouchableOpacity
+                style={styles.optionRow}
+                onPress={() => { haptics.tap(); setPinEachOccurrence(v => !v); }}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="switch"
+                accessibilityLabel="Pin every occurrence"
+                accessibilityState={{ checked: pinEachOccurrence }}
+              >
+                <PinIcon filled={pinEachOccurrence} size={18} color={pinEachOccurrence ? colors.orange : colors.textSecondary} />
+                <View style={styles.optionContent}>
+                  <Text style={styles.optionLabel}>Pin every occurrence</Text>
+                  <Text style={styles.optionHint}>Each new occurrence starts out pinned to Today</Text>
+                </View>
+                <View style={[styles.toggle, pinEachOccurrence && styles.toggleOn]}>
+                  <View style={[styles.toggleKnob, pinEachOccurrence && styles.toggleKnobOn]} />
+                </View>
+              </TouchableOpacity>
+            )}
               </>
             ),
           },

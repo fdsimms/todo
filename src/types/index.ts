@@ -3177,6 +3177,13 @@ export interface Task {
   // category isn't the right unit for.
   excludeFromSuggestions: boolean;
 
+  // On a recurring task: every occurrence it spawns starts pinned. Completing
+  // a pinned task clears its pin and a successor is a new row that starts
+  // unpinned, so without this the pin has to be redone by hand each time.
+  // Does nothing on a task that doesn't repeat. Optional like the other
+  // later additions, so a task built without it reads as off.
+  pinEachOccurrence?: boolean;
+
   // Hides the task from every list (Today, Later, etc.) indefinitely, unlike
   // vacationPause which only hides while vacation mode is on. Completion
   // history stays in SQLite untouched; unarchiving resets streakCount to 0
@@ -3532,6 +3539,8 @@ export interface TemplateItem {
   // start its instances out of the suggesters without a follow-up trip to
   // the task's own editor.
   excludeFromSuggestions: boolean;
+  // Seeds Task.pinEachOccurrence on the task this item creates.
+  pinEachOccurrence?: boolean;
   estimatedMinutes: number | null;
   // Seeds Task.completionTimerMinutes — a routine (like a recurring
   // medication) that always wants the same "remind me N later" offer
