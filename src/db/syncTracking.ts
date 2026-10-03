@@ -88,6 +88,13 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
   // number looks wrong. A dose is written once and edited rarely, so
   // last-writer-wins is a no-op on almost every row.
   { name: 'medication_logs', key: ['id'] },
+  // The coin ledger and the rewards it buys (src/utils/rewards.ts). The
+  // ledger is why the balance is derived rather than stored: a stored number
+  // under last-writer-wins drops one device's coins, while one row per event
+  // merges by union. Entries tied to a completion carry derived ids, so the
+  // same occurrence completed on two phones is one row.
+  { name: 'coin_entries', key: ['id'] },
+  { name: 'rewards', key: ['id'] },
   // The food log. It has to travel for the reason mood entries do, and the
   // reading it prevents is starker: a day's totals computed off whichever half
   // of the record happens to be on the phone in your hand. An entry is written
@@ -338,6 +345,13 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   // still persisted (and therefore synced) under the key it shipped with, so
   // devices on either side of the change agree about what it holds.
   'autoArchiveProjectsOnComplete',
+  // Coins and rewards. Synced because the ledger it writes is: a phone with it
+  // off would stop earning on completions the other phone is paying for.
+  'rewardsEnabled',
+  // The goal and the wish list feeding Rewards: ids of synced rows, so they
+  // mean the same thing on every device.
+  'rewardGoalId',
+  'rewardListProjectId',
   'autoRemoveExpiredTasks',
   'completedRetentionDays',
   'postponeCheckEnabled',

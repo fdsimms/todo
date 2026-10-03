@@ -1797,6 +1797,75 @@ export interface MedicationLog {
 }
 
 /**
+ * What moved the coin balance — see `src/utils/rewards.ts` for every rule.
+ *
+ * `earn` is a completion, `loss` is a miss or a slip, `spend` is a reward
+ * claimed. Three kinds rather than a signed amount so a row says what happened
+ * on its own, and so the balance is one sum with no sign convention to get
+ * backwards.
+ */
+export type CoinEntryKind = 'earn' | 'loss' | 'spend';
+
+/**
+ * One movement of the coin balance.
+ *
+ * The balance is never stored: it is the sum of these rows, because a stored
+ * number synced last-writer-wins would drop whichever device's coins arrived
+ * second. Rows tied to a completion or a miss carry a derived id
+ * (`spawnSeed.coinEarn`/`coinMiss`) so two devices completing the same
+ * occurrence apart write one row, not two.
+ */
+export interface CoinEntry {
+  id: string;
+  kind: CoinEntryKind;
+  /** Always positive; `kind` says which way it moved the balance. */
+  amount: number;
+  /** ISO instant. */
+  at: string;
+  /**
+   * The task that earned or cost this, when one did. Provenance, and the key
+   * unticking a task (or undoing a slip) uses to take the row back. Carries no
+   * foreign key: the entry outlives a task the retention window purges.
+   */
+  taskId: string | null;
+  /** The reward claimed, for a `spend`. */
+  rewardId: string | null;
+  /** What to show in the history list: the task's or reward's title at the time. */
+  label: string;
+}
+
+/** Something you've decided to treat yourself to, for a price in coins. */
+export interface Reward {
+  id: string;
+  /**
+   * What it's called. For a reward made from a wish list item this is a
+   * snapshot taken when it was priced, shown only if the item is gone; the
+   * item's own title is what's displayed (see `rewardDisplay`).
+   */
+  title: string;
+  /** Coins it costs to claim. A positive whole number. */
+  cost: number;
+  createdAt: string;
+  /** An app or URL to open for it ("Uber Eats" for takeout). Same values as `Task.linkUrl`. */
+  linkUrl: string | null;
+  /** A line of context ("the Thai place on 5th"). */
+  note: string | null;
+  /**
+   * Claimed once, then gone from the list. Whether it has been is read off
+   * the ledger (a spend naming it), not stored, so undoing the claim brings
+   * it back without a second field to keep in step.
+   */
+  oneTime: boolean;
+  /**
+   * The wish list item this reward is, when it is one. Its title, notes and
+   * link are the reward's, claiming it checks the item off, and checking the
+   * item off by hand retires the reward. Always one-time. Carries no foreign
+   * key, like every other provenance pointer in the ledger.
+   */
+  taskId: string | null;
+}
+
+/**
  * Which of the app's unattended generators wrote a task — see
  * `Task.generatedKind` below, and `src/utils/generatedTasks.ts` for the
  * mechanism they share.

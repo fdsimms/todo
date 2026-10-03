@@ -91,4 +91,12 @@ export const spawnSeed = {
    * `occurrence` gets for free by keying off the completion it came from.
    */
   generated: (kind: string, sourceId: string, index: number) => `gen:${kind}:${sourceId}:${index}`,
+  /**
+   * The coins one completion earned. Keyed by the completed row, so two
+   * devices completing the same occurrence apart converge on one entry, and a
+   * redo after an undo rewrites the same row rather than adding a second.
+   */
+  coinEarn: (completedTaskId: string) => `coin-earn:${completedTaskId}`,
+  /** The coins marking one occurrence missed cost. Same reasoning as `coinEarn`. */
+  coinMiss: (missedTaskId: string) => `coin-miss:${missedTaskId}`,
 } as const;

@@ -1,6 +1,7 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { FlatList, StyleSheet, Text, View, Alert } from 'react-native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useShallow } from 'zustand/react/shallow';
 import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeader';
 import { SearchField } from '../components/SearchField';
@@ -38,6 +39,7 @@ export function TipsScreen() {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const tabBarHeight = useBottomTabBarHeight();
+  const insets = useSafeAreaInsets();
   const keyboardScroll = useKeyboardInsetScroll<FlatList>();
 
   const seenTips = useSettingsStore(useShallow(s => s.seenTips));
@@ -133,7 +135,7 @@ export function TipsScreen() {
   }, [styles]);
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       <ScreenHeader
         title="Tips"
         subtitle={
