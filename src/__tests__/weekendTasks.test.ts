@@ -72,7 +72,7 @@ const bucketsOf = (byDay: Record<string, DayMark[]>): Map<string, DayBucket> =>
 
 const load = (key: string, over: Partial<DayLoad> = {}): DayLoad =>
   ({ key, taskCount: 0, taskMinutes: 0, unestimated: 0, projected: 0,
-     busyKnown: false, busyMinutes: 0, rankedMinutes: 0, away: false, ...over });
+     busyKnown: false, busyMinutes: 0, busyAllDay: false, rankedMinutes: 0, away: false, ...over });
 
 const project = (id: string, over: Partial<Project> = {}): Project =>
   ({ id, title: id, sortOrder: 0, archived: false, weekendSource: true, nudgeOptIn: true, pausedUntil: null, ...over } as Project);
@@ -282,6 +282,11 @@ describe('whether the weekend is bare', () => {
     expect(isWeekendBare(WINDOW, sat, 0)).toBe(false);
     const sun = new Map([[SUNDAY, load(SUNDAY, { busyKnown: true, busyMinutes: 90 })]]);
     expect(isWeekendBare(WINDOW, sun, 0)).toBe(false);
+  });
+
+  it('a Saturday an all-day event was left busy for blocks too', () => {
+    const away = new Map([[SATURDAY, load(SATURDAY, { busyKnown: true, busyAllDay: true })]]);
+    expect(isWeekendBare(WINDOW, away, 0)).toBe(false);
   });
 
   it('still nudges when the calendar cannot be read', () => {

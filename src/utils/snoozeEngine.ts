@@ -7,7 +7,9 @@ import type { Task } from '../types';
 import { dayKeyOf, getDayStart, getNextDueDate, getTaskDayStart, getWeekStart } from './dateUtils';
 import { projectOccurrences } from './calendarMonth';
 import { estimatedMinutesFor } from './effort';
-import { type BusyEvent, busyMinutesIn } from './calendarBusy';
+import { type BusyEvent, busyMinutesIn, hasWholeDayBlockIn } from './calendarBusy';
+import { isAwayDay, type AwaySpan } from './awayDates';
+import { FULL_DAY_MINUTES } from './dayLoad';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 
@@ -64,6 +66,17 @@ function recurrenceHorizonDays(task: Task, dayResetTime: string): number | null 
   return Math.min(Math.max(days, 1), DEFAULT_HORIZON_DAYS);
 }
 
+/**
+ * What a day inside a project's away span costs a candidate.
+ *
+ * Large enough to put every away day behind every day that isn't, and finite
+ * on purpose: the span ranks, it never gates (docs/arch/away-dates.md). When
+ * every candidate is away the best of them still wins, and a suggestion is a
+ * default the user can pick past anyway. Below the category schedule's 1000,
+ * which is a rule about the task rather than about the day.
+ */
+export const AWAY_PENALTY = 100;
+
 export function computeSnoozeSuggestion(
   task: Task,
   allTasks: Task[],
@@ -74,6 +87,9 @@ export function computeSnoozeSuggestion(
   // today's task-only scoring rather than this engine re-deciding permission
   // state itself.
   busyEvents: readonly BusyEvent[] = [],
+  // Project away spans, to rank days you're away last (see AWAY_PENALTY).
+  // Passed by the caller for the same reason the events are.
+  awaySpans: readonly AwaySpan[] = [],
 ): SnoozeSuggestion {
   const dayResetTime = useSettingsStore.getState().dayResetTime;
   const today = getDayStart(new Date(), dayResetTime);
@@ -191,8 +207,15 @@ export function computeSnoozeSuggestion(
       )
       .reduce((sum, t) => sum + effortUnits(t), 0);
     const dayStart = getDayStart(d, dayResetTime);
+    // An all-day event left busy (a conference, "out of office") is the user
+    // saying the day is taken, so it weighs as a full day of meetings would,
+    // the same reading dayLoad's cue gives it. A free one (the default for a
+    // birthday or a holiday) still weighs nothing.
     const busyMinutes = busyEvents.length > 0
-      ? busyMinutesIn(busyEvents, dayStart, addDays(dayStart, 1))
+      ? Math.max(
+          busyMinutesIn(busyEvents, dayStart, addDays(dayStart, 1)),
+          hasWholeDayBlockIn(busyEvents, dayStart, addDays(dayStart, 1)) ? FULL_DAY_MINUTES : 0,
+        )
       : 0;
     const effortOnDay = explicitEffort + recurringDay.effort + busyMinutes / 30;
     const effortPenalty = effortOnDay * 0.5;
@@ -210,7 +233,10 @@ export function computeSnoozeSuggestion(
     // scheduled for, when the constraint leaves at least one day standing.
     const categoryPenalty = activeScheduleDays && !activeScheduleDays.includes(dow) ? 1000 : 0;
 
-    const score = loadPenalty + tagBonus + dowBonus + effortPenalty + recencyPenalty + priorityPenalty + categoryPenalty;
+    // Signal 8: away — rank a day inside a trip below every day that isn't.
+    const awayPenalty = awaySpans.some(span => isAwayDay(span, d, dayResetTime)) ? AWAY_PENALTY : 0;
+
+    const score = loadPenalty + tagBonus + dowBonus + effortPenalty + recencyPenalty + priorityPenalty + categoryPenalty + awayPenalty;
     return { date: d, score, loadCount, tagRate, dowRate };
   });
 

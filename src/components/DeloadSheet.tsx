@@ -22,6 +22,8 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useTasksWhileOpen } from '../hooks/useTasksWhileOpen';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCalendarStore } from '../store/useCalendarStore';
+import { useProjectStore } from '../store/useProjectStore';
+import { liveAwaySpans } from '../utils/awayDates';
 import { WhenPicker } from './WhenPicker';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { SheetScrim } from './SheetScrim';
@@ -82,6 +84,7 @@ export function DeloadSheet({ visible, todaysTasks, notes, onClose }: Props) {
   const setLastDeloadAppliedDayKey = useSettingsStore(s => s.setLastDeloadAppliedDayKey);
   const calendarEvents = useCalendarStore(s => s.events);
   const calendarLoaded = useCalendarStore(s => s.loaded);
+  const projects = useProjectStore(s => s.projects);
 
   // The plan is computed once per opening, not derived live: it's a snapshot
   // the user is deciding on, and re-running it as the store changes underneath
@@ -98,7 +101,9 @@ export function DeloadSheet({ visible, todaysTasks, notes, onClose }: Props) {
   useEffect(() => {
     if (!visible) return;
     const busyEvents = calendarReadEnabled && calendarLoaded ? calendarEvents : undefined;
-    const next = buildDeloadPlan(todaysTasks, allTasks, undefined, busyEvents);
+    // Read at open like everything else in the snapshot: days inside a trip
+    // rank last as destinations.
+    const next = buildDeloadPlan(todaysTasks, allTasks, undefined, busyEvents, liveAwaySpans(projects, dayResetTime));
     setPlan(next);
     setSelectedIds(new Set(next.proposals.filter(p => p.selected).map(p => p.task.id)));
     setOverrides({});

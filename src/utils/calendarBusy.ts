@@ -279,6 +279,32 @@ export function eventsIn(
 }
 
 /**
+ * An all-day event the user marked as taking the day: busy or out of office.
+ *
+ * The one all-day event that counts against a day. `occupiesTime` leaves every
+ * all-day event out, because most of them are dates rather than time (a
+ * birthday, a holiday) and booking them solid would make every day read full.
+ * But Calendar apps create all-day events as Free by default, so one left Busy
+ * (a conference, "out of office") is the user having said the day is taken.
+ * Tentative is left out here, unlike for a timed event: a tentative all-day
+ * marker is a maybe about a whole day, too weak to call the day full.
+ */
+export function blocksWholeDay(event: BusyEvent): boolean {
+  return isLiveEvent(event)
+    && event.allDay
+    && (event.availability === 'busy' || event.availability === 'unavailable');
+}
+
+/** Whether a range holds a `blocksWholeDay` event, by the dates the event names. */
+export function hasWholeDayBlockIn(
+  events: readonly BusyEvent[],
+  rangeStart: Date,
+  rangeEnd: Date
+): boolean {
+  return eventsIn(events.filter(blocksWholeDay), rangeStart, rangeEnd).length > 0;
+}
+
+/**
  * The next thing with a time on it at or after `from`, within the range.
  *
  * All-day events are skipped: this answers "what's next", and something with
