@@ -66,3 +66,19 @@ exist, which is why the whole feature is a util plus a screen.
   a week goes through `stepDay`, which moves the month along when the week crosses into the next.
   A task can land on two days of one week (due Monday, deadline Friday), so its rows are keyed by
   day and task, the same per-row expansion the pinned copy on Today uses.
+
+## What else the grid shows about a day
+
+`calendarExtras.ts` buckets the things the app already knows about a date that aren't a task's own
+date: a project's away span (drawn as a named band under the week row), planned meals (a green dot,
+and read through `entriesInRangeLive`, never the meal store's loaded window, which is only the week
+Meal Plan last opened), birthdays, project deadlines, and what was completed that logical day.
+
+- **Kept out of the task buckets.** A bucket's marks are read as work by the dots, the outstanding
+  counts and `dayLoad`. None of these is work landing on the day, so they live in their own map and
+  touch none of those.
+- **A trip band and the weight cue agree by construction.** Both ask `isAwayDay`, so the return day
+  is never covered and a trip with no return date covers its departure only. On an away day the cell
+  draws no dashes; the band says it.
+- **Completions file on their logical day**, the way Logbook groups them, and a task the day already
+  lists (due and ticked the same day) is not listed again under Completed. Missed rows stay out.
