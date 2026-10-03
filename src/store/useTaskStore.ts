@@ -329,6 +329,7 @@ import { taskFieldsFromEvent } from '../utils/calendarEventImport';
 import {
   isTravelTaskStale,
   matchedTravelTasks,
+  travelOriginKey,
   travelSourceOf,
   travelTaskTitle,
   describeTravelEstimate,
@@ -336,7 +337,7 @@ import {
 import { describeDisruptions, journeyDisruptions } from '../utils/transitAlerts';
 import { dateToHHMM } from '../utils/clockTime';
 import { useTransitStore } from './useTransitStore';
-import { useTravelTimeStore } from './useTravelTimeStore';
+import { currentTravelOrigin, useTravelTimeStore } from './useTravelTimeStore';
 import { useScreenTimeStore } from './useScreenTimeStore';
 import { useHealthStore } from './useHealthStore';
 import { screenTimeSourceId, parseScreenTimeSourceId, crossingWantsTask, screenTimeRuleIdOf } from '../utils/screenTimeRules';
@@ -6927,7 +6928,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // below: turning it off puts every reminder back on the typed lead on the
     // next sweep, even if estimates are still held.
     const estimated = settings.travelEstimates
-      ? { estimates: useTravelTimeStore.getState().estimates, mode: settings.travelMode }
+      ? {
+          estimates: useTravelTimeStore.getState().estimates,
+          mode: settings.travelMode,
+          origin: travelOriginKey(currentTravelOrigin()),
+        }
       : undefined;
     const matches = matchedTravelTasks(
       { defaultMinutes: settings.travelLeadMinutes, byCalendar: settings.travelLeadByCalendar },

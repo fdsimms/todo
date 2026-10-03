@@ -1020,7 +1020,7 @@ argued out before it was built; read them before reopening one.
   isn't. `travelLeadMinutes` is a `CountStepper` in 5-minute steps. **`travelEstimates` (off by
   default, its own switch, location permission asked on the tap that turns it on) is the opt-in:**
   `useTravelTimeStore` asks MapKit's ETA (`src/services/travelTime.ts`, `estimateTravelTime` in
-  `todo-eventkit-bridge`) from the phone's position to each upcoming event's place, by
+  `todo-eventkit-bridge`) from the starting point to each upcoming event's place, by
   `travelMode`, and `estimatedLeadMinutes` turns it into the lead (plus 5 minutes, up to the next
   5). Four rules hold it to the reasons above:
   - **It says so.** The estimate goes in the title ("Leave for Dentist (25 min by transit)"),
@@ -1035,6 +1035,15 @@ argued out before it was built; read them before reopening one.
     location or a changed mode is asked again rather than reused, and one older than 20 minutes
     is refreshed for traffic. The destination is the event's map pin when it has one (a place
     picked in quick add), else Apple Maps' first match for the location text.
+- **The starting point is the phone's position or a saved place, chosen once** (`travelOriginPlaceId`,
+  shown as "Start from"). The phone's position is the wrong origin for most of what this makes: a
+  reminder queued the evening before is estimated from wherever the phone was then. A saved place
+  fixes that, and it has to carry a map pin (`originCandidates`), since an address alone has no
+  coordinate to send. `travelOriginFor` answers null for a place that was removed or has no pin, and
+  the settings row reads its value through the same function, so what it says is what the estimate
+  uses. An estimate is filed under `travelOriginKey` (the coordinates, never the name), so moving
+  the pin or changing the setting asks again and a rename doesn't. Deliberately not built: a work
+  origin chosen by schedule, and the previous event's place as the origin.
 - **It is one switch and one number, not a rule list.** It shares `eventTask`'s occurrence key,
   eligibility gate and handled record by importing them, and deliberately not its rules engine.
   That engine's lead is whole days on purpose (`leadTimeReached`) where travel is minutes, and

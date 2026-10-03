@@ -603,6 +603,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
       'word', 'match', 'days before', 'lead time', 'prep', 'pack', 'event rule'] },
   { id: 'travelEstimates', groupId: 'generated', label: 'Estimate travel time', section: 'Leave-by reminders',
     keywords: ['apple maps', 'eta', 'commute', 'traffic', 'driving', 'transit', 'walking', 'how long', 'leave'] },
+  { id: 'travelOrigin', groupId: 'generated', label: 'Start from', section: 'Leave-by reminders',
+    keywords: ['home', 'work', 'saved place', 'starting point', 'origin', 'where i am', 'location', 'commute', 'leave', 'apple maps'] },
   { id: 'travelLeadMinutes', groupId: 'generated', label: 'Remind me', section: 'Leave-by reminders',
     keywords: ['travel time', 'commute', 'minutes before', 'lead time', 'leave', 'when to leave',
       'reminder', 'notification', 'trip'] },

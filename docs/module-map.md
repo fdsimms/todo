@@ -347,7 +347,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/titleSuggestions.ts` — TitleSuggestion, suggestTitles
 - `src/utils/tooltipAim.ts` — TOOLTIP_CARET_W, aimTooltip
 - `src/utils/transitAlerts.ts` — TransitEffect, TransitAlert, TransitSnapshot, TRANSIT_LINES, parseTransitLines, effectOfAlertType, parseSubwayAlerts, alertOverlaps, LIVE_ALERT_MAX_AGE_MS, PLANNED_ALERT_MAX_AGE_MS, +4 more
-- `src/utils/travelTasks.ts` — TRAVEL_LEAD_MINUTES_DEFAULT, TRAVEL_LEAD_MINUTES_MIN, TRAVEL_LEAD_MINUTES_MAX, TRAVEL_LEAD_MINUTES_STEP, TravelMode, TRAVEL_MODES, TRAVEL_ESTIMATE_MARGIN_MINUTES, TRAVEL_ESTIMATE_STALE_MS, TRAVEL_ESTIMATES_PER_REFRESH, TravelEstimate, +22 more
+- `src/utils/travelTasks.ts` — TRAVEL_LEAD_MINUTES_DEFAULT, TRAVEL_LEAD_MINUTES_MIN, TRAVEL_LEAD_MINUTES_MAX, TRAVEL_LEAD_MINUTES_STEP, TravelMode, TRAVEL_MODES, TRAVEL_ESTIMATE_MARGIN_MINUTES, TRAVEL_ESTIMATE_STALE_MS, TRAVEL_ESTIMATES_PER_REFRESH, TravelEstimate, +27 more
 - `src/utils/tripForecast.ts` — TripForecast, summarizeTripForecast, describeTripForecast, describeForecastGap
 - `src/utils/tripLiveActivity.ts` — TripRun, buildTripRun, useTripLiveActivitySync
 - `src/utils/unattendedLedger.ts` — UnattendedActionSpec, UNATTENDED_ACTION_SPECS, unattendedIcon, unattendedSource, describeUnattendedEntry, UnattendedDay, unattendedDays, unattendedDayLabel, unattendedSummary, unattendedKinds, +1 more
@@ -414,7 +414,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/useTemplateCategoryStore.ts` — useTemplateCategoryStore
 - `src/store/useTemplateStore.ts` — ApplyTemplateOptions, useTemplateStore
 - `src/store/useTransitStore.ts` — TRANSIT_SNAPSHOT_STALE_MS, transitReadWanted, useTransitStore
-- `src/store/useTravelTimeStore.ts` — travelEstimatesWanted, useTravelTimeStore
+- `src/store/useTravelTimeStore.ts` — travelEstimatesWanted, currentTravelOrigin, useTravelTimeStore
 - `src/store/useUnattendedStore.ts` — UnattendedRecord, useUnattendedStore
 - `src/store/useWeatherStore.ts` — useWeatherStore, useWeatherSync
 - `src/store/useWidgetCompletionStore.ts` — TAP_CLAIM_WINDOW_MS, useWidgetCompletionStore

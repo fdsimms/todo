@@ -7,8 +7,8 @@ import type { BusyEvent } from '../utils/calendarBusy';
 import { formatTimeOfDay } from '../utils/dateUtils';
 import { directionsUrl } from '../utils/maps';
 import { eventCoordinate } from '../utils/calendarSync';
-import { describeTravelEstimate, estimateFor } from '../utils/travelTasks';
-import { useTravelTimeStore } from '../store/useTravelTimeStore';
+import { describeTravelEstimate, estimateFor, travelOriginKey } from '../utils/travelTasks';
+import { currentTravelOrigin, useTravelTimeStore } from '../store/useTravelTimeStore';
 import { haptics } from '../utils/haptics';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
@@ -140,6 +140,8 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById, titl
   // estimates the same upcoming events and this only reads what it holds.
   const travelEstimates = useSettingsStore(s => s.travelEstimates);
   const travelMode = useSettingsStore(s => s.travelMode);
+  const travelOriginPlaceId = useSettingsStore(s => s.travelOriginPlaceId);
+  const originKey = useMemo(() => travelOriginKey(currentTravelOrigin()), [travelOriginPlaceId]);
   const estimates = useTravelTimeStore(s => s.estimates);
   const allPeople = usePersonStore(useShallow(s => s.people));
   const people = useMemo(() => allPeople.filter(p => !p.archived), [allPeople]);
@@ -325,7 +327,7 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById, titl
                       </View>
                     )}
                     {(() => {
-                      const estimate = travelEstimates && event.location ? estimateFor(event, estimates, travelMode) : null;
+                      const estimate = travelEstimates && event.location ? estimateFor(event, estimates, travelMode, originKey) : null;
                       return estimate ? (
                         <Text style={styles.rowEstimate} numberOfLines={1}>
                           {describeTravelEstimate(estimate.minutes, estimate.mode)}

@@ -357,6 +357,7 @@ jest.mock('../store/useTransitStore', () => ({
 }));
 jest.mock('../store/useTravelTimeStore', () => ({
   useTravelTimeStore: { getState: jest.fn(() => ({ estimates: {} })) },
+  currentTravelOrigin: jest.fn(() => null),
 }));
 
 jest.mock('react-native', () => ({
@@ -5629,7 +5630,7 @@ describe('checkTravelTasks', () => {
       useTravelTimeStore: { getState: jest.Mock };
     };
     useTravelTimeStore.getState.mockReturnValue({
-      estimates: { [sourceId]: { minutes: 41, location: '123 Main St', mode: 'transit', at: NOW.getTime() } },
+      estimates: { [sourceId]: { minutes: 41, location: '123 Main St', mode: 'transit', origin: 'current', at: NOW.getTime() } },
     });
     useSettingsStore.getState.mockReturnValue(settings({ travelEstimates: true, travelMode: 'transit' }));
     useTaskStore.getState().checkTravelTasks();
