@@ -2192,6 +2192,9 @@ function seedPeople(today: Date): void {
   // and Ansley already share a task below, which is exactly the kind of pair
   // this feature exists for.
   const household = createGroup('Household');
+  // Catch up separately, so the seed shows the switch is on a group rather than
+  // every pair being one reminder: a couple you see together but call apart.
+  usePersonGroupStore.getState().updateGroup(household.id, { catchUpSeparately: true });
   updatePerson(dustin.id, { groupId: household.id });
   updatePerson(ansley.id, { groupId: household.id });
 

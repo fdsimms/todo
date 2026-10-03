@@ -21,7 +21,7 @@ const person = (id: string, name: string, groupId: string | null = null): Person
 });
 
 const group = (id: string, name: string): PersonGroup => ({
-  id, name, sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z',
+  id, name, sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z', catchUpSeparately: false,
 });
 
 const task = (id: string, personIds: string[]) => ({ id, personIds }) as unknown as Task;
