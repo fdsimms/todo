@@ -87,6 +87,8 @@ import { useMoodStore } from '../store/useMoodStore';
 import { useMilestoneStore } from '../store/useMilestoneStore';
 import { useMedicationStore } from '../store/useMedicationStore';
 import { frequencyTrend, medicationFor } from '../utils/medicationLog';
+import { canClaimReward } from '../utils/rewards';
+import { useRewardStore } from '../store/useRewardStore';
 import { linkFor } from '../constants/linkApps';
 import { buildMoodDays, contextTagMoodContrasts, describeNutrientInsight, foodMoodContrasts, foodPairedDays, symptomFoodContrasts, milestoneMoodContrast, moodCompletionInsight, nutrientInsight, symptomMoodContrasts, taskContrastTitles, taskMoodContrasts, MIN_PAIRED_DAYS } from '../utils/moodInsights';
 import { contextTagVocabulary, symptomVocabulary } from '../utils/moodLog';
@@ -1975,6 +1977,26 @@ describe('demo seed — people', () => {
     expect(rows.length).toBeGreaterThan(0);
     const titles = taskContrastTitles(tasks);
     expect(rows.map(r => titles.get(r.label))).toContain('Take the vitamin D');
+  });
+
+  it('seeds coins and rewards switched on, with every kind of entry', () => {
+    // Off by default, so without this the Rewards screen is only a switch.
+    expect(useSettingsStore.getState().rewardsEnabled).toBe(true);
+    const { entries, rewards } = useRewardStore.getState();
+    expect(new Set(entries.map(e => e.kind))).toEqual(new Set(['earn', 'loss', 'spend']));
+    const balance = useRewardStore.getState().balance();
+    // One reward affordable now, the rest still being saved for.
+    expect(rewards.filter(r => canClaimReward(balance, r.cost))).toHaveLength(1);
+    expect(rewards.length).toBeGreaterThan(1);
+    // Every optional field, a goal, and a wish list feeding the screen.
+    expect(rewards.some(r => r.linkUrl && r.note)).toBe(true);
+    expect(rewards.some(r => r.oneTime && !r.taskId)).toBe(true);
+    const listId = useSettingsStore.getState().rewardListProjectId;
+    const list = useProjectStore.getState().projects.find(p => p.id === listId);
+    expect(list?.kind).toBe('list');
+    const fromList = rewards.find(r => r.taskId);
+    expect(useTaskStore.getState().tasks.find(t => t.id === fromList?.taskId)?.projectId).toBe(listId);
+    expect(rewards.some(r => r.id === useSettingsStore.getState().rewardGoalId)).toBe(true);
   });
 
   it('seeds both halves of the medication log, so neither reads as missing', () => {

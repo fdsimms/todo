@@ -79,6 +79,7 @@ export type SimpleFeatureId =
   | 'foodLogScreen'
   | 'backfillScreen'
   | 'stuckScreen'
+  | 'rewardsScreen'
   // Everything Today offers besides the list itself.
   | 'focusSessions'
   | 'suggestedPins'
@@ -186,6 +187,10 @@ export const SIMPLE_FEATURES: readonly SimpleFeature[] = [
   { id: 'foodLogScreen', label: 'Food log', area: 'screens', screen: 'FoodLog', contentScreen: true },
   { id: 'backfillScreen', label: 'Backfill', area: 'screens', screen: 'Backfill' },
   { id: 'stuckScreen', label: 'Stuck', area: 'screens', screen: 'Stuck' },
+  // A plain hidden screen rather than a content one: rewards and the coin
+  // ledger stay stored and come back with the screen, and nothing else in the
+  // app needs them reachable meanwhile.
+  { id: 'rewardsScreen', label: 'Rewards', area: 'screens', screen: 'Rewards' },
 
   { id: 'focusSessions', label: 'Focus sessions', area: 'today' },
   { id: 'suggestedPins', label: 'Suggested pins', area: 'today' },

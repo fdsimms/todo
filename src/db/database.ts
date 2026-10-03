@@ -10,6 +10,8 @@ import type {
   GeneratedKind,
   LoggedSymptom,
   MedicationLog,
+  CoinEntry,
+  Reward,
   Milestone,
   EventPeopleLink,
   MoodLevel,
@@ -440,6 +442,33 @@ export function initDatabase(): void {
       as_needed INTEGER NOT NULL DEFAULT 0,
       task_id TEXT,
       note TEXT
+    );
+
+    -- The coin ledger and the rewards it buys — see CoinEntry/Reward in
+    -- types/index.ts and src/utils/rewards.ts. The balance is the sum of
+    -- coin_entries, never a stored number, so the ledger merges across devices
+    -- by union. task_id and reward_id are provenance and carry no foreign key:
+    -- an entry outlives a task the retention window purges, and a reward
+    -- deleted after it was claimed.
+    CREATE TABLE IF NOT EXISTS coin_entries (
+      id TEXT PRIMARY KEY NOT NULL,
+      kind TEXT NOT NULL,
+      amount INTEGER NOT NULL,
+      at TEXT NOT NULL,
+      task_id TEXT,
+      reward_id TEXT,
+      label TEXT NOT NULL DEFAULT ''
+    );
+    CREATE INDEX IF NOT EXISTS idx_coin_entries_task ON coin_entries(task_id);
+    CREATE TABLE IF NOT EXISTS rewards (
+      id TEXT PRIMARY KEY NOT NULL,
+      title TEXT NOT NULL,
+      cost INTEGER NOT NULL,
+      created_at TEXT NOT NULL,
+      link_url TEXT,
+      note TEXT,
+      one_time INTEGER NOT NULL DEFAULT 0,
+      task_id TEXT
     );
 
     -- One thing eaten, at one moment — see FoodLogEntry in types/index.ts and
@@ -2204,6 +2233,10 @@ export const BACKUP_TABLES = [
   // provenance rather than a reference — a dose whose task is gone is still a
   // dose — so it has no ordering requirement against `tasks`.
   'medication_logs',
+  // The coin ledger and the rewards it buys. Standalone: every pointer an entry
+  // carries is provenance and may dangle, so no ordering requirement.
+  'coin_entries',
+  'rewards',
   // The food log, for the same reason: standalone rows nothing else points at.
   // Its pointers all run the other way and all dangle freely, so it has no
   // ordering requirement against the tables above it.
@@ -6397,6 +6430,80 @@ export function dbDeleteMedicationLog(id: string): void {
  */
 export function dbDeleteMedicationLogsForTask(taskId: string): void {
   db.runSync('DELETE FROM medication_logs WHERE task_id = ?', [taskId]);
+}
+
+function rowToCoinEntry(row: Record<string, unknown>): CoinEntry {
+  const kind = row.kind as string;
+  return {
+    id: row.id as string,
+    // An unknown kind (a row from a newer build) reads as a spend, the
+    // direction that can't hand out coins nobody earned.
+    kind: kind === 'earn' || kind === 'loss' ? kind : 'spend',
+    amount: Math.max(0, Math.round(Number(row.amount) || 0)),
+    at: row.at as string,
+    taskId: (row.task_id as string | null) || null,
+    rewardId: (row.reward_id as string | null) || null,
+    label: (row.label as string) || '',
+  };
+}
+
+export function dbGetAllCoinEntries(): CoinEntry[] {
+  return db.getAllSync<Record<string, unknown>>(
+    'SELECT * FROM coin_entries ORDER BY at DESC'
+  ).map(rowToCoinEntry);
+}
+
+/**
+ * `INSERT OR REPLACE` because an earn or miss entry's id is derived from the
+ * occurrence, so a redo after an undo writes the same row again.
+ */
+export function dbUpsertCoinEntry(entry: CoinEntry): void {
+  db.runSync(
+    `INSERT OR REPLACE INTO coin_entries (id, kind, amount, at, task_id, reward_id, label)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [entry.id, entry.kind, entry.amount, entry.at, entry.taskId, entry.rewardId, entry.label]
+  );
+}
+
+export function dbDeleteCoinEntry(id: string): void {
+  db.runSync('DELETE FROM coin_entries WHERE id = ?', [id]);
+}
+
+function rowToReward(row: Record<string, unknown>): Reward {
+  return {
+    id: row.id as string,
+    title: row.title as string,
+    cost: Math.max(1, Math.round(Number(row.cost) || 1)),
+    createdAt: row.created_at as string,
+    linkUrl: (row.link_url as string | null) || null,
+    note: (row.note as string | null) || null,
+    oneTime: row.one_time === 1 || !!row.task_id,
+    taskId: (row.task_id as string | null) || null,
+  };
+}
+
+export function dbGetAllRewards(): Reward[] {
+  return db.getAllSync<Record<string, unknown>>(
+    'SELECT * FROM rewards ORDER BY cost ASC, created_at ASC'
+  ).map(rowToReward);
+}
+
+export function dbInsertReward(reward: Reward): void {
+  db.runSync(
+    'INSERT INTO rewards (id, title, cost, created_at, link_url, note, one_time, task_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    [reward.id, reward.title, reward.cost, reward.createdAt, reward.linkUrl, reward.note, reward.oneTime ? 1 : 0, reward.taskId]
+  );
+}
+
+export function dbUpdateReward(reward: Reward): void {
+  db.runSync(
+    'UPDATE rewards SET title=?, cost=?, link_url=?, note=?, one_time=?, task_id=? WHERE id=?',
+    [reward.title, reward.cost, reward.linkUrl, reward.note, reward.oneTime ? 1 : 0, reward.taskId, reward.id]
+  );
+}
+
+export function dbDeleteReward(id: string): void {
+  db.runSync('DELETE FROM rewards WHERE id = ?', [id]);
 }
 
 /**

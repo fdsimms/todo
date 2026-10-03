@@ -31,6 +31,11 @@ export const KNOWN_LINK_APPS: LinkApp[] = [
   { name: 'Instagram', scheme: 'instagram://app', icon: 'logo-instagram', sfSymbol: 'camera.fill' },
   { name: 'Notion', scheme: 'notion://', icon: 'document-text-outline', sfSymbol: 'doc.text.fill' },
   { name: 'YNAB', scheme: 'ynab://', icon: 'wallet-outline', sfSymbol: 'wallet.pass.fill' },
+  // Food delivery, for a "Takeout dinner" reward (see Reward.linkUrl) as much
+  // as for a task. bag.fill rather than the takeout-bag symbol, which needs a
+  // newer iOS than the widget targets.
+  { name: 'Uber Eats', scheme: 'ubereats://', icon: 'fast-food-outline', sfSymbol: 'bag.fill' },
+  { name: 'DoorDash', scheme: 'doordash://', icon: 'bag-handle-outline', sfSymbol: 'bag.fill' },
 ];
 
 /**

@@ -594,6 +594,21 @@ describe('the replica', () => {
     expect(replica.completeTask(task2.id, {}).loggedDose).toBe(false);
   });
 
+  it('earns coins for a completion while rewards are on, and nothing while off', () => {
+    const coins = () => mockRaw.getAllSync<{ task_id: string; amount: number }>(
+      "SELECT task_id, amount FROM coin_entries WHERE kind = 'earn'"
+    );
+    const off = replica.createTask({ title: 'Before switching on' });
+    replica.completeTask(off.id, {});
+    expect(coins()).toEqual([]);
+
+    mockRaw.runSync("INSERT OR REPLACE INTO settings (key, value) VALUES ('rewardsEnabled', 'true')");
+    replica.refresh();
+    const task = replica.createTask({ title: 'Write the report', estimatedMinutes: 90 });
+    replica.completeTask(task.id, {});
+    expect(coins()).toEqual([{ task_id: task.id, amount: 5 }]);
+  });
+
   it('refuses a task that is already completed', () => {
     const task = replica.createTask({ title: 'Once' });
     replica.completeTask(task.id, {});

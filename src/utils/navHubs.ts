@@ -1,5 +1,5 @@
 /**
- * What the side menu contains, as data — twelve rows, four of which are hubs.
+ * What the side menu contains, as data — thirteen rows, four of which are hubs.
  *
  * The menu used to be eighteen flat rows of equal weight, about twice what
  * fits on a phone, so half of it lived below a fold nothing announced. Reading
@@ -185,6 +185,19 @@ export const NAV_MENU_ROWS: readonly NavMenuRow[] = [
       keywords: ['today', 'later', 'unscheduled', 'inbox', 'list'],
     },
   },
+  // Coins and rewards. A row of its own, right under Tasks, because the
+  // balance is what completing those tasks earns and the shop is something
+  // you come back to act on. It's also where the feature is switched on, so
+  // it has to be findable before anyone knows it exists.
+  {
+    kind: 'screen',
+    destination: {
+      route: 'Rewards',
+      icon: 'trophy-outline',
+      label: 'Rewards',
+      keywords: ['coins', 'points', 'gold', 'treat', 'shop', 'habitica', 'gamification', 'earn'],
+    },
+  },
   // Out of the bottom tab bar to make room for Groceries there. The pull to
   // refresh on Today opens the quick-search card; this row is the way to the
   // full screen.
@@ -317,7 +330,7 @@ export interface NavSearchResult extends NavDestination {
  * Destinations the find field can reach that the menu deliberately does not
  * draw a row for.
  *
- * The menu is twelve rows because that is what fits on a phone, and the hubs
+ * The menu is thirteen rows because that is about what fits on a phone, and the hubs
  * exist to keep it there — so a surface that doesn't earn a row still needs
  * *some* way to be found by name, or it is reachable only from whichever
  * screen happens to link to it. Saved views is the first of these: it is

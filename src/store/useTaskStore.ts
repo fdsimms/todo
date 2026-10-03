@@ -140,6 +140,8 @@ import { useSavedMealsStore } from './useSavedMealsStore';
 import { useMoodStore } from './useMoodStore';
 import { useMilestoneStore } from './useMilestoneStore';
 import { useMedicationStore } from './useMedicationStore';
+import { useRewardStore } from './useRewardStore';
+import { coinsForCompletion, coinsForLoss, taskEarnsCoins } from '../utils/rewards';
 import { medicationFor } from '../utils/medicationLog';
 import { eventsIn } from '../utils/calendarBusy';
 import { isDemoModeActive } from '../utils/demoState';
@@ -2422,6 +2424,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // report a demo session's invented doses as a real person's record of what
     // they have taken.
     useMedicationStore.getState().initialize();
+    // The coin ledger. Same fan-out, so a demo session's invented coins never
+    // sit on top of a real balance.
+    useRewardStore.getState().initialize();
     // Beside the mood log and for the identical reason, with the same stakes:
     // a food log left pointed at the previous database would show a demo
     // session's invented meals as somebody's own record of what they ate.
@@ -3772,6 +3777,17 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (creditedAt !== null) completed.penaltyCreditedAt = creditedAt;
 
     dbUpdateTask(completed);
+    // Coins: a completion earns, a miss costs (src/utils/rewards.ts). Both are
+    // no-ops while rewards are off. A neutral completion is the app closing a
+    // run on its own, which nobody did, so it moves nothing either way. The
+    // streak read is the one this completion just wrote, so the occurrence
+    // that reaches a bonus step is the first to be paid it.
+    if (!neutral && taskEarnsCoins(task)) {
+      const rewards = useRewardStore.getState();
+      const label = displayTitleFor(task);
+      if (missed) rewards.recordMiss(id, coinsForLoss(task), label, completedAt.toISOString());
+      else rewards.recordEarn(id, coinsForCompletion(task, completed.streakCount), label, completedAt.toISOString());
+    }
     // A completed row has nothing left to be late for — its deadline event,
     // if it had one, is deleted rather than left dangling on the calendar.
     reconcileDeadlineEvent(completed);
@@ -4244,6 +4260,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       penaltyCreditedAt: null,
     };
     uncreditPenaltyShield(task, new Date());
+    // Whatever this completion or miss did to the coin balance goes with it.
+    // Unlike the penalty credit above, nothing here can be bought back by a
+    // round trip: the entry removed is exactly the one the completion wrote.
+    useRewardStore.getState().takeBackTask(id);
     if (task.completionCalendarEventId) void deleteCompletionEvent(completionEventLink(task));
     // The dose this completion recorded goes with it. Unlike the Apple Health
     // write, which is one-shot because a sample is a historical record in
@@ -4406,6 +4426,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // every other block too.
     const slipUntil = slipPenaltyUntil(updated, new Date());
     if (slipUntil) chargePenaltyShield(slipUntil, displayTitleFor(updated));
+    // A slip costs coins too, when rewards are on. Unlike the block, this one
+    // *is* refunded by undoSlip: the refund removes this slip's own entry, so
+    // a log-and-undo round trip nets zero rather than buying anything back.
+    useRewardStore.getState().recordSlip(id, coinsForLoss(updated), displayTitleFor(updated));
     // A tap here costs a run that may be weeks long, so the undo is offered
     // rather than buried — the same affordance a logged quota unit gets, for a
     // mis-tap that is considerably more expensive.
@@ -4423,6 +4447,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const updated = { ...task, ...patch };
     dbUpdateTask(updated);
     set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
+    useRewardStore.getState().takeBackSlip(id);
   },
 
   sweepTaskPenalties() {

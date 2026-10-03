@@ -491,6 +491,18 @@ interface SettingsStore {
   // and the focus shield already names it, so this blocks the same set rather
   // than pretending to a second one it has nowhere to keep.
   penaltyShieldEnabled: boolean;
+  // Coins for completing tasks, lost for misses and slips, spent on rewards
+  // you define (src/utils/rewards.ts). Off by default and asked for on the
+  // Rewards screen: a score is a thing this app otherwise refuses to keep, so
+  // nobody should find one running that they didn't switch on.
+  rewardsEnabled: boolean;
+  // The reward you're saving for, shown as progress on the Rewards screen's
+  // balance card. A reward id, or null. One goal rather than a flag per reward
+  // because "saving for" means picking one thing over the others.
+  rewardGoalId: string | null;
+  // The list project whose items can be priced as rewards (your wish list).
+  // A project id, or null for none. One list, chosen on the Rewards screen.
+  rewardListProjectId: string | null;
   // Keep those same apps blocked while a task marked as a gate is outstanding.
   // The other direction from the penalty: not what failing costs afterwards,
   // but what has to happen before the apps unblock at all. See
@@ -1722,6 +1734,9 @@ interface SettingsStore {
   setFocusLongRestMinutes: (minutes: number) => void;
   setFocusShieldEnabled: (on: boolean) => void;
   setPenaltyShieldEnabled: (on: boolean) => void;
+  setRewardsEnabled: (on: boolean) => void;
+  setRewardGoalId: (id: string | null) => void;
+  setRewardListProjectId: (id: string | null) => void;
   setGateShieldEnabled: (on: boolean) => void;
   setPenaltyShieldUntil: (until: string | null, reason?: string | null) => void;
   setCompletedRetentionDays: (days: RetentionDays) => void;
@@ -1939,6 +1954,9 @@ const DEFAULT_SETTINGS = {
   focusLongRestMinutes: FOCUS_DEFAULTS.longRestMinutes,
   focusShieldEnabled: false,
   penaltyShieldEnabled: false,
+  rewardsEnabled: false,
+  rewardGoalId: null,
+  rewardListProjectId: null,
   gateShieldEnabled: false,
   penaltyShieldUntil: null,
   penaltyShieldReason: null,
@@ -2357,6 +2375,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   focusLongRestMinutes: FOCUS_DEFAULTS.longRestMinutes,
   focusShieldEnabled: false,
   penaltyShieldEnabled: false,
+  rewardsEnabled: false,
+  rewardGoalId: null,
+  rewardListProjectId: null,
   gateShieldEnabled: false,
   penaltyShieldUntil: null,
   penaltyShieldReason: null,
@@ -2620,6 +2641,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const focusLongRestMinutes = parseFocusLongRestMinutes(dbGetSetting('focusLongRestMinutes'));
     const focusShieldEnabled = dbGetSetting('focusShieldEnabled') === 'true';
     const penaltyShieldEnabled = dbGetSetting('penaltyShieldEnabled') === 'true';
+    const rewardsEnabled = dbGetSetting('rewardsEnabled') === 'true';
+    const rewardGoalId = dbGetSetting('rewardGoalId') || null;
+    const rewardListProjectId = dbGetSetting('rewardListProjectId') || null;
     const gateShieldEnabled = dbGetSetting('gateShieldEnabled') === 'true';
     const penaltyShieldUntil = dbGetSetting('penaltyShieldUntil') || null;
     const penaltyShieldReason = dbGetSetting('penaltyShieldReason') || null;
@@ -3228,6 +3252,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       remindersImportListId,
       remindersImportReview,
       restockOfferEnabled,
+      rewardGoalId,
+      rewardListProjectId,
+      rewardsEnabled,
       screenTimeRules,
       screenTimeTaskCategory,
       screenTimeTasks,
@@ -4101,6 +4128,21 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setPenaltyShieldEnabled(on: boolean) {
     dbSetSetting('penaltyShieldEnabled', on ? 'true' : 'false');
     set({ penaltyShieldEnabled: on });
+  },
+
+  setRewardsEnabled(on: boolean) {
+    dbSetSetting('rewardsEnabled', on ? 'true' : 'false');
+    set({ rewardsEnabled: on });
+  },
+
+  setRewardGoalId(id: string | null) {
+    dbSetSetting('rewardGoalId', id ?? '');
+    set({ rewardGoalId: id });
+  },
+
+  setRewardListProjectId(id: string | null) {
+    dbSetSetting('rewardListProjectId', id ?? '');
+    set({ rewardListProjectId: id });
   },
 
   setGateShieldEnabled(on: boolean) {
