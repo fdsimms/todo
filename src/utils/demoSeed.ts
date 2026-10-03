@@ -1131,6 +1131,21 @@ export function seedDemoData(): void {
     if (i < 2) completeTask(t.id);
   });
 
+  // A packing list in sections that keeps its checked items in view: each
+  // checked item stays under its own section, so the list reads as packed per
+  // section (see checkedBySection in ProjectDetailScreen).
+  const camping = createProject('Camping kit', { kind: 'list' });
+  updateProject(camping.id, { category: 'Ideas', showChecked: true });
+  ([['Sleeping', ['Tent', 'Sleeping bags', 'Headlamps']], ['Kitchen', ['Camp stove', 'Lighter', 'Coffee']]] as const)
+    .forEach(([section, items], s) => {
+      const group = createGroup(section, null, camping.id);
+      useTaskGroupStore.getState().updateGroup(group.id, { sortOrder: 1000 + s });
+      items.forEach((title, i) => {
+        const t = addTask({ title, projectId: camping.id, groupId: group.id }, undefined, { skipTitleRules: true, skipCategoryDefault: true });
+        if (i === 0) completeTask(t.id);
+      });
+    });
+
   // A trip, so the away span is visible as a thing the app has rather than as
   // two empty rows in the project editor (see Project.awayStart). Everything
   // it buys is invisible until a project carries dates: the card's countdown,

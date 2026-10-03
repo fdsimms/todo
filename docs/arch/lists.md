@@ -34,9 +34,25 @@ list needed no visibility code of its own. What the kind does change:
 - **Controls.** The page swaps the scheduling affordances out: no date or
   category chip on a row, an inline add field that keeps focus and splits a
   pasted list, Return opening the next item, Sort A to Z, Uncheck all and
-  Delete checked. The FAB leaves out Track replies (a task per person to chase
-  is follow-up work, not a line on a list). The editor hides Deadline, Away and
-  Nudges unless one is already set.
+  Delete checked. **Every add on a list is that inline field**: the top one, a
+  section's "Add an item", a new section and a FAB drop. A section's button
+  once opened the full quick add instead, which made one list add two ways.
+  The FAB leaves out Track replies (a task per person to chase is follow-up
+  work, not a line on a list). The editor hides Deadline, Away and Nudges
+  unless one is already set.
+- **Swipe right deletes.** The one destructive swipe in the app
+  (`SwipeableRow`'s `deleteAction`, passed by `TaskItem`'s `swipeDeletes`), and
+  only on a list item: a full swipe deletes, and the Undo bar takes it back.
+  A checklist line in a project doesn't get it, and neither does a task.
+- **A find field once the list is long** (`LIST_FILTER_MIN_LINES`, 15 items),
+  the same field a project's checklist sections get. It narrows the checked
+  items too. Below the threshold it stays off, which is what keeps a short
+  list's top uncluttered.
+- **Checked items under their sections** when the list keeps them in view
+  (`showChecked`, a packing list): each sits at the foot of its own section
+  (`checkedBySection`). A list that folds them away keeps them in one block
+  behind "Show N checked", where scattering them back up the page would
+  surprise.
 
 ## Dates on a list item
 

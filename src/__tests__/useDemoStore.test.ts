@@ -593,6 +593,20 @@ describe('demo mode', () => {
   // project actually carrying kind: 'list'. Behaviour is asserted alongside:
   // its members are undated, which is what keeps them off Today and out of
   // Inbox without any code of their own.
+  // A sectioned list that keeps its checked items in view, so a checked item
+  // can be seen staying under its own section.
+  it('seeds a sectioned list keeping a checked item in each section', () => {
+    useDemoStore.getState().enterDemoMode();
+    const projects = useProjectStore.getState().projects;
+    const tasks = useTaskStore.getState().tasks;
+    const list = projects.find(p => p.kind === 'list' && p.showChecked
+      && tasks.some(t => t.projectId === p.id && t.groupId && t.completed));
+    expect(list).toBeDefined();
+    const checkedSections = new Set(tasks.filter(t => t.projectId === list!.id && t.completed && t.groupId).map(t => t.groupId));
+    expect(checkedSections.size).toBeGreaterThanOrEqual(2);
+    useDemoStore.getState().exitDemoMode();
+  });
+
   it('seeds a list, with undated members', () => {
     useDemoStore.getState().enterDemoMode();
     const projects = useProjectStore.getState().projects;

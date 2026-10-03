@@ -247,6 +247,12 @@ interface Props {
    * useCallback), or the memo on this row stops holding.
    */
   onSubmitLine?: (taskId: string) => void;
+  /**
+   * A full swipe right deletes the row (SwipeableRow's deleteAction). Only an
+   * item on a list passes this; a checklist line in a project doesn't, since
+   * the rule it's an exception to is about tasks.
+   */
+  swipeDeletes?: boolean;
   /** Plays the same checkbox-tap complete animation as a real tap, then completes the task — used for a completion that happened in the Today widget so the user can watch it happen here too. */
   autoComplete?: boolean;
   /**
@@ -309,6 +315,7 @@ export const TaskItem = React.memo(function TaskItem({
   highlighted = false,
   listRow = false,
   onSubmitLine,
+  swipeDeletes = false,
   autoComplete = false,
   hidesWhenOnPace = false,
   onApplyImport,
@@ -4073,6 +4080,13 @@ export const TaskItem = React.memo(function TaskItem({
               onAction: () => setShowWhenPicker(true),
               accessibilityLabel: `Reschedule ${task.title}`,
             }}
+            // A list item has no date to move, and deleting is what a list is
+            // swiped for. deleteTask raises the Undo bar. See SwipeableRow's
+            // deleteAction for why this is the one destructive swipe.
+            deleteAction={swipeDeletes && !notice ? {
+              onDelete: () => { animateLayout(); deleteTask(task.id); },
+              accessibilityLabel: `Delete ${task.title}`,
+            } : undefined}
           >
             <View>
               <View pointerEvents={spotlightDisabled ? 'none' : 'auto'}>

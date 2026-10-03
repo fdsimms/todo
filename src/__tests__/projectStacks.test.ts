@@ -1,4 +1,4 @@
-import { buildProjectListItems, projectCopyText, projectPageOrder, alphabeticalPageOrder, orderWithInserted, filterProjectListItems } from '../utils/projectStacks';
+import { buildProjectListItems, projectCopyText, projectPageOrder, alphabeticalPageOrder, orderWithInserted, filterProjectListItems, filterTasksByTitle } from '../utils/projectStacks';
 import type { Task, TaskGroup } from '../types';
 
 const group = (id: string, overrides: Partial<TaskGroup> = {}): TaskGroup => ({
@@ -266,5 +266,20 @@ describe('filterProjectListItems', () => {
     const dairy = filterProjectListItems(items(), 'dairy');
     expect(dairy[0].type === 'group' && dairy[0].children).toHaveLength(2);
     expect(filterProjectListItems(items(), '  ')).toHaveLength(items().length);
+  });
+});
+
+describe('filterTasksByTitle', () => {
+  const tasks = [
+    { id: 'a', title: 'Crème brûlée' },
+    { id: 'b', title: 'Tent' },
+  ] as Task[];
+
+  it('matches like filterProjectListItems: case and accents ignored', () => {
+    expect(filterTasksByTitle(tasks, 'CREME').map(t => t.id)).toEqual(['a']);
+  });
+
+  it('keeps everything for a blank query', () => {
+    expect(filterTasksByTitle(tasks, '  ').map(t => t.id)).toEqual(['a', 'b']);
   });
 });
