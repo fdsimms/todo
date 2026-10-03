@@ -3,8 +3,12 @@ import {
   STREAK_BONUS_CAP,
   STREAK_BONUS_EVERY,
   baseCoinsFor,
+  EARN_RATE_WINDOW_DAYS,
   canClaimReward,
   coinBalance,
+  describeRewardPace,
+  earnRatePerDay,
+  suggestRewardCost,
   coinsForCompletion,
   coinsForLoss,
   formatCoins,
@@ -182,5 +186,93 @@ describe('latestLossFor', () => {
 
   it('is null when nothing was charged', () => {
     expect(latestLossFor([], 't')).toBeNull();
+  });
+});
+
+describe('earnRatePerDay', () => {
+  const now = new Date(2026, 9, 3, 12);
+  const daysAgo = (n: number) => new Date(now.getTime() - n * 24 * 60 * 60 * 1000).toISOString();
+  const done = (over: Partial<Parameters<typeof earnRatePerDay>[0][number]> = {}) => ({
+    ...task(30),
+    parentId: null,
+    completed: true,
+    completedAt: daysAgo(1),
+    missedAt: null,
+    streakCount: 0,
+    ...over,
+  });
+
+  it('averages coins over the history actually there', () => {
+    // Ten days of history, 3 coins a day.
+    const tasks = Array.from({ length: 10 }, (_, i) => done({ completedAt: daysAgo(i + 0.5) }));
+    expect(earnRatePerDay(tasks, now)).toBeCloseTo(30 / 9.5);
+  });
+
+  it('takes misses off and leaves subtasks and open tasks out', () => {
+    const tasks = [
+      done({ completedAt: daysAgo(10) }),
+      done({ completedAt: daysAgo(2), missedAt: daysAgo(2) }),
+      done({ completedAt: daysAgo(3), parentId: 'p' }),
+      done({ completedAt: null, completed: false }),
+    ];
+    expect(earnRatePerDay(tasks, now)).toBeCloseTo(0 / 10);
+  });
+
+  it('counts the streak bonus each completion was paid', () => {
+    const tasks = [done({ completedAt: daysAgo(10), streakCount: 7 })];
+    expect(earnRatePerDay(tasks, now)).toBeCloseTo(4 / 10);
+  });
+
+  it('ignores completions older than the window', () => {
+    const tasks = [
+      done({ completedAt: daysAgo(EARN_RATE_WINDOW_DAYS + 5) }),
+      done({ completedAt: daysAgo(10) }),
+    ];
+    expect(earnRatePerDay(tasks, now)).toBeCloseTo(3 / 10);
+  });
+
+  it('refuses to guess from less than a week of history', () => {
+    expect(earnRatePerDay([done({ completedAt: daysAgo(3) })], now)).toBeNull();
+    expect(earnRatePerDay([], now)).toBeNull();
+  });
+});
+
+describe('suggestRewardCost', () => {
+  it('multiplies the rate by the days between claims', () => {
+    expect(suggestRewardCost(3, 1)).toBe(3);
+    expect(suggestRewardCost(3, 2.5)).toBe(8);
+  });
+
+  it('rounds to a clean price as it grows', () => {
+    expect(suggestRewardCost(9.3, 7)).toBe(65);
+    expect(suggestRewardCost(9.3, 30)).toBe(280);
+    expect(suggestRewardCost(50, 30)).toBe(1500);
+  });
+
+  it('never suggests less than one coin', () => {
+    expect(suggestRewardCost(0.1, 1)).toBe(1);
+  });
+
+  it('suggests nothing without a rate to price from', () => {
+    expect(suggestRewardCost(null, 7)).toBeNull();
+    expect(suggestRewardCost(0, 7)).toBeNull();
+    expect(suggestRewardCost(-2, 7)).toBeNull();
+  });
+});
+
+describe('describeRewardPace', () => {
+  it('names the interval in days, then weeks, then months', () => {
+    expect(describeRewardPace(10, 5)).toBe('more than once a day at your current pace');
+    expect(describeRewardPace(10, 10)).toBe('about every day at your current pace');
+    expect(describeRewardPace(10, 60)).toBe('about every 6 days at your current pace');
+    expect(describeRewardPace(10, 210)).toBe('about every 3 weeks at your current pace');
+    expect(describeRewardPace(10, 300)).toBe('about every 4 weeks at your current pace');
+    expect(describeRewardPace(10, 700)).toBe('about every 2 months at your current pace');
+    expect(describeRewardPace(10, 610)).toBe('about every 2 months at your current pace');
+  });
+
+  it('says nothing without a rate', () => {
+    expect(describeRewardPace(null, 50)).toBeNull();
+    expect(describeRewardPace(0, 50)).toBeNull();
   });
 });

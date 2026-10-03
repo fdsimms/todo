@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { format } from 'date-fns/format';
@@ -14,16 +14,20 @@ import { useRewardStore } from '../store/useRewardStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useColors } from '../theme/ThemeContext';
-import { font, fontWeight, radius, spacing, type Colors } from '../theme';
+import { font, fontWeight, interaction, radius, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import {
+  REWARD_FREQUENCIES,
   STREAK_BONUS_CAP,
   STREAK_BONUS_EVERY,
   canClaimReward,
   coinBalance,
+  describeRewardPace,
+  earnRatePerDay,
   formatCoins,
   parseRewardCost,
   signedAmount,
+  suggestRewardCost,
 } from '../utils/rewards';
 import type { CoinEntry, Reward } from '../types';
 
@@ -60,6 +64,11 @@ export function RewardsScreen() {
   const entries = useRewardStore(s => s.entries);
   const rewards = useRewardStore(s => s.rewards);
   const balance = useMemo(() => coinBalance(entries), [entries]);
+  // Your recent earning rate, which prices a reward by how often you want it
+  // and says how often each one comes round. Null with under a week of
+  // history, and every reader treats that as "nothing to say".
+  const tasks = useTaskStore(s => s.tasks);
+  const rate = useMemo(() => earnRatePerDay(tasks, new Date()), [tasks]);
 
   // One form for both jobs: 'new' while adding, a reward's id while editing
   // that reward in place, null while neither. Opening one closes the other,
@@ -164,6 +173,38 @@ export function RewardsScreen() {
         returnKeyType="next"
         accessibilityLabel="Reward"
       />
+      <Text style={styles.fieldLabel}>How often do you want it?</Text>
+      {rate === null ? (
+        <Text style={styles.hint}>
+          After a week of completed tasks, this can suggest a price from how fast you earn coins.
+        </Text>
+      ) : (
+        <View style={styles.presetRow}>
+          {REWARD_FREQUENCIES.map(f => {
+            const cost = suggestRewardCost(rate, f.days);
+            if (cost === null) return null;
+            // Lit while the field still holds this preset's price, so typing
+            // over it quietly drops the highlight rather than lying about it.
+            const active = draftCost === String(cost);
+            return (
+              <TouchableOpacity
+                key={f.id}
+                style={[styles.presetChip, active && styles.presetChipActive]}
+                onPress={() => {
+                  haptics.tap();
+                  setDraftCost(String(cost));
+                }}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+                accessibilityLabel={`${f.label}, ${formatCoins(cost)}`}
+              >
+                <Text style={[styles.presetChipText, active && styles.presetChipTextActive]}>{f.label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      )}
       <TextField
         style={styles.input}
         value={draftCost}
@@ -175,6 +216,9 @@ export function RewardsScreen() {
         onSubmitEditing={saveDraft}
         accessibilityLabel="Cost in coins"
       />
+      {parsedCost !== null && describeRewardPace(rate, parsedCost) !== null && (
+        <Text style={styles.hint}>{sentence(describeRewardPace(rate, parsedCost)!)}</Text>
+      )}
       <View style={styles.rewardActions}>
         <InlineAction label={editing === 'new' ? 'Add' : 'Save'} icon="checkmark" onPress={saveDraft} disabled={!canSave} />
         <InlineAction label="Cancel" variant="neutral" onPress={closeDraft} />
@@ -214,7 +258,12 @@ export function RewardsScreen() {
           const affordable = canClaimReward(balance, reward.cost);
           return (
             <View key={reward.id} style={styles.card}>
-              <Text style={styles.rewardTitle}>{reward.title}</Text>
+              <View>
+                <Text style={styles.rewardTitle}>{reward.title}</Text>
+                {describeRewardPace(rate, reward.cost) !== null && (
+                  <Text style={styles.hint}>{sentence(describeRewardPace(rate, reward.cost)!)}</Text>
+                )}
+              </View>
               <View style={styles.rewardActions}>
                 <Text style={styles.rewardCost}>{formatCoins(reward.cost)}</Text>
                 <InlineAction
@@ -279,6 +328,11 @@ export function RewardsScreen() {
   );
 }
 
+/** "about every 6 days…" → "About every 6 days…". */
+function sentence(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
 const makeStyles = (colors: Colors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   balanceCard: {
@@ -317,6 +371,28 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // long reward name is never truncated to make room for a button.
   rewardTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.medium },
   rewardActions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm },
+  fieldLabel: {
+    color: colors.textSecondary,
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    marginTop: spacing.xs,
+  },
+  hint: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.xxs },
+  // Quick add's preset chips: shortcuts that fill the field beside them, not a
+  // segmented control, because the field can hold any value (see SegmentedControl).
+  presetRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
+  presetChip: {
+    paddingHorizontal: 14,
+    minHeight: interaction.pillHeight,
+    justifyContent: 'center',
+    borderRadius: radius.full,
+    backgroundColor: colors.bgTertiary,
+  },
+  presetChipActive: { backgroundColor: colors.accentFill },
+  presetChipText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium },
+  presetChipTextActive: { color: colors.onAccent, fontWeight: fontWeight.semibold },
   rewardCost: { color: colors.textSecondary, fontSize: font.sm, marginRight: spacing.xs },
   input: {
     color: colors.text,

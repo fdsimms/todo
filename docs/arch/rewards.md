@@ -38,6 +38,24 @@ default (`rewardsEnabled`), switched on from the Rewards screen (its own menu ro
   `rewardsEnabled` is off. The `takeBack*` actions are not gated, so an entry written while it was on
   still goes when its completion is undone after it was switched off.
 
+## Pricing a reward
+
+A typed number is a guess, and a wrong guess is how this kind of system goes stale: too cheap and a
+reward stops meaning anything, too dear and it's never reached. So the add/edit form prices a reward
+in **time**: pick how often you want it (`REWARD_FREQUENCIES`) and the cost is `earnRatePerDay` times
+that, rounded by `suggestRewardCost`. Each reward then shows `describeRewardPace` ("about every 6
+days at your current pace").
+
+- **The rate comes from completed tasks, not the ledger**, run through the same coin rules, so it
+  works the day rewards are switched on. It divides by the history actually there, so a short
+  retention window or a new install isn't read as a slow month, and refuses to answer under
+  `MIN_EARN_HISTORY_DAYS`.
+- **A suggestion fills the field; a price never changes on its own.** A cost that moved after you'd
+  saved toward it would be the goalposts moving. The pace line is what moves, so drift is visible and
+  repricing is your call.
+- **No AI.** What a reward is "worth" is your earning rate and how often you want it; the first is
+  computable and only you know the second.
+
 ## Where it shows
 
 - **The Rewards screen** (menu row under Tasks): the balance, the rule spelled out, the rewards (add, edit in

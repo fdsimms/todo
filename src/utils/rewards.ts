@@ -153,3 +153,112 @@ export function latestLossFor(entries: readonly CoinEntry[], taskId: string): Co
   }
   return latest;
 }
+
+// ==== Pricing a reward by how often you want it ====
+//
+// A cost typed as a bare number is a guess, and a wrong guess is how this kind
+// of system goes stale: priced too low and a reward stops meaning anything,
+// too high and it's never reached. So a reward is priced in *time*: you say
+// how often you'd want it, and the cost is your own recent earning rate times
+// that. The rate is read off completed tasks rather than the coin ledger, so
+// it works on the day rewards are switched on, from history already kept.
+//
+// The suggestion fills the field and is never applied behind your back: a
+// price that moved after you'd saved toward it would be the goalposts moving.
+// What does move is `describeRewardPace`, the "about every 6 days" line, so a
+// reward drifting toward too easy or too hard is visible and yours to reprice.
+
+/** How far back the earning rate looks. Four weeks, so one odd week can't swing it. */
+export const EARN_RATE_WINDOW_DAYS = 28;
+/** Less history than this and the rate is too noisy to price anything from. */
+export const MIN_EARN_HISTORY_DAYS = 7;
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+export interface RewardFrequency {
+  id: 'daily' | 'few-weekly' | 'weekly' | 'biweekly' | 'monthly';
+  label: string;
+  /** Days between claims. */
+  days: number;
+}
+
+export const REWARD_FREQUENCIES: readonly RewardFrequency[] = [
+  { id: 'daily', label: 'Daily', days: 1 },
+  { id: 'few-weekly', label: 'A few times a week', days: 2.5 },
+  { id: 'weekly', label: 'Weekly', days: 7 },
+  { id: 'biweekly', label: 'Every two weeks', days: 14 },
+  { id: 'monthly', label: 'Monthly', days: 30 },
+];
+
+/** What `earnRatePerDay` reads off a task row. */
+export type EarnHistoryTask = EstimateSource & {
+  parentId: string | null;
+  completed: boolean;
+  completedAt: string | null;
+  missedAt?: string | null;
+  streakCount: number;
+};
+
+/**
+ * Coins a day, net of misses, over the last `EARN_RATE_WINDOW_DAYS` of
+ * completed tasks, as the coin rules would have paid them. Null when there is
+ * less than `MIN_EARN_HISTORY_DAYS` of history to read.
+ *
+ * Divides by the history actually there (from the oldest completion in the
+ * window), not by the whole window, so a retention window shorter than four
+ * weeks, or a new install, isn't read as a slow month.
+ *
+ * Slips aren't counted: a negative habit keeps only today's slip count, not a
+ * history of them. Nor are the app's own neutral completions told apart from
+ * yours, since a stored row doesn't record which it was. Both make this an
+ * estimate, which is all a suggested price needs.
+ */
+export function earnRatePerDay(tasks: readonly EarnHistoryTask[], now: Date): number | null {
+  const nowMs = now.getTime();
+  const from = nowMs - EARN_RATE_WINDOW_DAYS * DAY_MS;
+  let total = 0;
+  let oldest = nowMs;
+  for (const t of tasks) {
+    if (!t.completed || !t.completedAt || !taskEarnsCoins(t)) continue;
+    const at = Date.parse(t.completedAt);
+    if (!Number.isFinite(at) || at < from || at > nowMs) continue;
+    oldest = Math.min(oldest, at);
+    // The same truthiness test `isMissed` makes, which takes a whole Task.
+    total += t.missedAt ? -coinsForLoss(t) : coinsForCompletion(t, t.streakCount);
+  }
+  const spanDays = (nowMs - oldest) / DAY_MS;
+  if (spanDays < MIN_EARN_HISTORY_DAYS) return null;
+  return total / spanDays;
+}
+
+/**
+ * A clean price for a reward claimed every `days` at `ratePerDay`: whole
+ * coins under 20, then fives, tens and fifties, so it reads as a price rather
+ * than as arithmetic. Null when the rate can't price anything (no history, or
+ * losing more than earning lately).
+ */
+export function suggestRewardCost(ratePerDay: number | null, days: number): number | null {
+  if (ratePerDay === null || !(ratePerDay > 0)) return null;
+  const raw = ratePerDay * days;
+  const step = raw < 20 ? 1 : raw < 100 ? 5 : raw < 1000 ? 10 : 50;
+  return Math.min(MAX_REWARD_COST, Math.max(1, Math.round(raw / step) * step));
+}
+
+/**
+ * "about every 6 days": how often a reward at this cost comes round at the
+ * current rate. Null when the rate says nothing (too little history, or not
+ * earning), which the screen shows as no line at all rather than a guess.
+ */
+export function describeRewardPace(ratePerDay: number | null, cost: number): string | null {
+  if (ratePerDay === null || !(ratePerDay > 0) || !(cost > 0)) return null;
+  const days = cost / ratePerDay;
+  if (days < 0.75) return 'more than once a day at your current pace';
+  if (days < 1.5) return 'about every day at your current pace';
+  if (days < 13) return `about every ${Math.round(days)} days at your current pace`;
+  if (days < 60) {
+    const weeks = Math.round(days / 7);
+    return `about every ${weeks} weeks at your current pace`;
+  }
+  // Past 60 days, so this is always two months or more.
+  return `about every ${Math.round(days / 30)} months at your current pace`;
+}
