@@ -5,6 +5,7 @@ import {
   TextInput,
   TouchableOpacity,
   Animated,
+  ScrollView,
   StyleSheet,
   Alert,
   Keyboard,
@@ -26,6 +27,8 @@ import { TitleTokenAccessory } from './TitleTokenAccessory';
 import { CalendarPicker } from './CalendarPicker';
 import { EventOptionSheet, type EventOption } from './EventOptionSheet';
 import { InlineAction } from './InlineAction';
+import { ScrollEdgeFade } from './ScrollEdgeFade';
+import { useScrollEdgeFade } from '../hooks/useScrollEdgeFade';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, interaction, animation, type Colors } from '../theme';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
@@ -55,6 +58,16 @@ import {
 } from '../utils/calendarSync';
 import type { Calendar as DeviceCalendar } from 'expo-calendar/legacy';
 import { searchPlaces } from '../services/placeSearch';
+import {
+  addSavedPlace,
+  findSavedPlace,
+  readSavedPlaces,
+  savedPlaceKey,
+  savedPlaceWithText,
+  suggestSavedPlaces,
+  writeSavedPlaces,
+  type SavedPlace,
+} from '../utils/savedPlaces';
 import {
   PLACE_QUERY_MIN_LENGTH,
   placeLocationText,
@@ -163,6 +176,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
   const { isDark, shadows } = useTheme();
   const { height: windowHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  const scrollFade = useScrollEdgeFade();
   const people = usePersonStore(useShallow(s => s.people.filter(p => !p.archived)));
   const groups = usePersonGroupStore(useShallow(s => s.groups));
   const groupTokens = useMemo(() => groupMentionTokens(), [people, groups]);
@@ -266,6 +280,14 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
   const [placeResults, setPlaceResults] = useState<PlaceResult[]>([]);
   const [pickedPlace, setPickedPlace] = useState<(PlaceResult & { text: string }) | null>(null);
   const placeQueryRef = useRef('');
+  // The user's named places ("Home"), read on open. A name typed exactly
+  // resolves to its address and pin; the typed text the user waved off for
+  // this event ("Use what I typed") is remembered by key so it stays off.
+  const [savedPlaces, setSavedPlaces] = useState<SavedPlace[]>([]);
+  const [savedDismissedKey, setSavedDismissedKey] = useState<string | null>(null);
+  // What was typed in the location when a place was picked, to offer as the
+  // name if that pick is then saved ("home" before picking an address).
+  const [typedBeforePick, setTypedBeforePick] = useState('');
   const [calendarPickerVisible, setCalendarPickerVisible] = useState(false);
   const [alertPickerVisible, setAlertPickerVisible] = useState(false);
   const titleCaret = useTitleSelection(text);
@@ -345,6 +367,9 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
     setRepeatPick(null);
     setPlaceResults([]);
     setPickedPlace(null);
+    setSavedPlaces(readSavedPlaces());
+    setSavedDismissedKey(null);
+    setTypedBeforePick('');
     const defaults = readQuickEventDefaults();
     setCalendarId(defaults.calendarId);
     setAlertDefault(defaults.alertMinutes);
@@ -504,12 +529,31 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
   // wins over an earlier pick without anyone tapping it.
   // Last time's place fills an empty field; typing in it or in the line wins.
   const memoryLocation = !draft.location && !location.trim() ? recalled?.location ?? null : null;
-  const effectiveLocation = draft.location ?? (location.trim() || memoryLocation);
-  const placeQuery = effectiveLocation ?? '';
+  const typedLocation = draft.location ?? (location.trim() || memoryLocation);
+  const placeQuery = typedLocation ?? '';
   const placePicked = pickedPlace !== null && pickedPlace.text === placeQuery;
+  // A saved place named exactly ("home") is what the event is saved with, in
+  // place of the typed word, unless the user waved it off for this event. A
+  // place picked from Apple Maps outranks it: that pick is more specific.
+  const savedMatch = !placePicked ? findSavedPlace(savedPlaces, placeQuery) : null;
+  const savedInUse = savedMatch !== null && savedPlaceKey(savedMatch.name) !== savedDismissedKey ? savedMatch : null;
+  const effectiveLocation = savedInUse ? savedInUse.text : typedLocation;
   // A remembered place was already picked once; it isn't looked up again.
-  const wantsPlaces = placeQuery.length >= PLACE_QUERY_MIN_LENGTH && !placePicked && memoryLocation === null;
-  const effectivePlace = placePicked ? pickedPlace : memoryLocation !== null ? recalled?.place ?? null : null;
+  // Neither is a saved one: it already says where it is.
+  const wantsPlaces = placeQuery.length >= PLACE_QUERY_MIN_LENGTH && !placePicked && memoryLocation === null && savedInUse === null;
+  const savedPin = savedInUse && savedInUse.latitude !== null && savedInUse.longitude !== null
+    ? { latitude: savedInUse.latitude, longitude: savedInUse.longitude }
+    : null;
+  const effectivePlace = placePicked
+    ? pickedPlace
+    : savedInUse ? savedPin
+    : memoryLocation !== null ? recalled?.place ?? null : null;
+  const savedSuggestions = !placePicked && savedInUse === null && savedMatch === null
+    ? suggestSavedPlaces(savedPlaces, placeQuery)
+    : [];
+  // Offered on any location that isn't a saved name or already saved as text.
+  const canSavePlace = effectiveLocation !== null && effectiveLocation.trim().length >= PLACE_QUERY_MIN_LENGTH
+    && savedInUse === null && savedMatch === null && savedPlaceWithText(savedPlaces, effectiveLocation) === null;
   const effectiveAlert =
     draft.alertMinutes !== undefined ? draft.alertMinutes
       : alertPick !== undefined ? alertPick
@@ -524,6 +568,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
     || (draft.durationMinutes === null && durationPick === null && recalled.durationMinutes !== null)
     || calendarPick === null || availabilityPick === null || alertPick === undefined
   );
+  const isBusy = effectiveAvailability === 'busy';
   const alertSet = effectiveAlert !== null;
   const canAdd = draft.title.trim().length > 0 && !busy && (!isEditing || original !== null);
 
@@ -556,12 +601,65 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
     haptics.tap();
     animateLayout();
     const placeText = placeLocationText(place);
+    setTypedBeforePick(placeQuery);
     // A place read from the line ("at joe's") comes out of the line, the way an
     // alert picked from its chip does, or the typed words would outrank it.
     if (draft.location !== null && draft.locationSpan) cutFromLine(draft.locationSpan);
     setLocation(placeText);
     setPickedPlace({ ...place, text: placeText });
     setPlaceResults([]);
+  };
+
+  // A partly typed name picked from the suggestions. Like a picked place it
+  // comes out of the line, so the typed words don't outrank it.
+  const pickSavedPlace = (saved: SavedPlace) => {
+    haptics.tap();
+    animateLayout();
+    if (draft.location !== null && draft.locationSpan) cutFromLine(draft.locationSpan);
+    setLocation(saved.name);
+    setSavedDismissedKey(null);
+  };
+
+  // Names the location this event is going to, so the name can be typed next
+  // time. The prompt starts with what was typed before the pick when that was
+  // a short name rather than the address itself.
+  const savePlace = () => {
+    if (effectiveLocation === null) return;
+    const text = effectiveLocation;
+    const pin = effectivePlace ? { latitude: effectivePlace.latitude, longitude: effectivePlace.longitude } : null;
+    const typed = typedBeforePick.trim();
+    const suggested = typed && typed.length <= 24 && typed.toLowerCase() !== text.toLowerCase() ? typed : '';
+    Alert.prompt(
+      'Save place',
+      'Name it to type the name instead of the address, like "home" or "gym".',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Save',
+          onPress: (name?: string) => {
+            const trimmed = (name ?? '').trim();
+            if (!trimmed) return;
+            const next = addSavedPlace(savedPlaces, { name: trimmed, text, place: pin });
+            // Past the limit the list comes back without the new name.
+            if (!next.some(p => savedPlaceKey(p.name) === savedPlaceKey(trimmed))) {
+              Alert.alert('Too many saved places', 'Remove one in Settings, under Calendar, to save another.');
+              return;
+            }
+            haptics.success();
+            animateLayout();
+            writeSavedPlaces(next);
+            setSavedPlaces(next);
+            // The location now reads as the new name, which resolves to the
+            // saved text and pin. A place typed in the line comes out of it.
+            if (draft.location !== null && draft.locationSpan) cutFromLine(draft.locationSpan);
+            setLocation(trimmed);
+            setSavedDismissedKey(null);
+          },
+        },
+      ],
+      'plain-text',
+      suggested,
+    );
   };
 
   // ==== applying what was read ====
@@ -886,216 +984,277 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
             </Animated.View>
           )}
 
-          <View style={styles.locationRow}>
-            <Ionicons name="location-outline" size={iconSize.sm} color={colors.textSecondary} />
-            <TextField
-              style={[styles.locationInput, draft.location !== null && styles.locationInputRead]}
-              placeholder="Location"
-              placeholderTextColor={colors.textTertiary}
-              // Read from the line ("at Joe's") the field shows it and the line
-              // is where it is edited, so the two can't hold different places.
-              // Last time's place shows here, as an ordinary value to keep or edit.
-              value={draft.location ?? (location || memoryLocation || '')}
-              editable={draft.location === null}
-              onChangeText={setLocation}
-              onSubmitEditing={next}
-              returnKeyType="next"
-              blurOnSubmit={false}
-              keyboardAppearance={isDark ? 'dark' : 'light'}
-              accessibilityLabel="Location"
-            />
-            {placePicked && (
-              <Ionicons name="checkmark-circle" size={iconSize.sm} color={colors.accent} accessibilityLabel="Place from Apple Maps" />
-            )}
-          </View>
+          {/* The card's height is capped to the room above the keyboard, so what
+              sits below the title scrolls rather than spilling out of it. */}
+          <View style={styles.body}>
+          <ScrollView
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            {...scrollFade.scrollProps}
+          >
+            <View style={styles.locationRow}>
+              <Ionicons name="location-outline" size={iconSize.sm} color={colors.textSecondary} />
+              <TextField
+                style={[styles.locationInput, draft.location !== null && styles.locationInputRead]}
+                placeholder="Location"
+                placeholderTextColor={colors.textTertiary}
+                // Read from the line ("at Joe's") the field shows it and the line
+                // is where it is edited, so the two can't hold different places.
+                // Last time's place shows here, as an ordinary value to keep or edit.
+                value={draft.location ?? (location || memoryLocation || '')}
+                editable={draft.location === null}
+                onChangeText={setLocation}
+                onSubmitEditing={next}
+                returnKeyType="next"
+                blurOnSubmit={false}
+                keyboardAppearance={isDark ? 'dark' : 'light'}
+                accessibilityLabel="Location"
+              />
+              {placePicked && (
+                <Ionicons name="checkmark-circle" size={iconSize.sm} color={colors.accent} accessibilityLabel="Place from Apple Maps" />
+              )}
+            </View>
 
-          {placeResults.length > 0 && (
-            <View style={styles.placeList}>
-              {placeResults.map((place, index) => {
-                const subtitle = placeSubtitle(place);
-                return (
+            {(savedSuggestions.length > 0 || placeResults.length > 0) && (
+              <View style={styles.placeList}>
+                {savedSuggestions.map((saved, index) => (
                   <TouchableOpacity
-                    key={`${place.latitude},${place.longitude},${index}`}
+                    key={saved.id}
                     style={[styles.placeRow, index > 0 && styles.placeRowRuled]}
-                    onPress={() => pickPlace(place)}
+                    onPress={() => pickSavedPlace(saved)}
                     activeOpacity={interaction.activeOpacity}
                     accessibilityRole="button"
-                    accessibilityLabel={`Use ${placeLocationText(place)}`}
+                    accessibilityLabel={`Use saved place ${saved.name}`}
                   >
-                    <Text style={styles.placeName} numberOfLines={1}>{place.name ?? place.address}</Text>
-                    {subtitle && <Text style={styles.placeAddress} numberOfLines={1}>{subtitle}</Text>}
+                    <View style={styles.savedPlaceName}>
+                      <Ionicons name="bookmark-outline" size={13} color={colors.textSecondary} />
+                      <Text style={styles.placeName} numberOfLines={1}>{saved.name}</Text>
+                    </View>
+                    <Text style={styles.placeAddress} numberOfLines={1}>{saved.text}</Text>
                   </TouchableOpacity>
-                );
-              })}
-            </View>
-          )}
+                ))}
+                {placeResults.map((place, index) => {
+                  const subtitle = placeSubtitle(place);
+                  return (
+                    <TouchableOpacity
+                      key={`${place.latitude},${place.longitude},${index}`}
+                      style={[styles.placeRow, (index > 0 || savedSuggestions.length > 0) && styles.placeRowRuled]}
+                      onPress={() => pickPlace(place)}
+                      activeOpacity={interaction.activeOpacity}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Use ${placeLocationText(place)}`}
+                    >
+                      <Text style={styles.placeName} numberOfLines={1}>{place.name ?? place.address}</Text>
+                      {subtitle && <Text style={styles.placeAddress} numberOfLines={1}>{subtitle}</Text>}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            )}
 
-          {!placeSuggestionsEnabled && wantsPlaces && (
-            <View style={styles.placeOffer}>
-              <InlineAction
-                icon="search-outline"
-                label="Suggest places"
-                variant="neutral"
-                onPress={() => setPlaceSuggestionsEnabled(true)}
-                accessibilityLabel="Turn on place suggestions from Apple Maps"
-              />
-              <Text style={styles.placeOfferText}>Looks up what you type in Apple Maps.</Text>
-            </View>
-          )}
-
-          <View style={styles.locationRow}>
-            <Ionicons name="document-text-outline" size={iconSize.sm} color={colors.textSecondary} />
-            <TextField
-              style={styles.locationInput}
-              placeholder="Notes or link"
-              placeholderTextColor={colors.textTertiary}
-              value={notesOrLink}
-              onChangeText={setNotesOrLink}
-              onSubmitEditing={next}
-              returnKeyType="done"
-              blurOnSubmit={false}
-              autoCapitalize="none"
-              keyboardAppearance={isDark ? 'dark' : 'light'}
-              accessibilityLabel="Notes or link"
-            />
-          </View>
-
-          {namedPeople.length > 0 && (
-            <View style={styles.captionRow}>
-              <Ionicons name="people-outline" size={13} color={colors.textSecondary} />
-              <Text style={styles.captionText} numberOfLines={1}>With {namedPeople.join(', ')}</Text>
-            </View>
-          )}
-
-          {effectiveRepeat && (
-            <View style={styles.captionRow}>
-              <Ionicons name="repeat-outline" size={13} color={colors.textSecondary} />
-              <Text style={styles.captionText} numberOfLines={1}>{describeEventRepeat(effectiveRepeat)}</Text>
-              {!phrase && (
+            {savedInUse && (
+              <View style={styles.captionRow}>
+                <Ionicons name="bookmark" size={13} color={colors.textSecondary} />
+                <Text style={styles.captionText} numberOfLines={1}>{`${savedInUse.name} is ${savedInUse.text}`}</Text>
                 <TouchableOpacity
-                  onPress={() => { haptics.tap(); animateLayout(); setRepeatPick(null); }}
+                  onPress={() => { haptics.tap(); animateLayout(); setSavedDismissedKey(savedPlaceKey(savedInUse.name)); }}
                   hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                   accessibilityRole="button"
-                  accessibilityLabel="Don't repeat"
+                  accessibilityLabel={`Use "${savedInUse.name}" as typed`}
                 >
                   <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
                 </TouchableOpacity>
-              )}
-            </View>
-          )}
+              </View>
+            )}
 
-          <View style={styles.toolbar}>
-            <TouchableOpacity
-              style={[styles.toolChip, styles.toolChipWide, whenSet && styles.toolChipSet]}
-              // Keyboard down first, or the title's token bar is lost behind the
-              // picker's window — see the category chip in QuickAddModal.
-              onPress={() => { haptics.tap(); Keyboard.dismiss(); setPickerVisible(true); }}
-              activeOpacity={interaction.activeOpacity}
-              accessibilityRole="button"
-              accessibilityLabel={`${allDay ? 'Date' : 'Date and time'}: ${when}`}
-            >
-              <Ionicons name="calendar-outline" size={iconSize.sm} color={whenSet ? colors.accent : colors.textSecondary} />
-              <Text style={[styles.toolChipText, whenSet && styles.toolChipTextSet]} numberOfLines={1}>{when}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.toolChip, allDay && styles.toolChipSet]}
-              onPress={() => { haptics.tap(); setAllDay(v => !v); }}
-              activeOpacity={interaction.activeOpacity}
-              accessibilityRole="switch"
-              accessibilityLabel="All day"
-              accessibilityState={{ checked: allDay }}
-            >
-              <Ionicons name="sunny-outline" size={iconSize.sm} color={allDay ? colors.accent : colors.textSecondary} />
-              <Text style={[styles.toolChipText, allDay && styles.toolChipTextSet]}>All day</Text>
-            </TouchableOpacity>
-          </View>
+            {canSavePlace && (
+              <View style={styles.placeOffer}>
+                <InlineAction
+                  icon="bookmark-outline"
+                  label="Save place"
+                  variant="neutral"
+                  onPress={savePlace}
+                  accessibilityLabel="Save this location as a named place"
+                />
+                <Text style={styles.placeOfferText}>Type its name instead of the address next time.</Text>
+              </View>
+            )}
 
-          <View style={styles.toolbar}>
-            <TouchableOpacity
-              style={[styles.toolChip, styles.toolChipWide]}
-              onPress={() => { void openCalendarPicker(); }}
-              activeOpacity={interaction.activeOpacity}
-              accessibilityRole="button"
-              accessibilityLabel={`Calendar: ${effectiveCalendar?.title ?? 'default'}`}
-            >
-              {effectiveCalendar?.color ? <View style={[styles.calendarDot, { backgroundColor: effectiveCalendar.color }]} /> : (
-                <Ionicons name="albums-outline" size={iconSize.sm} color={colors.textSecondary} />
-              )}
-              <Text style={styles.toolChipText} numberOfLines={1}>{effectiveCalendar?.title ?? 'Calendar'}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.toolChip, alertSet && styles.toolChipSet]}
-              onPress={() => { haptics.tap(); Keyboard.dismiss(); setAlertPickerVisible(true); }}
-              activeOpacity={interaction.activeOpacity}
-              accessibilityRole="button"
-              accessibilityLabel={`Alert: ${describeAlert(effectiveAlert, allDay)}`}
-            >
-              <Ionicons name={alertSet ? 'notifications' : 'notifications-outline'} size={iconSize.sm} color={alertSet ? colors.accent : colors.textSecondary} />
-              <Text style={[styles.toolChipText, alertSet && styles.toolChipTextSet]} numberOfLines={1}>
-                {describeAlert(effectiveAlert, allDay)}
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.toolChip}
-              onPress={() => { haptics.tap(); setAvailabilityPick(effectiveAvailability === 'busy' ? 'free' : 'busy'); }}
-              activeOpacity={interaction.activeOpacity}
-              accessibilityRole="button"
-              accessibilityLabel={`Show as ${effectiveAvailability === 'busy' ? 'busy' : 'free'}. Tap to change.`}
-            >
-              <Text style={styles.toolChipText}>{effectiveAvailability === 'busy' ? 'Busy' : 'Free'}</Text>
-            </TouchableOpacity>
-          </View>
+            {!placeSuggestionsEnabled && wantsPlaces && (
+              <View style={styles.placeOffer}>
+                <InlineAction
+                  icon="search-outline"
+                  label="Suggest places"
+                  variant="neutral"
+                  onPress={() => setPlaceSuggestionsEnabled(true)}
+                  accessibilityLabel="Turn on place suggestions from Apple Maps"
+                />
+                <Text style={styles.placeOfferText}>Looks up what you type in Apple Maps.</Text>
+              </View>
+            )}
 
-          {conflicts.length > 0 && (
-            <View style={styles.captionRow}>
-              <Ionicons name="alert-circle-outline" size={13} color={colors.orange} />
-              <Text style={[styles.captionText, styles.captionWarning]} numberOfLines={1}>
-                {`Overlaps ${conflicts[0].title || 'an event'}, ${describeSpan(conflicts[0])}`}
-                {conflicts.length > 1 ? ` and ${conflicts.length - 1} more` : ''}
-              </Text>
-            </View>
-          )}
-
-          {freeSlot !== null && rawStart === freeSlot && (
-            <View style={styles.captionRow}>
-              <Ionicons name="time-outline" size={13} color={colors.textSecondary} />
-              <Text style={styles.captionText} numberOfLines={1}>The first free time that day</Text>
-            </View>
-          )}
-
-          {usingMemory && (
-            <View style={styles.captionRow}>
-              <Ionicons name="refresh-outline" size={13} color={colors.textSecondary} />
-              <Text style={styles.captionText} numberOfLines={1}>{`Filled in from your last “${draft.title.trim()}”`}</Text>
-              <TouchableOpacity
-                onPress={() => { haptics.tap(); animateLayout(); setMemoryDismissedKey(memoryKey); }}
-                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                accessibilityRole="button"
-                accessibilityLabel="Don't fill in from last time"
-              >
-                <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
-              </TouchableOpacity>
-            </View>
-          )}
-
-          {isEditing && original && (
-            <View style={styles.deleteRow}>
-              <InlineAction
-                icon="trash-outline"
-                label="Delete event"
-                variant="neutral"
-                tint={colors.red}
-                onPress={confirmDelete}
-                accessibilityLabel="Delete this event"
+            <View style={styles.locationRow}>
+              <Ionicons name="document-text-outline" size={iconSize.sm} color={colors.textSecondary} />
+              <TextField
+                style={styles.locationInput}
+                placeholder="Notes or link"
+                placeholderTextColor={colors.textTertiary}
+                value={notesOrLink}
+                onChangeText={setNotesOrLink}
+                onSubmitEditing={next}
+                returnKeyType="done"
+                blurOnSubmit={false}
+                autoCapitalize="none"
+                keyboardAppearance={isDark ? 'dark' : 'light'}
+                accessibilityLabel="Notes or link"
               />
             </View>
-          )}
 
-          <Text style={styles.hint}>
-            {isEditing
-              ? 'Saves your changes to the calendar. Invitees and anything else this card doesn\'t show are kept.'
-              : 'Saves to your calendar. End the line with "at (place)", "for 90m" or "alert 30m" to fill those in.'}
-          </Text>
+            {namedPeople.length > 0 && (
+              <View style={styles.captionRow}>
+                <Ionicons name="people-outline" size={13} color={colors.textSecondary} />
+                <Text style={styles.captionText} numberOfLines={1}>With {namedPeople.join(', ')}</Text>
+              </View>
+            )}
+
+            {effectiveRepeat && (
+              <View style={styles.captionRow}>
+                <Ionicons name="repeat-outline" size={13} color={colors.textSecondary} />
+                <Text style={styles.captionText} numberOfLines={1}>{describeEventRepeat(effectiveRepeat)}</Text>
+                {!phrase && (
+                  <TouchableOpacity
+                    onPress={() => { haptics.tap(); animateLayout(); setRepeatPick(null); }}
+                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Don't repeat"
+                  >
+                    <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+
+            <View style={styles.toolbar}>
+              <TouchableOpacity
+                style={[styles.toolChip, styles.toolChipWide, whenSet && styles.toolChipSet]}
+                // Keyboard down first, or the title's token bar is lost behind the
+                // picker's window — see the category chip in QuickAddModal.
+                onPress={() => { haptics.tap(); Keyboard.dismiss(); setPickerVisible(true); }}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel={`${allDay ? 'Date' : 'Date and time'}: ${when}`}
+              >
+                <Ionicons name="calendar-outline" size={iconSize.sm} color={whenSet ? colors.accent : colors.textSecondary} />
+                <Text style={[styles.toolChipText, whenSet && styles.toolChipTextSet]} numberOfLines={1}>{when}</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.toolbar}>
+              <TouchableOpacity
+                style={[styles.toolChip, styles.toolChipWide]}
+                onPress={() => { void openCalendarPicker(); }}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel={`Calendar: ${effectiveCalendar?.title ?? 'default'}`}
+              >
+                {effectiveCalendar?.color ? <View style={[styles.calendarDot, { backgroundColor: effectiveCalendar.color }]} /> : (
+                  <Ionicons name="albums-outline" size={iconSize.sm} color={colors.textSecondary} />
+                )}
+                <Text style={styles.toolChipText} numberOfLines={1}>{effectiveCalendar?.title ?? 'Calendar'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.toolChip, alertSet && styles.toolChipSet]}
+                onPress={() => { haptics.tap(); Keyboard.dismiss(); setAlertPickerVisible(true); }}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel={`Alert: ${describeAlert(effectiveAlert, allDay)}`}
+              >
+                <Ionicons name={alertSet ? 'notifications' : 'notifications-outline'} size={iconSize.sm} color={alertSet ? colors.accent : colors.textSecondary} />
+                <Text style={[styles.toolChipText, alertSet && styles.toolChipTextSet]} numberOfLines={1}>
+                  {describeAlert(effectiveAlert, allDay)}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.toolbar}>
+              <TouchableOpacity
+                style={[styles.toolChip, styles.toolChipWide, allDay && styles.toolChipSet]}
+                onPress={() => { haptics.tap(); setAllDay(v => !v); }}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="switch"
+                accessibilityLabel="All day"
+                accessibilityState={{ checked: allDay }}
+              >
+                <Ionicons name="sunny-outline" size={iconSize.sm} color={allDay ? colors.accent : colors.textSecondary} />
+                <Text style={[styles.toolChipText, allDay && styles.toolChipTextSet]}>All day</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.toolChip, styles.toolChipWide, isBusy && styles.toolChipSet]}
+                onPress={() => { haptics.tap(); setAvailabilityPick(isBusy ? 'free' : 'busy'); }}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="switch"
+                accessibilityLabel="Busy"
+                accessibilityHint="On blocks this time on your calendar. Off leaves the time free."
+                accessibilityState={{ checked: isBusy }}
+              >
+                <Ionicons name={isBusy ? 'eye' : 'eye-outline'} size={iconSize.sm} color={isBusy ? colors.accent : colors.textSecondary} />
+                <Text style={[styles.toolChipText, isBusy && styles.toolChipTextSet]}>Busy</Text>
+              </TouchableOpacity>
+            </View>
+
+            {conflicts.length > 0 && (
+              <View style={styles.captionRow}>
+                <Ionicons name="alert-circle-outline" size={13} color={colors.orange} />
+                <Text style={[styles.captionText, styles.captionWarning]} numberOfLines={1}>
+                  {`Overlaps ${conflicts[0].title || 'an event'}, ${describeSpan(conflicts[0])}`}
+                  {conflicts.length > 1 ? ` and ${conflicts.length - 1} more` : ''}
+                </Text>
+              </View>
+            )}
+
+            {freeSlot !== null && rawStart === freeSlot && (
+              <View style={styles.captionRow}>
+                <Ionicons name="time-outline" size={13} color={colors.textSecondary} />
+                <Text style={styles.captionText} numberOfLines={1}>The first free time that day</Text>
+              </View>
+            )}
+
+            {usingMemory && (
+              <View style={styles.captionRow}>
+                <Ionicons name="refresh-outline" size={13} color={colors.textSecondary} />
+                <Text style={styles.captionText} numberOfLines={1}>{`Filled in from your last “${draft.title.trim()}”`}</Text>
+                <TouchableOpacity
+                  onPress={() => { haptics.tap(); animateLayout(); setMemoryDismissedKey(memoryKey); }}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Don't fill in from last time"
+                >
+                  <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {isEditing && original && (
+              <View style={styles.deleteRow}>
+                <InlineAction
+                  icon="trash-outline"
+                  label="Delete event"
+                  variant="neutral"
+                  tint={colors.red}
+                  onPress={confirmDelete}
+                  accessibilityLabel="Delete this event"
+                />
+              </View>
+            )}
+
+            <Text style={styles.hint}>
+              {isEditing
+                ? 'Saves your changes to the calendar. Invitees and anything else this card doesn\'t show are kept.'
+                : 'Saves to your calendar. End the line with "at (place)", "for 90m" or "alert 30m" to fill those in.'}
+            </Text>
+          </ScrollView>
+          <ScrollEdgeFade edge="bottom" opacity={scrollFade.bottomOpacity} color={colors.bgSecondary} />
+          </View>
         </Animated.View>
       </View>
       <TitleTokenAccessory
@@ -1154,6 +1313,8 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     maxHeight: sheetMaxHeight,
   },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.sm },
+  body: { flexShrink: 1, position: 'relative' },
+  savedPlaceName: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   inputWrap: { flex: 1, position: 'relative' },
   input: { fontSize: font.md, color: colors.text, paddingVertical: spacing.sm },
   inputOverlay: { position: 'absolute', top: 0, left: 0, right: 0 },

@@ -392,6 +392,9 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   // Which medications you have archived. A statement about what you take, and
   // a device without it would list a medicine you stopped on the other one.
   'medication_archived',
+  // Named places ("Home") and the address behind each. A name, text and an
+  // optional map pin, so they mean the same on every device.
+  'savedPlaces',
 
   // Vacation mode is a statement about the person, not the device.
   'vacationMode',
