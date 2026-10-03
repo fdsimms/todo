@@ -161,7 +161,12 @@ export interface CookRecap {
 }
 
 interface MealPlanStore extends UndoHistoryActions {
-  /** Exactly the loaded window, in reading order. Never a superset. */
+  /**
+   * Exactly the loaded window, in reading order. Never a superset. It is
+   * whichever week Meal Plan last opened, so a reader on any other screen asks
+   * `entriesForDayLive` instead: filtering this for a day outside the window
+   * reads as "nothing planned".
+   */
   entries: MealPlanEntry[];
   /** The inclusive day-key window `entries` covers; null before the first load. */
   rangeStart: string | null;
