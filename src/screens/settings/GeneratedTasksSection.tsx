@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import { Alert, StyleSheet, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSettingsStore, type WeekStart } from '../../store/useSettingsStore';
@@ -57,8 +58,11 @@ import {
   TRAVEL_LEAD_MINUTES_MAX,
   TRAVEL_LEAD_MINUTES_MIN,
   TRAVEL_LEAD_MINUTES_STEP,
+  originCandidates,
+  travelOriginFor,
   type TravelMode,
 } from '../../utils/travelTasks';
+import { readSavedPlaces, savedPlaceKey, type SavedPlace } from '../../utils/savedPlaces';
 import { TRANSIT_LINES } from '../../utils/transitAlerts';
 import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
@@ -66,6 +70,11 @@ import { SettingsSegments } from './SettingsSegments';
 import { InlineTimePicker } from './InlineTimePicker';
 import { requestLocationPermission } from '../../utils/weatherLocation';
 
+type TravelOriginChoice = 'current' | 'place';
+const TRAVEL_ORIGIN_OPTIONS: SegmentOption<TravelOriginChoice>[] = [
+  { value: 'current', label: 'Where I am', icon: 'locate-outline' },
+  { value: 'place', label: 'A saved place', icon: 'home-outline' },
+];
 const TRAVEL_MODE_OPTIONS: SegmentOption<TravelMode>[] = [
   { value: 'driving', label: 'Driving', icon: 'car-outline' },
   { value: 'transit', label: 'Transit', icon: 'subway-outline' },
@@ -203,6 +212,11 @@ export function GeneratedTasksSection() {
     });
   };
   const [timePickerOpen, setTimePickerOpen] = useState(false);
+  // The saved places a leave-by trip can start from. A plain setting read on
+  // focus, as SavedPlacesRows does: places are added from the new-event card.
+  const [savedPlaces, setSavedPlaces] = useState<SavedPlace[]>(readSavedPlaces);
+  useFocusEffect(React.useCallback(() => { setSavedPlaces(readSavedPlaces()); }, []));
+  const travelOrigin = travelOriginFor(s.travelOriginPlaceId, savedPlaces);
   const [pickerDate, setPickerDate] = useState<Date>(() => hhmmToDate(s.mealPlanNudgeTime));
   const [weatherRulesVisible, setWeatherRulesVisible] = useState(false);
   const activeWeatherRuleCount = useMemo(
@@ -957,7 +971,7 @@ export function GeneratedTasksSection() {
             iconColor={s.travelEstimates ? colors.accent : undefined}
             label="Estimate travel time"
             hint={s.travelEstimates
-              ? "Sets each reminder from Apple Maps' estimate of the trip from where you are, plus 5 minutes. Sends the event's address and your location to Apple while the app is open."
+              ? "Sets each reminder from Apple Maps' estimate of the trip, plus 5 minutes. Sends the event's address and where the trip starts to Apple while the app is open."
               : 'Reminders use the time above. Nothing is sent anywhere.'}
             toggle={s.travelEstimates}
             onPress={async () => {
@@ -983,6 +997,66 @@ export function GeneratedTasksSection() {
               onSelect={s.setTravelMode}
               accessibilityLabelFor={o => `Estimate the trip ${o.label.toLowerCase()}`}
             />
+          )}
+          {s.travelEstimates && (
+            <>
+              <View style={styles.sep} />
+              <SettingsRow
+                entryId="travelOrigin"
+                icon="home-outline"
+                label="Start from"
+                hint={travelOrigin
+                  ? `Estimates the trip from ${travelOrigin.name}, whatever time the app checks. Sends that place's coordinates to Apple.`
+                  : "Estimates the trip from where your phone is when the app checks, which may not be where you'll leave from."}
+                value={travelOrigin?.name ?? 'Where I am'}
+                tight
+              />
+              <SettingsSegments
+                attached
+                options={TRAVEL_ORIGIN_OPTIONS}
+                selected={travelOrigin ? 'place' : 'current'}
+                onSelect={async choice => {
+                  if (choice === 'current') {
+                    // The phone's position is read under location access, so
+                    // it is asked for here if it was never granted.
+                    if (!(await requestLocationPermission())) {
+                      Alert.alert(
+                        'Location access is off',
+                        'Estimating from where you are needs location access. Turn it on for this app in the Settings app, then try again.',
+                      );
+                      return;
+                    }
+                    s.setTravelOriginPlaceId(null);
+                    return;
+                  }
+                  const candidates = originCandidates(savedPlaces);
+                  if (candidates.length === 0) {
+                    Alert.alert(
+                      'No saved places with a map pin',
+                      'In a new event, type an address and pick it from the suggestions, then save it as a place. Only places picked that way can be a starting point.',
+                    );
+                    return;
+                  }
+                  const home = candidates.find(p => savedPlaceKey(p.name) === 'home') ?? candidates[0];
+                  s.setTravelOriginPlaceId(home.id);
+                }}
+                accessibilityLabelFor={o => `Estimate the trip from ${o.label.toLowerCase()}`}
+              />
+              {travelOrigin && (
+                <View style={styles.pillGroupRow}>
+                  <PillGroup
+                    noun="place"
+                    options={originCandidates(savedPlaces).map(p => ({
+                      key: p.id,
+                      label: p.name,
+                      selected: p.id === s.travelOriginPlaceId,
+                      accessibilityLabel: `Start trips from ${p.name}`,
+                      onPress: () => { haptics.tap(); s.setTravelOriginPlaceId(p.id); },
+                    }))}
+                  />
+                </View>
+              )}
+            </>
           )}
           {s.calendarIds.length > 1 && (
             <>

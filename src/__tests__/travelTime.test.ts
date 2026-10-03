@@ -30,7 +30,13 @@ beforeEach(() => {
 
 it('asks Apple Maps for the trip to the event, by the chosen mode', async () => {
   await expect(estimateTravelMinutes(dentist, departAt, 'transit')).resolves.toBe(24);
-  expect(mockEstimate).toHaveBeenCalledWith('e-1', '123 Main St', departAt, 'transit');
+  expect(mockEstimate).toHaveBeenCalledWith('e-1', '123 Main St', departAt, 'transit', null);
+});
+
+it('starts the trip from a saved place when one is given', async () => {
+  const home = { name: 'Home', latitude: 40.7128, longitude: -74.006 };
+  await estimateTravelMinutes(dentist, departAt, 'driving', home);
+  expect(mockEstimate).toHaveBeenCalledWith('e-1', '123 Main St', departAt, 'driving', home);
 });
 
 it('sends nothing while estimates or travel tasks are off', async () => {

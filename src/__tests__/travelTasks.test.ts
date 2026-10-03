@@ -1,3 +1,4 @@
+import type { SavedPlace } from '../utils/savedPlaces';
 import type { BusyEvent } from '../utils/calendarBusy';
 import {
   clampTravelLeadMinutes,
@@ -21,6 +22,10 @@ import {
   TRAVEL_LEAD_MINUTES_DEFAULT,
   TRAVEL_LEAD_MINUTES_MAX,
   TRAVEL_LEAD_MINUTES_MIN,
+  originCandidates,
+  travelOriginFor,
+  travelOriginKey,
+  TRAVEL_ORIGIN_CURRENT,
 } from '../utils/travelTasks';
 
 function event(overrides: Partial<BusyEvent> = {}): BusyEvent {
@@ -270,7 +275,7 @@ describe('travelTaskTitle', () => {
 describe('travel estimates', () => {
   const at = NOW.getTime();
   const held = (overrides = {}) => ({
-    [travelSourceId(event())]: { minutes: 22, location: '123 Main St', mode: 'transit' as const, at, ...overrides },
+    [travelSourceId(event())]: { minutes: 22, location: '123 Main St', mode: 'transit' as const, origin: 'current', at, ...overrides },
   });
 
   it('turns an estimate into a lead: plus 5 minutes, up to the next 5, within the stepper', () => {
@@ -282,17 +287,25 @@ describe('travel estimates', () => {
   });
 
   it('uses an estimate only for the place and mode it was asked about', () => {
-    expect(estimateFor(event(), held(), 'transit')?.minutes).toBe(22);
-    expect(estimateFor(event(), held(), 'driving')).toBeNull();
-    expect(estimateFor(event({ location: '9 Other Ave' }), held(), 'transit')).toBeNull();
-    expect(estimateFor(event({ location: '  123 Main St ' }), held(), 'transit')?.minutes).toBe(22);
+    expect(estimateFor(event(), held(), 'transit', 'current')?.minutes).toBe(22);
+    expect(estimateFor(event(), held(), 'driving', 'current')).toBeNull();
+    expect(estimateFor(event({ location: '9 Other Ave' }), held(), 'transit', 'current')).toBeNull();
+    expect(estimateFor(event({ location: '  123 Main St ' }), held(), 'transit', 'current')?.minutes).toBe(22);
+  });
+
+  it('does not reuse a trip that started somewhere else', () => {
+    expect(estimateFor(event(), held(), 'transit', 'at:40.71280,-74.00600')).toBeNull();
+    const fromHome = held({ origin: 'at:40.71280,-74.00600' });
+    expect(estimateFor(event(), fromHome, 'transit', 'at:40.71280,-74.00600')?.minutes).toBe(22);
+    expect(estimateFor(event(), fromHome, 'transit', 'current')).toBeNull();
   });
 
   it('asks again for a missing, mismatched or stale estimate', () => {
-    expect(needsTravelEstimate(event(), {}, 'transit', NOW)).toBe(true);
-    expect(needsTravelEstimate(event(), held(), 'transit', NOW)).toBe(false);
-    expect(needsTravelEstimate(event(), held(), 'walking', NOW)).toBe(true);
-    expect(needsTravelEstimate(event(), held({ at: at - TRAVEL_ESTIMATE_STALE_MS }), 'transit', NOW)).toBe(true);
+    expect(needsTravelEstimate(event(), {}, 'transit', 'current', NOW)).toBe(true);
+    expect(needsTravelEstimate(event(), held(), 'transit', 'current', NOW)).toBe(false);
+    expect(needsTravelEstimate(event(), held(), 'walking', 'current', NOW)).toBe(true);
+    expect(needsTravelEstimate(event(), held(), 'transit', 'at:1.00000,2.00000', NOW)).toBe(true);
+    expect(needsTravelEstimate(event(), held({ at: at - TRAVEL_ESTIMATE_STALE_MS }), 'transit', 'current', NOW)).toBe(true);
   });
 
   it('describes an estimate the way the title says it', () => {
@@ -305,7 +318,7 @@ describe('travel estimates', () => {
   it('sets the reminder from the estimate when one is held, and from the typed lead otherwise', () => {
     const other = event({ id: 'evt-2', start: '2026-10-05T16:00:00.000Z', end: '2026-10-05T17:00:00.000Z' });
     const [first, second] = matchedTravelTasks(LEADS, [event(), other], NOW, HORIZON, {},
-      { estimates: held(), mode: 'transit' });
+      { estimates: held(), mode: 'transit', origin: 'current' });
     expect(first.estimate?.minutes).toBe(22);
     expect(first.leaveAt).toBe('2026-10-05T13:30:00.000Z');
     expect(second.estimate).toBeNull();
@@ -322,6 +335,38 @@ describe('travel estimates', () => {
     expect(travelTaskTitle('Dentist', 'L delayed', '22 min by transit')).toBe('Leave for Dentist (22 min by transit, L delayed)');
     expect(travelTaskTitle('Dentist', null, '22 min by transit')).toBe('Leave for Dentist (22 min by transit)');
     expect(travelTaskTitle('Dentist', null)).toBe('Leave for Dentist');
+  });
+});
+
+describe('travel origin', () => {
+  const place = (over: Partial<SavedPlace> = {}): SavedPlace => ({
+    id: 'p1', name: 'Home', text: '1 Home St', latitude: 40.7128, longitude: -74.006, ...over,
+  });
+
+  it('is where the phone is when no place is chosen', () => {
+    expect(travelOriginFor(null, [place()])).toBeNull();
+    expect(travelOriginKey(null)).toBe(TRAVEL_ORIGIN_CURRENT);
+  });
+
+  it('is the chosen place, with its pin', () => {
+    expect(travelOriginFor('p1', [place()])).toEqual({ name: 'Home', latitude: 40.7128, longitude: -74.006 });
+  });
+
+  it('falls back to where the phone is for a place that was removed or has no pin', () => {
+    expect(travelOriginFor('gone', [place()])).toBeNull();
+    expect(travelOriginFor('p1', [place({ latitude: null, longitude: null })])).toBeNull();
+  });
+
+  it('lists only the places that have a pin as starting points', () => {
+    const plain = place({ id: 'p2', name: 'Mom', latitude: null, longitude: null });
+    expect(originCandidates([place(), plain]).map(p => p.id)).toEqual(['p1']);
+  });
+
+  it('keys on the coordinates, so a rename keeps an estimate and a moved pin drops it', () => {
+    const home = travelOriginFor('p1', [place()]);
+    expect(travelOriginKey(home)).toBe('at:40.71280,-74.00600');
+    expect(travelOriginKey(travelOriginFor('p1', [place({ name: 'My place' })]))).toBe(travelOriginKey(home));
+    expect(travelOriginKey(travelOriginFor('p1', [place({ latitude: 40.8 })]))).not.toBe(travelOriginKey(home));
   });
 });
 

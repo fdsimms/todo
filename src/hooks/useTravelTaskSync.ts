@@ -79,6 +79,7 @@ export function useTravelTaskSync(): void {
         state.transitLines !== prev.transitLines ||
         state.travelEstimates !== prev.travelEstimates ||
         state.travelMode !== prev.travelMode ||
+        state.travelOriginPlaceId !== prev.travelOriginPlaceId ||
         state.calendarReadEnabled !== prev.calendarReadEnabled
       ) {
         check();
@@ -88,6 +89,7 @@ export function useTravelTaskSync(): void {
         state.travelTasks !== prev.travelTasks ||
         state.travelEstimates !== prev.travelEstimates ||
         state.travelMode !== prev.travelMode ||
+        state.travelOriginPlaceId !== prev.travelOriginPlaceId ||
         state.calendarReadEnabled !== prev.calendarReadEnabled
       ) {
         if (travelEstimatesWanted(state)) void useTravelTimeStore.getState().refresh();

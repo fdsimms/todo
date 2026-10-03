@@ -18,7 +18,14 @@ interface TodoEventKitBridgeNativeModule {
   eventsWithExternalIdentifier(externalId: string): Promise<unknown>;
   searchPlaces?(query: string): Promise<unknown>;
   setStructuredLocation?(eventId: string, title: string, latitude: number, longitude: number): Promise<boolean>;
-  estimateTravelTime?(eventId: string, address: string, departAt: number, mode: string): Promise<number>;
+  estimateTravelTime?(
+    eventId: string,
+    address: string,
+    departAt: number,
+    mode: string,
+    originLatitude: number | null,
+    originLongitude: number | null,
+  ): Promise<number>;
   eventCoordinates?(eventIds: string[]): Promise<unknown>;
 }
 
@@ -129,8 +136,9 @@ export async function setStructuredLocation(
 }
 
 /**
- * Minutes to travel from the phone's current position to an event's place,
- * leaving at `departAt`, from Apple Maps. Null for every failure (module
+ * Minutes to travel to an event's place, leaving at `departAt`, from Apple
+ * Maps. The trip starts at `origin` when one is given and at the phone's
+ * current position otherwise. Null for every failure (module
  * missing, an older build, no permission, nothing found, no route). Only ever
  * called through `estimateTravelMinutes` in src/services/travelTime.ts, behind
  * its setting, since it sends the address and the position to Apple.
@@ -139,11 +147,19 @@ export async function estimateTravelTime(
   eventId: string,
   address: string,
   departAt: Date,
-  mode: 'driving' | 'transit' | 'walking'
+  mode: 'driving' | 'transit' | 'walking',
+  origin: { latitude: number; longitude: number } | null = null
 ): Promise<number | null> {
   if (!nativeModule || typeof nativeModule.estimateTravelTime !== 'function') return null;
   try {
-    const minutes = await nativeModule.estimateTravelTime(eventId, address, departAt.getTime(), mode);
+    const minutes = await nativeModule.estimateTravelTime(
+      eventId,
+      address,
+      departAt.getTime(),
+      mode,
+      origin?.latitude ?? null,
+      origin?.longitude ?? null,
+    );
     return typeof minutes === 'number' && Number.isFinite(minutes) && minutes >= 0 ? minutes : null;
   } catch (error) {
     console.warn('[todo-eventkit-bridge] travel estimate failed', error);

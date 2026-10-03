@@ -1419,6 +1419,10 @@ interface SettingsStore {
   travelEstimates: boolean;
   // How that estimate travels.
   travelMode: TravelMode;
+  // The saved place (id in the `savedPlaces` setting) the estimated trip starts
+  // from, or null for where the phone is. Read through travelOriginFor, which
+  // also answers null for a place that was removed or has no map pin.
+  travelOriginPlaceId: string | null;
   // eventTaskHandled's shape and reason, keyed by occurrence alone since there
   // is one rule. Written by checkTravelTasks, never by anything a person taps.
   travelTaskHandled: HandledEventTasks;
@@ -1845,6 +1849,7 @@ interface SettingsStore {
   setTravelLeadMinutes: (minutes: number) => void;
   setTravelEstimates: (on: boolean) => void;
   setTravelMode: (mode: TravelMode) => void;
+  setTravelOriginPlaceId: (id: string | null) => void;
   setTravelLeadForCalendar: (calendarId: string, minutes: number | null) => void;
   setTravelTaskHandled: (handled: HandledEventTasks) => void;
   setTransitAlerts: (on: boolean) => void;
@@ -2474,6 +2479,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   travelLeadByCalendar: {},
   travelEstimates: false,
   travelMode: 'driving',
+  travelOriginPlaceId: null,
   travelTaskHandled: {},
   transitAlerts: false,
   transitLines: [],
@@ -2901,6 +2907,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const travelEstimates = dbGetSetting('travelEstimates') === 'true';
     const storedTravelMode = dbGetSetting('travelMode');
     const travelMode: TravelMode = TRAVEL_MODES.find(m => m === storedTravelMode) ?? 'driving';
+    const travelOriginPlaceId = dbGetSetting('travelOriginPlaceId') || null;
     // Pruned on load for eventTaskHandled's reason, directly above.
     const travelTaskHandled = pruneHandledEventTasks(
       parseHandledEventTasks(dbGetSetting('travelTaskHandled')),
@@ -3241,6 +3248,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       travelLeadByCalendar,
       travelLeadMinutes,
       travelMode,
+      travelOriginPlaceId,
       travelTaskCategory,
       travelTaskHandled,
       travelTasks,
@@ -3833,6 +3841,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setTravelMode(mode: TravelMode) {
     dbSetSetting('travelMode', mode);
     set({ travelMode: mode });
+  },
+
+  setTravelOriginPlaceId(id: string | null) {
+    dbSetSetting('travelOriginPlaceId', id ?? '');
+    set({ travelOriginPlaceId: id });
   },
 
   // Null puts the calendar back on the default lead, by removing its entry

@@ -8,6 +8,7 @@ const mockSettings = {
   travelEstimates: true,
   calendarReadEnabled: true,
   travelMode: 'driving' as const,
+  travelOriginPlaceId: null as string | null,
   travelLeadMinutes: 30,
   travelLeadByCalendar: {} as Record<string, number>,
 };
@@ -15,6 +16,8 @@ jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: { getState: () => mockSettings },
 }));
 let mockCalendar: { events: unknown[]; loaded: boolean } = { events: [], loaded: true };
+let mockPlaces: unknown[] = [];
+jest.mock('../utils/savedPlaces', () => ({ readSavedPlaces: () => mockPlaces }));
 jest.mock('../store/useCalendarStore', () => ({
   useCalendarStore: { getState: () => mockCalendar },
 }));
@@ -45,6 +48,8 @@ beforeEach(() => {
   jest.setSystemTime(NOW);
   mockSettings.travelEstimates = true;
   mockSettings.travelMode = 'driving';
+  mockSettings.travelOriginPlaceId = null;
+  mockPlaces = [];
   mockCalendar = { events: [event('a', 14)], loaded: true };
   estimateMock.mockReset();
   estimateMock.mockResolvedValue(18);
@@ -66,9 +71,9 @@ describe('refresh', () => {
   it('estimates an upcoming event, asked for the moment the typed lead says to leave', async () => {
     await useTravelTimeStore.getState().refresh();
     const e = event('a', 14);
-    expect(estimateMock).toHaveBeenCalledWith(e, new Date(2026, 9, 5, 13, 30, 0), 'driving');
+    expect(estimateMock).toHaveBeenCalledWith(e, new Date(2026, 9, 5, 13, 30, 0), 'driving', null);
     expect(useTravelTimeStore.getState().estimates[key(e)]).toEqual({
-      minutes: 18, location: '123 Main St', mode: 'driving', at: NOW.getTime(),
+      minutes: 18, location: '123 Main St', mode: 'driving', origin: 'current', at: NOW.getTime(),
     });
   });
 
@@ -79,6 +84,30 @@ describe('refresh', () => {
     mockSettings.travelMode = 'transit' as never;
     await useTravelTimeStore.getState().refresh();
     expect(estimateMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('starts the trip from the saved place the setting names, and asks again when it changes', async () => {
+    mockPlaces = [{ id: 'home', name: 'Home', text: '1 Home St', latitude: 40.7128, longitude: -74.006 }];
+    mockSettings.travelOriginPlaceId = 'home';
+    await useTravelTimeStore.getState().refresh();
+    const e = event('a', 14);
+    expect(estimateMock).toHaveBeenLastCalledWith(
+      e, new Date(2026, 9, 5, 13, 30, 0), 'driving',
+      { name: 'Home', latitude: 40.7128, longitude: -74.006 },
+    );
+    expect(useTravelTimeStore.getState().estimates[key(e)].origin).toBe('at:40.71280,-74.00600');
+
+    // Back to where the phone is: the held trip started elsewhere, so it is asked again.
+    mockSettings.travelOriginPlaceId = null;
+    await useTravelTimeStore.getState().refresh();
+    expect(estimateMock).toHaveBeenCalledTimes(2);
+    expect(estimateMock).toHaveBeenLastCalledWith(e, new Date(2026, 9, 5, 13, 30, 0), 'driving', null);
+  });
+
+  it('starts from where the phone is when the chosen place was removed', async () => {
+    mockSettings.travelOriginPlaceId = 'gone';
+    await useTravelTimeStore.getState().refresh();
+    expect(estimateMock).toHaveBeenCalledWith(event('a', 14), new Date(2026, 9, 5, 13, 30, 0), 'driving', null);
   });
 
   it('skips events with no location, all-day events and ones past the horizon', async () => {

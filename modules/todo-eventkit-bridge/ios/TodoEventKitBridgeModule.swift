@@ -193,21 +193,27 @@ public class TodoEventKitBridgeModule: Module {
       return out
     }
 
-    /// Minutes from where the phone is now to an event's place, leaving at
+    /// Minutes from `originLatitude`/`originLongitude` (a saved place; both
+    /// nil means where the phone is now) to an event's place, leaving at
     /// `departAt` (ms since 1970), by `mode` ("driving", "transit" or
     /// "walking"). The destination is the event's structured location when it
     /// has a coordinate, else the first Apple Maps match for `address`.
     /// Resolves -1 for every failure (no location permission, nothing found
     /// for the address, no route, no network), which the JS side reads as "no
     /// estimate" and falls back to the typed lead. Sends the address and the
-    /// current position to Apple, which is why it is only called behind the
+    /// starting point to Apple, which is why it is only called behind the
     /// travel-estimate setting.
-    AsyncFunction("estimateTravelTime") { (eventId: String, address: String, departAt: Double, mode: String, promise: Promise) in
+    AsyncFunction("estimateTravelTime") { (eventId: String, address: String, departAt: Double, mode: String, originLatitude: Double?, originLongitude: Double?, promise: Promise) in
       let pinned: CLLocation? = eventId.isEmpty ? nil : self.store.event(withIdentifier: eventId)?.structuredLocation?.geoLocation
       DispatchQueue.main.async {
         let estimate = { (destination: MKMapItem) in
           let request = MKDirections.Request()
-          request.source = MKMapItem.forCurrentLocation()
+          if let lat = originLatitude, let lon = originLongitude,
+             CLLocationCoordinate2DIsValid(CLLocationCoordinate2D(latitude: lat, longitude: lon)) {
+            request.source = Self.mapItem(at: CLLocationCoordinate2D(latitude: lat, longitude: lon))
+          } else {
+            request.source = MKMapItem.forCurrentLocation()
+          }
           request.destination = destination
           request.transportType = Self.transportType(mode)
           if departAt > 0 { request.departureDate = Date(timeIntervalSince1970: departAt / 1000) }

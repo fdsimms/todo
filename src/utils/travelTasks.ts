@@ -2,6 +2,7 @@ import type { BusyEvent } from './calendarBusy';
 import type { Task } from '../types';
 import { eventIsRuleEligible, eventOccurrenceKey, type HandledEventTasks } from './eventTasks';
 import { generatedSourceOf } from './generatedTasks';
+import type { SavedPlace } from './savedPlaces';
 
 /**
  * Travel tasks — "Leave for Dentist", for a calendar event somewhere else.
@@ -59,16 +60,51 @@ export const TRAVEL_ESTIMATES_PER_REFRESH = 6;
 
 /**
  * One estimate, for one occurrence, kept with what it was asked about: the
- * location text and the mode. An event whose location was edited, or a mode
- * changed since, doesn't match and is asked again rather than reusing a trip
- * to the wrong place.
+ * location text, the mode and where the trip started. An event whose location
+ * was edited, or a mode or starting point changed since, doesn't match and is
+ * asked again rather than reusing a trip to the wrong place.
  */
 export interface TravelEstimate {
   minutes: number;
   location: string;
   mode: TravelMode;
+  /** `travelOriginKey` of where the trip started from. */
+  origin: string;
   /** Epoch ms when it was read. */
   at: number;
+}
+
+/** `travelOriginKey` for a trip that starts from wherever the phone is. */
+export const TRAVEL_ORIGIN_CURRENT = 'current';
+
+/** A saved place a trip starts from instead of the phone's position. */
+export interface TravelOrigin {
+  name: string;
+  latitude: number;
+  longitude: number;
+}
+
+/** The saved places a trip can start from: only those with a map pin, since an address alone has no coordinate to send. */
+export function originCandidates(places: readonly SavedPlace[]): SavedPlace[] {
+  return places.filter(p => p.latitude !== null && p.longitude !== null);
+}
+
+/**
+ * The starting place the setting names, or null for "where I am now". A place
+ * that was removed, or has no pin, reads as null too, and the settings row
+ * shows its value through this same function, so what it says is what the
+ * estimate uses.
+ */
+export function travelOriginFor(placeId: string | null, places: readonly SavedPlace[]): TravelOrigin | null {
+  if (!placeId) return null;
+  const place = originCandidates(places).find(p => p.id === placeId);
+  if (!place || place.latitude === null || place.longitude === null) return null;
+  return { name: place.name, latitude: place.latitude, longitude: place.longitude };
+}
+
+/** What an estimate is filed under: moving the starting point (or the pin) changes it, a rename doesn't. */
+export function travelOriginKey(origin: TravelOrigin | null): string {
+  return origin ? `at:${origin.latitude.toFixed(5)},${origin.longitude.toFixed(5)}` : TRAVEL_ORIGIN_CURRENT;
 }
 
 /** Estimates by occurrence key (`travelSourceId`). */
@@ -79,10 +115,11 @@ export function estimateFor(
   event: Pick<BusyEvent, 'id' | 'start' | 'location'>,
   estimates: TravelEstimates,
   mode: TravelMode,
+  origin: string,
 ): TravelEstimate | null {
   const held = estimates[travelSourceId(event)];
   if (!held) return null;
-  if (held.mode !== mode || held.location !== (event.location ?? '').trim()) return null;
+  if (held.mode !== mode || held.origin !== origin || held.location !== (event.location ?? '').trim()) return null;
   return held;
 }
 
@@ -116,9 +153,10 @@ export function needsTravelEstimate(
   event: Pick<BusyEvent, 'id' | 'start' | 'location'>,
   estimates: TravelEstimates,
   mode: TravelMode,
+  origin: string,
   now: Date,
 ): boolean {
-  const held = estimateFor(event, estimates, mode);
+  const held = estimateFor(event, estimates, mode, origin);
   return !held || now.getTime() - held.at >= TRAVEL_ESTIMATE_STALE_MS;
 }
 
@@ -286,7 +324,7 @@ export function matchedTravelTasks(
   horizonEnd: Date,
   handled: Readonly<HandledEventTasks>,
   /** Apple Maps estimates, passed only while `travelEstimates` is on. */
-  estimated?: { estimates: TravelEstimates; mode: TravelMode },
+  estimated?: { estimates: TravelEstimates; mode: TravelMode; origin: string },
 ): TravelMatch[] {
   const out: TravelMatch[] = [];
   const eligible = events
@@ -294,7 +332,7 @@ export function matchedTravelTasks(
     .sort((a, b) => Date.parse(a.start) - Date.parse(b.start));
   for (const event of eligible) {
     const sourceId = travelSourceId(event);
-    const estimate = estimated ? estimateFor(event, estimated.estimates, estimated.mode) : null;
+    const estimate = estimated ? estimateFor(event, estimated.estimates, estimated.mode, estimated.origin) : null;
     const lead = estimate ? estimatedLeadMinutes(estimate.minutes) : travelLeadFor(event, leads);
     const leaveAt = travelLeaveAt(event, lead);
     if (!leaveAt) continue;
