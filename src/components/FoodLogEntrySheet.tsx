@@ -383,6 +383,10 @@ export function FoodLogEntrySheet({
   // when this half renders) clear of the keyboard instead of leaving it to a
   // plain ScrollView — same mechanism as every other keyboard-heavy sheet.
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
+  // The search half's results list is a FlatList, so it needs its own: without
+  // one the last rows sit behind the keyboard with nothing to scroll them
+  // clear.
+  const listScroll = useKeyboardInsetScroll<FlatList>({ ownsSheet: true });
   // The search field, refocused after a burst save — see handleSave.
   // Set by handleSave's burst branch, consumed by the effect below once the
   // search field it wants to focus has actually mounted.
@@ -1663,12 +1667,18 @@ export function FoodLogEntrySheet({
               </TouchableOpacity>
             )}
             <FlatList
+              ref={listScroll.ref}
               style={styles.list}
               contentContainerStyle={styles.listContent}
               data={results}
               keyExtractor={c => c.key}
               renderItem={renderRow}
               keyboardShouldPersistTaps="handled"
+              // The only way to put the keyboard away from here: nothing else
+              // on this half is tappable-to-dismiss, and a pageSheet has no
+              // outside to tap.
+              keyboardDismissMode="on-drag"
+              {...listScroll.props}
               ListHeaderComponent={helpings.length > 0 ? (
                 <View>
                   <Text style={[styles.label, styles.helpingsLabel]}>LOG THE SAME AGAIN</Text>
