@@ -5,6 +5,7 @@ import { logTaskHealthValue, unlogTaskNutrientFromFoodLog } from '../utils/healt
 import { useTaskStore } from '../store/useTaskStore';
 import { useWidgetCompletionStore } from '../store/useWidgetCompletionStore';
 import { useMedicationStore } from '../store/useMedicationStore';
+import { useRewardStore } from '../store/useRewardStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useMoodStore } from '../store/useMoodStore';
 import { UNDO_STACK_LIMIT } from '../utils/undoHistory';
@@ -125,6 +126,15 @@ jest.mock('../db/database', () => ({
   dbUpdateMedicationLog: jest.fn(),
   dbDeleteMedicationLog: jest.fn(),
   dbDeleteMedicationLogsForTask: jest.fn(),
+  // The coin ledger rides the same fan-out, and completing, missing or
+  // slipping writes through it when rewards are on.
+  dbGetAllCoinEntries: jest.fn().mockReturnValue([]),
+  dbUpsertCoinEntry: jest.fn(),
+  dbDeleteCoinEntry: jest.fn(),
+  dbGetAllRewards: jest.fn().mockReturnValue([]),
+  dbInsertReward: jest.fn(),
+  dbUpdateReward: jest.fn(),
+  dbDeleteReward: jest.fn(),
   // The food log rides the same startup fan-out as the mood log, so its reads
   // have to be here too or `initialize` throws before it reaches anything this
   // suite is about.
@@ -18301,5 +18311,100 @@ describe('fillCalendarExternalIds', () => {
     useTaskStore.setState({ tasks });
     useTaskStore.getState().fillCalendarExternalIds({ 'dl-1': 'ext' });
     expect(useTaskStore.getState().tasks).toBe(tasks);
+  });
+});
+
+// ─── coins ──────────────────────────────────────────────────────────────────
+
+describe('coins', () => {
+  const settingsMock = useSettingsStore.getState as jest.Mock;
+  const base = settingsMock.getMockImplementation()!;
+  const balance = () => useRewardStore.getState().balance();
+  const recurring = (over: Partial<Task> = {}) => makeTask({
+    id: 't1',
+    recurrenceType: 'daily',
+    recurrenceInterval: 1,
+    dueDate: new Date(2025, 5, 10, 9, 0, 0).toISOString(),
+    ...over,
+  });
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2025, 5, 10, 10, 0, 0));
+    settingsMock.mockImplementation(() => ({ ...base(), rewardsEnabled: true }));
+    useRewardStore.setState({ entries: [], rewards: [], initialized: true });
+  });
+  afterEach(() => {
+    settingsMock.mockImplementation(base);
+    jest.runOnlyPendingTimers();
+    jest.useRealTimers();
+  });
+
+  it('pays for a completion by effort', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', estimatedMinutes: 90 })] });
+    useTaskStore.getState().completeTask('t1');
+    expect(balance()).toBe(5);
+  });
+
+  it('adds the streak bonus from the streak this completion reaches', () => {
+    useTaskStore.setState({
+      tasks: [recurring({
+        estimatedMinutes: 30,
+        streakCount: 6,
+        streakDate: new Date(2025, 5, 9).toISOString(),
+      })],
+    });
+    useTaskStore.getState().completeTask('t1');
+    expect(useTaskStore.getState().tasks.find(t => t.id === 't1')!.streakCount).toBe(7);
+    expect(balance()).toBe(3 + 1);
+  });
+
+  it('charges for an occurrence marked missed', () => {
+    useTaskStore.setState({ tasks: [recurring({ estimatedMinutes: 30 })] });
+    useTaskStore.getState().markMissed('t1');
+    expect(balance()).toBe(-3);
+  });
+
+  it('takes the coins back when the task is unticked', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1' })] });
+    useTaskStore.getState().completeTask('t1');
+    expect(balance()).toBe(2);
+    useTaskStore.getState().uncompleteTask('t1');
+    expect(balance()).toBe(0);
+  });
+
+  it('refunds a miss when it is undone', () => {
+    useTaskStore.setState({ tasks: [recurring()] });
+    useTaskStore.getState().markMissed('t1');
+    useTaskStore.getState().uncompleteTask('t1');
+    expect(balance()).toBe(0);
+  });
+
+  it('moves nothing for a completion the app made on its own', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1' })] });
+    useTaskStore.getState().completeTask('t1', { neutral: true });
+    expect(useRewardStore.getState().entries).toEqual([]);
+  });
+
+  it('pays nothing for a subtask', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 'p' }), makeTask({ id: 's', parentId: 'p' })] });
+    useTaskStore.getState().completeTask('s');
+    expect(useRewardStore.getState().entries).toEqual([]);
+  });
+
+  it('charges a slip and refunds it on undo', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 'smoke', title: "Don't smoke", polarity: 'negative' })] });
+    useTaskStore.getState().logSlip('smoke');
+    useTaskStore.getState().logSlip('smoke');
+    expect(balance()).toBe(-4);
+    useTaskStore.getState().undoSlip('smoke');
+    expect(balance()).toBe(-2);
+  });
+
+  it('writes nothing while rewards are off', () => {
+    settingsMock.mockImplementation(base);
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1' })] });
+    useTaskStore.getState().completeTask('t1');
+    expect(useRewardStore.getState().entries).toEqual([]);
   });
 });

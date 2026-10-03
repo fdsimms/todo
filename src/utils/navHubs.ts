@@ -138,6 +138,16 @@ const HISTORY_HUB: NavHub = {
   members: [
     { route: 'Logbook', label: 'Logbook', icon: 'checkmark-done-outline', keywords: ['done', 'completed', 'finished'] },
     { route: 'Stats', label: 'Stats', icon: 'stats-chart-outline', keywords: ['numbers', 'charts', 'streaks', 'progress'] },
+    // Coins and rewards, beside Stats because the balance is a record of what
+    // got done. A member rather than its own row because the menu is held to
+    // twelve rows (navHubs.test.ts); the keywords are how somebody looking
+    // for "coins" finds it, and the screen is also where it's switched on.
+    {
+      route: 'Rewards',
+      label: 'Rewards',
+      icon: 'trophy-outline',
+      keywords: ['coins', 'points', 'gold', 'treat', 'shop', 'habitica', 'gamification', 'earn'],
+    },
     { route: 'Archived', label: 'Archived', icon: 'archive-outline', keywords: ['paused', 'filed', 'put away'] },
     // What the app did unattended — the generators, the expiry sweep and the
     // completed-task purge. In History because it is a record of things that

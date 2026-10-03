@@ -363,6 +363,7 @@ file: the two maps are indexes, not write-ups.
 | a stock of something that runs down as a task repeats, and ordering more | `src/utils/supply.ts` — see `docs/arch/supplies.md` |
 | a target logged N times a day, its pace ramp, and the same thing counted per week | `src/utils/quotaSchedule.ts` (the span) + `Task.quotaPeriod`. A weekly target is a quota with a week-long span, deliberately not a `RecurrenceType` (see the file's header) |
 | working a queue of tasks one at a time, with breaks | `src/utils/focusPlan.ts` + `src/store/useFocusStore.ts` — see `docs/arch/focus-sessions.md` |
+| coins for completing tasks, and the rewards they buy | `src/utils/rewards.ts` + `src/store/useRewardStore.ts` + `src/screens/RewardsScreen.tsx` — see `docs/arch/rewards.md`. The balance is a sum over a ledger, never a stored number, and only a person's own action moves it |
 | what failing a task costs, in blocked apps | `src/utils/penaltyShield.ts` (the rule) + `sweepTaskPenalties`/`logSlip` in `useTaskStore` (the two triggers). Read its refusals first: a task the app was withholding is never charged, a charge found on a later day is recorded but not served, and `undoSlip` doesn't refund |
 | apps held until a task is done ("no YouTube before the walk") | `src/utils/appGate.ts` + `Task.gatesApps`. A gate is live exactly while `isTaskVisible` says its task is, and a negative task can never be one |
 | whether the apps are blocked *right now* | `src/utils/appShield.ts` (the rule) + `src/utils/appShieldReconcile.ts` (reads the stores; a plain function so background refresh can call it). The single arbiter over the focus shield, the penalty and the gate: they drive one system shield, so it ORs them |
@@ -624,6 +625,7 @@ decided, and the design system every screen is built from. Individual features a
 | `docs/arch/month-grid.md` | The calendar month view and projected occurrences |
 | `docs/arch/template-questions.md` | What a template run asks before it creates anything |
 | `docs/arch/timed-tasks.md` | Countdowns, and splitting one across subtasks |
+| `docs/arch/rewards.md` | Coins and rewards: why the balance is a ledger, and what may and may not earn or cost coins |
 | `docs/arch/supplies.md` | A consumable counted down by a repeating task, and the reorder it asks for |
 | `docs/arch/focus-sessions.md` | Focus sessions: the plan, its breaks, and why a step that runs out waits |
 | `docs/arch/reminders-import.md` | Apple Reminders import, and the data it deletes elsewhere |

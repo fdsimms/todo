@@ -1795,6 +1795,53 @@ export interface MedicationLog {
 }
 
 /**
+ * What moved the coin balance — see `src/utils/rewards.ts` for every rule.
+ *
+ * `earn` is a completion, `loss` is a miss or a slip, `spend` is a reward
+ * claimed. Three kinds rather than a signed amount so a row says what happened
+ * on its own, and so the balance is one sum with no sign convention to get
+ * backwards.
+ */
+export type CoinEntryKind = 'earn' | 'loss' | 'spend';
+
+/**
+ * One movement of the coin balance.
+ *
+ * The balance is never stored: it is the sum of these rows, because a stored
+ * number synced last-writer-wins would drop whichever device's coins arrived
+ * second. Rows tied to a completion or a miss carry a derived id
+ * (`spawnSeed.coinEarn`/`coinMiss`) so two devices completing the same
+ * occurrence apart write one row, not two.
+ */
+export interface CoinEntry {
+  id: string;
+  kind: CoinEntryKind;
+  /** Always positive; `kind` says which way it moved the balance. */
+  amount: number;
+  /** ISO instant. */
+  at: string;
+  /**
+   * The task that earned or cost this, when one did. Provenance, and the key
+   * unticking a task (or undoing a slip) uses to take the row back. Carries no
+   * foreign key: the entry outlives a task the retention window purges.
+   */
+  taskId: string | null;
+  /** The reward claimed, for a `spend`. */
+  rewardId: string | null;
+  /** What to show in the history list: the task's or reward's title at the time. */
+  label: string;
+}
+
+/** Something you've decided to treat yourself to, for a price in coins. */
+export interface Reward {
+  id: string;
+  title: string;
+  /** Coins it costs to claim. A positive whole number. */
+  cost: number;
+  createdAt: string;
+}
+
+/**
  * Which of the app's unattended generators wrote a task — see
  * `Task.generatedKind` below, and `src/utils/generatedTasks.ts` for the
  * mechanism they share.
