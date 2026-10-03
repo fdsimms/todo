@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, Linking, TouchableOpacity } from 'react-native';
+import { Alert, View, Text, ScrollView, StyleSheet, Linking, TouchableOpacity } from 'react-native';
 import { useShallow } from 'zustand/react/shallow';
 import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -36,6 +36,7 @@ import { QuickEventSheet, type QuickEventEditTarget } from './QuickEventSheet';
 import { isDemoModeActive } from '../utils/demoState';
 import { InlineAction } from './InlineAction';
 import { TemplatePickerSheet } from './TemplatePickerSheet';
+import { ProjectPickerSheet } from './ProjectPickerSheet';
 import { ApplyTemplateSheet } from './ApplyTemplateSheet';
 import { AwayShiftSheet } from './AwayShiftSheet';
 import { useTemplateStore } from '../store/useTemplateStore';
@@ -120,7 +121,8 @@ interface Props {
  *
  * **An event spanning days can become a trip** (`src/utils/tripEvents.ts`):
  * "Make this a trip" in the details makes a project away for exactly its
- * days and opens it, or opens the one already away for them.
+ * days and opens it, or opens the one already away for them; "Add to a
+ * project" puts the same dates on one picked from the list instead.
  *
  * The template sheets and the move sheet render **inside** this sheet's Modal,
  * not beside it, for the sibling-Modal rule in CLAUDE.md.
@@ -209,6 +211,9 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById, titl
 
   const projects = useProjectStore(s => s.projects);
   const createProject = useProjectStore(s => s.createProject);
+  const updateProject = useProjectStore(s => s.updateProject);
+  // The event whose dates are going onto a project picked from the list.
+  const [tripTarget, setTripTarget] = useState<BusyEvent | null>(null);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
   const navigation = useNavigation<any>();
 
@@ -232,6 +237,36 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById, titl
     }
     onClose();
     navigation.navigate('ProjectDetail', { projectId });
+  };
+
+  /**
+   * The other half of "Make this a trip": the event's dates onto a project that
+   * already exists (a trip planned before it was booked). A project already
+   * holding away dates asks first, since replacing them moves what the span
+   * drives (vacation mode, the away list, look ahead).
+   */
+  const putTripOn = (projectId: string | null) => {
+    const event = tripTarget;
+    setTripTarget(null);
+    if (!event || !projectId) return;
+    const fields = awayFieldsFromEvent(event);
+    const project = projects.find(p => p.id === projectId);
+    if (!fields || !project) return;
+    const apply = () => {
+      updateProject(projectId, fields);
+      haptics.success();
+      onClose();
+      navigation.navigate('ProjectDetail', { projectId });
+    };
+    if (!project.awayStart) { apply(); return; }
+    Alert.alert(
+      'Replace away dates?',
+      `${project.title} already has away dates. Use this event's dates instead?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Replace', onPress: apply },
+      ],
+    );
   };
 
   const planFromTemplate = (event: BusyEvent) => {
@@ -473,6 +508,14 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById, titl
                           onPress={() => openTrip(event)}
                         />
                       )}
+                      {spansDays(event) && !projectForTripEvent(projects, event, dayResetTime) && (
+                        <InlineAction
+                          icon="folder-outline"
+                          label="Add to a project"
+                          variant="neutral"
+                          onPress={() => { haptics.tap(); setTripTarget(event); }}
+                        />
+                      )}
                     </View>
                     {people.length > 0 && (
                     <>
@@ -534,6 +577,12 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById, titl
 
         {/* Nested inside this sheet's Modal, never beside it: see the
             sibling-Modal rule in CLAUDE.md. */}
+        <ProjectPickerSheet
+          visible={tripTarget !== null}
+          onClose={() => setTripTarget(null)}
+          value={null}
+          onSelect={putTripOn}
+        />
         <TemplatePickerSheet
           visible={pickerOpen}
           onClose={() => setPickerOpen(false)}

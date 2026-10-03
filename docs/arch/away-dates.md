@@ -592,6 +592,9 @@ same to a calendar, so nothing reads an event as a trip on its own, and availabi
 
 - **The dates.** An all-day event's exclusive end is the return day, so the away days are exactly
   the event's days. A timed one returns on the day it ends, the same as a return date typed in.
+- **Or onto a project that already exists** ("Add to a project"): a trip planned before it was
+  booked. One that already holds away dates asks before they're replaced, since the span drives
+  vacation mode, the away list and look ahead.
 - **No stored link to the event.** A project already away for those exact dates is the same trip,
   however its dates got there, so the button opens it rather than making a second one
   (`projectForTripEvent`).
