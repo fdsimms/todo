@@ -123,6 +123,10 @@ export function DayContextRow({ row, onPress, onMarkCooked }: Props) {
     </View>
   );
 
+  // A step or calorie total has no caption: the title is the whole row.
+  const hasMeta = row.caption !== '' || !!row.calendarTag || !!row.movedNote;
+  const a11yLabel = [row.title, row.caption, row.movedNote].filter(Boolean).join(', ');
+
   const body = (
     <>
       <Text style={[styles.title, row.now && styles.titleNow]} numberOfLines={1}>
@@ -132,7 +136,9 @@ export function DayContextRow({ row, onPress, onMarkCooked }: Props) {
           carry says *when* — "4:15 PM", "All day", "Now", "Lunch", "Use by
           today" — so one clock covers all of them, and it's the glyph the
           row's own time-ish meta would use if it were a task. */}
+      {hasMeta && (
       <View style={styles.metaRow}>
+        {row.caption !== '' && (
         <View style={styles.metaChip}>
           <Ionicons
             name="time-outline"
@@ -143,6 +149,7 @@ export function DayContextRow({ row, onPress, onMarkCooked }: Props) {
             {row.caption}
           </Text>
         </View>
+        )}
         {/* Which calendar this came from — only ever set when reading more than
             one, see ContextRow.calendarTag. Same dot-plus-label chip shape
             LogbookFilterSheet's category filter already uses. */}
@@ -165,6 +172,7 @@ export function DayContextRow({ row, onPress, onMarkCooked }: Props) {
           </View>
         )}
       </View>
+      )}
     </>
   );
 
@@ -184,7 +192,7 @@ export function DayContextRow({ row, onPress, onMarkCooked }: Props) {
               // reason — that gap is the glyph's.
               hitSlop={{ top: 14, bottom: 14, left: 0, right: 10 }}
               accessibilityRole="button"
-              accessibilityLabel={`${row.title}, ${row.caption}${row.movedNote ? `, ${row.movedNote}` : ''}`}
+              accessibilityLabel={a11yLabel}
               accessibilityHint={
                 row.kind === 'event' ? "Opens the day's events" : 'Opens Meal plan'
               }
@@ -192,7 +200,7 @@ export function DayContextRow({ row, onPress, onMarkCooked }: Props) {
               {body}
             </TouchableOpacity>
           ) : (
-            <View style={styles.content} accessible accessibilityLabel={`${row.title}, ${row.caption}${row.movedNote ? `, ${row.movedNote}` : ''}`}>
+            <View style={styles.content} accessible accessibilityLabel={a11yLabel}>
               {body}
             </View>
           )}
