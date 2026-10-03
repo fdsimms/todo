@@ -27,6 +27,7 @@ import { useRemindersImportSync } from './src/utils/remindersImportSync';
 import { useCalendarSync } from './src/store/useCalendarStore';
 import { useWeatherSync } from './src/store/useWeatherStore';
 import { useTravelTaskSync } from './src/hooks/useTravelTaskSync';
+import { useReminderMeetingResync } from './src/hooks/useReminderMeetingResync';
 import { useScreenTimeSync } from './src/store/useScreenTimeStore';
 import { useHealthSync } from './src/store/useHealthStore';
 import { useAppShieldSync } from './src/hooks/useAppShieldSync';
@@ -211,6 +212,10 @@ function AppRoot() {
   // until travel tasks, the transit switch and a line are all on), and re-runs
   // the travel task check when the calendar window or the alerts land.
   useTravelTaskSync();
+  // Rebuilds the reminder queue when the calendar's meetings change, so a
+  // reminder a meeting was booked over after it was scheduled still gets
+  // pushed past it. Inert while the meeting nudge or calendar reading is off.
+  useReminderMeetingResync();
   // Keeps the OS usage monitor armed against the current rules and drains
   // what it has reported. Inert until screenTimeTasks is switched on.
   useScreenTimeSync();

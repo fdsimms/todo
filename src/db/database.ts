@@ -1428,6 +1428,9 @@ export function initDatabase(): void {
     // reads as "not opted out", the state every task was in before this
     // column existed.
     'ALTER TABLE tasks ADD COLUMN exclude_from_suggestions INTEGER NOT NULL DEFAULT 0',
+    // Task.pinEachOccurrence: a recurring task whose successor starts pinned.
+    // Default 0 on every existing row, the behaviour they all had.
+    'ALTER TABLE tasks ADD COLUMN pin_each_occurrence INTEGER NOT NULL DEFAULT 0',
     // Same mechanism as tasks/categories/projects.backfill_dismissed_fields
     // above, for the Backfill screen's fourth pool — see
     // Person.backfillDismissedFields. Empty on every existing row, which reads
@@ -3286,6 +3289,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     followUpTaskSourceId: (row.extra_task_source_id as string | null) ?? null,
     vacationPause: Boolean(row.vacation_pause),
     excludeFromSuggestions: Boolean(row.exclude_from_suggestions),
+    pinEachOccurrence: Boolean(row.pin_each_occurrence),
     timerStartedAt: (row.timer_started_at as string | null) ?? null,
     actualMinutes: (row.actual_minutes as number | null) ?? null,
     estimateBeforeTiming: (row.estimate_before_timing as number | null) ?? null,
@@ -3416,8 +3420,9 @@ export function dbInsertTask(task: Task): void {
       medication_name, medication_amount, medication_unit, log_meal_slot,
       estimate_before_timing, waiting_on_person_since, waiting_follow_up_declined_at,
       reminder_tracks_visibility, recurrence_month,
-      blocked_by_ids, deliverable_options, deliverable_sets_away, follow_up_on, extra_task_source_id
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      blocked_by_ids, deliverable_options, deliverable_sets_away, follow_up_on, extra_task_source_id,
+      pin_each_occurrence
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -3531,6 +3536,7 @@ export function dbInsertTask(task: Task): void {
       task.deliverableSetsAway ? 1 : 0,
       task.followUpOn ?? null,
       task.followUpTaskSourceId ?? null,
+      task.pinEachOccurrence ? 1 : 0,
     ]
   );
 }
@@ -3566,7 +3572,8 @@ export function dbUpdateTask(task: Task): void {
       medication_name=?, medication_amount=?, medication_unit=?, log_meal_slot=?,
       estimate_before_timing=?, waiting_on_person_since=?, waiting_follow_up_declined_at=?,
       reminder_tracks_visibility=?, recurrence_month=?,
-      blocked_by_ids=?, deliverable_options=?, deliverable_sets_away=?, follow_up_on=?, extra_task_source_id=?
+      blocked_by_ids=?, deliverable_options=?, deliverable_sets_away=?, follow_up_on=?, extra_task_source_id=?,
+      pin_each_occurrence=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -3681,6 +3688,7 @@ export function dbUpdateTask(task: Task): void {
       task.deliverableSetsAway ? 1 : 0,
       task.followUpOn ?? null,
       task.followUpTaskSourceId ?? null,
+      task.pinEachOccurrence ? 1 : 0,
       task.id,
     ]
   );

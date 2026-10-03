@@ -704,8 +704,9 @@ Pinning adds a **copy** of a task to a "Pinned Tasks" block at the top of Today.
 stays exactly where it is, in its own category section, with its pin glyph lit. Both rows are live
 and interchangeable — same task, so completing or swiping either does the same thing.
 
-**Never filter pinned tasks out of the main list, and never render a second list for the pinned
-layout.** Filtering moved every row below the finger on each pin (so the next tap in a run landed
+**Never filter pinned tasks out of the main list, except one with no category, and never render a
+second list for the pinned layout.** An uncategorized task has no section of its own to stay in, so
+`listItems` drops its second row while it is pinned (and it comes back on unpin). Filtering moved every row below the finger on each pin (so the next tap in a run landed
 on a row that had just jumped), and a second list component remounted the list, lost its scroll
 offset and dropped stacks. One `ReorderableList` is always mounted, nothing moves on a pin, and
 the eye button in the pinned header hides everything else on request (`othersHidden`,

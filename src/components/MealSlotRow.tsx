@@ -34,6 +34,12 @@ interface Props {
    * logged and neither claims the calories were its own.
    */
   loggedText?: string | null;
+  /**
+   * "Busy evening: Dinner at Mia's" when the calendar has you out on this
+   * dinner's evening (`busyEvenings.ts`). A flag only; nothing about the meal
+   * changes because of it.
+   */
+  busyText?: string | null;
   onPress: () => void;
   /**
    * Ticks the entry off, or back on — the same shortcut a task row's checkbox
@@ -125,7 +131,7 @@ interface Props {
  * absence a reader is expected to infer.
  */
 export function MealSlotRow({
-  entry, title, hasRecipe, choices, loggedText, onPress, onToggleCooked, selectionMode, selected, onSwipeSelect,
+  entry, title, hasRecipe, choices, loggedText, busyText, onPress, onToggleCooked, selectionMode, selected, onSwipeSelect,
   onDragStart, dragging, surface,
 }: Props) {
   const colors = useColors();
@@ -181,7 +187,7 @@ export function MealSlotRow({
       accessibilityRole={selectionMode ? 'checkbox' : 'button'}
       accessibilityState={selectionMode ? { checked: !!selected } : undefined}
       accessibilityLabel={
-        [slotLabel(entry.slot), title, scaleLabel, choices, loggedText, cooked ? 'cooked' : null]
+        [slotLabel(entry.slot), title, scaleLabel, choices, loggedText, busyText, cooked ? 'cooked' : null]
           .filter(Boolean).join(', ')
       }
       accessibilityHint={
@@ -212,6 +218,7 @@ export function MealSlotRow({
           {[slotLabel(entry.slot), scaleLabel].filter(Boolean).join(' · ')}
           {!!choices && <Text style={styles.choices}> · {choices}</Text>}
           {!!loggedText && <Text style={styles.logged}> · {loggedText}</Text>}
+          {!!busyText && <Text style={styles.busy}> · {busyText}</Text>}
         </Text>
       </View>
       {/*
@@ -407,6 +414,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // this is a state and not a qualifier.
   logged: {
     color: colors.green,
+    fontWeight: fontWeight.semibold,
+    letterSpacing: 0,
+    textTransform: 'none',
+  },
+  // The same nesting again, in orange: something to look at before the
+  // evening, which neither the grey of a qualifier nor the green of a meal
+  // that happened would say.
+  busy: {
+    color: colors.orange,
     fontWeight: fontWeight.semibold,
     letterSpacing: 0,
     textTransform: 'none',

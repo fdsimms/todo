@@ -58,3 +58,40 @@ export function nudgeReminderPastMeeting(
 
   return { time: new Date(interval.end), nudged: true, meetingTitle: meeting?.title || null };
 }
+
+/**
+ * Everything about a calendar read that `nudgeReminderPastMeeting` can see,
+ * as one comparable string: the events that occupy time, by id and span.
+ *
+ * The nudge is applied when a reminder is scheduled, so a meeting added or
+ * moved afterward never reached the reminder it now overlaps. The fix is to
+ * rebuild the queue when the meetings change, and this is what says whether
+ * they did: the calendar store refreshes on every foreground with a fresh
+ * array either way, and rebuilding the whole notification queue on each of
+ * those would be work for nothing most times. Order-free, so a read that
+ * returns the same events in another order isn't a change.
+ */
+export function meetingSignature(events: readonly BusyEvent[]): string {
+  return events
+    .filter(occupiesTime)
+    .map(e => `${e.id}|${e.start}|${e.end}`)
+    .sort()
+    .join('\n');
+}
+
+/**
+ * The meeting a task's start time falls inside, on the day it's for, or null.
+ *
+ * For the editor's Time window row: "From 2pm" set on a day with a 1:30 to
+ * 3:00 meeting means the task opens while you're in it. Said, never acted on:
+ * the window still opens when the user set it to. Uses the same "inside a
+ * meeting" test as the reminder nudge, so the two rows can't disagree about
+ * what counts.
+ */
+export function meetingAtStart(
+  events: readonly BusyEvent[],
+  start: Date,
+): { title: string | null; until: Date } | null {
+  const nudge = nudgeReminderPastMeeting(start, events);
+  return nudge.nudged ? { title: nudge.meetingTitle, until: nudge.time } : null;
+}

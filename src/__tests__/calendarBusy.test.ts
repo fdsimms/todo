@@ -1,9 +1,11 @@
 import {
+  blocksWholeDay,
   busyIntervalsIn,
   busyMinutesIn,
   eventsIn,
   freeGapsIn,
   freeMinutesIn,
+  hasWholeDayBlockIn,
   isLiveEvent,
   nextEventAfter,
   occupiesTime,
@@ -274,5 +276,29 @@ describe('nextEventAfter', () => {
 
   it('returns null when nothing is left', () => {
     expect(nextEventAfter([ev(at(9), at(10))], new Date(at(18)), DAY_END)).toBeNull();
+  });
+});
+
+describe('blocksWholeDay / hasWholeDayBlockIn', () => {
+  it('counts an all-day event left busy or out of office', () => {
+    expect(blocksWholeDay(ev(...ALL_DAY, { allDay: true }))).toBe(true);
+    expect(blocksWholeDay(ev(...ALL_DAY, { allDay: true, availability: 'unavailable' }))).toBe(true);
+  });
+
+  it('ignores the free all-day events calendars create by default, tentative ones, and cancelled ones', () => {
+    expect(blocksWholeDay(ev(...ALL_DAY, { allDay: true, availability: 'free' }))).toBe(false);
+    expect(blocksWholeDay(ev(...ALL_DAY, { allDay: true, availability: 'tentative' }))).toBe(false);
+    expect(blocksWholeDay(ev(...ALL_DAY, { allDay: true, status: 'canceled' }))).toBe(false);
+  });
+
+  it('never counts a timed event, however long', () => {
+    expect(blocksWholeDay(ev(at(0), at(23, 59)))).toBe(false);
+  });
+
+  it('finds one by the date the event names', () => {
+    const conference = ev(...ALL_DAY, { allDay: true });
+    expect(hasWholeDayBlockIn([conference], DAY_START, DAY_END)).toBe(true);
+    expect(hasWholeDayBlockIn([conference], DAY_END, new Date(2026, 7, 14))).toBe(false);
+    expect(hasWholeDayBlockIn([ev(...ALL_DAY, { allDay: true, availability: 'free' })], DAY_START, DAY_END)).toBe(false);
   });
 });

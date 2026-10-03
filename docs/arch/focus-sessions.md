@@ -439,3 +439,11 @@ objects and no store standing behind it.
   swapping a row already carries. The reorder is local to the session being
   set up; it doesn't write back to `pinnedOrder` or anything the suggester
   reads next time.
+
+## The meeting heads-up
+
+While a session is on (running or paused), a notification lands `FOCUS_MEETING_LEAD_MINUTES` before
+the next event that takes time (`focusMeetingHeadsUp` in `focusWindow.ts`, scheduled by
+`scheduleFocusMeetingHeadsUp` beside the step chime on every session write). It says so and
+nothing else: like the step chime, it never advances, pauses or ends the session. It is computed at
+the last session write, so a meeting booked mid-session is heard about from the next write onward.

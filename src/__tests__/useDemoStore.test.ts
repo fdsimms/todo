@@ -274,6 +274,8 @@ jest.mock('../utils/notifications', () => ({
   // Reached through useTaskStore.initialize, which fans out to useFocusStore.
   scheduleFocusStepAlarm: jest.fn().mockResolvedValue(undefined),
   cancelFocusStepAlarm: jest.fn().mockResolvedValue(undefined),
+  scheduleFocusMeetingHeadsUp: jest.fn().mockResolvedValue(undefined),
+  cancelFocusMeetingHeadsUp: jest.fn().mockResolvedValue(undefined),
   // The demo seed starts a trip (demoSeed.ts), which goes through
   // useGroceryStore's real startTrip/endTrip.
   scheduleTripReminder: jest.fn(),
@@ -649,6 +651,22 @@ describe('demo mode', () => {
     const members = tasks.filter(t => t.groupId === supplements!.id && !t.completed);
     expect(members.length).toBeGreaterThan(0);
     expect(members.every(t => t.pinned)).toBe(true);
+
+    useDemoStore.getState().exitDemoMode();
+  });
+
+  it('seeds a daily task that pins every occurrence, and whose successor arrives pinned', () => {
+    useDemoStore.getState().enterDemoMode();
+    const plan = useTaskStore.getState().tasks.find(t => t.title === 'Plan tomorrow' && !t.completed);
+    expect(plan).toBeDefined();
+    expect(plan!.pinned).toBe(true);
+    expect(plan!.pinEachOccurrence).toBe(true);
+
+    useTaskStore.getState().completeTask(plan!.id);
+    const successor = useTaskStore.getState().tasks.find(t => t.title === 'Plan tomorrow' && !t.completed);
+    expect(successor).toBeDefined();
+    expect(successor!.id).not.toBe(plan!.id);
+    expect(successor!.pinned).toBe(true);
 
     useDemoStore.getState().exitDemoMode();
   });

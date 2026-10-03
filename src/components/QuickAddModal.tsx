@@ -27,7 +27,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useScrollEdgeFade } from '../hooks/useScrollEdgeFade';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, animation, interaction, iconSize, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, animation, interaction, iconSize, border, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { useTitleSelection } from '../hooks/useTitleSelection';
 import { animateLayout } from '../utils/layoutAnimation';
@@ -1512,6 +1512,9 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   const blocked = blockedReason(type, typeValues);
 
 
+  // A countdown no preset names, so it came from the field or the title.
+  const customTimedActive = timedMinutes != null && !(TIMED_MINUTE_OPTIONS as readonly number[]).includes(timedMinutes);
+
   const applyCustomTimed = (text: string) => {
     setCustomTimedText(text);
     const n = parseInt(text, 10);
@@ -2532,8 +2535,26 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                     </TouchableOpacity>
                   );
                 })}
+                {/* A duration no preset names (typed, or "for two minutes" in
+                    the title) gets a checked pill of its own, so it reads as
+                    picked rather than as nothing being selected. */}
+                {customTimedActive && timedMinutes != null && (
+                  <TouchableOpacity
+                    style={[styles.presetChip, styles.presetChipCustom]}
+                    onPress={() => { haptics.tap(); setTimedMinutes(null); setCustomTimedText(''); }}
+                    activeOpacity={interaction.activeOpacity}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: true }}
+                    accessibilityLabel={`Custom duration, ${formatDuration(timedMinutes)}. Tap to clear.`}
+                  >
+                    <View style={styles.presetChipCustomInner}>
+                      <Ionicons name="checkmark" size={iconSize.sm} color={colors.accentText} />
+                      <Text style={styles.presetChipCustomText}>{formatDuration(timedMinutes)}</Text>
+                    </View>
+                  </TouchableOpacity>
+                )}
                 <TextField
-                  style={styles.inlineCustomInput}
+                  style={[styles.inlineCustomInput, customTimedActive && customTimedText !== '' && styles.customInputActive]}
                   value={customTimedText}
                   onChangeText={applyCustomTimed}
                   keyboardType="number-pad"
@@ -2903,10 +2924,25 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                     </TouchableOpacity>
                   );
                 })}
+                {customEffortActive && estimatedMinutes != null && (
+                  <TouchableOpacity
+                    style={[styles.presetChip, styles.presetChipCustom]}
+                    onPress={() => applyCustomEffort('')}
+                    activeOpacity={interaction.activeOpacity}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: true }}
+                    accessibilityLabel={`Custom effort, ${formatDuration(estimatedMinutes)}. Tap to clear.`}
+                  >
+                    <View style={styles.presetChipCustomInner}>
+                      <Ionicons name="checkmark" size={iconSize.sm} color={colors.accentText} />
+                      <Text style={styles.presetChipCustomText}>{formatDuration(estimatedMinutes)}</Text>
+                    </View>
+                  </TouchableOpacity>
+                )}
               </View>
               <View style={styles.effortCustomRow}>
                 <TextField
-                  style={styles.effortCustomInput}
+                  style={[styles.effortCustomInput, customEffortActive && customEffortText !== '' && styles.customInputActive]}
                   value={customEffortText}
                   onChangeText={applyCustomEffort}
                   keyboardType="number-pad"
@@ -3441,6 +3477,9 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     // Height rather than lineHeight — see the TextInput note in CLAUDE.md.
     height: interaction.pillHeight,
     minWidth: 72,
+    // Reserved so the active outline doesn't nudge the row.
+    borderWidth: border.md,
+    borderColor: 'transparent',
   },
   // Room for roughly four steps before the list scrolls, so a long chain
   // can't push the sheet past the screen.
@@ -3760,7 +3799,25 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     paddingHorizontal: spacing.smd,
     paddingVertical: 7,
     minWidth: 110,
+    borderWidth: border.md,
+    borderColor: 'transparent',
   },
+  // A typed value that is the live one. Accent outline rather than the
+  // presets' fill: a number in a box otherwise reads as a draft. Paired with
+  // the checked pill (presetChipCustom) in the row above.
+  customInputActive: {
+    borderColor: colors.accent,
+    backgroundColor: colors.accentSubtle,
+    color: colors.accentText,
+  },
+  presetChipCustom: {
+    backgroundColor: colors.accentSubtle,
+    borderWidth: border.md,
+    borderColor: colors.accent,
+    paddingHorizontal: 14 - border.md,
+  },
+  presetChipCustomInner: { flexDirection: 'row', alignItems: 'center', gap: spacing.xxs },
+  presetChipCustomText: { color: colors.accentText, fontSize: font.sm, fontWeight: fontWeight.semibold },
   // The time-of-day chips, and only those since priority moved to a track: a
   // row of toggles rather than one field, so it stays pills — and the tint is
   // the segment's own colour, which a raised grey segment would drop.

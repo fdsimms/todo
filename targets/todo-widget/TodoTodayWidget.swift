@@ -27,8 +27,14 @@ struct TodoTodayProvider: AppIntentTimelineProvider {
         // The app calls WidgetCenter.reloadAllTimelines() after every task
         // mutation (and CompleteTaskIntent does the same), so this fallback
         // only matters if the app hasn't been opened in a while.
-        let nextRefresh = Calendar.current.date(byAdding: .minute, value: 15, to: Date()) ?? Date()
-        return Timeline(entries: [entry(for: configuration)], policy: .after(nextRefresh))
+        let current = entry(for: configuration)
+        var nextRefresh = Calendar.current.date(byAdding: .minute, value: 15, to: Date()) ?? Date()
+        // Sooner when the next meeting starts first, so its row moves on to the
+        // one after it at the moment it begins rather than up to 15 minutes late.
+        if let start = current.result.snapshot?.nextEvent(after: current.date)?.startDate, start < nextRefresh {
+            nextRefresh = start
+        }
+        return Timeline(entries: [current], policy: .after(nextRefresh))
     }
 
     private func entry(for configuration: TodayWidgetIntent) -> TodoEntry {
@@ -38,6 +44,40 @@ struct TodoTodayProvider: AppIntentTimelineProvider {
             pendingCompletionIds: loadPendingCompletionIds(),
             configuration: configuration
         )
+    }
+}
+
+/// The next meeting, in the grid's last row slot: same height as a task row,
+/// so the layout math in `WidgetLayout` is untouched. The glyph sits where a
+/// checkbox would, since there is nothing to tick.
+struct EventRowView: View {
+    let event: WidgetEvent
+    let palette: WidgetPalette
+    let height: CGFloat
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "calendar")
+                .font(.system(size: 11))
+                .foregroundColor(palette.textSecondary)
+                // The checkbox column's width (16 plus its 6 a side), so the
+                // title lines up with the task titles above it.
+                .frame(width: 28, height: height)
+            if let start = event.startDate {
+                Text(start, style: .time)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(palette.textSecondary)
+                    .fixedSize()
+            }
+            Text(event.title.isEmpty ? "Event" : event.title)
+                .font(.system(size: 12))
+                .foregroundColor(palette.text)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .layoutPriority(1)
+            Spacer(minLength: 0)
+        }
+        .frame(height: height)
     }
 }
 
@@ -150,6 +190,13 @@ struct TodoTodayWidgetEntryView: View {
 
     private var doneToday: Int { entry.result.snapshot?.doneToday ?? 0 }
 
+    /// Today's next meeting, as of this entry. Only on the unfiltered Today
+    /// widget: one configured for a category or for pins is about those.
+    private var nextEvent: WidgetEvent? {
+        guard entry.configuration.categoryFilter == nil, !entry.configuration.pinnedOnly else { return nil }
+        return entry.result.snapshot?.nextEvent(after: entry.date)
+    }
+
     /// A small widget's header already spends its 158pt on a glyph, a title
     /// and the add button — there's no room left for shortcut links too.
     private var showsShortcuts: Bool { family != .systemSmall }
@@ -226,7 +273,15 @@ struct TodoTodayWidgetEntryView: View {
                     .font(.caption)
                     .lineLimit(1)
             }
-            if let agenda = entry.result.snapshot?.agenda, let line = agendaLine(agenda) {
+            // The next meeting takes the third line when there is one: it's
+            // the thing on the day with a time attached, where the agenda line
+            // restates counts the headline already gives.
+            if let event = nextEvent, let start = event.startDate {
+                (Text(start, style: .time) + Text(" " + (event.title.isEmpty ? "Event" : event.title)))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            } else if let agenda = entry.result.snapshot?.agenda, let line = agendaLine(agenda) {
                 Text(line)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -254,7 +309,9 @@ struct TodoTodayWidgetEntryView: View {
         let perColumn = WidgetLayout.rowsPerColumn(for: family)
         // Small is one column; medium and large are two.
         let columns = family == .systemSmall ? 1 : 2
-        let shown = Array(tasks.prefix(perColumn * columns))
+        // The next meeting takes the grid's last slot, so one task fewer fits.
+        let event = nextEvent
+        let shown = Array(tasks.prefix(perColumn * columns - (event == nil ? 0 : 1)))
         let leftColumn = Array(shown.prefix(perColumn))
         let rightColumn = Array(shown.dropFirst(perColumn))
 
@@ -276,9 +333,10 @@ struct TodoTodayWidgetEntryView: View {
                         // one, and titles truncate at a different point in
                         // each. Same reason the grid keeps its empty slots.
                         HStack(alignment: .top, spacing: WidgetLayout.columnGap) {
-                            columnView(leftColumn, palette: palette, rowHeight: rowHeight)
+                            columnView(leftColumn, palette: palette, rowHeight: rowHeight,
+                                       footer: columns == 1 ? event : nil)
                             if columns > 1 {
-                                columnView(rightColumn, palette: palette, rowHeight: rowHeight)
+                                columnView(rightColumn, palette: palette, rowHeight: rowHeight, footer: event)
                             }
                         }
                         .frame(height: gridHeight, alignment: .top)
@@ -294,7 +352,8 @@ struct TodoTodayWidgetEntryView: View {
     private func columnView(
         _ tasks: [WidgetTask],
         palette: WidgetPalette,
-        rowHeight: CGFloat
+        rowHeight: CGFloat,
+        footer: WidgetEvent? = nil
     ) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(tasks) { task in
@@ -306,6 +365,11 @@ struct TodoTodayWidgetEntryView: View {
                 )
             }
             Spacer(minLength: 0)
+            // Pinned to the bottom slot, so it sits in the same place on a
+            // light day and a full one.
+            if let footer {
+                EventRowView(event: footer, palette: palette, height: rowHeight)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

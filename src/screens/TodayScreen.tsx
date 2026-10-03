@@ -164,7 +164,7 @@ import { useHealthStore } from '../store/useHealthStore';
 import { useWeatherStore } from '../store/useWeatherStore';
 import { weatherConditionAdjective, weatherIconFor } from '../utils/weatherCondition';
 import { capitalize } from '../utils/capitalize';
-import { eventsIn, type BusyEvent } from '../utils/calendarBusy';
+import { busyMinutesIn, eventsIn, type BusyEvent } from '../utils/calendarBusy';
 import { useHiddenEventsStore } from '../store/useHiddenEventsStore';
 import { hiddenEventKey } from '../utils/hiddenEvents';
 import { TodayEventsSheet } from '../components/TodayEventsSheet';
@@ -2440,7 +2440,14 @@ export function TodayScreen() {
     // copy, not a relocation — which is what stops the list reflowing when one
     // is pinned, and what lets stacks keep working while pins exist (the old
     // pinned layout dropped visibleGroupItems on the floor and flattened them).
-    const ungrouped = filtered.filter(t => !t.groupId);
+    //
+    // The one exception is a task with no category: it has no section to stay
+    // in, so its second row would just sit in the headerless block at the top
+    // of the list beside the pinned block it is already in.
+    const pinnedIds = new Set(pinnedTasks.map(t => t.id));
+    const ungrouped = filtered.filter(
+      t => !t.groupId && !(t.category === null && pinnedIds.has(t.id)),
+    );
     // Stacks slot into the task order by sortOrder (see makeCategoryGroups) —
     // but only while the list is in its hand-ordered state. Any other sort
     // reorders the tasks by something sortOrder says nothing about, so the
@@ -2453,7 +2460,7 @@ export function TodayScreen() {
     // It's also what lets a category holding nothing but events have a header
     // at all — makeCategoryGroups only knows about tasks and stacks.
     return insertContextRows(grouped, contextRows, { categoryOrder: allCategories });
-  }, [filtered, allCategories, visibleGroupItems, sort, contextRows]);
+  }, [filtered, allCategories, visibleGroupItems, sort, contextRows, pinnedTasks]);
 
   // The rows under each category header, for the header's own pin toggle and
   // the pin glyph that reports its state. Built from `listItems` rather than
@@ -4003,15 +4010,32 @@ export function TodayScreen() {
     return minutes > 0 ? formatDuration(minutes) : undefined;
   }, [completedToday]);
 
+  // Meeting time still ahead today, beside the task time still planned, so
+  // the line says how much of the rest of the day is spoken for and not only
+  // how much of it is tasks. From now rather than from the day's start, the
+  // same forward reading "planned" gives (it counts only what's outstanding),
+  // and without the events hidden from Today. `minuteTick` keeps it following
+  // the clock as meetings end.
+  const eventsLeftLabel = useMemo(() => {
+    const now = new Date();
+    const minutes = busyMinutesIn(
+      todayCalendarEvents.filter(e => !isEventHidden(e)),
+      now,
+      todayCalendarDayEnd,
+    );
+    return minutes > 0 ? formatDuration(minutes) : undefined;
+  }, [todayCalendarEvents, isEventHidden, todayCalendarDayEnd, minuteTick]);
+
   // Dropped by simplified mode: "40m done · 2h 15m planned" is a reading of the
   // day rather than a part of it, and it needs the effort ratings that mode
   // also takes away.
   const workloadSubtitle =
     viewMode === 'today' && !featureHidden('workloadSubtitle', simpleMode)
-    && (plannedLabel || completedTodayLabel)
+    && (plannedLabel || completedTodayLabel || eventsLeftLabel)
       ? [
           completedTodayLabel ? `${completedTodayLabel} done` : undefined,
           plannedLabel ? `${plannedLabel} planned` : undefined,
+          eventsLeftLabel ? `${eventsLeftLabel} of events left` : undefined,
         ]
           .filter(Boolean)
           .join(' · ')

@@ -76,7 +76,8 @@ import { tagColor } from '../utils/tagColor';
 import { useTaskStore, CONTENT_FIELDS, derivedTargetCount, type TimeBlockPlan } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCalendarStore } from '../store/useCalendarStore';
-import { nudgeReminderPastMeeting } from '../utils/reminderNudge';
+import { meetingAtStart, nudgeReminderPastMeeting } from '../utils/reminderNudge';
+import { calendarCovers } from '../utils/eventConflicts';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
@@ -124,7 +125,7 @@ import { CalendarChoiceSheet } from './CalendarChoiceSheet';
 import { QuickEventSheet } from './QuickEventSheet';
 import { TaskRelationPickerSheet } from './TaskRelationPickerSheet';
 import { blockerFields, blockerIdsOf, describeBlocks } from '../utils/blocking';
-import { displayTitleFor, isMissableMealPlanTask, getVisibleAt } from '../utils/visibilityUtils';
+import { displayTitleFor, isMissableMealPlanTask, getVisibleAt, onLogicalDay } from '../utils/visibilityUtils';
 import { nextChainStepTitle } from '../utils/chain';
 import { RecurrencePicker } from './RecurrencePicker';
 import { SegmentedControl } from './SegmentedControl';
@@ -553,6 +554,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [durationText, setDurationText] = useState('');
   const [durationUnit, setDurationUnit] = useState<'min' | 'hr'>('min');
   const [pinned, setPinned] = useState(false);
+  const [pinEachOccurrence, setPinEachOccurrence] = useState(false);
   const [vacationPause, setVacationPause] = useState(false);
   const [excludeFromSuggestions, setExcludeFromSuggestions] = useState(false);
   const [linkUrl, setLinkUrl] = useState<string | null>(null);
@@ -721,6 +723,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const activeHoursEnd = useSettingsStore(s => s.activeHoursEnd);
   const calendarEvents = useCalendarStore(s => s.events);
   const calendarLoaded = useCalendarStore(s => s.loaded);
+  const calendarWindowStart = useCalendarStore(s => s.windowStart);
+  const calendarWindowEnd = useCalendarStore(s => s.windowEnd);
 
   // Read off the store rather than the `task` prop: linkTimeBlock writes
   // the id after the event card saves, and the row has to change from
@@ -745,6 +749,18 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     const nudge = nudgeReminderPastMeeting(reminderTime, calendarEvents);
     return nudge.nudged ? nudge : null;
   }, [reminderTime, calendarReadEnabled, reminderMeetingNudgeEnabled, calendarLoaded, calendarEvents]);
+
+  // Whether the time window opens inside a meeting on the task's day, for the
+  // row to say so. Only for a dated task (no day, no meeting to check) and a
+  // day the calendar was read for; a day it wasn't is unknown, not clear.
+  const windowStartMeeting = useMemo(() => {
+    if (!windowStart || !dueDate || !calendarReadEnabled || !calendarLoaded) return null;
+    const dayStart = getTaskDayStart(dueDate, dayResetTime);
+    const dayEnd = new Date(dayStart);
+    dayEnd.setDate(dayEnd.getDate() + 1);
+    if (!calendarCovers(calendarWindowStart, calendarWindowEnd, dayStart, dayEnd)) return null;
+    return meetingAtStart(calendarEvents, onLogicalDay(dayStart, windowStart));
+  }, [windowStart, dueDate, dayResetTime, calendarReadEnabled, calendarLoaded, calendarWindowStart, calendarWindowEnd, calendarEvents]);
 
   const scheduleTooltipAnim = useRef(new Animated.Value(0)).current;
   const hadScheduleParse = useRef(false);
@@ -865,7 +881,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setRecurrenceFromCompletion(task.recurrenceFromCompletion);
       setRecurrenceEndDate(task.recurrenceEndDate ? new Date(task.recurrenceEndDate) : null);
       setRecurrenceCount(task.recurrenceCount ?? null);
-      setPriority(task.priority); setEffort(task.effort); setEstimatedMinutes(task.estimatedMinutes ?? null); setPinned(task.pinned);
+      setPriority(task.priority); setEffort(task.effort); setEstimatedMinutes(task.estimatedMinutes ?? null); setPinned(task.pinned); setPinEachOccurrence(task.pinEachOccurrence ?? false);
       setActualMinutes(task.actualMinutes ?? null);
       setTimedMinutes(task.timedMinutes ?? null);
       setHealthMetric(task.healthMetric ?? null);
@@ -922,7 +938,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setRecurrenceFromCompletion(initialDraft?.recurrenceFromCompletion ?? false);
       setRecurrenceEndDate(initialDraft?.recurrenceEndDate ?? null);
       setRecurrenceCount(initialDraft?.recurrenceCount ?? null);
-      setPriority(initialDraft?.priority ?? 0); setEffort(initialDraft?.effort ?? 0); setEstimatedMinutes(initialDraft?.estimatedMinutes ?? null); setPinned(false);
+      setPriority(initialDraft?.priority ?? 0); setEffort(initialDraft?.effort ?? 0); setEstimatedMinutes(initialDraft?.estimatedMinutes ?? null); setPinned(false); setPinEachOccurrence(false);
       setActualMinutes(null);
       setTimedMinutes(initialDraft?.timedMinutes ?? null);
       // No initialDraft counterpart: quick add has no Health kind to pass one.
@@ -1057,6 +1073,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       healthTarget: task?.healthTarget ?? null,
       healthFollowGoal: task?.healthFollowGoal ?? false,
       pinned: task?.pinned ?? false,
+      pinEachOccurrence: task ? (task.recurrenceType !== 'none' && (task.pinEachOccurrence ?? false)) : false,
       chainEnabled: task ? task.chainEnabled : (initialDraft?.chainEnabled ?? false),
       chainItems: task ? task.chainItems : (initialDraft?.chainItems ?? []),
       rotationItems: task ? task.rotationItems : (initialDraft?.rotationItems ?? []),
@@ -1491,6 +1508,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       recurrenceFromCompletion,
       sortOrder: task?.sortOrder ?? 0,
       pinned, priority, effort, estimatedMinutes, actualMinutes, timedMinutes,
+      // Cleared with the schedule: it only means anything on a repeating task.
+      pinEachOccurrence: recurrenceType !== 'none' ? pinEachOccurrence : false,
       healthMetric, healthTarget,
       // Cleared when what it follows goes, like followWaterTarget below: it
       // only means anything on one of the three ring metrics.
@@ -2154,7 +2173,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       recurrenceCount,
       priority, effort, estimatedMinutes, actualMinutes, timedMinutes, healthMetric, healthTarget,
       healthFollowGoal: followsRingGoal(healthMetric) ? healthFollowGoal : false,
-      pinned, chainEnabled, chainItems, rotationItems, chainIndex, chainStepOnSchedule, vacationPause,
+      pinned, pinEachOccurrence: recurrenceType !== 'none' ? pinEachOccurrence : false, chainEnabled, chainItems, rotationItems, chainIndex, chainStepOnSchedule, vacationPause,
       excludeFromSuggestions,
       polarity,
       showStreak,
@@ -2301,6 +2320,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
 
   // Whether the current estimate is a precise value that isn't one of the presets.
   const customEffortActive = estimatedMinutes != null && estimatedMinutes !== effortToMinutes(effort);
+  // A countdown no preset names, so it came from the typed field.
+  const customDurationActive = timedMinutes != null && !(DURATION_PRESETS as readonly number[]).includes(timedMinutes);
 
   const applyEffortPreset = (e: Effort) => {
     setEffort(e);
@@ -3173,10 +3194,31 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                     </Text>
                   </TouchableOpacity>
                 ))}
+                {/* A typed duration gets a pill of its own among the presets,
+                    so it reads as picked rather than as a number sitting in a
+                    box. Tapping it clears, same as an active preset. */}
+                {customDurationActive && timedMinutes != null && (
+                  <TouchableOpacity
+                    style={[styles.pill, styles.pillCustomActive]}
+                    onPress={() => {
+                      haptics.tap();
+                      setTimedMinutes(null);
+                      setDurationText('');
+                    }}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: true }}
+                    accessibilityLabel={`Custom duration, ${formatDuration(timedMinutes)}. Tap to clear.`}
+                  >
+                    <View style={styles.pillCustomInner}>
+                      <Ionicons name="checkmark" size={iconSize.sm} color={colors.accentText} />
+                      <Text style={styles.pillCustomText}>{formatDuration(timedMinutes)}</Text>
+                    </View>
+                  </TouchableOpacity>
+                )}
               </View>
               <View style={styles.customEffortRow}>
                 <TextField
-                  style={styles.customEffortInput}
+                  style={[styles.customEffortInput, customDurationActive && durationText !== '' && styles.customInputActive]}
                   value={durationText}
                   onChangeText={t => { setDurationText(t); applyDuration(t, durationUnit); }}
                   keyboardType="number-pad"
@@ -4560,6 +4602,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               label="Time window"
               hint="Only active for part of the day, then expires."
               value={timeWindowSummary}
+              caption={windowStartMeeting
+                ? `Starts during ${windowStartMeeting.title ? `"${windowStartMeeting.title}"` : 'a calendar event'}, which runs until ${formatTimeOfDay(windowStartMeeting.until, use24HourTime)}`
+                : undefined}
               expanded={showTimeWindow}
               onPress={() => { animateLayout(); setShowTimeWindow(v => !v); }}
               onClear={(windowStart || windowEnd)
@@ -5932,19 +5977,24 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 );
               })}
               <TouchableOpacity
-                style={[styles.pill, customEffortActive && styles.pillActiveNeutral]}
+                style={[styles.pill, customEffortActive && styles.pillCustomActive]}
                 onPress={openCustomEffort}
               >
-                <Text style={[styles.pillText, customEffortActive && styles.pillTextActive]}>
-                  {customEffortActive && estimatedMinutes != null ? formatDuration(estimatedMinutes) : 'Custom'}
-                </Text>
+                {customEffortActive && estimatedMinutes != null ? (
+                  <View style={styles.pillCustomInner}>
+                    <Ionicons name="checkmark" size={iconSize.sm} color={colors.accentText} />
+                    <Text style={styles.pillCustomText}>{formatDuration(estimatedMinutes)}</Text>
+                  </View>
+                ) : (
+                  <Text style={styles.pillText}>Custom</Text>
+                )}
                 <Text style={styles.pillHint}>exact</Text>
               </TouchableOpacity>
             </View>
             {customEffortOpen && (
               <View style={styles.customEffortRow}>
                 <TextField
-                  style={styles.customEffortInput}
+                  style={[styles.customEffortInput, customEffortActive && customEffortText !== '' && styles.customInputActive]}
                   value={customEffortText}
                   onChangeText={t => { setCustomEffortText(t); applyCustomEffort(t, customEffortUnit); }}
                   keyboardType="number-pad"
@@ -5969,7 +6019,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           },
           {
             key: 'pin', label: 'Pin to Today',
-            keywords: ['pinned', 'top', 'stick', 'favourite', 'favorite'],
+            keywords: ['pinned', 'top', 'stick', 'favourite', 'favorite', 'repeat', 'recurring', 'every', 'occurrence', 'always'],
             node: (
               <>
             <TouchableOpacity
@@ -5989,6 +6039,25 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 <View style={[styles.toggleKnob, pinned && styles.toggleKnobOn]} />
               </View>
             </TouchableOpacity>
+            {recurrenceType !== 'none' && (
+              <TouchableOpacity
+                style={styles.optionRow}
+                onPress={() => { haptics.tap(); setPinEachOccurrence(v => !v); }}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="switch"
+                accessibilityLabel="Pin every occurrence"
+                accessibilityState={{ checked: pinEachOccurrence }}
+              >
+                <PinIcon filled={pinEachOccurrence} size={18} color={pinEachOccurrence ? colors.orange : colors.textSecondary} />
+                <View style={styles.optionContent}>
+                  <Text style={styles.optionLabel}>Pin every occurrence</Text>
+                  <Text style={styles.optionHint}>Each new occurrence starts out pinned to Today</Text>
+                </View>
+                <View style={[styles.toggle, pinEachOccurrence && styles.toggleOn]}>
+                  <View style={[styles.toggleKnob, pinEachOccurrence && styles.toggleKnobOn]} />
+                </View>
+              </TouchableOpacity>
+            )}
               </>
             ),
           },
@@ -6571,7 +6640,16 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.text, fontSize: font.md, fontWeight: '600',
     backgroundColor: colors.bgTertiary, borderRadius: radius.sm,
     paddingHorizontal: spacing.smd, paddingVertical: 8, minWidth: 72, textAlign: 'center',
+    // Reserved so the active outline below doesn't nudge the row.
+    borderWidth: border.md, borderColor: 'transparent',
   },
+  // A typed value that is the live one. Accent rather than the presets'
+  // neutral fill, because a number in a box otherwise reads as a draft: the
+  // outline on the field and the checked pill above it are what say "set".
+  customInputActive: { borderColor: colors.accent, backgroundColor: colors.accentSubtle, color: colors.accentText },
+  pillCustomActive: { backgroundColor: colors.accentSubtle, borderWidth: border.md, borderColor: colors.accent, paddingHorizontal: 14 - border.md },
+  pillCustomInner: { flexDirection: 'row', alignItems: 'center', gap: spacing.xxs },
+  pillCustomText: { color: colors.accentText, fontSize: font.sm, fontWeight: '600' },
   // A track next to the number it labels, so it takes a width rather than
   // stretching across the row the way one owning a line does.
   unitToggle: { width: 104 },

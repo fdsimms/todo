@@ -14,6 +14,7 @@ import {
   Alert,
   FlatList,
   Keyboard,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -383,6 +384,10 @@ export function FoodLogEntrySheet({
   // when this half renders) clear of the keyboard instead of leaving it to a
   // plain ScrollView — same mechanism as every other keyboard-heavy sheet.
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
+  // The search half's results list is a FlatList, so it needs its own: without
+  // one the last rows sit behind the keyboard with nothing to scroll them
+  // clear.
+  const listScroll = useKeyboardInsetScroll<FlatList>({ ownsSheet: true });
   // The search field, refocused after a burst save — see handleSave.
   // Set by handleSave's burst branch, consumed by the effect below once the
   // search field it wants to focus has actually mounted.
@@ -1577,6 +1582,9 @@ export function FoodLogEntrySheet({
           </ScrollView>
         ) : (
           <>
+            {/* A tap on the gaps around the search field and the chips puts the
+                keyboard away; the controls inside handle their own taps. */}
+            <Pressable onPress={Keyboard.dismiss} accessible={false}>
             <View style={styles.searchRow}>
               <Ionicons name="search" size={iconSize.sm} color={colors.textTertiary} />
               <TextInput
@@ -1584,6 +1592,7 @@ export function FoodLogEntrySheet({
                 {...searchFilter.props}
                 style={styles.searchInput}
                 placeholder="Search foods and recipes"
+                inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
                 placeholderTextColor={colors.textTertiary}
                 autoCorrect={false}
               />
@@ -1662,13 +1671,20 @@ export function FoodLogEntrySheet({
                 <Text style={styles.declineMealText}>Don't ask about this meal</Text>
               </TouchableOpacity>
             )}
+            </Pressable>
             <FlatList
+              ref={listScroll.ref}
               style={styles.list}
               contentContainerStyle={styles.listContent}
               data={results}
               keyExtractor={c => c.key}
               renderItem={renderRow}
               keyboardShouldPersistTaps="handled"
+              // The only way to put the keyboard away from here: nothing else
+              // on this half is tappable-to-dismiss, and a pageSheet has no
+              // outside to tap.
+              keyboardDismissMode="on-drag"
+              {...listScroll.props}
               ListHeaderComponent={helpings.length > 0 ? (
                 <View>
                   <Text style={[styles.label, styles.helpingsLabel]}>LOG THE SAME AGAIN</Text>

@@ -22,6 +22,7 @@ import { resolveActiveTrip } from './activeTrip';
 import { recipeIndex, slotLabel, titleForEntry, uncookedEntries } from './mealPlan';
 import { compareKitchenEntries, useUpEntries, type KitchenEntry } from './kitchenInventory';
 import { agendaCounts, type AgendaCounts } from './dailyAgenda';
+import { occupiesTime, type BusyEvent } from './calendarBusy';
 
 /**
  * Everything the iOS widgets read, and the one place its shape is decided.
@@ -112,6 +113,20 @@ export interface WidgetKitchenItem {
   useBy: string | null;
 }
 
+/** A meeting still ahead today, as raw stamps for the widget to format. */
+export interface WidgetEvent {
+  /** The event's own title; empty for an untitled one. */
+  title: string;
+  start: string;
+  end: string;
+}
+
+/**
+ * How many of today's meetings ride along. More than one so the widget can
+ * move on to the next when one starts, without the app having to write again.
+ */
+export const MAX_WIDGET_EVENTS = 3;
+
 export interface WidgetSnapshot {
   updatedAt: string;
   visibleTasks: WidgetTask[];
@@ -129,6 +144,13 @@ export interface WidgetSnapshot {
   groceries: WidgetGroceries | null;
   meals: WidgetMeal[];
   kitchen: WidgetKitchenItem[];
+  /**
+   * Today's meetings still to start, soonest first, or **null when the
+   * calendar wasn't read** (switched off, a failed read, or a background run,
+   * which never reads it). The widget shows nothing for null, where an empty
+   * list would be "no more meetings today".
+   */
+  upcomingEvents: WidgetEvent[] | null;
 }
 
 /**
@@ -259,6 +281,30 @@ export interface SnapshotInput {
   meals: readonly MealPlanEntry[] | null;
   recipes: readonly Recipe[];
   kitchen: readonly KitchenEntry[] | null;
+  /** The calendar read, or null when there isn't a trustworthy one. */
+  events: readonly BusyEvent[] | null;
+  /** The end of the logical day, so tonight's meetings count and tomorrow's don't. */
+  dayEnd: Date;
+}
+
+/**
+ * The meetings still to start before the day ends, soonest first. Only events
+ * that take time (`occupiesTime`), the same ones every busy reader counts.
+ */
+export function buildUpcomingEvents(
+  events: readonly BusyEvent[],
+  now: Date,
+  dayEnd: Date,
+): WidgetEvent[] {
+  return events
+    .filter(e => occupiesTime(e))
+    .filter(e => {
+      const start = Date.parse(e.start);
+      return start > now.getTime() && start < dayEnd.getTime();
+    })
+    .sort((a, b) => Date.parse(a.start) - Date.parse(b.start))
+    .slice(0, MAX_WIDGET_EVENTS)
+    .map(e => ({ title: e.title.trim(), start: e.start, end: e.end }));
 }
 
 export function buildWidgetSnapshot(input: SnapshotInput): WidgetSnapshot {
@@ -285,5 +331,6 @@ export function buildWidgetSnapshot(input: SnapshotInput): WidgetSnapshot {
     groceries: input.grocery ? buildGroceries(input.grocery, input.now) : null,
     meals: input.meals ? buildMeals(input.meals, input.recipes) : [],
     kitchen: input.kitchen ? buildKitchen(input.kitchen) : [],
+    upcomingEvents: input.events ? buildUpcomingEvents(input.events, input.now, input.dayEnd) : null,
   };
 }

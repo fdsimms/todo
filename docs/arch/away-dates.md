@@ -136,10 +136,11 @@ Ranked by cost.
 2. **Away days carry a cue in `WhenPicker`** *(built, and in the month grid
    too)*. There is one choke point:
    `buildDayLoads`, consumed by the picker and by the look-ahead sheet's day
-   strip. *(Not built:)* `deloadPlan` and `buildPushPlan` ranking those days
-   last instead of treating them as ordinary. This is where the feature
-   stops being decoration — and see the rule below, because it is a cue and
-   never a refusal.
+   strip. *(Built:)* every suggested date ranks those days last instead of
+   treating them as ordinary, through `snoozeEngine`'s `AWAY_PENALTY`: the
+   picker's Suggest, `deloadPlan` and `projectPull`. *(Not built:)*
+   `buildPushPlan`. This is where the feature stops being decoration — and
+   see the rule below, because it is a cue and never a refusal.
    - The `dayLoad` rule that "no cue is never *this day is free*" is not in
      tension with this. That rule is about absent information; away dates are
      information the user typed.
@@ -173,7 +174,8 @@ ranks. It never gates.** Concretely:
   day to put a task on, so it gets a cue in the same channel `buildDayLoads`
   already paints day weight in, and nothing else.
 - **`deloadPlan` and `buildPushPlan` may rank an away day last, never exclude
-  it.** Both already propose per-row with everything untickable, so a proposal
+  it.** `AWAY_PENALTY` is finite for exactly this reason: with every candidate
+  away, the best of them still wins. Both already propose per-row with everything untickable, so a proposal
   that avoids the trip is a default the user can overrule, which is the whole
   point.
 - **Vacation mode is already opt-in per row, and this design inherits that
@@ -581,6 +583,27 @@ reading and the destination's `daily=` forecast. Three rules hold it:
   it would go stale and then be believed.
 
 ---
+
+## A trip from a calendar event
+
+An event spanning days (`spansDays` in `src/utils/tripEvents.ts`) gets "Make this a trip" in the
+event sheet's details: a project named after it, away for exactly its days, then opened. It is
+**an offer the person takes, never a detection**. A conference in town and a week in Lisbon look the
+same to a calendar, so nothing reads an event as a trip on its own, and availability isn't consulted
+(calendars create all-day events as Free, and "Lisbon" left at the default is still a trip).
+
+- **The dates.** An all-day event's exclusive end is the return day, so the away days are exactly
+  the event's days. A timed one returns on the day it ends, the same as a return date typed in.
+- **Or onto a project that already exists** ("Add to a project"): a trip planned before it was
+  booked. One that already holds away dates asks before they're replaced, since the span drives
+  vacation mode, the away list and look ahead.
+- **No stored link to the event.** A project already away for those exact dates is the same trip,
+  however its dates got there, so the button opens it rather than making a second one
+  (`projectForTripEvent`).
+- **It needs its own read.** The fortnight read is too short for a trip planned weeks out, so
+  `useCalendarStore.refreshAhead` reads 90 days of events spanning days only, on the Calendar
+  screen's focus. That is the one place a far day's events are drawn, and such a day still reads as
+  not known for anything else.
 
 ## What this is not: the itinerary boundary
 

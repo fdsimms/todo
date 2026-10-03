@@ -587,6 +587,30 @@ describe('entriesForDayLive', () => {
   });
 });
 
+describe('entriesInRangeLive', () => {
+  it('filters the loaded window when it holds the whole range', () => {
+    loadWeek([entry('2026-08-04', 'dinner'), entry('2026-08-07', 'lunch')]);
+    (dbGetMealPlanEntries as jest.Mock).mockClear();
+
+    const result = useMealPlanStore.getState().entriesInRangeLive('2026-08-05', '2026-08-09');
+
+    expect(result.map(e => e.date)).toEqual(['2026-08-07']);
+    expect(dbGetMealPlanEntries).not.toHaveBeenCalled();
+  });
+
+  it('reads SQLite for a range reaching past the window, and leaves the window alone', () => {
+    loadWeek([entry('2026-08-05', 'dinner')]);
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([entry('2026-08-20', 'lunch')]);
+
+    const result = useMealPlanStore.getState().entriesInRangeLive('2026-08-01', '2026-09-11');
+
+    expect(dbGetMealPlanEntries).toHaveBeenCalledWith('2026-08-01', '2026-09-11');
+    expect(result.map(e => e.date)).toEqual(['2026-08-20']);
+    expect(useMealPlanStore.getState().rangeStart).toBe('2026-08-03');
+    expect(getEntries().map(e => e.date)).toEqual(['2026-08-05']);
+  });
+});
+
 describe('initialize', () => {
   it('reloads whatever window is loaded, so a database swap is picked up', () => {
     loadWeek([entry('2026-08-05', 'dinner')]);
