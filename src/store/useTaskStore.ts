@@ -4847,7 +4847,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         seenAt: now,
         dueDate: nextDue.toISOString(),
         deferUntil: null,
-        pinned: false,
+        // Same as completeTask's successor: pinned only when the task asked
+        // for every occurrence to be.
+        pinned: !!task.pinEachOccurrence,
         progressCount: 0,
         // Same as completeTask's successor: the count resets, the mute carries.
         postponeCount: 0,
@@ -8054,6 +8056,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       followUpTaskSourceId: null,
       vacationPause: false,
       excludeFromSuggestions: false,
+      pinEachOccurrence: false,
       timerStartedAt: null,
       actualMinutes: null,
       timedMinutes: null,
@@ -8272,6 +8275,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       followUpTaskSourceId: null,
       vacationPause: false,
       excludeFromSuggestions: false,
+      pinEachOccurrence: false,
       timerStartedAt: null,
       actualMinutes: null,
       timedMinutes: null,
@@ -8847,6 +8851,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           linkUrl: task.linkUrl,
           vacationPause: task.vacationPause,
           excludeFromSuggestions: task.excludeFromSuggestions,
+          pinEachOccurrence: task.pinEachOccurrence,
           projectId: created.id,
           groupId,
           // Last time's dates belong to last time, so one-offs start undated.

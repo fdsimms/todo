@@ -14,6 +14,7 @@ import {
   Alert,
   FlatList,
   Keyboard,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -383,6 +384,10 @@ export function FoodLogEntrySheet({
   // when this half renders) clear of the keyboard instead of leaving it to a
   // plain ScrollView — same mechanism as every other keyboard-heavy sheet.
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
+  // The search half's results list is a FlatList, so it needs its own: without
+  // one the last rows sit behind the keyboard with nothing to scroll them
+  // clear.
+  const listScroll = useKeyboardInsetScroll<FlatList>({ ownsSheet: true });
   // The search field, refocused after a burst save — see handleSave.
   // Set by handleSave's burst branch, consumed by the effect below once the
   // search field it wants to focus has actually mounted.
@@ -1228,6 +1233,18 @@ export function FoodLogEntrySheet({
 
   const handleCancel = () => requestClose(onClose);
 
+  // The one door into the food database search, shared by the action row and
+  // the empty state so a missing key is answered the same way from both.
+  const openFoodDatabase = () => {
+    haptics.tap();
+    Keyboard.dismiss();
+    if (hasFdcKey) { setDbSearchOpen(true); return; }
+    // The key row is shown only while lookups are on, so with them off this
+    // lands on the switch that brings it back.
+    const entryId = productLookupEnabled ? 'fdcApiKey' : 'productLookupEnabled';
+    requestClose(() => { onClose(); navigateToFoodSearchSettings(navigation, entryId); });
+  };
+
   // ==== render. Everything below is JSX ====
   const renderRow = ({ item }: { item: Candidate }) => (
     <TouchableOpacity
@@ -1565,6 +1582,9 @@ export function FoodLogEntrySheet({
           </ScrollView>
         ) : (
           <>
+            {/* A tap on the gaps around the search field and the chips puts the
+                keyboard away; the controls inside handle their own taps. */}
+            <Pressable onPress={Keyboard.dismiss} accessible={false}>
             <View style={styles.searchRow}>
               <Ionicons name="search" size={iconSize.sm} color={colors.textTertiary} />
               <TextInput
@@ -1572,6 +1592,7 @@ export function FoodLogEntrySheet({
                 {...searchFilter.props}
                 style={styles.searchInput}
                 placeholder="Search foods and recipes"
+                inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
                 placeholderTextColor={colors.textTertiary}
                 autoCorrect={false}
               />
@@ -1605,33 +1626,40 @@ export function FoodLogEntrySheet({
                 )}
               </View>
             )}
-            {(!!onScan || !!onEstimate || !!onSavedMeal) && (
-              <View style={styles.actionRow}>
-                {!!onScan && (
-                  <InlineAction
-                    label="Scan a barcode"
-                    icon="barcode-outline"
-                    onPress={() => { haptics.tap(); Keyboard.dismiss(); onScan(); }}
-                  />
-                )}
-                {!!onSavedMeal && (
-                  <InlineAction
-                    label="Log a saved meal"
-                    icon="bookmark-outline"
-                    variant="neutral"
-                    onPress={() => { haptics.tap(); Keyboard.dismiss(); onSavedMeal(); }}
-                  />
-                )}
-                {!!onEstimate && (
-                  <InlineAction
-                    label="Describe what you ate instead"
-                    icon="sparkles-outline"
-                    variant="neutral"
-                    onPress={() => { haptics.tap(); Keyboard.dismiss(); onEstimate(query); }}
-                  />
-                )}
-              </View>
-            )}
+            <View style={styles.actionRow}>
+              {!!onScan && (
+                <InlineAction
+                  label="Scan a barcode"
+                  icon="barcode-outline"
+                  onPress={() => { haptics.tap(); Keyboard.dismiss(); onScan(); }}
+                />
+              )}
+              {/* Always offered: the catalog list above only holds foods that
+                  already have figures, and this is the way to a food that
+                  doesn't. It searches what is typed above. */}
+              <InlineAction
+                label={hasFdcKey ? 'Search a food database' : 'Add a food database key'}
+                icon="search-outline"
+                variant="neutral"
+                onPress={openFoodDatabase}
+              />
+              {!!onSavedMeal && (
+                <InlineAction
+                  label="Log a saved meal"
+                  icon="bookmark-outline"
+                  variant="neutral"
+                  onPress={() => { haptics.tap(); Keyboard.dismiss(); onSavedMeal(); }}
+                />
+              )}
+              {!!onEstimate && (
+                <InlineAction
+                  label="Describe what you ate instead"
+                  icon="sparkles-outline"
+                  variant="neutral"
+                  onPress={() => { haptics.tap(); Keyboard.dismiss(); onEstimate(query); }}
+                />
+              )}
+            </View>
             {!!onDeclineMeal && (
               <TouchableOpacity
                 style={styles.declineMeal}
@@ -1643,13 +1671,20 @@ export function FoodLogEntrySheet({
                 <Text style={styles.declineMealText}>Don't ask about this meal</Text>
               </TouchableOpacity>
             )}
+            </Pressable>
             <FlatList
+              ref={listScroll.ref}
               style={styles.list}
               contentContainerStyle={styles.listContent}
               data={results}
               keyExtractor={c => c.key}
               renderItem={renderRow}
               keyboardShouldPersistTaps="handled"
+              // The only way to put the keyboard away from here: nothing else
+              // on this half is tappable-to-dismiss, and a pageSheet has no
+              // outside to tap.
+              keyboardDismissMode="on-drag"
+              {...listScroll.props}
               ListHeaderComponent={helpings.length > 0 ? (
                 <View>
                   <Text style={[styles.label, styles.helpingsLabel]}>LOG THE SAME AGAIN</Text>
@@ -1707,14 +1742,7 @@ export function FoodLogEntrySheet({
                       : ' Searching a food database by name needs a free FoodData Central key, which you can add in Settings. You can also open a grocery item to add its nutrition there.')
                   }
                   actionLabel={hasFdcKey ? 'Search a food database' : 'Add a food database key'}
-                  onAction={() => {
-                    haptics.tap();
-                    if (hasFdcKey) { setDbSearchOpen(true); return; }
-                    // The key row is shown only while lookups are on, so with
-                    // them off this lands on the switch that brings it back.
-                    const entryId = productLookupEnabled ? 'fdcApiKey' : 'productLookupEnabled';
-                    requestClose(() => { onClose(); navigateToFoodSearchSettings(navigation, entryId); });
-                  }}
+                  onAction={openFoodDatabase}
                 />
               }
             />

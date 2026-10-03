@@ -651,6 +651,22 @@ describe('demo mode', () => {
     useDemoStore.getState().exitDemoMode();
   });
 
+  it('seeds a daily task that pins every occurrence, and whose successor arrives pinned', () => {
+    useDemoStore.getState().enterDemoMode();
+    const plan = useTaskStore.getState().tasks.find(t => t.title === 'Plan tomorrow' && !t.completed);
+    expect(plan).toBeDefined();
+    expect(plan!.pinned).toBe(true);
+    expect(plan!.pinEachOccurrence).toBe(true);
+
+    useTaskStore.getState().completeTask(plan!.id);
+    const successor = useTaskStore.getState().tasks.find(t => t.title === 'Plan tomorrow' && !t.completed);
+    expect(successor).toBeDefined();
+    expect(successor!.id).not.toBe(plan!.id);
+    expect(successor!.pinned).toBe(true);
+
+    useDemoStore.getState().exitDemoMode();
+  });
+
   // A focus session shows nothing at all until one is running: the bar on
   // Today, the session screen, splitting a long task across stretches and the
   // breaks between them are every one of them invisible on an idle app. What

@@ -431,6 +431,16 @@ describe('buildCompletion', () => {
       expect(build(chained({ pinned: true })).nextTask!.pinned).toBe(true);
     });
 
+    it('starts a recurring successor pinned only when pinEachOccurrence is set', () => {
+      const base = { recurrenceType: 'weekly' as const, dueDate: localIso('2026-03-10T12:00'), pinned: true };
+      expect(build(makeTask({ ...base, pinEachOccurrence: true })).nextTask!.pinned).toBe(true);
+      expect(build(makeTask(base)).nextTask!.pinned).toBe(false);
+    });
+
+    it('ignores pinEachOccurrence on a task that does not repeat', () => {
+      expect(build(makeTask({ pinned: true, pinEachOccurrence: true })).nextTask).toBeNull();
+    });
+
     // A date answer that was told to pass itself on places the next step, over
     // both the schedule's guess and "the day this one got done".
     it('lets a date answer place the next step when the step opted in', () => {

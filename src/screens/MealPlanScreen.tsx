@@ -137,6 +137,11 @@ import { onHandNameKeys } from '../utils/grocerySuggest';
 import { describeWeekCost, estimateWeekCost } from '../utils/recipeCost';
 import { describeWeekNutrition, weekNutrition } from '../utils/recipeNutrition';
 import { targetedNutrients } from '../utils/nutritionTargets';
+import { useCalendarStore } from '../store/useCalendarStore';
+import { useHiddenEventsStore } from '../store/useHiddenEventsStore';
+import { hiddenEventKey } from '../utils/hiddenEvents';
+import { busyEveningOn, describeBusyEvening } from '../utils/busyEvenings';
+import { isDemoModeActive } from '../utils/demoState';
 
 /**
  * Tints a day section while a drag is aimed at it — the same "arm on the way
@@ -347,6 +352,14 @@ export function MealPlanScreen() {
   // nutrition line below.
   const hasNutritionTargets = useSettingsStore(s => targetedNutrients(s.nutritionTargets).length > 0);
   const simpleMode = useSettingsStore(s => s.simpleMode);
+  const calendarReadEnabled = useSettingsStore(s => s.calendarReadEnabled);
+  const eveningStart = useSettingsStore(s => s.eveningStart);
+  const nightStart = useSettingsStore(s => s.nightStart);
+  const calendarEvents = useCalendarStore(s => s.events);
+  const calendarLoaded = useCalendarStore(s => s.loaded);
+  const calendarWindowStart = useCalendarStore(s => s.windowStart);
+  const calendarWindowEnd = useCalendarStore(s => s.windowEnd);
+  const hiddenEventsByKey = useHiddenEventsStore(s => s.hiddenByKey);
   // ==== local state (the week anchor, sheets, bulk selection, the fridge) ====
   // Any date inside the week on screen. Paging moves the anchor, never the days.
   const [anchor, setAnchor] = useState(() => getLogicalToday());
@@ -363,6 +376,29 @@ export function MealPlanScreen() {
   // hero card's `todayDay` was: a past week is entirely previous days, a
   // future week has none, and both fall out of the same key compare.
   const todayKey = dayKeyOf(getLogicalToday());
+
+  /**
+   * "Busy evening: Dinner at Mia's" per day of the week, for the dinner rows
+   * to flag (`busyEvenings.ts`). Only a flag: the plan and its cook and thaw
+   * tasks stay exactly as they are. An event the user hid from Today counts
+   * for nothing here either, since hiding it said it doesn't bear on the day.
+   * Past days are skipped, the evening having happened.
+   */
+  const busyEveningByDay = useMemo(() => {
+    const out = new Map<string, string>();
+    if (!calendarReadEnabled || !calendarLoaded || isDemoModeActive()) return out;
+    if (!calendarWindowStart || !calendarWindowEnd) return out;
+    const covered = { start: new Date(calendarWindowStart), end: new Date(calendarWindowEnd) };
+    const events = calendarEvents.filter(e => !(hiddenEventKey(e) in hiddenEventsByKey));
+    for (const day of days) {
+      const key = dayKeyOf(day);
+      if (key < todayKey) continue;
+      const evening = busyEveningOn(events, key, { eveningStart, nightStart }, covered);
+      if (evening) out.set(key, describeBusyEvening(evening));
+    }
+    return out;
+  }, [days, todayKey, calendarReadEnabled, calendarLoaded, calendarWindowStart, calendarWindowEnd,
+      calendarEvents, hiddenEventsByKey, eveningStart, nightStart]);
   const loadRange = useMealPlanStore(s => s.loadRange);
   const planMeal = useMealPlanStore(s => s.planMeal);
   const moveEntry = useMealPlanStore(s => s.moveEntry);
@@ -1521,6 +1557,7 @@ export function MealPlanScreen() {
                               hasRecipe={!!entry.recipeId && recipesById.has(entry.recipeId)}
                               choices={describeEntryChoices(entry)}
                               loggedText={describeSlotLog(dayCoverage?.get(entry.slot))}
+                              busyText={entry.slot === 'dinner' && !entry.cookedAt ? busyEveningByDay.get(key) : null}
                               onPress={() => {
                                 if (selectionMode) toggleSelection(entry.id);
                                 else { haptics.tap(); setSelectedId(entry.id); }
@@ -1555,7 +1592,7 @@ export function MealPlanScreen() {
     // closed from the fridge card while this list stayed mounted is still live
     // to this closure, and the badge asks about a leftover that's already been
     // finished. Don't prune it as unused.
-  }, [entries, recipesById, styles, collapsedDays, colors, fabIntentChannel, selectionMode, selectedIds, toggleSelection, enterSelectionMode, leftovers, describeEntryChoices, todayKey, previousDaysInfo, previousDaysExpanded, openDayAddToList, mealDrag]);
+  }, [entries, recipesById, styles, collapsedDays, colors, fabIntentChannel, selectionMode, selectedIds, toggleSelection, enterSelectionMode, leftovers, describeEntryChoices, todayKey, previousDaysInfo, previousDaysExpanded, openDayAddToList, mealDrag, busyEveningByDay]);
 
   // Cheap enough to compute on every render: whether there's anything an "Add
   // week to list" could possibly find, without running the full ingredient

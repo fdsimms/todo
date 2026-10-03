@@ -267,6 +267,19 @@ export function seedDemoData(): void {
     streakCount: 9, streakDate: subDays(today, 1).toISOString(), priorBestStreak: 21,
   });
 
+  // Pinned, and set to pin every occurrence, so completing it shows the next
+  // one arriving back in the Pinned block rather than dropping out of it.
+  addTask({
+    title: 'Plan tomorrow',
+    notes: 'Repeats daily and stays pinned: each new occurrence starts out pinned to Today.',
+    category: 'Work',
+    recurrenceType: 'daily',
+    dueDate: today.toISOString(),
+    pinned: true,
+    pinEachOccurrence: true,
+    effort: 1,
+  });
+
   const meditate = addTask({
     title: 'Ten minutes of quiet',
     notes: 'Streaks survive a vacation. This one is paused while Vacation mode is on.',
