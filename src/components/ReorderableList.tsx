@@ -208,9 +208,12 @@ interface Props<T> {
    * header wholly above the viewport, so the offset is at least the header's
    * old height, which is more than it can shrink by. The one case that rule
    * gets wrong is a header appearing from nothing with the list at the very
-   * top — nothing was "above the viewport", yet it would be pushed there —
-   * which `autoscrollToTopThreshold: 0` answers by gliding back to the top,
-   * so the new block slides into view rather than landing hidden.
+   * top — nothing was "above the viewport", yet it would be pushed there. So
+   * the anchoring is only switched on once the list is scrolled away from the
+   * top (`scrolledAway`); at the top the header just grows in place. An
+   * `autoscrollToTopThreshold` glide back to the top used to cover that case,
+   * but it is a native animated scroll fired on every header resize at the top,
+   * and the list could be left unable to scroll back up after one.
    */
   holdRowsOnHeaderResize?: boolean;
   ListFooterComponent?: React.ReactNode;
@@ -351,6 +354,12 @@ export function ReorderableList<T>({
   // list. The card follows the finger in both axes (X is purely cosmetic —
   // drop targeting stays vertical).
   const [overlayBaseTop, setOverlayBaseTop] = useState(0);
+  // Whether the list is scrolled away from the top. holdRowsOnHeaderResize only
+  // has rows to hold still in that case; at the top a header change should just
+  // grow in place, and leaving the native anchoring on there made it fire an
+  // animated scroll-to-top on every header resize, which could leave the scroll
+  // view unable to scroll back up until the tab was re-entered.
+  const [scrolledAway, setScrolledAway] = useState(false);
   const overlayY = useRef(new Animated.Value(0)).current;
   const overlayX = useRef(new Animated.Value(0)).current;
   const overlayScale = useRef(new Animated.Value(1.03)).current;
@@ -1101,6 +1110,7 @@ export function ReorderableList<T>({
 
   const handleScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     scrollOffsetRef.current = e.nativeEvent.contentOffset.y;
+    if (holdRowsOnHeaderResize) setScrolledAway(scrollOffsetRef.current > 1);
     if (scrollToTop) scrollToTopVisibility.onScroll(e);
     if (!onEndReachedRef.current) return;
     const distanceFromEnd = contentHeightRef.current - viewportHeightRef.current - scrollOffsetRef.current;
@@ -1129,7 +1139,7 @@ export function ReorderableList<T>({
         // See holdRowsOnHeaderResize. Index 0 is the header's wrapper and 1 the
         // sentinel, and the sentinel is always visible, so the anchor is
         // always one of the two and never a row.
-        maintainVisibleContentPosition={holdRowsOnHeaderResize ? HOLD_ROWS_POSITION : undefined}
+        maintainVisibleContentPosition={holdRowsOnHeaderResize && scrolledAway ? HOLD_ROWS_POSITION : undefined}
         onLayout={(e: LayoutChangeEvent) => { viewportHeightRef.current = e.nativeEvent.layout.height; }}
         onContentSizeChange={(_w, h) => {
           contentHeightRef.current = h;
@@ -1317,7 +1327,9 @@ export function ReorderableList<T>({
   );
 }
 
-const HOLD_ROWS_POSITION = { minIndexForVisible: 0, autoscrollToTopThreshold: 0 };
+// No autoscrollToTopThreshold: the anchoring is only on while scrolled away
+// from the top (see scrolledAway), so there is no top-of-list case to glide to.
+const HOLD_ROWS_POSITION = { minIndexForVisible: 0 };
 
 /**
  * Tall enough to reach past the end of any list, so the sentinel stays the
