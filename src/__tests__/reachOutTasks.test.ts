@@ -16,6 +16,8 @@ import {
   staleReachOutTasks,
   wantedReachOuts,
   collapseGroupedReachOuts,
+  reachOutHistoryIds,
+  sharedReachOutGroupId,
   MAX_REACH_OUT_TASKS,
   MIN_CADENCE_SAMPLES,
   REACH_OUT_DECLINE_DAYS,
@@ -360,6 +362,48 @@ describe('folding a couple\'s wants into one', () => {
     const collapsed = collapseGroupedReachOuts([sam, mom, jamie], groupIdOf, () => 'the Ortegas');
 
     expect(collapsed.map(w => w.sourceId)).toEqual(['g1', 'mom']);
+  });
+});
+
+describe('a group set to catch up separately', () => {
+  const people = [
+    person({ id: 'sam', groupId: 'g1' }),
+    person({ id: 'jamie', groupId: 'g1' }),
+    person({ id: 'mom' }),
+  ];
+  const shared = { id: 'g1', catchUpSeparately: false };
+  const separate = { id: 'g1', catchUpSeparately: true };
+
+  it('shares the group while the switch is off', () => {
+    expect(sharedReachOutGroupId(people[0], [shared])).toBe('g1');
+    expect(reachOutHistoryIds(people[0], people, [shared]).sort()).toEqual(['jamie', 'sam']);
+  });
+
+  it('gives each member only their own history once it is on', () => {
+    expect(sharedReachOutGroupId(people[0], [separate])).toBeNull();
+    expect(reachOutHistoryIds(people[0], people, [separate])).toEqual(['sam']);
+  });
+
+  it('treats a group that no longer exists as no group', () => {
+    expect(sharedReachOutGroupId(people[0], [])).toBeNull();
+    expect(reachOutHistoryIds(people[0], people, [])).toEqual(['sam']);
+  });
+
+  it('leaves an ungrouped person alone', () => {
+    expect(sharedReachOutGroupId(people[2], [shared, separate])).toBeNull();
+    expect(reachOutHistoryIds(people[2], people, [shared])).toEqual(['mom']);
+  });
+
+  // The store feeds sharedReachOutGroupId to the collapse, so a separate group
+  // yields one row per due member.
+  it('keeps two due members as two rows when the collapse is told there is no group', () => {
+    const wants = [
+      { personId: 'sam', title: 'Catch up with Sam', phoneNumber: null },
+      { personId: 'jamie', title: 'Catch up with Jamie', phoneNumber: null },
+    ];
+    const groupIdOf = (id: string) => sharedReachOutGroupId(people.find(p => p.id === id)!, [separate]);
+    const collapsed = collapseGroupedReachOuts(wants, groupIdOf, () => 'the Ortegas');
+    expect(collapsed.map(w => w.sourceId)).toEqual(['sam', 'jamie']);
   });
 });
 

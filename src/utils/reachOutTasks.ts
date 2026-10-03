@@ -1,5 +1,5 @@
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
-import type { Person, Task } from '../types';
+import type { Person, PersonGroup, Task } from '../types';
 import { getDayStart } from './dateUtils';
 import { generatedSourceOf, liveGeneratedTasksOfKind } from './generatedTasks';
 import type { HistoryEntry } from './personHistory';
@@ -237,6 +237,31 @@ export function staleReachOutTasks<
  */
 export interface GroupedReachOutWant extends ReachOutWant {
   sourceId: string;
+}
+
+/**
+ * The group a person's reach-out is shared through, or null when it is theirs
+ * alone: ungrouped, a group that vanished, or one set to catch up separately.
+ * Both the shared history and the collapse read this, so the two can't
+ * disagree about whether somebody is part of a pair.
+ */
+export function sharedReachOutGroupId(
+  person: Pick<Person, 'groupId'>,
+  groups: readonly Pick<PersonGroup, 'id' | 'catchUpSeparately'>[]
+): string | null {
+  if (!person.groupId) return null;
+  const group = groups.find(g => g.id === person.groupId);
+  return group && !group.catchUpSeparately ? group.id : null;
+}
+
+/** Whose tasks count toward this person's last-together date. */
+export function reachOutHistoryIds(
+  person: Pick<Person, 'id' | 'groupId'>,
+  people: readonly Pick<Person, 'id' | 'groupId'>[],
+  groups: readonly Pick<PersonGroup, 'id' | 'catchUpSeparately'>[]
+): string[] {
+  const groupId = sharedReachOutGroupId(person, groups);
+  return groupId ? people.filter(p => p.groupId === groupId).map(p => p.id) : [person.id];
 }
 
 /**

@@ -1667,6 +1667,10 @@ describe('demo seed — people', () => {
     expect(usePersonStore.getState().people.some(p => p.nickname !== '')).toBe(true);
   });
 
+  it('seeds a group that catches up separately', () => {
+    expect(usePersonGroupStore.getState().groups.some(g => g.catchUpSeparately)).toBe(true);
+  });
+
   it('seeds a location, which is otherwise invisible', () => {
     expect(usePersonStore.getState().people.some(p => p.location !== null)).toBe(true);
   });

@@ -26,7 +26,7 @@ interface PersonGroupStore extends UndoHistoryState, UndoHistoryActions {
   initialized: boolean;
   initialize: () => void;
   createGroup: (name: string) => PersonGroup;
-  updateGroup: (id: string, patch: Partial<Pick<PersonGroup, 'name'>>) => void;
+  updateGroup: (id: string, patch: Partial<Pick<PersonGroup, 'name' | 'catchUpSeparately'>>) => void;
   reorderGroups: (orderedIds: string[]) => void;
   getGroupById: (id: string) => PersonGroup | null;
   /** Deletes the group and frees its members — nobody in it is deleted. */
@@ -54,6 +54,7 @@ export const usePersonGroupStore = create<PersonGroupStore>((set, get) => ({
       name: name.trim(),
       sortOrder: maxOrder + 1,
       createdAt: new Date().toISOString(),
+      catchUpSeparately: false,
     };
     dbInsertPersonGroup(group);
     set({ groups: [...get().groups, group] });

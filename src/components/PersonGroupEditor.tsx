@@ -10,7 +10,7 @@ import { SheetHeader } from './SheetHeader';
 import { EditorSheet } from './EditorSheet';
 import { PillGroup } from './PillGroup';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { TextField } from './TextField';
 
@@ -147,8 +147,30 @@ export function PersonGroupEditor({ visible, person, onClose }: Props) {
             }))}
           />
         </View>
+        <View style={[styles.sectionCard, { marginTop: spacing.md }]}>
+          <TouchableOpacity
+            style={styles.optionRow}
+            onPress={() => { haptics.tap(); updateGroup(currentGroup.id, { catchUpSeparately: !currentGroup.catchUpSeparately }); }}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="switch"
+            accessibilityLabel="Catch up with each person separately"
+            accessibilityState={{ checked: currentGroup.catchUpSeparately }}
+          >
+            <View style={styles.optionContent}>
+              <Text style={styles.optionLabel}>Catch up separately</Text>
+              <Text style={styles.optionHint}>
+                {currentGroup.catchUpSeparately
+                  ? 'Each person gets their own reminder, based on the tasks that name them.'
+                  : 'Members share one reminder, based on any task that names one of them.'}
+              </Text>
+            </View>
+            <View style={[styles.toggle, currentGroup.catchUpSeparately && styles.toggleOn]}>
+              <View style={[styles.toggleKnob, currentGroup.catchUpSeparately && styles.toggleKnobOn]} />
+            </View>
+          </TouchableOpacity>
+        </View>
         <Text style={styles.sectionFooter}>
-          Everyone here shares one reach-out reminder and can be tagged together with a single "@" mention.
+          Everyone here can be tagged together with a single "@" mention. Reminders still only apply to people who have a reminder cadence set.
         </Text>
       </EditorSheet>
     );
@@ -272,6 +294,20 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.separator,
     marginLeft: spacing.md,
   },
+  optionRow: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.md,
+    paddingHorizontal: spacing.md, paddingVertical: 14,
+  },
+  optionContent: { flex: 1 },
+  optionLabel: { color: colors.text, fontSize: font.md },
+  optionHint: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.xxs },
+  toggle: {
+    width: 44, height: 26, borderRadius: radius.full,
+    backgroundColor: colors.bgQuaternary, padding: spacing.xxs, justifyContent: 'center',
+  },
+  toggleOn: { backgroundColor: colors.accent },
+  toggleKnob: { width: 22, height: 22, borderRadius: radius.full, backgroundColor: colors.bg },
+  toggleKnobOn: { alignSelf: 'flex-end' },
   sectionFooter: {
     color: colors.textTertiary,
     fontSize: font.xs,

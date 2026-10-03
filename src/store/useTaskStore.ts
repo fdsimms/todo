@@ -263,6 +263,8 @@ import {
   staleReachOutTasks,
   wantedReachOuts,
   collapseGroupedReachOuts,
+  reachOutHistoryIds,
+  sharedReachOutGroupId,
   MAX_REACH_OUT_TASKS,
   type ReachOutCandidate,
 } from '../utils/reachOutTasks';
@@ -5668,10 +5670,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // own id would have the app ask to "catch up" with someone seen an hour
     // ago under their partner's name. See docs/arch/people.md's "Groups"
     // section.
-    const namedIdsFor = (person: Person): string[] =>
-      person.groupId
-        ? people.filter(p => p.groupId === person.groupId).map(p => p.id)
-        : [person.id];
+    // A group set to catch up separately shares nothing: each member reads
+    // only the tasks naming them.
+    const groups = usePersonGroupStore.getState().groups;
+    const namedIdsFor = (person: Person): string[] => reachOutHistoryIds(person, people, groups);
 
     // The history is derived per person from the rows that name them, which is
     // the same read the person's own screen does — there is no stored "last
@@ -5690,7 +5692,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // A generated task's sourceId reads back as either a personId or a
     // PersonGroup id (see collapseGroupedReachOuts below) — resolve-or-shrug,
     // the same pattern every other cross-entity pointer in this layer uses.
-    const groupIdOf = (personId: string) => people.find(p => p.id === personId)?.groupId ?? null;
+    const groupIdOf = (personId: string) => {
+      const person = people.find(p => p.id === personId);
+      return person ? sharedReachOutGroupId(person, groups) : null;
+    };
     const groupNameOf = (groupId: string) => usePersonGroupStore.getState().getGroupById(groupId)?.name ?? null;
 
     const handledRaw = reachOutsHandledRecently(tasks, today);

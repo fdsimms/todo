@@ -1512,6 +1512,15 @@ export interface PersonGroup {
   // never re-ranked by recency or by anything about the people in it.
   sortOrder: number;
   createdAt: string;
+  /**
+   * Whether the reach-out nudge treats each member on their own instead of the
+   * group as one candidate. Off by default, which is how every group behaved
+   * before this existed. On: no "Catch up with {group}" row, and a member's
+   * last-together date reads only the tasks naming them, so seeing one half of
+   * a couple does not reset the other's clock. The "@" mention still tags the
+   * whole group either way.
+   */
+  catchUpSeparately: boolean;
 }
 
 /**

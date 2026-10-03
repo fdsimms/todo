@@ -1293,6 +1293,16 @@ Two separate mechanisms, because the pain point has two shapes:
 - **Still no `personIds` on the row**, for the reason a solo reach-out task
   carries none: ticking it off would otherwise reset the very clock the
   shared history above reads.
+- **A group can opt out of both mechanisms** (`PersonGroup.catchUpSeparately`,
+  off by default). Some pairs are tagged together on plans but caught up with
+  apart: a friend you see with their partner and call on your own. With it on,
+  a member's last-together reads only tasks naming them, and their wants are
+  never folded, so each gets their own row on their own cadence. Both sides
+  read `sharedReachOutGroupId` (`reachOutTasks.ts`) so the history and the
+  collapse can't disagree. The "@" mention still tags the whole group. An
+  existing collapsed row for the group is dropped as stale on the next sweep
+  and replaced per person, and the handled and decline holds already expand a
+  group id to its members, so nobody pops back up early.
 
 ### An "@" mention can name a group, and expand into several people
 

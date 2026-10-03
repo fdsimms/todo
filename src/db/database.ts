@@ -1808,6 +1808,10 @@ export function initDatabase(): void {
     // A whole-row column like the rest of grocery_shops, so it syncs and is
     // backed up with no list to add it to. See Shop.aisleOrder.
     'ALTER TABLE grocery_shops ADD COLUMN aisle_order TEXT',
+    // Whether a group's members are nudged one at a time instead of as one row
+    // — see PersonGroup.catchUpSeparately. 0 on every existing row: every group
+    // has always been one candidate.
+    'ALTER TABLE person_groups ADD COLUMN catch_up_separately INTEGER NOT NULL DEFAULT 0',
   ];
   // Asking SQLite for a table's columns once is cheaper than handing it every
   // ALTER for that table and catching the duplicate-column error, and by the
@@ -7162,6 +7166,7 @@ function rowToPersonGroup(row: Record<string, unknown>): PersonGroup {
     name: row.name as string,
     sortOrder: row.sort_order as number,
     createdAt: row.created_at as string,
+    catchUpSeparately: row.catch_up_separately === 1,
   };
 }
 
@@ -7172,15 +7177,15 @@ export function dbGetAllPersonGroups(): PersonGroup[] {
 
 export function dbInsertPersonGroup(group: PersonGroup): void {
   db.runSync(
-    'INSERT INTO person_groups (id, name, sort_order, created_at) VALUES (?,?,?,?)',
-    [group.id, group.name, group.sortOrder, group.createdAt]
+    'INSERT INTO person_groups (id, name, sort_order, created_at, catch_up_separately) VALUES (?,?,?,?,?)',
+    [group.id, group.name, group.sortOrder, group.createdAt, group.catchUpSeparately ? 1 : 0]
   );
 }
 
 export function dbUpdatePersonGroup(group: PersonGroup): void {
   db.runSync(
-    'UPDATE person_groups SET name=?, sort_order=? WHERE id=?',
-    [group.name, group.sortOrder, group.id]
+    'UPDATE person_groups SET name=?, sort_order=?, catch_up_separately=? WHERE id=?',
+    [group.name, group.sortOrder, group.catchUpSeparately ? 1 : 0, group.id]
   );
 }
 
