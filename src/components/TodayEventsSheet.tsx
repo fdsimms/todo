@@ -41,6 +41,9 @@ import { AwayShiftSheet } from './AwayShiftSheet';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { useEventTaskLinkStore } from '../store/useEventTaskLinkStore';
 import { useCalendarStore } from '../store/useCalendarStore';
+import { useProjectStore } from '../store/useProjectStore';
+import { useNavigation } from '@react-navigation/native';
+import { awayFieldsFromEvent, projectForTripEvent, spansDays } from '../utils/tripEvents';
 import {
   anchorsForEvent,
   eventTaskKey,
@@ -114,6 +117,10 @@ interface Props {
  * event later moves, its row says so and offers to move them with it (the
  * trip move's `AwayShiftSheet`). The offer is all it does: nothing moves
  * until the user says which tasks were tied to the date.
+ *
+ * **An event spanning days can become a trip** (`src/utils/tripEvents.ts`):
+ * "Make this a trip" in the details makes a project away for exactly its
+ * days and opens it, or opens the one already away for them.
  *
  * The template sheets and the move sheet render **inside** this sheet's Modal,
  * not beside it, for the sibling-Modal rule in CLAUDE.md.
@@ -198,6 +205,33 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById, titl
       event,
       linked.includes(personId) ? linked.filter(id => id !== personId) : [...linked, personId]
     );
+  };
+
+  const projects = useProjectStore(s => s.projects);
+  const createProject = useProjectStore(s => s.createProject);
+  const dayResetTime = useSettingsStore(s => s.dayResetTime);
+  const navigation = useNavigation<any>();
+
+  /**
+   * "Make this a trip": a project away for exactly the event's days
+   * (`tripEvents.ts`), named after it, then opened, since the project page is
+   * where a trip is filled in (destination, the list, a template). When a
+   * project is already away for those days the button opens that one instead,
+   * so asking twice never makes two.
+   */
+  const openTrip = (event: BusyEvent) => {
+    const existing = projectForTripEvent(projects, event, dayResetTime);
+    let projectId = existing?.id ?? null;
+    if (!projectId) {
+      const fields = awayFieldsFromEvent(event);
+      if (!fields) return;
+      projectId = createProject(event.title.trim() || 'Trip', fields).id;
+      haptics.success();
+    } else {
+      haptics.tap();
+    }
+    onClose();
+    navigation.navigate('ProjectDetail', { projectId });
   };
 
   const planFromTemplate = (event: BusyEvent) => {
@@ -431,6 +465,13 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById, titl
                       />
                       {hasTemplates && (
                         <InlineAction icon="copy-outline" label="Plan from a template" onPress={() => planFromTemplate(event)} />
+                      )}
+                      {spansDays(event) && (
+                        <InlineAction
+                          icon="airplane-outline"
+                          label={projectForTripEvent(projects, event, dayResetTime) ? 'Open trip' : 'Make this a trip'}
+                          onPress={() => openTrip(event)}
+                        />
                       )}
                     </View>
                     {people.length > 0 && (

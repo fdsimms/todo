@@ -16,6 +16,7 @@ import {
 } from '../utils/calendarHistory';
 import { dayKeyOf, getDayStart } from '../utils/dateUtils';
 import { useSettingsStore } from './useSettingsStore';
+import { spansDays } from '../utils/tripEvents';
 import { createRefreshGuard } from '../utils/refreshGuard';
 
 /**
@@ -45,6 +46,13 @@ import { createRefreshGuard } from '../utils/refreshGuard';
  * every foreground and holding them for a screen that shows one day.
  */
 export const CALENDAR_WINDOW_DAYS = 14;
+
+/**
+ * How far ahead the trip read reaches. A trip is planned weeks out, past the
+ * fortnight above, and this read keeps only events spanning days
+ * (`spansDays`), so it holds a handful of rows however busy the calendar is.
+ */
+export const TRIP_WINDOW_DAYS = 90;
 
 /**
  * Where the record of answered history offers lives.
@@ -111,6 +119,18 @@ interface CalendarState {
   /** Whether the record has been read back off the settings table yet. */
   handledLoaded: boolean;
   refreshPast: () => Promise<void>;
+  /**
+   * The trip window: events spanning days, from today to `TRIP_WINDOW_DAYS`
+   * out, for the event sheet's "Make this a trip". A **separate read** for the
+   * reason the past one is: nothing on Today asks about next month, so the
+   * fortnight read on every foreground doesn't widen for it. Fetched when the
+   * Calendar screen is focused, the one place a far day's events are shown.
+   */
+  aheadEvents: BusyEvent[];
+  aheadLoaded: boolean;
+  /** End of the window `aheadEvents` covers; null before the first read. */
+  aheadWindowEnd: string | null;
+  refreshAhead: () => Promise<void>;
   /** Records one answer, and persists the pruned record. */
   markHistoryHandled: (key: string, dayKey: string) => void;
   /** Drops everything — used when the feature is switched off. */
@@ -126,6 +146,7 @@ interface CalendarState {
 // `clear` had dropped them.
 const windowGuard = createRefreshGuard();
 const pastGuard = createRefreshGuard();
+const aheadGuard = createRefreshGuard();
 
 export const useCalendarStore = create<CalendarState>((set, get) => ({
   events: [],
@@ -137,6 +158,9 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
   pastEvents: [],
   pastLoaded: false,
   pastReadAt: null,
+  aheadEvents: [],
+  aheadLoaded: false,
+  aheadWindowEnd: null,
   handledHistory: {},
   handledLoaded: false,
 
@@ -222,6 +246,32 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
     set({ pastEvents: result.events, pastLoaded: true, pastReadAt: now.toISOString() });
   },
 
+  async refreshAhead() {
+    const { calendarReadEnabled, calendarIds, vacationMode, vacationHiddenCalendarIds, dayResetTime } =
+      useSettingsStore.getState();
+    // The same calendars the fortnight read uses, vacation filter included.
+    const readIds = vacationMode
+      ? calendarIds.filter(id => !vacationHiddenCalendarIds.includes(id))
+      : calendarIds;
+    // Demo mode in the gate, as `refreshPast` has it: this read is only ever
+    // shown, and a demo shown somebody's real trips is the leak that rule is for.
+    if (!calendarReadEnabled || readIds.length === 0 || Platform.OS !== 'ios' || isDemoModeActive()) {
+      aheadGuard.invalidate();
+      set({ aheadEvents: [], aheadLoaded: false, aheadWindowEnd: null });
+      return;
+    }
+    const start = getDayStart(new Date(), dayResetTime);
+    const end = addDays(start, TRIP_WINDOW_DAYS);
+    const token = aheadGuard.begin();
+    const result = await fetchEvents(readIds, start, end);
+    if (!aheadGuard.isCurrent(token)) return;
+    if (result === null) {
+      set({ aheadLoaded: false });
+      return;
+    }
+    set({ aheadEvents: result.events.filter(spansDays), aheadLoaded: true, aheadWindowEnd: end.toISOString() });
+  },
+
   markHistoryHandled(key, dayKey) {
     const floorDayKey = dayKeyOf(pastWindowStart(new Date()));
     // Guarded rather than assumed: a mark can only follow a successful
@@ -247,9 +297,11 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
   clear() {
     windowGuard.invalidate();
     pastGuard.invalidate();
+    aheadGuard.invalidate();
     set({
       events: [], perCalendar: {}, calendarsById: {}, windowStart: null, windowEnd: null, loaded: false,
       pastEvents: [], pastLoaded: false, pastReadAt: null,
+      aheadEvents: [], aheadLoaded: false, aheadWindowEnd: null,
     });
   },
 }));

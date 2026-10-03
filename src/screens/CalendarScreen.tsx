@@ -150,6 +150,15 @@ export function CalendarScreen() {
   const calendarLoaded = useCalendarStore(s => s.loaded);
   const calendarWindowStart = useCalendarStore(s => s.windowStart);
   const calendarWindowEnd = useCalendarStore(s => s.windowEnd);
+  // The trip read: events spanning days, ninety days out, so a far day can
+  // still show the trip it falls in and the event sheet can offer to make it
+  // one. Read on focus, the way PersonDetail reads its past window.
+  const aheadEvents = useCalendarStore(s => s.aheadEvents);
+  const aheadLoaded = useCalendarStore(s => s.aheadLoaded);
+  const aheadWindowEnd = useCalendarStore(s => s.aheadWindowEnd);
+  useFocusEffect(useCallback(() => {
+    if (useSettingsStore.getState().calendarReadEnabled) void useCalendarStore.getState().refreshAhead();
+  }, []));
 
   const [displayMonth, setDisplayMonth] = useState(() => startOfMonth(getLogicalToday()));
   const [selectedKey, setSelectedKey] = useState(() => dayKeyOf(getLogicalToday()));
@@ -245,9 +254,16 @@ export function CalendarScreen() {
       && selectedDayStart < new Date(calendarWindowEnd);
   }, [calendarReadEnabled, calendarLoaded, calendarWindowStart, calendarWindowEnd, selectedDayStart]);
 
+  // Past the fortnight, only the trip read reaches: multi-day events, and the
+  // day still reads as not known (`dayBusyKnown` stays false), since one
+  // long event says nothing about the meetings around it.
+  const dayTripOnly = !dayBusyKnown && calendarReadEnabled && aheadLoaded && !isDemoModeActive()
+    && aheadWindowEnd !== null && addDays(selectedDayStart, 1) <= new Date(aheadWindowEnd);
   const dayEvents = useMemo(
-    () => (dayBusyKnown ? eventsIn(calendarEvents, selectedDayStart, addDays(selectedDayStart, 1)) : []),
-    [dayBusyKnown, calendarEvents, selectedDayStart],
+    () => (dayBusyKnown
+      ? eventsIn(calendarEvents, selectedDayStart, addDays(selectedDayStart, 1))
+      : dayTripOnly ? eventsIn(aheadEvents, selectedDayStart, addDays(selectedDayStart, 1)) : []),
+    [dayBusyKnown, dayTripOnly, calendarEvents, aheadEvents, selectedDayStart],
   );
 
   const dayTimeline = useMemo(() => {
@@ -952,6 +968,7 @@ export function CalendarScreen() {
                   timeline={dayTimeline}
                   meals={dayMeals}
                   busyKnown={dayBusyKnown}
+                  tripOnly={dayTripOnly}
                   use24Hour={use24Hour}
                   nowMinutes={nowMinutes}
                   onPressTask={handleRowPress}

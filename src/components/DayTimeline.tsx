@@ -28,6 +28,12 @@ interface Props {
    * then be a confident lie, so the band says so instead.
    */
   busyKnown: boolean;
+  /**
+   * Past the fortnight read, only events spanning several days were read for
+   * this day (the trip read). The notice says that rather than "not read",
+   * since the band may well be showing one of them.
+   */
+  tripOnly?: boolean;
   use24Hour: boolean;
   /** Minutes from `dayStart` to draw the now line at, or null when not today. */
   nowMinutes: number | null;
@@ -49,7 +55,7 @@ interface Props {
  * distinction the whole feature rests on.
  */
 export function DayTimeline({
-  dayStart, timeline, meals, busyKnown, use24Hour, nowMinutes, onPressTask, onPressEvent,
+  dayStart, timeline, meals, busyKnown, tripOnly = false, use24Hour, nowMinutes, onPressTask, onPressEvent,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -69,7 +75,11 @@ export function DayTimeline({
   }, [dayStart, firstMinute, lastMinute, use24Hour]);
 
   const bandItems = [
-    ...(busyKnown ? [] : [{ key: 'unknown', icon: 'help-circle-outline' as const, text: 'Calendar not read for this day' }]),
+    ...(busyKnown ? [] : [{
+      key: 'unknown',
+      icon: 'help-circle-outline' as const,
+      text: tripOnly ? 'Only events lasting several days are read this far ahead' : 'Calendar not read for this day',
+    }]),
     ...allDay.map(e => ({ key: `ad-${e.id}`, icon: 'calendar-outline' as const, text: e.title })),
     ...meals.map(m => ({
       key: `meal-${m.id}`,
