@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -11,13 +11,17 @@ import {
 import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, lineHeight, interaction, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, lineHeight, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { useTaskStore } from '../store/useTaskStore';
-import { suggestSubtasks, describeAIError, type SubtaskSuggestion } from '../services/aiSuggestions';
+import { suggestSubtasks, describeAIError } from '../services/aiSuggestions';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
-import { EmptyState } from './EmptyState';
+import { EmptyNote } from './EmptyNote';
+import { TextField } from './TextField';
+import { InlineAction } from './InlineAction';
+import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
+import { TITLE_MAX_LENGTH } from '../types';
 
 interface Props {
   visible: boolean;
@@ -39,65 +43,124 @@ interface Props {
  * is two taps. The differences are that it reads its task from the store rather
  * than taking the content as props (it's opened from a picker that only knows
  * an id), and that it commits through addSubtask rather than addItem.
+ *
+ * A short title is often ambiguous ("Clean bags": which bags?), so the sheet
+ * also takes the two things the model can't guess: what the task means, which
+ * is sent with Regenerate, and steps typed by hand, which sit in the same list
+ * as the drafted ones and survive a regenerate. Typing steps works even when
+ * the request fails, so the sheet is never a dead end.
  */
+
+/** One row in the list: a drafted step, or one the person typed. */
+interface Step {
+  key: string;
+  title: string;
+  own: boolean;
+}
+
+let stepSeq = 0;
+const stepKey = () => `step-${++stepSeq}`;
 export function TaskBreakdownSheet({ visible, taskId, onClose }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const addSubtask = useTaskStore(s => s.addSubtask);
   const task = useTaskStore(s => s.tasks.find(t => t.id === taskId));
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [suggestions, setSuggestions] = useState<SubtaskSuggestion[]>([]);
-  // Indices of accepted suggestions; everything starts accepted.
-  const [accepted, setAccepted] = useState<Set<number>>(new Set());
+  // True once a request has come back with nothing new, so the list can say so.
+  const [cameBackEmpty, setCameBackEmpty] = useState(false);
+  const [steps, setSteps] = useState<Step[]>([]);
+  // Keys of accepted steps; everything starts accepted.
+  const [accepted, setAccepted] = useState<Set<string>>(new Set());
+  const [context, setContext] = useState('');
+  const [newStep, setNewStep] = useState('');
+  // Read inside `load` without making it a dependency, so a regenerate sends
+  // what's in the fields now rather than what was there when it was built.
+  const stepsRef = useRef(steps);
+  stepsRef.current = steps;
+  const contextRef = useRef(context);
+  contextRef.current = context;
+  // A response landing after the sheet closed, or after a newer request, is dropped.
+  const requestRef = useRef(0);
 
   const load = useCallback(async () => {
     const current = useTaskStore.getState().tasks.find(t => t.id === taskId);
     if (!current) return;
+    const request = ++requestRef.current;
     setLoading(true);
     setError(null);
+    setCameBackEmpty(false);
+    // Typed steps are kept across a regenerate, so the model is told about them
+    // the same way it's told about subtasks already on the task.
+    const own = stepsRef.current.filter(s => s.own);
     try {
-      const existing = useTaskStore.getState().subtasksOf(current.id).map(t => t.title);
-      const result = await suggestSubtasks(current.title, current.notes, existing);
-      setSuggestions(result);
-      setAccepted(new Set(result.map((_, i) => i)));
+      const existing = [
+        ...useTaskStore.getState().subtasksOf(current.id).map(t => t.title),
+        ...own.map(s => s.title),
+      ];
+      const result = await suggestSubtasks(current.title, current.notes, existing, contextRef.current);
+      if (request !== requestRef.current) return;
+      const drafted = result.map(r => ({ key: stepKey(), title: r.title, own: false }));
+      setSteps(prev => [...drafted, ...prev.filter(s => s.own)]);
+      setAccepted(prev => {
+        const next = new Set(own.filter(s => prev.has(s.key)).map(s => s.key));
+        drafted.forEach(d => next.add(d.key));
+        return next;
+      });
+      setCameBackEmpty(drafted.length === 0);
     } catch (e) {
-      setSuggestions([]);
-      setAccepted(new Set());
+      if (request !== requestRef.current) return;
+      setSteps(prev => prev.filter(s => s.own));
       setError(describeAIError(e));
     } finally {
-      setLoading(false);
+      if (request === requestRef.current) setLoading(false);
     }
   }, [taskId]);
 
   // Fresh steps each time the sheet opens; cleared on close.
   useEffect(() => {
     if (!visible) {
-      setSuggestions([]);
+      requestRef.current += 1;
+      setLoading(false);
+      setSteps([]);
       setAccepted(new Set());
       setError(null);
+      setCameBackEmpty(false);
+      setContext('');
+      setNewStep('');
       return;
     }
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
-  const toggle = (i: number) => {
+  const toggle = (key: string) => {
     haptics.tap();
     setAccepted(prev => {
       const next = new Set(prev);
-      if (next.has(i)) next.delete(i);
-      else next.add(i);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
+  };
+
+  const addOwnStep = () => {
+    const title = newStep.trim();
+    if (!title) return;
+    haptics.tap();
+    const step = { key: stepKey(), title, own: true };
+    setSteps(prev => [...prev, step]);
+    setAccepted(prev => new Set(prev).add(step.key));
+    setNewStep('');
   };
 
   const handleAdd = () => {
     if (!task || accepted.size === 0) return;
     let added = 0;
-    suggestions.forEach((s, i) => {
-      if (!accepted.has(i)) return;
+    steps.forEach(s => {
+      if (!accepted.has(s.key)) return;
       if (addSubtask(task.id, s.title)) added += 1;
     });
     // Same guard TemplateSuggestionsSheet makes: a generated list is expensive
@@ -116,9 +179,11 @@ export function TaskBreakdownSheet({ visible, taskId, onClose }: Props) {
   };
 
   // Same guard TemplateSuggestionsSheet makes: a generated batch of steps is
-  // expensive to get back, so a swipe-down with one on screen asks first.
+  // expensive to get back, and typed steps or details are the user's own work,
+  // so a swipe-down with any of them on screen asks first.
   const handleCancel = () => {
-    if (suggestions.length === 0) { onClose(); return; }
+    const dirty = steps.length > 0 || context.trim() !== '' || newStep.trim() !== '';
+    if (!dirty) { onClose(); return; }
     Alert.alert(
       'Discard changes?',
       'You have unsaved changes. Are you sure you want to discard them?',
@@ -131,6 +196,7 @@ export function TaskBreakdownSheet({ visible, taskId, onClose }: Props) {
 
   const acceptedCount = accepted.size;
   const canAdd = !loading && acceptedCount > 0;
+  const hasContext = context.trim() !== '';
 
   return (
     <SheetModal
@@ -153,67 +219,111 @@ export function TaskBreakdownSheet({ visible, taskId, onClose }: Props) {
           }
         />
 
-        {loading ? (
-          <View style={styles.centered}>
-            <ActivityIndicator size="large" color={colors.purple} />
-            <Text style={styles.loadingText}>Working out the steps for “{task?.title ?? 'this task'}”…</Text>
-          </View>
-        ) : error ? (
-          <EmptyState
-            icon="cloud-offline-outline"
-            title="Couldn’t figure out the steps"
-            subtitle={error}
-            actionLabel="Try again"
-            onAction={load}
-          />
-        ) : suggestions.length === 0 ? (
-          <EmptyState
-            icon="sparkles-outline"
-            title="No new steps"
-            subtitle="Nothing came back beyond the steps already on this task. Try regenerating."
-            actionLabel="Regenerate"
-            onAction={load}
-          />
-        ) : (
-          <ScrollView contentContainerStyle={styles.list} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          ref={keyboardScroll.ref}
+          style={styles.scroll}
+          contentContainerStyle={styles.list}
+          keyboardShouldPersistTaps="handled"
+          {...keyboardScroll.props}
+        >
+          {loading ? (
+            <View style={styles.loading}>
+              <ActivityIndicator size="large" color={colors.purple} />
+              <Text style={styles.loadingText}>Working out the steps for “{task?.title ?? 'this task'}”…</Text>
+            </View>
+          ) : error ? (
+            <View style={styles.note}>
+              <EmptyNote icon="cloud-offline-outline">
+                {`Couldn’t figure out the steps. ${error} You can still type your own below.`}
+              </EmptyNote>
+            </View>
+          ) : cameBackEmpty ? (
+            <View style={styles.note}>
+              <EmptyNote icon="sparkles-outline">
+                Nothing came back beyond the steps already on this task. Say more about it below and regenerate, or type your own steps.
+              </EmptyNote>
+            </View>
+          ) : steps.length > 0 ? (
             <Text style={styles.intro}>
               Tap to drop any you don’t want, then add the rest as subtasks. The first one is meant to be small
               enough to start now.
             </Text>
-            {suggestions.map((s, i) => {
-              const isAccepted = accepted.has(i);
-              return (
-                <TouchableOpacity
-                  key={`${s.title}-${i}`}
-                  style={[styles.row, !isAccepted && styles.rowRejected]}
-                  onPress={() => toggle(i)}
-                  activeOpacity={interaction.activeOpacity}
-                >
-                  <Ionicons
-                    name={isAccepted ? 'checkmark-circle' : 'ellipse-outline'}
-                    size={24}
-                    color={isAccepted ? colors.accent : colors.textTertiary}
-                  />
-                  {/* The steps come back in the order they'd be done, so the
-                      number is information rather than decoration. */}
-                  <Text style={styles.rowIndex}>{i + 1}</Text>
-                  <Text style={[styles.rowTitle, !isAccepted && styles.rowTextRejected]} numberOfLines={2}>
-                    {s.title}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
+          ) : null}
 
-            <TouchableOpacity
-              style={styles.regenerateBtn}
-              onPress={() => { haptics.tap(); load(); }}
-              activeOpacity={interaction.activeOpacity}
-            >
-              <Ionicons name="refresh" size={16} color={colors.purple} />
-              <Text style={styles.regenerateText}>Regenerate</Text>
-            </TouchableOpacity>
-          </ScrollView>
-        )}
+          {steps.map((s, i) => {
+            const isAccepted = accepted.has(s.key);
+            return (
+              <TouchableOpacity
+                key={s.key}
+                style={[styles.row, !isAccepted && styles.rowRejected]}
+                onPress={() => toggle(s.key)}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: isAccepted }}
+                accessibilityLabel={s.title}
+              >
+                <Ionicons
+                  name={isAccepted ? 'checkmark-circle' : 'ellipse-outline'}
+                  size={24}
+                  color={isAccepted ? colors.accent : colors.textTertiary}
+                />
+                {/* The steps come back in the order they'd be done, so the
+                    number is information rather than decoration. */}
+                <Text style={styles.rowIndex}>{i + 1}</Text>
+                <Text style={[styles.rowTitle, !isAccepted && styles.rowTextRejected]} numberOfLines={2}>
+                  {s.title}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+
+          {/* Typing a step works whatever the request did, so a breakdown the
+              model got wrong can be finished by hand. */}
+          <View style={styles.addRow}>
+            <TextField
+              style={[styles.input, styles.addInput]}
+              value={newStep}
+              onChangeText={setNewStep}
+              placeholder="Add your own step"
+              placeholderTextColor={colors.textTertiary}
+              returnKeyType="done"
+              blurOnSubmit={false}
+              onSubmitEditing={addOwnStep}
+              maxLength={TITLE_MAX_LENGTH}
+              accessibilityLabel="Add your own step"
+            />
+            <InlineAction
+              label="Add"
+              icon="add"
+              onPress={addOwnStep}
+              disabled={newStep.trim() === ''}
+              haptic={false}
+            />
+          </View>
+
+          <Text style={styles.label}>WHAT THIS TASK MEANS</Text>
+          <TextField
+            style={[styles.input, styles.contextInput]}
+            value={context}
+            onChangeText={setContext}
+            placeholder="e.g. the reusable grocery bags in the trunk, they smell"
+            placeholderTextColor={colors.textTertiary}
+            multiline
+            maxLength={500}
+            accessibilityLabel="What this task means"
+          />
+          <Text style={styles.hint}>Sent with Regenerate so the steps fit what you actually mean.</Text>
+
+          <TouchableOpacity
+            style={[styles.regenerateBtn, loading && styles.regenerateDisabled]}
+            onPress={() => { haptics.tap(); load(); }}
+            disabled={loading}
+            activeOpacity={interaction.activeOpacity}
+          >
+            <Ionicons name="refresh" size={16} color={colors.purple} />
+            <Text style={styles.regenerateText}>{hasContext ? 'Regenerate with these details' : 'Regenerate'}</Text>
+          </TouchableOpacity>
+        </ScrollView>
       </View>
     </SheetModal>
   );
@@ -226,7 +336,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md, paddingVertical: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator,
   },
-  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl, gap: spacing.md },
+  scroll: { flex: 1 },
+  loading: { alignItems: 'center', padding: spacing.xl, gap: spacing.md },
+  note: { paddingHorizontal: spacing.md, marginBottom: spacing.sm },
   loadingText: { color: colors.textSecondary, fontSize: font.md, textAlign: 'center' },
   list: { paddingTop: spacing.md, paddingBottom: 120 },
   intro: {
@@ -246,9 +358,29 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   rowTitle: { flex: 1, color: colors.text, fontSize: font.md },
   rowTextRejected: { textDecorationLine: 'line-through' },
+  addRow: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+    marginHorizontal: spacing.md, marginTop: spacing.sm,
+  },
+  input: {
+    backgroundColor: colors.bgSecondary, borderRadius: radius.md,
+    paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 2,
+    color: colors.text, fontSize: font.md,
+  },
+  addInput: { flex: 1 },
+  contextInput: { marginHorizontal: spacing.md, minHeight: 72, textAlignVertical: 'top' },
+  label: {
+    color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.semibold, letterSpacing: 0.8,
+    paddingHorizontal: spacing.md, marginTop: spacing.lg, marginBottom: spacing.xs,
+  },
+  hint: {
+    color: colors.textSecondary, fontSize: font.sm, lineHeight: lineHeight.sm,
+    paddingHorizontal: spacing.md, marginTop: spacing.xs,
+  },
+  regenerateDisabled: { opacity: 0.4 },
   regenerateBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs,
-    marginTop: spacing.lg, paddingVertical: spacing.md,
+    marginTop: spacing.md, paddingVertical: spacing.md,
   },
   regenerateText: { color: colors.purple, fontSize: font.md, fontWeight: '500' },
 });
