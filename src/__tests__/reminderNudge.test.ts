@@ -127,6 +127,8 @@ describe('meetingSignature', () => {
       ev(at(11), at(12), { availability: 'free' }),
       ev(at(12), at(13), { status: 'canceled' }),
     ])).toBe(base);
+  });
+});
 
 describe('meetingAtStart', () => {
   it('names the meeting a start time falls inside, and when it ends', () => {

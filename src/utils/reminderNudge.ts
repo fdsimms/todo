@@ -77,7 +77,9 @@ export function meetingSignature(events: readonly BusyEvent[]): string {
     .map(e => `${e.id}|${e.start}|${e.end}`)
     .sort()
     .join('\n');
+}
 
+/**
  * The meeting a task's start time falls inside, on the day it's for, or null.
  *
  * For the editor's Time window row: "From 2pm" set on a day with a 1:30 to
