@@ -147,7 +147,7 @@ export function rankByRecency<T extends { key: string }>(
 }
 
 /** How many earlier helpings the picker offers at once, above the list proper. */
-export const RECENT_HELPING_LIMIT = 5;
+export const RECENT_HELPING_LIMIT = 3;
 
 /**
  * Foods logged under no row, most recent first, for the picker to offer as
