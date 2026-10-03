@@ -345,7 +345,7 @@ export function describeWeekendNudgePlanThreshold(count: number): string {
  * what a weekend actually filling up looks like, one thing at a time is not.
  *
  * Calendar events count for Saturday and Sunday only, and any known busy time
- * blocks outright rather than adding to `planCount` — the two aren't
+ * (an all-day event left busy included) blocks outright rather than adding to `planCount` — the two aren't
  * comparable (a task is a single plan, a busy window is however long the
  * calendar says), and a half-day commitment is reason enough on its own
  * regardless of how much of the day-count threshold is left. Friday's events
@@ -365,7 +365,7 @@ export function isWeekendBare(
   if (planCount > clampWeekendNudgePlanThreshold(threshold)) return false;
   for (const key of [window.saturdayKey, window.sundayKey]) {
     const load = loads.get(key);
-    if (load?.busyKnown && load.busyMinutes > 0) return false;
+    if (load?.busyKnown && (load.busyMinutes > 0 || load.busyAllDay)) return false;
   }
   return true;
 }

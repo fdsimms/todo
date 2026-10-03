@@ -320,6 +320,28 @@ describe('buildDayLoads', () => {
     expect(day.taskMinutes).toBe(30);
   });
 
+  it('marks a day an all-day event was left busy for, without inventing minutes for it', () => {
+    const conference = (day: number, availability = 'busy') => makeEvent({
+      start: new Date(Date.UTC(2026, 7, day)).toISOString(),
+      end: new Date(Date.UTC(2026, 7, day + 1)).toISOString(),
+      allDay: true,
+      availability,
+    });
+    const loads = loadsFor([], {
+      events: [conference(12), conference(13, 'free')],
+      start: at(2026, 8, 10),
+      end: at(2026, 8, 24),
+    });
+    const busy = loads.get('2026-08-12')!;
+    expect(busy.busyAllDay).toBe(true);
+    expect(busy.busyMinutes).toBe(0);
+    expect(busy.rankedMinutes).toBe(0);
+    expect(weightFor(busy)).toBe('full');
+    // A birthday or holiday, which calendars create as Free, is not the day taken.
+    expect(loads.get('2026-08-13')!.busyAllDay).toBe(false);
+    expect(weightFor(loads.get('2026-08-13'))).toBeNull();
+  });
+
   it('says nothing about events on a day the window does not reach', () => {
     const loads = loadsFor([makeTask({ dueDate: iso(2026, 8, 30), estimatedMinutes: 30 })], {
       events: [makeEvent({ start: hour(2026, 8, 30, 9), end: hour(2026, 8, 30, 17) })],
@@ -380,6 +402,7 @@ describe('weightFor', () => {
     projected: 0,
     busyKnown: false,
     busyMinutes: 0,
+    busyAllDay: false,
     rankedMinutes,
     away,
   });
@@ -439,6 +462,7 @@ describe('describeDayLoad', () => {
       projected: 0,
       busyKnown: false,
       busyMinutes: 0,
+      busyAllDay: false,
       rankedMinutes: 0,
       away: false,
     };
@@ -470,6 +494,10 @@ describe('describeDayLoad', () => {
 
   it('keeps a small total when it is the whole day', () => {
     expect(describeDayLoad(loadFor({ taskCount: 2, taskMinutes: 2 }))).toBe('~2m');
+  });
+
+  it('says a day is busy all day when an all-day event took it', () => {
+    expect(describeDayLoad(loadFor({ busyKnown: true, busyAllDay: true }))).toBe('busy all day');
   });
 
   it('keeps meeting time in its own clause', () => {

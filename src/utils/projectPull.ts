@@ -10,6 +10,7 @@ import { hasNoDateSignal, isHeldBack } from './visibilityUtils';
 import { scoreTask, type PinContext } from './pinSuggest';
 import { computeSnoozeSuggestion } from './snoozeEngine';
 import type { BusyEvent } from './calendarBusy';
+import type { AwaySpan } from './awayDates';
 import { sumEstimatedMinutes } from './effort';
 import { useSettingsStore } from '../store/useSettingsStore';
 
@@ -518,6 +519,8 @@ export function suggestPullDate(
    * call site, like computeSnoozeSuggestion's own parameter.
    */
   busyEvents: readonly BusyEvent[] = [],
+  /** Trips, so a pull ranks the days you're away last. Same engine parameter. */
+  awaySpans: readonly AwaySpan[] = [],
 ): PullDate {
   if (landOnDayKey) {
     const date = dayKeyToDate(landOnDayKey);
@@ -525,7 +528,7 @@ export function suggestPullDate(
     return { date, dayLabel: format(date, 'EEEE'), reason: '' };
   }
   if (sumEstimatedMinutes(todaysTasks) >= PULL_TODAY_BUDGET_MINUTES) {
-    const suggestion = computeSnoozeSuggestion(task, allTasks as Task[], busyEvents);
+    const suggestion = computeSnoozeSuggestion(task, allTasks as Task[], busyEvents, awaySpans);
     return { date: suggestion.date, dayLabel: suggestion.dayLabel, reason: suggestion.reason };
   }
 
@@ -713,6 +716,8 @@ export function buildProjectPullPlan(
   limit: number = MAX_PULLED_PROJECTS,
   /** Passed through to suggestPullDate. */
   busyEvents: readonly BusyEvent[] = [],
+  /** Passed through to suggestPullDate. */
+  awaySpans: readonly AwaySpan[] = [],
 ): ProjectPullPlan {
   let stalls = findProjectStalls(projects, allTasks, 'ask');
   if (scopeProjectIds && scopeProjectIds.length > 0) {
@@ -738,7 +743,7 @@ export function buildProjectPullPlan(
   let working: Task[] = [...allTasks];
   const proposals = stalls.slice(0, limit).map(stall => {
     const candidates = rankPullCandidates(stall.pullable, ctx);
-    const suggestion = suggestPullDate(candidates[0], working, landingToday, stall.quietDays, landOnDayKey, busyEvents);
+    const suggestion = suggestPullDate(candidates[0], working, landingToday, stall.quietDays, landOnDayKey, busyEvents, awaySpans);
     if (suggestion.dayLabel === 'Today') landingToday.push(candidates[0]);
     else {
       const pulled = { ...candidates[0], ...projectPullUpdates(suggestion.date) };

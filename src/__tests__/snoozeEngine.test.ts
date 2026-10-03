@@ -388,10 +388,16 @@ describe('computeSnoozeSuggestion', () => {
       expect(isoDate(withCalendar.date)).toBe(isoDate(dayAfter));
     });
 
-    it('ignores an all-day event and one marked Free', () => {
+    /** An all-day event on a local date, stored at UTC midnight as calendars store them. */
+    function allDayOn(day: Date, overrides: Partial<BusyEvent> = {}): BusyEvent {
+      const start = new Date(Date.UTC(day.getFullYear(), day.getMonth(), day.getDate()));
+      return busyEvent(start, new Date(start.getTime() + 86_400_000), { allDay: true, ...overrides });
+    }
+
+    it('ignores a Free all-day event (a birthday, a holiday) and a timed one marked Free', () => {
       const tomorrow = addDays(new Date(), 1);
       const events = [
-        busyEvent(tomorrow, addDays(tomorrow, 1), { allDay: true }),
+        allDayOn(tomorrow, { availability: 'free' }),
         busyEvent(tomorrow, addDays(tomorrow, 1), { availability: 'free' }),
       ];
       const task = makeTask({ id: 'snooze-me' });
@@ -399,11 +405,41 @@ describe('computeSnoozeSuggestion', () => {
       expect(isoDate(result.date)).toBe(isoDate(tomorrow));
     });
 
+    it('avoids a day an all-day event was left busy for', () => {
+      const tomorrow = addDays(new Date(), 1);
+      const task = makeTask({ id: 'snooze-me' });
+      const result = computeSnoozeSuggestion(task, [task], [allDayOn(tomorrow, { title: 'Conference' })]);
+      expect(isoDate(result.date)).not.toBe(isoDate(tomorrow));
+    });
+
     it('defaults to no calendar data when the parameter is omitted', () => {
       const task = makeTask({ id: 'snooze-me' });
       const withDefault = computeSnoozeSuggestion(task, [task]);
       const withEmpty = computeSnoozeSuggestion(task, [task], []);
       expect(isoDate(withDefault.date)).toBe(isoDate(withEmpty.date));
+    });
+  });
+
+  describe('away days', () => {
+    const noonIn = (days: number) => {
+      const d = addDays(new Date(), days);
+      d.setHours(12, 0, 0, 0);
+      return d;
+    };
+
+    it('ranks the days of a trip below every day that is not one', () => {
+      const task = makeTask({ id: 'snooze-me' });
+      // Away tomorrow through the day after; back on day 3.
+      const span = { start: noonIn(1), end: noonIn(3) };
+      const result = computeSnoozeSuggestion(task, [task], [], [span]);
+      expect(isoDate(result.date)).toBe(isoDate(noonIn(3)));
+    });
+
+    it('still suggests a day when every candidate is away, since the span never gates', () => {
+      const task = makeTask({ id: 'snooze-me' });
+      const span = { start: noonIn(0), end: noonIn(30) };
+      const result = computeSnoozeSuggestion(task, [task], [], [span]);
+      expect(isoDate(result.date)).toBe(isoDate(noonIn(1)));
     });
   });
 

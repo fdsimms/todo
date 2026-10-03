@@ -164,7 +164,7 @@ import { useHealthStore } from '../store/useHealthStore';
 import { useWeatherStore } from '../store/useWeatherStore';
 import { weatherConditionAdjective, weatherIconFor } from '../utils/weatherCondition';
 import { capitalize } from '../utils/capitalize';
-import { eventsIn, type BusyEvent } from '../utils/calendarBusy';
+import { busyMinutesIn, eventsIn, type BusyEvent } from '../utils/calendarBusy';
 import { useHiddenEventsStore } from '../store/useHiddenEventsStore';
 import { hiddenEventKey } from '../utils/hiddenEvents';
 import { TodayEventsSheet } from '../components/TodayEventsSheet';
@@ -4003,15 +4003,32 @@ export function TodayScreen() {
     return minutes > 0 ? formatDuration(minutes) : undefined;
   }, [completedToday]);
 
+  // Meeting time still ahead today, beside the task time still planned, so
+  // the line says how much of the rest of the day is spoken for and not only
+  // how much of it is tasks. From now rather than from the day's start, the
+  // same forward reading "planned" gives (it counts only what's outstanding),
+  // and without the events hidden from Today. `minuteTick` keeps it following
+  // the clock as meetings end.
+  const eventsLeftLabel = useMemo(() => {
+    const now = new Date();
+    const minutes = busyMinutesIn(
+      todayCalendarEvents.filter(e => !isEventHidden(e)),
+      now,
+      todayCalendarDayEnd,
+    );
+    return minutes > 0 ? formatDuration(minutes) : undefined;
+  }, [todayCalendarEvents, isEventHidden, todayCalendarDayEnd, minuteTick]);
+
   // Dropped by simplified mode: "40m done · 2h 15m planned" is a reading of the
   // day rather than a part of it, and it needs the effort ratings that mode
   // also takes away.
   const workloadSubtitle =
     viewMode === 'today' && !featureHidden('workloadSubtitle', simpleMode)
-    && (plannedLabel || completedTodayLabel)
+    && (plannedLabel || completedTodayLabel || eventsLeftLabel)
       ? [
           completedTodayLabel ? `${completedTodayLabel} done` : undefined,
           plannedLabel ? `${plannedLabel} planned` : undefined,
+          eventsLeftLabel ? `${eventsLeftLabel} of events left` : undefined,
         ]
           .filter(Boolean)
           .join(' · ')

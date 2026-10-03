@@ -116,6 +116,24 @@ export function awaySpanOf(
   return { start, end: end > start ? end : null };
 }
 
+/**
+ * Every live project's span. Archived and completed projects are history, not
+ * schedule; a span already over is kept, since a reader looking back is
+ * entitled to say you were away.
+ */
+export function liveAwaySpans(
+  projects: readonly Pick<Project, 'awayStart' | 'awayEnd' | 'archived' | 'completed'>[],
+  dayResetTime?: string,
+): AwaySpan[] {
+  const spans: AwaySpan[] = [];
+  for (const project of projects) {
+    if (project.archived || project.completed) continue;
+    const span = awaySpanOf(project, dayResetTime);
+    if (span) spans.push(span);
+  }
+  return spans;
+}
+
 /** Whether `date` falls inside the span: on or after departure, before the return. */
 export function isAwayDay(span: AwaySpan | null, date: Date, dayResetTime?: string): boolean {
   if (!span) return false;

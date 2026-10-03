@@ -136,10 +136,11 @@ Ranked by cost.
 2. **Away days carry a cue in `WhenPicker`** *(built, and in the month grid
    too)*. There is one choke point:
    `buildDayLoads`, consumed by the picker and by the look-ahead sheet's day
-   strip. *(Not built:)* `deloadPlan` and `buildPushPlan` ranking those days
-   last instead of treating them as ordinary. This is where the feature
-   stops being decoration — and see the rule below, because it is a cue and
-   never a refusal.
+   strip. *(Built:)* every suggested date ranks those days last instead of
+   treating them as ordinary, through `snoozeEngine`'s `AWAY_PENALTY`: the
+   picker's Suggest, `deloadPlan` and `projectPull`. *(Not built:)*
+   `buildPushPlan`. This is where the feature stops being decoration — and
+   see the rule below, because it is a cue and never a refusal.
    - The `dayLoad` rule that "no cue is never *this day is free*" is not in
      tension with this. That rule is about absent information; away dates are
      information the user typed.
@@ -173,7 +174,8 @@ ranks. It never gates.** Concretely:
   day to put a task on, so it gets a cue in the same channel `buildDayLoads`
   already paints day weight in, and nothing else.
 - **`deloadPlan` and `buildPushPlan` may rank an away day last, never exclude
-  it.** Both already propose per-row with everything untickable, so a proposal
+  it.** `AWAY_PENALTY` is finite for exactly this reason: with every candidate
+  away, the best of them still wins. Both already propose per-row with everything untickable, so a proposal
   that avoids the trip is a default the user can overrule, which is the whole
   point.
 - **Vacation mode is already opt-in per row, and this design inherits that
