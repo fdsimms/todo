@@ -93,3 +93,18 @@ Meal Plan last opened), birthdays, project deadlines, and what was completed tha
 - **An empty stretch of the day timeline is tappable** (`slotMinutesAt` snaps it down to the quarter
   hour): a task at that time is seeded with `windowStart`, the field that places a task on the axis,
   and an event with an hour-long span. Blocks sit above the tap layer and keep their own taps.
+
+## Dragging a task onto a day
+
+Long-press a Due or Returning row in the month or week view and drop it on a cell. Three decisions:
+
+- **The drop is the date picker's move, not a new one.** It goes through `confirmBulkSetWhen`, so a
+  push lays `deferUntil`, a pull moves `dueDate`, and a repeating task is asked about its schedule,
+  exactly as the row's own reschedule does. Dropping on the day it's already listed under does nothing
+  (`isMoveDrop`).
+- **Deadline rows don't lift**, and nothing lifts in the day view (no grid to drop on). Moving a
+  deadline is a different question from moving the work.
+- **The aimed cell is on a `DropTargetChannel`, never screen state**, and the card rides an Animated
+  value, so a drag re-renders two cells per crossing rather than the screen. The responder sits on
+  the screen's root, an ancestor of the scroll view, and scrolling is off for the drag's length.
+  Cells are measured once, at lift (`calendarDrag.ts` hit-tests against those rectangles).
