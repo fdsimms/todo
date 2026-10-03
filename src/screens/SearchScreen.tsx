@@ -27,7 +27,7 @@ import type { Category, Task, TaskGroup } from '../types';
 import type { SearchResult, GroupSearchResult, ProjectSearchResult } from '../utils/fuzzySearch';
 import { fuzzySearch, searchGroups, searchProjects } from '../utils/fuzzySearch';
 import { collapseOccurrences, formatOccurrenceCount, type CollapsedOccurrence } from '../utils/searchCollapse';
-import { displayTitleFor, groupRoster, isQuotaPartial } from '../utils/visibilityUtils';
+import { displayTitleFor, groupRoster, isQuotaPartial, quotaNextDueLabel } from '../utils/visibilityUtils';
 import { peopleOn, groupMentionTokens } from '../utils/peopleRegistry';
 import { matchPersonMentions } from '../utils/parseTaskInput';
 import { mergeRanges } from '../utils/ranges';
@@ -103,6 +103,9 @@ const SearchResultItem = React.memo(function SearchResultItem({ result, onPress,
   // own comment), so the "Due" chip below never fires for one — this is the
   // only fact this row has to say when it comes back.
   const hoursUnlock = isCompleted ? null : hoursUnlockLabel(task);
+  // A daily target on pace sits in Later until its next unit falls due, and
+  // "Due Oct 3" doesn't say when that is.
+  const quotaNext = isCompleted ? null : quotaNextDueLabel(task);
   // What this row stands for besides itself, when it's one date of a repeat
   // (see collapseOccurrences). Null on an ordinary one-off, which is most rows.
   const countLabel = formatOccurrenceCount(occurrenceCount);
@@ -120,6 +123,7 @@ const SearchResultItem = React.memo(function SearchResultItem({ result, onPress,
     isCompleted && asksOnCompletion(task) ? (answer !== null ? `answered ${answer}` : 'no answer') : null,
     !isCompleted && task.dueDate ? `due ${format(new Date(task.dueDate), 'MMM d')}` : null,
     hoursUnlock ? `unlocks ${hoursUnlock}` : null,
+    quotaNext ? `next ${quotaNext}` : null,
     countLabel ? `and ${countLabel}` : null,
   ].filter(Boolean).join(', ');
 
@@ -227,6 +231,9 @@ const SearchResultItem = React.memo(function SearchResultItem({ result, onPress,
           )}
           {hoursUnlock && (
             <Text style={styles.metaText}>Unlocks {hoursUnlock}</Text>
+          )}
+          {quotaNext && (
+            <Text style={styles.metaText}>Next {quotaNext}</Text>
           )}
           {/* Last of the chips and first of the wrapping ones: it's the least
               specific fact on the row, but it's the one that explains why the

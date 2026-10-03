@@ -30,7 +30,7 @@ import { menuDestinations, menuSearchTerms, type NavSearchResult } from '../util
 import { useNavMenuOptions } from '../hooks/useNavMenuOptions';
 import type { SearchResult, GroupSearchResult, ProjectSearchResult } from '../utils/fuzzySearch';
 import { formatOccurrenceCount, type CollapsedOccurrence } from '../utils/searchCollapse';
-import { displayTitleFor, groupRoster } from '../utils/visibilityUtils';
+import { displayTitleFor, groupRoster, quotaNextDueLabel } from '../utils/visibilityUtils';
 import { peopleOn, groupMentionTokens } from '../utils/peopleRegistry';
 import { matchPersonMentions } from '../utils/parseTaskInput';
 import { mergeRanges } from '../utils/ranges';
@@ -121,6 +121,9 @@ function QuickSearchRow({ result, onSelect, onTicked, styles, colors }: {
   // on, not the clock time it actually comes back at, which is the fact this
   // row exists to answer (see hoursUnlockLabel's own comment).
   const hoursUnlock = task.completed ? null : hoursUnlockLabel(task);
+  // The same gap for a daily target that's on pace: its date is "Today", and
+  // what the row is for is when the next unit comes due.
+  const quotaNext = quotaNextDueLabel(task);
   const countLabel = formatOccurrenceCount(occurrenceCount);
 
   // Built as a list so the dots between the parts can be interleaved rather
@@ -154,6 +157,7 @@ function QuickSearchRow({ result, onSelect, onTicked, styles, colors }: {
   }
   if (dateLabel) meta.push(<Text style={styles.dateText}>{dateLabel}</Text>);
   if (hoursUnlock) meta.push(<Text style={styles.dateText}>Unlocks {hoursUnlock}</Text>);
+  if (quotaNext) meta.push(<Text style={styles.dateText}>Next {quotaNext}</Text>);
 
   return (
     // A plain View holding two touchables, not one touchable wrapping the
@@ -179,6 +183,7 @@ function QuickSearchRow({ result, onSelect, onTicked, styles, colors }: {
           task.completed ? 'completed' : null,
           dateLabel,
           hoursUnlock ? `unlocks ${hoursUnlock}` : null,
+          quotaNext ? `next ${quotaNext}` : null,
           countLabel ? `and ${countLabel}` : null,
         ].filter(Boolean).join(', ')}
         accessibilityHint="Double tap to open task"

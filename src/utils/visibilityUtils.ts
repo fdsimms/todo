@@ -1,6 +1,7 @@
 import { addDays } from 'date-fns/addDays';
+import { format } from 'date-fns/format';
 import type { Task, TimeOfDay, Category } from '../types';
-import { getCurrentDayStart, getTaskDayStart, getDayStart, hhmmToDate, getNextDueDate, getLogicalDayKey, dayKeyToDate } from './dateUtils';
+import { getCurrentDayStart, getTaskDayStart, getDayStart, hhmmToDate, getNextDueDate, getLogicalDayKey, dayKeyToDate, formatTimeOfDay } from './dateUtils';
 import { effectiveWindowEndTime } from './clockTime';
 import type { ExpiredTaskGraceDays } from './expiredTaskGrace';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -657,6 +658,24 @@ export function quotaNextDueAt(task: Task): Date {
   const { start, end } = getQuotaSpan(task);
   if (end <= start) return start;
   return new Date(+start + ((+end - +start) * task.progressCount) / task.targetCount!);
+}
+
+// When the next unit falls due, as the words after "next": "at 14:30" when
+// that is later today, the weekday ("Thu") when it is another day. A weekly
+// target's next unit is usually days away, and a bare clock time on one reads
+// as *today* at that time, the one thing it isn't. Carries its own preposition
+// because the two formats want different ones ("next at 14:30", "next Thu").
+export function formatQuotaNextDue(next: Date): string {
+  const sameDay = getTaskDayStart(next).getTime() === getCurrentDayStart().getTime();
+  return sameDay ? `at ${formatTimeOfDay(next)}` : format(next, 'EEE');
+}
+
+// The same words for a target that is sitting in Later because it's on pace,
+// or null for anything else. What a row outside the task list (Search, quick
+// search) shows in place of a date: the task's day is today, which says
+// nothing about when it comes back.
+export function quotaNextDueLabel(task: Task): string | null {
+  return isOnPaceQuota(task) ? formatQuotaNextDue(quotaNextDueAt(task)) : null;
 }
 
 // True when logging one more unit would take this task off Today: it's showing
