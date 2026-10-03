@@ -26,6 +26,7 @@ import { useHiddenEventsStore } from '../store/useHiddenEventsStore';
 import { hiddenEventKey } from '../utils/hiddenEvents';
 import { animateLayout } from '../utils/layoutAnimation';
 import { useTaskStore } from '../store/useTaskStore';
+import { useTasksWhileOpen } from '../hooks/useTasksWhileOpen';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { taskFieldsFromEvent } from '../utils/calendarEventImport';
 import { useEventPeopleStore } from '../store/useEventPeopleStore';
@@ -146,7 +147,7 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById, titl
   const taskLinks = useEventTaskLinkStore(s => s.links);
   const addEventTasks = useEventTaskLinkStore(s => s.addTasks);
   const rekeyEventTasks = useEventTaskLinkStore(s => s.rekey);
-  const allTasks = useTaskStore(useShallow(s => s.tasks));
+  const allTasks = useTasksWhileOpen(visible, { shallow: true });
   const liveTaskIds = useMemo(() => new Set(allTasks.map(t => t.id)), [allTasks]);
   // Moves are read against the whole window rather than this sheet's day,
   // since an event that moved to another day has left it.

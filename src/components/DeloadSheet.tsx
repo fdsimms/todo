@@ -19,6 +19,7 @@ import { formatDuration } from '../utils/effort';
 import { buildDeloadPlan, deloadUpdates, type DeloadPlan, type DeloadProposal } from '../utils/deloadPlan';
 import { getLogicalDayKey } from '../utils/dateUtils';
 import { useTaskStore } from '../store/useTaskStore';
+import { useTasksWhileOpen } from '../hooks/useTasksWhileOpen';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { WhenPicker } from './WhenPicker';
@@ -74,7 +75,7 @@ export function DeloadSheet({ visible, todaysTasks, notes, onClose }: Props) {
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
-  const allTasks = useTaskStore(s => s.tasks);
+  const allTasks = useTasksWhileOpen(visible);
   const deloadTasks = useTaskStore(s => s.deloadTasks);
   const calendarReadEnabled = useSettingsStore(s => s.calendarReadEnabled);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);

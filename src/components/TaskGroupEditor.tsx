@@ -13,6 +13,7 @@ import { TITLE_MAX_LENGTH } from '../types';
 import { getVisibleAt, isRelevantToGroupToday, isTaskDeferred, isTaskVisible } from '../utils/visibilityUtils';
 import { formatTaskDate, getCurrentDayStart, getDayStart } from '../utils/dateUtils';
 import { useTaskStore } from '../store/useTaskStore';
+import { useTasksWhileOpen } from '../hooks/useTasksWhileOpen';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
@@ -96,7 +97,7 @@ export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, pro
   const allCategories = useTaskStore(useShallow(s => s.allCategories()));
   const categories = useCategoryStore(useShallow(s => s.categories));
   const projects = useProjectStore(useShallow(s => s.projects));
-  const allTasks = useTaskStore(s => s.tasks);
+  const allTasks = useTasksWhileOpen(visible);
   const groupRosterOf = useTaskStore(s => s.groupRosterOf);
   const addExistingToGroup = useTaskStore(s => s.addExistingToGroup);
   const addExistingToProject = useTaskStore(s => s.addExistingToProject);

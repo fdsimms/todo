@@ -36,14 +36,17 @@ interface Props {
  * skips SheetModal's ordered close (see useSheetSubject).
  */
 export function DeliverablePromptQueue({ ids, onResolved }: Props) {
-  const tasks = useTaskStore(s => s.tasks);
   const completeTask = useTaskStore(s => s.completeTask);
 
   const head = ids[0] ?? null;
   // Resolved at render rather than captured when the run started: a task can be
   // completed or deleted from elsewhere while the run is up, and asking about a
   // row that has since gone would prompt for a completion that can't happen.
-  const current = head ? tasks.find(t => t.id === head && !t.completed) ?? null : null;
+  // Selects the one task rather than the list: `visible` is derived from this,
+  // so it cannot be gated on `visible`, and the whole list would re-render the
+  // queue on every task write for a run that is almost always empty.
+  const current = useTaskStore(s =>
+    head ? s.tasks.find(t => t.id === head && !t.completed) ?? null : null);
 
   useEffect(() => {
     if (head !== null && current === null) onResolved(head);

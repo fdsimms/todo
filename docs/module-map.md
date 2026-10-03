@@ -455,6 +455,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useStableCallback.ts` — useStableCallback
 - `src/hooks/useStepTimers.ts` — StepTimersBinding, useStepTimers
 - `src/hooks/useTaskSelection.ts` — useTaskSelection
+- `src/hooks/useTasksWhileOpen.ts` — useTasksWhileOpen
 - `src/hooks/useTipSignals.ts` — useTipSignals
 - `src/hooks/useTitleSelection.ts` — TitleSelection, useTitleSelection
 - `src/hooks/useTravelTaskSync.ts` — useTravelTaskSync

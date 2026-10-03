@@ -21,7 +21,7 @@ import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, animation, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { useShallow } from 'zustand/react/shallow';
-import { useTaskStore } from '../store/useTaskStore';
+import { useTasksWhileOpen } from '../hooks/useTasksWhileOpen';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { useCategoryStore } from '../store/useCategoryStore';
@@ -117,7 +117,7 @@ export function TaskRelationPickerSheet({ visible, onClose, relation, taskId, co
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const { height: windowHeight } = useWindowDimensions();
 
-  const tasks = useTaskStore(useShallow(s => s.tasks));
+  const tasks = useTasksWhileOpen(visible, { shallow: true });
   const groups = useTaskGroupStore(useShallow(s => s.groups));
   const projects = useProjectStore(useShallow(s => s.projects));
   const categories = useCategoryStore(useShallow(s => s.categories));
