@@ -372,11 +372,11 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
     // notes and settings entered for it, without a word.
     if (isNew && !title.trim()) {
       Alert.alert(
-        'Name this project',
-        'A new project needs a name before it can be saved.',
+        isList ? 'Name this list' : 'Name this project',
+        isList ? 'A new list needs a name before it can be saved.' : 'A new project needs a name before it can be saved.',
         [
           { text: 'Keep editing', style: 'cancel' },
-          { text: 'Discard project', style: 'destructive', onPress: () => onClose('discarded') },
+          { text: isList ? 'Discard list' : 'Discard project', style: 'destructive', onPress: () => onClose('discarded') },
         ],
       );
       return;
@@ -412,7 +412,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
   // The name as it reads on screen right now, for the confirms below: the
   // snapshot's title is blank for a project fresh from quick add, and stale
   // for one renamed in this session.
-  const displayTitle = () => title.trim() || project?.title || 'this project';
+  const displayTitle = () => title.trim() || project?.title || (isList ? 'this list' : 'this project');
 
   /**
    * Whether anything on the sheet differs from what the project holds. Read
@@ -458,7 +458,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
     const leave = () => onClose(isNew ? 'discarded' : undefined);
     if (!isDirty()) { leave(); return; }
     Alert.alert(
-      isNew ? 'Discard this project?' : 'Discard changes?',
+      isNew ? (isList ? 'Discard this list?' : 'Discard this project?') : 'Discard changes?',
       isNew
         ? "It hasn't been saved yet. Are you sure you want to discard it?"
         : 'You have unsaved changes. Are you sure you want to discard them?',
@@ -473,12 +473,14 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
     if (!project) return;
     Alert.alert(
       `Delete "${displayTitle()}"?`,
-      'Its tasks can stay in your list without a project, or be deleted with it.',
+      isList
+        ? 'Its items can stay as tasks without a list, or be deleted with it.'
+        : 'Its tasks can stay in your list without a project, or be deleted with it.',
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete project only', onPress: () => { deleteProject(project.id, { cascade: false }); onClose(); } },
+        { text: isList ? 'Delete list only' : 'Delete project only', onPress: () => { deleteProject(project.id, { cascade: false }); onClose(); } },
         {
-          text: 'Delete project and tasks',
+          text: isList ? 'Delete list and items' : 'Delete project and tasks',
           style: 'destructive',
           onPress: () => { deleteProject(project.id, { cascade: true }); onClose(); },
         },
@@ -618,7 +620,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
         // Delete moved down to the actions at the bottom to make room.
         <SheetHeader
           bare
-          title={isNew ? 'New project' : 'Edit project'}
+          title={isNew ? (isList ? 'New list' : 'New project') : (isList ? 'Edit list' : 'Edit project')}
           left={<SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} />}
           right={<SheetHeaderButton label="Done" onPress={() => saveAndClose()} />}
         />
@@ -1073,9 +1075,9 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
       )}
 
       {/*
-        Whether this project is a list lives on its own screen now — the
+        Whether this project is a list lives on its own screen — the
         list-outline toggle in ProjectDetailScreen's header, right where its
-        effect shows — not here. See Project.kind.
+        effect shows — not here. See docs/arch/lists.md.
       */}
 
       <Text style={styles.groupLabel}>More</Text>
@@ -1261,7 +1263,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
             <Ionicons name="duplicate-outline" size={18} color={colors.textSecondary} />
             <View style={styles.optionContent}>
               <Text style={styles.optionLabel}>Start a fresh copy</Text>
-              <Text style={styles.optionHint}>A new project with the same tasks, all open and undated</Text>
+              <Text style={styles.optionHint}>{isList ? 'A new list with the same items, all unchecked' : 'A new project with the same tasks, all open and undated'}</Text>
             </View>
           </TouchableOpacity>
         </View>
@@ -1274,11 +1276,11 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
             onPress={handleDelete}
             activeOpacity={interaction.activeOpacity}
             accessibilityRole="button"
-            accessibilityLabel="Delete project"
+            accessibilityLabel={isList ? 'Delete list' : 'Delete project'}
           >
             <Ionicons name="trash-outline" size={18} color={colors.red} />
             <View style={styles.optionContent}>
-              <Text style={[styles.optionLabel, styles.deleteLabel]}>Delete project</Text>
+              <Text style={[styles.optionLabel, styles.deleteLabel]}>{isList ? 'Delete list' : 'Delete project'}</Text>
             </View>
           </TouchableOpacity>
         </View>

@@ -144,6 +144,17 @@ export function filterProjectListItems(items: readonly ProjectListItem[], query:
   return out;
 }
 
+/**
+ * The tasks whose title holds `query`, by the same rule as
+ * `filterProjectListItems`. For the rows a page draws outside its list items,
+ * like a list's checked items, so the find field narrows them too.
+ */
+export function filterTasksByTitle(tasks: readonly Task[], query: string): Task[] {
+  const q = fold(query.trim());
+  if (!q) return [...tasks];
+  return tasks.filter(t => fold(t.title).includes(q));
+}
+
 function fold(text: string): string {
   return text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 }

@@ -2135,6 +2135,8 @@ interface TaskStore extends UndoHistoryActions {
   /** `skipGeneratedOptOut` has the same meaning as `deleteTask`'s — see its doc comment. */
   bulkDeleteTasks: (ids: string[], opts?: { skipGeneratedOptOut?: boolean; registerUndo?: boolean }) => void;
   clearLogbook: () => void;
+  /** A list's "Delete checked": every checked item on it, one Undo step. */
+  deleteCheckedListItems: (projectId: string) => void;
   bulkSetPriority: (ids: string[], priority: Priority) => void;
   bulkTogglePin: (ids: string[]) => void;
   bulkDefer: (ids: string[], until: Date) => void;
@@ -3625,9 +3627,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (!opts.skipGeneratedOptOut) writeGeneratedOptOut(task, false);
 
     get().setLastAction({
-      // A list's rows are lines, and the page they were deleted from says so.
+      // A list's rows are items, and the page they were deleted from says so.
       label: task.projectId && useProjectStore.getState().projects.some(p => p.id === task.projectId && p.kind === 'list')
-        ? 'Line deleted'
+        ? 'Item deleted'
         : 'Task deleted',
       destructive: true,
       redo: () => get().deleteTask(id, opts),
@@ -9351,6 +9353,28 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         // The ids it actually cleared, not a second call to this action: a
         // redo re-runs against the logbook as it stands now, and anything
         // completed since the undo is not part of the clear being replayed.
+        redo: () => get().bulkDeleteTasks(ids),
+      }, { replacing: historyBefore });
+    }
+  },
+
+  // A list's checked items are exempt from the retention purge (see
+  // retention.ts), so without this they piled up under "Show N checked" for
+  // good, and the only way to be rid of them was to select each one. Same
+  // shape as clearLogbook: bulkDeleteTasks' undo, relabelled.
+  deleteCheckedListItems(projectId) {
+    const historyBefore = get().undoStack;
+    const ids = get().tasks
+      .filter(t => t.projectId === projectId && t.parentId === null && t.completed && !t.archived)
+      .map(t => t.id);
+    if (ids.length === 0) return;
+    get().bulkDeleteTasks(ids);
+    const undo = get().lastAction?.undo;
+    if (undo) {
+      get().setLastAction({
+        label: `${ids.length} checked item${ids.length === 1 ? '' : 's'} deleted`,
+        destructive: true,
+        undo,
         redo: () => get().bulkDeleteTasks(ids),
       }, { replacing: historyBefore });
     }

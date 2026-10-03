@@ -1122,12 +1122,15 @@ export interface Project {
   /**
    * How this project's own screen is drawn: an ordinary project, or a list.
    *
-   * **It changes presentation, never behaviour.** A list's members are
-   * ordinary tasks in an ordinary project, and every rule about them is
-   * unchanged — `projectProgress` counts them, `isTaskVisible` places them,
-   * completing one behaves exactly as completing any task does. Nothing reads
-   * this outside the two Projects screens, and nothing about scheduling,
-   * visibility, sync or search branches on it.
+   * **It never changes what a task does.** A list's members are ordinary
+   * tasks in an ordinary project — `projectProgress` counts them,
+   * `isTaskVisible` places them, completing one behaves exactly as completing
+   * any task does — and nothing about scheduling, visibility or sync branches
+   * on it. What it does change is the *project's* defaults (a list is ongoing
+   * and never nudged, applied by the store on every route: see
+   * `src/utils/projectKind.ts`), a retention exemption for checked items, and
+   * the words and controls the screens use. `docs/arch/lists.md` has the
+   * whole list of readers.
    *
    * That narrowness is the whole design, and it's what the alternative got
    * wrong. A "list of things with no date" was first built as its own entity —
@@ -1301,10 +1304,9 @@ export interface Project {
    */
   inOrder: boolean;
   /**
-   * On a list: checked lines stay on the page, struck through at the bottom
-   * in list order, rather than folding behind "Show N completed". A packing
-   * list is read with what's already packed in view. Presentation only, like
-   * `kind` itself.
+   * On a list: checked items stay on the page, struck through at the bottom
+   * in list order, rather than folding behind "Show N checked". A packing
+   * list is read with what's already packed in view. Presentation only.
    */
   showChecked: boolean;
   /**

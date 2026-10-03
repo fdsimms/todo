@@ -24,6 +24,12 @@ interface SelectAction {
   accessibilityLabel: string;
 }
 
+interface DeleteAction {
+  /** Must raise the Undo bar: that is the only thing making this safe. */
+  onDelete: () => void;
+  accessibilityLabel: string;
+}
+
 interface Props {
   /**
    * Swipe left. Always "enter bulk editing with this row selected" — omit it
@@ -36,6 +42,14 @@ interface Props {
    * for item types with nothing time-shaped to offer.
    */
   whenAction?: WhenAction;
+  /**
+   * Swipe right, in place of `whenAction`: deletes the row. The one exception
+   * to "nothing destructive on a swipe" below, and only for a list item (a
+   * line of text with nothing time-shaped to offer), where a quick delete is
+   * the thing a list is used for and the Undo bar takes it back. Wins over
+   * `whenAction` if a caller passes both.
+   */
+  deleteAction?: DeleteAction;
   /** Turns the gesture off without unmounting it — see the note below. */
   enabled?: boolean;
   /** Applied to the clipping view wrapping the row. */
@@ -51,7 +65,9 @@ interface Props {
  * row's "when" action, and nothing destructive lives on a swipe at all.**
  * Deleting belongs in an editor or the bulk bar, where it can be confirmed and
  * undone in context — a full-swipe commit is far too easy to trigger by
- * accident for an action that can't be taken back.
+ * accident for an action that can't be taken back. The single exception is
+ * `deleteAction`, for an item on a list (see its doc comment); don't extend it
+ * to a task, whose delete takes a schedule and history with it.
  *
  * Two implementation details are load-bearing:
  *
@@ -82,7 +98,7 @@ interface Props {
  *   the default was never doing work — it was only ever able to round a seam
  *   that isn't a corner.
  */
-export function SwipeableRow({ selectAction, whenAction, enabled = true, style, children }: Props) {
+export function SwipeableRow({ selectAction, whenAction, deleteAction, enabled = true, style, children }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const ref = useRef<Swipeable>(null);
@@ -121,7 +137,18 @@ export function SwipeableRow({ selectAction, whenAction, enabled = true, style, 
     : undefined;
 
   // Left-hand panel, revealed by swiping right.
-  const renderLeftActions = whenAction
+  const renderLeftActions = deleteAction
+    ? () => (
+        <TouchableOpacity
+          style={styles.deleteAction}
+          onPress={() => fire(deleteAction.onDelete)}
+          accessibilityRole="button"
+          accessibilityLabel={deleteAction.accessibilityLabel}
+        >
+          <Ionicons name="trash" size={iconSize.md} color={colors.onAccent} />
+        </TouchableOpacity>
+      )
+    : whenAction
     ? () => (
         <TouchableOpacity
           style={[styles.whenAction, whenAction.tint ? { backgroundColor: whenAction.tint } : null]}
@@ -173,6 +200,7 @@ export function SwipeableRow({ selectAction, whenAction, enabled = true, style, 
         onSwipeableWillOpen={direction => {
           haptics.impactMedium();
           if (direction === 'right') { if (selectAction) commit(selectAction.onSelect); }
+          else if (deleteAction) commit(deleteAction.onDelete);
           else if (whenAction) commit(whenAction.onAction);
         }}
         onSwipeableOpen={() => ref.current?.close()}
@@ -196,6 +224,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   whenAction: {
     width: ACTION_WIDTH,
     backgroundColor: colors.orange,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deleteAction: {
+    width: ACTION_WIDTH,
+    backgroundColor: colors.red,
     alignItems: 'center',
     justifyContent: 'center',
   },

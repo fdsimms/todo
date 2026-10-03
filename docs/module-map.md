@@ -229,12 +229,13 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/projectBackfill.ts` — ProjectBackfillFieldId, ProjectBackfillFieldDef, PROJECT_BACKFILL_FIELDS, isProjectFieldMissing, isProjectBackfillDismissed, projectBackfillCandidates, projectBackfillFieldCounts, dismissProjectBackfillField
 - `src/utils/projectDateShortcuts.ts` — ProjectDateAnchor, ProjectDateShortcut, projectDateAnchor, projectDateShortcuts
 - `src/utils/projectGrouping.ts` — ProjectListItem, groupProjectsByCategory, ProjectDropResolution, resolveProjectDrop
+- `src/utils/projectKind.ts` — KindFields, LIST_KIND_FIELDS, projectKindFields, kindFields, kindSwitchFields
 - `src/utils/projectList.ts` — ProjectListFilter, ProjectProgress, ProjectCardCaption, DUE_SOON_DAYS, describeProjectDeadline, projectCardCaption, projectProgressNote, projectNextStepTitle, overdueRoutines, projectListPreview, +7 more
 - `src/utils/projectOrder.ts` — liveProjectSteps, slotUpdates
 - `src/utils/projectPause.ts` — isPausedOn, registerPausedProjectSource, isProjectPaused, projectPausedUntil
 - `src/utils/projectPull.ts` — MAX_PULLED_PROJECTS, MAX_CANDIDATES_PER_PROJECT, PULL_TODAY_BUDGET_MINUTES, NEAR_SCHEDULE_DAYS, StallMode, ProjectStall, PullDate, ProjectPullProposal, PullEmptyReason, PullEmptyState, +13 more
 - `src/utils/projectReviewTasks.ts` — MAX_PROJECT_REVIEW_TASKS, PROJECT_REVIEW_LINK_URL, projectReviewLinkUrl, projectReviewProjectId, projectReviewTitle, projectQuietDays, describeProjectQuiet, declinedToday, projectsReviewedToday, ProjectReviewWant, +2 more
-- `src/utils/projectStacks.ts` — ProjectListItem, buildProjectListItems, orderWithInserted, filterProjectListItems, alphabeticalPageOrder, projectPageOrder, projectCopyText
+- `src/utils/projectStacks.ts` — ProjectListItem, buildProjectListItems, orderWithInserted, filterProjectListItems, filterTasksByTitle, alphabeticalPageOrder, projectPageOrder, projectCopyText
 - `src/utils/projectStats.ts` — RECENT_FINISHED_LIMIT, FinishedProject, ProjectStatsSummary, projectStats
 - `src/utils/projectTemplate.ts` — BlueprintEntry, ProjectBlueprint, projectBlueprint, ProjectTemplateDraft, templateFromProject
 - `src/utils/quantity.ts` — Rational, rational, multiplyRational, rationalToNumber, rationalFromNumber, formatRational, formatQuantityAmount, unitKey, inflectUnit, SIZE_UNITS, +7 more

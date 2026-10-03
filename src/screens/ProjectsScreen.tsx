@@ -18,7 +18,7 @@ import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { groupProjectsByCategory, resolveProjectDrop, type ProjectListItem } from '../utils/projectGrouping';
 import { ProjectEditor } from '../components/ProjectEditor';
-import { QuickAddProjectModal, LIST_PROJECT_FIELDS, type ProjectDraft } from '../components/QuickAddProjectModal';
+import { QuickAddProjectModal, type ProjectDraft } from '../components/QuickAddProjectModal';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { TipHost } from '../components/TipHost';
 import { EmptyState } from '../components/EmptyState';
@@ -421,8 +421,8 @@ export function ProjectsScreen() {
       deadline: draft.deadline,
       category: draft.category,
       awayStart: draft.awayStart ?? null,
+      kind: draft.asList ? 'list' : 'project',
     });
-    if (draft.asList) useProjectStore.getState().updateProject(created.id, LIST_PROJECT_FIELDS);
     const project = useProjectStore.getState().getProjectById(created.id) ?? created;
     newProjectIdRef.current = project.id;
     setEditingProject(project);

@@ -281,6 +281,6 @@ describe('projectListPreview', () => {
 
 describe('projectProgressNote on a list', () => {
   it('says lines rather than tasks', () => {
-    expect(projectProgressNote(makeProject({ kind: 'list' }), { done: 0, total: 0 })).toBe('No lines yet');
+    expect(projectProgressNote(makeProject({ kind: 'list' }), { done: 0, total: 0 })).toBe('No items yet');
   });
 });

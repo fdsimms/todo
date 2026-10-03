@@ -116,7 +116,7 @@ export function projectProgressNote(
   project: Pick<Project, 'ongoing'> & Partial<Pick<Project, 'kind'>>,
   progress: ProjectProgress,
 ): string | null {
-  if (progress.total === 0) return project.kind === 'list' ? 'No lines yet' : 'No tasks yet';
+  if (progress.total === 0) return project.kind === 'list' ? 'No items yet' : 'No tasks yet';
   if (!project.ongoing) return null;
   const open = progress.total - progress.done;
   return open === 0 ? 'Nothing open' : `${open} open`;

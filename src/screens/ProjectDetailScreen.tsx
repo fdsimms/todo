@@ -25,7 +25,6 @@ import { describeProjectActivity, overdueRoutines, projectActivity, projectCardC
 import { nextPullCandidate } from '../utils/projectPull';
 import { isPausedOn } from '../utils/projectPause';
 import { ProjectPullSheet } from '../components/ProjectPullSheet';
-import { LIST_PROJECT_FIELDS } from '../components/QuickAddProjectModal';
 import { LookAheadSheet } from '../components/LookAheadSheet';
 import { LinkedText } from '../components/LinkedText';
 import { format } from 'date-fns/format';
@@ -48,7 +47,7 @@ import { GroupDropTarget } from '../components/GroupDropTarget';
 import { useDropTargetAimed, useDropTargetChannel, type DropTargetChannel } from '../components/DropTargetChannel';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { confirmBulkSetWhen } from '../utils/scheduleMovePrompt';
-import { alphabeticalPageOrder, buildProjectListItems, filterProjectListItems, orderWithInserted, projectCopyText, type ProjectListItem } from '../utils/projectStacks';
+import { alphabeticalPageOrder, buildProjectListItems, filterProjectListItems, filterTasksByTitle, orderWithInserted, projectCopyText, type ProjectListItem } from '../utils/projectStacks';
 import { ProjectEditor } from '../components/ProjectEditor';
 import { BulkActionBar } from '../components/BulkActionBar';
 import { QuickAddModal } from '../components/QuickAddModal';
@@ -119,7 +118,7 @@ const EXISTING_PICKER_LIMIT = 30;
 // Matches the list's own keyExtractor — shared so the add button's drop
 // zones and the placement pass that follows a drop agree on what a row is
 // called.
-/** A list this long gets a "Find a line" field. */
+/** A list (or a project's checklist sections) this long gets a find field. */
 const LIST_FILTER_MIN_LINES = 15;
 
 function projectListItemKey(item: ProjectListItem): string {
@@ -151,9 +150,11 @@ const ADD_MENU_ITEMS: FabMenuItem[] = [
 // Template is offered after all: a packing template applied to a packing list
 // is exactly a line-per-item list, and leaving it out meant the only place to
 // apply one was a project that wasn't a list.
+//
+// Track replies is left out: it adds a task per person, waiting on each, which
+// is follow-up work with a date to chase, not a line on a list.
 const LIST_ADD_MENU_ITEMS: FabMenuItem[] = [
   { key: 'existing', label: 'Add existing task', icon: 'albums-outline' },
-  { key: 'replies', label: 'Track replies', icon: 'people-outline' },
   { key: 'stack', label: 'New section', icon: 'layers' },
   { key: 'template', label: 'Template', icon: 'copy' },
   { key: 'new', label: 'New item', icon: 'checkbox' },
@@ -163,15 +164,17 @@ const LIST_ADD_MENU_ITEMS: FabMenuItem[] = [
 // shape as Today's and Projects' own add buttons.
 function AddProjectTaskFabWithDropLabel({
   channel,
+  isList,
   ...props
 }: {
   channel: FabIntentChannel;
+  isList: boolean;
 } & Omit<React.ComponentProps<typeof FabMenu>, 'dragLabel'>) {
   const label = useFabIntentSelector(channel, intent => {
     switch (intent?.kind) {
       case 'cancel': return 'Cancel';
       case 'joinGroup': return `Add to ${intent.groupTitle.trim() || 'section'}`;
-      case 'insert': return 'New task here';
+      case 'insert': return isList ? 'New item here' : 'New task here';
       default: return null;
     }
   });
@@ -300,6 +303,7 @@ export function ProjectDetailScreen() {
   const bulkRemoveFromProject = useTaskStore(s => s.bulkRemoveFromProject);
   const bulkMoveToProject = useTaskStore(s => s.bulkMoveToProject);
   const bulkUncompleteTasks = useTaskStore(s => s.bulkUncompleteTasks);
+  const deleteCheckedListItems = useTaskStore(s => s.deleteCheckedListItems);
   const uncompleteProject = useTaskStore(s => s.uncompleteProject);
   const unarchiveProject = useTaskStore(s => s.unarchiveProject);
   const reorderGroupChildren = useTaskStore(s => s.reorderGroupChildren);
@@ -668,11 +672,44 @@ export function ProjectDetailScreen() {
   const checklistLineCount = projectListItems.reduce(
     (n, item) => n + (item.type === 'group' && item.group.checklist ? item.children.length : 0), 0,
   );
-  const lineFilterShown = !isList && checklistLineCount >= LIST_FILTER_MIN_LINES;
+  // A list of books or gift ideas gets long the same way, and with nothing
+  // dated to sort by, finding one item means reading the lot. The field stays
+  // off a short list, which is what keeps the top of one uncluttered.
+  const lineFilterShown = (isList ? lineCount : checklistLineCount) >= LIST_FILTER_MIN_LINES;
   const filteringLines = lineFilterShown && lineFilter.query.trim().length > 0;
   const shownListItems = useMemo(
     () => (filteringLines ? filterProjectListItems(projectListItems, lineFilter.query) : projectListItems),
     [filteringLines, projectListItems, lineFilter.query],
+  );
+  // A list keeping its checked items in view (a packing list) draws each one
+  // at the foot of its own section, so the list reads as packed per section.
+  // Only a section drawn on this page can hold them: anything else (no
+  // section, or one homed elsewhere) stays in the checked block at the bottom.
+  // A list that folds its checked items away keeps them in one place behind
+  // the toggle, where scattering them back up the page would be a surprise.
+  // Narrowed by the find field like the open rows, so a search doesn't leave
+  // every checked item showing beneath what it found.
+  const shownCheckedTasks = useMemo(
+    () => (filteringLines ? filterTasksByTitle(completedProjectTasks, lineFilter.query) : completedProjectTasks),
+    [filteringLines, completedProjectTasks, lineFilter.query],
+  );
+  const checkedBySection = useMemo(() => {
+    const map = new Map<string, Task[]>();
+    if (!keepChecked) return map;
+    const onPage = new Set<string>();
+    for (const item of shownListItems) if (item.type === 'group') onPage.add(item.group.id);
+    for (const t of shownCheckedTasks) {
+      if (!t.groupId || !onPage.has(t.groupId)) continue;
+      const list = map.get(t.groupId);
+      if (list) list.push(t); else map.set(t.groupId, [t]);
+    }
+    return map;
+  }, [keepChecked, shownListItems, shownCheckedTasks]);
+  const checkedAtFoot = useMemo(
+    () => (checkedBySection.size === 0
+      ? shownCheckedTasks
+      : shownCheckedTasks.filter(t => !(t.groupId && checkedBySection.has(t.groupId)))),
+    [checkedBySection, shownCheckedTasks],
   );
   // Each section's roster in this project, done and undone, for its header's
   // tally. Built once, so the memoized headers get the same array until a task
@@ -693,8 +730,8 @@ export function ProjectDetailScreen() {
       if (item.type === 'task') onScreen.push(item.task);
       else if (!item.group.collapsed) onScreen.push(...item.children);
     }
-    return completedShown ? [...onScreen, ...completedProjectTasks] : onScreen;
-  }, [shownListItems, completedShown, completedProjectTasks]);
+    return completedShown ? [...onScreen, ...shownCheckedTasks] : onScreen;
+  }, [shownListItems, completedShown, shownCheckedTasks]);
   const copyText = useMemo(
     () => projectCopyText(projectListItems, id => subtasksByParent.get(id) ?? NO_SUBTASKS, projectId),
     [projectListItems, subtasksByParent, projectId],
@@ -805,11 +842,12 @@ export function ProjectDetailScreen() {
   }, [completeGroup, requestComplete, projectId]);
 
   const openAddToSection = (group: TaskGroup) => {
-    // A checklist line is typed where it goes, not in a sheet: the field opens
-    // at the section's foot, as it does under a line on Return. A list's
-    // section takes the same quick add as everywhere else, seeded with the
-    // section.
-    if (group.checklist && !isList) {
+    // A list item or checklist line is typed where it goes, not in a sheet:
+    // the field opens at the section's foot, as it does under a line on
+    // Return. Every other way onto a list (the top field, Return, a new
+    // section, a FAB drop) is this field, so a section's button opening the
+    // full quick add instead made one list behave two ways.
+    if (isList || group.checklist) {
       setExpandedTaskId(null);
       setInsertAfterId(null);
       if (group.collapsed) setGroupCollapsed(group.id, false);
@@ -1186,6 +1224,40 @@ export function ProjectDetailScreen() {
     [taskGroups],
   );
 
+  // A checked row, at the bottom or (keepChecked) at the foot of its section.
+  // Not draggable: list order is the open rows'.
+  const renderCheckedRow = (task: Task, inSection = false) => {
+    const subs = subtasksOf(task.id);
+    return (
+      <TaskItem
+        key={task.id}
+        task={task}
+        onPress={handleRowPress}
+        expanded={expandedTaskId === task.id}
+        onEdit={handleRowEdit}
+        subtaskCount={subs.length}
+        subtaskDoneCount={subs.filter(t => t.completed).length}
+        subtasks={subs}
+        onSubtaskDragStateChange={setDraggingSubtask}
+        spotlightDisabled={expandedTaskId !== null && expandedTaskId !== task.id && !selectionMode}
+        selectionMode={selectionMode}
+        selected={selectedIds.has(task.id)}
+        onSelect={toggleSelection}
+        onSwipeSelect={handleRowSwipeSelect}
+        // The same two a live row gets, so a list's finished lines don't grow
+        // the chips its open ones leave out.
+        showCategory={!isList}
+        showDate={!isList || !!task.dueDate}
+        // Under its own section heading the section chip would only repeat it.
+        showGroup={!inSection}
+        showPin={false}
+        indented={inSection}
+        listRow={isList}
+        swipeDeletes={isList}
+      />
+    );
+  };
+
   const renderProjectTaskItem = (
     task: Task,
     opts: { drag?: () => void; isActive?: boolean; indented?: boolean } = {},
@@ -1217,10 +1289,14 @@ export function ProjectDetailScreen() {
         // blank fields — the task still has the field, and the editor still
         // offers it, for the line that turns out to be a real errand.
         // A checklist section's lines are the same: checked off, not dated.
-        showDate={!isList && !checklistSectionIds.has(task.groupId ?? '')}
+        // A list row has no date to show, unless an item came in carrying one
+        // (Add existing task, Move to project, a template). That item is on
+        // Today too, so the row says why rather than hiding it.
+        showDate={(!isList || !!task.dueDate) && !checklistSectionIds.has(task.groupId ?? '')}
         showPin={false}
         highlighted={task.id === flashTaskId}
         listRow={isList || checklistSectionIds.has(task.groupId ?? '')}
+        swipeDeletes={isList}
         onSubmitLine={isList || checklistSectionIds.has(task.groupId ?? '') ? handleSubmitLine : undefined}
       />
     );
@@ -1474,30 +1550,19 @@ export function ProjectDetailScreen() {
           actions={
             <View style={styles.detailHeaderActions}>
               {/*
-                Presentation only — see Project.kind. Same shape as Recipes'
-                own grid-outline toggle in its header: an icon button that
-                flips a display switch right where its effect shows, rather
-                than a setting buried in the full editor.
+                The kind, right where its effect shows. Same shape as Recipes'
+                own grid-outline toggle in its header. The editor has the same
+                choice with its explanation; this is the quick way.
               */}
               {!!project && (
                 <TouchableOpacity
                   onPress={() => {
                     haptics.tap();
-                    if (isList) { updateProject(project.id, { kind: 'project' }); return; }
-                    updateProject(project.id, { kind: 'list' });
-                    // A list usually has no finish line and nothing to pull,
-                    // and without asking it kept a progress bar, a "Mark
-                    // complete" banner and a place in Pull from projects until
-                    // the right two settings were found in the editor.
-                    if (project.ongoing && !project.nudgeOptIn) return;
-                    Alert.alert(
-                      'Make it a running list?',
-                      "It won't offer to be marked complete, and won't come up in Pull from projects. You can change either in the editor.",
-                      [
-                        { text: 'Just show as a list', style: 'cancel' },
-                        { text: 'Running list', onPress: () => updateProject(project.id, LIST_PROJECT_FIELDS) },
-                      ],
-                    );
+                    // The store brings the kind's own defaults along (a list
+                    // never finishes and is never pulled; a project gets both
+                    // back), so either direction lands where creating that
+                    // kind fresh would. See kindSwitchFields.
+                    updateProject(project.id, { kind: isList ? 'project' : 'list' });
                   }}
                   hitSlop={8}
                   accessibilityRole="switch"
@@ -1533,7 +1598,7 @@ export function ProjectDetailScreen() {
                   onPress={() => { haptics.tap(); setSuggestionsVisible(true); }}
                   hitSlop={8}
                   accessibilityRole="button"
-                  accessibilityLabel="Suggest tasks with AI"
+                  accessibilityLabel={isList ? 'Suggest items with AI' : 'Suggest tasks with AI'}
                 >
                   <Ionicons name="sparkles-outline" size={20} color={colors.purple} />
                 </TouchableOpacity>
@@ -1553,14 +1618,14 @@ export function ProjectDetailScreen() {
 
         {allDone && !completeOfferDismissed && (
           <OfferBanner
-            lead="Every task in this project"
-            rest="is complete."
+            lead={isList ? 'Every item on this list' : 'Every task in this project'}
+            rest={isList ? 'is checked.' : 'is complete.'}
             actionLabel="Mark complete"
             onAction={handleMarkComplete}
             onDismiss={() => setCompleteOfferDismissed(true)}
-            accessibilityLabel="Every task in this project is complete"
+            accessibilityLabel={isList ? 'Every item on this list is checked' : 'Every task in this project is complete'}
             actionAccessibilityLabel={`Mark ${project?.title ?? 'this project'} complete`}
-            dismissAccessibilityLabel="Dismiss project complete notice"
+            dismissAccessibilityLabel={isList ? 'Dismiss list complete notice' : 'Dismiss project complete notice'}
           />
         )}
 
@@ -1876,7 +1941,7 @@ export function ProjectDetailScreen() {
                 )}
                 {/* Sorting sits at the top rather than under the list, where
                     it used to share a row with the add button. */}
-                {isList && !selectionMode && lineCount >= 3 && (
+                {isList && !selectionMode && lineCount >= 3 && !filteringLines && (
                   <View style={[styles.sectionAddRow, styles.listSortRow]}>
                     <InlineAction
                       icon="swap-vertical-outline"
@@ -1904,8 +1969,8 @@ export function ProjectDetailScreen() {
                   <SearchField
                     style={styles.lineFilter}
                     field={lineFilter}
-                    placeholder="Find a task or line"
-                    accessibilityLabel="Find a task or line in this project"
+                    placeholder={isList ? 'Find an item' : 'Find a task or line'}
+                    accessibilityLabel={isList ? 'Find an item on this list' : 'Find a task or line in this project'}
                   />
                 )}
                 <ProjectDecisions
@@ -1930,7 +1995,8 @@ export function ProjectDetailScreen() {
                 // Only ever a stack homed here with nothing to show (see
                 // buildProjectListItems) — the membership walk can't produce a
                 // group row without the task that led it there.
-                const empty = children.length === 0;
+                const checkedHere = checkedBySection.get(group.id) ?? NO_GROUP_CHILDREN;
+                const empty = children.length === 0 && checkedHere.length === 0;
                 // Collapse hides rows, and an empty stack has none to hide —
                 // collapsed it would be a bare title with no way to reach the
                 // button that fills it in. The header takes the same value so
@@ -2003,6 +2069,7 @@ export function ProjectDetailScreen() {
                             static, so a section's order could only be changed
                             from Today, and a task could only leave one
                             through its editor. */}
+                        {children.length > 0 && (
                         <SortableList
                           data={children}
                           onReorder={reordered => reorderGroupChildren(group.id, reordered.map(t => t.id))}
@@ -2019,6 +2086,8 @@ export function ProjectDetailScreen() {
                             </React.Fragment>
                           )}
                         />
+                        )}
+                        {checkedHere.map(task => renderCheckedRow(task, true))}
                         {/* Every open section can take another task from
                             here, not only an empty one. The quick add it
                             opens can stay open ("Add another"), and each
@@ -2077,7 +2146,9 @@ export function ProjectDetailScreen() {
             }}
             ListEmptyComponent={
               filteringLines ? (
-                <Text style={styles.noLinesMatch}>No lines match.</Text>
+                // Checked items it found are drawn in the footer below.
+                completedShown && shownCheckedTasks.length > 0 ? null :
+                <Text style={styles.noLinesMatch}>{isList ? 'No items match.' : 'No lines match.'}</Text>
               ) : completedProjectTasks.length === 0 ? (
                 <EmptyState
                   icon={isList ? 'list-outline' : 'briefcase-outline'}
@@ -2152,37 +2223,37 @@ export function ProjectDetailScreen() {
                           }}
                           accessibilityLabel={`Uncheck all ${completedProjectTasks.length} items`}
                         />
+                        {/* Checked items on a list are never purged on their
+                            own (see retention.ts), so this is how they go. */}
+                        <InlineAction
+                          icon="trash-outline"
+                          label="Delete checked"
+                          variant="neutral"
+                          onPress={() => {
+                            haptics.tap();
+                            const n = completedProjectTasks.length;
+                            Alert.alert(
+                              `Delete ${n} checked item${n === 1 ? '' : 's'}?`,
+                              'They are removed from this list and from the Logbook.',
+                              [
+                                { text: 'Cancel', style: 'cancel' },
+                                {
+                                  text: 'Delete',
+                                  style: 'destructive',
+                                  onPress: () => {
+                                    if (!project) return;
+                                    animateLayout();
+                                    deleteCheckedListItems(project.id);
+                                  },
+                                },
+                              ],
+                            );
+                          }}
+                          accessibilityLabel={`Delete all ${completedProjectTasks.length} checked items`}
+                        />
                       </View>
                     )}
-                    {completedShown && completedProjectTasks.map(task => {
-                      const subs = subtasksOf(task.id);
-                      return (
-                        <TaskItem
-                          key={task.id}
-                          task={task}
-                          onPress={handleRowPress}
-                          expanded={expandedTaskId === task.id}
-                          onEdit={handleRowEdit}
-                          subtaskCount={subs.length}
-                          subtaskDoneCount={subs.filter(t => t.completed).length}
-                          subtasks={subs}
-                          onSubtaskDragStateChange={setDraggingSubtask}
-                          spotlightDisabled={expandedTaskId !== null && expandedTaskId !== task.id && !selectionMode}
-                          selectionMode={selectionMode}
-                          selected={selectedIds.has(task.id)}
-                          onSelect={toggleSelection}
-                          onSwipeSelect={handleRowSwipeSelect}
-                          // The same two a live row gets, so a list's
-                          // finished lines don't grow the chips its open ones
-                          // leave out.
-                          showCategory={!isList}
-                          showDate={!isList}
-                          showGroup
-                          showPin={false}
-                          listRow={isList}
-                        />
-                      );
-                    })}
+                    {completedShown && checkedAtFoot.map(task => renderCheckedRow(task))}
                   </View>
                 )}
               </View>
@@ -2330,6 +2401,7 @@ export function ProjectDetailScreen() {
 
         {!selectionMode && (
           <AddProjectTaskFabWithDropLabel
+            isList={isList}
             channel={fabIntentChannel}
             items={addMenuItems}
             onSelect={handleAddMenuSelect}
@@ -2337,7 +2409,7 @@ export function ProjectDetailScreen() {
             accessibilityLabel={isList ? 'Add to this list' : 'Add task to project'}
             drag={fabDrag}
             dragHint={isList
-              ? 'Drag onto the list to add a line at that spot. Drop it on a section to add it there, or back on the button to cancel.'
+              ? 'Drag onto the list to add an item at that spot. Drop it on a section to add it there, or back on the button to cancel.'
               : 'Drag onto the list to add a task at that spot. Drop it on a section to add it there, or back on the button to cancel.'}
           />
         )}
@@ -2392,6 +2464,7 @@ export function ProjectDetailScreen() {
         {templateAppliedCount !== null && (
           <TemplateAppliedToast
             count={templateAppliedCount}
+            noun={isList ? 'item' : 'task'}
             bottom={insets.bottom + spacing.xl + FAB_SIZE + spacing.md}
             onDismiss={() => setTemplateAppliedCount(null)}
           />
@@ -2570,7 +2643,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   uncheckAllRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     justifyContent: 'center',
+    gap: spacing.sm,
     paddingBottom: spacing.sm,
   },
   pickerMore: {
