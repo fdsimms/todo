@@ -275,10 +275,10 @@ describe('healthContextRows', () => {
   const reading = (steps: number | null, activeEnergyKcal: number | null) =>
     ({ dayKey: TODAY, steps, activeEnergyKcal });
 
-  it('says the count, captioned as a running total', () => {
+  it('says the count, with no caption', () => {
     const rows = healthContextRows(reading(4120, null), opts);
     expect(rows.map(r => [r.kind, r.title, r.caption]))
-      .toEqual([['health', '4,120 steps', 'So far today']]);
+      .toEqual([['health', '4,120 steps', '']]);
   });
 
   it('files under the category it is given, and carries no source', () => {
@@ -350,7 +350,7 @@ describe('healthContextRows', () => {
     const [row] = healthContextRows(reading(null, 234.7), opts);
     expect(row.id).toBe('health-activeEnergy');
     expect(row.title).toBe('235 active cal');
-    expect(row.caption).toBe('So far today');
+    expect(row.caption).toBe('');
   });
 
   it('judges the two readings independently, in either direction', () => {

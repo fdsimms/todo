@@ -6990,7 +6990,8 @@ export interface ContextRow {
    * single string rather than a time plus a formatter, because the cases
    * don't share a format and the row would otherwise need to know which it
    * had. They all say *when*, which is what lets the row caption them with
-   * one glyph.
+   * one glyph. Empty on a health reading, which has no time of its own: the
+   * row then draws no caption line.
    */
   caption: string;
   /** Which category section this files under; null = the header-less loose group. */

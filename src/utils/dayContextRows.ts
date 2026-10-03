@@ -238,11 +238,12 @@ export function healthContextRows(
       sourceId: '',
       kind: 'health',
       title: steps === 1 ? '1 step' : `${steps.toLocaleString()} steps`,
-      // "So far today" rather than a time: every other caption here says
-      // *when*, and what a running total says is that it is still running. A
-      // clock time would be the freshness of the read, which is not a thing
-      // anybody wants to read off a task list.
-      caption: 'So far today',
+      // No caption: every other caption here says *when*, and a running total
+      // has no time of its own. "So far today" only restated that the row sits
+      // on Today, and a clock time would be the freshness of the read, which is
+      // not a thing anybody wants to read off a task list. Empty means the row
+      // draws no meta line.
+      caption: '',
       category: opts.category,
       now: false,
       calendarTag: null,
@@ -255,7 +256,7 @@ export function healthContextRows(
       sourceId: '',
       kind: 'health',
       title: `${Math.round(activeEnergyKcal).toLocaleString()} active cal`,
-      caption: 'So far today',
+      caption: '',
       category: opts.category,
       now: false,
       calendarTag: null,
