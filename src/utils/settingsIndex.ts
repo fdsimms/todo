@@ -197,8 +197,11 @@ export interface SettingsEntry {
    * mistake its own header warns about. The screen holds the store, so it
    * passes `visibleSettingsEntries` the set of gating rows currently on and the
    * index just does the lookup.
+   *
+   * A list means any one of them: "Limit use-up tasks" renders while either
+   * use-up generator is on, and "Sync now" while either sync destination is.
    */
-  requires?: string;
+  requires?: string | readonly string[];
 }
 
 /**
@@ -748,7 +751,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
       'mood', 'feeling', 'multiple', 'several', 'twice'] },
   // Spans both use-up generators, so it sits below the loop rather than inside
   // either one's extras — and so its section can't be one generator's name.
-  { id: 'useUpTaskCap', groupId: 'generated', label: 'Limit use-up tasks', section: 'Automatic tasks',
+  { id: 'useUpTaskCap', requires: ['gen:groceryUseUp', 'gen:leftoverUseUp'], groupId: 'generated', label: 'Limit use-up tasks', section: 'Automatic tasks',
     keywords: ['cap', 'how many', 'most', 'too many', 'flood', 'expiry', 'leftovers'], kitchen: true },
 
   // `kitchen`-gated to match the row itself, which is hidden with the
@@ -831,7 +834,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   // Data & reset
   { id: 'syncEnabled', groupId: 'dataReset', label: 'Sync with iCloud', section: 'Sync',
     keywords: ['devices', 'mac', 'laptop', 'phone', 'across', 'same'] },
-  { id: 'syncNow', groupId: 'dataReset', label: 'Sync now', section: 'Sync',
+  { id: 'syncNow', requires: ['syncEnabled', 'syncServerToken'], groupId: 'dataReset', label: 'Sync now', section: 'Sync',
     keywords: ['refresh', 'update', 'fetch'] },
   { id: 'syncServerUrl', groupId: 'dataReset', label: 'Sync server', section: 'Sync',
     keywords: ['self-hosted', 'url', 'address', 'mcp', 'claude', 'computer', 'replica', 'privacy', 'copy'] },
@@ -879,6 +882,12 @@ export function visibleSettingsGroups(platformOS: string, kitchenEnabled = true)
  * doesn't care (a test, a platform check) gets the whole index, the way it did
  * before either setting existed.
  */
+function requiredRowOn(requires: string | readonly string[], activeEntryIds: ReadonlySet<string>): boolean {
+  return typeof requires === 'string'
+    ? activeEntryIds.has(requires)
+    : requires.some(id => activeEntryIds.has(id));
+}
+
 export function visibleSettingsEntries(
   platformOS: string,
   kitchenEnabled = true,
@@ -897,7 +906,7 @@ export function visibleSettingsEntries(
     && (kitchenEnabled || !e.kitchen)
     && (!simpleMode || !e.simple)
     && (!e.iosOnly || platformOS === 'ios')
-    && (!e.requires || !activeEntryIds || activeEntryIds.has(e.requires)));
+    && (!e.requires || !activeEntryIds || requiredRowOn(e.requires, activeEntryIds)));
 }
 
 export function settingsGroup(id: SettingsGroupId): SettingsGroup | undefined {

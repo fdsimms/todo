@@ -264,7 +264,9 @@ describe('settings index', () => {
     it('names a real row in every requires', () => {
       const ids = new Set(SETTINGS_ENTRIES.map(e => e.id));
       for (const entry of SETTINGS_ENTRIES) {
-        if (entry.requires) expect(ids.has(entry.requires)).toBe(true);
+        for (const parent of entry.requires === undefined ? [] : [entry.requires].flat()) {
+          expect(ids.has(parent)).toBe(true);
+        }
       }
       expect(SETTINGS_ENTRIES.filter(e => e.requires).length).toBeGreaterThan(0);
     });
@@ -297,6 +299,16 @@ describe('settings index', () => {
       expect(travelOnly.some(e => e.id === 'travelLeadMinutes')).toBe(true);
       expect(travelOnly.some(e => e.id === 'travelOrigin')).toBe(false);
       expect(travelOnly.some(e => e.id === 'transitLines')).toBe(false);
+    });
+
+    it('keeps a row with several parents while any one of them is on', () => {
+      const none = visibleSettingsEntries('ios', true, false, new Set());
+      expect(none.some(e => e.id === 'useUpTaskCap')).toBe(false);
+      expect(none.some(e => e.id === 'syncNow')).toBe(false);
+      const leftovers = visibleSettingsEntries('ios', true, false, new Set(['gen:leftoverUseUp']));
+      expect(leftovers.some(e => e.id === 'useUpTaskCap')).toBe(true);
+      const server = visibleSettingsEntries('ios', true, false, new Set(['syncServerToken']));
+      expect(server.some(e => e.id === 'syncNow')).toBe(true);
     });
 
     it('gates the rows that only render once a read or import is on', () => {

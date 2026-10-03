@@ -8,6 +8,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useDemoStore } from '../store/useDemoStore';
+import { useShallow } from 'zustand/react/shallow';
+import { useSyncStore } from '../store/useSyncStore';
 import { getAppFontOption } from '../theme/fonts';
 import { retentionLabel } from '../utils/retention';
 import { useColors } from '../theme/ThemeContext';
@@ -58,6 +60,12 @@ export function SettingsScreen() {
   const query = searchFilter.query;
 
   const settings = useSettingsStore();
+  const sync = useSyncStore(useShallow(s => ({
+    supported: s.supported,
+    enabled: s.enabled,
+    serverUrl: s.serverUrl,
+    hasServerToken: s.hasServerToken,
+  })));
 
   const groups = useMemo(
     () => visibleSettingsGroups(Platform.OS, settings.kitchenEnabled),
@@ -92,6 +100,10 @@ export function SettingsScreen() {
     if (settings.healthWriteEnabled) on.add('healthWrite');
     if (settings.calendarReadEnabled) on.add('calendarRead');
     if (settings.remindersImportEnabled) on.add('remindersImport');
+    // The two ways to sync, which is what "Sync now" renders behind: iCloud
+    // switched on, or a server with both a URL and a token.
+    if (sync.supported && sync.enabled) on.add('syncEnabled');
+    if (sync.serverUrl && sync.hasServerToken) on.add('syncServerToken');
     // Through the same rule the rows themselves use, so a generator whose read
     // is switched off takes its "File them under" row out of search too.
     for (const spec of GENERATED_KIND_LIST) {
@@ -102,7 +114,7 @@ export function SettingsScreen() {
     if (on.has('gen:travel') && settings.travelEstimates) on.add('travelEstimates');
     if (on.has('gen:travel') && settings.transitAlerts) on.add('transitAlerts');
     return on;
-  }, [settings]);
+  }, [settings, sync]);
 
   // Search must not turn up a row that isn't rendered, so the kitchen entries
   // leave the index with the area, the simplified-mode ones with theirs, the
