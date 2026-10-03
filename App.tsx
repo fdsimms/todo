@@ -18,6 +18,7 @@ import { useHomeScreenQuickActions } from './src/utils/quickActions';
 import { useWidgetSync } from './src/utils/widgetSync';
 import { useSharedRecipeLinks } from './src/hooks/useSharedRecipeLinks';
 import { useReachOutPrompt } from './src/hooks/useReachOutPrompt';
+import { useFocusPlanReconcile } from './src/hooks/useFocusSession';
 import { useStepTimerStore } from './src/store/useStepTimerStore';
 import { useTimerLiveActivitySync } from './src/utils/liveActivity';
 import { useTripLiveActivitySync } from './src/utils/tripLiveActivity';
@@ -247,6 +248,10 @@ function AppRoot() {
 
   // Keeps the focus session's Lock Screen Live Activity in sync.
   useFocusLiveActivitySync();
+
+  // Drops a completed, archived or deleted task out of a running focus plan, from
+  // whichever tab did it. App-level because a blurred tab no longer renders.
+  useFocusPlanReconcile();
 
   // Keeps the pending daily agenda's count matching the tasks it describes.
   useDailyAgendaSync();
