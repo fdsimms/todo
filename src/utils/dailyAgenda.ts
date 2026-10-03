@@ -1,6 +1,7 @@
 import { isSameDay } from 'date-fns/isSameDay';
 import type { Task } from '../types';
-import { getDayStart, getTaskDayStart } from './dateUtils';
+import { formatTimeOfDay, getDayStart, getTaskDayStart } from './dateUtils';
+import { occupiesTime, type BusyEvent } from './calendarBusy';
 import { hhmmToDate } from './clockTime';
 
 /**
@@ -22,6 +23,47 @@ export interface AgendaCounts {
   carriedOver: number;
   /** Hard deadlines falling on it. */
   deadlines: number;
+  /**
+   * The day's meetings (`agendaMeetings`), or absent when the calendar wasn't
+   * read for the day: unknown is left unsaid rather than reported as none.
+   */
+  meetings?: AgendaMeetings | null;
+}
+
+export interface AgendaMeetings {
+  count: number;
+  /** When the first one starts. */
+  first: Date;
+}
+
+/**
+ * The meetings starting on the agenda's day: events that occupy time
+ * (`occupiesTime`, so no all-day, free or cancelled ones), counted by when they
+ * start, so last night's event running past midnight isn't one of today's.
+ * Null when there are none, which leaves the line out.
+ */
+export function agendaMeetings(
+  events: readonly BusyEvent[],
+  dayStart: Date,
+  dayEnd: Date,
+): AgendaMeetings | null {
+  let count = 0;
+  let first: number | null = null;
+  for (const event of events) {
+    if (!occupiesTime(event)) continue;
+    const start = Date.parse(event.start);
+    if (!(start >= dayStart.getTime() && start < dayEnd.getTime())) continue;
+    count++;
+    if (first === null || start < first) first = start;
+  }
+  return count > 0 && first !== null ? { count, first: new Date(first) } : null;
+}
+
+function meetingsPhrase(meetings: AgendaMeetings, use24Hour: boolean, spoken: boolean): string {
+  const noun = `${meetings.count} meeting${meetings.count === 1 ? '' : 's'}`;
+  const at = formatTimeOfDay(meetings.first, use24Hour);
+  if (meetings.count === 1) return `${noun} at ${at}`;
+  return spoken ? `${noun}, the first at ${at}` : `${noun}, first at ${at}`;
 }
 
 /**
@@ -78,13 +120,16 @@ export function agendaCounts(tasks: Task[], targetDay: Date, dayResetTime: strin
  * daily notification that fires on empty days is the one people turn off, and
  * the caller skips scheduling entirely when this returns null.
  */
-export function agendaBody(counts: AgendaCounts): string | null {
+export function agendaBody(counts: AgendaCounts, use24Hour = false): string | null {
   const parts: string[] = [];
   if (counts.due > 0) parts.push(`${counts.due} due`);
   if (counts.carriedOver > 0) parts.push(`${counts.carriedOver} carried over`);
   if (counts.deadlines > 0) {
     parts.push(`${counts.deadlines} deadline${counts.deadlines === 1 ? '' : 's'}`);
   }
+  // Last: the counts above are the app's own business, and a day of meetings
+  // with no task on it is still a day worth a morning summary.
+  if (counts.meetings) parts.push(meetingsPhrase(counts.meetings, use24Hour, false));
   return parts.length > 0 ? parts.join(' · ') : null;
 }
 
@@ -128,7 +173,7 @@ function joinSpoken(parts: string[]): string {
  * reason one step further: the one thing worse than a notification on a day
  * with nothing on it is a voice announcing it.
  */
-export function agendaSpokenBody(counts: AgendaCounts): string | null {
+export function agendaSpokenBody(counts: AgendaCounts, use24Hour = false): string | null {
   const parts: string[] = [];
   if (counts.due > 0) {
     parts.push(`${counts.due} task${counts.due === 1 ? '' : 's'} due`);
@@ -139,6 +184,7 @@ export function agendaSpokenBody(counts: AgendaCounts): string | null {
   if (counts.deadlines > 0) {
     parts.push(`${counts.deadlines} deadline${counts.deadlines === 1 ? '' : 's'}`);
   }
+  if (counts.meetings) parts.push(meetingsPhrase(counts.meetings, use24Hour, true));
   if (parts.length === 0) return null;
   return `Today: ${joinSpoken(parts)}.`;
 }

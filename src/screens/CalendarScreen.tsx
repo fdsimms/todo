@@ -1,6 +1,6 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { useStableCallback } from '../hooks/useStableCallback';
-import { View, Text, ScrollView, StyleSheet, Dimensions, TouchableOpacity } from 'react-native';
+import { Animated, View, Text, ScrollView, StyleSheet, Dimensions, TouchableOpacity, PanResponder } from 'react-native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -21,11 +21,14 @@ import { PeriodNav } from '../components/PeriodNav';
 import { Fab } from '../components/Fab';
 import { QuickAddModal } from '../components/QuickAddModal';
 import { TodayEventsSheet } from '../components/TodayEventsSheet';
-import { useColors } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
+import { useColors, useTheme } from '../theme/ThemeContext';
+import { useDropTargetAimed, useDropTargetChannel, type DropTargetChannel } from '../components/DropTargetChannel';
+import { cellAt, isMoveDrop, type CellRect } from '../utils/calendarDrag';
+import { confirmBulkSetWhen } from '../utils/scheduleMovePrompt';
+import { spacing, font, fontWeight, radius, interaction, flattenOverlay, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { buildCalendarGrid, buildWeekDays, weekdayHeaders } from '../utils/calendarGrid';
-import { dayKeyOf, dayKeyToDate, getDayStart, getLogicalToday } from '../utils/dateUtils';
+import { dateToHHMM, dayKeyOf, dayKeyToDate, formatTimeOfDay, getDayStart, getLogicalToday, hhmmToDate } from '../utils/dateUtils';
 import {
   buildDayBuckets,
   dayDetail,
@@ -47,9 +50,11 @@ import { useCalendarStore } from '../store/useCalendarStore';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { DayTimeline } from '../components/DayTimeline';
 import { buildDayTimeline } from '../utils/dayTimeline';
-import { eventsIn } from '../utils/calendarBusy';
+import { eventsIn, type BusyEvent } from '../utils/calendarBusy';
 import { isDemoModeActive } from '../utils/demoState';
-import { QuickEventSheet } from '../components/QuickEventSheet';
+import { QuickEventSheet, type QuickEventSeed } from '../components/QuickEventSheet';
+import { TimeSlotMenu } from '../components/TimeSlotMenu';
+import type { CardAnchor } from '../components/CardSheet';
 import { useProjectStore } from '../store/useProjectStore';
 import { useShallow } from 'zustand/react/shallow';
 import { describeWeekRange } from '../utils/mealPlan';
@@ -81,6 +86,10 @@ const WEIGHT_SLOT_GAP = 2;
 // render is exactly the identity churn the grouping below exists to avoid.
 const NO_SUBTASKS: Task[] = [];
 const NO_MEALS: MealPlanEntry[] = [];
+// The card that follows the finger while a task is dragged onto a day, and how
+// far above the touch it rides so the finger doesn't cover it.
+const DRAG_CARD_WIDTH = 220;
+const DRAG_CARD_LIFT = 56;
 // A trip band's height, and the gap above it. One lane per overlapping trip.
 const TRIP_BAND_HEIGHT = 16;
 const TRIP_BAND_GAP = 2;
@@ -120,13 +129,15 @@ const VIEW_MODES: { value: CalendarViewMode; label: string }[] = [
  * The component is one function; `grep -n '// ===='` is its table of contents:
  * stores and screen state, the month (grid, buckets, the selected day's
  * detail), the week, the selected day's empty state and the month's totals,
- * moving between days and months, the rows and the editor, then the JSX. The header's "+" opens the quick-add
+ * moving between days and months, the rows and the editor, dragging a task onto
+ * a day, then the JSX. The header's "+" opens the quick-add
  * event card (`QuickEventSheet`) on the selected day.
  */
 export function CalendarScreen() {
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
   const colors = useColors();
+  const { shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   // ==== stores and screen state ====
@@ -150,6 +161,15 @@ export function CalendarScreen() {
   const calendarLoaded = useCalendarStore(s => s.loaded);
   const calendarWindowStart = useCalendarStore(s => s.windowStart);
   const calendarWindowEnd = useCalendarStore(s => s.windowEnd);
+  // The trip read: events spanning days, ninety days out, so a far day can
+  // still show the trip it falls in and the event sheet can offer to make it
+  // one. Read on focus, the way PersonDetail reads its past window.
+  const aheadEvents = useCalendarStore(s => s.aheadEvents);
+  const aheadLoaded = useCalendarStore(s => s.aheadLoaded);
+  const aheadWindowEnd = useCalendarStore(s => s.aheadWindowEnd);
+  useFocusEffect(useCallback(() => {
+    if (useSettingsStore.getState().calendarReadEnabled) void useCalendarStore.getState().refreshAhead();
+  }, []));
 
   const [displayMonth, setDisplayMonth] = useState(() => startOfMonth(getLogicalToday()));
   const [selectedKey, setSelectedKey] = useState(() => dayKeyOf(getLogicalToday()));
@@ -226,29 +246,42 @@ export function CalendarScreen() {
   const selectedExtras = extras.get(selectedKey);
   const detail = useMemo(() => dayDetail(buckets.get(selectedKey), taskById), [buckets, selectedKey, taskById]);
   const summary = summarizeDay(detail);
-  // Noon-anchored, never the key's midnight: under a non-midnight reset the
-  // day's start is the reset time on that date, and anchoring from midnight
-  // lands on the day before. Same derivation buildDayLoads makes.
-  const selectedDayStart = useMemo(() => {
-    const noon = dayKeyToDate(selectedKey);
+  /**
+   * One day's calendar events, and how much is known about it. Shared by the
+   * day view (the selected day) and the week view (each of its seven).
+   *
+   * - The day starts noon-anchored, never at the key's midnight: under a
+   *   non-midnight reset the day's start is the reset time on that date, and
+   *   anchoring from midnight lands on the day before. Same derivation
+   *   buildDayLoads makes.
+   * - `known`: "couldn't read" and "nothing on" are different answers, and the
+   *   store's window is only a fortnight wide, so a day past it is unknown
+   *   rather than confidently empty.
+   * - `tripOnly`: past the fortnight only the trip read reaches, multi-day
+   *   events, and the day still reads as not known for anything else, since
+   *   one long event says nothing about the meetings around it.
+   */
+  const eventsForDay = useCallback((key: string) => {
+    const noon = dayKeyToDate(key);
     noon.setHours(12, 0, 0, 0);
-    return getDayStart(noon, dayResetTime);
-  }, [selectedKey, dayResetTime]);
+    const start = getDayStart(noon, dayResetTime);
+    const end = addDays(start, 1);
+    const reading = calendarReadEnabled && !isDemoModeActive();
+    const known = reading && calendarLoaded && !!calendarWindowStart && !!calendarWindowEnd
+      && start >= new Date(calendarWindowStart) && start < new Date(calendarWindowEnd);
+    const tripOnly = !known && reading && aheadLoaded && aheadWindowEnd !== null && end <= new Date(aheadWindowEnd);
+    const events = known
+      ? eventsIn(calendarEvents, start, end)
+      : tripOnly ? eventsIn(aheadEvents, start, end) : [];
+    return { start, known, tripOnly, events };
+  }, [dayResetTime, calendarReadEnabled, calendarLoaded, calendarWindowStart, calendarWindowEnd,
+      aheadLoaded, aheadWindowEnd, calendarEvents, aheadEvents]);
 
-  // "Couldn't read" and "nothing on" are different answers, and the store's
-  // window is only a fortnight wide — so a day past it reports unknown rather
-  // than drawing a confidently empty axis.
-  const dayBusyKnown = useMemo(() => {
-    if (!calendarReadEnabled || !calendarLoaded || isDemoModeActive()) return false;
-    if (!calendarWindowStart || !calendarWindowEnd) return false;
-    return selectedDayStart >= new Date(calendarWindowStart)
-      && selectedDayStart < new Date(calendarWindowEnd);
-  }, [calendarReadEnabled, calendarLoaded, calendarWindowStart, calendarWindowEnd, selectedDayStart]);
-
-  const dayEvents = useMemo(
-    () => (dayBusyKnown ? eventsIn(calendarEvents, selectedDayStart, addDays(selectedDayStart, 1)) : []),
-    [dayBusyKnown, calendarEvents, selectedDayStart],
-  );
+  const selectedDay = useMemo(() => eventsForDay(selectedKey), [eventsForDay, selectedKey]);
+  const selectedDayStart = selectedDay.start;
+  const dayBusyKnown = selectedDay.known;
+  const dayTripOnly = selectedDay.tripOnly;
+  const dayEvents = selectedDay.events;
 
   const dayTimeline = useMemo(() => {
     // A task can be in more than one of the three lists (due today with a
@@ -458,6 +491,102 @@ export function CalendarScreen() {
     setEditorVisible(true);
   }, []);
 
+  // ==== dragging a task onto a day ====
+  // Long-press a Due or Returning row in the month or week view and drop it on
+  // a day of the grid. The drop goes through the bulk bar's When
+  // (`confirmBulkSetWhen`), so it moves a task exactly as the date picker
+  // does, asking the repeating-task question first. A deadline row doesn't
+  // lift: moving a deadline is a different question from moving the work.
+  //
+  // What the finger is over is never screen state (CLAUDE.md, "What a drag is
+  // aimed at"): it goes on a channel each cell subscribes to, so a crossing
+  // re-renders two cells rather than the screen. The card follows the finger
+  // on an Animated value for the same reason.
+  const dropChannel = useDropTargetChannel();
+  const cellViews = useRef(new Map<string, View>());
+  const registerCell = useCallback((key: string, view: View | null) => {
+    if (view) cellViews.current.set(key, view);
+    else cellViews.current.delete(key);
+  }, []);
+  const cellRects = useRef(new Map<string, CellRect>());
+  const dragRef = useRef<{ task: Task; sourceKey: string; moved: boolean } | null>(null);
+  const [draggingTask, setDraggingTask] = useState<Task | null>(null);
+  const rootRef = useRef<View>(null);
+  const rootOffset = useRef({ x: 0, y: 0 });
+  const dragXY = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
+  const dragOpacity = useRef(new Animated.Value(0)).current;
+
+  // Measured once, at lift: nothing on screen moves while the list can't scroll.
+  const startTaskDrag = useCallback((taskId: string, sourceKey: string) => {
+    const task = useTaskStore.getState().tasks.find(t => t.id === taskId);
+    if (!task || task.completed) return;
+    dragRef.current = { task, sourceKey, moved: false };
+    setDraggingTask(task);
+    setExpandedTaskId(null);
+    dragOpacity.setValue(0);
+    haptics.impactMedium();
+    rootRef.current?.measureInWindow((x, y) => { rootOffset.current = { x, y }; });
+    const rects = new Map<string, CellRect>();
+    cellRects.current = rects;
+    for (const [key, view] of cellViews.current) {
+      view.measureInWindow((x, y, width, height) => { rects.set(key, { x, y, width, height }); });
+    }
+  }, [dragOpacity]);
+
+  const endTaskDrag = useCallback((dropped: boolean) => {
+    const drag = dragRef.current;
+    dragRef.current = null;
+    const target = dropChannel.get();
+    dropChannel.publish(null);
+    setDraggingTask(null);
+    dragOpacity.setValue(0);
+    if (!drag || !dropped || !isMoveDrop(drag.sourceKey, target)) return;
+    haptics.success();
+    confirmBulkSetWhen([drag.task.id], dayKeyToDate(target), drag.task.timeSegments ?? [], () => {});
+  }, [dropChannel, dragOpacity]);
+
+  // Cached per row, for the reason ReorderableList caches its own: TaskItem is
+  // memoized, and a fresh callback per render re-renders every row.
+  const dragHandlers = useRef(new Map<string, () => void>());
+  const dragHandlerFor = (taskId: string, sourceKey: string): (() => void) => {
+    const key = `${sourceKey}:${taskId}`;
+    let handler = dragHandlers.current.get(key);
+    if (!handler) {
+      handler = () => startTaskDrag(taskId, sourceKey);
+      dragHandlers.current.set(key, handler);
+    }
+    return handler;
+  };
+
+  // Claims the touch on its first move after a lift. It sits on the screen's
+  // root, an ancestor of the scroll view, which is what lets the native scroll
+  // stand down for it (see the SortableList note in CLAUDE.md).
+  const dragResponder = useMemo(() => PanResponder.create({
+    onMoveShouldSetPanResponderCapture: () => dragRef.current !== null,
+    onPanResponderTerminationRequest: () => false,
+    onPanResponderMove: (_e, g) => {
+      const drag = dragRef.current;
+      if (!drag) return;
+      if (!drag.moved) {
+        drag.moved = true;
+        dragOpacity.setValue(1);
+      }
+      dragXY.setValue({
+        x: g.moveX - rootOffset.current.x - DRAG_CARD_WIDTH / 2,
+        y: g.moveY - rootOffset.current.y - DRAG_CARD_LIFT,
+      });
+      const over = cellAt(cellRects.current, g.moveX, g.moveY);
+      if (over !== dropChannel.get() && over !== null) haptics.tap();
+      dropChannel.publish(over);
+    },
+    onPanResponderRelease: () => endTaskDrag(true),
+    onPanResponderTerminate: () => endTaskDrag(false),
+  }), [dropChannel, dragOpacity, dragXY, endTaskDrag]);
+  // A lift let go without moving never reaches the responder above.
+  const handleRootTouchEnd = () => {
+    if (dragRef.current && !dragRef.current.moved) endTaskDrag(false);
+  };
+
   // Quick add already seeds the selected day onto the draft's own date field
   // (see the seed prop below) — "More details" just carries the same draft
   // into the full editor instead of dropping it.
@@ -469,11 +598,27 @@ export function CalendarScreen() {
   };
   // Stable, because QuickAddModal is memoized and stays mounted while hidden:
   // a fresh prop each render would re-render the hidden sheet with this screen.
-  const onQuickAddClose = useStableCallback(() => setQuickAddVisible(false));
+  const onQuickAddClose = useStableCallback(() => { setQuickAddVisible(false); setQuickAddTime(null); });
   const onQuickAddOpenFull = useStableCallback(handleQuickAddOpenFull);
-  const quickAddSeed = useMemo(() => ({ dueDate: dayKeyToDate(selectedKey).toISOString() }), [selectedKey]);
+  // A tapped time on the day view adds a start time (`windowStart`, which is
+  // what places a task on the axis) to the day the seed already carries.
+  const [quickAddTime, setQuickAddTime] = useState<string | null>(null);
+  const quickAddSeed = useMemo(
+    () => ({ dueDate: dayKeyToDate(selectedKey).toISOString(), ...(quickAddTime ? { windowStart: quickAddTime } : {}) }),
+    [selectedKey, quickAddTime],
+  );
+  // The empty-slot menu on the day view, and the event it may seed.
+  const [slotMenu, setSlotMenu] = useState<{ at: Date; anchor: CardAnchor } | null>(null);
+  const [slotMenuOpen, setSlotMenuOpen] = useState(false);
+  const [newEventSeed, setNewEventSeed] = useState<QuickEventSeed | null>(null);
+  const handlePressSlot = useCallback((minutes: number, pageX: number, pageY: number) => {
+    haptics.tap();
+    setSlotMenu({ at: new Date(selectedDayStart.getTime() + minutes * 60000), anchor: { x: pageX, y: pageY } });
+    setSlotMenuOpen(true);
+  }, [selectedDayStart]);
 
-  const renderRows = (label: string, tasks: Task[]) => {
+  /** `dragFrom`: the day these rows are listed under, when they can be dragged off it. */
+  const renderRows = (label: string, tasks: Task[], dragFrom?: string) => {
     if (tasks.length === 0) return null;
     return (
       <View style={styles.section}>
@@ -493,6 +638,8 @@ export function CalendarScreen() {
                 onPress={handleRowPress}
                 expanded={elevated}
                 onEdit={handleRowEdit}
+                drag={dragFrom && !task.completed ? dragHandlerFor(task.id, dragFrom) : undefined}
+                isActive={draggingTask?.id === task.id}
                 subtaskCount={subs.length}
                 subtaskDoneCount={subs.filter(t => t.completed).length}
                 subtasks={subs}
@@ -639,6 +786,38 @@ export function CalendarScreen() {
     );
   };
 
+  /**
+   * A week day's calendar events: time (or "All day") and title, one card.
+   * Tapping one selects its day and opens the same event sheet the day view's
+   * timeline opens, so everything an event can do is one tap from the week too.
+   */
+  const renderEvents = (key: string, events: readonly BusyEvent[]) => {
+    if (events.length === 0) return null;
+    return (
+      <View style={styles.section}>
+        <Text style={styles.sectionLabel}>Events</Text>
+        <View style={styles.notesCard}>
+          {events.map((event, i) => (
+            <TouchableOpacity
+              key={`${event.id}:${event.start}`}
+              style={[styles.noteRow, i > 0 && styles.noteRowDivided]}
+              activeOpacity={interaction.activeOpacity}
+              onPress={() => { haptics.tap(); setSelectedKey(key); setEventsSheetVisible(true); }}
+              accessibilityRole="button"
+              accessibilityLabel={`${event.title || 'Event'}, ${event.allDay ? 'all day' : formatTimeOfDay(new Date(event.start), use24Hour)}`}
+            >
+              <Text style={styles.eventTime}>
+                {event.allDay ? 'All day' : formatTimeOfDay(new Date(event.start), use24Hour)}
+              </Text>
+              <Text style={styles.noteText} numberOfLines={1}>{event.title || 'Event'}</Text>
+              <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+    );
+  };
+
   const renderExpected = (expected: { taskId: string; title: string }[]) => {
     if (expected.length === 0) return null;
     return (
@@ -678,6 +857,7 @@ export function CalendarScreen() {
       const rows = dayRows(dayInfo);
       const dayExtras = extras.get(key);
       const completed = completedRows(dayExtras, rows, taskById);
+      const weekDayEvents = eventsForDay(key).events;
       const renderWeekRow = (task: Task) => {
         const subs = subtasksOf(task.id);
         const rowKey = `${key}:${task.id}`;
@@ -693,6 +873,10 @@ export function CalendarScreen() {
               onPress={handleRowPress}
               expanded={elevated}
               onEdit={handleRowEdit}
+              drag={!task.completed && (dayInfo.due.includes(task) || dayInfo.defer.includes(task))
+                ? dragHandlerFor(task.id, key)
+                : undefined}
+              isActive={draggingTask?.id === task.id}
               subtaskCount={subs.length}
               subtaskDoneCount={subs.filter(t => t.completed).length}
               subtasks={subs}
@@ -725,11 +909,12 @@ export function CalendarScreen() {
             {daySummary !== '' && <Text style={styles.detailSummary}>{daySummary}</Text>}
           </View>
           {dayLoad !== '' && <Text style={styles.detailLoad}>{dayLoad}</Text>}
-          {dayInfo.isEmpty && !hasDayNotes(dayExtras, true) && completed.length === 0 ? (
+          {dayInfo.isEmpty && !hasDayNotes(dayExtras, true) && completed.length === 0 && weekDayEvents.length === 0 ? (
             <Text style={styles.weekDayEmpty}>Nothing on this day.</Text>
           ) : (
             <View style={styles.weekDayRows}>
               {renderNotes(dayExtras, true)}
+              {renderEvents(key, weekDayEvents)}
               {rows.map(renderWeekRow)}
               {renderExpected(dayInfo.expected)}
               {completed.length > 0 && (
@@ -747,7 +932,13 @@ export function CalendarScreen() {
 
   // ==== render. Everything below is JSX ====
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View
+      ref={rootRef}
+      style={[styles.container, { paddingTop: insets.top }]}
+      {...dragResponder.panHandlers}
+      onTouchEnd={handleRootTouchEnd}
+      onTouchCancel={handleRootTouchEnd}
+    >
       <ScreenHeader
         title="Calendar"
         subtitle={viewMode === 'week'
@@ -772,6 +963,7 @@ export function CalendarScreen() {
             icon: 'add' as const,
             onPress: () => {
               haptics.tap();
+              setNewEventSeed(null);
               setNewEventVisible(true);
             },
             accessibilityLabel: `New event on ${format(dayKeyToDate(selectedKey), 'MMMM d')}`,
@@ -854,6 +1046,8 @@ export function CalendarScreen() {
                       bucket={buckets.get(key)}
                       weight={weightFor(dayLoads.get(key))}
                       hasMeal={(extras.get(key)?.meals.length ?? 0) > 0}
+                      registerRef={registerCell}
+                      dropChannel={dropChannel}
                       inMonth={isSameMonth(day, displayMonth)}
                       isToday={key === todayKey}
                       isSelected={key === selectedKey}
@@ -891,6 +1085,8 @@ export function CalendarScreen() {
                 bucket={buckets.get(key)}
                 weight={weightFor(dayLoads.get(key))}
                 hasMeal={(extras.get(key)?.meals.length ?? 0) > 0}
+                registerRef={registerCell}
+                dropChannel={dropChannel}
                 // A week is read whole: a day across the month line is not a
                 // neighbour's day here the way it is on the month grid.
                 inMonth
@@ -925,7 +1121,7 @@ export function CalendarScreen() {
       <ScrollView
         ref={detailScrollRef}
         style={[styles.detail, viewMode === 'week' && styles.weekList]}
-        scrollEnabled={!draggingSubtask}
+        scrollEnabled={!draggingSubtask && draggingTask === null}
         contentContainerStyle={
           viewMode !== 'week' && (viewMode === 'day' ? dayEmpty : monthEmpty)
             ? { flexGrow: 1, paddingBottom: tabBarHeight + spacing.xl }
@@ -952,18 +1148,20 @@ export function CalendarScreen() {
                   timeline={dayTimeline}
                   meals={dayMeals}
                   busyKnown={dayBusyKnown}
+                  tripOnly={dayTripOnly}
                   use24Hour={use24Hour}
                   nowMinutes={nowMinutes}
                   onPressTask={handleRowPress}
                   onPressEvent={() => { haptics.tap(); setEventsSheetVisible(true); }}
+                  onPressSlot={handlePressSlot}
                 />
                 {/* Everything the axis refused to place, as real rows. */}
                 {renderRows('No time set', dayTimeline.unplaced)}
               </>
             )}
-            {viewMode === 'month' && renderRows('Due', detail.due)}
+            {viewMode === 'month' && renderRows('Due', detail.due, selectedKey)}
             {viewMode === 'month' && renderRows('Deadline', detail.deadline)}
-            {viewMode === 'month' && renderRows('Returning', detail.defer)}
+            {viewMode === 'month' && renderRows('Returning', detail.defer, selectedKey)}
             {renderExpected(detail.expected)}
             {renderRows('Completed', dayCompleted)}
           </>
@@ -975,6 +1173,15 @@ export function CalendarScreen() {
         accessibilityLabel="Add task"
         bottom={insets.bottom + tabBarHeight + spacing.md}
       />
+
+      {draggingTask && (
+        <Animated.View
+          pointerEvents="none"
+          style={[styles.dragCard, shadows.card, { opacity: dragOpacity, transform: dragXY.getTranslateTransform() }]}
+        >
+          <Text style={styles.dragCardText} numberOfLines={1}>{draggingTask.title}</Text>
+        </Animated.View>
+      )}
 
       <TaskEditor
         visible={editorVisible}
@@ -992,13 +1199,30 @@ export function CalendarScreen() {
         onClose={onQuickAddClose}
         onOpenFull={onQuickAddOpenFull}
         seed={quickAddSeed}
-        seedLabel={format(selectedDate, 'MMM d')}
+        seedLabel={quickAddTime
+          ? `${format(selectedDate, 'MMM d')}, ${formatTimeOfDay(hhmmToDate(quickAddTime, selectedDate), use24Hour)}`
+          : format(selectedDate, 'MMM d')}
       />
 
       <QuickEventSheet
         visible={newEventVisible}
         onClose={() => setNewEventVisible(false)}
-        seed={{ day: dayKeyToDate(selectedKey) }}
+        seed={newEventSeed ?? { day: dayKeyToDate(selectedKey) }}
+      />
+      <TimeSlotMenu
+        visible={slotMenuOpen}
+        at={slotMenu?.at ?? null}
+        anchor={slotMenu?.anchor ?? null}
+        use24Hour={use24Hour}
+        canAddEvent={!isDemoModeActive()}
+        onClose={() => setSlotMenuOpen(false)}
+        onNewTask={at => { setQuickAddTime(dateToHHMM(at)); setQuickAddVisible(true); }}
+        onNewEvent={at => {
+          // An hour, the length a calendar app gives a new event by default;
+          // the card's own fields change it.
+          setNewEventSeed({ start: at, end: new Date(at.getTime() + 60 * 60000) });
+          setNewEventVisible(true);
+        }}
       />
       <TodayEventsSheet
         visible={eventsSheetVisible}
@@ -1037,7 +1261,7 @@ function dotColor(kind: DayMarkKind, colors: Colors): string {
  * Today.
  */
 const DayCell = React.memo(function DayCell({
-  dayKey, day, bucket, weight, hasMeal, inMonth, isToday, isSelected, colors, styles, onSelect,
+  dayKey, day, bucket, weight, hasMeal, inMonth, isToday, isSelected, colors, styles, onSelect, registerRef, dropChannel,
 }: {
   dayKey: string;
   day: Date;
@@ -1051,12 +1275,18 @@ const DayCell = React.memo(function DayCell({
   colors: Colors;
   styles: ReturnType<typeof makeStyles>;
   onSelect: (dayKey: string) => void;
+  /** Hands the cell's view up for measuring when a task drag starts. */
+  registerRef: (dayKey: string, view: View | null) => void;
+  /** Lights the cell while a dragged task is over it. */
+  dropChannel: DropTargetChannel;
 }) {
   const onPress = () => onSelect(dayKey);
+  const aimed = useDropTargetAimed(dropChannel, dayKey);
   const dots = bucket?.dots ?? [];
   return (
     <TouchableOpacity
-      style={styles.dayCell}
+      ref={view => registerRef(dayKey, view as unknown as View | null)}
+      style={[styles.dayCell, aimed && styles.dayCellAimed]}
       activeOpacity={interaction.activeOpacity}
       onPress={onPress}
       accessibilityRole="button"
@@ -1251,6 +1481,27 @@ function makeStyles(colors: Colors) {
       alignItems: 'center',
       justifyContent: 'center',
     },
+    // The day a dragged task would land on. Opaque, from flattenOverlay, for
+    // the drag-overlay rule in CLAUDE.md.
+    dayCellAimed: {
+      backgroundColor: flattenOverlay(colors.accentSubtle, colors.bg),
+      borderRadius: radius.md,
+    },
+    dragCard: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      width: DRAG_CARD_WIDTH,
+      paddingHorizontal: spacing.smd,
+      paddingVertical: spacing.sm,
+      borderRadius: radius.md,
+      backgroundColor: colors.bgTertiary,
+    },
+    dragCardText: {
+      color: colors.text,
+      fontSize: font.md,
+      fontWeight: fontWeight.medium,
+    },
     // Dots stack beside the circle rather than sitting under it (#1746), so
     // this row's own height never has to grow the cell — up to three stacked
     // dots (~19pt) stay well under the circle's own height (33pt) either way.
@@ -1420,6 +1671,14 @@ function makeStyles(colors: Colors) {
     noteRowDivided: {
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: colors.separator,
+    },
+    // Fixed width so every title in the card starts at the same x, whatever
+    // the time's length ("9:00 AM" against "12:30 PM", or "All day").
+    eventTime: {
+      width: 64,
+      color: colors.textSecondary,
+      fontSize: font.sm,
+      fontVariant: ['tabular-nums'],
     },
     noteText: {
       flex: 1,

@@ -272,6 +272,8 @@ jest.mock('../utils/notifications', () => ({
   // Reached through useTaskStore.initialize, which fans out to useFocusStore.
   scheduleFocusStepAlarm: jest.fn().mockResolvedValue(undefined),
   cancelFocusStepAlarm: jest.fn().mockResolvedValue(undefined),
+  scheduleFocusMeetingHeadsUp: jest.fn().mockResolvedValue(undefined),
+  cancelFocusMeetingHeadsUp: jest.fn().mockResolvedValue(undefined),
   // The demo seed starts a trip (demoSeed.ts), which goes through
   // useGroceryStore's real startTrip/endTrip.
   scheduleTripReminder: jest.fn(),

@@ -1,5 +1,5 @@
 import type { BusyEvent } from '../utils/calendarBusy';
-import { calendarWindow, FOCUS_CALENDAR_HORIZON_MINUTES } from '../utils/focusWindow';
+import { calendarWindow, focusMeetingHeadsUp, FOCUS_CALENDAR_HORIZON_MINUTES } from '../utils/focusWindow';
 
 const NOW = new Date(2026, 7, 22, 13, 0, 0);
 
@@ -82,5 +82,24 @@ describe('calendarWindow', () => {
     const window = calendarWindow([event({ title: '   ' })], NOW, OPTS);
     expect(window!.title).toBe('your next event');
     expect(window!.minutes).toBe(90);
+  });
+});
+
+describe('focusMeetingHeadsUp', () => {
+  const now = new Date(2026, 9, 6, 9, 0);
+  const meeting = (h: number, m: number, over: Partial<BusyEvent> = {}): BusyEvent => ({
+    id: `m${h}${m}`, title: 'Standup', calendarId: 'c', location: null, allDay: false,
+    status: 'confirmed', availability: 'busy',
+    start: new Date(2026, 9, 6, h, m).toISOString(), end: new Date(2026, 9, 6, h + 1, m).toISOString(), ...over,
+  });
+
+  it('lands the lead time before the next meeting that takes time', () => {
+    const result = focusMeetingHeadsUp([meeting(11, 0), meeting(10, 0, { availability: 'free' })], now);
+    expect(result).toEqual({ at: new Date(2026, 9, 6, 10, 55), title: 'Standup', startsAt: new Date(2026, 9, 6, 11, 0) });
+  });
+
+  it('says nothing once the lead has already passed, or with nothing ahead', () => {
+    expect(focusMeetingHeadsUp([meeting(9, 3)], now)).toBeNull();
+    expect(focusMeetingHeadsUp([], now)).toBeNull();
   });
 });

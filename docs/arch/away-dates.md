@@ -584,6 +584,27 @@ reading and the destination's `daily=` forecast. Three rules hold it:
 
 ---
 
+## A trip from a calendar event
+
+An event spanning days (`spansDays` in `src/utils/tripEvents.ts`) gets "Make this a trip" in the
+event sheet's details: a project named after it, away for exactly its days, then opened. It is
+**an offer the person takes, never a detection**. A conference in town and a week in Lisbon look the
+same to a calendar, so nothing reads an event as a trip on its own, and availability isn't consulted
+(calendars create all-day events as Free, and "Lisbon" left at the default is still a trip).
+
+- **The dates.** An all-day event's exclusive end is the return day, so the away days are exactly
+  the event's days. A timed one returns on the day it ends, the same as a return date typed in.
+- **Or onto a project that already exists** ("Add to a project"): a trip planned before it was
+  booked. One that already holds away dates asks before they're replaced, since the span drives
+  vacation mode, the away list and look ahead.
+- **No stored link to the event.** A project already away for those exact dates is the same trip,
+  however its dates got there, so the button opens it rather than making a second one
+  (`projectForTripEvent`).
+- **It needs its own read.** The fortnight read is too short for a trip planned weeks out, so
+  `useCalendarStore.refreshAhead` reads 90 days of events spanning days only, on the Calendar
+  screen's focus. That is the one place a far day's events are drawn, and such a day still reads as
+  not known for anything else.
+
 ## What this is not: the itinerary boundary
 
 The recurring question about anything in this file will be why it does not also

@@ -76,7 +76,8 @@ import { tagColor } from '../utils/tagColor';
 import { useTaskStore, CONTENT_FIELDS, derivedTargetCount, type TimeBlockPlan } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCalendarStore } from '../store/useCalendarStore';
-import { nudgeReminderPastMeeting } from '../utils/reminderNudge';
+import { meetingAtStart, nudgeReminderPastMeeting } from '../utils/reminderNudge';
+import { calendarCovers } from '../utils/eventConflicts';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
@@ -124,7 +125,7 @@ import { CalendarChoiceSheet } from './CalendarChoiceSheet';
 import { QuickEventSheet } from './QuickEventSheet';
 import { TaskRelationPickerSheet } from './TaskRelationPickerSheet';
 import { blockerFields, blockerIdsOf, describeBlocks } from '../utils/blocking';
-import { displayTitleFor, isMissableMealPlanTask, getVisibleAt } from '../utils/visibilityUtils';
+import { displayTitleFor, isMissableMealPlanTask, getVisibleAt, onLogicalDay } from '../utils/visibilityUtils';
 import { nextChainStepTitle } from '../utils/chain';
 import { RecurrencePicker } from './RecurrencePicker';
 import { SegmentedControl } from './SegmentedControl';
@@ -722,6 +723,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const activeHoursEnd = useSettingsStore(s => s.activeHoursEnd);
   const calendarEvents = useCalendarStore(s => s.events);
   const calendarLoaded = useCalendarStore(s => s.loaded);
+  const calendarWindowStart = useCalendarStore(s => s.windowStart);
+  const calendarWindowEnd = useCalendarStore(s => s.windowEnd);
 
   // Read off the store rather than the `task` prop: linkTimeBlock writes
   // the id after the event card saves, and the row has to change from
@@ -746,6 +749,18 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     const nudge = nudgeReminderPastMeeting(reminderTime, calendarEvents);
     return nudge.nudged ? nudge : null;
   }, [reminderTime, calendarReadEnabled, reminderMeetingNudgeEnabled, calendarLoaded, calendarEvents]);
+
+  // Whether the time window opens inside a meeting on the task's day, for the
+  // row to say so. Only for a dated task (no day, no meeting to check) and a
+  // day the calendar was read for; a day it wasn't is unknown, not clear.
+  const windowStartMeeting = useMemo(() => {
+    if (!windowStart || !dueDate || !calendarReadEnabled || !calendarLoaded) return null;
+    const dayStart = getTaskDayStart(dueDate, dayResetTime);
+    const dayEnd = new Date(dayStart);
+    dayEnd.setDate(dayEnd.getDate() + 1);
+    if (!calendarCovers(calendarWindowStart, calendarWindowEnd, dayStart, dayEnd)) return null;
+    return meetingAtStart(calendarEvents, onLogicalDay(dayStart, windowStart));
+  }, [windowStart, dueDate, dayResetTime, calendarReadEnabled, calendarLoaded, calendarWindowStart, calendarWindowEnd, calendarEvents]);
 
   const scheduleTooltipAnim = useRef(new Animated.Value(0)).current;
   const hadScheduleParse = useRef(false);
@@ -4587,6 +4602,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               label="Time window"
               hint="Only active for part of the day, then expires."
               value={timeWindowSummary}
+              caption={windowStartMeeting
+                ? `Starts during ${windowStartMeeting.title ? `"${windowStartMeeting.title}"` : 'a calendar event'}, which runs until ${formatTimeOfDay(windowStartMeeting.until, use24HourTime)}`
+                : undefined}
               expanded={showTimeWindow}
               onPress={() => { animateLayout(); setShowTimeWindow(v => !v); }}
               onClear={(windowStart || windowEnd)

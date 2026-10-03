@@ -1,4 +1,5 @@
-import { agendaCounts, agendaBody, agendaSpokenBody, nextAgendaTime } from '../utils/dailyAgenda';
+import { agendaCounts, agendaBody, agendaMeetings, agendaSpokenBody, nextAgendaTime } from '../utils/dailyAgenda';
+import type { BusyEvent } from '../utils/calendarBusy';
 import type { Task } from '../types';
 
 jest.mock('../store/useSettingsStore', () => ({
@@ -218,5 +219,57 @@ describe('agendaSpokenBody', () => {
   it('never carries the written separator', () => {
     const spoken = agendaSpokenBody({ due: 3, carriedOver: 2, deadlines: 1 });
     expect(spoken).not.toContain('·');
+  });
+});
+
+describe('agendaMeetings', () => {
+  const day = new Date(2026, 9, 6);
+  const next = new Date(2026, 9, 7);
+  const meeting = (startH: number, endH: number, over: Partial<BusyEvent> = {}): BusyEvent => ({
+    id: `m${startH}`, title: 'Meeting', calendarId: 'c', location: null, allDay: false,
+    status: 'confirmed', availability: 'busy',
+    start: new Date(2026, 9, 6, startH).toISOString(), end: new Date(2026, 9, 6, endH).toISOString(), ...over,
+  });
+
+  it('counts the meetings starting on the day and finds the first', () => {
+    const result = agendaMeetings([meeting(14, 15), meeting(10, 11)], day, next);
+    expect(result).toEqual({ count: 2, first: new Date(2026, 9, 6, 10) });
+  });
+
+  it('leaves out all-day, free and cancelled events, and last night\'s that ran past midnight', () => {
+    const lateLastNight = {
+      ...meeting(0, 1),
+      start: new Date(2026, 9, 5, 23).toISOString(),
+      end: new Date(2026, 9, 6, 1).toISOString(),
+    };
+    expect(agendaMeetings([
+      meeting(0, 23, { allDay: true }),
+      meeting(9, 10, { availability: 'free' }),
+      meeting(11, 12, { status: 'canceled' }),
+      lateLastNight,
+    ], day, next)).toBeNull();
+  });
+});
+
+describe('the agenda with meetings', () => {
+  const base = { due: 3, carriedOver: 0, deadlines: 0 };
+  const two = { count: 2, first: new Date(2026, 9, 6, 10) };
+
+  it('adds them last, naming the first one\'s time', () => {
+    expect(agendaBody({ ...base, meetings: two }, true)).toBe('3 due · 2 meetings, first at 10:00');
+    expect(agendaBody({ ...base, meetings: { count: 1, first: two.first } }, true)).toBe('3 due · 1 meeting at 10:00');
+  });
+
+  it('is worth sending on a day of meetings with no task on it', () => {
+    expect(agendaBody({ due: 0, carriedOver: 0, deadlines: 0, meetings: two }, true)).toBe('2 meetings, first at 10:00');
+  });
+
+  it('says nothing about meetings it does not know about', () => {
+    expect(agendaBody({ ...base, meetings: null }, true)).toBe('3 due');
+    expect(agendaBody({ ...base }, true)).toBe('3 due');
+  });
+
+  it('reads out the same line', () => {
+    expect(agendaSpokenBody({ ...base, meetings: two }, true)).toBe('Today: 3 tasks due and 2 meetings, the first at 10:00.');
   });
 });
