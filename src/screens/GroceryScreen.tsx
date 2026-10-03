@@ -830,6 +830,22 @@ export function GroceryScreen() {
     setStoredCollapsedGroups,
   ]);
 
+  /**
+   * One catalog item's sheet, opened from a search result (`openElsewhereResult`).
+   * The same sheet a row's tap opens, and it takes an item that isn't on the
+   * list too, which is most of what a catalog search turns up. Stamped like the
+   * two above, so the same result tapped twice opens it twice; an item deleted
+   * since the search ran is a shrug.
+   */
+  const openItemId: string | undefined = route.params?.openItem;
+  const openItemStamp: number | undefined = route.params?.openItemStamp;
+  const [handledItemStamp, setHandledItemStamp] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    if (openItemStamp === undefined || openItemStamp === handledItemStamp) return;
+    setHandledItemStamp(openItemStamp);
+    if (openItemId && items.some(i => i.id === openItemId)) setEditingId(openItemId);
+  }, [openItemStamp, handledItemStamp, openItemId, items]);
+
   // What the drag is aimed at goes through a channel rather than state: it
   // changes as the finger crosses each row, and re-rendering this screen
   // re-runs every row's renderItem. Only the button's label reads it.

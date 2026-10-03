@@ -192,6 +192,8 @@ import { type FabDragHandlers, FAB_SIZE } from '../components/Fab';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { openElsewhereResult } from '../navigation/openSearchResult';
+import type { ElsewhereResult } from '../utils/searchElsewhere';
 import { animateLayout } from '../utils/layoutAnimation';
 import { emitNowTick } from '../utils/nowTick';
 import { sumEstimatedMinutes, formatDuration } from '../utils/effort';
@@ -1853,10 +1855,10 @@ export function TodayScreen() {
     useTaskStore.getState().dismissPendingImport(id);
   }, []);
 
-  // A screen matched in quick search. The route names come from the side
-  // menu's own index, so each is one the navigator already registers.
-  const handleOpenDestination = useCallback((route: string) => {
-    navigation.navigate(route as never);
+  // Anything quick search matched that isn't a task, stack or project: a
+  // screen, a setting, a person, a recipe or a grocery item.
+  const handleOpenElsewhere = useCallback((result: ElsewhereResult) => {
+    openElsewhereResult(navigation, result);
   }, [navigation]);
 
   const handleOpenProject = useCallback((projectId: string) => {
@@ -4048,6 +4050,14 @@ export function TodayScreen() {
   const viewFilterCount = viewMode === 'today' ? activeFilterCount : (filterHasReminder ? 1 : 0);
 
   const headerActions: ScreenHeaderAction[] = [
+    // The same card the pull opens. A pull is invisible until somebody
+    // stumbles on it, and search reaches far past this screen now (settings,
+    // people, recipes, groceries), so it gets a button too.
+    {
+      icon: 'search' as const,
+      onPress: () => { haptics.tap(); setQuickSearchVisible(true); },
+      accessibilityLabel: 'Search everything',
+    },
     {
       icon: 'funnel' as const,
       onPress: () => setFilterVisible(true),
@@ -4772,7 +4782,7 @@ export function TodayScreen() {
           onSelectTask={openEditor}
           onSelectGroup={group => handleGroupPressEdit(group.id)}
           onSelectProject={handleOpenProject}
-          onSelectDestination={handleOpenDestination}
+          onSelectElsewhere={handleOpenElsewhere}
           onOpenFullSearch={handleOpenFullSearch}
         />
 
