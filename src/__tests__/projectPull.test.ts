@@ -18,6 +18,7 @@ import {
 import { registerTaskSource } from '../utils/blockerRegistry';
 import { registerSectionSource } from '../utils/sectionRegistry';
 import type { Project, Task, TaskGroup } from '../types';
+import type { BusyEvent } from '../utils/calendarBusy';
 
 const settingsState = { dayResetTime: '00:00', vacationMode: false, morningStart: '06:00', afternoonStart: '12:00', eveningStart: '18:00', nightStart: '21:00' };
 
@@ -590,6 +591,27 @@ describe('suggestPullDate', () => {
 
     expect(result.dayLabel).not.toBe('Today');
     expect(result.date.getTime()).toBeGreaterThan(Date.now());
+  });
+
+  it('weighs meetings on the days it falls back to', () => {
+    const task = makeTask({ id: 'pull' });
+    const heavy = [makeTask({ id: 'h1', estimatedMinutes: PULL_TODAY_BUDGET_MINUTES + 30 })];
+    const free = suggestPullDate(task, [task, ...heavy], heavy, 20);
+
+    // Fill the day it picked with meetings: the same engine Suggest uses then
+    // moves the pull elsewhere, instead of scoring that day by tasks alone.
+    const start = new Date(free.date);
+    start.setHours(8, 0, 0, 0);
+    const end = new Date(free.date);
+    end.setHours(20, 0, 0, 0);
+    const meeting: BusyEvent = {
+      id: 'm1', title: 'Offsite', start: start.toISOString(), end: end.toISOString(), allDay: false,
+      calendarId: 'c1', location: null, status: 'confirmed', availability: 'busy',
+    };
+    const busy = suggestPullDate(task, [task, ...heavy], heavy, 20, null, [meeting]);
+
+    expect(busy.dayLabel).not.toBe('Today');
+    expect(busy.date.toDateString()).not.toBe(free.date.toDateString());
   });
 
   it('honours dayResetTime during the early-morning grace window', () => {

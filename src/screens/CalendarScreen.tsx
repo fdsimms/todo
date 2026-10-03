@@ -48,7 +48,7 @@ import { useMealPlanStore } from '../store/useMealPlanStore';
 import { DayTimeline } from '../components/DayTimeline';
 import { buildDayTimeline } from '../utils/dayTimeline';
 import { eventsIn } from '../utils/calendarBusy';
-import { describeWeekRange, entriesForDay } from '../utils/mealPlan';
+import { describeWeekRange } from '../utils/mealPlan';
 import { isDemoModeActive } from '../utils/demoState';
 import { QuickEventSheet } from '../components/QuickEventSheet';
 import { useProjectStore } from '../store/useProjectStore';
@@ -153,9 +153,16 @@ export function CalendarScreen() {
 
   // Collapse an expanded row on the way out, so it isn't still open on return.
   useFocusEffect(useCallback(() => () => setExpandedTaskId(null), []));
+  // Bumped on every focus, so a read that goes past a store to SQLite (the
+  // day's meals, below) is taken again after another screen may have written.
+  const [focusCount, setFocusCount] = useState(0);
+  useFocusEffect(useCallback(() => { setFocusCount(n => n + 1); }, []));
 
   const use24Hour = useSettingsStore(s => s.use24HourTime);
+  // Subscribed only so a meal edited in the loaded window redraws; the day's
+  // own entries come through entriesForDayLive.
   const mealEntries = useMealPlanStore(useShallow(s => s.entries));
+  const entriesForDayLive = useMealPlanStore(s => s.entriesForDayLive);
 
 
   const projects = useProjectStore(useShallow(s => s.projects));
@@ -220,7 +227,13 @@ export function CalendarScreen() {
     return buildDayTimeline({ dayStart: selectedDayStart, tasks: dayRows(detail), events: dayEvents });
   }, [detail, selectedDayStart, dayEvents]);
 
-  const dayMeals = useMemo(() => entriesForDay(mealEntries, selectedKey), [mealEntries, selectedKey]);
+  // Through the live read, not `entries`: that holds only the week Meal Plan
+  // last loaded, so any other day drew no meals at all. `mealEntries` and
+  // `focusCount` aren't read; they're what tells the memo to read again.
+  const dayMeals = useMemo(
+    () => entriesForDayLive(selectedKey),
+    [entriesForDayLive, mealEntries, focusCount, selectedKey],
+  );
 
 
 
