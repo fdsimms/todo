@@ -42,6 +42,9 @@ import {
   foodLogEntryEdit,
   foodUnitOptionsFor,
   helpingNutrition,
+  keptDatabasePanel,
+  wholeEstimate,
+  type EstimateAmountPatch,
   matchMealPlanEntry,
   parseFoodAmount,
   recallAmount,
@@ -71,6 +74,7 @@ import { CatalogLinkPicker } from './CatalogLinkPicker';
 import { EmptyState } from './EmptyState';
 import { InlineAction } from './InlineAction';
 import { NutritionSearchSheet, navigateToFoodSearchSettings } from './NutritionSearchSheet';
+import { EstimateAmountSheet } from './EstimateAmountSheet';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -440,6 +444,9 @@ export function FoodLogEntrySheet({
   const [chosenSlot, setChosenSlot] = useState<MealSlot | null>(slot);
   const [weighGrams, setWeighGrams] = useState('');
   const [dbSearchOpen, setDbSearchOpen] = useState(false);
+  // The earlier estimated helping whose amount is being changed before it is
+  // logged again (`openHelping`).
+  const [amountHelping, setAmountHelping] = useState<FoodLogEntry | null>(null);
   /** Whether the "which item is this" picker is open under a database food. */
   const [catalogPickOpen, setCatalogPickOpen] = useState(false);
   // What was typed for each of a dish's amount-varies lines, keyed by the
@@ -1140,6 +1147,45 @@ export function FoodLogEntrySheet({
     if (logged) afterSave(again.label);
   };
 
+  /** An estimated helping logged again at the amount the card chose, as a multiple of its whole. */
+  const logHelpingAtAmount = (entry: FoodLogEntry, patch: EstimateAmountPatch) => {
+    const logged = logNew({
+      label: entry.label,
+      quantity: patch.quantity,
+      grams: patch.grams,
+      nutrition: patch.nutrition,
+      sourcePanel: patch.sourcePanel,
+      slot: chosenSlot ?? entry.slot,
+      recipeId: null,
+      itemId: null,
+      productId: null,
+    });
+    if (logged) afterSave(entry.label);
+  };
+
+  /**
+   * The row body of an earlier helping: change the amount first, where the +
+   * logs it as it was. An estimate opens "Change amount", the question its
+   * figures can answer (a multiple of the whole it described). A database
+   * food that kept its panel opens the ordinary amount form on that panel, at
+   * the weight it was logged at, so it is re-measured rather than multiplied.
+   * Anything else has no amount to change, so the row logs it as recorded.
+   */
+  const openHelping = (entry: FoodLogEntry) => {
+    haptics.tap();
+    if (wholeEstimate(entry)) { Keyboard.dismiss(); setAmountHelping(entry); return; }
+    const panel = keptDatabasePanel(entry);
+    if (!panel) { logHelpingAgain(entry); return; }
+    handleDbPick(panel, entry.label);
+    const grams = foodUnitOptionsFor(panel).find(o => o.key === 'g');
+    if (grams && entry.grams) {
+      const number = String(entry.grams);
+      setAmountUnit('g');
+      setAmountNumber(number);
+      setAmount(composeFoodAmount(number, grams));
+    }
+  };
+
   // Nothing here has a `GroceryItem` or `ItemProduct` behind it, so there is
   // no row to attach the panel to — the candidate carries it directly, same
   // as a picked dish carries `servingPanel` rather than pointing at one.
@@ -1608,22 +1654,31 @@ export function FoodLogEntrySheet({
                 <View>
                   <Text style={[styles.label, styles.helpingsLabel]}>LOG THE SAME AGAIN</Text>
                   {helpings.map(entry => (
-                    <TouchableOpacity
-                      key={entry.id}
-                      style={styles.row}
-                      activeOpacity={interaction.activeOpacity}
-                      onPress={() => logHelpingAgain(entry)}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Log ${entry.label} again, ${describeFoodLogEntry(entry)}`}
-                    >
-                      <View style={styles.rowText}>
-                        <Text style={styles.rowTitle}>{entry.label}</Text>
-                        <Text style={styles.rowMeta}>{describeFoodLogEntry(entry)}</Text>
-                      </View>
-                      {/* A plus rather than the list's chevron: this row logs on
-                          the tap, where a row below opens the amount first. */}
-                      <Ionicons name="add-circle-outline" size={iconSize.md} color={colors.accent} />
-                    </TouchableOpacity>
+                    <View key={entry.id} style={[styles.row, styles.helpingRow]}>
+                      {/* The body opens the amount first, like a row below. */}
+                      <TouchableOpacity
+                        style={styles.helpingBody}
+                        activeOpacity={interaction.activeOpacity}
+                        onPress={() => openHelping(entry)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Change amount of ${entry.label}, ${describeFoodLogEntry(entry)}`}
+                      >
+                        <View style={styles.rowText}>
+                          <Text style={styles.rowTitle}>{entry.label}</Text>
+                          <Text style={styles.rowMeta}>{describeFoodLogEntry(entry)}</Text>
+                        </View>
+                      </TouchableOpacity>
+                      {/* The plus logs it as it was, at once. */}
+                      <TouchableOpacity
+                        style={styles.helpingAdd}
+                        activeOpacity={interaction.activeOpacity}
+                        onPress={() => logHelpingAgain(entry)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Log ${entry.label} again, ${describeFoodLogEntry(entry)}`}
+                      >
+                        <Ionicons name="add-circle-outline" size={iconSize.md} color={colors.accent} />
+                      </TouchableOpacity>
+                    </View>
                   ))}
                   {results.length > 0 && (
                     <Text style={[styles.label, styles.listLabel]}>FOODS AND RECIPES</Text>
@@ -1675,6 +1730,16 @@ export function FoodLogEntrySheet({
           setDbSearchOpen(false);
           requestClose(() => { onClose(); navigateToFoodSearchSettings(navigation, entryId); });
         }}
+      />
+      {/* Inside this Modal, not beside it: the card is raised from a sheet that
+          is already presenting. */}
+      <EstimateAmountSheet
+        visible={amountHelping !== null}
+        entry={amountHelping}
+        saveLabel="Log"
+        allowUnchanged
+        onSave={patch => { if (amountHelping) logHelpingAtAmount(amountHelping, patch); }}
+        onClose={() => setAmountHelping(null)}
       />
       {overlays}
       <NumberPadAccessory />
@@ -1891,6 +1956,11 @@ function makeStyles(colors: Colors) {
     // The section labels above and inside the list's own rows, which keep
     // spacing.sm between themselves; a label takes that below it and a block
     // gap above when it starts the second group.
+    // The row's padding moves onto its two touch targets, so the body and the
+    // plus each reach the card's edge instead of leaving a dead margin.
+    helpingRow: { paddingHorizontal: 0, paddingVertical: 0, gap: 0, alignItems: 'stretch' },
+    helpingBody: { flex: 1, justifyContent: 'center', paddingLeft: spacing.md, paddingVertical: spacing.md },
+    helpingAdd: { justifyContent: 'center', paddingHorizontal: spacing.md },
     helpingsLabel: { marginBottom: spacing.sm },
     listLabel: { marginTop: spacing.md, marginBottom: spacing.sm },
   });

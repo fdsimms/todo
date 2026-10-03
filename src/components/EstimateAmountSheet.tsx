@@ -32,6 +32,14 @@ interface Props {
   /** Writes the new amount. The host closes the sheet in the same handler. */
   onSave: (patch: EstimateAmountPatch) => void;
   onClose: () => void;
+  /** The confirm button's label. "Save" by default; "Log" where the amount is for a new entry. */
+  saveLabel?: string;
+  /**
+   * Whether confirming the amount the sheet opened on does anything. Off for a
+   * correction, where there is nothing to write; on when the amount is for a
+   * new entry, so the same amount can be logged as it is.
+   */
+  allowUnchanged?: boolean;
 }
 
 /**
@@ -103,7 +111,7 @@ function amountRefusal(unit: AmountUnit, wholeGrams: number | null): string {
  * there is no unsaved-changes guard to need. The number pad opens for the
  * stepper's digits and the typed amount alike.
  */
-export function EstimateAmountSheet({ visible, entry, onSave, onClose }: Props) {
+export function EstimateAmountSheet({ visible, entry, onSave, onClose, saveLabel = 'Save', allowUnchanged = false }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -152,7 +160,7 @@ export function EstimateAmountSheet({ visible, entry, onSave, onClose }: Props) 
     setTyped(null);
   };
   const patch = entry && chosen !== null ? estimateAmountPatch(entry, chosen) : null;
-  const unchanged = !patch || (!!entry && estimateAmountUnchanged(entry, patch));
+  const unchanged = !patch || (!allowUnchanged && !!entry && estimateAmountUnchanged(entry, patch));
 
   const save = () => {
     if (!patch || unchanged) return;
@@ -178,7 +186,7 @@ export function EstimateAmountSheet({ visible, entry, onSave, onClose }: Props) 
           <SheetHeaderButton label="Cancel" role="cancel" onPress={() => dismiss(onClose)} minWidth={56} />
           <Text style={styles.heading} numberOfLines={2}>{entry?.label ?? ''}</Text>
           <SheetHeaderButton
-            label="Save"
+            label={saveLabel}
             onPress={save}
             disabled={unchanged}
             minWidth={56}
