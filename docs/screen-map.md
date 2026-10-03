@@ -333,6 +333,7 @@ Where each component can appear.
 - `src/screens/settings/PermissionsSettings.tsx` — on SettingsGroupScreen
 - `src/screens/settings/PrivacyAiSettings.tsx` — on SettingsGroupScreen
 - `src/screens/settings/RemindersCaptureSettings.tsx` — on SettingsGroupScreen
+- `src/screens/settings/SavedPlacesRows.tsx` — on SettingsGroupScreen
 - `src/screens/settings/SettingsChoiceTray.tsx` — on SettingsGroupScreen
 - `src/screens/settings/SettingsFocus.tsx` — on SettingsGroupScreen
 - `src/screens/settings/SettingsRow.tsx` — on SettingsGroupScreen

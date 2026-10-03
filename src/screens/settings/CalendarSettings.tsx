@@ -26,6 +26,7 @@ import { PillGroup } from '../../components/PillGroup';
 import { useCategoryStore, ensureCalendarEventCategory } from '../../store/useCategoryStore';
 import { categoryLabel } from '../../utils/categoryLabel';
 import { haptics } from '../../utils/haptics';
+import { SavedPlacesRows } from './SavedPlacesRows';
 
 const MAPS_APP_OPTIONS: SegmentOption<MapsApp>[] = [
   { value: 'apple', label: 'Apple Maps', icon: 'map-outline' },
@@ -557,6 +558,7 @@ export function CalendarSettings() {
         onPress={() => setPlaceSuggestionsEnabled(!placeSuggestionsEnabled)}
         accessibilityLabel="Suggest places"
       />
+      <SavedPlacesRows />
     </SettingsSection>
   );
 }
