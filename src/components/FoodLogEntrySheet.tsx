@@ -14,6 +14,7 @@ import {
   Alert,
   FlatList,
   Keyboard,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -1581,6 +1582,9 @@ export function FoodLogEntrySheet({
           </ScrollView>
         ) : (
           <>
+            {/* A tap on the gaps around the search field and the chips puts the
+                keyboard away; the controls inside handle their own taps. */}
+            <Pressable onPress={Keyboard.dismiss} accessible={false}>
             <View style={styles.searchRow}>
               <Ionicons name="search" size={iconSize.sm} color={colors.textTertiary} />
               <TextInput
@@ -1588,6 +1592,7 @@ export function FoodLogEntrySheet({
                 {...searchFilter.props}
                 style={styles.searchInput}
                 placeholder="Search foods and recipes"
+                inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
                 placeholderTextColor={colors.textTertiary}
                 autoCorrect={false}
               />
@@ -1666,6 +1671,7 @@ export function FoodLogEntrySheet({
                 <Text style={styles.declineMealText}>Don't ask about this meal</Text>
               </TouchableOpacity>
             )}
+            </Pressable>
             <FlatList
               ref={listScroll.ref}
               style={styles.list}
