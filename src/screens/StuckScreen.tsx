@@ -3,7 +3,6 @@ import { View, Text, FlatList, TouchableOpacity, Alert, StyleSheet } from 'react
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useNavigation } from '@react-navigation/native';
 import { format } from 'date-fns/format';
 import { useShallow } from 'zustand/react/shallow';
 import { useTaskStore } from '../store/useTaskStore';
@@ -33,6 +32,7 @@ import { formatTaskDate, getCurrentDayStart, getDayStart } from '../utils/dateUt
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import type { DriftEntry } from '../utils/postpone';
 import type { Person, Task } from '../types';
+import { resetToPeople } from '../navigation/navigationRef';
 
 const CHECKBOX_SIZE = 22;
 
@@ -118,7 +118,6 @@ function labelForCategory(
 
 export function StuckScreen() {
   const insets = useSafeAreaInsets();
-  const navigation = useNavigation<any>();
   const tabBarHeight = useBottomTabBarHeight();
 
   const waitingTasks = useTaskStore(useShallow(s => s.waitingTasks()));
@@ -343,7 +342,7 @@ export function StuckScreen() {
             </View>
             <TouchableOpacity
               style={styles.blockerBody}
-              onPress={() => navigation.navigate('People', { personId: section.person.id, openPerson: Date.now() })}
+              onPress={() => resetToPeople(section.person.id)}
               activeOpacity={interaction.activeOpacity}
               accessible
               accessibilityRole="button"

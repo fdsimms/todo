@@ -88,11 +88,19 @@ export function SettingsScreen() {
     if (settings.cookRecapEnabled) on.add('cookRecapEnabled');
     if (settings.mealLogPrompt) on.add('mealLogPrompt');
     if (settings.onDeviceAiEnabled) on.add('onDeviceAiEnabled');
+    if (settings.healthReadEnabled) on.add('healthRead');
+    if (settings.healthWriteEnabled) on.add('healthWrite');
+    if (settings.calendarReadEnabled) on.add('calendarRead');
+    if (settings.remindersImportEnabled) on.add('remindersImport');
     // Through the same rule the rows themselves use, so a generator whose read
     // is switched off takes its "File them under" row out of search too.
     for (const spec of GENERATED_KIND_LIST) {
       if (generatorSwitchedOn(spec.kind, settings)) on.add(`gen:${spec.kind}`);
     }
+    // Nested a level further, inside the leave-by generator's own options, so
+    // they need it on as well as their own switch.
+    if (on.has('gen:travel') && settings.travelEstimates) on.add('travelEstimates');
+    if (on.has('gen:travel') && settings.transitAlerts) on.add('transitAlerts');
     return on;
   }, [settings]);
 

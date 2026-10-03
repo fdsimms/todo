@@ -4,7 +4,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useFocusEffect, useRoute } from '@react-navigation/native';
-import { navigationRef } from '../navigation/navigationRef';
+import { navigateToTab, navigationRef } from '../navigation/navigationRef';
 import { format } from 'date-fns/format';
 import { addDays } from 'date-fns/addDays';
 import { useShallow } from 'zustand/react/shallow';
@@ -230,7 +230,7 @@ export function WeightScreen() {
   const closeLog = () => {
     setLogOpen(false);
     if (returnTo) {
-      navigationRef.navigate(returnTo);
+      navigateToTab(returnTo);
       setReturnTo(undefined);
     }
   };

@@ -1,7 +1,7 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { PanResponder, StyleSheet, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
-import { navigationRef, resetToRecipeDetail, flushPendingNavigation } from './navigationRef';
+import { navigationRef, navigateToTab, resetToRecipeDetail, flushPendingNavigation } from './navigationRef';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -365,8 +365,14 @@ export default function AppNavigator() {
   ).current;
 
   const handleDrawerNavigate = useCallback((tabName: string) => {
-    if (!PUSHED_ROUTES.has(tabName)) setActiveTab(tabName);
-    navRef.current?.navigate(tabName as never);
+    // The left-edge strip that opens the drawer sits over pushed cards too,
+    // so a tab picked here may be under one — see navigateToTab.
+    if (PUSHED_ROUTES.has(tabName)) {
+      navRef.current?.navigate(tabName as never);
+    } else {
+      setActiveTab(tabName);
+      navigateToTab(tabName);
+    }
   }, []);
 
   const handleStateChange = useCallback(() => {

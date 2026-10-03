@@ -278,6 +278,37 @@ describe('settings index', () => {
         expect(row.requires).toBe(row.id.replace(/:category$/, ''));
       }
     });
+
+    // The same `on && …` gate holds a generator's own options (its rules, its
+    // lead days), and searching "weather rules" with weather tasks off used to
+    // land on a group with no such row in it.
+    it('gates a generator option on its generator', () => {
+      const off = visibleSettingsEntries('ios', true, false, new Set());
+      for (const id of ['weatherRules', 'eventRules', 'healthRules', 'screenTimeRules', 'birthdayLeadDays', 'travelLeadMinutes']) {
+        expect(off.some(e => e.id === id)).toBe(false);
+      }
+      const weather = visibleSettingsEntries('ios', true, false, new Set(['gen:weather']));
+      expect(weather.some(e => e.id === 'weatherRules')).toBe(true);
+      expect(weather.some(e => e.id === 'healthRules')).toBe(false);
+    });
+
+    it('gates a nested leave-by option on its own switch, not just the generator', () => {
+      const travelOnly = visibleSettingsEntries('ios', true, false, new Set(['gen:travel']));
+      expect(travelOnly.some(e => e.id === 'travelLeadMinutes')).toBe(true);
+      expect(travelOnly.some(e => e.id === 'travelOrigin')).toBe(false);
+      expect(travelOnly.some(e => e.id === 'transitLines')).toBe(false);
+    });
+
+    it('gates the rows that only render once a read or import is on', () => {
+      const off = visibleSettingsEntries('ios', true, false, new Set());
+      for (const id of ['healthToday', 'healthWriteNutrients', 'calendarToday', 'remindersImportReview']) {
+        expect(off.some(e => e.id === id)).toBe(false);
+      }
+      const on = visibleSettingsEntries('ios', true, false, new Set(['healthRead', 'calendarRead']));
+      expect(on.some(e => e.id === 'healthToday')).toBe(true);
+      expect(on.some(e => e.id === 'calendarToday')).toBe(true);
+      expect(on.some(e => e.id === 'healthWriteNutrients')).toBe(false);
+    });
   });
 
   describe('simplified-mode gating', () => {

@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
-import { navigationRef } from '../navigation/navigationRef';
+import { navigateToTab } from '../navigation/navigationRef';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { addDays } from 'date-fns/addDays';
 import { format } from 'date-fns/format';
@@ -397,7 +397,7 @@ export function MoodScreen() {
     setSheetOpen(false);
     setEditing(null);
     if (returnTo) {
-      navigationRef.navigate(returnTo);
+      navigateToTab(returnTo);
       setReturnTo(undefined);
     }
   };
