@@ -6,6 +6,7 @@ import {
   buildDayBuckets,
   canProject,
   dayDetail,
+  dayRows,
   dotsFor,
   nthOccurrence,
   projectOccurrences,
@@ -561,6 +562,28 @@ describe('dayDetail', () => {
     const detail = dayDetail(undefined, byId);
     expect(detail.isEmpty).toBe(true);
     expect(summarizeDay(detail)).toBe('');
+  });
+});
+
+describe('dayRows', () => {
+  const byId = new Map<string, Task>();
+  const empty = dayDetail(undefined, byId);
+
+  it('lists due, then deadline, then returning', () => {
+    const a = makeTask({ id: 'a' });
+    const b = makeTask({ id: 'b' });
+    const c = makeTask({ id: 'c' });
+    expect(dayRows({ ...empty, due: [a], deadline: [b], defer: [c] }).map(t => t.id)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('keeps a task in two lists to one row, at its first position', () => {
+    const a = makeTask({ id: 'a' });
+    const b = makeTask({ id: 'b' });
+    expect(dayRows({ ...empty, due: [a], deadline: [b, a], defer: [a] }).map(t => t.id)).toEqual(['a', 'b']);
+  });
+
+  it('leaves expected occurrences out', () => {
+    expect(dayRows({ ...empty, expected: [{ taskId: 'x', title: 'Bins out' }] })).toEqual([]);
   });
 });
 

@@ -59,3 +59,10 @@ exist, which is why the whole feature is a util plus a screen.
 - **Its own route, not a fifth Today lens** — see the Navigation note in `CLAUDE.md`. And paging months carries
   the selection with it: a detail pane naming a day outside the grid renders "Nothing on this day"
   about a day that simply isn't in range.
+- **The week view is a slice of the same grid, not a second walk.** It draws one row of the
+  month's `DayCell`s over seven per-day sections, every one resolved from the month's buckets
+  (`dayDetail` per day, `dayRows` for the one-row-per-task list). That works because the selected
+  day always sits in the displayed month, so its whole week is inside that month's 42 cells; paging
+  a week goes through `stepDay`, which moves the month along when the week crosses into the next.
+  A task can land on two days of one week (due Monday, deadline Friday), so its rows are keyed by
+  day and task, the same per-row expansion the pinned copy on Today uses.

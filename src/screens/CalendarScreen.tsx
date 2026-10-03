@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { useStableCallback } from '../hooks/useStableCallback';
 import { View, Text, ScrollView, StyleSheet, Dimensions, TouchableOpacity } from 'react-native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
@@ -24,11 +24,12 @@ import { TodayEventsSheet } from '../components/TodayEventsSheet';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
-import { buildCalendarGrid, weekdayHeaders } from '../utils/calendarGrid';
+import { buildCalendarGrid, buildWeekDays, weekdayHeaders } from '../utils/calendarGrid';
 import { dayKeyOf, dayKeyToDate, getDayStart, getLogicalToday } from '../utils/dateUtils';
 import {
   buildDayBuckets,
   dayDetail,
+  dayRows,
   summarizeDay,
   type DayBucket,
   type DayMarkKind,
@@ -47,7 +48,7 @@ import { useMealPlanStore } from '../store/useMealPlanStore';
 import { DayTimeline } from '../components/DayTimeline';
 import { buildDayTimeline } from '../utils/dayTimeline';
 import { eventsIn } from '../utils/calendarBusy';
-import { entriesForDay } from '../utils/mealPlan';
+import { describeWeekRange, entriesForDay } from '../utils/mealPlan';
 import { isDemoModeActive } from '../utils/demoState';
 import { QuickEventSheet } from '../components/QuickEventSheet';
 import { useProjectStore } from '../store/useProjectStore';
@@ -72,9 +73,10 @@ const WEIGHT_SLOT_GAP = 2;
 // render is exactly the identity churn the grouping below exists to avoid.
 const NO_SUBTASKS: Task[] = [];
 
-type CalendarViewMode = 'month' | 'day';
+type CalendarViewMode = 'month' | 'week' | 'day';
 const VIEW_MODES: { value: CalendarViewMode; label: string }[] = [
   { value: 'month', label: 'Month' },
+  { value: 'week', label: 'Week' },
   { value: 'day', label: 'Day' },
 ];
 
@@ -97,10 +99,16 @@ const VIEW_MODES: { value: CalendarViewMode; label: string }[] = [
  * future occurrences aren't rows, so the grid *projects* them — and a
  * projection may be a dot, never a row. See `dayDetail`.
  *
+ * Three ways to read it, switched by the pill row: the month grid over the
+ * selected day's list, the week (one row of the same cells over every day of
+ * that week as its own section), and one day on a clock. All three read the
+ * same buckets, which are always built over the selected day's month grid —
+ * a week containing any day of a month is inside that month's 42 cells.
+ *
  * The component is one function; `grep -n '// ===='` is its table of contents:
  * stores and screen state, the month (grid, buckets, the selected day's
- * detail), the selected day's empty state and the month's totals, moving between days and months,
- * the rows and the editor, then the JSX. The header's "+" opens the quick-add
+ * detail), the week, the selected day's empty state and the month's totals,
+ * moving between days and months, the rows and the editor, then the JSX. The header's "+" opens the quick-add
  * event card (`QuickEventSheet`) on the selected day.
  */
 export function CalendarScreen() {
@@ -209,14 +217,7 @@ export function CalendarScreen() {
   const dayTimeline = useMemo(() => {
     // A task can be in more than one of the three lists (due today with a
     // deadline today), and it is still one row on the axis.
-    const seen = new Set<string>();
-    const tasks: Task[] = [];
-    for (const task of [...detail.due, ...detail.deadline, ...detail.defer]) {
-      if (seen.has(task.id)) continue;
-      seen.add(task.id);
-      tasks.push(task);
-    }
-    return buildDayTimeline({ dayStart: selectedDayStart, tasks, events: dayEvents });
+    return buildDayTimeline({ dayStart: selectedDayStart, tasks: dayRows(detail), events: dayEvents });
   }, [detail, selectedDayStart, dayEvents]);
 
   const dayMeals = useMemo(() => entriesForDay(mealEntries, selectedKey), [mealEntries, selectedKey]);
@@ -268,6 +269,36 @@ export function CalendarScreen() {
     ? Math.round((Date.now() - selectedDayStart.getTime()) / 60000)
     : null;
 
+  // ==== the week: the selected day's week, one section per day ====
+  // Every day of it resolves against the month grid's buckets: the selected
+  // day is always in the displayed month, so its whole week is in the grid.
+  const weekDays = useMemo(
+    () => buildWeekDays(dayKeyToDate(selectedKey), weekStartsOn),
+    [selectedKey, weekStartsOn],
+  );
+  const weekDetails = useMemo(
+    () => weekDays.map(day => {
+      const key = dayKeyOf(day);
+      return { day, key, detail: dayDetail(buckets.get(key), taskById) };
+    }),
+    [weekDays, buckets, taskById],
+  );
+  const weekOutstanding = weekDetails.reduce(
+    (total, { key }) => total + (buckets.get(key)?.outstanding ?? 0),
+    0,
+  );
+  const weekHasToday = weekDetails.some(({ key }) => key === todayKey);
+  // Where each day's section starts in the scrolling list, so tapping a day in
+  // the strip can bring its section up. Written from onLayout, read on tap.
+  const detailScrollRef = useRef<ScrollView>(null);
+  const weekSectionY = useRef(new Map<string, number>());
+  const viewModeRef = useRef(viewMode);
+  viewModeRef.current = viewMode;
+  // A day whose section should be brought up as soon as it is laid out: set on
+  // arriving at a week (switching to it, or paging), so the list opens on the
+  // day you had selected rather than on the week's first day.
+  const pendingWeekScroll = useRef<string | null>(null);
+
   // ==== the selected day's empty state and the month's totals ====
   // A day holding an event or a meal is not an empty day, even with no task on
   // it, and one the calendar could not be read for has something to say too.
@@ -297,6 +328,14 @@ export function CalendarScreen() {
     if (!isSameMonth(next, displayMonth)) setDisplayMonth(startOfMonth(next));
   };
 
+  // A week at a time, keeping the weekday you had selected. stepDay already
+  // carries the displayed month along when the week crosses into another.
+  const stepWeek = (delta: number) => {
+    setExpandedTaskId(null);
+    pendingWeekScroll.current = dayKeyOf(addDays(dayKeyToDate(selectedKey), delta * 7));
+    stepDay(delta * 7);
+  };
+
   const stepMonth = (delta: number) => {
     haptics.tap();
     const next = addMonths(displayMonth, delta);
@@ -321,7 +360,22 @@ export function CalendarScreen() {
     haptics.tap();
     setExpandedTaskId(null);
     setSelectedKey(key);
+    // The week's strip doesn't change the list under it, only where you are
+    // in it. Read through refs so this stays one stable callback.
+    if (viewModeRef.current === 'week') {
+      const y = weekSectionY.current.get(key);
+      if (y !== undefined) detailScrollRef.current?.scrollTo({ y, animated: true });
+    }
   }, []);
+
+  const switchViewMode = (mode: CalendarViewMode) => {
+    haptics.tap();
+    // The expanded row is keyed per view (the week keys it by day as well as
+    // task), so one carried across would either expand nothing or the wrong row.
+    setExpandedTaskId(null);
+    if (mode === 'week') pendingWeekScroll.current = selectedKey;
+    setViewMode(mode);
+  };
 
   // ==== rows: subtasks, expansion, the editor and quick add ====
   // Every subtask on this screen, grouped once. Each row used to filter the
@@ -415,12 +469,110 @@ export function CalendarScreen() {
     );
   };
 
+  const renderExpected = (expected: { taskId: string; title: string }[]) => {
+    if (expected.length === 0) return null;
+    return (
+      <View style={styles.section}>
+        <Text style={styles.sectionLabel}>Expected</Text>
+        {/* Deliberately not TaskItems. These occurrences have no row —
+            no id to tick, swipe or open — so they get a caption that
+            doesn't look like something you can act on. */}
+        <View style={styles.expectedCard}>
+          {expected.map(item => (
+            <View key={item.taskId} style={styles.expectedRow}>
+              <Ionicons name="repeat" size={14} color={colors.textTertiary} />
+              <Text style={styles.expectedTitle} numberOfLines={1}>{item.title}</Text>
+            </View>
+          ))}
+          <Text style={styles.expectedHint}>
+            These repeat onto this day. Each one is created when you complete the one before it.
+          </Text>
+        </View>
+      </View>
+    );
+  };
+
+  /**
+   * The week as seven sections, every day drawn whether or not it holds
+   * anything: a week with a gap in it is read as a week, and a missing
+   * Wednesday would read as the list having skipped it.
+   *
+   * A task can land on two days of one week (due Monday, deadline Friday), so
+   * each row is keyed by its day as well as its task. That keeps expansion to
+   * the row you tapped, the way the pinned copy on Today does it, and the
+   * second appearance passes `duplicateRow` like that copy too.
+   */
+  const renderWeek = () => {
+    const shown = new Set<string>();
+    return weekDetails.map(({ day, key, detail: dayInfo }) => {
+      const rows = dayRows(dayInfo);
+      const daySummary = summarizeDay(dayInfo);
+      const dayLoad = describeDayLoad(dayLoads.get(key));
+      const isToday = key === todayKey;
+      return (
+        <View
+          key={key}
+          style={styles.weekDay}
+          onLayout={e => {
+            const y = e.nativeEvent.layout.y;
+            weekSectionY.current.set(key, y);
+            if (pendingWeekScroll.current === key) {
+              pendingWeekScroll.current = null;
+              detailScrollRef.current?.scrollTo({ y, animated: false });
+            }
+          }}
+        >
+          <View style={styles.detailHeading}>
+            <Text style={[styles.weekDayDate, isToday && styles.weekDayDateToday]}>
+              {format(day, 'EEEE, MMM d')}{isToday ? ' · Today' : ''}
+            </Text>
+            {daySummary !== '' && <Text style={styles.detailSummary}>{daySummary}</Text>}
+          </View>
+          {dayLoad !== '' && <Text style={styles.detailLoad}>{dayLoad}</Text>}
+          {dayInfo.isEmpty ? (
+            <Text style={styles.weekDayEmpty}>Nothing on this day.</Text>
+          ) : (
+            <View style={styles.weekDayRows}>
+              {rows.map(task => {
+                const subs = subtasksOf(task.id);
+                const rowKey = `${key}:${task.id}`;
+                const elevated = expandedTaskId === rowKey;
+                const duplicate = shown.has(task.id);
+                shown.add(task.id);
+                return (
+                  <View key={rowKey} style={elevated && styles.rowElevated}>
+                    <TaskItem
+                      task={task}
+                      rowKey={rowKey}
+                      duplicateRow={duplicate}
+                      onPress={handleRowPress}
+                      expanded={elevated}
+                      onEdit={handleRowEdit}
+                      subtaskCount={subs.length}
+                      subtaskDoneCount={subs.filter(t => t.completed).length}
+                      subtasks={subs}
+                      onSubtaskDragStateChange={setDraggingSubtask}
+                      showCategory
+                    />
+                  </View>
+                );
+              })}
+              {renderExpected(dayInfo.expected)}
+            </View>
+          )}
+        </View>
+      );
+    });
+  };
+
   // ==== render. Everything below is JSX ====
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <ScreenHeader
         title="Calendar"
-        subtitle={monthOutstanding > 0 ? `${monthOutstanding} outstanding in ${format(displayMonth, 'MMMM')}` : undefined}
+        subtitle={viewMode === 'week'
+          ? (weekOutstanding > 0 ? `${weekOutstanding} outstanding${weekHasToday ? ' this week' : ''}` : undefined)
+          : (monthOutstanding > 0 ? `${monthOutstanding} outstanding in ${format(displayMonth, 'MMMM')}` : undefined)}
         actions={[
           {
             icon: 'repeat-outline',
@@ -457,7 +609,7 @@ export function CalendarScreen() {
               key={mode.value}
               style={[styles.viewModePill, active && styles.viewModePillActive]}
               activeOpacity={interaction.activeOpacity}
-              onPress={() => { haptics.tap(); setViewMode(mode.value); }}
+              onPress={() => switchViewMode(mode.value)}
               accessibilityRole="tab"
               accessibilityState={{ selected: active }}
               accessibilityLabel={`${mode.label} view`}
@@ -477,6 +629,15 @@ export function CalendarScreen() {
           onNext={() => stepMonth(1)}
           prevAccessibilityLabel="Previous month"
           nextAccessibilityLabel="Next month"
+        />
+      ) : viewMode === 'week' ? (
+        <PeriodNav
+          label={describeWeekRange(weekDays)}
+          sublabel={weekHasToday ? 'This week' : undefined}
+          onPrev={() => stepWeek(-1)}
+          onNext={() => stepWeek(1)}
+          prevAccessibilityLabel="Previous week"
+          nextAccessibilityLabel="Next week"
         />
       ) : (
         <PeriodNav
@@ -523,6 +684,41 @@ export function CalendarScreen() {
       </View>
       )}
 
+      {viewMode === 'week' && (
+      <View style={styles.calendar}>
+        <View style={styles.dayHeaders}>
+          {dayHeaders.map((d, i) => (
+            <View key={i} style={styles.dayHeaderCell}>
+              <Text style={styles.dayHeaderText}>{d}</Text>
+            </View>
+          ))}
+        </View>
+        <View style={styles.weekStrip}>
+          {weekDays.map(day => {
+            const key = dayKeyOf(day);
+            return (
+              <DayCell
+                key={key}
+                dayKey={key}
+                day={day}
+                bucket={buckets.get(key)}
+                weight={weightFor(dayLoads.get(key))}
+                // A week is read whole: a day across the month line is not a
+                // neighbour's day here the way it is on the month grid.
+                inMonth
+                isToday={key === todayKey}
+                isSelected={key === selectedKey}
+                colors={colors}
+                styles={styles}
+                onSelect={selectDay}
+              />
+            );
+          })}
+        </View>
+      </View>
+      )}
+
+      {viewMode !== 'week' && (
       <View style={styles.detailHeader}>
         <View style={styles.detailHeading}>
           {viewMode === 'month' && (
@@ -535,18 +731,20 @@ export function CalendarScreen() {
             questions and only one of them is estimated. */}
         {selectedLoad !== '' && <Text style={styles.detailLoad}>{selectedLoad}</Text>}
       </View>
+      )}
 
       <ScrollView
-        style={styles.detail}
+        ref={detailScrollRef}
+        style={[styles.detail, viewMode === 'week' && styles.weekList]}
         scrollEnabled={!draggingSubtask}
         contentContainerStyle={
-          detail.isEmpty
+          viewMode !== 'week' && detail.isEmpty
             ? { flexGrow: 1, paddingBottom: tabBarHeight + spacing.xl }
             : { paddingBottom: tabBarHeight + spacing.xl }
         }
         showsVerticalScrollIndicator={false}
       >
-        {(viewMode === 'day' ? dayEmpty : detail.isEmpty) ? (
+        {viewMode === 'week' ? renderWeek() : (viewMode === 'day' ? dayEmpty : detail.isEmpty) ? (
           <EmptyState
             icon="calendar-clear-outline"
             title="Nothing on this day"
@@ -576,25 +774,7 @@ export function CalendarScreen() {
             {viewMode === 'month' && renderRows('Due', detail.due)}
             {viewMode === 'month' && renderRows('Deadline', detail.deadline)}
             {viewMode === 'month' && renderRows('Returning', detail.defer)}
-            {detail.expected.length > 0 && (
-              <View style={styles.section}>
-                <Text style={styles.sectionLabel}>Expected</Text>
-                {/* Deliberately not TaskItems. These occurrences have no row —
-                    no id to tick, swipe or open — so they get a caption that
-                    doesn't look like something you can act on. */}
-                <View style={styles.expectedCard}>
-                  {detail.expected.map(item => (
-                    <View key={item.taskId} style={styles.expectedRow}>
-                      <Ionicons name="repeat" size={14} color={colors.textTertiary} />
-                      <Text style={styles.expectedTitle} numberOfLines={1}>{item.title}</Text>
-                    </View>
-                  ))}
-                  <Text style={styles.expectedHint}>
-                    These repeat onto this day. Each one is created when you complete the one before it.
-                  </Text>
-                </View>
-              </View>
-            )}
+            {renderExpected(detail.expected)}
           </>
         )}
       </ScrollView>
@@ -839,6 +1019,11 @@ function makeStyles(colors: Colors) {
       flexWrap: 'wrap',
       height: CELL_HEIGHT * 6,
     },
+    // One row of the month's cells, so the week reads as a slice of the grid.
+    weekStrip: {
+      flexDirection: 'row',
+      height: CELL_HEIGHT,
+    },
     dayCell: {
       width: CELL_SIZE,
       height: CELL_HEIGHT,
@@ -964,6 +1149,32 @@ function makeStyles(colors: Colors) {
     },
     detail: {
       flex: 1,
+    },
+    // The strip sits right above the list, and the list's first day heading
+    // carries no margin of its own.
+    weekList: {
+      marginTop: spacing.md,
+    },
+    weekDay: {
+      marginBottom: spacing.lg,
+    },
+    weekDayDate: {
+      color: colors.text,
+      fontSize: font.md,
+      fontWeight: fontWeight.semibold,
+    },
+    weekDayDateToday: {
+      color: colors.accent,
+    },
+    weekDayRows: {
+      marginTop: spacing.sm,
+    },
+    // Dim on purpose: on a day with nothing, the dimness is what says so.
+    weekDayEmpty: {
+      color: colors.textTertiary,
+      fontSize: font.sm,
+      paddingHorizontal: spacing.md,
+      marginTop: spacing.xs,
     },
     section: {
       marginBottom: spacing.md,
