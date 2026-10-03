@@ -317,3 +317,25 @@ export function buildDayTimeline({ dayStart, tasks, events }: DayTimelineInput):
 
   return { entries, allDay, unplaced, firstMinute, lastMinute };
 }
+
+/** What a tap on an empty stretch of the axis snaps to. */
+export const SLOT_STEP_MINUTES = 15;
+
+/**
+ * The minute of the day a tap at `y` (points down the axis) lands on, snapped
+ * down to `SLOT_STEP_MINUTES` and kept inside the drawn span. Down rather than
+ * to the nearest, so a tap anywhere in the 2:30 to 2:45 band means 2:30, the
+ * label the eye just read above the finger.
+ */
+export function slotMinutesAt(
+  y: number,
+  firstMinute: number,
+  lastMinute: number,
+  hourHeight: number,
+  step: number = SLOT_STEP_MINUTES,
+): number {
+  const raw = firstMinute + (Math.max(0, y) / hourHeight) * 60;
+  const snapped = Math.floor(raw / step) * step;
+  const latest = Math.floor((lastMinute - 1) / step) * step;
+  return Math.max(firstMinute, Math.min(snapped, latest));
+}

@@ -5,6 +5,7 @@ import {
   clockToDayMinutes,
   instantToDayMinutes,
   MINUTES_IN_DAY,
+  slotMinutesAt,
 } from '../utils/dayTimeline';
 
 // A local minimum rather than a shared fixture, same as timeBlock.test.ts.
@@ -286,5 +287,22 @@ describe('buildDayTimeline span', () => {
     });
     expect(firstMinute).toBe(6 * 60);
     expect(lastMinute).toBe(MINUTES_IN_DAY);
+  });
+});
+
+describe('slotMinutesAt', () => {
+  // An axis drawn from 08:00 to 22:00 at 56pt an hour.
+  const first = 8 * 60;
+  const last = 22 * 60;
+
+  it('snaps a tap down to the quarter hour it falls in', () => {
+    expect(slotMinutesAt(0, first, last, 56)).toBe(8 * 60);
+    expect(slotMinutesAt(56 * 6.5, first, last, 56)).toBe(14 * 60 + 30);
+    expect(slotMinutesAt(56 * 6.5 + 13, first, last, 56)).toBe(14 * 60 + 30);
+  });
+
+  it('keeps the slot inside the drawn span', () => {
+    expect(slotMinutesAt(-20, first, last, 56)).toBe(first);
+    expect(slotMinutesAt(56 * 30, first, last, 56)).toBe(21 * 60 + 45);
   });
 });

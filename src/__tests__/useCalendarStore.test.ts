@@ -39,6 +39,7 @@ beforeEach(() => {
   useCalendarStore.setState({
     events: [], perCalendar: {}, calendarsById: {}, windowStart: null, windowEnd: null, loaded: false,
     pastEvents: [], pastLoaded: false, pastReadAt: null, handledHistory: {}, handledLoaded: false,
+    aheadEvents: [], aheadLoaded: false, aheadWindowEnd: null,
   });
   useSettingsStore.setState({
     calendarReadEnabled: true, calendarIds: ['cal-1'], dayResetTime: '00:00', calendarPeopleHistory: true,
@@ -137,6 +138,39 @@ describe('clear', () => {
     expect(state.pastLoaded).toBe(false);
     expect(state.handledHistory).toEqual({ 'e-1': '2026-08-01' });
     expect(state.handledLoaded).toBe(true);
+  });
+});
+
+describe('refreshAhead', () => {
+  const trip = { ...event('trip'), allDay: true, status: 'confirmed', start: '2026-10-19T00:00:00.000Z', end: '2026-10-26T00:00:00.000Z' } as BusyEvent;
+  const standup = { ...event('standup'), status: 'confirmed' } as BusyEvent;
+
+  it('reads ninety days and keeps only events spanning days', async () => {
+    (fetchEvents as jest.Mock).mockResolvedValue(readResult([standup, trip]));
+    await useCalendarStore.getState().refreshAhead();
+    const state = useCalendarStore.getState();
+    expect(state.aheadLoaded).toBe(true);
+    expect(state.aheadEvents.map(e => e.id)).toEqual(['trip']);
+    const [, start, end] = (fetchEvents as jest.Mock).mock.calls[0];
+    expect(Math.round((end.getTime() - start.getTime()) / 86_400_000)).toBe(90);
+    // The fortnight window is a different read and stays untouched.
+    expect(state.events).toEqual([]);
+  });
+
+  it('reads nothing in demo mode', async () => {
+    (isDemoModeActive as jest.Mock).mockReturnValue(true);
+    useCalendarStore.setState({ aheadEvents: [trip], aheadLoaded: true });
+    await useCalendarStore.getState().refreshAhead();
+    expect(fetchEvents).not.toHaveBeenCalled();
+    expect(useCalendarStore.getState().aheadEvents).toEqual([]);
+  });
+
+  it('keeps the last trips when a read fails, but says so', async () => {
+    useCalendarStore.setState({ aheadEvents: [trip], aheadLoaded: true });
+    (fetchEvents as jest.Mock).mockResolvedValue(null);
+    await useCalendarStore.getState().refreshAhead();
+    expect(useCalendarStore.getState().aheadLoaded).toBe(false);
+    expect(useCalendarStore.getState().aheadEvents).toEqual([trip]);
   });
 });
 

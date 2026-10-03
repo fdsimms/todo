@@ -127,7 +127,7 @@ function allDayWindowMs(rangeStart: Date, rangeEnd: Date): { start: number; end:
   };
 }
 
-function allDayRangeMs(event: BusyEvent): { start: number; end: number } | null {
+export function allDayRangeMs(event: BusyEvent): { start: number; end: number } | null {
   const start = new Date(event.start);
   const end = new Date(event.end);
   if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) return null;
