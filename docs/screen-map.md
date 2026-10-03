@@ -66,6 +66,7 @@ components below.
 Where each component can appear.
 
 - `src/components/ActiveTripBanner.tsx` — on GroceryScreen, KitchenScreen, MealPlanScreen, RecipesScreen
+- `src/components/ActivityRingsCard.tsx` — on SettingsGroupScreen
 - `src/components/AddGuestsSheet.tsx` — on ProjectDetailScreen
 - `src/components/AddMealsToListSheet.tsx` — on MealPlanScreen
 - `src/components/AddTaskFab.tsx` — on TodayScreen

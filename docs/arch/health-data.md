@@ -1,7 +1,7 @@
 # Reading (mostly) and writing (three times) Apple Health
 
 The whole of it: the bridge, the store, the Settings section, the row on Today,
-the Mood screen's health axis, the `health` generator, the short-night line
+the Mood screen's health axis, the Activity rings, the `health` generator, the short-night line
 under "Lighten today", the Weight screen and its chart, and the three things
 this app writes back — a nutrient sample, on completion of a task that opted
 into logging one; a body-mass sample, when somebody records a weight; and a
@@ -900,6 +900,53 @@ migrating onto this app from another one under-reports for as long as the
 migration is partial.** Log half of Tuesday here and half in Cronometer and
 Tuesday reads as whichever half was larger, not as the day. That is the safe
 direction and it is not an obvious one.
+
+## The Activity rings
+
+Move, Exercise and Stand are a reading like steps is, and every rule above
+holds for them. What follows is only where they differ.
+
+- **Their own native call, because the goals live nowhere else.** The three
+  totals are on `HKActivitySummary` along with the goals the person set in
+  Fitness, and a summary is read with an `HKActivitySummaryQuery`, not a
+  statistics collection. `readActivitySummary` hands back raw JSON and
+  `parseActivitySummary` (`src/utils/activityRings.ts`) holds the rules, so they
+  are testable from `src/`. It rides `refresh` beside the daily read, and
+  nothing is stored.
+- **Stand hours exist only here.** Exercise minutes and active energy were
+  already read as quantity totals. A task or row asking for them prefers the
+  summary (Apple's own de-duplicated figure, so the row agrees with the rings)
+  and falls back to the quantity total when no summary arrived. That fallback is
+  the point for an install that allowed Health before the rings were added: the
+  summary is a new read type, so it is served as an empty store until somebody
+  taps the access row again, and nothing can say that is why. Stand has no
+  fallback and reads null until then.
+- **A goal of zero is no goal, and a ring with no goal has no fill.** The bridge
+  sends it as null. Fitness always has goals, but a fraction of nothing is not a
+  number to draw.
+- **A Move ring counting Move Time carries no Move figure.** Fitness offers
+  people under 18 a Move ring measured in minutes of movement rather than
+  calories. Sending that number under a kilocalories name would be a wrong
+  figure rather than a missing one, so both ends drop it (`moveByTime`) and the
+  card says so.
+- **A missing ring is not drawn; a real zero is.** `ActivityRingsCard` skips a
+  ring with no figure or no goal rather than drawing an empty track, because an
+  empty track says "none of this done", and nothing was read. Today's row leaves
+  out a ring at zero for the reason the steps row does: every day starts there.
+- **The rings are the calendar day's, not the logical day's.** The summary is
+  keyed by calendar date because that is when Fitness closes them. With a late
+  `dayResetTime` the rings can differ from the figures the quantity reads sum
+  over the logical day. This is the one reading that does not follow the reset
+  time, and it follows Apple's definition on purpose.
+- **A task can wait on a ring and still never completes itself.** `exerciseMinutes`,
+  `activeEnergyKcal` and `standHours` are health-target metrics
+  (`HealthTargetMetric`, `HEALTH_TARGET_METRICS`). Reaching the number derives
+  *ready* and nothing more, the rule `healthTarget.ts` opens with. A target is a
+  number typed into the task, not a live link to the ring's goal.
+- **An older build narrows an unknown metric to "not a health-target task".**
+  `rowToTask` accepts only metrics in `HEALTH_TARGET_METRICS`, so a task synced
+  from a newer device reads as an ordinary task on a build that predates its
+  metric, and saving it there clears the target.
 
 ## The row on Today, and where it files
 

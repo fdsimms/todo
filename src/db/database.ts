@@ -2,6 +2,7 @@ import * as SQLite from 'expo-sqlite';
 // One name per line, deliberately, and not to be re-joined. See the note
 // on the settings load in useSettingsStore.ts: a list every new type is added to, so one line is a guaranteed conflict.
 import type {
+  HealthTargetMetric,
   Cookbook,
   CookbookIndexEntry,
   DeliverableKind,
@@ -60,6 +61,7 @@ import type {
   UnattendedAction,
   UnattendedEntry,
 } from '../types';
+import { HEALTH_TARGET_METRICS } from '../utils/healthTarget';
 import { DEFAULT_NUDGE_CADENCE_DAYS, MEAL_SLOTS, NUTRIENT_KEYS, PERSON_NOTE_KINDS, RECIPE_MEAL_TYPES, RECIPE_SOURCE_TYPES, isReceiptStyle } from '../types';
 import { generateId } from '../utils/id';
 import { appendPriceObservation, parsePriceHistory } from '../utils/priceHistory';
@@ -3251,8 +3253,8 @@ function rowToTask(row: Record<string, unknown>): Task {
     // Narrowed rather than cast: a column holding anything else is a row this
     // build doesn't understand, and "not a health-target task" is the safe read
     // of it — the alternative is a task whose readiness nothing can compute.
-    healthMetric: row.health_metric === 'steps' || row.health_metric === 'sleepHours'
-      ? row.health_metric
+    healthMetric: (HEALTH_TARGET_METRICS as readonly unknown[]).includes(row.health_metric)
+      ? (row.health_metric as HealthTargetMetric)
       : null,
     healthTarget: (row.health_target as number | null) ?? null,
     completionTimerMinutes: (row.completion_timer_minutes as number | null) ?? null,

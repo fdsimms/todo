@@ -88,7 +88,7 @@ export function DayContextRow({ row, onPress, onMarkCooked }: Props) {
   // Three sources now, each with a glyph fixed per kind. `footsteps-outline`
   // rather than the heart the Settings group wears: a heart at 16pt in a list
   // of tasks reads as a favourite, and what the row is about is walking
-  // rather than health in general. `health` now covers two metrics
+  // rather than health in general. `health` now covers three rows
   // (`dayContextRows.ts`'s `healthContextRows`), told apart by the row's own
   // fixed `id` rather than by a new field — `flame-outline` for active
   // calories matches the glyph `NutritionTargetsSheet` already uses for the
@@ -98,7 +98,10 @@ export function DayContextRow({ row, onPress, onMarkCooked }: Props) {
   // knowing before adding a fourth kind: a new one added without an arm
   // silently draws cutlery.
   const glyphName = row.kind === 'event' ? 'calendar-outline'
-    : row.kind === 'health' ? (row.id === 'health-activeEnergy' ? 'flame-outline' : 'footsteps-outline')
+    : row.kind === 'health' ? (
+      row.id === 'health-activeEnergy' ? 'flame-outline'
+        : row.id === 'health-rings' ? 'fitness-outline'
+          : 'footsteps-outline')
     : 'restaurant-outline';
 
   const leading = onMarkCooked ? (

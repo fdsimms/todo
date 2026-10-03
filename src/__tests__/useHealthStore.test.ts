@@ -31,7 +31,7 @@ jest.mock('../store/useTaskStore', () => ({
   useTaskStore: { getState: () => ({ syncWaterQuotaTasks: jest.fn() }) },
 }));
 
-let bridge: { readDailyHealth: jest.Mock; readWeightSeries: jest.Mock };
+let bridge: { readDailyHealth: jest.Mock; readWeightSeries: jest.Mock; readActivitySummary: jest.Mock };
 
 const reading = (over: Record<string, unknown> = {}) =>
   ({
@@ -45,6 +45,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   bridge = {
     readDailyHealth: jest.fn().mockResolvedValue([reading()]),
+    readActivitySummary: jest.fn().mockResolvedValue('null'),
     readWeightSeries: jest
       .fn()
       .mockResolvedValue([{ start: '2026-01-01T00:00:00.000Z', kilograms: 70 }]),
@@ -61,6 +62,23 @@ beforeEach(() => {
 });
 
 describe('refresh', () => {
+  it("carries today's Activity rings, and no summary as null rather than zeros", async () => {
+    bridge.readActivitySummary.mockResolvedValue(
+      JSON.stringify({
+        moveMode: 'activeEnergy', moveKcal: 312, moveGoalKcal: 500,
+        exerciseMinutes: 18, exerciseGoalMinutes: 30, standHours: 7, standGoalHours: 12,
+      }),
+    );
+    await useHealthStore.getState().refresh();
+    expect(useHealthStore.getState().today?.rings?.stand).toEqual({ value: 7, goal: 12 });
+
+    bridge.readActivitySummary.mockResolvedValue('null');
+    await useHealthStore.getState().refresh();
+    expect(useHealthStore.getState().today?.rings).toBeNull();
+    // The rest of the day is unaffected by the rings having nothing to say.
+    expect(useHealthStore.getState().today?.steps).toBe(4200);
+  });
+
   it("writes today's reading", async () => {
     await useHealthStore.getState().refresh();
     expect(useHealthStore.getState().today?.steps).toBe(4200);

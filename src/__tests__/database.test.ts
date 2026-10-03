@@ -681,6 +681,16 @@ describe('dbInsertTask + rowToTask round-trip', () => {
     expect(t.healthTarget).toBe(8000);
   });
 
+  it('round-trips each Activity ring metric', () => {
+    for (const metric of ['exerciseMinutes', 'activeEnergyKcal', 'standHours'] as const) {
+      dbInsertTask(makeTask({ id: `ring-${metric}`, healthMetric: metric, healthTarget: 10 }));
+    }
+    const read = new Map(dbGetAllTasks().map(t => [t.id, t.healthMetric]));
+    expect(read.get('ring-exerciseMinutes')).toBe('exerciseMinutes');
+    expect(read.get('ring-activeEnergyKcal')).toBe('activeEnergyKcal');
+    expect(read.get('ring-standHours')).toBe('standHours');
+  });
+
   it('round-trips a health target through an update', () => {
     // The insert and the update bind their columns separately, so a pair that
     // saves on create and vanishes on edit is a real and invisible failure.

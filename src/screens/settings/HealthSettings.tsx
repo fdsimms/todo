@@ -9,6 +9,7 @@ import { useDemoStore } from '../../store/useDemoStore';
 import { useCategoryStore, ensureHealthCategory } from '../../store/useCategoryStore';
 import { categoryLabel } from '../../utils/categoryLabel';
 import { PillGroup } from '../../components/PillGroup';
+import { ActivityRingsCard } from '../../components/ActivityRingsCard';
 import { NUTRIENT_KEYS } from '../../types';
 import { NUTRIENT_LABEL } from '../../utils/foodNutrition';
 import { healthBridge, isHealthSupported, openHealthApp } from '../../utils/healthBridge';
@@ -354,6 +355,11 @@ export function HealthSettings() {
             onPress={() => { haptics.tap(); void refresh(); }}
             accessibilityLabel={`Steps today, ${stepsValue}`}
           />
+
+          {/* Drawn only when a summary arrived. No summary is no card rather
+              than three empty rings: HealthKit serves a refused read, a day
+              with nothing recorded and a device with no rings alike. */}
+          {reading?.rings ? <ActivityRingsCard rings={reading.rings} /> : null}
 
           <View style={styles.sep} />
           <SettingsRow

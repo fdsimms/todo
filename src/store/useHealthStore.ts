@@ -10,6 +10,7 @@ import { useSettingsStore } from './useSettingsStore';
 import { useTaskStore } from './useTaskStore';
 import { createRefreshGuard } from '../utils/refreshGuard';
 import { anyExerciseRule } from '../utils/healthRules';
+import { parseActivitySummary, type ActivityRings } from '../utils/activityRings';
 
 /**
  * What Apple Health says about today, held in memory.
@@ -135,6 +136,19 @@ export interface HealthDay {
    * failure it buys is a rule that stays quiet.
    */
   exerciseMinutesSeenRecently: boolean;
+  /**
+   * The Activity rings for today (totals and the goals set in Fitness), or null.
+   *
+   * Null covers everything the other figures' null does and one more: an
+   * install that allowed Health before the rings were added has not been asked
+   * for them, and HealthKit serves that as an empty store. A reader that wants
+   * a ring figure and finds none falls back to the matching quantity total
+   * (`exerciseMinutes`, `activeEnergyKcal`) where there is one; **stand hours
+   * exist only here**. Calendar-day keyed, as Fitness closes the rings, so with
+   * a late `dayResetTime` it can differ from the logical day the figures above
+   * are summed over.
+   */
+  rings: ActivityRings | null;
   /** When this was read, for a caller that wants to say how fresh it is. */
   readAt: string;
 }
@@ -270,7 +284,13 @@ export const useHealthStore = create<HealthState>((set, get) => ({
       const wantsWindow = anyExerciseRule(useSettingsStore.getState().healthRules);
       const days = wantsWindow ? EXERCISE_LIVE_WINDOW_DAYS : 1;
       const windowStart = wantsWindow ? addDays(dayStart, -(days - 1)) : dayStart;
-      const window = await bridge.readDailyHealth(windowStart.toISOString(), days);
+      // The rings beside it, concurrently: a separate native query because the
+      // goals live only on the activity summary. It cannot fail the read (an
+      // unavailable one is the string "null"), so it never costs today's numbers.
+      const [window, summaryJson] = await Promise.all([
+        bridge.readDailyHealth(windowStart.toISOString(), days),
+        bridge.readActivitySummary(dayStart.toISOString()),
+      ]);
       if (!todayGuard.isCurrent(token)) return;
       // Today is the window's last bucket — the native side emits one entry per
       // requested day from its own anchor, so the count is fixed and the final
@@ -312,6 +332,7 @@ export const useHealthStore = create<HealthState>((set, get) => ({
           activeEnergyKcal: reading?.activeEnergyKcal ?? null,
           exerciseMinutes: reading?.exerciseMinutes ?? null,
           exerciseMinutesSeenRecently,
+          rings: parseActivitySummary(summaryJson),
           readAt: now.toISOString(),
         },
       });

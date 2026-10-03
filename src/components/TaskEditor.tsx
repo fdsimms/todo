@@ -61,9 +61,10 @@ import {
   MAX_TARGET_COUNT, MIN_TARGET_COUNT, MIN_QUOTA_INTERVAL_MINUTES, MAX_QUOTA_INTERVAL_MINUTES, TASK_KIND_META,
   type TaskKind,
 } from '../utils/taskKinds';
-import { HEALTH_TARGET_RANGES } from '../utils/healthTarget';
-import { healthMetricLabel } from '../utils/healthRules';
-import type { HealthMetric } from '../utils/moodInsights';
+import {
+  HEALTH_TARGET_LABELS, HEALTH_TARGET_METRICS, HEALTH_TARGET_RANGES, describeHealthGoalAmount,
+} from '../utils/healthTarget';
+import type { HealthTargetMetric } from '../types';
 import { featureShown, taskKindsForMode } from '../utils/simpleMode';
 import { MAX_TARGET_UNIT_LENGTH, formatQuotaProgress, formatQuotaTarget, normalizeTargetUnit } from '../utils/quotaUnit';
 import {
@@ -546,7 +547,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [customEffortUnit, setCustomEffortUnit] = useState<'min' | 'hr'>('min');
   const [actualMinutes, setActualMinutes] = useState<number | null>(null);
   const [timedMinutes, setTimedMinutes] = useState<number | null>(null);
-  const [healthMetric, setHealthMetric] = useState<HealthMetric | null>(null);
+  const [healthMetric, setHealthMetric] = useState<HealthTargetMetric | null>(null);
   const [healthTarget, setHealthTarget] = useState<number | null>(null);
   const [durationText, setDurationText] = useState('');
   const [durationUnit, setDurationUnit] = useState<'min' | 'hr'>('min');
@@ -786,7 +787,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const kindMemory = useRef<{
     timedMinutes: number | null; targetCount: number | null;
     targetUnit: string; chainItems: ChainItem[]; rotationItems: RotationItem[];
-    healthMetric: HealthMetric | null; healthTarget: number | null;
+    healthMetric: HealthTargetMetric | null; healthTarget: number | null;
   }>({
     timedMinutes: null, targetCount: null, targetUnit: '', chainItems: [], rotationItems: [],
     healthMetric: null, healthTarget: null,
@@ -3410,7 +3411,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           }] : []),
           ...(kind === 'health' ? [{
             key: 'healthTarget', label: 'Health target', set: true,
-            keywords: ['apple health', 'steps', 'sleep', 'walk', 'goal', 'ready', 'number', 'fitness'],
+            keywords: ['apple health', 'steps', 'sleep', 'walk', 'goal', 'ready', 'number', 'fitness', 'rings', 'activity', 'exercise', 'stand', 'move', 'calories', 'active energy'],
             node: (<>
               <EditorRow
                 icon="footsteps-outline"
@@ -3420,20 +3421,18 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 // hint is the only in-app documentation the kind has.
                 hint="The task reads as ready once Apple Health reaches this today. It is never checked off for you."
                 value={healthTarget !== null && healthMetric !== null
-                  ? (healthMetric === 'steps'
-                    ? `${healthTarget.toLocaleString()} steps`
-                    : `${healthTarget} ${healthTarget === 1 ? 'hour' : 'hours'} asleep`)
+                  ? describeHealthGoalAmount(healthMetric, healthTarget)
                   : undefined}
                 expanded={showHealthTarget}
                 onPress={() => { animateLayout(); setShowHealthTarget(v => !v); }}
               />
               {showHealthTarget && (
                 <View style={styles.healthTargetControls}>
-                  <SegmentedControl<HealthMetric>
-                    options={[
-                      { value: 'steps', label: healthMetricLabel('steps') },
-                      { value: 'sleepHours', label: healthMetricLabel('sleepHours') },
-                    ]}
+                  <SegmentedControl<HealthTargetMetric>
+                    options={HEALTH_TARGET_METRICS.map(value => ({
+                      value, label: HEALTH_TARGET_LABELS[value],
+                    }))}
+                    columns={3}
                     value={healthMetric ?? 'steps'}
                     onChange={next => {
                       haptics.tap();
@@ -3460,9 +3459,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                       ? `${n} ${n === 1 ? 'hr' : 'hrs'}`
                       : n.toLocaleString())}
                     label="Health target"
-                    describeValue={n => (healthMetric === 'sleepHours'
-                      ? `${n} hours asleep`
-                      : `${n} steps`)}
+                    describeValue={n => (n === null ? 'No target' : describeHealthGoalAmount(healthMetric ?? 'steps', n))}
                   />
                 </View>
               )}
