@@ -20,6 +20,13 @@ sits stranded on a branch nobody looks at. When it's merged, cut a fresh branch 
 that same situation recurring mid-task, not a one-off. When it's *not* merged yet, push the fix to
 the existing branch and PR as usual; don't open a new one just because a build failed once.
 
+**Target every PR at `main`; never base one on another PR's branch.** GitHub merges a PR into
+whatever base it names, so a PR stacked on a sibling's branch merges into that branch once the
+sibling has already landed, and its work never reaches `main`, with nothing on screen to say so.
+When work depends on an unmerged PR, branch from that PR's branch but still open the new PR against
+`main`, and say in its description which PR has to merge first (its diff shrinks to its own
+commits once that one lands).
+
 **Batch pushes instead of pushing after every individual fix.** This repo is private, on a
 plan with a fixed monthly GitHub Actions minutes allowance, and each push re-runs the whole
 `test.yml` pipeline. When several review comments or CI failures land close together (a batch
@@ -337,8 +344,8 @@ file: the two maps are indexes, not write-ups.
 | a task the app writes unasked, and the quiet-project offer | `src/utils/generatedTasks.ts` (`GENERATED_KINDS` is the list of generators) + `src/utils/projectReviewTasks.ts` — see `docs/arch/generated-tasks.md` |
 | a bare weekend, and the project it offers to fill it from | `src/utils/weekendTasks.ts` + `Project.weekendSource` — see `docs/arch/generated-tasks.md` |
 | a calendar event's title turning into a task, by rule or by tap | `src/utils/eventTasks.ts` (the rules) + `taskFieldsFromEvent` in `src/utils/calendarEventImport.ts` (the fields either path writes) — see `docs/arch/generated-tasks.md`. It deliberately parses nothing: the user supplies the word and the task |
-| "Leave for X" ahead of an event with a location, and the MTA delay note on it | `src/utils/travelTasks.ts` (the rules) + `src/utils/transitAlerts.ts` (the feed) + `src/hooks/useTravelTaskSync.ts` (what keeps both current) — see `docs/arch/generated-tasks.md`. The travel time is a number the user types, nothing is geocoded, and the note can never be a notification on its own: nothing can re-read the feed while the app is closed |
-| adding a calendar event, and who an event is with | `src/utils/eventPeople.ts` + `src/store/useEventPeopleStore.ts` + `presentEventCreate` and `saveEventDirect` in `src/utils/calendarSync.ts` — see `docs/arch/people.md`. The people link is app-only metadata keyed by occurrence, never an attendee. Tasks planned around an event are the sibling record, `src/utils/eventTaskLinks.ts` |
+| "Leave for X" ahead of an event with a location, and the MTA delay note on it | `src/utils/travelTasks.ts` (the rules) + `src/utils/transitAlerts.ts` (the feed) + `src/hooks/useTravelTaskSync.ts` (what keeps both current) — see `docs/arch/generated-tasks.md`. The travel time is a number the user types unless they turn on Apple Maps estimates (`src/store/useTravelTimeStore.ts`, off by default), and the note can never be a notification on its own: nothing can re-read the feed while the app is closed |
+| adding or changing a calendar event, and who an event is with | `src/utils/eventPeople.ts` + `src/store/useEventPeopleStore.ts` + `saveEventDirect`, `updateEventDirect` and `deleteEventDirect` in `src/utils/calendarSync.ts` — see `docs/arch/people.md`. The people link is app-only metadata keyed by occurrence, never an attendee. Tasks planned around an event are the sibling record, `src/utils/eventTaskLinks.ts` |
 | a weather rule ("sunny -> sunscreen") and the location/forecast read behind it | `src/utils/weatherTasks.ts` + `src/utils/weatherCondition.ts` + `src/store/useWeatherStore.ts` — see `docs/arch/generated-tasks.md` |
 | anything read out of Apple Health | `src/store/useHealthStore.ts` + `src/utils/healthBridge.ts` + `modules/todo-health-bridge/` — see `docs/arch/health-data.md`. Read it first: three of its four rules are about what a reader may *claim*, and the big one is that a refused read and a day with nothing recorded are one answer |
 | writing a logged meal back to Apple Health | `src/utils/healthFoodSync.ts` + `writeFoodSamples`/`deleteHealthSamples` in `modules/todo-health-bridge/` — see `docs/arch/health-data.md`. The only write in the app that can be un-written, which is why it keeps sample ids; absent stays absent, never a zero |
@@ -640,8 +647,9 @@ There is no backend: every piece of user data lives in a local SQLite file on de
 network call lives in `src/services/`, plus the two sync transports** (`cloudKitTransport.ts`,
 `httpSyncTransport.ts`), and each answers to a switch the user can turn off. The rule that keeps
 that true: "no key, no traffic" is not a privacy answer on its own, because several calls need no
-key (`productLookup.ts`, `foodSearch.ts`, `recipePage.ts`'s `schema.org/Recipe` path, and the
-Open-Meteo forecast and geocoding in `weatherLookup.ts`/`geocode.ts`). **A new call that needs no
+key (`productLookup.ts`, `foodSearch.ts`, `recipePage.ts`'s `schema.org/Recipe` path, the
+Open-Meteo forecast and geocoding in `weatherLookup.ts`/`geocode.ts`, and Apple Maps place search and
+travel estimates in `placeSearch.ts`/`travelTime.ts`). **A new call that needs no
 key ships with its own switch, or rides an existing one that already means "don't do this"**
 (the recipe page answers to Recipe import's own `aiFeatureConfig.recipeExtraction.enabled`). The
 Anthropic key unlocks `aiSuggestions.ts` and nothing else, and every fetch the user didn't trigger

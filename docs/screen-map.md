@@ -124,7 +124,7 @@ Where each component can appear.
 - `src/components/EstimateAmountSheet.tsx` — on FoodLogScreen
 - `src/components/EstimateMealSheet.tsx` — on FoodLogScreen, app shell
 - `src/components/EventImportSheet.tsx` — on TodayScreen
-- `src/components/EventOptionSheet.tsx` — on CalendarScreen, PersonDetailScreen, TodayScreen
+- `src/components/EventOptionSheet.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, PersonDetailScreen, ProjectDetailScreen, RemindersScreen, SavedViewDetailScreen, SearchScreen, StacksScreen, StuckScreen, TagsScreen, TodayScreen
 - `src/components/EventRulesSheet.tsx` — on SettingsGroupScreen
 - `src/components/ExtractedIngredientRow.tsx` — on RecipeDetailScreen, RecipesScreen
 - `src/components/Fab.tsx` — on CalendarScreen, CategoriesScreen, CategoryDetailScreen, FoodLogScreen, GroceryScreen, PeopleScreen, ProjectDetailScreen, ProjectsScreen, RecipesScreen, StacksScreen, TagsScreen, TemplateDetailScreen, +2 more
@@ -216,7 +216,7 @@ Where each component can appear.
 - `src/components/QuickAddModal.tsx` — on CalendarScreen, CategoryDetailScreen, ProjectDetailScreen, SearchScreen, StacksScreen, TodayScreen
 - `src/components/QuickAddNameSheet.tsx` — on CategoriesScreen, PeopleScreen, RecipesScreen, TagsScreen, TemplatesScreen
 - `src/components/QuickAddProjectModal.tsx` — on ProjectsScreen
-- `src/components/QuickEventSheet.tsx` — on CalendarScreen, PersonDetailScreen, TodayScreen
+- `src/components/QuickEventSheet.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, PersonDetailScreen, ProjectDetailScreen, RemindersScreen, SavedViewDetailScreen, SearchScreen, StacksScreen, StuckScreen, TagsScreen, TodayScreen
 - `src/components/QuickSearchModal.tsx` — on TodayScreen
 - `src/components/ReadyOfferBar.tsx` — on app shell
 - `src/components/ReceiptImportSheet.tsx` — on GroceryScreen, KitchenScreen

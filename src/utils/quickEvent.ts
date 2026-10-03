@@ -1,4 +1,5 @@
-import { addHours } from 'date-fns/addHours';
+import { addMinutes } from 'date-fns/addMinutes';
+import { addDays } from 'date-fns/addDays';
 import {
   applyMentionOverrides,
   matchPersonMentions,
@@ -9,6 +10,7 @@ import {
 import { defaultNewEventSpan } from './eventPeople';
 import type { ParsedSchedule } from './parseTaskInput';
 import type { TimeOfDay } from '../types';
+import type { ClockTime } from './parseNaturalDate';
 
 /**
  * One typed line ("lunch w/ @dustin fri 12p") turned into a new calendar
@@ -51,7 +53,19 @@ export interface QuickEventDraft {
    * typed", which leaves the remembered default alone.
    */
   alertMinutes: number | null | undefined;
-  /** The location and alert clauses in the line, for highlighting. */
+  /** The length read from a range or "for 90m", in minutes; null for the one-hour default. */
+  durationMinutes: number | null;
+  /**
+   * Whether the line named a time of day (a clock time, a range or a day
+   * part), as opposed to a day alone or nothing. An untimed event is the one
+   * the card offers a free slot for.
+   */
+  timed: boolean;
+  /** Each trailing clause's span in the line, null when it wasn't typed. */
+  locationSpan: [number, number] | null;
+  alertSpan: [number, number] | null;
+  durationSpan: [number, number] | null;
+  /** Every clause span, in line order, for highlighting. */
   clauseSpans: [number, number][];
   /** The repeat the schedule phrase read ("every monday"), or null for a one-off. */
   repeat: EventRecurrence | null;
@@ -151,6 +165,64 @@ export function alertRelativeOffset(minutes: number, allDay: boolean): number {
   return (allDay ? ALL_DAY_ALERT_HOUR * 60 : 0) - minutes;
 }
 
+/** An event's length when the line names none. */
+export const DEFAULT_EVENT_MINUTES = 60;
+
+// "for 90m", "for 1.5 hours", "for 2h": quick add's own duration grammar
+// (parseDurationInput), held to a suffix like the other clauses.
+const LENGTH_CLAUSE = /\s+for\s+(\d+(?:\.\d+)?)\s*(minutes|minute|mins|min|m|hours|hour|hrs|hr|h)\s*$/i;
+
+/** A trailing "for 90m", as minutes, with where its leading space begins. Null past a day or under a minute. */
+export function parseLengthClause(input: string): { start: number; minutes: number } | null {
+  const m = LENGTH_CLAUSE.exec(input);
+  if (!m) return null;
+  const value = parseFloat(m[1]);
+  const minutes = Math.round(/^h/i.test(m[2]) ? value * 60 : value);
+  if (!Number.isFinite(minutes) || minutes < 1 || minutes > 24 * 60) return null;
+  return { start: m.index, minutes };
+}
+
+// "12-1:30pm", "12pm–1:30pm", "from 6 to 8pm", "9:30-11". A suffix, and it
+// needs a colon or an am/pm somewhere, so "chapters 3-5" stays a title.
+const CLOCK_RANGE = /\s*(?:\bfrom\s+)?\b(\d{1,2})(?::(\d{2}))?\s*(am|pm|a|p)?\s*(?:-|–|—|\bto\b|\buntil\b|\btil\b)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm|a|p)?\s*$/i;
+
+/**
+ * A trailing clock range, as a start and an end on the 24-hour clock. A side
+ * with no am/pm takes the other side's ("6-8pm" is 6pm to 8pm), unless that
+ * would put the start after the end, in which case it is the morning ("11-1pm"
+ * is 11am to 1pm). With neither side marked, an hour under 7 reads as the
+ * afternoon, the way a typed "3" usually means 3pm.
+ */
+export function parseClockRange(input: string): { start: number; from: ClockTime; to: ClockTime } | null {
+  const m = CLOCK_RANGE.exec(input);
+  if (!m) return null;
+  const [, h1s, m1s, ap1, h2s, m2s, ap2] = m;
+  if (!ap1 && !ap2 && m1s === undefined && m2s === undefined) return null;
+  const h1 = Number(h1s), h2 = Number(h2s);
+  const min1 = m1s ? Number(m1s) : 0, min2 = m2s ? Number(m2s) : 0;
+  if (h1 > 23 || h2 > 23 || min1 > 59 || min2 > 59) return null;
+  const pm = (ap: string | undefined) => (ap ? /^p/i.test(ap) : null);
+  const to24 = (h: number, isPm: boolean | null) => {
+    if (isPm === null || h > 12) return h;
+    if (h === 12) return isPm ? 12 : 0;
+    return isPm ? h + 12 : h;
+  };
+  let endPm = pm(ap2);
+  let startPm = pm(ap1);
+  if (endPm === null && startPm !== null) endPm = startPm;
+  if (startPm === null && endPm !== null) {
+    startPm = endPm;
+    if (to24(h1, startPm) * 60 + min1 > to24(h2, endPm) * 60 + min2) startPm = !endPm;
+  }
+  if (startPm === null && endPm === null && h1 <= 12) {
+    startPm = h1 < 7;
+    endPm = h2 < 7 || h2 < h1;
+  }
+  const from = { h: to24(h1, startPm), m: min1 };
+  const to = { h: to24(h2, endPm), m: min2 };
+  return { start: m.index, from, to };
+}
+
 // " at Joe's", where the clause runs to the end of what is left.
 const LOCATION_CLAUSE = /\s+at\s+(\S.*)$/i;
 
@@ -185,31 +257,73 @@ export function parseQuickEvent(
     ignoreSchedule?: boolean;
     /** Picks made for an "@name" more than one person answers to, by token. */
     mentionOverrides?: Record<string, string>;
+    /**
+     * Read the line as a plain title: no clauses, no schedule. The edit card
+     * opens on an event's own title this way, so a title that happens to read
+     * like an instruction ("Dinner at Joe's tomorrow") doesn't move the event
+     * or lose words until the user actually types something.
+     */
+    plain?: boolean;
   }
 ): QuickEventDraft {
-  // Peel the trailing clauses right to left (alert, then place) so what is
-  // left ends in the schedule phrase `parseTaskInput` needs. Every index below
-  // is into `body`, a prefix of `input`, so it is also an index into `input`.
-  const alertClause = parseAlertClause(input);
-  const afterAlert = alertClause ? input.slice(0, alertClause.start) : input;
-  let body = afterAlert;
+  // Peel the trailing clauses off the right of the line, in whatever order
+  // they were typed ("… at Joe's for 90m alert 30m"), so what is left ends in
+  // the schedule phrase `parseTaskInput` needs. Each clause is a suffix of
+  // what was left before it, so every index below is still an index into
+  // `input`.
+  let body = input;
   let location: string | null = null;
-  let locationStart: number | null = null;
-  const locationMatch = LOCATION_CLAUSE.exec(afterAlert);
-  if (locationMatch) {
-    const place = locationMatch[1].trim().replace(/[\s,;.]+$/, '');
-    // "at 3pm" and "at the park tomorrow" end in a schedule phrase, so they
-    // are the time, not the place. Put the place last: "lunch fri 12p at Joe's".
-    const endsInTime =
-      !opts.ignoreSchedule && parseTaskInput(`x ${place}`, opts.now, opts.wallClock) !== null;
-    if (place && !endsInTime) {
-      location = place;
-      locationStart = locationMatch.index;
-      body = afterAlert.slice(0, locationMatch.index);
+  let locationSpan: [number, number] | null = null;
+  let alertClause: { start: number; minutes: number | null } | null = null;
+  let alertSpan: [number, number] | null = null;
+  let forMinutes: number | null = null;
+  let durationSpan: [number, number] | null = null;
+  let clausesFrom: number | null = null;
+  const spanOf = (from: number, to: number): [number, number] =>
+    [from + (/^\s*/.exec(input.slice(from, to))?.[0].length ?? 0), to];
+  for (let guard = 0; guard < 3 && !opts.plain; guard++) {
+    const to = body.length;
+    const alert: { start: number; minutes: number | null } | null = alertClause ? null : parseAlertClause(body);
+    if (alert) {
+      alertClause = alert;
+      alertSpan = spanOf(alert.start, to);
+      body = body.slice(0, alert.start);
+      clausesFrom = alert.start;
+      continue;
     }
+    const length: { start: number; minutes: number } | null = durationSpan ? null : parseLengthClause(body);
+    if (length) {
+      forMinutes = length.minutes;
+      durationSpan = spanOf(length.start, to);
+      body = body.slice(0, length.start);
+      clausesFrom = length.start;
+      continue;
+    }
+    const locationMatch: RegExpExecArray | null = locationSpan ? null : LOCATION_CLAUSE.exec(body);
+    if (locationMatch) {
+      const place = locationMatch[1].trim().replace(/[\s,;.]+$/, '');
+      // "at 3pm" and "at the park tomorrow" end in a schedule phrase, so they
+      // are the time, not the place. Put the place last: "lunch fri 12p at Joe's".
+      const endsInTime =
+        !opts.ignoreSchedule && parseTaskInput(`x ${place}`, opts.now, opts.wallClock) !== null;
+      if (place && !endsInTime) {
+        location = place;
+        locationSpan = spanOf(locationMatch.index, to);
+        body = body.slice(0, locationMatch.index);
+        clausesFrom = locationMatch.index;
+        continue;
+      }
+    }
+    break;
   }
 
-  const parsed = opts.ignoreSchedule ? null : parseTaskInput(body, opts.now, opts.wallClock);
+  // A clock range ("12-1:30pm", "from 6 to 8pm") is the end of the schedule
+  // phrase rather than a clause of its own: it sets the start and the end
+  // together, and taking the date out of the line takes it out too.
+  const range = opts.ignoreSchedule || opts.plain ? null : parseClockRange(body);
+  const scheduleBody = range ? body.slice(0, range.start) : body;
+
+  const parsed = opts.ignoreSchedule || opts.plain ? null : parseTaskInput(scheduleBody, opts.now, opts.wallClock);
   const mentions = applyMentionOverrides(
     body,
     matchPersonMentions(body, [...opts.people], [...(opts.groups ?? [])]),
@@ -223,6 +337,7 @@ export function parseQuickEvent(
   if (parsed) {
     spans.push({ start: parsed.matchStart, end: parsed.matchStart + parsed.matchedText.length, text: '' });
   }
+  if (range) spans.push({ start: range.start, end: body.length, text: '' });
   const bySpan = new Map<string, string[]>();
   for (const m of mentions) {
     const k = `${m.start}:${m.end}`;
@@ -245,45 +360,66 @@ export function parseQuickEvent(
   title = title.replace(/\s+/g, ' ').trim().replace(/[\s,;:.-]+$/, '');
 
   const schedule = parsed?.schedule;
+  const day = schedule?.dueDate ?? null;
+  const onDay = (d: Date, t: ClockTime) => new Date(d.getFullYear(), d.getMonth(), d.getDate(), t.h, t.m);
   let start: Date;
-  if (schedule?.explicitClockTime) {
-    const d = schedule.dueDate;
-    start = new Date(d.getFullYear(), d.getMonth(), d.getDate(), schedule.explicitClockTime.h, schedule.explicitClockTime.m);
+  let durationMinutes: number | null = null;
+  if (range) {
+    const d = day ?? opts.today;
+    start = onDay(d, range.from);
+    let finish = onDay(d, range.to);
+    // "11pm-1am" ends the next morning.
+    if (finish <= start) finish = addDays(finish, 1);
+    durationMinutes = Math.round((finish.getTime() - start.getTime()) / 60000);
+  } else if (schedule?.windowStart && schedule.explicitClockTime) {
+    // "between 12 and 1:30pm" reads, for a task, as a window start and a
+    // deadline; for an event it is the start and the end.
+    const [h, m] = schedule.windowStart.split(':').map(Number);
+    start = onDay(schedule.dueDate, { h, m });
+    const finish = onDay(schedule.dueDate, schedule.explicitClockTime);
+    if (finish > start) durationMinutes = Math.round((finish.getTime() - start.getTime()) / 60000);
+  } else if (schedule?.explicitClockTime) {
+    start = onDay(schedule.dueDate, schedule.explicitClockTime);
   } else if (schedule && schedule.timeSegments.length > 0) {
-    const d = schedule.dueDate;
-    start = new Date(d.getFullYear(), d.getMonth(), d.getDate(), DAY_PART_HOUR[schedule.timeSegments[0]], 0);
+    start = onDay(schedule.dueDate, { h: DAY_PART_HOUR[schedule.timeSegments[0]], m: 0 });
   } else {
     // No time: the same default the other "New event" buttons use, on the
     // day read (or today).
-    start = defaultNewEventSpan(schedule?.dueDate ?? opts.today, opts.today, opts.wallClock).start;
+    start = defaultNewEventSpan(day ?? opts.today, opts.today, opts.wallClock).start;
   }
+  // "for 90m" sets the length unless a range already did.
+  if (durationMinutes === null && forMinutes !== null) durationMinutes = forMinutes;
+  const timed = range !== null || !!schedule?.explicitClockTime || (schedule?.timeSegments.length ?? 0) > 0;
 
   // Taking the schedule phrase out of the line must leave the clauses that
   // followed it, or accepting the date would silently drop the place and alert.
-  const clausesFrom = locationStart ?? alertClause?.start ?? null;
   const clauses = clausesFrom === null ? '' : input.slice(clausesFrom);
-  const phrase = parsed
-    ? { start: parsed.matchStart, text: parsed.matchedText, lineWithout: parsed.cleanTitle + clauses }
-    : null;
+  let phrase: QuickEventDraft['phrase'] = null;
+  if (parsed || range) {
+    const phraseStart = parsed ? parsed.matchStart : range!.start + (/^\s*/.exec(body.slice(range!.start))?.[0].length ?? 0);
+    const before = parsed ? parsed.cleanTitle : scheduleBody.replace(/\s+$/, '');
+    phrase = { start: phraseStart, text: body.slice(phraseStart).trim(), lineWithout: before + clauses };
+  }
   const mentionSpans = [...bySpan.keys()].map(k => k.split(':').map(Number) as [number, number]);
-  const clauseSpans: [number, number][] = [];
-  if (locationStart !== null) {
-    clauseSpans.push([locationStart + (/^\s*/.exec(afterAlert.slice(locationStart))?.[0].length ?? 0), afterAlert.length]);
-  }
-  if (alertClause) {
-    clauseSpans.push([alertClause.start + (/^\s*/.exec(input.slice(alertClause.start))?.[0].length ?? 0), input.length]);
-  }
+  const clauseSpans: [number, number][] = [locationSpan, durationSpan, alertSpan]
+    .filter((span): span is [number, number] => span !== null)
+    .sort((a, b) => a[0] - b[0]);
 
   return {
     title,
     start,
-    end: addHours(start, 1),
+    end: addMinutes(start, durationMinutes ?? DEFAULT_EVENT_MINUTES),
+    durationMinutes,
+    timed,
     personIds,
-    scheduled: !!schedule,
+    scheduled: !!schedule || range !== null,
     phrase,
     mentionSpans,
     location,
+    locationSpan,
     alertMinutes: alertClause ? alertClause.minutes : undefined,
+    alertSpan,
+    durationSpan,
     clauseSpans,
     repeat: eventRecurrenceFor(schedule),
   };

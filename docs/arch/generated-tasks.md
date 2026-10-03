@@ -1014,10 +1014,27 @@ argued out before it was built; read them before reopening one.
   exact service names ("Microsoft Teams Meeting", "Zoom", "Google Meet"…). It is a closed list on
   purpose: a pattern would start deciding which real places are really places, and "Zoom Cafe, 12
   Bedford Ave" is somewhere you walk to.
-- **The travel time is the user's number.** No routing service is asked. Asking one means sending
-  the addresses of somebody's appointments to a third party (`geocode.ts` already shows what that
-  costs: its own switch, off by default), and a computed figure can be wrong in a way the user's
-  own estimate isn't. `travelLeadMinutes` is a `CountStepper` in 5-minute steps.
+- **The travel time is the user's number unless they ask for Apple Maps'.** By default no routing
+  service is asked. Asking one means sending the addresses of somebody's appointments, and where
+  they are, to a third party, and a computed figure can be wrong in a way the user's own estimate
+  isn't. `travelLeadMinutes` is a `CountStepper` in 5-minute steps. **`travelEstimates` (off by
+  default, its own switch, location permission asked on the tap that turns it on) is the opt-in:**
+  `useTravelTimeStore` asks MapKit's ETA (`src/services/travelTime.ts`, `estimateTravelTime` in
+  `todo-eventkit-bridge`) from the phone's position to each upcoming event's place, by
+  `travelMode`, and `estimatedLeadMinutes` turns it into the lead (plus 5 minutes, up to the next
+  5). Four rules hold it to the reasons above:
+  - **It says so.** The estimate goes in the title ("Leave for Dentist (25 min by transit)"),
+    so a reminder that moved never moved silently, and a wrong figure is visible before it costs
+    anything.
+  - **The typed number stays the fallback**, per event: one Apple Maps can't place or route keeps
+    `travelLeadFor`'s lead, and turning the switch off puts every row back on it on the next sweep.
+  - **It is read only while the app is open** (`useTravelTaskSync`'s triggers), and kept in memory.
+    A reminder queued the evening before carries the last estimate the app saw; nothing reads the
+    position while the app is closed.
+  - **An estimate is tied to the place and mode it answered** (`estimateFor`), so an edited
+    location or a changed mode is asked again rather than reused, and one older than 20 minutes
+    is refreshed for traffic. The destination is the event's map pin when it has one (a place
+    picked in quick add), else Apple Maps' first match for the location text.
 - **It is one switch and one number, not a rule list.** It shares `eventTask`'s occurrence key,
   eligibility gate and handled record by importing them, and deliberately not its rules engine.
   That engine's lead is whole days on purpose (`leadTimeReached`) where travel is minutes, and

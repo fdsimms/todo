@@ -108,7 +108,9 @@ import {
   clampTravelLeadMinutes,
   parseTravelLeadByCalendar,
   TRAVEL_LEAD_MINUTES_DEFAULT,
+  TRAVEL_MODES,
   type TravelLeadByCalendar,
+  type TravelMode,
 } from '../utils/travelTasks';
 import { parseTransitLines } from '../utils/transitAlerts';
 import { parseScreenTimeRules, defaultScreenTimeRules, serializeScreenTimeRules } from '../utils/screenTimeRules';
@@ -135,6 +137,18 @@ export type WeekStart = 0 | 1;
  * parks itself in whichever corner the button isn't using.
  */
 export type FabHand = 'right' | 'left';
+
+/**
+ * Which app a directions button opens (an event's or a task's location). iOS
+ * has no default-maps setting that a link can follow, so a link always opens
+ * Apple Maps unless the app asks for another. Each value builds a universal
+ * `https://` link (`directionsUrl` in `maps.ts`), which opens that app when it
+ * is installed and its website when it isn't, so no URL scheme has to be
+ * declared or checked. Device-local: which apps are installed is a fact about
+ * one phone.
+ */
+export type MapsApp = 'apple' | 'google' | 'waze';
+const MAPS_APPS: readonly MapsApp[] = ['apple', 'google', 'waze'];
 
 /**
  * Whether Today shows the day's meals at all (#1402, #1571).
@@ -251,6 +265,13 @@ interface SettingsStore {
   use24HourTime: boolean; // render clock times as "17:30" rather than "5:30 PM"
   weekStartsOn: WeekStart;
   fabHand: FabHand;
+  mapsApp: MapsApp;
+  // Whether typing an event's location asks Apple Maps for matching places
+  // (src/services/placeSearch.ts). Off by default: it sends what is typed to
+  // Apple, needs no key, and runs as you type rather than on a tap, which is
+  // the case CLAUDE.md's Data flow rule says ships behind its own switch.
+  // Device-local, like the other network opt-ins.
+  placeSuggestionsEnabled: boolean;
   hapticsEnabled: boolean;
   // The accelerometer-driven "shake to undo" gesture (src/utils/useShakeToUndo.ts).
   // On by default, like hapticsEnabled, so an existing install keeps the
@@ -1383,13 +1404,21 @@ interface SettingsStore {
   travelTasks: boolean;
   travelTaskCategory: string | null;
   // Minutes before an event's start that its reminder fires. The user's own
-  // travel time, typed rather than worked out — see travelTasks.ts for why no
-  // routing service is asked. Clamped by clampTravelLeadMinutes.
+  // travel time, typed rather than worked out, and the fallback when
+  // travelEstimates is on — see travelTasks.ts for when a routing service is
+  // asked. Clamped by clampTravelLeadMinutes.
   travelLeadMinutes: number;
   // Per-calendar overrides of that lead, by EventKit calendar id: "events on
   // Work get 45 minutes". Holds only the calendars someone set; the rest use
   // travelLeadMinutes. See TravelLeadByCalendar.
   travelLeadByCalendar: TravelLeadByCalendar;
+  // Whether a "Leave for X" reminder uses Apple Maps' estimate of the trip from
+  // where the phone is, instead of travelLeadMinutes (which stays the fallback
+  // for any event without one). Off by default: it sends the event's address
+  // and the phone's position to Apple (src/services/travelTime.ts).
+  travelEstimates: boolean;
+  // How that estimate travels.
+  travelMode: TravelMode;
   // eventTaskHandled's shape and reason, keyed by occurrence alone since there
   // is one rule. Written by checkTravelTasks, never by anything a person taps.
   travelTaskHandled: HandledEventTasks;
@@ -1640,6 +1669,8 @@ interface SettingsStore {
   setUse24HourTime: (on: boolean) => void;
   setWeekStartsOn: (day: WeekStart) => void;
   setFabHand: (hand: FabHand) => void;
+  setMapsApp: (app: MapsApp) => void;
+  setPlaceSuggestionsEnabled: (on: boolean) => void;
   setHapticsEnabled: (on: boolean) => void;
   setShakeToUndoEnabled: (on: boolean) => void;
   setConfirmBeforeDeleting: (on: boolean) => void;
@@ -1812,6 +1843,8 @@ interface SettingsStore {
   setTravelTasks: (on: boolean) => void;
   setTravelTaskCategory: (category: string | null) => void;
   setTravelLeadMinutes: (minutes: number) => void;
+  setTravelEstimates: (on: boolean) => void;
+  setTravelMode: (mode: TravelMode) => void;
   setTravelLeadForCalendar: (calendarId: string, minutes: number | null) => void;
   setTravelTaskHandled: (handled: HandledEventTasks) => void;
   setTransitAlerts: (on: boolean) => void;
@@ -1879,6 +1912,8 @@ const DEFAULT_SETTINGS = {
   use24HourTime: false,
   weekStartsOn: 0 as WeekStart,
   fabHand: 'right' as FabHand,
+  mapsApp: 'apple' as MapsApp,
+  placeSuggestionsEnabled: false,
   hapticsEnabled: true,
   shakeToUndoEnabled: true,
   confirmBeforeDeleting: true,
@@ -2274,6 +2309,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   use24HourTime: false,
   weekStartsOn: 0,
   fabHand: 'right',
+  mapsApp: 'apple',
+  placeSuggestionsEnabled: false,
   hapticsEnabled: true,
   shakeToUndoEnabled: true,
   confirmBeforeDeleting: true,
@@ -2435,6 +2472,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   travelTaskCategory: null,
   travelLeadMinutes: TRAVEL_LEAD_MINUTES_DEFAULT,
   travelLeadByCalendar: {},
+  travelEstimates: false,
+  travelMode: 'driving',
   travelTaskHandled: {},
   transitAlerts: false,
   transitLines: [],
@@ -2517,6 +2556,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const use24HourTime = dbGetSetting('use24HourTime') === 'true';
     const weekStartsOn: WeekStart = dbGetSetting('weekStartsOn') === '1' ? 1 : 0;
     const fabHand: FabHand = dbGetSetting('fabHand') === 'left' ? 'left' : 'right';
+    const storedMapsApp = dbGetSetting('mapsApp');
+    const mapsApp: MapsApp = MAPS_APPS.find(a => a === storedMapsApp) ?? 'apple';
+    const placeSuggestionsEnabled = dbGetSetting('placeSuggestionsEnabled') === 'true';
     // Defaults on rather than off, so an install that predates the setting
     // keeps the haptics it already had.
     const hapticsEnabled = dbGetSetting('hapticsEnabled') !== 'false';
@@ -2856,6 +2898,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       Number.isFinite(storedTravelLead) ? storedTravelLead : undefined,
     );
     const travelLeadByCalendar = parseTravelLeadByCalendar(dbGetSetting('travelLeadByCalendar'));
+    const travelEstimates = dbGetSetting('travelEstimates') === 'true';
+    const storedTravelMode = dbGetSetting('travelMode');
+    const travelMode: TravelMode = TRAVEL_MODES.find(m => m === storedTravelMode) ?? 'driving';
     // Pruned on load for eventTaskHandled's reason, directly above.
     const travelTaskHandled = pruneHandledEventTasks(
       parseHandledEventTasks(dbGetSetting('travelTaskHandled')),
@@ -3107,6 +3152,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       lastVisitedScreen,
       leftoverUseUpTaskCategory,
       leftoverUseUpTasks,
+      mapsApp,
       mealCalendarId,
       mealCookTaskCategory,
       mealCookTasks,
@@ -3153,6 +3199,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       penaltyShieldEnabled,
       penaltyShieldReason,
       penaltyShieldUntil,
+      placeSuggestionsEnabled,
       postponeCheckEnabled,
       postponeCheckThreshold,
       productLookupEnabled,
@@ -3190,8 +3237,10 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       titleRules,
       transitAlerts,
       transitLines,
+      travelEstimates,
       travelLeadByCalendar,
       travelLeadMinutes,
+      travelMode,
       travelTaskCategory,
       travelTaskHandled,
       travelTasks,
@@ -3353,6 +3402,16 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setFabHand(hand: FabHand) {
     dbSetSetting('fabHand', hand);
     set({ fabHand: hand });
+  },
+
+  setMapsApp(app: MapsApp) {
+    dbSetSetting('mapsApp', app);
+    set({ mapsApp: app });
+  },
+
+  setPlaceSuggestionsEnabled(on: boolean) {
+    dbSetSetting('placeSuggestionsEnabled', on ? 'true' : 'false');
+    set({ placeSuggestionsEnabled: on });
   },
 
   setHapticsEnabled(on: boolean) {
@@ -3764,6 +3823,16 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const clamped = clampTravelLeadMinutes(minutes);
     dbSetSetting('travelLeadMinutes', String(clamped));
     set({ travelLeadMinutes: clamped });
+  },
+
+  setTravelEstimates(on: boolean) {
+    dbSetSetting('travelEstimates', on ? 'true' : 'false');
+    set({ travelEstimates: on });
+  },
+
+  setTravelMode(mode: TravelMode) {
+    dbSetSetting('travelMode', mode);
+    set({ travelMode: mode });
   },
 
   // Null puts the calendar back on the default lead, by removing its entry

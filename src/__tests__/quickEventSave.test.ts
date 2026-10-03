@@ -1,4 +1,4 @@
-import { describeAlert, quickEventSaveFields, splitNotesAndLink } from '../utils/quickEventSave';
+import { alertMinutesFromOffset, describeAlert, quickEventFromLine, quickEventSaveFields, splitNotesAndLink } from '../utils/quickEventSave';
 
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: {
@@ -50,6 +50,13 @@ describe('quickEventSaveFields', () => {
     expect(quickEventSaveFields({ ...base, repeat: null }).recurrence).toBeUndefined();
   });
 
+  it('carries a picked place coordinate only alongside a location', () => {
+    const place = { latitude: 40.7, longitude: -74 };
+    expect(quickEventSaveFields({ ...base, location: "Joe's", place }).place).toEqual(place);
+    expect(quickEventSaveFields({ ...base, location: '  ', place }).place).toBeUndefined();
+    expect(quickEventSaveFields({ ...base, location: "Joe's" }).place).toBeUndefined();
+  });
+
   it('trims the location and carries free time through', () => {
     const f = quickEventSaveFields({ ...base, location: '  Joe\'s ', availability: 'free', notesOrLink: 'https://x.co/a' });
     expect(f.location).toBe("Joe's");
@@ -70,5 +77,69 @@ describe('describeAlert', () => {
     [90, false, '90 min before'],
   ])('%s -> %s', (minutes, allDay, label) => {
     expect(describeAlert(minutes, allDay as boolean)).toBe(label);
+  });
+});
+
+describe('quickEventFromLine', () => {
+  const defaults = { calendarId: 'c-default', alertMinutes: null, availability: 'busy' as const };
+  const draft = {
+    title: 'gym', start: new Date(2026, 8, 25, 15, 0), timed: false, durationMinutes: null,
+    location: null, alertMinutes: undefined, repeat: null,
+  };
+  const recalled = {
+    location: 'Planet Fitness', place: { latitude: 1, longitude: 2 }, durationMinutes: 90,
+    calendarId: 'c-gym', alertMinutes: 30, availability: 'free' as const, at: 1,
+  };
+
+  it('fills what the line left out from the last event with this title', () => {
+    const input = quickEventFromLine(draft, { recalled, defaults, freeSlotFor: () => null });
+    expect(input).toMatchObject({
+      location: 'Planet Fitness', place: { latitude: 1, longitude: 2 }, durationMinutes: 90,
+      calendarId: 'c-gym', alertMinutes: 30, availability: 'free',
+    });
+    expect(input.end).toEqual(new Date(2026, 8, 25, 16, 30));
+  });
+
+  it('lets the line win over what was remembered, and drops the old pin with a new place', () => {
+    const input = quickEventFromLine(
+      { ...draft, location: 'YMCA', durationMinutes: 45, alertMinutes: null },
+      { recalled, defaults, freeSlotFor: () => null },
+    );
+    expect(input).toMatchObject({ location: 'YMCA', place: null, durationMinutes: 45, alertMinutes: null });
+  });
+
+  it('falls back to the defaults with nothing remembered', () => {
+    const input = quickEventFromLine(draft, { recalled: null, defaults, freeSlotFor: () => null });
+    expect(input).toMatchObject({ calendarId: 'c-default', alertMinutes: null, availability: 'busy', durationMinutes: 60 });
+  });
+
+  it('starts an untimed line at the free slot, asked with the length it will have', () => {
+    const slot = new Date(2026, 8, 25, 16, 15);
+    const freeSlotFor = jest.fn(() => slot);
+    const input = quickEventFromLine(draft, { recalled, defaults, freeSlotFor });
+    expect(freeSlotFor).toHaveBeenCalledWith(90);
+    expect(input.start).toEqual(slot);
+    // A timed line keeps its own time.
+    const timed = quickEventFromLine({ ...draft, timed: true }, { recalled, defaults, freeSlotFor });
+    expect(timed.start).toEqual(draft.start);
+  });
+});
+
+describe('alertMinutesFromOffset', () => {
+  it('reads a timed event\'s offset as minutes before it', () => {
+    expect(alertMinutesFromOffset(-15, false)).toBe(15);
+    expect(alertMinutesFromOffset(0, false)).toBe(0);
+  });
+
+  // An all-day event's alert is measured from midnight, and the card counts
+  // its choices back from 9 AM on the day.
+  it('reads an all-day offset against 9 AM', () => {
+    expect(alertMinutesFromOffset(540, true)).toBe(0);
+    expect(alertMinutesFromOffset(-900, true)).toBe(1440);
+  });
+
+  it('never answers a negative lead, for an alert after the start', () => {
+    expect(alertMinutesFromOffset(30, false)).toBe(0);
+    expect(alertMinutesFromOffset(null, false)).toBeNull();
   });
 });

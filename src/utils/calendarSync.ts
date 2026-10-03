@@ -8,6 +8,7 @@ import type {
   RecurringEventOptions,
 } from 'expo-calendar/legacy';
 import type { BusyEvent } from './calendarBusy';
+import { isDemoModeActive } from './demoState';
 import type { EventRecurrence } from './quickEvent';
 
 /**
@@ -537,28 +538,21 @@ export async function createTimedEvent(
   }
 }
 
-// ---- Time blocks (#1492) -------------------------------------------------
+// ---- Events the user writes: time blocks (#1492), quick add, edits -------
 //
 // The other half of the write, and it works the opposite way round to the
-// deadline mirror above: these go through **the system event sheet**
-// (`createEventInCalendarAsync` / `editEventInCalendarAsync`), which presents
-// Apple's own event UI and hands back what the user did with it.
+// deadline mirror above: every one of these is a person's own tap on a card
+// that showed them what would be written (`QuickEventSheet`). Time blocks
+// used to go through Apple's own event sheet for that reason; the card now
+// does the same job inside the app, and every write here goes straight
+// through EventKit (`saveEventDirect`, `updateEventDirect`).
 //
-// That buys three things a `createEventAsync` version wouldn't. There is no
-// calendar to pick in Settings, because the sheet has a calendar picker and
-// it's already the one the user knows. There is no form to design, and so no
-// second-rate copy of a date picker Apple ships. And there is nothing written
-// that the user didn't watch being written — which is the whole reason this
-// path can be a one-tap action on a task, where the deadline mirror had to be
-// an opt-in toggle plus a named target calendar.
-//
-// The corollary is the rule this file holds to: **nothing here deletes a time
-// block.** There is no `deleteEventAsync` call on this side, deliberately.
-// An event the user saved in their own calendar app — possibly moved to a
-// shared calendar, possibly with people invited — is not this app's to remove
-// because a task got ticked off. Removing one is a tap in the sheet
-// `presentTimeBlockEdit` opens, where it's their own decision in their own UI,
-// and `deleted` comes back so the task can drop its pointer.
+// The rule this file holds to: **nothing deletes an event on its own.** An
+// event in the user's calendar, possibly moved to a shared calendar, possibly
+// with people invited, is not this app's to remove because a task got ticked
+// off or a sync ran. The one delete is `deleteEventDirect`, called only from
+// the card's own Delete, after the user confirms it; the caller then drops
+// whatever pointed at the event (a task's block, its people links).
 
 /** What the user did with an event sheet, and the event it left behind. */
 export interface TimeBlockSheetResult {
@@ -573,46 +567,11 @@ export interface TimeBlockSheetResult {
 const NO_RESULT: TimeBlockSheetResult = { saved: false, deleted: false, eventId: null };
 
 /**
- * Presents the system "new event" sheet, prefilled with a task's block.
- *
- * No calendar id is passed: the sheet defaults to the user's default calendar
- * and lets them change it, which is a better answer than any id this app could
- * choose — and is why the time block, unlike the deadline mirror, needs no
- * setting of its own.
- */
-export async function presentTimeBlockCreate(fields: {
-  title: string;
-  start: Date;
-  end: Date;
-  location?: string;
-  notes?: string;
-}): Promise<TimeBlockSheetResult> {
-  if (Platform.OS !== 'ios') return NO_RESULT;
-  try {
-    const result = await calendar().createEventInCalendarAsync({
-      title: fields.title,
-      startDate: fields.start,
-      endDate: fields.end,
-      ...(fields.location ? { location: fields.location } : {}),
-      notes: fields.notes,
-    });
-    return {
-      saved: result.action === 'saved',
-      deleted: result.action === 'deleted',
-      eventId: result.id ?? null,
-    };
-  } catch {
-    return NO_RESULT;
-  }
-}
-
-/**
  * Presents the system "new event" sheet for a plain event rather than a task's
  * block: the calendar-first half of the app, where the event is the thing
  * being made and nothing on the task list points at it.
  *
- * Same sheet and the same reasoning as `presentTimeBlockCreate`: the user
- * picks the calendar there (a Google account shows up in it like any other),
+ * The user picks the calendar there (a Google account shows up in it like any other),
  * so the event syncs wherever that calendar does, and nothing is written that
  * they didn't watch being written. Anything the app wants to remember about
  * the event (who it's with) is kept on its own side, see `eventPeople.ts`.
@@ -652,6 +611,30 @@ export async function presentEventCreate(fields: {
   }
 }
 
+/**
+ * An event's map pin, for its directions button: the coordinate of its
+ * structured location, which a place picked from Apple Maps writes. Null for
+ * an event with none (most typed locations), in demo mode, and on any failure,
+ * all of which mean "route by the location text".
+ *
+ * Read one event at a time, when its button is tapped, rather than for every
+ * event a list shows: a pin is only worth reading for the trip about to start.
+ */
+export async function eventCoordinate(eventId: string): Promise<{ latitude: number; longitude: number } | null> {
+  if (Platform.OS !== 'ios' || !eventId || isDemoModeActive()) return null;
+  try {
+    const bridge = require('todo-eventkit-bridge') as typeof import('todo-eventkit-bridge');
+    const raw = (await bridge.eventCoordinatesRaw([eventId]))[eventId];
+    if (!raw || typeof raw !== 'object') return null;
+    const { latitude, longitude } = raw as Record<string, unknown>;
+    if (typeof latitude !== 'number' || typeof longitude !== 'number') return null;
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+    return { latitude, longitude };
+  } catch {
+    return null;
+  }
+}
+
 /** What a quick-add event is saved with, with no system sheet in between. */
 export interface EventSaveFields {
   title: string;
@@ -664,6 +647,12 @@ export interface EventSaveFields {
   alarms?: Alarm[];
   /** A repeat rule, as `eventRecurrenceFor` builds it. */
   recurrence?: EventRecurrence;
+  /**
+   * The coordinate of a place picked from Apple Maps for `location`. Written
+   * as the event's structured location after the save, so Calendar can draw
+   * its map and estimate travel time. Ignored without a `location`.
+   */
+  place?: { latitude: number; longitude: number };
   availability?: 'busy' | 'free';
   /** The calendar to write to. A missing or stale id falls back to the default. */
   calendarId?: string | null;
@@ -730,35 +719,146 @@ export async function saveEventDirect(
           ? calendar().Availability.FREE
           : calendar().Availability.BUSY,
     });
-    return id ? { id, calendarId: target.id } : null;
+    if (!id) return null;
+    // A second write, since expo-calendar's save has no structured location.
+    // Best-effort: the event is saved either way, it just has no map.
+    if (fields.place && fields.location) {
+      try {
+        const bridge = require('todo-eventkit-bridge') as typeof import('todo-eventkit-bridge');
+        await bridge.setStructuredLocation(id, fields.location, fields.place.latitude, fields.place.longitude);
+      } catch {
+        // No bridge (an older build): the location text alone.
+      }
+    }
+    return { id, calendarId: target.id };
+  } catch {
+    return null;
+  }
+}
+
+/** An existing event, as the edit card opens it. */
+export interface EventForEdit {
+  title: string;
+  start: Date;
+  end: Date;
+  allDay: boolean;
+  location: string | null;
+  notes: string | null;
+  url: string | null;
+  /** The first alert's offset, as EventKit stores it (minutes, negative before the start). Null for none. */
+  alertOffset: number | null;
+  availability: 'busy' | 'free';
+  calendarId: string | null;
+  /** Whether the event repeats; an edit then applies to the occurrence opened. */
+  recurring: boolean;
+  /** False when its calendar is read-only (a subscription, a shared calendar you can only view). */
+  editable: boolean;
+}
+
+/**
+ * Reads an event for the edit card, or null when it isn't there (deleted, no
+ * access, not iOS). `occurrenceStart` picks the instance of a repeating event
+ * the user tapped; without one EventKit answers with the first.
+ */
+export async function readEventForEdit(eventId: string, occurrenceStart?: string | null): Promise<EventForEdit | null> {
+  if (Platform.OS !== 'ios' || !eventId) return null;
+  try {
+    const event = await calendar().getEventAsync(
+      eventId,
+      occurrenceStart ? { futureEvents: false, instanceStartDate: occurrenceStart } : { futureEvents: false },
+    );
+    if (!event) return null;
+    const start = new Date(event.startDate as string | Date);
+    const end = new Date(event.endDate as string | Date);
+    if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) return null;
+    const text = (v: unknown) => (typeof v === 'string' && v.trim() ? v : null);
+    const firstAlarm = Array.isArray(event.alarms) ? event.alarms[0] : undefined;
+    const calendarId = text(event.calendarId);
+    const writable = await listWritableCalendars();
+    const offset = firstAlarm && typeof firstAlarm.relativeOffset === 'number' ? firstAlarm.relativeOffset : null;
+    return {
+      title: event.title ?? '',
+      start,
+      end,
+      allDay: event.allDay === true,
+      location: text(event.location),
+      notes: text(event.notes),
+      url: text(event.url),
+      alertOffset: offset,
+      availability: event.availability === calendar().Availability.FREE ? 'free' : 'busy',
+      calendarId,
+      recurring: event.recurrenceRule != null,
+      editable: calendarId !== null && writable.some(c => c.id === calendarId),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** The occurrence an edit or a delete applies to: that one instance, never the rest of the series. */
+function occurrenceOptions(occurrenceStart?: string | null): RecurringEventOptions | undefined {
+  return occurrenceStart ? { futureEvents: false, instanceStartDate: occurrenceStart } : undefined;
+}
+
+/**
+ * Saves the edit card's changes to an existing event, through `rewriteEvent`
+ * so anything the card doesn't show (invitees, a repeat rule, a time zone,
+ * every alert past the first) is sent back unchanged. The fields the card
+ * does show are written as they stand: an emptied location or alert clears
+ * it. Notes and the URL are written only when given, so the card can leave
+ * them alone when nobody touched the field. Resolves the event's id (EventKit
+ * can hand back a new one for a moved occurrence), or null on any failure.
+ */
+export async function updateEventDirect(
+  eventId: string,
+  fields: EventSaveFields,
+  occurrenceStart?: string | null,
+): Promise<string | null> {
+  if (Platform.OS !== 'ios' || isDemoModeActive()) return null;
+  try {
+    if (!(await requestCalendarPermission())) return null;
+    const writable = await listWritableCalendars();
+    const calendarId = writable.some(c => c.id === fields.calendarId) ? fields.calendarId : undefined;
+    const owned: Omit<Partial<Event>, 'id'> = {
+      title: fields.title,
+      startDate: fields.start,
+      endDate: fields.end,
+      allDay: fields.allDay === true,
+      location: fields.location ?? '',
+      alarms: fields.alarms ?? [],
+      availability: fields.availability === 'free' ? calendar().Availability.FREE : calendar().Availability.BUSY,
+      ...(calendarId ? { calendarId } : {}),
+      ...(fields.notes !== undefined ? { notes: fields.notes } : {}),
+      ...(fields.url !== undefined ? { url: fields.url } : {}),
+    };
+    const id = (await rewriteEvent(eventId, owned, occurrenceOptions(occurrenceStart))) || eventId;
+    if (fields.place && fields.location) {
+      try {
+        const bridge = require('todo-eventkit-bridge') as typeof import('todo-eventkit-bridge');
+        await bridge.setStructuredLocation(id, fields.location, fields.place.latitude, fields.place.longitude);
+      } catch {
+        // No bridge (an older build): the location text alone.
+      }
+    }
+    return id;
   } catch {
     return null;
   }
 }
 
 /**
- * Presents the system sheet for an event that already exists, so the user can
- * move, resize or delete it.
- *
- * A `deleted` result is the one thing the caller must act on — that's the
- * user saying the block is gone, and the task's pointer has to go with it.
+ * Deletes an event, or one occurrence of a repeating one. Only ever called
+ * from the edit card's Delete, after the user confirms (see the rule at the
+ * top of this section). True when it went; false on any failure, in which
+ * case the caller keeps whatever pointed at the event.
  */
-export async function presentTimeBlockEdit(eventId: string): Promise<TimeBlockSheetResult> {
-  if (Platform.OS !== 'ios') return NO_RESULT;
+export async function deleteEventDirect(eventId: string, occurrenceStart?: string | null): Promise<boolean> {
+  if (Platform.OS !== 'ios' || isDemoModeActive()) return false;
   try {
-    const result = await calendar().editEventInCalendarAsync({ id: eventId });
-    return {
-      saved: result.action === 'saved',
-      deleted: result.action === 'deleted',
-      eventId: result.id ?? eventId,
-    };
+    await calendar().deleteEventAsync(eventId, occurrenceOptions(occurrenceStart) ?? { futureEvents: false });
+    return true;
   } catch {
-    // Deliberately *not* reported as a deletion. A throw here is most often an
-    // event that's gone, but a refused permission and a sheet that failed to
-    // present throw identically — and treating those as "the user deleted it"
-    // would drop a pointer to an event that still exists. Whether the event is
-    // really gone is `readTimeBlockEvent`'s question, and the caller asks it.
-    return NO_RESULT;
+    return false;
   }
 }
 

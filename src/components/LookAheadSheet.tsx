@@ -52,6 +52,7 @@ import {
 } from '../utils/lookAhead';
 import { deloadUpdates } from '../utils/taskMoves';
 import { useTaskStore } from '../store/useTaskStore';
+import { useTasksWhileOpen } from '../hooks/useTasksWhileOpen';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { useProjectStore } from '../store/useProjectStore';
@@ -104,7 +105,7 @@ export function LookAheadSheet({ visible, onClose, tripProjectId = null }: Props
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const fade = useScrollEdgeFade();
 
-  const allTasks = useTaskStore(s => s.tasks);
+  const allTasks = useTasksWhileOpen(visible);
   const deloadTasks = useTaskStore(s => s.deloadTasks);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
   const vacationEnd = useSettingsStore(s => s.vacationEnd);

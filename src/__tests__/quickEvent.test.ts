@@ -1,4 +1,4 @@
-import { alertRelativeOffset, describeEventRepeat, eventMarkerText, parseAlertClause, parseQuickEvent } from '../utils/quickEvent';
+import { alertRelativeOffset, describeEventRepeat, eventMarkerText, parseClockRange, parseLengthClause, parseAlertClause, parseQuickEvent } from '../utils/quickEvent';
 import { findAmbiguousMention } from '../utils/parseTaskInput';
 
 jest.mock('../store/useSettingsStore', () => ({
@@ -18,6 +18,15 @@ const names: Record<string, string> = { p1: 'Dustin', p2: 'Ansley' };
 const opts = { people, nameOf: (id: string) => names[id] ?? null, now, today, wallClock: now };
 
 describe('parseQuickEvent', () => {
+  // An event opened for editing keeps its title as written: "Dinner at 7 for
+  // Sam's birthday" is a name, not an instruction to move it to 7pm.
+  it('reads a plain line as nothing but a title', () => {
+    const draft = parseQuickEvent('Dinner at Luigi tomorrow 7pm for 2h', { ...opts, plain: true });
+    expect(draft.title).toBe('Dinner at Luigi tomorrow 7pm for 2h');
+    expect(draft.scheduled).toBe(false);
+    expect(draft.location).toBeNull();
+  });
+
   it('reads a day, a clock time and a person', () => {
     const draft = parseQuickEvent('lunch w/ @dustin sat 12pm', opts);
     expect(draft.title).toBe('lunch w/ Dustin');
@@ -229,5 +238,107 @@ describe('eventMarkerText', () => {
   it('leaves ordinary titles alone', () => {
     expect(eventMarkerText('event planning')).toBeNull();
     expect(eventMarkerText('book the event: venue')).toBeNull();
+  });
+});
+
+describe('parseQuickEvent, length', () => {
+  it('reads "for 90m" as the length, after the time', () => {
+    const draft = parseQuickEvent('lunch sat 12pm for 90m', opts);
+    expect(draft.title).toBe('lunch');
+    expect(draft.start).toEqual(new Date(2026, 8, 26, 12, 0));
+    expect(draft.durationMinutes).toBe(90);
+    expect(draft.end).toEqual(new Date(2026, 8, 26, 13, 30));
+  });
+
+  it('reads a clock range as the start and the end', () => {
+    const draft = parseQuickEvent('lunch sat 12-1:30pm', opts);
+    expect(draft.title).toBe('lunch');
+    expect(draft.start).toEqual(new Date(2026, 8, 26, 12, 0));
+    expect(draft.end).toEqual(new Date(2026, 8, 26, 13, 30));
+    expect(draft.phrase?.text).toBe('sat 12-1:30pm');
+    expect(draft.phrase?.lineWithout).toBe('lunch');
+  });
+
+  it('reads a range with no day as today', () => {
+    const draft = parseQuickEvent('call from 4 to 5pm', opts);
+    expect(draft.title).toBe('call');
+    expect(draft.start).toEqual(new Date(2026, 8, 25, 16, 0));
+    expect(draft.durationMinutes).toBe(60);
+    expect(draft.timed).toBe(true);
+  });
+
+  it('reads "between 12 and 1:30pm" as a span, not a deadline', () => {
+    // At 2:25pm, so this one lands on the 25th; a day in front ("sat between")
+    // is task grammar's to read, and a clock range ("sat 12-1:30pm") is the
+    // form that takes one.
+    const draft = parseQuickEvent('lunch between 4 and 5:30pm', opts);
+    expect(draft.title).toBe('lunch');
+    expect(draft.start).toEqual(new Date(2026, 8, 25, 16, 0));
+    expect(draft.durationMinutes).toBe(90);
+  });
+
+  it('runs a late range past midnight', () => {
+    const draft = parseQuickEvent('party sat 11pm-1am', opts);
+    expect(draft.start).toEqual(new Date(2026, 8, 26, 23, 0));
+    expect(draft.end).toEqual(new Date(2026, 8, 27, 1, 0));
+  });
+
+  it('keeps the one-hour default with no length typed', () => {
+    const draft = parseQuickEvent('dentist monday 3pm', opts);
+    expect(draft.durationMinutes).toBeNull();
+    expect(draft.end).toEqual(new Date(2026, 8, 28, 16, 0));
+  });
+
+  it('leaves a bare number range in the title', () => {
+    const draft = parseQuickEvent('read chapters 3-5', opts);
+    expect(draft.title).toBe('read chapters 3-5');
+    expect(draft.timed).toBe(false);
+  });
+
+  it('reads the trailing clauses in any order', () => {
+    const line = "lunch sat 12pm alert 10m for 90m at Joe's";
+    const draft = parseQuickEvent(line, opts);
+    expect(draft.title).toBe('lunch');
+    expect(draft.location).toBe("Joe's");
+    expect(draft.alertMinutes).toBe(10);
+    expect(draft.durationMinutes).toBe(90);
+    expect(line.slice(...draft.locationSpan!)).toBe("at Joe's");
+    expect(line.slice(...draft.alertSpan!)).toBe('alert 10m');
+    expect(line.slice(...draft.durationSpan!)).toBe('for 90m');
+    expect(draft.phrase?.lineWithout).toBe("lunch alert 10m for 90m at Joe's");
+  });
+
+  it('says whether a time of day was read', () => {
+    expect(parseQuickEvent('lunch fri', opts).timed).toBe(false);
+    expect(parseQuickEvent('lunch fri 1pm', opts).timed).toBe(true);
+    expect(parseQuickEvent('dinner tomorrow evening', opts).timed).toBe(true);
+  });
+});
+
+describe('parseClockRange', () => {
+  it.each([
+    ['x 12-1:30pm', { h: 12, m: 0 }, { h: 13, m: 30 }],
+    ['x 6-8pm', { h: 18, m: 0 }, { h: 20, m: 0 }],
+    ['x 11-1pm', { h: 11, m: 0 }, { h: 13, m: 0 }],
+    ['x 9am-5pm', { h: 9, m: 0 }, { h: 17, m: 0 }],
+    ['x 9:30-11', { h: 9, m: 30 }, { h: 11, m: 0 }],
+    ['x 2:00-3:00', { h: 14, m: 0 }, { h: 15, m: 0 }],
+    ['x 14:00–15:30', { h: 14, m: 0 }, { h: 15, m: 30 }],
+  ])('reads %s', (line, from, to) => {
+    expect(parseClockRange(line)).toMatchObject({ from, to });
+  });
+
+  it('refuses a range with no colon or am/pm, and an impossible time', () => {
+    expect(parseClockRange('pages 3-5')).toBeNull();
+    expect(parseClockRange('x 25:00-26:00')).toBeNull();
+  });
+});
+
+describe('parseLengthClause', () => {
+  it('reads minutes and hours as a suffix only', () => {
+    expect(parseLengthClause('x for 45 min')?.minutes).toBe(45);
+    expect(parseLengthClause('x for 1.5 hours')?.minutes).toBe(90);
+    expect(parseLengthClause('for 2h of rest')).toBeNull();
+    expect(parseLengthClause('x for 30 hours')).toBeNull();
   });
 });

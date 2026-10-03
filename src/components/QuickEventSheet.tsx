@@ -16,7 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useShallow } from 'zustand/react/shallow';
 import { startOfDay } from 'date-fns/startOfDay';
 import { addDays } from 'date-fns/addDays';
-import { addHours } from 'date-fns/addHours';
+import { addMinutes } from 'date-fns/addMinutes';
 import { SheetModal } from './SheetModal';
 import { SheetScrim } from './SheetScrim';
 import { SafeBlurView } from './SafeBlurView';
@@ -25,6 +25,7 @@ import { HighlightedText } from './HighlightedText';
 import { TitleTokenAccessory } from './TitleTokenAccessory';
 import { CalendarPicker } from './CalendarPicker';
 import { EventOptionSheet, type EventOption } from './EventOptionSheet';
+import { InlineAction } from './InlineAction';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, interaction, animation, type Colors } from '../theme';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
@@ -33,21 +34,33 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useEventPeopleStore } from '../store/useEventPeopleStore';
 import { useTitleSelection } from '../hooks/useTitleSelection';
 import { groupMentionTokens } from '../utils/peopleRegistry';
-import { describeEventRepeat, parseQuickEvent, type EventRecurrence } from '../utils/quickEvent';
+import { DEFAULT_EVENT_MINUTES, describeEventRepeat, parseQuickEvent, type EventRecurrence } from '../utils/quickEvent';
+import { calendarCovers, firstFreeSlot, overlappingEvents } from '../utils/eventConflicts';
+import { eventMemoryKey, readEventMemory, rememberEvent, writeEventMemory, type EventMemory } from '../utils/eventMemory';
+import { useCalendarStore } from '../store/useCalendarStore';
 import { defaultNewEventSpan } from '../utils/eventPeople';
 import {
   readQuickEventDefaults,
   writeQuickEventDefaults,
   type EventAvailability,
 } from '../utils/quickEventDefaults';
-import { ALERT_CHOICES, describeAlert, quickEventSaveFields } from '../utils/quickEventSave';
+import { ALERT_CHOICES, alertMinutesFromOffset, describeAlert, quickEventSaveFields } from '../utils/quickEventSave';
 import {
   getCalendarPermission,
   listWritableCalendars,
   requestCalendarPermission,
+  readEventForEdit,
   resolveEventCalendar,
+  type EventForEdit,
 } from '../utils/calendarSync';
 import type { Calendar as DeviceCalendar } from 'expo-calendar/legacy';
+import { searchPlaces } from '../services/placeSearch';
+import {
+  PLACE_QUERY_MIN_LENGTH,
+  placeLocationText,
+  placeSubtitle,
+  type PlaceResult,
+} from '../utils/places';
 import {
   findAmbiguousMention,
   getMentionSuggestions,
@@ -64,6 +77,8 @@ import { TITLE_MAX_LENGTH } from '../types';
 import { TextField } from './TextField';
 
 const EVENT_TOKEN_ACCESSORY_ID = 'quickEventTitleTokenAccessory';
+/** Long enough that a word being typed is one request, not one per letter. */
+const PLACE_SEARCH_DEBOUNCE_MS = 350;
 /** "#" and "!" name a category and a priority, which an event doesn't have. */
 const EVENT_TOKENS = ['@'] as const;
 
@@ -74,14 +89,30 @@ const EVENT_TOKENS = ['@'] as const;
  */
 export interface QuickEventSeed {
   day?: Date;
+  /** An exact span, for a task's time block proposed in a free gap. Wins over `day`. */
+  start?: Date;
+  end?: Date;
   title?: string;
   personIds?: readonly string[];
+}
+
+/** An existing event to open the card on, instead of a new one. */
+export interface QuickEventEditTarget {
+  eventId: string;
+  /** The occurrence tapped, for a repeating event: the edit applies to it alone. */
+  occurrenceStart?: string | null;
 }
 
 interface Props {
   visible: boolean;
   onClose: () => void;
   seed?: QuickEventSeed | null;
+  /** Opens the card on an existing event: its fields filled in, Save writes them back, and Delete is offered. */
+  editing?: QuickEventEditTarget | null;
+  /** Called with the event's id once it is saved (a new event or an edited one). */
+  onSaved?: (eventId: string) => void;
+  /** Called once the user has deleted the event from the card. */
+  onDeleted?: () => void;
 }
 
 /**
@@ -115,8 +146,19 @@ interface Props {
  *
  * This one closes only once the event is saved. A failed save (calendar
  * access refused, no writable calendar) says so and leaves the line intact.
+ *
+ * **`editing` opens it on an event already on the calendar** (Today's events
+ * sheet, a task's time block): the same fields, read in by
+ * `readEventForEdit`, saved by `updateEventDirect`, with a Delete. The title
+ * is read plain until it changes, and a repeating event is changed one
+ * occurrence at a time. `docs/arch/people.md` has the rules.
+ *
+ * One component; `grep -n '// ===='` is its table of contents: sheet state,
+ * the draft, editing an existing event, calendars, the reset on open, parsing the line, what the event
+ * resolves to (remembered values, length, the free slot, conflicts), place
+ * suggestions, applying what was read, the write, then the JSX.
  */
-export function QuickEventSheet({ visible, onClose, seed }: Props) {
+export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDeleted }: Props) {
   const colors = useColors();
   const { isDark, shadows } = useTheme();
   const { height: windowHeight } = useWindowDimensions();
@@ -127,6 +169,11 @@ export function QuickEventSheet({ visible, onClose, seed }: Props) {
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
   const use24Hour = useSettingsStore(s => s.use24HourTime);
   const saveEvent = useEventPeopleStore(s => s.saveEvent);
+  const updateEvent = useEventPeopleStore(s => s.updateEvent);
+  const deleteEvent = useEventPeopleStore(s => s.deleteEvent);
+  const peopleForEvent = useEventPeopleStore(s => s.peopleFor);
+  const placeSuggestionsEnabled = useSettingsStore(s => s.placeSuggestionsEnabled);
+  const setPlaceSuggestionsEnabled = useSettingsStore(s => s.setPlaceSuggestionsEnabled);
 
   // ==== sheet-level state (keyboard, open/close animation) ====
   const inputRef = useRef<TextInput>(null);
@@ -189,11 +236,36 @@ export function QuickEventSheet({ visible, onClose, seed }: Props) {
   const [alertPick, setAlertPick] = useState<number | null | undefined>(undefined);
   const [alertDefault, setAlertDefault] = useState<number | null>(null);
   const [availability, setAvailability] = useState<EventAvailability>('busy');
+  // The chips' own picks, kept apart from the defaults above so a remembered
+  // event (`eventMemory.ts`) can sit between the two: a pick beats what was
+  // remembered, and what was remembered beats the default.
+  const [calendarPick, setCalendarPick] = useState<string | null>(null);
+  const [availabilityPick, setAvailabilityPick] = useState<EventAvailability | null>(null);
+  // A length read from the line and kept once its words leave it (the
+  // tooltip, or a date picked by hand), the way repeatPick keeps a repeat.
+  const [durationPick, setDurationPick] = useState<number | null>(null);
+  const [eventMemory, setEventMemory] = useState<EventMemory>({});
+  // The title whose remembered values the user waved off for this event.
+  const [memoryDismissedKey, setMemoryDismissedKey] = useState<string | null>(null);
+  // ==== editing an existing event ====
+  // The event as it was read when the card opened on it, null while it loads
+  // (or for a new event). Save compares against it, and the people links move
+  // from its start to the new one.
+  const [original, setOriginal] = useState<EventForEdit | null>(null);
+  const [originalNotesField, setOriginalNotesField] = useState('');
+  const [originalPeople, setOriginalPeople] = useState<string[]>([]);
+  const isEditing = !!editing;
   const [calendars, setCalendars] = useState<DeviceCalendar[]>([]);
   const [targetCalendar, setTargetCalendar] = useState<DeviceCalendar | null>(null);
   // The repeat a schedule phrase read, kept once the phrase's words leave the
   // line (tapping the tooltip, or picking the date by hand). A live phrase wins.
   const [repeatPick, setRepeatPick] = useState<EventRecurrence | null>(null);
+  // Apple Maps' answers for the location being typed, and the one picked. A
+  // pick holds only while the location still reads exactly as it was written,
+  // so an edit afterward saves the edited text without the old coordinate.
+  const [placeResults, setPlaceResults] = useState<PlaceResult[]>([]);
+  const [pickedPlace, setPickedPlace] = useState<(PlaceResult & { text: string }) | null>(null);
+  const placeQueryRef = useRef('');
   const [calendarPickerVisible, setCalendarPickerVisible] = useState(false);
   const [alertPickerVisible, setAlertPickerVisible] = useState(false);
   const titleCaret = useTitleSelection(text);
@@ -232,6 +304,37 @@ export function QuickEventSheet({ visible, onClose, seed }: Props) {
     return true;
   };
 
+  // Fills the card from the event being edited. A read that finds nothing
+  // (deleted elsewhere since the list was drawn) says so and closes.
+  const loadForEdit = async (target: QuickEventEditTarget) => {
+    const event = await readEventForEdit(target.eventId, target.occurrenceStart);
+    if (!event) {
+      Alert.alert("This event isn't on your calendar any more", 'It may have been deleted in another app.');
+      dismiss();
+      return;
+    }
+    if (!event.editable) {
+      Alert.alert("This event can't be changed here", "Its calendar is read-only. Edit it in the app it came from.");
+      dismiss();
+      return;
+    }
+    const notesField = event.notes ?? event.url ?? '';
+    setOriginal(event);
+    setOriginalNotesField(notesField);
+    setText(event.title);
+    titleCaret.resetCaret(event.title);
+    setStartOverride(event.start);
+    setAllDay(event.allDay);
+    if (!event.allDay) setDurationPick(Math.max(1, Math.round((event.end.getTime() - event.start.getTime()) / 60000)));
+    setLocation(event.location ?? '');
+    setNotesOrLink(notesField);
+    setCalendarPick(event.calendarId);
+    setAlertPick(alertMinutesFromOffset(event.alertOffset, event.allDay));
+    setAvailabilityPick(event.availability);
+    const people = peopleForEvent({ id: target.eventId, start: event.start.toISOString() });
+    setOriginalPeople(people);
+  };
+
   // ==== effects: resetting on open ====
   useEffect(() => {
     if (!visible) return;
@@ -240,20 +343,34 @@ export function QuickEventSheet({ visible, onClose, seed }: Props) {
     setLocation('');
     setNotesOrLink('');
     setRepeatPick(null);
-    const remembered = readQuickEventDefaults();
-    setCalendarId(remembered.calendarId);
-    setAlertDefault(remembered.alertMinutes);
+    setPlaceResults([]);
+    setPickedPlace(null);
+    const defaults = readQuickEventDefaults();
+    setCalendarId(defaults.calendarId);
+    setAlertDefault(defaults.alertMinutes);
     setAlertPick(undefined);
-    setAvailability(remembered.availability);
+    setAvailability(defaults.availability);
+    setCalendarPick(null);
+    setAvailabilityPick(null);
+    setDurationPick(null);
+    setEventMemory(readEventMemory());
+    setMemoryDismissedKey(null);
     setCalendarPickerVisible(false);
     setAlertPickerVisible(false);
-    void loadCalendars(remembered.calendarId, false);
+    void loadCalendars(defaults.calendarId, false);
     titleCaret.resetCaret(seededText);
     setBusy(false);
     setStartOverride(
-      seed?.day ? defaultNewEventSpan(seed.day, getCurrentDayStart(), new Date()).start : null
+      seed?.start ?? (seed?.day ? defaultNewEventSpan(seed.day, getCurrentDayStart(), new Date()).start : null)
     );
+    if (seed?.start && seed.end && seed.end > seed.start) {
+      setDurationPick(Math.round((seed.end.getTime() - seed.start.getTime()) / 60000));
+    }
     setAllDay(false);
+    setOriginal(null);
+    setOriginalNotesField('');
+    setOriginalPeople([]);
+    if (editing) void loadForEdit(editing);
     setPickerVisible(false);
     setDismissedSignature(null);
     setPersonOverrides({});
@@ -283,10 +400,14 @@ export function QuickEventSheet({ visible, onClose, seed }: Props) {
       wallClock: new Date(),
       mentionOverrides: personOverrides,
     };
+    // An edit opens on the event's own title, and a time block on its task's,
+    // read as plain text until changed: a title isn't an instruction to parse.
+    const openedTitle = original?.title ?? (seed?.start ? seed.title : undefined);
+    if (openedTitle !== undefined && text === openedTitle) return parseQuickEvent(text, { ...base, plain: true });
     const read = parseQuickEvent(text, base);
     const dismissed = read.phrase !== null && `${read.phrase.start}|${read.phrase.text}` === dismissedSignature;
     return dismissed ? parseQuickEvent(text, { ...base, ignoreSchedule: true }) : read;
-  }, [text, people, groupTokens, dayResetTime, personOverrides, dismissedSignature]);
+  }, [text, people, groupTokens, dayResetTime, personOverrides, dismissedSignature, original, seed]);
 
   const phrase = draft.phrase;
   // The two "@name" states that need a pick, checked only when no schedule
@@ -334,27 +455,114 @@ export function QuickEventSheet({ visible, onClose, seed }: Props) {
     ? aimTooltip({ prefixW, matchW, inputW, bubbleW, rowW: tooltipRowW, candidateLayouts })
     : { bubbleLeft: 0, caretLeft: 14 };
 
+  // ==== what the event resolves to: memory, length, free slot, conflicts ====
+  // The last event saved with this title, unless waved off for this one.
+  const memoryKey = eventMemoryKey(draft.title);
+  const recalled = !isEditing && memoryKey && memoryKey !== memoryDismissedKey ? eventMemory[memoryKey] ?? null : null;
+  // Typed length, then one kept from the line, then last time's, then an hour.
+  const effectiveDuration =
+    draft.durationMinutes ?? durationPick ?? recalled?.durationMinutes ?? DEFAULT_EVENT_MINUTES;
+  const calendarEvents = useCalendarStore(s => s.events);
+  const calendarWindowStart = useCalendarStore(s => s.windowStart);
+  const calendarWindowEnd = useCalendarStore(s => s.windowEnd);
+  // With a day but no time ("lunch fri"), the start is the first free slot
+  // that day rather than a fixed default, shown on the date chip where it can
+  // be changed. Only where the calendar has actually been read.
+  const freeSlot = useMemo(() => {
+    if (draft.timed || allDay || (!phrase && startOverride !== null)) return null;
+    const day = draft.start;
+    const dayStart = new Date(day.getFullYear(), day.getMonth(), day.getDate());
+    if (!calendarCovers(calendarWindowStart, calendarWindowEnd, dayStart, addDays(dayStart, 1))) return null;
+    return firstFreeSlot(day, effectiveDuration, calendarEvents, new Date());
+  }, [draft.timed, draft.start, allDay, phrase, startOverride, effectiveDuration, calendarEvents, calendarWindowStart, calendarWindowEnd]);
   // A live phrase wins over an earlier pick; with none, the pick holds.
-  const rawStart = phrase ? draft.start : (startOverride ?? draft.start);
+  const rawStart = phrase ? (freeSlot ?? draft.start) : (startOverride ?? freeSlot ?? draft.start);
   const effectiveStart = allDay ? startOfDay(rawStart) : rawStart;
   // All-day events are exclusive on the end date in EventKit: one full day
   // is [date, date + 1), same convention as createAllDayEvent.
-  const effectiveEnd = allDay ? addDays(effectiveStart, 1) : addHours(effectiveStart, 1);
+  const effectiveEnd = allDay ? addDays(effectiveStart, 1) : addMinutes(effectiveStart, effectiveDuration);
+  const conflicts = useMemo(
+    () => (allDay || !calendarCovers(calendarWindowStart, calendarWindowEnd, effectiveStart, effectiveEnd)
+      ? []
+      : overlappingEvents(effectiveStart, effectiveEnd, calendarEvents)),
+    [allDay, effectiveStart.getTime(), effectiveEnd.getTime(), calendarEvents, calendarWindowStart, calendarWindowEnd],
+  );
   const dayLabel = (d: Date) => d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
   const describeStart = (d: Date) => (allDay ? dayLabel(d) : `${dayLabel(d)}, ${formatTimeOfDay(d, use24Hour)}`);
-  const when = describeStart(effectiveStart);
+  const when = allDay
+    ? describeStart(effectiveStart)
+    : `${describeStart(effectiveStart)}–${formatTimeOfDay(effectiveEnd, use24Hour)}`;
+  // "12:00–12:30 PM" for a conflicting event, on the card's own clock setting.
+  const describeSpan = (event: { start: string; end: string }) =>
+    `${formatTimeOfDay(new Date(event.start), use24Hour)}–${formatTimeOfDay(new Date(event.end), use24Hour)}`;
   const whenSet = phrase !== null || startOverride !== null;
   const effectiveRepeat = phrase ? draft.repeat : repeatPick;
   // The people the line names plus any the opener already knew (a person's page).
-  const allPersonIds = [...new Set([...draft.personIds, ...(seed?.personIds ?? [])])];
+  const allPersonIds = [...new Set([...draft.personIds, ...(seed?.personIds ?? []), ...originalPeople])];
   const namedPeople = people.filter(p => allPersonIds.includes(p.id)).map(displayNameOf);
   // A place or alert typed in the line is live, the same as a typed day: it
   // wins over an earlier pick without anyone tapping it.
-  const effectiveLocation = draft.location ?? (location.trim() || null);
+  // Last time's place fills an empty field; typing in it or in the line wins.
+  const memoryLocation = !draft.location && !location.trim() ? recalled?.location ?? null : null;
+  const effectiveLocation = draft.location ?? (location.trim() || memoryLocation);
+  const placeQuery = effectiveLocation ?? '';
+  const placePicked = pickedPlace !== null && pickedPlace.text === placeQuery;
+  // A remembered place was already picked once; it isn't looked up again.
+  const wantsPlaces = placeQuery.length >= PLACE_QUERY_MIN_LENGTH && !placePicked && memoryLocation === null;
+  const effectivePlace = placePicked ? pickedPlace : memoryLocation !== null ? recalled?.place ?? null : null;
   const effectiveAlert =
-    draft.alertMinutes !== undefined ? draft.alertMinutes : alertPick !== undefined ? alertPick : alertDefault;
+    draft.alertMinutes !== undefined ? draft.alertMinutes
+      : alertPick !== undefined ? alertPick
+      : recalled ? recalled.alertMinutes
+      : alertDefault;
+  const effectiveAvailability = availabilityPick ?? recalled?.availability ?? availability;
+  const chosenCalendarId = calendarPick ?? recalled?.calendarId ?? null;
+  const effectiveCalendar = (chosenCalendarId ? calendars.find(c => c.id === chosenCalendarId) : undefined) ?? targetCalendar;
+  // Whether last time's values are filling in anything at all, for the caption.
+  const usingMemory = recalled !== null && (
+    memoryLocation !== null
+    || (draft.durationMinutes === null && durationPick === null && recalled.durationMinutes !== null)
+    || calendarPick === null || availabilityPick === null || alertPick === undefined
+  );
   const alertSet = effectiveAlert !== null;
-  const canAdd = draft.title.trim().length > 0 && !busy;
+  const canAdd = draft.title.trim().length > 0 && !busy && (!isEditing || original !== null);
+
+  // ==== place suggestions ====
+  // Debounced, and checked against the query once the answer is back: a slow
+  // answer for an older query must not replace the list for the current one.
+  useEffect(() => {
+    placeQueryRef.current = placeQuery;
+    if (!visible || !placeSuggestionsEnabled || !wantsPlaces) {
+      setPlaceResults([]);
+      return;
+    }
+    const timer = setTimeout(() => {
+      void searchPlaces(placeQuery).then(results => {
+        if (placeQueryRef.current === placeQuery) setPlaceResults(results.slice(0, 3));
+      });
+    }, PLACE_SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [visible, placeSuggestionsEnabled, placeQuery, wantsPlaces]);
+
+  // Takes one typed clause out of the line, wherever it sits, when a pick
+  // replaces what it said.
+  const cutFromLine = ([from, to]: [number, number]) => {
+    const next = withTrailingSpace((text.slice(0, from).trimEnd() + text.slice(to)).replace(/\s+/g, ' ').trim());
+    setText(next);
+    titleCaret.moveCaret(next);
+  };
+
+  const pickPlace = (place: PlaceResult) => {
+    haptics.tap();
+    animateLayout();
+    const placeText = placeLocationText(place);
+    // A place read from the line ("at joe's") comes out of the line, the way an
+    // alert picked from its chip does, or the typed words would outrank it.
+    if (draft.location !== null && draft.locationSpan) cutFromLine(draft.locationSpan);
+    setLocation(placeText);
+    setPickedPlace({ ...place, text: placeText });
+    setPlaceResults([]);
+  };
 
   // ==== applying what was read ====
   const insertToken = (token: string) => {
@@ -370,8 +578,9 @@ export function QuickEventSheet({ visible, onClose, seed }: Props) {
     const next = withTrailingSpace(phrase.lineWithout);
     setText(next);
     titleCaret.moveCaret(next);
-    setStartOverride(draft.start);
+    setStartOverride(rawStart);
     setRepeatPick(draft.repeat);
+    if (draft.durationMinutes !== null) setDurationPick(draft.durationMinutes);
   };
 
   const dismissPhrase = () => {
@@ -407,6 +616,7 @@ export function QuickEventSheet({ visible, onClose, seed }: Props) {
     }
     setStartOverride(date);
     if (phrase) setRepeatPick(draft.repeat);
+    if (phrase && draft.durationMinutes !== null) setDurationPick(draft.durationMinutes);
     setPickerVisible(false);
   };
 
@@ -414,6 +624,10 @@ export function QuickEventSheet({ visible, onClose, seed }: Props) {
   const next = async () => {
     if (!canAdd) return;
     haptics.tap();
+    if (editing && original) {
+      await saveEdit(editing, original);
+      return;
+    }
     setBusy(true);
     const saved = await saveEvent(
       quickEventSaveFields({
@@ -422,11 +636,12 @@ export function QuickEventSheet({ visible, onClose, seed }: Props) {
         end: effectiveEnd,
         allDay,
         location: effectiveLocation,
+        place: effectivePlace,
         notesOrLink,
         repeat: effectiveRepeat,
         alertMinutes: effectiveAlert,
-        availability,
-        calendarId: targetCalendar?.id ?? calendarId,
+        availability: effectiveAvailability,
+        calendarId: effectiveCalendar?.id ?? calendarId,
       }),
       allPersonIds
     );
@@ -441,8 +656,94 @@ export function QuickEventSheet({ visible, onClose, seed }: Props) {
       );
       return;
     }
-    writeQuickEventDefaults({ calendarId: saved.calendarId, alertMinutes: effectiveAlert, availability });
+    writeQuickEventDefaults({ calendarId: saved.calendarId, alertMinutes: effectiveAlert, availability: effectiveAvailability });
+    writeEventMemory(rememberEvent(eventMemory, draft.title, {
+      location: effectiveLocation,
+      place: effectivePlace ? { latitude: effectivePlace.latitude, longitude: effectivePlace.longitude } : null,
+      durationMinutes: allDay ? null : effectiveDuration,
+      calendarId: saved.calendarId,
+      alertMinutes: effectiveAlert,
+      availability: effectiveAvailability,
+      at: Date.now(),
+    }));
+    onSaved?.(saved.id);
     dismiss();
+  };
+
+  // Writes the card back over the event it opened on. The notes field is
+  // written only if it was touched, so a note and a link the card shows one of
+  // aren't merged or dropped by a save that changed something else.
+  const saveEdit = async (target: QuickEventEditTarget, before: EventForEdit) => {
+    setBusy(true);
+    const fields = quickEventSaveFields({
+      title: draft.title,
+      start: effectiveStart,
+      end: effectiveEnd,
+      allDay,
+      location: effectiveLocation,
+      place: effectivePlace,
+      notesOrLink,
+      alertMinutes: effectiveAlert,
+      availability: effectiveAvailability,
+      calendarId: effectiveCalendar?.id ?? before.calendarId,
+    });
+    if (notesOrLink.trim() === originalNotesField.trim()) {
+      delete fields.notes;
+      delete fields.url;
+    } else {
+      fields.notes = fields.notes ?? '';
+      fields.url = fields.url ?? '';
+    }
+    const id = await updateEvent(
+      target.eventId,
+      { start: before.start.toISOString(), end: before.end.toISOString(), title: before.title },
+      fields,
+      allPersonIds,
+      before.recurring ? target.occurrenceStart ?? before.start.toISOString() : null,
+    );
+    setBusy(false);
+    if (!id) {
+      if (isDemoModeActive()) return;
+      Alert.alert(
+        "Couldn't save the event",
+        'Check that this app can edit your calendar in the Settings app, then try again. Your changes are still here.'
+      );
+      return;
+    }
+    onSaved?.(id);
+    dismiss();
+  };
+
+  const confirmDelete = () => {
+    if (!editing || !original) return;
+    haptics.warning();
+    Keyboard.dismiss();
+    Alert.alert(
+      'Delete this event?',
+      original.recurring
+        ? 'Only this occurrence is deleted. The rest of the series stays on your calendar.'
+        : 'It is removed from your calendar.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            const deleted = await deleteEvent(editing.eventId, {
+              start: (original.recurring && editing.occurrenceStart) || original.start.toISOString(),
+              end: original.end.toISOString(),
+              title: original.title,
+            });
+            if (!deleted) {
+              Alert.alert("Couldn't delete the event", 'Check that this app can edit your calendar in the Settings app, then try again.');
+              return;
+            }
+            onDeleted?.();
+            dismiss();
+          },
+        },
+      ],
+    );
   };
 
   const openCalendarPicker = async () => {
@@ -472,7 +773,7 @@ export function QuickEventSheet({ visible, onClose, seed }: Props) {
         <SafeBlurView intensity={isDark ? 20 : 15} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
       </Animated.View>
-      <SheetScrim onPress={dismiss} label="Close new event" />
+      <SheetScrim onPress={dismiss} label={isEditing ? 'Close event' : 'Close new event'} />
       {keyboardHeight > 0 && (
         <View pointerEvents="none" style={[styles.keyboardBacking, { height: keyboardHeight }]} />
       )}
@@ -492,7 +793,7 @@ export function QuickEventSheet({ visible, onClose, seed }: Props) {
               <TextField
                 ref={inputRef}
                 style={[styles.input, hasOverlay && styles.inputHidden]}
-                placeholder="New event…"
+                placeholder={isEditing ? "Event title" : "New event…"}
                 placeholderTextColor={colors.textTertiary}
                 value={text}
                 onChangeText={setText}
@@ -527,7 +828,7 @@ export function QuickEventSheet({ visible, onClose, seed }: Props) {
               onPress={next}
               disabled={!canAdd}
               accessibilityRole="button"
-              accessibilityLabel="Add event"
+              accessibilityLabel={isEditing ? 'Save changes' : 'Add event'}
             >
               <Ionicons name="checkmark" size={18} color={colors.onAccent} />
             </TouchableOpacity>
@@ -593,7 +894,8 @@ export function QuickEventSheet({ visible, onClose, seed }: Props) {
               placeholderTextColor={colors.textTertiary}
               // Read from the line ("at Joe's") the field shows it and the line
               // is where it is edited, so the two can't hold different places.
-              value={draft.location ?? location}
+              // Last time's place shows here, as an ordinary value to keep or edit.
+              value={draft.location ?? (location || memoryLocation || '')}
               editable={draft.location === null}
               onChangeText={setLocation}
               onSubmitEditing={next}
@@ -602,7 +904,44 @@ export function QuickEventSheet({ visible, onClose, seed }: Props) {
               keyboardAppearance={isDark ? 'dark' : 'light'}
               accessibilityLabel="Location"
             />
+            {placePicked && (
+              <Ionicons name="checkmark-circle" size={iconSize.sm} color={colors.accent} accessibilityLabel="Place from Apple Maps" />
+            )}
           </View>
+
+          {placeResults.length > 0 && (
+            <View style={styles.placeList}>
+              {placeResults.map((place, index) => {
+                const subtitle = placeSubtitle(place);
+                return (
+                  <TouchableOpacity
+                    key={`${place.latitude},${place.longitude},${index}`}
+                    style={[styles.placeRow, index > 0 && styles.placeRowRuled]}
+                    onPress={() => pickPlace(place)}
+                    activeOpacity={interaction.activeOpacity}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Use ${placeLocationText(place)}`}
+                  >
+                    <Text style={styles.placeName} numberOfLines={1}>{place.name ?? place.address}</Text>
+                    {subtitle && <Text style={styles.placeAddress} numberOfLines={1}>{subtitle}</Text>}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
+
+          {!placeSuggestionsEnabled && wantsPlaces && (
+            <View style={styles.placeOffer}>
+              <InlineAction
+                icon="search-outline"
+                label="Suggest places"
+                variant="neutral"
+                onPress={() => setPlaceSuggestionsEnabled(true)}
+                accessibilityLabel="Turn on place suggestions from Apple Maps"
+              />
+              <Text style={styles.placeOfferText}>Looks up what you type in Apple Maps.</Text>
+            </View>
+          )}
 
           <View style={styles.locationRow}>
             <Ionicons name="document-text-outline" size={iconSize.sm} color={colors.textSecondary} />
@@ -677,12 +1016,12 @@ export function QuickEventSheet({ visible, onClose, seed }: Props) {
               onPress={() => { void openCalendarPicker(); }}
               activeOpacity={interaction.activeOpacity}
               accessibilityRole="button"
-              accessibilityLabel={`Calendar: ${targetCalendar?.title ?? 'default'}`}
+              accessibilityLabel={`Calendar: ${effectiveCalendar?.title ?? 'default'}`}
             >
-              {targetCalendar?.color ? <View style={[styles.calendarDot, { backgroundColor: targetCalendar.color }]} /> : (
+              {effectiveCalendar?.color ? <View style={[styles.calendarDot, { backgroundColor: effectiveCalendar.color }]} /> : (
                 <Ionicons name="albums-outline" size={iconSize.sm} color={colors.textSecondary} />
               )}
-              <Text style={styles.toolChipText} numberOfLines={1}>{targetCalendar?.title ?? 'Calendar'}</Text>
+              <Text style={styles.toolChipText} numberOfLines={1}>{effectiveCalendar?.title ?? 'Calendar'}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.toolChip, alertSet && styles.toolChipSet]}
@@ -698,17 +1037,64 @@ export function QuickEventSheet({ visible, onClose, seed }: Props) {
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.toolChip}
-              onPress={() => { haptics.tap(); setAvailability(v => (v === 'busy' ? 'free' : 'busy')); }}
+              onPress={() => { haptics.tap(); setAvailabilityPick(effectiveAvailability === 'busy' ? 'free' : 'busy'); }}
               activeOpacity={interaction.activeOpacity}
               accessibilityRole="button"
-              accessibilityLabel={`Show as ${availability === 'busy' ? 'busy' : 'free'}. Tap to change.`}
+              accessibilityLabel={`Show as ${effectiveAvailability === 'busy' ? 'busy' : 'free'}. Tap to change.`}
             >
-              <Text style={styles.toolChipText}>{availability === 'busy' ? 'Busy' : 'Free'}</Text>
+              <Text style={styles.toolChipText}>{effectiveAvailability === 'busy' ? 'Busy' : 'Free'}</Text>
             </TouchableOpacity>
           </View>
 
+          {conflicts.length > 0 && (
+            <View style={styles.captionRow}>
+              <Ionicons name="alert-circle-outline" size={13} color={colors.orange} />
+              <Text style={[styles.captionText, styles.captionWarning]} numberOfLines={1}>
+                {`Overlaps ${conflicts[0].title || 'an event'}, ${describeSpan(conflicts[0])}`}
+                {conflicts.length > 1 ? ` and ${conflicts.length - 1} more` : ''}
+              </Text>
+            </View>
+          )}
+
+          {freeSlot !== null && rawStart === freeSlot && (
+            <View style={styles.captionRow}>
+              <Ionicons name="time-outline" size={13} color={colors.textSecondary} />
+              <Text style={styles.captionText} numberOfLines={1}>The first free time that day</Text>
+            </View>
+          )}
+
+          {usingMemory && (
+            <View style={styles.captionRow}>
+              <Ionicons name="refresh-outline" size={13} color={colors.textSecondary} />
+              <Text style={styles.captionText} numberOfLines={1}>{`Filled in from your last “${draft.title.trim()}”`}</Text>
+              <TouchableOpacity
+                onPress={() => { haptics.tap(); animateLayout(); setMemoryDismissedKey(memoryKey); }}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                accessibilityRole="button"
+                accessibilityLabel="Don't fill in from last time"
+              >
+                <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {isEditing && original && (
+            <View style={styles.deleteRow}>
+              <InlineAction
+                icon="trash-outline"
+                label="Delete event"
+                variant="neutral"
+                tint={colors.red}
+                onPress={confirmDelete}
+                accessibilityLabel="Delete this event"
+              />
+            </View>
+          )}
+
           <Text style={styles.hint}>
-            Saves to your calendar. End the line with "at (place)" and "alert 30m" to fill those in.
+            {isEditing
+              ? 'Saves your changes to the calendar. Invitees and anything else this card doesn\'t show are kept.'
+              : 'Saves to your calendar. End the line with "at (place)", "for 90m" or "alert 30m" to fill those in.'}
           </Text>
         </Animated.View>
       </View>
@@ -731,11 +1117,10 @@ export function QuickEventSheet({ visible, onClose, seed }: Props) {
         visible={calendarPickerVisible}
         title="Calendar"
         options={calendarOptions}
-        selectedKey={targetCalendar?.id ?? null}
+        selectedKey={effectiveCalendar?.id ?? null}
         emptyText="No calendar on this device can be added to. Turn on calendar access, or add a calendar you can edit, in the Settings app."
         onSelect={id => {
-          setCalendarId(id);
-          setTargetCalendar(calendars.find(c => c.id === id) ?? null);
+          setCalendarPick(id);
         }}
         onClose={() => setCalendarPickerVisible(false)}
       />
@@ -747,12 +1132,7 @@ export function QuickEventSheet({ visible, onClose, seed }: Props) {
         onSelect={key => {
           // A typed "alert 30m" would outrank the pick, so a pick takes it out
           // of the line rather than being dropped.
-          if (draft.alertMinutes !== undefined) {
-            const alertSpan = draft.clauseSpans[draft.clauseSpans.length - 1];
-            const next = withTrailingSpace(text.slice(0, alertSpan[0]).trimEnd());
-            setText(next);
-            titleCaret.moveCaret(next);
-          }
+          if (draft.alertSpan) cutFromLine(draft.alertSpan);
           setAlertPick(key === 'none' ? null : Number(key));
         }}
         onClose={() => setAlertPickerVisible(false)}
@@ -855,8 +1235,24 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
   locationInput: { flex: 1, fontSize: font.sm, color: colors.text, paddingVertical: spacing.xs },
   locationInputRead: { color: colors.accent },
   calendarDot: { width: 10, height: 10, borderRadius: 5 },
+  placeList: {
+    borderRadius: radius.md,
+    backgroundColor: colors.bgTertiary,
+    marginTop: -spacing.xs,
+    marginBottom: spacing.sm,
+    overflow: 'hidden',
+  },
+  placeRow: { paddingHorizontal: 10, paddingVertical: spacing.sm, gap: spacing.xxs },
+  placeRowRuled: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator },
+  placeName: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.medium },
+  placeAddress: { color: colors.textSecondary, fontSize: font.xs },
+  placeOffer: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.sm },
+  placeOfferText: { flex: 1, color: colors.textSecondary, fontSize: font.xs },
   captionRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginBottom: spacing.sm },
   captionText: { flex: 1, color: colors.textSecondary, fontSize: font.xs },
+  // The icon carries the orange; orange text on a light card is too faint to read.
+  captionWarning: { color: colors.text },
+  deleteRow: { flexDirection: 'row', marginBottom: spacing.sm },
   toolbar: { flexDirection: 'row', gap: spacing.xs, marginBottom: spacing.sm },
   toolChip: {
     flexDirection: 'row',

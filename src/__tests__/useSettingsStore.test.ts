@@ -1337,6 +1337,65 @@ describe('fabHand', () => {
   });
 });
 
+describe('mapsApp', () => {
+  it('defaults to Apple Maps, so an existing install is unchanged', () => {
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().mapsApp).toBe('apple');
+  });
+
+  it('round-trips a pick', () => {
+    useSettingsStore.getState().setMapsApp('waze');
+    expect(dbSetSetting).toHaveBeenCalledWith('mapsApp', 'waze');
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) => (key === 'mapsApp' ? 'google' : null));
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().mapsApp).toBe('google');
+  });
+
+  it('falls back to Apple Maps for an unknown stored value', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) => (key === 'mapsApp' ? 'bing' : null));
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().mapsApp).toBe('apple');
+  });
+});
+
+describe('placeSuggestionsEnabled', () => {
+  it('is off by default, so nothing is sent to Apple until someone turns it on', () => {
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().placeSuggestionsEnabled).toBe(false);
+  });
+
+  it('round-trips on', () => {
+    useSettingsStore.getState().setPlaceSuggestionsEnabled(true);
+    expect(dbSetSetting).toHaveBeenCalledWith('placeSuggestionsEnabled', 'true');
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) => (key === 'placeSuggestionsEnabled' ? 'true' : null));
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().placeSuggestionsEnabled).toBe(true);
+  });
+});
+
+describe('travel estimates', () => {
+  it('are off and driving by default, so nothing is sent until someone turns them on', () => {
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().travelEstimates).toBe(false);
+    expect(useSettingsStore.getState().travelMode).toBe('driving');
+  });
+
+  it('round-trip, and an unknown mode falls back to driving', () => {
+    useSettingsStore.getState().setTravelEstimates(true);
+    useSettingsStore.getState().setTravelMode('transit');
+    expect(dbSetSetting).toHaveBeenCalledWith('travelEstimates', 'true');
+    expect(dbSetSetting).toHaveBeenCalledWith('travelMode', 'transit');
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'travelEstimates' ? 'true' : key === 'travelMode' ? 'transit' : null);
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().travelEstimates).toBe(true);
+    expect(useSettingsStore.getState().travelMode).toBe('transit');
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) => (key === 'travelMode' ? 'teleport' : null));
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().travelMode).toBe('driving');
+  });
+});
+
 describe('hapticsEnabled', () => {
   // Defaults on rather than off, so an install predating the setting doesn't
   // silently lose the haptics it already had.

@@ -627,6 +627,22 @@ system sheet, then links the people. The rows Apple's form asked for are chips
 on the card (calendar, alert, Busy/Free) that start as the last saved event
 left them (`quickEventDefaults.ts`), plus a Notes or link field and a trailing
 `at (place)` and `alert 30m` in the line, which win over a chip's earlier pick.
+With "Suggest places" on (`placeSuggestionsEnabled`, off by default because it
+sends what is typed to Apple), the location is looked up in Apple Maps as you
+type (`src/services/placeSearch.ts`, MapKit through `todo-eventkit-bridge`). A
+picked place is written as its name and address, and its coordinate becomes
+the event's structured location, so Calendar draws a map and can estimate
+travel time. The events list's directions button (and a "Leave for X" row's) routes to that pin
+(`eventCoordinate`, read for one event on the tap) rather than searching the text. Nothing about
+the place is kept in the app.
+The line also reads a length ("for 90m", "12-1:30pm", "between 4 and 5:30pm"; an
+hour otherwise). Against the calendar it already reads (`src/utils/eventConflicts.ts`) the card
+warns when the event overlaps a busy one, and an untimed line ("lunch fri") starts at the first
+free slot that day, 9am to 9pm, shown on the date chip. Both only offer: the warning never blocks
+a save, and both stay quiet outside the window the calendar was read for, where silence would be a
+guess. The last event saved with the same title fills in what the line leaves out (place, pin,
+length, calendar, alert, Busy/Free) from `src/utils/eventMemory.ts`; the card says so and its ✕
+waves it off for this event, and anything typed or picked wins over it.
 A repeat phrase ("every monday") saves a repeat rule (`eventRecurrenceFor`);
 "every 8 hours" and "3 days after completion" have no event counterpart and
 read as their first day. Invitees and travel time are not set here: EventKit
@@ -638,6 +654,33 @@ with a leading `event:` (`eventMarkerText`): the rest of the line is read the
 same way and the Add button says "Add event". A leading word plus a colon, so
 it cannot fire mid-title, and it is off in demo mode, where the line stays a
 task.
+
+### Changing an event
+
+The same card edits an event that is already on the calendar, from "Edit event" in an event's
+details on Today's events sheet and from a task's "Time block" row, so moving, retiming or
+deleting one never goes through Apple's sheet. `readEventForEdit` fills it, `updateEventDirect`
+saves it and `deleteEventDirect` removes it (`calendarSync.ts`, under the section for events the
+user writes). The rules:
+
+- **The save goes through `rewriteEvent`**, so invitees, a repeat rule, a time zone and every
+  alert past the first come back unchanged. The fields the card shows are written as they stand;
+  notes and the URL are written only when their one field changed, since the card shows them as
+  one field and an event can hold both.
+- **A repeating event is edited and deleted one occurrence at a time**, the one tapped
+  (`futureEvents: false` with its start). "This and future" was the alternative and is the one
+  answer that can't be undone from the card.
+- **The title is a title until it changes.** An opened event's title is read plain (`plain` in
+  `parseQuickEvent`), or "Dinner at 7" would move it to 7pm the moment it opened.
+- **A read-only calendar refuses at open**, not at Save (`EventForEdit.editable`).
+- **Nothing deletes an event on its own.** `deleteEventDirect` runs only from the card's Delete,
+  after a confirm; every other path that loses track of an event drops its pointer instead.
+- **People move with the event** (`useEventPeopleStore.updateEvent`), since a link is keyed by
+  occurrence and a moved event would otherwise leave them on the old slot.
+- **A time block is the same card**: `planTimeBlock` answers whether to open the block for editing
+  or propose a new one (the slot `timeBlockFieldsFor` found), and `linkTimeBlock` /
+  `unlinkTimeBlock` record what the card saved or deleted. The reconcile that moves a block with
+  its task is unchanged.
 
 ### Tasks planned around an event
 

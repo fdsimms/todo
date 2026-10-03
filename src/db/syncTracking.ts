@@ -408,8 +408,9 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
  * can't be mistaken for something the code enforces:
  *
  * - `hapticsEnabled`, `shakeToUndoEnabled`, `timerLiveActivity`,
- *   `tripLiveActivity`, `focusLiveActivity`, `fabHand` — capabilities and
- *   ergonomics of one device. A Mac has no haptics and no thumb reach.
+ *   `tripLiveActivity`, `focusLiveActivity`, `fabHand`, `mapsApp` — capabilities and
+ *   ergonomics of one device. A Mac has no haptics and no thumb reach, and
+ *   which maps apps are installed differs from phone to phone.
  * - `appLockEnabled`, `appLockGraceSeconds` — syncing these would let a
  *   device turn the lock off on another one. Security settings are per-device
  *   by design.
@@ -429,12 +430,18 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
  * - `calendarEventPeople` — where who-an-event-is-with lived before it moved
  *   to the synced `event_people_links` table (keyed by the calendar server's
  *   id instead). Read once by the migration and deleted; never synced.
+ * - `quickEventMemory` — what the last quick-add event with each title was saved
+ *   with (place, length, calendar, alert). Holds calendar ids, so device-local
+ *   for `quickEventDefaults`' reason below.
  * - `quickEventDefaults` — the calendar, alert and Busy/Free the last quick-add
  *   event was saved with. It holds a calendar id, which names a record on one
  *   device, so it is wrong on another for `deadlineCalendarId`'s reason.
  * - `calendarEventTasks` — which tasks were planned around each event, keyed
  *   by the EventKit id, so wrong on another device for `calendarHistoryHandled`'s
  *   reason.
+ * - `placeSuggestionsEnabled` — sends what is typed into an event's location
+ *   to Apple. An opt-in to network traffic is made on the device that sends
+ *   it, not inherited from another one.
  * - `aiFeatureConfig` — the API key it depends on is device-local by design,
  *   so syncing the config turns features on for a device that cannot run them.
  * - `activeListDrivenBy` — a pointer into `grocery_active_list`, so it is per

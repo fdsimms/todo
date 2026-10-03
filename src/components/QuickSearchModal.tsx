@@ -19,7 +19,7 @@ import { InlineAction } from './InlineAction';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, iconSize, animation, interaction, type Colors } from '../theme';
 import { useShallow } from 'zustand/react/shallow';
-import { useTaskStore } from '../store/useTaskStore';
+import { useTasksWhileOpen } from '../hooks/useTasksWhileOpen';
 import { useProjectStore, projectProgress } from '../store/useProjectStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useCategoryStore } from '../store/useCategoryStore';
@@ -367,7 +367,7 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onSelectGroup
   const { isDark, shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
-  const tasks = useTaskStore(s => s.tasks);
+  const tasks = useTasksWhileOpen(visible);
   const projects = useProjectStore(s => s.projects);
   const groups = useTaskGroupStore(s => s.groups);
   const recentSearches = useSettingsStore(useShallow(s => s.recentSearches));

@@ -3,7 +3,7 @@ import { View, Alert, AppState, Linking } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { addDays } from 'date-fns/addDays';
 import type { Calendar as DeviceCalendar } from 'expo-calendar/legacy';
-import { useSettingsStore } from '../../store/useSettingsStore';
+import { useSettingsStore, type MapsApp } from '../../store/useSettingsStore';
 import { useCalendarStore } from '../../store/useCalendarStore';
 import {
   getCalendarPermission,
@@ -19,11 +19,19 @@ import { animateLayout } from '../../utils/layoutAnimation';
 import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
 import { SettingsChoiceTray } from './SettingsChoiceTray';
+import { SettingsSegments } from './SettingsSegments';
+import { type SegmentOption } from '../../components/SegmentedControl';
 import { makeSettingsStyles } from './settingsStyles';
 import { PillGroup } from '../../components/PillGroup';
 import { useCategoryStore, ensureCalendarEventCategory } from '../../store/useCategoryStore';
 import { categoryLabel } from '../../utils/categoryLabel';
 import { haptics } from '../../utils/haptics';
+
+const MAPS_APP_OPTIONS: SegmentOption<MapsApp>[] = [
+  { value: 'apple', label: 'Apple Maps', icon: 'map-outline' },
+  { value: 'google', label: 'Google Maps', icon: 'logo-google' },
+  { value: 'waze', label: 'Waze', icon: 'car-outline' },
+];
 
 /**
  * Reading the device calendar.
@@ -56,6 +64,10 @@ export function CalendarSettings() {
   const setCalendarEventCategory = useSettingsStore(s => s.setCalendarEventCategory);
   const categories = useCategoryStore(s => s.categories);
   const use24HourTime = useSettingsStore(s => s.use24HourTime);
+  const mapsApp = useSettingsStore(s => s.mapsApp);
+  const setMapsApp = useSettingsStore(s => s.setMapsApp);
+  const placeSuggestionsEnabled = useSettingsStore(s => s.placeSuggestionsEnabled);
+  const setPlaceSuggestionsEnabled = useSettingsStore(s => s.setPlaceSuggestionsEnabled);
   const events = useCalendarStore(s => s.events);
   const loaded = useCalendarStore(s => s.loaded);
   const perCalendar = useCalendarStore(s => s.perCalendar);
@@ -513,6 +525,38 @@ export function CalendarSettings() {
           />
         </>
       )}
+
+      {/* Shown whether or not the calendar is read: a task's own location has
+          the same directions button. */}
+      <View style={styles.sep} />
+      <SettingsRow
+        entryId="mapsApp"
+        icon="navigate-outline"
+        iconColor={colors.accent}
+        label="Directions"
+        hint="Which app opens when you tap directions on an event or a task."
+        tight
+      />
+      <SettingsSegments
+        attached
+        options={MAPS_APP_OPTIONS}
+        selected={mapsApp}
+        onSelect={setMapsApp}
+        accessibilityLabelFor={o => `Open directions in ${o.label}`}
+      />
+      <View style={styles.sep} />
+      <SettingsRow
+        entryId="placeSuggestions"
+        icon="location-outline"
+        iconColor={placeSuggestionsEnabled ? colors.accent : undefined}
+        label="Suggest places"
+        hint={placeSuggestionsEnabled
+          ? "Typing a new event's location looks it up in Apple Maps. What you type is sent to Apple."
+          : "A new event's location is saved as you type it. Nothing is looked up."}
+        toggle={placeSuggestionsEnabled}
+        onPress={() => setPlaceSuggestionsEnabled(!placeSuggestionsEnabled)}
+        accessibilityLabel="Suggest places"
+      />
     </SettingsSection>
   );
 }

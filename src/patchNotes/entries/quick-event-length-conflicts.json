@@ -1,0 +1,1 @@
+{ "message": "New events from quick add can have a length: type \"for 90m\" or a time range like \"12-1:30pm\". The card warns when an event overlaps something on your calendar, starts an event with no time at the first free slot that day, and fills in the place, length, calendar and alert from the last event with the same name.", "date": "2026-10-02" }

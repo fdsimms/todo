@@ -16,6 +16,10 @@ interface TodoEventKitBridgeNativeModule {
   isAvailable(): boolean;
   externalIdentifiers(localIds: string[]): Promise<Record<string, string>>;
   eventsWithExternalIdentifier(externalId: string): Promise<unknown>;
+  searchPlaces?(query: string): Promise<unknown>;
+  setStructuredLocation?(eventId: string, title: string, latitude: number, longitude: number): Promise<boolean>;
+  estimateTravelTime?(eventId: string, address: string, departAt: number, mode: string): Promise<number>;
+  eventCoordinates?(eventIds: string[]): Promise<unknown>;
 }
 
 // requireNativeModule throws when the module isn't linked (Android, web,
@@ -81,5 +85,85 @@ export async function eventsWithExternalIdentifier(externalId: string): Promise<
   } catch (error) {
     console.warn('[todo-eventkit-bridge] native lookup failed; treating it as no match', error);
     return [];
+  }
+}
+
+/**
+ * Apple Maps' places for a typed query, as the native call returns them (each
+ * `{ name?, address?, latitude, longitude }`). Left unparsed here: the shape is
+ * checked by `parsePlaceResults` in src/utils/places.ts, where it can be
+ * tested. Empty when the module is missing, the build predates this function,
+ * or the call fails. It sends the query to Apple, so it is only ever called
+ * through `searchPlaces` in src/services/placeSearch.ts, behind its setting.
+ */
+export async function searchPlacesRaw(query: string): Promise<unknown[]> {
+  if (!nativeModule || typeof nativeModule.searchPlaces !== 'function') return [];
+  try {
+    const result = await nativeModule.searchPlaces(query);
+    return Array.isArray(result) ? result : [];
+  } catch (error) {
+    console.warn('[todo-eventkit-bridge] place search failed', error);
+    return [];
+  }
+}
+
+/**
+ * Gives a saved event a structured location (title plus coordinate), so
+ * Calendar can draw its map and estimate travel time. False when the module is
+ * missing, the build predates this function, or the write fails; the event
+ * itself is already saved either way.
+ */
+export async function setStructuredLocation(
+  eventId: string,
+  title: string,
+  latitude: number,
+  longitude: number
+): Promise<boolean> {
+  if (!nativeModule || typeof nativeModule.setStructuredLocation !== 'function') return false;
+  try {
+    return (await nativeModule.setStructuredLocation(eventId, title, latitude, longitude)) === true;
+  } catch (error) {
+    console.warn('[todo-eventkit-bridge] structured location write failed', error);
+    return false;
+  }
+}
+
+/**
+ * Minutes to travel from the phone's current position to an event's place,
+ * leaving at `departAt`, from Apple Maps. Null for every failure (module
+ * missing, an older build, no permission, nothing found, no route). Only ever
+ * called through `estimateTravelMinutes` in src/services/travelTime.ts, behind
+ * its setting, since it sends the address and the position to Apple.
+ */
+export async function estimateTravelTime(
+  eventId: string,
+  address: string,
+  departAt: Date,
+  mode: 'driving' | 'transit' | 'walking'
+): Promise<number | null> {
+  if (!nativeModule || typeof nativeModule.estimateTravelTime !== 'function') return null;
+  try {
+    const minutes = await nativeModule.estimateTravelTime(eventId, address, departAt.getTime(), mode);
+    return typeof minutes === 'number' && Number.isFinite(minutes) && minutes >= 0 ? minutes : null;
+  } catch (error) {
+    console.warn('[todo-eventkit-bridge] travel estimate failed', error);
+    return null;
+  }
+}
+
+/**
+ * The map pin (structured location coordinate) of each event that has one, by
+ * event id, unvalidated: `eventCoordinate` in src/utils/calendarSync.ts checks
+ * the shape. Empty when the module is missing, the build predates this
+ * function, or the call fails.
+ */
+export async function eventCoordinatesRaw(eventIds: string[]): Promise<Record<string, unknown>> {
+  if (!nativeModule || eventIds.length === 0 || typeof nativeModule.eventCoordinates !== 'function') return {};
+  try {
+    const result = await nativeModule.eventCoordinates(eventIds);
+    return result && typeof result === 'object' ? (result as Record<string, unknown>) : {};
+  } catch (error) {
+    console.warn('[todo-eventkit-bridge] event coordinate read failed', error);
+    return {};
   }
 }

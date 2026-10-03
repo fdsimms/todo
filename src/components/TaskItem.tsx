@@ -72,6 +72,8 @@ import { telUrl, smsUrl } from '../utils/phone';
 import { type ReachOutKind } from '../utils/reachOutIntent';
 import { mailtoUrl } from '../utils/email';
 import { directionsUrl } from '../utils/maps';
+import { eventCoordinate } from '../utils/calendarSync';
+import { travelSourceEventId } from '../utils/travelTasks';
 import { animateLayout } from '../utils/layoutAnimation';
 import { nextMeasuredHeight } from '../utils/measuredHeight';
 import { describePendingImport } from '../utils/remindersImport';
@@ -478,12 +480,21 @@ export const TaskItem = React.memo(function TaskItem({
   // Same sanitise-at-render, null-hides-the-button pattern as callUrl/emailUrl
   // above — see maps.ts for why an https: directions link needs no
   // canOpenURL check either, same as TodayEventsSheet's own openDirections.
+  // The maps app is read at tap time rather than subscribed to, so a settings
+  // change doesn't re-render every row on the list.
   const mapsUrl = directionsUrl(task.location);
   const handleDirections = async () => {
     if (!mapsUrl) return;
     haptics.tap();
+    // A "Leave for X" row was written for one calendar event, so it can route
+    // to that event's map pin when it has one; any other row searches the text.
+    const sourceId = task.generatedKind === 'travel' ? task.generatedSourceId : null;
+    const eventId = sourceId ? travelSourceEventId(sourceId) : null;
+    const coordinate = eventId ? await eventCoordinate(eventId) : null;
+    const url = directionsUrl(task.location, useSettingsStore.getState().mapsApp, coordinate);
+    if (!url) return;
     try {
-      await Linking.openURL(mapsUrl);
+      await Linking.openURL(url);
     } catch {
       // silently ignore — no toast infra for this row-level action
     }

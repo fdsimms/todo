@@ -31,6 +31,7 @@ import { parseNaturalDate } from '../utils/parseNaturalDate';
 import { generateId } from '../utils/id';
 import type { TimeOfDay, Effort, Priority, Task } from '../types';
 import { useTaskStore } from '../store/useTaskStore';
+import { useTasksWhileOpen } from '../hooks/useTasksWhileOpen';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
@@ -214,7 +215,7 @@ export function WhenPicker({
   const colors = useColors();
   const { shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const tasks = useTaskStore(s => s.tasks);
+  const tasks = useTasksWhileOpen(visible);
   const projects = useProjectStore(useShallow(s => s.projects));
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
   const calendarReadEnabled = useSettingsStore(s => s.calendarReadEnabled);
