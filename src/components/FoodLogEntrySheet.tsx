@@ -1228,6 +1228,18 @@ export function FoodLogEntrySheet({
 
   const handleCancel = () => requestClose(onClose);
 
+  // The one door into the food database search, shared by the action row and
+  // the empty state so a missing key is answered the same way from both.
+  const openFoodDatabase = () => {
+    haptics.tap();
+    Keyboard.dismiss();
+    if (hasFdcKey) { setDbSearchOpen(true); return; }
+    // The key row is shown only while lookups are on, so with them off this
+    // lands on the switch that brings it back.
+    const entryId = productLookupEnabled ? 'fdcApiKey' : 'productLookupEnabled';
+    requestClose(() => { onClose(); navigateToFoodSearchSettings(navigation, entryId); });
+  };
+
   // ==== render. Everything below is JSX ====
   const renderRow = ({ item }: { item: Candidate }) => (
     <TouchableOpacity
@@ -1605,33 +1617,40 @@ export function FoodLogEntrySheet({
                 )}
               </View>
             )}
-            {(!!onScan || !!onEstimate || !!onSavedMeal) && (
-              <View style={styles.actionRow}>
-                {!!onScan && (
-                  <InlineAction
-                    label="Scan a barcode"
-                    icon="barcode-outline"
-                    onPress={() => { haptics.tap(); Keyboard.dismiss(); onScan(); }}
-                  />
-                )}
-                {!!onSavedMeal && (
-                  <InlineAction
-                    label="Log a saved meal"
-                    icon="bookmark-outline"
-                    variant="neutral"
-                    onPress={() => { haptics.tap(); Keyboard.dismiss(); onSavedMeal(); }}
-                  />
-                )}
-                {!!onEstimate && (
-                  <InlineAction
-                    label="Describe what you ate instead"
-                    icon="sparkles-outline"
-                    variant="neutral"
-                    onPress={() => { haptics.tap(); Keyboard.dismiss(); onEstimate(query); }}
-                  />
-                )}
-              </View>
-            )}
+            <View style={styles.actionRow}>
+              {!!onScan && (
+                <InlineAction
+                  label="Scan a barcode"
+                  icon="barcode-outline"
+                  onPress={() => { haptics.tap(); Keyboard.dismiss(); onScan(); }}
+                />
+              )}
+              {/* Always offered: the catalog list above only holds foods that
+                  already have figures, and this is the way to a food that
+                  doesn't. It searches what is typed above. */}
+              <InlineAction
+                label={hasFdcKey ? 'Search a food database' : 'Add a food database key'}
+                icon="search-outline"
+                variant="neutral"
+                onPress={openFoodDatabase}
+              />
+              {!!onSavedMeal && (
+                <InlineAction
+                  label="Log a saved meal"
+                  icon="bookmark-outline"
+                  variant="neutral"
+                  onPress={() => { haptics.tap(); Keyboard.dismiss(); onSavedMeal(); }}
+                />
+              )}
+              {!!onEstimate && (
+                <InlineAction
+                  label="Describe what you ate instead"
+                  icon="sparkles-outline"
+                  variant="neutral"
+                  onPress={() => { haptics.tap(); Keyboard.dismiss(); onEstimate(query); }}
+                />
+              )}
+            </View>
             {!!onDeclineMeal && (
               <TouchableOpacity
                 style={styles.declineMeal}
@@ -1707,14 +1726,7 @@ export function FoodLogEntrySheet({
                       : ' Searching a food database by name needs a free FoodData Central key, which you can add in Settings. You can also open a grocery item to add its nutrition there.')
                   }
                   actionLabel={hasFdcKey ? 'Search a food database' : 'Add a food database key'}
-                  onAction={() => {
-                    haptics.tap();
-                    if (hasFdcKey) { setDbSearchOpen(true); return; }
-                    // The key row is shown only while lookups are on, so with
-                    // them off this lands on the switch that brings it back.
-                    const entryId = productLookupEnabled ? 'fdcApiKey' : 'productLookupEnabled';
-                    requestClose(() => { onClose(); navigateToFoodSearchSettings(navigation, entryId); });
-                  }}
+                  onAction={openFoodDatabase}
                 />
               }
             />
