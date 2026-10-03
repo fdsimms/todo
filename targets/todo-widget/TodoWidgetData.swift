@@ -149,6 +149,26 @@ struct WidgetKitchenItem: Codable, Identifiable {
     var id: String { title + (useBy ?? "") }
 }
 
+/// A meeting still ahead today (`buildUpcomingEvents` in widgetSnapshot.ts),
+/// as raw ISO stamps for the widget to format in the device's own clock style.
+struct WidgetEvent: Codable, Identifiable {
+    let title: String
+    let start: String
+    let end: String
+
+    var id: String { start + title }
+    var startDate: Date? { isoDate(start) }
+
+    enum CodingKeys: String, CodingKey { case title, start, end }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        title = try c.decodeIfPresent(String.self, forKey: .title) ?? ""
+        start = try c.decode(String.self, forKey: .start)
+        end = try c.decodeIfPresent(String.self, forKey: .end) ?? ""
+    }
+}
+
 struct WidgetSnapshot: Codable {
     let updatedAt: String
     let visibleTasks: [WidgetTask]
@@ -162,10 +182,14 @@ struct WidgetSnapshot: Codable {
     let groceries: WidgetGroceries?
     let meals: [WidgetMeal]
     let kitchen: [WidgetKitchenItem]
+    /// Today's meetings still to start. Nil means the calendar wasn't read
+    /// when this was written (switched off, a failed read, a background run),
+    /// which shows nothing rather than "no meetings".
+    let upcomingEvents: [WidgetEvent]?
 
     enum CodingKeys: String, CodingKey {
         case updatedAt, visibleTasks, pinnedTasks, categories, agenda, doneToday
-        case groceries, meals, kitchen
+        case groceries, meals, kitchen, upcomingEvents
     }
 
     init(from decoder: Decoder) throws {
@@ -179,6 +203,14 @@ struct WidgetSnapshot: Codable {
         groceries = try c.decodeIfPresent(WidgetGroceries.self, forKey: .groceries)
         meals = try c.decodeIfPresent([WidgetMeal].self, forKey: .meals) ?? []
         kitchen = try c.decodeIfPresent([WidgetKitchenItem].self, forKey: .kitchen) ?? []
+        upcomingEvents = try c.decodeIfPresent([WidgetEvent].self, forKey: .upcomingEvents)
+    }
+
+    /// The first of today's meetings that hasn't started by `date`. The
+    /// snapshot carries a few, so a widget whose timeline rolls past one
+    /// moves on to the next without the app writing again.
+    func nextEvent(after date: Date) -> WidgetEvent? {
+        upcomingEvents?.first { ($0.startDate ?? .distantPast) > date }
     }
 
     /// The rows one placed widget should draw, given the category it was
