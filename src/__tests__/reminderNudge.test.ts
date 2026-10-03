@@ -1,4 +1,4 @@
-import { nudgeReminderPastMeeting } from '../utils/reminderNudge';
+import { meetingSignature, nudgeReminderPastMeeting } from '../utils/reminderNudge';
 import type { BusyEvent } from '../utils/calendarBusy';
 
 const DAY_START = new Date('2026-08-12T00:00:00Z');
@@ -101,5 +101,31 @@ describe('nudgeReminderPastMeeting', () => {
     const events = [ev(at(9), at(10))];
     const result = nudgeReminderPastMeeting(atDate(9, 45), events);
     expect(result.time.getTime()).toBeGreaterThanOrEqual(atDate(9, 45).getTime());
+  });
+});
+
+describe('meetingSignature', () => {
+  const standup = ev(at(9), at(10), { id: 'standup' });
+  const review = ev(at(14), at(15), { id: 'review' });
+
+  it('is the same for the same meetings in another order, or a fresh array of them', () => {
+    expect(meetingSignature([standup, review])).toBe(meetingSignature([{ ...review }, { ...standup }]));
+  });
+
+  it('changes when a meeting is added, removed or moved', () => {
+    const base = meetingSignature([standup]);
+    expect(meetingSignature([standup, review])).not.toBe(base);
+    expect(meetingSignature([])).not.toBe(base);
+    expect(meetingSignature([{ ...standup, end: at(10, 30) }])).not.toBe(base);
+  });
+
+  it('ignores what can never move a reminder: all-day, free and cancelled events', () => {
+    const base = meetingSignature([standup]);
+    expect(meetingSignature([
+      standup,
+      ev(at(0), at(23, 59), { allDay: true }),
+      ev(at(11), at(12), { availability: 'free' }),
+      ev(at(12), at(13), { status: 'canceled' }),
+    ])).toBe(base);
   });
 });
