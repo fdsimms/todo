@@ -25,7 +25,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { buildCalendarGrid, buildWeekDays, weekdayHeaders } from '../utils/calendarGrid';
-import { dayKeyOf, dayKeyToDate, getDayStart, getLogicalToday } from '../utils/dateUtils';
+import { dateToHHMM, dayKeyOf, dayKeyToDate, formatTimeOfDay, getDayStart, getLogicalToday, hhmmToDate } from '../utils/dateUtils';
 import {
   buildDayBuckets,
   dayDetail,
@@ -47,9 +47,11 @@ import { useCalendarStore } from '../store/useCalendarStore';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { DayTimeline } from '../components/DayTimeline';
 import { buildDayTimeline } from '../utils/dayTimeline';
-import { eventsIn } from '../utils/calendarBusy';
+import { eventsIn, type BusyEvent } from '../utils/calendarBusy';
 import { isDemoModeActive } from '../utils/demoState';
-import { QuickEventSheet } from '../components/QuickEventSheet';
+import { QuickEventSheet, type QuickEventSeed } from '../components/QuickEventSheet';
+import { TimeSlotMenu } from '../components/TimeSlotMenu';
+import type { CardAnchor } from '../components/CardSheet';
 import { useProjectStore } from '../store/useProjectStore';
 import { useShallow } from 'zustand/react/shallow';
 import { describeWeekRange } from '../utils/mealPlan';
@@ -235,36 +237,42 @@ export function CalendarScreen() {
   const selectedExtras = extras.get(selectedKey);
   const detail = useMemo(() => dayDetail(buckets.get(selectedKey), taskById), [buckets, selectedKey, taskById]);
   const summary = summarizeDay(detail);
-  // Noon-anchored, never the key's midnight: under a non-midnight reset the
-  // day's start is the reset time on that date, and anchoring from midnight
-  // lands on the day before. Same derivation buildDayLoads makes.
-  const selectedDayStart = useMemo(() => {
-    const noon = dayKeyToDate(selectedKey);
+  /**
+   * One day's calendar events, and how much is known about it. Shared by the
+   * day view (the selected day) and the week view (each of its seven).
+   *
+   * - The day starts noon-anchored, never at the key's midnight: under a
+   *   non-midnight reset the day's start is the reset time on that date, and
+   *   anchoring from midnight lands on the day before. Same derivation
+   *   buildDayLoads makes.
+   * - `known`: "couldn't read" and "nothing on" are different answers, and the
+   *   store's window is only a fortnight wide, so a day past it is unknown
+   *   rather than confidently empty.
+   * - `tripOnly`: past the fortnight only the trip read reaches, multi-day
+   *   events, and the day still reads as not known for anything else, since
+   *   one long event says nothing about the meetings around it.
+   */
+  const eventsForDay = useCallback((key: string) => {
+    const noon = dayKeyToDate(key);
     noon.setHours(12, 0, 0, 0);
-    return getDayStart(noon, dayResetTime);
-  }, [selectedKey, dayResetTime]);
+    const start = getDayStart(noon, dayResetTime);
+    const end = addDays(start, 1);
+    const reading = calendarReadEnabled && !isDemoModeActive();
+    const known = reading && calendarLoaded && !!calendarWindowStart && !!calendarWindowEnd
+      && start >= new Date(calendarWindowStart) && start < new Date(calendarWindowEnd);
+    const tripOnly = !known && reading && aheadLoaded && aheadWindowEnd !== null && end <= new Date(aheadWindowEnd);
+    const events = known
+      ? eventsIn(calendarEvents, start, end)
+      : tripOnly ? eventsIn(aheadEvents, start, end) : [];
+    return { start, known, tripOnly, events };
+  }, [dayResetTime, calendarReadEnabled, calendarLoaded, calendarWindowStart, calendarWindowEnd,
+      aheadLoaded, aheadWindowEnd, calendarEvents, aheadEvents]);
 
-  // "Couldn't read" and "nothing on" are different answers, and the store's
-  // window is only a fortnight wide — so a day past it reports unknown rather
-  // than drawing a confidently empty axis.
-  const dayBusyKnown = useMemo(() => {
-    if (!calendarReadEnabled || !calendarLoaded || isDemoModeActive()) return false;
-    if (!calendarWindowStart || !calendarWindowEnd) return false;
-    return selectedDayStart >= new Date(calendarWindowStart)
-      && selectedDayStart < new Date(calendarWindowEnd);
-  }, [calendarReadEnabled, calendarLoaded, calendarWindowStart, calendarWindowEnd, selectedDayStart]);
-
-  // Past the fortnight, only the trip read reaches: multi-day events, and the
-  // day still reads as not known (`dayBusyKnown` stays false), since one
-  // long event says nothing about the meetings around it.
-  const dayTripOnly = !dayBusyKnown && calendarReadEnabled && aheadLoaded && !isDemoModeActive()
-    && aheadWindowEnd !== null && addDays(selectedDayStart, 1) <= new Date(aheadWindowEnd);
-  const dayEvents = useMemo(
-    () => (dayBusyKnown
-      ? eventsIn(calendarEvents, selectedDayStart, addDays(selectedDayStart, 1))
-      : dayTripOnly ? eventsIn(aheadEvents, selectedDayStart, addDays(selectedDayStart, 1)) : []),
-    [dayBusyKnown, dayTripOnly, calendarEvents, aheadEvents, selectedDayStart],
-  );
+  const selectedDay = useMemo(() => eventsForDay(selectedKey), [eventsForDay, selectedKey]);
+  const selectedDayStart = selectedDay.start;
+  const dayBusyKnown = selectedDay.known;
+  const dayTripOnly = selectedDay.tripOnly;
+  const dayEvents = selectedDay.events;
 
   const dayTimeline = useMemo(() => {
     // A task can be in more than one of the three lists (due today with a
@@ -485,9 +493,24 @@ export function CalendarScreen() {
   };
   // Stable, because QuickAddModal is memoized and stays mounted while hidden:
   // a fresh prop each render would re-render the hidden sheet with this screen.
-  const onQuickAddClose = useStableCallback(() => setQuickAddVisible(false));
+  const onQuickAddClose = useStableCallback(() => { setQuickAddVisible(false); setQuickAddTime(null); });
   const onQuickAddOpenFull = useStableCallback(handleQuickAddOpenFull);
-  const quickAddSeed = useMemo(() => ({ dueDate: dayKeyToDate(selectedKey).toISOString() }), [selectedKey]);
+  // A tapped time on the day view adds a start time (`windowStart`, which is
+  // what places a task on the axis) to the day the seed already carries.
+  const [quickAddTime, setQuickAddTime] = useState<string | null>(null);
+  const quickAddSeed = useMemo(
+    () => ({ dueDate: dayKeyToDate(selectedKey).toISOString(), ...(quickAddTime ? { windowStart: quickAddTime } : {}) }),
+    [selectedKey, quickAddTime],
+  );
+  // The empty-slot menu on the day view, and the event it may seed.
+  const [slotMenu, setSlotMenu] = useState<{ at: Date; anchor: CardAnchor } | null>(null);
+  const [slotMenuOpen, setSlotMenuOpen] = useState(false);
+  const [newEventSeed, setNewEventSeed] = useState<QuickEventSeed | null>(null);
+  const handlePressSlot = useCallback((minutes: number, pageX: number, pageY: number) => {
+    haptics.tap();
+    setSlotMenu({ at: new Date(selectedDayStart.getTime() + minutes * 60000), anchor: { x: pageX, y: pageY } });
+    setSlotMenuOpen(true);
+  }, [selectedDayStart]);
 
   const renderRows = (label: string, tasks: Task[]) => {
     if (tasks.length === 0) return null;
@@ -655,6 +678,38 @@ export function CalendarScreen() {
     );
   };
 
+  /**
+   * A week day's calendar events: time (or "All day") and title, one card.
+   * Tapping one selects its day and opens the same event sheet the day view's
+   * timeline opens, so everything an event can do is one tap from the week too.
+   */
+  const renderEvents = (key: string, events: readonly BusyEvent[]) => {
+    if (events.length === 0) return null;
+    return (
+      <View style={styles.section}>
+        <Text style={styles.sectionLabel}>Events</Text>
+        <View style={styles.notesCard}>
+          {events.map((event, i) => (
+            <TouchableOpacity
+              key={`${event.id}:${event.start}`}
+              style={[styles.noteRow, i > 0 && styles.noteRowDivided]}
+              activeOpacity={interaction.activeOpacity}
+              onPress={() => { haptics.tap(); setSelectedKey(key); setEventsSheetVisible(true); }}
+              accessibilityRole="button"
+              accessibilityLabel={`${event.title || 'Event'}, ${event.allDay ? 'all day' : formatTimeOfDay(new Date(event.start), use24Hour)}`}
+            >
+              <Text style={styles.eventTime}>
+                {event.allDay ? 'All day' : formatTimeOfDay(new Date(event.start), use24Hour)}
+              </Text>
+              <Text style={styles.noteText} numberOfLines={1}>{event.title || 'Event'}</Text>
+              <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+    );
+  };
+
   const renderExpected = (expected: { taskId: string; title: string }[]) => {
     if (expected.length === 0) return null;
     return (
@@ -694,6 +749,7 @@ export function CalendarScreen() {
       const rows = dayRows(dayInfo);
       const dayExtras = extras.get(key);
       const completed = completedRows(dayExtras, rows, taskById);
+      const weekDayEvents = eventsForDay(key).events;
       const renderWeekRow = (task: Task) => {
         const subs = subtasksOf(task.id);
         const rowKey = `${key}:${task.id}`;
@@ -741,11 +797,12 @@ export function CalendarScreen() {
             {daySummary !== '' && <Text style={styles.detailSummary}>{daySummary}</Text>}
           </View>
           {dayLoad !== '' && <Text style={styles.detailLoad}>{dayLoad}</Text>}
-          {dayInfo.isEmpty && !hasDayNotes(dayExtras, true) && completed.length === 0 ? (
+          {dayInfo.isEmpty && !hasDayNotes(dayExtras, true) && completed.length === 0 && weekDayEvents.length === 0 ? (
             <Text style={styles.weekDayEmpty}>Nothing on this day.</Text>
           ) : (
             <View style={styles.weekDayRows}>
               {renderNotes(dayExtras, true)}
+              {renderEvents(key, weekDayEvents)}
               {rows.map(renderWeekRow)}
               {renderExpected(dayInfo.expected)}
               {completed.length > 0 && (
@@ -788,6 +845,7 @@ export function CalendarScreen() {
             icon: 'add' as const,
             onPress: () => {
               haptics.tap();
+              setNewEventSeed(null);
               setNewEventVisible(true);
             },
             accessibilityLabel: `New event on ${format(dayKeyToDate(selectedKey), 'MMMM d')}`,
@@ -973,6 +1031,7 @@ export function CalendarScreen() {
                   nowMinutes={nowMinutes}
                   onPressTask={handleRowPress}
                   onPressEvent={() => { haptics.tap(); setEventsSheetVisible(true); }}
+                  onPressSlot={handlePressSlot}
                 />
                 {/* Everything the axis refused to place, as real rows. */}
                 {renderRows('No time set', dayTimeline.unplaced)}
@@ -1009,13 +1068,30 @@ export function CalendarScreen() {
         onClose={onQuickAddClose}
         onOpenFull={onQuickAddOpenFull}
         seed={quickAddSeed}
-        seedLabel={format(selectedDate, 'MMM d')}
+        seedLabel={quickAddTime
+          ? `${format(selectedDate, 'MMM d')}, ${formatTimeOfDay(hhmmToDate(quickAddTime, selectedDate), use24Hour)}`
+          : format(selectedDate, 'MMM d')}
       />
 
       <QuickEventSheet
         visible={newEventVisible}
         onClose={() => setNewEventVisible(false)}
-        seed={{ day: dayKeyToDate(selectedKey) }}
+        seed={newEventSeed ?? { day: dayKeyToDate(selectedKey) }}
+      />
+      <TimeSlotMenu
+        visible={slotMenuOpen}
+        at={slotMenu?.at ?? null}
+        anchor={slotMenu?.anchor ?? null}
+        use24Hour={use24Hour}
+        canAddEvent={!isDemoModeActive()}
+        onClose={() => setSlotMenuOpen(false)}
+        onNewTask={at => { setQuickAddTime(dateToHHMM(at)); setQuickAddVisible(true); }}
+        onNewEvent={at => {
+          // An hour, the length a calendar app gives a new event by default;
+          // the card's own fields change it.
+          setNewEventSeed({ start: at, end: new Date(at.getTime() + 60 * 60000) });
+          setNewEventVisible(true);
+        }}
       />
       <TodayEventsSheet
         visible={eventsSheetVisible}
@@ -1437,6 +1513,14 @@ function makeStyles(colors: Colors) {
     noteRowDivided: {
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: colors.separator,
+    },
+    // Fixed width so every title in the card starts at the same x, whatever
+    // the time's length ("9:00 AM" against "12:30 PM", or "All day").
+    eventTime: {
+      width: 64,
+      color: colors.textSecondary,
+      fontSize: font.sm,
+      fontVariant: ['tabular-nums'],
     },
     noteText: {
       flex: 1,

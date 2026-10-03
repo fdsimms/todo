@@ -1,10 +1,10 @@
 import React, { useMemo } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import { border, font, fontWeight, interaction, radius, spacing, type Colors } from '../theme';
 import { formatTimeOfDay } from '../utils/dateUtils';
-import type { DayTimeline as DayTimelineData } from '../utils/dayTimeline';
+import { slotMinutesAt, type DayTimeline as DayTimelineData } from '../utils/dayTimeline';
 import { MEAL_SLOT_LABELS, type MealPlanEntry } from '../types';
 
 /** How tall one hour of the axis is. */
@@ -43,6 +43,12 @@ interface Props {
    * were before an event had anything to open.
    */
   onPressEvent?: (eventId: string) => void;
+  /**
+   * Tapping an empty stretch of the axis, with the minute it snaps to
+   * (`slotMinutesAt`) and the touch's page position for a popover. Blocks sit
+   * above it and keep their own taps.
+   */
+  onPressSlot?: (minutes: number, pageX: number, pageY: number) => void;
 }
 
 /**
@@ -55,7 +61,7 @@ interface Props {
  * distinction the whole feature rests on.
  */
 export function DayTimeline({
-  dayStart, timeline, meals, busyKnown, tripOnly = false, use24Hour, nowMinutes, onPressTask, onPressEvent,
+  dayStart, timeline, meals, busyKnown, tripOnly = false, use24Hour, nowMinutes, onPressTask, onPressEvent, onPressSlot,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -104,14 +110,29 @@ export function DayTimeline({
       )}
 
       <View style={[styles.axis, { height: axisHeight }]}>
+        {/* Under everything: the hour rules and the empty track let a tap
+            through to it, and a block's own tap wins over it. */}
+        {onPressSlot && (
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={e => onPressSlot(
+              slotMinutesAt(e.nativeEvent.locationY, firstMinute, lastMinute, HOUR_HEIGHT),
+              e.nativeEvent.pageX,
+              e.nativeEvent.pageY,
+            )}
+            accessibilityRole="button"
+            accessibilityLabel="Add a task or event at a time"
+            accessibilityHint="Tap a time on the timeline to add something there."
+          />
+        )}
         {hourMarks.map(mark => (
-          <View key={mark.minutes} style={[styles.hourRow, { top: offsetFor(mark.minutes) }]}>
+          <View key={mark.minutes} pointerEvents="none" style={[styles.hourRow, { top: offsetFor(mark.minutes) }]}>
             <Text style={styles.hourLabel}>{mark.label}</Text>
             <View style={styles.hourRule} />
           </View>
         ))}
 
-        <View style={styles.track}>
+        <View style={styles.track} pointerEvents="box-none">
         {entries.map(entry => {
           const top = offsetFor(entry.startMinutes);
           const rawHeight = ((entry.endMinutes - entry.startMinutes) / 60) * HOUR_HEIGHT;
