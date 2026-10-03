@@ -41,6 +41,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/blockerStatus.ts` — BlockerWait, describeBlockerWait
 - `src/utils/blocking.ts` — TaskResolver, resolverFor, canBlock, blockerIdsOf, blockerFields, liveBlockersOf, blockerOf, isBlocked, PersonResolver, canWaitOn, +12 more
 - `src/utils/bulkCompletion.ts` — tasksAskingOnCompletion, unansweredCompletionCopy
+- `src/utils/busyEvenings.ts` — BUSY_EVENING_MIN_MINUTES, BusyEvening, busyEveningOn, describeBusyEvening
 - `src/utils/calendarBusy.ts` — BusyEvent, BusyInterval, isLiveEvent, occupiesTime, busyIntervalsIn, busyMinutesIn, freeGapsIn, freeMinutesIn, eventsIn, nextEventAfter
 - `src/utils/calendarEventImport.ts` — CalendarEventDraft, draftFromExtractedEvent, EventImportCreateFields, eventImportCreateFields, EventTaskFields, eventDayDueDate, taskFieldsFromEvent
 - `src/utils/calendarEventLink.ts` — CalendarEventLink, NO_EVENT_LINK, ExternalEventMatch, readExternalEventId, canReadExternalEventIds, readExternalEventIds, eventsWithExternalId, filledExternalId, uniqueLinks, adoptableEventId, +5 more
