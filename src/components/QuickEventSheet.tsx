@@ -261,6 +261,8 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
   const [eventMemory, setEventMemory] = useState<EventMemory>({});
   // The title whose remembered values the user waved off for this event.
   const [memoryDismissedKey, setMemoryDismissedKey] = useState<string | null>(null);
+  // The overlap row shows one event and a count; a tap lists every one.
+  const [conflictsOpen, setConflictsOpen] = useState(false);
   // ==== editing an existing event ====
   // The event as it was read when the card opened on it, null while it loads
   // (or for a new event). Save compares against it, and the people links move
@@ -1203,12 +1205,29 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
             </View>
 
             {conflicts.length > 0 && (
-              <View style={styles.captionRow}>
-                <Ionicons name="alert-circle-outline" size={13} color={colors.orange} />
-                <Text style={[styles.captionText, styles.captionWarning]} numberOfLines={1}>
-                  {`Overlaps ${conflicts[0].title || 'an event'}, ${describeSpan(conflicts[0])}`}
-                  {conflicts.length > 1 ? ` and ${conflicts.length - 1} more` : ''}
-                </Text>
+              <View style={styles.conflictBlock}>
+                <TouchableOpacity
+                  style={styles.captionRowTight}
+                  onPress={() => { haptics.tap(); animateLayout(); setConflictsOpen(v => !v); }}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="button"
+                  accessibilityLabel={conflictsOpen ? 'Hide overlapping events' : 'Show overlapping events'}
+                  accessibilityState={{ expanded: conflictsOpen }}
+                >
+                  <Ionicons name="alert-circle-outline" size={13} color={colors.orange} />
+                  <Text style={[styles.captionText, styles.captionWarning]} numberOfLines={1}>
+                    {conflictsOpen
+                      ? `Overlaps ${conflicts.length} ${conflicts.length === 1 ? 'event' : 'events'}`
+                      : `Overlaps ${conflicts[0].title || 'an event'}, ${describeSpan(conflicts[0])}${conflicts.length > 1 ? ` and ${conflicts.length - 1} more` : ''}`}
+                  </Text>
+                  <Ionicons name={conflictsOpen ? 'chevron-up' : 'chevron-down'} size={13} color={colors.textSecondary} />
+                </TouchableOpacity>
+                {conflictsOpen && conflicts.map((event, i) => (
+                  <View key={`${event.id}-${event.start}-${i}`} style={styles.conflictItem}>
+                    <Text style={styles.conflictTitle} numberOfLines={1}>{event.title || 'Untitled event'}</Text>
+                    <Text style={styles.conflictSpan}>{describeSpan(event)}</Text>
+                  </View>
+                ))}
               </View>
             )}
 
@@ -1246,12 +1265,6 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
                 />
               </View>
             )}
-
-            <Text style={styles.hint}>
-              {isEditing
-                ? 'Saves your changes to the calendar. Invitees and anything else this card doesn\'t show are kept.'
-                : 'Saves to your calendar. End the line with "at (place)", "for 90m" or "alert 30m" to fill those in.'}
-            </Text>
           </ScrollView>
           <ScrollEdgeFade edge="bottom" opacity={scrollFade.bottomOpacity} color={colors.bgSecondary} />
           </View>
@@ -1413,6 +1426,12 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
   captionText: { flex: 1, color: colors.textSecondary, fontSize: font.xs },
   // The icon carries the orange; orange text on a light card is too faint to read.
   captionWarning: { color: colors.text },
+  captionRowTight: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  // The expanded list sits under its header row; the block carries the gap to the next element.
+  conflictBlock: { marginBottom: spacing.sm },
+  conflictItem: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingLeft: spacing.md + spacing.xs, paddingTop: spacing.xs },
+  conflictTitle: { flex: 1, color: colors.text, fontSize: font.xs },
+  conflictSpan: { color: colors.textSecondary, fontSize: font.xs },
   deleteRow: { flexDirection: 'row', marginBottom: spacing.sm },
   toolbar: { flexDirection: 'row', gap: spacing.xs, marginBottom: spacing.sm },
   toolChip: {
@@ -1430,5 +1449,4 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
   toolChipSet: { backgroundColor: colors.accentSubtle },
   toolChipText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium, flexShrink: 1 },
   toolChipTextSet: { color: colors.accent },
-  hint: { color: colors.textSecondary, fontSize: font.xs, lineHeight: 16 },
 });
