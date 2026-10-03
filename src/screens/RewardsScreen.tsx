@@ -17,6 +17,7 @@ import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, interaction, radius, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import {
+  DEFAULT_EARN_RATE_PER_DAY,
   REWARD_FREQUENCIES,
   STREAK_BONUS_CAP,
   STREAK_BONUS_EVERY,
@@ -26,6 +27,8 @@ import {
   earnRatePerDay,
   formatCoins,
   parseRewardCost,
+  rewardIdeas,
+  type PricedRewardIdea,
   signedAmount,
   suggestRewardCost,
 } from '../utils/rewards';
@@ -69,6 +72,11 @@ export function RewardsScreen() {
   // history, and every reader treats that as "nothing to say".
   const tasks = useTaskStore(s => s.tasks);
   const rate = useMemo(() => earnRatePerDay(tasks, new Date()), [tasks]);
+  const ideas = useMemo(() => rewardIdeas(rewards.map(r => r.title), rate), [rewards, rate]);
+  // Ideas are the whole section while you have no rewards, and a button away
+  // once you do, so a list you've made your own isn't crowded by suggestions.
+  const [ideasOpen, setIdeasOpen] = useState(false);
+  const showIdeas = ideas.length > 0 && (rewards.length === 0 || ideasOpen);
 
   // One form for both jobs: 'new' while adding, a reward's id while editing
   // that reward in place, null while neither. Opening one closes the other,
@@ -98,6 +106,11 @@ export function RewardsScreen() {
     else useRewardStore.getState().updateReward(editing, { title: draftTitle, cost: parsedCost! });
     closeDraft();
   }, [canSave, editing, draftTitle, parsedCost, closeDraft]);
+
+  const addIdea = useCallback((idea: PricedRewardIdea) => {
+    haptics.tap();
+    useRewardStore.getState().addReward(idea.title, idea.cost);
+  }, []);
 
   const claim = useCallback((reward: Reward) => {
     const entry = useRewardStore.getState().claimReward(reward.id);
@@ -251,7 +264,7 @@ export function RewardsScreen() {
 
         <Text style={styles.sectionHeader}>Rewards</Text>
         {rewards.length === 0 && editing !== 'new' && (
-          <EmptyNote icon="gift-outline">No rewards yet. Add something to save your coins for.</EmptyNote>
+          <EmptyNote icon="gift-outline">No rewards yet. Add your own, or start from an idea below.</EmptyNote>
         )}
         {rewards.map(reward => {
           if (editing === reward.id) return <React.Fragment key={reward.id}>{renderDraft()}</React.Fragment>;
@@ -294,9 +307,45 @@ export function RewardsScreen() {
         {editing === 'new' ? renderDraft() : (
           <View style={styles.addRow}>
             <InlineAction label="New reward" icon="add" onPress={() => openDraft(null)} />
+            {rewards.length > 0 && ideas.length > 0 && (
+              <InlineAction
+                label={ideasOpen ? 'Hide ideas' : 'Ideas'}
+                icon="bulb-outline"
+                variant="neutral"
+                surface="page"
+                onPress={() => setIdeasOpen(open => !open)}
+              />
+            )}
           </View>
         )}
 
+
+        {showIdeas && (
+          <>
+            <Text style={styles.sectionHeader}>Ideas</Text>
+            {rate === null && (
+              <Text style={styles.sectionHint}>
+                {`Prices assume about ${DEFAULT_EARN_RATE_PER_DAY} coins a day until there's a week of completed tasks to go on.`}
+              </Text>
+            )}
+            <View style={styles.historyCard}>
+              {ideas.map((idea, i) => (
+                <View key={idea.title} style={[styles.historyRow, i > 0 && styles.historyDivider]}>
+                  <View style={styles.historyText}>
+                    <Text style={styles.historyLabel}>{idea.title}</Text>
+                    <Text style={styles.historyMeta}>{`${idea.frequencyLabel} · ${formatCoins(idea.cost)}`}</Text>
+                  </View>
+                  <InlineAction
+                    label="Add"
+                    icon="add"
+                    onPress={() => addIdea(idea)}
+                    accessibilityLabel={`Add ${idea.title} for ${formatCoins(idea.cost)}`}
+                  />
+                </View>
+              ))}
+            </View>
+          </>
+        )}
 
         <Text style={styles.sectionHeader}>History</Text>
         {history.length === 0 ? (
@@ -402,7 +451,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.sm,
     backgroundColor: colors.bgTertiary,
   },
-  addRow: { flexDirection: 'row', paddingHorizontal: spacing.md, marginTop: spacing.sm },
+  addRow: { flexDirection: 'row', gap: spacing.sm, paddingHorizontal: spacing.md, marginTop: spacing.sm },
+  sectionHint: { color: colors.textSecondary, fontSize: font.xs, paddingHorizontal: spacing.md, paddingBottom: spacing.xs },
   historyCard: { marginHorizontal: spacing.md, borderRadius: radius.md, backgroundColor: colors.bgSecondary },
   historyRow: {
     flexDirection: 'row',

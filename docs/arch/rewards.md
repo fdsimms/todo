@@ -56,6 +56,12 @@ days at your current pace").
 - **No AI.** What a reward is "worth" is your earning rate and how often you want it; the first is
   computable and only you know the second.
 
+- **Ideas are offered, never inserted.** `REWARD_IDEAS` is a starter list shown while you have no
+  rewards and behind an Ideas button after. Rewards the app wrote unasked would be clutter for anyone
+  with their own, and two devices each seeding one list would sync into duplicates. An idea carries a
+  frequency, not a price, so it's priced by the same rule; until there's a week of history that rule
+  uses `DEFAULT_EARN_RATE_PER_DAY`, which prices ideas only and never describes a pace.
+
 ## Where it shows
 
 - **The Rewards screen** (menu row under Tasks): the balance, the rule spelled out, the rewards (add, edit in

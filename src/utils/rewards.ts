@@ -262,3 +262,58 @@ export function describeRewardPace(ratePerDay: number | null, cost: number): str
   // Past 60 days, so this is always two months or more.
   return `about every ${Math.round(days / 30)} months at your current pace`;
 }
+
+// ==== Reward ideas ====
+//
+// A starter set, offered rather than inserted: rewards the app wrote unasked
+// would be clutter for anyone with their own ideas, and two devices each
+// seeding the same list would sync into duplicates. Each idea carries a
+// frequency rather than a price, so it's priced by the same rule as a
+// reward you type yourself.
+
+export interface RewardIdea {
+  title: string;
+  frequency: RewardFrequency['id'];
+}
+
+export const REWARD_IDEAS: readonly RewardIdea[] = [
+  { title: 'An episode of a show', frequency: 'daily' },
+  { title: 'An hour of gaming', frequency: 'daily' },
+  { title: 'A fancy coffee', frequency: 'few-weekly' },
+  { title: 'A dessert', frequency: 'few-weekly' },
+  { title: 'Takeout dinner', frequency: 'weekly' },
+  { title: 'A movie night', frequency: 'weekly' },
+  { title: 'Sleeping in', frequency: 'weekly' },
+  { title: 'A new book', frequency: 'biweekly' },
+  { title: 'A day trip', frequency: 'monthly' },
+  { title: 'A massage', frequency: 'monthly' },
+];
+
+/**
+ * The rate ideas are priced at until there's a week of history to read: about
+ * what three or four ordinary tasks a day earn. Only ever used to price an
+ * idea, never to describe a pace, so it can't pass itself off as yours.
+ */
+export const DEFAULT_EARN_RATE_PER_DAY = 10;
+
+export interface PricedRewardIdea extends RewardIdea {
+  frequencyLabel: string;
+  cost: number;
+}
+
+/**
+ * The ideas not already on your list, each priced at your rate (or the
+ * default while there's too little history). An idea is "already on your list"
+ * by title, ignoring case and surrounding spaces, so adding one takes it out.
+ */
+export function rewardIdeas(existingTitles: readonly string[], ratePerDay: number | null): PricedRewardIdea[] {
+  const have = new Set(existingTitles.map(t => t.trim().toLowerCase()));
+  const rate = ratePerDay !== null && ratePerDay > 0 ? ratePerDay : DEFAULT_EARN_RATE_PER_DAY;
+  const out: PricedRewardIdea[] = [];
+  for (const idea of REWARD_IDEAS) {
+    if (have.has(idea.title.toLowerCase())) continue;
+    const frequency = REWARD_FREQUENCIES.find(f => f.id === idea.frequency)!;
+    out.push({ ...idea, frequencyLabel: frequency.label, cost: suggestRewardCost(rate, frequency.days)! });
+  }
+  return out;
+}

@@ -3,7 +3,11 @@ import {
   STREAK_BONUS_CAP,
   STREAK_BONUS_EVERY,
   baseCoinsFor,
+  DEFAULT_EARN_RATE_PER_DAY,
   EARN_RATE_WINDOW_DAYS,
+  REWARD_FREQUENCIES,
+  REWARD_IDEAS,
+  rewardIdeas,
   canClaimReward,
   coinBalance,
   describeRewardPace,
@@ -274,5 +278,32 @@ describe('describeRewardPace', () => {
   it('says nothing without a rate', () => {
     expect(describeRewardPace(null, 50)).toBeNull();
     expect(describeRewardPace(0, 50)).toBeNull();
+  });
+});
+
+describe('rewardIdeas', () => {
+  it('prices every idea by its frequency at your rate', () => {
+    const ideas = rewardIdeas([], 4);
+    expect(ideas).toHaveLength(REWARD_IDEAS.length);
+    const takeout = ideas.find(i => i.title === 'Takeout dinner')!;
+    expect(takeout).toMatchObject({ frequencyLabel: 'Weekly', cost: 30 });
+  });
+
+  it('falls back to the default rate with too little history', () => {
+    const weekly = REWARD_FREQUENCIES.find(f => f.id === 'weekly')!;
+    const takeout = rewardIdeas([], null).find(i => i.title === 'Takeout dinner')!;
+    expect(takeout.cost).toBe(DEFAULT_EARN_RATE_PER_DAY * weekly.days);
+    expect(rewardIdeas([], -3).find(i => i.title === 'Takeout dinner')!.cost).toBe(takeout.cost);
+  });
+
+  it('leaves out ideas already on the list, ignoring case and spaces', () => {
+    const ideas = rewardIdeas(['  takeout DINNER '], 4);
+    expect(ideas.some(i => i.title === 'Takeout dinner')).toBe(false);
+    expect(ideas).toHaveLength(REWARD_IDEAS.length - 1);
+  });
+
+  it('names only frequencies that exist', () => {
+    const ids = new Set(REWARD_FREQUENCIES.map(f => f.id));
+    expect(REWARD_IDEAS.every(i => ids.has(i.frequency))).toBe(true);
   });
 });
