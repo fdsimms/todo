@@ -1,4 +1,4 @@
-import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, detectContactIntent, parseDurationInput, parseSupplyInput, parseTargetInput, parseEstimateInput, parseProjectInput, parseWaitingOnInput, parseSubtasksInput, parseAvoidInput, stripRemindPrefix, parseCategoryAndTagsInput, parsePriorityInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, getEditorMentionSuggestions, applyMentionOverrides, parseFromCompletionSuffix, type ParsedSchedule } from '../utils/parseTaskInput';
+import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, detectContactIntent, parseDurationInput, parseSupplyInput, parseTargetInput, parseEstimateInput, parseWeatherWaitInput, parseProjectInput, parseWaitingOnInput, parseSubtasksInput, parseAvoidInput, stripRemindPrefix, parseCategoryAndTagsInput, parsePriorityInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, getEditorMentionSuggestions, applyMentionOverrides, parseFromCompletionSuffix, type ParsedSchedule } from '../utils/parseTaskInput';
 
 // Tuesday, June 10 2025, 10:00 AM — same anchor as parseNaturalDate.test.ts
 const NOW = new Date(2025, 5, 10, 10, 0, 0);
@@ -2086,5 +2086,32 @@ describe('parseAvoidInput', () => {
     expect(said('no morning meetings')).toBeNull();
     expect(said("don't forget to call mom")).toBeNull();
     expect(said('call mom, never mind')).toBeNull();
+  });
+});
+
+describe('parseWeatherWaitInput', () => {
+  it('reads "on the next sunny day" off the end of a title', () => {
+    expect(parseWeatherWaitInput('leave books on the curb on the next sunny day'))
+      .toMatchObject({ condition: 'sunny', cleanTitle: 'leave books on the curb' });
+  });
+
+  it('takes the other four conditions, any case, with or without the lead-in', () => {
+    expect(parseWeatherWaitInput('Wash the car next Rainy day')).toMatchObject({ condition: 'rainy', cleanTitle: 'Wash the car' });
+    expect(parseWeatherWaitInput('shovel the walk for the next snowy day')).toMatchObject({ condition: 'snowy' });
+    expect(parseWeatherWaitInput('clean the attic the next hot day')).toMatchObject({ condition: 'hot' });
+    expect(parseWeatherWaitInput('start the fire next cold day')).toMatchObject({ condition: 'cold' });
+  });
+
+  it('keeps matchStart and matchEnd on the phrase, lead-in included', () => {
+    const input = 'leave books on the next sunny day please';
+    const parsed = parseWeatherWaitInput(input)!;
+    expect(input.slice(parsed.matchStart, parsed.matchEnd)).toBe('on the next sunny day');
+    expect(parsed.cleanTitle).toBe('leave books please');
+  });
+
+  it('ignores a bare condition word and anything that is not "next <condition> day"', () => {
+    expect(parseWeatherWaitInput('make sunny side up eggs')).toBeNull();
+    expect(parseWeatherWaitInput('plan the next day')).toBeNull();
+    expect(parseWeatherWaitInput('next sunny day')).toBeNull();
   });
 });

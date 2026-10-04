@@ -1,0 +1,4 @@
+{
+  "message": "A one-time task can now wait for a kind of day. Choose Wait for weather in the task editor or a template item, type \"on the next sunny day\" in quick add, or ask Claude. The task stays in Later and moves to the first day in the next 14 with that forecast (sunny, rainy, snowy, cold or hot). Needs Weather-based tasks turned on in Settings, with location access.",
+  "date": "2026-10-04"
+}

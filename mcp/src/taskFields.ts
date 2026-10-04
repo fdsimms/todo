@@ -36,6 +36,7 @@ import { minutesToEffort } from '../../src/utils/effort';
 import { followsRingGoal, hasHealthTarget, HEALTH_TARGET_METRICS, HEALTH_TARGET_RANGES } from '../../src/utils/healthTarget';
 import { isRotationTask, MIN_ROTATION_ITEMS } from '../../src/utils/rotation';
 import { normalizeTargetUnit } from '../../src/utils/quotaUnit';
+import { canWaitForWeather } from '../../src/utils/weatherCondition';
 import { localDateInput } from './timeZone';
 
 export const REPEAT_EVERY = ['never', 'hours', 'day', 'week', 'month', 'year'] as const;
@@ -186,6 +187,13 @@ export interface TaskFieldsInput {
   effort?: number;
   difficulty?: Difficulty | null;
   estimatedMinutes?: number | null;
+  /**
+   * Holds a plain one-off task until the first day in the next two weeks whose
+   * forecast is this kind of day. The phone does the matching (it is the one
+   * with a location and a forecast), moving `deferUntil` as the forecast moves,
+   * so this only records the want. null stops waiting.
+   */
+  weatherWait?: WeatherConditionInput | null;
   pinned?: boolean;
   pinEachOccurrence?: boolean;
   deliverableKind?: DeliverableKind | null;
@@ -298,6 +306,9 @@ function repeatFields(r: RepeatInput, errors: string[]): Partial<Task> {
  * left out of `input` is left out of the patch, so an update touches only what
  * it names.
  */
+type WeatherConditionInput = 'sunny' | 'rainy' | 'snowy' | 'cold' | 'hot';
+const WEATHER_CONDITIONS: readonly WeatherConditionInput[] = ['sunny', 'rainy', 'snowy', 'cold', 'hot'];
+
 export function taskFieldsPatch(
   input: TaskFieldsInput,
   current: Task | null,
@@ -610,6 +621,31 @@ export function taskFieldsPatch(
         },
         followUpTaskOneAtATime: atEnd ? false : f.oneAtATime ?? false,
       } satisfies Partial<Task>);
+    }
+  }
+
+  // ---- weather wait ---------------------------------------------------------
+  // Checked against the task as it will be once this patch lands, so asking for
+  // a repeat and a wait in one call is refused rather than half applied.
+  if (input.weatherWait !== undefined) {
+    if (input.weatherWait !== null && !WEATHER_CONDITIONS.includes(input.weatherWait)) {
+      errors.push(`weatherWait must be one of ${WEATHER_CONDITIONS.join(', ')}, or null.`);
+    } else if (input.weatherWait === null) {
+      patch.weatherWait = null;
+      // The hold was the app's own, so stopping the wait lets the task go.
+      if (current?.weatherWait && input.deferUntil === undefined) patch.deferUntil = null;
+    } else {
+      const after = {
+        ...current,
+        recurrenceType: patch.recurrenceType ?? current?.recurrenceType ?? 'none',
+        chainEnabled: patch.chainEnabled ?? current?.chainEnabled ?? false,
+        parentId: current?.parentId ?? (context.isSubtask ? 'subtask' : null),
+      };
+      if (!canWaitForWeather(after)) {
+        errors.push('weatherWait is only for a plain one-off task: not a repeating task, a chain, a set of dates or a subtask.');
+      } else {
+        patch.weatherWait = input.weatherWait;
+      }
     }
   }
 

@@ -40,6 +40,7 @@ import { MEAL_SLOT_ICONS, MEAL_SLOT_LABELS, PRIORITY_COLORS, TITLE_MAX_LENGTH } 
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animation, interaction, checkboxRadius, type Colors, textScale } from '../theme';
+import { weatherWaitChipText } from '../utils/weatherWait';
 import { formatDeadlineDate, formatScheduledDate, formatTaskDate, formatHHMM, formatWindowRemaining, getDeadlineCountdown, getEffectiveTaskDate, getTaskDayStart, getCurrentDayStart, getLogicalDayKey, dayKeyToDate, formatTimeOfDay, hoursUnlockLabel } from '../utils/dateUtils';
 import { isNegativeTask, isCleanToday, slipsToday } from '../utils/negativeHabits';
 import { scheduleMoveUpdates } from '../utils/taskMoves';
@@ -1585,6 +1586,10 @@ export const TaskItem = React.memo(function TaskItem({
   const scheduledIso = showDate ? getEffectiveTaskDate(task) : null;
   const scheduledHidden = scheduledIso !== null && scheduledIso === task.deferUntil && scheduledIso !== task.dueDate;
 
+  // A one-off waiting for a kind of day says so, because the date beside it is
+  // only where the forecast currently puts it (see Task.weatherWait).
+  const weatherWaitText = weatherWaitChipText(task, getLogicalDayKey(new Date()));
+
   // An "every N hours" task has no calendar grid — the row's own recurrence
   // caption just says the interval ("Every 8 hours"), never the clock time it
   // actually lands on, which is exactly the affordance requested (#comment on
@@ -2597,7 +2602,7 @@ export const TaskItem = React.memo(function TaskItem({
             )}
           </View>
         )}
-        {(isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || eventTaskContext !== null || windowActive || windowExpired || showStreakChip || isDrifting || bountyCoins > 0 || waitingCount > 0 || !!blockerTitle || notNeeded || !!waitingPersonName || autoScheduled || scheduledIso !== null || reminderTimeLabel !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || !!chainName || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.notes.length > 0) && (
+        {(isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || eventTaskContext !== null || windowActive || windowExpired || showStreakChip || isDrifting || bountyCoins > 0 || waitingCount > 0 || !!blockerTitle || notNeeded || !!waitingPersonName || autoScheduled || scheduledIso !== null || weatherWaitText !== null || reminderTimeLabel !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || !!chainName || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.notes.length > 0) && (
           <View style={styles.metaRow}>
             {/* Leads the meta line: on the screens that ask for it, "when" is
                 what the row is being read for, and every other chip here
@@ -2618,6 +2623,14 @@ export const TaskItem = React.memo(function TaskItem({
                 />
                 <Text style={styles.scheduledLabel} numberOfLines={1}>
                   {formatScheduledDate(scheduledIso)}
+                </Text>
+              </View>
+            )}
+            {weatherWaitText !== null && (
+              <View style={styles.metaChip} accessibilityLabel={weatherWaitText}>
+                <Ionicons name="partly-sunny-outline" size={iconSize.xs} color={colors.textSecondary} />
+                <Text style={styles.scheduledLabel} numberOfLines={1}>
+                  {weatherWaitText}
                 </Text>
               </View>
             )}

@@ -359,6 +359,7 @@ file: the two maps are indexes, not write-ups.
 | a meal of the day as a task, and choosing one from Today | `src/utils/mealSlotTasks.ts` — see `docs/arch/generated-tasks.md` |
 | a planned meal you haven't got the ingredients for | `src/utils/mealShortfallTasks.ts` — see `docs/arch/generated-tasks.md` |
 | a planned meal whose food is only in the freezer | `src/utils/mealThawTasks.ts` — see `docs/arch/generated-tasks.md`. `mealShortfallTasks.ts` asking about the `FROZEN_REASON` rows instead of the missing ones |
+| a one-off task that waits for a kind of day ("next sunny day") | `src/utils/weatherWait.ts` + `applyWeatherWaits` in `useTaskStore` + `Task.weatherWait` — see `docs/arch/generated-tasks.md`. The task's own `deferUntil` is the hold, and it is released for good once the matched day arrives |
 | date math, recurrence | `src/utils/dateUtils.ts` |
 | a timed task's countdown, and splitting it across subtasks | `src/utils/timer.ts` + `src/utils/timerSegments.ts` — see `docs/arch/timed-tasks.md` |
 | a stock of something that runs down as a task repeats, and ordering more | `src/utils/supply.ts` — see `docs/arch/supplies.md` |

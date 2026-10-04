@@ -46,7 +46,7 @@ import { addDays } from 'date-fns/addDays';
 import { subDays } from 'date-fns/subDays';
 import { subMinutes } from 'date-fns/subMinutes';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
-import type { Task, Priority, Effort, FollowUpTaskDraft, RecurrenceType, ChainItem, RotationItem, DeliverableKind, TimeOfDay, ReminderKind, Polarity, Difficulty, QuotaPeriod, NutrientKey, MealSlot, AnswerGate } from '../types';
+import type { Task, Priority, Effort, FollowUpTaskDraft, RecurrenceType, ChainItem, RotationItem, DeliverableKind, TimeOfDay, ReminderKind, Polarity, Difficulty, QuotaPeriod, WeatherCondition, NutrientKey, MealSlot, AnswerGate } from '../types';
 import { PRIORITY_LABELS, EFFORT_LABELS, TITLE_MAX_LENGTH, NUTRIENT_KEYS, MEAL_SLOTS, MEAL_SLOT_LABELS } from '../types';
 import { NUTRIENT_LABEL, mlToFlOz, flOzToMl } from '../utils/foodNutrition';
 import { useColors, useTheme } from '../theme/ThemeContext';
@@ -132,6 +132,7 @@ import { displayTitleFor, isMissableMealPlanTask, getVisibleAt, onLogicalDay } f
 import { nextChainStepTitle } from '../utils/chain';
 import { RecurrencePicker } from './RecurrencePicker';
 import { SegmentedControl } from './SegmentedControl';
+import { WEATHER_CONDITIONS, weatherConditionLabel } from '../utils/weatherTasks';
 import { InlineTimePicker } from '../screens/settings/InlineTimePicker';
 import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
 import { describeRecurrence } from '../utils/recurrenceLabels';
@@ -244,6 +245,8 @@ export interface TaskDraft {
   targetUnit?: string | null;
   /** Carried over when quick add parses "3 times a week". */
   quotaPeriod?: QuotaPeriod;
+  /** Carried over when quick add parses "on the next sunny day". */
+  weatherWait?: WeatherCondition | null;
   allowOvershoot?: boolean;
   quotaIntervalMinutes?: number | null;
   quotaReminders?: boolean;
@@ -680,6 +683,11 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [showStreak, setShowStreak] = useState(false);
   const [polarity, setPolarity] = useState<Polarity>('positive');
   const [quotaPeriod, setQuotaPeriod] = useState<QuotaPeriod>('day');
+  // See Task.weatherWait. The row opens its picker in place, like the other
+  // rows with controls of their own.
+  const [weatherWait, setWeatherWait] = useState<WeatherCondition | null>(null);
+  const [weatherWaitOpen, setWeatherWaitOpen] = useState(false);
+  const weatherTasksOn = useSettingsStore(s => s.weatherTasks);
   // Whether "follow the water target" can mean anything for this task right
   // now: a daily target that logs water, with an amount per unit to divide by.
   const followsWaterTarget =
@@ -713,6 +721,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [draftSubtasks, setDraftSubtasks] = useState<DraftSubtask[]>([]);
 
   const [chainEnabled, setChainEnabled] = useState(false);
+  // Only a plain one-off may wait for weather (canWaitForWeather): a repeat, a
+  // chain or a set of dates already has a schedule that this would fight.
+  const weatherWaitAllowed = recurrenceType === 'none' && !chainEnabled && extraDates.length === 0;
   const [chainItems, setChainItems] = useState<ChainItem[]>([]);
   const [rotationEnabled, setRotationEnabled] = useState(false);
   const [rotationItems, setRotationItems] = useState<RotationItem[]>([]);
@@ -921,6 +932,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setChainStepOnSchedule(task.chainStepOnSchedule ?? false);
       setVacationPause(task.vacationPause ?? false);
       setExcludeFromSuggestions(task.excludeFromSuggestions ?? false);
+      setWeatherWait(task.weatherWait ?? null); setWeatherWaitOpen(false);
       setDifficulty(task.difficulty ?? null);
       setBounty(isBountyLive(task));
       setShowStreak(task.showStreak ?? false);
@@ -962,7 +974,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       // because the one before it was. A new field goes in both branches.
       setTitle(initialDraft?.title ?? ''); titleCaret.resetCaret(initialDraft?.title ?? ''); setNotes(initialDraft?.notes ?? ''); setCategory(initialDraft?.category ?? null); setProject(initialDraft?.projectId ?? null); setTags(initialDraft?.tags ?? []);
       setGroupId(initialDraft?.groupId ?? null);
-      setDueDate(initialDraft?.dueDate ?? null); setExtraDates(initialDraft?.extraDates ?? []); setSeriesRepeats(false); setDeadline(initialDraft?.deadline ?? null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(initialDraft?.windowStart ?? null); setWindowEnd(initialDraft?.windowEnd ?? null); setPenaltyMinutes(initialDraft?.penaltyMinutes ?? null); setGatesApps(initialDraft?.gatesApps ?? false); setPenaltyCutoffTime(initialDraft?.penaltyCutoffTime ?? null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setQuotaPeriod(initialDraft?.quotaPeriod ?? 'day'); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setQuotaAlwaysVisible(initialDraft?.quotaAlwaysVisible ?? false); setFollowWaterTarget(initialDraft?.followWaterTarget ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setReminderTime(initialDraft?.reminderTime ?? null); setReminderKind('notification'); setReminderTimeAnchor('wallClock'); setReminderTouched(false);
+      setDueDate(initialDraft?.dueDate ?? null); setExtraDates(initialDraft?.extraDates ?? []); setSeriesRepeats(false); setDeadline(initialDraft?.deadline ?? null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(initialDraft?.windowStart ?? null); setWindowEnd(initialDraft?.windowEnd ?? null); setPenaltyMinutes(initialDraft?.penaltyMinutes ?? null); setGatesApps(initialDraft?.gatesApps ?? false); setPenaltyCutoffTime(initialDraft?.penaltyCutoffTime ?? null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setQuotaPeriod(initialDraft?.quotaPeriod ?? 'day'); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setQuotaAlwaysVisible(initialDraft?.quotaAlwaysVisible ?? false); setFollowWaterTarget(initialDraft?.followWaterTarget ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setWeatherWait(initialDraft?.weatherWait ?? null); setWeatherWaitOpen(false); setReminderTime(initialDraft?.reminderTime ?? null); setReminderKind('notification'); setReminderTimeAnchor('wallClock'); setReminderTouched(false);
       setRecurrenceType(initialDraft?.recurrenceType ?? 'none'); setRecurrenceInterval(initialDraft?.recurrenceInterval ?? 1);
       setRecurrenceDays(initialDraft?.recurrenceDays ?? []);
       setRecurrenceMonthDay(initialDraft?.recurrenceMonthDay ?? null);
@@ -1118,6 +1130,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       chainStepOnSchedule: task?.chainStepOnSchedule ?? false,
       vacationPause: task?.vacationPause ?? false,
       excludeFromSuggestions: task?.excludeFromSuggestions ?? false,
+      weatherWait: task ? (task.weatherWait ?? null) : (initialDraft?.weatherWait ?? null),
       difficulty: task ? (task.difficulty ?? null) : (initialDraft?.difficulty ?? null),
       bounty: task ? isBountyLive(task) : false,
       polarity: task ? (task.polarity ?? 'positive') : (initialDraft?.polarity ?? 'positive'),
@@ -1587,6 +1600,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
         chainEnabled && effectiveChainItems.length >= 2 && recurrenceType !== 'none' && chainStepOnSchedule,
       vacationPause,
       excludeFromSuggestions,
+      weatherWait: weatherWaitAllowed ? weatherWait : null,
       difficulty,
       // Only the edge is written: posting starts the count at 0, and turning a
       // live bounty off spends it. Anything else leaves the row's count to
@@ -2230,6 +2244,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       healthFollowGoal: followsRingGoal(healthMetric) ? healthFollowGoal : false,
       pinned, pinEachOccurrence: recurrenceType !== 'none' ? pinEachOccurrence : false, chainEnabled, chainItems, rotationItems, chainIndex, chainStepOnSchedule, vacationPause,
       excludeFromSuggestions,
+      weatherWait: weatherWaitAllowed ? weatherWait : null,
       difficulty,
       bounty,
       polarity,
@@ -4384,6 +4399,43 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               </>
             ),
           },
+          ...((weatherTasksOn || weatherWait !== null) && weatherWaitAllowed ? [{
+            key: 'weatherWait', label: 'Wait for weather', set: weatherWait !== null,
+            keywords: ['weather', 'sunny', 'rain', 'snow', 'cold', 'hot', 'forecast', 'outside', 'curb', 'next sunny day', 'defer'],
+            node: (
+              <>
+            <EditorRow
+              icon="partly-sunny-outline"
+              label="Wait for weather"
+              hint="Hold the task until a day with a certain forecast."
+              value={weatherWait ? weatherConditionLabel(weatherWait) : undefined}
+              expanded={weatherWaitOpen}
+              onPress={() => {
+                // Opening with nothing chosen picks the first condition, so the
+                // track never shows a selection the task doesn't have.
+                if (!weatherWait) { setWeatherWait('sunny'); setWeatherWaitOpen(true); setDeferUntil(null); return; }
+                setWeatherWaitOpen(open => !open);
+              }}
+              onClear={weatherWait ? () => { setWeatherWait(null); setWeatherWaitOpen(false); setDeferUntil(null); } : undefined}
+            />
+            {weatherWaitOpen && (
+              <>
+                <SegmentedControl
+                  label="Wait for a day that is"
+                  value={weatherWait ?? 'sunny'}
+                  onChange={next => { setWeatherWait(next); setDeferUntil(null); }}
+                  options={WEATHER_CONDITIONS.map(c => ({ value: c, label: weatherConditionLabel(c) }))}
+                />
+                <Text style={styles.seriesRepeatHint}>
+                  {weatherTasksOn
+                    ? 'Shows up on the first day the forecast matches, within the next 14 days. If the task has a Date, it looks from that day on.'
+                    : 'Turn on Weather-based tasks in Settings, with location access, so the app can read the forecast. Until then this task is not held.'}
+                </Text>
+              </>
+            )}
+              </>
+            ),
+          }] : []),
           {
             key: 'moreDates', label: 'More dates', set: extraDates.length > 0,
             keywords: ['series', 'several days', 'multiple', 'extra dates'],

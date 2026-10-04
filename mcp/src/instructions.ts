@@ -21,7 +21,7 @@ Start with get_overview. It gives the person's time zone, their "today", how man
 
 How the app thinks about time:
 - The app's day starts at the person's own "day starts at" time, not midnight. Before then it is still yesterday. Every tool here already uses this; do not re-derive "today" from the clock.
-- Today, Later, Unscheduled and Inbox are four separate lists. Today is what is due and visible now. Later is scheduled for the future or snoozed (a defer). Unscheduled has no date on purpose. Inbox is untriaged (no date, no category, nothing). A task missing from Today is usually deferred or not due, not lost; get_task says why and until when.
+- Today, Later, Unscheduled and Inbox are four separate lists. Today is what is due and visible now. Later is scheduled for the future or snoozed (a defer). Unscheduled has no date on purpose. Inbox is untriaged (no date, no category, nothing). A task missing from Today is usually deferred or not due, not lost; get_task says why and until when. A task with weatherWait is held on purpose until a forecast day of that kind (the phone moves its defer date as the forecast changes), so do not defer it by hand; set or clear weatherWait instead.
 - Rescheduling goes through defer_task, never by editing dueDate. For a repeating task the two are different: a defer moves this occurrence only.
 
 How tasks behave:

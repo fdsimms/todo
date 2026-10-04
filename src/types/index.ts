@@ -3391,6 +3391,14 @@ export interface Task {
   // category isn't the right unit for.
   excludeFromSuggestions: boolean;
 
+  // A one-off task that waits for a kind of day ("leave books on the curb on
+  // the next sunny day"). While set, the weather pass owns `deferUntil` and
+  // moves it to the first forecast day that matches; it clears this once that
+  // day arrives. Null = not waiting. Only a plain one-off may wait (see
+  // `canWaitForWeather`); a repeating task, chain step or series member never
+  // carries it. See src/utils/weatherWait.ts.
+  weatherWait?: WeatherCondition | null;
+
   // On a recurring task: every occurrence it spawns starts pinned. Completing
   // a pinned task clears its pin and a successor is a new row that starts
   // unpinned, so without this the pin has to be redone by hand each time.
@@ -3778,6 +3786,12 @@ export interface TemplateItem {
   // start its instances out of the suggesters without a follow-up trip to
   // the task's own editor.
   excludeFromSuggestions: boolean;
+  // Seeds Task.weatherWait on the task this item creates: the task is held for
+  // the first day with this kind of forecast. Null (the default through
+  // normalizeTemplateItem, and what stored JSON from before the field reads as)
+  // seeds a task that is not waiting. Only a plain one-off may wait, so an item
+  // that repeats or is a chain seeds nothing (see canWaitForWeather).
+  weatherWait?: WeatherCondition | null;
   // Seeds Task.pinEachOccurrence on the task this item creates.
   pinEachOccurrence?: boolean;
   estimatedMinutes: number | null;

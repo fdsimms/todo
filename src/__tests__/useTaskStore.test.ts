@@ -6052,6 +6052,96 @@ describe('checkWeatherTasks', () => {
   });
 });
 
+// ─── applyWeatherWaits ──────────────────────────────────────────────────────
+
+describe('applyWeatherWaits', () => {
+  const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as {
+    useSettingsStore: { getState: jest.Mock };
+  };
+  const { useWeatherStore } = jest.requireMock('../store/useWeatherStore') as {
+    useWeatherStore: { getState: jest.Mock };
+  };
+
+  const NOW = new Date(2026, 9, 4, 9, 0, 0);
+  const TODAY_KEY = '2026-10-04';
+
+  beforeAll(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW);
+  });
+  afterAll(() => jest.useRealTimers());
+
+  const forecast = (codes: number[]) =>
+    codes.map((weatherCode, i) => ({ dayKey: `2026-10-0${4 + i}`, weatherCode, highF: 70, lowF: 55 }));
+
+  const withForecast = (codes: number[]) =>
+    useWeatherStore.getState.mockReturnValue({
+      snapshot: { forecast: forecast(codes) },
+      snapshotDayKey: TODAY_KEY,
+    });
+
+  const addWaiting = (overrides: Record<string, unknown> = {}) => {
+    const task = useTaskStore.getState().addTask({ title: 'Leave books on curb' });
+    useTaskStore.getState().updateTask(task.id, { weatherWait: 'sunny', ...overrides });
+    return task.id;
+  };
+  const read = (id: string) => useTaskStore.getState().tasks.find(t => t.id === id)!;
+
+  beforeEach(() => {
+    useSettingsStore.getState.mockReturnValue({
+      dayResetTime: '00:00',
+      newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
+      titleRules: [],
+      collapsedCategories: [],
+    });
+    useTaskStore.setState({ tasks: [] });
+  });
+
+  afterEach(() => {
+    useWeatherStore.getState.mockReturnValue({ snapshot: null, snapshotDayKey: null });
+  });
+
+  it('holds the task until the first sunny day', () => {
+    withForecast([61, 61, 0, 0]);
+    const id = addWaiting();
+    useTaskStore.getState().applyWeatherWaits();
+    expect(dayKeyOf(new Date(read(id).deferUntil!))).toBe('2026-10-06');
+    expect(read(id).weatherWait).toBe('sunny');
+  });
+
+  it('leaves a task alone when the hold is already on the right day', () => {
+    withForecast([61, 61, 0, 0]);
+    const id = addWaiting();
+    useTaskStore.getState().applyWeatherWaits();
+    const before = read(id).deferUntil;
+    useTaskStore.getState().applyWeatherWaits();
+    expect(read(id).deferUntil).toBe(before);
+  });
+
+  it('releases a task straight away when today is already sunny', () => {
+    withForecast([0, 61]);
+    const id = addWaiting();
+    useTaskStore.getState().applyWeatherWaits();
+    expect(read(id).weatherWait).toBeNull();
+    expect(read(id).deferUntil).toBeNull();
+  });
+
+  it('writes nothing without a forecast for today', () => {
+    useWeatherStore.getState.mockReturnValue({ snapshot: { forecast: forecast([0]) }, snapshotDayKey: '2026-10-03' });
+    const id = addWaiting();
+    useTaskStore.getState().applyWeatherWaits();
+    expect(read(id).deferUntil).toBeNull();
+    expect(read(id).weatherWait).toBe('sunny');
+  });
+
+  it('never touches a repeating task', () => {
+    withForecast([61, 0]);
+    const id = addWaiting({ recurrenceType: 'daily' });
+    useTaskStore.getState().applyWeatherWaits();
+    expect(read(id).deferUntil).toBeNull();
+  });
+});
+
 // ─── checkWeatherTasks, the day-ahead pass ──────────────────────────────────
 
 describe('checkWeatherTasks (day ahead)', () => {

@@ -4,6 +4,7 @@
  * imports so the date-offset math can be unit-tested like reorder.ts.
  */
 import { addDays } from 'date-fns/addDays';
+import { canWaitForWeather } from './weatherCondition';
 import { startOfDay } from 'date-fns/startOfDay';
 import type {
   TemplateAnswerGate,
@@ -66,6 +67,7 @@ export function normalizeTemplateItem(raw: Partial<TemplateItem>): TemplateItem 
     recurrenceCount: raw.recurrenceCount ?? null,
     vacationPause: raw.vacationPause ?? false,
     excludeFromSuggestions: raw.excludeFromSuggestions ?? false,
+    weatherWait: raw.weatherWait ?? null,
     pinEachOccurrence: raw.pinEachOccurrence ?? false,
     penaltyMinutes: raw.penaltyMinutes ?? null,
     penaltyCutoffTime: raw.penaltyCutoffTime ?? null,
@@ -212,6 +214,7 @@ export function buildDraftsFromTemplate(
       recurrenceCount: item.recurrenceCount,
       vacationPause: item.vacationPause,
       excludeFromSuggestions: item.excludeFromSuggestions,
+      weatherWait: canWaitForWeather(item) ? item.weatherWait ?? null : null,
       pinEachOccurrence: item.pinEachOccurrence,
       polarity: item.polarity,
       difficulty: item.difficulty ?? null,

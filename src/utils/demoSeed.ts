@@ -367,6 +367,17 @@ export function seedDemoData(): void {
     excludeFromSuggestions: true,
   });
 
+  // A one-off held for a kind of day. Dated three days out, the way the weather
+  // pass would have placed it, because the pass itself never runs in demo mode
+  // (it would be reading the real forecast for invented tasks).
+  addTask({
+    title: 'Leave books on the curb',
+    category: 'Home',
+    effort: 1,
+    weatherWait: 'sunny',
+    deferUntil: addDays(today, 3).toISOString(),
+  });
+
   // The 'hours' recurrence — a dose that can only be taken again N hours
   // after the last one, not on a fixed clock time (see RecurrenceType's own
   // doc comment). Naproxen rather than the ibuprofen already seeded by

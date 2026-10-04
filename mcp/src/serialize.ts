@@ -36,6 +36,8 @@ export interface SerializedTask {
   dueDate?: string;
   deadline?: string;
   deferUntil?: string;
+  /** Set while a one-off task is held for a kind of day ("sunny"); the app moves deferUntil to the first matching forecast day. */
+  weatherWait?: string;
   timeSegments?: string[];
   /** 'Low' | 'Medium' | 'High' | 'Urgent'. Absent for the 'None' default. */
   priority?: string;
@@ -115,6 +117,7 @@ export function serializeTask(replica: Replica, task: Task): SerializedTask {
     dueDate: task.dueDate ?? undefined,
     deadline: task.deadline ?? undefined,
     deferUntil: task.deferUntil ?? undefined,
+    weatherWait: task.weatherWait ?? undefined,
     timeSegments: task.timeSegments,
     priority: task.priority > 0 ? PRIORITY_LABELS[task.priority] : undefined,
     difficulty: task.difficulty ?? undefined,

@@ -1685,7 +1685,7 @@ describe('Templates', () => {
     recurrenceMonth: null,
     recurrenceFromCompletion: false,
     recurrenceCount: null,
-    vacationPause: false, excludeFromSuggestions: false, pinEachOccurrence: false, difficulty: null,
+    vacationPause: false, excludeFromSuggestions: false, pinEachOccurrence: false, weatherWait: null, difficulty: null,
     estimatedMinutes: null,
     completionTimerMinutes: null, completionTimerNote: null,
     penaltyMinutes: null,
