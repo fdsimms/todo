@@ -252,9 +252,6 @@ const AI_FEATURE_KEYWORDS: Record<AiFeatureId, string[]> = {
   recipeNutritionEstimate: [
     'claude', 'model', 'calories', 'ingredients', 'guess',
   ],
-  cookbookIndex: [
-    'claude', 'model', 'scan', 'camera', 'pages', 'cook with',
-  ],
 };
 
 /** One entry per row `PrivacyAiSettings` actually renders, in the same order. */

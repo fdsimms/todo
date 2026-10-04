@@ -2408,27 +2408,6 @@ describe('cookbook index entries', () => {
     expect(entries.find(e => e.title === 'Lentil soup')).toMatchObject({ page: '88', ingredients: ['lentils', 'cumin'] });
   });
 
-  it('applies a scan and takes it back out again', () => {
-    const kept = useRecipeStore.getState().addIndexEntry('b-six', { title: 'Braised lentils', page: null, ingredients: ['lentils'] })!;
-    const drafts = [
-      { title: 'Braised lentils', page: '142', ingredients: ['shallots'], existing: kept },
-      { title: 'Fennel salad', page: '40', ingredients: ['fennel'], existing: null },
-    ];
-
-    const undo = useRecipeStore.getState().applyIndexDrafts('b-six', drafts);
-
-    let entries = useRecipeStore.getState().indexEntries;
-    expect(entries).toHaveLength(2);
-    expect(entries.find(e => e.id === kept.id)).toMatchObject({ page: '142', ingredients: ['lentils', 'shallots'] });
-    expect(undo.created).toHaveLength(1);
-
-    useRecipeStore.getState().undoIndexImport(undo);
-
-    entries = useRecipeStore.getState().indexEntries;
-    expect(entries).toHaveLength(1);
-    expect(entries[0]).toEqual(kept);
-  });
-
   it('makes the recipe to cook a line from, with its book and page and no lines', () => {
     const entry = useRecipeStore.getState().addIndexEntry('b-six', { title: 'Braised lentils', page: '142', ingredients: ['lentils'] })!;
 

@@ -5,12 +5,9 @@ import {
   cleanIndexEntryFields,
   cleanIndexIngredients,
   describeIndexLocation,
-  describeIndexScan,
   entriesInCookbook,
   findWithIngredients,
   findWithPantry,
-  mergeIndexDrafts,
-  mergedIndexLine,
   pantryIngredients,
   indexEntryInBook,
   MAX_INDEX_INGREDIENTS,
@@ -294,52 +291,5 @@ describe('findWithPantry', () => {
 
   it('answers nothing for an empty pantry', () => {
     expect(findWithPantry([], [recipe('Dal', ['1 cup lentils'])], [], [])).toEqual({ recipes: [], entries: [] });
-  });
-});
-
-describe('mergeIndexDrafts', () => {
-  it('folds a dish listed under several headings into one line, first page winning', () => {
-    const drafts = mergeIndexDrafts([
-      { title: 'Braised lentils', page: '142', ingredients: ['Lentils'] },
-      { title: 'Fennel salad', page: '40', ingredients: ['Fennel'] },
-      { title: 'braised lentils', page: '143', ingredients: ['Shallots'] },
-      { title: '  ', page: '1', ingredients: [] },
-    ], [], 'b-six');
-
-    expect(drafts.map(d => [d.title, d.page, d.ingredients])).toEqual([
-      ['Fennel salad', '40', ['Fennel']],
-      ['Braised lentils', '142', ['Lentils', 'Shallots']],
-    ]);
-    expect(drafts.every(d => d.existing === null)).toBe(true);
-  });
-
-  it('marks a dish the book\'s index already has, and only in that book', () => {
-    const line = entry('b-six', 'Braised Lentils', null, ['lentils']);
-    const [draft] = mergeIndexDrafts([{ title: 'Braised lentils', page: '142', ingredients: ['Shallots'] }], [line], 'b-six');
-    expect(draft.existing).toBe(line);
-    expect(mergeIndexDrafts([{ title: 'Braised lentils', page: '1', ingredients: [] }], [line], 'b-other')[0].existing).toBeNull();
-  });
-});
-
-describe('mergedIndexLine', () => {
-  it('adds the draft\'s words and fills a missing page', () => {
-    const line = entry('b-six', 'Braised lentils', null, ['lentils']);
-    expect(mergedIndexLine({ title: 'Braised lentils', page: '142', ingredients: ['Lentils', 'shallots'], existing: line }))
-      .toMatchObject({ id: line.id, page: '142', ingredients: ['lentils', 'shallots'] });
-  });
-
-  it('is null when there is nothing to add, or no line to add it to', () => {
-    const line = entry('b-six', 'Braised lentils', '142', ['lentils']);
-    expect(mergedIndexLine({ title: 'x', page: '9', ingredients: ['Lentils'], existing: line })).toBeNull();
-    expect(mergedIndexLine({ title: 'x', page: '9', ingredients: ['Lentils'], existing: null })).toBeNull();
-  });
-});
-
-describe('describeIndexScan', () => {
-  it('says what a scan added, in either half or both', () => {
-    expect(describeIndexScan(1, 0)).toBe('Added 1 dish to the index');
-    expect(describeIndexScan(12, 3)).toBe('Added 12 dishes, and ingredients to 3 already in the index');
-    expect(describeIndexScan(0, 2)).toBe('Added ingredients to 2 dishes already in the index');
-    expect(describeIndexScan(0, 0)).toBe('Nothing new was added');
   });
 });

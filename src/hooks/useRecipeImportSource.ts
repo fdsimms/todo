@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import { Alert, Linking } from 'react-native';
 import type { RecipeSource } from '../services/aiSuggestions';
 import { fetchRecipePage, type FetchedRecipePage } from '../services/recipePage';
-import { pickRecipePhoto, MAX_PHOTO_EDGE, type RecipePhoto, type RecipePhotoSource } from '../utils/recipePhoto';
+import { pickRecipePhoto, type RecipePhoto, type RecipePhotoSource } from '../utils/recipePhoto';
 import type { RecipeInputMode } from '../components/RecipeSourcePicker';
 import { haptics } from '../utils/haptics';
 
@@ -80,8 +80,6 @@ export function useRecipeImportSource(
   purpose = 'read a recipe off a page',
   /** How many photos `pick` will accumulate before it stops adding more. */
   maxPhotos = DEFAULT_MAX_PHOTOS,
-  /** The long edge a photo is downscaled to; see `DENSE_PAGE_PHOTO_EDGE`. */
-  maxPhotoEdge = MAX_PHOTO_EDGE,
 ) {
   const [mode, setMode] = useState<RecipeInputMode>(initialMode);
   const [text, setText] = useState('');
@@ -107,7 +105,7 @@ export function useRecipeImportSource(
     setPicking(true);
     setPhotoError(null);
     try {
-      const result = await pickRecipePhoto(source, maxPhotoEdge);
+      const result = await pickRecipePhoto(source);
       if (result.status === 'ok') {
         haptics.success();
         // `maxPhotos === 1` keeps the old replace-on-pick behavior rather than
@@ -123,7 +121,7 @@ export function useRecipeImportSource(
     } finally {
       setPicking(false);
     }
-  }, [purpose, maxPhotos, maxPhotoEdge]);
+  }, [purpose, maxPhotos]);
 
   /** Drops one photo by index, or every photo when called with none. */
   const clearPhoto = useCallback((index?: number) => {

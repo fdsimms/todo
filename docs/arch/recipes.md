@@ -352,26 +352,16 @@ asks that question, and `findWithIngredients` answers it.
 - **A line whose recipe is typed up drops out of the results.** The recipe (same book, same name,
   `recipeInBook`) is the better answer and shows under yours when it matches. One made from the
   line but still empty keeps the line in the results, and opening it opens that recipe.
-- **Scanning a page sends the photo, not an on-device read of it** (`extractCookbookIndex`,
-  `CookbookIndexScanSheet`). Every other photo reader here tries Vision first to save the request,
-  and the removed table-of-contents scanner did too. An index can't: it is set in two or three
-  columns and nests each sub-entry under its heading by indentation alone, and grouping Vision's
-  fragments into rows by height splices the columns together and throws the indentation away,
-  which is the whole of what an index says. So scanning needs a key, and without one the sheet
-  says so and points at adding lines by hand. Pages are read in order, each told the heading the
-  last one ended under (`lastHeading`), since a heading's entries run on from one page to the
-  next with the heading printed only once. The model is asked only for ingredients the index
-  *files* a dish under, never ones guessed from its name, which is what keeps the words honest
-  enough to search by. The photo goes up at the high-resolution tier (`DENSE_PAGE_PHOTO_EDGE`),
-  not the recipe cap, because index type is small, and the prompt reads past a sideways or partly
-  blurry shot rather than returning nothing: an all-or-nothing read of a dense page came back
-  empty on a page that was mostly legible.
-- **A scan is merged before it's shown, and shown before it's written.** `mergeIndexDrafts`
-  folds a dish listed under several headings into one line (keyed as `indexEntryInBook` keys the
-  book's own lines) and marks one the book already has, which `applyIndexDrafts` adds to rather
-  than duplicating (`mergedIndexLine` decides what that adds, for both the review's count and the
-  write). A wrong book or a bad photo is a hundred lines at once, so the write returns what
-  `undoIndexImport` needs, and the book's page offers Undo until you leave it.
+- **Do not add a photo scan of a cookbook's index (it has been built and removed twice).** A
+  table-of-contents scanner (`CookbookChecklistSheet`, removed in 743168a) and then an index
+  scanner (`CookbookIndexScanSheet` + `extractCookbookIndex`, removed alongside this note) both
+  shipped and both were pulled for the same reason: an index is dense small print in two or three
+  columns with sub-entries nested under a heading by indentation alone, photos arrive sideways,
+  soft or cut off, and the result was never reliable enough to be worth reviewing. Vision's text
+  can't be used instead (row-grouping splices the columns and drops the indentation), and a
+  stronger model, a bigger photo and a gentler prompt were all tried (ce6cf74) without fixing it.
+  Index lines are typed in one at a time through `CookbookIndexEntrySheet`. Check with the user
+  before starting a third attempt.
 - **The index goes with its book; recipes don't.** `dbDeleteCookbook` unlinks recipes and keeps
   them (a recipe naming a book that's gone is still a recipe) but deletes the book's index lines,
   since "page 142" of nothing names nothing. A merge moves the loser's lines to the survivor
