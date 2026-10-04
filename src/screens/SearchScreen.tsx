@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { NamedIcon } from '../components/CoinIcon';
 import { useTaskStore } from '../store/useTaskStore';
 import { useProjectStore, projectProgress } from '../store/useProjectStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
@@ -347,7 +348,7 @@ const ElsewhereResultItem = React.memo(function ElsewhereResultItem({ result, on
     >
       <View style={styles.statusIcon}>
         <View style={[styles.stackIcon, { backgroundColor: colors.accentSubtle }]}>
-          <Ionicons name={described.icon as React.ComponentProps<typeof Ionicons>['name']} size={iconSize.sm} color={colors.accent} />
+          <NamedIcon name={described.icon} size={iconSize.sm} color={colors.accent} />
         </View>
       </View>
       <View style={styles.resultContent}>

@@ -100,6 +100,13 @@ days at your current pace").
 
 ## Where it shows
 
+- **The coin is the feature's icon, not the trophy.** `CoinIcon` (`src/components/CoinIcon.tsx`) is
+  drawn, like `PinIcon` and `TargetIcon`, because Ionicons has no coin. Filled gold (`colors.warning`
+  with `onWarning` marks) where a coin is the point (the balance, an empty state, a reward's cost, a
+  history row), outlined where it sits beside Ionicons (the menu row, the toast, a bounty's chip). A
+  screen named by an icon string uses `COIN_ICON` (`src/constants/coinIcon.ts`, a separate file so
+  `navHubs.ts` can name it without importing a component) and draws it through `NamedIcon`.
+
 - **The Rewards screen** (menu row under Tasks): the balance with the goal's progress, the rule
   spelled out, the rewards (add, edit in place, claim, open the link, set as goal, delete), the
   chosen list's items, starter ideas and the history.

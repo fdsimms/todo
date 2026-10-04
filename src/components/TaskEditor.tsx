@@ -27,6 +27,7 @@ import { DeliverableKindPicker } from './DeliverableKindPicker';
 import { EditorSheet } from './EditorSheet';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { PinIcon } from './PinIcon';
+import { CoinIcon } from './CoinIcon';
 import { RemindMePicker } from './RemindMePicker';
 import { WhenPicker } from './WhenPicker';
 import { projectDateAnchor } from '../utils/projectDateShortcuts';
@@ -6106,7 +6107,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               accessibilityLabel="Bounty"
               accessibilityState={{ checked: bounty }}
             >
-              <Ionicons name="trophy-outline" size={18} color={bounty ? colors.accent : colors.textSecondary} />
+              <CoinIcon size={18} color={bounty ? colors.accent : colors.textSecondary} />
               <View style={styles.optionContent}>
                 <Text style={styles.optionLabel}>Bounty</Text>
                 <Text style={styles.optionHint}>

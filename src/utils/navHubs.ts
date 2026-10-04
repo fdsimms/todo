@@ -38,6 +38,7 @@
  */
 
 import { screenShown } from './simpleMode';
+import { COIN_ICON } from '../constants/coinIcon';
 
 /** Counts `screenShown` needs to decide whether a content screen survives simplified mode. */
 export interface NavContentCounts {
@@ -194,7 +195,7 @@ export const NAV_MENU_ROWS: readonly NavMenuRow[] = [
     kind: 'screen',
     destination: {
       route: 'Rewards',
-      icon: 'trophy-outline',
+      icon: COIN_ICON,
       label: 'Rewards',
       keywords: ['coins', 'points', 'gold', 'treat', 'shop', 'habitica', 'gamification', 'earn'],
     },

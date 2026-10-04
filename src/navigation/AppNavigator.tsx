@@ -5,6 +5,8 @@ import { navigationRef, navigateToTab, resetToRecipeDetail, flushPendingNavigati
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { CoinIcon } from '../components/CoinIcon';
+import { COIN_ICON } from '../constants/coinIcon';
 import { SafeBlurView } from '../components/SafeBlurView';
 import { TodayScreen } from '../screens/TodayScreen';
 import { TagsScreen } from '../screens/TagsScreen';
@@ -265,7 +267,9 @@ const MainTabs = React.memo(function MainTabs({
             options={{
               tabBarAccessibilityLabel: destination?.label ?? route,
               tabBarIcon: ({ color, size }) => (
-                <Ionicons name={tabIconFor(destination?.icon ?? 'ellipse-outline')} size={size} color={color} />
+                destination?.icon === COIN_ICON
+                  ? <CoinIcon size={size} color={color} />
+                  : <Ionicons name={tabIconFor(destination?.icon ?? 'ellipse-outline')} size={size} color={color} />
               ),
             }}
           />

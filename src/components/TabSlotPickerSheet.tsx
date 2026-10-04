@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { NamedIcon } from './CoinIcon';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, iconSize, interaction, radius, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -59,8 +60,8 @@ export function TabSlotPickerSheet({ visible, onClose, slot, tabRoutes, onSelect
                     accessibilityState={{ selected: on }}
                     accessibilityLabel={tag ? `${destination.label}, now the ${tag.toLowerCase()}` : destination.label}
                   >
-                    <Ionicons
-                      name={destination.icon as React.ComponentProps<typeof Ionicons>['name']}
+                    <NamedIcon
+                      name={destination.icon}
                       size={iconSize.sm}
                       color={on ? colors.accent : colors.textSecondary}
                     />

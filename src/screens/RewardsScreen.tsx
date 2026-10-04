@@ -1,6 +1,7 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Linking, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import Reanimated, { useAnimatedStyle, useSharedValue, withSequence, withSpring } from 'react-native-reanimated';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { format } from 'date-fns/format';
@@ -9,6 +10,7 @@ import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeade
 import { EmptyState } from '../components/EmptyState';
 import { EmptyNote } from '../components/EmptyNote';
 import { InlineAction } from '../components/InlineAction';
+import { CoinIcon } from '../components/CoinIcon';
 import { CountStepper } from '../components/CountStepper';
 import { TextField } from '../components/TextField';
 import { ProjectPickerSheet } from '../components/ProjectPickerSheet';
@@ -18,8 +20,10 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { useColors } from '../theme/ThemeContext';
-import { font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
+import { animation, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { useReduceMotion } from '../utils/useReduceMotion';
+import { COIN_ICON } from '../constants/coinIcon';
 import { knownLinkAppFor, linkAppsFor } from '../constants/linkApps';
 import { linkIconFor, openInAppUrl } from '../utils/deepLinks';
 import { liveProjectSteps } from '../utils/projectOrder';
@@ -67,6 +71,9 @@ import type { CoinEntry, Reward, Task } from '../types';
 /** How many history rows to draw. The balance is still summed over all of them. */
 const HISTORY_LIMIT = 50;
 
+/** The coin beside the balance. A hero, so a literal size like the number's own. */
+const BALANCE_COIN_SIZE = 52;
+
 const KIND_LABELS: Record<CoinEntry['kind'], string> = {
   earn: 'Completed',
   loss: 'Missed',
@@ -103,6 +110,23 @@ export function RewardsScreen() {
   const rewards = useRewardStore(s => s.rewards);
   const projects = useProjectStore(s => s.projects);
   const balance = useMemo(() => coinBalance(entries), [entries]);
+
+  // The hero coin hops when coins arrive while the screen is open, so a claim
+  // undone or a completion drained in the background doesn't go unseen. Only a
+  // rise: a spend or a loss moving the number is its own signal.
+  const reduceMotion = useReduceMotion();
+  const coinScale = useSharedValue(1);
+  const lastBalance = useRef(balance);
+  useEffect(() => {
+    if (balance > lastBalance.current && !reduceMotion) {
+      coinScale.value = withSequence(
+        withSpring(1.3, animation.spring.bouncy),
+        withSpring(1, animation.spring.smooth),
+      );
+    }
+    lastBalance.current = balance;
+  }, [balance, reduceMotion, coinScale]);
+  const coinStyle = useAnimatedStyle(() => ({ transform: [{ scale: coinScale.value }] }));
   // Your recent earning rate, which prices a reward by how often you want it
   // and says how often each one comes round. Null with under a week of
   // history, and every reader treats that as "nothing to say".
@@ -299,7 +323,7 @@ export function RewardsScreen() {
       <View style={[styles.container, { paddingTop: insets.top }]}>
         <ScreenHeader title="Rewards" />
         <EmptyState
-          icon="trophy-outline"
+          icon={COIN_ICON}
           title="Coins and rewards"
           subtitle="Completing a task earns coins, more for bigger tasks and long streaks. Marking one missed or logging a slip costs coins. Spend them on rewards you set yourself."
           actionLabel="Turn on"
@@ -490,9 +514,12 @@ export function RewardsScreen() {
         <View>
           <Text style={styles.rewardTitle}>{shown.title}</Text>
           {shown.note && <Text style={styles.note}>{shown.note}</Text>}
-          <Text style={styles.rewardCost}>
-            {reward.oneTime ? `${formatCoins(reward.cost)} · one time` : formatCoins(reward.cost)}
-          </Text>
+          <View style={styles.costRow}>
+            <CoinIcon size={iconSize.sm} color={colors.warning} filled />
+            <Text style={styles.rewardCost}>
+              {reward.oneTime ? `${formatCoins(reward.cost)} · one time` : formatCoins(reward.cost)}
+            </Text>
+          </View>
           {pace && <Text style={styles.hint}>{sentence(pace)}</Text>}
           {claimedAt && <Text style={styles.hint}>{describeLastClaimed(claimedAt, new Date())}</Text>}
         </View>
@@ -552,12 +579,16 @@ export function RewardsScreen() {
         {...keyboardScroll.props}
       >
         <View style={styles.balanceCard}>
-          <Text
-            style={[styles.balance, balance < 0 && { color: colors.red }]}
+          <View
+            style={styles.balanceRow}
+            accessible
             accessibilityLabel={`Balance: ${formatCoins(balance)}`}
           >
-            {balance}
-          </Text>
+            <Reanimated.View style={coinStyle}>
+              <CoinIcon size={BALANCE_COIN_SIZE} color={colors.warning} filled />
+            </Reanimated.View>
+            <Text style={[styles.balance, balance < 0 && { color: colors.red }]}>{balance}</Text>
+          </View>
           <Text style={styles.balanceUnit}>{Math.abs(balance) === 1 ? 'coin' : 'coins'}</Text>
           {goal && goalShown && (
             <View
@@ -606,7 +637,7 @@ export function RewardsScreen() {
           Extra coins for a task you keep putting off. Turn on Bounty in the task's editor. It pays the most if you do the task before moving it to a later day, and gets smaller each time you do.
         </Text>
         {bounties.length === 0 ? (
-          <EmptyNote icon="trophy-outline">No bounties posted.</EmptyNote>
+          <EmptyNote icon={COIN_ICON}>No bounties posted.</EmptyNote>
         ) : (
           <View style={styles.historyCard}>
             {bounties.map((task, i) => (
@@ -726,9 +757,12 @@ export function RewardsScreen() {
                     {`${KIND_LABELS[entry.kind]} · ${format(parseISO(entry.at), 'MMM d, h:mm a')}`}
                   </Text>
                 </View>
-                <Text style={[styles.historyAmount, { color: entry.kind === 'earn' ? colors.green : colors.red }]}>
-                  {signedAmount(entry)}
-                </Text>
+                <View style={styles.amountRow}>
+                  <CoinIcon size={iconSize.sm} color={colors.warning} filled />
+                  <Text style={[styles.historyAmount, { color: entry.kind === 'earn' ? colors.green : colors.red }]}>
+                    {signedAmount(entry)}
+                  </Text>
+                </View>
               </View>
             ))}
           </View>
@@ -760,16 +794,19 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginBottom: spacing.xs,
     padding: spacing.md,
     borderRadius: radius.md,
-    backgroundColor: colors.bgSecondary,
+    // Warm, where every other card on the page is grey: this one is the point
+    // of the screen, and the gold is the coin's own colour.
+    backgroundColor: colors.warningBg,
     alignItems: 'center',
   },
+  balanceRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.smd },
   // A hero number, which is one of the things a literal font size is for.
-  balance: { color: colors.text, fontSize: 48, fontWeight: fontWeight.bold },
+  balance: { color: colors.text, fontSize: 48, fontWeight: fontWeight.bold, fontVariant: ['tabular-nums'] },
   balanceUnit: { color: colors.textSecondary, fontSize: font.sm, marginBottom: spacing.smd },
   goal: { alignSelf: 'stretch', marginBottom: spacing.md, gap: spacing.xs },
   goalLabel: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.semibold, textAlign: 'center' },
   goalTrack: { height: 8, borderRadius: radius.full, backgroundColor: colors.bgTertiary, overflow: 'hidden' },
-  goalFill: { height: '100%', borderRadius: radius.full, backgroundColor: colors.accent },
+  goalFill: { height: '100%', borderRadius: radius.full, backgroundColor: colors.warning },
   goalMeta: { color: colors.textSecondary, fontSize: font.xs, textAlign: 'center' },
   rule: { color: colors.textSecondary, fontSize: font.sm, textAlign: 'center' },
   // textSecondary, not textTertiary — the app-wide section-header rule.
@@ -822,7 +859,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   switchRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.smd, marginTop: spacing.xs },
   switchText: { flex: 1 },
   switchLabel: { color: colors.text, fontSize: font.md },
-  rewardCost: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.xxs },
+  costRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginTop: spacing.xxs },
+  rewardCost: { color: colors.textSecondary, fontSize: font.sm },
+  amountRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   input: {
     color: colors.text,
     fontSize: font.md,
