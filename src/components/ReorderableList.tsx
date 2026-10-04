@@ -208,12 +208,26 @@ interface Props<T> {
    * header wholly above the viewport, so the offset is at least the header's
    * old height, which is more than it can shrink by. The one case that rule
    * gets wrong is a header appearing from nothing with the list at the very
-   * top — nothing was "above the viewport", yet it would be pushed there. So
-   * the anchoring is only switched on once the list is scrolled away from the
-   * top (`scrolledAway`); at the top the header just grows in place. An
-   * `autoscrollToTopThreshold` glide back to the top used to cover that case,
-   * but it is a native animated scroll fired on every header resize at the top,
-   * and the list could be left unable to scroll back up after one.
+   * top: an empty wrapper has no height, so "below the top of the viewport"
+   * is false for it even at offset 0, the sentinel anchors instead, and the
+   * new block is pushed above the viewport. The wrapper keeps a hairline
+   * `minHeight` for exactly that, so at the top it is the anchor whether or
+   * not it holds anything, and the header grows in place.
+   *
+   * **The prop stays on for the life of the list; never switch it on and off
+   * with the scroll position.** RN captures the anchor at the start of every
+   * mount transaction the prop is on for, and applies the correction at the
+   * end of every transaction the prop is on for, including the one that
+   * turns it on, against whichever anchor it captured last. Toggling it
+   * therefore applies a stale delta: with nothing pinned, the sentinel is
+   * captured at origin 0; a task pinned while the prop is off moves it down
+   * by the block's height; and the next scroll away from the top, the
+   * transaction turning the prop back on, shifts the offset by that whole
+   * height. On a list shorter than the viewport that offset can't be
+   * scrolled back from, which is Today stuck with the Pinned Tasks block
+   * hidden. The previous answers, an `autoscrollToTopThreshold` glide (a
+   * native animated scroll on every header resize at the top) and then the
+   * toggle, each shipped a version of the same stuck list.
    */
   holdRowsOnHeaderResize?: boolean;
   ListFooterComponent?: React.ReactNode;
@@ -354,12 +368,11 @@ export function ReorderableList<T>({
   // list. The card follows the finger in both axes (X is purely cosmetic —
   // drop targeting stays vertical).
   const [overlayBaseTop, setOverlayBaseTop] = useState(0);
-  // Whether the list is scrolled away from the top. holdRowsOnHeaderResize only
-  // has rows to hold still in that case; at the top a header change should just
-  // grow in place, and leaving the native anchoring on there made it fire an
-  // animated scroll-to-top on every header resize, which could leave the scroll
-  // view unable to scroll back up until the tab was re-entered.
-  const [scrolledAway, setScrolledAway] = useState(false);
+  // Whether a finger is on the list, or the momentum or rubber-band it left
+  // behind is still moving it. While either is true an offset past the end of
+  // the content is iOS's own overscroll, which it will settle itself; see
+  // handleScroll for what the flag gates.
+  const userScrollingRef = useRef(false);
   const overlayY = useRef(new Animated.Value(0)).current;
   const overlayX = useRef(new Animated.Value(0)).current;
   const overlayScale = useRef(new Animated.Value(1.03)).current;
@@ -1109,8 +1122,32 @@ export function ReorderableList<T>({
   ).current;
 
   const handleScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    scrollOffsetRef.current = e.nativeEvent.contentOffset.y;
-    if (holdRowsOnHeaderResize) setScrolledAway(scrollOffsetRef.current > 1);
+    const { contentOffset, contentSize, layoutMeasurement, contentInset } = e.nativeEvent;
+    scrollOffsetRef.current = contentOffset.y;
+    keyboardScroll.noteScroll(e);
+    // The net under every way the offset can be moved without a finger on the
+    // list: the header anchoring above shifting it in the same transaction as
+    // rows leave, a keyboard scrolling a field into view, a scrollTo aimed past
+    // the end. None of those is clamped natively, and a list left resting
+    // past its content on a screen with no scroll range left has no way back
+    // (the stranding `strandedScrollOffset` describes). The event carries the
+    // offset, content, viewport and inset from one moment, so the judgement
+    // can't mix an old height with a new offset the way the refs could. Not
+    // while the user is moving it, since an overscroll mid rubber-band is
+    // iOS's own and it will settle it; not while the keyboard is up, since the
+    // inset it put there is where the list is entitled to rest.
+    if (!userScrollingRef.current && !Keyboard.isVisible()) {
+      const clamped = strandedScrollOffset(
+        contentOffset.y,
+        contentSize.height,
+        layoutMeasurement.height,
+        contentInset?.bottom ?? 0,
+      );
+      if (clamped !== null) {
+        scrollOffsetRef.current = clamped;
+        scrollRef.current?.scrollTo({ y: clamped, animated: false });
+      }
+    }
     if (scrollToTop) scrollToTopVisibility.onScroll(e);
     if (!onEndReachedRef.current) return;
     const distanceFromEnd = contentHeightRef.current - viewportHeightRef.current - scrollOffsetRef.current;
@@ -1134,12 +1171,12 @@ export function ReorderableList<T>({
         ref={scrollRef}
         style={styles.scroll}
         scrollEnabled={scrollEnabled && !isDragging}
-        onScroll={handleScroll}
         scrollEventThrottle={16}
         // See holdRowsOnHeaderResize. Index 0 is the header's wrapper and 1 the
         // sentinel, and the sentinel is always visible, so the anchor is
-        // always one of the two and never a row.
-        maintainVisibleContentPosition={holdRowsOnHeaderResize && scrolledAway ? HOLD_ROWS_POSITION : undefined}
+        // always one of the two and never a row. Constant for the life of the
+        // list on purpose: that doc comment says what toggling it did.
+        maintainVisibleContentPosition={holdRowsOnHeaderResize ? HOLD_ROWS_POSITION : undefined}
         onLayout={(e: LayoutChangeEvent) => { viewportHeightRef.current = e.nativeEvent.layout.height; }}
         onContentSizeChange={(_w, h) => {
           contentHeightRef.current = h;
@@ -1203,19 +1240,30 @@ export function ReorderableList<T>({
         }}
         contentContainerStyle={contentContainerStyle}
         refreshControl={refreshControl}
-        onScrollBeginDrag={onScrollBeginDrag}
+        onScrollBeginDrag={() => {
+          userScrollingRef.current = true;
+          onScrollBeginDrag?.();
+        }}
+        // A release that decelerates, or rubber-bands back from an overscroll,
+        // reports this before its first scroll event lands, so the flag never
+        // drops between the drag's end and the movement it left behind.
+        onMomentumScrollBegin={() => { userScrollingRef.current = true; }}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         {...keyboardScroll.props}
         // Composed on top of the keyboard hook's handlers, not spread before
-        // them: it claims both of these itself to keep its recorded offset
-        // fresh (see useKeyboardInsetScroll), so replacing either would strand
-        // the list the next time the keyboard closes over it.
+        // them: it claims all three of these itself to keep its recorded
+        // offset fresh (see useKeyboardInsetScroll), so replacing any would
+        // strand the list the next time the keyboard closes over it.
+        // handleScroll feeds it through noteScroll.
+        onScroll={handleScroll}
         onScrollEndDrag={e => {
+          userScrollingRef.current = false;
           keyboardScroll.props.onScrollEndDrag(e);
           onScrollSettle?.();
         }}
         onMomentumScrollEnd={e => {
+          userScrollingRef.current = false;
           keyboardScroll.props.onMomentumScrollEnd(e);
           onScrollSettle?.();
         }}
@@ -1224,10 +1272,14 @@ export function ReorderableList<T>({
           // Measured purely so a drag can hit-test against it (overHeaderNow);
           // an unstyled wrapper adds nothing to the flex layout it sits in.
           // collapsable={false} for holdRowsOnHeaderResize, whose anchor this
-          // may be even while it's empty.
+          // may be even while it's empty, and a hairline minHeight so that it
+          // IS the anchor at the top while empty (see the prop's doc comment).
           <View
             collapsable={!holdRowsOnHeaderResize}
-            onLayout={e => { headerHeightRef.current = e.nativeEvent.layout.height; }}
+            style={holdRowsOnHeaderResize ? styles.anchorHeader : undefined}
+            // Zero with no header, whatever the hairline measures: the drag
+            // hit-test above reads any height as a header to drop onto.
+            onLayout={e => { headerHeightRef.current = ListHeaderComponent ? e.nativeEvent.layout.height : 0; }}
           >
             {ListHeaderComponent}
           </View>
@@ -1327,8 +1379,9 @@ export function ReorderableList<T>({
   );
 }
 
-// No autoscrollToTopThreshold: the anchoring is only on while scrolled away
-// from the top (see scrolledAway), so there is no top-of-list case to glide to.
+// No autoscrollToTopThreshold: at the top the header wrapper is the anchor
+// (see holdRowsOnHeaderResize) and grows in place, so there is nothing to glide
+// to, and the glide was a native animated scroll on every header resize there.
 const HOLD_ROWS_POSITION = { minIndexForVisible: 0 };
 
 /**
@@ -1342,6 +1395,9 @@ const ANCHOR_SENTINEL_HEIGHT = 1_000_000;
 
 const styles = StyleSheet.create({
   anchorSentinel: { height: ANCHOR_SENTINEL_HEIGHT, marginBottom: -ANCHOR_SENTINEL_HEIGHT },
+  // One device pixel: enough for the native "partially visible" test to pick
+  // the empty wrapper at offset 0, and nothing anyone can see.
+  anchorHeader: { minHeight: StyleSheet.hairlineWidth },
   container: { flex: 1 },
   scroll: { flex: 1 },
   placeholder: { opacity: 0 },

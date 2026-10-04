@@ -163,11 +163,16 @@ export function useKeyboardInsetScroll<T extends ScrollHandle>(
   const covered = ownsSheet ? sheetCovered(level) : level.presented.size > 0;
   const focused = routeFocused && !covered;
   const ref = useRef<T | null>(null);
-  // Everything the clamp needs, read off the last settled scroll event rather
-  // than from onLayout/onContentSizeChange: a scroll event carries the
-  // viewport and content heights alongside the offset, so the three can never
-  // describe different moments (and VirtualizedList fires the caller's
-  // onLayout with the empty component's frame, not the list's).
+  // Everything the clamp needs, read off the last scroll event rather than
+  // from onLayout/onContentSizeChange: a scroll event carries the viewport and
+  // content heights alongside the offset, so the three can never describe
+  // different moments (and VirtualizedList fires the caller's onLayout with
+  // the empty component's frame, not the list's). Every scroll event, not only
+  // a settled one: the keyboard's own scroll-into-view is a programmatic
+  // scroll, so a list the user never dragged has nothing settled on record,
+  // and the clamp on `keyboardDidHide` then judges the stranding it exists to
+  // undo against zeros and leaves it. Recording is separate from clamping,
+  // which stays on the settled events below.
   const lastScroll = useRef({ offset: 0, contentHeight: 0, viewportHeight: 0, insetBottom: 0 });
 
   /**
@@ -285,9 +290,18 @@ export function useKeyboardInsetScroll<T extends ScrollHandle>(
     ref,
     clearStaleInset,
     focusInput,
+    /**
+     * For a list that sets its own `onScroll` after spreading `props` (which
+     * would otherwise replace the one below): call this from it, so the
+     * keyboard-dismissal clamp still sees where the list is.
+     */
+    noteScroll: record,
     props: {
       automaticallyAdjustKeyboardInsets: focused && !fieldAbove,
       contentInset: insetProp,
+      // Recording only, never clamping: a scroll event mid rubber-band carries
+      // an overshoot that iOS is about to settle itself. See `lastScroll`.
+      onScroll: record,
       // A drag can end mid rubber-band; recording without clamping lets the
       // bounce finish (onMomentumScrollEnd then settles it) while still
       // keeping the offset fresh for a keyboard dismiss that never scrolls.

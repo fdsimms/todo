@@ -4579,9 +4579,14 @@ export function TodayScreen() {
                 unscheduledScroll.ref.current?.scrollToIndex({ index: info.index, animated: true, viewPosition: 0.3 });
               }, 100);
             }}
-            onScroll={unscheduledScrollTop.onScroll}
             scrollEventThrottle={16}
             {...unscheduledScroll.props}
+            // After the spread, which carries its own onScroll; both still hear
+            // every event (see useKeyboardInsetScroll's noteScroll).
+            onScroll={e => {
+              unscheduledScrollTop.onScroll(e);
+              unscheduledScroll.noteScroll(e);
+            }}
             renderItem={({ item }) => {
               const subs = subtasksByParent.get(item.id) ?? NO_SUBTASKS;
               return (
@@ -4676,9 +4681,14 @@ export function TodayScreen() {
                 inboxScroll.ref.current?.scrollToIndex({ index: info.index, animated: true, viewPosition: 0.3 });
               }, 100);
             }}
-            onScroll={inboxScrollTop.onScroll}
             scrollEventThrottle={16}
             {...inboxScroll.props}
+            // After the spread, which carries its own onScroll; both still hear
+            // every event (see useKeyboardInsetScroll's noteScroll).
+            onScroll={e => {
+              inboxScrollTop.onScroll(e);
+              inboxScroll.noteScroll(e);
+            }}
             renderItem={({ item }) => {
               const content =
                 item.type === 'group'
