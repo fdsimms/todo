@@ -401,7 +401,7 @@ describe('settings index', () => {
     // a renamed row would otherwise only surface as a button that goes nowhere.
     it('resolves every row the app links to from outside Settings', () => {
       for (const id of ['healthWrite', 'healthRead', 'apiKey', 'deadlineCalendar',
-        'completionCalendar', 'mealCalendar']) {
+        'completionCalendar', 'mealCalendar', 'calendarRead']) {
         expect(SETTINGS_ENTRIES.find(e => e.id === id)).toBeDefined();
       }
     });
