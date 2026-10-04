@@ -2802,6 +2802,23 @@ export interface Task {
    */
   deliverableValue: string | null;
   /**
+   * Why that answer was given ("under 20 guests, no venue deposit"), and what
+   * would reopen it ("guest list goes over 25"). Optional text recorded with
+   * the answer, in the prompt that asks for it, and edited wherever the
+   * answer is. Null on almost every row.
+   *
+   * On the answer rather than in `notes`, for the reason `deliverableValue`
+   * gives and one more: notes are what you need to know to *do* the task,
+   * and this is what was decided by doing it. Per-occurrence for the same
+   * reason too, so a recurring decision's Logbook keeps each answer's own
+   * reasoning. Nothing evaluates "revisit if": it is free text for a reader,
+   * a person scanning Decisions or Claude reading `get_project`.
+   *
+   * Optional so a row built before the fields existed still type-checks.
+   */
+  deliverableWhy?: string | null;
+  deliverableRevisitIf?: string | null;
+  /**
    * The options a 'choice' question offers, in the order they're shown.
    * Ignored for every other kind ('yesno' has its own two). Rides to the next
    * occurrence with the kind, since both are the question. Read through

@@ -1856,6 +1856,10 @@ export function initDatabase(): void {
     // NULL on every existing row: shown whatever any question is answered.
     // JSON `{ taskId, answers }`. See Task.answerGate.
     'ALTER TABLE tasks ADD COLUMN answer_gate TEXT',
+    // NULL on every existing row: an answer recorded with no reasoning. See
+    // Task.deliverableWhy / deliverableRevisitIf.
+    'ALTER TABLE tasks ADD COLUMN deliverable_why TEXT',
+    'ALTER TABLE tasks ADD COLUMN deliverable_revisit_if TEXT',
   ];
   // Asking SQLite for a table's columns once is cheaper than handing it every
   // ALTER for that table and catching the duplicate-column error, and by the
@@ -3305,6 +3309,8 @@ function rowToTask(row: Record<string, unknown>): Task {
     bountyPushes: (row.bounty_pushes as number | null) ?? null,
     difficulty: row.difficulty === 'easy' || row.difficulty === 'normal' || row.difficulty === 'hard' ? row.difficulty : null,
     answerGate: parseAnswerGate(row.answer_gate),
+    deliverableWhy: (row.deliverable_why as string | null) ?? null,
+    deliverableRevisitIf: (row.deliverable_revisit_if as string | null) ?? null,
     timerStartedAt: (row.timer_started_at as string | null) ?? null,
     actualMinutes: (row.actual_minutes as number | null) ?? null,
     estimateBeforeTiming: (row.estimate_before_timing as number | null) ?? null,
@@ -3436,8 +3442,8 @@ export function dbInsertTask(task: Task): void {
       estimate_before_timing, waiting_on_person_since, waiting_follow_up_declined_at,
       reminder_tracks_visibility, recurrence_month,
       blocked_by_ids, deliverable_options, deliverable_sets_away, follow_up_on, extra_task_source_id,
-      pin_each_occurrence, bounty_pushes, difficulty, answer_gate
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      pin_each_occurrence, bounty_pushes, difficulty, answer_gate, deliverable_why, deliverable_revisit_if
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -3555,6 +3561,8 @@ export function dbInsertTask(task: Task): void {
       task.bountyPushes ?? null,
       task.difficulty ?? null,
       task.answerGate ? JSON.stringify(task.answerGate) : null,
+      task.deliverableWhy ?? null,
+      task.deliverableRevisitIf ?? null,
     ]
   );
 }
@@ -3591,7 +3599,7 @@ export function dbUpdateTask(task: Task): void {
       estimate_before_timing=?, waiting_on_person_since=?, waiting_follow_up_declined_at=?,
       reminder_tracks_visibility=?, recurrence_month=?,
       blocked_by_ids=?, deliverable_options=?, deliverable_sets_away=?, follow_up_on=?, extra_task_source_id=?,
-      pin_each_occurrence=?, bounty_pushes=?, difficulty=?, answer_gate=?
+      pin_each_occurrence=?, bounty_pushes=?, difficulty=?, answer_gate=?, deliverable_why=?, deliverable_revisit_if=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -3710,6 +3718,8 @@ export function dbUpdateTask(task: Task): void {
       task.bountyPushes ?? null,
       task.difficulty ?? null,
       task.answerGate ? JSON.stringify(task.answerGate) : null,
+      task.deliverableWhy ?? null,
+      task.deliverableRevisitIf ?? null,
       task.id,
     ]
   );
