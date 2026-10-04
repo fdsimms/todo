@@ -151,7 +151,11 @@ export interface GetTaskResult {
   followUp?: { everyN: number; title: string; oneAtATime?: boolean; completionsSoFar: number };
   project?: { id: string; title: string };
   /**
-   * Why the task is not on Today, when it is not. Null when it is visible.
+   * When a task that is not on Today will surface. Absent when it is visible,
+   * and absent when nothing hidden it is a moment: an undated task, one held
+   * back by a blocker, a finished one. `getVisibleAt` answers "now" for those,
+   * which reads as a delay that is about to end and changes on every call, so
+   * only a moment still ahead is reported.
    * The date is what `getVisibleAt` returns, which is the earliest moment it
    * surfaces rather than its due date — the two differ whenever a defer, a time
    * segment or a category schedule is what is holding it.
@@ -166,6 +170,7 @@ export function getTask(replica: Replica, id: string): GetTaskResult | null {
   const steps = task.chainItems ?? [];
   const project = task.projectId ? replica.projects().find(p => p.id === task.projectId) : null;
   const visible = replica.isVisible(task);
+  const surfacesAt = visible ? null : replica.visibleAt(task);
 
   return {
     task: serializeTasks(replica, [task])[0],
@@ -227,7 +232,7 @@ export function getTask(replica: Replica, id: string): GetTaskResult | null {
         }
       : undefined,
     project: project ? { id: project.id, title: project.title } : undefined,
-    hiddenUntil: visible ? undefined : replica.visibleAt(task).toISOString(),
+    hiddenUntil: surfacesAt && surfacesAt.getTime() > Date.now() ? surfacesAt.toISOString() : undefined,
   };
 }
 
