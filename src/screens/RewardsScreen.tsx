@@ -9,6 +9,7 @@ import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeade
 import { EmptyState } from '../components/EmptyState';
 import { EmptyNote } from '../components/EmptyNote';
 import { InlineAction } from '../components/InlineAction';
+import { TARGET_ICON } from '../components/TargetIcon';
 import { CountStepper } from '../components/CountStepper';
 import { TextField } from '../components/TextField';
 import { ProjectPickerSheet } from '../components/ProjectPickerSheet';
@@ -523,8 +524,8 @@ export function RewardsScreen() {
             />
           )}
           <InlineAction
-            icon={isGoal ? 'flag' : 'flag-outline'}
-            variant="neutral"
+            icon={TARGET_ICON}
+            variant={isGoal ? 'accent' : 'neutral'}
             onPress={() => toggleGoal(reward)}
             accessibilityLabel={isGoal ? `Stop saving for ${shown.title}` : `Save for ${shown.title}`}
           />
