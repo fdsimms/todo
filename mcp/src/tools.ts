@@ -149,7 +149,7 @@ export interface GetTaskResult {
   /** Shown only for these answers to that task's question; `answered` is what it got, once it has. */
   onlyIfAnswer?: { taskId: string; question: string; answers: string[]; answered?: string };
   /** "Every Nth completion, add this task." */
-  followUp?: { everyN: number; title: string; oneAtATime?: boolean; completionsSoFar: number };
+  followUp?: { everyN?: number; atEnd?: boolean; title: string; oneAtATime?: boolean; completionsSoFar?: number };
   project?: { id: string; title: string };
   /**
    * When a task that is not on Today will surface. Absent when it is visible,
@@ -224,7 +224,9 @@ export function getTask(replica: Replica, id: string): GetTaskResult | null {
           };
         })()
       : undefined,
-    followUp: task.followUpTaskEveryN != null && task.followUpTaskTitle
+    followUp: task.followUpTaskAtEnd && task.followUpTaskTitle
+      ? { atEnd: true, title: task.followUpTaskTitle }
+      : task.followUpTaskEveryN != null && task.followUpTaskTitle
       ? {
           everyN: task.followUpTaskEveryN,
           title: task.followUpTaskTitle,
