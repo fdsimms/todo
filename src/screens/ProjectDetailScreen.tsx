@@ -2574,8 +2574,8 @@ export function ProjectDetailScreen() {
             visible={answerTask !== null}
             task={shownAnswerTask}
             mode="edit"
-            onConfirm={value => {
-              setDeliverableValue(shownAnswerTask.id, value);
+            onConfirm={(value, reasoning) => {
+              setDeliverableValue(shownAnswerTask.id, value, reasoning);
               setAnswerTaskId(null);
             }}
             onCancel={() => setAnswerTaskId(null)}

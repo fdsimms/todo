@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import type { Task } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, lineHeight, radius, interaction, type Colors } from '../theme';
-import { formatTaskDeliverable } from '../utils/deliverables';
+import { formatTaskDeliverable, reasoningOf } from '../utils/deliverables';
 import { animateLayout } from '../utils/layoutAnimation';
 import { displayTitleFor } from '../utils/visibilityUtils';
 
@@ -57,6 +57,7 @@ export function ProjectDecisions({ decisions, onPress, label = 'Decisions' }: Pr
       {shown.map(task => {
         const answer = formatTaskDeliverable(task);
         const title = displayTitleFor(task);
+        const { why, revisitIf } = reasoningOf(task);
         return (
           <TouchableOpacity
             key={task.id}
@@ -65,7 +66,11 @@ export function ProjectDecisions({ decisions, onPress, label = 'Decisions' }: Pr
             disabled={!onPress}
             activeOpacity={interaction.activeOpacity}
             accessibilityRole="button"
-            accessibilityLabel={`${title}, answered ${answer}`}
+            accessibilityLabel={[
+              `${title}, answered ${answer}`,
+              why ? `because ${why}` : null,
+              revisitIf ? `revisit if ${revisitIf}` : null,
+            ].filter(Boolean).join(', ')}
             accessibilityHint={onPress ? 'Double tap to change the answer' : undefined}
           >
             {/* Three lines, not one (#1737): unlike the Logbook/Search rows
@@ -78,6 +83,22 @@ export function ProjectDecisions({ decisions, onPress, label = 'Decisions' }: Pr
             <View style={styles.answerPill}>
               <Text style={styles.answer} numberOfLines={3}>{answer}</Text>
             </View>
+            {/* The reasoning on its own full-width lines under the pair, so
+                it never competes with the question for the row's width. */}
+            {(why || revisitIf) && (
+              <View style={styles.reasoning}>
+                {why && (
+                  <Text style={styles.reasoningText}>
+                    <Text style={styles.reasoningLabel}>Why </Text>{why}
+                  </Text>
+                )}
+                {revisitIf && (
+                  <Text style={styles.reasoningText}>
+                    <Text style={styles.reasoningLabel}>Revisit if </Text>{revisitIf}
+                  </Text>
+                )}
+              </View>
+            )}
           </TouchableOpacity>
         );
       })}
@@ -172,6 +193,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.accentSubtle,
     flexShrink: 1,
   },
+  reasoning: { flexBasis: '100%', gap: 2 },
+  reasoningText: { color: colors.textSecondary, fontSize: font.sm, lineHeight: lineHeight.sm },
+  reasoningLabel: { color: colors.text, fontWeight: fontWeight.medium },
   answer: {
     color: colors.accent,
     fontSize: font.sm,

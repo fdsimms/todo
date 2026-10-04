@@ -104,6 +104,7 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     completionProblem: () => null,
     deferTask: () => { throw new Error('not stubbed'); },
     setTaskArchived: () => { throw new Error('not stubbed'); },
+    updateAnswer: () => { throw new Error('not stubbed'); },
     addGroceryItem: () => { throw new Error('not stubbed'); },
     setGroceryChecked: () => { throw new Error('not stubbed'); },
     removeFromGroceryList: () => { throw new Error('not stubbed'); },
@@ -254,6 +255,16 @@ describe('getTask', () => {
 
     const hidden = task({ id: 'later-1', title: 'Deferred' });
     expect(getTask(withTasks([hidden]), 'later-1')!.hiddenUntil).toBe('2099-01-01T00:00:00.000Z');
+  });
+
+  it('gives no date when nothing hiding the task is a moment, since getVisibleAt answers "now"', () => {
+    // An undated task is hidden from Today but has no time to surface at.
+    const undated = task({ id: 'unscheduled-1', title: 'Someday' });
+    const result = getTask(withTasks([undated], { visibleAt: () => new Date() }), 'unscheduled-1')!;
+    expect(result.hiddenUntil).toBeUndefined();
+
+    const past = getTask(withTasks([undated], { visibleAt: () => new Date('2000-01-01T00:00:00.000Z') }), 'unscheduled-1')!;
+    expect(past.hiddenUntil).toBeUndefined();
   });
 });
 

@@ -88,7 +88,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/dayTimeline.ts` — MINUTES_IN_DAY, DEFAULT_FIRST_HOUR, DEFAULT_LAST_HOUR, TimelineEntry, DayTimeline, DayTimelineInput, clockToDayMinutes, instantToDayMinutes, buildDayTimeline, SLOT_STEP_MINUTES, +1 more
 - `src/utils/deadlineCalendarSync.ts` — syncDeadlineEvent, deadlineEventLink, deleteDeadlineEvent, TaskEventSyncPlan, taskEventsAfterSync
 - `src/utils/deepLinks.ts` — AddTaskLink, parseAddTaskUrl, handleIncomingUrl, isQuickAddUrl, isAddEventUrl, isOpenAppUrl, isGroceriesUrl, groceriesUrlFinish, groceriesLinkUrl, groceriesUrlShop, +39 more
-- `src/utils/deliverables.ts` — DELIVERABLE_TEXT_MAX_LENGTH, DELIVERABLE_META, YES_NO_OPTIONS, DELIVERABLE_OPTIONS_MAX, isTentativeAnswer, RSVP_OPTIONS, parseDeliverableOptions, cleanDeliverableOptions, deliverableOptionsFor, deliverableMeta, +8 more
+- `src/utils/deliverables.ts` — DELIVERABLE_TEXT_MAX_LENGTH, DeliverableReasoning, DELIVERABLE_REASONING_MAX_LENGTH, cleanDeliverableReasoning, reasoningOf, DELIVERABLE_META, YES_NO_OPTIONS, DELIVERABLE_OPTIONS_MAX, isTentativeAnswer, RSVP_OPTIONS, +12 more
 - `src/utils/deloadPlan.ts` — DeloadDestination, DeloadProposal, DeloadPlan, buildDeloadPlan
 - `src/utils/demoHold.ts` — runOrHoldForDemo, replayHeldForDemo
 - `src/utils/demoSeed.ts` — seedDemoData
@@ -263,7 +263,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/recipeBackfill.ts` — RecipeBackfillFieldId, RecipeBackfillFieldDef, RECIPE_BACKFILL_FIELDS, isRecipeFieldMissing, isRecipeBackfillDismissed, recipeBackfillCandidates, recipeBackfillFieldCounts, dismissRecipeBackfillField
 - `src/utils/recipeComponents.ts` — parseRecipeComponents, normalizeComponent, parseRecipeChoices, makeComponent, ChoiceResolution, choiceGroupKey, activeComponents, activeIngredients, recipeMap, ResolvedComponent, +21 more
 - `src/utils/recipeCost.ts` — CostEstimate, estimateRecipeCost, estimateWeekCost, describeRecipeCost, describeWeekCost
-- `src/utils/recipeImageSync.ts` — recipeImageNames, readRecipeImageForSync, writeRecipeImageFromSync, recipeIdsIn, unreferencedImageNames, applyWithRecipeImages
+- `src/utils/recipeImageSync.ts` — recipeImageNames, readRecipeImageForSync, hasRecipeImageForSync, writeRecipeImageFromSync, recipeIdsIn, unreferencedImageNames, applyWithRecipeImages
 - `src/utils/recipeImportComponents.ts` — ReferenceCandidate, referencePageNumber, importableReferences, coveredIngredients
 - `src/utils/recipeImportPreview.ts` — ImportPreviewLine, methodRowMeta, prepTasksRowMeta, methodPreviewLines, prepTaskPreviewLines, previewToggleLabel
 - `src/utils/recipeNutrition.ts` — RecipeNutrition, NutritionLineState, recipeNutrition, RecipeNutritionReading, readRecipeNutrition, NutritionLine, recipeNutritionLines, ExcludedNutritionLine, excludedNutritionLines, lineContribution, +7 more
@@ -324,6 +324,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/shoppingTrip.ts` — MAX_TRIP_STOPS, ShopCoverage, TripPlan, TripSummary, planTrip, summarizeTrip, describeShopCoverage, joinNames
 - `src/utils/simpleMode.ts` — SimpleArea, SimpleFeatureId, SimpleFeature, SIMPLE_AREA_LABELS, SIMPLE_AREAS, SIMPLE_FEATURES, simpleFeaturesIn, featureHidden, featureShown, SIMPLE_HIDDEN_SCREENS, +10 more
 - `src/utils/simpleTaskForm.ts` — SIMPLE_QUICK_ADD_CHIPS, isSimpleChip
+- `src/utils/sleepLog.ts` — SleepEpisode, SleepStages, SLEEP_STAGE_ORDER, SLEEP_STAGE_LABEL, parseSleepEpisodes, SleepNight, sleepNights, sleepReadings, nightsInWindow, MIN_CLOCK_CONCENTRATION, +15 more
 - `src/utils/slipConfirm.ts` — confirmSlip
 - `src/utils/snoozeEngine.ts` — SnoozeSuggestion, AWAY_PENALTY, computeSnoozeSuggestion
 - `src/utils/standingSwaps.ts` — StandingSwap, StandingSwapMap, NO_STANDING_SWAPS, standingSwaps, standingSwapMap, SwappedIngredient, applyStandingSwap, describeStandingSwap
@@ -336,7 +337,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/streakRecord.ts` — nextStreakRecord, bestStreakOf, isStreakAtRecord, streakHint
 - `src/utils/substituteSuggestions.ts` — MAX_SUGGESTED_SUBSTITUTES, SuggestedSubstitute, RawSuggestedSubstitute, dedupeSuggestedSubstitutes
 - `src/utils/supply.ts` — MAX_SUPPLY_COUNT, DEFAULT_SUPPLY_REORDER_AT, MAX_SUPPLY_REORDER_TASKS, clampSupplyCount, clampSupplyReorderAt, clampSupplyLeadDays, clampSupplyRefillCount, SupplySource, isSupplyTask, canHoldSupply, +20 more
-- `src/utils/syncEngine.ts` — SyncTransport, SyncWithholding, withholdChanges, pushCursorKey, PullResult, SyncLocal, IMAGE_PAYLOAD_BUDGET_CHARS, imagesSentKey, SyncStatus, SyncRunResult, +6 more
+- `src/utils/syncEngine.ts` — SyncTransport, SyncImageStore, SyncWithholding, withholdChanges, pushCursorKey, PullResult, SyncLocal, IMAGE_PAYLOAD_BUDGET_CHARS, imagesSentKey, imagesKnownKey, +9 more
 - `src/utils/syncIds.ts` — derivedId, isDerivedId, spawnSeed
 - `src/utils/syncLocal.ts` — databaseSyncLocal
 - `src/utils/syncMerge.ts` — SyncDeletion, SyncChangeSet, SYNC_FORMAT, SyncPayload, MAX_SYNC_IMAGE_CHARS, isSyncImageName, ParsedPayload, buildPayload, buildImagePayload, serializePayload, +8 more
@@ -411,7 +412,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/useFocusStore.ts` — useFocusStore
 - `src/store/useFoodLogStore.ts` — FOOD_INSIGHT_DAYS, FoodLogDraft, PendingMealLog, PendingManualMealLog, FoodLogPatch, FoodLogPlacement, sameEntries, useFoodLogStore
 - `src/store/useGroceryStore.ts` — subscribeCartHoldRelease, PlannedRow, PlanAddResult, describePlanAdd, useGroceryStore
-- `src/store/useHealthStore.ts` — HealthDay, EXERCISE_LIVE_WINDOW_DAYS, HEALTH_HISTORY_DAYS, WEIGHT_HISTORY_DAYS, useHealthStore, useHealthSync
+- `src/store/useHealthStore.ts` — HealthDay, EXERCISE_LIVE_WINDOW_DAYS, HEALTH_HISTORY_DAYS, WEIGHT_HISTORY_DAYS, SLEEP_HISTORY_DAYS, useHealthStore, useHealthSync
 - `src/store/useHiddenEventsStore.ts` — useHiddenEventsStore
 - `src/store/useLeftoverStore.ts` — LeftoverDraft, useLeftoverStore
 - `src/store/useMealPlanStore.ts` — MealPlanDraft, CookRecap, useMealPlanStore

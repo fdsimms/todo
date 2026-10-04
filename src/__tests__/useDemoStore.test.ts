@@ -1524,6 +1524,8 @@ describe('demo mode', () => {
     expect(tent.answerGate?.answers).toEqual(['Outdoors']);
     expect(isHeldBack(tent)).toBe(false);
     expect(isTaskNotNeeded(hall)).toBe(true);
+    // The decision keeps its reasoning beside the answer.
+    expect(tasks.find(t => t.title === 'Indoors or outdoors?' && t.completed)?.deliverableRevisitIf).toBe('The forecast says rain');
     // The party is the event its card counts down to, a week ahead of the deadline.
     expect(projectCardCaption(party!, false, 'active')?.text).toBe('Event in 31 days');
   });

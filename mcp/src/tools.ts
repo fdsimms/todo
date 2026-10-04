@@ -18,7 +18,7 @@
  * blocker, a `dayResetTime` that is not midnight.
  */
 import type { FoodLogEntry, GroceryItem, GroceryListEntry, MedicationLog, MoodLog, Project, Task } from '../../src/types';
-import type { Replica } from './replica';
+import type { AnswerEdit, Replica } from './replica';
 import type { TemplatePlan } from './templatePlan';
 import { describeRepeat, type RepeatInput, type TaskFieldsInput } from './taskFields';
 import { serializeTasks, type SerializedTask } from './serialize';
@@ -152,7 +152,11 @@ export interface GetTaskResult {
   followUp?: { everyN: number; title: string; oneAtATime?: boolean; completionsSoFar: number };
   project?: { id: string; title: string };
   /**
-   * Why the task is not on Today, when it is not. Null when it is visible.
+   * When a task that is not on Today will surface. Absent when it is visible,
+   * and absent when nothing hidden it is a moment: an undated task, one held
+   * back by a blocker, a finished one. `getVisibleAt` answers "now" for those,
+   * which reads as a delay that is about to end and changes on every call, so
+   * only a moment still ahead is reported.
    * The date is what `getVisibleAt` returns, which is the earliest moment it
    * surfaces rather than its due date — the two differ whenever a defer, a time
    * segment or a category schedule is what is holding it.
@@ -167,6 +171,7 @@ export function getTask(replica: Replica, id: string): GetTaskResult | null {
   const steps = task.chainItems ?? [];
   const project = task.projectId ? replica.projects().find(p => p.id === task.projectId) : null;
   const visible = replica.isVisible(task);
+  const surfacesAt = visible ? null : replica.visibleAt(task);
 
   return {
     task: serializeTasks(replica, [task])[0],
@@ -228,7 +233,7 @@ export function getTask(replica: Replica, id: string): GetTaskResult | null {
         }
       : undefined,
     project: project ? { id: project.id, title: project.title } : undefined,
-    hiddenUntil: visible ? undefined : replica.visibleAt(task).toISOString(),
+    hiddenUntil: surfacesAt && surfacesAt.getTime() > Date.now() ? surfacesAt.toISOString() : undefined,
   };
 }
 
@@ -619,9 +624,17 @@ export interface CompleteTaskResult {
 export function completeTask(
   replica: Replica,
   id: string,
-  options?: { deliverableValue?: string | null; completedAt?: string },
+  options?: { deliverableValue?: string | null; completedAt?: string; why?: string; revisitIf?: string },
 ): CompleteTaskResult {
-  const result = replica.completeTask(id, options);
+  const { why, revisitIf, ...rest } = options ?? {};
+  // Reasoning only means something next to an answer; `in` keeps the
+  // "was an answer sent at all" test the refusal makes intact.
+  const result = replica.completeTask(id, options === undefined ? undefined : {
+    ...rest,
+    ...(why !== undefined || revisitIf !== undefined
+      ? { deliverableReasoning: { why: why ?? null, revisitIf: revisitIf ?? null } }
+      : {}),
+  });
   const spawned: string[] = [];
   if (result.nextTask) {
     const when = result.nextTask.dueDate
@@ -704,6 +717,15 @@ export function deferTask(replica: Replica, id: string, date: string | null): Se
     throw new Error(`"${date}" is not a date I can read. Use an ISO date like 2026-03-14.`);
   }
   return serializeTasks(replica, [replica.deferTask(id, parsed)])[0];
+}
+
+/** Correct an answer already recorded, or the reasoning given with it. The result is the task as get_task shows it. */
+export function updateAnswer(replica: Replica, id: string, edit: AnswerEdit): GetTaskResult {
+  if (edit.answer === undefined && edit.why === undefined && edit.revisitIf === undefined) {
+    throw new Error('Nothing to change: give answer, why or revisitIf.');
+  }
+  replica.updateAnswer(id, edit);
+  return getTask(replica, id)!;
 }
 
 export function archiveTask(replica: Replica, id: string, archived: boolean): SerializedTask & { archived: boolean } {

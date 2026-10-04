@@ -50,6 +50,7 @@ import {
   updateTask,
   createTemplate,
   completeTask,
+  updateAnswer,
   deferTask,
   archiveTask,
   addGroceryItem,
@@ -1051,6 +1052,8 @@ function registerWriteTools(
         .describe('The answer, for a task that asks one. Null completes it without an answer. Omitting it on a task that asks is refused.'),
       completedAt: z.string().optional()
         .describe('ISO date-time, for recording something done earlier. Defaults to now.'),
+      why: z.string().optional().describe('With an answer: why it was chosen, in a sentence. Shown under the answer in the project\'s Decisions.'),
+      revisitIf: z.string().optional().describe('With an answer: what would reopen the decision ("the guest list goes over 25").'),
     },
     async ({ id, ...rest }) => {
       try {
@@ -1063,6 +1066,24 @@ function registerWriteTools(
         return json(withLink(result, LINKS?.task(result.nextTask?.id ?? id)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not complete the task.' });
+      }
+    }
+  );
+
+  server.tool(
+    'update_answer',
+    'Correct the answer a completed task recorded, or add or change the reasoning given with it: why it was chosen, and what would reopen it. Only the fields given change; null clears one. Clearing the answer clears its reasoning. Nothing is completed or reopened.',
+    {
+      id: z.string().min(1),
+      answer: z.string().nullable().optional(),
+      why: z.string().nullable().optional(),
+      revisitIf: z.string().nullable().optional(),
+    },
+    async ({ id, ...edit }) => {
+      try {
+        return json(await withWrite(() => updateAnswer(replica, id, edit)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change the answer.' });
       }
     }
   );

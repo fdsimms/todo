@@ -412,6 +412,8 @@ export function newTaskFromDraft(
     // template or a duplicate that arrived holding someone else's answer would
     // read as a decision already made.
     deliverableValue: null,
+    deliverableWhy: null,
+    deliverableRevisitIf: null,
     pendingImport: draft.pendingImport ?? null,
     // Not read off the draft — they're omitted from TaskDraft on purpose, so a
     // series row or a template application can't inherit someone else's count.

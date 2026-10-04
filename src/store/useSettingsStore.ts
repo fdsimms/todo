@@ -10,6 +10,7 @@ import {
   serializeWeightGoal,
   type WeightGoal,
 } from '../utils/weightGoal';
+import { parseSleepGoal } from '../utils/sleepLog';
 import {
   parseWaterExerciseBoost,
   serializeWaterExerciseBoost,
@@ -1063,6 +1064,14 @@ interface SettingsStore {
   weightGoal: WeightGoal | null;
 
   /**
+   * Hours asleep a day is read against on the Sleep screen, in minutes, or
+   * null with no goal. Typed in, never proposed: see src/utils/sleepLog.ts.
+   * It feeds nothing but that screen (no rule, no task), so changing it moves
+   * a line on a chart and a count under it.
+   */
+  sleepGoalMinutes: number | null;
+
+  /**
    * A minutes-of-exercise threshold and a millilitre amount: on a day today's
    * `exerciseMinutes` reading clears the threshold, the Food log's water card
    * reads against `nutritionTargets.waterMl` plus this amount instead of the
@@ -1801,6 +1810,8 @@ interface SettingsStore {
   setWaterUnit: (unit: WaterUnit) => void;
   /** Sets the weight goal, or clears it with null. */
   setWeightGoal: (goal: WeightGoal | null) => void;
+  /** Sets the sleep goal in minutes, or clears it with null. */
+  setSleepGoalMinutes: (minutes: number | null) => void;
   /** Sets the water exercise boost, or clears it with null. */
   setWaterExerciseBoost: (boost: WaterExerciseBoost | null) => void;
   setActiveEnergyBoost: (boost: ActiveEnergyBoost | null) => void;
@@ -2498,6 +2509,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   weightUnit: 'kg',
   waterUnit: 'ml',
   weightGoal: null,
+  sleepGoalMinutes: null,
   waterExerciseBoost: null,
   activeEnergyBoost: null,
   bodyProfile: { ...EMPTY_BODY_PROFILE },
@@ -2853,6 +2865,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     // no goal, and an unreadable profile as an empty one, so a blob written by
     // a future build can never stop the settings loading.
     const weightGoal = parseWeightGoal(dbGetSetting('weightGoal'));
+    const sleepGoalMinutes = parseSleepGoal(dbGetSetting('sleepGoalMinutes'));
     const waterExerciseBoost = parseWaterExerciseBoost(dbGetSetting('waterExerciseBoost'));
     const activeEnergyBoost = parseActiveEnergyBoost(dbGetSetting('activeEnergyBoost'));
     const bodyProfile = parseBodyProfile(dbGetSetting('bodyProfile'));
@@ -3309,6 +3322,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       shakeToUndoEnabled,
       simpleMode,
       simpleTaskForm,
+      sleepGoalMinutes,
       sortOption,
       supplyReorderTaskCategory,
       supplyReorderTasks,
@@ -4589,6 +4603,12 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setWeightGoal(goal: WeightGoal | null) {
     dbSetSetting('weightGoal', goal === null ? '' : serializeWeightGoal(goal));
     set({ weightGoal: goal });
+  },
+
+  setSleepGoalMinutes(minutes: number | null) {
+    const value = minutes === null ? null : parseSleepGoal(String(minutes));
+    dbSetSetting('sleepGoalMinutes', value === null ? '' : String(value));
+    set({ sleepGoalMinutes: value });
   },
 
   setWaterExerciseBoost(boost: WaterExerciseBoost | null) {

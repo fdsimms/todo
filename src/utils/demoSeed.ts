@@ -1235,7 +1235,11 @@ export function seedDemoData(): void {
   }, undefined, { skipTitleRules: true });
   addTask({ title: 'Rent a tent', projectId: party.id, answerGate: { taskId: setting.id, answers: ['Outdoors'] } }, undefined, { skipTitleRules: true });
   addTask({ title: 'Book the community hall', projectId: party.id, answerGate: { taskId: setting.id, answers: ['Indoors'] } }, undefined, { skipTitleRules: true });
-  completeTask(setting.id, { deliverableValue: 'Outdoors' });
+  completeTask(setting.id, {
+    deliverableValue: 'Outdoors',
+    // Recorded with the answer, and shown under it in Decisions.
+    deliverableReasoning: { why: 'Maya wants the garden, and it seats everyone', revisitIf: 'The forecast says rain' },
+  });
   const guests = createGroup('Guests', null, party.id);
   // A checklist, as the page's own Add guests makes one: a guest is ticked
   // off with a reply, never dated. Lee said Maybe, which is recorded and

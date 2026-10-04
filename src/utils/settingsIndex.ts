@@ -549,6 +549,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { id: 'weightGoal', groupId: 'health', label: 'Weight goal', section: 'Weight', keywords: ['target', 'lose', 'gain', 'maintain', 'calories', 'tdee', 'deficit', 'macros', 'protein', 'bmr', 'rate', 'lb per week'] },
   { id: 'weightUnit', groupId: 'health', label: 'Weight unit', section: 'Weight',
     keywords: ['kg', 'kilograms', 'lb', 'pounds', 'scale', 'body', 'mass', 'metric', 'imperial'] },
+  { id: 'sleepGoal', groupId: 'health', label: 'Sleep goal', section: 'Sleep',
+    keywords: ['hours', 'asleep', 'bedtime', 'night', 'rest', 'target'] },
 
   // App permissions — one row per system permission the app ever asks for,
   // read-only status plus a link to fix it. Health, Calendar and Notifications
