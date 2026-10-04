@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { View, Text, ScrollView, Alert, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { addDays } from 'date-fns/addDays';
@@ -69,7 +69,6 @@ export function SymptomDetailScreen() {
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const logs = useMoodStore(s => s.logs);
-  const removeLog = useMoodStore(s => s.removeLog);
   const tasks = useTaskStore(s => s.tasks);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
 
@@ -148,20 +147,6 @@ export function SymptomDetailScreen() {
     recipes: new Map(recipes.map(recipe => [recipe.id, recipe.name])),
   }), [foodEntries, groceryItems, recipes]);
 
-  const confirmDelete = (log: MoodLog) => {
-    Alert.alert(
-      'Delete this entry?',
-      'It will be removed from your history and from every number on the Mood screen.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => { haptics.warning(); removeLog(log.id); },
-        },
-      ],
-    );
-  };
 
   if (!stat) {
     // Every entry carrying it was deleted while this page was open. The
@@ -332,7 +317,6 @@ export function SymptomDetailScreen() {
             log={log}
             highlightSymptomKey={key}
             onPress={() => { haptics.tap(); setEditing(log); setSheetOpen(true); }}
-            onLongPress={() => confirmDelete(log)}
           />
         ))}
       </ScrollView>

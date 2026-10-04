@@ -18,10 +18,9 @@ import { symptomOnLog } from '../utils/moodHistory';
  * five announcements, and getting that right once is the point of the
  * component.
  */
-export function MoodEntryRow({ log, onPress, onLongPress, highlightSymptomKey, showDate = true }: {
+export function MoodEntryRow({ log, onPress, highlightSymptomKey, showDate = true }: {
   log: MoodLog;
   onPress?: () => void;
-  onLongPress?: () => void;
   /**
    * A symptom to report the severity of on this row, for the page that is
    * about one symptom. Its own line rather than a bolder entry in the symptom
@@ -58,9 +57,7 @@ export function MoodEntryRow({ log, onPress, onLongPress, highlightSymptomKey, s
       style={styles.row}
       activeOpacity={interaction.activeOpacity}
       onPress={onPress}
-      onLongPress={onLongPress}
-      delayLongPress={interaction.delayLongPress}
-      disabled={!onPress && !onLongPress}
+      disabled={!onPress}
       accessibilityLabel={spoken}
     >
       <Text style={styles.emoji}>{log.mood === null ? '·' : moodEmoji(log.mood)}</Text>

@@ -81,9 +81,15 @@ interface Props {
    * stack built there stays project-less, same as before.
    */
   projectId?: string | null;
+  /**
+   * Completes the given members (today's open ones), from a row in the sheet.
+   * The visible way to do what a long press on the stack's icon does. Only
+   * Today passes it: elsewhere there's no "today" for the stack to be about.
+   */
+  onCompleteToday?: (groupId: string, ids: string[]) => void;
 }
 
-export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, projectId }: Props) {
+export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, projectId, onCompleteToday }: Props) {
   // Every caller clears `group` in the same commit it lowers `visible`, and
   // this component used to return null the moment it did: the open sheet was
   // torn out of the tree rather than closed, which skips SheetModal's ordered
@@ -183,6 +189,9 @@ export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, pro
   // (see groupRoster). Members are what the user put in the stack; the
   // occurrences they've generated are Logbook history.
   const members = group ? groupRosterOf(group.id) : [];
+  // The members the stack's Today tally counts as still to do, which is what
+  // its long press completes too (see TaskGroupHeader's completeAll).
+  const openToday = members.filter(t => !t.completed && isRelevantToGroupToday(t));
   const dueToday = members.filter(isRelevantToGroupToday);
   const doneToday = dueToday.filter(c => c.completed).length;
 
@@ -662,6 +671,23 @@ export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, pro
               />
             )}
           </View>
+          {onCompleteToday && openToday.length > 0 && (
+            <View style={styles.addRow}>
+              <InlineAction
+                icon="checkmark-done-outline"
+                label={openToday.length === 1 ? "Complete today's task" : `Complete today's ${openToday.length} tasks`}
+                variant="neutral"
+                onPress={() => {
+                  const ids = openToday.map(t => t.id);
+                  const groupId = group.id;
+                  // Closed first, so any answer prompt the completion raises
+                  // isn't held behind this sheet.
+                  saveAndClose();
+                  onCompleteToday(groupId, ids);
+                }}
+              />
+            </View>
+          )}
 
         </View>
       </View>
