@@ -71,6 +71,7 @@ import { PressableScale } from './PressableScale';
 import { CountStepper } from './CountStepper';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { TitleTokenAccessory, QUICK_ADD_TITLE_TOKENS } from './TitleTokenAccessory';
+import { tokenChipsFor, applyTokenChip, type TokenChip } from '../utils/titleTokenChips';
 import { HighlightedText } from './HighlightedText';
 import { suggestTitles } from '../utils/titleSuggestions';
 import { findArchivedMatch } from '../utils/archiveMatch';
@@ -1128,6 +1129,24 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   const insertTitleToken = (token: string) => {
     haptics.tap();
     setTitle(titleCaret.insertToken(token));
+  };
+
+  // Choices that finish a sigil typed at the end of the title. Projects are
+  // left out inside a project: createTask files the task there regardless.
+  const titleChips = useMemo(
+    () => tokenChipsFor(title, {
+      categories: categories.map(c => c.name),
+      tags: allTags,
+      projects: intoProjectId ? [] : liveProjects.map(p => p.title),
+    }),
+    [title, categories, allTags, intoProjectId, liveProjects]
+  );
+  const applyTitleChip = (chip: TokenChip) => {
+    if (!titleChips) return;
+    haptics.tap();
+    const next = applyTokenChip(title, titleChips, chip);
+    setTitle(next);
+    titleCaret.moveCaret(next);
   };
 
   // Pop the tooltip in when a phrase is first detected (not on every keystroke
@@ -3300,6 +3319,8 @@ export const QuickAddModal = React.memo(function QuickAddModal({
       <TitleTokenAccessory
         nativeID={TITLE_TOKEN_ACCESSORY_ID}
         tokens={QUICK_ADD_TITLE_TOKENS}
+        chips={titleChips?.chips}
+        onChip={applyTitleChip}
         onInsert={insertTitleToken}
         onConfirm={applyActiveParse}
         confirmVisible={confirmVisible}

@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { InputAccessoryView, Keyboard, Platform, StyleSheet, Text, View } from 'react-native';
+import { InputAccessoryView, Keyboard, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { PressableScale } from './PressableScale';
 import { useColors } from '../theme/ThemeContext';
+import type { TokenChip } from '../utils/titleTokenChips';
 import { spacing, radius, font, fontWeight, iconSize, type Colors } from '../theme';
 
 interface TokenDef {
@@ -74,6 +75,13 @@ interface TitleTokenAccessoryProps {
    * them also gets the "⋯" toggle.
    */
   tokens?: readonly string[];
+  /**
+   * Choices that finish the sigil just typed (see `titleTokenChips.ts`). While
+   * there are any they take the place of the symbol row, and tapping one calls
+   * `onChip`; an empty list or none brings the symbols back.
+   */
+  chips?: readonly TokenChip[];
+  onChip?: (chip: TokenChip) => void;
 }
 
 /**
@@ -103,7 +111,7 @@ interface TitleTokenAccessoryProps {
  * See the `floating` prop's own doc comment for the one field this can't
  * attach to as a real `InputAccessoryView` at all.
  */
-export function TitleTokenAccessory({ nativeID, onInsert, onConfirm, confirmVisible, floating, focused, tokens = DEFAULT_TITLE_TOKENS }: TitleTokenAccessoryProps) {
+export function TitleTokenAccessory({ nativeID, onInsert, onConfirm, confirmVisible, floating, focused, tokens = DEFAULT_TITLE_TOKENS, chips, onChip }: TitleTokenAccessoryProps) {
   const colors = useColors();
   // Shows the `more` symbols in place of the main row. A popover can't do
   // this: an InputAccessoryView clips to its own bounds, and a Modal would
@@ -184,9 +192,33 @@ export function TitleTokenAccessory({ nativeID, onInsert, onConfirm, confirmVisi
   // With the "more" button the row is six buttons plus confirm, which only
   // fits the narrowest phones at the 44pt minimum width and a tighter gap.
   const compact = moreTokens.length > 0;
+  const chipsActive = !showMore && !!onChip && !!chips && chips.length > 0;
   const styles = makeStyles(colors);
   const bar = (
     <View style={styles.bar}>
+      {chipsActive ? (
+        // "always" so a tap lands on a chip instead of first dismissing the
+        // keyboard, which would take this bar away mid-tap.
+        <ScrollView
+          horizontal
+          keyboardShouldPersistTaps="always"
+          showsHorizontalScrollIndicator={false}
+          style={styles.chipScroll}
+          contentContainerStyle={styles.chipRow}
+        >
+          {chips!.map(chip => (
+            <PressableScale
+              key={chip.value}
+              style={styles.chipBtn}
+              haptic
+              onPress={() => onChip!(chip)}
+              accessibilityLabel={`Use ${chip.label}`}
+            >
+              <Text style={styles.chipText}>{chip.label}</Text>
+            </PressableScale>
+          ))}
+        </ScrollView>
+      ) : (
       <View style={[styles.tokenGroup, compact && styles.tokenGroupCompact]}>
         {showMore && (
           <PressableScale
@@ -239,6 +271,7 @@ export function TitleTokenAccessory({ nativeID, onInsert, onConfirm, confirmVisi
         </PressableScale>
         )}
       </View>
+      )}
       {onConfirm && confirmVisible && (
         <PressableScale
           style={[styles.confirmBtn, compact && styles.tokenBtnCompact]}
@@ -294,6 +327,26 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   tokenGroup: {
     flexDirection: 'row',
     gap: spacing.sm,
+  },
+  chipScroll: {
+    flex: 1,
+    // Keeps the last chip from sitting under the confirm button's edge.
+    marginRight: spacing.sm,
+  },
+  chipRow: {
+    gap: spacing.sm,
+    alignItems: 'center',
+  },
+  chipBtn: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.smd,
+    borderRadius: radius.md,
+    backgroundColor: colors.bgTertiary,
+  },
+  chipText: {
+    fontSize: font.md,
+    fontWeight: fontWeight.semibold,
+    color: colors.text,
   },
   tokenGroupCompact: {
     gap: spacing.xsm,
