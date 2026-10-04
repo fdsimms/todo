@@ -530,7 +530,7 @@ export function RewardsScreen() {
             accessibilityLabel={isGoal ? `Stop saving for ${shown.title}` : `Save for ${shown.title}`}
           />
           <InlineAction
-            icon="pencil"
+            icon="create-outline"
             variant="neutral"
             onPress={() => openDraft({ mode: 'edit', id: reward.id }, reward)}
             accessibilityLabel={`Edit ${shown.title}`}
