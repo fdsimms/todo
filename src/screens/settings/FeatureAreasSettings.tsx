@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { View, Text } from 'react-native';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { useColors } from '../../theme/ThemeContext';
@@ -6,6 +6,14 @@ import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
 import { makeSettingsStyles } from './settingsStyles';
 import { SIMPLE_AREAS, SIMPLE_AREA_LABELS, SIMPLE_FEATURES, simpleFeaturesIn } from '../../utils/simpleMode';
+import { DEFAULT_TAB_ROUTES, NAV_MENU_ROWS, type NavDestination } from '../../utils/navHubs';
+import { TabSlotPickerSheet, TAB_SLOT_NAMES } from '../../components/TabSlotPickerSheet';
+import { haptics } from '../../utils/haptics';
+
+const DESTINATION_BY_ROUTE: ReadonlyMap<string, NavDestination> = new Map(
+  NAV_MENU_ROWS.flatMap(row => row.kind === 'screen' ? [row.destination] : row.hub.members)
+    .map(d => [d.route, d] as const)
+);
 
 /**
  * The two switches that reshape the rest of the app: `kitchenEnabled` (the
@@ -26,8 +34,27 @@ export function FeatureAreasSettings() {
   const setKitchenEnabled = useSettingsStore(s => s.setKitchenEnabled);
   const simpleMode = useSettingsStore(s => s.simpleMode);
   const setSimpleMode = useSettingsStore(s => s.setSimpleMode);
+  const tabRoutes = useSettingsStore(s => s.tabRoutes);
+  const setTabSlot = useSettingsStore(s => s.setTabSlot);
+  const resetTabRoutes = useSettingsStore(s => s.resetTabRoutes);
+  const [pickingSlot, setPickingSlot] = useState<number | null>(null);
+  const isDefaultTabs = tabRoutes.length === DEFAULT_TAB_ROUTES.length
+    && tabRoutes.every((route, i) => route === DEFAULT_TAB_ROUTES[i]);
+  /** One tab slot's row: the screen it holds, opening the picker for that slot. */
+  const slotRow = (slot: number) => {
+    const destination = DESTINATION_BY_ROUTE.get(tabRoutes[slot]);
+    return {
+      icon: destination?.icon ?? 'ellipse-outline',
+      iconColor: colors.accent,
+      label: TAB_SLOT_NAMES[slot],
+      value: destination?.label ?? 'None',
+      chevron: true,
+      onPress: () => { haptics.tap(); setPickingSlot(slot); },
+    };
+  };
 
   return (
+    <>
     <SettingsSection
       label="Feature areas"
       footer="Neither switch deletes anything. Your tasks, lists, recipes and planned meals are kept exactly as they are, and turning either back on returns every feature as you left it. A task or item that already uses a hidden feature keeps showing it, so nothing you have set can go missing."
@@ -37,7 +64,9 @@ export function FeatureAreasSettings() {
         icon="cart-outline"
         iconColor={kitchenEnabled ? colors.accent : undefined}
         label="Groceries & meals"
-        hint={kitchenEnabled ? 'Shown in the tab bar' : 'Hidden from the tab bar'}
+        hint={!kitchenEnabled
+          ? 'Hidden from the menu and the tab bar'
+          : tabRoutes.includes('Groceries') ? 'Shown in the menu and the tab bar' : 'Shown in the menu'}
         toggle={kitchenEnabled}
         onPress={() => setKitchenEnabled(!kitchenEnabled)}
       />
@@ -68,5 +97,38 @@ export function FeatureAreasSettings() {
         ))}
       </View>
     </SettingsSection>
+
+    {/* Which screens have a button of their own along the bottom. Any screen
+        the menu reaches can be one; see normalizeTabRoutes for the rules. */}
+    <SettingsSection
+      label="Tab bar"
+      footer="The three screens beside More in the bar along the bottom. More always opens the menu, and every screen stays in the menu whether or not it has a tab."
+    >
+      <SettingsRow entryId="tabRoutes" {...slotRow(0)} />
+      <View style={styles.sep} />
+      <SettingsRow {...slotRow(1)} />
+      <View style={styles.sep} />
+      <SettingsRow {...slotRow(2)} />
+      {!isDefaultTabs && (
+        <>
+          <View style={styles.sep} />
+          <SettingsRow
+            icon="refresh-outline"
+            label="Use the default tabs"
+            labelColor={colors.accent}
+            hint="Today, Groceries and Projects"
+            onPress={() => { haptics.tap(); resetTabRoutes(); }}
+          />
+        </>
+      )}
+    </SettingsSection>
+    <TabSlotPickerSheet
+      visible={pickingSlot !== null}
+      onClose={() => setPickingSlot(null)}
+      slot={pickingSlot ?? 0}
+      tabRoutes={tabRoutes}
+      onSelect={route => { if (pickingSlot !== null) setTabSlot(pickingSlot, route); }}
+    />
+    </>
   );
 }

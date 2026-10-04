@@ -14,6 +14,8 @@ import { useTemplateCategoryStore } from '../store/useTemplateCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
 import { useTaskStore } from '../store/useTaskStore';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
+import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSettings';
 import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
 import { QuickAddNameSheet } from '../components/QuickAddNameSheet';
@@ -69,6 +71,8 @@ export function TemplatesScreen() {
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
   const colors = useColors();
+  // This screen's own settings, from a gear in its header. See SCREEN_SETTINGS.
+  const screenSettings = useScreenSettings('Templates', 'Template settings');
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation();
 
@@ -265,7 +269,8 @@ export function TemplatesScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      <ScreenHeader title="Templates" />
+      <ScreenHeader title="Templates" actions={withScreenSettings(undefined, screenSettings.action)} />
+      <ScreenSettingsSheet {...screenSettings.sheet} />
       <HubPills hub="organize" active="Templates" />
 
       {/* A drag down the column of selection dots picks up a run of templates

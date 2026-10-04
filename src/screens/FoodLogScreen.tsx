@@ -67,6 +67,8 @@ import { HubPills } from '../components/HubPills';
 import { TipHost } from '../components/TipHost';
 import { InlineAction } from '../components/InlineAction';
 import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeader';
+import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
+import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSettings';
 import { FoodLogEntrySheet } from '../components/FoodLogEntrySheet';
 import { SavedMealsSheet } from '../components/SavedMealsSheet';
 import { NutrientContributorsSheet } from '../components/NutrientContributorsSheet';
@@ -145,6 +147,8 @@ function atTimeOf(entry: FoodLogEntry, day: Date): Date {
 
 export function FoodLogScreen() {
   const colors = useColors();
+  // This screen's own settings, from a gear in its header. See SCREEN_SETTINGS.
+  const screenSettings = useScreenSettings('FoodLog', 'Food log settings');
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const tabBarHeight = useBottomTabBarHeight();
   const route = useRoute<{
@@ -1037,7 +1041,7 @@ export function FoodLogScreen() {
         // Hidden while selecting, same as every other bulk-selecting list —
         // the bar below takes over the bottom of the screen and these three
         // aren't things you're doing mid-selection anyway.
-        actions={selectionMode ? undefined : [
+        actions={withScreenSettings(selectionMode ? undefined : [
           // sparkles means "calls api.anthropic.com, needs a key" app-wide —
           // see the note in GroceryCatalogSheet on why a local heuristic uses
           // color-wand instead.
@@ -1070,8 +1074,9 @@ export function FoodLogScreen() {
           } satisfies ScreenHeaderAction] : []),
           // Plain logging moved to the FAB below, same as every other
           // primary-add list screen — selecting is reached by swiping a row.
-        ]}
+        ], screenSettings.action)}
       />
+      <ScreenSettingsSheet {...screenSettings.sheet} />
       <HubPills hub="kitchen" active="FoodLog" />
       <TipHost screen="foodLog" />
 

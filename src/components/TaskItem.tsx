@@ -274,6 +274,8 @@ interface Props {
   onDismissImport?: (id: string) => void;
   /** Opens the task's project when its chip (showProject) is tapped. The chip renders inert without it. */
   onOpenProject?: (projectId: string) => void;
+  /** Opens the task's category when its chip (showCategory) is tapped. Inert without it, like onOpenProject. Must keep its identity across renders, like every handler here. */
+  onOpenCategory?: (category: string) => void;
 }
 
 /**
@@ -323,6 +325,7 @@ export const TaskItem = React.memo(function TaskItem({
   onDismissImport,
   onSubtaskDragStateChange,
   onOpenProject,
+  onOpenCategory,
 }: Props) {
   // What a press reports back: this row, not necessarily this task (see the
   // prop's note). Everything else about the row still speaks in task ids.
@@ -3003,12 +3006,25 @@ export const TaskItem = React.memo(function TaskItem({
               )
             )}
             {showCategory && task.category && (
-              <View style={styles.metaChip}>
-                <Ionicons name="folder-outline" size={iconSize.xs} color={colors.textSecondary} />
-                <Text style={styles.categoryLabel} numberOfLines={1}>
-                  {categoryEmoji ? `${categoryEmoji} ${task.category}` : task.category}
-                </Text>
-              </View>
+              onOpenCategory ? (
+                <PressableScale
+                  style={styles.metaChip}
+                  onPress={() => onOpenCategory(task.category!)}
+                  accessibilityLabel={`Open category ${task.category}`}
+                >
+                  <Ionicons name="folder-outline" size={iconSize.xs} color={colors.textSecondary} />
+                  <Text style={styles.categoryLabel} numberOfLines={1}>
+                    {categoryEmoji ? `${categoryEmoji} ${task.category}` : task.category}
+                  </Text>
+                </PressableScale>
+              ) : (
+                <View style={styles.metaChip}>
+                  <Ionicons name="folder-outline" size={iconSize.xs} color={colors.textSecondary} />
+                  <Text style={styles.categoryLabel} numberOfLines={1}>
+                    {categoryEmoji ? `${categoryEmoji} ${task.category}` : task.category}
+                  </Text>
+                </View>
+              )
             )}
             {subtaskCount > 0 && (
               <View

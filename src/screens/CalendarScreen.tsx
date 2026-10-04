@@ -14,6 +14,8 @@ import { MEAL_SLOT_LABELS, type MealPlanEntry, type Task } from '../types';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
+import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSettings';
 import { EmptyState } from '../components/EmptyState';
 import { TaskItem } from '../components/TaskItem';
 import { TaskEditor, type TaskDraft } from '../components/TaskEditor';
@@ -27,6 +29,7 @@ import { cellAt, isMoveDrop, type CellRect } from '../utils/calendarDrag';
 import { confirmBulkSetWhen } from '../utils/scheduleMovePrompt';
 import { spacing, font, fontWeight, radius, interaction, flattenOverlay, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { resetToMealPlan } from '../navigation/navigationRef';
 import { buildCalendarGrid, buildWeekDays, weekdayHeaders } from '../utils/calendarGrid';
 import { dateToHHMM, dayKeyOf, dayKeyToDate, formatTimeOfDay, getDayStart, getLogicalToday, hhmmToDate } from '../utils/dateUtils';
 import {
@@ -137,6 +140,8 @@ export function CalendarScreen() {
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
   const colors = useColors();
+  // This screen's own settings, from a gear in its header. See SCREEN_SETTINGS.
+  const screenSettings = useScreenSettings('Calendar', 'Calendar settings');
   const { shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -148,6 +153,11 @@ export function CalendarScreen() {
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
   const people = usePersonStore(s => s.people);
   const navigation = useNavigation<any>();
+  // A task row's category chip opens that category's page. Stable, because
+  // TaskItem is memoized.
+  const handleOpenCategory = useCallback((category: string) => {
+    (navigation as any).navigate('CategoryDetail', { category });
+  }, [navigation]);
   // Same rule as Today's: which calendar an event came from is only worth a
   // tag once more than one is being read.
   const calendarIds = useSettingsStore(s => s.calendarIds);
@@ -650,6 +660,7 @@ export function CalendarScreen() {
                 // A day cell already says which day this is; repeating "Today" on
                 // every row of the 13th is noise.
                 showCategory
+                onOpenCategory={handleOpenCategory}
               />
             </View>
           );
@@ -733,10 +744,16 @@ export function CalendarScreen() {
         onPress: () => navigation.navigate('ProjectDetail', { projectId: t.projectId }),
         label: `Away: ${t.name}. Opens the project.`,
       })),
+      // A meal made from a recipe opens the recipe; one typed in by name has
+      // nothing to open but its day on the meal plan.
       ...(includeMeals ? dayExtras.meals : []).map(m => ({
         key: `meal-${m.id}`,
         icon: 'restaurant-outline' as const,
         text: `${MEAL_SLOT_LABELS[m.slot]}: ${m.title}`,
+        onPress: m.recipeId
+          ? () => navigation.navigate('RecipeDetail', { recipeId: m.recipeId! })
+          : () => resetToMealPlan(m.date),
+        label: `${MEAL_SLOT_LABELS[m.slot]}: ${m.title}. ${m.recipeId ? 'Opens the recipe.' : 'Opens the meal plan.'}`,
       })),
       ...dayExtras.birthdays.map(b => ({
         key: `bday-${b.personId}`,
@@ -882,6 +899,7 @@ export function CalendarScreen() {
               subtasks={subs}
               onSubtaskDragStateChange={setDraggingSubtask}
               showCategory
+              onOpenCategory={handleOpenCategory}
             />
           </View>
         );
@@ -944,7 +962,7 @@ export function CalendarScreen() {
         subtitle={viewMode === 'week'
           ? (weekOutstanding > 0 ? `${weekOutstanding} outstanding${weekHasToday ? ' this week' : ''}` : undefined)
           : (monthOutstanding > 0 ? `${monthOutstanding} outstanding in ${format(displayMonth, 'MMMM')}` : undefined)}
-        actions={[
+        actions={withScreenSettings([
           {
             icon: 'repeat-outline',
             onPress: () => { haptics.tap(); setProjecting(p => !p); },
@@ -968,8 +986,9 @@ export function CalendarScreen() {
             },
             accessibilityLabel: `New event on ${format(dayKeyToDate(selectedKey), 'MMMM d')}`,
           }]),
-        ]}
+        ], screenSettings.action)}
       />
+      <ScreenSettingsSheet {...screenSettings.sheet} />
 
       {/* Same shape as Today's own lens pills. Deliberately not HubPills:
           these switch a sub-view rather than navigating. */}

@@ -59,6 +59,11 @@ const NO_SUBTASKS: Task[] = [];
 export function SavedViewDetailScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
+  // A task row's category chip opens that category's page. Stable, because
+  // TaskItem is memoized.
+  const handleOpenCategory = useCallback((category: string) => {
+    (navigation as any).navigate('CategoryDetail', { category });
+  }, [navigation]);
   const route = useRoute<RouteProp<RootStackParamList, 'SavedViewDetail'>>();
   const { viewId } = route.params;
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
@@ -271,6 +276,7 @@ export function SavedViewDetailScreen() {
                   onSelect={toggleSelection}
                   onSwipeSelect={handleRowSwipeSelect}
                   showCategory
+                  onOpenCategory={handleOpenCategory}
                   showDate
                   showProject
                   onOpenProject={handleOpenProject}

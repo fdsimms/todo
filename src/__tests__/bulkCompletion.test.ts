@@ -1,4 +1,4 @@
-import { tasksAskingOnCompletion, unansweredCompletionCopy } from '../utils/bulkCompletion';
+import { stackCompletionScope, tasksAskingOnCompletion, unansweredCompletionCopy } from '../utils/bulkCompletion';
 import type { Task } from '../types';
 
 // Same two stubs completionTap.test.ts uses: isRecurrenceNotYetDue reaches
@@ -184,5 +184,24 @@ describe('unansweredCompletionCopy', () => {
       expect(title).not.toContain('—');
       expect(message).not.toContain('—');
     }
+  });
+});
+
+describe('stackCompletionScope', () => {
+  const open = [makeTask({ id: 'today1' }), makeTask({ id: 'today2' }), makeTask({ id: 'thursday' })];
+
+  it("completes only the members the header counts as today's, skipping the rest", () => {
+    expect(stackCompletionScope(open, ['today1', 'today2'])).toEqual({
+      ids: ['today1', 'today2'],
+      skip: ['thursday'],
+    });
+  });
+
+  it('completes every open member when the header counts none today', () => {
+    expect(stackCompletionScope(open, undefined)).toEqual({ ids: ['today1', 'today2', 'thursday'], skip: [] });
+  });
+
+  it('ignores a counted id that is no longer open', () => {
+    expect(stackCompletionScope(open, ['today1', 'gone'])).toEqual({ ids: ['today1'], skip: ['today2', 'thursday'] });
   });
 });

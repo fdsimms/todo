@@ -1,4 +1,4 @@
-import React, { useRef, useMemo, useCallback } from 'react';
+import React, { useMemo } from 'react';
 import { View, StyleSheet, Platform, ScrollView, KeyboardAvoidingView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
@@ -6,8 +6,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, type Colors } from '../theme';
 import { DetailHeader } from '../components/DetailHeader';
 import { settingsGroup, type SettingsGroupId } from '../utils/settingsIndex';
-import { settingsFocusScrollTarget } from '../utils/settingsFocusScroll';
-import { SettingsFocusProvider, type MeasurableRow } from './settings/SettingsFocus';
+import { SettingsFocusProvider, useSettingsFocusScroll } from './settings/SettingsFocus';
 import { FeatureAreasSettings } from './settings/FeatureAreasSettings';
 import { AppearanceSettings } from './settings/AppearanceSettings';
 import { DayTimeSettings } from './settings/DayTimeSettings';
@@ -18,7 +17,6 @@ import { DeadlineCalendarSettings } from './settings/DeadlineCalendarSettings';
 import { CompletionCalendarSettings } from './settings/CompletionCalendarSettings';
 import { MealCalendarSettings } from './settings/MealCalendarSettings';
 import { TasksProjectsSettings } from './settings/TasksProjectsSettings';
-import { GeneratedTasksSection } from './settings/GeneratedTasksSection';
 import { HealthSettings } from './settings/HealthSettings';
 import { PermissionsSettings } from './settings/PermissionsSettings';
 import { KitchenSettings } from './settings/KitchenSettings';
@@ -40,9 +38,10 @@ type RootStackParamList = {
 };
 
 /**
- * One route for all thirteen groups rather than thirteen routes: they differ only in
- * which component fills the scroll view, and thirteen registrations would mean thirteen
- * more entries in the navigator's pushed-route list too.
+ * One route for every group rather than a route each: they differ only in which
+ * component fills the scroll view, and a dozen registrations would mean a dozen
+ * more entries in the navigator's pushed-route list too. The one exception is
+ * Automations, which is a menu screen of its own (`SettingsGroup.screen`).
  *
  * It also takes an optional `entryId`, which is how a search result opens onto
  * the row it named rather than onto the top of the group holding it. See
@@ -55,46 +54,12 @@ export function SettingsGroupScreen() {
   const insets = useSafeAreaInsets();
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const scrollRef = useRef<ScrollView>(null);
-  // measureLayout needs an ancestor to measure against, and the ScrollView's
-  // own ref is the wrong one — it measures the viewport, not the content. This
-  // wraps the content so a row's `y` comes back as a content-Y, which is the
-  // coordinate scrollTo speaks.
-  const contentRef = useRef<View>(null);
-  const contentHeight = useRef<number | undefined>(undefined);
-  const viewportHeight = useRef<number | undefined>(undefined);
+  const { scrollRef, contentRef, reportRow, scrollProps } = useSettingsFocusScroll();
 
   // Straight off the route param, not state: a search pushes this screen fresh
   // each time, so there is nothing to reset, and the highlight ends by fading
   // itself rather than by being switched off from here.
   const focusedEntryId = entryId ?? null;
-  const scrolledRef = useRef(false);
-
-  const reportRow = useCallback((_id: string, node: MeasurableRow | null) => {
-    // Once only: a row that re-lays out (its pills unfolding, a hint appearing)
-    // would otherwise drag the list back under a finger that had moved on.
-    if (!node || scrolledRef.current || typeof node.measureLayout !== 'function') return;
-    const container = contentRef.current;
-    if (!container) return;
-    scrolledRef.current = true;
-    try {
-      node.measureLayout(
-        container,
-        (_x, y) => {
-          scrollRef.current?.scrollTo({
-            y: settingsFocusScrollTarget(y, contentHeight.current, viewportHeight.current),
-            animated: true,
-          });
-        },
-        // A row that can't be measured keeps its highlight and simply doesn't
-        // scroll, which is the behaviour this whole feature replaces rather
-        // than a new failure.
-        () => {},
-      );
-    } catch {
-      // Same: measuring is the optimisation, the highlight is the answer.
-    }
-  }, []);
 
   const group = settingsGroup(groupId);
   // Gated here rather than inside the section, so the whole thing — including
@@ -114,8 +79,7 @@ export function SettingsGroupScreen() {
           ref={scrollRef}
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={{ paddingBottom: insets.bottom + spacing.xl }}
-          onLayout={e => { viewportHeight.current = e.nativeEvent.layout.height; }}
-          onContentSizeChange={(_w, h) => { contentHeight.current = h; }}
+          {...scrollProps}
         >
           <View ref={contentRef} collapsable={false}>
           <SettingsFocusProvider focusedEntryId={focusedEntryId} reportRow={reportRow}>
@@ -129,7 +93,8 @@ export function SettingsGroupScreen() {
           {groupId === 'capture' && <CompletionCalendarSettings />}
           {groupId === 'capture' && kitchenEnabled && <MealCalendarSettings />}
           {groupId === 'tasksProjects' && <TasksProjectsSettings />}
-          {groupId === 'generated' && <GeneratedTasksSection />}
+          {/* No 'generated' case: that group lives on the Automations screen
+              (SettingsGroup.screen), so nothing routes it here. */}
           {/* No Platform check: the whole group is `iosOnly`, so the index
               stops offering it and this route stops being reachable. */}
           {groupId === 'health' && <HealthSettings />}

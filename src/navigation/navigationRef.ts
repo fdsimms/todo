@@ -32,13 +32,41 @@ export function flushPendingNavigation(): void {
   for (const action of pendingUntilReady.splice(0)) action();
 }
 
+/**
+ * Switches to one of the bottom-tab routes (a visible tab or a drawer screen),
+ * from anywhere — including from on top of a pushed card.
+ *
+ * **Every jump to a tab route goes through this, never a bare
+ * `navigate('<tab>')`.** React Navigation v7 no longer hands an unhandled
+ * `navigate` down to a child navigator, so with a card (Settings, a recipe, a
+ * project, a person) on top, the focused navigator is the root stack, which
+ * has no route by that name: the action is dropped, silently in a release
+ * build. That took out the Settings "Weight goal" row, a recipe's "Cook
+ * something with this" hand-off, and every widget tap, deep link, quick action
+ * and notification tap that arrived while a card was open. Navigating to
+ * `MainTabs` with `pop: true` returns to the one MainTabs already at the
+ * bottom of the stack (closing any cards above it) rather than pushing a
+ * second copy, and the nested `screen` param then switches its tab. With no
+ * card open it is an ordinary tab switch. `noBareTabNavigate.test.ts` holds
+ * this file to it.
+ */
+export function navigateToTab(name: string, params?: object): void {
+  navigationRef.navigate({ name: 'MainTabs', params: { screen: name, params }, pop: true });
+}
+
 // The tab a task-action link was tapped from, before this module navigates
 // away from it. `resetToMood`/`resetToWeight` stamp it onto their `returnTo`
 // param so the log sheet those routes open can hand the user back to it on
 // Cancel/Save instead of stranding them on a hidden tab they never meant to
 // land on for good.
-function currentRouteName(): string | undefined {
-  return navigationRef.isReady() ? navigationRef.getCurrentRoute()?.name : undefined;
+//
+// The tab rather than the focused route: a link tapped on a pushed card (a
+// task row on a category's page) closes that card on its way out, so the card
+// is not somewhere to hand anybody back to — the tab underneath it is.
+export function currentTabName(): string | undefined {
+  if (!navigationRef.isReady()) return undefined;
+  const tabs = navigationRef.getRootState()?.routes.find(r => r.name === 'MainTabs')?.state;
+  return tabs?.index !== undefined ? tabs.routes[tabs.index]?.name : undefined;
 }
 
 // Bare `dundundun://` launches (the Today widget's `.widgetURL`, and the
@@ -46,7 +74,7 @@ function currentRouteName(): string | undefined {
 // the app was left on Later/Search/Projects when it was backgrounded.
 export function resetToToday(): void {
   runWhenReady(() => {
-    navigationRef.navigate({ name: 'Today', params: { resetToToday: Date.now() } });
+    navigateToTab('Today', { resetToToday: Date.now() });
   });
 }
 
@@ -78,16 +106,13 @@ export function resetToGroceries(openFinish = false, focusShopId: string | null 
       ...(openFinish ? { openFinish: stamp } : {}),
       ...(focusShopId ? { focusShop: focusShopId, focusShopStamp: stamp } : {}),
     };
-    navigationRef.navigate({
-      name: 'Groceries',
-      params: Object.keys(params).length > 0 ? params : undefined,
-    });
+    navigateToTab('Groceries', Object.keys(params).length > 0 ? params : undefined);
   });
 }
 
 // Where `dundundun://recipes` lands, the peer of resetToGroceries.
 export function resetToRecipes(): void {
-  runWhenReady(() => navigationRef.navigate('Recipes'));
+  runWhenReady(() => navigateToTab('Recipes'));
 }
 
 // Where `dundundun://foodlog` lands — the Today widget's food log shortcut.
@@ -95,7 +120,7 @@ export function resetToRecipes(): void {
 // arrival the way resetToMood's `log=1` does, since nothing writes this link
 // with a request to log something specific — it's a plain "open the diary".
 export function resetToFoodLog(): void {
-  runWhenReady(() => navigationRef.navigate('FoodLog'));
+  runWhenReady(() => navigateToTab('FoodLog'));
 }
 
 // Where `dundundun://recipe?id=…` lands — a meal-slot cook task's own link
@@ -119,7 +144,7 @@ export function resetToRecipeDetail(
 ): void {
   const { openCookMode = false, ...planned } = opts;
   runWhenReady(() => {
-    navigationRef.navigate('Recipes');
+    navigateToTab('Recipes');
     navigationRef.navigate({
       name: 'RecipeDetail',
       params: openCookMode
@@ -159,17 +184,17 @@ export function resetToMealPlan(
   shopEntryId?: string | null
 ): void {
   runWhenReady(() => {
-    navigationRef.navigate({
-      name: 'MealPlan',
-      params: focusDay
+    navigateToTab(
+      'MealPlan',
+      focusDay
         ? {
             focusDay,
             focusStamp: Date.now(),
             ...(pickSlot ? { pickSlot } : {}),
             ...(shopEntryId ? { shopEntryId } : {}),
           }
-        : undefined,
-    });
+        : undefined
+    );
   });
 }
 
@@ -178,12 +203,12 @@ export function resetToMealPlan(
 // still a registered route, so this is the same tab navigation as before —
 // nothing here has to know it moved.
 export function resetToSearch(): void {
-  runWhenReady(() => navigationRef.navigate('Search'));
+  runWhenReady(() => navigateToTab('Search'));
 }
 
 // Where the "Projects" Home Screen quick action lands — still a top-level tab.
 export function resetToProjects(): void {
-  runWhenReady(() => navigationRef.navigate('Projects'));
+  runWhenReady(() => navigateToTab('Projects'));
 }
 
 // The "Add Task" quick action: lands on Today (same as resetToToday) and
@@ -192,10 +217,7 @@ export function resetToProjects(): void {
 // last-handled value is what makes firing it twice in a row work.
 export function openQuickAddFromShortcut(): void {
   runWhenReady(() => {
-    navigationRef.navigate({
-      name: 'Today',
-      params: { resetToToday: Date.now(), openQuickAdd: Date.now() },
-    });
+    navigateToTab('Today', { resetToToday: Date.now(), openQuickAdd: Date.now() });
   });
 }
 
@@ -205,10 +227,7 @@ export function openQuickAddFromShortcut(): void {
 // opens (see TodayScreen's handleAddMenuSelect).
 export function openQuickAddEventFromShortcut(): void {
   runWhenReady(() => {
-    navigationRef.navigate({
-      name: 'Today',
-      params: { resetToToday: Date.now(), openQuickAddEvent: Date.now() },
-    });
+    navigateToTab('Today', { resetToToday: Date.now(), openQuickAddEvent: Date.now() });
   });
 }
 
@@ -228,10 +247,7 @@ export function resetToKitchen(focusEntryId?: string | null, openReview = false)
     if (focusEntryId) params.focusKitchenEntry = focusEntryId;
     if (openReview) params.openPantryReview = Date.now();
     if (focusEntryId) params.focusStamp = Date.now();
-    navigationRef.navigate({
-      name: 'Kitchen',
-      params: Object.keys(params).length > 0 ? params : undefined,
-    });
+    navigateToTab('Kitchen', Object.keys(params).length > 0 ? params : undefined);
   });
 }
 
@@ -255,7 +271,7 @@ export function resetToKitchen(focusEntryId?: string | null, openReview = false)
 // Lock Screen.
 export function resetToFocusSession(): void {
   runWhenReady(() => {
-    navigationRef.navigate({ name: 'Today', params: { openFocusSession: Date.now() } });
+    navigateToTab('Today', { openFocusSession: Date.now() });
   });
 }
 
@@ -284,13 +300,13 @@ export function resetToFocusSession(): void {
  */
 export function resetToMood(openLog = false): void {
   runWhenReady(() => {
-    const returnTo = openLog ? currentRouteName() : undefined;
-    navigationRef.navigate({
-      name: 'Mood',
-      params: openLog
+    const returnTo = openLog ? currentTabName() : undefined;
+    navigateToTab(
+      'Mood',
+      openLog
         ? { openLog: Date.now(), returnTo: returnTo !== 'Mood' ? returnTo : undefined }
-        : undefined,
-    });
+        : undefined
+    );
   });
 }
 
@@ -308,13 +324,13 @@ export function resetToMood(openLog = false): void {
  */
 export function resetToWeight(openLog = false): void {
   runWhenReady(() => {
-    const returnTo = openLog ? currentRouteName() : undefined;
-    navigationRef.navigate({
-      name: 'Weight',
-      params: openLog
+    const returnTo = openLog ? currentTabName() : undefined;
+    navigateToTab(
+      'Weight',
+      openLog
         ? { openLog: Date.now(), returnTo: returnTo !== 'Weight' ? returnTo : undefined }
-        : undefined,
-    });
+        : undefined
+    );
   });
 }
 
@@ -335,7 +351,7 @@ export function resetToWeight(openLog = false): void {
  */
 export function resetToWeightGoal(): void {
   runWhenReady(() => {
-    navigationRef.navigate({ name: 'Weight', params: { openGoal: Date.now() } });
+    navigateToTab('Weight', { openGoal: Date.now() });
   });
 }
 
@@ -344,10 +360,7 @@ export function resetToPeople(personId?: string | null): void {
     // The list first, always, so the back chevron on the detail screen has
     // somewhere to go — a birthday task tapped from Today would otherwise push
     // a card onto whatever tab happened to be underneath.
-    navigationRef.navigate({
-      name: 'People',
-      params: personId ? { openPerson: Date.now(), personId } : undefined,
-    });
+    navigateToTab('People', personId ? { openPerson: Date.now(), personId } : undefined);
     if (personId) navigationRef.navigate({ name: 'PersonDetail', params: { personId } });
   });
 }
@@ -360,17 +373,17 @@ export function resetToPeople(personId?: string | null): void {
 // this function needs to pass along.
 export function resetToDeload(): void {
   runWhenReady(() => {
-    navigationRef.navigate({ name: 'Today', params: { openDeload: Date.now() } });
+    navigateToTab('Today', { openDeload: Date.now() });
   });
 }
 
 export function resetToProjectPull(projectId?: string | null, onDayKey?: string | null): void {
   runWhenReady(() => {
-    navigationRef.navigate({
-      name: 'Today',
-      params: projectId
+    navigateToTab(
+      'Today',
+      projectId
         ? { openProjectPull: Date.now(), pullProjectId: projectId, pullOnDay: onDayKey ?? undefined }
-        : { openProjectPull: Date.now() },
-    });
+        : { openProjectPull: Date.now() }
+    );
   });
 }

@@ -42,11 +42,17 @@ import { ScreenHeader } from '../components/ScreenHeader';
 import { TaskCheckbox, TASK_CHECKBOX_SIZE } from '../components/TaskCheckbox';
 import { SearchField } from '../components/SearchField';
 import { EmptyState } from '../components/EmptyState';
+import { InlineAction } from '../components/InlineAction';
 import { HighlightedText } from '../components/HighlightedText';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { useStableCallback } from '../hooks/useStableCallback';
 import { format } from 'date-fns/format';
 import { useFilterField } from '../hooks/useFilterField';
+import { useElsewhereSearch } from '../hooks/useElsewhereSearch';
+import { openElsewhereResult } from '../navigation/openSearchResult';
+import {
+  describeElsewhere, sectionPreview, type ElsewhereResult, type ElsewhereSections,
+} from '../utils/searchElsewhere';
 
 // How long the field waits for typing to pause before the expensive
 // fuzzySearch recompute runs. The TextInput's own value/onChangeText stay
@@ -62,11 +68,12 @@ const SEARCH_DEBOUNCE_MS = 180;
  * their identity, so `onPress` takes what it opens rather than the screen
  * closing over it per row.
  */
-const SearchResultItem = React.memo(function SearchResultItem({ result, onPress, onOpenProject, onTicked, categories, styles, colors }: {
+const SearchResultItem = React.memo(function SearchResultItem({ result, onPress, onOpenProject, onOpenCategory, onTicked, categories, styles, colors }: {
   result: CollapsedOccurrence<SearchResult>;
   onPress: (task: Task) => void;
   /** Opens the project a result is filed under, from its chip. */
   onOpenProject: (projectId: string) => void;
+  onOpenCategory: (category: string) => void;
   onTicked: (taskId: string) => void;
   categories: Category[];
   styles: ReturnType<typeof makeStyles>;
@@ -196,8 +203,18 @@ const SearchResultItem = React.memo(function SearchResultItem({ result, onPress,
               project-chip-then-category pairing NewTasksBanner already uses.
               A title can be too generic to place on its own ("Follow up"),
               and a task with no project has only this to say where it lives. */}
-          {category !== '' && (
-            <Text style={styles.metaText} numberOfLines={1}>{category}</Text>
+          {/* Opens the category's page, the way the project chip above opens
+              the project. */}
+          {category !== '' && task.category && (
+            <TouchableOpacity
+              onPress={() => onOpenCategory(task.category!)}
+              hitSlop={6}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="button"
+              accessibilityLabel={`Open category ${task.category}`}
+            >
+              <Text style={styles.metaText} numberOfLines={1}>{category}</Text>
+            </TouchableOpacity>
           )}
           {task.tags.slice(0, 3).map(tag => (
             <View key={tag} style={[styles.tagDot, { backgroundColor: tagColor(tag) }]} />
@@ -302,6 +319,50 @@ const StackResultItem = React.memo(function StackResultItem({ result, onPress, s
             <Text style={styles.notesPreview} numberOfLines={1}>{preview}</Text>
           )}
         </View>
+      </View>
+    </TouchableOpacity>
+  );
+});
+
+/**
+ * A match that isn't a task, stack or project: a screen, a setting, a person,
+ * a recipe or a grocery item. The section header above it names the kind, so
+ * the meta line only says what tells two of a kind apart.
+ */
+const ElsewhereResultItem = React.memo(function ElsewhereResultItem({ result, onPress, styles, colors }: {
+  result: ElsewhereResult;
+  onPress: (result: ElsewhereResult) => void;
+  styles: ReturnType<typeof makeStyles>;
+  colors: Colors;
+}) {
+  const described = describeElsewhere(result);
+  return (
+    <TouchableOpacity
+      style={styles.resultRow}
+      onPress={() => onPress(result)}
+      activeOpacity={interaction.activeOpacity}
+      accessibilityRole="button"
+      accessibilityLabel={`${result.title}, ${described.accessibilityKind}`}
+      accessibilityHint="Double tap to open"
+    >
+      <View style={styles.statusIcon}>
+        <View style={[styles.stackIcon, { backgroundColor: colors.accentSubtle }]}>
+          <Ionicons name={described.icon as React.ComponentProps<typeof Ionicons>['name']} size={iconSize.sm} color={colors.accent} />
+        </View>
+      </View>
+      <View style={styles.resultContent}>
+        <HighlightedText
+          text={result.title}
+          ranges={result.ranges}
+          style={styles.resultTitle}
+          highlightStyle={styles.highlight}
+          numberOfLines={2}
+        />
+        {described.sectionMeta.length > 0 && (
+          <View style={styles.resultMeta}>
+            <Text style={styles.metaText} numberOfLines={1}>{described.sectionMeta}</Text>
+          </View>
+        )}
       </View>
     </TouchableOpacity>
   );
@@ -467,6 +528,7 @@ export function SearchScreen() {
   // moves on: those are new results, and nothing is being held in them.
   const [heldIds, setHeldIds] = useState<ReadonlySet<string>>(new Set());
   const recentSearches = useSettingsStore(useShallow(s => s.recentSearches));
+  const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
   const pushRecentSearch = useSettingsStore(s => s.pushRecentSearch);
   const clearRecentSearches = useSettingsStore(s => s.clearRecentSearches);
 
@@ -505,6 +567,19 @@ export function SearchScreen() {
     return matched.map(r => ({ ...r, progress: progress.get(r.project.id)! }));
   }, [projects, debouncedQuery, tasks]);
 
+  // Screens, settings, people, recipes and groceries, searchable where the
+  // side menu still offers them (see useElsewhereSearch).
+  const elsewhere = useElsewhereSearch(debouncedQuery, true);
+  // Which of those sections the user opened past their first few rows. A new
+  // query is a new set of results, so it starts folded again.
+  const [expandedSections, setExpandedSections] = useState<ReadonlySet<keyof ElsewhereSections>>(new Set());
+  useEffect(() => setExpandedSections(new Set()), [debouncedQuery]);
+  const expandSection = useCallback((section: keyof ElsewhereSections) => {
+    setExpandedSections(prev => new Set(prev).add(section));
+  }, []);
+  const elsewhereCount = elsewhere.goTo.length + elsewhere.people.length
+    + elsewhere.recipes.length + elsewhere.groceries.length;
+
   const isActive = (r: SearchResult) => !r.task.completed || heldIds.has(r.task.id);
   const activeResults = results.filter(isActive);
   const completedResults = results.filter(r => !isActive(r));
@@ -513,11 +588,26 @@ export function SearchScreen() {
     | { type: 'sectionHeader'; label: string }
     | { type: 'result'; result: CollapsedOccurrence<SearchResult> }
     | { type: 'groupResult'; result: GroupSearchResult }
-    | { type: 'projectResult'; result: ProjectSearchResult };
+    | { type: 'projectResult'; result: ProjectSearchResult }
+    | { type: 'elsewhere'; result: ElsewhereResult }
+    | { type: 'showMore'; section: keyof ElsewhereSections; hidden: number };
 
   const listData: ListItem[] = useMemo(() => {
-    if (results.length === 0 && groupResults.length === 0 && projectResults.length === 0) return [];
+    if (results.length === 0 && groupResults.length === 0 && projectResults.length === 0 && elsewhereCount === 0) {
+      return [];
+    }
     const items: ListItem[] = [];
+    const pushSection = (section: keyof ElsewhereSections, label: string) => {
+      const all = elsewhere[section];
+      if (all.length === 0) return;
+      const { shown, hidden } = sectionPreview(all, expandedSections.has(section));
+      items.push({ type: 'sectionHeader', label });
+      shown.forEach(r => items.push({ type: 'elsewhere', result: r }));
+      if (hidden > 0) items.push({ type: 'showMore', section, hidden });
+    };
+    // Screens and settings first: a query that names a place is asking to go
+    // there, and there are rarely more than one or two.
+    pushSection('goTo', 'Go to');
     // Stacks lead: a title match on a stack is almost always a navigational
     // lookup ("where's my packing list"), so it surfaces before the task
     // results rather than being buried under Active/Completed.
@@ -536,13 +626,19 @@ export function SearchScreen() {
       items.push({ type: 'sectionHeader', label: 'Active' });
       activeResults.forEach(r => items.push({ type: 'result', result: r }));
     }
+    // After live tasks and before finished ones: the app is a task list
+    // first, so these never push active work down the screen, but they're
+    // more likely to be what was meant than a task done months ago.
+    pushSection('people', 'People');
+    pushSection('recipes', 'Recipes');
+    pushSection('groceries', 'Groceries');
     if (completedResults.length > 0) {
       items.push({ type: 'sectionHeader', label: 'Completed' });
       completedResults.forEach(r => items.push({ type: 'result', result: r }));
     }
     return items;
     // heldIds too: it's what decides which section a completed row sits in.
-  }, [results, groupResults, projectResults, heldIds]);
+  }, [results, groupResults, projectResults, heldIds, elsewhere, elsewhereCount, expandedSections]);
 
   // A query is worth keeping once it has actually found something: recorded
   // when a result is opened, and when the field is submitted. Deliberately not
@@ -567,9 +663,19 @@ export function SearchScreen() {
     setGroupEditorVisible(true);
   }, [rememberQuery]);
 
+  const openCategory = useCallback((category: string) => {
+    rememberQuery();
+    (navigation as any).navigate('CategoryDetail', { category });
+  }, [rememberQuery, navigation]);
+
   const openProject = useCallback((projectId: string) => {
     rememberQuery();
     (navigation as any).navigate('ProjectDetail', { projectId });
+  }, [rememberQuery, navigation]);
+
+  const openElsewhere = useCallback((result: ElsewhereResult) => {
+    rememberQuery();
+    openElsewhereResult(navigation, result);
   }, [rememberQuery, navigation]);
 
   const handleQuickAddOpenFull = (draft: TaskDraft) => {
@@ -588,6 +694,28 @@ export function SearchScreen() {
       return (
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionHeaderText}>{item.label}</Text>
+        </View>
+      );
+    }
+    if (item.type === 'elsewhere') {
+      return (
+        <ElsewhereResultItem
+          result={item.result}
+          onPress={openElsewhere}
+          styles={styles}
+          colors={colors}
+        />
+      );
+    }
+    if (item.type === 'showMore') {
+      return (
+        <View style={styles.showMoreRow}>
+          <InlineAction
+            label={`Show ${item.hidden} more`}
+            variant="neutral"
+            surface="page"
+            onPress={() => expandSection(item.section)}
+          />
         </View>
       );
     }
@@ -616,6 +744,7 @@ export function SearchScreen() {
         result={item.result}
         onPress={openTask}
         onOpenProject={openProject}
+        onOpenCategory={openCategory}
         onTicked={hold}
         categories={categories}
         styles={styles}
@@ -625,7 +754,7 @@ export function SearchScreen() {
   };
 
   const showEmpty = query.trim().length > 0 && results.length === 0
-    && groupResults.length === 0 && projectResults.length === 0;
+    && groupResults.length === 0 && projectResults.length === 0 && elsewhereCount === 0;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -633,7 +762,7 @@ export function SearchScreen() {
 
       <SearchField
         style={styles.searchBar}
-        placeholder="Search tasks"
+        placeholder="Search everything"
         field={searchFilter}
         onSubmitEditing={rememberQuery}
       />
@@ -689,7 +818,15 @@ export function SearchScreen() {
               ))}
             </View>
           ) : (
-            <EmptyState key="prompt" icon="search-outline" title="Find any task" subtitle="Search active tasks, completed tasks, stacks and projects" bottomOffset={tabBarHeight} />
+            <EmptyState
+              key="prompt"
+              icon="search-outline"
+              title="Search everything"
+              subtitle={kitchenEnabled
+                ? 'Tasks, stacks, projects, people, recipes, groceries, screens and settings'
+                : 'Tasks, stacks, projects, people, screens and settings'}
+              bottomOffset={tabBarHeight}
+            />
           )
         ) : (
           <FlatList
@@ -698,6 +835,8 @@ export function SearchScreen() {
               if (item.type === 'sectionHeader') return `h-${item.label}`;
               if (item.type === 'groupResult') return `g-${item.result.group.id}`;
               if (item.type === 'projectResult') return `p-${item.result.project.id}`;
+              if (item.type === 'elsewhere') return `e-${item.result.key}`;
+              if (item.type === 'showMore') return `m-${item.section}`;
               return item.result.task.id;
             }}
             renderItem={renderItem}
@@ -739,6 +878,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginBottom: spacing.sm,
   },
 
+  showMoreRow: {
+    flexDirection: 'row',
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.xs,
+  },
   sectionHeader: {
     paddingHorizontal: spacing.md,
     paddingTop: spacing.md,

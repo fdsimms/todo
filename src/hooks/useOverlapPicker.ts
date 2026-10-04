@@ -1,5 +1,4 @@
 import { useCallback, useMemo, useState } from 'react';
-import { useNavigation } from '@react-navigation/native';
 import { useShallow } from 'zustand/react/shallow';
 import type { Recipe } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
@@ -8,6 +7,7 @@ import { recipeMap } from '../utils/recipeComponents';
 import { standingSwapMap } from '../utils/standingSwaps';
 import { overlapSeedFromRecipes, rankOverlapRecipes, type OverlapMatch } from '../utils/recipeOverlap';
 import { haptics } from '../utils/haptics';
+import { navigateToTab } from '../navigation/navigationRef';
 
 /** What the sheet needs, captured at open. Null means closed. */
 export interface OverlapPickerState {
@@ -30,7 +30,6 @@ export interface OverlapPickerState {
  * which is the same reason `usePlanMeal` exists.
  */
 export function useOverlapPicker() {
-  const navigation = useNavigation<any>();
   const recipes = useRecipeStore(useShallow(s => s.recipes));
   const groceryItems = useGroceryStore(useShallow(s => s.items));
   const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
@@ -66,8 +65,10 @@ export function useOverlapPicker() {
     setState(null);
     // Stamped, so carrying the same picks over twice still opens the sheet —
     // the idiom MealPlanScreen's `focusStamp` already uses.
-    navigation.navigate('MealPlan', { overlapRecipeIds: recipeIds, overlapStamp: Date.now() });
-  }, [navigation]);
+    // Through navigateToTab, because a recipe's own page is a pushed card and
+    // a bare navigate to a tab from one is dropped.
+    navigateToTab('MealPlan', { overlapRecipeIds: recipeIds, overlapStamp: Date.now() });
+  }, []);
 
   return { overlap: state, openOverlap: open, closeOverlap: close, handOffOverlap: handOff };
 }

@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Alert, StyleSheet, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSettingsStore, type WeekStart } from '../../store/useSettingsStore';
@@ -88,6 +88,7 @@ import { PillGroup, type PillGroupOption } from '../../components/PillGroup';
 import { type SegmentOption } from '../../components/SegmentedControl';
 import { makeSettingsStyles } from './settingsStyles';
 import { useSettingsFocus } from './SettingsFocus';
+import { navigateToSettingsEntry } from '../../navigation/openSettings';
 
 // Map of this file (one component holding most of it; `grep -n '// ===='` is
 // the table of contents):
@@ -161,6 +162,7 @@ export function GeneratedTasksSection() {
   const sectionStyles = useMemo(() => makeStyles(colors), [colors]);
 
   const s = useSettingsStore();
+  const navigation = useNavigation();
   const categories = useCategoryStore(useShallow(state => state.categories));
   // Names for the per-calendar leave-by rows. Filled by the calendar read, so a
   // picked calendar it hasn't reached yet shows a plain fallback.
@@ -270,19 +272,22 @@ export function GeneratedTasksSection() {
    * back with nothing said. Naming the prerequisite is what turns a dead tap
    * into an answer.
    */
-  const blockedBy = (kind: GeneratedKind): { setting: string; screen: string } | null => {
+  // `entryId` is the prerequisite's own row in Settings, which the alert opens:
+  // these generators live on Automations, so "turn it on in Settings, then
+  // come back" was a trip to another part of the app with no way there.
+  const blockedBy = (kind: GeneratedKind): { setting: string; entryId: string } | null => {
     if (kind === 'health' && !s.healthReadEnabled) {
-      return { setting: 'Read Apple Health', screen: 'Health' };
+      return { setting: 'Read Apple Health', entryId: 'healthRead' };
     }
     if (CALENDAR_READ_KINDS.includes(kind) && !s.calendarReadEnabled) {
-      return { setting: 'Read my calendar', screen: 'Calendar' };
+      return { setting: 'Read my calendar', entryId: 'calendarRead' };
     }
     // The weigh-in needs both Health switches — see generatorSwitchedOn.
     if (kind === 'weighIn' && !s.healthReadEnabled) {
-      return { setting: 'Read Apple Health', screen: 'Health' };
+      return { setting: 'Read Apple Health', entryId: 'healthRead' };
     }
     if (kind === 'weighIn' && !s.healthWriteEnabled) {
-      return { setting: 'Log to Health', screen: 'Health' };
+      return { setting: 'Log to Health', entryId: 'healthWrite' };
     }
     return null;
   };
@@ -292,7 +297,11 @@ export function GeneratedTasksSection() {
     if (blocker) {
       Alert.alert(
         `Turn on “${blocker.setting}” first`,
-        `This needs “${blocker.setting}”, which is off. Turn it on under ${blocker.screen} in Settings, then come back.`,
+        `This needs “${blocker.setting}”, which is off in Settings.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Open Settings', onPress: () => navigateToSettingsEntry(navigation, blocker.entryId) },
+        ],
       );
       return;
     }
@@ -1194,9 +1203,9 @@ export function GeneratedTasksSection() {
   return (
     <>
     <SettingsSection
-      // No label: this is the whole of its group, so the screen's own header is
-      // already saying "Automatic tasks" directly above it.
-      footer="These are the only things that put a task in your list without you typing it. Each one can be turned off here, and deleting a task the app added tells it not to add that one again: the grocery item or the leftover it came from remembers your answer, and a meal task stays gone for the rest of the day."
+      // No label: this is the whole of the screen, so its own header is
+      // already saying "Automations" directly above it.
+      footer="These are the only things that put a task in your list without you typing it. Each one can be turned off here, and deleting a task the app added tells it not to add that one again: the grocery item or the leftover it came from remembers your answer, and a meal task stays gone for the rest of the day. Activity shows what each one added."
     >
       {/* Above the generators rather than inside any one of them, because it
           applies to all of them at once: it changes when the whole list below

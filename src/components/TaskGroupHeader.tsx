@@ -65,7 +65,13 @@ interface Props {
   // than closing over it — the same reason TaskItem's row handlers take
   // `task.id` — so TodayScreen can hand every header one stable `useCallback`
   // instead of a fresh closure per group per render.
-  onComplete: (groupId: string) => void;
+  /**
+   * Complete-all. `onlyIds` is what this header counts as today's work (its
+   * tally), so a caller completes those and not a member due on Thursday;
+   * undefined when the header counts nothing today (an Inbox stack of undated
+   * tasks), where the whole roster is what's on show.
+   */
+  onComplete: (groupId: string, onlyIds?: string[]) => void;
   onDefer: (groupId: string, date: Date) => void;
   // Swipe left enters bulk editing with the stack's live roster selected —
   // see the roster note in TodayScreen. Omitted on a list with no bulk bar,
@@ -153,7 +159,10 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
   const completeAll = () => {
     if (allDone) return;
     haptics.impactMedium();
-    onComplete(group.id);
+    // Today's work only, the same set the tally above counts. Completing the
+    // whole roster finished members not due until later in the week too,
+    // which each jumped to their next date.
+    onComplete(group.id, totalToday > 0 ? dueToday.filter(c => !c.completed).map(c => c.id) : undefined);
   };
 
   return (

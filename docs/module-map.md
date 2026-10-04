@@ -40,7 +40,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/blockerRegistry.ts` — registerTaskSource, resolveBlocker, waitingCountFor
 - `src/utils/blockerStatus.ts` — BlockerWait, describeBlockerWait
 - `src/utils/blocking.ts` — TaskResolver, resolverFor, canBlock, blockerIdsOf, blockerFields, liveBlockersOf, blockerOf, isBlocked, PersonResolver, canWaitOn, +12 more
-- `src/utils/bulkCompletion.ts` — tasksAskingOnCompletion, unansweredCompletionCopy
+- `src/utils/bulkCompletion.ts` — tasksAskingOnCompletion, unansweredCompletionCopy, stackCompletionScope
 - `src/utils/busyEvenings.ts` — BUSY_EVENING_MIN_MINUTES, BusyEvening, busyEveningOn, describeBusyEvening
 - `src/utils/calendarBusy.ts` — BusyEvent, BusyInterval, isLiveEvent, occupiesTime, allDayRangeMs, busyIntervalsIn, busyMinutesIn, freeGapsIn, freeMinutesIn, eventsIn, +3 more
 - `src/utils/calendarDrag.ts` — CellRect, cellAt, isMoveDrop
@@ -122,7 +122,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/foodSearchMatch.ts` — FoodCandidate, FoodMatchTier, RankedFood, rankFoodCandidates, unambiguousFood
 - `src/utils/freshness.ts` — daysUntilDay, freshnessFor, FRESHNESS_ORDER, freshnessRank, isUseUpSoon, describeUseBy, liveUseBy, describeOpenedOn, describeFrozenSince
 - `src/utils/fuzzySearch.ts` — SearchResult, fuzzySearch, ProjectSearchResult, searchProjects, GroupSearchResult, searchGroups
-- `src/utils/generatedTasks.ts` — GENERATED_KINDS, GeneratedEnabledKey, GeneratedKindSpec, GENERATED_KIND_SPECS, GENERATED_KIND_LIST, listedGeneratedKinds, generatedTaskCounts, GeneratedEnabledFlags, CALENDAR_READ_KINDS, generatorSwitchedOn, +11 more
+- `src/utils/generatedTasks.ts` — GENERATED_KINDS, GeneratedEnabledKey, GeneratedKindSpec, GENERATED_KIND_SPECS, GENERATED_KIND_LIST, listedGeneratedKinds, generatedTaskCounts, describeGeneratedCounts, GeneratedEnabledFlags, CALENDAR_READ_KINDS, +12 more
 - `src/utils/groceryAdd.ts` — nextSortOrder, ensureProductFor, newItemRow, GroceryAddOverride, GroceryAddContext, GroceryAddPlan, planGroceryAdd, reAddNotice
 - `src/utils/groceryAisles.ts` — DEFAULT_AISLES, OTHER_AISLE, isNonFoodAisle, AISLE_LEXICON, aisleForName, rememberAisles, remapRememberedAisle, forgetRememberedAisle, renameRememberedAisle, normalizeAisleOrder, +2 more
 - `src/utils/groceryExpiry.ts` — wantsUseUpTask, useUpTaskTitle, clampUseUpLeadDays, useUpTaskFields, useUpTaskDraft, useUpTaskDrift
@@ -189,7 +189,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/moodTasks.ts` — MOOD_LOG_TITLE, MOOD_NUDGE_TITLE, DEFAULT_MOOD_NUDGE_AFTER_DAYS, MOOD_NUDGE_COOLDOWN_DAYS, moodLogDayKey, moodLogSegmentOf, moodLogSourceId, moodNudgeDayKey, wantsMoodNudge, daysBetweenKeys, +2 more
 - `src/utils/morningCheckIn.ts` — isMorningCheckInCandidate, morningCheckInTasks
 - `src/utils/naturalKeyFold.ts` — NaturalKey, NATURAL_KEYS, foldRows, Reference, REFERENCES, SettingReference, SETTING_REFERENCES, foldWinner
-- `src/utils/navHubs.ts` — NavContentCounts, NavHubId, NavDestination, NavHub, NavMenuRow, NAV_HUBS, NAV_MENU_ROWS, hubForRoute, visibleHubMembers, NavMenuOptions, +8 more
+- `src/utils/navHubs.ts` — NavContentCounts, NavHubId, NavDestination, NavHub, NavMenuRow, NAV_HUBS, NAV_MENU_ROWS, hubForRoute, visibleHubMembers, NavMenuOptions, +23 more
 - `src/utils/negativeHabits.ts` — NegativeHabitFields, isNegativeTask, slipsToday, isCleanToday, slipPatch, undoSlipPatch, cleanDayPatch
 - `src/utils/notificationTapSync.ts` — useNotificationTapSync
 - `src/utils/notifications.ts` — isWithinQuietHours, deferPastQuietHours, TASK_REMINDER_CATEGORY, COMPLETE_ACTION_IDENTIFIER, SNOOZE_ACTION_IDENTIFIER, SNOOZE_MINUTES, requestNotificationPermissions, NotificationPermission, getNotificationPermission, scheduleTaskReminder, +32 more
@@ -243,7 +243,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/quickEvent.ts` — QuickEventDraft, EventRecurrence, eventRecurrenceFor, describeEventRepeat, parseAlertClause, alertRelativeOffset, DEFAULT_EVENT_MINUTES, parseLengthClause, parseClockRange, parseQuickEvent, +1 more
 - `src/utils/quickEventDefaults.ts` — QUICK_EVENT_DEFAULTS_KEY, EventAvailability, QuickEventDefaults, INITIAL_QUICK_EVENT_DEFAULTS, parseQuickEventDefaults, readQuickEventDefaults, writeQuickEventDefaults
 - `src/utils/quickEventSave.ts` — splitNotesAndLink, QuickEventSaveInput, quickEventSaveFields, alertMinutesFromOffset, describeAlert, ALERT_CHOICES, quickEventFromLine
-- `src/utils/quickSearch.ts` — QUICK_SEARCH_LIMIT, QuickSearchOutcome, quickSearch, QUICK_DESTINATION_LIMIT, quickDestinations
+- `src/utils/quickSearch.ts` — QUICK_SEARCH_LIMIT, QuickSearchOutcome, quickSearch
 - `src/utils/quotaSchedule.ts` — QuotaSpan, QuotaSpanInput, quotaRunSpan, quotaWeekStart, quotaWeekSpan, quotaTargetForInterval, quotaDueTimes, quotaDueTimesAfter, isQuotaRunOver
 - `src/utils/quotaUnit.ts` — MAX_TARGET_UNIT_LENGTH, normalizeTargetUnit, formatQuotaProgress, formatQuotaCatchUp, formatQuotaTarget
 - `src/utils/ranges.ts` — mergeRanges, scoreSubstring
@@ -264,6 +264,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/recipeOverlap.ts` — SharedIngredient, OverlapSeed, OverlapMatch, overlapSeedFromPlanned, overlapSeedFromRecipes, rankOverlapRecipes, describeOverlap
 - `src/utils/recipePageOffline.ts` — OfflineRecipeItem, servingsFromYield, recipeFromPageOffline
 - `src/utils/recipePhoto.ts` — MAX_PHOTO_EDGE, DENSE_PAGE_PHOTO_EDGE, MAX_RECIPE_PHOTOS, RecipePhotoSource, RecipePhoto, RecipePhotoResult, photoTargetSize, CameraPermission, PhotoLibraryPermission, getCameraPermission, +14 more
+- `src/utils/recipePlanned.ts` — PLANNED_MEAL_LIMIT, upcomingRecipeMeals, plannedMealLabel
 - `src/utils/recipeProvenance.ts` — ExtractedSource, FetchedSourcePage, SourceFields, sourceFieldsFor, CookbookEditIntent, cookbookEditIntent, SourcePlan, sourcePlanFor
 - `src/utils/recipeScale.ts` — ScaledQuantity, scaleQuantity, RECIPE_SCALE_FACTORS, isUnscaled, normalizeScale, formatScale, scaleServings, factorForServings, MAX_HOUSEHOLD_SERVINGS, householdScale, +3 more
 - `src/utils/recipeSections.ts` — parseEmptySections, SectionedRow, SectionListEntry, sectionsFromMergedOrder, sectionsOf, allSectionsOf, FlatSectionRow, IngredientHeading, ingredientHeadings
@@ -290,17 +291,20 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/scanPortion.ts` — PackageChoice, servingsPerPackage, packageChoices, servingDescription, packageHelping
 - `src/utils/scanResolve.ts` — ScannedItem, ScannedGtinLink, shopperNameFor, shorterNameSuggestions, nameFromScanFor, sourceLabelFor, variantFor, scannedItemFor, pluScannedItem, unknownScannedItem, +6 more
 - `src/utils/scheduleMovePrompt.ts` — confirmScheduleMove, confirmSegmentScope, confirmBulkSetWhen
+- `src/utils/screenSettings.ts` — SCREEN_SETTINGS, screenSettingsEntries
 - `src/utils/screenTimeBridge.ts` — ScreenTimeBridge, screenTimeBridge, isScreenTimeSupported
 - `src/utils/screenTimeRules.ts` — SCREEN_TIME_RULE_TITLE_MAX_LENGTH, SCREEN_TIME_THRESHOLD_MIN, SCREEN_TIME_THRESHOLD_MAX, SCREEN_TIME_THRESHOLD_DEFAULT, clampThresholdMinutes, defaultScreenTimeRules, parseScreenTimeRules, serializeScreenTimeRules, screenTimeSourceId, parseScreenTimeSourceId, +3 more
 - `src/utils/scrollClamp.ts` — maxRestingOffset, strandedScrollOffset, NO_INSET, NO_INSET_ALT, pulseNoInset
 - `src/utils/scrollFade.ts` — SCROLL_FADE_HEIGHT, SCROLL_FADE_TOLERANCE, ScrollEdgeMetrics, hiddenBelow, hiddenAbove, edgeFadeOpacity
 - `src/utils/searchCollapse.ts` — SearchOccurrence, CollapsedOccurrence, occurrenceFamilyKey, collapseOccurrences, formatOccurrenceCount
+- `src/utils/searchElsewhere.ts` — ElsewhereKind, ElsewhereResult, ElsewhereSources, ElsewhereSections, QUICK_ELSEWHERE_LIMIT, nameTier, termRanges, searchPeople, searchElsewhere, ElsewhereDescription, +5 more
 - `src/utils/sectionListLayout.ts` — CellLayout, sectionListCellLayout
 - `src/utils/sectionRegistry.ts` — registerSectionSource, sectionsNow, isChecklistRow
 - `src/utils/secureApiKey.ts` — API_KEY_SECURE_KEY, API_KEY_LEGACY_SETTING, loadAnthropicApiKey, saveAnthropicApiKey, FDC_KEY_SECURE_KEY, GO_UPC_KEY_SECURE_KEY, SYNC_TOKEN_SECURE_KEY, loadSecureKey, saveSecureKey
 - `src/utils/segmentColumns.ts` — segmentRows
+- `src/utils/settingsActiveRows.ts` — SettingsGateState, SyncGateState, activeSettingsEntryIds, searchableSettingsEntries
 - `src/utils/settingsFocusScroll.ts` — SETTINGS_FOCUS_PADDING, settingsFocusScrollTarget
-- `src/utils/settingsIndex.ts` — SettingsGroupId, SettingsTint, SettingsGroup, SETTINGS_GROUPS, SettingsEntry, SETTINGS_ENTRIES, visibleSettingsGroups, visibleSettingsEntries, settingsGroup, navigateToSettingsEntry
+- `src/utils/settingsIndex.ts` — SettingsGroupId, SettingsTint, SettingsGroup, SETTINGS_GROUPS, SettingsEntry, SETTINGS_ENTRIES, visibleSettingsGroups, visibleSettingsEntries, settingsGroup, IndexedSettingsGroup, +5 more
 - `src/utils/settingsSearch.ts` — SettingsSearchResult, searchSettings
 - `src/utils/settingsSummary.ts` — SettingsSummaryInput, settingsSummaries
 - `src/utils/shakeDetect.ts` — ShakeSample, SHAKE_UPDATE_INTERVAL_MS, SHAKE_THRESHOLD_G, SHAKE_JOLTS_REQUIRED, SHAKE_WINDOW_MS, SHAKE_COOLDOWN_MS, SHAKE_ARM_DELAY_MS, ShakeState, createShakeState, armShakeState, +3 more
@@ -436,6 +440,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useDebouncedValue.ts` — useDebouncedValue
 - `src/hooks/useDragToDay.ts` — DayDragHandlers, DayDragSource, useDragToDay
 - `src/hooks/useElevatedCellRenderer.tsx` — useElevatedCellRenderer
+- `src/hooks/useElsewhereSearch.ts` — useElsewhereSearch
 - `src/hooks/useFilterField.ts` — FilterField, useFilterField
 - `src/hooks/useFocusSession.ts` — useFocusSession, useFocusPlanReconcile
 - `src/hooks/useKeyboardInsetScroll.ts` — ScrollHandle, KeyboardScrollIntoViewContext, useScrollFieldIntoView, useKeyboardInsetScroll
@@ -455,6 +460,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useRecipeTimer.ts` — RecipeTimerBinding, useRecipeTimer
 - `src/hooks/useReminderMeetingResync.ts` — useReminderMeetingResync
 - `src/hooks/useRowSelection.ts` — useRowSelection
+- `src/hooks/useScreenSettings.ts` — useScreenSettings, withScreenSettings
 - `src/hooks/useScrollEdgeFade.ts` — ScrollEdgeFadeScrollProps, ScrollEdgeFadeBinding, useScrollEdgeFade
 - `src/hooks/useScrollToTopOnTabPress.ts` — useScrollToTopOnTabPress
 - `src/hooks/useScrollToTopVisibility.ts` — useScrollToTopVisibility
