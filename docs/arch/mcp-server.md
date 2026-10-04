@@ -235,6 +235,32 @@ and week, clean up a project, and how do I. They exist because the useful things
 app are sequences, and each puts "show me first" where it cannot be skipped. `prompts.test.ts`
 fails on a script naming a tool the server does not register.
 
+### Every agent write is in Activity, and a task write can be undone there
+
+An agent's writes land on the phone by sync with nobody looking at the app, which is the
+situation the Activity ledger (`unattended_log`) exists for, and the ledger already syncs. So the
+replica is wrapped once (`mcp/src/agentLedger.ts`, `withAgentLedger`): every write method records
+its effect after it returns, under `actor: 'agent'`, and a new write cannot skip it because the
+wrapper is the replica every tool is handed. A write that throws records nothing.
+
+An edit or a move records the fields it changed, before and after (`UnattendedRevert`), and
+nothing else of the task. That is what the phone's undo needs: `agentRevertPlan`
+(`src/utils/agentRevert.ts`) offers a revert **only while the task's touched fields still match the
+agent's "after"**, because restoring "before" over an edit the person made since would throw away
+their change to put back one they never saw. It is derived on every read rather than stored, which
+keeps the ledger write-once and makes a second tap (or a revert made on the other phone) read as
+"Undone". A created task can be removed while it is still open, a completed one reopened through
+the store's own `uncompleteTask`. Grocery, project, meal and template entries are records only:
+each is a tap to change in the app.
+
+### Notes for Claude
+
+`src/utils/agentNotes.ts`: a short synced list (`agentNotes`, the `savedPlaces` shape) of what the
+person wants an agent to keep in mind. `get_overview` returns them as `notesForClaude`, `remember`
+and `forget` change them, and Settings › Data & reset › Sync shows, edits and removes them. They
+live in the app rather than in an assistant's own memory so the person can see exactly what is
+kept about them, in one place, whichever assistant reads it.
+
 ### Dates an agent writes are the person's days
 
 A bare `YYYY-MM-DD` was stored as written, and `new Date('2026-10-06')` is UTC midnight, which in

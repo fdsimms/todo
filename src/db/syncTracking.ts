@@ -338,6 +338,9 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   // Read only by a sync server, which has no zone of its own worth trusting
   // and answers "today" in this one (src/utils/deviceTimeZone.ts).
   'deviceTimeZone',
+  // What the person wants an agent to keep in mind, read by the sync server and
+  // edited on any device (src/utils/agentNotes.ts).
+  'agentNotes',
 
   // Behaviour.
   'newTaskDefaults',

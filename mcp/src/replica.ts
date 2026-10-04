@@ -54,6 +54,7 @@ import type {
 } from '../../src/types';
 import type { FoodLogTotals } from '../../src/utils/foodLog';
 import type { LookAhead } from '../../src/utils/lookAhead';
+import type { AgentNote } from '../../src/utils/agentNotes';
 import type { MostMissedGroup } from '../../src/utils/missed';
 import type { OnTimeSummary } from '../../src/utils/stats';
 import type { SyncSummary, SyncTransport } from '../../src/utils/syncEngine';
@@ -61,6 +62,7 @@ import { DEFAULT_SCHEDULE, resolveRef, validateTemplatePlan, type TemplatePlan }
 import { deliverableRefusal } from './deliverableAsk';
 import { taskFieldsPatch, type TaskFieldsInput } from './taskFields';
 import { adoptTimeZone, DEVICE_TIME_ZONE_KEY } from './timeZone';
+import { toLedgerEntries, withAgentLedger } from './agentLedger';
 
 type DbModule = typeof import('../../src/db/database');
 type VisibilityModule = typeof import('../../src/utils/visibilityUtils');
@@ -150,6 +152,7 @@ export interface ReplicaLib {
   dayLoad: typeof import('../../src/utils/dayLoad');
   awayDates: typeof import('../../src/utils/awayDates');
   dates: typeof import('../../src/utils/dateUtils');
+  agentNotes: typeof import('../../src/utils/agentNotes');
 }
 
 /** One Settings row, located the way a person would have to walk to it. */
@@ -345,6 +348,9 @@ export interface Replica {
   milestones(): Milestone[];
   /** Every tag the person has, used or not. */
   tagRegistry(): string[];
+  /** What the person wants an agent to keep in mind (`src/utils/agentNotes.ts`). */
+  agentNotes(): AgentNote[];
+  writeAgentNotes(notes: readonly AgentNote[]): void;
   /**
    * Apply a validated plan, returning the template it built.
    *
@@ -685,6 +691,8 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   let projectCache: Project[] | null = null;
   let syncedAt: string | null = null;
   let libCache: ReplicaLib | null = null;
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const notesModule = () => require('../../src/utils/agentNotes') as typeof import('../../src/utils/agentNotes');
 
   const tasks = (): Task[] => (taskCache ??= db.dbGetAllTasks());
   const people = (): Person[] => (personCache ??= db.dbGetAllPeople());
@@ -769,7 +777,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   // Today here while the app hides them.
   registerPausedProjectSource(projects);
 
-  return {
+  const replica: Replica = {
     path,
 
     refresh,
@@ -895,12 +903,15 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         dayLoad: require('../../src/utils/dayLoad'),
         awayDates: require('../../src/utils/awayDates'),
         dates,
+        agentNotes: require('../../src/utils/agentNotes'),
       });
       /* eslint-enable @typescript-eslint/no-require-imports */
     },
     allMoodLogs: () => db.dbGetAllMoodLogs(),
     milestones: () => db.dbGetAllMilestones(),
     tagRegistry: () => db.dbGetTagRegistry(),
+    agentNotes: () => notesModule().readAgentNotes(),
+    writeAgentNotes: (notes: readonly AgentNote[]) => notesModule().writeAgentNotes(notes),
 
     createTemplate(plan: TemplatePlan): TaskTemplate {
       const existing = db.dbGetAllTemplates();
@@ -1367,4 +1378,8 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       return syncEngine.summarizeRuns(runs);
     },
   };
+
+  // Every write recorded in the Activity ledger, where the phone shows it and
+  // can take it back. See agentLedger.ts.
+  return withAgentLedger(replica, entries => db.dbInsertUnattendedEntries(toLedgerEntries(entries, generateId)));
 }

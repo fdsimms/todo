@@ -64,6 +64,8 @@ export const WRITE_TOOLS: Record<string, { title: string; destructive: boolean; 
   create_task: { title: 'Create a task', destructive: false, idempotent: false },
   batch_update_tasks: { title: 'Change several tasks', destructive: true, idempotent: false },
   quick_add: { title: 'Quick add tasks', destructive: false, idempotent: false },
+  remember: { title: 'Remember a note', destructive: false, idempotent: true },
+  forget: { title: 'Forget a note', destructive: true, idempotent: true },
   update_task: { title: 'Edit a task', destructive: true, idempotent: true },
   complete_task: { title: 'Complete a task', destructive: false, idempotent: false },
   defer_task: { title: 'Reschedule a task', destructive: false, idempotent: true },

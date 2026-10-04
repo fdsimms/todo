@@ -960,7 +960,34 @@ export interface FocusSessionRecord {
  * `src/utils/retention.ts` for why this one may not default to forever the way
  * the Logbook's own window does.
  */
-export type UnattendedAction = 'created' | 'cleared' | 'expired' | 'purged';
+export type UnattendedAction = 'created' | 'cleared' | 'expired' | 'purged' | 'edited' | 'moved' | 'completed';
+
+/**
+ * Who made the write: the app's own passes, or an agent working through the
+ * MCP server (docs/arch/mcp-server.md).
+ *
+ * An agent's writes belong here for the reason the generators' do. They land
+ * on the phone by sync, with nobody looking at the app when they happen, and
+ * the question they leave is the same one: where did this come from, and how
+ * do I take it back. The three rules above still hold. Each row is one effect
+ * the agent actually made; it says what changed and never why the person
+ * wanted it; and a successor the completion spawned is not a row of its own.
+ */
+export type UnattendedActor = 'app' | 'agent';
+
+/** What an agent's entry is about. Everything the app writes on its own is a task. */
+export type UnattendedSubject = 'task' | 'project' | 'grocery' | 'meal' | 'template' | 'person';
+
+/**
+ * What an agent's edit or move changed: the fields it touched, as they were
+ * and as it left them. Only the touched fields, so the record of a retitle
+ * does not carry a copy of the whole task, and so "is it still how the agent
+ * left it" is a question about those fields alone (see `agentRevertPlan`).
+ */
+export interface UnattendedRevert {
+  before: Record<string, unknown>;
+  after: Record<string, unknown>;
+}
 
 export interface UnattendedEntry {
   id: string;
@@ -986,6 +1013,12 @@ export interface UnattendedEntry {
   taskId: string | null;
   /** How many rows this entry accounts for. 1 for all but `purged`. */
   count: number;
+  /** Who made it. 'app' for every row written before agents could write. */
+  actor: UnattendedActor;
+  /** What it is about. 'task' for everything the app writes on its own. */
+  subject: UnattendedSubject;
+  /** An agent's edit or move, as before and after. Null for everything else. */
+  revert: UnattendedRevert | null;
 }
 
 // A themed, long-running collection of loosely-dated tasks the user tracks

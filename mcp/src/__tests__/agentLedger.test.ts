@@ -1,0 +1,79 @@
+/**
+ * The ledger wrapper against a real database: an agent's write leaves an entry
+ * the phone can read, and an edit's entry carries exactly what the app's undo
+ * rule (`agentRevertPlan`) needs to put it back.
+ */
+import { openShimDatabase, type ShimDatabase } from '../expoSqliteShim';
+import { openReplica } from '../replica';
+import { taskRevert } from '../agentLedger';
+import { agentRevertPlan } from '../../../src/utils/agentRevert';
+import type { Task, UnattendedEntry } from '../../../src/types';
+
+let mockRaw: ShimDatabase;
+
+jest.mock('expo-sqlite', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { openShimDatabase } = require('../expoSqliteShim');
+  mockRaw = openShimDatabase(':memory:');
+  return { openDatabaseSync: () => mockRaw };
+});
+
+let replica: ReturnType<typeof openReplica>;
+
+/** The ledger as the phone reads it, through the app's own row mapping. */
+function ledger(): UnattendedEntry[] {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { dbGetUnattendedLog } = require('../../../src/db/database') as typeof import('../../../src/db/database');
+  return dbGetUnattendedLog();
+}
+
+beforeAll(() => {
+  replica = openReplica(':memory:');
+});
+
+beforeEach(() => {
+  mockRaw.runSync('DELETE FROM tasks');
+  mockRaw.runSync('DELETE FROM unattended_log');
+  replica.refresh();
+});
+
+describe('taskRevert', () => {
+  it('keeps only the fields that changed', () => {
+    const before = { id: 't', title: 'A', tags: [], notes: '' } as unknown as Task;
+    expect(taskRevert(before, { ...before, title: 'B' })).toEqual({ before: { title: 'A' }, after: { title: 'B' } });
+    expect(taskRevert(before, { ...before })).toBeNull();
+  });
+});
+
+describe('the agent ledger', () => {
+  it('records a creation, an edit with its before and after, and a completion, as Claude\'s', () => {
+    const task = replica.createTask({ title: 'Call bank' });
+    replica.updateTask(task.id, { title: 'Call the bank', tags: ['errand'] });
+    replica.completeTask(task.id);
+
+    const [completed, edited, created] = ledger();
+    expect(created).toMatchObject({ action: 'created', actor: 'agent', subject: 'task', taskId: task.id, title: 'Call bank' });
+    expect(edited.revert?.before).toMatchObject({ title: 'Call bank', tags: [] });
+    expect(edited.revert?.after).toMatchObject({ title: 'Call the bank', tags: ['errand'] });
+    expect(completed).toMatchObject({ action: 'completed', actor: 'agent' });
+  });
+
+  it('hands the phone an edit it can undo while the task is unchanged since', () => {
+    const task = replica.createTask({ title: 'Water plants' });
+    replica.updateTask(task.id, { notes: 'Twice a week' });
+    const edit = ledger().find(e => e.action === 'edited')!;
+    const plan = agentRevertPlan(edit, replica.taskById(task.id));
+    expect(plan).toMatchObject({ kind: 'restore', patch: { notes: '' } });
+  });
+
+  it('records nothing for a write that was refused', () => {
+    expect(() => replica.updateTask('nope', { title: 'x' })).toThrow();
+    expect(ledger()).toEqual([]);
+  });
+
+  it('records grocery writes without a way back, since those are a tap in the app', () => {
+    const { item } = replica.addGroceryItem('Oat milk');
+    replica.setGroceryChecked(item.id, true);
+    expect(ledger().map(e => [e.subject, e.action])).toEqual([['grocery', 'completed'], ['grocery', 'created']]);
+  });
+});

@@ -62,6 +62,9 @@ without one.
 Six prompts (`src/prompts.ts`) appear as slash commands in the Claude apps: `weekly_review`,
 `inbox_zero`, `plan_my_day`, `plan_my_week`, `clean_up_project` and `how_do_i`.
 
+Every write shows in the app's Activity screen under "Claude", and a task write can be undone
+there while the task is still how Claude left it (`src/agentLedger.ts`).
+
 It answers in the phone's time zone, which the app syncs as a setting. `TZ` in the environment is
 only the fallback until the first sync.
 
@@ -76,6 +79,7 @@ only the fallback until the first sync.
 | `mood_insights` | The Mood screen's findings, held to its minimum-days rules, with those rules stated. |
 | `plan_day` | A proposed timeline for today around busy blocks you pass in, and what does not fit. Writes nothing. |
 | `rebalance_week` | Proposed moves that bring heavy days under the busy line. Writes nothing. |
+| `remember` / `forget` | **Write.** Add or remove a note the person wants every conversation to start with. They are in the app under Settings › Data & reset › Sync. |
 | `batch_update_tasks` | **Write.** Edit, complete or reschedule up to 100 tasks. Previews unless `apply: true`; one refused change refuses the batch. |
 | `quick_add` | **Write.** Lines of text through the app's quick-add grammar. Previews unless `apply: true`. |
 | `list_tasks` | Tasks in one of the app's lenses: `today`, `later`, `unscheduled`, `inbox`, `all`. Filters by category, tag, project. |

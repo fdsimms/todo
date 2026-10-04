@@ -100,6 +100,11 @@ export interface Overview {
    */
   healthLogs: { food: number; mood: number; medication: number; note?: string };
   completedTasksKeptForDays: number | 'forever';
+  /**
+   * What the person has asked Claude to keep in mind, in their own words. Follow
+   * them. They can read and edit these in Settings › Data & reset › Sync.
+   */
+  notesForClaude: { id: string; text: string }[];
   lastSyncedAt?: string;
   access: 'read' | 'write';
 }
@@ -175,6 +180,7 @@ export function getOverview(replica: Replica, access: 'read' | 'write' = 'read')
         : {}),
     },
     completedTasksKeptForDays: settings.completedRetentionDays ?? 'forever',
+    notesForClaude: replica.agentNotes().map(n => ({ id: n.id, text: n.text })),
     ...(synced ? { lastSyncedAt: synced } : {}),
     access,
   };

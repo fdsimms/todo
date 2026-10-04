@@ -133,6 +133,8 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     allMoodLogs: () => [],
     milestones: () => [],
     tagRegistry: () => [],
+    agentNotes: () => [],
+    writeAgentNotes: () => {},
     deviceId: () => 'stub-device',
     syncable: () => true,
     ...over,

@@ -61,6 +61,8 @@ import type {
   TemplateSchedule,
   TimeOfDay,
   UnattendedAction,
+  UnattendedRevert,
+  UnattendedSubject,
   UnattendedEntry,
 } from '../types';
 import { HEALTH_TARGET_METRICS } from '../utils/healthTarget';
@@ -1850,6 +1852,12 @@ export function initDatabase(): void {
     // NULL on every existing row: never rated, which earns exactly what every
     // task did before the column. See Task.difficulty.
     'ALTER TABLE tasks ADD COLUMN difficulty TEXT',
+    // NULL on every existing row: the app's own entry, about a task, with
+    // nothing to revert. See UnattendedActor, UnattendedSubject and
+    // UnattendedRevert.
+    'ALTER TABLE unattended_log ADD COLUMN actor TEXT',
+    'ALTER TABLE unattended_log ADD COLUMN subject TEXT',
+    'ALTER TABLE unattended_log ADD COLUMN revert_json TEXT',
   ];
   // Asking SQLite for a table's columns once is cheaper than handing it every
   // ALTER for that table and catching the duplicate-column error, and by the
@@ -4425,6 +4433,18 @@ export function dbInsertFocusSessionRecord(record: FocusSessionRecord): void {
 
 // ─── Unattended ledger ──────────────────────────────────────────────────────
 
+function parseUnattendedRevert(raw: unknown): UnattendedRevert | null {
+  if (typeof raw !== 'string' || !raw) return null;
+  try {
+    const v = JSON.parse(raw) as Partial<UnattendedRevert>;
+    return v && typeof v.before === 'object' && v.before !== null && typeof v.after === 'object' && v.after !== null
+      ? { before: v.before, after: v.after }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 function rowToUnattendedEntry(row: Record<string, unknown>): UnattendedEntry {
   return {
     id: row.id as string,
@@ -4434,6 +4454,9 @@ function rowToUnattendedEntry(row: Record<string, unknown>): UnattendedEntry {
     title: (row.title as string) ?? '',
     taskId: (row.task_id as string) ?? null,
     count: (row.row_count as number) ?? 1,
+    actor: row.actor === 'agent' ? 'agent' : 'app',
+    subject: ((row.subject as UnattendedSubject | null) ?? 'task'),
+    revert: parseUnattendedRevert(row.revert_json),
   };
 }
 
@@ -4466,9 +4489,11 @@ export function dbInsertUnattendedEntries(entries: readonly UnattendedEntry[]): 
     for (const e of entries) {
       db.runSync(
         `INSERT OR REPLACE INTO unattended_log
-           (id, at, action, kind, title, task_id, row_count)
-         VALUES (?,?,?,?,?,?,?)`,
-        [e.id, e.at, e.action, e.kind, e.title, e.taskId, e.count]
+           (id, at, action, kind, title, task_id, row_count, actor, subject, revert_json)
+         VALUES (?,?,?,?,?,?,?,?,?,?)`,
+        [e.id, e.at, e.action, e.kind, e.title, e.taskId, e.count,
+          e.actor === 'agent' ? 'agent' : null, e.subject === 'task' ? null : e.subject,
+          e.revert ? JSON.stringify(e.revert) : null]
       );
     }
   });

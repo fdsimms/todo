@@ -77,6 +77,7 @@ import { DEFAULT_HELP_LIMIT, appHelp } from './helpTools';
 import { SERVER_INSTRUCTIONS } from './instructions';
 import { annotationsFor } from './toolAnnotations';
 import { PROMPTS } from './prompts';
+import { forget, remember } from './memoryTools';
 import { DEFAULT_PATTERN_DAYS, habitPatterns, moodInsights } from './patternTools';
 import { MAX_BATCH, MAX_QUICK_ADD, batchUpdateTasks, planDay, quickAdd, rebalanceWeek, type BatchChange } from './agentTools';
 
@@ -607,6 +608,32 @@ function registerWriteTools(
         return json(await withWrite(() => updateTask(replica, id, input as TaskFieldsInput)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not update the task.' });
+      }
+    }
+  );
+
+  server.tool(
+    'remember',
+    'Keep a note the person wants you to remember in every conversation ("errands happen on Saturdays", "never schedule anything after 6pm"). It is saved in their app, where they can read, edit and remove it (Settings › Data & reset › Sync › Notes for Claude), and get_overview returns all of them. Use it when they say to remember something, or offer to when they state a lasting preference. One idea per note, in their words.',
+    { text: z.string().min(1).max(500) },
+    async ({ text }) => {
+      try {
+        return json(await withWrite(() => remember(replica, text)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not save that note.' });
+      }
+    }
+  );
+
+  server.tool(
+    'forget',
+    'Remove one of the notes get_overview lists under notesForClaude, by id. Use it when the person says a note is no longer true.',
+    { id: z.string().min(1) },
+    async ({ id }) => {
+      try {
+        return json(await withWrite(() => forget(replica, id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not remove that note.' });
       }
     }
   );

@@ -17,7 +17,7 @@
  */
 export const SERVER_INSTRUCTIONS = `This server is a live replica of one person's to-do app (tasks, projects, groceries, recipes, a meal plan, people they keep up with, and optional food, mood and medication logs). It syncs with their phone, so what you read is what they see, and what you write reaches their phone within a few seconds of its next sync.
 
-Start with get_overview. It gives the person's time zone, their "today", how many tasks are in each list, their categories, tags and projects, and which areas of the app they have switched off. Do not walk someone through a screen or feature that get_overview says is off.
+Start with get_overview. It gives the person's time zone, their "today", how many tasks are in each list, their categories, tags and projects, and which areas of the app they have switched off. Do not walk someone through a screen or feature that get_overview says is off. It also returns notesForClaude: things the person asked you to keep in mind. Follow them. When they tell you something lasting about how they work, offer to remember it.
 
 How the app thinks about time:
 - The app's day starts at the person's own "day starts at" time, not midnight. Before then it is still yesterday. Every tool here already uses this; do not re-derive "today" from the clock.
@@ -36,4 +36,4 @@ Looking at their data: get_agenda for the coming days (including repeats that ha
 
 This server cannot see their calendar, Apple Health, notifications or reminders, so a day with few tasks is not necessarily a free day.
 
-Writing: confirm before changing several things at once or anything the person did not ask for by name. There is no delete tool. Removing a grocery item keeps it in their catalog, and archiving a project hides it without erasing it.`;
+Writing: confirm before changing several things at once or anything the person did not ask for by name. To change several tasks, use batch_update_tasks: preview first, show the person, then apply. Every write you make appears in the app's Activity screen under "Claude", where the person can undo it. There is no delete tool. Removing a grocery item keeps it in their catalog, and archiving a project hides it without erasing it.`;

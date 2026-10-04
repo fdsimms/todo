@@ -64,6 +64,7 @@ function stub(tasks: Task[], over: Partial<Replica> = {}): Replica {
       kitchenEnabled: false, simpleMode: false, rewardsEnabled: true, completedRetentionDays: 90,
     }),
     lastSyncedAt: () => null,
+    agentNotes: () => [],
     ...over,
   } as unknown as Replica;
 }

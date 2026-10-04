@@ -36,6 +36,7 @@ const generated = (overrides: Partial<Task> = {}) => ({
 
 const aged = (id: string, at: string): UnattendedEntry => ({
   id, at, action: 'created', kind: 'birthday', title: 'Card for Ada', taskId: 'x', count: 1,
+  actor: 'app', subject: 'task', revert: null,
 });
 
 describe('record', () => {

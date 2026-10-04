@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useCallback } from 'react';
-import { View, Text, SectionList, StyleSheet } from 'react-native';
+import { View, Text, SectionList, StyleSheet, Alert } from 'react-native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -7,6 +7,9 @@ import { format } from 'date-fns/format';
 import { useShallow } from 'zustand/react/shallow';
 import { useUnattendedStore } from '../store/useUnattendedStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useTaskStore } from '../store/useTaskStore';
+import { InlineAction } from '../components/InlineAction';
+import { agentRevertLabel, agentRevertPlan, type AgentRevertPlan } from '../utils/agentRevert';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
 import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSettings';
@@ -29,7 +32,7 @@ import {
   unattendedKinds,
   unattendedSummary,
 } from '../utils/unattendedLedger';
-import type { GeneratedKind, UnattendedEntry } from '../types';
+import type { GeneratedKind, Task, UnattendedEntry } from '../types';
 
 /**
  * What the app did while nobody was looking.
@@ -60,6 +63,35 @@ export function UnattendedLogScreen() {
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const [kind, setKind] = useState<GeneratedKind | null>(null);
+
+  // Only an agent's task rows can be taken back (see agentRevert.ts), so the
+  // lookup is built only when one is in the list.
+  const tasks = useTaskStore(s => s.tasks);
+  const hasAgentRows = useMemo(() => entries.some(e => e.actor === 'agent'), [entries]);
+  const taskById = useMemo(
+    () => (hasAgentRows ? new Map(tasks.map(t => [t.id, t])) : null),
+    [hasAgentRows, tasks],
+  );
+
+  const handleRevert = useCallback((entry: UnattendedEntry, plan: AgentRevertPlan) => {
+    const store = useTaskStore.getState();
+    const run = () => {
+      if (plan.kind === 'delete') store.deleteTask(plan.taskId);
+      else if (plan.kind === 'uncomplete') store.uncompleteTask(plan.taskId);
+      else if (plan.kind === 'restore') store.updateTask(plan.taskId, plan.patch);
+      haptics.success();
+    };
+    const title = plan.kind === 'delete' ? 'Remove this task?' : plan.kind === 'uncomplete' ? 'Reopen this task?' : 'Undo this change?';
+    const message = plan.kind === 'delete'
+      ? `Claude added "${entry.title}". Removing it deletes the task.`
+      : plan.kind === 'uncomplete'
+        ? `Claude completed "${entry.title}". Reopening it also removes the next occurrence it created, if any.`
+        : `Puts "${entry.title}" back the way it was before Claude changed it.`;
+    Alert.alert(title, message, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: agentRevertLabel(plan) ?? 'Undo', style: plan.kind === 'delete' ? 'destructive' : 'default', onPress: run },
+    ]);
+  }, []);
 
   const kinds = useMemo(() => unattendedKinds(entries), [entries]);
   const filtered = useMemo(() => filterUnattended(entries, kind), [entries, kind]);
@@ -141,7 +173,15 @@ export function UnattendedLogScreen() {
             <Text style={styles.sectionHeaderCount}>{section.data.length}</Text>
           </View>
         )}
-        renderItem={({ item }) => <ActivityRow entry={item} styles={styles} colors={colors} />}
+        renderItem={({ item }) => (
+          <ActivityRow
+            entry={item}
+            task={item.actor === 'agent' && item.taskId && taskById ? taskById.get(item.taskId) ?? null : null}
+            onRevert={handleRevert}
+            styles={styles}
+            colors={colors}
+          />
+        )}
         ListFooterComponent={
           sections.length === 0 ? null : (
             <Text style={styles.footer}>
@@ -161,7 +201,7 @@ export function UnattendedLogScreen() {
             <EmptyState
               icon="time-outline"
               title="Nothing yet"
-              subtitle="When the app adds a task on its own, or clears one it added, it shows up here with the setting that did it."
+              subtitle="When the app adds a task on its own or clears one it added, it shows up here with the setting that did it. So does anything Claude changes through your sync server."
               bottomOffset={tabBarHeight}
             />
           )
@@ -172,13 +212,18 @@ export function UnattendedLogScreen() {
 }
 
 const ActivityRow = React.memo(function ActivityRow({
-  entry, styles, colors,
+  entry, task, onRevert, styles, colors,
 }: {
   entry: UnattendedEntry;
+  /** The task an agent's entry is about, as it stands now. Null for every other row. */
+  task: Task | null;
+  onRevert: (entry: UnattendedEntry, plan: AgentRevertPlan) => void;
   styles: ReturnType<typeof makeStyles>;
   colors: Colors;
 }) {
   const spec = UNATTENDED_ACTION_SPECS[entry.action];
+  const plan = entry.actor === 'agent' ? agentRevertPlan(entry, task) : null;
+  const revertLabel = plan ? agentRevertLabel(plan) : null;
   // Only the one action that put something in front of the user is tinted.
   // Drawing a tidy-up in the accent colour would make it look like news.
   const tint = spec.adds ? colors.accent : colors.textSecondary;
@@ -202,6 +247,25 @@ const ActivityRow = React.memo(function ActivityRow({
             {`${spec.verb} · ${describeUnattendedEntry(entry)}`}
           </Text>
         )}
+        {/*
+          Under the text rather than beside it, so the title keeps the row's
+          width. Offered only while the task is still how Claude left it;
+          otherwise the reason it is not, in the meta style.
+        */}
+        {plan && revertLabel ? (
+          <View style={styles.rowActions}>
+            <InlineAction
+              label={revertLabel}
+              icon="arrow-undo-outline"
+              variant="neutral"
+              surface="card"
+              onPress={() => onRevert(entry, plan)}
+              accessibilityLabel={`${revertLabel}: ${entry.title}`}
+            />
+          </View>
+        ) : plan && plan.kind === 'none' && plan.reason ? (
+          <Text style={styles.rowMeta}>{plan.reason}</Text>
+        ) : null}
       </View>
       <Text style={styles.rowTime}>{format(new Date(entry.at), 'HH:mm')}</Text>
     </View>
@@ -251,6 +315,7 @@ function makeStyles(colors: Colors) {
     // the row — the time beside it is short and fixed, which is the only kind
     // of sibling a data-derived string may share a row with.
     rowBody: { flex: 1 },
+    rowActions: { flexDirection: 'row', flexWrap: 'wrap', marginTop: spacing.xs },
     rowTitle: {
       fontSize: font.md,
       lineHeight: lineHeight.md,

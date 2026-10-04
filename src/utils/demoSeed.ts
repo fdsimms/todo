@@ -76,6 +76,7 @@ import { dueMealPlanNudge, mealPlanNudgeLinkUrl } from './mealPlanNudge';
 import { groceryNameKey } from './groceryParse';
 import { OUT_OF_IT_UNTIL, defaultOnHandUntil } from './grocerySuggest';
 import { generateId } from './id';
+import { writeAgentNotes } from './agentNotes';
 
 // Seeds a whole plausible-looking task list into whatever database is
 // currently active. Demo mode points the db at a throwaway file first (see
@@ -1805,6 +1806,13 @@ export function seedDemoData(): void {
   seedMilestone(today);
   seedAsNeededDoses(today);
   seedRewards(today);
+  // Through the same write the Settings rows use. Claude's own writes are not
+  // seeded into Activity: those arrive by sync from the MCP server and have no
+  // action in the app to make one.
+  writeAgentNotes([
+    { id: 'demo-note-errands', text: 'Errands happen on Saturdays.', at: today.toISOString() },
+    { id: 'demo-note-evenings', text: "Don't schedule work after 6pm.", at: today.toISOString() },
+  ]);
 }
 
 /**

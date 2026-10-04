@@ -31,6 +31,9 @@ function entry(overrides: Partial<UnattendedEntry> = {}): UnattendedEntry {
     title: 'Get a card for Ada',
     taskId: 't1',
     count: 1,
+    actor: 'app',
+    subject: 'task',
+    revert: null,
     ...overrides,
   };
 }
@@ -72,6 +75,11 @@ describe('unattendedSource', () => {
     // whole feature exists to end.
     expect(unattendedSource(entry({ kind: null, action: 'expired' }))).toBe('Expired task sweep');
     expect(unattendedSource(entry({ kind: null, action: 'purged' }))).toBe('Completed task cleanup');
+  });
+
+  it('names an agent\'s write as Claude\'s, whatever generator kind the task carries', () => {
+    expect(unattendedSource(entry({ actor: 'agent', kind: null, action: 'edited' }))).toBe('Claude');
+    expect(unattendedSource(entry({ actor: 'agent', action: 'created' }))).toBe('Claude');
   });
 });
 
