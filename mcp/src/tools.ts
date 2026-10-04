@@ -151,6 +151,30 @@ export interface GetTaskResult {
   /** "Every Nth completion, add this task." */
   followUp?: { everyN: number; title: string; oneAtATime?: boolean; completionsSoFar: number };
   project?: { id: string; title: string };
+  /** Somebody this task is waiting on. A person, as opposed to `waitsOn`, which is other tasks. */
+  waitingOnPerson?: { personId: string; name?: string; since?: string; followUpOn?: string };
+  /** Where to reach or find what the task is about. */
+  contact?: { link?: string; phone?: string; email?: string; location?: string };
+  /** The app's own run count for a habit: days in a row, and the last day it was kept. */
+  streak?: { days: number; lastDay?: string };
+  /** What completing this task also writes elsewhere, so completing it is not a surprise. */
+  onCompletion?: {
+    logsMedication?: { name: string; amount?: number; unit?: string };
+    logsHealth?: { metric: string; amount?: number };
+    logsMealSlot?: string;
+  };
+  /** A countdown (`minutes`) or an Apple Health reading (`healthTarget`) the task reads as ready at; `measuredMinutes` is how long it actually took. */
+  timer?: { minutes: number };
+  healthTarget?: { metric: string; target?: number; followsFitnessGoal?: boolean };
+  measuredMinutes?: number;
+  /** How often it has been pushed to a later day, and since when. `muted` means the person asked not to be nudged about it. */
+  postponed?: { count: number; since?: string; muted?: boolean };
+  /** A consumable counted down by this repeating task. */
+  supply?: { count: number; unit?: string; refillCount?: number; reorderAt?: number; leadDays?: number };
+  /** The named things a daily or weekly target is counting. */
+  rotation?: { members: string[] };
+  /** When the app put a date on this task unasked (a quiet project's drip). */
+  autoScheduledAt?: string;
   /**
    * When a task that is not on Today will surface. Absent when it is visible,
    * and absent when nothing hidden it is a moment: an undated task, one held
@@ -162,6 +186,90 @@ export interface GetTaskResult {
    * segment or a category schedule is what is holding it.
    */
   hiddenUntil?: string;
+}
+
+/**
+ * The per-task state `get_task` adds for a task that has been singled out, and
+ * that a list row has no room for. Each block appears only when the task
+ * actually has it, so an ordinary task adds nothing.
+ */
+function taskExtras(replica: Replica, task: Task): Partial<GetTaskResult> {
+  const out: Partial<GetTaskResult> = {};
+
+  if (task.waitingOnPersonId) {
+    const person = replica.people().find(p => p.id === task.waitingOnPersonId);
+    out.waitingOnPerson = {
+      personId: task.waitingOnPersonId,
+      ...(person ? { name: person.name } : {}),
+      ...(task.waitingOnPersonSince ? { since: task.waitingOnPersonSince } : {}),
+      ...(task.followUpOn ? { followUpOn: task.followUpOn } : {}),
+    };
+  }
+
+  const contact = {
+    ...(task.linkUrl ? { link: task.linkUrl } : {}),
+    ...(task.phoneNumber ? { phone: task.phoneNumber } : {}),
+    ...(task.emailAddress ? { email: task.emailAddress } : {}),
+    ...(task.location ? { location: task.location } : {}),
+  };
+  if (Object.keys(contact).length > 0) out.contact = contact;
+
+  if ((task.streakCount ?? 0) > 0) {
+    out.streak = { days: task.streakCount, ...(task.streakDate ? { lastDay: task.streakDate } : {}) };
+  }
+
+  const onCompletion: NonNullable<GetTaskResult['onCompletion']> = {};
+  if (task.medicationName) {
+    onCompletion.logsMedication = {
+      name: task.medicationName,
+      ...(task.medicationAmount != null ? { amount: task.medicationAmount } : {}),
+      ...(task.medicationUnit ? { unit: task.medicationUnit } : {}),
+    };
+  }
+  if (task.logHealthMetric) {
+    onCompletion.logsHealth = {
+      metric: task.logHealthMetric,
+      ...(task.logHealthAmount != null ? { amount: task.logHealthAmount } : {}),
+    };
+  }
+  if (task.logMealSlot) onCompletion.logsMealSlot = task.logMealSlot;
+  if (Object.keys(onCompletion).length > 0) out.onCompletion = onCompletion;
+
+  if (task.timedMinutes != null) out.timer = { minutes: task.timedMinutes };
+  if (task.healthMetric) {
+    out.healthTarget = {
+      metric: task.healthMetric,
+      ...(task.healthTarget != null ? { target: task.healthTarget } : {}),
+      ...(task.healthFollowGoal ? { followsFitnessGoal: true } : {}),
+    };
+  }
+  if (task.actualMinutes != null) out.measuredMinutes = task.actualMinutes;
+
+  if ((task.postponeCount ?? 0) > 0 || task.postponeMuted) {
+    out.postponed = {
+      count: task.postponeCount ?? 0,
+      ...(task.driftingSince ? { since: task.driftingSince } : {}),
+      ...(task.postponeMuted ? { muted: true } : {}),
+    };
+  }
+
+  if (task.supplyCount != null) {
+    out.supply = {
+      count: task.supplyCount,
+      ...(task.supplyUnit ? { unit: task.supplyUnit } : {}),
+      ...(task.supplyRefillCount != null ? { refillCount: task.supplyRefillCount } : {}),
+      reorderAt: task.supplyReorderAt,
+      ...(task.supplyLeadDays != null ? { leadDays: task.supplyLeadDays } : {}),
+    };
+  }
+
+  if (task.rotationEnabled && (task.rotationItems ?? []).length > 0) {
+    out.rotation = { members: task.rotationItems.map(m => m.title) };
+  }
+
+  if (task.autoScheduledAt) out.autoScheduledAt = task.autoScheduledAt;
+
+  return out;
 }
 
 export function getTask(replica: Replica, id: string): GetTaskResult | null {
@@ -233,6 +341,7 @@ export function getTask(replica: Replica, id: string): GetTaskResult | null {
         }
       : undefined,
     project: project ? { id: project.id, title: project.title } : undefined,
+    ...taskExtras(replica, task),
     hiddenUntil: surfacesAt && surfacesAt.getTime() > Date.now() ? surfacesAt.toISOString() : undefined,
   };
 }

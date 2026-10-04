@@ -93,7 +93,7 @@ only the fallback until the first sync.
 | `quick_add` | **Write.** Lines of text through the app's quick-add grammar. Previews unless `apply: true`. |
 | `list_tasks` | Tasks in one of the app's lenses: `today`, `later`, `unscheduled`, `inbox`, `all`. Filters by category, tag, project. |
 | `search_tasks` | The app's own fuzzy ranking over titles, notes and project names. |
-| `get_task` | One task, with its subtasks, chain steps, repeat rule, target, window, blockers, follow-up, project, and why it is not on Today. |
+| `get_task` | One task, with its subtasks, chain steps, repeat rule, target, window, blockers, follow-up, project, and why it is not on Today. Also, where the task has them: who it waits on, contact details, streak, what completing it also logs (medication, Health, a meal), timer and Health target, postponement history, supply and rotation. |
 | `list_projects` | Active projects and how far through each one is, counting a recurring member once rather than once per completion. |
 | `get_project` | One project: its open tasks in order (each with its checklist and blockers) and the most recently finished. |
 | `list_recipes` / `get_recipe` | Recipes by name, tag or ingredient; one recipe's ingredients, steps and source. |

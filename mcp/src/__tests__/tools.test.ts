@@ -266,6 +266,39 @@ describe('getTask', () => {
     const past = getTask(withTasks([undated], { visibleAt: () => new Date('2000-01-01T00:00:00.000Z') }), 'unscheduled-1')!;
     expect(past.hiddenUntil).toBeUndefined();
   });
+
+  it('adds the per-task state a list row has no room for, and nothing for an ordinary task', () => {
+    expect(getTask(withTasks([parent]), 'today-1')!.waitingOnPerson).toBeUndefined();
+    expect(getTask(withTasks([parent]), 'today-1')!.onCompletion).toBeUndefined();
+
+    const rich = task({
+      id: 'rich-1', title: 'Take vitamin D', waitingOnPersonId: 'per1', followUpOn: '2026-10-09',
+      linkUrl: 'https://example.com', phoneNumber: '555-0100', emailAddress: 'a@b.co', location: 'Clinic',
+      streakCount: 4, streakDate: '2026-10-03', medicationName: 'Vitamin D', medicationAmount: 1000, medicationUnit: 'IU',
+      logHealthMetric: 'waterMl', logHealthAmount: 250, logMealSlot: 'breakfast',
+      timedMinutes: 15, healthMetric: 'steps', healthTarget: 8000, actualMinutes: 12,
+      postponeCount: 3, driftingSince: '2026-09-01', postponeMuted: true,
+      supplyCount: 3, supplyUnit: 'filters', supplyReorderAt: 1, rotationEnabled: true,
+      rotationItems: [{ id: 'a', title: 'Portuguese' }], autoScheduledAt: '2026-10-01T09:00:00.000Z',
+    });
+    const result = getTask(withTasks([rich], { people: () => [{ id: 'per1', name: 'Gideon' } as never] }), 'rich-1')!;
+
+    expect(result.waitingOnPerson).toEqual({ personId: 'per1', name: 'Gideon', followUpOn: '2026-10-09' });
+    expect(result.contact).toEqual({ link: 'https://example.com', phone: '555-0100', email: 'a@b.co', location: 'Clinic' });
+    expect(result.streak).toEqual({ days: 4, lastDay: '2026-10-03' });
+    expect(result.onCompletion).toEqual({
+      logsMedication: { name: 'Vitamin D', amount: 1000, unit: 'IU' },
+      logsHealth: { metric: 'waterMl', amount: 250 },
+      logsMealSlot: 'breakfast',
+    });
+    expect(result.timer).toEqual({ minutes: 15 });
+    expect(result.healthTarget).toEqual({ metric: 'steps', target: 8000 });
+    expect(result.measuredMinutes).toBe(12);
+    expect(result.postponed).toEqual({ count: 3, since: '2026-09-01', muted: true });
+    expect(result.supply).toEqual({ count: 3, unit: 'filters', reorderAt: 1 });
+    expect(result.rotation).toEqual({ members: ['Portuguese'] });
+    expect(result.autoScheduledAt).toBe('2026-10-01T09:00:00.000Z');
+  });
 });
 
 describe('listCategories', () => {
@@ -532,6 +565,17 @@ describe('serializeTask', () => {
     const replica = stubReplica({ displayTitle: () => 'Go' });
 
     expect(serializeTask(replica, chained)).toMatchObject({ title: 'Go', chainStep: 'Go' });
+  });
+
+  it('says a missed occurrence is missed rather than letting completed read as done', () => {
+    const missed = serializeTask(stubReplica(), task({ id: 't', title: 'Run', completed: true, missedAt: '2026-10-02T00:00:00.000Z' }));
+    expect(missed).toMatchObject({ completed: true, missed: true });
+    expect(serializeTask(stubReplica(), task({ id: 't', title: 'Run', completed: true })).missed).toBeUndefined();
+  });
+
+  it('marks a task the app wrote unasked, and a repeat that pins each occurrence', () => {
+    expect(serializeTask(stubReplica(), task({ id: 't', title: 'Sunscreen', generatedKind: 'weather' })).generatedBy).toBe('weather');
+    expect(serializeTask(stubReplica(), task({ id: 't', title: 'A', pinEachOccurrence: true })).pinsEachOccurrence).toBe(true);
   });
 
   it('does not call a single-item chain a chain', () => {

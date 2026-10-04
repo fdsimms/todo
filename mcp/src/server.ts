@@ -671,6 +671,7 @@ const taskFieldsShape = {
     .describe('How hard the task is to make yourself do, apart from how long it takes. Scales the coins it earns: hard doubles, easy halves.'),
   estimatedMinutes: z.number().int().positive().nullable().optional(),
   pinned: z.boolean().optional().describe('Pin it to the top of Today.'),
+  pinEachOccurrence: z.boolean().optional().describe('On a repeating task: every occurrence it spawns starts pinned, so the pin is not redone by hand each time. Does nothing on a task that does not repeat.'),
   deliverableKind: z.enum(DELIVERABLE_KINDS as unknown as [DeliverableKind, ...DeliverableKind[]]).nullable().optional()
     .describe('Makes completing this task ask for an answer of that kind, recorded on the row.'),
   deliverableOptions: z.array(z.string()).optional()

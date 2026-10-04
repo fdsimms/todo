@@ -1,6 +1,6 @@
 /**
- * Every `Task` field is either something the MCP server reads or writes, or
- * is named here as deliberately not exposed.
+ * Every `Task` field is either something the MCP server reads or writes per
+ * task, or is named here as deliberately not exposed, with the reason.
  *
  * `Task` and the server are separate interfaces, so a field added to `Task`
  * alone compiles, passes every test and ships a capability Claude can neither
@@ -8,46 +8,74 @@
  * `TemplateItem` parity note in CLAUDE.md, and the answer is the same: make
  * the decision a thing the build asks for.
  *
- * A field counts as handled when its name appears in any non-test file under
- * `mcp/src` (the serializer, a tool's input, `taskFields.ts`). That is a
- * word match on source, not a proof, so it can be satisfied by a comment;
- * what it reliably catches is a field nobody has looked at. Reading source
- * rather than types is deliberate: an interface leaves nothing to enumerate
- * at runtime.
+ * A field counts as handled when its name appears in `serialize.ts` (list
+ * rows), `tools.ts` (`get_task`'s detail) or `taskFields.ts` (what
+ * `create_task` / `update_task` write). Those three only: the name of a
+ * `Task` field also turns up on `Person`, on template items and in aggregate
+ * tools, and a looser match let `phoneNumber` pass on `Person.phoneNumber`.
+ * It is still a word match on source, so a comment can satisfy it; what it
+ * reliably catches is a field nobody has looked at. Source rather than types
+ * because an interface leaves nothing to enumerate at runtime.
  *
  * Adding a field to `Task` fails this suite until you do one of:
- *   - expose it (`serialize.ts` to read it, `taskFields.ts` or a tool input to
- *     write it; `instructions.ts` too if it changes a rule the model must know);
- *   - add it to NOT_EXPOSED below, which says "looked at it, Claude doesn't
- *     need it" (machinery, sync bookkeeping, counters the app derives from).
+ *   - expose it (`serialize.ts` for a list row, `taskExtras` in `tools.ts` for
+ *     get_task, `taskFields.ts` plus `taskFieldsShape` in `server.ts` to write
+ *     it; `instructions.ts` too if it changes a rule the model must know);
+ *   - add it to a group below, which says "looked at it, and here is why not".
+ *     Pick the group that is true. A new group is a real decision: say why.
  */
-import { readFileSync, readdirSync } from 'fs';
+import { readFileSync } from 'fs';
 import { join } from 'path';
 
 const ROOT = join(__dirname, '..', '..', '..');
+/** Where a per-task read or write has to live to count. */
+const TASK_SURFACE = ['serialize.ts', 'tools.ts', 'taskFields.ts'];
 
-/** Decided not to expose. Machinery, bookkeeping, and state the app derives. */
-const NOT_EXPOSED = [
-  'missedAt', 'autoScheduledAt', 'seenAt', 'deadlineMonthDay', 'deadlineOnCalendar',
-  'logCompletionToCalendar', 'logHealthMetric', 'logHealthAmount', 'medicationName',
-  'medicationAmount', 'medicationUnit', 'logMealSlot', 'recurrenceAnchorDay',
-  'quotaStartedAt', 'followWaterTarget', 'rotationEnabled', 'rotationItems', 'rotationLog',
-  'rotationPeriodStart', 'rotationLastDone', 'supplyCount', 'supplyUnit', 'supplyRefillCount',
-  'supplyReorderAt', 'supplyLeadDays', 'supplyGroceryItemId', 'pinnedOrder',
-  'backfillDismissedFields', 'reminderKind', 'reminderOffsetDays', 'reminderTracksVisibility',
-  'reminderTimeAnchor', 'reminderUtcOffsetMinutes', 'emailAddress', 'waitingOnPersonId',
-  'waitingOnPersonSince', 'waitingFollowUpDeclinedAt', 'followUpOn', 'deliverableSetsAway',
-  'generatedKind', 'generatedSourceId', 'calendarEventId', 'calendarEventExternalId',
-  'completionCalendarEventId', 'completionCalendarEventExternalId', 'timeBlockEventId',
-  'timeBlockExternalId', 'slipCount', 'slipDate', 'penaltyMinutes', 'penaltyCutoffTime',
-  'penaltyFiredAt', 'penaltyCreditedAt', 'previousStreakCount', 'previousStreakDate',
-  'streakRequiresWindow', 'seriesMonthDays', 'seriesRepeatMonths', 'previousFollowUpTaskTally',
-  'followUpTaskSourceTitle', 'followUpTaskSourceId', 'pinEachOccurrence', 'timerStartedAt',
-  'actualMinutes', 'estimateBeforeTiming', 'timedMinutes', 'timerElapsedSeconds',
-  'healthMetric', 'healthTarget', 'healthFollowGoal', 'completionTimerNote',
-  'completionTimerStartedAt', 'seriesDefaults', 'pendingImport', 'postponeCount',
-  'postponeMuted', 'driftingSince', 'bountyPushes',
-];
+const NOT_EXPOSED: Record<string, string[]> = {
+  // Never by design. A model must not set or tune these, and reading them adds
+  // little: they cost the person real things (blocked apps, a bounty).
+  'a cost the person sets for themselves': [
+    'penaltyMinutes', 'penaltyCutoffTime', 'penaltyFiredAt', 'penaltyCreditedAt', 'slipCount', 'slipDate',
+    'bountyPushes',
+  ],
+
+  // Opt-in, device-level writes (a calendar event, an alarm). Which calendar and
+  // whether an event exists is the phone's business, and the ids only name
+  // things on that phone.
+  'device side effects and the ids that name them': [
+    'deadlineOnCalendar', 'logCompletionToCalendar', 'calendarEventId', 'calendarEventExternalId',
+    'completionCalendarEventId', 'completionCalendarEventExternalId', 'timeBlockEventId', 'timeBlockExternalId',
+    'reminderKind', 'completionTimerMinutes', 'completionTimerNote', 'completionTimerStartedAt',
+  ],
+
+  // Bookkeeping the app derives or stamps itself: a snapshot taken so an undo
+  // can restore it, a once-only stamp, a running timer's state, a rank.
+  'machinery the app maintains': [
+    'seenAt', 'sortOrder', 'pinnedOrder', 'backfillDismissedFields', 'recurrenceAnchorDay', 'recurrenceAnchorDate',
+    'quotaStartedAt', 'rotationLog', 'rotationPeriodStart', 'rotationLastDone', 'previousStreakCount',
+    'previousStreakDate', 'priorBestStreak', 'previousFollowUpTaskTally', 'followUpTaskSourceId',
+    'followUpTaskSourceTitle', 'generatedSourceId', 'waitingFollowUpDeclinedAt', 'timerStartedAt',
+    'timerElapsedSeconds', 'estimateBeforeTiming', 'seriesDefaults', 'pendingImport', 'reminderTimeAnchor',
+    'reminderUtcOffsetMinutes', 'createdAt', 'archivedAt', 'previousOccurrenceId',
+  ],
+
+  // Read by an aggregate tool or the replica (review_tasks, completion_history,
+  // a project or person page), where the grouping is the answer, not a field on
+  // one task.
+  'grouping the aggregate tools already answer': [
+    'seriesId', 'groupId', 'personIds',
+  ],
+
+  // Settings Claude has no reason to read or set per task, or that are only
+  // reachable through a template or a rule the editor derives.
+  'per-task settings with no MCP use yet': [
+    'deadlineOffsetDays', 'deadlineMonthDay', 'reminderOffsetDays', 'reminderTracksVisibility',
+    'followWaterTarget', 'supplyGroceryItemId', 'deliverableSetsAway', 'gatesApps', 'streakRequiresWindow',
+    'seriesMonthDays', 'seriesRepeatMonths', 'vacationPause', 'excludeFromSuggestions',
+  ],
+};
+
+const ALL_NOT_EXPOSED = Object.values(NOT_EXPOSED).flat();
 
 function taskFields(): string[] {
   const src = readFileSync(join(ROOT, 'src', 'types', 'index.ts'), 'utf8');
@@ -66,22 +94,15 @@ function taskFields(): string[] {
   return fields;
 }
 
-function mcpSource(dir = join(ROOT, 'mcp', 'src')): string {
-  let text = '';
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const full = join(dir, entry.name);
-    if (entry.isDirectory()) {
-      if (entry.name !== '__tests__' && entry.name !== 'node_modules') text += mcpSource(full);
-    } else if (entry.name.endsWith('.ts')) text += readFileSync(full, 'utf8') + '\n';
-  }
-  return text;
+function surfaceSource(): string {
+  return TASK_SURFACE.map(f => readFileSync(join(ROOT, 'mcp', 'src', f), 'utf8')).join('\n');
 }
 
 const mentioned = (source: string, field: string) => new RegExp(`\\b${field}\\b`).test(source);
 
 describe('Task fields and the MCP server', () => {
   const fields = taskFields();
-  const source = mcpSource();
+  const source = surfaceSource();
 
   it('finds the Task interface', () => {
     // A parse that quietly found nothing would pass everything below.
@@ -90,13 +111,17 @@ describe('Task fields and the MCP server', () => {
   });
 
   it('has a decision for every field', () => {
-    const undecided = fields.filter(f => !mentioned(source, f) && !NOT_EXPOSED.includes(f));
+    const undecided = fields.filter(f => !mentioned(source, f) && !ALL_NOT_EXPOSED.includes(f));
     expect(undecided).toEqual([]);
   });
 
+  it('lists no field twice', () => {
+    expect(ALL_NOT_EXPOSED.filter((f, i) => ALL_NOT_EXPOSED.indexOf(f) !== i)).toEqual([]);
+  });
+
   it('keeps the not-exposed list honest', () => {
-    const gone = NOT_EXPOSED.filter(f => !fields.includes(f));
-    const nowExposed = NOT_EXPOSED.filter(f => mentioned(source, f));
+    const gone = ALL_NOT_EXPOSED.filter(f => !fields.includes(f));
+    const nowExposed = ALL_NOT_EXPOSED.filter(f => mentioned(source, f));
     expect({ gone, nowExposed }).toEqual({ gone: [], nowExposed: [] });
   });
 });

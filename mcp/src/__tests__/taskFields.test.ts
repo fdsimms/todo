@@ -23,6 +23,12 @@ const existing = (over: Partial<Task> = {}): Task => ({
   targetCount: null, ...over,
 }) as Task;
 
+describe('pinning', () => {
+  it('passes pin and pin-each-occurrence straight through', () => {
+    expect(ok({ pinned: true, pinEachOccurrence: true })).toMatchObject({ pinned: true, pinEachOccurrence: true });
+  });
+});
+
 describe('repeat', () => {
   it('writes "the 15th of every month" the way the editor does', () => {
     expect(ok({ repeat: { every: 'month', monthDay: 15 } })).toMatchObject({
