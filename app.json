@@ -26,7 +26,8 @@
       },
       "entitlements": {
         "com.apple.developer.usernotifications.time-sensitive": true
-      }
+      },
+      "associatedDomains": ["applinks:dundundun-mcp.fly.dev"]
     },
     "android": {
       "adaptiveIcon": {

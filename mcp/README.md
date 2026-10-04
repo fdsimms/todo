@@ -127,6 +127,11 @@ chain, a follow-up on a task that doesn't repeat) and clears what the editor cle
 changes type. `newTaskFromDraft` and `updateTask` trust whatever they are handed, so without this
 a model could write a row the app can't render honestly.
 
+Results about one thing carry `openInApp`, an `https://<server>/open/...` link that opens it in the
+app (the server's MCP instructions ask the model to offer it after a change). On an iPhone the
+domain is associated with the app, so iOS opens the app directly; anywhere else `/open/` serves a
+page that hands off to the `dundundun://` scheme. See [`src/appLinks.ts`](src/appLinks.ts).
+
 The people tools keep `docs/arch/people.md`'s rules: people come back in the user's own order,
 never ranked, and the last time together is a date, never a count of days.
 

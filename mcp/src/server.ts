@@ -71,6 +71,7 @@ import type { DeliverableKind, MealSlot, TimeOfDay } from '../../src/types';
 import { createProject, getProject, updateProject, type CreateProjectInput } from './projectTools';
 import { DEFAULT_PLAN_DAYS, MAX_PLAN_DAYS, MEAL_SLOTS as KITCHEN_MEAL_SLOTS, getRecipe, listMealPlan, listRecipes, planMeal } from './kitchenTools';
 import { DEFAULT_BIRTHDAY_DAYS, MAX_BIRTHDAY_DAYS, addPersonHistory, getPerson, listPeople, upcomingBirthdays } from './peopleTools';
+import { appLinks, appSiteAssociation, appUrlForOpenPath, openPage } from './appLinks';
 import { ANCHORS, CONTAINERS, QUESTION_KINDS, QUESTION_SOURCES, SCHEDULE_FREQUENCIES } from './templatePlan';
 
 /** `YYYY-MM-DD`, the shape every day-keyed table stores and sorts on. */
@@ -130,8 +131,30 @@ function json(value: unknown) {
  * inside each handler: a read-scoped caller does not see the write tools in
  * `tools/list` at all, so there is nothing for a model to try and be refused.
  */
+/**
+ * Where an `openInApp` link points, from PUBLIC_URL, or null on a server with no
+ * public address (a laptop), where there is nothing for a phone to open.
+ */
+const LINKS = appLinks(process.env.PUBLIC_URL);
+
+/** `result` with a link that opens its subject in the app, when there is one. */
+function withLink<T extends object>(result: T, link: string | undefined): T | (T & { openInApp: string }) {
+  return link ? { ...result, openInApp: link } : result;
+}
+
+/**
+ * What the server tells a client about itself, once, at connection. The links
+ * are only worth anything if the model offers them, and a tool description is
+ * the wrong place to say so: it would be repeated on every tool.
+ */
+const INSTRUCTIONS = [
+  "This server reads and changes the user's dundundun app: tasks, projects, groceries, recipes, the meal plan and people.",
+  'Results about one thing carry openInApp, a link that opens that thing in the app on their phone.',
+  'After creating or changing something, offer it as a markdown link such as [Open in dundundun](openInApp), once, at the end of your reply.',
+].join(' ');
+
 export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): McpServer {
-  const server = new McpServer({ name: 'todo', version: '0.1.0' });
+  const server = new McpServer({ name: 'todo', version: '0.1.0' }, { instructions: INSTRUCTIONS });
 
   // Every handler refreshes first. The replica caches reads for the length of a
   // request so the blocker registry does not re-read the task table once per
@@ -197,7 +220,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
     { id: z.string().min(1) },
     async ({ id }) => {
       const result = await withFresh(() => getTask(replica, id));
-      return result ? json(result) : json({ error: `No task with id ${id}.` });
+      return result ? json(withLink(result, LINKS?.task(id))) : json({ error: `No task with id ${id}.` });
     }
   );
 
@@ -246,7 +269,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
     { id: z.string().min(1) },
     async ({ id }) => {
       const result = await withFresh(() => getProject(replica, id));
-      return result ? json(result) : json({ error: `No project with id ${id}.` });
+      return result ? json(withLink(result, LINKS?.project(id))) : json({ error: `No project with id ${id}.` });
     }
   );
 
@@ -268,7 +291,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
     { id: z.string().min(1) },
     async ({ id }) => {
       const result = await withFresh(() => getRecipe(replica, id));
-      return result ? json(result) : json({ error: `No recipe with id ${id}.` });
+      return result ? json(withLink(result, LINKS?.recipe(id))) : json({ error: `No recipe with id ${id}.` });
     }
   );
 
@@ -302,7 +325,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
     { id: z.string().min(1) },
     async ({ id }) => {
       const result = await withFresh(() => getPerson(replica, id));
-      return result ? json(result) : json({ error: `No person with id ${id}.` });
+      return result ? json(withLink(result, LINKS?.person(id))) : json({ error: `No person with id ${id}.` });
     }
   );
 
@@ -459,7 +482,8 @@ function registerWriteTools(
     },
     async input => {
       try {
-        return json(await withWrite(() => createTask(replica, input as Parameters<typeof createTask>[1])));
+        const result = await withWrite(() => createTask(replica, input as Parameters<typeof createTask>[1]));
+        return json(withLink(result, LINKS?.task(result.task.id)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not create the task.' });
       }
@@ -476,7 +500,7 @@ function registerWriteTools(
     },
     async ({ id, ...input }) => {
       try {
-        return json(await withWrite(() => updateTask(replica, id, input as TaskFieldsInput)));
+        return json(withLink(await withWrite(() => updateTask(replica, id, input as TaskFieldsInput)), LINKS?.task(id)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not update the task.' });
       }
@@ -542,7 +566,10 @@ function registerWriteTools(
         // 'deliverableValue' in options is what the refusal tests, so the key
         // has to survive only when the caller actually sent it. Zod drops an
         // omitted optional rather than setting it undefined, so this holds.
-        return json(await withWrite(() => completeTask(replica, id, rest)));
+        const result = await withWrite(() => completeTask(replica, id, rest));
+        // The next occurrence or step, where the completion made one: that is the
+        // task still on the list.
+        return json(withLink(result, LINKS?.task(result.nextTask?.id ?? id)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not complete the task.' });
       }
@@ -558,7 +585,7 @@ function registerWriteTools(
     },
     async ({ id, date }) => {
       try {
-        return json(await withWrite(() => deferTask(replica, id, date)));
+        return json(withLink(await withWrite(() => deferTask(replica, id, date)), LINKS?.task(id)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not reschedule the task.' });
       }
@@ -575,7 +602,7 @@ function registerWriteTools(
     },
     async ({ name, ...rest }) => {
       try {
-        return json(await withWrite(() => addGroceryItem(replica, name, rest)));
+        return json(withLink(await withWrite(() => addGroceryItem(replica, name, rest)), LINKS?.groceries()));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not add that.' });
       }
@@ -588,7 +615,7 @@ function registerWriteTools(
     { id: z.string().min(1), checked: z.boolean().optional().describe('Defaults to true.') },
     async ({ id, checked }) => {
       try {
-        return json(await withWrite(() => setGroceryChecked(replica, id, checked ?? true)));
+        return json(withLink(await withWrite(() => setGroceryChecked(replica, id, checked ?? true)), LINKS?.groceries()));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not check that off.' });
       }
@@ -601,7 +628,7 @@ function registerWriteTools(
     { id: z.string().min(1) },
     async ({ id }) => {
       try {
-        return json(await withWrite(() => removeFromGroceryList(replica, id)));
+        return json(withLink(await withWrite(() => removeFromGroceryList(replica, id)), LINKS?.groceries()));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not remove that.' });
       }
@@ -629,7 +656,8 @@ function registerWriteTools(
     },
     async input => {
       try {
-        return json(await withWrite(() => createProject(replica, input as CreateProjectInput)));
+        const result = await withWrite(() => createProject(replica, input as CreateProjectInput));
+        return json(withLink(result, LINKS?.project(result.project.id)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not create the project.' });
       }
@@ -652,7 +680,7 @@ function registerWriteTools(
     },
     async ({ id, ...patch }) => {
       try {
-        return json(await withWrite(() => updateProject(replica, id, patch)));
+        return json(withLink(await withWrite(() => updateProject(replica, id, patch)), LINKS?.project(id)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not update the project.' });
       }
@@ -670,7 +698,8 @@ function registerWriteTools(
     },
     async input => {
       try {
-        return json(await withWrite(() => planMeal(replica, input)));
+        const result = await withWrite(() => planMeal(replica, input));
+        return json(withLink(result, LINKS?.mealPlan(result.date)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not plan the meal.' });
       }
@@ -687,7 +716,7 @@ function registerWriteTools(
     },
     async input => {
       try {
-        return json(await withWrite(() => addPersonHistory(replica, input)));
+        return json(withLink(await withWrite(() => addPersonHistory(replica, input)), LINKS?.person(input.personIds[0])));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not add that to their history.' });
       }
@@ -878,6 +907,31 @@ async function main(): Promise<void> {
   if (process.env.SYNC_STORE_PATH) {
     mountSyncStore(app, openSyncStore(process.env.SYNC_STORE_PATH));
   }
+
+  // The two routes universal links need (see appLinks.ts). Apple fetches the
+  // association file itself, through its CDN, and wants it as plain JSON with
+  // no redirect; the fly.toml https redirect is fine, since Apple asks over https.
+  app.get('/.well-known/apple-app-site-association', (_req: Request, res: Response) => {
+    const body = appSiteAssociation(process.env.APPLE_TEAM_ID, process.env.APP_BUNDLE_ID ?? 'com.fdsimms.dundundun');
+    if (!body) {
+      res.status(404).json({ error: 'APPLE_TEAM_ID is unset, so this server associates with no app.' });
+      return;
+    }
+    res.type('application/json').send(JSON.stringify(body));
+  });
+  // Reached only when the app didn't catch the link: a desktop, or a phone
+  // without the associated build.
+  app.get('/open/:path', (req: Request, res: Response) => {
+    const query = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : '';
+    const appUrl = appUrlForOpenPath(String(req.params.path), query);
+    if (!appUrl) {
+      res.status(404).type('text').send('Not a link this app opens.');
+      return;
+    }
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.type('html').send(openPage(appUrl));
+  });
 
   const oauth = mountOAuth(app);
 
