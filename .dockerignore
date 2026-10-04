@@ -1,0 +1,14 @@
+# Only mcp/Dockerfile builds from here, and it needs package*.json, src/ and mcp/.
+node_modules
+**/node_modules
+.git
+ios
+android
+assets
+targets
+modules
+docs
+# A replica is a complete copy of someone's data.
+**/*.db
+**/*.db-wal
+**/*.db-shm

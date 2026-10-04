@@ -7,6 +7,8 @@ file is only how to run it.
 
 ## Running it
 
+To run it in the cloud instead of on a laptop, see [`DEPLOY.md`](DEPLOY.md) (Fly.io).
+
 ```bash
 cd mcp
 npm install

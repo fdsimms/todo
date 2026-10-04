@@ -1,0 +1,39 @@
+# The MCP server and payload store on Fly.io. Deploy from the repo root:
+#   fly deploy . --config mcp/fly.toml
+# The build context has to be the repo root (see mcp/Dockerfile), and the
+# Dockerfile path below is resolved next to this file. mcp/DEPLOY.md has the
+# whole setup.
+
+# Fly app names are global, so this may need changing to one that's free.
+app = "fdsimms-todo-mcp"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  TODO_DB_PATH = "/data/todo.db"
+  SYNC_STORE_PATH = "/data/payloads.db"
+  # The replica syncs with the store in the same process, so it goes over
+  # loopback rather than out and back through the public URL.
+  SYNC_URL = "http://127.0.0.1:8080"
+
+# Both SQLite files live here. One volume means one machine, which is the
+# only shape that works: SQLite can't be shared between machines.
+[[mounts]]
+  source = "todo_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # Always on. A stopped machine would wake on the first request, but the
+  # phone's sync would pay that delay, and the cost difference is cents.
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[vm]]
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1
