@@ -380,7 +380,12 @@ export function ReorderableList<T>({
 
   // Owns the scroll ref so it can pull the list back out of a keyboard inset
   // it was left parked in (see the hook).
-  const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
+  // `refreshing` read off the element rather than asked for as a prop of our
+  // own, so a caller can't wire the control and forget the hook (see the
+  // hook's `refreshing`).
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>({
+    refreshing: refreshControl?.props.refreshing === true,
+  });
   const scrollRef = keyboardScroll.ref;
   const dataRef = useRef(data);
   // One `drag` callback per row key, cached for the life of that key.
