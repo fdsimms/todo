@@ -35,6 +35,12 @@ anything keyed by a day) keeps a settings-level mark instead (`calendarReviewLas
 Two generators that share a subject can share a rules module and a firing pass (`birthday` and
 `birthdayGift` in `birthdayTasks.ts`; `moodLog` and `moodNudge` in `moodTasks.ts`).
 
+**Every generator's switch and every rule list syncs** (`SYNCED_SETTING_KEYS`), so a second phone
+starts with the person's automations and the MCP server can change them (`docs/arch/mcp-server.md`).
+A new generator's `enabledKey` goes on that list; `generatedSync.test.ts` fails until it does. A rule
+list is one row, so edits on two devices at once keep the later one, and a rule's day mark travels
+with it, which also keeps two phones from firing one rule twice on one day.
+
 What kind of trigger a generator answers is worth naming, because a few are unusual and their rules
 follow from it: most fire on a date or a source row; `mealShortfall` and `mealLogNudge` re-run their
 creation predicate against a row the user edits freely; `weighIn` fires on the *absence* of data

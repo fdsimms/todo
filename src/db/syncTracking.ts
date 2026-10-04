@@ -342,6 +342,40 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   // edited on any device (src/utils/agentNotes.ts).
   'agentNotes',
 
+  // Automations: every generator's own switch, and the rules the person wrote
+  // for the four that take rules, plus title rules. They were missing from
+  // this list rather than left out on purpose, so a second phone started with
+  // none of them and the sync server could not change them. Each list is one
+  // row, so edits made on two devices at once keep the later one; and a rule's
+  // day mark (`lastFiredDayKey`) travels with it, which is what stops two
+  // phones firing the same rule on the same day. The switches that already
+  // synced are with their own generators above. `generatedSync.test.ts` fails
+  // when a generator's switch is missing from this list.
+  'titleRules',
+  'weatherRules',
+  'eventRules',
+  'healthRules',
+  'screenTimeRules',
+  'mealShortfallTasks',
+  'mealThawTasks',
+  'mealLogNudgeTasks',
+  'supplyReorderTasks',
+  'birthdayTasks',
+  'birthdayGiftTasks',
+  'reachOutTasks',
+  'waitingFollowUpTasks',
+  'pantryReviewTasks',
+  'weatherTasks',
+  'eventTasks',
+  'travelTasks',
+  'screenTimeTasks',
+  'healthTasks',
+  'moodLogTasks',
+  'moodNudgeTasks',
+  'weekendNudgeTasks',
+  'weighInTasks',
+  'waterShortfallTasks',
+
   // Behaviour.
   'newTaskDefaults',
   'defaultReminderLeadMinutes',

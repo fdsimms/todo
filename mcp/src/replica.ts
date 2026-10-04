@@ -34,8 +34,13 @@ import type {
   Category,
   Cookbook,
   DeliverableKind,
+  EventTaskRule,
   FoodLogEntry,
+  HealthRule,
   Milestone,
+  ScreenTimeRule,
+  TitleRule,
+  WeatherRule,
   GroceryItem,
   GroceryListEntry,
   MealPlanEntry,
@@ -154,6 +159,23 @@ export interface ReplicaLib {
   dates: typeof import('../../src/utils/dateUtils');
   agentNotes: typeof import('../../src/utils/agentNotes');
   nutritionEstimate: typeof import('../../src/utils/nutritionEstimate');
+  generatedTasks: typeof import('../../src/utils/generatedTasks');
+  titleRules: typeof import('../../src/utils/titleRules');
+  weatherTasks: typeof import('../../src/utils/weatherTasks');
+  eventTasks: typeof import('../../src/utils/eventTasks');
+  healthRules: typeof import('../../src/utils/healthRules');
+  screenTimeRules: typeof import('../../src/utils/screenTimeRules');
+}
+
+/** The rule lists an agent may edit, by the name the tools use. */
+export type RuleListType = 'title' | 'weather' | 'event' | 'health' | 'screenTime';
+
+export interface RuleLists {
+  title: TitleRule[];
+  weather: WeatherRule[];
+  event: EventTaskRule[];
+  health: HealthRule[];
+  screenTime: ScreenTimeRule[];
 }
 
 /** A recipe as a tool states it. Ingredients are typed lines ("2 cloves garlic, minced"). */
@@ -406,6 +428,13 @@ export interface Replica {
   logMood(input: MoodInput): MoodLog;
   /** A dose through the medication store, the name in the spelling already in the log. */
   logMedication(input: DoseInput): MedicationLog;
+  /** Every automation rule list, as the settings store holds it. */
+  ruleLists(): RuleLists;
+  /** Replace one rule list through the settings store's own setter. The list must already be normalized. */
+  setRuleList<T extends RuleListType>(type: T, rules: RuleLists[T]): void;
+  /** Whether an automation is on, by its settings key (`GeneratedKindSpec.enabledKey`). */
+  generatorEnabled(key: string): boolean;
+  setGeneratorEnabled(key: string, on: boolean): void;
   /** What the person wants an agent to keep in mind (`src/utils/agentNotes.ts`). */
   agentNotes(): AgentNote[];
   writeAgentNotes(notes: readonly AgentNote[]): void;
@@ -963,6 +992,12 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         dates,
         agentNotes: require('../../src/utils/agentNotes'),
         nutritionEstimate: require('../../src/utils/nutritionEstimate'),
+        generatedTasks: require('../../src/utils/generatedTasks'),
+        titleRules: require('../../src/utils/titleRules'),
+        weatherTasks: require('../../src/utils/weatherTasks'),
+        eventTasks: require('../../src/utils/eventTasks'),
+        healthRules: require('../../src/utils/healthRules'),
+        screenTimeRules: require('../../src/utils/screenTimeRules'),
       });
       /* eslint-enable @typescript-eslint/no-require-imports */
     },
@@ -1078,6 +1113,31 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       });
       if (!log) throw new Error('A dose needs the medication\'s name.');
       return log;
+    },
+
+    ruleLists(): RuleLists {
+      const s = useSettingsStore.getState();
+      return { title: s.titleRules, weather: s.weatherRules, event: s.eventRules, health: s.healthRules, screenTime: s.screenTimeRules };
+    },
+
+    setRuleList(type, rules) {
+      const s = useSettingsStore.getState();
+      switch (type) {
+        case 'title': s.setTitleRules(rules as TitleRule[]); break;
+        case 'weather': s.setWeatherRules(rules as WeatherRule[]); break;
+        case 'event': s.setEventRules(rules as EventTaskRule[]); break;
+        case 'health': s.setHealthRules(rules as HealthRule[]); break;
+        case 'screenTime': s.setScreenTimeRules(rules as ScreenTimeRule[]); break;
+      }
+    },
+
+    generatorEnabled: (key: string) => (useSettingsStore.getState() as unknown as Record<string, unknown>)[key] === true,
+
+    setGeneratorEnabled(key: string, on: boolean) {
+      // The stored form every switch's own setter writes; the store re-reads it
+      // on the refresh below, defaults and all.
+      db.dbSetSetting(key, on ? 'true' : 'false');
+      refresh();
     },
 
     agentNotes: () => notesModule().readAgentNotes(),

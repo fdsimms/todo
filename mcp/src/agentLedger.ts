@@ -32,6 +32,15 @@ export interface AgentLedgerEntry {
   revert?: UnattendedRevert | null;
 }
 
+/** How a rule list is named on the Activity screen, matching the rule sheets' titles. */
+const RULE_LIST_LABEL: Record<string, string> = {
+  title: 'Title',
+  weather: 'Weather',
+  event: 'Event',
+  health: 'Health',
+  screenTime: 'Screen time',
+};
+
 function same(a: unknown, b: unknown): boolean {
   return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 }
@@ -172,6 +181,17 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       const entry = replica.logMedication(input);
       log({ action: 'created', subject: 'medication', title: 'Medication dose', taskId: null });
       return entry;
+    },
+
+    setRuleList(type, rules) {
+      replica.setRuleList(type, rules);
+      log({ action: 'edited', subject: 'automation', title: `${RULE_LIST_LABEL[type]} rules`, taskId: null });
+    },
+
+    setGeneratorEnabled(key, on) {
+      replica.setGeneratorEnabled(key, on);
+      const spec = replica.lib().generatedTasks.GENERATED_KIND_LIST.find(s => s.enabledKey === key);
+      log({ action: 'edited', subject: 'automation', title: `${spec?.label ?? key} turned ${on ? 'on' : 'off'}`, taskId: null });
     },
 
     addPersonHistory(personIds, title, at) {

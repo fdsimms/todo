@@ -275,6 +275,22 @@ governs what the phone sends (`HEALTH_SYNC_TABLES` withholds pushes only), not w
 The Activity entry for a mood check-in or a dose names the kind of record and not its content,
 since the Activity list is about the app and should not show somebody's health.
 
+### Automations, now that they sync
+
+`list_automations`, `set_automation`, `save_rule` and `delete_rule` (`mcp/src/automationTools.ts`)
+change the generators' switches and the rules people write for them, plus title rules. None of
+these synced before, so a change on the server would never have reached the phone; they are on
+`SYNCED_SETTING_KEYS` now (see `docs/arch/generated-tasks.md`). The server only writes them: the
+generators still run on the phone, the one place with a forecast, a calendar, Health and Screen
+Time to read, and the list says what each needs there.
+
+The rule parsers are tolerant, because their job is reading a stored blob from an older build:
+they drop an unreadable rule and clamp or trim the rest. So a save runs the parser and then
+compares. A rule that did not survive is refused with the reason, and one the parser changed comes
+back as stored with an `adjusted` line, so the agent cannot report a rule as saved the way it was
+asked when the app kept something else. An edit that changes what a weather or health rule asks
+clears its day mark through the sheets' own helpers.
+
 ### Notes for Claude
 
 `src/utils/agentNotes.ts`: a short synced list (`agentNotes`, the `savedPlaces` shape) of what the

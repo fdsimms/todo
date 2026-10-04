@@ -82,6 +82,8 @@ only the fallback until the first sync.
 | `save_recipe` | **Write.** A recipe from a page, a photo or a conversation, ingredients as printed lines. |
 | `log_food` | **Write.** Something eaten, with estimated nutrition. Previews unless `apply: true`; marked estimated; not sent to Apple Health. |
 | `log_mood` / `log_medication` | **Write.** A mood check-in, or a dose taken, in the spellings already in the log. |
+| `list_automations` | Every automation, whether it is on and what it needs on the phone, and every rule written for them. |
+| `set_automation` / `save_rule` / `delete_rule` | **Write.** Turn an automation on or off; add, change or delete a weather, calendar event, Health, Screen Time or title rule. |
 | `remember` / `forget` | **Write.** Add or remove a note the person wants every conversation to start with. They are in the app under Settings › Data & reset › Sync. |
 | `batch_update_tasks` | **Write.** Edit, complete or reschedule up to 100 tasks. Previews unless `apply: true`; one refused change refuses the batch. |
 | `quick_add` | **Write.** Lines of text through the app's quick-add grammar. Previews unless `apply: true`. |

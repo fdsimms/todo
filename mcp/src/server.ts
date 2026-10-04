@@ -78,6 +78,7 @@ import { SERVER_INSTRUCTIONS } from './instructions';
 import { annotationsFor } from './toolAnnotations';
 import { PROMPTS } from './prompts';
 import { forget, remember } from './memoryTools';
+import { deleteRule, listAutomations, saveRule, setAutomation, RULE_TYPES } from './automationTools';
 import { NUTRIENT_KEY_LIST, logFood, logMedication, logMood, saveRecipe } from './logTools';
 import { DEFAULT_PATTERN_DAYS, habitPatterns, moodInsights } from './patternTools';
 import { MAX_BATCH, MAX_QUICK_ADD, batchUpdateTasks, planDay, quickAdd, rebalanceWeek, type BatchChange } from './agentTools';
@@ -406,6 +407,13 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
   );
 
   server.tool(
+    'list_automations',
+    "Everything that adds tasks on its own: each automation (birthdays, weather, calendar events, Health, Screen Time, meal and pantry tasks, and the rest), whether it is on, what it does, and what it needs on the phone. Also every rule the person wrote for the ones that take rules, plus title rules, which file a new task by a word in its title. Use it before suggesting or changing an automation.",
+    {},
+    async () => json(await withFresh(() => listAutomations(replica)))
+  );
+
+  server.tool(
     'plan_day',
     "Proposes an order and a time for each task on today's list, fitted between startAt and endAt (default: now, or the start of their active hours, until the end of their active hours) and around busy blocks you pass in. Pinned first, then anything with a deadline today, then priority. It never places a task before the app would show it or past its time window, and lists what does not fit. The server cannot see the calendar: ask the person about meetings, or read them with a calendar tool, and pass them as busy. Writes nothing; apply what they agree to with batch_update_tasks.",
     {
@@ -696,6 +704,74 @@ function registerWriteTools(
         return json(await withWrite(() => logMedication(replica, input)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not record that dose.' });
+      }
+    }
+  );
+
+  server.tool(
+    'set_automation',
+    'Turn an automation on or off, by its kind from list_automations. Applies on every synced device. Say what it will do (its "does" line) and anything it needs on the phone before turning it on.',
+    { kind: z.string().min(1), on: z.boolean() },
+    async ({ kind, on }) => {
+      try {
+        return json(await withWrite(() => setAutomation(replica, kind, on)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change that automation.' });
+      }
+    }
+  );
+
+  server.tool(
+    'save_rule',
+    'Add a rule, or change one by passing its id from list_automations (only the fields you give change). title: file a new task by a word in its title ("pay" → Bills, high priority). weather: add a task when the forecast is sunny, rainy, snowy, cold or hot. event: add a task ahead of a calendar event whose title has one of these words. health: add a task when an Apple Health reading is under (or over) a number by a given hour. screenTime: add a task after this many minutes in the watched apps. The app checks every rule the way its own rule sheets do; the result is the rule as saved, and says when a value was adjusted. The matching automation must be on for a rule to fire.',
+    {
+      type: z.enum(RULE_TYPES as unknown as [string, ...string[]]),
+      rule: z.object({
+        id: z.string().optional(),
+        enabled: z.boolean().optional(),
+        title: z.string().optional().describe('The task the rule adds (all but title rules).'),
+        estimatedMinutes: z.number().int().positive().nullable().optional(),
+        category: z.string().optional().describe('Files the task it adds under this category (all but title rules).'),
+        keywords: z.array(z.string()).optional().describe('title: words that trigger it, 3+ letters each.'),
+        match: z.enum(['startsWith', 'contains']).optional().describe('title: where the word must be.'),
+        fileUnder: z.string().nullable().optional().describe('title: the category a matching task is filed under.'),
+        projectId: z.string().nullable().optional().describe('title: the project a matching task goes in.'),
+        tags: z.array(z.string()).optional().describe('title: tags to add.'),
+        priority: z.number().int().min(0).max(4).optional().describe('title: 0 (none) to 4 (urgent).'),
+        linkUrl: z.string().nullable().optional().describe('title: a link to attach.'),
+        stripKeyword: z.boolean().optional().describe('title: remove the word from the title.'),
+        condition: z.enum(['sunny', 'rainy', 'snowy', 'cold', 'hot']).optional().describe('weather.'),
+        matches: z.array(z.string()).optional().describe('event: 1 to 6 words or phrases looked for in event titles.'),
+        leadDays: z.number().int().min(0).max(14).optional().describe('event: days before the event to add the task.'),
+        metric: z.enum(['steps', 'sleepHours', 'exerciseMinutes', 'sodiumMg', 'proteinG', 'satFatG', 'fiberG', 'sugarG', 'caffeineMg', 'waterMl', 'calorieKcal']).optional().describe('health.'),
+        threshold: z.number().optional().describe('health: in the metric\'s own unit.'),
+        direction: z.enum(['under', 'over']).optional().describe('health: which side of the threshold fires it. Each metric has a usual one.'),
+        checkpointHour: z.number().int().min(0).max(23).optional().describe('health: the hour of the day it is judged from.'),
+        thresholdMinutes: z.number().int().min(5).max(480).optional().describe('screenTime.'),
+      }),
+    },
+    async ({ type, rule }) => {
+      try {
+        // A title rule's own field for its category is `category`, which every
+        // other rule uses for the task it adds; the tool names them apart.
+        const { fileUnder, ...rest } = rule;
+        const fields = type === 'title' && fileUnder !== undefined ? { ...rest, category: fileUnder } : rest;
+        return json(await withWrite(() => saveRule(replica, type as never, fields)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not save that rule.' });
+      }
+    }
+  );
+
+  server.tool(
+    'delete_rule',
+    'Delete a rule by its type and id from list_automations. To stop one firing but keep it, save it with enabled: false instead.',
+    { type: z.enum(RULE_TYPES as unknown as [string, ...string[]]), id: z.string().min(1) },
+    async ({ type, id }) => {
+      try {
+        return json(await withWrite(() => deleteRule(replica, type as never, id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not delete that rule.' });
       }
     }
   );
