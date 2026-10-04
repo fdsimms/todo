@@ -54,8 +54,21 @@ OAuth instead, which is on when `MCP_OAUTH_PASSWORD` (16+ characters) and `PUBLI
 
 Read-only except those marked **Write**, which need `MCP_WRITE_TOKEN`.
 
+The server sends the model a short primer on connect (MCP `instructions`, in `src/instructions.ts`)
+and annotates every tool as read-only or not (`src/toolAnnotations.ts`), so the Claude apps can run
+reads without asking. A new tool needs a line in that table; `toolAnnotations.test.ts` fails
+without one.
+
+It answers in the phone's time zone, which the app syncs as a setting. `TZ` in the environment is
+only the fallback until the first sync.
+
 | Tool | What it answers |
 |---|---|
+| `get_overview` | Where an agent starts: the person's time zone and logical today, counts per list, categories, tags, projects, what is switched off, and whether health logs arrive. |
+| `get_agenda` | The coming days: each day's tasks, repeats expected that day, estimated minutes, what is carried over, and deadlines that will not fit. |
+| `completion_history` | What got done over a range, with a summary by day, weekday, hour, category, project and tag. Missed occurrences are counted separately. |
+| `review_tasks` | Overdue tasks, stale Inbox and Unscheduled items, likely duplicates, quiet projects and the most-missed repeats. Lists, does not judge. |
+| `app_help` | The matching Settings rows (with the path to each) and release notes, for explaining a feature in the app's own words. |
 | `list_tasks` | Tasks in one of the app's lenses: `today`, `later`, `unscheduled`, `inbox`, `all`. Filters by category, tag, project. |
 | `search_tasks` | The app's own fuzzy ranking over titles, notes and project names. |
 | `get_task` | One task, with its subtasks, chain steps, repeat rule, target, window, blockers, follow-up, project, and why it is not on Today. |

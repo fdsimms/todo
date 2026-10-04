@@ -335,6 +335,9 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'quietHoursStart',
   'quietHoursEnd',
   'weekStartsOn',
+  // Read only by a sync server, which has no zone of its own worth trusting
+  // and answers "today" in this one (src/utils/deviceTimeZone.ts).
+  'deviceTimeZone',
 
   // Behaviour.
   'newTaskDefaults',

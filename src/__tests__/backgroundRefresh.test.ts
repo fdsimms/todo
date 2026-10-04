@@ -136,6 +136,7 @@ jest.mock('../store/useSyncStore', () => {
     mockRegistered: registered,
   };
 });
+jest.mock('../utils/deviceTimeZone', () => ({ recordDeviceTimeZone: () => { mockCalls.push('recordDeviceTimeZone'); } }));
 jest.mock('../utils/notifications', () => ({
   rescheduleAllReminders: () => { mockCalls.push('rescheduleAllReminders'); },
 }));
@@ -179,6 +180,7 @@ describe('runBackgroundRefresh', () => {
     // added to the launch sequence has to reach the background run too, and a
     // hand-written expectation here is exactly how that would stop being true.
     const passNames = [
+      'recordDeviceTimeZone',
       'checkVacationExpiry', 'checkAwayVacation', 'checkAwayGroceryList',
       'rolloverQuotas', 'sweepOvershootQuotas', 'syncWaterQuotaTasks',
       'dripStalledProjects',

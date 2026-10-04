@@ -18,7 +18,7 @@
  * phone. docs/arch/mcp-server.md has the reasoning.
  */
 import express, { type Request, type Response } from 'express';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer, type RegisteredTool } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { mcpAuthRouter, getOAuthProtectedResourceMetadataUrl } from '@modelcontextprotocol/sdk/server/auth/router.js';
 import type { OAuthServerProvider } from '@modelcontextprotocol/sdk/server/auth/provider.js';
@@ -72,6 +72,10 @@ import { createProject, getProject, updateProject, type CreateProjectInput } fro
 import { DEFAULT_PLAN_DAYS, MAX_PLAN_DAYS, MEAL_SLOTS as KITCHEN_MEAL_SLOTS, getRecipe, listMealPlan, listRecipes, planMeal } from './kitchenTools';
 import { DEFAULT_BIRTHDAY_DAYS, MAX_BIRTHDAY_DAYS, addPersonHistory, getPerson, listPeople, upcomingBirthdays } from './peopleTools';
 import { ANCHORS, CONTAINERS, QUESTION_KINDS, QUESTION_SOURCES, SCHEDULE_FREQUENCIES } from './templatePlan';
+import { DEFAULT_AGENDA_DAYS, DEFAULT_HISTORY_DAYS, DEFAULT_STALE_DAYS, MAX_AGENDA_DAYS, completionHistory, getAgenda, getOverview, reviewTasks } from './insightTools';
+import { DEFAULT_HELP_LIMIT, appHelp } from './helpTools';
+import { SERVER_INSTRUCTIONS } from './instructions';
+import { annotationsFor } from './toolAnnotations';
 
 /** `YYYY-MM-DD`, the shape every day-keyed table stores and sorts on. */
 const dayKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected YYYY-MM-DD.');
@@ -117,8 +121,14 @@ function syncGateFor(replica: Replica): SyncGate {
   return gate;
 }
 
+/**
+ * Compact rather than indented. The reader is a model, which needs no
+ * whitespace to follow nesting, and indentation was a fifth or more of every
+ * result: tokens spent on spaces in a list of fifty tasks are tasks that did not
+ * fit in the same context.
+ */
 function json(value: unknown) {
-  return { content: [{ type: 'text' as const, text: JSON.stringify(value, null, 2) }] };
+  return { content: [{ type: 'text' as const, text: JSON.stringify(value) }] };
 }
 
 /**
@@ -131,7 +141,19 @@ function json(value: unknown) {
  * `tools/list` at all, so there is nothing for a model to try and be refused.
  */
 export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): McpServer {
-  const server = new McpServer({ name: 'todo', version: '0.1.0' });
+  const server = new McpServer({ name: 'todo', version: '0.1.0' }, { instructions: SERVER_INSTRUCTIONS });
+
+  // Every tool gets its title and read/write hints from one table
+  // (toolAnnotations.ts) rather than an argument at each of thirty call sites.
+  // Applied on the way through `server.tool` so a tool added below picks them
+  // up with no change here, and one missing from the table claims nothing.
+  const register = server.tool.bind(server) as (...args: unknown[]) => RegisteredTool;
+  (server as unknown as { tool: (...args: unknown[]) => RegisteredTool }).tool = (...args: unknown[]) => {
+    const tool = register(...args);
+    const annotations = annotationsFor(String(args[0]));
+    if (Object.keys(annotations).length > 0) tool.update({ annotations, title: annotations.title });
+    return tool;
+  };
 
   // Every handler refreshes first. The replica caches reads for the length of a
   // request so the blocker registry does not re-read the task table once per
@@ -311,6 +333,57 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
     `Birthdays in the next N days (default ${DEFAULT_BIRTHDAY_DAYS}), soonest first.`,
     { days: z.number().int().positive().max(MAX_BIRTHDAY_DAYS).optional() },
     async ({ days }) => json(await withFresh(() => upcomingBirthdays(replica, days)))
+  );
+
+  server.tool(
+    'get_overview',
+    "Start here. The person's time zone and logical today (their day can start after midnight), how many tasks are in each of Today, Later, Unscheduled and Inbox and how many are overdue, their categories (with any hours a category is limited to), most-used tags, active projects, which areas of the app are switched off, whether health logs reach this server, and whether you can write.",
+    {},
+    async () => json(await withFresh(() => getOverview(replica, scope)))
+  );
+
+  server.tool(
+    'get_agenda',
+    `The coming days as the app sees them, from today (default ${DEFAULT_AGENDA_DAYS} days, up to ${MAX_AGENDA_DAYS}): each day's tasks, repeats expected that day that have no task yet, estimated minutes, the app's own "busy"/"full" cue, trip days, what is carried over from before today, and deadlines that will not fit in the time left. The server cannot see the calendar, so meetings are unknown.`,
+    { days: z.number().int().positive().max(MAX_AGENDA_DAYS).optional() },
+    async input => json(await withFresh(() => getAgenda(replica, input)))
+  );
+
+  server.tool(
+    'completion_history',
+    `What got done over a range of days (default the last ${DEFAULT_HISTORY_DAYS}): completed tasks newest first, and a summary by day, weekday, hour of the day, category, project and tag, with estimated minutes, deadlines met, and how many occurrences were missed rather than done. Use it for reviews ("what did I get done this week"), patterns ("when do I actually do my workouts") and progress. Filter by category, projectId or tag.`,
+    {
+      ...logRange,
+      category: z.string().optional(),
+      projectId: z.string().optional(),
+      tag: z.string().optional(),
+      limit: z.number().int().positive().max(500).optional().describe('How many tasks to list. The summary always covers all of them.'),
+    },
+    async input => {
+      try {
+        return json(await withFresh(() => completionHistory(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not read the history.' });
+      }
+    }
+  );
+
+  server.tool(
+    'review_tasks',
+    `Things in the list worth a second look, for a cleanup or weekly review: overdue tasks (oldest first), Inbox items left untriaged over a week, Unscheduled tasks older than staleDays (default ${DEFAULT_STALE_DAYS}), open tasks that look like duplicates, active projects with nothing finished in three weeks, and the repeating tasks missed most often. It lists, it does not judge: ask the person what they want done with any of it before changing anything.`,
+    { staleDays: z.number().int().positive().max(3650).optional() },
+    async input => json(await withFresh(() => reviewTasks(replica, input)))
+  );
+
+  server.tool(
+    'app_help',
+    `How the app works, in the app's own words. Pass the person's question or a few keywords ("repeat every other week", "day start", "pin"). Returns matching Settings rows with the path to tap to reach each, and dated release notes describing the features (a later note supersedes an earlier one). Use it before explaining a feature or pointing someone at a setting, rather than guessing. Bug-fix notes are left out unless includeFixes is true. Returns up to ${DEFAULT_HELP_LIMIT} of each by default.`,
+    {
+      query: z.string().min(1),
+      limit: z.number().int().positive().max(40).optional(),
+      includeFixes: z.boolean().optional(),
+    },
+    async input => json(await withFresh(() => appHelp(replica, input)))
   );
 
   if (scope === 'write') registerWriteTools(server, replica, withWrite);

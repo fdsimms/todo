@@ -52,10 +52,14 @@ import type {
   TaskDraft,
 } from '../../src/types';
 import type { FoodLogTotals } from '../../src/utils/foodLog';
+import type { LookAhead } from '../../src/utils/lookAhead';
+import type { MostMissedGroup } from '../../src/utils/missed';
+import type { OnTimeSummary } from '../../src/utils/stats';
 import type { SyncSummary, SyncTransport } from '../../src/utils/syncEngine';
 import { DEFAULT_SCHEDULE, resolveRef, validateTemplatePlan, type TemplatePlan } from './templatePlan';
 import { deliverableRefusal } from './deliverableAsk';
 import { taskFieldsPatch, type TaskFieldsInput } from './taskFields';
+import { adoptTimeZone, DEVICE_TIME_ZONE_KEY } from './timeZone';
 
 type DbModule = typeof import('../../src/db/database');
 type VisibilityModule = typeof import('../../src/utils/visibilityUtils');
@@ -84,6 +88,41 @@ type FollowUpModule = typeof import('../../src/utils/followUpTask');
 type MealPlanModule = typeof import('../../src/utils/mealPlan');
 type PersonHistoryModule = typeof import('../../src/utils/personHistory');
 type BirthdayModule = typeof import('../../src/utils/birthdayTasks');
+type LookAheadModule = typeof import('../../src/utils/lookAhead');
+type MissedModule = typeof import('../../src/utils/missed');
+type StatsModule = typeof import('../../src/utils/stats');
+type SettingsIndexModule = typeof import('../../src/utils/settingsIndex');
+type SettingsSearchModule = typeof import('../../src/utils/settingsSearch');
+
+/**
+ * The handful of settings a reader needs to talk about the user's day the way
+ * the app does. Not the whole store: most of it is device configuration that
+ * no answer about the person's tasks turns on.
+ */
+export interface ReplicaSettings {
+  /** "HH:MM", when the logical day turns over. */
+  dayResetTime: string;
+  /** 0 = Sunday, 1 = Monday. */
+  weekStartsOn: number;
+  vacationMode: boolean;
+  vacationEnd: string | null;
+  /** Groceries, recipes and the meal plan. Off means that whole area is hidden in the app. */
+  kitchenEnabled: boolean;
+  /** Simplified mode: the advanced half of the app is hidden. */
+  simpleMode: boolean;
+  rewardsEnabled: boolean;
+  /** Days completed tasks are kept, or null for for ever. */
+  completedRetentionDays: number | null;
+}
+
+/** One Settings row, located the way a person would have to walk to it. */
+export interface SettingsHit {
+  label: string;
+  /** "Settings › Day & time › When the day turns over › Morning". */
+  path: string;
+  /** Why it matched when the label did not: a keyword or the section name. */
+  matchedVia?: string;
+}
 
 /** What a caller may say about a completion. `CompletionOptions` without the miss. */
 export type CompletionOptions = Pick<
@@ -240,6 +279,28 @@ export interface Replica {
 
   /** Every stored template, for listing and for resolving a nested reference. */
   templates(): TaskTemplate[];
+
+  /** See `ReplicaSettings`. Read fresh from the settings store, so it follows a sync. */
+  settings(): ReplicaSettings;
+  /**
+   * The app's own look-ahead (`buildLookAhead`) from the start of the logical
+   * today across `days` days: per-day rows, projected recurring occurrences,
+   * each day's load, what is carried over, and deadlines that will not fit.
+   */
+  lookAhead(days: number): LookAhead;
+  /** The logical day an instant falls on, under the user's `dayResetTime`. */
+  logicalDayKeyOf(iso: string): string;
+  /** Completed by a person, as opposed to swept as missed. Every statistic counts only these. */
+  isRealCompletion(task: Task): boolean;
+  onTimeSummary(tasks: readonly Task[]): OnTimeSummary;
+  mostMissed(tasks: readonly Task[]): MostMissedGroup[];
+  /**
+   * The Settings search the app's own search field runs, over the rows this
+   * person can actually see (the kitchen and simplified-mode gates applied).
+   */
+  searchSettings(query: string): SettingsHit[];
+  /** When the replica last finished a sync, or null if it has not since starting. */
+  lastSyncedAt(): string | null;
   /**
    * Apply a validated plan, returning the template it built.
    *
@@ -552,9 +613,17 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   const mealPlanUtils = require('../../src/utils/mealPlan') as MealPlanModule;
   const personHistoryUtils = require('../../src/utils/personHistory') as PersonHistoryModule;
   const birthdays = require('../../src/utils/birthdayTasks') as BirthdayModule;
+  const lookAheadUtils = require('../../src/utils/lookAhead') as LookAheadModule;
+  const missed = require('../../src/utils/missed') as MissedModule;
+  const stats = require('../../src/utils/stats') as StatsModule;
+  const settingsIndex = require('../../src/utils/settingsIndex') as SettingsIndexModule;
+  const settingsSearch = require('../../src/utils/settingsSearch') as SettingsSearchModule;
   /* eslint-enable @typescript-eslint/no-require-imports */
 
   db.initDatabase();
+  // Before anything computes a day: the stores below read "today" as they
+  // hydrate. See timeZone.ts.
+  adoptTimeZone(db.dbGetSetting(DEVICE_TIME_ZONE_KEY));
   useSettingsStore.getState().initialize();
   useCategoryStore.getState().initialize();
   // Loaded rather than left empty: `newTaskFromDraft` reads a project's default
@@ -568,6 +637,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   let taskCache: Task[] | null = null;
   let personCache: Person[] | null = null;
   let projectCache: Project[] | null = null;
+  let syncedAt: string | null = null;
 
   const tasks = (): Task[] => (taskCache ??= db.dbGetAllTasks());
   const people = (): Person[] => (personCache ??= db.dbGetAllPeople());
@@ -670,6 +740,56 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     },
 
     templates: () => db.dbGetAllTemplates(),
+
+    settings(): ReplicaSettings {
+      const s = useSettingsStore.getState();
+      return {
+        dayResetTime: s.dayResetTime,
+        weekStartsOn: s.weekStartsOn,
+        vacationMode: s.vacationMode,
+        vacationEnd: s.vacationEnd,
+        kitchenEnabled: s.kitchenEnabled,
+        simpleMode: s.simpleMode,
+        rewardsEnabled: s.rewardsEnabled,
+        completedRetentionDays: s.completedRetentionDays,
+      };
+    },
+
+    // No calendar events: a Node process cannot read EventKit, so every day
+    // comes back `busyKnown: false`, which is the module's own word for "not
+    // known" rather than "free".
+    lookAhead(days: number): LookAhead {
+      const { dayResetTime } = useSettingsStore.getState();
+      return lookAheadUtils.buildLookAhead(tasks(), {
+        cutoff: addDays(dates.getLogicalToday(dayResetTime), days),
+        dayResetTime,
+      });
+    },
+
+    logicalDayKeyOf: (iso: string) =>
+      dates.getLogicalDayKey(new Date(iso), useSettingsStore.getState().dayResetTime),
+    isRealCompletion: (task: Task) => missed.isRealCompletion(task),
+    onTimeSummary: (list: readonly Task[]) => stats.onTimeSummary(list),
+    mostMissed: (list: readonly Task[]) => missed.mostMissed(list),
+
+    searchSettings(query: string): SettingsHit[] {
+      const { kitchenEnabled, simpleMode } = useSettingsStore.getState();
+      // 'ios' because that is the only platform the app ships on. No active-row
+      // set: a row behind a switch that is off is still the answer to "where is
+      // the setting for X", and the path says which switch to look under.
+      const entries = settingsIndex.visibleSettingsEntries('ios', kitchenEnabled, simpleMode);
+      return settingsSearch.searchSettings(entries, query).map(r => {
+        const group = settingsIndex.settingsGroup(r.entry.groupId);
+        const where = group?.screen ? `Menu › ${group.title}` : `Settings › ${group?.title ?? r.entry.groupId}`;
+        return {
+          label: r.entry.label,
+          path: `${where} › ${r.entry.section} › ${r.entry.label}`,
+          ...(r.matchedVia ? { matchedVia: r.matchedVia } : {}),
+        };
+      });
+    },
+
+    lastSyncedAt: () => syncedAt,
 
     createTemplate(plan: TemplatePlan): TaskTemplate {
       const existing = db.dbGetAllTemplates();
@@ -1140,9 +1260,13 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         [loggedTransport(httpTransport.httpSyncTransport(config))],
         syncLocal.databaseSyncLocal()
       );
+      // A pull can carry the phone's zone, and it has to be in effect before
+      // the refresh below re-hydrates the stores that read "today".
+      adoptTimeZone(db.dbGetSetting(DEVICE_TIME_ZONE_KEY));
       // Whatever a pull applied is now in the database and not in the caches
       // above, so the next read has to go back to SQLite for it.
       refresh();
+      syncedAt = new Date().toISOString();
       return syncEngine.summarizeRuns(runs);
     },
   };

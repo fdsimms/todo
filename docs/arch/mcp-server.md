@@ -167,6 +167,62 @@ Tasks are serialized by `mcp/src/serialize.ts` rather than handed over as raw `T
 budget on `supplyDeclinedAtCount` is a tool result with no room left for the task list. What the
 model gets is what a row shows, plus the state a question could be about.
 
+## Working as an agent's surface, not only a data API
+
+The tools above answer "show me X". Once the server was reachable from the Claude apps it became a
+way people *use* the app, which asks more of it: an agent needs to know what the app is before it
+can explain it, needs the questions that cut across records answered without re-deriving the app's
+rules, and needs the client to know which calls are safe to make without asking.
+
+**The instructions are the app's model, said once** (`mcp/src/instructions.ts`). MCP's
+`instructions` reach the model before any tool does, so that is where the cross-cutting rules go:
+the four lenses are disjoint, the day starts at `dayResetTime`, a reschedule is a defer, a
+completion that asks a question needs the person's answer, a missed occurrence is not a completion,
+and nothing is graded. Keep it short, since every conversation pays for its length; a rule that a
+single tool's description or result can carry belongs there instead.
+
+**Every tool is annotated from one table** (`mcp/src/toolAnnotations.ts`). The Claude apps decide
+from `readOnlyHint` whether a call needs approval, so an unannotated read asked permission to look
+at a task list. `server.ts` applies the table as tools register, and `toolAnnotations.test.ts`
+reads the tool names out of `server.ts` and fails on one that is not classified. A name missing
+from the table claims nothing, which the protocol reads as "may write": the safe direction.
+
+**Results are compact JSON.** Indentation was a fifth or more of every result, and the reader is a
+model.
+
+**The cross-cutting reads are projections of readers the app already has** (`insightTools.ts`):
+
+- `get_overview` is where an agent starts: the zone, the logical today, counts per lens, categories
+  with their hours, tags, projects, which areas are switched off, and whether health logs arrive.
+- `get_agenda` is `buildLookAhead`, the same window the app's look-ahead reads, so a recurring
+  task's future occurrences are projected by `projectOccurrences` and its refusals rather than by a
+  second walk. The calendar is unknown here and the result says so in words, since a day with no
+  tasks reads as free otherwise.
+- `completion_history` counts real completions only (`isRealCompletion`), on the logical day they
+  landed on, and reports missed occurrences separately.
+- `review_tasks` lists what has sat a long time and what looks duplicated. It is deliberately a
+  list and not a verdict, and leaves lists, paused projects and dated series out of the places they
+  would otherwise be false positives.
+
+**`app_help` reads what the app already says about itself** (`helpTools.ts`): the Settings index
+through the app's own Settings search, with the person's kitchen and simplified-mode gates applied,
+and every patch note in `src/patchNotes/entries/`. The server has the checkout, so it reads all of
+them rather than the few hundred the app ships. These are the two records kept true by other means
+(a test for the index, a fragment per user-facing PR for the notes), so neither drifts the way a
+hand-written help corpus would.
+
+### The server answers in the phone's time zone
+
+Every logical-day computation runs on the process's local clock, and a host like Fly starts the
+process in UTC. So for somebody in New York, from 8pm on, the server's "today" was tomorrow: the
+Today lens, a log range's end and every agenda day were a day ahead. The phone writes its IANA zone
+to the synced `deviceTimeZone` setting (`src/utils/deviceTimeZone.ts`, from the catch-up passes, so
+a background run after a flight updates it), and the replica adopts it into `process.env.TZ` on
+opening and after every sync (`mcp/src/timeZone.ts`), before the stores re-hydrate. Node resets its
+zone cache on that assignment, which is what makes this one line rather than a clock threaded
+through every app module. An operator's own `TZ` is the fallback until the first sync carries a
+zone. With two phones in different zones, the one opened last wins.
+
 ## The part that is blocked on infrastructure
 
 Everything above runs on a laptop against a file. Reaching Claude on a phone needs three things
