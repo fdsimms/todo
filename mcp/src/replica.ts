@@ -58,6 +58,7 @@ import type {
   TaskTemplate,
   Task,
   TaskDraft,
+  TaskGroup,
 } from '../../src/types';
 import { activeRotationLog } from '../../src/utils/rotation';
 import type { FoodLogTotals } from '../../src/utils/foodLog';
@@ -687,6 +688,28 @@ export interface Replica {
   addProjectSteps(projectId: string, steps: ProjectPlanStep[]): Task[];
   /** Rename, re-date, re-file, complete or archive a project. Its tasks are untouched. */
   updateProject(id: string, patch: ProjectPatch): Project;
+  /** Every stack, in the app's order. Read from the database each call: a stack is a handful of rows. */
+  stacks(): TaskGroup[];
+  /**
+   * A new, empty stack, through `useTaskGroupStore.createGroup` so it is made
+   * collapsed and takes the next slot in the list order exactly as the app's
+   * own. `category` is where it renders on Today; null leaves a stack that
+   * files its members under nothing in particular.
+   */
+  createStack(title: string, category: string | null): TaskGroup;
+  /**
+   * File a task in a stack, or take it out with a null `stackId`: the app's
+   * `addExistingToGroup` / `removeFromGroup`, one task row at a time.
+   *
+   * **A stack owns its members' category**, so filing a task in one moves it
+   * to the stack's category (the app does the same, and says why in
+   * `addExistingToGroup`: the category carries a schedule and a vacation
+   * setting, so this can change when the task shows). A stack with no
+   * category leaves the task's own alone rather than erasing it. Only the
+   * live row moves; the finished occurrences behind it stay where they were.
+   * Refused for a subtask, a completed task and an archived one.
+   */
+  setTaskStack(taskId: string, stackId: string | null): Task;
   /**
    * Move a project's dated tasks by the days its event (or any date) moved,
    * as the app's own offer does when the date is changed in the editor:
@@ -832,6 +855,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   const { useSettingsStore } = require('../../src/store/useSettingsStore') as typeof import('../../src/store/useSettingsStore');
   const { useCategoryStore } = require('../../src/store/useCategoryStore') as typeof import('../../src/store/useCategoryStore');
   const { projectProgress, projectDecisions, useProjectStore } = require('../../src/store/useProjectStore') as typeof import('../../src/store/useProjectStore');
+  const { useTaskGroupStore } = require('../../src/store/useTaskGroupStore') as typeof import('../../src/store/useTaskGroupStore');
   const taskUpdate = require('../../src/utils/taskUpdate') as TaskUpdateModule;
   const streakRecord = require('../../src/utils/streakRecord') as typeof import('../../src/utils/streakRecord');
   const blocking = require('../../src/utils/blocking') as BlockingModule;
@@ -856,6 +880,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   // task category from this store, so with it empty a task created into a
   // project here ignored that setting. createProjectPlan writes through it too.
   useProjectStore.getState().initialize();
+  useTaskGroupStore.getState().initialize();
 
   // Read caches, cleared per request by `refresh`. They exist because the
   // blocker registry resolves one id at a time: without them, a list of 200
@@ -907,6 +932,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     useSettingsStore.getState().initialize();
     useCategoryStore.getState().initialize();
     useProjectStore.getState().initialize();
+    useTaskGroupStore.getState().initialize();
   };
 
   /**
@@ -1918,6 +1944,54 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       });
       refresh();
       return projects().find(p => p.id === id)!;
+    },
+
+    stacks(): TaskGroup[] {
+      return db.dbGetAllTaskGroups();
+    },
+
+    createStack(title: string, category: string | null): TaskGroup {
+      const name = title.trim();
+      if (!name) throw new Error('A stack needs a title.');
+      let group: TaskGroup | undefined;
+      db.dbTransaction(() => {
+        ensureCategory(category);
+        group = useTaskGroupStore.getState().createGroup(name, category);
+      });
+      refresh();
+      return group!;
+    },
+
+    setTaskStack(taskId: string, stackId: string | null): Task {
+      const task = tasks().find(t => t.id === taskId);
+      if (!task) throw new Error(`No task with id ${taskId}.`);
+      if (task.parentId) throw new Error(`"${task.title}" is a subtask. A stack holds top-level tasks.`);
+      if (task.completed) throw new Error(`"${task.title}" is completed. Reopen it in the app before moving it.`);
+      if (task.archived) throw new Error(`"${task.title}" is archived. Restore it in the app before moving it.`);
+
+      const group = stackId === null ? null : db.dbGetAllTaskGroups().find(g => g.id === stackId) ?? null;
+      if (stackId !== null && !group) throw new Error(`No stack with id ${stackId}.`);
+
+      const all = tasks();
+      const patch: Partial<Task> = group
+        ? {
+            groupId: group.id,
+            sortOrder: all.filter(t => t.groupId === group.id).reduce((m, t) => Math.max(m, t.sortOrder), 0) + 1,
+            ...(group.category ? { category: group.category } : {}),
+          }
+        : { groupId: null };
+      // 'occurrence': the stack holds this row, not the other dates of a series.
+      const updated = taskUpdate.mergeTaskUpdate(task, patch, {
+        scope: 'occurrence',
+        freshPinnedOrder: 0,
+        dayResetTime: useSettingsStore.getState().dayResetTime,
+      });
+      db.dbTransaction(() => {
+        ensureCategory(updated.category);
+        db.dbUpdateTask(updated);
+      });
+      refresh();
+      return updated;
     },
 
     moveProjectTasks(projectId: string, from: Date, to: Date): ProjectTaskMove {

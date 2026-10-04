@@ -71,6 +71,7 @@ import {
   type TaskFieldsInput,
 } from './taskFields';
 import type { DeliverableKind, MealSlot, TimeOfDay } from '../../src/types';
+import { assignToStack, createStack, listStacks } from './stackTools';
 import { addProjectSteps, createProject, getProject, updateProject, type CreateProjectInput, type ProjectPlanStepInput } from './projectTools';
 import { DEFAULT_PLAN_DAYS, MAX_PLAN_DAYS, MEAL_SLOTS as KITCHEN_MEAL_SLOTS, getRecipe, listMealPlan, listRecipes, planMeal } from './kitchenTools';
 import { DEFAULT_BIRTHDAY_DAYS, MAX_BIRTHDAY_DAYS, addPersonHistory, getPerson, listPeople, upcomingBirthdays } from './peopleTools';
@@ -360,6 +361,13 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
       const result = await withFresh(() => getProject(replica, id));
       return result ? json(withLink(result, LINKS?.project(id))) : json({ error: `No project with id ${id}.` });
     }
+  );
+
+  server.tool(
+    'list_stacks',
+    'Stacks: named groups of tasks that sit together on Today, each with its category and its open tasks in order. A stack is only a label, so every task in it keeps its own schedule, streak and logging. A task shows which stack it is in as stackId.',
+    {},
+    async () => json({ stacks: await withFresh(() => listStacks(replica)) })
   );
 
   server.tool(
@@ -1262,6 +1270,39 @@ function registerWriteTools(
         return json(withLink(await withWrite(() => updateProject(replica, id, patch, { moveTasks, moveTasksFrom })), LINKS?.project(id)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not update the project.' });
+      }
+    }
+  );
+
+  server.tool(
+    'create_stack',
+    'Make a stack, optionally filing tasks in it straight away. A stack owns its members\' category, so every task filed in it moves to the stack\'s category (the result lists each change). With taskIds and no category, the tasks\' shared category is used; if they are in different ones, pass category (from list_categories). Use it to group tasks that are done together but must keep separate schedules, streaks or logging, which subtasks would not.',
+    {
+      title: z.string().min(1),
+      category: z.string().nullable().optional().describe('A task category (from list_categories) the stack and its members are filed under. null makes a stack that leaves its members\' categories alone.'),
+      taskIds: z.array(z.string().min(1)).optional().describe('Open top-level tasks to file in the new stack.'),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => createStack(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not create the stack.' });
+      }
+    }
+  );
+
+  server.tool(
+    'assign_to_stack',
+    'File open tasks in an existing stack (list_stacks), or take them out of whatever stack they are in with stackId null. Only the live task moves, not its finished occurrences. Filing a task moves it to the stack\'s category, which can change when it shows (the result lists each change); taking it out leaves the category as it is. Checked in full first, so a bad id moves nothing. Subtasks, completed and archived tasks are refused.',
+    {
+      stackId: z.string().min(1).nullable().describe('The stack to file the tasks in, or null to take them out of their stacks.'),
+      taskIds: z.array(z.string().min(1)).min(1),
+    },
+    async ({ stackId, taskIds }) => {
+      try {
+        return json(await withWrite(() => assignToStack(replica, stackId, taskIds)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not file the tasks.' });
       }
     }
   );

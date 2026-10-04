@@ -31,6 +31,8 @@ export interface SerializedTask {
   category?: string;
   tags?: string[];
   projectId?: string;
+  /** The stack it is filed in (list_stacks names it). */
+  stackId?: string;
   dueDate?: string;
   deadline?: string;
   deferUntil?: string;
@@ -109,6 +111,7 @@ export function serializeTask(replica: Replica, task: Task): SerializedTask {
     category: task.category ?? undefined,
     tags: task.tags,
     projectId: task.projectId ?? undefined,
+    stackId: task.groupId ?? undefined,
     dueDate: task.dueDate ?? undefined,
     deadline: task.deadline ?? undefined,
     deferUntil: task.deferUntil ?? undefined,
