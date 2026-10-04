@@ -390,3 +390,84 @@ export function searchMenu(destinations: NavSearchResult[], terms: string[]): Na
     return terms.every(term => haystacks.some(h => h.toLowerCase().includes(term)));
   });
 }
+
+/**
+ * The routes with a button of their own in the bottom tab bar, beside More.
+ * Recent leaves them out: a tab is already one tap away from anywhere, so a
+ * chip for it spends one of three slots repeating the tab bar.
+ */
+export const BOTTOM_TAB_ROUTES: readonly string[] = ['Today', 'Groceries', 'Projects'];
+
+/**
+ * How many recently visited screens are kept. More than Recent shows, because
+ * the same list answers "which screen in this hub did I use last" (see
+ * `hubEntryRoute`), and a hub visited a dozen screens ago still has an answer.
+ */
+export const RECENT_SCREEN_LIMIT = 12;
+
+/** How many chips the menu's Recent row shows at most. */
+export const RECENT_MENU_LIMIT = 3;
+
+/**
+ * A visit pushed onto the front of the list: most recent first, no duplicates,
+ * capped. A visit to the screen already at the front returns the same array,
+ * so a caller can skip the write; navigation fires a state change for every
+ * param update, not just for a new screen.
+ */
+export function addRecentScreen(
+  list: readonly string[],
+  route: string,
+  limit: number = RECENT_SCREEN_LIMIT,
+): readonly string[] {
+  if (list[0] === route) return list;
+  return [route, ...list.filter(r => r !== route)].slice(0, limit);
+}
+
+/** Reads back the stored list, tolerant of anything an older build or a hand edit left there. */
+export function parseRecentScreens(raw: string | null, limit: number = RECENT_SCREEN_LIMIT): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((r): r is string => typeof r === 'string' && r.length > 0).slice(0, limit);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * The menu's Recent chips: screens visited lately that the menu can still
+ * reach, newest first, leaving out the screen you're on and the ones the tab
+ * bar already has a button for.
+ *
+ * Built from `menuDestinations`, so a screen simplified mode or the kitchen
+ * switch has since taken away drops out of Recent too, the same symmetry the
+ * find field keeps.
+ */
+export function recentMenuDestinations(
+  recent: readonly string[],
+  options: NavMenuOptions,
+  currentRoute: string | null,
+  limit: number = RECENT_MENU_LIMIT,
+): NavSearchResult[] {
+  const byRoute = new Map(menuDestinations(options).map(d => [d.route, d]));
+  const out: NavSearchResult[] = [];
+  for (const route of recent) {
+    if (out.length >= limit) break;
+    if (route === currentRoute || BOTTOM_TAB_ROUTES.includes(route)) continue;
+    const destination = byRoute.get(route);
+    if (destination) out.push(destination);
+  }
+  return out;
+}
+
+/**
+ * Where tapping a hub's name goes: the member you used most recently, or the
+ * first one if you haven't used any. Pass a hub from `visibleMenuRows`, whose
+ * members are only the ones still on show, so a member simplified mode has
+ * taken away can't be reopened through it.
+ */
+export function hubEntryRoute(hub: NavHub, recent: readonly string[]): string {
+  const visited = recent.find(route => hub.members.some(m => m.route === route));
+  return visited ?? hub.members[0].route;
+}

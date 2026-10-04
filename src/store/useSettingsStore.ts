@@ -71,6 +71,7 @@ import {
 import { DEFAULT_MEAL_SLOTS_ENABLED } from '../utils/mealSlotTasks';
 import { parseRetentionDays, type RetentionDays } from '../utils/retention';
 import { addRecentSearch, parseRecentSearches } from '../utils/recentSearches';
+import { addRecentScreen, parseRecentScreens } from '../utils/navHubs';
 import { parseExpiredTaskGrace, serializeExpiredTaskGrace, type ExpiredTaskGraceDays } from '../utils/expiredTaskGrace';
 import { DEFAULT_APP_LOCK_GRACE_SECONDS, parseGraceSeconds } from '../utils/appLock';
 import { FDC_KEY_SECURE_KEY, GO_UPC_KEY_SECURE_KEY, loadAnthropicApiKey, loadSecureKey, saveAnthropicApiKey, saveSecureKey } from '../utils/secureApiKey';
@@ -1660,6 +1661,12 @@ interface SettingsStore {
   // instead of always on Today. Null (fresh install, or a name AppNavigator
   // no longer recognizes) falls back to Today.
   lastVisitedScreen: string | null;
+  // The top-level screens visited lately, newest first (see addRecentScreen in
+  // utils/navHubs.ts). State, not a preference, kept out of DEFAULT_SETTINGS
+  // like lastVisitedScreen above, and not synced: what you looked at on this
+  // phone is device-local the way recentSearches is. Feeds the side menu's
+  // Recent row and which screen a hub row opens.
+  recentScreens: readonly string[];
   initialized: boolean;
   initialize: () => void;
   /** Loads the keychain-backed settings. Call after initialize(). */
@@ -1915,6 +1922,7 @@ interface SettingsStore {
   clearRecentSearches: () => void;
   setTitleRules: (rules: TitleRule[]) => void;
   setLastVisitedScreen: (screen: string | null) => void;
+  pushRecentScreen: (screen: string) => void;
   resetToDefaults: () => void;
 }
 
@@ -2542,6 +2550,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   newTaskDefaults: DEFAULT_NEW_TASK_DEFAULTS,
   recentSearches: [],
   lastVisitedScreen: null,
+  recentScreens: [],
   initialized: false,
 
   initialize() {
@@ -3075,6 +3084,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
     const titleRules = parseTitleRules(dbGetSetting('titleRules'));
     const lastVisitedScreen = dbGetSetting('lastVisitedScreen') || null;
+    const recentScreens = parseRecentScreens(dbGetSetting('recentScreens'));
     // One field per line and sorted by field name, deliberately. Not to be
     // re-joined, and not to be appended to out of order.
     //
@@ -3241,6 +3251,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       quietHoursStart,
       reachOutTaskCategory,
       reachOutTasks,
+      recentScreens,
       recentSearches,
       recipeLovedOnly,
       recipeSortOption,
@@ -4762,6 +4773,13 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setLastVisitedScreen(screen: string | null) {
     dbSetSetting('lastVisitedScreen', screen ?? '');
     set({ lastVisitedScreen: screen });
+  },
+
+  pushRecentScreen(screen: string) {
+    const next = addRecentScreen(get().recentScreens, screen);
+    if (next === get().recentScreens) return;
+    dbSetSetting('recentScreens', JSON.stringify(next));
+    set({ recentScreens: next });
   },
 
   resetToDefaults() {

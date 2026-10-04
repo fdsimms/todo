@@ -1,7 +1,8 @@
 import {
   NAV_HUBS, NAV_MENU_ROWS, hubForRoute, hubSubtitle,
   menuDestinations, menuSearchTerms, rowEntryRoute, searchMenu, visibleHubMembers,
-  visibleMenuRows,
+  visibleMenuRows, addRecentScreen, parseRecentScreens, recentMenuDestinations, hubEntryRoute,
+  RECENT_SCREEN_LIMIT,
 } from '../utils/navHubs';
 import { SIMPLE_HIDDEN_SCREENS } from '../utils/simpleMode';
 
@@ -205,5 +206,59 @@ describe('finding a screen', () => {
   it('never offers a destination the menu itself is hiding', () => {
     const off = menuDestinations({ ...FULL, kitchenEnabled: false });
     expect(searchMenu(off, menuSearchTerms('recipes'))).toEqual([]);
+  });
+});
+
+describe('recent screens', () => {
+  it('pushes a visit to the front, without duplicates, capped', () => {
+    expect(addRecentScreen(['Mood', 'Stats'], 'Stats')).toEqual(['Stats', 'Mood']);
+    const long = Array.from({ length: RECENT_SCREEN_LIMIT }, (_, i) => `S${i}`);
+    expect(addRecentScreen(long, 'New')).toHaveLength(RECENT_SCREEN_LIMIT);
+    expect(addRecentScreen(long, 'New')[0]).toBe('New');
+  });
+
+  it('hands back the same list for a visit to the screen already at the front', () => {
+    const list = ['Mood', 'Stats'];
+    expect(addRecentScreen(list, 'Mood')).toBe(list);
+  });
+
+  it('reads back whatever was stored, tolerating junk', () => {
+    expect(parseRecentScreens(null)).toEqual([]);
+    expect(parseRecentScreens('not json')).toEqual([]);
+    expect(parseRecentScreens('{"a":1}')).toEqual([]);
+    expect(parseRecentScreens('["Mood", 3, "", "Stats"]')).toEqual(['Mood', 'Stats']);
+  });
+
+  it('offers recent screens the menu can still reach, newest first, three at most', () => {
+    const recent = ['Weight', 'Recipes', 'Logbook', 'Tags', 'Stats'];
+    expect(recentMenuDestinations(recent, FULL, null).map(d => d.route)).toEqual(['Weight', 'Recipes', 'Logbook']);
+  });
+
+  it('leaves out the screen you are on and the tab bar\'s own screens', () => {
+    const recent = ['Today', 'Weight', 'Groceries', 'Projects', 'Recipes', 'Logbook'];
+    expect(recentMenuDestinations(recent, FULL, 'Weight').map(d => d.route)).toEqual(['Recipes', 'Logbook']);
+  });
+
+  it('drops a screen the menu has since taken away', () => {
+    const noKitchen = { ...FULL, kitchenEnabled: false };
+    expect(recentMenuDestinations(['Recipes', 'Mood'], noKitchen, null).map(d => d.route)).toEqual(['Mood']);
+  });
+});
+
+describe('where a hub row opens', () => {
+  const health = NAV_HUBS.find(h => h.id === 'health')!;
+
+  it('opens the member used most recently', () => {
+    expect(hubEntryRoute(health, ['Stats', 'Weight', 'Mood'])).toBe('Weight');
+  });
+
+  it('opens the first member when none has been used', () => {
+    expect(hubEntryRoute(health, ['Stats', 'Logbook'])).toBe('Mood');
+    expect(hubEntryRoute(health, [])).toBe('Mood');
+  });
+
+  it("can't reopen a member the visible hub no longer holds", () => {
+    const visible = { ...health, members: health.members.filter(m => m.route !== 'Weight') };
+    expect(hubEntryRoute(visible, ['Weight', 'Medications'])).toBe('Medications');
   });
 });

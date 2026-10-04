@@ -63,7 +63,7 @@ export function navigateToTab(name: string, params?: object): void {
 // The tab rather than the focused route: a link tapped on a pushed card (a
 // task row on a category's page) closes that card on its way out, so the card
 // is not somewhere to hand anybody back to — the tab underneath it is.
-function currentRouteName(): string | undefined {
+export function currentTabName(): string | undefined {
   if (!navigationRef.isReady()) return undefined;
   const tabs = navigationRef.getRootState()?.routes.find(r => r.name === 'MainTabs')?.state;
   return tabs?.index !== undefined ? tabs.routes[tabs.index]?.name : undefined;
@@ -300,7 +300,7 @@ export function resetToFocusSession(): void {
  */
 export function resetToMood(openLog = false): void {
   runWhenReady(() => {
-    const returnTo = openLog ? currentRouteName() : undefined;
+    const returnTo = openLog ? currentTabName() : undefined;
     navigateToTab(
       'Mood',
       openLog
@@ -324,7 +324,7 @@ export function resetToMood(openLog = false): void {
  */
 export function resetToWeight(openLog = false): void {
   runWhenReady(() => {
-    const returnTo = openLog ? currentRouteName() : undefined;
+    const returnTo = openLog ? currentTabName() : undefined;
     navigateToTab(
       'Weight',
       openLog

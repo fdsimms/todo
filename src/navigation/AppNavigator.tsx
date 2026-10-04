@@ -68,7 +68,7 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { hasRunningRecipeTimer, isCookTimerRunning } from '../utils/recipeTimer';
 import { screenShown } from '../utils/simpleMode';
-import { NAV_HUBS, NAV_MENU_ROWS } from '../utils/navHubs';
+import { BOTTOM_TAB_ROUTES, NAV_HUBS, NAV_MENU_ROWS } from '../utils/navHubs';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { usePersonStore } from '../store/usePersonStore';
@@ -106,7 +106,7 @@ const MENU_ROUTES: ReadonlySet<string> = new Set(
 );
 // `More` is last and isn't a screen (its press opens the drawer), so it's
 // deliberately not in VISIBLE_TABS below.
-const VISIBLE_TABS: ReadonlySet<string> = new Set(['Today', 'Groceries', 'Projects']);
+const VISIBLE_TABS: ReadonlySet<string> = new Set(BOTTOM_TAB_ROUTES);
 const DRAWER_TABS: ReadonlySet<string> = new Set(
   [...MENU_ROUTES].filter(r => !VISIBLE_TABS.has(r))
 );
@@ -335,6 +335,7 @@ export default function AppNavigator() {
   // selecting only this doesn't subscribe AppNavigator to lastVisitedScreen
   // itself — see initialScreenFromSettings above.
   const setLastVisitedScreen = useSettingsStore(s => s.setLastVisitedScreen);
+  const pushRecentScreen = useSettingsStore(s => s.pushRecentScreen);
   const navRef = navigationRef;
 
 
@@ -382,10 +383,12 @@ export default function AppNavigator() {
     // Today — every non-pushed route name is a RESTORABLE_SCREENS member,
     // so no further check is needed on write.
     setLastVisitedScreen(currentName);
+    // The side menu's Recent row, and which screen a hub row opens.
+    pushRecentScreen(currentName);
     if (!DRAWER_TABS.has(currentName)) {
       setActiveTab(currentName);
     }
-  }, [setLastVisitedScreen]);
+  }, [setLastVisitedScreen, pushRecentScreen]);
 
   const screenOptions = useMemo(() => ({
     headerShown: false,
