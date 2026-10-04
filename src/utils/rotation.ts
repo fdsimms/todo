@@ -31,7 +31,8 @@
  *    Monday-start user's week in the wrong place.
  *
  * 3. **`rotationLastDone` says when, and nothing else.** It exists so the
- *    picker can show "Last done 3 weeks ago" beside a member, which is the
+ *    picker can show "Last done 3 weeks ago" beside a member, and the row can
+ *    name the one done most recently (`rotationLastPick`), which is the
  *    fact. Naming the pattern on top of it — calling someone avoidant, ranking
  *    their languages by neglect — is the line `docs/arch/people.md` and
  *    `docs/arch/mood-log.md` both hold, and nothing here may cross it.
@@ -346,4 +347,52 @@ export function rotationLastDoneLabel(lastDoneAt: string | null, dayStart: Date)
   // said of 35 days would be wrong as well as vaguer.
   if (weeks < 9) return `${weeks} weeks ago`;
   return `${Math.round(days / 30)} months ago`;
+}
+
+/**
+ * The member logged most recently, and when, or null when none ever has been.
+ *
+ * Read from this period's ledger first, because `rotationUnpick` takes the
+ * newest entry back and that is the one thing `rotationLastDone` cannot follow:
+ * a mis-tap undone a second later must stop being "the last one". Only when the
+ * ledger is empty (the first pick of a new week not yet made) does it fall back
+ * to the newest `rotationLastDone`, which is what lets the row answer on a
+ * Monday. A member removed from the set is skipped rather than named.
+ */
+export function rotationLastPick(
+  task: RotationCarrier,
+  dayStart: Date,
+  weekStartsOn: 0 | 1,
+): { item: RotationItem; at: string } | null {
+  const items = task.rotationItems ?? [];
+  const byId = (id: string) => items.find(i => i.id === id);
+  const log = activeRotationLog(task, dayStart, weekStartsOn);
+  for (let i = log.length - 1; i >= 0; i--) {
+    const item = byId(log[i].itemId);
+    if (item) return { item, at: log[i].at };
+  }
+  let best: { item: RotationItem; at: string } | null = null;
+  for (const [id, at] of Object.entries(task.rotationLastDone ?? {})) {
+    const item = byId(id);
+    if (!item || Number.isNaN(+new Date(at))) continue;
+    if (!best || +new Date(at) > +new Date(best.at)) best = { item, at };
+  }
+  return best;
+}
+
+/**
+ * The row's "Last: Spanish, yesterday" chip, or null before anything has been
+ * logged. Separate from `rotationSummary` so the member's name can be the part
+ * that truncates in its own chip rather than cutting off "3 left" behind it.
+ */
+export function rotationLastPickLabel(
+  task: RotationCarrier,
+  dayStart: Date,
+  weekStartsOn: 0 | 1,
+): string | null {
+  if (!isRotationTask(task)) return null;
+  const last = rotationLastPick(task, dayStart, weekStartsOn);
+  if (!last) return null;
+  const when = rotationLastDoneLabel(last.at, dayStart);
+  return when ? `Last: ${last.item.title}, ${when.toLowerCase()}` : null;
 }

@@ -8,6 +8,8 @@ import {
   rotationCoversNew,
   rotationDaysLeft,
   rotationDoneCount,
+  rotationLastPick,
+  rotationLastPickLabel,
   rotationMembers,
   rotationOverCommitted,
   rotationPeriodStart,
@@ -299,5 +301,47 @@ describe('rotationLastDoneLabel', () => {
 
   it('never reads as being in the future', () => {
     expect(rotationLastDoneLabel(ago(-3), WED)).toBe('Today');
+  });
+});
+
+describe('rotationLastPick', () => {
+  it('is null before anything has been logged', () => {
+    expect(rotationLastPick(rot(), WED, 1)).toBeNull();
+    expect(rotationLastPickLabel(rot(), WED, 1)).toBeNull();
+  });
+
+  it('names the newest pick this week', () => {
+    const task = loggedThisWeek([
+      { itemId: 'es', at: MON.toISOString() },
+      { itemId: 'fr', at: WED.toISOString() },
+    ], WED);
+    expect(rotationLastPick(task, WED, 1)!.item.id).toBe('fr');
+    expect(rotationLastPickLabel(task, WED, 1)).toBe('Last: French, today');
+  });
+
+  it('answers on the first day of a new week from last-done', () => {
+    const task = loggedThisWeek([{ itemId: 'es', at: MON.toISOString() }], WED);
+    task.rotationLastDone = { es: MON.toISOString(), de: WED.toISOString() };
+    expect(rotationLastPick(task, NEXT_MON, 1)!.item.id).toBe('de');
+    expect(rotationLastPickLabel(task, NEXT_MON, 1)).toBe('Last: German, 5 days ago');
+  });
+
+  it('follows an undo rather than last-done, which is never rewound', () => {
+    const task = loggedThisWeek([
+      { itemId: 'es', at: MON.toISOString() },
+      { itemId: 'fr', at: WED.toISOString() },
+    ], WED);
+    task.rotationLastDone = { es: MON.toISOString(), fr: WED.toISOString() };
+    const undone = { ...task, ...rotationUnpick(task, WED, 1)! };
+    expect(rotationLastPick(undone, WED, 1)!.item.id).toBe('es');
+  });
+
+  it('skips a member that has since been removed from the set', () => {
+    const task = rot({ rotationItems: ITEMS.slice(0, 2), rotationLastDone: { ja: WED.toISOString(), fr: MON.toISOString() } });
+    expect(rotationLastPick(task, WED, 1)!.item.id).toBe('fr');
+  });
+
+  it('says nothing for a task that is not a rotation', () => {
+    expect(rotationLastPickLabel(rot({ rotationItems: [], rotationLastDone: { es: MON.toISOString() } }), WED, 1)).toBeNull();
   });
 });
