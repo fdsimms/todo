@@ -3355,11 +3355,7 @@ export function TodayScreen() {
     // order to commit and nothing for resolveDrop to place. Same as a section
     // header, which is also in this data and also static.
     if (item.type === 'context') {
-      return (
-        <DayContextRow
-          row={item.row}
-          onPress={
-            item.row.kind === 'event' ? () => {
+      const openContextRow = item.row.kind === 'event' ? () => {
               const moved = item.row.id.startsWith('moved-')
                 ? movedEvents.find(m => `moved-${eventTaskKey(m.event)}` === item.row.id)
                 : undefined;
@@ -3373,8 +3369,17 @@ export function TodayScreen() {
             // already read. The arm is explicit rather than left to fall
             // through, because the fall-through is the meal plan.
             : item.row.kind === 'health' ? undefined
-            : openMealPlan
-          }
+            : openMealPlan;
+      // While a task is focused, a tap anywhere else only unfocuses it, so a
+      // context row must not open its sheet (or the meal plan) on that tap.
+      const onContextPress = openContextRow && (() => {
+        if (expandedTaskId !== null) { setExpandedTaskId(null); return; }
+        openContextRow();
+      });
+      return (
+        <DayContextRow
+          row={item.row}
+          onPress={onContextPress}
           onMarkCooked={
             item.row.kind === 'meal'
               ? () => handleMarkMealCooked(item.row.sourceId, item.row.title)
