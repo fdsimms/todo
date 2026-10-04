@@ -39,7 +39,7 @@ components below.
 - `src/screens/MoodScreen.tsx` — ContrastBars, CsvExportSheet, EmptyState, HubPills, InlineAction, MilestoneSheet, MoodEntryRow, MoodLogSheet, ScreenHeader
 - `src/screens/PeopleScreen.tsx` — ContactPickerSheet, EmptyState, Fab, HubPills, PaintSelection, PersonEditor, QuickAddNameSheet, ReorderableList, ScreenHeader, SelectionDot, SimpleBulkBar, SwipeableRow, +1 more
 - `src/screens/PersonDetailScreen.tsx` — DetailHeader, EmptyState, InlineAction, PersonEditor, PersonHistorySheet, PersonNoteSheet, QuickEventSheet
-- `src/screens/ProjectDetailScreen.tsx` — AddGuestsSheet, ApplyTemplateSheet, BulkActionBar, DeliverablePromptQueue, DeliverablePromptSheet, DetailHeader, EmptyState, Fab, FabDropZones, GroupDropTarget, InlineAction, InlineNameField, +26 more
+- `src/screens/ProjectDetailScreen.tsx` — AddGuestsSheet, ApplyTemplateSheet, BulkActionBar, DeliverablePromptQueue, DeliverablePromptSheet, DetailHeader, EmptyState, Fab, FabDropZones, GroupDropTarget, InlineAction, InlineNameField, +27 more
 - `src/screens/ProjectsScreen.tsx` — CardSheet, EmptyState, Fab, FabDropZones, ListBulkBar, PaintSelection, ProgressBar, ProjectCategoriesSheet, ProjectEditor, ProjectsOptionsMenu, QuickAddProjectModal, ReorderableList, +5 more
 - `src/screens/RecipeDetailScreen.tsx` — ComponentChoiceSheet, CookModeSheet, CountStepper, DetailHeader, EmptyState, IngredientCatalogMatchSheet, InlineAction, ListBulkBar, NumberPadAccessory, OverlapPickerSheet, PaintSelection, PillGroup, +18 more
 - `src/screens/RecipesScreen.tsx` — ActiveTripBanner, CookWithSheet, EmptyState, Fab, FabDropZones, HubPills, InventRecipeSheet, ListBulkBar, OverlapPickerSheet, PaintSelection, PlanMealSheet, QuickAddNameSheet, +11 more

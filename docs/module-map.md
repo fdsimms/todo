@@ -51,6 +51,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/calendarHistory.ts` — PAST_CALENDAR_WINDOW_DAYS, MIN_CALENDAR_NAME_LENGTH, PastCalendarGate, shouldReadPastCalendar, PersonName, HistorySuggestion, HandledHistoryEvents, pastWindowStart, historyEventKey, peopleNamedInTitle, +4 more
 - `src/utils/calendarIdBackfill.ts` — CALENDAR_ID_BACKFILL_KEY, backfillCalendarExternalIds
 - `src/utils/calendarMonth.ts` — DayMarkKind, MARK_KINDS, DayMark, DotState, DayDot, DayBucket, MAX_PROJECTION_STEPS, canProject, projectOccurrences, nthOccurrence, +8 more
+- `src/utils/calendarReadSummary.ts` — CalendarLineInput, calendarStatusLine, failedCalendarsLabel, todayFallback
 - `src/utils/calendarReviewTasks.ts` — CALENDAR_REVIEW_TITLE, calendarReviewDayKey, wantsCalendarReview, calendarReviewEventsFor
 - `src/utils/calendarSync.ts` — CalendarPermission, getCalendarPermission, requestCalendarPermission, listEventCalendars, validCalendarIds, CalendarReadStatus, CalendarInfo, FetchEventsResult, fetchEvents, listWritableCalendars, +22 more
 - `src/utils/capitalize.ts` — capitalize
@@ -163,6 +164,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/leftoverTasks.ts` — wantsUseUpTask, plannedMealRowFor, useUpTaskTitle, useUpTaskFields, useUpTaskDraft, useUpTaskDrift
 - `src/utils/leftovers.ts` — cleanLeftoverTitle, LeftoverPart, WHOLE_PART_KEY, LeftoverDestination, LeftoverPick, leftoverContainersFor, leftoverPartsFor, clampKeepDays, leftoverKeepDaysFor, describeKeepDays, +25 more
 - `src/utils/lineWeight.ts` — lineWeightGrams, lineWeightText, panelForLine, WeightLookups, weightLookups, ingredientWeightText
+- `src/utils/listLineParse.ts` — LineParseContext, LineMarkerFields, lineMarkerFields, LineSuggestion, lineSuggestion, LinePending, NO_LINE_PENDING, confirmLineSuggestion, linePendingFields
 - `src/utils/liveActivity.ts` — TimerRunKind, TimerRun, buildTimerRuns, useTimerLiveActivitySync
 - `src/utils/lookAhead.ts` — LookAheadWindow, LookAheadDay, AwayEntry, TightDeadline, LookAheadTotals, LookAhead, BuildLookAheadOptions, buildLookAhead, carriedOverTasks, awayEntries, +8 more
 - `src/utils/maintenancePasses.ts` — MaintenanceStep, expiryPasses, catchUpPasses, retentionPasses, rebuildNotificationQueue

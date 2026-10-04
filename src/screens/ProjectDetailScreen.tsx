@@ -1,10 +1,11 @@
-import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useCallback, useRef, useEffect, useId } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   FlatList,
   Keyboard,
+  Platform,
   StyleSheet,
   type GestureResponderEvent,
 } from 'react-native';
@@ -72,7 +73,20 @@ import {
 import type { DragScroller, DropZone, FabDropIntent } from '../utils/fabDrop';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { addDays } from 'date-fns/addDays';
-import { dayKeyOf, formatScheduledDate, getCurrentDayStart, getLogicalDayKey } from '../utils/dateUtils';
+import { dayKeyOf, formatScheduledDate, getCurrentDayStart, getLogicalDayKey, getLogicalNow } from '../utils/dateUtils';
+import {
+  NO_LINE_PENDING,
+  confirmLineSuggestion,
+  lineMarkerFields,
+  linePendingFields,
+  lineSuggestion,
+  type LineParseContext,
+  type LinePending,
+} from '../utils/listLineParse';
+import { describeSchedule } from '../utils/parseTaskInput';
+import { groupMentionTokens } from '../utils/peopleRegistry';
+import { useTitleSelection } from '../hooks/useTitleSelection';
+import { TitleTokenAccessory } from '../components/TitleTokenAccessory';
 import { categoryLabel } from '../utils/categoryLabel';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { awayNights, awaySpanOf } from '../utils/awayDates';
@@ -85,11 +99,11 @@ import {
 } from '../utils/tripForecast';
 import { addMenuItemShown } from '../utils/simpleMode';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
+import { spacing, font, fontWeight, radius, interaction, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
-import type { Task, Project, TaskGroup, TaskTemplate } from '../types';
-import { TITLE_MAX_LENGTH } from '../types';
+import type { Task, Project, TaskDraft as NewTaskDraft, TaskGroup, TaskTemplate } from '../types';
+import { PRIORITY_LABELS, TITLE_MAX_LENGTH } from '../types';
 import { SheetHeaderButton } from '../components/SheetHeaderButton';
 import { SheetHeader } from '../components/SheetHeader';
 import { SearchField } from '../components/SearchField';
@@ -214,6 +228,12 @@ function cleanPastedLines(raw: string[]): string[] {
  * onSubmitLine). Return adds what's typed and moves the field under the new
  * line; Return or leaving it with nothing typed closes it. Its own component
  * so each placement starts empty and focused.
+ *
+ * It carries quick add's keyboard bar (#2312): # @ ! to type a marker, and a
+ * Confirm that applies a date or priority phrase the way quick add's does (see
+ * `listLineParse.ts` for which markers apply on their own and which wait for
+ * Confirm). Each field has its own accessory id, since a page can hold several
+ * at once and two views claiming one id leaves which one shows to chance.
  */
 function NewLineField({
   onAdd,
@@ -223,10 +243,10 @@ function NewLineField({
   placeholderColor,
   placeholder = 'New line',
 }: {
-  onAdd: (text: string) => void;
+  onAdd: (text: string, pending: LinePending) => void;
   onAddMany: (lines: string[]) => void;
   onDone: () => void;
-  styles: { newLineRow: object; newLineInput: object };
+  styles: { newLineRow: object; newLineInput: object; newLinePending: object; newLinePendingText: object };
   placeholderColor: string;
   placeholder?: string;
 }) {
@@ -235,6 +255,23 @@ function NewLineField({
   // every add, so the blur a re-keyed field may send on its way out can't add
   // the same line twice.
   const textRef = useRef('');
+  // What Confirm has set on this line, beside the text for the same reason.
+  const [pending, setPending] = useState<LinePending>(NO_LINE_PENDING);
+  const pendingRef = useRef<LinePending>(NO_LINE_PENDING);
+  const accessoryId = `newLine-${useId()}`;
+  const caret = useTitleSelection(text);
+  const dayResetTime = useSettingsStore(s => s.dayResetTime);
+  const suggestion = useMemo(
+    () => (text.trim() ? lineSuggestion(text, getLogicalNow(dayResetTime), new Date()) : null),
+    [text, dayResetTime],
+  );
+  const setPendingBoth = (next: LinePending) => { pendingRef.current = next; setPending(next); };
+  // Taken by whichever add happens, so a line's date doesn't carry to the next.
+  const takePending = (): LinePending => {
+    const taken = pendingRef.current;
+    setPendingBoth(NO_LINE_PENDING);
+    return taken;
+  };
   // Set once this field has handed off to the one under the new line, so a
   // blur on its way out neither adds nor closes that next field.
   const handedOffRef = useRef(false);
@@ -250,12 +287,27 @@ function NewLineField({
     textRef.current = next;
     setText(next);
   };
+  const confirm = () => {
+    if (!suggestion) return;
+    haptics.success();
+    const applied = confirmLineSuggestion(suggestion, pendingRef.current);
+    setPendingBoth(applied.pending);
+    change(applied.text);
+    caret.moveCaret(applied.text);
+  };
+  const pendingLabels = [
+    pending.schedule ? describeSchedule(pending.schedule) : null,
+    pending.priority !== null ? PRIORITY_LABELS[pending.priority] : null,
+  ].filter((label): label is string => label !== null);
   return (
     <View style={styles.newLineRow}>
       <TextField
         style={styles.newLineInput}
         value={text}
         onChangeText={change}
+        selection={caret.selection}
+        onSelectionChange={caret.onSelectionChange}
+        inputAccessoryViewID={Platform.OS === 'ios' ? accessoryId : undefined}
         autoFocus
         placeholder={placeholder}
         placeholderTextColor={placeholderColor}
@@ -265,7 +317,7 @@ function NewLineField({
         onSubmitEditing={() => {
           const typed = textRef.current.trim();
           textRef.current = '';
-          if (typed) { handedOffRef.current = true; onAdd(typed); }
+          if (typed) { handedOffRef.current = true; onAdd(typed, takePending()); }
           else onDone();
         }}
         // Tapping away keeps what was typed: a line written and then left is
@@ -274,10 +326,30 @@ function NewLineField({
           if (handedOffRef.current) return;
           const typed = textRef.current.trim();
           textRef.current = '';
-          if (typed) onAdd(typed);
+          if (typed) onAdd(typed, takePending());
           onDone();
         }}
         accessibilityLabel={placeholder}
+      />
+      {pendingLabels.length > 0 && (
+        <View style={styles.newLinePending}>
+          <Text style={styles.newLinePendingText} numberOfLines={1}>{pendingLabels.join(' · ')}</Text>
+          <TouchableOpacity
+            onPress={() => { haptics.tap(); setPendingBoth(NO_LINE_PENDING); }}
+            activeOpacity={interaction.activeOpacity}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={`Clear ${pendingLabels.join(' and ')}`}
+          >
+            <Ionicons name="close-circle" size={iconSize.sm} color={placeholderColor} />
+          </TouchableOpacity>
+        </View>
+      )}
+      <TitleTokenAccessory
+        nativeID={accessoryId}
+        onInsert={token => change(caret.insertToken(token))}
+        onConfirm={confirm}
+        confirmVisible={suggestion !== null}
       />
     </View>
   );
@@ -1065,14 +1137,44 @@ export function ProjectDetailScreen() {
   };
 
   /** A line at the foot of a section, from its own field. */
-  const addLineToSection = (group: TaskGroup, text: string) => {
-    const link = parseLabelledLink(text);
-    const title = link ? (link.label || linkHost(link.url)) : text;
+  /**
+   * One typed or pasted line as a task (#2312), the same way from every add
+   * field on the page: its `#` and `@` markers, whatever the keyboard bar's
+   * Confirm set on it, and a link at the end kept on the task with the words
+   * as its title. No title rules and no default category: a line is what was
+   * typed, plus only what its own markers say.
+   */
+  const createLine = (text: string, placement: Partial<NewTaskDraft>, pending: LinePending = NO_LINE_PENDING): Task => {
+    const context: LineParseContext = {
+      categories: useCategoryStore.getState().categories.map(c => c.name),
+      tags: useTaskStore.getState().allTags(),
+      people: usePersonStore.getState().people.filter(p => !p.archived),
+      groups: groupMentionTokens(),
+    };
+    const marked = lineMarkerFields(text, context);
+    const link = parseLabelledLink(marked.title);
+    const title = link ? (link.label || linkHost(link.url)) : marked.title;
+    const { draft, seriesDates } = linePendingFields(pending);
     const task = addTask(
-      { title: title.slice(0, TITLE_MAX_LENGTH), projectId, groupId: group.id, ...(link ? { linkUrl: link.url } : {}) },
+      {
+        title: title.slice(0, TITLE_MAX_LENGTH),
+        ...placement,
+        ...draft,
+        ...(marked.category ? { category: marked.category } : {}),
+        ...(marked.tags.length > 0 ? { tags: marked.tags } : {}),
+        ...(marked.personIds.length > 0 ? { personIds: marked.personIds } : {}),
+        ...(link ? { linkUrl: link.url } : {}),
+      },
       undefined,
       { skipTitleRules: true, skipCategoryDefault: true },
     );
+    // "On the 10th and the 15th": the rest of the set, not just its first date.
+    if (seriesDates) useTaskStore.getState().applyTaskDates(task.id, seriesDates);
+    return task;
+  };
+
+  const addLineToSection = (group: TaskGroup, text: string, pending?: LinePending) => {
+    const task = createLine(text, { projectId, groupId: group.id }, pending);
     const siblings = useTaskStore.getState().tasks
       .filter(t => t.groupId === group.id && t.projectId === projectId && !t.parentId && !t.completed && !t.archived && t.id !== task.id)
       .sort((a, b) => a.sortOrder - b.sortOrder);
@@ -1172,7 +1274,7 @@ export function ProjectDetailScreen() {
    * `skipTitleRules` matters: a rule rewriting "Ask about the MRI results"
    * would be editing the user's own note back at them.
    */
-  const addListLines = (raw: string[]) => {
+  const addListLines = (raw: string[], pending?: LinePending) => {
     // A pasted list often carries its own bullets; those aren't part of the item.
     const lines = cleanPastedLines(raw);
     if (lines.length === 0 || !project) return;
@@ -1183,21 +1285,10 @@ export function ProjectDetailScreen() {
     const created: string[] = [];
     lines.forEach(line => {
       // A line that is a link, or ends in one ("Tapas place https://…"), keeps
-      // the link on the task so the row's link button opens it; the words
-      // stay the title, or the site's name when there are none.
-      const link = parseLabelledLink(line);
-      const title = link ? (link.label || linkHost(link.url)) : line;
-      const task = addTask(
-        {
-          title: title.slice(0, TITLE_MAX_LENGTH),
-          projectId: project.id,
-          ...(link ? { linkUrl: link.url } : {}),
-        },
-        undefined,
-        // No default category either: a line in a list is exactly what was
-        // typed, and a category would put it under a header on Today.
-        { skipTitleRules: true, skipCategoryDefault: true },
-      );
+      // the link on the task so the row's link button opens it (createLine).
+      // Only a single typed line can carry what Confirm set; a paste never
+      // sat in the field to be confirmed.
+      const task = createLine(line, { projectId: project.id }, lines.length === 1 ? pending : undefined);
       created.push(task.id);
     });
     // The page's own order with the new lines in front, written through the
@@ -1306,7 +1397,7 @@ export function ProjectDetailScreen() {
         {row}
         <NewLineField
           key={task.id}
-          onAdd={text => setInsertAfterId(addLineAfter(task, text))}
+          onAdd={(text, pending) => setInsertAfterId(addLineAfter(task, text, pending))}
           onAddMany={lines => setInsertAfterId(addLinesAfter(task, lines) ?? task.id)}
           onDone={() => setInsertAfterId(null)}
           styles={styles}
@@ -1323,19 +1414,8 @@ export function ProjectDetailScreen() {
    * link in the text becomes the line's link. Answers the new line's id, so
    * the field can move under it for the next.
    */
-  const addLineAfter = (after: Task, text: string): string => {
-    const link = parseLabelledLink(text);
-    const title = link ? (link.label || linkHost(link.url)) : text;
-    const task = addTask(
-      {
-        title: title.slice(0, TITLE_MAX_LENGTH),
-        projectId,
-        groupId: after.groupId ?? null,
-        ...(link ? { linkUrl: link.url } : {}),
-      },
-      undefined,
-      { skipTitleRules: true, skipCategoryDefault: true },
-    );
+  const addLineAfter = (after: Task, text: string, pending?: LinePending): string => {
+    const task = createLine(text, { projectId, groupId: after.groupId ?? null }, pending);
     const order = orderWithInserted(projectListItems, after.id, task.id);
     if (order?.groupId) reorderGroupChildren(order.groupId, order.ids);
     else if (order) reorderProjectItems(projectId, order.ids);
@@ -1955,7 +2035,7 @@ export function ProjectDetailScreen() {
                 {isList && !selectionMode && topLineOpen !== null && (
                   <NewLineField
                     key={`top-line-${topLineOpen}`}
-                    onAdd={text => addListLines([text])}
+                    onAdd={(text, pending) => addListLines([text], pending)}
                     onAddMany={lines => addListLines(lines)}
                     onDone={() => setTopLineOpen(null)}
                     styles={styles}
@@ -2041,7 +2121,7 @@ export function ProjectDetailScreen() {
                       {sectionLine?.groupId === group.id && empty ? (
                         <NewLineField
                           key={`section-${group.id}-${sectionLine.n}`}
-                          onAdd={text => { addLineToSection(group, text); setSectionLine(v => (v ? { ...v, n: v.n + 1 } : v)); }}
+                          onAdd={(text, pending) => { addLineToSection(group, text, pending); setSectionLine(v => (v ? { ...v, n: v.n + 1 } : v)); }}
                           onAddMany={lines => {
                             for (const line of cleanPastedLines(lines)) addLineToSection(group, line);
                             setSectionLine(v => (v ? { ...v, n: v.n + 1 } : v));
@@ -2095,7 +2175,7 @@ export function ProjectDetailScreen() {
                         {!selectionMode && sectionLine?.groupId === group.id && (
                           <NewLineField
                             key={`section-${group.id}-${sectionLine.n}`}
-                            onAdd={text => { addLineToSection(group, text); setSectionLine(v => (v ? { ...v, n: v.n + 1 } : v)); }}
+                            onAdd={(text, pending) => { addLineToSection(group, text, pending); setSectionLine(v => (v ? { ...v, n: v.n + 1 } : v)); }}
                             onAddMany={lines => {
                               for (const line of cleanPastedLines(lines)) addLineToSection(group, line);
                               setSectionLine(v => (v ? { ...v, n: v.n + 1 } : v));
@@ -2587,6 +2667,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   // Height rather than lineHeight, per the TextInput note in CLAUDE.md.
   newLineInput: { color: colors.text, fontSize: font.md, height: 44 },
+  // What Confirm set on the line being typed, under it until the line is added.
+  newLinePending: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingBottom: spacing.sm,
+  },
+  newLinePendingText: { flexShrink: 1, color: colors.accentText, fontSize: font.sm },
   infoCard: {
     backgroundColor: colors.bgSecondary,
     marginHorizontal: spacing.md,
