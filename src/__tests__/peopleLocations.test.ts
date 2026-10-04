@@ -35,15 +35,15 @@ function person(overrides: Partial<Person> = {}): Person {
 
 describe('peopleNearLocation', () => {
   it('matches a case-insensitive substring of the location field', () => {
-    const dustin = person({ id: 'dustin', name: 'Dustin', location: 'Denver, CO' });
-    const results = peopleNearLocation([dustin], 'denver');
-    expect(results.map(p => p.id)).toEqual(['dustin']);
+    const gideon = person({ id: 'gideon', name: 'Gideon', location: 'Denver, CO' });
+    const results = peopleNearLocation([gideon], 'denver');
+    expect(results.map(p => p.id)).toEqual(['gideon']);
   });
 
   it('returns nothing for an empty query, never the whole roster', () => {
-    const dustin = person({ id: 'dustin', location: 'Denver, CO' });
-    expect(peopleNearLocation([dustin], '')).toEqual([]);
-    expect(peopleNearLocation([dustin], '   ')).toEqual([]);
+    const gideon = person({ id: 'gideon', location: 'Denver, CO' });
+    expect(peopleNearLocation([gideon], '')).toEqual([]);
+    expect(peopleNearLocation([gideon], '   ')).toEqual([]);
   });
 
   it('skips people with no location on file', () => {
@@ -58,9 +58,9 @@ describe('peopleNearLocation', () => {
 
   it('sorts matches alphabetically by display name, never by anything else', () => {
     const zeke = person({ id: 'zeke', name: 'Zeke', location: 'Denver, CO' });
-    const ansley = person({ id: 'ansley', name: 'Ansley', location: 'Denver, CO' });
-    const results = peopleNearLocation([zeke, ansley], 'denver');
-    expect(results.map(p => p.id)).toEqual(['ansley', 'zeke']);
+    const tessa = person({ id: 'tessa', name: 'Tessa', location: 'Denver, CO' });
+    const results = peopleNearLocation([zeke, tessa], 'denver');
+    expect(results.map(p => p.id)).toEqual(['tessa', 'zeke']);
   });
 });
 

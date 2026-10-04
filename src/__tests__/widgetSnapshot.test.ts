@@ -125,6 +125,31 @@ describe('toWidgetTask', () => {
   it('leaves targetCount null on an ordinary task', () => {
     expect(toWidgetTask(makeTask()).targetCount).toBeNull();
   });
+
+  describe('eventTitle', () => {
+    const start = new Date('2026-10-06T15:00').toISOString();
+    const evt: BusyEvent = {
+      id: 'e1', title: 'Interview with Acme', start, end: new Date('2026-10-06T16:00').toISOString(),
+      allDay: false, calendarId: 'c', location: null, status: 'confirmed', availability: 'busy',
+    };
+    const eventTask = makeTask({
+      generatedKind: 'eventTask',
+      generatedSourceId: `e1|${start}#r1`,
+    });
+
+    it('carries the event a rule wrote the task for, title only', () => {
+      expect(toWidgetTask(eventTask, [evt]).eventTitle).toBe('Interview with Acme');
+    });
+
+    it('is null when the calendar was not read or the event has left it', () => {
+      expect(toWidgetTask(eventTask, null).eventTitle).toBeNull();
+      expect(toWidgetTask(eventTask, []).eventTitle).toBeNull();
+    });
+
+    it('is null on an ordinary task', () => {
+      expect(toWidgetTask(makeTask(), [evt]).eventTitle).toBeNull();
+    });
+  });
 });
 
 describe('buildGroceries', () => {

@@ -26,7 +26,7 @@ import {
 
 const person = (overrides: Partial<Person> = {}): Person => ({
   id: 'p1',
-  name: 'Ansley',
+  name: 'Tessa',
   kind: 'individual',
   nickname: '',
   notes: '',
@@ -188,11 +188,11 @@ describe('when it next comes round', () => {
 
 describe('the title', () => {
   it('names whose birthday it is', () => {
-    expect(birthdayTitle(person())).toBe("Ansley's birthday");
+    expect(birthdayTitle(person())).toBe("Tessa's birthday");
   });
 
   it('prefers what you actually call them', () => {
-    expect(birthdayTitle(person({ name: 'Ansley Brown', nickname: 'Ans' }))).toBe("Ans's birthday");
+    expect(birthdayTitle(person({ name: 'Tessa Brown', nickname: 'Tess' }))).toBe("Tess's birthday");
   });
 
   it("keeps the American 's after a name ending in s", () => {
@@ -210,7 +210,7 @@ describe('who wants a task right now', () => {
   it('offers one the day the window opens', () => {
     const wants = wantedBirthdayTasks([person()], lead, noon(2026, 3, 11));
     expect(wants).toHaveLength(1);
-    expect(wants[0].title).toBe("Ansley's birthday");
+    expect(wants[0].title).toBe("Tessa's birthday");
     expect(wants[0].deadline).toEqual(noon(2026, 3, 14));
   });
 
@@ -363,7 +363,7 @@ describe('the gift task', () => {
   });
 
   it('names the action, unlike the reminder', () => {
-    expect(birthdayGiftTitle(person())).toBe("Get Ansley's birthday gift");
+    expect(birthdayGiftTitle(person())).toBe("Get Tessa's birthday gift");
   });
 
   describe('who wants one right now', () => {
@@ -372,7 +372,7 @@ describe('the gift task', () => {
     it('offers one inside the window', () => {
       const wants = wantedBirthdayGiftTasks([person()], lead, noon(2026, 3, 6));
       expect(wants).toHaveLength(1);
-      expect(wants[0].title).toBe("Get Ansley's birthday gift");
+      expect(wants[0].title).toBe("Get Tessa's birthday gift");
       expect(wants[0].deadline).toEqual(noon(2026, 3, 14));
     });
 

@@ -82,6 +82,7 @@ import { DeliverablePromptSheet } from '../components/DeliverablePromptSheet';
 import { sectionListCellLayout } from '../utils/sectionListLayout';
 import type { Task } from '../types';
 import { useFilterField } from '../hooks/useFilterField';
+import { useEventTaskContext } from '../hooks/useEventTaskContext';
 
 interface LogbookSection {
   title: string;
@@ -943,6 +944,8 @@ const LogbookRow = React.memo(function LogbookRow({
   // literal in the title, tinted only where it names somebody this task
   // actually links (peopleOn(task)), not the whole roster.
   const displayTitle = displayTitleFor(task);
+  // Which calendar event a rule wrote this row for; null on any other task.
+  const eventContext = useEventTaskContext(task);
   const titleMentionRanges: [number, number][] = useMemo(
     () => matchPersonMentions(displayTitle, peopleOn(task), groupMentionTokens(task.personIds))
       .map((m): [number, number] => [m.start, m.end]),
@@ -1034,6 +1037,7 @@ const LogbookRow = React.memo(function LogbookRow({
                 : `completed ${formatTime(task.completedAt!)}`,
             task.category,
             projectTitle,
+            eventContext,
             task.actualMinutes != null ? `timed ${formatDuration(task.actualMinutes)}` : null,
             // Both states out loud, same as the row shows them: "no answer" is
             // what makes the ⋯ menu's "Add Answer" make sense to someone who
@@ -1082,6 +1086,10 @@ const LogbookRow = React.memo(function LogbookRow({
             )}
             {task.actualMinutes != null && (
               <Text style={styles.taskTime}>· {formatDuration(task.actualMinutes)}</Text>
+            )}
+            {/* Shrinks and truncates: the row is one fixed-height line. */}
+            {eventContext && (
+              <Text style={[styles.taskTime, styles.eventContext]} numberOfLines={1}>· {eventContext}</Text>
             )}
             {/* What was decided, in the row's own meta line rather than a line
                 of its own — these rows are a fixed height for
@@ -1410,6 +1418,7 @@ const makeStyles = (colors: Colors, metrics: ReturnType<typeof logbookMetrics>) 
     color: colors.accent,
     fontWeight: fontWeight.semibold,
   },
+  eventContext: { flexShrink: 1 },
   taskTime: {
     color: colors.textTertiary,
     fontSize: font.xs,

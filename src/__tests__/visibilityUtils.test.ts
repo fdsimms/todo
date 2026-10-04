@@ -1511,8 +1511,8 @@ describe('isTaskNew when a hold comes off', () => {
   });
 
   it('is true once the person a task was waiting on is archived', () => {
-    const dustin = {
-      id: 'p1', name: 'Dustin', kind: 'individual' as const, nickname: '', notes: '', sortOrder: 1,
+    const gideon = {
+      id: 'p1', name: 'Gideon', kind: 'individual' as const, nickname: '', notes: '', sortOrder: 1,
       archived: true, archivedAt: releasedAt, createdAt: NOW.toISOString(),
       birthdayMonth: null, birthdayDay: null, birthYear: null, birthdayTaskOptOut: false, birthdayGiftTaskOptOut: false,
       phoneNumber: null, email: null, linkUrl: null,
@@ -1525,7 +1525,7 @@ describe('isTaskNew when a hold comes off', () => {
       ...baseTask, id: 'chase', title: 'Photos from the trip',
       waitingOnPersonId: 'p1', blockedById: null, dueDate: dueToday, seenAt,
     };
-    registerPersonSource(() => [dustin]);
+    registerPersonSource(() => [gideon]);
     registerTaskSource(() => [chasing]);
     expect(isTaskNew(chasing)).toBe(true);
     registerPersonSource(null);
@@ -2154,8 +2154,8 @@ describe('blocking', () => {
 
   // #2087: the same hiding, with a person on the other end.
   it('hides a task waiting on somebody, and frees it when they go', () => {
-    const dustin = {
-      id: 'p1', name: 'Dustin', kind: 'individual' as const, nickname: '', notes: '', sortOrder: 1,
+    const gideon = {
+      id: 'p1', name: 'Gideon', kind: 'individual' as const, nickname: '', notes: '', sortOrder: 1,
       archived: false, archivedAt: null, createdAt: NOW.toISOString(),
       birthdayMonth: null, birthdayDay: null, birthYear: null, birthdayTaskOptOut: false, birthdayGiftTaskOptOut: false,
       phoneNumber: null, email: null, linkUrl: null,
@@ -2173,13 +2173,13 @@ describe('blocking', () => {
     };
     withTasks([chasing]);
 
-    registerPersonSource(() => [dustin]);
+    registerPersonSource(() => [gideon]);
     expect(isTaskBlocked(chasing)).toBe(true);
     expect(isTaskVisible(chasing)).toBe(false);
 
     // Archived is an explicit "out of my way", and a stranded waiter is
     // invisible with nothing able to recover it — so the wait ends.
-    registerPersonSource(() => [{ ...dustin, archived: true }]);
+    registerPersonSource(() => [{ ...gideon, archived: true }]);
     expect(isTaskBlocked(chasing)).toBe(false);
 
     // Same for deleted.

@@ -9,7 +9,7 @@ import { dayKeyOf } from './dateUtils';
  * their own screen, never written down on their own.
  *
  * Most real social plans live on a calendar rather than in a todo app: "Dinner
- * w/ Dustin" gets typed into the calendar, not written as a task. A history
+ * w/ Gideon" gets typed into the calendar, not written as a task. A history
  * holding only the tasks you remembered to tag is a sparse one, and sparse is
  * worse than empty here, because `observedCadenceDays` needs samples before it
  * can say anything honest.
@@ -82,8 +82,8 @@ export interface PastCalendarGate {
  * calendar events, which is honest whichever database is mounted.
  *
  * This one is different, and specifically so: its output is a claim *about a
- * demo row*. The seed invents a Dustin, and without this an event out of the
- * real calendar mentioning a real Dustin would be offered as history for the
+ * demo row*. The seed invents a Gideon, and without this an event out of the
+ * real calendar mentioning a real Gideon would be offered as history for the
  * invented one — real data attributed to fiction, on a screen handed to
  * somebody else. The second half is a plain bug: `markHistoryHandled` would
  * write the answer into the scratch settings table, so a dismissal made in a
@@ -115,7 +115,7 @@ export interface HistorySuggestion {
   title: string;
   /** ISO, the event's own start. */
   at: string;
-  /** Everybody the title named. Usually one; "Dinner w/ Dustin and Ansley" is two. */
+  /** Everybody the title named. Usually one; "Dinner w/ Gideon and Tessa" is two. */
   personIds: string[];
 }
 
@@ -165,7 +165,7 @@ function escapeRegExp(value: string): string {
  * The names one person answers to, lowercased and long enough to risk.
  *
  * The same three `matchPersonMentions` builds — full name, nickname, and the first
- * word of the name so "Dustin Reyes" answers to "Dustin". Full names are how
+ * word of the name so "Gideon Reyes" answers to "Gideon". Full names are how
  * people arrive from a contact card, and nobody writes a surname into their own
  * calendar. The first-word guess is skipped for a business, the same reason
  * `matchPersonMentions` skips it: a company name's first word isn't a first
@@ -191,15 +191,15 @@ function nameTokensOf(person: PersonName): string[] {
  * Who an event title names, out of the people already added.
  *
  * **Whole-word and exact, never fuzzy.** No prefixes, no edit distance, no
- * initials: "Dinner w/ Dustin" names Dustin and "Dust the shelves" names
- * nobody. The boundaries are letters and digits rather than `\b`, so "Dustin's
- * place" still matches while "Dustinism" does not.
+ * initials: "Dinner w/ Gideon" names Gideon and "Dust the shelves" names
+ * nobody. The boundaries are letters and digits rather than `\b`, so "Gideon's
+ * place" still matches while "Gideonism" does not.
  *
  * **Ambiguity resolves to nobody**, the same refusal `matchPersonMentions` makes
  * about "@sam" with two Sams registered. A token answering for two people is
  * dropped rather than guessed at — and the more specific token survives on its
- * own, so with a Dustin Reyes and a nickname-Dustin on file, "Dinner w/ Dustin
- * Reyes" still names exactly one of them while "Dinner w/ Dustin" names none.
+ * own, so with a Gideon Reyes and a nickname-Gideon on file, "Dinner w/ Gideon
+ * Reyes" still names exactly one of them while "Dinner w/ Gideon" names none.
  *
  * **Never creates or infers a person.** A title full of names you have not
  * added produces an empty array and costs nothing.

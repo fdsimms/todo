@@ -17,7 +17,7 @@ import {
 function candidate(over: Partial<ContactCandidate> = {}): ContactCandidate {
   return {
     id: 'c1',
-    name: 'Dustin Reyes',
+    name: 'Gideon Reyes',
     phoneNumber: null,
     email: null,
     birthdayMonth: null,
@@ -106,8 +106,8 @@ describe('normalizePhone', () => {
 
 describe('alreadyAdded', () => {
   it('matches a name, trimmed and case-insensitively', () => {
-    expect(alreadyAdded(candidate({ name: 'dustin reyes' }), [person({ name: 'Dustin Reyes' })])).toBe(true);
-    expect(alreadyAdded(candidate({ name: ' Dustin Reyes ' }), [person({ name: 'Dustin Reyes' })])).toBe(true);
+    expect(alreadyAdded(candidate({ name: 'gideon reyes' }), [person({ name: 'Gideon Reyes' })])).toBe(true);
+    expect(alreadyAdded(candidate({ name: ' Gideon Reyes ' }), [person({ name: 'Gideon Reyes' })])).toBe(true);
   });
 
   it('matches a nickname, since "Mom" in Contacts is the same person', () => {
@@ -130,7 +130,7 @@ describe('alreadyAdded', () => {
   });
 
   it('is false for somebody genuinely new', () => {
-    expect(alreadyAdded(candidate({ name: 'Priya' }), [person({ name: 'Dustin Reyes' })])).toBe(false);
+    expect(alreadyAdded(candidate({ name: 'Priya' }), [person({ name: 'Gideon Reyes' })])).toBe(false);
     expect(alreadyAdded(candidate(), [])).toBe(false);
   });
 });
@@ -140,7 +140,7 @@ describe('canSearchContacts', () => {
     expect(MIN_CONTACT_QUERY_LENGTH).toBe(2);
     expect(canSearchContacts('')).toBe(false);
     expect(canSearchContacts('   ')).toBe(false);
-    expect(canSearchContacts('d')).toBe(false);
+    expect(canSearchContacts('r')).toBe(false);
     expect(canSearchContacts('du')).toBe(true);
     expect(canSearchContacts(' du ')).toBe(true);
   });
@@ -150,13 +150,13 @@ describe('rankContacts', () => {
   const nobody: Pick<Person, 'name' | 'nickname' | 'phoneNumber'>[] = [];
 
   it('returns nothing at all for a query too short to search', () => {
-    expect(rankContacts([candidate()], 'd', nobody)).toEqual([]);
+    expect(rankContacts([candidate()], 'r', nobody)).toEqual([]);
     expect(rankContacts([candidate()], '', nobody)).toEqual([]);
   });
 
   it('finds a match anywhere in the name', () => {
-    expect(rankContacts([candidate({ name: 'Dustin Reyes' })], 'rey', nobody).map(c => c.name))
-      .toEqual(['Dustin Reyes']);
+    expect(rankContacts([candidate({ name: 'Gideon Reyes' })], 'rey', nobody).map(c => c.name))
+      .toEqual(['Gideon Reyes']);
   });
 
   it('puts the start of a name ahead of the start of a later word, ahead of the middle', () => {
@@ -177,25 +177,25 @@ describe('rankContacts', () => {
   });
 
   it('leaves out somebody already added, so a second pass cannot mint a duplicate', () => {
-    const rows = [candidate({ name: 'Dustin Reyes' }), candidate({ id: 'c2', name: 'Dustin Clarke' })];
-    const held = [person({ name: 'Dustin Reyes' })];
-    expect(rankContacts(rows, 'dustin', held).map(c => c.id)).toEqual(['c2']);
+    const rows = [candidate({ name: 'Gideon Reyes' }), candidate({ id: 'c2', name: 'Gideon Clarke' })];
+    const held = [person({ name: 'Gideon Reyes' })];
+    expect(rankContacts(rows, 'gideon', held).map(c => c.id)).toEqual(['c2']);
   });
 
   it('drops a contact with no name, which could only be picked by accident', () => {
-    const rows = [candidate({ id: 'blank', name: '  ' }), candidate({ id: 'named', name: 'Dustin' })];
-    expect(rankContacts(rows, 'dus', nobody).map(c => c.id)).toEqual(['named']);
+    const rows = [candidate({ id: 'blank', name: '  ' }), candidate({ id: 'named', name: 'Gideon' })];
+    expect(rankContacts(rows, 'gid', nobody).map(c => c.id)).toEqual(['named']);
   });
 
   it('caps what it returns, because a search that returns a book is a book', () => {
     const rows = Array.from({ length: 40 }, (_, i) =>
-      candidate({ id: `c${i}`, name: `Dustin ${i}` }));
-    expect(rankContacts(rows, 'dustin', nobody)).toHaveLength(MAX_CONTACT_RESULTS);
-    expect(rankContacts(rows, 'dustin', nobody, 3)).toHaveLength(3);
+      candidate({ id: `c${i}`, name: `Gideon ${i}` }));
+    expect(rankContacts(rows, 'gideon', nobody)).toHaveLength(MAX_CONTACT_RESULTS);
+    expect(rankContacts(rows, 'gideon', nobody, 3)).toHaveLength(3);
   });
 
   it('is empty when nothing matches', () => {
-    expect(rankContacts([candidate({ name: 'Priya' })], 'dustin', nobody)).toEqual([]);
+    expect(rankContacts([candidate({ name: 'Priya' })], 'gideon', nobody)).toEqual([]);
   });
 });
 
@@ -205,20 +205,20 @@ describe('browsableContacts', () => {
   it('sorts alphabetically, since a browse list has no query position to rank by', () => {
     const rows = [
       candidate({ id: 'z', name: 'Zeke Ortiz' }),
-      candidate({ id: 'a', name: 'Ansley Reyes' }),
+      candidate({ id: 'a', name: 'Tessa Reyes' }),
       candidate({ id: 'm', name: 'Marianne Fields' }),
     ];
-    expect(browsableContacts(rows, nobody).map(c => c.id)).toEqual(['a', 'm', 'z']);
+    expect(browsableContacts(rows, nobody).map(c => c.id)).toEqual(['m', 'a', 'z']);
   });
 
   it('leaves out somebody already added', () => {
-    const rows = [candidate({ name: 'Dustin Reyes' }), candidate({ id: 'c2', name: 'Priya' })];
-    const held = [person({ name: 'Dustin Reyes' })];
+    const rows = [candidate({ name: 'Gideon Reyes' }), candidate({ id: 'c2', name: 'Priya' })];
+    const held = [person({ name: 'Gideon Reyes' })];
     expect(browsableContacts(rows, held).map(c => c.id)).toEqual(['c2']);
   });
 
   it('drops a contact with no name', () => {
-    const rows = [candidate({ id: 'blank', name: ' ' }), candidate({ id: 'named', name: 'Dustin' })];
+    const rows = [candidate({ id: 'blank', name: ' ' }), candidate({ id: 'named', name: 'Gideon' })];
     expect(browsableContacts(rows, nobody).map(c => c.id)).toEqual(['named']);
   });
 
@@ -231,7 +231,7 @@ describe('filterBrowsableContacts', () => {
   const nobody: Pick<Person, 'name' | 'nickname' | 'phoneNumber'>[] = [];
 
   it('is the whole browsable set for an empty query', () => {
-    const rows = [candidate({ id: 'z', name: 'Zeke Ortiz' }), candidate({ id: 'a', name: 'Ansley Reyes' })];
+    const rows = [candidate({ id: 'z', name: 'Zeke Ortiz' }), candidate({ id: 'a', name: 'Tessa Reyes' })];
     expect(filterBrowsableContacts(rows, '', nobody).map(c => c.id)).toEqual(['a', 'z']);
     expect(filterBrowsableContacts(rows, '   ', nobody).map(c => c.id)).toEqual(['a', 'z']);
   });
@@ -239,8 +239,8 @@ describe('filterBrowsableContacts', () => {
   // Unlike `rankContacts`: the set is already the user's own curated one, so
   // there is no "screen of near-everybody" risk a length floor guards against.
   it('narrows on a single character, with no length floor', () => {
-    expect(filterBrowsableContacts([candidate({ name: 'Dustin Reyes' })], 'd', nobody).map(c => c.name))
-      .toEqual(['Dustin Reyes']);
+    expect(filterBrowsableContacts([candidate({ name: 'Gideon Reyes' })], 'r', nobody).map(c => c.name))
+      .toEqual(['Gideon Reyes']);
   });
 
   it('ranks a match at the start of the name ahead of the middle', () => {
@@ -252,27 +252,27 @@ describe('filterBrowsableContacts', () => {
   });
 
   it('leaves out somebody already added', () => {
-    const rows = [candidate({ name: 'Dustin Reyes' }), candidate({ id: 'c2', name: 'Dustin Clarke' })];
-    const held = [person({ name: 'Dustin Reyes' })];
-    expect(filterBrowsableContacts(rows, 'dustin', held).map(c => c.id)).toEqual(['c2']);
+    const rows = [candidate({ name: 'Gideon Reyes' }), candidate({ id: 'c2', name: 'Gideon Clarke' })];
+    const held = [person({ name: 'Gideon Reyes' })];
+    expect(filterBrowsableContacts(rows, 'gideon', held).map(c => c.id)).toEqual(['c2']);
   });
 
   it('is empty when nothing matches', () => {
-    expect(filterBrowsableContacts([candidate({ name: 'Priya' })], 'dustin', nobody)).toEqual([]);
+    expect(filterBrowsableContacts([candidate({ name: 'Priya' })], 'gideon', nobody)).toEqual([]);
   });
 });
 
 describe('contactPersonDraft', () => {
   it('carries the name, number, email and birthday, year included', () => {
     expect(contactPersonDraft(candidate({
-      name: '  Dustin Reyes ',
+      name: '  Gideon Reyes ',
       phoneNumber: '555 0148',
       email: 'd@example.com',
       birthdayMonth: 3,
       birthdayDay: 14,
       birthYear: 1992,
     }))).toEqual({
-      name: 'Dustin Reyes',
+      name: 'Gideon Reyes',
       phoneNumber: '555 0148',
       email: 'd@example.com',
       birthdayMonth: 3,
