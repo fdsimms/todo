@@ -152,7 +152,10 @@ async function configuredTransports(
   const token = await loadSecureKey(SYNC_TOKEN_SECURE_KEY);
   const config = { url: state.serverUrl, token };
   if (isHttpSyncConfigured(config)) {
-    const server = httpSyncTransport(config);
+    // No recipe photos: nothing on the server reads one, and a store full of
+    // them is what a replica and every other device then has to page through.
+    // iCloud still carries them between Apple devices.
+    const server = { ...httpSyncTransport(config), sendsImages: false };
     transports.push(state.serverHealthLogs ? server : { ...server, withhold: HEALTH_WITHHOLDING });
   }
 

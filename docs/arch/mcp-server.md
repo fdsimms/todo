@@ -467,6 +467,10 @@ turned back on rewinds to there, or to the very start if the logs were never sen
 a run already pushing writes its own `until` over the cursor when it lands and would undo a rewind
 made while it was in flight. Resending rows the server already has is a no-op under the tie rule.
 
+Recipe photos don't go to the server at all (`sendsImages: false`; `docs/arch/recipes.md` has the
+reasoning), and the store's pull reads no further than its size budget (`takeWithinBudget`): a
+page of photos read whole first was over a gigabyte, and hung the first deployment.
+
 Pushes only. A health row arriving *from* a transport is still applied, so a peer on an older build
 does no harm, and the replica's own medication dose (written by `complete_task`) still reaches the
 phone that asked for it.

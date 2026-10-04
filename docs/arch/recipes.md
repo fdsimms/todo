@@ -426,6 +426,11 @@ the bytes beside the rows (`Backup.images`), and sync now does the same.
   is edited, and it is also why every photo taken before this existed went on the first sync after
   it, with no separate backfill. A photo that came *from* a transport counts as one it has, so it is
   never echoed back there, and it is still relayed to the other one, the rule rows follow.
+- **The sync server gets no photos** (`sendsImages: false`, set in `configuredTransports`). Nothing
+  on it reads one, the replica's tools least of all, and a store holding every photo is a store
+  the replica and every device then page through. iCloud carries them between Apple devices; the
+  catch is that a device syncing through the server alone shows a recipe's photo as missing. A
+  photo the server hands back (one pushed before this) is still written.
 - **A photo push that fails is not a failed sync.** The rows went, and a store that refuses photo
   payloads outright must not stop this device pulling, so `pushImages` failing sets `imageProblem`
   rather than `status: 'failed'`, and the photos go again next time. The settings line names it.
