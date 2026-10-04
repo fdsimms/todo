@@ -22,7 +22,8 @@ import { usePersonGroupStore } from '../store/usePersonGroupStore';
 import { useProjectStore, projectDecisions, projectProgress, projectAnswerTallies, describeAnswerTally } from '../store/useProjectStore';
 import { nextPullCandidate } from '../utils/projectPull';
 import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
-import { isHeldBack, isQuotaOnPace, isTaskVisible } from '../utils/visibilityUtils';
+import { projectCardCaption } from '../utils/projectList';
+import { isHeldBack, isQuotaOnPace, isTaskNotNeeded, isTaskVisible } from '../utils/visibilityUtils';
 import { isMorningCheckInCandidate } from '../utils/morningCheckIn';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useSavedViewStore } from '../store/useSavedViewStore';
@@ -1509,6 +1510,14 @@ describe('demo mode', () => {
     expect(invites?.blockedByIds).toHaveLength(1);
     expect(isHeldBack(invites!)).toBe(true);
     expect(party!.personIds).toHaveLength(1);
+    // A decision with a branch each side: the tent is live, the hall isn't needed.
+    const tent = tasks.find(t => t.title === 'Rent a tent')!;
+    const hall = tasks.find(t => t.title === 'Book the community hall')!;
+    expect(tent.answerGate?.answers).toEqual(['Outdoors']);
+    expect(isHeldBack(tent)).toBe(false);
+    expect(isTaskNotNeeded(hall)).toBe(true);
+    // The party is the event its card counts down to, a week ahead of the deadline.
+    expect(projectCardCaption(party!, false, 'active')?.text).toBe('Event in 31 days');
   });
 
   it('seeds a checklist section, project links, a list keeping checked lines, and a project worked in order', () => {

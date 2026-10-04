@@ -116,6 +116,14 @@ describe('projectCardCaption', () => {
     expect(projectCardCaption(project, false, 'archived')?.text).toMatch(/^Archived /);
     expect(projectCardCaption(project, true, 'active')?.text).toBe('3d overdue');
   });
+
+  it('counts down to an event ahead of the deadline, and hands the slot back once it has passed', () => {
+    const deadline = noon(addDays(new Date(), 90));
+    expect(projectCardCaption(makeProject({ deadline, eventDate: noon(addDays(new Date(), 52)) }), false, 'active')?.text).toBe('Event in 52 days');
+    expect(projectCardCaption(makeProject({ eventDate: noon(addDays(new Date(), 1)) }), false, 'active')?.text).toBe('Event tomorrow');
+    expect(projectCardCaption(makeProject({ eventDate: noon(new Date()) }), false, 'active')).toMatchObject({ text: 'Event today', soon: true });
+    expect(projectCardCaption(makeProject({ deadline, eventDate: noon(subDays(new Date(), 2)) }), false, 'active')?.text).toMatch(/^Due /);
+  });
 });
 
 describe('projectProgressNote', () => {

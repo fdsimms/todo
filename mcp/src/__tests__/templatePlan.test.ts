@@ -105,6 +105,17 @@ describe('what the normalizers would have swallowed', () => {
 });
 
 describe('cross-references', () => {
+  it('checks an item branch names a keyed question item and answers it offers', () => {
+    const venue = { title: 'Venue?', key: 'venue', deliverableKind: 'choice' as const, deliverableOptions: ['Hall', 'Park'] };
+    expect(errors(plan({ items: [venue, { title: 'Book it', onlyIfAnswer: { item: 'venue', answers: ['hall'] } }] }))).toEqual([]);
+    expect(errors(plan({ items: [venue, { title: 'Book it', onlyIfAnswer: { item: 'nope', answers: ['Hall'] } }] })))
+      .toEqual(['item "Book it" is only if "nope", which is not an item key in this plan.']);
+    expect(errors(plan({ items: [venue, { title: 'Book it', onlyIfAnswer: { item: 'venue', answers: ['Beach'] } }] })))
+      .toEqual(['item "Book it" is only if "venue" = "Beach", which is not one of its answers (Hall, Park).']);
+    expect(errors(plan({ items: [{ title: 'Notes', key: 'n' }, { title: 'Book it', onlyIfAnswer: { item: 'n', answers: ['x'] } }] })))
+      .toEqual(['item "Book it" is only if "n", which doesn\'t ask a Yes/No or pick-one question.']);
+  });
+
   it('refuses a group key the plan never defined', () => {
     expect(errors(plan({ items: [{ title: 'Shirts', groupKey: 'clothes' }] }))).toEqual([
       'item "Shirts" names group "clothes", which the plan does not define.',

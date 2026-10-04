@@ -73,6 +73,23 @@ export function describeProjectDeadline(
 }
 
 /**
+ * A project's event date as its card says it: "Event in 52 days", "Event
+ * tomorrow", "Event today". Null once the day has passed, so the slot goes
+ * back to the deadline, which is usually what the work after an event is
+ * measured against.
+ */
+export function describeProjectEvent(
+  project: Pick<Project, 'eventDate'>,
+  dayResetTime?: string,
+): ProjectCardCaption | null {
+  if (!project.eventDate) return null;
+  const daysOut = differenceInCalendarDays(getTaskDayStart(new Date(project.eventDate), dayResetTime), getCurrentDayStart());
+  if (daysOut < 0) return null;
+  const text = daysOut === 0 ? 'Event today' : daysOut === 1 ? 'Event tomorrow' : `Event in ${daysOut} days`;
+  return { text, overdue: false, soon: daysOut <= DUE_SOON_DAYS };
+}
+
+/**
  * The one caption under a project's title.
  *
  * On the Completed and Archived lists it's when that happened, since a
@@ -80,7 +97,8 @@ export function describeProjectDeadline(
  * Active list, a live away span wins the slot over the deadline: for a trip
  * the two say nearly the same thing and the span says it better. A project
  * holding both still shows its deadline once the trip is over, since
- * describeAwaySpan goes quiet then (see docs/arch/away-dates.md).
+ * describeAwaySpan goes quiet then (see docs/arch/away-dates.md). An event date
+ * still ahead takes the slot the same way (describeProjectEvent).
  */
 export function projectCardCaption(
   project: Project,
@@ -101,7 +119,9 @@ export function projectCardCaption(
   }
   const away = describeAwaySpan(project, new Date(), dayResetTime);
   if (away) return { text: away, overdue: false };
-  return describeProjectDeadline(project, pastWindow, dayResetTime);
+  // An event still ahead is the date the project is counting down to, so it
+  // takes the slot from the deadline until it has happened.
+  return describeProjectEvent(project, dayResetTime) ?? describeProjectDeadline(project, pastWindow, dayResetTime);
 }
 
 /**
@@ -232,7 +252,8 @@ export function sortProjects(
     case 'deadline': {
       // A trip's date is its departure: trips made from a template carry no
       // deadline (the span is their date), and sank to the bottom without it.
-      const due = (p: Project) => p.deadline ?? p.awayStart;
+      // An event with no deadline is dated by the event, for the same reason.
+      const due = (p: Project) => p.deadline ?? p.eventDate ?? p.awayStart;
       return sorted.sort((a, b) => {
         const da = due(a);
         const db = due(b);

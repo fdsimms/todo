@@ -26,7 +26,7 @@ import { QuickAddModal } from '../components/QuickAddModal';
 import { TaskGroupEditor } from '../components/TaskGroupEditor';
 import type { Category, Task, TaskGroup } from '../types';
 import type { SearchResult, GroupSearchResult, ProjectSearchResult } from '../utils/fuzzySearch';
-import { fuzzySearch, searchGroups, searchProjects } from '../utils/fuzzySearch';
+import { fuzzySearch, ranksAsActive, searchGroups, searchProjects } from '../utils/fuzzySearch';
 import { collapseOccurrences, formatOccurrenceCount, type CollapsedOccurrence } from '../utils/searchCollapse';
 import { displayTitleFor, groupRoster, isQuotaPartial, quotaNextDueLabel } from '../utils/visibilityUtils';
 import { peopleOn, groupMentionTokens } from '../utils/peopleRegistry';
@@ -588,9 +588,12 @@ export function SearchScreen() {
   const elsewhereCount = elsewhere.goTo.length + elsewhere.people.length
     + elsewhere.recipes.length + elsewhere.groceries.length;
 
-  const isActive = (r: SearchResult) => !r.task.completed || heldIds.has(r.task.id);
+  const isActive = (r: SearchResult) => ranksAsActive(r.task, heldIds);
   const activeResults = results.filter(isActive);
-  const completedResults = results.filter(r => !isActive(r));
+  // Open but on a branch that wasn't taken (Task.answerGate): their own
+  // section, since "Completed" would say something untrue about them.
+  const notNeededResults = results.filter(r => !isActive(r) && !r.task.completed);
+  const completedResults = results.filter(r => !isActive(r) && r.task.completed);
 
   type ListItem =
     | { type: 'sectionHeader'; label: string }
@@ -640,6 +643,10 @@ export function SearchScreen() {
     pushSection('people', 'People');
     pushSection('recipes', 'Recipes');
     pushSection('groceries', 'Groceries');
+    if (notNeededResults.length > 0) {
+      items.push({ type: 'sectionHeader', label: 'Not needed' });
+      notNeededResults.forEach(r => items.push({ type: 'result', result: r }));
+    }
     if (completedResults.length > 0) {
       items.push({ type: 'sectionHeader', label: 'Completed' });
       completedResults.forEach(r => items.push({ type: 'result', result: r }));

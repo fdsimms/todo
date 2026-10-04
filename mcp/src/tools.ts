@@ -145,6 +145,8 @@ export interface GetTaskResult {
   habit?: 'avoid';
   /** The tasks this one is waiting on. */
   waitsOn?: { id: string; title: string; done: boolean }[];
+  /** Shown only for these answers to that task's question; `answered` is what it got, once it has. */
+  onlyIfAnswer?: { taskId: string; question: string; answers: string[]; answered?: string };
   /** "Every Nth completion, add this task." */
   followUp?: { everyN: number; title: string; oneAtATime?: boolean; completionsSoFar: number };
   project?: { id: string; title: string };
@@ -205,6 +207,17 @@ export function getTask(replica: Replica, id: string): GetTaskResult | null {
         return { id, title: b ? replica.displayTitle(b) : '(deleted task)', done: b ? b.completed : true };
       });
     })(),
+    onlyIfAnswer: task.answerGate
+      ? (() => {
+          const q = replica.taskById(task.answerGate.taskId);
+          return {
+            taskId: task.answerGate.taskId,
+            question: q ? replica.displayTitle(q) : '(deleted task)',
+            answers: task.answerGate.answers,
+            ...(q?.completed && q.deliverableValue != null ? { answered: q.deliverableValue } : {}),
+          };
+        })()
+      : undefined,
     followUp: task.followUpTaskEveryN != null && task.followUpTaskTitle
       ? {
           everyN: task.followUpTaskEveryN,
@@ -668,6 +681,11 @@ export function deferTask(replica: Replica, id: string, date: string | null): Se
     throw new Error(`"${date}" is not a date I can read. Use an ISO date like 2026-03-14.`);
   }
   return serializeTasks(replica, [replica.deferTask(id, parsed)])[0];
+}
+
+export function archiveTask(replica: Replica, id: string, archived: boolean): SerializedTask & { archived: boolean } {
+  const task = replica.setTaskArchived(id, archived);
+  return { ...serializeTasks(replica, [task])[0], archived: task.archived };
 }
 
 export function listMedicationLogs(

@@ -1,5 +1,5 @@
 import type { Task } from '../types';
-import { blockerIdsOf, type TaskResolver } from './blocking';
+import { waitIdsOf, type TaskResolver } from './blocking';
 
 /**
  * How visibilityUtils resolves the task a task is waiting on (Task.blockedById)
@@ -68,7 +68,7 @@ export function waitingCountFor(id: string): number {
       if (t.completed || t.archived || t.parentId) continue;
       // Every task it waits on counts it, read as the whole set: a row whose
       // first slot was cleared by an older build can still hold the rest.
-      for (const id of blockerIdsOf(t)) {
+      for (const id of waitIdsOf(t)) {
         cachedCounts.set(id, (cachedCounts.get(id) ?? 0) + 1);
       }
     }

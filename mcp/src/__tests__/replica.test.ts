@@ -737,6 +737,182 @@ describe('the replica', () => {
     expect(replica.taskById(task.id)).not.toBeNull();
   });
 
+  // ==== archiving ====
+
+  it('archives a task off every list and restores it, as the app does', () => {
+    const task = replica.createTask({ title: 'Book the wrong venue', pinned: true });
+    const archived = replica.setTaskArchived(task.id, true);
+    expect(archived).toMatchObject({ archived: true, pinned: false });
+    expect(archived.archivedAt).toEqual(expect.any(String));
+    replica.refresh();
+    expect(replica.isVisible(replica.taskById(task.id)!)).toBe(false);
+
+    const restored = replica.setTaskArchived(task.id, false);
+    expect(restored).toMatchObject({ archived: false, archivedAt: null, streakCount: 0 });
+  });
+
+  it('refuses to archive a checklist item on its own', () => {
+    const parent = replica.createTask({ title: 'Invitations' });
+    const sub = replica.createTask({ title: 'Buy stamps', parentId: parent.id });
+    expect(() => replica.setTaskArchived(sub.id, true)).toThrow(/checklist item/);
+  });
+
+  it('lists a project\'s decisions, newest first, leaving archived ones out', () => {
+    const { project } = replica.createProjectPlan({
+      title: 'Wedding',
+      steps: [
+        { fields: { title: 'Ceremony format?', deliverableKind: 'choice', deliverableOptions: ['City Hall', 'Officiant'] } },
+        { fields: { title: 'Guest count?', deliverableKind: 'number' } },
+        { fields: { title: 'Dropped question', deliverableKind: 'text' } },
+      ],
+    });
+    const [format, count, dropped] = replica.tasks().filter(t => t.projectId === project.id).sort((a, b) => a.sortOrder - b.sortOrder);
+    replica.completeTask(format.id, { deliverableValue: 'City Hall', completedAt: '2026-09-01T10:00:00.000Z' });
+    replica.completeTask(count.id, { deliverableValue: '14', completedAt: '2026-09-03T10:00:00.000Z' });
+    replica.completeTask(dropped.id, { deliverableValue: 'x', completedAt: '2026-09-04T10:00:00.000Z' });
+    replica.refresh();
+    replica.setTaskArchived(dropped.id, true);
+
+    const decisions = replica.projectDecisions(project.id);
+    expect(decisions.map(t => [t.title, t.deliverableValue])).toEqual([['Guest count?', '14'], ['Ceremony format?', 'City Hall']]);
+  });
+
+  it('adds a batch of steps to an existing project, waiting on the batch and on what is already there', () => {
+    const { project, tasks: [license] } = replica.createProjectPlan({ title: 'Wedding', steps: [{ fields: { title: 'Get the license' } }] });
+    const added = replica.addProjectSteps(project.id, [
+      { fields: { title: 'Book City Hall', waitsOn: [license.id] } },
+      { fields: { title: 'Tell the guests' }, waitsOn: [0], subtasks: ['Text family'] },
+    ]);
+    replica.refresh();
+    const [hall, guests, text] = added;
+    expect(hall.projectId).toBe(project.id);
+    expect(replica.isBlocked(replica.taskById(hall.id)!)).toBe(true);
+    expect(guests.blockedById).toBe(hall.id);
+    expect(text).toMatchObject({ title: 'Text family', parentId: guests.id });
+  });
+
+  it('adds nothing when one step in the batch is bad', () => {
+    const { project } = replica.createProjectPlan({ title: 'Wedding', steps: [] });
+    const before = replica.tasks().length;
+    expect(() => replica.addProjectSteps(project.id, [
+      { fields: { title: 'Fine' } },
+      { fields: { title: 'Bad' }, waitsOn: [5] },
+    ])).toThrow(/steps\[1\]\.waitsOn: 5 is not an earlier step/);
+    replica.refresh();
+    expect(replica.tasks().length).toBe(before);
+    expect(() => replica.addProjectSteps('nope', [{ fields: { title: 'x' } }])).toThrow(/No project/);
+  });
+
+  it('plans a branch on an earlier step\'s answer, and rules the other branch out once answered', () => {
+    const { project, tasks: created } = replica.createProjectPlan({
+      title: 'Wedding',
+      steps: [
+        { fields: { title: 'Ceremony format?', deliverableKind: 'choice', deliverableOptions: ['City Hall', 'Officiant'] } },
+        { fields: { title: 'Book City Hall' }, onlyIfAnswerTo: { step: 0, answers: ['city hall'] } },
+        { fields: { title: 'Hire officiant' }, onlyIfAnswerTo: { step: 0, answers: ['Officiant'] } },
+        { fields: { title: 'Pay the fee' }, waitsOn: [1] },
+      ],
+    });
+    const [question, hall, officiant, fee] = created;
+    // Spelled as the question offers it, whatever case it was given in.
+    expect(hall.answerGate).toEqual({ taskId: question.id, answers: ['City Hall'] });
+    replica.refresh();
+    expect(replica.isBlocked(replica.taskById(hall.id)!)).toBe(true);
+
+    replica.completeTask(question.id, { deliverableValue: 'Officiant' });
+    replica.refresh();
+    expect(replica.isNotNeeded(replica.taskById(hall.id)!)).toBe(true);
+    expect(replica.isNotNeeded(replica.taskById(fee.id)!)).toBe(true);
+    expect(replica.isBlocked(replica.taskById(officiant.id)!)).toBe(false);
+    // Out of the count: the question is done, the officiant is the one left.
+    expect(replica.projectProgress(project.id)).toEqual({ done: 1, total: 2 });
+  });
+
+  it('refuses a branch on an answer the question does not offer, or on a question with no listed answers', () => {
+    const q = replica.createTask({ title: 'Format?', deliverableKind: 'choice', deliverableOptions: ['City Hall', 'Officiant'] });
+    const free = replica.createTask({ title: 'Notes?', deliverableKind: 'text' });
+    expect(() => replica.taskPatch({ onlyIfAnswer: { taskId: q.id, answers: ['Cityhall'] } }, null, false)).toThrow(/isn't one of its answers \(City Hall, Officiant\)/);
+    expect(() => replica.taskPatch({ onlyIfAnswer: { taskId: free.id, answers: ['x'] } }, null, false)).toThrow(/can't decide this task/);
+    expect(() => replica.taskPatch({ onlyIfAnswer: { taskId: q.id, answers: [] } }, null, false)).toThrow(/at least one answer/);
+    expect(replica.taskPatch({ onlyIfAnswer: { taskId: q.id, answers: ['officiant'] } }, null, false).answerGate)
+      .toEqual({ taskId: q.id, answers: ['Officiant'] });
+    expect(replica.taskPatch({ onlyIfAnswer: null }, null, false).answerGate).toBeNull();
+  });
+
+  // ==== event date ====
+
+  it('dates steps from the event date, before and after it, at midday on the local day', () => {
+    const { project, tasks: [license, thanks] } = replica.createProjectPlan({
+      title: 'Wedding',
+      eventDate: '2027-06-14',
+      steps: [
+        { fields: { title: 'Get the license', dueDaysFromEvent: -60 } },
+        { fields: { title: 'Thank-you notes', dueDaysFromEvent: 7, deadlineDaysFromEvent: 30 } },
+      ],
+    });
+    const local = (iso: string | null) => { const d = new Date(iso!); return [d.getFullYear(), d.getMonth() + 1, d.getDate(), d.getHours()]; };
+    expect(local(project.eventDate!)).toEqual([2027, 6, 14, 12]);
+    expect(local(license.dueDate)).toEqual([2027, 4, 15, 12]);
+    expect(local(thanks.dueDate)).toEqual([2027, 6, 21, 12]);
+    expect(local(thanks.deadline)).toEqual([2027, 7, 14, 12]);
+  });
+
+  it('dates a step at the end of a month counted from the event', () => {
+    const { tasks: [records, sameMonth] } = replica.createProjectPlan({
+      title: 'Wedding',
+      eventDate: '2027-01-30',
+      steps: [
+        { fields: { title: 'Update records', dueEndOfMonthAfterEvent: 1 } },
+        { fields: { title: 'Return the suit', deadlineEndOfMonthAfterEvent: 0 } },
+      ],
+    });
+    const local = (iso: string | null) => { const d = new Date(iso!); return [d.getMonth() + 1, d.getDate(), d.getHours()]; };
+    // Jan 30 plus a month clamps to Feb 28, and the end of February is the answer.
+    expect(local(records.dueDate)).toEqual([2, 28, 12]);
+    expect(local(sameMonth.deadline)).toEqual([1, 31, 12]);
+  });
+
+  it('refuses event-relative days with no event date, or alongside the date they replace', () => {
+    expect(() => replica.taskPatch({ dueDaysFromEvent: -3 }, null, false)).toThrow(/has none/);
+    const { project } = replica.createProjectPlan({ title: 'Move', eventDate: '2027-03-01', steps: [] });
+    expect(() => replica.taskPatch({ projectId: project.id, dueDaysFromEvent: -3, dueDate: '2027-01-01' }, null, false)).toThrow(/not more/);
+    expect(replica.taskPatch({ projectId: project.id, dueDaysFromEvent: -3 }, null, false).dueDate).toEqual(expect.any(String));
+  });
+
+  it('moves a project\'s dated tasks by the days its event moved, leaving pinned and undated ones', () => {
+    const { project, tasks: [license, pinned, undated] } = replica.createProjectPlan({
+      title: 'Wedding',
+      eventDate: '2027-06-14',
+      steps: [
+        { fields: { title: 'Get the license', dueDaysFromEvent: -60 } },
+        { fields: { title: 'Final fitting', dueDaysFromEvent: -7, pinned: true } },
+        { fields: { title: 'Someday: pick a song' } },
+      ],
+    });
+    replica.updateProject(project.id, { eventDate: '2027-07-14' });
+    const move = replica.moveProjectTasks(project.id, new Date(project.eventDate!), new Date(replica.projects().find(p => p.id === project.id)!.eventDate!));
+    expect(move.deltaDays).toBe(30);
+    expect(move.moved.map(t => t.id)).toEqual([license.id]);
+    expect(new Date(move.moved[0].dueDate!).getDate()).toBe(15); // Apr 15 -> May 15
+    expect(move.skipped.map(s => s.task.id)).toEqual([pinned.id]);
+    replica.refresh();
+    expect(replica.taskById(undated.id)!.dueDate).toBeNull();
+    // Not counted as the person putting it off.
+    expect(replica.taskById(license.id)!.postponeCount).toBe(0);
+  });
+
+  it('writes an item branch as a gate on the keyed item, spelled as the question offers it', () => {
+    const built = replica.createTemplate({
+      name: 'Wedding',
+      items: [
+        { title: 'Ceremony format?', key: 'format', deliverableKind: 'choice', deliverableOptions: ['City Hall', 'Officiant'] },
+        { title: 'Book City Hall', onlyIfAnswer: { item: 'format', answers: ['city hall'] } },
+      ],
+    });
+    const [format, hall] = built.items;
+    expect(hall.answerGate).toEqual({ itemId: format.id, answers: ['City Hall'] });
+  });
+
   it('refuses to reschedule a completed task', () => {
     const task = replica.createTask({ title: 'Done' });
     replica.completeTask(task.id, {});
