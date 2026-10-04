@@ -1924,6 +1924,24 @@ interface SettingsStore {
   resetToDefaults: () => void;
 }
 
+/**
+ * The day the user picked for the meal plan nudge, or null when they never
+ * picked one.
+ *
+ * Never picked, the nudge fires on the first day of the user's week
+ * (`weekStartsOn`), and moves when that setting does. The nudge asks about the
+ * week it fires in, so a fixed Sunday default sent a Monday-start week's
+ * reminder on the last day of the week it was asking about (#1730). Only
+ * `setMealPlanNudgeWeekday` writes a pick; an empty stored value (what
+ * `resetToDefaults` writes) means "not picked", as a missing one does.
+ */
+function pickedNudgeWeekday(): number | null {
+  const raw = dbGetSetting('mealPlanNudgeWeekday');
+  if (raw === null || raw === '') return null;
+  const day = Number(raw);
+  return Number.isInteger(day) && day >= 0 && day <= 6 ? day : null;
+}
+
 const DEFAULT_SETTINGS = {
   dayResetTime: '00:00',
   morningStart: '06:00',
@@ -3009,11 +3027,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const mealPlanNudgeEnabled = dbGetSetting('mealPlanNudgeEnabled') === 'true';
     const mealPlanNudgeIgnoresVacation = dbGetSetting('mealPlanNudgeIgnoresVacation') === 'true';
     const mealPlanNudgeSlots = parseMealPlanNudgeSlots(dbGetSetting('mealPlanNudgeSlots'));
-    const storedNudgeWeekday = Number(dbGetSetting('mealPlanNudgeWeekday'));
-    const mealPlanNudgeWeekday =
-      Number.isInteger(storedNudgeWeekday) && storedNudgeWeekday >= 0 && storedNudgeWeekday <= 6
-        ? storedNudgeWeekday
-        : DEFAULT_MEAL_PLAN_NUDGE_WEEKDAY;
+    // Never picked, it's the first day of the user's week (see pickedNudgeWeekday).
+    const mealPlanNudgeWeekday = pickedNudgeWeekday() ?? weekStartsOn;
     const mealPlanNudgeTime = dbGetSetting('mealPlanNudgeTime') || DEFAULT_MEAL_PLAN_NUDGE_TIME;
     const mealPlanNudgeLastFiredWeekKey = dbGetSetting('mealPlanNudgeLastFiredWeekKey') || null;
     const mealPlanNudgeGroupId = dbGetSetting('mealPlanNudgeGroupId') || null;
@@ -3441,7 +3456,12 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
 
   setWeekStartsOn(day: WeekStart) {
     dbSetSetting('weekStartsOn', String(day));
-    set({ weekStartsOn: day });
+    // A meal plan nudge nobody has given a day of its own fires on the first
+    // day of the week, whichever day that is (see pickedNudgeWeekday). Moved in
+    // memory only, so it goes on following the setting rather than becoming a
+    // pick.
+    if (pickedNudgeWeekday() === null) set({ weekStartsOn: day, mealPlanNudgeWeekday: day });
+    else set({ weekStartsOn: day });
   },
 
   setFabHand(hand: FabHand) {
@@ -4792,6 +4812,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     Object.entries(DEFAULT_SETTINGS).forEach(([key, value]) => {
       dbSetSetting(key, value === null ? '' : String(value));
     });
+    // Back to following the week start, rather than a pick of Sunday that the
+    // loop above would otherwise have written for it (see pickedNudgeWeekday).
+    dbSetSetting('mealPlanNudgeWeekday', '');
     // Not in DEFAULT_SETTINGS because these two aren't reset to a fixed value
     // at all — they're cleared. Clearing both matters: a reset that turned the
     // import off but left the confirmed-list id in place would let re-enabling

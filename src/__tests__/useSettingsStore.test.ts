@@ -989,6 +989,36 @@ describe('meal plan nudge settings', () => {
     expect(dbSetSetting).toHaveBeenCalledWith('mealPlanNudgeLastFiredWeekKey', '');
   });
 
+  // #1730: the nudge asks about the week it fires in, so a fixed Sunday
+  // default fired a Monday-start week's reminder on that week's last day.
+  it('fires on the first day of the week when no day was picked', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) => (key === 'weekStartsOn' ? '1' : null));
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().mealPlanNudgeWeekday).toBe(1);
+  });
+
+  it('moves an unpicked nudge day with the week start, without recording it as a pick', () => {
+    useSettingsStore.getState().setWeekStartsOn(1);
+    expect(useSettingsStore.getState().mealPlanNudgeWeekday).toBe(1);
+    expect(dbSetSetting).not.toHaveBeenCalledWith('mealPlanNudgeWeekday', expect.anything());
+  });
+
+  it('leaves a day the user picked alone when the week start changes', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) => (key === 'mealPlanNudgeWeekday' ? '0' : null));
+    useSettingsStore.getState().initialize();
+    useSettingsStore.getState().setWeekStartsOn(1);
+    expect(useSettingsStore.getState().mealPlanNudgeWeekday).toBe(0);
+  });
+
+  it('resetToDefaults hands the nudge day back to the week start', () => {
+    useSettingsStore.getState().resetToDefaults();
+    const writes = (dbSetSetting as jest.Mock).mock.calls
+      .filter(([key]) => key === 'mealPlanNudgeWeekday')
+      .map(([, value]) => value);
+    // The defaults loop writes Sunday first; the empty value after it wins.
+    expect(writes[writes.length - 1]).toBe('');
+  });
+
   it('reads an out-of-range stored weekday back as the default rather than trusting it', () => {
     (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
       key === 'mealPlanNudgeWeekday' ? '9' : null,

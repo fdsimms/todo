@@ -183,7 +183,7 @@ describe('mealPlanNudgeSuppressed', () => {
 });
 
 describe('partitionMealPlanNudgeTasks', () => {
-  // The week dueMealPlanNudge asks about when it fires on Sun Aug 3.
+  // A target week as dueMealPlanNudge hands it over; this takes the range as given.
   const due = { targetWeekStartKey: '2025-08-10', targetWeekEndKey: '2025-08-16' };
 
   const nudgeTask = (
