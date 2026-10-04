@@ -5,6 +5,7 @@ import {
   isMoodFilterActive,
   logsInDayRange,
   logsWithSymptom,
+  lookBacks,
   symptomOnLog,
   symptomSeverityOnDay,
   symptomStatFor,
@@ -197,5 +198,49 @@ describe('a day range', () => {
   it('treats a null bound as no bound', () => {
     expect(logsInDayRange(logs, null, null)).toHaveLength(3);
     expect(logsInDayRange(logs, '2026-08-15', null).map(l => l.id)).toEqual(['new']);
+  });
+});
+
+describe('looking back', () => {
+  const written = (dayKey: string, note: string | null, mood: MoodLog['mood'] = 3) =>
+    log({ dayKey, loggedAt: `${dayKey}T20:00:00`, note, mood });
+
+  it('finds the same date a month, a season and a year back', () => {
+    const logs = [
+      written('2026-07-17', 'a month'),
+      written('2026-05-17', 'three months'),
+      written('2025-08-17', 'a year'),
+    ];
+    expect(lookBacks(logs, '2026-08-17').map(l => l.label)).toEqual([
+      'A month ago', '3 months ago', 'A year ago',
+    ]);
+  });
+
+  it('skips entries with no words, and shows nothing rather than a placeholder', () => {
+    const logs = [written('2026-07-17', null, 5), written('2026-06-17', '   ')];
+    expect(lookBacks(logs, '2026-08-17')).toEqual([]);
+  });
+
+  it('keeps a day\'s written entries oldest first and drops the unwritten ones', () => {
+    const logs = [
+      log({ dayKey: '2026-07-17', loggedAt: '2026-07-17T21:00:00', note: 'evening' }),
+      log({ dayKey: '2026-07-17', loggedAt: '2026-07-17T08:00:00', note: 'morning' }),
+      log({ dayKey: '2026-07-17', loggedAt: '2026-07-17T12:00:00', note: null }),
+    ];
+    expect(lookBacks(logs, '2026-08-17')[0].logs.map(l => l.note)).toEqual(['morning', 'evening']);
+  });
+
+  it('clamps a short month the way the calendar does', () => {
+    expect(lookBacks([written('2026-02-28', 'x')], '2026-03-31')[0].dayKey).toBe('2026-02-28');
+  });
+
+  it('caps the card at three look-backs, most recent first', () => {
+    const logs = [
+      written('2026-07-17', 'a'), written('2026-05-17', 'b'),
+      written('2026-02-17', 'c'), written('2025-08-17', 'd'),
+    ];
+    expect(lookBacks(logs, '2026-08-17').map(l => l.label)).toEqual([
+      'A month ago', '3 months ago', '6 months ago',
+    ]);
   });
 });

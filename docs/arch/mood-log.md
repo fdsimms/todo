@@ -683,6 +683,23 @@ everybody's birthday too.
   exactly as the backup export does. A health record accumulating silently in
   the app's own storage would be a second copy of the most sensitive thing here.
 
+## Looking back, and why the note leads
+
+The log sheet opens on the note, with mood, symptoms and tags below it as
+optional extras, and an entry's row prints the note at body size in the primary
+text color. The note is what a person wrote; the faces are a summary of it.
+
+`lookBacks` (`moodHistory.ts`) powers the Mood screen's LOOKING BACK card: days
+you wrote on, a month, three, six and then each year back. Three rules hold it:
+
+- **Only entries with words count.** A mood with no note from a year ago is a
+  number with nothing to say, not something to resurface.
+- **A day with nothing is absent.** No placeholder, no "you didn't write
+  here", and the card disappears when there is nothing at all (rule 3 above).
+- **It reads and never interprets.** No comparison with today's mood and no
+  "you were happier then". That would be a claim about the person, and notes
+  stay out of `moodInsights.ts` entirely.
+
 ## Backdating, and the picker's new ceiling
 
 `addLog` takes an optional instant; the sheet's Day row is how a person reaches

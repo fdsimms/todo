@@ -93,6 +93,7 @@ import { useRewardStore } from '../store/useRewardStore';
 import { linkFor } from '../constants/linkApps';
 import { buildMoodDays, contextTagMoodContrasts, describeNutrientInsight, foodMoodContrasts, foodPairedDays, symptomFoodContrasts, milestoneMoodContrast, moodCompletionInsight, nutrientInsight, symptomMoodContrasts, taskContrastTitles, taskMoodContrasts, MIN_PAIRED_DAYS } from '../utils/moodInsights';
 import { contextTagVocabulary, symptomVocabulary } from '../utils/moodLog';
+import { lookBacks } from '../utils/moodHistory';
 import { isStaleNote } from '../utils/personNotes';
 import { personBackfillFieldCounts, PERSON_BACKFILL_FIELDS } from '../utils/peopleBackfill';
 import { itemBackfillFieldCounts, ITEM_BACKFILL_FIELDS } from '../utils/itemBackfill';
@@ -1987,6 +1988,11 @@ describe('demo seed — people', () => {
     // the code and useless as a demo of what the code is for.
     const days = buildMoodDays(useMoodStore.getState().logs, [], '00:00');
     expect(symptomMoodContrasts(days).length).toBeGreaterThan(0);
+  });
+
+  it('seeds notes from further back, so the Looking back card has something to show', () => {
+    const logs = useMoodStore.getState().logs;
+    expect(lookBacks(logs, dayKeyOf(getCurrentDayStart())).length).toBeGreaterThan(0);
   });
 
   it('seeds context tags, so the Mood screen has something to show for the feature', () => {

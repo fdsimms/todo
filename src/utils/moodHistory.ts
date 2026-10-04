@@ -18,6 +18,8 @@
  * logged a headache twice is entitled to see both of them.
  */
 
+import { addMonths } from 'date-fns/addMonths';
+import { format } from 'date-fns/format';
 import type { LoggedSymptom, MoodLevel, MoodLog, SymptomSeverity } from '../types';
 import { contextTagKey, symptomKey } from './moodLog';
 
@@ -238,4 +240,54 @@ export function logsInDayRange(
   return logs.filter(log =>
     (fromDayKey === null || log.dayKey >= fromDayKey)
     && (toDayKey === null || log.dayKey <= toDayKey));
+}
+
+/** How far back "looking back" reaches, in months: a month, a season, then each year. */
+const LOOK_BACK_MONTHS = [1, 3, 6, 12, 24, 36, 48, 60];
+
+/** Most look-backs shown at once, so a long log doesn't turn the card into a feed. */
+const MAX_LOOK_BACKS = 3;
+
+export interface LookBack {
+  /** "A month ago", "A year ago"; the same wording on every device. */
+  label: string;
+  dayKey: string;
+  /** That day's entries that have words in them, oldest first. */
+  logs: MoodLog[];
+}
+
+function lookBackLabel(months: number): string {
+  if (months === 1) return 'A month ago';
+  if (months < 12) return `${months} months ago`;
+  const years = months / 12;
+  return years === 1 ? 'A year ago' : `${years} years ago`;
+}
+
+/**
+ * Days you wrote something on, one month, three, six and then each year back
+ * from `todayDayKey`, the diary's "on this day".
+ *
+ * **Only entries with a note count.** A mood with no words is a number, and a
+ * number from a year ago with nothing to say about it is not something to
+ * resurface. **A day with nothing to show is absent, never filled in** (rule 3
+ * of `moodInsights.ts`, here as a layout rule): no placeholder for the month
+ * you didn't write, and the card disappears when there is nothing at all.
+ *
+ * It reads and never interprets: no comparison with today's mood, no "you were
+ * happier then". That would be a claim, and this is the log itself, narrowed.
+ * Most recent first, capped at `MAX_LOOK_BACKS`.
+ */
+export function lookBacks(logs: readonly MoodLog[], todayDayKey: string): LookBack[] {
+  // Not `dateUtils`: that module pulls in the database, and this one stays pure.
+  const today = new Date(`${todayDayKey}T00:00:00`);
+  const found: LookBack[] = [];
+  for (const months of LOOK_BACK_MONTHS) {
+    const dayKey = format(addMonths(today, -months), 'yyyy-MM-dd');
+    const written = logs
+      .filter(l => l.dayKey === dayKey && !!l.note && l.note.trim().length > 0)
+      .sort((a, b) => a.loggedAt.localeCompare(b.loggedAt));
+    if (written.length > 0) found.push({ label: lookBackLabel(months), dayKey, logs: written });
+    if (found.length === MAX_LOOK_BACKS) break;
+  }
+  return found;
 }

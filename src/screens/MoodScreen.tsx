@@ -26,7 +26,7 @@ import {
   symptomKey,
   symptomVocabulary,
 } from '../utils/moodLog';
-import { symptomStats, logsInDayRange } from '../utils/moodHistory';
+import { symptomStats, logsInDayRange, lookBacks } from '../utils/moodHistory';
 import { moodExportCsv, moodExportFileName, moodExportSummary } from '../utils/moodExport';
 import { foodDayInputs, foodKeyNames } from '../utils/nutritionStats';
 import { useGroceryStore } from '../store/useGroceryStore';
@@ -170,6 +170,7 @@ export function MoodScreen() {
   }, [route.params?.openLog, route.params?.returnTo, handledOpenLog]);
 
   const todayKey = dayKeyOf(getCurrentDayStart());
+  const lookedBack = useMemo(() => lookBacks(logs, todayKey), [logs, todayKey]);
 
   // The first day the task record is complete for. `completedRetentionDays`
   // deletes completed rows on a schedule while the mood log keeps every entry
@@ -475,6 +476,31 @@ export function MoodScreen() {
               accessibilityLabel={`Low days, ${summary.lowDays}`}
             />
           </View>
+
+          {lookedBack.length > 0 && (
+            <>
+              <Text style={styles.sectionTitle}>LOOKING BACK</Text>
+              <View style={styles.card}>
+                {lookedBack.map((back, i) => (
+                  <TouchableOpacity
+                    key={back.dayKey}
+                    style={i > 0 ? styles.lookBackNext : undefined}
+                    activeOpacity={interaction.activeOpacity}
+                    onPress={() => openEdit(back.logs[0])}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${back.label}, ${format(dayKeyToDate(back.dayKey), 'EEEE, MMMM d, yyyy')}. ${back.logs.map(l => l.note).join('. ')}`}
+                  >
+                    <Text style={styles.lookBackWhen}>
+                      {back.label} · {format(dayKeyToDate(back.dayKey), 'EEE, MMM d, yyyy')}
+                    </Text>
+                    {back.logs.map(l => (
+                      <Text key={l.id} style={styles.lookBackNote} numberOfLines={6}>{l.note}</Text>
+                    ))}
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </>
+          )}
 
           <Text style={styles.sectionTitle}>THE LAST TWO WEEKS</Text>
           <View style={styles.card}>
@@ -988,6 +1014,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   bar: { width: 12, borderRadius: 4 },
   barLabel: { marginTop: 4, color: colors.textTertiary, fontSize: font.xxs, fontWeight: '500' },
   barLabelToday: { color: colors.accent, fontWeight: fontWeight.semibold },
+  lookBackNext: { marginTop: spacing.md },
+  lookBackWhen: { fontSize: font.xs, color: colors.textSecondary, marginBottom: spacing.xs },
+  lookBackNote: { fontSize: font.md, color: colors.text, marginTop: spacing.xxs },
   chartCaption: { fontSize: font.xs, color: colors.textTertiary, marginTop: spacing.sm },
   pending: { fontSize: font.sm, color: colors.textSecondary, lineHeight: 20 },
   finding: { fontSize: font.md, color: colors.text, lineHeight: 22 },

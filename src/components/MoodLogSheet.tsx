@@ -366,6 +366,23 @@ export function MoodLogSheet({ visible, editing = null, onClose }: Props) {
         </View>
       )}
 
+      {/* The writing comes first: this is a diary page before it is a form, and
+          every other card below is optional. canSave already accepts a bare
+          note, so nothing here is required. */}
+      <View style={styles.card}>
+        <Text style={styles.groupLabel}>WHAT'S ON YOUR MIND</Text>
+        <TextField
+          style={styles.noteInput}
+          value={note}
+          onChangeText={setNote}
+          placeholder="e.g. How the day went, or anything you want to remember"
+          placeholderTextColor={colors.textTertiary}
+          maxLength={NOTE_MAX_LENGTH}
+          multiline
+          accessibilityLabel="Notes about how you're doing"
+        />
+      </View>
+
       <View style={styles.card}>
         <Text style={styles.groupLabel}>MOOD</Text>
         <SegmentedControl
@@ -431,20 +448,6 @@ export function MoodLogSheet({ visible, editing = null, onClose }: Props) {
             onLongPress: () => renameTag(name),
             accessibilityHint: 'Double tap to toggle. Long press to rename.',
           }))}
-        />
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.groupLabel}>NOTES</Text>
-        <TextField
-          style={styles.noteInput}
-          value={note}
-          onChangeText={setNote}
-          placeholder="e.g. Slept badly, busy afternoon"
-          placeholderTextColor={colors.textTertiary}
-          maxLength={NOTE_MAX_LENGTH}
-          multiline
-          accessibilityLabel="Notes about how you're doing"
         />
       </View>
 
@@ -539,7 +542,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   noteInput: {
     fontSize: font.md,
     color: colors.text,
-    minHeight: 80,
+    minHeight: 140,
     textAlignVertical: 'top',
   },
 });
