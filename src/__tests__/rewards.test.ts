@@ -97,6 +97,7 @@ describe('difficulty', () => {
     expect(DIFFICULTY_MULTIPLIER.normal).toBe(1);
     expect(baseCoinsFor(rated(30, 'normal'))).toBe(baseCoinsFor(task(30)));
     expect(baseCoinsFor(rated(600, 'normal'))).toBe(12);
+    expect(baseCoinsFor({ ...task(30), difficulty: null })).toBe(3);
   });
 
   it('doubles a hard task, so a quick dreaded call is worth more than a coin', () => {

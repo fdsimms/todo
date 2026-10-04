@@ -42,11 +42,16 @@ default (`rewardsEnabled`), switched on from the Rewards screen (its own menu ro
 
 `Task.difficulty` (Easy / Normal / Hard) says how hard a task is to make yourself do, which the time
 estimate can't: a two-minute call you dread and an hour of something you enjoy. Hard doubles the
-effort bucket's value and Easy halves it, never below 1. Offered in the editor only while rewards are
-on, since nothing else reads it.
+effort bucket's value and Easy halves it, never below 1. Every place it can be set (the task, template
+item and follow-up task editors, quick add's chip, the bulk bar, Backfill) offers it only while
+rewards are on, since nothing else reads it.
 
-- **Normal is the column default and changes nothing**, so every task that predates it earns exactly
-  what it did. Absent reads as Normal too.
+- **Null is "never rated" and earns as Normal does**, so every task that predates the column earns
+  exactly what it did. It is kept apart from an explicit Normal because Backfill asks about the
+  unrated ones, and a rating someone gave is an answer. Every picker but Backfill's leads with "Not
+  set", since a segmented control can't be tapped off.
+- **There is no new-task default and no title rule for it.** A default would rate every task without
+  anyone deciding, which is the null the backfill queue exists to ask about.
 - **It carries to the next occurrence** (a `CONTENT_FIELD`), unlike a bounty. A bounty is for the one
   task you've been putting off; a rating is for the kind of task that is always hard.
 - **Nothing sets it but the person.** Inferring it from `postponeCount` would pay more for a task that

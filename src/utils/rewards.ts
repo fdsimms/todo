@@ -80,6 +80,17 @@ export const DIFFICULTY_SEGMENTS: { value: Difficulty; label: string }[] = [
   { value: 'hard', label: 'Hard' },
 ];
 
+/**
+ * The same, led by "Not set" for the pickers that edit a rating already given
+ * (the editors, quick add): a segmented control can't be tapped off, so this
+ * is the one way back to unrated. The backfill card asks about unrated tasks
+ * only, so it offers the three ratings alone.
+ */
+export const DIFFICULTY_PICKER_SEGMENTS: { value: Difficulty | null; label: string }[] = [
+  { value: null, label: 'Not set' },
+  ...DIFFICULTY_SEGMENTS,
+];
+
 /** The editor's one-line hint, so the two editors can't describe it differently. */
 export const DIFFICULTY_HINT = 'How hard this is to make yourself do, apart from how long it takes. Hard tasks earn double coins and easy ones half.';
 

@@ -52,7 +52,7 @@ import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, border, interaction, animation, checkboxRadius, iconSize, type Colors, textScale } from '../theme';
 import { useTextScale } from '../hooks/useTextScale';
 import { haptics } from '../utils/haptics';
-import { BOUNTY_WITHDRAWN, DIFFICULTY_HINT, DIFFICULTY_SEGMENTS, bountyCoinsFor, canPostBounty, describeBounty, formatCoins, isBountyLive, liveBountyCount } from '../utils/rewards';
+import { BOUNTY_WITHDRAWN, DIFFICULTY_HINT, DIFFICULTY_PICKER_SEGMENTS, DIFFICULTY_SEGMENTS, bountyCoinsFor, canPostBounty, describeBounty, formatCoins, isBountyLive, liveBountyCount } from '../utils/rewards';
 import { DOSE_UNITS, medicationVocabulary, medicationKey } from '../utils/medicationLog';
 import { useTitleSelection } from '../hooks/useTitleSelection';
 import { confirmDelete } from '../utils/confirmDelete';
@@ -190,6 +190,8 @@ export interface TaskDraft {
   windowEnd?: string | null;
   /** Carried over when quick add reads "don't …" or "no snacking" as a habit to avoid. */
   polarity?: Polarity;
+  /** Carried over from quick add's Difficulty chip. */
+  difficulty?: Difficulty | null;
   /** What it waits on, carried over when quick add parses "after <another task>". */
   blockerIds?: string[];
   /** Carried over when quick add parses "pack: socks, charger". */
@@ -562,7 +564,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [pinEachOccurrence, setPinEachOccurrence] = useState(false);
   const [vacationPause, setVacationPause] = useState(false);
   const [excludeFromSuggestions, setExcludeFromSuggestions] = useState(false);
-  const [difficulty, setDifficulty] = useState<Difficulty>('normal');
+  const [difficulty, setDifficulty] = useState<Difficulty | null>(null);
   // Whether a live bounty is posted on this task (utils/rewards.ts). A switch
   // in the draft; save turns it into a post or a withdrawal.
   const [bounty, setBounty] = useState(false);
@@ -902,7 +904,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setChainStepOnSchedule(task.chainStepOnSchedule ?? false);
       setVacationPause(task.vacationPause ?? false);
       setExcludeFromSuggestions(task.excludeFromSuggestions ?? false);
-      setDifficulty(task.difficulty ?? 'normal');
+      setDifficulty(task.difficulty ?? null);
       setBounty(isBountyLive(task));
       setShowStreak(task.showStreak ?? false);
       setPolarity(task.polarity ?? 'positive');
@@ -960,7 +962,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setRotationEnabled(initialDraft?.rotationEnabled ?? false); setRotationItems(initialDraft?.rotationItems ?? []);
       setVacationPause(false);
       setExcludeFromSuggestions(false);
-      setDifficulty('normal');
+      setDifficulty(initialDraft?.difficulty ?? null);
       // A new task starts as "Do this" unless the draft says otherwise: left
       // unset, it kept whatever the last task edited had.
       setPolarity(initialDraft?.polarity ?? 'positive');
@@ -1093,7 +1095,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       chainStepOnSchedule: task?.chainStepOnSchedule ?? false,
       vacationPause: task?.vacationPause ?? false,
       excludeFromSuggestions: task?.excludeFromSuggestions ?? false,
-      difficulty: task?.difficulty ?? 'normal',
+      difficulty: task ? (task.difficulty ?? null) : (initialDraft?.difficulty ?? null),
       bounty: task ? isBountyLive(task) : false,
       polarity: task ? (task.polarity ?? 'positive') : (initialDraft?.polarity ?? 'positive'),
       showStreak: task ? (task.showStreak ?? false) : initialDraft?.polarity === 'negative',
@@ -6043,14 +6045,14 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           // a rating that changes nothing on screen is a question with no
           // answer. A rating set earlier stays put while rewards are off.
           ...(rewardsEnabled && polarity !== 'negative' ? [{
-            key: 'difficulty', label: 'Difficulty', set: difficulty !== 'normal',
+            key: 'difficulty', label: 'Difficulty', set: difficulty !== null,
             keywords: ['hard', 'easy', 'dread', 'avoid', 'coins', 'reward', 'aversion'],
             node: (
               <>
           <CollapsibleField
             label="Difficulty"
-            summary={difficulty !== 'normal' ? DIFFICULTY_SEGMENTS.find(d => d.value === difficulty)?.label : undefined}
-            emptySummary="Normal"
+            summary={DIFFICULTY_SEGMENTS.find(d => d.value === difficulty)?.label}
+            emptySummary="Not set"
             hint={DIFFICULTY_HINT}
             expanded={fieldOpen('difficulty')}
             onToggle={() => toggleField('difficulty')}
@@ -6059,7 +6061,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               label="Difficulty"
               value={difficulty}
               onChange={d => { setDifficulty(d); closeField('difficulty'); }}
-              options={DIFFICULTY_SEGMENTS}
+              options={DIFFICULTY_PICKER_SEGMENTS}
             />
           </CollapsibleField>
               </>

@@ -162,12 +162,18 @@ describe('parseFollowUpTaskDraft', () => {
       tags: ['violin'],
       priority: 2,
       effort: 1,
+      difficulty: 'hard',
       estimatedMinutes: 5,
       timeSegments: ['evening'],
       vacationPause: false,
       subtasks: [{ id: 's1', title: 'Wipe the strings' }],
     };
     expect(parseFollowUpTaskDraft(JSON.stringify(draft))).toEqual(draft);
+  });
+
+  it('reads a draft stored before difficulty existed as unrated', () => {
+    expect(parseFollowUpTaskDraft(JSON.stringify({ notes: 'x' }))?.difficulty).toBeNull();
+    expect(parseFollowUpTaskDraft(JSON.stringify({ difficulty: 'brutal' }))?.difficulty).toBeNull();
   });
 
   it('reads nothing at all as no draft — which is what "just the title" means', () => {
@@ -226,6 +232,7 @@ describe('followUpTaskDraftIsEmpty', () => {
     expect(followUpTaskDraftIsEmpty({ ...empty, tags: ['a'] })).toBe(false);
     expect(followUpTaskDraftIsEmpty({ ...empty, priority: 1 })).toBe(false);
     expect(followUpTaskDraftIsEmpty({ ...empty, effort: 1 })).toBe(false);
+    expect(followUpTaskDraftIsEmpty({ ...empty, difficulty: 'normal' })).toBe(false);
     expect(followUpTaskDraftIsEmpty({ ...empty, estimatedMinutes: 5 })).toBe(false);
     expect(followUpTaskDraftIsEmpty({ ...empty, timeSegments: ['evening'] })).toBe(false);
     expect(followUpTaskDraftIsEmpty({ ...empty, subtasks: [{ id: 's', title: 't' }] })).toBe(false);
@@ -238,6 +245,10 @@ describe('describeFollowUpTaskDraft', () => {
   it('says nothing when there is nothing set, so the row reads as "just the title"', () => {
     expect(describeFollowUpTaskDraft(null, null, null)).toBeUndefined();
     expect(describeFollowUpTaskDraft(empty, null, null)).toBeUndefined();
+  });
+
+  it('names a difficulty', () => {
+    expect(describeFollowUpTaskDraft({ ...empty, difficulty: 'hard' }, null, null)).toBe('Hard');
   });
 
   it('names one or two things', () => {

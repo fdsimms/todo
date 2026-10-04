@@ -59,7 +59,7 @@ import { ChainStepQuestionSheet } from './ChainStepQuestionSheet';
 import { ChainStepMedicationSheet } from './ChainStepMedicationSheet';
 import { ChainStepLinkSheet } from './ChainStepLinkSheet';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { DIFFICULTY_HINT, DIFFICULTY_SEGMENTS } from '../utils/rewards';
+import { DIFFICULTY_HINT, DIFFICULTY_PICKER_SEGMENTS, DIFFICULTY_SEGMENTS } from '../utils/rewards';
 import { RecurrencePicker } from './RecurrencePicker';
 import { SegmentedControl } from './SegmentedControl';
 import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
@@ -185,7 +185,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const [penaltyPickerDate, setPenaltyPickerDate] = useState(new Date());
   const [vacationPause, setVacationPause] = useState(false);
   const [excludeFromSuggestions, setExcludeFromSuggestions] = useState(false);
-  const [difficulty, setDifficulty] = useState<Difficulty>('normal');
+  const [difficulty, setDifficulty] = useState<Difficulty | null>(null);
   const [pinEachOccurrence, setPinEachOccurrence] = useState(false);
   const [polarity, setPolarity] = useState<Polarity>('positive');
   const [recurrenceType, setRecurrenceType] = useState<RecurrenceType>('none');
@@ -268,7 +268,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setPenaltyCutoffTime(item?.penaltyCutoffTime ?? draft?.penaltyCutoffTime ?? null);
     setVacationPause(item?.vacationPause ?? draft?.vacationPause ?? false);
     setExcludeFromSuggestions(item?.excludeFromSuggestions ?? draft?.excludeFromSuggestions ?? false);
-    setDifficulty(item?.difficulty ?? draft?.difficulty ?? 'normal');
+    setDifficulty(item?.difficulty ?? draft?.difficulty ?? null);
     setPinEachOccurrence(item?.pinEachOccurrence ?? draft?.pinEachOccurrence ?? false);
     setPolarity(item?.polarity ?? draft?.polarity ?? 'positive');
     setRecurrenceType(item?.recurrenceType ?? draft?.recurrenceType ?? 'none');
@@ -1966,8 +1966,8 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             <View style={styles.cardSep} />
             <CollapsibleField
               label="Difficulty"
-              summary={difficulty !== 'normal' ? DIFFICULTY_SEGMENTS.find(d => d.value === difficulty)?.label : undefined}
-              emptySummary="Normal"
+              summary={DIFFICULTY_SEGMENTS.find(d => d.value === difficulty)?.label}
+              emptySummary="Not set"
               hint={DIFFICULTY_HINT}
               expanded={fieldOpen('difficulty')}
               onToggle={() => toggleField('difficulty')}
@@ -1976,7 +1976,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                 label="Difficulty"
                 value={difficulty}
                 onChange={d => { setDifficulty(d); closeField('difficulty'); }}
-                options={DIFFICULTY_SEGMENTS}
+                options={DIFFICULTY_PICKER_SEGMENTS}
               />
             </CollapsibleField>
           </>

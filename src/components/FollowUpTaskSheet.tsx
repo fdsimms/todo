@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import type { Effort, FollowUpTaskDraft, Priority, TimeOfDay } from '../types';
+import type { Difficulty, Effort, FollowUpTaskDraft, Priority, TimeOfDay } from '../types';
 import { EFFORT_LABELS, EFFORT_HINTS, PRIORITY_LABELS, TITLE_MAX_LENGTH } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, interaction, type Colors } from '../theme';
@@ -16,6 +16,8 @@ import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { useShallow } from 'zustand/react/shallow';
 import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
+import { DIFFICULTY_HINT, DIFFICULTY_PICKER_SEGMENTS, DIFFICULTY_SEGMENTS } from '../utils/rewards';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { SegmentedControl } from './SegmentedControl';
 import { CollapsibleField } from './CollapsibleField';
 import { EditorRow } from './EditorRow';
@@ -33,7 +35,7 @@ const MAX_CUSTOM_ESTIMATE_MINUTES = 600;
 
 
 /** Editor sections that collapse to a one-line summary of their current value. */
-type FieldKey = 'category' | 'project' | 'tags' | 'priority' | 'effort' | 'subtasks';
+type FieldKey = 'category' | 'project' | 'tags' | 'priority' | 'effort' | 'difficulty' | 'subtasks';
 
 const TIME_SEGMENTS: TimeOfDay[] = ['morning', 'afternoon', 'evening', 'night'];
 
@@ -78,6 +80,8 @@ export function FollowUpTaskSheet({ visible, taskTitle, draft, onSave, onClose }
   const [tags, setTags] = useState<string[]>([]);
   const [priority, setPriority] = useState<Priority>(0);
   const [effort, setEffort] = useState<Effort>(0);
+  const [difficulty, setDifficulty] = useState<Difficulty | null>(null);
+  const rewardsEnabled = useSettingsStore(s => s.rewardsEnabled);
   const [estimatedMinutes, setEstimatedMinutes] = useState<number | null>(null);
   const [timeSegments, setTimeSegments] = useState<TimeOfDay[]>([]);
   const [vacationPause, setVacationPause] = useState(false);
@@ -110,6 +114,7 @@ export function FollowUpTaskSheet({ visible, taskTitle, draft, onSave, onClose }
     setTags(seed.tags);
     setPriority(seed.priority);
     setEffort(seed.effort);
+    setDifficulty(seed.difficulty ?? null);
     setEstimatedMinutes(seed.estimatedMinutes);
     setTimeSegments(seed.timeSegments);
     setVacationPause(seed.vacationPause);
@@ -155,6 +160,7 @@ export function FollowUpTaskSheet({ visible, taskTitle, draft, onSave, onClose }
       tags: pendingTag && !tags.includes(pendingTag) ? [...tags, pendingTag] : tags,
       priority,
       effort,
+      difficulty,
       estimatedMinutes,
       timeSegments,
       vacationPause,
@@ -397,6 +403,29 @@ export function FollowUpTaskSheet({ visible, taskTitle, draft, onSave, onClose }
             )}
           </View>
         </CollapsibleField>
+
+        {/* Offered on the task editor's terms: only while the coin rules that
+            read it run. A rating already on the draft is kept either way. */}
+        {rewardsEnabled && (
+          <>
+            <View style={styles.cardSep} />
+            <CollapsibleField
+              label="Difficulty"
+              summary={DIFFICULTY_SEGMENTS.find(d => d.value === difficulty)?.label}
+              emptySummary="Not set"
+              hint={DIFFICULTY_HINT}
+              expanded={fieldOpen('difficulty')}
+              onToggle={() => toggleField('difficulty')}
+            >
+              <SegmentedControl
+                label="Difficulty"
+                value={difficulty}
+                onChange={d => { setDifficulty(d); closeField('difficulty'); }}
+                options={DIFFICULTY_PICKER_SEGMENTS}
+              />
+            </CollapsibleField>
+          </>
+        )}
       </View>
 
       <Text style={styles.groupLabel}>More</Text>

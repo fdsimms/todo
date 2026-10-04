@@ -355,7 +355,7 @@ export function newTaskFromDraft(
         }),
     vacationPause: draft.vacationPause ?? false,
     excludeFromSuggestions: draft.excludeFromSuggestions ?? false,
-    difficulty: draft.difficulty ?? 'normal',
+    difficulty: draft.difficulty ?? null,
     pinEachOccurrence: draft.pinEachOccurrence ?? false,
     timerStartedAt: draft.timerStartedAt ?? null,
     actualMinutes: draft.actualMinutes ?? null,

@@ -47,6 +47,7 @@ import {
   dbBatchUpdatePostponeCounts,
   dbBulkDeleteTasks,
   dbBulkSetPriority,
+  dbBulkSetDifficulty,
   dbBulkSetDefer,
   dbBulkSetPinned,
   dbBulkSetCategory,
@@ -175,6 +176,7 @@ jest.mock('../db/database', () => ({
   dbBatchUpdatePostponeCounts: jest.fn(),
   dbBulkDeleteTasks: jest.fn(),
   dbBulkSetPriority: jest.fn(),
+  dbBulkSetDifficulty: jest.fn(),
   dbBulkSetDefer: jest.fn(),
   dbBulkSetWhen: jest.fn(),
   dbBulkSetCategory: jest.fn(),
@@ -10674,6 +10676,22 @@ describe('bulkSetPriority', () => {
   });
 });
 
+describe('bulkSetDifficulty', () => {
+  it('rates only the selected tasks, and null clears a rating', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a' }), makeTask({ id: 'b', difficulty: 'hard' }), makeTask({ id: 'c' })],
+    });
+    useTaskStore.getState().bulkSetDifficulty(['a'], 'hard');
+    useTaskStore.getState().bulkSetDifficulty(['b'], null);
+    const { tasks } = useTaskStore.getState();
+    expect(tasks.find(t => t.id === 'a')?.difficulty).toBe('hard');
+    expect(tasks.find(t => t.id === 'b')?.difficulty).toBeNull();
+    expect(tasks.find(t => t.id === 'c')?.difficulty).toBeUndefined();
+    expect(dbBulkSetDifficulty).toHaveBeenCalledWith(['a'], 'hard');
+    expect(dbBulkSetDifficulty).toHaveBeenCalledWith(['b'], null);
+  });
+});
+
 describe('bulkSetCategory', () => {
   const routines = {
     id: 'cat-routines', name: 'Routines', scheduleDays: null, scheduleStart: null, scheduleEnd: null,
@@ -16137,6 +16155,7 @@ describe('completeTask: followUp task every Nth completion', () => {
             tags: ['upkeep'],
             priority: 3,
             effort: 1,
+            difficulty: 'hard',
             estimatedMinutes: 5,
             timeSegments: ['evening'],
             vacationPause: false,
@@ -16154,6 +16173,7 @@ describe('completeTask: followUp task every Nth completion', () => {
       expect(followUp.tags).toEqual(['upkeep']);
       expect(followUp.priority).toBe(3);
       expect(followUp.effort).toBe(1);
+      expect(followUp.difficulty).toBe('hard');
       expect(followUp.estimatedMinutes).toBe(5);
       expect(followUp.timeSegments).toEqual(['evening']);
     });

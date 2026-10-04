@@ -97,12 +97,13 @@ describe('normalizeTemplateItem', () => {
     expect(item.category).toBeNull();
     expect(item.priority).toBe(0);
     expect(item.effort).toBe(0);
-    expect(item.difficulty).toBe('normal');
+    expect(item.difficulty).toBeNull();
   });
 
-  it('reads an unknown difficulty as normal and keeps a known one', () => {
+  it('reads an unknown difficulty as unrated and keeps a known one', () => {
     expect(normalizeTemplateItem({ difficulty: 'hard' }).difficulty).toBe('hard');
-    expect(normalizeTemplateItem({ difficulty: 'brutal' as never }).difficulty).toBe('normal');
+    expect(normalizeTemplateItem({ difficulty: 'normal' }).difficulty).toBe('normal');
+    expect(normalizeTemplateItem({ difficulty: 'brutal' as never }).difficulty).toBeNull();
   });
 
   it('preserves provided fields', () => {

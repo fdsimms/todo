@@ -13,6 +13,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useAnswerFirstCompletion } from '../hooks/useAnswerFirstCompletion';
 import { DeliverablePromptQueue } from '../components/DeliverablePromptQueue';
 import { useTaskStore } from '../store/useTaskStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { useSavedViewStore } from '../store/useSavedViewStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { useTaskSelection } from '../hooks/useTaskSelection';
@@ -72,6 +73,8 @@ export function SavedViewDetailScreen() {
   const bulkCompleteTasks = useTaskStore(s => s.bulkCompleteTasks);
   const bulkMarkMissed = useTaskStore(s => s.bulkMarkMissed);
   const bulkSetPriority = useTaskStore(s => s.bulkSetPriority);
+  const bulkSetDifficulty = useTaskStore(s => s.bulkSetDifficulty);
+  const rewardsEnabled = useSettingsStore(s => s.rewardsEnabled);
   const bulkSetCategory = useTaskStore(s => s.bulkSetCategory);
   const bulkAddTags = useTaskStore(s => s.bulkAddTags);
   const view = useSavedViewStore(s => s.views.find(v => v.id === viewId) ?? null);
@@ -312,6 +315,7 @@ export function SavedViewDetailScreen() {
             onSetCategory={cat => { bulkSetCategory(Array.from(selectedIds), cat); exitSelection(); }}
             onAddTags={tags => { bulkAddTags(Array.from(selectedIds), tags); exitSelection(); }}
             onSetPriority={p => { bulkSetPriority(Array.from(selectedIds), p); exitSelection(); }}
+            onSetDifficulty={rewardsEnabled ? d => { bulkSetDifficulty(Array.from(selectedIds), d); exitSelection(); } : undefined}
             onMarkMissed={() => { bulkMarkMissed(Array.from(selectedIds)); exitSelection(); }}
             onSelectAll={() => selectAll(viewTasks.map(t => t.id))}
             onDeselectAll={deselectAll}

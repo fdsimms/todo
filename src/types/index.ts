@@ -242,6 +242,9 @@ export interface FollowUpTaskDraft {
   tags: string[];
   priority: Priority;
   effort: Effort;
+  // Same field and meaning as `Task.difficulty`. Optional so a draft stored
+  // before it existed reads as unrated.
+  difficulty?: Difficulty | null;
   estimatedMinutes: number | null;
   timeSegments: TimeOfDay[];
   // Same field and meaning as `Task.vacationPause`, and the one field of the
@@ -2921,16 +2924,17 @@ export interface Task {
    * Only the coin rules read it (`difficultyMultiplier` in `rewards.ts`); it
    * scales the effort bucket's value and nothing else.
    *
-   * - **'normal' changes nothing**, and it is the column's default, so every
-   *   task that existed before the field earns exactly what it did. Absent
-   *   reads as 'normal' too, so a task built anywhere without it is unchanged.
+   * - **Null is "never rated" and earns as 'normal' does**, so every task that
+   *   existed before the field earns exactly what it did. It is kept apart
+   *   from an explicit 'normal' because the backfill queue asks about the
+   *   unrated ones, and a rating someone gave is an answer. Absent is null.
    * - **It is the person's own rating and nothing writes it on their behalf.**
    *   Inferring it from `postponeCount` would pay more for a task that waited,
    *   which is the one thing the bounty rules exist to refuse.
    * - **It carries to the next occurrence** (a `CONTENT_FIELD`), unlike a
    *   bounty: a call you dread this week is one you'll dread next week.
    */
-  difficulty?: Difficulty;
+  difficulty?: Difficulty | null;
 
   /**
    * Slips logged against a negative task on the day named by `slipDate`, and 0
@@ -3633,9 +3637,10 @@ export interface TemplateItem {
   // here. A "quit smoking" template that could only produce positive tasks
   // would be a template that can't express the one thing it's for.
   polarity: Polarity;
-  // Seeds Task.difficulty. Optional so stored JSON from before the field reads
-  // as 'normal' through normalizeTemplateItem.
-  difficulty?: Difficulty;
+  // Seeds Task.difficulty. Null (the default through normalizeTemplateItem,
+  // which is also what stored JSON from before the field reads as) seeds an
+  // unrated task.
+  difficulty?: Difficulty | null;
 
   recurrenceType: RecurrenceType;
   recurrenceInterval: number;

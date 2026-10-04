@@ -1847,9 +1847,9 @@ export function initDatabase(): void {
     // NULL on every existing row: no task had a bounty before this. See
     // Task.bountyPushes.
     'ALTER TABLE tasks ADD COLUMN bounty_pushes INTEGER',
-    // 'normal' on every existing row, which earns exactly what every task did
-    // before the column. See Task.difficulty.
-    "ALTER TABLE tasks ADD COLUMN difficulty TEXT NOT NULL DEFAULT 'normal'",
+    // NULL on every existing row: never rated, which earns exactly what every
+    // task did before the column. See Task.difficulty.
+    'ALTER TABLE tasks ADD COLUMN difficulty TEXT',
   ];
   // Asking SQLite for a table's columns once is cheaper than handing it every
   // ALTER for that table and catching the duplicate-column error, and by the
@@ -3297,7 +3297,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     excludeFromSuggestions: Boolean(row.exclude_from_suggestions),
     pinEachOccurrence: Boolean(row.pin_each_occurrence),
     bountyPushes: (row.bounty_pushes as number | null) ?? null,
-    difficulty: row.difficulty === 'easy' || row.difficulty === 'hard' ? row.difficulty : 'normal',
+    difficulty: row.difficulty === 'easy' || row.difficulty === 'normal' || row.difficulty === 'hard' ? row.difficulty : null,
     timerStartedAt: (row.timer_started_at as string | null) ?? null,
     actualMinutes: (row.actual_minutes as number | null) ?? null,
     estimateBeforeTiming: (row.estimate_before_timing as number | null) ?? null,
@@ -3546,7 +3546,7 @@ export function dbInsertTask(task: Task): void {
       task.followUpTaskSourceId ?? null,
       task.pinEachOccurrence ? 1 : 0,
       task.bountyPushes ?? null,
-      task.difficulty ?? 'normal',
+      task.difficulty ?? null,
     ]
   );
 }
@@ -3700,7 +3700,7 @@ export function dbUpdateTask(task: Task): void {
       task.followUpTaskSourceId ?? null,
       task.pinEachOccurrence ? 1 : 0,
       task.bountyPushes ?? null,
-      task.difficulty ?? 'normal',
+      task.difficulty ?? null,
       task.id,
     ]
   );
@@ -3898,6 +3898,15 @@ export function dbBulkSetPriority(ids: string[], priority: number): void {
   db.withTransactionSync(() => {
     for (const id of ids) {
       db.runSync('UPDATE tasks SET priority = ? WHERE id = ?', [priority, id]);
+    }
+  });
+}
+
+export function dbBulkSetDifficulty(ids: string[], difficulty: string | null): void {
+  if (ids.length === 0) return;
+  db.withTransactionSync(() => {
+    for (const id of ids) {
+      db.runSync('UPDATE tasks SET difficulty = ? WHERE id = ?', [difficulty, id]);
     }
   });
 }

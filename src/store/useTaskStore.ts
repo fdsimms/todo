@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { addDays } from 'date-fns/addDays';
-import type { Task, TaskDraft, Priority, TimeOfDay, TitleRule, Person, QuotaPeriod, Polarity, MealPlanEntry, FoodLogEntry } from '../types';
+import type { Task, TaskDraft, Priority, TimeOfDay, TitleRule, Person, QuotaPeriod, Polarity, Difficulty, MealPlanEntry, FoodLogEntry } from '../types';
 import {
   initDatabase,
   dbGetAllTasks,
@@ -13,6 +13,7 @@ import {
   dbBatchUpdateSortOrders,
   dbBulkDeleteTasks,
   dbBulkSetPriority,
+  dbBulkSetDifficulty,
   dbBulkSetDefer,
   dbBulkSetTimeSegments,
   dbBulkSetCategory,
@@ -2156,6 +2157,8 @@ interface TaskStore extends UndoHistoryActions {
   /** A list's "Delete checked": every checked item on it, one Undo step. */
   deleteCheckedListItems: (projectId: string) => void;
   bulkSetPriority: (ids: string[], priority: Priority) => void;
+  /** The bulk bar's Difficulty. Null clears the rating back to unrated. */
+  bulkSetDifficulty: (ids: string[], difficulty: Difficulty | null) => void;
   bulkTogglePin: (ids: string[]) => void;
   bulkDefer: (ids: string[], until: Date) => void;
   bulkSetWhen: (ids: string[], date: Date | null, timeSegments: TimeOfDay[], options?: { restartSchedules?: boolean; scope?: 'occurrence' | 'series' }) => void;
@@ -8927,7 +8930,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           linkUrl: task.linkUrl,
           vacationPause: task.vacationPause,
           excludeFromSuggestions: task.excludeFromSuggestions,
-          difficulty: task.difficulty ?? 'normal',
+          difficulty: task.difficulty ?? null,
           pinEachOccurrence: task.pinEachOccurrence,
           projectId: created.id,
           groupId,
@@ -9434,6 +9437,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (ids.length === 0) return;
     dbBulkSetPriority(ids, priority);
     set(s => ({ tasks: patchTasks(s.tasks, ids, { priority }) }));
+  },
+
+  bulkSetDifficulty(ids, difficulty) {
+    if (ids.length === 0) return;
+    dbBulkSetDifficulty(ids, difficulty);
+    set(s => ({ tasks: patchTasks(s.tasks, ids, { difficulty }) }));
   },
 
   // Mixed selections pin (same rule as pinGroup/pinCategory): a selection is

@@ -148,6 +148,17 @@ const baseTask: Task = {
 };
 
 describe('isFieldMissing', () => {
+  it('asks about a never-rated difficulty, and takes an explicit Normal as an answer', () => {
+    expect(isFieldMissing(baseTask, 'difficulty')).toBe(true);
+    expect(isFieldMissing({ ...baseTask, difficulty: null }, 'difficulty')).toBe(true);
+    expect(isFieldMissing({ ...baseTask, difficulty: 'normal' }, 'difficulty')).toBe(false);
+    expect(isFieldMissing({ ...baseTask, difficulty: 'hard' }, 'difficulty')).toBe(false);
+  });
+
+  it('never asks an avoid-habit for a difficulty, since it earns nothing', () => {
+    expect(isFieldMissing({ ...baseTask, polarity: 'negative' }, 'difficulty')).toBe(false);
+  });
+
   it('treats a null estimate as missing, regardless of effort', () => {
     expect(isFieldMissing(baseTask, 'estimate')).toBe(true);
     expect(isFieldMissing({ ...baseTask, effort: 3, estimatedMinutes: null }, 'estimate')).toBe(true);
@@ -409,7 +420,7 @@ describe('backfillFieldCounts', () => {
       { ...baseTask, id: 'f', estimatedMinutes: 30, priority: 2, category: 'Home', recurrenceType: 'daily' },
       { ...baseTask, id: 'g', estimatedMinutes: 30, priority: 2, category: 'Home', dueDate: new Date(2025, 0, 5).toISOString() },
     ];
-    expect(backfillFieldCounts(tasks)).toEqual({ estimate: 2, priority: 2, category: 2, streak: 1, vacation: 1, reminder: 1, suggestions: 6 });
+    expect(backfillFieldCounts(tasks)).toEqual({ estimate: 2, priority: 2, difficulty: 6, category: 2, streak: 1, vacation: 1, reminder: 1, suggestions: 6 });
   });
 
   it('covers every declared backfillable field', () => {
@@ -423,7 +434,7 @@ describe('backfillFieldCounts', () => {
 
   it('does not count a task dismissed for that field', () => {
     const task = { ...baseTask, backfillDismissedFields: ['estimate'] };
-    expect(backfillFieldCounts([task])).toEqual({ estimate: 0, priority: 1, category: 1, streak: 0, vacation: 0, reminder: 0, suggestions: 1 });
+    expect(backfillFieldCounts([task])).toEqual({ estimate: 0, priority: 1, difficulty: 1, category: 1, streak: 0, vacation: 0, reminder: 0, suggestions: 1 });
   });
 
   it('does not count a recurring task whose category already hides on vacation', () => {
@@ -452,8 +463,14 @@ describe('estimatePatchFor', () => {
 });
 
 describe('backfillFieldsFor', () => {
-  it('offers every field when simplified mode is off', () => {
-    expect(backfillFieldsFor(false)).toEqual(BACKFILL_FIELDS);
+  it('offers every field when simplified mode is off and rewards are on', () => {
+    expect(backfillFieldsFor(false, true)).toEqual(BACKFILL_FIELDS);
+  });
+
+  it('offers difficulty only while rewards are on, since only coins read it', () => {
+    expect(backfillFieldsFor(false).map(f => f.id)).not.toContain('difficulty');
+    expect(backfillFieldsFor(false, true).map(f => f.id)).toContain('difficulty');
+    expect(backfillFieldsFor(true, true).map(f => f.id)).toContain('difficulty');
   });
 
   // The gap this closes: `TaskEditor` and `QuickAddModal` both gate on these

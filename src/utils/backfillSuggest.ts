@@ -30,6 +30,9 @@ import { ESTIMATE_EFFORTS, type BackfillFieldId } from './fieldBackfill';
  *   Today (see `BACKFILL_FIELDS`' own hint for it), which is precisely the
  *   context a per-task suggestion doesn't have; the other four are switches
  *   about how you want the app to behave, and a title says nothing about them.
+ * - **`difficulty`** is how hard a task is for *you* to start, and
+ *   `Task.difficulty` is a rating nothing writes on the person's behalf: a
+ *   model guessing "calling the dentist is hard" would be setting your pay.
  * - **The People pool** is the sharp one. A birthday, a location, a cadence
  *   and a note about somebody are facts about a real person, so a model has
  *   nothing to reason *from* and would be inventing them — and `docs/arch/
