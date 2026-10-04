@@ -21,8 +21,21 @@ import type { PullResult, SyncTransport } from './syncEngine';
 
 export const HTTP_SYNC_SOURCE = 'server';
 
-/** How long a request may take before it counts as a failure. */
+/** How long the server may take to start answering before it counts as a failure. */
 export const SYNC_REQUEST_TIMEOUT_MS = 20_000;
+
+/**
+ * How long reading the answer may take once it has started.
+ *
+ * Separate from the wait above, and longer: a page of payloads can be most of
+ * `DEFAULT_PULL_MAX_CHARS` (16 MB), which on a slow phone connection takes far
+ * longer than a server takes to start replying, and a page that times out is
+ * retried whole, so too short a limit would never get past it. It still has to
+ * exist. The wait above used to end the moment headers arrived, so a body that
+ * never finished left the sync, and everything queued behind it, waiting for
+ * ever.
+ */
+export const SYNC_BODY_TIMEOUT_MS = 120_000;
 
 export interface HttpSyncConfig {
   /** Origin of the payload store, e.g. `https://sync.example.com`. */
@@ -49,11 +62,16 @@ function origin(url: string): string {
   return url.trim().replace(/\/+$/, '');
 }
 
-async function request(config: HttpSyncConfig, path: string, init: RequestInit): Promise<Response> {
+async function request<T>(
+  config: HttpSyncConfig,
+  path: string,
+  init: RequestInit,
+  read: (response: Response) => Promise<T>
+): Promise<T> {
   // AbortSignal.timeout would be tidier and is not in every RN runtime this
   // ships to, so the controller is spelled out.
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), SYNC_REQUEST_TIMEOUT_MS);
+  let timer = setTimeout(() => controller.abort(), SYNC_REQUEST_TIMEOUT_MS);
 
   try {
     const response = await fetch(`${origin(config.url)}${path}`, {
@@ -81,7 +99,11 @@ async function request(config: HttpSyncConfig, path: string, init: RequestInit):
           : `The sync server returned ${response.status}.`
       );
     }
-    return response;
+    // Read inside the same abort, so a body that stalls fails like a server
+    // that never answered instead of hanging the sync.
+    clearTimeout(timer);
+    timer = setTimeout(() => controller.abort(), SYNC_BODY_TIMEOUT_MS);
+    return await read(response);
   } catch (e) {
     if (e instanceof Error && e.name === 'AbortError') {
       throw new Error('The sync server did not respond.');
@@ -107,16 +129,14 @@ export function httpSyncTransport(config: HttpSyncConfig): SyncTransport {
 
     async push(payload: string): Promise<void> {
       if (isDemoModeActive()) return;
-      await request(config, '/sync/push', { method: 'POST', body: JSON.stringify({ payload }) });
+      await request(config, '/sync/push', { method: 'POST', body: JSON.stringify({ payload }) }, async () => {});
     },
 
     async pull(since: string | null): Promise<PullResult> {
       if (isDemoModeActive()) return { payloads: [], cursor: null };
 
       const query = since === null ? '' : `?since=${encodeURIComponent(since)}`;
-      const response = await request(config, `/sync/pull${query}`, { method: 'GET' });
-      const body = (await response.json()) as unknown;
-
+      const body = await request(config, `/sync/pull${query}`, { method: 'GET' }, r => r.json() as Promise<unknown>);
       return readPullBody(body);
     },
   };
