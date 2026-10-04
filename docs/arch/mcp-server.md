@@ -687,8 +687,9 @@ so the finished occurrences behind a repeating task stay where they were.
   Activity screen's revert restores it, since the ledger entry is an ordinary task edit
   (`groupId`, `sortOrder`, `category`).
 - **The stack itself is logged as `subject: 'stack'`**, a record only like a project's.
-- **No rename, delete or reorder.** Those are a tap in the app, and deleting a stack is a
-  cascade decision (`deleteGroup`) the model should not make.
+- **`rename_stack` renames and nothing else.** Deleting is a cascade decision (`deleteGroup`) the
+  model should not make, and changing the category would move every member, so those stay a tap in
+  the app. There is no reorder.
 
 ### Every task it creates has a category
 
@@ -781,6 +782,16 @@ calendar event are device work that catches up on the phone. **Marking a meal co
 exposed**, because the app's `setCooked` also opens pantry items, raises the cook recap and ticks
 the cook task, none of which a Node process can do, and a half-done "cooked" is worse than none.
 A meal already marked cooked is not removable here, since it is history behind the cooking stats.
+
+### People: who someone is, never how the friendship stands
+
+`create_person` and `update_person` write identity and contact details (name, nickname, kind, notes,
+what to ask about, birthday, phone, email, link). `docs/arch/people.md` is why the list stops there:
+**no cadence, no nudge opt-in, no group, no archive, no order.** Declaring a rhythm for someone is the
+user's own small act, and an agent doing it for them is the "make you declare a cadence" failure the
+doc opens with; a new person starts with none, as in the app (`blankPerson`). A birthday is checked
+as a real month and day (29 Feb is allowed) with an optional year, and the year is never turned into
+an age. History is still `add_person_history`.
 
 ### The health logs have their own switch, and iCloud never gets them
 

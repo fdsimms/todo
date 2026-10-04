@@ -129,6 +129,9 @@ only the fallback until the first sync.
 | `reopen_task` | **Write.** Reopens a completed or missed task and takes back what its completion did. Needs `MCP_WRITE_TOKEN`. |
 | `update_meal` | **Write.** Moves a planned meal, renames a free-text one, or sets a recipe's scale. |
 | `remove_meal` | **Write.** Takes a meal off the plan. |
+| `create_person` | **Write.** Adds a person: name, nickname, notes, birthday, contact details. Never a cadence, nudge, group or order. |
+| `update_person` | **Write.** Changes those same fields on a person. |
+| `rename_stack` | **Write.** Renames a stack. Its category and members are untouched. |
 | `defer_task` | **Write.** Moves a task to a date, or clears its date. |
 | `add_grocery_item` | **Write.** Puts something on the home list, re-using the shelf item the user already has where there is one. |
 | `check_off_grocery_item` | **Write.** Checks something off on the home list, or un-checks it. |

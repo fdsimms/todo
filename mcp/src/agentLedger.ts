@@ -176,6 +176,13 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return stack;
     },
 
+    renameStack(id, title) {
+      const before = replica.stacks().find(s => s.id === id);
+      const stack = replica.renameStack(id, title);
+      log({ action: 'edited', subject: 'stack', title: stack.title, taskId: null, note: `Rename the stack ${before ? `"${before.title}" ` : ''}to "${stack.title}"` });
+      return stack;
+    },
+
     // An edit to the task, so the Activity screen can offer the way back: the
     // revert carries groupId, sortOrder and the category the stack imposed.
     setTaskStack(taskId, stackId) {
@@ -259,6 +266,18 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       const entry = replica.removeMeal(id);
       log({ action: 'cleared', subject: 'meal', title: entry.title, taskId: null, note: `Remove "${entry.title}" from ${entry.date}'s ${entry.slot}` });
       return entry;
+    },
+
+    createPerson(fields) {
+      const person = replica.createPerson(fields);
+      log({ action: 'created', subject: 'person', title: person.name, taskId: null, note: `Add ${person.name} to your people` });
+      return person;
+    },
+
+    updatePerson(id, fields) {
+      const person = replica.updatePerson(id, fields);
+      log({ action: 'edited', subject: 'person', title: person.name, taskId: null, note: `Change ${person.name}'s details` });
+      return person;
     },
 
     addGroceryItem(name, opts) {

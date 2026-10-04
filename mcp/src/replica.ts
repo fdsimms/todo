@@ -215,6 +215,19 @@ export interface MoodInput {
   at?: Date;
 }
 
+export interface PersonFields {
+  name?: string;
+  nickname?: string;
+  kind?: 'individual' | 'business';
+  notes?: string;
+  askAbout?: string;
+  /** null clears the birthday. */
+  birthday?: { month: number; day: number; year?: number | null } | null;
+  phoneNumber?: string | null;
+  email?: string | null;
+  linkUrl?: string | null;
+}
+
 export interface FoodPatch {
   label?: string;
   quantity?: string;
@@ -758,6 +771,12 @@ export interface Replica {
    */
   createStack(title: string, category: string | null): TaskGroup;
   /**
+   * Rename a stack. Only the title: changing its category would move every
+   * member, and deleting one is a cascade decision (`deleteGroup`) for the
+   * person, so neither is here.
+   */
+  renameStack(id: string, title: string): TaskGroup;
+  /**
    * File a task in a stack, or take it out with a null `stackId`: the app's
    * `addExistingToGroup` / `removeFromGroup`, one task row at a time.
    *
@@ -813,6 +832,15 @@ export interface Replica {
    * history table, by design (docs/arch/people.md).
    */
   addPersonHistory(personIds: string[], title: string, at: Date): Task;
+  /**
+   * Add someone, or change who they are. Only identity and contact details:
+   * name, nickname, kind, notes, what to ask about, birthday, phone, email and
+   * link. Cadence and nudges are never set here (people.md rule 4: a rhythm is
+   * the person's own declaration), nor are archiving, ordering or groups.
+   * A birthday is validated as a real month and day, with an optional year.
+   */
+  createPerson(fields: PersonFields): Person;
+  updatePerson(id: string, fields: PersonFields): Person;
 
   deviceId(): string;
   /** False for a demo database. A demo database is never synced. */
@@ -974,6 +1002,39 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       symptom: spelled(moodLog.symptomVocabulary(logs), moodLog.symptomKey),
       tag: spelled(moodLog.contextTagVocabulary(logs), moodLog.contextTagKey),
     };
+  }
+
+  /** The Person columns a PersonFields names, validated. A birthday of null clears all three. */
+  function personPatch(f: PersonFields): Partial<Person> {
+    const out: Partial<Person> = {};
+    if (f.name !== undefined) out.name = f.name.trim();
+    if (f.nickname !== undefined) out.nickname = f.nickname.trim();
+    if (f.kind !== undefined) {
+      if (f.kind !== 'individual' && f.kind !== 'business') throw new Error('kind must be individual or business.');
+      out.kind = f.kind;
+    }
+    if (f.notes !== undefined) out.notes = f.notes;
+    if (f.askAbout !== undefined) out.askAbout = f.askAbout;
+    if (f.phoneNumber !== undefined) out.phoneNumber = f.phoneNumber?.trim() || null;
+    if (f.email !== undefined) out.email = f.email?.trim() || null;
+    if (f.linkUrl !== undefined) out.linkUrl = f.linkUrl?.trim() || null;
+    if (f.birthday !== undefined) {
+      if (f.birthday === null) {
+        Object.assign(out, { birthdayMonth: null, birthdayDay: null, birthYear: null });
+      } else {
+        const { month, day, year } = f.birthday;
+        // Leap day is real, so the day is checked against a leap year's month length.
+        const length = new Date(2024, month, 0).getDate();
+        if (!Number.isInteger(month) || month < 1 || month > 12 || !Number.isInteger(day) || day < 1 || day > length) {
+          throw new Error('birthday needs a real month (1 to 12) and day of that month.');
+        }
+        if (year != null && (!Number.isInteger(year) || year < 1900 || year > new Date().getFullYear())) {
+          throw new Error('birthday year must be a year from 1900 to this year, or left out.');
+        }
+        Object.assign(out, { birthdayMonth: month, birthdayDay: day, birthYear: year ?? null });
+      }
+    }
+    return out;
   }
 
   function buildTemplateParts(
@@ -2316,6 +2377,16 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       return group!;
     },
 
+    renameStack(id: string, title: string): TaskGroup {
+      const name = title.trim();
+      if (!name) throw new Error('A stack needs a title.');
+      const group = db.dbGetAllTaskGroups().find(g => g.id === id);
+      if (!group) throw new Error(`No stack with id ${id}.`);
+      useTaskGroupStore.getState().updateGroup(id, { title: name });
+      refresh();
+      return { ...group, title: name };
+    },
+
     setTaskStack(taskId: string, stackId: string | null): Task {
       const task = tasks().find(t => t.id === taskId);
       if (!task) throw new Error(`No task with id ${taskId}.`);
@@ -2438,6 +2509,25 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       if (entry.cookedAt) throw new Error('That meal is marked cooked, so it is history and feeds the cooking stats. Remove it in the app if you are sure.');
       db.dbDeleteMealPlanEntry(id);
       return entry;
+    },
+
+    createPerson(fields: PersonFields): Person {
+      if (!fields.name?.trim()) throw new Error('A person needs a name.');
+      const { blankPerson } = require('../../src/store/usePersonStore') as typeof import('../../src/store/usePersonStore'); // eslint-disable-line @typescript-eslint/no-require-imports
+      const person = { ...blankPerson(fields.name, people().reduce((m, p) => Math.max(m, p.sortOrder), 0) + 1), ...personPatch(fields) };
+      db.dbInsertPerson(person);
+      refresh();
+      return person;
+    },
+
+    updatePerson(id: string, fields: PersonFields): Person {
+      const existing = people().find(p => p.id === id);
+      if (!existing) throw new Error(`No person with id ${id}.`);
+      if (fields.name !== undefined && !fields.name.trim()) throw new Error('A person needs a name.');
+      const next = { ...existing, ...personPatch(fields) };
+      db.dbUpdatePerson(next);
+      refresh();
+      return next;
     },
 
     people,

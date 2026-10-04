@@ -76,10 +76,10 @@ import {
   type TaskFieldsInput,
 } from './taskFields';
 import type { DeliverableKind, MealSlot, TimeOfDay } from '../../src/types';
-import { assignToStack, createStack, listStacks } from './stackTools';
+import { assignToStack, createStack, listStacks, renameStack } from './stackTools';
 import { addProjectSteps, createProject, getProject, updateProject, type CreateProjectInput, type ProjectPlanStepInput } from './projectTools';
 import { DEFAULT_PLAN_DAYS, MAX_PLAN_DAYS, MEAL_SLOTS as KITCHEN_MEAL_SLOTS, getRecipe, listMealPlan, listRecipes, planMeal, removeMeal, updateMeal } from './kitchenTools';
-import { DEFAULT_BIRTHDAY_DAYS, MAX_BIRTHDAY_DAYS, addPersonHistory, getPerson, listPeople, upcomingBirthdays } from './peopleTools';
+import { DEFAULT_BIRTHDAY_DAYS, MAX_BIRTHDAY_DAYS, addPersonHistory, createPerson, updatePerson, getPerson, listPeople, upcomingBirthdays } from './peopleTools';
 import { appLinks, appSiteAssociation, appUrlForOpenPath, openPage } from './appLinks';
 import { ANCHORS, CONTAINERS, QUESTION_KINDS, QUESTION_SOURCES, SCHEDULE_FREQUENCIES } from './templatePlan';
 import { DEFAULT_AGENDA_DAYS, DEFAULT_HISTORY_DAYS, DEFAULT_STALE_DAYS, MAX_AGENDA_DAYS, completionHistory, getAgenda, getOverview, reviewTasks } from './insightTools';
@@ -1505,6 +1505,19 @@ function registerWriteTools(
   );
 
   server.tool(
+    'rename_stack',
+    "Rename a stack (ids from list_stacks). Only the title: its category and members are not touched. Deleting a stack, or changing its category, is left to the person in the app, since each decides what happens to every member.",
+    { id: z.string().min(1), title: z.string().min(1) },
+    async ({ id, title }) => {
+      try {
+        return json(await withWrite(() => renameStack(replica, id, title)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not rename the stack.' });
+      }
+    }
+  );
+
+  server.tool(
     'plan_meal',
     'Put a meal on the plan: a recipe (recipeId) or just a title ("Leftovers", "Takeout"). The app scales a recipe to the household size it is set to.',
     {
@@ -1556,9 +1569,53 @@ function registerWriteTools(
     }
   );
 
+  const personShape = {
+    nickname: z.string().optional(),
+    kind: z.enum(['individual', 'business']).optional(),
+    notes: z.string().optional(),
+    askAbout: z.string().optional().describe('Something to ask them about next time.'),
+    birthday: z.object({
+      month: z.number().int().min(1).max(12),
+      day: z.number().int().min(1).max(31),
+      year: z.number().int().nullable().optional().describe('Leave out when unknown. The app never works an age out from it.'),
+    }).nullable().optional().describe('null clears it.'),
+    phoneNumber: z.string().nullable().optional(),
+    email: z.string().nullable().optional(),
+    linkUrl: z.string().nullable().optional(),
+  };
+  const PEOPLE_RULE = ' Identity and contact details only: nothing here sets how often to reach out, turns on nudges, files someone into a group, archives or orders people, because the app never scores or ranks anyone and those are the person\'s own choices.';
+
+  server.tool(
+    'create_person',
+    'Add someone the user keeps up with.' + PEOPLE_RULE,
+    { name: z.string().min(1), ...personShape },
+    async input => {
+      try {
+        const person = await withWrite(() => createPerson(replica, input));
+        return json(withLink(person, LINKS?.person(person.id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not add that person.' });
+      }
+    }
+  );
+
+  server.tool(
+    'update_person',
+    'Change who someone is: only the fields you name change, and null clears one that can be empty.' + PEOPLE_RULE,
+    { id: z.string().min(1), name: z.string().min(1).optional(), ...personShape },
+    async ({ id, ...fields }) => {
+      try {
+        const person = await withWrite(() => updatePerson(replica, id, fields));
+        return json(withLink(person, LINKS?.person(id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change that person.' });
+      }
+    }
+  );
+
   server.tool(
     'add_person_history',
-    'Record something the user did with one or more people ("Coffee with Sam", "Called Mom"), on a day that has already happened. This is how the app keeps history with someone: it is the only change these tools can make to the people section.',
+    'Record something the user did with one or more people ("Coffee with Sam", "Called Mom"), on a day that has already happened. This is how the app keeps history with someone: create_person and update_person only ever touch who someone is.',
     {
       personIds: z.array(z.string().min(1)).min(1),
       title: z.string().min(1),

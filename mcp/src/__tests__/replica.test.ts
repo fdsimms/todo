@@ -317,6 +317,35 @@ describe('the replica', () => {
     });
   });
 
+  describe('adding and changing a person', () => {
+    it('adds someone with nothing claimed about the friendship, and changes them', () => {
+      const person = replica.createPerson({ name: ' Sam ', birthday: { month: 2, day: 29 }, email: 'sam@example.com', askAbout: 'the move' });
+      expect(person).toMatchObject({ name: 'Sam', birthdayMonth: 2, birthdayDay: 29, birthYear: null, email: 'sam@example.com', askAbout: 'the move' });
+      // The rule the doc exists for: no rhythm is declared on anybody's behalf.
+      expect(person).toMatchObject({ cadenceDays: 0, nudgeOptIn: false, groupId: null });
+      expect(replica.people().some(p => p.id === person.id)).toBe(true);
+
+      const updated = replica.updatePerson(person.id, { nickname: 'Sammy', birthday: null, email: null });
+      expect(updated).toMatchObject({ nickname: 'Sammy', birthdayMonth: null, birthdayDay: null, email: null, name: 'Sam' });
+    });
+
+    it('refuses a birthday that is not a date, a blank name, and an unknown person', () => {
+      expect(() => replica.createPerson({ name: 'A', birthday: { month: 4, day: 31 } })).toThrow(/real month/);
+      expect(() => replica.createPerson({ name: 'A', birthday: { month: 5, day: 5, year: 1800 } })).toThrow(/1900/);
+      expect(() => replica.createPerson({ name: ' ' })).toThrow(/needs a name/);
+      expect(() => replica.updatePerson('nope', { nickname: 'x' })).toThrow(/No person/);
+    });
+  });
+
+  it('renames a stack without touching its category', () => {
+    const stack = replica.createStack('Morning', 'Home');
+    const renamed = replica.renameStack(stack.id, ' Mornings ');
+    expect(renamed).toMatchObject({ id: stack.id, title: 'Mornings', category: 'Home' });
+    expect(replica.stacks().find(s => s.id === stack.id)!.title).toBe('Mornings');
+    expect(() => replica.renameStack(stack.id, ' ')).toThrow(/needs a title/);
+    expect(() => replica.renameStack('nope', 'x')).toThrow(/No stack/);
+  });
+
   it('bounds a log range on the logical day rather than the calendar one', () => {
     // getLogicalToday honours dayResetTime, so a read at 1am under a 2am reset
     // asks about the day the user would name. Only the shape is asserted here;
