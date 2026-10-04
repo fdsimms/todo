@@ -68,11 +68,12 @@ const SEARCH_DEBOUNCE_MS = 180;
  * their identity, so `onPress` takes what it opens rather than the screen
  * closing over it per row.
  */
-const SearchResultItem = React.memo(function SearchResultItem({ result, onPress, onOpenProject, onTicked, categories, styles, colors }: {
+const SearchResultItem = React.memo(function SearchResultItem({ result, onPress, onOpenProject, onOpenCategory, onTicked, categories, styles, colors }: {
   result: CollapsedOccurrence<SearchResult>;
   onPress: (task: Task) => void;
   /** Opens the project a result is filed under, from its chip. */
   onOpenProject: (projectId: string) => void;
+  onOpenCategory: (category: string) => void;
   onTicked: (taskId: string) => void;
   categories: Category[];
   styles: ReturnType<typeof makeStyles>;
@@ -202,8 +203,18 @@ const SearchResultItem = React.memo(function SearchResultItem({ result, onPress,
               project-chip-then-category pairing NewTasksBanner already uses.
               A title can be too generic to place on its own ("Follow up"),
               and a task with no project has only this to say where it lives. */}
-          {category !== '' && (
-            <Text style={styles.metaText} numberOfLines={1}>{category}</Text>
+          {/* Opens the category's page, the way the project chip above opens
+              the project. */}
+          {category !== '' && task.category && (
+            <TouchableOpacity
+              onPress={() => onOpenCategory(task.category!)}
+              hitSlop={6}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="button"
+              accessibilityLabel={`Open category ${task.category}`}
+            >
+              <Text style={styles.metaText} numberOfLines={1}>{category}</Text>
+            </TouchableOpacity>
           )}
           {task.tags.slice(0, 3).map(tag => (
             <View key={tag} style={[styles.tagDot, { backgroundColor: tagColor(tag) }]} />
@@ -652,6 +663,11 @@ export function SearchScreen() {
     setGroupEditorVisible(true);
   }, [rememberQuery]);
 
+  const openCategory = useCallback((category: string) => {
+    rememberQuery();
+    (navigation as any).navigate('CategoryDetail', { category });
+  }, [rememberQuery, navigation]);
+
   const openProject = useCallback((projectId: string) => {
     rememberQuery();
     (navigation as any).navigate('ProjectDetail', { projectId });
@@ -728,6 +744,7 @@ export function SearchScreen() {
         result={item.result}
         onPress={openTask}
         onOpenProject={openProject}
+        onOpenCategory={openCategory}
         onTicked={hold}
         categories={categories}
         styles={styles}

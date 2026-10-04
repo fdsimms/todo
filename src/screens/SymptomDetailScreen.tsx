@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { addDays } from 'date-fns/addDays';
@@ -9,7 +9,7 @@ import { useMoodStore } from '../store/useMoodStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { dayKeyOf, dayKeyToDate, getCurrentDayStart } from '../utils/dateUtils';
 import { severityLabel } from '../utils/moodLog';
@@ -284,21 +284,41 @@ export function SymptomDetailScreen() {
           <>
             <Text style={styles.sectionTitle}>BY WHAT YOU ATE</Text>
             <View style={styles.card}>
-              {foodRows.map((row, i) => (
-                <ContrastBars
-                  key={row.label}
-                  first={i === 0}
-                  wide
-                  label={foodNames.get(row.label) ?? row.label}
-                  withLabel="Had it"
-                  withoutLabel="Didn’t"
-                  withFraction={row.rateWith}
-                  withoutFraction={row.rateWithout}
-                  withText={`${row.withHits} of ${row.withDays} ${row.withDays === 1 ? 'day' : 'days'}`}
-                  withoutText={`${row.withoutHits} of ${row.withoutDays} ${row.withoutDays === 1 ? 'day' : 'days'}`}
-                  accessibilityLabel={`${foodNames.get(row.label) ?? row.label}: logged on ${row.withHits} of the ${row.withDays} days you had it, and ${row.withoutHits} of the ${row.withoutDays} days you didn't`}
-                />
-              ))}
+              {foodRows.map((row, i) => {
+                const name = foodNames.get(row.label) ?? row.label;
+                const spoken = `${name}: logged on ${row.withHits} of the ${row.withDays} days you had it, and ${row.withoutHits} of the ${row.withoutDays} days you didn't`;
+                const bars = (
+                  <ContrastBars
+                    first={i === 0}
+                    wide
+                    label={name}
+                    withLabel="Had it"
+                    withoutLabel="Didn’t"
+                    withFraction={row.rateWith}
+                    withoutFraction={row.rateWithout}
+                    withText={`${row.withHits} of ${row.withDays} ${row.withDays === 1 ? 'day' : 'days'}`}
+                    withoutText={`${row.withoutHits} of ${row.withoutDays} ${row.withoutDays === 1 ? 'day' : 'days'}`}
+                    accessibilityLabel={spoken}
+                  />
+                );
+                // A food that's one of your recipes opens it. The others are a
+                // catalog item or a name typed into the log, neither of which
+                // has a page of its own to open.
+                const recipeId = row.label.startsWith('recipe:') ? row.label.slice('recipe:'.length) : null;
+                return recipeId ? (
+                  <TouchableOpacity
+                    key={row.label}
+                    onPress={() => { haptics.tap(); (navigation as never as { navigate: (name: string, params: object) => void }).navigate('RecipeDetail', { recipeId }); }}
+                    activeOpacity={interaction.activeOpacity}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${spoken}. Opens the recipe.`}
+                  >
+                    {bars}
+                  </TouchableOpacity>
+                ) : (
+                  <React.Fragment key={row.label}>{bars}</React.Fragment>
+                );
+              })}
               <Text style={styles.caption}>
                 How often you logged {stat.name.toLowerCase()} on the days you had that food,
                 against the days you logged food without it. This counts days. It cannot tell a
