@@ -334,7 +334,12 @@ export interface ProjectPatch {
 export interface Replica {
   /** Where the database being served came from. Reported by `describe`. */
   readonly path: string;
-  /** Drop cached reads. The server calls this once per request. */
+  /**
+   * Drop cached reads if the database changed since they were read. The server
+   * calls this once per request. Skipping the re-read when nothing changed is
+   * the point: the full task table is the floor under almost every tool call,
+   * about 14 ms per 1,000 tasks.
+   */
   refresh(): void;
 
   tasks(): Task[];
@@ -867,10 +872,35 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   const people = (): Person[] => (personCache ??= db.dbGetAllPeople());
   const projects = (): Project[] => (projectCache ??= db.dbGetAllProjects());
 
+  // Cheap proof that the file is as it was when the caches were filled.
+  // `total_changes()` counts every row this connection has written (triggers
+  // included, rolled-back writes too, which only makes it invalidate early), and
+  // `data_version` moves when a different connection writes the file. Between
+  // them nothing can change the tables without changing the token. Read through
+  // `expo-sqlite`'s handle, the same one database.ts holds, so it is the shim in
+  // the server and the mock under jest without this file knowing which.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const probe = (require('expo-sqlite') as { openDatabaseSync(name: string): import('./expoSqliteShim').ShimDatabase }).openDatabaseSync('todo.db');
+  const changeToken = (): string => {
+    const changes = probe.getFirstSync<{ c: number }>('SELECT total_changes() AS c')?.c;
+    const version = probe.getFirstSync<{ data_version: number }>('PRAGMA data_version')?.data_version;
+    return `${changes}:${version}`;
+  };
+  let lastChangeToken: string | null = null;
+
+  /** What the server runs before each request: `refresh`, unless nothing changed. */
+  const refreshIfChanged = (): void => {
+    const token = changeToken();
+    if (token === lastChangeToken && taskCache !== null) return;
+    refresh();
+    lastChangeToken = token;
+  };
+
   // A named function rather than only a method on the returned object, because
   // `sync` has to call it after applying a pull and reaching it through `this`
   // would break the moment somebody destructured the replica.
   const refresh = (): void => {
+    lastChangeToken = null;
     taskCache = null;
     personCache = null;
     projectCache = null;
@@ -1162,7 +1192,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   const replica: Replica = {
     path,
 
-    refresh,
+    refresh: refreshIfChanged,
 
     tasks,
     projects,

@@ -20,14 +20,41 @@ function effortUnits(t: Task): number {
   return (estimatedMinutesFor(t) ?? 30) / 30;
 }
 
-// True when a stored dueDate/deferUntil falls on the candidate day. Both go
-// through getTaskDayStart, not getDayStart: a stored date is the calendar day it
-// names, and getDayStart's grace-window rollback would file one stored at
-// midnight (quick add's Today/Tomorrow) under the day before whenever the reset
-// isn't 00:00, shifting every day's load one day early.
-function sameLogicalDay(a: Date, b: Date, dayResetTime: string): boolean {
-  return isSameDay(getTaskDayStart(a, dayResetTime), getTaskDayStart(b, dayResetTime));
+// What the scorer reads off a task, derived once per task object instead of once
+// per candidate day per call. `computeSnoozeSuggestion` is called per task by the
+// deload plan, over the same array with one row swapped each time, so rows that
+// keep their identity keep their entry; tasks are replaced rather than mutated
+// everywhere in the app, which is what makes identity a safe key. Keyed on the
+// reset time as well since every field here depends on it.
+interface TaskDayFacts {
+  reset: string;
+  due: string | null;
+  defer: string | null;
+  completedDow: number | null;
 }
+const dayFactsCache = new WeakMap<Task, TaskDayFacts>();
+
+// The stored due/defer day keys go through getTaskDayStart, not getDayStart: a
+// stored date is the calendar day it names, and getDayStart's grace-window
+// rollback would file one stored at midnight (quick add's Today/Tomorrow) under
+// the day before whenever the reset isn't 00:00, shifting every day's load one
+// day early.
+function dayFactsOf(t: Task, reset: string): TaskDayFacts {
+  const hit = dayFactsCache.get(t);
+  if (hit && hit.reset === reset) return hit;
+  const facts: TaskDayFacts = {
+    reset,
+    due: t.dueDate != null ? dayKeyOf(getTaskDayStart(new Date(t.dueDate), reset)) : null,
+    defer: t.deferUntil != null ? dayKeyOf(getTaskDayStart(new Date(t.deferUntil), reset)) : null,
+    completedDow: t.completedAt != null ? getDayStart(new Date(t.completedAt), reset).getDay() : null,
+  };
+  dayFactsCache.set(t, facts);
+  return facts;
+}
+
+// A recurring task's projected day keys over a window, cached the same way. The
+// signature carries everything the walk read besides the task itself.
+const projectionCache = new WeakMap<Task, { sig: string; days: string[] }>();
 
 export interface SnoozeSuggestion {
   date: Date;
@@ -139,16 +166,42 @@ export function computeSnoozeSuggestion(
   // dropping every one of these tasks from every day's load is a worse guess
   // than a schedule that assumes they land on time.
   const recurringByDay = new Map<string, { count: number; effort: number }>();
+  const projectionSig = `${today.getTime()}|${windowEnd.getTime()}|${dayResetTime}`;
   for (const t of pending) {
     if (t.recurrenceType === 'none') continue;
-    const projectable = t.recurrenceFromCompletion ? { ...t, recurrenceFromCompletion: false } : t;
-    for (const date of projectOccurrences(projectable, today, windowEnd, dayResetTime)) {
-      const dateStr = dayKeyOf(date);
+    let cached = projectionCache.get(t);
+    if (!cached || cached.sig !== projectionSig) {
+      const projectable = t.recurrenceFromCompletion ? { ...t, recurrenceFromCompletion: false } : t;
+      cached = {
+        sig: projectionSig,
+        days: projectOccurrences(projectable, today, windowEnd, dayResetTime).map(date => dayKeyOf(date)),
+      };
+      projectionCache.set(t, cached);
+    }
+    for (const dateStr of cached.days) {
       const existing = recurringByDay.get(dateStr) ?? { count: 0, effort: 0 };
       recurringByDay.set(dateStr, {
         count: existing.count + 1,
         effort: existing.effort + effortUnits(t),
       });
+    }
+  }
+
+  // Explicit load per candidate day, in one pass over the pending tasks rather
+  // than one per day. A task whose due date and defer both land on a day counts
+  // once, as the filter it replaces did.
+  const candidateKeys = new Set(candidates.map(d => dayKeyOf(getTaskDayStart(d, dayResetTime))));
+  const explicitByDay = new Map<string, { count: number; effort: number }>();
+  for (const t of pending) {
+    const f = dayFactsOf(t, dayResetTime);
+    const keys = [f.due, f.defer];
+    for (let i = 0; i < 2; i++) {
+      const k = keys[i];
+      if (k == null || !candidateKeys.has(k) || (i === 1 && k === f.due)) continue;
+      const e = explicitByDay.get(k) ?? { count: 0, effort: 0 };
+      e.count += 1;
+      e.effort += effortUnits(t);
+      explicitByDay.set(k, e);
     }
   }
 
@@ -168,10 +221,8 @@ export function computeSnoozeSuggestion(
     // Signal 1: load — tasks with an explicit dueDate/deferUntil on this day,
     // plus projected occurrences of recurring tasks that will land here.
     const recurringDay = recurringByDay.get(dayKey) ?? { count: 0, effort: 0 };
-    const explicitLoad = pending.filter(t =>
-      (t.dueDate != null && sameLogicalDay(new Date(t.dueDate), d, dayResetTime)) ||
-      (t.deferUntil != null && sameLogicalDay(new Date(t.deferUntil), d, dayResetTime))
-    ).length;
+    const explicit = explicitByDay.get(dayKeyOf(getTaskDayStart(d, dayResetTime))) ?? { count: 0, effort: 0 };
+    const explicitLoad = explicit.count;
     const loadCount = explicitLoad + recurringDay.count;
     const loadPenalty = loadCount * 2.0;
 
@@ -180,7 +231,7 @@ export function computeSnoozeSuggestion(
       ? completed.filter(t => t.tags.some(tag => task.tags.includes(tag)))
       : [];
     const tagOnDow = matchingTagCompleted.filter(
-      t => getDayStart(new Date(t.completedAt!), dayResetTime).getDay() === dow
+      t => dayFactsOf(t, dayResetTime).completedDow === dow
     ).length;
     const tagRate = matchingTagCompleted.length > 0
       ? tagOnDow / matchingTagCompleted.length
@@ -189,7 +240,7 @@ export function computeSnoozeSuggestion(
 
     // Signal 3: global DOW completion rate
     const globalDowCompleted = completed.filter(
-      t => getDayStart(new Date(t.completedAt!), dayResetTime).getDay() === dow
+      t => dayFactsOf(t, dayResetTime).completedDow === dow
     ).length;
     const dowRate = completed.length > 0
       ? globalDowCompleted / completed.length
@@ -200,12 +251,7 @@ export function computeSnoozeSuggestion(
     // calendar meetings, all in the same S-task-unit scale — a day with two
     // tasks and six hours of meetings should score exactly as loaded as a day
     // with twelve tasks, not as a light one because only tasks were counted).
-    const explicitEffort = pending
-      .filter(t =>
-        (t.dueDate != null && sameLogicalDay(new Date(t.dueDate), d, dayResetTime)) ||
-        (t.deferUntil != null && sameLogicalDay(new Date(t.deferUntil), d, dayResetTime))
-      )
-      .reduce((sum, t) => sum + effortUnits(t), 0);
+    const explicitEffort = explicit.effort;
     const dayStart = getDayStart(d, dayResetTime);
     // An all-day event left busy (a conference, "out of office") is the user
     // saying the day is taken, so it weighs as a full day of meetings would,
