@@ -186,6 +186,23 @@ this repo cannot produce on its own.
    it for Claude Code and curl; `/mcp` tries them first, then an OAuth token. `oauth.ts`'s header
    has the reasoning, including why the approval form's hidden fields are checked again.
 
+## Links back into the app
+
+Results about one thing carry `openInApp`, which is `https://<server>/open/<path>?<query>` standing
+for the app's own `dundundun://<path>?<query>` (`mcp/src/appLinks.ts` builds them;
+`appUrlFromUniversalLink` in `src/utils/deepLinks.ts` reads them). Two decisions:
+
+- **https, not the custom scheme.** A chat app makes an https URL tappable and may not do the same
+  for an unknown scheme. The domain is a universal link (`ios.associatedDomains` in `app.json`,
+  the association file served from `APPLE_TEAM_ID`), so on the phone iOS opens the app without the
+  server seeing the tap; elsewhere `/open/` serves a page that hands off to the scheme.
+- **The app accepts named hosts only** (`UNIVERSAL_LINK_HOSTS`, held to `app.json` by a test), not
+  any https URL under `/open/`, since rows route their own links through `openInAppUrl` too. The
+  server allows only paths the app opens a screen for, so the page can't bounce anyone elsewhere.
+
+A task link usually arrives before the sync that brings its task, since tapping it is what brings
+the app forward, so Today waits a few seconds for the task rather than giving up.
+
 ## Phase 1: the payload store
 
 The replica syncs through a second `SyncTransport` (`src/utils/httpSyncTransport.ts`) pointed at a
