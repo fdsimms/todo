@@ -1,4 +1,5 @@
-import { describeRepeat, taskFieldsPatch, type TaskFieldsInput } from '../taskFields';
+import { describeHealthTarget, describeRepeat, describeRotation, describeSupplyFields, LIMITS, taskFieldsPatch, type TaskFieldsInput } from '../taskFields';
+import { HEALTH_TARGET_RANGES } from '../../../src/utils/healthTarget';
 import type { FollowUpTaskDraft, Task } from '../../../src/types';
 
 let n = 0;
@@ -167,4 +168,154 @@ describe('plain fields', () => {
     expect(ok({ timeSegments: ['night'] }).timeSegments).toEqual(['night']);
     expect(errorsOf({ dueDate: 'next tuesday' })).toMatch(/ISO/);
   });
+});
+
+describe('timed', () => {
+  it('sets the countdown and derives the estimate and effort the editor would', () => {
+    expect(ok({ timed: { minutes: 25 } })).toMatchObject({ timedMinutes: 25, estimatedMinutes: 25 });
+  });
+
+  it('leaves an estimate or effort the caller named alone', () => {
+    const p = ok({ timed: { minutes: 25 }, estimatedMinutes: 30, effort: 2 });
+    expect(p.estimatedMinutes).toBe(30);
+    expect(p.effort).toBe(2);
+  });
+
+  it('refuses a length outside 1 to 1440, and a subtask', () => {
+    expect(errorsOf({ timed: { minutes: 0 } })).toMatch(/1 to 1440/);
+    expect(errorsOf({ timed: { minutes: 5000 } })).toMatch(/1 to 1440/);
+    expect(taskFieldsPatch({ timed: { minutes: 10 } }, null, deps, { isSubtask: true }).errors.join(' ')).toMatch(/share of its parent/);
+  });
+
+  it('null removes it', () => {
+    expect(ok({ timed: null }, existing({ timedMinutes: 15 } as Partial<Task>)).timedMinutes).toBeNull();
+  });
+});
+
+describe('rotation', () => {
+  it('makes a weekly target the size of the set', () => {
+    expect(ok({ rotation: { members: ['Spanish', 'French', 'Hindi'] } })).toMatchObject({
+      rotationEnabled: true, targetCount: 3, quotaPeriod: 'week', recurrenceType: 'weekly',
+    });
+  });
+
+  it('keeps a repeat the task already has', () => {
+    expect(ok({ rotation: { members: ['A', 'B'] } }, existing({ recurrenceType: 'daily' })).recurrenceType).toBeUndefined();
+  });
+
+  it('keeps a member\'s id when its title is sent again, so its history stays', () => {
+    const cur = existing({ rotationEnabled: true, rotationItems: [{ id: 'keep', title: 'Spanish', linkUrl: null }, { id: 'drop', title: 'Old', linkUrl: null }] } as Partial<Task>);
+    const items = ok({ rotation: { members: ['spanish', 'Hindi'] } }, cur).rotationItems!;
+    expect(items.map(i => i.id)).toEqual(['keep', expect.stringMatching(/^id/)]);
+    expect(items[0].title).toBe('spanish');
+  });
+
+  it('refuses one member, a blank, a duplicate and a subtask', () => {
+    expect(errorsOf({ rotation: { members: ['A'] } })).toMatch(/at least 2/);
+    expect(errorsOf({ rotation: { members: ['A', ' '] } })).toMatch(/blank/);
+    expect(errorsOf({ rotation: { members: ['A', 'a'] } })).toMatch(/different/);
+    expect(taskFieldsPatch({ rotation: { members: ['A', 'B'] } }, null, deps, { isSubtask: true }).errors.join(' ')).toMatch(/subtask/);
+  });
+
+  it('null removes it and the target that was derived from it', () => {
+    const cur = existing({ rotationEnabled: true, rotationItems: [{ id: 'a', title: 'A' }, { id: 'b', title: 'B' }], targetCount: 2 } as Partial<Task>);
+    expect(ok({ rotation: null }, cur)).toMatchObject({ rotationEnabled: false, rotationItems: [], targetCount: null, quotaPeriod: 'day' });
+  });
+
+  it('describes which members this week has covered', () => {
+    const t = existing({
+      rotationEnabled: true,
+      rotationItems: [{ id: 'a', title: 'A' }, { id: 'b', title: 'B' }],
+      rotationLastDone: { a: '2026-10-01T09:00:00.000Z' },
+    } as Partial<Task>);
+    expect(describeRotation(t, new Set(['a']))).toEqual({
+      members: [{ title: 'A', doneThisWeek: true, lastDone: '2026-10-01T09:00:00.000Z' }, { title: 'B', doneThisWeek: false }],
+    });
+    expect(describeRotation(existing(), new Set())).toBeNull();
+  });
+});
+
+describe('kinds are exclusive', () => {
+  it('refuses a second kind and names the one to clear', () => {
+    expect(errorsOf({ timed: { minutes: 10 } }, existing({ chainEnabled: true, chainItems: [{ id: 'a', title: 'A', estimatedMinutes: null }, { id: 'b', title: 'B', estimatedMinutes: null }] }))).toMatch(/chain and timed.*chain: null/);
+    expect(errorsOf({ timed: { minutes: 10 }, healthTarget: { metric: 'steps' } })).toMatch(/timed and healthTarget/);
+    expect(errorsOf({ rotation: { members: ['A', 'B'] }, target: { count: 3, per: 'day' } })).toMatch(/target and rotation/);
+  });
+
+  it('lets a kind replace another when the old one is cleared in the same call', () => {
+    const cur = existing({ targetCount: 4 });
+    expect(ok({ timed: { minutes: 10 }, target: null }, cur).timedMinutes).toBe(10);
+  });
+
+  it('an existing rotation is not also read as a plain target', () => {
+    const cur = existing({ rotationEnabled: true, rotationItems: [{ id: 'a', title: 'A' }, { id: 'b', title: 'B' }], targetCount: 2 } as Partial<Task>);
+    expect(ok({ rotation: { members: ['A', 'B', 'C'] } }, cur).targetCount).toBe(3);
+  });
+});
+
+describe('health target', () => {
+  it('sets the metric with the editor\'s starting value when no target is given', () => {
+    expect(ok({ healthTarget: { metric: 'steps' } })).toMatchObject({ healthMetric: 'steps', healthTarget: 8000, healthFollowGoal: false });
+  });
+
+  it('keeps follow-goal only for a ring metric', () => {
+    expect(ok({ healthTarget: { metric: 'standHours', followGoal: true } }).healthFollowGoal).toBe(true);
+    expect(errorsOf({ healthTarget: { metric: 'steps', followGoal: true } })).toMatch(/followGoal only applies/);
+  });
+
+  it('refuses a target outside the metric\'s own range', () => {
+    expect(errorsOf({ healthTarget: { metric: 'sleepHours', target: 20 } })).toMatch(/4 to 12/);
+    expect(errorsOf({ healthTarget: { metric: 'steps', target: 100 } })).toMatch(/500 to 50000/);
+  });
+
+  it('null removes it', () => {
+    expect(ok({ healthTarget: null })).toMatchObject({ healthMetric: null, healthTarget: null, healthFollowGoal: false });
+  });
+
+  it('describes a configured target, and nothing otherwise', () => {
+    expect(describeHealthTarget(existing({ healthMetric: 'steps', healthTarget: 9000, healthFollowGoal: false } as Partial<Task>))).toEqual({ metric: 'steps', target: 9000 });
+    expect(describeHealthTarget(existing({ healthMetric: 'steps', healthTarget: 0 } as Partial<Task>))).toBeNull();
+    expect(describeHealthTarget(existing())).toBeNull();
+  });
+
+  it('every metric default is inside its own range', () => {
+    for (const [metric, r] of Object.entries(HEALTH_TARGET_RANGES)) {
+      expect(ok({ healthTarget: { metric: metric as keyof typeof HEALTH_TARGET_RANGES } }).healthTarget).toBe(r.default);
+    }
+  });
+});
+
+describe('supply', () => {
+  const repeating = existing({ recurrenceType: 'daily' });
+
+  it('sets the stock on a repeating task', () => {
+    expect(ok({ supply: { count: 12, unit: 'filters', reorderAt: 2, leadDays: 3, refillCount: 6 } }, repeating)).toMatchObject({
+      supplyCount: 12, supplyUnit: 'filters', supplyReorderAt: 2, supplyLeadDays: 3, supplyRefillCount: 6,
+    });
+  });
+
+  it('accepts a repeat given in the same call', () => {
+    expect(ok({ repeat: { every: 'week' }, supply: { count: 3 } }).supplyCount).toBe(3);
+  });
+
+  it('needs a repeat, and refuses a subtask', () => {
+    expect(errorsOf({ supply: { count: 3 } })).toMatch(/needs a repeat/);
+    expect(taskFieldsPatch({ supply: { count: 3 } }, repeating, deps, { isSubtask: true }).errors.join(' ')).toMatch(/subtask/);
+  });
+
+  it('allows 0 as a real count but keeps the reorder point at 1 or more', () => {
+    expect(ok({ supply: { count: 0 } }, repeating).supplyCount).toBe(0);
+    expect(errorsOf({ supply: { count: 3, reorderAt: 0 } }, repeating)).toMatch(/1 to 999/);
+    expect(errorsOf({ supply: { count: 1000 } }, repeating)).toMatch(/0 to 999/);
+  });
+
+  it('null clears the whole stock', () => {
+    expect(ok({ supply: null }, repeating)).toMatchObject({ supplyCount: null, supplyUnit: null, supplyReorderAt: 1, supplyDeclinedAtCount: null });
+  });
+
+  it('describes a stock, and nothing for a task that has none', () => {
+    expect(describeSupplyFields(existing({ supplyCount: 0, supplyReorderAt: 1, supplyUnit: 'filters' } as Partial<Task>))).toEqual({ count: 0, unit: 'filters', reorderAt: 1 });
+    expect(describeSupplyFields(existing({ supplyCount: null } as Partial<Task>))).toBeNull();
+  });
+
 });

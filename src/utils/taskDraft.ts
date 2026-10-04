@@ -192,6 +192,7 @@ export function newTaskFromDraft(
       timedMinutes: draft.timedMinutes ?? null,
       healthMetric: draft.healthMetric ?? null,
       healthTarget: draft.healthTarget ?? null,
+      rotationEnabled: draft.rotationEnabled ?? false,
     }) === 'task'
       ? (draft.polarity ?? 'positive')
       : 'positive';

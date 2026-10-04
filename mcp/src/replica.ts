@@ -59,6 +59,7 @@ import type {
   Task,
   TaskDraft,
 } from '../../src/types';
+import { activeRotationLog } from '../../src/utils/rotation';
 import type { FoodLogTotals } from '../../src/utils/foodLog';
 import type { LookAhead } from '../../src/utils/lookAhead';
 import type { AgentNote } from '../../src/utils/agentNotes';
@@ -372,6 +373,8 @@ export interface Replica {
   groceryListEntries(): GroceryListEntry[];
 
   isVisible(task: Task): boolean;
+  /** Ids of a rotation's members already logged in the period it is in now. */
+  rotationDoneIds(task: Task): string[];
   isUnscheduled(task: Task): boolean;
   isInbox(task: Task): boolean;
   isBlocked(task: Task): boolean;
@@ -1169,6 +1172,8 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     groceryListEntries: () => db.dbGetAllGroceryListEntries(),
 
     isVisible: (task: Task) => visibility.isTaskVisible(task),
+    rotationDoneIds: (task: Task) =>
+      activeRotationLog(task, dates.getCurrentDayStart(), useSettingsStore.getState().weekStartsOn).map(e => e.itemId),
     isUnscheduled: (task: Task) => visibility.isUnscheduledTask(task),
     isInbox: (task: Task) => visibility.isInboxTask(task),
     isBlocked: (task: Task) => visibility.isTaskBlocked(task),

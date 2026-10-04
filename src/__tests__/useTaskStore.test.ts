@@ -18016,6 +18016,16 @@ describe('a draft carrying both an avoid-goal and a kind', () => {
     }).polarity).toBe('positive');
   });
 
+  it('drops it for a rotation too, even from a draft that carries no targetCount', () => {
+    // taskKindOf answers 'rotation' only when it is handed rotationEnabled, and
+    // a draft that sets the set without the derived count (the MCP's, before
+    // updateTask derives it) read as a plain task here and kept the polarity.
+    expect(useTaskStore.getState().addTask({
+      title: 'Podcasts', polarity: 'negative', rotationEnabled: true,
+      rotationItems: [{ id: 'a', title: 'Spanish' }, { id: 'b', title: 'French' }] as never,
+    }).polarity).toBe('positive');
+  });
+
   it('keeps it on a plain task, which is the whole point of the field', () => {
     const task = useTaskStore.getState().addTask({ title: "Don't smoke", polarity: 'negative' });
     expect(task.polarity).toBe('negative');

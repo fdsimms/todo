@@ -17,6 +17,7 @@
  */
 import { openShimDatabase, type ShimDatabase } from '../expoSqliteShim';
 import { openReplica } from '../replica';
+import { createTask as createTaskTool, getTask as getTaskTool, updateTask as updateTaskTool } from '../tools';
 
 let mockRaw: ShimDatabase;
 
@@ -618,6 +619,35 @@ describe('the replica', () => {
     });
     const result = replica.completeTask(task.id, {});
     expect(result.nextTask!.supplyCount).toBe(2);
+  });
+
+  it('writes and reads back a rotation, a countdown, a health target and a supply through the tools', () => {
+    const rot = createTaskTool(replica, { title: 'Podcasts', category: 'Home', rotation: { members: ['Spanish', 'French', 'Hindi'] } });
+    expect(rot.rotation!.members.map(m => m.title)).toEqual(['Spanish', 'French', 'Hindi']);
+    expect(rot.target).toBeUndefined();
+    expect(rot.repeat).toEqual({ every: 'week' });
+    expect(replica.taskById(rot.task.id)).toMatchObject({ rotationEnabled: true, targetCount: 3, quotaPeriod: 'week', polarity: 'positive' });
+
+    // Logging a pick moves this week's cover, and a re-send keeps the member's id.
+    const before = replica.taskById(rot.task.id)!;
+    replica.updateTask(rot.task.id, { rotationLog: [{ itemId: before.rotationItems[0].id, at: new Date().toISOString() }], rotationPeriodStart: new Date().toISOString() });
+    const edited = updateTaskTool(replica, rot.task.id, { rotation: { members: ['Spanish', 'Hindi', 'German'] } });
+    expect(edited.rotation!.members.map(m => m.title)).toEqual(['Spanish', 'Hindi', 'German']);
+    expect(replica.taskById(rot.task.id)!.rotationItems[0].id).toBe(before.rotationItems[0].id);
+    expect(replica.taskById(rot.task.id)!.targetCount).toBe(3);
+
+    const timed = createTaskTool(replica, { title: 'Stretch', category: 'Home', timed: { minutes: 15 } });
+    expect(timed.timed).toEqual({ minutes: 15 });
+    expect(replica.taskById(timed.task.id)!.estimatedMinutes).toBe(15);
+
+    const health = createTaskTool(replica, { title: 'Walk', category: 'Home', healthTarget: { metric: 'steps' } });
+    expect(health.healthTarget).toEqual({ metric: 'steps', target: 8000 });
+
+    const supply = createTaskTool(replica, { title: 'Filter', category: 'Home', repeat: { every: 'month' }, dueDate: '2026-03-01T12:00:00.000Z', supply: { count: 3, unit: 'filters' } });
+    expect(supply.supply).toMatchObject({ count: 3, unit: 'filters', reorderAt: 1 });
+
+    expect(() => createTaskTool(replica, { title: 'Both', category: 'Home', timed: { minutes: 10 }, healthTarget: { metric: 'steps' } })).toThrow(/timed and healthTarget/);
+    expect(getTaskTool(replica, supply.task.id)!.gatesApps).toBeUndefined();
   });
 
   it('records a dose for a task that names a medication', () => {

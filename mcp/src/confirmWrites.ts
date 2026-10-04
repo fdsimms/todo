@@ -82,6 +82,10 @@ const FIELD_NAMES: Record<string, string> = {
   archived: 'archived', recurrenceType: 'repeat', recurrenceInterval: 'repeat interval', recurrenceDays: 'repeat days',
   windowStart: 'shown from', windowEnd: 'shown until', targetCount: 'daily target', deliverableKind: 'question on completion',
   polarity: 'habit type', blockedById: 'waits on', blockedByIds: 'waits on', chainItems: 'steps',
+  timedMinutes: 'countdown', rotationEnabled: 'rotation', rotationItems: 'rotation members',
+  healthMetric: 'health target', healthTarget: 'health goal', healthFollowGoal: 'follows Fitness goal',
+  supplyCount: 'supply left', supplyUnit: 'supply unit', supplyRefillCount: 'refill amount',
+  supplyReorderAt: 'reorder at', supplyLeadDays: 'delivery days',
   deliverableValue: 'answer', deliverableWhy: 'reason for the answer', deliverableRevisitIf: 'revisit if',
 };
 
