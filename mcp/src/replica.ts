@@ -430,6 +430,8 @@ export interface Replica {
   logicalDayKeyOf(iso: string): string;
   /** Completed by a person, as opposed to swept as missed. Every statistic counts only these. */
   isRealCompletion(task: Task): boolean;
+  /** The app's own line on a live bounty (what it is worth, what the next push costs), or null when there is none. */
+  describeBounty(task: Task): string | null;
   onTimeSummary(tasks: readonly Task[]): OnTimeSummary;
   mostMissed(tasks: readonly Task[]): MostMissedGroup[];
   /**
@@ -1243,6 +1245,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     logicalDayKeyOf: (iso: string) =>
       dates.getLogicalDayKey(new Date(iso), useSettingsStore.getState().dayResetTime),
     isRealCompletion: (task: Task) => missed.isRealCompletion(task),
+    describeBounty: (task: Task) => rewards.describeBounty(task),
     onTimeSummary: (list: readonly Task[]) => stats.onTimeSummary(list),
     mostMissed: (list: readonly Task[]) => missed.mostMissed(list),
 

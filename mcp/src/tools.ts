@@ -173,6 +173,12 @@ export interface GetTaskResult {
   supply?: { count: number; unit?: string; refillCount?: number; reorderAt?: number; leadDays?: number };
   /** The named things a daily or weekly target is counting. */
   rotation?: { members: string[] };
+  /** Failing this task blocks the apps the person picked in Settings. Read-only here: only the person sets or changes it. */
+  penalty?: { blocksAppsMinutes: number; mustBeDoneBy?: string; chargedAt?: string; creditedAt?: string };
+  /** Slips logged against a "don't do this" habit on `day`. */
+  slips?: { count: number; day: string };
+  /** The app's own sentence on a live coin bounty: what it is worth and what moving the task again costs. */
+  bounty?: { summary: string; pushes: number };
   /** When the app put a date on this task unasked (a quiet project's drip). */
   autoScheduledAt?: string;
   /**
@@ -266,6 +272,18 @@ function taskExtras(replica: Replica, task: Task): Partial<GetTaskResult> {
   if (task.rotationEnabled && (task.rotationItems ?? []).length > 0) {
     out.rotation = { members: task.rotationItems.map(m => m.title) };
   }
+
+  if (task.penaltyMinutes != null) {
+    out.penalty = {
+      blocksAppsMinutes: task.penaltyMinutes,
+      ...(task.penaltyCutoffTime ? { mustBeDoneBy: task.penaltyCutoffTime } : {}),
+      ...(task.penaltyFiredAt ? { chargedAt: task.penaltyFiredAt } : {}),
+      ...(task.penaltyCreditedAt ? { creditedAt: task.penaltyCreditedAt } : {}),
+    };
+  }
+  if ((task.slipCount ?? 0) > 0 && task.slipDate) out.slips = { count: task.slipCount, day: task.slipDate };
+  const bounty = replica.describeBounty(task);
+  if (bounty) out.bounty = { summary: bounty, pushes: task.bountyPushes ?? 0 };
 
   if (task.autoScheduledAt) out.autoScheduledAt = task.autoScheduledAt;
 

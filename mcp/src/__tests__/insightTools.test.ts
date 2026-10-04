@@ -50,6 +50,7 @@ function stub(tasks: Task[], over: Partial<Replica> = {}): Replica {
     },
     logicalDayKeyOf: (iso: string) => iso.slice(0, 10),
     isRealCompletion: (t: Task) => t.completed && !t.missedAt,
+    describeBounty: () => null,
     onTimeSummary: (list: readonly Task[]) => {
       const judged = list.filter(t => t.deadline);
       const onTime = judged.filter(t => t.completedAt! <= t.deadline!).length;

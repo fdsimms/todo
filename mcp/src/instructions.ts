@@ -29,6 +29,7 @@ How tasks behave:
 - A task can ask a question when it is completed (asksOnCompletion). Ask the person for the answer before calling complete_task. Pass deliverableValue: null only if they choose to skip it.
 - A "don't do this" habit cannot be completed, and a blocked task is waiting on another task or a person (get_task names them).
 - A task with missed: true is an occurrence marked missed. It also reads completed, but it is not a completion. A task with generatedBy was written by the app, not by the person.
+- A task with a penalty in get_task blocks the person's apps if it is failed, and one with a bounty earns extra coins but loses value each time it is moved. Weigh that before deferring or marking such a task missed, and tell the person. You cannot set or change either.
 - Before completing a task, check get_task's onCompletion: completing it also writes a medication, Health or meal entry, so say so rather than completing it casually.
 - Chains move through steps one at a time; a dated series is one task on several dates; a stack groups tasks on Today; a project can be a list with no finish line.
 

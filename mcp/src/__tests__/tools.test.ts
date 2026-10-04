@@ -132,6 +132,7 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     lookAhead: () => { throw new Error('not stubbed'); },
     logicalDayKeyOf: (iso: string) => iso.slice(0, 10),
     isRealCompletion: (t: Task) => t.completed && !t.missedAt,
+    describeBounty: () => null,
     onTimeSummary: () => ({ onTime: 0, total: 0, rate: 0 }),
     mostMissed: () => [],
     searchSettings: () => [],
@@ -279,9 +280,10 @@ describe('getTask', () => {
       timedMinutes: 15, healthMetric: 'steps', healthTarget: 8000, actualMinutes: 12,
       postponeCount: 3, driftingSince: '2026-09-01', postponeMuted: true,
       supplyCount: 3, supplyUnit: 'filters', supplyReorderAt: 1, rotationEnabled: true,
-      rotationItems: [{ id: 'a', title: 'Portuguese' }], autoScheduledAt: '2026-10-01T09:00:00.000Z',
+      rotationItems: [{ id: 'a', title: 'Portuguese' }],
+      penaltyMinutes: 30, penaltyCutoffTime: '21:00', penaltyFiredAt: '2026-10-03T21:00:00.000Z', slipCount: 2, slipDate: '2026-10-04', bountyPushes: 1, autoScheduledAt: '2026-10-01T09:00:00.000Z',
     });
-    const result = getTask(withTasks([rich], { people: () => [{ id: 'per1', name: 'Gideon' } as never] }), 'rich-1')!;
+    const result = getTask(withTasks([rich], { people: () => [{ id: 'per1', name: 'Gideon' } as never], describeBounty: () => '+5 extra when done.' }), 'rich-1')!;
 
     expect(result.waitingOnPerson).toEqual({ personId: 'per1', name: 'Gideon', followUpOn: '2026-10-09' });
     expect(result.contact).toEqual({ link: 'https://example.com', phone: '555-0100', email: 'a@b.co', location: 'Clinic' });
@@ -297,6 +299,9 @@ describe('getTask', () => {
     expect(result.postponed).toEqual({ count: 3, since: '2026-09-01', muted: true });
     expect(result.supply).toEqual({ count: 3, unit: 'filters', reorderAt: 1 });
     expect(result.rotation).toEqual({ members: ['Portuguese'] });
+    expect(result.penalty).toEqual({ blocksAppsMinutes: 30, mustBeDoneBy: '21:00', chargedAt: '2026-10-03T21:00:00.000Z' });
+    expect(result.slips).toEqual({ count: 2, day: '2026-10-04' });
+    expect(result.bounty).toEqual({ summary: '+5 extra when done.', pushes: 1 });
     expect(result.autoScheduledAt).toBe('2026-10-01T09:00:00.000Z');
   });
 });

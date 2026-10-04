@@ -32,13 +32,6 @@ const ROOT = join(__dirname, '..', '..', '..');
 const TASK_SURFACE = ['serialize.ts', 'tools.ts', 'taskFields.ts'];
 
 const NOT_EXPOSED: Record<string, string[]> = {
-  // Never by design. A model must not set or tune these, and reading them adds
-  // little: they cost the person real things (blocked apps, a bounty).
-  'a cost the person sets for themselves': [
-    'penaltyMinutes', 'penaltyCutoffTime', 'penaltyFiredAt', 'penaltyCreditedAt', 'slipCount', 'slipDate',
-    'bountyPushes',
-  ],
-
   // Opt-in, device-level writes (a calendar event, an alarm). Which calendar and
   // whether an event exists is the phone's business, and the ids only name
   // things on that phone.
