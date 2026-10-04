@@ -34,10 +34,13 @@ struct WidgetTask: Codable, Identifiable {
     let targetCount: Int?
     let progressCount: Int
     let targetUnit: String?
+    /// The calendar event a rule wrote this task for, when there is one. Only
+    /// the title crosses; the row dims it after the task's own title.
+    let eventTitle: String?
 
     enum CodingKeys: String, CodingKey {
         case id, title, priority, pinned, dueDate, category, streakCount, recurrenceType
-        case targetCount, progressCount, targetUnit
+        case targetCount, progressCount, targetUnit, eventTitle
     }
 
     init(from decoder: Decoder) throws {
@@ -53,6 +56,7 @@ struct WidgetTask: Codable, Identifiable {
         targetCount = try c.decodeIfPresent(Int.self, forKey: .targetCount)
         progressCount = try c.decodeIfPresent(Int.self, forKey: .progressCount) ?? 0
         targetUnit = try c.decodeIfPresent(String.self, forKey: .targetUnit)
+        eventTitle = try c.decodeIfPresent(String.self, forKey: .eventTitle)
     }
 
     /// Whether this row is a daily target with something worth drawing.

@@ -985,6 +985,19 @@ events at once, where every other rule generator asks one question a day.**
   this file: a reconcile that re-dates a row from anything but its source overwrites the field the
   user is most likely to have changed by hand, and deferring one of these is exactly what somebody
   would do.
+- **The row says which event asked for it, derived at render and never stored.** The task's title is
+  the rule's own words, so "Prep for interview" otherwise lands on Today with nothing naming the
+  calendar event behind it. `eventTaskContextLabel` reads the event off `useCalendarStore` by the
+  occurrence key in the source id and `TaskItem` shows it as a filled chip ("Interview with Acme ·
+  Tomorrow 3:00 PM"). Not stored because the title is whatever the calendar says now, and a copy
+  would need chasing. The cost: once the event leaves the window the chip falls back to the day the
+  key still names ("Event on Oct 6"), with no time, since an all-day event can't be told apart then.
+  `useEventTaskContext` is the one gated subscription; the task row, Search, quick search and the
+  Logbook all call it inside the row (a parent subscription would defeat their memo). The Logbook
+  and quick search keep it on their single meta line, truncating first. The widget has no subtitle
+  line, so `WidgetTask.eventTitle` carries the title alone (never a day word, which would be wrong
+  after midnight) and Swift dims it after the task's title on the same line. It is null when the
+  calendar wasn't read, as in a background refresh.
 - **It ships off**, like every generator that adds a surface rather than replacing one, and it is
   gated on `calendarReadEnabled` as well as its own switch — a switched-off calendar read must not
   leave one part of the feature still writing rows.

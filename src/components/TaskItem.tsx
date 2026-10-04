@@ -86,6 +86,7 @@ import { useMealPlanStore } from '../store/useMealPlanStore';
 import { mealPlanNudgeDayKey } from '../utils/mealPlanNudge';
 import { activeMealSlotStepId, mealSlotOf, parseMealSlotSource } from '../utils/mealSlotTasks';
 import { calendarReviewEventsFor } from '../utils/calendarReviewTasks';
+import { useEventTaskContext } from '../hooks/useEventTaskContext';
 import { isNoticeTask } from '../utils/generatedTasks';
 import { useCalendarStore } from '../store/useCalendarStore';
 import type { BusyEvent } from '../utils/calendarBusy';
@@ -1086,6 +1087,10 @@ export const TaskItem = React.memo(function TaskItem({
       : EMPTY_BUSY_EVENTS),
     [task, calendarReviewRawEvents]
   );
+
+  // The calendar event a rule-written task ("Prep for interview") came from,
+  // so the row says what it is about. Null for every other row.
+  const eventTaskContext = useEventTaskContext(task);
 
   // A notice rather than a piece of work: something the app is telling you,
   // with a tick box on it. Which kinds are one, and why the rest aren't, is
@@ -2574,7 +2579,7 @@ export const TaskItem = React.memo(function TaskItem({
             )}
           </View>
         )}
-        {(isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || windowActive || windowExpired || showStreakChip || isDrifting || bountyCoins > 0 || waitingCount > 0 || !!blockerTitle || !!waitingPersonName || autoScheduled || scheduledIso !== null || reminderTimeLabel !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.notes.length > 0) && (
+        {(isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || eventTaskContext !== null || windowActive || windowExpired || showStreakChip || isDrifting || bountyCoins > 0 || waitingCount > 0 || !!blockerTitle || !!waitingPersonName || autoScheduled || scheduledIso !== null || reminderTimeLabel !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.notes.length > 0) && (
           <View style={styles.metaRow}>
             {/* Leads the meta line: on the screens that ask for it, "when" is
                 what the row is being read for, and every other chip here
@@ -2938,6 +2943,19 @@ export const TaskItem = React.memo(function TaskItem({
                 that tertiary weight here reads as one more attribute rather
                 than the app's own offer. Plain and literal per CLAUDE.md:
                 a count, not a figure of speech. */}
+            {/* Which calendar event a rule wrote this row for. The title is the
+                rule's own words ("Prep for interview"), so without this the row
+                appears with no hint of what asked for it. Filled like the two
+                chips above, for their finding that a plain chip reads as one
+                more attribute rather than the app's own offer. */}
+            {eventTaskContext !== null && (
+              <View style={[styles.metaChip, styles.quietChip]}>
+                <Ionicons name="calendar-outline" size={iconSize.xs} color={colors.accent} />
+                <Text style={styles.quietLabel} numberOfLines={1}>
+                  {eventTaskContext}
+                </Text>
+              </View>
+            )}
             {missingCount !== null && (
               <View style={[styles.metaChip, styles.quietChip]}>
                 <Ionicons name="cart-outline" size={iconSize.xs} color={colors.accent} />

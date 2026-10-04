@@ -46,6 +46,7 @@ import { InlineAction } from '../components/InlineAction';
 import { HighlightedText } from '../components/HighlightedText';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { useStableCallback } from '../hooks/useStableCallback';
+import { useEventTaskContext } from '../hooks/useEventTaskContext';
 import { format } from 'date-fns/format';
 import { useFilterField } from '../hooks/useFilterField';
 import { useElsewhereSearch } from '../hooks/useElsewhereSearch';
@@ -116,9 +117,12 @@ const SearchResultItem = React.memo(function SearchResultItem({ result, onPress,
   // What this row stands for besides itself, when it's one date of a repeat
   // (see collapseOccurrences). Null on an ordinary one-off, which is most rows.
   const countLabel = formatOccurrenceCount(occurrenceCount);
+  // Which calendar event a rule wrote this row for; null on any other task.
+  const eventContext = useEventTaskContext(task);
 
   const a11yLabel = [
     displayTitle,
+    eventContext,
     projectName ? `in ${projectName}` : null,
     task.category ? `in ${task.category}` : null,
     task.archived ? 'archived' : null,
@@ -251,6 +255,9 @@ const SearchResultItem = React.memo(function SearchResultItem({ result, onPress,
           )}
           {quotaNext && (
             <Text style={styles.metaText}>Next {quotaNext}</Text>
+          )}
+          {eventContext && (
+            <Text style={styles.metaText} numberOfLines={1}>{eventContext}</Text>
           )}
           {/* Last of the chips and first of the wrapping ones: it's the least
               specific fact on the row, but it's the one that explains why the

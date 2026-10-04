@@ -23,6 +23,7 @@ import { recipeIndex, slotLabel, titleForEntry, uncookedEntries } from './mealPl
 import { compareKitchenEntries, useUpEntries, type KitchenEntry } from './kitchenInventory';
 import { agendaCounts, type AgendaCounts } from './dailyAgenda';
 import { occupiesTime, type BusyEvent } from './calendarBusy';
+import { eventTaskEventOf } from './eventTasks';
 
 /**
  * Everything the iOS widgets read, and the one place its shape is decided.
@@ -73,6 +74,11 @@ export interface WidgetTask {
   targetCount: number | null;
   progressCount: number;
   targetUnit: string | null;
+  /**
+   * The title of the calendar event a rule wrote this task for, or null on
+   * every other row. The widget dims it after the task's own title.
+   */
+  eventTitle: string | null;
 }
 
 export interface WidgetGroceryList {
@@ -173,7 +179,7 @@ export function isWidgetWorthy(task: Task): boolean {
   return task.generatedKind !== 'mealPlanNudge';
 }
 
-export function toWidgetTask(task: Task): WidgetTask {
+export function toWidgetTask(task: Task, events: readonly BusyEvent[] | null = null): WidgetTask {
   return {
     id: task.id,
     title: displayTitleFor(task),
@@ -186,6 +192,10 @@ export function toWidgetTask(task: Task): WidgetTask {
     targetCount: task.targetCount,
     progressCount: task.progressCount,
     targetUnit: task.targetUnit,
+    // Only the title crosses, never "Tomorrow 3 PM": a day word baked at write
+    // time is wrong after midnight. Null when the event has left the window or
+    // the calendar wasn't read (a background refresh).
+    eventTitle: events ? eventTaskEventOf(task, events)?.title || null : null,
   };
 }
 
@@ -313,11 +323,11 @@ export function buildWidgetSnapshot(input: SnapshotInput): WidgetSnapshot {
     visibleTasks: input.visibleTasks
       .filter(isWidgetWorthy)
       .slice(0, MAX_VISIBLE_TASKS)
-      .map(toWidgetTask),
+      .map(t => toWidgetTask(t, input.events)),
     pinnedTasks: input.pinnedTasks
       .filter(isWidgetWorthy)
       .slice(0, MAX_PINNED_TASKS)
-      .map(toWidgetTask),
+      .map(t => toWidgetTask(t, input.events)),
     categories: [...input.categories],
     // Withheld and held-back rows are filtered out first, exactly as the
     // daily notification does before calling this (`notifications.ts`). The
