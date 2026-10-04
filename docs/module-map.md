@@ -72,7 +72,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/contactsImport.ts` — MIN_CONTACT_QUERY_LENGTH, MAX_CONTACT_RESULTS, ContactCandidate, ContactPersonDraft, contactBirthday, normalizePhone, alreadyAdded, canSearchContacts, rankContacts, browsableContacts, +3 more
 - `src/utils/cookMode.ts` — CookStep, stepsFromNotes, cookSteps, clampStepIndex, describeStepPosition
 - `src/utils/cookQuestions.ts` — COOK_QUESTION_MAX_LENGTH, COOK_ANSWER_MAX_LINES, COOK_ANSWER_MAX_CHARS, CookContextIngredient, CookQuestionContext, cookQuestionContext, suggestedCookQuestions, clampCookAnswer
-- `src/utils/cookbookIndex.ts` — MAX_INDEX_INGREDIENTS, cleanIndexTitle, cleanIndexPage, cleanIndexIngredients, IndexEntryFields, cleanIndexEntryFields, indexEntryInBook, IndexDraft, mergeIndexDrafts, mergedIndexLine, +12 more
+- `src/utils/cookbookIndex.ts` — MAX_INDEX_INGREDIENTS, cleanIndexTitle, cleanIndexPage, cleanIndexIngredients, IndexEntryFields, cleanIndexEntryFields, indexEntryInBook, splitIngredientText, mentionsIngredient, FinderRecipeHit, +8 more
 - `src/utils/cookbookRecipes.ts` — CookbookPageKey, cookbookPageKey, compareCookbookRecipes, recipesInCookbook, CookbookLinkEffect, cookbookLinkEffect, pageAfterCookbookLink, CookbookLinkCandidate, COOKBOOK_LINK_LIMIT, cookbookLinkCandidates, +1 more
 - `src/utils/cookingStats.ts` — CookingWindow, MealCookCounts, CookedRecipe, EMPTY_MEAL_COOK_COUNTS, cookingWindow, lastDaysOf, mealCookCounts, leftoversFinishedIn, leftoverHistoryIn, mostCookedRecipes, +1 more
 - `src/utils/createdTaskPlacement.ts` — CreatedTaskDestination, describeCreatedTaskPlacement, describeMovedTaskPlacement
@@ -265,7 +265,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/recipeNutritionEstimate.ts` — RecipeEstimateConfidence, RecipeNutritionEstimate, RawRecipeNutritionEstimate, readRecipeNutritionEstimate, describeRecipeNutritionEstimate
 - `src/utils/recipeOverlap.ts` — SharedIngredient, OverlapSeed, OverlapMatch, overlapSeedFromPlanned, overlapSeedFromRecipes, rankOverlapRecipes, describeOverlap
 - `src/utils/recipePageOffline.ts` — OfflineRecipeItem, servingsFromYield, recipeFromPageOffline
-- `src/utils/recipePhoto.ts` — MAX_PHOTO_EDGE, DENSE_PAGE_PHOTO_EDGE, MAX_RECIPE_PHOTOS, RecipePhotoSource, RecipePhoto, RecipePhotoResult, photoTargetSize, CameraPermission, PhotoLibraryPermission, getCameraPermission, +14 more
+- `src/utils/recipePhoto.ts` — MAX_PHOTO_EDGE, MAX_RECIPE_PHOTOS, RecipePhotoSource, RecipePhoto, RecipePhotoResult, photoTargetSize, CameraPermission, PhotoLibraryPermission, getCameraPermission, requestCameraPermission, +13 more
 - `src/utils/recipePlanned.ts` — PLANNED_MEAL_LIMIT, upcomingRecipeMeals, plannedMealLabel
 - `src/utils/recipeProvenance.ts` — ExtractedSource, FetchedSourcePage, SourceFields, sourceFieldsFor, CookbookEditIntent, cookbookEditIntent, SourcePlan, sourcePlanFor
 - `src/utils/recipeScale.ts` — ScaledQuantity, scaleQuantity, RECIPE_SCALE_FACTORS, isUnscaled, normalizeScale, formatScale, scaleServings, factorForServings, MAX_HOUSEHOLD_SERVINGS, householdScale, +3 more
@@ -415,7 +415,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/usePersonStore.ts` — blankPerson, displayNameOf, PersonPatch, usePersonStore
 - `src/store/useProjectCategoryStore.ts` — useProjectCategoryStore
 - `src/store/useProjectStore.ts` — projectProgress, projectDecisions, AnswerTally, projectAnswerTallies, answerTallyParts, describeAnswerTally, projectCompletedRows, isProjectPastWindow, CreateProjectOptions, useProjectStore
-- `src/store/useRecipeStore.ts` — IndexImportUndo, CookStats, useRecipeStore
+- `src/store/useRecipeStore.ts` — CookStats, useRecipeStore
 - `src/store/useRewardStore.ts` — RewardDetails, useRewardStore
 - `src/store/useSavedMealsStore.ts` — useSavedMealsStore
 - `src/store/useSavedViewStore.ts` — useSavedViewStore
@@ -488,7 +488,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 
 ## `src/services`
 
-- `src/services/aiSuggestions.ts` — describeAIError, TemplateItemSuggestion, suggestTemplateItems, ProjectTaskSuggestion, suggestProjectTasks, SubtaskSuggestion, suggestSubtasks, suggestBackfillValues, MAX_RECIPE_CHARS, suggestGroceryAisles, +28 more
+- `src/services/aiSuggestions.ts` — describeAIError, TemplateItemSuggestion, suggestTemplateItems, ProjectTaskSuggestion, suggestProjectTasks, SubtaskSuggestion, suggestSubtasks, suggestBackfillValues, MAX_RECIPE_CHARS, suggestGroceryAisles, +24 more
 - `src/services/foodSearch.ts` — FoodSearchHit, searchFoods, fetchFoodPortions, describeFoodSearchError, foodSearchErrorSettingsEntryId
 - `src/services/geocode.ts` — GeocodedPlace, geocodePlace
 - `src/services/onDeviceModel.ts` — isOnDeviceReady, onDeviceAvailability, describeOnDeviceAvailability, isOnDeviceErrorMessage, describeOnDeviceError, runOnDevice

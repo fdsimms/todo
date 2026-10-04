@@ -22,7 +22,6 @@ import {
   nutritionLabelPhotoAiAvailable,
   estimateRecipeNutrition,
   recipeNutritionEstimateAvailable,
-  parseIndexPage,
 } from '../services/aiSuggestions';
 import { MAX_MEAL_IDEAS } from '../utils/mealIdeas';
 import { LEFTOVER_KEEP_DAYS_MAX, RECIPE_INGREDIENT_QUANTITY_MAX_LENGTH, type Task } from '../types';
@@ -2446,29 +2445,5 @@ describe('readLabelPhotoWithAi', () => {
   it('maps a network failure through describeAIError like the rest of the file', async () => {
     mockFetchOnce({}, 500);
     await expect(readLabelPhotoWithAi(PHOTO)).rejects.toThrow('API error 500');
-  });
-});
-
-describe('parseIndexPage', () => {
-  it('keeps each dish with its page and headings, and drops what is malformed', () => {
-    const page = parseIndexPage({
-      entries: [
-        { title: '  Braised lentils   with shallots ', page: '142', ingredients: ['Lentils', ' ', 'Shallots'] },
-        { title: '', page: '1', ingredients: [] },
-        { title: 'Fritters', page: '', ingredients: 'lentils' },
-        'nonsense',
-      ],
-      lastHeading: ' Lentils ',
-    });
-
-    expect(page.entries).toEqual([
-      { title: 'Braised lentils with shallots', page: '142', ingredients: ['Lentils', 'Shallots'] },
-      { title: 'Fritters', page: null, ingredients: [] },
-    ]);
-    expect(page.lastHeading).toBe('Lentils');
-  });
-
-  it('reads an empty heading as none', () => {
-    expect(parseIndexPage({ entries: [], lastHeading: '' })).toEqual({ entries: [], lastHeading: null });
   });
 });
