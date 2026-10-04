@@ -1,18 +1,7 @@
 /**
- * The auth seam.
- *
- * A remote MCP server is an OAuth 2.1 resource server: it advertises
- * `/.well-known/oauth-protected-resource`, every request arrives with a bearer
- * token, and it validates that token against an authorization server before it
- * answers anything. **None of that exists yet** (see docs/arch/mcp-server.md,
- * "the part that is blocked on infrastructure"). What is here is a shared
- * secret, which is enough to develop against on a laptop and is not enough to
- * put on the internet.
- *
- * It is written as one function returning one verdict so that the real
- * implementation replaces exactly this, and so the thing it has to replace is
- * small enough to read. When that happens, `AuthResult` grows the token's
- * subject and scopes and the callers keep working.
+ * The shared-secret half of the auth seam: the static tokens Claude Code, curl
+ * and the user's own devices send as a header. The Claude chat can't send a
+ * header and signs in with OAuth instead (oauth.ts); /mcp accepts either.
  *
  * The default is refusal. An unset token never matches anything, so an unset
  * `MCP_AUTH_TOKEN` denies every read-token request rather than allowing every

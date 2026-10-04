@@ -17,6 +17,10 @@ primary_region = "ewr"
   # The replica syncs with the store in the same process, so it goes over
   # loopback rather than out and back through the public URL.
   SYNC_URL = "http://127.0.0.1:8080"
+  # The address the Claude chat connector reaches this server at, which OAuth
+  # puts in its metadata and binds tokens to. Change it with the app name.
+  PUBLIC_URL = "https://dundundun-mcp.fly.dev"
+  OAUTH_STORE_PATH = "/data/oauth.db"
 
 # Both SQLite files live here. One volume means one machine, which is the
 # only shape that works: SQLite can't be shared between machines.

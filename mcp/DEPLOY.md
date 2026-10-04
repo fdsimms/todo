@@ -5,9 +5,8 @@ can read your tasks through it. What it costs you in privacy is in
 [`docs/arch/mcp-server.md`](../docs/arch/mcp-server.md); read "The privacy consequence, stated
 plainly" before doing this.
 
-**What this gets you:** Claude Code (terminal or desktop) talking to your data. **Not yet:**
-Claude on your phone or claude.ai, which needs OAuth (phase 3 in the arch doc). The token below
-is a shared secret, which those apps can't send.
+**What this gets you:** the normal Claude chat (claude.ai, the desktop app and the phone app)
+talking to your data through a custom connector (step 7), and Claude Code too (step 6).
 
 **Cost:** Fly has no free allowance for new accounts. A 512 MB machine plus a 1 GB volume is
 about $3.85 a month. Check fly.io/docs/about/pricing for current numbers.
@@ -97,7 +96,30 @@ claude mcp add --scope user --transport http todo https://dundundun-mcp.fly.dev/
 Use the write token instead if you want Claude to create, complete and reschedule tasks and edit
 the grocery list. Then ask Claude Code something like "what's on my list today?"
 
-## 7. Claude Code on your phone
+## 7. Connect the Claude chat
+
+The chat signs in with OAuth: you add the server once, and a page on the server asks for a
+password before it lets Claude in. Make the password, save it in your password manager, then set
+it on the server:
+
+```bash
+openssl rand -base64 24
+fly secrets set --config mcp/fly.toml MCP_OAUTH_PASSWORD="<the password>"
+```
+
+It has to be at least 16 characters or the connector stays off (the logs say so).
+
+Then on claude.ai: **Settings → Connectors → Add custom connector**. Name it whatever you like
+and give it `https://dundundun-mcp.fly.dev/mcp`. Leave the advanced settings empty. Press
+**Connect**, enter the password on the page that opens, and tick **Also let it make changes** if
+you want Claude to add and complete tasks and edit the grocery list. A connector added on
+claude.ai shows up in the phone and desktop apps too.
+
+To cut a connection off, remove the connector in Claude, or change `MCP_OAUTH_PASSWORD` and
+delete `/data/oauth.db` on the machine (`fly ssh console --config mcp/fly.toml`) to sign every
+connection out.
+
+## 8. Claude Code on your phone (optional)
 
 A Claude Code session started from the Claude iOS app or claude.ai/code runs in the cloud against
 this repo, so your laptop's config doesn't reach it. The repo's `.mcp.json` names the server for

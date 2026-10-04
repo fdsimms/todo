@@ -175,13 +175,16 @@ this repo cannot produce on its own.
 1. **A public HTTPS endpoint.** Streamable HTTP, a stable URL, TLS, and a host that stays up. The
    server is an ordinary Node process, so this is a deployment question rather than a design one,
    but it is the question.
-2. **OAuth.** A remote MCP server is an OAuth 2.1 resource server: it advertises
-   `/.well-known/oauth-protected-resource`, and every request arrives with a bearer token it has to
-   validate against an authorization server. `mcp/src/auth.ts` is the seam. It currently checks
-   shared secrets (`MCP_AUTH_TOKEN` for reads, `MCP_WRITE_TOKEN` for writes, which also reads); an
-   unset token matches nothing, so with neither set every request is refused. That is enough to
-   develop against and is **not** enough to expose. It is written as a single `authorize()` so that
-   the real implementation replaces one function.
+2. **OAuth (done).** The Claude chat's custom connectors sign in only through OAuth; there is no
+   field for a static header. The server is its own authorization server: the SDK's
+   `mcpAuthRouter` supplies discovery, dynamic client registration, PKCE and the token endpoint,
+   and `mcp/src/oauth.ts` supplies the rest. One password (`MCP_OAUTH_PASSWORD`, a Fly secret, 16+
+   characters) is the whole identity check, because there is one user and Fly already knows who
+   can set secrets. Only hashes of codes and tokens are stored, refresh tokens rotate, and the
+   write scope is a checkbox on the approval page, offered only when `MCP_WRITE_TOKEN` is set.
+   The shared secrets in `mcp/src/auth.ts` (`MCP_AUTH_TOKEN`, `MCP_WRITE_TOKEN`) still work beside
+   it for Claude Code and curl; `/mcp` tries them first, then an OAuth token. `oauth.ts`'s header
+   has the reasoning, including why the approval form's hidden fields are checked again.
 
 ## Phase 1: the payload store
 
@@ -538,5 +541,6 @@ Two obligations apply whatever the label says:
   `create_task`, which moved `newTaskFromDraft` out of the store, then `complete_task` and
   `defer_task`, which moved the completion core out after it, and then the grocery list, which
   moved `addByName`'s core out.
-- **Phase 3. Hosting.** Real OAuth and a deployment. The Settings surface that admits to the copy,
+- **Phase 3 (done). Hosting.** OAuth for the chat connector and a Fly deployment
+  (`mcp/DEPLOY.md`). The Settings surface that admits to the copy,
   the health logs' own switch and the privacy-label draft are done (see above).
