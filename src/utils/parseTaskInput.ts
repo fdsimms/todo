@@ -1100,14 +1100,18 @@ export interface ParsedChainInput {
  * without any "->" present. Only duration and link have a natural per-step
  * home, which is why they're the two pulled out here.
  *
- * A step that trims to nothing (a doubled arrow, a trailing "->", or a step
+ * A step that trims to nothing in the middle (a doubled arrow, or a step
  * that was *only* a duration/link phrase with no name of its own) refuses
  * the whole match rather than silently dropping a step — same reasoning
- * `parseSupplyInput` gives for refusing outright instead of guessing.
+ * `parseSupplyInput` gives for refusing outright instead of guessing. A
+ * trailing "->" is the exception: it is the next step not typed yet, so it is
+ * ignored rather than refusing, or the suggestion would vanish the moment
+ * the arrow went in and come back when the first letter followed it.
  */
 export function parseChainInput(input: string): ParsedChainInput | null {
   if (!input.includes('->')) return null;
   const rawParts = input.split(/\s*->\s*/);
+  if (!rawParts[rawParts.length - 1].trim()) rawParts.pop();
   const steps: ParsedChainStep[] = [];
   for (const raw of rawParts) {
     const trimmed = raw.trim();

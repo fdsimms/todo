@@ -471,6 +471,9 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   const [targetUnit, setTargetUnit] = useState('');
   const [quotaPeriod, setQuotaPeriod] = useState<QuotaPeriod>('day');
   const [chainItems, setChainItems] = useState<ChainItem[]>([]);
+  // The step being renamed in the chain list, and what's typed so far.
+  const [editingStepId, setEditingStepId] = useState<string | null>(null);
+  const [editingStepTitle, setEditingStepTitle] = useState('');
   const [newStepTitle, setNewStepTitle] = useState('');
   const [customLinkText, setCustomLinkText] = useState('');
   const [phoneText, setPhoneText] = useState('');
@@ -578,6 +581,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     setTitleWindowEnd(null);
     setPolarity('positive');
     setChainItems([]);
+    setEditingStepId(null);
     setNewStepTitle('');
     setCustomLinkText('');
     setPhoneText('');
@@ -1025,7 +1029,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
             matchedText: title.slice(projectParsed.matchStart, projectParsed.matchEnd),
           }
       : chainParsed
-        ? { matchStart: chainParsed.matchStart, matchedText: chainParsed.matchedText }
+        ? { matchStart: chainParsed.matchStart, matchedText: chainParsed.matchedText, wholeLine: true }
       : linkParsed
         ? { matchStart: linkParsed.matchStart, matchedText: linkParsed.url }
         : phoneParsed
@@ -1101,7 +1105,11 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   // the input overlay below can render both kinds of token with one pass.
   const highlightRanges = useMemo(() => {
     const ranges: [number, number][] = personMentions.map((m): [number, number] => [m.start, m.end]);
-    if (activeMatch) ranges.push([activeMatch.matchStart, matchEnd]);
+    // A match that is the whole line (a chain) gets no highlight: the overlay
+    // is a wrapping Text drawn over a single-line input that scrolls sideways,
+    // so on a long line the two disagree about where the text is and the caret
+    // ends up off the visible text. The tooltip still points at it.
+    if (activeMatch && !activeMatch.wholeLine) ranges.push([activeMatch.matchStart, matchEnd]);
     return mergeRanges(ranges);
   }, [personMentions, activeMatch, matchEnd]);
   const hasOverlay = highlightRanges.length > 0;
@@ -1493,6 +1501,24 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     haptics.tap();
     animateLayout();
     setChainItems(prev => prev.filter(s => s.id !== id));
+    if (editingStepId === id) setEditingStepId(null);
+  };
+
+  // Tap a step to rename it in place. Only the title changes: the step's
+  // estimate and link, which a typed "->" chain can carry, stay as they were.
+  const startEditStep = (item: ChainItem) => {
+    setEditingStepId(item.id);
+    setEditingStepTitle(item.title);
+  };
+
+  // Runs on submit and on blur. A cleared field keeps the old title rather than
+  // making an empty step; the ✕ is how a step is removed.
+  const commitStepEdit = () => {
+    const id = editingStepId;
+    if (id === null) return;
+    const t = editingStepTitle.trim();
+    if (t) setChainItems(prev => prev.map(s => (s.id === id ? { ...s, title: t } : s)));
+    setEditingStepId(null);
   };
 
   // A step typed but not yet submitted still counts — the main add button is
@@ -2632,7 +2658,29 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                       <View style={styles.stepDot}>
                         <Text maxFontSizeMultiplier={textScale.badge} style={styles.stepDotText}>{i + 1}</Text>
                       </View>
-                      <Text style={styles.stepTitle} numberOfLines={1}>{item.title}</Text>
+                      {editingStepId === item.id ? (
+                        <TextField
+                          style={[styles.stepTitle, styles.stepEditInput]}
+                          value={editingStepTitle}
+                          onChangeText={setEditingStepTitle}
+                          onSubmitEditing={commitStepEdit}
+                          onEndEditing={commitStepEdit}
+                          maxLength={TITLE_MAX_LENGTH}
+                          autoFocus
+                          returnKeyType="done"
+                          accessibilityLabel={`Edit step ${item.title}`}
+                          keyboardAppearance={isDark ? 'dark' : 'light'}
+                        />
+                      ) : (
+                        <TouchableOpacity
+                          style={styles.stepTitleTouch}
+                          onPress={() => startEditStep(item)}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Edit step ${item.title}`}
+                        >
+                          <Text style={styles.stepTitle} numberOfLines={1}>{item.title}</Text>
+                        </TouchableOpacity>
+                      )}
                       <TouchableOpacity
                         onPress={() => removeStep(item.id)}
                         hitSlop={8}
@@ -3537,6 +3585,14 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number, textScaleFactor = 1)
     flex: 1,
     color: colors.text,
     fontSize: font.sm,
+  },
+  stepTitleTouch: {
+    flex: 1,
+  },
+  stepEditInput: {
+    borderBottomWidth: 1,
+    borderBottomColor: colors.accent,
+    paddingVertical: 0,
   },
   stepInputRow: {
     flexDirection: 'row',
