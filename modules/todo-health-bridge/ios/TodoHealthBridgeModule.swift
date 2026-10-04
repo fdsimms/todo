@@ -332,6 +332,109 @@ public class TodoHealthBridgeModule: Module {
   /// deliberately out: time in bed is not sleep, and counting it would inflate
   /// the number for exactly the people who track most carefully.
   private static let asleepValues: Set<Int> = [1, 3, 4, 5]
+
+  /// One unbroken stretch of sleep as one source recorded it.
+  ///
+  /// `minutes` is the time actually asleep inside it, which is less than
+  /// `end - start` whenever the stretch holds a short wake: a gap under an
+  /// hour is still the same night, but it isn't sleep.
+  ///
+  /// The stage minutes are what an Apple Watch adds (iOS 16+): `core`, `deep`
+  /// and `rem` sum to `minutes` when every sample was staged, and are all zero
+  /// for a source that only records "asleep" (an iPhone's sleep schedule).
+  /// `awake` is time marked awake *between* two asleep samples of the
+  /// episode; awake before falling asleep or after the final wake isn't part
+  /// of the night and isn't counted.
+  private struct SleepEpisode {
+    let source: String
+    let start: Date
+    let end: Date
+    let minutes: Double
+    let core: Double
+    let deep: Double
+    let rem: Double
+    let awake: Double
+  }
+
+  /// `HKCategoryValueSleepAnalysis` raw values, for `asleepValues`' reason.
+  private static let awakeValue = 2
+  private static let coreValue = 3
+  private static let deepValue = 4
+  private static let remValue = 5
+
+  /// A sleep query's samples grouped into episodes, per source.
+  ///
+  /// A night is not one sample: a Watch records a fresh `HKCategorySample`
+  /// every time the sleep stage changes, often every few minutes, so the
+  /// samples are grouped first — a gap longer than an hour between two of them
+  /// means the night actually ended (and a nap started later). Per source,
+  /// because a phone recording "in bed" and a watch recording stages overlap
+  /// for the same night, and merging the two would put people to sleep twice.
+  /// Both sleep reads (`readDailyHealth`'s total and `readSleepSeries`' times)
+  /// go through this, so the two can't disagree about what a night is.
+  private static func sleepEpisodes(_ samples: [HKSample]?) -> [SleepEpisode] {
+    let episodeGapSeconds: TimeInterval = 60 * 60
+    var bySource: [String: [HKCategorySample]] = [:]
+    for sample in (samples as? [HKCategorySample]) ?? [] {
+      guard Self.asleepValues.contains(sample.value) || sample.value == Self.awakeValue,
+            sample.endDate.timeIntervalSince(sample.startDate) > 0 else { continue }
+      let key = sample.sourceRevision.source.bundleIdentifier
+      bySource[key, default: []].append(sample)
+    }
+    var episodes: [SleepEpisode] = []
+    for (source, sourceSamples) in bySource {
+      var episodeStart: Date?
+      var episodeEnd: Date?
+      var episodeMinutes: Double = 0
+      var core: Double = 0
+      var deep: Double = 0
+      var rem: Double = 0
+      var awake: Double = 0
+      // Awake time seen since the last asleep sample. It only joins the
+      // episode once another asleep sample does, which is what makes it time
+      // awake *during* the night rather than before or after it.
+      var pendingAwake: Double = 0
+      func flush() {
+        if let start = episodeStart, let end = episodeEnd, episodeMinutes > 0 {
+          episodes.append(SleepEpisode(
+            source: source, start: start, end: end, minutes: episodeMinutes,
+            core: core, deep: deep, rem: rem, awake: awake
+          ))
+        }
+        episodeStart = nil
+        episodeEnd = nil
+        episodeMinutes = 0
+        core = 0
+        deep = 0
+        rem = 0
+        awake = 0
+        pendingAwake = 0
+      }
+      for sample in sourceSamples.sorted(by: { $0.startDate < $1.startDate }) {
+        let sampleMinutes = sample.endDate.timeIntervalSince(sample.startDate) / 60
+        if sample.value == Self.awakeValue {
+          // Awake never starts or extends an episode, so the gap rule below
+          // still measures from the last time somebody was asleep.
+          if episodeStart != nil { pendingAwake += sampleMinutes }
+          continue
+        }
+        if let prevEnd = episodeEnd,
+           sample.startDate.timeIntervalSince(prevEnd) > episodeGapSeconds {
+          flush()
+        }
+        if episodeStart == nil { episodeStart = sample.startDate }
+        awake += pendingAwake
+        pendingAwake = 0
+        episodeMinutes += sampleMinutes
+        if sample.value == Self.coreValue { core += sampleMinutes }
+        if sample.value == Self.deepValue { deep += sampleMinutes }
+        if sample.value == Self.remValue { rem += sampleMinutes }
+        episodeEnd = max(episodeEnd ?? sample.endDate, sample.endDate)
+      }
+      flush()
+    }
+    return episodes
+  }
   #endif
 
   public func definition() -> ModuleDefinition {
@@ -1006,50 +1109,16 @@ public class TodoHealthBridgeModule: Module {
             // recording stages overlap for the same night, so adding them puts
             // people to sleep twice.
             //
-            // A night is not one sample: a Watch records a fresh
-            // `HKCategorySample` every time the sleep stage changes, often
-            // every few minutes, and every one of those crosses whatever
-            // instant `dayResetTime` falls on the moment someone is still
-            // asleep at that hour — which is most nights, not an edge case.
-            // Bucketing each sample by its own `endDate` split a single
-            // night's total across the two adjacent days instead of filing
-            // the whole night under the day it ends in, undercounting both.
-            // So samples are grouped into episodes per source first — a gap
-            // longer than an hour between two samples means the night
-            // actually ended (and a nap started later) — and each episode's
-            // full duration is filed under the day its *last* sample ends in.
-            let episodeGapSeconds: TimeInterval = 60 * 60
-            var bySource: [String: [HKCategorySample]] = [:]
-            for sample in (samples as? [HKCategorySample]) ?? [] {
-              guard Self.asleepValues.contains(sample.value),
-                    sample.endDate.timeIntervalSince(sample.startDate) > 0 else { continue }
-              let key = sample.sourceRevision.source.bundleIdentifier
-              bySource[key, default: []].append(sample)
-            }
+            // Each episode's full duration is filed under the day its *last*
+            // sample ends in (`sleepEpisodes` says what an episode is). Every
+            // sample of a Watch night crosses whatever instant `dayResetTime`
+            // falls on the moment someone is still asleep at that hour, so
+            // bucketing samples one by one split a single night's total across
+            // the two adjacent days, undercounting both.
             var perDayBySource: [String: [Double]] = [:]
-            for (source, sourceSamples) in bySource {
-              var perDay = [Double](repeating: 0, count: days)
-              var episodeMinutes: Double = 0
-              var episodeEnd: Date?
-              func flushEpisode() {
-                defer {
-                  episodeMinutes = 0
-                  episodeEnd = nil
-                }
-                guard episodeMinutes > 0, let end = episodeEnd,
-                      let i = starts.lastIndex(where: { $0 <= end }), i < days else { return }
-                perDay[i] += episodeMinutes
-              }
-              for sample in sourceSamples.sorted(by: { $0.startDate < $1.startDate }) {
-                if let prevEnd = episodeEnd,
-                   sample.startDate.timeIntervalSince(prevEnd) > episodeGapSeconds {
-                  flushEpisode()
-                }
-                episodeMinutes += sample.endDate.timeIntervalSince(sample.startDate) / 60
-                episodeEnd = max(episodeEnd ?? sample.endDate, sample.endDate)
-              }
-              flushEpisode()
-              perDayBySource[source] = perDay
+            for episode in Self.sleepEpisodes(samples) {
+              guard let i = starts.lastIndex(where: { $0 <= episode.end }), i < days else { continue }
+              perDayBySource[episode.source, default: [Double](repeating: 0, count: days)][i] += episode.minutes
             }
             for (_, perDay) in perDayBySource {
               for i in 0..<days where perDay[i] > 0 {
@@ -1149,6 +1218,79 @@ public class TodoHealthBridgeModule: Module {
           let entries: [String] = (0..<days).map { i in
             let part = grams[i].map { "\(Int($0.rounded()))" } ?? "null"
             return "{\"start\":\"\(Self.formatISO(starts[i]))\",\"grams\":\(part)}"
+          }
+          promise.resolve("[" + entries.joined(separator: ",") + "]")
+        }
+        self.store.execute(query)
+        started = true
+      }
+      if !started { promise.resolve("[]") }
+      #else
+      promise.resolve("[]")
+      #endif
+    }
+
+    /// Every stretch of sleep that ended inside the window, as JSON:
+    /// `[{"start":"…","end":"…","minutes":437,"core":250,"deep":62,"rem":98,
+    /// "awake":14,"source":0}, …]`, sorted by
+    /// start. `start`/`end` are the first asleep sample's start and the last
+    /// one's end, `minutes` the time asleep between them, and `source` an
+    /// index standing in for the recording app (stable within one answer and
+    /// meaningless across two).
+    ///
+    /// **Its own function rather than two more columns on `readDailyHealth`**,
+    /// for `readWeightSeries`' first reason: that call runs on every foreground
+    /// for numbers the Sleep screen alone wants. And it hands back episodes
+    /// rather than one fell-asleep/woke-up pair per day, so which episode is a
+    /// day's main sleep, which source wins, and which day an episode belongs to
+    /// are decided in `src/utils/sleepLog.ts`, where they can be tested — this
+    /// side can't be compiled from where the app's logic is written.
+    ///
+    /// The source is an index rather than the bundle identifier so nothing
+    /// typed by another app's developer is spliced into hand-built JSON.
+    AsyncFunction("readSleepSeries") { (anchorISO: String, days: Int, promise: Promise) in
+      #if canImport(HealthKit)
+      let calendar = Calendar.current
+      guard HKHealthStore.isHealthDataAvailable(),
+            days > 0, days <= 400,
+            let anchor = Self.parseISO(anchorISO),
+            let end = calendar.date(byAdding: .day, value: days, to: anchor),
+            let type = HKCategoryType.categoryType(forIdentifier: .sleepAnalysis) else {
+        promise.resolve("[]")
+        return
+      }
+
+      var started = false
+      TodoHealthExceptionCatcher.runCatchingExceptions {
+        // A day of padding before `anchor` for `readDailyHealth`'s reason: a
+        // night ending just after the window opens began before it.
+        let queryStart = calendar.date(byAdding: .day, value: -1, to: anchor) ?? anchor
+        let query = HKSampleQuery(
+          sampleType: type,
+          predicate: HKQuery.predicateForSamples(withStart: queryStart, end: end, options: []),
+          limit: HKObjectQueryNoLimit,
+          sortDescriptors: [NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)]
+        ) { _, samples, _ in
+          var sourceIndex: [String: Int] = [:]
+          let episodes = Self.sleepEpisodes(samples)
+            .filter { $0.end >= anchor }
+            .sorted(by: { $0.start < $1.start })
+          let entries: [String] = episodes.map { episode in
+            let index: Int
+            if let known = sourceIndex[episode.source] {
+              index = known
+            } else {
+              index = sourceIndex.count
+              sourceIndex[episode.source] = index
+            }
+            return "{\"start\":\"\(Self.formatISO(episode.start))\","
+              + "\"end\":\"\(Self.formatISO(episode.end))\","
+              + "\"minutes\":\(Int(episode.minutes.rounded())),"
+              + "\"core\":\(Int(episode.core.rounded())),"
+              + "\"deep\":\(Int(episode.deep.rounded())),"
+              + "\"rem\":\(Int(episode.rem.rounded())),"
+              + "\"awake\":\(Int(episode.awake.rounded())),"
+              + "\"source\":\(index)}"
           }
           promise.resolve("[" + entries.joined(separator: ",") + "]")
         }

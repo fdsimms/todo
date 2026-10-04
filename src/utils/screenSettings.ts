@@ -30,6 +30,7 @@ export const SCREEN_SETTINGS: Readonly<Record<string, readonly string[]>> = {
   FoodLog: ['nutritionTargets', 'mealLogPrompt', 'healthWrite'],
   Mood: ['gen:moodLog', 'gen:moodNudge'],
   Weight: ['weightGoal', 'weightUnit', 'healthRead'],
+  Sleep: ['sleepGoal', 'healthRead'],
   Logbook: ['retention', 'completionCalendar'],
   Stats: ['weekStartsOn'],
   UnattendedLog: ['backgroundRefreshEnabled', 'retention'],

@@ -31,7 +31,21 @@ jest.mock('../store/useTaskStore', () => ({
   useTaskStore: { getState: () => ({ syncWaterQuotaTasks: jest.fn() }) },
 }));
 
-let bridge: { readDailyHealth: jest.Mock; readWeightSeries: jest.Mock; readActivitySummary: jest.Mock };
+let bridge: {
+  readDailyHealth: jest.Mock;
+  readWeightSeries: jest.Mock;
+  readActivitySummary: jest.Mock;
+  readSleepSeries: jest.Mock;
+};
+
+const SLEEP_JSON = JSON.stringify([
+  {
+    start: new Date(2026, 0, 1, 23, 0).toISOString(),
+    end: new Date(2026, 0, 2, 7, 0).toISOString(),
+    minutes: 470,
+    source: 0,
+  },
+]);
 
 const reading = (over: Record<string, unknown> = {}) =>
   ({
@@ -49,6 +63,7 @@ beforeEach(() => {
     readWeightSeries: jest
       .fn()
       .mockResolvedValue([{ start: '2026-01-01T00:00:00.000Z', kilograms: 70 }]),
+    readSleepSeries: jest.fn().mockResolvedValue(SLEEP_JSON),
   };
   (healthBridge as jest.Mock).mockReturnValue(bridge);
   useHealthStore.setState({
@@ -58,7 +73,10 @@ beforeEach(() => {
     loadingHistory: false,
     weightSeries: null,
     loadingWeight: false,
+    sleepNights: null,
+    loadingSleep: false,
   });
+  useSettingsStore.setState({ dayResetTime: '00:00' });
 });
 
 describe('refresh', () => {
@@ -154,6 +172,19 @@ describe('refreshHistory and refreshWeight', () => {
     ]);
   });
 
+  it('groups the sleep window into days, keyed by the day each night ended in', async () => {
+    await useHealthStore.getState().refreshSleep();
+    expect(useHealthStore.getState().sleepNights).toEqual([
+      expect.objectContaining({ dayKey: '2026-01-02', minutes: 470, mainMinutes: 470 }),
+    ]);
+  });
+
+  it('writes an empty sleep window as empty, not as "not looked yet"', async () => {
+    bridge.readSleepSeries.mockResolvedValue('[]');
+    await useHealthStore.getState().refreshSleep();
+    expect(useHealthStore.getState().sleepNights).toEqual([]);
+  });
+
   it('skips a reading whose instant cannot be read', async () => {
     bridge.readDailyHealth.mockResolvedValue([reading({ start: 'not a date' })]);
     await useHealthStore.getState().refreshHistory();
@@ -206,6 +237,11 @@ describe('a read that lands after access was dropped', () => {
       { start: '2026-01-01T00:00:00.000Z', kilograms: 70 },
     ]);
     expect(useHealthStore.getState().weightSeries).toBeNull();
+  });
+
+  it('does not draw the sleep charts back', async () => {
+    await raceOn(() => useHealthStore.getState().refreshSleep(), bridge.readSleepSeries, SLEEP_JSON);
+    expect(useHealthStore.getState().sleepNights).toBeNull();
   });
 
   // One guard per read, not one per store: dropping the weight chart must not
