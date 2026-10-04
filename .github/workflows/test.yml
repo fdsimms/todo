@@ -41,7 +41,17 @@ jobs:
       # worker fewer than that — so without this the whole suite runs in a
       # single worker and CI pays the sum of every file rather than the longest
       # one. Local runs keep the default.
+      #
+      # In UTC+14 rather than the runner's own UTC, because a UTC run is the one
+      # zone where a UTC/local mix-up (a day key cut out of toISOString(), a
+      # `...Z` fixture read back as a local date) cannot fail: the two calendars
+      # agree. Local runs, an agent's sandbox included, already cover UTC, so
+      # this moves the one CI run somewhere a date bug shows instead of adding a
+      # second run. Kiritimati is the zone #2848 surfaced in. `npm run test:tz`
+      # still covers the other two zones on demand.
       - run: npm test -- --maxWorkers=2
+        env:
+          TZ: Pacific/Kiritimati
       # The demo-seed blocks in this file share one seeded database across all
       # the tests in each block, which is only correct while none of them
       # writes — and a test that starts writing still passes in declaration
