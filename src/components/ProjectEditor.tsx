@@ -1379,7 +1379,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     minHeight: 52,
   },
   // Height rather than lineHeight, per the TextInput note in CLAUDE.md.
-  linkInput: { flex: 1, color: colors.text, fontSize: font.md, height: 44 },
+  linkInput: { flex: 1, color: colors.text, fontSize: font.md, minHeight: 44 },
   optionRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.md,
     paddingHorizontal: spacing.md, paddingVertical: 14,

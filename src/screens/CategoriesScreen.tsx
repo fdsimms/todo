@@ -20,7 +20,7 @@ import { CategoryEditor } from '../components/CategoryEditor';
 import { QuickAddNameSheet } from '../components/QuickAddNameSheet';
 import { Fab, FAB_SIZE } from '../components/Fab';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
+import { spacing, font, fontWeight, radius, interaction, type Colors, textScale } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { formatCategorySchedule } from '../utils/categorySchedule';
@@ -113,7 +113,7 @@ export function CategoriesScreen() {
               >
                 <View style={[styles.catIcon, { backgroundColor: colors.accentSubtle }]}>
                   {catObj?.emoji ? (
-                    <Text style={styles.catIconEmoji}>{catObj.emoji}</Text>
+                    <Text maxFontSizeMultiplier={textScale.badge} style={styles.catIconEmoji}>{catObj.emoji}</Text>
                   ) : (
                     <Ionicons name="folder" size={18} color={colors.accent} />
                   )}

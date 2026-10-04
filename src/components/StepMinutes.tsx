@@ -70,7 +70,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // surface appears once the value does, so a step that carries a time looks
   // like it carries one.
   input: {
-    minWidth: 34, height: 26,
+    minWidth: 34, minHeight: 26,
     paddingHorizontal: spacing.xs,
     borderRadius: radius.sm,
     backgroundColor: 'transparent',

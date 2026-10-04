@@ -23,7 +23,7 @@ import { SwipeableRow } from '../components/SwipeableRow';
 import { PaintSelectionProvider, usePaintSelectionRow } from '../components/PaintSelection';
 import { useRowSelection } from '../hooks/useRowSelection';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, radius, interaction, flattenOverlay, type Colors } from '../theme';
+import { spacing, font, fontWeight, radius, interaction, flattenOverlay, type Colors, textScale } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import {
@@ -427,7 +427,7 @@ const PersonRow = React.memo(function PersonRow({
           accessibilityHint={selectionMode ? undefined : canDrag ? 'Double tap to open. Long press to reorder.' : 'Double tap to open.'}
         >
           <View style={[styles.avatar, { backgroundColor: colors.accentSubtle }]}>
-            <Text style={styles.avatarText}>{name.slice(0, 1).toUpperCase()}</Text>
+            <Text maxFontSizeMultiplier={textScale.badge} style={styles.avatarText}>{name.slice(0, 1).toUpperCase()}</Text>
           </View>
           <View style={styles.info}>
             <Text style={styles.name} numberOfLines={1}>{name}</Text>

@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { View, Text, ActivityIndicator, TouchableOpacity, StyleSheet, type GestureResponderEvent } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, lineHeight, iconSize, interaction, type Colors } from '../theme';
+import { spacing, font, fontWeight, lineHeight, iconSize, interaction, radius, textScale, type Colors } from '../theme';
 import { PressableScale } from './PressableScale';
 import { TargetIcon, TARGET_ICON } from './TargetIcon';
 
@@ -146,7 +146,7 @@ export function ScreenHeader({ title, subtitle, overline, actions, right, onTitl
               ) : (
                 action.badge != null && action.badge > 0 && (
                   <View style={[styles.badge, action.badgeColor && { backgroundColor: action.badgeColor }]}>
-                    <Text style={styles.badgeText}>{action.badge}</Text>
+                    <Text style={styles.badgeText} maxFontSizeMultiplier={textScale.badge}>{action.badge}</Text>
                   </View>
                 )
               )}
@@ -197,7 +197,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // two-digit one touching both edges once the text moved onto `font.xxs`.
   badge: {
     position: 'absolute', top: -3, right: -3,
-    minWidth: 16, height: 16, borderRadius: 8, paddingHorizontal: 3,
+    minWidth: 16, minHeight: 16, borderRadius: radius.full, paddingHorizontal: 3,
     backgroundColor: colors.red, alignItems: 'center', justifyContent: 'center',
   },
   badgeText: { color: colors.onAccent, fontSize: font.xxs, fontWeight: fontWeight.bold },

@@ -38,7 +38,7 @@ import type { Task, GroceryItem, ItemSubLink, ItemProduct, Recipe, ChainItem } f
 import { MEAL_SLOT_ICONS, MEAL_SLOT_LABELS, PRIORITY_COLORS, TITLE_MAX_LENGTH } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animation, interaction, checkboxRadius, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animation, interaction, checkboxRadius, type Colors, textScale } from '../theme';
 import { formatDeadlineDate, formatScheduledDate, formatTaskDate, formatHHMM, formatWindowRemaining, getDeadlineCountdown, getEffectiveTaskDate, getTaskDayStart, getCurrentDayStart, getLogicalDayKey, dayKeyToDate, formatTimeOfDay, hoursUnlockLabel } from '../utils/dateUtils';
 import { isNegativeTask, isCleanToday, slipsToday } from '../utils/negativeHabits';
 import { scheduleMoveUpdates } from '../utils/taskMoves';
@@ -3511,7 +3511,7 @@ export const TaskItem = React.memo(function TaskItem({
                           {isDone ? (
                             <Ionicons name="checkmark" size={9} color={colors.onAccent} />
                           ) : (
-                            <Text style={[
+                            <Text maxFontSizeMultiplier={textScale.fixed} style={[
                               styles.chainStepListDotText,
                               isCurrent && styles.chainStepListDotTextActive,
                             ]}>

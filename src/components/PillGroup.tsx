@@ -357,7 +357,7 @@ const makeStyles = (colors: Colors, surface: Surface) => {
       // A height rather than a lineHeight: RN maps lineHeight straight onto the
       // iOS paragraph style with no baseline compensation, so the glyphs sit
       // low in the box while the caret stays centred.
-      height: 40,
+      minHeight: 40,
     },
     // Clears the magnifier: its left inset, its own width, and a gap.
     searchField: { paddingLeft: spacing.sm + 2 + iconSize.sm + spacing.sm },

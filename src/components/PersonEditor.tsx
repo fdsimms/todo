@@ -14,6 +14,7 @@ import { EditorRow } from './EditorRow';
 import { EditorSheet } from './EditorSheet';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
+import { useTextScale } from '../hooks/useTextScale';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { formatPhoneInput } from '../utils/phone';
@@ -71,7 +72,8 @@ function describeBirthday(month: number | null, day: number | null, year: number
  */
 export function PersonEditor({ visible, person, isNew, onClose }: Props) {
   const colors = useColors();
-  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const textScaleFactor = useTextScale();
+  const styles = useMemo(() => makeStyles(colors, textScaleFactor), [colors, textScaleFactor]);
 
   const updatePerson = usePersonStore(s => s.updatePerson);
   const applyPersonArchived = usePersonStore(s => s.applyPersonArchived);
@@ -521,7 +523,7 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
   );
 }
 
-const makeStyles = (colors: Colors) => StyleSheet.create({
+const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
@@ -556,8 +558,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: spacing.md,
     paddingHorizontal: spacing.md, paddingVertical: spacing.smd,
   },
-  fieldLabel: { color: colors.text, fontSize: font.md, width: 92 },
-  fieldLabelWide: { color: colors.text, fontSize: font.md, width: 84 },
+  fieldLabel: { color: colors.text, fontSize: font.md, width: Math.round(92 * textScaleFactor) },
+  fieldLabelWide: { color: colors.text, fontSize: font.md, width: Math.round(84 * textScaleFactor) },
   // The unit pills stay one group: at a narrow width the whole set drops to a
   // second line rather than splitting "Months" off on its own.
   cadenceRow: {
@@ -585,7 +587,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flex: 1, color: colors.text, fontSize: font.md, textAlign: 'right',
     // A fixed height rather than a lineHeight keeps the row from resizing as
     // the field goes from empty to filled.
-    height: 24,
+    minHeight: 24,
   },
   sep: {
     height: StyleSheet.hairlineWidth,

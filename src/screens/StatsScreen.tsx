@@ -24,6 +24,7 @@ import { SegmentedControl, type SegmentOption } from '../components/SegmentedCon
 import { bestStreakOf, isStreakAtRecord } from '../utils/streakRecord';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, animation, type Colors } from '../theme';
+import { useTextScale } from '../hooks/useTextScale';
 import { useReduceMotion } from '../utils/useReduceMotion';
 import { getRepeatedInstances, normalizeTitle } from '../utils/taskInstances';
 import { onTimeSummary } from '../utils/stats';
@@ -159,7 +160,8 @@ export function StatsScreen() {
   const tabBarHeight = useBottomTabBarHeight();
   const tasks = useTaskStore(s => s.tasks);
   const colors = useColors();
-  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const textScaleFactor = useTextScale();
+  const styles = useMemo(() => makeStyles(colors, textScaleFactor), [colors, textScaleFactor]);
 
   const reduceMotion = useReduceMotion();
   const now = useMemo(() => new Date(), []);
@@ -1150,7 +1152,7 @@ export function StatsScreen() {
   );
 }
 
-const makeStyles = (colors: Colors) =>
+const makeStyles = (colors: Colors, textScaleFactor = 1) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.bg },
     scroll: { paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: 40 },
@@ -1200,7 +1202,7 @@ const makeStyles = (colors: Colors) =>
       alignItems: 'center',
     },
     barCount: {
-      height: 16,
+      minHeight: 16,
       color: colors.textTertiary,
       fontSize: font.xs,
       textAlign: 'center',
@@ -1293,7 +1295,7 @@ const makeStyles = (colors: Colors) =>
       fontWeight: '600',
     },
     rank: {
-      width: 28,
+      width: Math.round(28 * textScaleFactor),
       color: colors.textTertiary,
       fontSize: font.sm,
       fontWeight: '600',

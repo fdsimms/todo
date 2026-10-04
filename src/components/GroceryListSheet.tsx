@@ -336,14 +336,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flex: 1, color: colors.text, fontSize: font.md,
     // A height rather than a lineHeight — RN maps lineHeight onto the iOS
     // paragraph style with no baseline compensation, so the glyphs sit low.
-    height: 40,
+    minHeight: 40,
   },
   addWrap: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.md,
   },
   addInput: {
-    flex: 1, color: colors.text, fontSize: font.md, height: 40,
+    flex: 1, color: colors.text, fontSize: font.md, minHeight: 40,
     backgroundColor: colors.bgTertiary, borderRadius: radius.md, paddingHorizontal: spacing.sm,
   },
   cancelCard: {

@@ -23,7 +23,7 @@ import { format } from 'date-fns/format';
 import { useScrollEdgeFade } from '../hooks/useScrollEdgeFade';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useColors, useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, interaction, type Colors, textScale } from '../theme';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { buildCalendarGrid, weekdayHeaders } from '../utils/calendarGrid';
 import { parseNaturalDate } from '../utils/parseNaturalDate';
@@ -299,7 +299,7 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
               <View style={styles.dayHeaders}>
                 {dayHeaders.map((d, i) => (
                   <View key={i} style={styles.dayHeaderCell}>
-                    <Text style={styles.dayHeaderText}>{d}</Text>
+                    <Text maxFontSizeMultiplier={textScale.badge} style={styles.dayHeaderText}>{d}</Text>
                   </View>
                 ))}
               </View>
@@ -325,7 +325,7 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
                         isSelected && styles.dayCircleSelected,
                         !isSelected && todayDay && styles.dayCircleToday,
                       ]}>
-                        <Text style={[
+                        <Text maxFontSizeMultiplier={textScale.badge} style={[
                           styles.dayText,
                           !inMonth && styles.dayTextOtherMonth,
                           isSelected && styles.dayTextSelected,

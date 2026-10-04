@@ -217,7 +217,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgTertiary, borderRadius: radius.sm,
     paddingHorizontal: spacing.smd,
     // Height rather than lineHeight — see the TextInput note in CLAUDE.md.
-    height: 36,
+    minHeight: 36,
   },
   hint: { color: colors.textSecondary, fontSize: font.sm },
 });

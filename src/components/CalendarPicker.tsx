@@ -18,7 +18,7 @@ import { isSameDay } from 'date-fns/isSameDay';
 import { isToday } from 'date-fns/isToday';
 import { format } from 'date-fns/format';
 import { useColors, useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, interaction, animation, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, interaction, animation, type Colors, textScale } from '../theme';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { buildCalendarGrid, weekdayHeaders } from '../utils/calendarGrid';
 import { dayKeyOf } from '../utils/dateUtils';
@@ -191,7 +191,7 @@ export function CalendarPicker({
             <View style={styles.dayHeaders}>
               {dayHeaders.map((d, i) => (
                 <View key={i} style={styles.dayHeaderCell}>
-                  <Text style={styles.dayHeaderText}>{d}</Text>
+                  <Text maxFontSizeMultiplier={textScale.badge} style={styles.dayHeaderText}>{d}</Text>
                 </View>
               ))}
             </View>
@@ -219,7 +219,7 @@ export function CalendarPicker({
                       isSelected && styles.dayCircleSelected,
                       !isSelected && todayDay && styles.dayCircleToday,
                     ]}>
-                      <Text style={[
+                      <Text maxFontSizeMultiplier={textScale.badge} style={[
                         styles.dayText,
                         !inMonth && styles.dayTextOtherMonth,
                         isSelected && styles.dayTextSelected,

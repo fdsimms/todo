@@ -18,7 +18,7 @@ import { isSameMonth } from 'date-fns/isSameMonth';
 import { isSameDay } from 'date-fns/isSameDay';
 import { format } from 'date-fns/format';
 import { useColors, useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, border, interaction, animation, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, border, interaction, animation, type Colors, textScale } from '../theme';
 import { haptics } from '../utils/haptics';
 import {
   buildCalendarGrid, weekdayHeaders,
@@ -834,7 +834,7 @@ export function WhenPicker({
             <View style={styles.dayHeaders}>
               {dayHeaders.map((d, i) => (
                 <View key={i} style={styles.dayHeaderCell}>
-                  <Text style={styles.dayHeaderText}>{d}</Text>
+                  <Text maxFontSizeMultiplier={textScale.badge} style={styles.dayHeaderText}>{d}</Text>
                 </View>
               ))}
             </View>
@@ -882,7 +882,7 @@ export function WhenPicker({
                         {isPending ? (
                           <Ionicons name="checkmark-sharp" size={CELL_SIZE * 0.46} color={colors.onAccent} />
                         ) : (
-                          <Text style={[
+                          <Text maxFontSizeMultiplier={textScale.badge} style={[
                             styles.dayText,
                             !inMonth && styles.dayTextOtherMonth,
                             isSelected && !outOfRange && styles.dayTextSelected,

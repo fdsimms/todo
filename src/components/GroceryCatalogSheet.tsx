@@ -487,7 +487,7 @@ function makeStyles(colors: Colors) {
       flex: 1,
       fontSize: font.md,
       color: colors.text,
-      height: 40,
+      minHeight: 40,
       padding: 0,
     },
     filterWrap: { paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: spacing.md },

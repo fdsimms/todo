@@ -782,7 +782,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   inputRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   // No lineHeight on an input — see LogWeightSheet's note and CLAUDE.md.
-  input: { flex: 1, height: 44, fontSize: font.xl, fontWeight: fontWeight.bold, color: colors.text },
+  input: { flex: 1, minHeight: 44, fontSize: font.xl, fontWeight: fontWeight.bold, color: colors.text },
   unit: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.textSecondary },
   stepperRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   stepperCaption: { fontSize: font.md, color: colors.text },

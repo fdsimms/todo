@@ -25,7 +25,8 @@ import { useColors, useTheme } from '../theme/ThemeContext';
 import { useDropTargetAimed, useDropTargetChannel, type DropTargetChannel } from '../components/DropTargetChannel';
 import { cellAt, isMoveDrop, type CellRect } from '../utils/calendarDrag';
 import { confirmBulkSetWhen } from '../utils/scheduleMovePrompt';
-import { spacing, font, fontWeight, radius, interaction, flattenOverlay, type Colors } from '../theme';
+import { spacing, font, fontWeight, radius, interaction, flattenOverlay, type Colors, textScale } from '../theme';
+import { useTextScale } from '../hooks/useTextScale';
 import { haptics } from '../utils/haptics';
 import { buildCalendarGrid, buildWeekDays, weekdayHeaders } from '../utils/calendarGrid';
 import { dateToHHMM, dayKeyOf, dayKeyToDate, formatTimeOfDay, getDayStart, getLogicalToday, hhmmToDate } from '../utils/dateUtils';
@@ -138,7 +139,8 @@ export function CalendarScreen() {
   const tabBarHeight = useBottomTabBarHeight();
   const colors = useColors();
   const { shadows } = useTheme();
-  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const textScaleFactor = useTextScale();
+  const styles = useMemo(() => makeStyles(colors, textScaleFactor), [colors, textScaleFactor]);
 
   // ==== stores and screen state ====
   const allTasks = useTaskStore(s => s.tasks);
@@ -704,7 +706,7 @@ export function CalendarScreen() {
                     one-day piece (usually a trip's tail spilling into the
                     next row) is the plane alone. */}
                 {segment.span > 1 && (
-                  <Text style={styles.tripBandText} numberOfLines={1}>{segment.name}</Text>
+                  <Text maxFontSizeMultiplier={textScale.fixed} style={styles.tripBandText} numberOfLines={1}>{segment.name}</Text>
                 )}
               </View>
             ))}
@@ -1027,7 +1029,7 @@ export function CalendarScreen() {
         <View style={styles.dayHeaders}>
           {dayHeaders.map((d, i) => (
             <View key={i} style={styles.dayHeaderCell}>
-              <Text style={styles.dayHeaderText}>{d}</Text>
+              <Text maxFontSizeMultiplier={textScale.badge} style={styles.dayHeaderText}>{d}</Text>
             </View>
           ))}
         </View>
@@ -1070,7 +1072,7 @@ export function CalendarScreen() {
         <View style={styles.dayHeaders}>
           {dayHeaders.map((d, i) => (
             <View key={i} style={styles.dayHeaderCell}>
-              <Text style={styles.dayHeaderText}>{d}</Text>
+              <Text maxFontSizeMultiplier={textScale.badge} style={styles.dayHeaderText}>{d}</Text>
             </View>
           ))}
         </View>
@@ -1300,7 +1302,7 @@ const DayCell = React.memo(function DayCell({
             isSelected && styles.dayCircleSelected,
             !isSelected && isToday && styles.dayCircleToday,
           ]}>
-            <Text style={[
+            <Text maxFontSizeMultiplier={textScale.badge} style={[
               styles.dayText,
               !inMonth && styles.dayTextOtherMonth,
               isSelected && styles.dayTextSelected,
@@ -1381,7 +1383,7 @@ function cellLabel(day: Date, bucket: DayBucket | undefined, weight: DayWeight |
   return `${date}, ${parts.join(', ')}${suffix}`;
 }
 
-function makeStyles(colors: Colors) {
+function makeStyles(colors: Colors, textScaleFactor = 1) {
   return StyleSheet.create({
     container: {
       flex: 1,
@@ -1675,7 +1677,7 @@ function makeStyles(colors: Colors) {
     // Fixed width so every title in the card starts at the same x, whatever
     // the time's length ("9:00 AM" against "12:30 PM", or "All day").
     eventTime: {
-      width: 64,
+      width: Math.round(64 * textScaleFactor),
       color: colors.textSecondary,
       fontSize: font.sm,
       fontVariant: ['tabular-nums'],

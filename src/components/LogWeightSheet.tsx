@@ -287,7 +287,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // instead. See CLAUDE.md.
   input: {
     flex: 1,
-    height: 44,
+    minHeight: 44,
     fontSize: font.xxl,
     fontWeight: fontWeight.bold,
     color: colors.text,

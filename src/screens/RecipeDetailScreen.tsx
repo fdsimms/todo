@@ -78,6 +78,7 @@ import { MAX_STEP_TIMER_SECONDS, formatStepDuration, parseStepDurations, stepDur
 import { featureHidden, featureShown } from '../utils/simpleMode';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, lineHeight, radius, iconSize, interaction, flattenOverlay, type Colors } from '../theme';
+import { useTextScale } from '../hooks/useTextScale';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { pickRecipeImage, recipeImageOnDevice, resolveRecipeImagePath, type RecipePhotoSource } from '../utils/recipePhoto';
@@ -152,7 +153,8 @@ export function RecipeDetailScreen() {
   const route = useRoute<RouteProp<RootStackParamList, 'RecipeDetail'>>();
   const { recipeId } = route.params;
   const colors = useColors();
-  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const textScaleFactor = useTextScale();
+  const styles = useMemo(() => makeStyles(colors, textScaleFactor), [colors, textScaleFactor]);
 
   const recipes = useRecipeStore(useShallow(s => s.recipes));
   const recipe = recipes.find(r => r.id === recipeId);
@@ -2697,7 +2699,7 @@ export function RecipeDetailScreen() {
   );
 }
 
-const makeStyles = (colors: Colors) => StyleSheet.create({
+const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.bg,
@@ -2995,7 +2997,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.sm,
   },
   stepNumber: {
-    width: 20,
+    width: Math.round(20 * textScaleFactor),
     textAlign: 'right',
     color: colors.textTertiary,
     fontSize: font.md,

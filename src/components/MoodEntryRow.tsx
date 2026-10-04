@@ -4,6 +4,7 @@ import { format } from 'date-fns/format';
 import type { MoodLog } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
+import { useTextScale } from '../hooks/useTextScale';
 import { moodEmoji, moodLabel, severityLabel } from '../utils/moodLog';
 import { symptomOnLog } from '../utils/moodHistory';
 
@@ -36,7 +37,8 @@ export function MoodEntryRow({ log, onPress, onLongPress, highlightSymptomKey, s
   showDate?: boolean;
 }) {
   const colors = useColors();
-  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const textScaleFactor = useTextScale();
+  const styles = useMemo(() => makeStyles(colors, textScaleFactor), [colors, textScaleFactor]);
 
   const highlighted = highlightSymptomKey ? symptomOnLog(log, highlightSymptomKey) : null;
   const when = format(
@@ -88,7 +90,7 @@ export function MoodEntryRow({ log, onPress, onLongPress, highlightSymptomKey, s
   );
 }
 
-const makeStyles = (colors: Colors) => StyleSheet.create({
+const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -98,7 +100,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginBottom: spacing.sm,
     gap: spacing.sm,
   },
-  emoji: { fontSize: font.lg, width: 28, textAlign: 'center' },
+  emoji: { fontSize: font.lg, width: Math.round(28 * textScaleFactor), textAlign: 'center' },
   body: { flex: 1 },
   title: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
   meta: { fontSize: font.xs, color: colors.textSecondary, marginTop: spacing.xxs },

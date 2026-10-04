@@ -2586,7 +2586,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingRight: spacing.md,
   },
   // Height rather than lineHeight, per the TextInput note in CLAUDE.md.
-  newLineInput: { color: colors.text, fontSize: font.md, height: 44 },
+  newLineInput: { color: colors.text, fontSize: font.md, minHeight: 44 },
   infoCard: {
     backgroundColor: colors.bgSecondary,
     marginHorizontal: spacing.md,

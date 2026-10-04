@@ -1039,7 +1039,7 @@ function makeStyles(colors: Colors) {
       color: colors.text,
       // No lineHeight on a TextInput — RN maps it onto the iOS paragraph style
       // with no baseline compensation, so the glyphs sit low in the box.
-      height: 40,
+      minHeight: 40,
       padding: 0,
     },
     // Left-aligned under the field it belongs to, and only as wide as its

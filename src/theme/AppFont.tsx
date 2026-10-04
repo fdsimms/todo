@@ -3,6 +3,7 @@ import { StyleSheet, type TextStyle } from 'react-native';
 import * as Font from 'expo-font';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { resolveFontFace, type AppFont } from './fonts';
+import { textScale } from './index';
 import { FONT_ASSETS, PREVIEW_FONT_ASSETS } from './fontAssets';
 
 /**
@@ -59,8 +60,12 @@ function applyFontPatch() {
     const Base = RN[name];
     if (!Base) continue;
 
-    const WithAppFont = (props: AppFontProps) => {
+    const WithAppFont = (incoming: AppFontProps) => {
       const fontId = useContext(AppFontContext);
+      // The Dynamic Type cap (see textScale), set here so every Text and
+      // TextInput in the app gets it, react-navigation's included. Ahead of the
+      // spread, so a call site that names its own cap (a badge) keeps it.
+      const props: AppFontProps = { maxFontSizeMultiplier: textScale.max, ...incoming };
       // Nobody picked a font (or it hasn't loaded yet): pass straight through,
       // so the default costs no flatten and no extra style array per text node.
       if (fontId === 'system') return <Base {...props} />;

@@ -898,7 +898,7 @@ function makeStyles(colors: Colors) {
       padding: 0,
       // Matches the Text row's box so swapping in the input doesn't nudge
       // the row's height — see the "never lineHeight on TextInput" rule.
-      height: font.lg + 6,
+      minHeight: font.lg + 6,
     },
     // The one caption on this row that is a warning, so it's the one that gets
     // a colour — it appears only while a rename is being refused, and it goes
@@ -1045,7 +1045,7 @@ function makeStyles(colors: Colors) {
       fontWeight: fontWeight.semibold,
       color: colors.text,
       padding: 0,
-      height: font.sm + 6,
+      minHeight: font.sm + 6,
       minWidth: 44,
     },
     // The idle state, before anything is typed — bare, no fill and no label,
