@@ -15,6 +15,9 @@ const mockBridge = {
   ),
   pushPayload: jest.fn(async (_payload: string) => {}),
   pullPayloads: jest.fn(async (_since: string | null) => ({ payloads: [] as string[], cursor: null as string | null })),
+  listImages: jest.fn(async (_since: string | null) => ({ names: [] as string[], cursor: null as string | null })),
+  putImage: jest.fn(async (_name: string, _base64: string) => {}),
+  getImage: jest.fn(async (_name: string): Promise<string | null> => null),
 };
 
 let mockBridgePresent = true;
@@ -52,6 +55,9 @@ beforeEach(() => {
   mockBridge.cloudKitAccountStatus.mockResolvedValue('available');
   mockBridge.pushPayload.mockResolvedValue(undefined);
   mockBridge.pullPayloads.mockResolvedValue({ payloads: [], cursor: null });
+  mockBridge.listImages.mockResolvedValue({ names: [], cursor: null });
+  mockBridge.putImage.mockResolvedValue(undefined);
+  mockBridge.getImage.mockResolvedValue(null);
 });
 
 describe('availability', () => {
@@ -109,6 +115,25 @@ describe('transport', () => {
     mockBridge.pushPayload.mockRejectedValue(new Error('network gone'));
 
     await expect(loadTransport().cloudKitTransport().push('{}')).rejects.toThrow('network gone');
+  });
+
+  it('forwards the photo store calls, with the listing position untouched', async () => {
+    mockBridge.listImages.mockResolvedValue({ names: ['p1.jpg'], cursor: 'tok' });
+    mockBridge.getImage.mockResolvedValue('AAAA');
+    const store = loadTransport().cloudKitTransport().imageStore!;
+
+    expect(await store.list('prev')).toEqual({ names: ['p1.jpg'], cursor: 'tok' });
+    expect(mockBridge.listImages).toHaveBeenCalledWith('prev');
+    await store.put('p1.jpg', 'AAAA');
+    expect(mockBridge.putImage).toHaveBeenCalledWith('p1.jpg', 'AAAA');
+    expect(await store.get('p1.jpg')).toBe('AAAA');
+  });
+
+  it('lets a photo put failure propagate, so the photo is not recorded as sent', async () => {
+    mockBridge.putImage.mockRejectedValue(new Error('quota exceeded'));
+    await expect(loadTransport().cloudKitTransport().imageStore!.put('p1.jpg', 'AAAA')).rejects.toThrow(
+      'quota exceeded'
+    );
   });
 
   it('throws rather than silently doing nothing when the module is missing', async () => {

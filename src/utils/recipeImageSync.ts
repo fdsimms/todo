@@ -51,6 +51,16 @@ export function readRecipeImageForSync(name: string): string | null {
   }
 }
 
+/** Whether a photo's file is already on this device. */
+export function hasRecipeImageForSync(name: string): boolean {
+  if (!isSyncImageName(name)) return false;
+  try {
+    return recipeImageOnDevice(name);
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Writes a photo a peer sent into this device's recipe-images directory, under
  * the name it was sent with, which is the name the synced row resolves to.

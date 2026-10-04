@@ -17,6 +17,7 @@ import {
 import type { SyncLocal } from './syncEngine';
 import {
   applyWithRecipeImages,
+  hasRecipeImageForSync,
   readRecipeImageForSync,
   recipeImageNames,
   writeRecipeImageFromSync,
@@ -35,5 +36,6 @@ export function databaseSyncLocal(): SyncLocal {
     imageNames: recipeImageNames,
     readImage: readRecipeImageForSync,
     writeImage: writeRecipeImageFromSync,
+    hasImage: hasRecipeImageForSync,
   };
 }

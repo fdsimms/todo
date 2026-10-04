@@ -19,11 +19,20 @@ export interface CloudKitPullResult {
   cursor: string | null;
 }
 
+export interface CloudKitImageListResult {
+  names: string[];
+  /** A serialised CKServerChangeToken for the images zone, opaque like the payload one. */
+  cursor: string | null;
+}
+
 interface TodoCloudKitNativeModule {
   isAvailable(): boolean;
   accountStatus(): Promise<CloudKitAccountStatus>;
   push(payload: string): Promise<void>;
   pull(since: string | null): Promise<CloudKitPullResult>;
+  listImages(since: string | null): Promise<CloudKitImageListResult>;
+  putImage(name: string, base64: string): Promise<void>;
+  getImage(name: string): Promise<string | null>;
 }
 
 // Same lazy resolve as todo-alarmkit-bridge, for the same reason:
@@ -82,4 +91,26 @@ export async function pushPayload(payload: string): Promise<void> {
 export async function pullPayloads(since: string | null): Promise<CloudKitPullResult> {
   if (!nativeModule) throw new Error('CloudKit is not available in this build.');
   return nativeModule.pull(since);
+}
+
+/**
+ * Recipe photos live in a zone of their own (`TodoImages`), one record per
+ * photo named by its filename, so a build that predates them never sees one:
+ * its pull reads the payload zone only and fails on a record with no payload.
+ */
+export async function listImages(since: string | null): Promise<CloudKitImageListResult> {
+  if (!nativeModule) throw new Error('CloudKit is not available in this build.');
+  return nativeModule.listImages(since);
+}
+
+/** Saving a name the zone already holds succeeds without changing it. */
+export async function putImage(name: string, base64: string): Promise<void> {
+  if (!nativeModule) throw new Error('CloudKit is not available in this build.');
+  await nativeModule.putImage(name, base64);
+}
+
+/** Null when the zone has no photo under that name. */
+export async function getImage(name: string): Promise<string | null> {
+  if (!nativeModule) throw new Error('CloudKit is not available in this build.');
+  return nativeModule.getImage(name);
 }
