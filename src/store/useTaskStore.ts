@@ -34,6 +34,7 @@ import {
 import { useSettingsStore } from './useSettingsStore';
 import { useWidgetCompletionStore } from './useWidgetCompletionStore';
 import { useCategoryStore, ensureCalendarEventCategory, ensureHealthCategory, ensureGeneratedTaskCategories, ensureGeneratedTaskCategory, renameGeneratedCategorySettings } from './useCategoryStore';
+import { renameInRuleCategories, ruleCategoryFor } from '../utils/ruleCategory';
 import { renameInFollowUpDraft, renameInReminderCaptures, renameInSeriesDefaults, renameInTitleRules, renameInViewClauses } from '../utils/categoryRename';
 import { useTemplateStore } from './useTemplateStore';
 import { useTaskGroupStore } from './useTaskGroupStore';
@@ -6758,6 +6759,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       const sourceId = weatherSourceId(dayKey, rule.id);
       const existing = liveGeneratedTask(tasks, 'weather', sourceId);
       if (considered && !existing) return;
+      const category = ruleCategoryFor(rule, settings.weatherTaskCategory);
       if (!ruleMatchesToday(rule, dayConditions)) return;
 
       // What the day-level code already established, placed in the day: the
@@ -6785,7 +6787,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         draft: () => ({
           title,
           dueDate: due.toISOString(),
-          category: settings.weatherTaskCategory,
+          category,
           linkUrl: WEATHER_LINK_URL,
           ...ruleEstimateDraft(rule),
           ...generatedBy('weather', sourceId),
@@ -6874,7 +6876,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // to match against — and, more to the point, that the user has said not to
     // read one.
     if (!settings.calendarReadEnabled) return;
-    if (!settings.eventTaskCategory) return;
 
     const calendar = useCalendarStore.getState();
     // Not the same question as `events` being empty (see CalendarState.loaded).
@@ -6911,6 +6912,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const nextHandled: HandledEventTasks = { ...handled };
 
     for (const match of matches) {
+      const category = ruleCategoryFor(match.rule, settings.eventTaskCategory);
       reconcileGeneratedTask({
         kind: 'eventTask',
         sourceId: match.sourceId,
@@ -6929,7 +6931,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           // The rule's title is what the task says; the event's is only what
           // matched it.
           title: match.rule.title,
-          category: settings.eventTaskCategory,
+          category,
           ...ruleEstimateDraft(match.rule),
           ...generatedBy('eventTask', match.sourceId),
         }),
@@ -7084,7 +7086,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // gate (screenTimeBridge) already refuses to drain in demo mode; this is
     // the second half of the same rule.
     if (isDemoModeActive()) return;
-    if (!settings.screenTimeTaskCategory) return;
 
     const todayKey = dayKeyOf(getCurrentDayStart());
     const tasks = get().tasks;
@@ -7119,6 +7120,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
       const rule = rulesById.get(crossing.ruleId);
       if (!rule || !crossingWantsTask(rule, todayKey)) continue;
+      const category = ruleCategoryFor(rule, settings.screenTimeTaskCategory);
 
       const sourceId = screenTimeSourceId(todayKey, rule.id);
       reconcileGeneratedTask({
@@ -7130,7 +7132,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         draft: () => ({
           title: rule.title,
           dueDate: dueDate.toISOString(),
-          category: settings.screenTimeTaskCategory,
+          category,
           ...ruleEstimateDraft(rule),
           ...generatedBy('screenTime', sourceId),
         }),
@@ -7192,7 +7194,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // would be a claim about their body sitting in a database about to be
     // thrown away. `healthBridge` refuses the read too; this is the other half.
     if (isDemoModeActive()) return;
-    if (!settings.healthTaskCategory) return;
 
     const dayStart = getCurrentDayStart();
     const todayKey = dayKeyOf(dayStart);
@@ -7230,6 +7231,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       if (!ruleCanBeJudgedYet(rule, hoursIntoDay, reading)) return rule;
       if (rule.lastFiredDayKey === todayKey) return rule;
 
+      const category = ruleCategoryFor(rule, settings.healthTaskCategory);
+
       const matched = ruleShortfallToday(rule, reading);
       if (matched) {
         const sourceId = healthSourceId(todayKey, rule.id);
@@ -7244,7 +7247,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
             title: rule.title,
             notes: healthTaskNote(rule, reading),
             dueDate: dueDate.toISOString(),
-            category: settings.healthTaskCategory,
+            category,
             linkUrl: healthTaskLinkUrl(rule.metric),
             ...ruleEstimateDraft(rule),
             ...generatedBy('health', sourceId),
@@ -9928,6 +9931,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (settings.newTaskDefaults.category === name) settings.setNewTaskDefaults({ category: trimmed });
     const titleRules = renameInTitleRules(settings.titleRules, name, trimmed);
     if (titleRules !== settings.titleRules) settings.setTitleRules(titleRules);
+    const weatherRules = renameInRuleCategories(settings.weatherRules, name, trimmed);
+    if (weatherRules !== settings.weatherRules) settings.setWeatherRules(weatherRules);
+    const screenTimeRules = renameInRuleCategories(settings.screenTimeRules, name, trimmed);
+    if (screenTimeRules !== settings.screenTimeRules) settings.setScreenTimeRules(screenTimeRules);
+    const healthRules = renameInRuleCategories(settings.healthRules, name, trimmed);
+    if (healthRules !== settings.healthRules) settings.setHealthRules(healthRules);
+    const eventRules = renameInRuleCategories(settings.eventRules, name, trimmed);
+    if (eventRules !== settings.eventRules) settings.setEventRules(eventRules);
     const captures = renameInReminderCaptures(settings.reminderCaptures, name, trimmed);
     if (captures !== settings.reminderCaptures) settings.setReminderCaptures(captures);
     if (settings.collapsedCategories.includes(name)) {

@@ -94,6 +94,7 @@ const DIRECTION_OPTIONS: { value: 'under' | 'over'; label: string }[] = [
 export function HealthRulesSheet({ visible, onClose }: Props) {
   const colors = useColors();
   const rules = useSettingsStore(useShallow(s => s.healthRules));
+  const fallbackCategory = useSettingsStore(s => s.healthTaskCategory);
   const setRules = useSettingsStore(s => s.setHealthRules);
   const healthReadEnabled = useSettingsStore(s => s.healthReadEnabled);
   const setHealthReadEnabled = useSettingsStore(s => s.setHealthReadEnabled);
@@ -114,6 +115,7 @@ export function HealthRulesSheet({ visible, onClose }: Props) {
         + 'Each rule adds its task at most once a day.'
       }
       rules={rules}
+      categoryFallback={fallbackCategory}
       onChange={next => setRules(clearMarksOnRuleEdit(rules, next))}
       makeRule={() => ({
         id: generateId(),

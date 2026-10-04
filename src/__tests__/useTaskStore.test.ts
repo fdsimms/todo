@@ -277,7 +277,7 @@ jest.mock('../store/useSettingsStore', () => ({
       // The settings that name a category — renaming or deleting one has to
       // carry them with it (see renameCategory/deleteCategory).
       mealCookTaskCategory: null, groceryUseUpTaskCategory: null, leftoverUseUpTaskCategory: null,
-      calendarEventCategory: null, healthCategory: null, collapsedCategories: [], titleRules: [], reminderCaptures: [],
+      calendarEventCategory: null, healthCategory: null, collapsedCategories: [], titleRules: [], reminderCaptures: [], weatherRules: [], screenTimeRules: [], healthRules: [], eventRules: [],
       penaltyShieldEnabled: false, penaltyShieldUntil: null, setPenaltyShieldUntil: jest.fn(),
       // Read by offerMealLog, whose whole point is the meal-slot/log-nudge
       // completion tests further down this file — defaulting it off here
@@ -9192,9 +9192,9 @@ describe('renameCategory', () => {
     dayResetTime: '00:00',
     newTaskDefaults: { category: null as string | null },
     calendarEventCategory: null as string | null, healthCategory: null as string | null,
-    collapsedCategories: [] as string[], titleRules: [], reminderCaptures: [],
+    collapsedCategories: [] as string[], titleRules: [], reminderCaptures: [], weatherRules: [], screenTimeRules: [], healthRules: [], eventRules: [],
     setCalendarEventCategory: jest.fn(), setHealthCategory: jest.fn(), setNewTaskDefaults: jest.fn(),
-    setTitleRules: jest.fn(), setReminderCaptures: jest.fn(), setCollapsedCategories: jest.fn(),
+    setTitleRules: jest.fn(), setReminderCaptures: jest.fn(), setWeatherRules: jest.fn(), setScreenTimeRules: jest.fn(), setHealthRules: jest.fn(), setEventRules: jest.fn(), setCollapsedCategories: jest.fn(),
   });
   beforeEach(() => {
     getSettingsMock().getState.mockReturnValue(settings());
@@ -9292,10 +9292,12 @@ describe('renameCategory', () => {
       newTaskDefaults: { category: 'Work' },
       titleRules: [{ id: 'r', category: 'Work' }],
       reminderCaptures: [{ id: 'c', filing: { kind: 'category', category: 'Work' } }],
+      eventRules: [{ id: 'e', category: 'Work' }],
     };
     getSettingsMock().getState.mockReturnValue(s);
 
     useTaskStore.getState().renameCategory('Work', 'Job');
+    expect(s.setEventRules).toHaveBeenCalledWith([{ id: 'e', category: 'Job' }]);
 
     expect(useProjectStore.getState().projects[0].defaultTaskCategory).toBe('Job');
     expect(updateView).toHaveBeenCalledWith('v1', { clauses: [{ kind: 'category', values: ['Job'] }] });

@@ -360,7 +360,16 @@ export interface RuleTaskEstimate {
   effort?: Effort;
 }
 
-export interface WeatherRule extends RuleTaskEstimate {
+/**
+ * Where the task a rule writes is filed, when that differs from the rest of its
+ * kind. Absent means the generator's own "File them under" setting; see
+ * `src/utils/ruleCategory.ts`.
+ */
+export interface RuleTaskCategory {
+  category?: string;
+}
+
+export interface WeatherRule extends RuleTaskEstimate, RuleTaskCategory {
   id: string;
   condition: WeatherCondition;
   /** The task's title, e.g. "Put on sunscreen". */
@@ -409,7 +418,7 @@ export interface WeatherRule extends RuleTaskEstimate {
  * Group as opaque tokens iOS never resolves for the app, so every rule watches
  * the same one selection — see modules/todo-screentime-bridge.
  */
-export interface ScreenTimeRule extends RuleTaskEstimate {
+export interface ScreenTimeRule extends RuleTaskEstimate, RuleTaskCategory {
   id: string;
   /** Minutes of use across the chosen apps that trips this rule. */
   thresholdMinutes: number;
@@ -476,7 +485,7 @@ export type HealthRuleMetric =
  * both, and `docs/arch/health-data.md` for why a missing reading can never
  * match.
  */
-export interface HealthRule extends RuleTaskEstimate {
+export interface HealthRule extends RuleTaskEstimate, RuleTaskCategory {
   id: string;
   /** Which reading this rule watches. */
   metric: HealthRuleMetric;
@@ -554,7 +563,7 @@ export interface HealthRule extends RuleTaskEstimate {
  * this reads titles where `calendarHistory.ts` — which infers — may only
  * offer.
  */
-export interface EventTaskRule extends RuleTaskEstimate {
+export interface EventTaskRule extends RuleTaskEstimate, RuleTaskCategory {
   id: string;
   /**
    * The words or phrases looked for in an event's title — the rule fires if

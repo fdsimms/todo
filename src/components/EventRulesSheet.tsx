@@ -64,6 +64,7 @@ export function EventRulesSheet({ visible, onClose }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const rules = useSettingsStore(useShallow(s => s.eventRules));
+  const fallbackCategory = useSettingsStore(s => s.eventTaskCategory);
   const setRules = useSettingsStore(s => s.setEventRules);
   const calendarReadEnabled = useSettingsStore(s => s.calendarReadEnabled);
   const events = useCalendarStore(s => s.events);
@@ -106,6 +107,7 @@ export function EventRulesSheet({ visible, onClose }: Props) {
         + 'It reads the title only, never who was invited.'
       }
       rules={rules}
+      categoryFallback={fallbackCategory}
       onChange={setRules}
       makeRule={() => ({
         id: generateId(),
