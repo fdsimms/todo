@@ -500,8 +500,15 @@ export function RewardsScreen() {
           <InlineAction
             label="Claim"
             icon="gift-outline"
-            onPress={() => claim(reward, shown.title)}
-            disabled={!affordable}
+            onPress={() => (affordable
+              ? claim(reward, shown.title)
+              : Alert.alert(
+                'Not enough coins',
+                `${shown.title} costs ${formatCoins(reward.cost)}. You have ${formatCoins(balance)}, so you need ${formatCoins(reward.cost - balance)} more.`,
+              ))}
+            // Dimmed rather than disabled: a disabled pill swallows the tap
+            // without saying why.
+            style={!affordable ? { opacity: 0.4 } : undefined}
             accessibilityLabel={affordable
               ? `Claim ${shown.title} for ${formatCoins(reward.cost)}`
               : `${shown.title} needs ${formatCoins(reward.cost - balance)} more`}
