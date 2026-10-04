@@ -717,6 +717,45 @@ describe('the replica', () => {
     expect(replica.tasks()).toHaveLength(2);
   });
 
+  it('reopens a completed task and removes the occurrence it spawned', () => {
+    const today = new Date();
+    today.setHours(12, 0, 0, 0);
+    const task = replica.createTask({ title: 'Water the plants', recurrenceType: 'daily', dueDate: today.toISOString() });
+    const done = replica.completeTask(task.id, {});
+
+    const reopened = replica.reopenTask(task.id);
+
+    expect(reopened.task).toMatchObject({ id: task.id, completed: false, completedAt: null });
+    expect(reopened.removed.map(t => t.id)).toEqual([done.nextTask!.id]);
+    replica.refresh();
+    expect(replica.tasks().map(t => t.id)).toEqual([task.id]);
+  });
+
+  it('keeps a successor that was completed since', () => {
+    const today = new Date();
+    today.setHours(12, 0, 0, 0);
+    const task = replica.createTask({ title: 'Water the plants', recurrenceType: 'daily', dueDate: today.toISOString() });
+    const first = replica.completeTask(task.id, {});
+    // Due tomorrow, so completing it early is refused; make it due now first.
+    mockRaw.runSync('UPDATE tasks SET due_date = ? WHERE id = ?', [today.toISOString(), first.nextTask!.id]);
+    replica.refresh();
+    replica.completeTask(first.nextTask!.id, {});
+
+    expect(replica.reopenTask(task.id).removed.map(t => t.id)).not.toContain(first.nextTask!.id);
+  });
+
+  it('refuses to reopen what is not completed, and what only the phone can undo', () => {
+    const open = replica.createTask({ title: 'Open', category: 'Home' });
+    expect(() => replica.reopenTask(open.id)).toThrow(/not completed/);
+    expect(() => replica.reopenTask('nope')).toThrow(/No task/);
+
+    const logged = replica.createTask({ title: 'Logged', category: 'Home' });
+    replica.completeTask(logged.id, {});
+    mockRaw.runSync("UPDATE tasks SET completion_calendar_event_id = 'ev1' WHERE id = ?", [logged.id]);
+    replica.refresh();
+    expect(() => replica.reopenTask(logged.id)).toThrow(/calendar event/);
+  });
+
   // getNextDueDate's { catchUp: true }, which completeTask passes because it is
   // placing a real row. Without it, finishing a task months late spawns a
   // successor dated months ago: overdue on arrival, and one completion per

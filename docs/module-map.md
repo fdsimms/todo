@@ -350,6 +350,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/taskInstances.ts` — InstanceGroup, normalizeTitle, getRepeatedInstances
 - `src/utils/taskKinds.ts` — TaskKind, TASK_KIND_META, taskKindOf, QuickAddChip, QUICK_ADD_CHIP_LABELS, QUICK_ADD_CHIP_LIMIT, TASK_KINDS, DEFAULT_TIMED_MINUTES, DEFAULT_TARGET_COUNT, TIMED_MINUTE_OPTIONS, +11 more
 - `src/utils/taskMoves.ts` — DeloadBlocker, SOFT_DELOAD_BLOCKERS, isDateAnchored, deloadBlockerFor, wouldMissDeadline, deloadUpdates, scheduleMoveUpdates, PullForwardChoice, pullForwardChoice
+- `src/utils/taskReopen.ts` — reopenedTask
 - `src/utils/taskUpdate.ts` — CONTENT_FIELDS, SCHEDULE_FIELDS, QUOTA_SPAN_FIELDS, ROTATION_TARGET_FIELDS, derivedTargetCount, nextPinnedOrder, captureField, TaskUpdateContext, mergeTaskUpdate, seriesFanOutRows
 - `src/utils/templateGrouping.ts` — TemplateListItem, groupTemplatesByCategory, TemplateDropResolution, resolveTemplateDrop
 - `src/utils/templateQuestions.ts` — questionsForTree, answerFromDates, defaultAnswer, resolveAnswers, placeholderValuesFor, liveConditions, itemMatchesAnswers, initialLeafSelection, reselectForAnswers, personIdsFromAnswer, +6 more

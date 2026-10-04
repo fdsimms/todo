@@ -642,6 +642,14 @@ A project scoped with Claude is rarely written once. Four tools exist for coming
 - **`add_project_steps`** is `create_project`'s step writer pointed at a project that already
   exists: one call, validated in full first, written in one transaction. `after` counts over the
   batch; `waitsOn` names tasks already there.
+- **`reopen_task`** is the undo for a completion made by mistake. The row half is
+  `reopenedTask` (`src/utils/taskReopen.ts`), lifted out of `useTaskStore.uncompleteTask` for the
+  reason `taskCompletion.ts` was lifted out of `completeTask`, so the store and the replica share
+  one. The replica takes back what it wrote when it completed (coins, the dose) and removes the
+  occurrence the completion spawned unless that was completed since. It **refuses** what leaves
+  something on the phone it cannot undo: a calendar event the completion logged, a screen-time
+  credit, a meal marked cooked. The answer there is the app's Logbook, and saying so beats
+  reopening a row and leaving the event behind.
 - **`archive_task`** is the undo, and **there is deliberately no delete**. An archived row can be
   restored here or in the app; a deleted one cannot, and the model is the one deciding what to
   remove. It is the app's own `archiveTask` / `unarchiveTask` (unpin; restoring breaks the streak).

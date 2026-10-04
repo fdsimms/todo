@@ -51,6 +51,7 @@ import {
   createTemplate,
   deleteTemplate,
   getTemplate,
+  reopenTask,
   reorderTemplates,
   updateTemplate,
   completeTask,
@@ -1180,6 +1181,20 @@ function registerWriteTools(
         return json(withLink(result, LINKS?.task(result.nextTask?.id ?? id)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not complete the task.' });
+      }
+    }
+  );
+
+  server.tool(
+    'reopen_task',
+    "Reopen a completed or missed task: it goes back on the list as outstanding, its streak and daily-target count go back to what they were, the coins and any dose its completion recorded are taken back, and the next occurrence the completion created is removed (unless that one was completed since). Use it when something was completed by mistake. Refused, with the reason, when the completion left something only the phone can undo: a calendar event, a screen-time credit or a meal marked cooked.",
+    { id: z.string().min(1) },
+    async ({ id }) => {
+      try {
+        const result = await withWrite(() => reopenTask(replica, id));
+        return json(withLink(result, LINKS?.task(id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not reopen the task.' });
       }
     }
   );

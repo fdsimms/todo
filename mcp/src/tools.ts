@@ -931,3 +931,18 @@ export function deleteTemplate(replica: Replica, ref: string): DeleteTemplateRes
 export function reorderTemplates(replica: Replica, ids: string[]): { id: string; name: string }[] {
   return replica.reorderTemplates(ids).map(t => ({ id: t.id, name: t.name }));
 }
+
+export interface ReopenTaskResult {
+  task: ReturnType<typeof serializeTasks>[number];
+  /** What the reopen took back with it, in words. */
+  tookBack: string[];
+}
+
+/** Reopen a completed task. The refusals (device state it cannot undo) come from the replica. */
+export function reopenTask(replica: Replica, id: string): ReopenTaskResult {
+  const { task, removed } = replica.reopenTask(id);
+  const tookBack: string[] = [];
+  const top = removed.filter(r => !r.parentId);
+  if (top.length > 0) tookBack.push(`Removed the ${top.length === 1 ? 'occurrence' : `${top.length} occurrences`} its completion created.`);
+  return { task: serializeTasks(replica, [task])[0], tookBack };
+}

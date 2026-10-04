@@ -79,6 +79,7 @@ export const WRITE_TOOLS: Record<string, { title: string; destructive: boolean; 
   forget: { title: 'Forget a note', destructive: true, idempotent: true },
   update_task: { title: 'Edit a task', destructive: true, idempotent: true },
   archive_task: { title: 'Archive a task', destructive: true, idempotent: true },
+  reopen_task: { title: 'Reopen a task', destructive: true, idempotent: true },
   update_answer: { title: 'Correct a recorded answer', destructive: true, idempotent: true },
   add_project_steps: { title: 'Add steps to a project', destructive: false, idempotent: false },
   complete_task: { title: 'Complete a task', destructive: false, idempotent: false },

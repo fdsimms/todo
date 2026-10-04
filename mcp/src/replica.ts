@@ -584,6 +584,14 @@ export interface Replica {
    * it asks a question that was not answered. See `deliverableRefusal`.
    */
   completeTask(id: string, options?: CompletionOptions): CompletedResult;
+  /**
+   * Reopen a completed or missed task: the row goes back to how it was before
+   * (streak, daily-target count, follow-up tally), the coins and the dose its
+   * completion wrote are taken back, and the occurrence it spawned is removed
+   * unless that one was itself completed since. Refuses what leaves something on
+   * the phone this server cannot take back (see `reopenRefusal`).
+   */
+  reopenTask(id: string): { task: Task; removed: Task[] };
   /** What `completeTask` would refuse, without writing anything; null when it would go through. */
   completionProblem(id: string, options?: CompletionOptions): string | null;
 
@@ -879,6 +887,28 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   const aisles = require('../../src/utils/groceryAisles') as GroceryAislesModule;
   const parse = require('../../src/utils/groceryParse') as GroceryParseModule;
   const { generateId } = require('../../src/utils/id') as IdModule;
+  const { reopenedTask } = require('../../src/utils/taskReopen') as typeof import('../../src/utils/taskReopen');
+  const { generatedSourceOf } = require('../../src/utils/generatedTasks') as typeof import('../../src/utils/generatedTasks');
+  const { completesMealSlot } = require('../../src/utils/mealSlotTasks') as typeof import('../../src/utils/mealSlotTasks');
+
+  /**
+   * What reopening cannot undo from here. Each is state on the phone or in a
+   * store this server has no copy of: a calendar event the completion logged, a
+   * screen-time credit, and a meal marked cooked or logged by a meal task. The
+   * app's own Logbook undoes all of them, so the answer is to do it there.
+   */
+  function reopenRefusal(task: Task): string | null {
+    if (task.completionCalendarEventId || task.completionCalendarEventExternalId) {
+      return 'That completion logged a calendar event, which only the phone can remove. Reopen it in the app.';
+    }
+    if (task.penaltyCreditedAt) {
+      return 'That completion credited a screen-time penalty, which only the phone can take back. Reopen it in the app.';
+    }
+    if (generatedSourceOf(task, 'mealCook') || generatedSourceOf(task, 'mealLogNudge') || (generatedSourceOf(task, 'mealSlot') && completesMealSlot(task))) {
+      return 'That completion marked a meal on the plan, which only the phone can undo. Reopen it in the app.';
+    }
+    return null;
+  }
 
   /**
    * The groups, questions and items of a validated plan, with every name
@@ -1811,6 +1841,39 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         rolledOver: built.rolledOver,
         loggedDose: dose !== null,
       };
+    },
+
+    reopenTask(id: string): { task: Task; removed: Task[] } {
+      const task = tasks().find(t => t.id === id);
+      if (!task) throw new Error(`No task with id ${id}.`);
+      if (!task.completed) throw new Error('That task is not completed, so there is nothing to reopen.');
+      const refusal = reopenRefusal(task);
+      if (refusal) throw new Error(refusal);
+
+      const updated = reopenedTask(task);
+
+      // Coins and the dose first, as the store does: both are records this
+      // replica wrote when it completed the task, so they go back with it.
+      useRewardStore.getState().takeBackTask(id);
+      if (medication.medicationFor(task)) {
+        const log = useMedicationStore.getState();
+        if (visibility.isQuotaTask(task) && !visibility.isMissed(task)) log.removeLatestLogForTask(id);
+        else log.removeLogsForTask(id);
+      }
+
+      // A repeating series rolls over as a set, so every unfinished row that
+      // points back here goes, with its subtasks. One already completed is a
+      // real completion and stays.
+      const all = tasks();
+      const followUps = all.filter(t => t.previousOccurrenceId === id && !t.completed);
+      const removed = [...followUps, ...followUps.flatMap(f => all.filter(t => t.parentId === f.id))];
+      for (const f of followUps) {
+        db.dbDeleteSubtasks(f.id);
+        db.dbDeleteTask(f.id);
+      }
+      db.dbUpdateTask(updated);
+      refresh();
+      return { task: updated, removed };
     },
 
     deferTask(id: string, date: Date | null): Task {

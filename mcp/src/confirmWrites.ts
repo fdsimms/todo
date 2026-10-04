@@ -114,6 +114,7 @@ const SUBJECT_NOUN: Record<string, string> = {
 /** One line per effect, in the order they would happen. */
 export function describeEffects(effects: readonly AgentLedgerEntry[]): string[] {
   return effects.map(e => {
+    if (e.note) return e.note;
     const t = `"${e.title}"`;
     switch (e.subject) {
       case 'grocery':

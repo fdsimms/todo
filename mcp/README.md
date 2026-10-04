@@ -120,6 +120,7 @@ only the fallback until the first sync.
 | `plan_meal` | **Write.** Puts a recipe, or just a title, on the meal plan. |
 | `add_person_history` | **Write.** Records something done with someone, as the app's "Add to history" does: a completed task naming them. The only write to the people section. |
 | `complete_task` | **Write.** Ticks one off, spawning whatever that spawns: the next occurrence, the next chain step, the next set of a dated series. |
+| `reopen_task` | **Write.** Reopens a completed or missed task and takes back what its completion did. Needs `MCP_WRITE_TOKEN`. |
 | `defer_task` | **Write.** Moves a task to a date, or clears its date. |
 | `add_grocery_item` | **Write.** Puts something on the home list, re-using the shelf item the user already has where there is one. |
 | `check_off_grocery_item` | **Write.** Checks something off on the home list, or un-checks it. |

@@ -29,6 +29,8 @@ export interface AgentLedgerEntry {
   title: string;
   taskId: string | null;
   count?: number;
+  /** What the preview says for this effect, when the action and fields alone read too vaguely. Not recorded. */
+  note?: string;
   revert?: UnattendedRevert | null;
 }
 
@@ -112,6 +114,15 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
     completeTask(id, options) {
       const result = replica.completeTask(id, options);
       log({ action: 'completed', subject: 'task', title: result.completed.title, taskId: id });
+      return result;
+    },
+
+    reopenTask(id) {
+      const result = replica.reopenTask(id);
+      log({
+        action: 'edited', subject: 'task', title: result.task.title, taskId: id,
+        note: `Reopen "${result.task.title}"${result.removed.length ? `, and remove the ${result.removed.length === 1 ? 'task' : 'tasks'} its completion created` : ''}`,
+      });
       return result;
     },
 
