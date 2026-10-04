@@ -1,5 +1,4 @@
-import { quickSearch, quickDestinations, QUICK_SEARCH_LIMIT, QUICK_DESTINATION_LIMIT } from '../utils/quickSearch';
-import { menuDestinations, type NavMenuOptions } from '../utils/navHubs';
+import { quickSearch, QUICK_SEARCH_LIMIT } from '../utils/quickSearch';
 import type { Project, Task, TaskGroup } from '../types';
 
 jest.mock('../store/useSettingsStore', () => ({
@@ -422,57 +421,5 @@ describe('quickSearch', () => {
       expect(groupResults).toEqual([]);
       expect(projectResults).toEqual([]);
     });
-  });
-});
-
-describe('quickDestinations', () => {
-  const options: NavMenuOptions = {
-    kitchenEnabled: true,
-    simpleMode: false,
-    counts: { stacks: 1, templates: 1, people: 1, mood: 1, medications: 1, foodLog: 1 },
-  };
-  const all = menuDestinations(options);
-  const routes = (query: string, list = all) => quickDestinations(list, query).map(d => d.route);
-
-  it('finds nothing for an empty query', () => {
-    expect(quickDestinations(all, '')).toEqual([]);
-    expect(quickDestinations(all, '   ')).toEqual([]);
-  });
-
-  it('finds a hub member by name, naming its hub', () => {
-    const [weight] = quickDestinations(all, 'weight');
-    expect(weight.route).toBe('Weight');
-    expect(weight.hubLabel).toBe('Health');
-  });
-
-  it('finds a screen by keyword', () => {
-    expect(routes('scale')).toContain('Weight');
-    expect(routes('birthdays')).toContain('People');
-  });
-
-  it('ranks a label match ahead of a keyword match earlier in the menu', () => {
-    // Meal plan has the keyword "week" and sits above Weight in the menu.
-    expect(routes('we')[0]).toBe('Weight');
-  });
-
-  it('ranks a label starting with the query ahead of one merely containing it', () => {
-    // Food log sits above Logbook in the menu, but only contains "log".
-    expect(routes('log')).toEqual(['Logbook', 'FoodLog']);
-  });
-
-  it('never offers the screen the card opens from, or the Search tab its footer opens', () => {
-    expect(routes('tasks')).not.toContain('Today');
-    expect(routes('search')).not.toContain('Search');
-  });
-
-  it('caps itself', () => {
-    expect(quickDestinations(all, 'e').length).toBe(QUICK_DESTINATION_LIMIT);
-    expect(quickDestinations(all, 'e', 0)).toEqual([]);
-  });
-
-  it("can't reach a screen the menu has taken away", () => {
-    const noKitchen = menuDestinations({ ...options, kitchenEnabled: false });
-    expect(routes('recipes', noKitchen)).toEqual([]);
-    expect(routes('recipes')).toEqual(['Recipes']);
   });
 });

@@ -18,12 +18,13 @@ import { DetailHeader } from '../components/DetailHeader';
 import { SearchField } from '../components/SearchField';
 import { HighlightedText } from '../components/HighlightedText';
 import {
-  visibleSettingsGroups, visibleSettingsEntries,
+  visibleSettingsGroups,
   type SettingsGroup, type SettingsGroupId, type SettingsTint,
 } from '../utils/settingsIndex';
 import { searchSettings } from '../utils/settingsSearch';
 import { settingsSummaries } from '../utils/settingsSummary';
-import { generatedTaskCounts, generatorSwitchedOn, GENERATED_KIND_LIST } from '../utils/generatedTasks';
+import { generatedTaskCounts } from '../utils/generatedTasks';
+import { searchableSettingsEntries } from '../utils/settingsActiveRows';
 import { useFilterField } from '../hooks/useFilterField';
 
 /**
@@ -71,59 +72,11 @@ export function SettingsScreen() {
     () => visibleSettingsGroups(Platform.OS, settings.kitchenEnabled),
     [settings.kitchenEnabled]
   );
-  /**
-   * The gating rows currently switched on — see `SettingsEntry.requires`.
-   *
-   * Here rather than in the index because the index is pure data and this is
-   * live state: a predicate on the entry would have to read the settings store,
-   * which is the settings-as-config mistake that file's own header warns about.
-   * The screen holds the store, so it answers and the index looks up.
-   */
-  const activeEntryIds = useMemo(() => {
-    const on = new Set<string>();
-    if (settings.postponeCheckEnabled) on.add('postponeCheck');
-    if (settings.focusLongRestEvery !== null) on.add('focusLongRestEvery');
-    if (settings.focusShieldEnabled) on.add('focusShield');
-    if (settings.penaltyShieldEnabled) on.add('penaltyShield');
-    if (settings.gateShieldEnabled) on.add('gateShield');
-    if (settings.vacationMode) on.add('vacationMode');
-    if (settings.dailyAgendaEnabled) on.add('dailyAgenda');
-    // Both null is how quiet hours are off; the screen's own toggle is derived
-    // from exactly this.
-    if (settings.quietHoursStart !== null) on.add('quietHours');
-    if (settings.appLockEnabled) on.add('appLock');
-    if (settings.productLookupEnabled) on.add('productLookupEnabled');
-    if (settings.cookRecapEnabled) on.add('cookRecapEnabled');
-    if (settings.mealLogPrompt) on.add('mealLogPrompt');
-    if (settings.onDeviceAiEnabled) on.add('onDeviceAiEnabled');
-    if (settings.healthReadEnabled) on.add('healthRead');
-    if (settings.healthWriteEnabled) on.add('healthWrite');
-    if (settings.calendarReadEnabled) on.add('calendarRead');
-    if (settings.remindersImportEnabled) on.add('remindersImport');
-    // The two ways to sync, which is what "Sync now" renders behind: iCloud
-    // switched on, or a server with both a URL and a token.
-    if (sync.supported && sync.enabled) on.add('syncEnabled');
-    if (sync.serverUrl && sync.hasServerToken) on.add('syncServerToken');
-    // Through the same rule the rows themselves use, so a generator whose read
-    // is switched off takes its "File them under" row out of search too.
-    for (const spec of GENERATED_KIND_LIST) {
-      if (generatorSwitchedOn(spec.kind, settings)) on.add(`gen:${spec.kind}`);
-    }
-    // Nested a level further, inside the leave-by generator's own options, so
-    // they need it on as well as their own switch.
-    if (on.has('gen:travel') && settings.travelEstimates) on.add('travelEstimates');
-    if (on.has('gen:travel') && settings.transitAlerts) on.add('transitAlerts');
-    return on;
-  }, [settings, sync]);
-
-  // Search must not turn up a row that isn't rendered, so the kitchen entries
-  // leave the index with the area, the simplified-mode ones with theirs, the
-  // iOS-only rows with the platform, and a row nested under a switched-off
-  // toggle with that toggle — the four ways a row can be absent from the page.
+  // Search must not turn up a row that isn't rendered — see
+  // searchableSettingsEntries, which the app-wide search reads too.
   const entries = useMemo(
-    () => visibleSettingsEntries(
-      Platform.OS, settings.kitchenEnabled, settings.simpleMode, activeEntryIds),
-    [settings.kitchenEnabled, settings.simpleMode, activeEntryIds]
+    () => searchableSettingsEntries(Platform.OS, settings, sync),
+    [settings, sync]
   );
   const results = useMemo(() => searchSettings(entries, query.trim()), [entries, query]);
 

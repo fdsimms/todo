@@ -25,9 +25,9 @@ import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { categoryLabel } from '../utils/categoryLabel';
-import { quickSearch, quickDestinations, QUICK_SEARCH_LIMIT } from '../utils/quickSearch';
-import { menuDestinations, menuSearchTerms, type NavSearchResult } from '../utils/navHubs';
-import { useNavMenuOptions } from '../hooks/useNavMenuOptions';
+import { quickSearch, QUICK_SEARCH_LIMIT } from '../utils/quickSearch';
+import { allElsewhere, describeElsewhere, quickElsewhere, type ElsewhereResult } from '../utils/searchElsewhere';
+import { useElsewhereSearch } from '../hooks/useElsewhereSearch';
 import type { SearchResult, GroupSearchResult, ProjectSearchResult } from '../utils/fuzzySearch';
 import { formatOccurrenceCount, type CollapsedOccurrence } from '../utils/searchCollapse';
 import { displayTitleFor, groupRoster, quotaNextDueLabel } from '../utils/visibilityUtils';
@@ -58,8 +58,11 @@ interface Props {
   onSelectGroup: (group: TaskGroup) => void;
   /** Tapping a matched project. */
   onSelectProject: (projectId: string) => void;
-  /** Tapping a matched screen ("Weight", "People"). Hands over the route name. */
-  onSelectDestination: (route: string) => void;
+  /**
+   * Tapping anything that isn't a task, stack or project: a screen, a setting,
+   * a person, a recipe or a grocery item. `openElsewhereResult` opens it.
+   */
+  onSelectElsewhere: (result: ElsewhereResult) => void;
   /** The footer row — hands the query over to the Search tab rather than growing this card. */
   onOpenFullSearch: (query: string) => void;
   /** The sheet is on screen (the native modal's `onShow`). */
@@ -293,50 +296,40 @@ function QuickSearchProjectRow({ result, onSelect, styles, colors }: {
 }
 
 /**
- * A screen match: the side menu's own destination, in the card's one-line
- * shape. The meta line says which hub it lives in, the same thing the menu's
- * find field says under a result, because a match that came off a keyword
- * ("scale" finding Weight) otherwise has nothing on screen saying why.
+ * A match that isn't a task: a screen, a setting, a person, a recipe or a
+ * grocery item, in the card's one-line shape. The meta line names the kind
+ * (the card has no section headers to do it), and for a screen or a setting
+ * says where it lives, because a match that came off a keyword ("scale"
+ * finding Weight) otherwise has nothing on screen saying why.
  */
-function QuickSearchDestinationRow({ result, query, onSelect, styles, colors }: {
-  result: NavSearchResult;
-  query: string;
-  onSelect: (route: string) => void;
+function QuickSearchElsewhereRow({ result, onSelect, styles, colors }: {
+  result: ElsewhereResult;
+  onSelect: (result: ElsewhereResult) => void;
   styles: ReturnType<typeof makeStyles>;
   colors: Colors;
 }) {
-  const ranges = useMemo(() => {
-    const label = result.label.toLowerCase();
-    const found: [number, number][] = [];
-    for (const term of menuSearchTerms(query)) {
-      const at = label.indexOf(term);
-      if (at >= 0) found.push([at, at + term.length]);
-    }
-    return mergeRanges(found);
-  }, [result.label, query]);
+  const described = describeElsewhere(result);
   return (
     <TouchableOpacity
       style={styles.resultRow}
-      onPress={() => onSelect(result.route)}
+      onPress={() => onSelect(result)}
       activeOpacity={interaction.activeOpacity}
       accessibilityRole="button"
-      accessibilityLabel={result.hubLabel ? `${result.label}, screen, in ${result.hubLabel}` : `${result.label}, screen`}
-      accessibilityHint="Double tap to open screen"
+      accessibilityLabel={`${result.title}, ${described.accessibilityKind}`}
+      accessibilityHint="Double tap to open"
     >
       <View style={styles.entityIcon}>
-        <Ionicons name={result.icon as React.ComponentProps<typeof Ionicons>['name']} size={iconSize.sm} color={colors.accent} />
+        <Ionicons name={described.icon as React.ComponentProps<typeof Ionicons>['name']} size={iconSize.sm} color={colors.accent} />
       </View>
       <View style={styles.resultTap}>
         <HighlightedText
-          text={result.label}
-          ranges={ranges}
+          text={result.title}
+          ranges={result.ranges}
           style={styles.resultTitle}
           highlightStyle={styles.highlight}
           numberOfLines={1}
         />
-        <Text style={styles.metaText} numberOfLines={1}>
-          {result.hubLabel ? `Screen in ${result.hubLabel}` : 'Screen'}
-        </Text>
+        <Text style={styles.metaText} numberOfLines={1}>{described.cardMeta}</Text>
       </View>
     </TouchableOpacity>
   );
@@ -360,13 +353,15 @@ function QuickSearchDestinationRow({ result, query, onSelect, styles, colors }: 
  * budget the task rows do (see `quickSearch`), rather than getting a budget
  * of their own on top.
  *
- * Screens lead ahead of both. The card searches the side menu's destinations
- * too, so Weight or People is a pull and a few letters away rather than the
- * menu, a hub row and a pill. They take at most `QUICK_DESTINATION_LIMIT` of
- * the seven slots and stay out of the footer's count, since the Search tab the
- * footer opens has no screens in it.
+ * Everything that isn't a task leads ahead of both: screens, settings, people,
+ * recipes and grocery items (`useElsewhereSearch`), so Weight, Tom's page or
+ * the tomatoes on the list are a pull and a few letters away rather than the
+ * menu, a hub row and a pill. They take at most `QUICK_ELSEWHERE_LIMIT` of the
+ * seven slots between them, because the card is mostly for tasks; the
+ * footer's count includes all of them, since the Search tab it opens lists
+ * every kind.
  */
-export function QuickSearchModal({ visible, onClose, onSelectTask, onSelectGroup, onSelectProject, onSelectDestination, onOpenFullSearch, onShown }: Props) {
+export function QuickSearchModal({ visible, onClose, onSelectTask, onSelectGroup, onSelectProject, onSelectElsewhere, onOpenFullSearch, onShown }: Props) {
   const insets = useSafeAreaInsets();
   const colors = useColors();
   const { isDark, shadows } = useTheme();
@@ -435,23 +430,24 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onSelectGroup
   );
   useEffect(() => setHeldIds(new Set()), [debouncedQuery]);
 
-  // The menu's own index, so a screen simplified mode or the kitchen switch
-  // took away can't be found here either (see menuDestinations).
-  const menuOptions = useNavMenuOptions();
-  const destinations = useMemo(() => menuDestinations(menuOptions), [menuOptions]);
-  const destinationResults = useMemo(
-    () => quickDestinations(destinations, debouncedQuery),
-    [destinations, debouncedQuery]
-  );
+  // Screens, settings, people, recipes and groceries: everything that isn't a
+  // task. Searchable only where the side menu still offers it (see
+  // useElsewhereSearch), and at most QUICK_ELSEWHERE_LIMIT rows of them.
+  const elsewhereSections = useElsewhereSearch(debouncedQuery, visible);
+  const elsewhereResults = useMemo(() => quickElsewhere(elsewhereSections), [elsewhereSections]);
+  const elsewhereTotal = useMemo(() => allElsewhere(elsewhereSections).length, [elsewhereSections]);
 
-  // Screens spend the card's seven slots rather than adding to them.
-  const { groupResults, projectResults, results, total } = useMemo(
+  // Those rows spend the card's seven slots rather than adding to them.
+  const { groupResults, projectResults, results, total: taskTotal } = useMemo(
     () => quickSearch(
-      tasks, debouncedQuery, projectNamesById, QUICK_SEARCH_LIMIT - destinationResults.length, heldIds,
+      tasks, debouncedQuery, projectNamesById, QUICK_SEARCH_LIMIT - elsewhereResults.length, heldIds,
       groups, rosterByGroupId, projects, progressByProject
     ),
-    [tasks, debouncedQuery, projectNamesById, destinationResults.length, heldIds, groups, rosterByGroupId, projects, progressByProject]
+    [tasks, debouncedQuery, projectNamesById, elsewhereResults.length, heldIds, groups, rosterByGroupId, projects, progressByProject]
   );
+  // The footer's count is what the Search screen will show, which is now
+  // everything this card found, not just the tasks.
+  const total = taskTotal + elsewhereTotal;
 
   useEffect(() => {
     if (!visible) return;
@@ -504,10 +500,10 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onSelectGroup
     dismiss(() => onSelectProject(projectId));
   };
 
-  const handleSelectDestination = (route: string) => {
+  const handleSelectElsewhere = (result: ElsewhereResult) => {
     haptics.tap();
     pushRecentSearch(query);
-    dismiss(() => onSelectDestination(route));
+    dismiss(() => onSelectElsewhere(result));
   };
 
   const handleOpenFull = () => {
@@ -518,17 +514,16 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onSelectGroup
   };
 
   const trimmed = query.trim();
-  // Kept apart from the screen rows: the footer's count is what the Search tab
-  // will show, and that tab has no screens in it.
-  const hasEntityResults = groupResults.length > 0 || projectResults.length > 0 || results.length > 0;
-  const hasResults = hasEntityResults || destinationResults.length > 0;
+  const hasTaskResults = groupResults.length > 0 || projectResults.length > 0 || results.length > 0;
+  const hasResults = hasTaskResults || elsewhereResults.length > 0;
   const showNoMatches = trimmed.length > 0 && !hasResults;
 
-  // Return goes to the Search tab as it always has, unless the only thing the
-  // query found is a screen: an empty Search tab is no answer to "weight".
+  // Return goes to the Search tab as it always has, unless the query found no
+  // task at all: "weight" means the Weight screen, not a Search tab with one
+  // row on it.
   const handleSubmit = () => {
-    if (!hasEntityResults && destinationResults.length > 0) {
-      handleSelectDestination(destinationResults[0].route);
+    if (!hasTaskResults && elsewhereResults.length > 0) {
+      handleSelectElsewhere(elsewhereResults[0]);
       return;
     }
     handleOpenFull();
@@ -552,7 +547,7 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onSelectGroup
         >
           <SearchField
             surface="sunken"
-            placeholder="Search tasks and screens"
+            placeholder="Search everything"
             field={searchFilter}
             onSubmitEditing={handleSubmit}
           />
@@ -592,12 +587,11 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onSelectGroup
 
           {hasResults && (
             <View style={styles.results}>
-              {destinationResults.map(result => (
-                <QuickSearchDestinationRow
-                  key={result.route}
+              {elsewhereResults.map(result => (
+                <QuickSearchElsewhereRow
+                  key={result.key}
                   result={result}
-                  query={debouncedQuery}
-                  onSelect={handleSelectDestination}
+                  onSelect={handleSelectElsewhere}
                   styles={styles}
                   colors={colors}
                 />
@@ -643,7 +637,7 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onSelectGroup
             <Text style={styles.noMatches}>No matches for “{trimmed}”</Text>
           )}
 
-          {hasEntityResults && (
+          {hasResults && (
             <View style={styles.footer}>
               <InlineAction
                 label={total === 1 ? 'See 1 result' : `See all ${total} results`}
