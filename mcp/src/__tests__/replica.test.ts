@@ -550,6 +550,83 @@ describe('the replica', () => {
       void b;
     });
 
+    describe('running a template', () => {
+      const day = (y: number, m: number, d: number) => new Date(y, m - 1, d);
+      const trip = () => replica.createTemplate({
+        name: 'Trip',
+        container: 'project',
+        anchorsAreAway: true,
+        groups: [{ key: 'clothes', title: 'Clothes', checklist: true }],
+        questions: [
+          { name: 'kind', prompt: 'What kind of trip?', kind: 'choice', options: ['Holiday', 'Work'] },
+          { name: 'nights', prompt: 'How many nights?', kind: 'number', fromDates: 'nights' },
+        ],
+        items: [
+          { title: 'Pack {nights} shirts', groupKey: 'clothes', dueOffsetDays: -1, category: 'Home' },
+          { title: 'Laptop', conditions: [{ question: 'kind', values: ['Work'] }], category: 'Home' },
+          { title: 'Sunscreen', optional: true, category: 'Home', subtasks: [{ id: 's1', title: 'SPF 50' }] },
+        ],
+      });
+
+      it('creates a project with the away span, answers in titles, the section and its checklist flag', () => {
+        const t = trip();
+        const result = replica.applyTemplate(t.id, { runName: 'Lisbon', start: day(2026, 10, 10), end: day(2026, 10, 17) });
+
+        expect(result.container).toMatchObject({ kind: 'project', name: 'Lisbon' });
+        // Nights come off the dates, 10th to 17th being 7, and the work-only
+        // laptop and the optional sunscreen are off by default.
+        expect(result.tasks.map(x => x.title)).toEqual(['Pack 7 shirts']);
+        const project = replica.projects().find(p => p.id === result.container!.id)!;
+        expect(project.awayStart).toBeTruthy();
+        expect(result.tasks[0].projectId).toBe(project.id);
+        const section = replica.stacks().find(g => g.title === 'Clothes')!;
+        expect(section).toMatchObject({ projectId: project.id, checklist: true });
+        expect(replica.tasks().find(x => x.id === result.tasks[0].id)!.groupId).toBe(section.id);
+      });
+
+      it('follows the answers, and include / leaveOut', () => {
+        const t = trip();
+        const sunscreen = t.items.find(i => i.title === 'Sunscreen')!;
+        const shirts = t.items.find(i => i.title.startsWith('Pack'))!;
+        const result = replica.applyTemplate(t.id, {
+          answers: { kind: 'Work', nights: '3' },
+          include: [sunscreen.id],
+          leaveOut: [shirts.id],
+        });
+
+        expect(result.tasks.map(x => x.title).sort()).toEqual(['Laptop', 'Sunscreen']);
+        // Unnamed run: loose tasks, and the optional item's stub is a subtask.
+        expect(result.container).toBeNull();
+        const stub = replica.tasks().find(x => x.title === 'SPF 50');
+        expect(stub?.parentId).toBe(result.tasks.find(x => x.title === 'Sunscreen')!.id);
+      });
+
+      it('puts the items under one task when the container is a task, and into a stack otherwise', () => {
+        const one = replica.createTemplate({ name: 'Onboarding', container: 'task', items: [{ title: 'Laptop', category: 'Home', subtasks: [{ id: 'a', title: 'Order' }] }, { title: 'Badge', category: 'Home' }] });
+        const asTask = replica.applyTemplate(one.id, { runName: 'New hire' });
+        expect(asTask.container).toMatchObject({ kind: 'task', name: 'New hire' });
+        // The stub is flattened onto the run task rather than nested a level deeper.
+        expect(replica.tasks().find(x => x.title === 'Order')!.parentId).toBe(asTask.container!.id);
+
+        const stackT = replica.createTemplate({ name: 'Morning', container: 'stack', items: [{ title: 'Stretch', category: 'Home' }, { title: 'Water', category: 'Home' }] });
+        const asStack = replica.applyTemplate(stackT.id, { runName: 'Mornings' });
+        const stack = replica.stacks().find(g => g.id === asStack.container!.id)!;
+        expect(stack).toMatchObject({ title: 'Mornings', category: 'Home' });
+        expect(replica.tasks().filter(x => x.groupId === stack.id)).toHaveLength(2);
+      });
+
+      it('refuses a bad answer, an unknown item or project, and writes nothing', () => {
+        const t = trip();
+        const before = replica.tasks().length;
+        expect(() => replica.applyTemplate(t.id, { answers: { kind: 'Cruise' } })).toThrow(/must be one of Holiday, Work/);
+        expect(() => replica.applyTemplate(t.id, { answers: { nope: 'x' } })).toThrow(/no question named/);
+        expect(() => replica.applyTemplate(t.id, { include: ['zzz'] })).toThrow(/not an item of this run/);
+        expect(() => replica.applyTemplate(t.id, { projectId: 'nope' })).toThrow(/No project/);
+        expect(() => replica.applyTemplate('missing', {})).toThrow(/No template/);
+        expect(replica.tasks()).toHaveLength(before);
+      });
+    });
+
     it('survives a pre-existing broken nested reference on a rename', () => {
       const inner = replica.createTemplate({ name: 'Inner', items: [{ title: 'i' }] });
       const outer = replica.createTemplate({ name: 'Outer', items: [{ title: 'Nest', refTemplate: inner.id }] });

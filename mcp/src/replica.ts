@@ -215,6 +215,27 @@ export interface MoodInput {
   at?: Date;
 }
 
+export interface TemplateRun {
+  /** Names the run, which is what turns the template's container (stack, project, one task) on. */
+  runName?: string;
+  /** The anchor dates, as local days. Offsets in the template count from these. */
+  start?: Date | null;
+  end?: Date | null;
+  /** Answers to the template's questions, by the question's name. A question left out takes its default. */
+  answers?: Record<string, string>;
+  /** Item ids to add to what the answers select (an optional item), or to take out of it. */
+  include?: string[];
+  leaveOut?: string[];
+  /** Run into this existing project instead of the template's own container. */
+  projectId?: string;
+}
+
+export interface TemplateRunResult {
+  tasks: Task[];
+  /** What the run put the tasks in, by name, when it made one. */
+  container: { kind: 'stack' | 'project' | 'task'; id: string; name: string } | null;
+}
+
 export interface PersonFields {
   name?: string;
   nickname?: string;
@@ -569,6 +590,16 @@ export interface Replica {
    * broken); their names are returned so the caller can say so.
    */
   deleteTemplate(id: string): { template: TaskTemplate; nestedIn: string[] };
+
+  /**
+   * Run a template, as the apply sheet does with its defaults plus what is given:
+   * the same container, category, away-span, section and gate rules, because the
+   * decisions are `applyTemplateRun`'s (`src/utils/templateApply.ts`) and the app
+   * runs the same function. Nothing is written for the device: reminders and
+   * calendar events for the new tasks catch up on the phone, as for `createTask`.
+   * Written in one transaction, so a failure creates nothing.
+   */
+  applyTemplate(ref: string, run: TemplateRun): TemplateRunResult;
 
   /**
    * Put the named templates first, in the order given, and leave the rest
@@ -1002,6 +1033,81 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       symptom: spelled(moodLog.symptomVocabulary(logs), moodLog.symptomKey),
       tag: spelled(moodLog.contextTagVocabulary(logs), moodLog.contextTagKey),
     };
+  }
+
+  const templateQuestions = require('../../src/utils/templateQuestions') as typeof import('../../src/utils/templateQuestions');
+  const templateApply = require('../../src/utils/templateApply') as typeof import('../../src/utils/templateApply');
+
+  /**
+   * The replica's half of a template run: `applyTemplateRun` decides, and this
+   * supplies the writes over the database and the stores that load in Node.
+   * One transaction, and `refresh` after it rolls back or commits, as
+   * `createProjectPlan` does.
+   */
+  function runTemplateIn(
+    template: TaskTemplate,
+    byId: Map<string, TaskTemplate>,
+    selected: Set<string>,
+    anchors: { start: Date | null; end: Date | null },
+    options: import('../../src/utils/templateApply').TemplateRunOptions,
+    onContainer: (c: NonNullable<TemplateRunResult['container']>) => void,
+  ): Task[] {
+    const projectStore = () => useProjectStore.getState();
+    const groupStore = () => useTaskGroupStore.getState();
+    let created: Task[] = [];
+    try {
+      db.dbTransaction(() => {
+        created = templateApply.applyTemplateRun(template, byId, selected, anchors, options, {
+          addTask: draft => replica.createTask(draft as Partial<TaskDraft>),
+          // A stub is a checklist line: no title rules, no category, no time-of-day seeding.
+          addSubtask: (parentId, title) => {
+            const siblings = db.dbGetAllTasks().filter(t => t.parentId === parentId);
+            const stub = taskDraft.newTaskFromDraft(
+              { title, parentId } as Partial<TaskDraft>,
+              new Date().toISOString(),
+              siblings.reduce((m, t) => Math.max(m, t.sortOrder), 0) + 1,
+              false
+            );
+            db.dbInsertTask(stub);
+            refresh();
+          },
+          createStack: (title, category) => {
+            ensureCategory(category);
+            const g = groupStore().createGroup(title, category);
+            onContainer({ kind: 'stack', id: g.id, name: title });
+            return g;
+          },
+          groupTasks: (ids, title, category) => {
+            ensureCategory(category);
+            const g = groupStore().createGroup(title, category);
+            ids.forEach(id => replica.setTaskStack(id, g.id));
+            return g;
+          },
+          createProject: (title, opts) => {
+            const p = projectStore().createProject(title, opts);
+            onContainer({ kind: 'project', id: p.id, name: title });
+            return p;
+          },
+          getProject: id => projectStore().getProjectById(id) ?? undefined,
+          updateProject: (id, patch) => projectStore().updateProject(id, patch),
+          homeSection: (sectionId, projectId, checklist) => groupStore().updateGroup(sectionId, { projectId, checklist }),
+          setAnswerGate: (taskId, gate) => {
+            const task = db.dbGetAllTasks().find(t => t.id === taskId);
+            if (task) db.dbUpdateTask({ ...task, answerGate: gate });
+            refresh();
+          },
+        });
+      });
+    } finally {
+      refresh();
+    }
+    // A 'task' container is the parent every item was filed under.
+    const parentId = created.find(t => t.parentId)?.parentId;
+    if (parentId) {
+      const parent = db.dbGetAllTasks().find(t => t.id === parentId);
+      if (parent) onContainer({ kind: 'task', id: parent.id, name: parent.title });
+    }
+    return created.map(t => db.dbGetAllTasks().find(x => x.id === t.id) ?? t);
   }
 
   /** The Person columns a PersonFields names, validated. A birthday of null clears all three. */
@@ -1931,6 +2037,48 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       registerTemplateCategory(updated.category);
       db.dbUpdateTemplate(updated);
       return updated;
+    },
+
+    applyTemplate(ref: string, run: TemplateRun): TemplateRunResult {
+      const all = db.dbGetAllTemplates();
+      const found = resolveRef(ref, all);
+      if (found.length === 0) throw new Error(`No template with id or name "${ref}".`);
+      if (found.length > 1) throw new Error(`"${ref}" names ${found.length} templates. Use an id.`);
+      const template = found[0];
+      const byId = new Map(all.map(t => [t.id, t]));
+      if (run.projectId && !projects().some(p => p.id === run.projectId)) throw new Error(`No project with id ${run.projectId}.`);
+
+      const anchors = { start: run.start ?? null, end: run.end ?? null };
+      const tree = templateUtils.buildApplyTree(template.items, template.id, byId);
+      const questions = templateQuestions.questionsForTree(tree, byId);
+
+      // Answers arrive by the blank's name; the run works in question ids.
+      const typed: Record<string, string> = {};
+      const errors: string[] = [];
+      for (const [name, value] of Object.entries(run.answers ?? {})) {
+        const question = questions.find(q => q.name === name && q.kind !== 'people');
+        if (!question) { errors.push(`There is no question named "${name}". Its questions: ${questions.filter(q => q.name).map(q => q.name).join(', ') || 'none'}.`); continue; }
+        if (question.kind === 'choice' && !question.options.includes(value)) errors.push(`"${name}" must be one of ${question.options.join(', ')}.`);
+        if (question.kind === 'number' && !Number.isFinite(Number(value))) errors.push(`"${name}" must be a number.`);
+        typed[question.id] = value;
+      }
+      const leaves = new Set(templateUtils.flattenApplyTree(tree).map(e => e.item.id));
+      for (const id of [...(run.include ?? []), ...(run.leaveOut ?? [])]) if (!leaves.has(id)) errors.push(`item id "${id}" is not an item of this run.`);
+      if (errors.length > 0) throw new Error(errors.join(' '));
+
+      const answers = templateQuestions.resolveAnswers(questions, typed, anchors);
+      const selected = templateQuestions.initialLeafSelection(tree, questions, answers);
+      for (const id of run.include ?? []) selected.add(id);
+      for (const id of run.leaveOut ?? []) selected.delete(id);
+      if (selected.size === 0) throw new Error('Nothing in this template is selected for that run.');
+
+      let container: TemplateRunResult['container'] = null;
+      const created = runTemplateIn(template, byId, selected, anchors, {
+        runName: run.runName,
+        placeholders: templateQuestions.placeholderValuesFor(questions, answers),
+        targetProjectId: run.projectId,
+      }, c => { container = c; });
+      return { tasks: created, container };
     },
 
     deleteTemplate(id: string): { template: TaskTemplate; nestedIn: string[] } {

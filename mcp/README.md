@@ -108,6 +108,7 @@ only the fallback until the first sync.
 | `get_template` | One template in full, in the shape `create_template` and `update_template` take. |
 | `create_template` | **Write.** Builds a whole template in one call. Needs `MCP_WRITE_TOKEN`. |
 | `update_template` | **Write.** Edits a template: scalar fields by name, and `groups`, `questions` and `items` as whole lists (an item or group is kept by its id). Needs `MCP_WRITE_TOKEN`. |
+| `apply_template` | **Write.** Runs a template: creates its tasks (and stack, project or parent task) from dates and answers, the way the apply sheet does. |
 | `delete_template` | **Write.** Deletes a template. Templates have no archive, so it cannot be undone from here. |
 | `reorder_templates` | **Write.** Puts the listed templates first, in the order given. |
 | `create_task` | **Write.** Adds one task, with the app's own defaults and title rules applied. Takes every repeat rule the app has, chains, daily or weekly targets, time windows, blockers, follow-ups and "don't do this" habits. |

@@ -49,6 +49,7 @@ import {
   createTask,
   updateTask,
   createTemplate,
+  applyTemplate,
   deleteTemplate,
   getTemplate,
   reopenTask,
@@ -1228,6 +1229,28 @@ function registerWriteTools(
         return json(await withWrite(() => updateTemplate(replica, template, patch as any)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not update the template.' });
+      }
+    }
+  );
+
+  server.tool(
+    'apply_template',
+    "Run a template: create the tasks it describes, with dates counted from startDate and endDate. Does what the app's apply sheet does with its defaults plus what you give: which items are on follows the answers (a conditioned item is on or off by the answer, an optional one starts off), questions you do not answer take their default, and runName is what puts the tasks in the template's stack, project or parent task. Read the template with get_template first for its question names, item ids and container. include / leaveOut take item ids to switch on or off. projectId runs it into an existing project instead. People questions are not answered here. Reminders and calendar events for the new tasks are set up by the phone.",
+    {
+      template: z.string().describe('A template id, or its exact name when that names only one (list_templates).'),
+      runName: z.string().optional().describe('Names the run, e.g. "Lisbon trip". Needed for the template to create its stack, project or parent task; without it the tasks are loose.'),
+      startDate: z.string().optional().describe('YYYY-MM-DD: the anchor items count their start offsets from. For a trip, the first day away.'),
+      endDate: z.string().optional().describe('YYYY-MM-DD: the end anchor. For a trip, the last day away.'),
+      answers: z.record(z.string()).optional().describe('Answers by question name, e.g. { "trip": "Work", "nights": "7" }. A number question left out is read off the dates.'),
+      include: z.array(z.string()).optional().describe('Item ids to switch on (e.g. an optional item).'),
+      leaveOut: z.array(z.string()).optional().describe('Item ids to switch off.'),
+      projectId: z.string().optional().describe('An existing project to put the tasks in.'),
+    },
+    async ({ template, ...input }) => {
+      try {
+        return json(await withWrite(() => applyTemplate(replica, template, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not run the template.' });
       }
     }
   );

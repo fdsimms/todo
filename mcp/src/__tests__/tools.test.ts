@@ -102,6 +102,7 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     createTemplate: () => { throw new Error('not stubbed'); },
     updateTemplate: () => { throw new Error('not stubbed'); },
     deleteTemplate: () => { throw new Error('not stubbed'); },
+    applyTemplate: () => { throw new Error('not stubbed'); },
     reopenTask: () => { throw new Error('not stubbed'); },
     updateFoodEntry: () => { throw new Error('not stubbed'); },
     deleteFoodEntry: () => { throw new Error('not stubbed'); },

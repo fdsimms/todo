@@ -946,3 +946,47 @@ export function reopenTask(replica: Replica, id: string): ReopenTaskResult {
   if (top.length > 0) tookBack.push(`Removed the ${top.length === 1 ? 'occurrence' : `${top.length} occurrences`} its completion created.`);
   return { task: serializeTasks(replica, [task])[0], tookBack };
 }
+
+export interface ApplyTemplateInput {
+  runName?: string;
+  startDate?: string;
+  endDate?: string;
+  answers?: Record<string, string>;
+  include?: string[];
+  leaveOut?: string[];
+  projectId?: string;
+}
+
+export interface ApplyTemplateResult {
+  created: { id: string; title: string; dueDate?: string }[];
+  /** What the run put them in, when the template makes a stack, project or parent task. */
+  container?: { kind: string; id: string; name: string };
+}
+
+/** A bare YYYY-MM-DD as that local day. Never via toISOString, which is UTC. */
+function localDay(value: string | undefined, field: string): Date | null {
+  if (!value) return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+  if (!m) throw new Error(`${field} must be YYYY-MM-DD.`);
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+}
+
+/** Run a template. See `Replica.applyTemplate`. */
+export function applyTemplate(replica: Replica, ref: string, input: ApplyTemplateInput): ApplyTemplateResult {
+  const start = localDay(input.startDate, 'startDate');
+  const end = localDay(input.endDate, 'endDate');
+  if (start && end && end < start) throw new Error('endDate is before startDate.');
+  const result = replica.applyTemplate(ref, {
+    runName: input.runName,
+    start,
+    end,
+    answers: input.answers,
+    include: input.include,
+    leaveOut: input.leaveOut,
+    projectId: input.projectId,
+  });
+  return {
+    created: result.tasks.map(t => ({ id: t.id, title: t.title, ...(t.dueDate ? { dueDate: t.dueDate.slice(0, 10) } : {}) })),
+    ...(result.container ? { container: result.container } : {}),
+  };
+}

@@ -97,6 +97,7 @@ export const WRITE_TOOLS: Record<string, { title: string; destructive: boolean; 
   assign_to_stack: { title: 'File tasks in a stack', destructive: true, idempotent: true },
   create_template: { title: 'Create a template', destructive: false, idempotent: false },
   update_template: { title: 'Edit a template', destructive: true, idempotent: true },
+  apply_template: { title: 'Run a template', destructive: false, idempotent: false },
   delete_template: { title: 'Delete a template', destructive: true, idempotent: true },
   reorder_templates: { title: 'Reorder templates', destructive: true, idempotent: true },
   update_meal: { title: 'Change a planned meal', destructive: true, idempotent: true },

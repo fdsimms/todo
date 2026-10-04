@@ -479,6 +479,18 @@ adds `update_template` has to add the guard with it.
 - **A scalar-only edit never rebuilds the lists.** A rename or a schedule change leaves items
   untouched, so a stored nested reference that has since gone dangling cannot block it.
 
+**`apply_template` runs the app's own run logic.** The container choice, the run's category, the
+away span a trip's anchors become, item-group sections (a checklist flag included), the gates
+between items and the flattening of subtask stubs under a run task are one function,
+`applyTemplateRun` (`src/utils/templateApply.ts`), lifted out of `useTemplateStore.applyTemplate`
+and now called by both. It writes through a `TemplateRunSink`: the store supplies one made of its own
+actions (undo, reminders, calendar events), the replica supplies one over the database. A second
+copy of those rules was never an option, for the reason `taskCompletion.ts` exists. Which items are
+on is the apply sheet's opening state (`initialLeafSelection`, which is also what a scheduled run
+uses), adjusted by `include` / `leaveOut` item ids; answers come in by the question's name and are
+checked against its kind. People questions are not answered over MCP, so no task is stamped with
+people. Run in one transaction; reminders and calendar events catch up on the phone.
+
 `delete_template` has no archive to fall back on (a template has no archived state in the app), so
 it is the one delete the server offers. It leans on the preview every write already has: the dry
 run reports "Delete the template ... It cannot be restored from here" before anything is removed,

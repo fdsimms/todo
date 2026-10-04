@@ -204,6 +204,17 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return template;
     },
 
+    applyTemplate(ref, run) {
+      const result = replica.applyTemplate(ref, run);
+      const templateName = replica.templates().find(t => t.id === ref || t.name === ref)?.name ?? ref;
+      const name = result.container ? ` into "${result.container.name}"` : '';
+      log({
+        action: 'created', subject: 'task', title: result.tasks[0]?.title ?? ref, taskId: null, count: result.tasks.length,
+        note: `Run the template "${templateName}", creating ${result.tasks.length} ${result.tasks.length === 1 ? 'task' : 'tasks'}${name}`,
+      });
+      return result;
+    },
+
     deleteTemplate(id) {
       const result = replica.deleteTemplate(id);
       log({ action: 'cleared', subject: 'template', title: result.template.name, taskId: null });
