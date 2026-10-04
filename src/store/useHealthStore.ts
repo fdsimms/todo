@@ -11,6 +11,7 @@ import { useTaskStore } from './useTaskStore';
 import { createRefreshGuard } from '../utils/refreshGuard';
 import { anyExerciseRule } from '../utils/healthRules';
 import { parseActivitySummary, type ActivityRings } from '../utils/activityRings';
+import { parseSleepEpisodes, sleepNights, type SleepNight } from '../utils/sleepLog';
 
 /**
  * What Apple Health says about today, held in memory.
@@ -201,6 +202,14 @@ export const HEALTH_HISTORY_DAYS = 90;
  */
 export const WEIGHT_HISTORY_DAYS = 365;
 
+/**
+ * How far back the sleep read goes. The readings window's 90 days, because it
+ * is the Sleep screen's longest range and nights, unlike a body, have shape
+ * inside three months. Its own constant rather than `HEALTH_HISTORY_DAYS`
+ * reused, since the two answer different questions and only coincide.
+ */
+export const SLEEP_HISTORY_DAYS = 90;
+
 interface HealthState {
   today: HealthDay | null;
   refreshing: boolean;
@@ -220,12 +229,21 @@ interface HealthState {
    */
   weightSeries: WeightPoint[] | null;
   loadingWeight: boolean;
+  /**
+   * The last `SLEEP_HISTORY_DAYS` of sleep, one entry per day with any, oldest
+   * first, or null for "not looked yet" (the third answer the two windows
+   * above carry).
+   */
+  sleepNights: SleepNight[] | null;
+  loadingSleep: boolean;
   /** Re-read today's numbers. A no-op when the gate is closed or a read is already running. */
   refresh: () => Promise<void>;
   /** Re-read the trailing window. Only the screens that show a trend call this. */
   refreshHistory: () => Promise<void>;
   /** Re-read the body-mass window. Only the Weight screen calls this. */
   refreshWeight: () => Promise<void>;
+  /** Re-read the sleep window, with start and end times. Only the Sleep screen calls this. */
+  refreshSleep: () => Promise<void>;
   /**
    * A short body-mass window, answered without storing it. Null when there was
    * no way to ask at all.
@@ -248,6 +266,7 @@ interface HealthState {
 const todayGuard = createRefreshGuard();
 const historyGuard = createRefreshGuard();
 const weightGuard = createRefreshGuard();
+const sleepGuard = createRefreshGuard();
 
 export const useHealthStore = create<HealthState>((set, get) => ({
   today: null,
@@ -256,6 +275,8 @@ export const useHealthStore = create<HealthState>((set, get) => ({
   loadingHistory: false,
   weightSeries: null,
   loadingWeight: false,
+  sleepNights: null,
+  loadingSleep: false,
 
   async refresh() {
     // One gate, which is also the demo-mode refusal — see healthBridge.ts.
@@ -444,6 +465,37 @@ export const useHealthStore = create<HealthState>((set, get) => ({
   },
 
   /**
+   * Read the sleep window, on demand, as episodes with their times.
+   *
+   * Its own call rather than more columns on `refreshHistory` for the reason
+   * `refreshWeight` gives: one screen reads it, so the foreground refresh
+   * shouldn't pay for it. Grouping the episodes into days happens in
+   * `sleepNights`, which keys them by `dayResetTime` the way every other
+   * day-keyed reader does.
+   */
+  async refreshSleep() {
+    const bridge = healthBridge();
+    if (!bridge) return;
+    if (get().loadingSleep) return;
+
+    const anchor = addDays(getCurrentDayStart(), -(SLEEP_HISTORY_DAYS - 1));
+
+    set({ loadingSleep: true });
+    const token = sleepGuard.begin();
+    try {
+      const json = await bridge.readSleepSeries(anchor.toISOString(), SLEEP_HISTORY_DAYS);
+      if (!sleepGuard.isCurrent(token)) return;
+      // Written whole even when empty, for `refreshWeight`'s reason: revoked
+      // access must read as no data, never as the last data.
+      set({
+        sleepNights: sleepNights(parseSleepEpisodes(json), useSettingsStore.getState().dayResetTime),
+      });
+    } finally {
+      set({ loadingSleep: false });
+    }
+  },
+
+  /**
    * A short body-mass window, for the `weighIn` generator to ask "has anything
    * been recorded lately".
    *
@@ -507,12 +559,13 @@ export const useHealthStore = create<HealthState>((set, get) => ({
   },
 
   clear() {
-    // All three, because all three are being dropped: a read still in flight
-    // when access is revoked must not write its answer back afterwards.
+    // Every window, because every window is being dropped: a read still in
+    // flight when access is revoked must not write its answer back afterwards.
     todayGuard.invalidate();
     historyGuard.invalidate();
     weightGuard.invalidate();
-    set({ today: null, history: null, weightSeries: null });
+    sleepGuard.invalidate();
+    set({ today: null, history: null, weightSeries: null, sleepNights: null });
   },
 }));
 

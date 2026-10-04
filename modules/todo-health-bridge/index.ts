@@ -194,6 +194,7 @@ interface TodoHealthNativeModule {
   readDailyHealth(anchorISO: string, days: number): Promise<string>;
   readWeightSeries(anchorISO: string, days: number): Promise<string>;
   readActivitySummary(anchorISO: string): Promise<string>;
+  readSleepSeries(anchorISO: string, days: number): Promise<string>;
   writeAuthorizationStatus(kind: HealthWriteKind): HealthWriteStatus;
   requestWriteAuthorization(): Promise<HealthAuthorizationResult>;
   writeNutrientSample(key: string, amount: number): Promise<boolean>;
@@ -526,4 +527,20 @@ export async function readWeightSeries(
  */
 export function readActivitySummary(anchorISO: string): Promise<string> {
   return degradeOnReject(() => nativeModule!.readActivitySummary(anchorISO), 'null');
+}
+
+/**
+ * Every stretch of sleep that ended in the `days` logical days starting at
+ * `anchorISO`, as the raw JSON the native side wrote (`[]` for every reason
+ * there is nothing to say, a build predating this call included).
+ *
+ * Returned unparsed for `readActivitySummary`'s reason: which episode is a
+ * day's main sleep and which source wins are rules worth testing, and tests
+ * can reach `src/` and not this folder. They live in `parseSleepEpisodes` and
+ * `sleepNights` (`src/utils/sleepLog.ts`).
+ *
+ * Nothing is cached, for the reason `readDailyHealth` gives.
+ */
+export function readSleepSeries(anchorISO: string, days: number): Promise<string> {
+  return degradeOnReject(() => nativeModule!.readSleepSeries(anchorISO, days), '[]');
 }

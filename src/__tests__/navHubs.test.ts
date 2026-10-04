@@ -100,7 +100,7 @@ describe('simplified mode', () => {
   // caught here rather than shipping as a row that opens onto nothing.
   it('leaves every hub standing, on the emptiest install simplified mode allows — except Health', () => {
     // Health is the one hub every one of whose members can be gone at once:
-    // Weight is a lens and simple mode drops it unconditionally, and Mood and
+    // Weight and Sleep are lenses simple mode drops unconditionally, and Mood and
     // Medications are both content screens that need a log entry to survive.
     // The other three hubs keep at least one always-shown screen (Categories,
     // Logbook, Groceries…), so this is the case the comment on the loop below
@@ -154,7 +154,7 @@ describe('the subtitle under a hub row', () => {
     const organize = NAV_HUBS.find(h => h.id === 'organize')!;
     expect(hubSubtitle(organize)).toBe('Categories, Tags, People, Stacks, Templates');
     const health = NAV_HUBS.find(h => h.id === 'health')!;
-    expect(hubSubtitle(health)).toBe('Mood, Medications, Weight');
+    expect(hubSubtitle(health)).toBe('Mood, Medications, Weight, Sleep');
   });
 
   // The whole point of building it from the members rather than writing it
