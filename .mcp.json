@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "dundundun": {
+      "type": "http",
+      "url": "https://dundundun-mcp.fly.dev/mcp",
+      "headers": {
+        "Authorization": "Bearer ${TODO_MCP_TOKEN:-}"
+      }
+    }
+  }
+}
