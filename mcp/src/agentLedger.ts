@@ -115,6 +115,31 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return result;
     },
 
+    setTaskArchived(id, archived) {
+      const before = snapshot(id);
+      const task = replica.setTaskArchived(id, archived);
+      if (before) log({ action: archived ? 'cleared' : 'edited', subject: 'task', title: task.title, taskId: id, revert: taskRevert(before, task) });
+      return task;
+    },
+
+    addProjectSteps(projectId, steps) {
+      const created = replica.addProjectSteps(projectId, steps);
+      for (const task of created) {
+        if (!task.parentId) log({ action: 'created', subject: 'task', title: task.title, taskId: task.id });
+      }
+      return created;
+    },
+
+    moveProjectTasks(projectId, from, to) {
+      const before = new Map(replica.tasks().filter(t => t.projectId === projectId).map(t => [t.id, t]));
+      const move = replica.moveProjectTasks(projectId, from, to);
+      for (const task of move.moved) {
+        const was = before.get(task.id);
+        if (was) log({ action: 'moved', subject: 'task', title: task.title, taskId: task.id, revert: taskRevert(was, task) });
+      }
+      return move;
+    },
+
     createProjectPlan(plan) {
       const result = replica.createProjectPlan(plan);
       log({ action: 'created', subject: 'project', title: result.project.title, taskId: null, count: 1 + result.tasks.length });

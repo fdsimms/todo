@@ -54,7 +54,7 @@ import {
 import { useHealthStore } from '../store/useHealthStore';
 import { activeSegment, segmentPhase, segmentRemaining, timerSegments } from '../utils/timerSegments';
 import { isStreakAtRecord } from '../utils/streakRecord';
-import { isTaskWindowActive, isTaskExpired, effectiveWindowEnd, isRecurrenceNotYetDue, isMissableMealPlanTask, isTaskNew, isTaskVisible, isQuotaTask, isQuotaPartial, quotaRidesOutTheDay, isOnPaceQuota, quotaLeavesTodayAfterLog, quotaNextDueAt, formatQuotaNextDue, quotaFraction, quotaPaceFraction, quotaUnitsToPace, activeChainStepTitle, displayTitleFor } from '../utils/visibilityUtils';
+import { isTaskWindowActive, isTaskExpired, effectiveWindowEnd, isRecurrenceNotYetDue, isMissableMealPlanTask, isTaskNew, isTaskVisible, isQuotaTask, isQuotaPartial, quotaRidesOutTheDay, isOnPaceQuota, quotaLeavesTodayAfterLog, quotaNextDueAt, formatQuotaNextDue, quotaFraction, quotaPaceFraction, quotaUnitsToPace, activeChainStepTitle, displayTitleFor, isTaskNotNeeded } from '../utils/visibilityUtils';
 import { asksOnCompletion, deliverableKindFor, isTentativeAnswer } from '../utils/deliverables';
 import { offersMealLogOnCompletion } from '../utils/completionTap';
 import { describeTaskRecurrence } from '../utils/recurrenceLabels';
@@ -1477,11 +1477,15 @@ export const TaskItem = React.memo(function TaskItem({
     return person && !person.archived ? displayNameOf(person) : undefined;
   });
 
+  // On a branch that wasn't taken (Task.answerGate): never going to be done.
+  // Only a project's page and Search still list one, and the row says why.
+  const notNeeded = useTaskStore(() => isTaskNotNeeded(task));
+
   // Waiting on another task or on a person: the title drops to the secondary
   // grey, so a list holding a few of these (a project's page, the Stuck
   // screen) reads which rows can be picked up now without scanning each row's
   // chips. The chip still says what it waits on.
-  const heldBackDim = !task.completed && (!!blockerTitle || !!waitingPersonName);
+  const heldBackDim = !task.completed && (!!blockerTitle || !!waitingPersonName || notNeeded);
 
   // A task that has been put off enough times to count as drifting — the
   // same rule StuckScreen's own Drift section is built on. Shown here too, on
@@ -2580,7 +2584,7 @@ export const TaskItem = React.memo(function TaskItem({
             )}
           </View>
         )}
-        {(isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || eventTaskContext !== null || windowActive || windowExpired || showStreakChip || isDrifting || bountyCoins > 0 || waitingCount > 0 || !!blockerTitle || !!waitingPersonName || autoScheduled || scheduledIso !== null || reminderTimeLabel !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || !!chainName || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.notes.length > 0) && (
+        {(isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || eventTaskContext !== null || windowActive || windowExpired || showStreakChip || isDrifting || bountyCoins > 0 || waitingCount > 0 || !!blockerTitle || notNeeded || !!waitingPersonName || autoScheduled || scheduledIso !== null || reminderTimeLabel !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || !!chainName || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.notes.length > 0) && (
           <View style={styles.metaRow}>
             {/* Leads the meta line: on the screens that ask for it, "when" is
                 what the row is being read for, and every other chip here
@@ -2666,6 +2670,14 @@ export const TaskItem = React.memo(function TaskItem({
             )}
             {/* The other side of the same relationship. Only reachable where a
                 blocked task is still listed — Search, and a project's own screen. */}
+            {notNeeded && (
+              <View style={styles.metaChip} accessibilityLabel="Not needed: another answer was picked">
+                <Ionicons name="remove-circle-outline" size={iconSize.xs} color={colors.textSecondary} />
+                <Text style={styles.blockingLabel} numberOfLines={1}>
+                  Not needed
+                </Text>
+              </View>
+            )}
             {!!blockerTitle && (
               <View style={styles.metaChip} accessibilityLabel={`Waiting on ${blockerTitle}`}>
                 <Ionicons name="hourglass" size={iconSize.xs} color={colors.textSecondary} />

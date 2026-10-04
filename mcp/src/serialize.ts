@@ -64,6 +64,12 @@ export interface SerializedTask {
    * and only one of them is the user's to act on.
    */
   blocked?: boolean;
+  /**
+   * On a branch that wasn't taken (see `onlyIfAnswer` on get_task): another
+   * answer was picked, so this will never be done. Off every list, and left
+   * out of its project's count.
+   */
+  notNeeded?: boolean;
 }
 
 /** Drops keys whose value is null, undefined, or an empty array. */
@@ -106,6 +112,7 @@ export function serializeTask(replica: Replica, task: Task): SerializedTask {
     recurring: task.recurrenceType !== 'none' ? true : undefined,
     pinned: task.pinned ? true : undefined,
     blocked: replica.isBlocked(task) ? true : undefined,
+    notNeeded: replica.isNotNeeded(task) ? true : undefined,
   });
 }
 

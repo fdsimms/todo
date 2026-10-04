@@ -400,6 +400,7 @@ export function newTaskFromDraft(
     location: draft.location ?? null,
     blockedById: draft.blockedById ?? draft.blockedByIds?.[0] ?? null,
     blockedByIds: draft.blockedById ? (draft.blockedByIds ?? []) : (draft.blockedByIds ?? []).slice(1),
+    answerGate: draft.answerGate ?? null,
     waitingOnPersonId: null,
     waitingOnPersonSince: null,
     waitingFollowUpDeclinedAt: null,

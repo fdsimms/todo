@@ -37,6 +37,7 @@ function stub(tasks: Task[], over: Partial<Replica> = {}): Replica {
     isUnscheduled: (t: Task) => t.id.startsWith('someday'),
     isInbox: (t: Task) => t.id.startsWith('inbox'),
     isBlocked: () => false,
+    isNotNeeded: () => false,
     displayTitle: (t: Task) => t.title,
     estimatedMinutes: (t: Task) => t.estimatedMinutes ?? null,
     deliverableKind: () => null,

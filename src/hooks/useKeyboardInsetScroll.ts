@@ -142,6 +142,19 @@ export function useScrollFieldIntoView() {
 }
 
 /**
+ * `refreshing`: the list's `RefreshControl` is refreshing. **No `contentInset`
+ * assignment may land while it is.** UIRefreshControl raises the scroll view's
+ * top inset by the spinner's height while it spins and takes exactly that
+ * height back off when it ends; the `contentInset` prop below assigns the
+ * whole inset (`RCTScrollViewComponentView.mm` `updateProps`), so one written
+ * in between zeroes the top and the end of the refresh leaves it negative,
+ * which makes the list's smallest offset a positive one: the top of the
+ * content can't be scrolled to. Today's pull-to-search did this on every
+ * pull, since the sheet it opens covers the list (blurring it, below) while
+ * the control is still spinning. The blur-time assignment waits for the
+ * refresh to end instead, and `record` repairs a negative top if one is ever
+ * seen anyway, since no inset this hook or UIKit means to leave is below zero.
+ *
  * `fieldAbove`: the field this list makes room for sits *outside* it, above
  * (a search box over its results). RN's own handler is wrong for that shape
  * whenever the field carries an `inputAccessoryViewID` (the Done bar): it reads
@@ -154,7 +167,11 @@ export function useScrollFieldIntoView() {
  * from under the keyboard, with the offset left where the user put it.
  */
 export function useKeyboardInsetScroll<T extends ScrollHandle>(
-  { ownsSheet = false, fieldAbove = false }: { ownsSheet?: boolean; fieldAbove?: boolean } = {},
+  {
+    ownsSheet = false,
+    fieldAbove = false,
+    refreshing = false,
+  }: { ownsSheet?: boolean; fieldAbove?: boolean; refreshing?: boolean } = {},
 ) {
   const routeFocused = useIsFocused();
   const level = useContext(PresentationLevelContext);
@@ -190,6 +207,7 @@ export function useKeyboardInsetScroll<T extends ScrollHandle>(
     else list?.scrollTo?.({ y, animated });
   }, []);
 
+  const [noInset, setNoInset] = useState(NO_INSET);
   const record = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const { contentOffset, contentSize, layoutMeasurement, contentInset } = e.nativeEvent;
     lastScroll.current = {
@@ -198,6 +216,9 @@ export function useKeyboardInsetScroll<T extends ScrollHandle>(
       viewportHeight: layoutMeasurement.height,
       insetBottom: contentInset?.bottom ?? 0,
     };
+    // See `refreshing` above: a top inset below zero is a wrong one, whatever
+    // put it there, and the assignment is the only lever that takes it away.
+    if ((contentInset?.top ?? 0) < -0.5) setNoInset(pulseNoInset);
   }, []);
 
   const onMomentumScrollEnd = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -228,12 +249,14 @@ export function useKeyboardInsetScroll<T extends ScrollHandle>(
   // shrinking an inset never re-clamps `contentOffset` (see (2) above), so
   // clearing one without the clamp is how the list would be left stranded
   // below its own content instead.
-  const [noInset, setNoInset] = useState(NO_INSET);
+  // `refreshing` in the deps is what defers the assignment rather than
+  // skipping it: the refresh ending while the list is still blurred reruns
+  // this, and the inset is cleared then, after UIKit has finished with it.
   useEffect(() => {
-    if (focused) return;
+    if (focused || refreshing) return;
     setNoInset(pulseNoInset);
     unstrand(false, 0);
-  }, [focused, unstrand]);
+  }, [focused, refreshing, unstrand]);
 
   // A caller-driven counterpart to the blur effect above, for a list that
   // stays focused but has just lost the content that justified an inset — a
@@ -246,10 +269,10 @@ export function useKeyboardInsetScroll<T extends ScrollHandle>(
   // keyboard is confirmed down, any inset still on the list is stale by
   // definition, so clearing it can't cost a legitimate one.
   const clearStaleInset = useCallback(() => {
-    if (Keyboard.isVisible()) return;
+    if (Keyboard.isVisible() || refreshing) return;
     setNoInset(pulseNoInset);
     unstrand(false, 0);
-  }, [unstrand]);
+  }, [refreshing, unstrand]);
 
   // `fieldAbove` only: the keyboard's overlap with the bottom of the screen,
   // which is where a sheet's list ends. Zero whenever this list isn't the one

@@ -21,6 +21,9 @@ import {
   resetToFoodLog,
   resetToWeight,
   resetToProjectPull,
+  resetToProject,
+  resetToProjects,
+  resetToTask,
   resetToFocusSession,
   resetToDeload,
   openQuickAddFromShortcut,
@@ -391,6 +394,68 @@ export function projectsUrlPullDay(url: string): string | null {
   return /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : null;
 }
 
+// `dundundun://task?id=…` — opens one task's editor. Written by the MCP server
+// into what its tools return (as the https universal link below), so a task
+// Claude just made or changed is one tap away.
+const TASK_RE = new RegExp(`^${SCHEME}:\\/\\/\\/?task\\/?(?:\\?(.*))?$`, 'i');
+
+export function isTaskUrl(url: string): boolean {
+  return typeof url === 'string' && TASK_RE.test(url.trim());
+}
+
+/** The task a task link asks to open, or null for a malformed one. */
+export function taskUrlId(url: string): string | null {
+  if (typeof url !== 'string') return null;
+  const match = TASK_RE.exec(url.trim());
+  if (!match) return null;
+  const id = (parseQuery(match[1] ?? '').id ?? '').trim();
+  return id || null;
+}
+
+// `dundundun://project?id=…` — one project's own page. Singular, unlike
+// `projects`, which opens the pull sheet (see PROJECTS_RE).
+const PROJECT_RE = new RegExp(`^${SCHEME}:\\/\\/\\/?project\\/?(?:\\?(.*))?$`, 'i');
+
+export function isProjectUrl(url: string): boolean {
+  return typeof url === 'string' && PROJECT_RE.test(url.trim());
+}
+
+/** The project a project link asks to open, or null for a malformed one. */
+export function projectUrlId(url: string): string | null {
+  if (typeof url !== 'string') return null;
+  const match = PROJECT_RE.exec(url.trim());
+  if (!match) return null;
+  const id = (parseQuery(match[1] ?? '').id ?? '').trim();
+  return id || null;
+}
+
+/**
+ * The hosts whose `https://<host>/open/…` links are this app's own, which must
+ * match `ios.associatedDomains` in app.json (a test holds the two together).
+ * The MCP server hands those links out because a chat app turns an https link
+ * into something tappable and may not do that for a custom scheme; iOS opens
+ * the app straight from one once the domain is associated.
+ *
+ * Restricted to named hosts, not any https URL with an `/open/` path: rows
+ * route their own links through `openInAppUrl`, and somebody's task linking to
+ * a web page that happens to live under /open/ must still open that page.
+ */
+export const UNIVERSAL_LINK_HOSTS: readonly string[] = ['dundundun-mcp.fly.dev'];
+
+const UNIVERSAL_RE = /^https:\/\/([^/?#]+)\/open\/([^?#]+?)\/?(\?[^#]*)?(?:#.*)?$/i;
+
+/**
+ * `https://dundundun-mcp.fly.dev/open/task?id=x` as the `dundundun://task?id=x`
+ * it stands for, or null when the URL is not one of this app's universal links.
+ */
+export function appUrlFromUniversalLink(url: string | null | undefined): string | null {
+  if (typeof url !== 'string') return null;
+  const match = UNIVERSAL_RE.exec(url.trim());
+  if (!match) return null;
+  if (!UNIVERSAL_LINK_HOSTS.includes(match[1].toLowerCase())) return null;
+  return `${SCHEME}://${match[2]}${match[3] ?? ''}`;
+}
+
 export function isKitchenUrl(url: string): boolean {
   return typeof url === 'string' && KITCHEN_RE.test(url.trim());
 }
@@ -611,7 +676,7 @@ export function linkIconFor(url: string | null | undefined): string {
   if (isMoodUrl(url)) return 'happy-outline';
   if (isFoodLogUrl(url)) return 'fast-food-outline';
   if (isWeightUrl(url)) return 'scale-outline';
-  if (isProjectsUrl(url)) return 'briefcase-outline';
+  if (isProjectsUrl(url) || isProjectUrl(url)) return 'briefcase-outline';
   if (isDeloadUrl(url)) return 'leaf-outline';
   return 'link';
 }
@@ -626,6 +691,7 @@ export function linkIconFor(url: string | null | undefined): string {
  */
 export function openInAppUrl(url: string | null | undefined): boolean {
   if (!url) return false;
+  url = appUrlFromUniversalLink(url) ?? url;
   if (isQuickAddUrl(url)) {
     openQuickAddFromShortcut();
     return true;
@@ -761,6 +827,18 @@ export function openInAppUrl(url: string | null | undefined): boolean {
     else if (key?.startsWith('completionTimer:')) {
       useTaskStore.getState().dismissCompletionTimer(key.slice('completionTimer:'.length));
     }
+    return true;
+  }
+  if (isTaskUrl(url)) {
+    const id = taskUrlId(url);
+    if (id) resetToTask(id);
+    else resetToToday();
+    return true;
+  }
+  if (isProjectUrl(url)) {
+    const id = projectUrlId(url);
+    if (id) resetToProject(id);
+    else resetToProjects();
     return true;
   }
   if (isOpenAppUrl(url)) {

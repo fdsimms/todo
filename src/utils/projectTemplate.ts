@@ -112,8 +112,9 @@ export type ProjectTemplateDraft = Pick<TaskTemplate, 'name' | 'items' | 'itemGr
  *
  * The date it counts from is the trip's departure when there is one (the
  * template is then marked as a trip, so it asks for Leaving and Coming back)
- * and otherwise the deadline, as "N days before the end date". A project with
- * neither gives a template with no dates, which is what it had.
+ * and otherwise the event date or, failing that, the deadline, as "N days
+ * before the end date". A project with none gives a template with no dates,
+ * which is what it had.
  */
 export function templateFromProject(
   project: Project,
@@ -124,7 +125,7 @@ export function templateFromProject(
   const blueprint = projectBlueprint(project.id, tasks, groups);
   const anchorsAreAway = project.awayStart !== null;
   const anchor: TemplateAnchor = anchorsAreAway ? 'start' : 'end';
-  const anchorIso = anchorsAreAway ? project.awayStart : project.deadline;
+  const anchorIso = anchorsAreAway ? project.awayStart : (project.eventDate ?? project.deadline);
   // getTaskDayStart, not getDayStart: these are stored dates, and a date kept
   // at midnight under a later dayResetTime would read as the day before.
   const anchorDay = anchorIso ? getTaskDayStart(new Date(anchorIso), dayResetTime) : null;
@@ -139,7 +140,15 @@ export function templateFromProject(
   }));
   const groupIdFor = new Map(blueprint.sections.map((s, i) => [s.id, itemGroups[i].id]));
 
+  // Item ids minted up front, so a branch ("only if Venue? is Park") can name
+  // the item its question became. A gate on a task this blueprint doesn't
+  // carry (outside the project, or a collapsed occurrence) is left behind.
+  const itemIdFor = new Map(blueprint.entries.map(({ task }) => [task.id, generateId()]));
   const items: TemplateItem[] = blueprint.entries.map(({ task, sectionId, subtasks }) => normalizeTemplateItem({
+    id: itemIdFor.get(task.id),
+    answerGate: task.answerGate && itemIdFor.has(task.answerGate.taskId)
+      ? { itemId: itemIdFor.get(task.answerGate.taskId)!, answers: task.answerGate.answers }
+      : null,
     title: task.title,
     notes: task.notes,
     anchor,

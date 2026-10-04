@@ -119,7 +119,23 @@ To cut a connection off, remove the connector in Claude, or change `MCP_OAUTH_PA
 delete `/data/oauth.db` on the machine (`fly ssh console --config mcp/fly.toml`) to sign every
 connection out.
 
-## 8. Claude Code on your phone (optional)
+## 8. Links that open the app
+
+Tools that make or change something return an `openInApp` link, and Claude offers it as "Open in
+dundundun". Tapping it on your iPhone opens the app right at that task, project, list, meal or
+person. That needs the server to tell Apple it belongs to your app, which takes your Apple Team ID
+(not a secret: developer.apple.com → Account → Membership details):
+
+```bash
+fly secrets set --config mcp/fly.toml APPLE_TEAM_ID=<your team id>
+```
+
+Check it at `https://dundundun-mcp.fly.dev/.well-known/apple-app-site-association`, which should
+show your team id. The app side ships in the build (it declares the domain in `app.json`), so
+links open the app only on a build made after this change. Before that, or on a computer, the link
+opens a small page with an "Open the app" button.
+
+## 9. Claude Code on your phone (optional)
 
 A Claude Code session started from the Claude iOS app or claude.ai/code runs in the cloud against
 this repo, so your laptop's config doesn't reach it. The repo's `.mcp.json` names the server for
@@ -139,8 +155,20 @@ the repo. Decline it there: the `todo` server from step 6 already covers the lap
 ## Afterwards
 
 - **Logs:** `fly logs --config mcp/fly.toml`
-- **Updating the server:** pull `main` and run the deploy command in step 4 again. The data on the
-  volume survives a deploy.
+- **Updating the server:** it deploys itself (below). To do it by hand, pull `main` and run the
+  deploy command in step 4 again. The data on the volume survives a deploy either way.
+- **Deploying automatically:** `.github/workflows/deploy-mcp.yml` deploys whenever a merge to
+  `main` changes something the server runs (`mcp/`, or the app's `src/db`, `src/utils`,
+  `src/store`, `src/services` or `src/types`). It needs one repository secret. Make a deploy token
+  that can only deploy this app:
+
+  ```bash
+  fly tokens create deploy --config mcp/fly.toml
+  ```
+
+  Copy the whole output (it starts with `FlyV1`) into GitHub: the repo's **Settings → Secrets and
+  variables → Actions → New repository secret**, named `FLY_API_TOKEN`. To deploy without a
+  merge, open **Actions → Deploy MCP server → Run workflow**.
 - **Changing a token:** run `fly secrets set` with the new value (it restarts the machine), then
   update whichever device or Claude Code config uses it.
 - **Starting over:** `fly apps destroy dundundun-mcp` deletes the app, the volume and the copy

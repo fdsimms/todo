@@ -51,10 +51,12 @@ import {
   createTemplate,
   completeTask,
   deferTask,
+  archiveTask,
   addGroceryItem,
   setGroceryChecked,
   removeFromGroceryList,
   listProjects,
+  listCategories,
   listTasks,
   listTemplates,
   searchTasks,
@@ -68,9 +70,10 @@ import {
   type TaskFieldsInput,
 } from './taskFields';
 import type { DeliverableKind, MealSlot, TimeOfDay } from '../../src/types';
-import { createProject, getProject, updateProject, type CreateProjectInput } from './projectTools';
+import { addProjectSteps, createProject, getProject, updateProject, type CreateProjectInput, type ProjectPlanStepInput } from './projectTools';
 import { DEFAULT_PLAN_DAYS, MAX_PLAN_DAYS, MEAL_SLOTS as KITCHEN_MEAL_SLOTS, getRecipe, listMealPlan, listRecipes, planMeal } from './kitchenTools';
 import { DEFAULT_BIRTHDAY_DAYS, MAX_BIRTHDAY_DAYS, addPersonHistory, getPerson, listPeople, upcomingBirthdays } from './peopleTools';
+import { appLinks, appSiteAssociation, appUrlForOpenPath, openPage } from './appLinks';
 import { ANCHORS, CONTAINERS, QUESTION_KINDS, QUESTION_SOURCES, SCHEDULE_FREQUENCIES } from './templatePlan';
 import { DEFAULT_AGENDA_DAYS, DEFAULT_HISTORY_DAYS, DEFAULT_STALE_DAYS, MAX_AGENDA_DAYS, completionHistory, getAgenda, getOverview, reviewTasks } from './insightTools';
 import { DEFAULT_HELP_LIMIT, appHelp } from './helpTools';
@@ -146,6 +149,17 @@ function json(value: unknown) {
  * inside each handler: a read-scoped caller does not see the write tools in
  * `tools/list` at all, so there is nothing for a model to try and be refused.
  */
+/**
+ * Where an `openInApp` link points, from PUBLIC_URL, or null on a server with no
+ * public address (a laptop), where there is nothing for a phone to open.
+ */
+const LINKS = appLinks(process.env.PUBLIC_URL);
+
+/** `result` with a link that opens its subject in the app, when there is one. */
+function withLink<T extends object>(result: T, link: string | undefined): T | (T & { openInApp: string }) {
+  return link ? { ...result, openInApp: link } : result;
+}
+
 export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): McpServer {
   const server = new McpServer({ name: 'todo', version: '0.1.0' }, { instructions: SERVER_INSTRUCTIONS });
 
@@ -225,8 +239,15 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
     { id: z.string().min(1) },
     async ({ id }) => {
       const result = await withFresh(() => getTask(replica, id));
-      return result ? json(result) : json({ error: `No task with id ${id}.` });
+      return result ? json(withLink(result, LINKS?.task(id))) : json({ error: `No task with id ${id}.` });
     }
+  );
+
+  server.tool(
+    'list_categories',
+    'The task categories, in the user\'s own order, each with how many open tasks it holds and a few of them as examples. Every task you create needs one of these (or a new one, flagged with newCategory), so check here first and pick the one the task belongs under.',
+    {},
+    async () => json(await withFresh(() => listCategories(replica)))
   );
 
   server.tool('list_projects', "Active projects and how far through each one is. The counts are the app's own: a recurring member counts once however many times it has recurred, and a dated series counts once rather than once per date.", {}, async () =>
@@ -270,11 +291,11 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'get_project',
-    'One project in full: its details, every open task in the project\'s own order (with each one\'s checklist and what it waits on), and the most recently finished. Use it before suggesting what to do next on a project, or before re-scoping one.',
+    'One project in full: its details, every open task in the project\'s own order (with each one\'s checklist and what it waits on), the most recently finished, and every decision: each question a task asked on completion, with its answer and when it was given. Use it before suggesting what to do next on a project, or before re-scoping one.',
     { id: z.string().min(1) },
     async ({ id }) => {
       const result = await withFresh(() => getProject(replica, id));
-      return result ? json(result) : json({ error: `No project with id ${id}.` });
+      return result ? json(withLink(result, LINKS?.project(id))) : json({ error: `No project with id ${id}.` });
     }
   );
 
@@ -296,7 +317,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
     { id: z.string().min(1) },
     async ({ id }) => {
       const result = await withFresh(() => getRecipe(replica, id));
-      return result ? json(result) : json({ error: `No recipe with id ${id}.` });
+      return result ? json(withLink(result, LINKS?.recipe(id))) : json({ error: `No recipe with id ${id}.` });
     }
   );
 
@@ -330,7 +351,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
     { id: z.string().min(1) },
     async ({ id }) => {
       const result = await withFresh(() => getPerson(replica, id));
-      return result ? json(result) : json({ error: `No person with id ${id}.` });
+      return result ? json(withLink(result, LINKS?.person(id))) : json({ error: `No person with id ${id}.` });
     }
   );
 
@@ -497,6 +518,15 @@ const itemSchema = z.object({
   subtasks: z.array(z.object({ id: z.string(), title: z.string() })).optional(),
   groupKey: z.string().optional().describe('The key of a group defined in this plan.'),
   conditions: z.array(conditionSchema).optional(),
+  key: z.string().optional().describe('Your own handle for this item, so another item\'s onlyIfAnswer can name it.'),
+  deliverableKind: z.enum(DELIVERABLE_KINDS as unknown as [DeliverableKind, ...DeliverableKind[]]).nullable().optional()
+    .describe('A question the task asks when completed: text, date, number, yesno or choice.'),
+  deliverableOptions: z.array(z.string()).optional().describe('For a choice question: the options, at least two.'),
+  onlyIfAnswer: z.object({
+    item: z.string().describe('The key of an item in this plan that asks a Yes/No or choice question.'),
+    answers: z.array(z.string()).min(1),
+  }).optional()
+    .describe('A branch decided after the template is applied: the task waits for that item\'s question to be answered, then shows only for these answers and is not needed for any other. Unlike conditions, which decide what is ticked when the template is applied.'),
   refTemplate: z.string().optional().describe('An existing template id, or its name when unique, to nest here.'),
 });
 
@@ -509,7 +539,8 @@ const itemSchema = z.object({
 const isoDateTime = z.string().nullable().optional();
 const taskFieldsShape = {
   notes: z.string().optional(),
-  category: z.string().nullable().optional().describe('A task category, by name.'),
+  category: z.string().nullable().optional().describe('A task category, by name, from list_categories. Required when creating a top-level task unless its project has a default category; a name that isn\'t one of the user\'s is refused unless newCategory is set.'),
+  newCategory: z.boolean().optional().describe('Create category as a new category. Only when none of the existing ones fits; say so to the user.'),
   tags: z.array(z.string()).optional(),
   projectId: z.string().nullable().optional().describe('File it in a project (see list_projects), or null to take it out.'),
   dueDate: isoDateTime.describe('YYYY-MM-DD (read as that day in their own time zone) or an ISO date-time: the day it is for. On a repeating task this also moves the schedule; to move just this occurrence use defer_task.'),
@@ -570,8 +601,21 @@ const taskFieldsShape = {
   }).nullable().optional().describe('A time of day to do it in. null removes it.'),
   habit: z.enum(['do', 'avoid']).optional()
     .describe('"avoid" makes it a habit of NOT doing something ("no phone in bed"): it is never completed, and its streak counts the days you held off. Only for a plain task, not a chain or a target.'),
+  dueDaysFromEvent: z.number().int().optional()
+    .describe('Instead of dueDate: days from the project\'s event date, negative for before ("get the license 60 days before" is -60, "thank-you notes a week after" is 7). Becomes an ordinary date; it does not follow the event later, but moving the event with moveTasks moves it.'),
+  deadlineDaysFromEvent: z.number().int().optional()
+    .describe('Instead of deadline: days from the project\'s event date, as dueDaysFromEvent.'),
+  dueEndOfMonthAfterEvent: z.number().int().min(0).optional()
+    .describe('Instead of dueDate: the last day of a month counted from the event\'s, 0 for the event\'s own month and 1 for the month after ("update records by the end of the month after" is 1).'),
+  deadlineEndOfMonthAfterEvent: z.number().int().min(0).optional()
+    .describe('Instead of deadline: as dueEndOfMonthAfterEvent.'),
   waitsOn: z.array(z.string()).optional()
     .describe('Ids of tasks this one waits on: it stays hidden until they are all done. [] clears it.'),
+  onlyIfAnswer: z.object({
+    taskId: z.string().describe('A task that asks a Yes/No or pick-one question when completed.'),
+    answers: z.array(z.string()).min(1).describe('The answers that show this task, spelled as the question offers them.'),
+  }).nullable().optional()
+    .describe('A branch: this task waits until that question is answered, then shows only for these answers. Any other answer marks it not needed: off every list and out of the project\'s count. A task waiting only on not-needed tasks is not needed too. null removes it.'),
   followUp: z.object({
     everyN: z.number().int().describe('2 to 99.'),
     title: z.string(),
@@ -589,7 +633,7 @@ function registerWriteTools(
 ): void {
   server.tool(
     'create_task',
-    "Add a task. Beyond the basics it can repeat (any rule the app has), be a chain of steps, have a daily or weekly target, a time window, blockers it waits on, a follow-up every Nth completion, or be a habit of not doing something. The app's own defaults apply (a default category, its time-of-day segment, title rules), and an invalid combination is refused with every problem listed. The result is the task in full, as get_task shows it, so check it says what you meant.",
+    "Add a task. Beyond the basics it can repeat (any rule the app has), be a chain of steps, have a daily or weekly target, a time window, blockers it waits on, a follow-up every Nth completion, or be a habit of not doing something. It needs a category (see list_categories) unless its project has a default one; the app's other defaults apply (its time-of-day segment, title rules), and an invalid combination is refused with every problem listed. The result is the task in full, as get_task shows it, so check it says what you meant.",
     {
       title: z.string().min(1),
       ...taskFieldsShape,
@@ -597,7 +641,8 @@ function registerWriteTools(
     },
     async input => {
       try {
-        return json(await withWrite(() => createTask(replica, input as Parameters<typeof createTask>[1])));
+        const result = await withWrite(() => createTask(replica, input as Parameters<typeof createTask>[1]));
+        return json(withLink(result, LINKS?.task(result.task.id)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not create the task.' });
       }
@@ -614,7 +659,7 @@ function registerWriteTools(
     },
     async ({ id, ...input }) => {
       try {
-        return json(await withWrite(() => updateTask(replica, id, input as TaskFieldsInput)));
+        return json(withLink(await withWrite(() => updateTask(replica, id, input as TaskFieldsInput)), LINKS?.task(id)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not update the task.' });
       }
@@ -897,7 +942,10 @@ function registerWriteTools(
         // 'deliverableValue' in options is what the refusal tests, so the key
         // has to survive only when the caller actually sent it. Zod drops an
         // omitted optional rather than setting it undefined, so this holds.
-        return json(await withWrite(() => completeTask(replica, id, rest)));
+        const result = await withWrite(() => completeTask(replica, id, rest));
+        // The next occurrence or step, where the completion made one: that is the
+        // task still on the list.
+        return json(withLink(result, LINKS?.task(result.nextTask?.id ?? id)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not complete the task.' });
       }
@@ -913,9 +961,25 @@ function registerWriteTools(
     },
     async ({ id, date }) => {
       try {
-        return json(await withWrite(() => deferTask(replica, id, date)));
+        return json(withLink(await withWrite(() => deferTask(replica, id, date)), LINKS?.task(id)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not reschedule the task.' });
+      }
+    }
+  );
+
+  server.tool(
+    'archive_task',
+    'Archive a task, taking it off every list and out of its project, or restore one with archived: false. This is how to undo a task you created by mistake: there is no delete, and an archived task can always be restored here or in the app. Archiving unpins it; restoring a repeating task starts its streak over, as the app does.',
+    {
+      id: z.string().min(1),
+      archived: z.boolean().optional().describe('false restores an archived task. Defaults to true.'),
+    },
+    async ({ id, archived }) => {
+      try {
+        return json(await withWrite(() => archiveTask(replica, id, archived ?? true)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not archive the task.' });
       }
     }
   );
@@ -930,7 +994,7 @@ function registerWriteTools(
     },
     async ({ name, ...rest }) => {
       try {
-        return json(await withWrite(() => addGroceryItem(replica, name, rest)));
+        return json(withLink(await withWrite(() => addGroceryItem(replica, name, rest)), LINKS?.groceries()));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not add that.' });
       }
@@ -943,7 +1007,7 @@ function registerWriteTools(
     { id: z.string().min(1), checked: z.boolean().optional().describe('Defaults to true.') },
     async ({ id, checked }) => {
       try {
-        return json(await withWrite(() => setGroceryChecked(replica, id, checked ?? true)));
+        return json(withLink(await withWrite(() => setGroceryChecked(replica, id, checked ?? true)), LINKS?.groceries()));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not check that off.' });
       }
@@ -956,7 +1020,7 @@ function registerWriteTools(
     { id: z.string().min(1) },
     async ({ id }) => {
       try {
-        return json(await withWrite(() => removeFromGroceryList(replica, id)));
+        return json(withLink(await withWrite(() => removeFromGroceryList(replica, id)), LINKS?.groceries()));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not remove that.' });
       }
@@ -968,6 +1032,11 @@ function registerWriteTools(
     subtasks: z.array(z.string()).optional().describe('A checklist under this step.'),
     after: z.array(z.number().int().min(0)).optional()
       .describe('Positions (from 0) of earlier steps in this plan that must be done first. The step stays hidden until they are.'),
+    onlyIfAnswerTo: z.object({
+      step: z.number().int().min(0).describe('Position (from 0) of an earlier step in this plan that asks a Yes/No or pick-one question.'),
+      answers: z.array(z.string()).min(1),
+    }).optional()
+      .describe('onlyIfAnswer for a question in this same plan, which has no id yet.'),
   });
 
   server.tool(
@@ -977,14 +1046,17 @@ function registerWriteTools(
       title: z.string().min(1),
       notes: z.string().optional(),
       deadline: z.string().nullable().optional().describe('ISO date to finish by. Shown on the project; schedules nothing.'),
+      eventDate: z.string().nullable().optional().describe('ISO date of the day the project is for: the wedding, the move, the party. Separate from the deadline, since work happens on both sides of it. Steps can be dated from it with dueDaysFromEvent.'),
       category: z.string().nullable().optional().describe('A project category, for grouping on the Projects page.'),
-      defaultTaskCategory: z.string().nullable().optional().describe('A task category every step gets unless it names its own.'),
+      defaultTaskCategory: z.string().nullable().optional().describe('A task category (from list_categories) every step gets unless it names its own. Without it, every step needs its own category.'),
+      newCategory: z.boolean().optional().describe('Create defaultTaskCategory as a new category.'),
       kind: z.enum(['project', 'list']).optional(),
       steps: z.array(planStep).optional(),
     },
     async input => {
       try {
-        return json(await withWrite(() => createProject(replica, input as CreateProjectInput)));
+        const result = await withWrite(() => createProject(replica, input as CreateProjectInput));
+        return json(withLink(result, LINKS?.project(result.project.id)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not create the project.' });
       }
@@ -992,22 +1064,42 @@ function registerWriteTools(
   );
 
   server.tool(
+    'add_project_steps',
+    'Add several steps to a project that already exists, in one go: each a full task, with its checklist and what it waits on. "after" names earlier steps in this same batch by position; "waitsOn" names tasks already in the app by id. Everything is checked first and written together, so a problem adds nothing and lists every issue. The result is the project as get_project shows it, plus the ids of the steps added (archive_task takes any of them back).',
+    {
+      projectId: z.string().min(1),
+      steps: z.array(planStep).min(1),
+    },
+    async ({ projectId, steps }) => {
+      try {
+        return json(await withWrite(() => addProjectSteps(replica, projectId, steps as ProjectPlanStepInput[])));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not add the steps.' });
+      }
+    }
+  );
+
+  server.tool(
     'update_project',
-    'Change a project: rename it, edit its notes or deadline, re-file it, mark it complete, or archive it. Its tasks are not touched; add steps with create_task (projectId) and edit them with update_task.',
+    'Change a project: rename it, edit its notes, deadline or event date, re-file it, mark it complete, or archive it. Its tasks are not touched unless moveTasks asks for them to follow a new event date; add steps with add_project_steps and edit them with update_task.',
     {
       id: z.string().min(1),
       title: z.string().optional(),
       notes: z.string().optional(),
       deadline: z.string().nullable().optional(),
+      eventDate: z.string().nullable().optional().describe('The day the project is for. Changing it leaves the tasks where they are unless moveTasks is set.'),
+      moveTasks: z.boolean().optional().describe('With a new eventDate: move the project\'s dated tasks by the same number of days, as the app offers when the date is changed there. Ask the user first. Pinned, urgent and some other tasks are left in place and listed under notMoved.'),
+      moveTasksFrom: z.string().optional().describe('Move the dated tasks after the event date has already been changed: the old event date. They move by the days from it to the event date now.'),
       category: z.string().nullable().optional(),
       defaultTaskCategory: z.string().nullable().optional(),
+      newCategory: z.boolean().optional().describe('Create defaultTaskCategory as a new category.'),
       kind: z.enum(['project', 'list']).optional(),
       completed: z.boolean().optional(),
       archived: z.boolean().optional(),
     },
-    async ({ id, ...patch }) => {
+    async ({ id, moveTasks, moveTasksFrom, ...patch }) => {
       try {
-        return json(await withWrite(() => updateProject(replica, id, patch)));
+        return json(withLink(await withWrite(() => updateProject(replica, id, patch, { moveTasks, moveTasksFrom })), LINKS?.project(id)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not update the project.' });
       }
@@ -1025,7 +1117,8 @@ function registerWriteTools(
     },
     async input => {
       try {
-        return json(await withWrite(() => planMeal(replica, input)));
+        const result = await withWrite(() => planMeal(replica, input));
+        return json(withLink(result, LINKS?.mealPlan(result.date)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not plan the meal.' });
       }
@@ -1042,7 +1135,7 @@ function registerWriteTools(
     },
     async input => {
       try {
-        return json(await withWrite(() => addPersonHistory(replica, input)));
+        return json(withLink(await withWrite(() => addPersonHistory(replica, input)), LINKS?.person(input.personIds[0])));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not add that to their history.' });
       }
@@ -1233,6 +1326,31 @@ async function main(): Promise<void> {
   if (process.env.SYNC_STORE_PATH) {
     mountSyncStore(app, openSyncStore(process.env.SYNC_STORE_PATH));
   }
+
+  // The two routes universal links need (see appLinks.ts). Apple fetches the
+  // association file itself, through its CDN, and wants it as plain JSON with
+  // no redirect; the fly.toml https redirect is fine, since Apple asks over https.
+  app.get('/.well-known/apple-app-site-association', (_req: Request, res: Response) => {
+    const body = appSiteAssociation(process.env.APPLE_TEAM_ID, process.env.APP_BUNDLE_ID ?? 'com.fdsimms.dundundun');
+    if (!body) {
+      res.status(404).json({ error: 'APPLE_TEAM_ID is unset, so this server associates with no app.' });
+      return;
+    }
+    res.type('application/json').send(JSON.stringify(body));
+  });
+  // Reached only when the app didn't catch the link: a desktop, or a phone
+  // without the associated build.
+  app.get('/open/:path', (req: Request, res: Response) => {
+    const query = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : '';
+    const appUrl = appUrlForOpenPath(String(req.params.path), query);
+    if (!appUrl) {
+      res.status(404).type('text').send('Not a link this app opens.');
+      return;
+    }
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.type('html').send(openPage(appUrl));
+  });
 
   const oauth = mountOAuth(app);
 

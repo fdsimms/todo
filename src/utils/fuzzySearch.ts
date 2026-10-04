@@ -1,5 +1,5 @@
 import type { Project, Task, TaskGroup } from '../types';
-import { displayTitleFor } from './visibilityUtils';
+import { displayTitleFor, isTaskNotNeeded } from './visibilityUtils';
 import { formatTaskDeliverable } from './deliverables';
 import { mergeRanges, scoreSubstring } from './ranges';
 
@@ -103,12 +103,23 @@ export function fuzzySearch(
     }
   }
 
-  const ranksActive = (r: SearchResult) => !r.task.completed || heldIds.has(r.task.id);
+  const ranksActive = (r: SearchResult) => ranksAsActive(r.task, heldIds);
   return results.sort((a, b) => {
     // Completed tasks rank below active ones at equal scores
     if (ranksActive(a) !== ranksActive(b)) return ranksActive(a) ? -1 : 1;
     return b.score - a.score;
   });
+}
+
+/**
+ * Whether a search result belongs with the live work, or below it with what
+ * is done. A task on a branch that wasn't taken (`isTaskNotNeeded`) goes below
+ * too: it will never be done, and ranked among live tasks it reads as one more
+ * thing to do. A row held in place after being ticked here stays put.
+ */
+export function ranksAsActive(task: Task, heldIds: ReadonlySet<string>): boolean {
+  if (heldIds.has(task.id)) return true;
+  return !task.completed && !isTaskNotNeeded(task);
 }
 
 export interface ProjectSearchResult {

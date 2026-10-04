@@ -1,6 +1,7 @@
 import type { Project, Task, TaskGroup } from '../types';
 import {
   fuzzySearch,
+  ranksAsActive,
   searchGroups,
   searchProjects,
   type SearchResult,
@@ -15,6 +16,9 @@ import { collapseOccurrences, type CollapsedOccurrence } from './searchCollapse'
  * the Search screen with worse chrome.
  */
 export const QUICK_SEARCH_LIMIT = 7;
+
+/** Per word: an exact substring hit scores at least 100 in `scoreSubstring` (a scattered-letters hit tops out at 60), and stacks and projects double their title score. */
+const EXACT_TITLE_SCORE = 200;
 
 export interface QuickSearchOutcome {
   /** Stack matches, capped to whatever's left of `limit`. */
@@ -78,7 +82,7 @@ export function quickSearch(
     heldIds
   );
 
-  const active = (r: SearchResult) => !r.task.completed || heldIds.has(r.task.id);
+  const active = (r: SearchResult) => ranksAsActive(r.task, heldIds);
   const orderedTasks = [
     ...taskMatches.filter(active),
     ...taskMatches.filter(r => !active(r)),
@@ -87,12 +91,31 @@ export function quickSearch(
   const total = groupMatches.length + projectMatches.length + orderedTasks.length;
 
   const budget = limit >= 0 ? limit : total;
-  const groupResults = groupMatches.slice(0, budget);
-  const projectResults = projectMatches.slice(0, Math.max(0, budget - groupResults.length));
-  const results = orderedTasks.slice(
-    0,
-    Math.max(0, budget - groupResults.length - projectResults.length)
-  );
+
+  // A stack or project whose name only matches by scattered letters ("the"
+  // inside "Kitchen") is a guess, and led the card ahead of a task that
+  // contains the whole phrase, pushing it past the cap. Real name matches
+  // still lead; the guesses take what the tasks leave.
+  const wordCount = query.trim().split(/\s+/).filter(Boolean).length;
+  const exactScore = wordCount * EXACT_TITLE_SCORE;
+  const strongGroups = groupMatches.filter(r => r.score >= exactScore);
+  const weakGroups = groupMatches.filter(r => r.score < exactScore);
+  const strongProjects = projectMatches.filter(r => r.score >= exactScore);
+  const weakProjects = projectMatches.filter(r => r.score < exactScore);
+
+  let left = budget;
+  const take = <T,>(rows: T[]): T[] => {
+    const kept = rows.slice(0, Math.max(0, left));
+    left -= kept.length;
+    return kept;
+  };
+  const keptStrongGroups = take(strongGroups);
+  const keptStrongProjects = take(strongProjects);
+  const results = take(orderedTasks);
+  const keptWeakGroups = take(weakGroups);
+  const keptWeakProjects = take(weakProjects);
+  const groupResults = [...keptStrongGroups, ...keptWeakGroups];
+  const projectResults = [...keptStrongProjects, ...keptWeakProjects];
 
   const shown = groupResults.length + projectResults.length + results.length;
 

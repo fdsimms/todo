@@ -1,4 +1,4 @@
-import { canBlock, blockerOf, isBlocked, wouldCycle, waitingOn, resolverFor, blockerAffinity, sortByBlockerAffinity, canBeBlockerOf, canBeBlockedBy, resolveBlocksEdit, describeBlocks, canWaitOn, personBlockerOf, isWaitingOnPerson, blockerIdsOf, blockerFields, liveBlockersOf } from '../utils/blocking';
+import { canBlock, blockerOf, isBlocked, wouldCycle, waitingOn, resolverFor, blockerAffinity, sortByBlockerAffinity, canBeBlockerOf, canBeBlockedBy, resolveBlocksEdit, describeBlocks, canWaitOn, personBlockerOf, isWaitingOnPerson, blockerIdsOf, blockerFields, liveBlockersOf, isNotNeeded, answerOpensGate, waitIdsOf } from '../utils/blocking';
 import { registerTaskSource, resolveBlocker, waitingCountFor } from '../utils/blockerRegistry';
 import type { Person, Task } from '../types';
 
@@ -569,5 +569,91 @@ describe('several blockers', () => {
     ]);
     expect(wouldCycle('a', 'b', resolve)).toBe(true);
     expect(wouldCycle('c', 'a', resolve)).toBe(false);
+  });
+});
+
+describe('answer gates', () => {
+  // "Ceremony format?" decides between two branches; "Pay the fee" follows
+  // only the City Hall one, "Send invitations" follows whichever is taken.
+  const question = (over: Partial<Task> = {}) =>
+    makeTask({ id: 'q', title: 'Ceremony format?', deliverableKind: 'choice', deliverableOptions: ['City Hall', 'Officiant'], ...over });
+  const hall = makeTask({ id: 'hall', title: 'Book City Hall', answerGate: { taskId: 'q', answers: ['City Hall'] } });
+  const officiant = makeTask({ id: 'off', title: 'Hire officiant', answerGate: { taskId: 'q', answers: ['officiant '] } });
+  const fee = makeTask({ id: 'fee', title: 'Pay the fee', blockedById: 'hall' });
+  const invites = makeTask({ id: 'inv', title: 'Send invitations', ...blockerFields(['hall', 'off']) });
+  const world = (q: Task) => resolverFor([q, hall, officiant, fee, invites]);
+
+  it('waits on an unanswered question exactly as on a blocker', () => {
+    const resolve = world(question());
+    expect(isBlocked(hall, resolve)).toBe(true);
+    expect(liveBlockersOf(hall, resolve).map(t => t.id)).toEqual(['q']);
+    expect(isNotNeeded(hall, resolve)).toBe(false);
+  });
+
+  it('frees the branch an answer opens and rules out the other, ignoring case and spaces', () => {
+    const resolve = world(question({ completed: true, deliverableValue: 'Officiant' }));
+    expect(isBlocked(officiant, resolve)).toBe(false);
+    expect(isNotNeeded(officiant, resolve)).toBe(false);
+    expect(isBlocked(hall, resolve)).toBe(false);
+    expect(isNotNeeded(hall, resolve)).toBe(true);
+  });
+
+  it('spreads to a task that only waits on a ruled-out branch, and not to one with a live branch left', () => {
+    const resolve = world(question({ completed: true, deliverableValue: 'Officiant' }));
+    expect(isNotNeeded(fee, resolve)).toBe(true);
+    expect(isBlocked(fee, resolve)).toBe(false);
+    // Waits on the officiant alone now: the City Hall branch holds nothing.
+    expect(isNotNeeded(invites, resolve)).toBe(false);
+    expect(liveBlockersOf(invites, resolve).map(t => t.id)).toEqual(['off']);
+  });
+
+  it('swaps the branches when the answer is corrected, since nothing is stored', () => {
+    const resolve = world(question({ completed: true, deliverableValue: 'City Hall' }));
+    expect(isNotNeeded(hall, resolve)).toBe(false);
+    expect(isNotNeeded(officiant, resolve)).toBe(true);
+  });
+
+  it('opens every branch when nobody chose one: no answer, archived or deleted', () => {
+    for (const q of [question({ completed: true, deliverableValue: null }), question({ archived: true })]) {
+      const resolve = world(q);
+      expect(isNotNeeded(hall, resolve)).toBe(false);
+      expect(isBlocked(hall, resolve)).toBe(false);
+    }
+    const gone = resolverFor([hall]);
+    expect(isNotNeeded(hall, gone)).toBe(false);
+    expect(isBlocked(hall, gone)).toBe(false);
+  });
+
+  it('rules out a branch whose own question is on a ruled-out branch', () => {
+    const vows = makeTask({ id: 'v', title: 'Write vows?', deliverableKind: 'yesno', answerGate: { taskId: 'off', answers: ['Yes'] } });
+    const nested = makeTask({ id: 'n', title: 'Draft vows', answerGate: { taskId: 'v', answers: ['Yes'] } });
+    const offRuledOut = makeTask({ ...officiant, answerGate: { taskId: 'q', answers: ['Officiant'] } });
+    const resolve = resolverFor([question({ completed: true, deliverableValue: 'City Hall' }), offRuledOut, vows, nested]);
+    // Its question will never be asked, so neither will it: and on down.
+    expect(isNotNeeded(vows, resolve)).toBe(true);
+    expect(isNotNeeded(nested, resolve)).toBe(true);
+  });
+
+  it('never calls a finished task not needed, and survives a loop', () => {
+    const resolve = world(question({ completed: true, deliverableValue: 'Officiant' }));
+    expect(isNotNeeded({ ...hall, completed: true }, resolve)).toBe(false);
+    const a = makeTask({ id: 'a', answerGate: { taskId: 'b', answers: ['x'] } });
+    const b = makeTask({ id: 'b', blockedById: 'a' });
+    expect(isNotNeeded(a, resolverFor([a, b]))).toBe(false);
+  });
+
+  it('counts the gate question in the cycle check and the wait set, but never as a blocker', () => {
+    const resolve = world(question());
+    expect(waitIdsOf(invites)).toEqual(['hall', 'off']);
+    expect(waitIdsOf(hall)).toEqual(['q']);
+    expect(blockerIdsOf(hall)).toEqual([]);
+    // q waiting on hall would close a loop through hall's gate.
+    expect(wouldCycle('q', 'hall', resolve)).toBe(true);
+  });
+
+  it('matches an answer only against the listed ones', () => {
+    expect(answerOpensGate({ taskId: 'q', answers: ['Yes'] }, ' yes ')).toBe(true);
+    expect(answerOpensGate({ taskId: 'q', answers: ['Yes'] }, 'No')).toBe(false);
+    expect(answerOpensGate({ taskId: 'q', answers: ['Yes'] }, null)).toBe(false);
   });
 });

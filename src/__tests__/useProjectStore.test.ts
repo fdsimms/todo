@@ -222,6 +222,15 @@ describe('projectProgress', () => {
     expect(projectProgress('p1', tasks)).toEqual({ done: 1, total: 3 });
   });
 
+  it('leaves out a task on a branch that was not taken, so the project can reach 100%', () => {
+    const tasks = [
+      makeTask({ id: 'q', projectId: 'p1', completed: true, deliverableKind: 'choice', deliverableOptions: ['City Hall', 'Officiant'], deliverableValue: 'Officiant' }),
+      makeTask({ id: 'hall', projectId: 'p1', answerGate: { taskId: 'q', answers: ['City Hall'] } }),
+      makeTask({ id: 'off', projectId: 'p1', completed: true, answerGate: { taskId: 'q', answers: ['Officiant'] } }),
+    ];
+    expect(projectProgress('p1', tasks)).toEqual({ done: 2, total: 2 });
+  });
+
   it('does not count a member whose only row was marked missed', () => {
     // A miss is stored as a completed row (see Task.missedAt), so the plain
     // `completed` test would call this project finished. Normally the miss

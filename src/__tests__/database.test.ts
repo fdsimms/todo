@@ -1708,6 +1708,7 @@ describe('Templates', () => {
     refTemplateId: null,
     refTemplateName: '',
     conditions: [],
+    answerGate: null,
     ...overrides,
   });
 

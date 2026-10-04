@@ -337,6 +337,23 @@ this repo cannot produce on its own.
    it for Claude Code and curl; `/mcp` tries them first, then an OAuth token. `oauth.ts`'s header
    has the reasoning, including why the approval form's hidden fields are checked again.
 
+## Links back into the app
+
+Results about one thing carry `openInApp`, which is `https://<server>/open/<path>?<query>` standing
+for the app's own `dundundun://<path>?<query>` (`mcp/src/appLinks.ts` builds them;
+`appUrlFromUniversalLink` in `src/utils/deepLinks.ts` reads them). Two decisions:
+
+- **https, not the custom scheme.** A chat app makes an https URL tappable and may not do the same
+  for an unknown scheme. The domain is a universal link (`ios.associatedDomains` in `app.json`,
+  the association file served from `APPLE_TEAM_ID`), so on the phone iOS opens the app without the
+  server seeing the tap; elsewhere `/open/` serves a page that hands off to the scheme.
+- **The app accepts named hosts only** (`UNIVERSAL_LINK_HOSTS`, held to `app.json` by a test), not
+  any https URL under `/open/`, since rows route their own links through `openInAppUrl` too. The
+  server allows only paths the app opens a screen for, so the page can't bounce anyone elsewhere.
+
+A task link usually arrives before the sync that brings its task, since tapping it is what brings
+the app forward, so Today waits a few seconds for the task rather than giving up.
+
 ## Phase 1: the payload store
 
 The replica syncs through a second `SyncTransport` (`src/utils/httpSyncTransport.ts`) pointed at a
@@ -561,6 +578,38 @@ What stayed in the store is the `set()`, the cart-hold timer behind the tick ani
 and the debounced AI aisle classification a row landing in Other triggers. The last is the only one
 with teeth and the right call regardless: it is a network request to Anthropic on the user's key,
 and a server making them because a model added milk is not a thing to do unasked.
+
+### Planning a project over several conversations
+
+A project scoped with Claude is rarely written once. Four tools exist for coming back to one:
+
+- **`add_project_steps`** is `create_project`'s step writer pointed at a project that already
+  exists: one call, validated in full first, written in one transaction. `after` counts over the
+  batch; `waitsOn` names tasks already there.
+- **`archive_task`** is the undo, and **there is deliberately no delete**. An archived row can be
+  restored here or in the app; a deleted one cannot, and the model is the one deciding what to
+  remove. It is the app's own `archiveTask` / `unarchiveTask` (unpin; restoring breaks the streak).
+- **`get_project` lists `decisions`**: `projectDecisions`, the same read as the Decisions block
+  on the project's page, so an answer given months ago can be read back without paging the
+  Logbook.
+- **`onlyIfAnswer`** (and `onlyIfAnswerTo` inside a plan) writes `Task.answerGate`, and
+  **`dueDaysFromEvent`** (or `dueEndOfMonthAfterEvent`, for "by the end of the month after")
+  dates a task from `Project.eventDate`. `create_template` items take a `key` and an
+  `onlyIfAnswer` naming another item's key, which becomes `TemplateItem.answerGate`. The second is resolved into an
+  ordinary date at write time, never stored as an offset (docs/arch/away-dates.md has the reason).
+  Moving the event is `update_project` with `moveTasks`, the app's own shift offer
+  (`buildAwayShiftPlan`) with every row it would offer unticked left in place and listed, since
+  nobody is there to tick it. Without `moveTasks` it moves nothing and says so.
+
+### Every task it creates has a category
+
+A task the model files with no category lands in no section on Today, and a free-text name that
+matches nothing makes a section nobody created. So `taskPatch` refuses both for a new top-level
+task: the category has to be one of the person's (matched ignoring case and saved as they spell
+it), the project's own default, or one a title rule supplies. A new category is allowed only when
+asked for in so many words (`newCategory: true`), and is created inside the write that uses it.
+`list_categories` is what the model chooses from, with a few open tasks per category so it can
+judge what belongs where. A checklist item is exempt: it has no section of its own.
 
 ### Writes have their own token
 

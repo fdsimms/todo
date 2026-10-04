@@ -45,7 +45,8 @@ export function agentRevertPlan(entry: UnattendedEntry, task: Task | null): Agen
       if (!task.completed) return { kind: 'none', reason: 'Reopened since' };
       return { kind: 'uncomplete', taskId: task.id };
     case 'edited':
-    case 'moved': {
+    case 'moved':
+    case 'cleared': {
       const revert = entry.revert;
       if (!revert) return { kind: 'none', reason: null };
       if (task.completed) return { kind: 'none', reason: 'Completed since' };

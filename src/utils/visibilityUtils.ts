@@ -8,7 +8,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { isAwayPauseInForce } from './awayDates';
 import { activeChainStep } from './chain';
-import { blockerIdsOf, isBlocked, isWaitingOnPerson } from './blocking';
+import { isBlocked, isNotNeeded, isWaitingOnPerson, waitIdsOf } from './blocking';
 import { resolveBlocker } from './blockerRegistry';
 import { resolvePerson } from './peopleRegistry';
 import { quotaRunSpan, quotaWeekSpan } from './quotaSchedule';
@@ -50,9 +50,24 @@ export function isWithheld(task: Task): boolean {
   return isHiddenForVacation(task) || (!task.completed && isInPausedProject(task));
 }
 
-/** Whether a task isn't actionable yet — what the daily lists gate on. */
+/**
+ * True when the task is on a branch that wasn't taken: its `answerGate`
+ * question got another answer, or everything it waits on is such a task (see
+ * `isNotNeeded`). Off every list, the Waiting screen included, since nothing
+ * is going to free it; the project's page is where it is still shown.
+ */
+export function isTaskNotNeeded(task: Task): boolean {
+  if (task.completed || task.archived) return false;
+  if (!task.answerGate && !task.blockedById) return false;
+  return isNotNeeded(task, resolveBlocker);
+}
+
+/**
+ * Whether a task isn't actionable yet — what the daily lists gate on: waiting
+ * on something (a task, a person, a question), or not needed at all.
+ */
 export function isHeldBack(task: Task): boolean {
-  return isTaskBlocked(task);
+  return isTaskBlocked(task) || isTaskNotNeeded(task);
 }
 
 /**
@@ -895,7 +910,7 @@ export function isInboxTask(task: Task): boolean {
     // A blocked task isn't untriaged — it's been given the most specific
     // instruction there is ("after that one"), it just has no date to show for
     // it. It waits on the Waiting screen, not here.
-    !isTaskBlocked(task) &&
+    !isHeldBack(task) &&
     // A negative habit carries no date signal and would otherwise land in every
     // dateless lens at once. It's already on Today (see
     // isVisibleApartFromVacation), and Today and Inbox are disjoint by design.
@@ -940,7 +955,7 @@ export function isUnscheduledTask(task: Task): boolean {
     !task.archived &&
     // Unscheduled means "could be done any time"; blocked means "can't be done
     // yet". Same absence of a date, opposite availability.
-    !isTaskBlocked(task) &&
+    !isHeldBack(task) &&
     // Same reason as isInboxTask's exclusion: a negative habit has no date
     // because it applies to every day, not because it's waiting to be given one.
     !isNegativeTask(task) &&
@@ -1089,9 +1104,10 @@ export function getVisibleAt(task: Task, pass: VisibleAtPass = beginVisibleAtPas
 function getReleasedFromHoldAt(task: Task): Date | null {
   const candidates: Date[] = [];
 
-  // Every blocker it waited on: waiting for all of them, it was let go by
-  // whichever finished last, which the latest-stamp reduce below picks out.
-  for (const blockerId of blockerIdsOf(task)) {
+  // Every blocker it waited on, and the question its answer gate waited on:
+  // waiting for all of them, it was let go by whichever finished last, which
+  // the latest-stamp reduce below picks out.
+  for (const blockerId of waitIdsOf(task)) {
     const blocker = resolveBlocker(blockerId);
     const stamp = blocker?.completed
       ? blocker.completedAt

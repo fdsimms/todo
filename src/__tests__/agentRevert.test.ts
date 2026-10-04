@@ -36,6 +36,12 @@ describe('agentRevertPlan', () => {
     expect(agentRevertLabel({ kind: 'uncomplete', taskId: 't1' })).toBe('Reopen');
   });
 
+  it('unarchives a task Claude archived, while it is still archived', () => {
+    const archived = entry({ action: 'cleared', revert: { before: { archived: false }, after: { archived: true } } });
+    expect(agentRevertPlan(archived, task({ archived: true } as Partial<Task>))).toMatchObject({ kind: 'restore', patch: { archived: false } });
+    expect(agentRevertPlan(archived, task({ archived: false } as Partial<Task>))).toEqual({ kind: 'none', reason: 'Undone' });
+  });
+
   it('offers nothing for the app\'s own entries, other subjects, or a task that is gone', () => {
     expect(agentRevertPlan(entry({ actor: 'app' }), task())).toEqual({ kind: 'none', reason: null });
     expect(agentRevertPlan(entry({ subject: 'grocery' }), task())).toEqual({ kind: 'none', reason: null });

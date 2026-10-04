@@ -14,6 +14,9 @@ const mockResetToPeople = jest.fn();
 const mockResetToFoodLog = jest.fn();
 const mockResetToProjectPull = jest.fn();
 const mockResetToDeload = jest.fn();
+const mockResetToTask = jest.fn();
+const mockResetToProject = jest.fn();
+const mockResetToProjects = jest.fn();
 const mockOpenQuickAdd = jest.fn();
 const mockOpenQuickAddEvent = jest.fn();
 const mockEnqueueWidgetCompletion = jest.fn();
@@ -72,6 +75,9 @@ jest.mock('../navigation/navigationRef', () => ({
   resetToProjectPull: (...args: unknown[]) => mockResetToProjectPull(...args),
   resetToFocusSession: (...args: unknown[]) => mockResetToFocusSession(...args),
   resetToDeload: (...args: unknown[]) => mockResetToDeload(...args),
+  resetToTask: (...args: unknown[]) => mockResetToTask(...args),
+  resetToProject: (...args: unknown[]) => mockResetToProject(...args),
+  resetToProjects: (...args: unknown[]) => mockResetToProjects(...args),
   openQuickAddFromShortcut: (...args: unknown[]) => mockOpenQuickAdd(...args),
   openQuickAddEventFromShortcut: (...args: unknown[]) => mockOpenQuickAddEvent(...args),
 }));
@@ -116,6 +122,12 @@ import {
   isStopTimerUrl,
   stopTimerUrlKey,
   linkIconFor,
+  isTaskUrl,
+  taskUrlId,
+  isProjectUrl,
+  projectUrlId,
+  appUrlFromUniversalLink,
+  UNIVERSAL_LINK_HOSTS,
 } from '../utils/deepLinks';
 
 describe('parseAddTaskUrl', () => {
@@ -960,5 +972,57 @@ describe('openInAppUrl', () => {
   it('does not create a task', () => {
     openInAppUrl('dundundun://groceries');
     expect(mockAddTask).not.toHaveBeenCalled();
+  });
+});
+
+describe('task and project links', () => {
+  it('reads the id off a task link and a project link', () => {
+    expect(isTaskUrl('dundundun://task?id=t1')).toBe(true);
+    expect(taskUrlId('dundundun://task?id=t1')).toBe('t1');
+    expect(taskUrlId('dundundun://task')).toBeNull();
+    expect(isProjectUrl('dundundun://project?id=p1')).toBe(true);
+    expect(projectUrlId('dundundun://project?id=p1')).toBe('p1');
+  });
+
+  it('keeps project (one page) apart from projects (the pull sheet)', () => {
+    expect(isProjectUrl('dundundun://projects?pull=p1')).toBe(false);
+    expect(isProjectsUrl('dundundun://project?id=p1')).toBe(false);
+  });
+
+  it('opens the task editor or the project page', () => {
+    expect(openInAppUrl('dundundun://task?id=t1')).toBe(true);
+    expect(mockResetToTask).toHaveBeenCalledWith('t1');
+    expect(openInAppUrl('dundundun://project?id=p1')).toBe(true);
+    expect(mockResetToProject).toHaveBeenCalledWith('p1');
+  });
+});
+
+describe('universal links', () => {
+  it('maps the server\'s https link onto the app link it stands for', () => {
+    expect(appUrlFromUniversalLink('https://dundundun-mcp.fly.dev/open/task?id=t1')).toBe('dundundun://task?id=t1');
+    expect(appUrlFromUniversalLink('https://dundundun-mcp.fly.dev/open/groceries')).toBe('dundundun://groceries');
+    expect(appUrlFromUniversalLink('https://DUNDUNDUN-MCP.fly.dev/open/mealplan?date=2026-10-05')).toBe('dundundun://mealplan?date=2026-10-05');
+  });
+
+  it('leaves any other site alone, even under an /open/ path', () => {
+    expect(appUrlFromUniversalLink('https://example.com/open/task?id=t1')).toBeNull();
+    expect(appUrlFromUniversalLink('http://dundundun-mcp.fly.dev/open/task?id=t1')).toBeNull();
+    expect(appUrlFromUniversalLink('https://dundundun-mcp.fly.dev/mcp')).toBeNull();
+    expect(openInAppUrl('https://example.com/open/task?id=t1')).toBe(false);
+  });
+
+  it('routes a universal link like the app link', () => {
+    mockResetToTask.mockClear();
+    expect(openInAppUrl('https://dundundun-mcp.fly.dev/open/task?id=t9')).toBe(true);
+    expect(mockResetToTask).toHaveBeenCalledWith('t9');
+  });
+
+  // iOS only hands the app a link for a domain app.json associates, so a host
+  // listed here and not there would never arrive, and one there and not here
+  // would arrive and be ignored.
+  it('names exactly the hosts app.json associates', () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const domains: string[] = require('../../app.json').expo.ios.associatedDomains;
+    expect(domains.map(d => d.replace(/^applinks:/, '')).sort()).toEqual([...UNIVERSAL_LINK_HOSTS].sort());
   });
 });

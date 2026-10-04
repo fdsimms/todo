@@ -396,3 +396,21 @@ export function resetToProjectPull(projectId?: string | null, onDayKey?: string 
     );
   });
 }
+
+/**
+ * Opens one task's editor on Today (`dundundun://task?id=…`). Today waits a
+ * moment for a task it doesn't have yet, since a link to something just made
+ * elsewhere usually arrives before the sync that brings the task.
+ */
+export function resetToTask(taskId: string): void {
+  runWhenReady(() => {
+    navigateToTab('Today', { openTask: Date.now(), openTaskId: taskId });
+  });
+}
+
+/** One project's own page (`dundundun://project?id=…`). */
+export function resetToProject(projectId: string): void {
+  runWhenReady(() => {
+    navigateToTab('ProjectDetail', { projectId });
+  });
+}

@@ -17,11 +17,12 @@ jest.mock('../db/database', () => ({
 }));
 
 const mockAddTask = jest.fn();
+const mockUpdateTask = jest.fn();
 const mockAddSubtask = jest.fn();
 const mockGroupTasks = jest.fn();
 jest.mock('../store/useTaskStore', () => ({
   useTaskStore: {
-    getState: () => ({ addTask: mockAddTask, addSubtask: mockAddSubtask, groupTasks: mockGroupTasks }),
+    getState: () => ({ addTask: mockAddTask, addSubtask: mockAddSubtask, groupTasks: mockGroupTasks, updateTask: mockUpdateTask }),
   },
 }));
 
@@ -219,6 +220,14 @@ describe('item CRUD', () => {
     expect(useTemplateStore.getState().templates[0].items.map(i => i.title)).toEqual(['B']);
   });
 
+  it('deleteItem takes the gate off an item that waited on its question', () => {
+    const tpl = useTemplateStore.getState().addTemplate('A');
+    const q = useTemplateStore.getState().addItem(tpl.id, { title: 'Venue?', deliverableKind: 'yesno' })!;
+    useTemplateStore.getState().addItem(tpl.id, { title: 'Book it', answerGate: { itemId: q.id, answers: ['Yes'] } });
+    useTemplateStore.getState().deleteItem(tpl.id, q.id);
+    expect(useTemplateStore.getState().templates[0].items[0].answerGate).toBeNull();
+  });
+
   it('reorderItems applies the given order and ignores incomplete id lists', () => {
     const tpl = useTemplateStore.getState().addTemplate('A');
     const a = useTemplateStore.getState().addItem(tpl.id, { title: 'A' })!;
@@ -231,6 +240,23 @@ describe('item CRUD', () => {
 });
 
 describe('applyTemplate', () => {
+  it("points an item's answer gate at the task its question item became, and drops it when that item wasn't ticked", () => {
+    useTemplateStore.setState({
+      templates: [makeTemplate({
+        items: [
+          makeItem({ id: 'q', title: 'Venue?', deliverableKind: 'choice', deliverableOptions: ['Hall', 'Park'] }),
+          makeItem({ id: 'h', title: 'Book the hall', answerGate: { itemId: 'q', answers: ['Hall'] } }),
+        ],
+      })],
+    });
+    useTemplateStore.getState().applyTemplate('tpl-1', new Set(['q', 'h']), { start: null, end: null });
+    expect(mockUpdateTask).toHaveBeenCalledWith('task-Book the hall', { answerGate: { taskId: 'task-Venue?', answers: ['Hall'] } });
+
+    mockUpdateTask.mockClear();
+    useTemplateStore.getState().applyTemplate('tpl-1', new Set(['h']), { start: null, end: null });
+    expect(mockUpdateTask).not.toHaveBeenCalled();
+  });
+
   it('creates tasks only for the selected items', () => {
     useTemplateStore.setState({
       templates: [makeTemplate({

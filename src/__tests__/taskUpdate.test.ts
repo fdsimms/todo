@@ -40,8 +40,10 @@ describe('mergeTaskUpdate', () => {
   });
 
   it('re-derives the anchor day from a newly written date', () => {
-    const t = make({ recurrenceType: 'monthly', dueDate: '2026-01-31T12:00:00.000Z' });
-    expect(mergeTaskUpdate(t, { dueDate: '2026-02-10T12:00:00.000Z' }, ctx).recurrenceAnchorDay).toBe(10);
+    // Local noon, not a `...Z` literal: the anchor day is read in local time,
+    // and Feb 10 12:00 UTC is already Feb 11 in UTC+14, where CI runs.
+    const t = make({ recurrenceType: 'monthly', dueDate: new Date(2026, 0, 31, 12).toISOString() });
+    expect(mergeTaskUpdate(t, { dueDate: new Date(2026, 1, 10, 12).toISOString() }, ctx).recurrenceAnchorDay).toBe(10);
   });
 
   it('leaves the anchors alone on an edit that is not about the schedule', () => {

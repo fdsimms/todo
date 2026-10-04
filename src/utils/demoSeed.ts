@@ -1213,6 +1213,9 @@ export function seedDemoData(): void {
   const party = createProject("Maya's birthday party", {
     category: 'Ideas',
     deadline: addDays(today, 38).toISOString(),
+    // The party itself, the date its card counts down to (Project.eventDate).
+    // A week before the deadline, which is for the thank-you notes after it.
+    eventDate: awayNoonIso(addDays(today, 31)),
   });
   const venue = addTask({ title: 'Book the venue', projectId: party.id }, undefined, { skipTitleRules: true });
   const guestList = addTask({ title: 'Settle the guest list', projectId: party.id }, undefined, { skipTitleRules: true });
@@ -1222,6 +1225,17 @@ export function seedDemoData(): void {
     blockedById: venue.id,
     blockedByIds: [guestList.id],
   }, undefined, { skipTitleRules: true });
+  // A decision with a branch on each side (Task.answerGate). It's answered,
+  // so the tent is on the list and the hall reads "Not needed" on the page.
+  const setting = addTask({
+    title: 'Indoors or outdoors?',
+    projectId: party.id,
+    deliverableKind: 'choice',
+    deliverableOptions: ['Indoors', 'Outdoors'],
+  }, undefined, { skipTitleRules: true });
+  addTask({ title: 'Rent a tent', projectId: party.id, answerGate: { taskId: setting.id, answers: ['Outdoors'] } }, undefined, { skipTitleRules: true });
+  addTask({ title: 'Book the community hall', projectId: party.id, answerGate: { taskId: setting.id, answers: ['Indoors'] } }, undefined, { skipTitleRules: true });
+  completeTask(setting.id, { deliverableValue: 'Outdoors' });
   const guests = createGroup('Guests', null, party.id);
   // A checklist, as the page's own Add guests makes one: a guest is ticked
   // off with a reply, never dated. Lee said Maybe, which is recorded and

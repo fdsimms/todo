@@ -648,6 +648,9 @@ function ViewModePills({
   );
 }
 
+/** How long a task link waits for its task to arrive by sync before giving up. */
+const OPEN_TASK_WAIT_MS = 20_000;
+
 export function TodayScreen() {
   // ==== store bindings, navigation, layout insets ====
   const insets = useSafeAreaInsets();
@@ -851,8 +854,9 @@ export function TodayScreen() {
   };
   // One per view mode: only ever one of these lists is mounted at a time, but
   // each needs its own ref and its own record of where it last settled.
-  const unscheduledScroll = useKeyboardInsetScroll<FlatList>();
-  const inboxScroll = useKeyboardInsetScroll<FlatList>();
+  // Both carry the pull-to-search RefreshControl; see the hook's `refreshing`.
+  const unscheduledScroll = useKeyboardInsetScroll<FlatList>({ refreshing: pullingToSearch });
+  const inboxScroll = useKeyboardInsetScroll<FlatList>({ refreshing: pullingToSearch });
   const unscheduledScrollTop = useScrollToTopVisibility();
   const inboxScrollTop = useScrollToTopVisibility();
   // Lifts the expanded row's cell above the row below it — Unscheduled and
@@ -1868,6 +1872,35 @@ export function TodayScreen() {
     setEditorInitialDraft(null);
     setEditorVisible(true);
   }, []);
+
+  // A task link (dundundun://task?id=…, or the MCP server's https form of it)
+  // opens that task's editor, through the same stamped-param handoff as the
+  // pull sheet and Deload above. It waits for a task it doesn't have yet,
+  // because the link usually comes from something just written on another
+  // device or by Claude, and tapping it is what brings the app forward: the
+  // foreground sync that pulls the task in starts at the same moment. Given up
+  // on after OPEN_TASK_WAIT_MS, so a link to a deleted task opens nothing
+  // rather than an editor popping up later out of nowhere.
+  const [handledOpenTask, setHandledOpenTask] = useState<number | undefined>(undefined);
+  const [pendingOpenTaskId, setPendingOpenTaskId] = useState<string | null>(null);
+  useEffect(() => {
+    if (route.params?.openTask === undefined || route.params.openTask === handledOpenTask) return;
+    setHandledOpenTask(route.params.openTask);
+    setPendingOpenTaskId((route.params.openTaskId as string | undefined) ?? null);
+  }, [route.params?.openTask, route.params?.openTaskId, handledOpenTask]);
+  const pendingOpenTaskArrived = useTaskStore(
+    s => pendingOpenTaskId !== null && s.tasks.some(t => t.id === pendingOpenTaskId)
+  );
+  useEffect(() => {
+    if (pendingOpenTaskId === null) return;
+    if (pendingOpenTaskArrived) {
+      handleRowEdit(pendingOpenTaskId);
+      setPendingOpenTaskId(null);
+      return;
+    }
+    const timer = setTimeout(() => setPendingOpenTaskId(null), OPEN_TASK_WAIT_MS);
+    return () => clearTimeout(timer);
+  }, [pendingOpenTaskId, pendingOpenTaskArrived, handleRowEdit]);
 
   const handleRowSwipeSelect = useCallback((id: string) => {
     setExpandedTaskId(null);
