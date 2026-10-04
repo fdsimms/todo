@@ -38,6 +38,26 @@ default (`rewardsEnabled`), switched on from the Rewards screen (its own menu ro
   `rewardsEnabled` is off. The `takeBack*` actions are not gated, so an entry written while it was on
   still goes when its completion is undone after it was switched off.
 
+## Bounties
+
+Extra coins posted on a task you've been putting off (`Task.bountyPushes`, rules under "Bounties" in
+`src/utils/rewards.ts`). Posted from the Bounty switch in the task editor, listed and withdrawn on the
+Rewards screen.
+
+- **A task is never worth more for having waited.** That is the whole design constraint. A bonus
+  that grew with `postponeCount` or drift age would pay you to push once more, so a bounty is worth
+  the most when it's posted and loses a step on every push (`bountyCoinsFor`), gone after
+  `BOUNTY_PUSHES_TO_EXPIRE`. Don't add anything that pays more for an older or more-pushed task.
+- **Pushes count from the post**, as their own column rather than a read of `postponeCount`, so a task
+  already pushed a dozen times can be posted on at full value. A pull back to today doesn't restore a
+  lost step, or push-then-pull would be free.
+- **Withdrawing spends it** (`BOUNTY_WITHDRAWN`), so withdraw-and-repost can't restart the decay.
+- **It belongs to the occurrence**, like `postponeCount`: every successor and skip writes it null.
+- **Few at once** (`bountyLimit`, 1 by default, up to 5). Bounties on everything would just be a
+  higher base rate. An expired bounty frees its slot.
+- **A miss costs the base value only.** The bounty rides on the completion's own entry, so the undo
+  takes it back with no extra bookkeeping.
+
 ## Pricing a reward
 
 A typed number is a guess, and a wrong guess is how this kind of system goes stale: too cheap and a

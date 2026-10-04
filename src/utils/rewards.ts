@@ -81,8 +81,138 @@ export function streakBonusFor(streakCount: number): number {
  * completion, so the completion that reaches 7 in a row is the first to get
  * the bonus.
  */
-export function coinsForCompletion(task: EstimateSource, streakCount: number): number {
-  return baseCoinsFor(task) + streakBonusFor(streakCount);
+export function coinsForCompletion(
+  task: EstimateSource & Partial<Pick<Task, 'bountyPushes'>>,
+  streakCount: number,
+): number {
+  return baseCoinsFor(task) + streakBonusFor(streakCount) + bountyCoinsFor(task);
+}
+
+// ---------------------------------------------------------------------------
+// Bounties
+// ---------------------------------------------------------------------------
+//
+// A bounty is extra coins you post on a task you've been dreading. The one
+// rule it has to keep: **a task is never worth more for having waited.** Any
+// bonus that grew with `postponeCount` or with how long a task had drifted
+// would pay you to push it once more, so this runs the other way. A bounty is
+// worth the most the moment it's posted and loses a step every time the task
+// is pushed, until after `BOUNTY_PUSHES_TO_EXPIRE` pushes it's gone.
+//
+// - **Pushes are counted from the post, not before it.** `Task.bountyPushes`
+//   is its own count rather than a read of `postponeCount`, because the tasks
+//   that most need a bounty are the ones already moved a dozen times, and
+//   measured off that count they'd be posted already worthless. It also never
+//   resets: pulling the task back to today doesn't buy the lost step back,
+//   or push-then-pull would be free.
+// - **Withdrawing spends it.** Taking a bounty down sets the count straight to
+//   the expiry (`BOUNTY_WITHDRAWN`) rather than back to null, so post, push,
+//   withdraw, repost can't restart the decay on the same occurrence.
+// - **It belongs to the occurrence**, like `postponeCount`. A recurring task's
+//   next occurrence starts with none, so the slot comes free when it's done.
+// - **Only a few at once** (`bountyLimit`, 1 by default). A bounty on every
+//   task is the same as a bigger base rate, which is no help with the one task
+//   you're avoiding. An expired bounty frees its slot, so a bounty you let lapse
+//   doesn't lock the feature.
+// - **A miss costs the base value only.** The bounty is a bonus on doing it,
+//   not a bigger stake on failing to.
+
+/** Pushes after posting until a bounty is worth nothing. */
+export const BOUNTY_PUSHES_TO_EXPIRE = 3;
+/** What `bountyPushes` is set to when a bounty is withdrawn: spent, never reposted. */
+export const BOUNTY_WITHDRAWN = BOUNTY_PUSHES_TO_EXPIRE;
+/** The smallest full bounty, so a quick task you dread is still worth posting on. */
+export const BOUNTY_MIN_COINS = 3;
+/** How many live bounties are allowed at once: default and stepper bounds. */
+export const DEFAULT_BOUNTY_LIMIT = 1;
+export const MIN_BOUNTY_LIMIT = 1;
+export const MAX_BOUNTY_LIMIT = 5;
+
+type BountySource = EstimateSource & Partial<Pick<Task, 'bountyPushes'>>;
+type BountyState = Pick<Task, 'bountyPushes' | 'completed' | 'archived'>;
+
+/** A bounty's value before any pushes: the task's base value, floored at `BOUNTY_MIN_COINS`. */
+export function fullBountyFor(task: EstimateSource): number {
+  return Math.max(BOUNTY_MIN_COINS, baseCoinsFor(task));
+}
+
+/**
+ * What the bounty adds to a completion right now. Steps down linearly with
+ * each push and never below 1 while it's live, so every push costs something
+ * and none is free: 12 → 8 → 4 → 0, or 3 → 2 → 1 → 0.
+ */
+export function bountyCoinsFor(task: BountySource): number {
+  const pushes = task.bountyPushes;
+  if (pushes === null || pushes === undefined || pushes >= BOUNTY_PUSHES_TO_EXPIRE) return 0;
+  const left = BOUNTY_PUSHES_TO_EXPIRE - Math.max(0, pushes);
+  return Math.max(1, Math.round((fullBountyFor(task) * left) / BOUNTY_PUSHES_TO_EXPIRE));
+}
+
+/** Whether a task holds a bounty that still pays, and so takes up a slot. */
+export function isBountyLive(task: BountyState): boolean {
+  return (
+    !task.completed &&
+    !task.archived &&
+    task.bountyPushes != null &&
+    task.bountyPushes < BOUNTY_PUSHES_TO_EXPIRE
+  );
+}
+
+/** How many slots are taken. */
+export function liveBountyCount(tasks: readonly BountyState[]): number {
+  let n = 0;
+  for (const t of tasks) if (isBountyLive(t)) n++;
+  return n;
+}
+
+/**
+ * Whether a bounty can go up on this task at all, slots aside: an open,
+ * top-level, ordinary task that has never had one on this occurrence. A
+ * negative habit is never completed, so a bounty on one could never pay.
+ */
+export function canPostBounty(
+  task: BountyState & Pick<Task, 'parentId' | 'polarity'>,
+): boolean {
+  return (
+    !task.completed &&
+    !task.archived &&
+    taskEarnsCoins(task) &&
+    task.polarity !== 'negative' &&
+    task.bountyPushes == null
+  );
+}
+
+/**
+ * The count after a schedule write. Only a push moves it, and it stops at the
+ * expiry. Unlike `nextPostponeCount`, a pull back to today leaves it alone.
+ */
+export function nextBountyPushes(current: number | null | undefined, pushed: boolean): number | null {
+  if (current == null || !pushed) return current ?? null;
+  return Math.min(BOUNTY_PUSHES_TO_EXPIRE, current + 1);
+}
+
+/**
+ * A stored limit back into a usable number. The settings table is all TEXT,
+ * so a missing or unreadable row is the default rather than NaN.
+ */
+export function parseBountyLimit(stored: string | null | undefined): number {
+  if (stored === null || stored === undefined || stored.trim() === '') return DEFAULT_BOUNTY_LIMIT;
+  const n = Number(stored);
+  if (!Number.isFinite(n)) return DEFAULT_BOUNTY_LIMIT;
+  return Math.min(MAX_BOUNTY_LIMIT, Math.max(MIN_BOUNTY_LIMIT, Math.round(n)));
+}
+
+/**
+ * The one line saying what a live bounty is worth and what the next push
+ * costs. Null when there's no live bounty to describe.
+ */
+export function describeBounty(task: BountySource & BountyState): string | null {
+  if (!isBountyLive(task)) return null;
+  const now = bountyCoinsFor(task);
+  const after = bountyCoinsFor({ ...task, bountyPushes: (task.bountyPushes ?? 0) + 1 });
+  return after > 0
+    ? `+${formatCoins(now)} extra when done. Moving it again drops it to +${formatCoins(after)}.`
+    : `+${formatCoins(now)} extra when done. Moving it again ends the bounty.`;
 }
 
 /**

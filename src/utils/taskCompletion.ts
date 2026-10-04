@@ -611,6 +611,8 @@ export function buildCompletion(
         // Cleared with it: a fresh occurrence has no run of pushes, so it has
         // no day one started from.
         driftingSince: null,
+        // A bounty belongs to the occurrence it was posted on, like the count.
+        bountyPushes: null,
         // Carries the broken streak forward on a miss, not the pre-miss one:
         // the streak lives on whichever row is currently running it, so
         // resetting only the missed row would hand the next occurrence the

@@ -416,6 +416,7 @@ export function newTaskFromDraft(
     postponeCount: 0,
     postponeMuted: false,
     driftingSince: null,
+    bountyPushes: null,
     followUpTaskTally: 0,
     previousFollowUpTaskTally: 0,
     followUpTaskSourceTitle: draft.followUpTaskSourceTitle ?? null,

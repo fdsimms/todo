@@ -9,6 +9,7 @@ import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeade
 import { EmptyState } from '../components/EmptyState';
 import { EmptyNote } from '../components/EmptyNote';
 import { InlineAction } from '../components/InlineAction';
+import { CountStepper } from '../components/CountStepper';
 import { TextField } from '../components/TextField';
 import { ProjectPickerSheet } from '../components/ProjectPickerSheet';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
@@ -23,6 +24,11 @@ import { knownLinkAppFor, linkAppsFor } from '../constants/linkApps';
 import { linkIconFor, openInAppUrl } from '../utils/deepLinks';
 import { liveProjectSteps } from '../utils/projectOrder';
 import {
+  MAX_BOUNTY_LIMIT,
+  MIN_BOUNTY_LIMIT,
+  bountyCoinsFor,
+  describeBounty,
+  isBountyLive,
   DEFAULT_EARN_RATE_PER_DAY,
   REWARD_FREQUENCIES,
   STREAK_BONUS_CAP,
@@ -90,6 +96,9 @@ export function RewardsScreen() {
   const listId = useSettingsStore(s => s.rewardListProjectId);
   const setListId = useSettingsStore(s => s.setRewardListProjectId);
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
+  const bountyLimit = useSettingsStore(s => s.bountyLimit);
+  const setBountyLimit = useSettingsStore(s => s.setBountyLimit);
+  const withdrawBounty = useTaskStore(s => s.withdrawBounty);
   const entries = useRewardStore(s => s.entries);
   const rewards = useRewardStore(s => s.rewards);
   const projects = useProjectStore(s => s.projects);
@@ -127,6 +136,23 @@ export function RewardsScreen() {
     [list, tasks, pricedTaskIds],
   );
   const [listPickerOpen, setListPickerOpen] = useState(false);
+
+  // Live bounties, worth the most first. Posted from a task's editor, so this
+  // section lists and withdraws them rather than posting.
+  const bounties = useMemo(
+    () => tasks.filter(t => !t.parentId && isBountyLive(t)).sort((a, b) => bountyCoinsFor(b) - bountyCoinsFor(a)),
+    [tasks],
+  );
+  const confirmWithdraw = (task: Task) => {
+    Alert.alert(
+      'Withdraw bounty?',
+      `The bounty on "${task.title}" ends, and it can't be posted on this task again.`,
+      [
+        { text: 'Keep it', style: 'cancel' },
+        { text: 'Withdraw', style: 'destructive', onPress: () => { haptics.tap(); withdrawBounty(task.id); } },
+      ],
+    );
+  };
 
   // ==== the form ====
   // One form for every job, so two half-typed drafts can't be open at once.
@@ -568,6 +594,42 @@ export function RewardsScreen() {
           </View>
         )}
 
+        <Text style={styles.sectionHeader}>Bounties</Text>
+        <Text style={styles.sectionHint}>
+          Extra coins for a task you keep putting off. Turn on Bounty in the task's editor. It pays the most if you do the task before moving it to a later day, and gets smaller each time you do.
+        </Text>
+        {bounties.length === 0 ? (
+          <EmptyNote icon="trophy-outline">No bounties posted.</EmptyNote>
+        ) : (
+          <View style={styles.historyCard}>
+            {bounties.map((task, i) => (
+              <View key={task.id} style={[styles.historyRow, i > 0 && styles.historyDivider]}>
+                <View style={styles.historyText}>
+                  <Text style={styles.historyLabel}>{task.title}</Text>
+                  <Text style={styles.historyMeta}>{describeBounty(task)}</Text>
+                </View>
+                <InlineAction
+                  label="Withdraw"
+                  icon="close"
+                  variant="neutral"
+                  onPress={() => confirmWithdraw(task)}
+                  accessibilityLabel={`Withdraw the bounty on ${task.title}`}
+                />
+              </View>
+            ))}
+          </View>
+        )}
+        <View style={styles.bountyLimit}>
+          <Text style={styles.historyLabel}>Bounties at a time</Text>
+          <CountStepper
+            value={bountyLimit}
+            onChange={next => { if (next !== null) setBountyLimit(next); }}
+            min={MIN_BOUNTY_LIMIT}
+            max={MAX_BOUNTY_LIMIT}
+            label="Bounties at a time"
+          />
+        </View>
+
         {hasLists && (
           <>
             <Text style={styles.sectionHeader}>{list ? `From ${list.title}` : 'From a list'}</Text>
@@ -764,6 +826,17 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   addRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, paddingHorizontal: spacing.md, marginTop: spacing.sm },
   listPrompt: { gap: spacing.xxs },
+  bountyLimit: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginHorizontal: spacing.md,
+    marginTop: spacing.sm,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.smd,
+    borderRadius: radius.md,
+    backgroundColor: colors.bgSecondary,
+  },
   sectionHint: { color: colors.textSecondary, fontSize: font.xs, paddingHorizontal: spacing.md, paddingBottom: spacing.xs },
   historyCard: { marginHorizontal: spacing.md, borderRadius: radius.md, backgroundColor: colors.bgSecondary },
   historyRow: {

@@ -3422,6 +3422,20 @@ export interface Task {
    * from, so the two fields always describe the same run.
    */
   driftingSince: string | null;
+
+  /**
+   * A bounty posted on this occurrence: how many times it has been pushed since
+   * (see "Bounties" in utils/rewards.ts). Null for no bounty, which is every
+   * existing row. Counts up from 0 on each push and stops at
+   * BOUNTY_PUSHES_TO_EXPIRE, where it pays nothing; a withdrawn bounty is set
+   * straight there, so it can't be reposted to restart the count.
+   *
+   * Its own count rather than a read of postponeCount, so a task already
+   * pushed a dozen times can still be posted on at full value, and it never
+   * resets on a pull back to today. Belongs to the occurrence like
+   * postponeCount: a recurring task's next occurrence starts at null.
+   */
+  bountyPushes?: number | null;
 }
 
 // postponeCount/postponeMuted/driftingSince are omitted alongside the streak
@@ -3456,6 +3470,7 @@ export type TaskDraft = Omit<
   | 'postponeCount'
   | 'postponeMuted'
   | 'driftingSince'
+  | 'bountyPushes'
   | 'waitingOnPersonSince'
   | 'waitingFollowUpDeclinedAt'
   | 'followUpTaskTally'

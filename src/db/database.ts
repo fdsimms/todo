@@ -1844,6 +1844,9 @@ export function initDatabase(): void {
     // — see PersonGroup.catchUpSeparately. 0 on every existing row: every group
     // has always been one candidate.
     'ALTER TABLE person_groups ADD COLUMN catch_up_separately INTEGER NOT NULL DEFAULT 0',
+    // NULL on every existing row: no task had a bounty before this. See
+    // Task.bountyPushes.
+    'ALTER TABLE tasks ADD COLUMN bounty_pushes INTEGER',
   ];
   // Asking SQLite for a table's columns once is cheaper than handing it every
   // ALTER for that table and catching the duplicate-column error, and by the
@@ -3290,6 +3293,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     vacationPause: Boolean(row.vacation_pause),
     excludeFromSuggestions: Boolean(row.exclude_from_suggestions),
     pinEachOccurrence: Boolean(row.pin_each_occurrence),
+    bountyPushes: (row.bounty_pushes as number | null) ?? null,
     timerStartedAt: (row.timer_started_at as string | null) ?? null,
     actualMinutes: (row.actual_minutes as number | null) ?? null,
     estimateBeforeTiming: (row.estimate_before_timing as number | null) ?? null,
@@ -3421,8 +3425,8 @@ export function dbInsertTask(task: Task): void {
       estimate_before_timing, waiting_on_person_since, waiting_follow_up_declined_at,
       reminder_tracks_visibility, recurrence_month,
       blocked_by_ids, deliverable_options, deliverable_sets_away, follow_up_on, extra_task_source_id,
-      pin_each_occurrence
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      pin_each_occurrence, bounty_pushes
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -3537,6 +3541,7 @@ export function dbInsertTask(task: Task): void {
       task.followUpOn ?? null,
       task.followUpTaskSourceId ?? null,
       task.pinEachOccurrence ? 1 : 0,
+      task.bountyPushes ?? null,
     ]
   );
 }
@@ -3573,7 +3578,7 @@ export function dbUpdateTask(task: Task): void {
       estimate_before_timing=?, waiting_on_person_since=?, waiting_follow_up_declined_at=?,
       reminder_tracks_visibility=?, recurrence_month=?,
       blocked_by_ids=?, deliverable_options=?, deliverable_sets_away=?, follow_up_on=?, extra_task_source_id=?,
-      pin_each_occurrence=?
+      pin_each_occurrence=?, bounty_pushes=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -3689,6 +3694,7 @@ export function dbUpdateTask(task: Task): void {
       task.followUpOn ?? null,
       task.followUpTaskSourceId ?? null,
       task.pinEachOccurrence ? 1 : 0,
+      task.bountyPushes ?? null,
       task.id,
     ]
   );
@@ -3734,17 +3740,19 @@ export function dbBatchUpdateRecipeUpNextOrders(updates: { id: string; upNextOrd
  * beside bulkTogglePin.
  */
 export function dbBatchUpdatePostponeCounts(
-  updates: { id: string; postponeCount: number; driftingSince: string | null }[],
+  updates: { id: string; postponeCount: number; driftingSince: string | null; bountyPushes: number | null }[],
 ): void {
   db.withTransactionSync(() => {
-    for (const { id, postponeCount, driftingSince } of updates) {
+    for (const { id, postponeCount, driftingSince, bountyPushes } of updates) {
       // Written together, never separately: the count and the day it started
       // from describe one run of pushes, and a batch that set one without the
       // other would leave a row claiming pushes with no start (or a start with
       // no pushes) until the next single-task write happened to repair it.
-      db.runSync('UPDATE tasks SET postpone_count = ?, drifting_since = ? WHERE id = ?', [
+      // A bounty's push count rides the same outcome, so it's written here too.
+      db.runSync('UPDATE tasks SET postpone_count = ?, drifting_since = ?, bounty_pushes = ? WHERE id = ?', [
         postponeCount,
         driftingSince,
+        bountyPushes,
         id,
       ]);
     }
