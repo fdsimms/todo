@@ -189,7 +189,7 @@ export function nextBirthday(
 /**
  * The row's title.
  *
- * Names whose birthday it is and stops there. Deliberately not "Wish Ansley a
+ * Names whose birthday it is and stops there. Deliberately not "Wish Tessa a
  * happy birthday": the row lands three days early precisely because what to do
  * about it might be a card, a table booked, or a present posted, and a title
  * that picks one of those is wrong two times in three. It also has to read

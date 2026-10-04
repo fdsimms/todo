@@ -481,12 +481,12 @@ const makePerson = (over: Partial<Person> & Pick<Person, 'id' | 'name'>): Person
   ...over,
 });
 
-const dustin = makePerson({ id: 'p1', name: 'Dustin' });
+const gideon = makePerson({ id: 'p1', name: 'Gideon' });
 const peopleBy = (...people: Person[]) => (id: string) => people.find(p => p.id === id);
 
 describe('canWaitOn', () => {
   it('is true for somebody on file', () => {
-    expect(canWaitOn(dustin)).toBe(true);
+    expect(canWaitOn(gideon)).toBe(true);
   });
 
   // canBlock's shape exactly: a blocker that is gone frees its waiters rather
@@ -501,7 +501,7 @@ describe('canWaitOn', () => {
 });
 
 describe('personBlockerOf / isWaitingOnPerson', () => {
-  const resolve = peopleBy(dustin);
+  const resolve = peopleBy(gideon);
 
   it('resolves the person a task is waiting on', () => {
     const task = makeTask({ waitingOnPersonId: 'p1' });
@@ -524,8 +524,8 @@ describe('personBlockerOf / isWaitingOnPerson', () => {
     expect(isWaitingOnPerson(makeTask({ waitingOnPersonId: 'p9' }), peopleBy(filed))).toBe(false);
   });
 
-  // The two are independent: waiting on Dustin for the photos is not time spent
-  // with Dustin, and it must never land in his history.
+  // The two are independent: waiting on Gideon for the photos is not time spent
+  // with Gideon, and it must never land in his history.
   it('is unrelated to personIds', () => {
     expect(isWaitingOnPerson(makeTask({ personIds: ['p1'] }), resolve)).toBe(false);
   });

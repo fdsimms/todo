@@ -19,7 +19,7 @@ import type { GroupMentionToken } from './parseTaskInput';
  *
  * **The index matters more here than it looks.** `Task.personIds` is an array
  * on the row precisely so that copying a task copies its people (see the field
- * note), and the price of that choice is that "every task naming Dustin" has
+ * note), and the price of that choice is that "every task naming Gideon" has
  * no SQL index behind it. Answered by scanning, it would be O(n) per row per
  * render, and a person chip renders on every row that has one — the same
  * O(n²) `waitingCountFor` exists to avoid.

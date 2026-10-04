@@ -286,7 +286,7 @@ one. Those three rules and the reasoning behind them are in
     on screen. This adds one.
 
 - **`reachOut` is `projectReview` one shelf over.** A person somebody asked
-  to be reminded about, who it has been a while since they saw, becomes "Catch up with Ansley".
+  to be reminded about, who it has been a while since they saw, becomes "Catch up with Tessa".
   **The reasoning lives in `docs/arch/people.md`'s "The reach-out nudge"** and is not repeated here:
   that file holds the rules about what this feature may never do, and they are what shaped every
   choice below. What belongs here is only how it sits in the mechanism.
@@ -318,7 +318,7 @@ one. Those three rules and the reasoning behind them are in
 
 - **`waitingFollowUp` is `reachOut` one shelf over, sourced on the task rather than the person.**
   A task waiting on somebody (`Task.waitingOnPersonId`), waited on long enough, becomes "Follow up
-  with Dustin about 'Get the quote back'". See `src/utils/waitingFollowUpTasks.ts`.
+  with Gideon about 'Get the quote back'". See `src/utils/waitingFollowUpTasks.ts`.
   - **Sourced on the waiting task's own id**, not the person — the one real departure from
     `reachOut`'s shape. A person can be the far end of several independent waits at once, and it's
     the *task* that stops wanting a nudge (released, completed, archived, deleted), not the person:
@@ -355,7 +355,7 @@ one. Those three rules and the reasoning behind them are in
   - **The follow-up is filed under the waiting task's project**, so chasing the contractor sits on
     the kitchen's page beside the task it's about, and pauses when the project does.
   - **A completed or archived follow-up holds its source for the decline window**, the same blind
-    spot `reachOutsHandledRecently` covers and for the same reason: ticking "Follow up with Dustin"
+    spot `reachOutsHandledRecently` covers and for the same reason: ticking "Follow up with Gideon"
     off answers *this* nudge, not the wait itself, which is still open until the task it names is
     released or done.
   - **Its stale pass judges against every currently-live wait**, not the capped set — losing the

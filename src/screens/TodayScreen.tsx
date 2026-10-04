@@ -1943,7 +1943,7 @@ export function TodayScreen() {
       case 'import':
         setEventImportVisible(true);
         break;
-      // No task: a one-line event ("lunch w/ @dustin sat 12pm") saved straight
+      // No task: a one-line event ("lunch w/ @gideon sat 12pm") saved straight
       // into the calendar, with the calendar, alert and Busy/Free as chips.
       // See QuickEventSheet.
       case 'event':

@@ -621,7 +621,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
           accessibilityLabel="Purpose"
         />
         <Text style={styles.hint}>
-          Why it's on the list, when the same ingredient does two jobs: “flour, for dusting”.
+          Why it's on the list, when the same ingredient does two jobs: “flour, for gideong”.
         </Text>
 
         <View style={styles.separator} />

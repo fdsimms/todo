@@ -342,7 +342,7 @@ export function splitPrep(name: string): { name: string; prep: string | null } {
 }
 
 // Recipe sites also write *why* an ingredient is on the list as a trailing
-// "for " clause — "Limes for margaritas", "flour for dusting", "cheese for
+// "for " clause — "Limes for margaritas", "flour for gideong", "cheese for
 // topping" — rather than a comma. Same convention-match discipline as
 // PREP_SPLIT: it's safe to split unconditionally not because "for" is an
 // unambiguous word (it isn't — "before", "fortune", "comfort" all contain

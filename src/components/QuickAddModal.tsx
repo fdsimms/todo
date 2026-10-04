@@ -778,7 +778,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
       : null),
     [title, parsed, categories, allTags]
   );
-  // "beach with @bri" where a Brittany and a Brittney both answer to it — the
+  // "beach with @kel" where a Kelsey and a Kelsie both answer to it — the
   // one case a "@name" token can't resolve on its own (see matchPersonMentions'
   // doc comment) and so still needs the tooltip slot, right after the
   // category/tag token for the same reason peopleParsed used to sit here: a
@@ -1077,7 +1077,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   const activeMatch = matchDismissed ? null : rawMatch;
   const matchEnd = activeMatch ? activeMatch.matchStart + activeMatch.matchedText.length : 0;
 
-  // "beach with @dustin @ansley sat" — every "@name" token that resolves to
+  // "beach with @gideon @tessa sat" — every "@name" token that resolves to
   // somebody already added. Unlike the tooltip chain above, a mention is never
   // stripped out of the title (see matchPersonMentions' doc comment) and needs
   // no tap to accept: nothing about the typed text changes, so there is

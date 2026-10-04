@@ -459,10 +459,10 @@ describe('makeIngredient', () => {
   });
 
   it('splits purpose after the quantity is peeled off', () => {
-    const result = makeIngredient('2 cups flour for dusting')!;
+    const result = makeIngredient('2 cups flour for gideong')!;
     expect(result.name).toBe('flour');
     expect(result.quantity).toBe('2 cups');
-    expect(result.purpose).toBe('dusting');
+    expect(result.purpose).toBe('gideong');
   });
 
   it('does not split a purpose clause out of a comma-based prep clause', () => {
@@ -532,11 +532,11 @@ describe('ingredientsFromText', () => {
   });
 
   it('keeps a second use of an ingredient that says what it is for (#2917)', () => {
-    // "flour for dusting" is a second use, not the dough's flour typed again.
-    const result = ingredientsFromText('2 cups flour\nflour for dusting\n3 cloves garlic, minced\n2 cloves garlic, sliced');
+    // "flour for gideong" is a second use, not the dough's flour typed again.
+    const result = ingredientsFromText('2 cups flour\nflour for gideong\n3 cloves garlic, minced\n2 cloves garlic, sliced');
     expect(result.map(i => [i.name, i.quantity, i.prep, i.purpose])).toEqual([
       ['flour', '2 cups', null, null],
-      ['flour', '', null, 'dusting'],
+      ['flour', '', null, 'gideong'],
       ['garlic', '3 cloves', 'minced', null],
       ['garlic', '2 cloves', 'sliced', null],
     ]);
@@ -583,7 +583,7 @@ describe('mergeIngredients', () => {
   it('keeps the same ingredient with a different prep or purpose as two rows', () => {
     const minced = ing('garlic', { prep: 'minced' });
     expect(mergeIngredients([minced], [ing('garlic', { prep: 'sliced' })])).toHaveLength(2);
-    expect(mergeIngredients([ing('flour')], [ing('flour', { purpose: 'for dusting' })])).toHaveLength(2);
+    expect(mergeIngredients([ing('flour')], [ing('flour', { purpose: 'for gideong' })])).toHaveLength(2);
     // Prep and purpose are notes, so case alone doesn't make a second use.
     expect(mergeIngredients([minced], [ing('Garlic', { nameKey: 'garlic', prep: 'Minced ' })])).toHaveLength(1);
   });

@@ -414,10 +414,10 @@ describe('splitPurpose', () => {
     });
   });
 
-  it('splits "flour for dusting" — a real purpose clause even though it names a use, not a prep', () => {
-    expect(splitPurpose('flour for dusting')).toEqual({
+  it('splits "flour for gideong" — a real purpose clause even though it names a use, not a prep', () => {
+    expect(splitPurpose('flour for gideong')).toEqual({
       name: 'flour',
-      purpose: 'dusting',
+      purpose: 'gideong',
     });
   });
 

@@ -133,8 +133,8 @@ describe('isStampFromEarlierLaunch', () => {
 describe('copy', () => {
   it('names the entry in plain past tense', () => {
     expect(reachOutHistoryTitle('call', 'Sarah')).toBe('Called Sarah');
-    expect(reachOutHistoryTitle('text', 'Dustin')).toBe('Texted Dustin');
-    expect(reachOutHistoryTitle('email', 'Ansley')).toBe('Emailed Ansley');
+    expect(reachOutHistoryTitle('text', 'Gideon')).toBe('Texted Gideon');
+    expect(reachOutHistoryTitle('email', 'Tessa')).toBe('Emailed Tessa');
   });
 
   // The prompt shows exactly what would be written, so the title it quotes has

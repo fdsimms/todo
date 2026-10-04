@@ -444,8 +444,8 @@ describe('plannedIngredientsForRecipe', () => {
   });
 
   it('folds both prep and purpose into the quantity, prep first', () => {
-    const ragu = recipe('Ragù', [ing('Flour', { quantity: '2 cups', prep: 'sifted', purpose: 'dusting' })]);
-    expect(plannedIngredientsForRecipe(ragu)[0].quantity).toBe('2 cups, sifted, for dusting');
+    const ragu = recipe('Ragù', [ing('Flour', { quantity: '2 cups', prep: 'sifted', purpose: 'gideong' })]);
+    expect(plannedIngredientsForRecipe(ragu)[0].quantity).toBe('2 cups, sifted, for gideong');
   });
 
   it('carries the aisle hint through', () => {

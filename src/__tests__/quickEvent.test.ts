@@ -11,10 +11,10 @@ jest.mock('../store/useSettingsStore', () => ({
 const now = new Date(2026, 8, 25, 14, 25);
 const today = new Date(2026, 8, 25, 0);
 const people = [
-  { id: 'p1', name: 'Dustin Reyes', nickname: '' },
-  { id: 'p2', name: 'Ansley', nickname: '' },
+  { id: 'p1', name: 'Gideon Reyes', nickname: '' },
+  { id: 'p2', name: 'Tessa', nickname: '' },
 ];
-const names: Record<string, string> = { p1: 'Dustin', p2: 'Ansley' };
+const names: Record<string, string> = { p1: 'Gideon', p2: 'Tessa' };
 const opts = { people, nameOf: (id: string) => names[id] ?? null, now, today, wallClock: now };
 
 describe('parseQuickEvent', () => {
@@ -28,8 +28,8 @@ describe('parseQuickEvent', () => {
   });
 
   it('reads a day, a clock time and a person', () => {
-    const draft = parseQuickEvent('lunch w/ @dustin sat 12pm', opts);
-    expect(draft.title).toBe('lunch w/ Dustin');
+    const draft = parseQuickEvent('lunch w/ @gideon sat 12pm', opts);
+    expect(draft.title).toBe('lunch w/ Gideon');
     expect(draft.start).toEqual(new Date(2026, 8, 26, 12, 0));
     expect(draft.end).toEqual(new Date(2026, 8, 26, 13, 0));
     expect(draft.personIds).toEqual(['p1']);
@@ -37,8 +37,8 @@ describe('parseQuickEvent', () => {
   });
 
   it('names everybody mentioned', () => {
-    const draft = parseQuickEvent('beach with @dustin and @ansley tomorrow', opts);
-    expect(draft.title).toBe('beach with Dustin and Ansley');
+    const draft = parseQuickEvent('beach with @gideon and @tessa tomorrow', opts);
+    expect(draft.title).toBe('beach with Gideon and Tessa');
     expect(draft.personIds).toEqual(['p1', 'p2']);
   });
 
@@ -69,8 +69,8 @@ describe('parseQuickEvent', () => {
 
 describe('parseQuickEvent, for the quick-add sheet', () => {
   it('reports the schedule phrase and the line without it', () => {
-    const draft = parseQuickEvent('lunch w/ @dustin sat 12pm', opts);
-    expect(draft.phrase).toEqual({ start: 17, text: 'sat 12pm', lineWithout: 'lunch w/ @dustin' });
+    const draft = parseQuickEvent('lunch w/ @gideon sat 12pm', opts);
+    expect(draft.phrase).toEqual({ start: 17, text: 'sat 12pm', lineWithout: 'lunch w/ @gideon' });
     expect(draft.mentionSpans).toEqual([[9, 16]]);
   });
 
@@ -103,9 +103,9 @@ describe('parseQuickEvent, for the quick-add sheet', () => {
 
 describe('parseQuickEvent, location and alert clauses', () => {
   it('reads a place and an alert after the schedule phrase', () => {
-    const line = "lunch w/ @dustin fri 12p at Joe's alert 30m";
+    const line = "lunch w/ @gideon fri 12p at Joe's alert 30m";
     const draft = parseQuickEvent(line, opts);
-    expect(draft.title).toBe('lunch w/ Dustin');
+    expect(draft.title).toBe('lunch w/ Gideon');
     expect(draft.location).toBe("Joe's");
     expect(draft.alertMinutes).toBe(30);
     expect(draft.start).toEqual(new Date(2026, 9, 2, 12, 0));
@@ -231,7 +231,7 @@ describe('alertRelativeOffset', () => {
 
 describe('eventMarkerText', () => {
   it('returns the rest of a line that starts with "event:"', () => {
-    expect(eventMarkerText('event: lunch w/ @dustin sat 12pm')).toBe('lunch w/ @dustin sat 12pm');
+    expect(eventMarkerText('event: lunch w/ @gideon sat 12pm')).toBe('lunch w/ @gideon sat 12pm');
     expect(eventMarkerText('  Event:dinner')).toBe('dinner');
   });
 

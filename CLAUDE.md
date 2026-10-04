@@ -154,7 +154,7 @@ empty states, hints, alerts, and patch notes alike.
 
 **A placeholder that gives an example starts with "e.g.".** Placeholder text is `textTertiary`,
 which is also the hint colour, so a bare example sitting in a field reads as a value already
-saved — "margaritas, dusting…", "Low fat, 4%, crunchy…" and "Pepper, Cheese…" all did, and #1613
+saved — "margaritas, gideong…", "Low fat, 4%, crunchy…" and "Pepper, Cheese…" all did, and #1613
 was someone looking at a form they thought they'd already filled in. A trailing "…" doesn't fix
 it; the two characters at the *front* do, because that's where the eye lands. A placeholder that
 merely names the field ("Recipe name", "Add an ingredient", "Search recipes") needs nothing —
