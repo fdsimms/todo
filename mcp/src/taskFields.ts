@@ -187,6 +187,7 @@ export interface TaskFieldsInput {
   difficulty?: Difficulty | null;
   estimatedMinutes?: number | null;
   pinned?: boolean;
+  pinEachOccurrence?: boolean;
   deliverableKind?: DeliverableKind | null;
   deliverableOptions?: string[];
   repeat?: RepeatInput;
@@ -340,6 +341,7 @@ export function taskFieldsPatch(
     } else patch.estimatedMinutes = input.estimatedMinutes;
   }
   if (input.pinned !== undefined) patch.pinned = input.pinned;
+  if (input.pinEachOccurrence !== undefined) patch.pinEachOccurrence = input.pinEachOccurrence;
   if (input.deliverableKind !== undefined) {
     if (input.deliverableKind !== null && !DELIVERABLE_KINDS.includes(input.deliverableKind)) {
       errors.push(`deliverableKind must be one of ${DELIVERABLE_KINDS.join(', ')}, or null.`);

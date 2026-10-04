@@ -62,6 +62,8 @@ export interface SerializedTask {
   revisitIf?: string;
   recurring?: boolean;
   pinned?: boolean;
+  /** On a repeating task: every occurrence it spawns starts pinned. */
+  pinsEachOccurrence?: boolean;
   /**
    * Held by something rather than merely not due yet — waiting on another task
    * or on a person. Worth its own field because the two are easy to conflate
@@ -74,6 +76,14 @@ export interface SerializedTask {
    * out of its project's count.
    */
   notNeeded?: boolean;
+  /**
+   * A repeating task's occurrence that was marked missed. It is also
+   * `completed: true`, because a miss is history rather than a live row, so
+   * without this a missed occurrence reads as done. Not a completion.
+   */
+  missed?: boolean;
+  /** Which of the app's generators wrote this task unasked (weather, birthday, meal...). Absent on anything a person typed. */
+  generatedBy?: string;
 }
 
 /** Drops keys whose value is null, undefined, or an empty array. */
@@ -117,8 +127,11 @@ export function serializeTask(replica: Replica, task: Task): SerializedTask {
     revisitIf: task.deliverableRevisitIf ?? undefined,
     recurring: task.recurrenceType !== 'none' ? true : undefined,
     pinned: task.pinned ? true : undefined,
+    pinsEachOccurrence: task.pinEachOccurrence ? true : undefined,
     blocked: replica.isBlocked(task) ? true : undefined,
     notNeeded: replica.isNotNeeded(task) ? true : undefined,
+    missed: task.missedAt ? true : undefined,
+    generatedBy: task.generatedKind ?? undefined,
   });
 }
 
