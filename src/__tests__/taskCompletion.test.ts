@@ -73,7 +73,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   parentId: null, groupId: null, projectId: null,
   chainEnabled: false, chainIndex: 0, chainItems: [], chainStepOnSchedule: false, vacationPause: false, excludeFromSuggestions: false,
   followUpTaskEveryN: null, followUpTaskTitle: null, followUpTaskDraft: null,
-  followUpTaskOneAtATime: false, followUpTaskTally: 0, previousFollowUpTaskTally: 0,
+  followUpTaskOneAtATime: false, followUpTaskAtEnd: false, followUpTaskTally: 0, previousFollowUpTaskTally: 0,
   followUpTaskSourceTitle: null,
   followUpTaskSourceId: null,
   archived: false, archivedAt: null, timerStartedAt: null, actualMinutes: null,
@@ -522,6 +522,56 @@ describe('buildCompletion', () => {
     it('treats an explicit null as declining, clearing what was there', () => {
       const task = makeTask({ deliverableKind: 'text', deliverableValue: 'Old' });
       expect(build(task, { deliverableValue: null }).completed.deliverableValue).toBeNull();
+    });
+  });
+
+  describe('the follow-up task at the end of a repeat', () => {
+    const atEnd = (over: Partial<Task> = {}) => makeTask({
+      title: 'Practice',
+      recurrenceType: 'daily',
+      recurrenceCount: 1,
+      followUpTaskAtEnd: true,
+      followUpTaskTitle: 'Book the recital',
+      ...over,
+    });
+
+    it('is added when the last repeat is completed, due today with no successor to ride', () => {
+      const { followUpTask, nextTask } = build(atEnd());
+      expect(nextTask).toBeNull();
+      expect(followUpTask).not.toBeNull();
+      expect(followUpTask!.title).toBe('Book the recital');
+      expect(followUpTask!.followUpTaskSourceTitle).toBe('Practice');
+      expect(followUpTask!.followUpTaskSourceId).toBeNull();
+    });
+
+    it('waits while the repeat still has occurrences left', () => {
+      const { followUpTask, nextTask } = build(atEnd({ recurrenceCount: 3 }));
+      expect(nextTask).not.toBeNull();
+      expect(followUpTask).toBeNull();
+    });
+
+    it('is added when the next date would fall past the end date', () => {
+      const due = new Date(2026, 5, 10, 9).toISOString();
+      const task = atEnd({
+        recurrenceCount: null,
+        dueDate: due,
+        recurrenceEndDate: new Date(2026, 5, 10, 9).toISOString(),
+      });
+      const { followUpTask, nextTask } = build(task);
+      expect(nextTask).toBeNull();
+      expect(followUpTask).not.toBeNull();
+    });
+
+    it('is added when the last occurrence is missed, since the repeat is over either way', () => {
+      expect(build(atEnd(), { missed: true }).followUpTask).not.toBeNull();
+    });
+
+    it('is not added for a repeat with no end', () => {
+      expect(build(atEnd({ recurrenceCount: null })).followUpTask).toBeNull();
+    });
+
+    it('is not added when the rule is off', () => {
+      expect(build(atEnd({ followUpTaskAtEnd: false })).followUpTask).toBeNull();
     });
   });
 

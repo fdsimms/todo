@@ -69,6 +69,39 @@ export function followUpTaskRule(
 }
 
 /**
+ * The rule that fires when the repeat runs out, or null.
+ *
+ * The same added task as `followUpTaskRule`, on a different trigger, so it
+ * shares the title and draft and is a separate function rather than a second
+ * kind of rule: every reader of the every-Nth rule (the tally, the row's chip,
+ * the one-at-a-time check) is about counting, and none of them has anything to
+ * say here.
+ *
+ * Needs an end to exist. A repeat that never ends never fires this, so a rule
+ * left set after the end was removed would read as live and could not be; the
+ * editor clears it on save for the same reason, and this is the door the store
+ * goes through.
+ */
+export interface FollowUpTaskEndRule {
+  title: string;
+  draft: FollowUpTaskDraft | null;
+}
+
+export function repeatHasEnd(task: Pick<Task, 'recurrenceEndDate' | 'recurrenceCount'>): boolean {
+  return !!task.recurrenceEndDate || task.recurrenceCount !== null;
+}
+
+export function followUpTaskEndRule(
+  task: Pick<Task, 'followUpTaskAtEnd' | 'followUpTaskTitle' | 'recurrenceType' | 'recurrenceEndDate' | 'recurrenceCount'>
+    & Partial<Pick<Task, 'followUpTaskDraft'>>
+): FollowUpTaskEndRule | null {
+  const title = task.followUpTaskTitle?.trim();
+  if (!task.followUpTaskAtEnd || !title) return null;
+  if (task.recurrenceType === 'none' || !repeatHasEnd(task)) return null;
+  return { title, draft: task.followUpTaskDraft ?? null };
+}
+
+/**
  * The tally after this completion, and whether it fires.
  *
  * Resets to 0 on the completion that fires rather than counting up forever and
@@ -134,7 +167,8 @@ export function completionsUntilFollowUpTask(tally: number, everyN: number): num
 }
 
 /** The editor row's value, and the only place the count is shown on its own. */
-export function followUpTaskSummary(everyN: number | null): string | undefined {
+export function followUpTaskSummary(everyN: number | null, atEnd = false): string | undefined {
+  if (atEnd) return 'When it ends';
   if (everyN === null || everyN < MIN_FOLLOW_UP_TASK_EVERY_N) return undefined;
   return `Every ${ordinal(everyN)}`;
 }
@@ -159,7 +193,8 @@ export function followUpTaskSummary(everyN: number | null): string | undefined {
  * the Follow-up task row in TaskEditor, gated exactly as Supply is), so the
  * case this described can no longer be saved.
  */
-export function describeFollowUpTaskRule(everyN: number | null, title: string | null): string {
+export function describeFollowUpTaskRule(everyN: number | null, title: string | null, atEnd = false): string {
+  if (atEnd) return title?.trim() ? 'Added when the last repeat is done' : 'Name the task to add';
   if (everyN === null || everyN < MIN_FOLLOW_UP_TASK_EVERY_N) return 'No follow-up task';
   if (!title?.trim()) return 'Name the task to add';
   return 'Due the next time this task repeats';

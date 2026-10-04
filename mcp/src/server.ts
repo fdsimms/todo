@@ -754,13 +754,14 @@ const taskFieldsShape = {
   }).nullable().optional()
     .describe('A branch: this task waits until that question is answered, then shows only for these answers. Any other answer marks it not needed: off every list and out of the project\'s count. A task waiting only on not-needed tasks is not needed too. null removes it.'),
   followUp: z.object({
-    everyN: z.number().int().describe('2 to 99.'),
+    everyN: z.number().int().optional().describe('2 to 99. Give this or atEnd.'),
+    atEnd: z.boolean().optional().describe('Add the task once, when the repeat ends instead of every Nth time. The repeat needs a count or end date.'),
     title: z.string(),
     notes: z.string().optional(),
     estimatedMinutes: z.number().int().positive().nullable().optional(),
     oneAtATime: z.boolean().optional().describe('Don\'t add another while the last one is still open.'),
   }).nullable().optional()
-    .describe('Repeating tasks only: every Nth completion also adds a separate task, e.g. every 4th run, "Replace running shoes" or every 10th clean, "Deep clean the oven". null removes it.'),
+    .describe('Repeating tasks only: every Nth completion also adds a separate task, e.g. every 4th run, "Replace running shoes" or every 10th clean, "Deep clean the oven". Or with atEnd, adds it once when the repeat ends, e.g. after the last of 6 classes, "Sign up for the next session". null removes it.'),
 };
 
 function registerWriteTools(

@@ -347,12 +347,14 @@ export function newTaskFromDraft(
           followUpTaskTitle: draft.followUpTaskTitle ?? null,
           followUpTaskDraft: draft.followUpTaskDraft ?? null,
           followUpTaskOneAtATime: draft.followUpTaskOneAtATime ?? false,
+          followUpTaskAtEnd: draft.followUpTaskAtEnd ?? false,
         }
       : {
           followUpTaskEveryN: null,
           followUpTaskTitle: null,
           followUpTaskDraft: null,
           followUpTaskOneAtATime: false,
+          followUpTaskAtEnd: false,
         }),
     vacationPause: draft.vacationPause ?? false,
     excludeFromSuggestions: draft.excludeFromSuggestions ?? false,

@@ -181,7 +181,7 @@ const baseTask: Task = {
   followUpTaskEveryN: null,
   followUpTaskTitle: null,
   followUpTaskDraft: null,
-  followUpTaskOneAtATime: false,
+  followUpTaskOneAtATime: false, followUpTaskAtEnd: false,
   followUpTaskTally: 0,
   previousFollowUpTaskTally: 0,
   followUpTaskSourceTitle: null,

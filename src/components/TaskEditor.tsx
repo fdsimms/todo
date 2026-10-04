@@ -619,6 +619,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [followUpTaskTitle, setFollowUpTaskTitle] = useState('');
   const [followUpTaskDraft, setFollowUpTaskDraft] = useState<FollowUpTaskDraft | null>(null);
   const [followUpTaskOneAtATime, setFollowUpTaskOneAtATime] = useState(false);
+  const [followUpTaskAtEnd, setFollowUpTaskAtEnd] = useState(false);
   const [showFollowUpTaskSheet, setShowFollowUpTaskSheet] = useState(false);
   const [showFollowUpTask, setShowFollowUpTask] = useState(false);
   const [showFollowUpSource, setShowFollowUpSource] = useState(false);
@@ -952,6 +953,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setFollowUpTaskTitle(task.followUpTaskTitle ?? '');
       setFollowUpTaskDraft(task.followUpTaskDraft ?? null);
       setFollowUpTaskOneAtATime(task.followUpTaskOneAtATime ?? false);
+      setFollowUpTaskAtEnd(task.followUpTaskAtEnd ?? false);
     } else {
       // Every field the branch above loads from `task` must be set again here
       // (from `initialDraft`, or to its default). The sheet stays mounted
@@ -1016,6 +1018,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setFollowUpTaskEveryN(null);
       setFollowUpTaskTitle('');
       setFollowUpTaskOneAtATime(false);
+      setFollowUpTaskAtEnd(false);
     }
     setShowFollowUpTask(false);
     setShowBlockerPicker(false);
@@ -1148,6 +1151,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       followUpTaskTitle: task?.followUpTaskTitle ?? '',
       followUpTaskDraft: task?.followUpTaskDraft ?? null,
       followUpTaskOneAtATime: task?.followUpTaskOneAtATime ?? false,
+      followUpTaskAtEnd: task?.followUpTaskAtEnd ?? false,
     });
   }, [visible, task]);
 
@@ -1460,8 +1464,14 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     // completion to reach — see the note on the row. followUpTaskRule() reads
     // the first two, and this is what keeps a saved row from disagreeing with
     // it or with the repeat.
-    const followUpTaskLive =
-      recurrenceType !== 'none' && followUpTaskEveryN !== null && !!resolvedFollowUpTaskTitle;
+    //
+    // At-the-end is its own trigger and also needs the repeat to have an end:
+    // an end removed after choosing it leaves nothing for the rule to fire on.
+    const followUpTaskAtEndLive =
+      recurrenceType !== 'none' && followUpTaskAtEnd && !!resolvedFollowUpTaskTitle
+      && (recurrenceEndDate !== null || recurrenceCount !== null);
+    const followUpTaskLive = followUpTaskAtEndLive || (
+      recurrenceType !== 'none' && !followUpTaskAtEnd && followUpTaskEveryN !== null && !!resolvedFollowUpTaskTitle);
     // A "#word" token still sitting at the very end of the title (so the
     // auto-accept effect above never got text past it to fire on) is applied
     // here as a fallback, same as quick add's handleAdd — see
@@ -1621,7 +1631,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       // departure can only come from a date answered inside a project.
       deliverableOptions: deliverableKind === 'choice' ? parseDeliverableOptions(deliverableOptionsText) : [],
       deliverableSetsAway: deliverableKind === 'date' && project !== null && deliverableSetsAway,
-      followUpTaskEveryN: followUpTaskLive ? followUpTaskEveryN : null,
+      followUpTaskEveryN: followUpTaskLive && !followUpTaskAtEndLive ? followUpTaskEveryN : null,
+      followUpTaskAtEnd: followUpTaskAtEndLive,
       followUpTaskTitle: followUpTaskLive ? resolvedFollowUpTaskTitle : null,
       // Both follow the rule they detail rather than surviving on their own:
       // with no rule left there is no task for them to describe, and either
@@ -1629,7 +1640,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       // on a rule that can't fire is a setting that reads as doing something
       // and isn't.
       followUpTaskDraft: followUpTaskLive ? followUpTaskDraft : null,
-      followUpTaskOneAtATime: followUpTaskLive ? followUpTaskOneAtATime : false,
+      followUpTaskOneAtATime: followUpTaskLive && !followUpTaskAtEndLive ? followUpTaskOneAtATime : false,
     };
 
     // The whole set of dates this task falls on, earliest first. A single
@@ -2247,6 +2258,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       followUpTaskTitle,
       followUpTaskDraft,
       followUpTaskOneAtATime,
+      followUpTaskAtEnd,
     });
     if (current !== initialStateRef.current) {
       Alert.alert(
@@ -5495,27 +5507,29 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           // could never reach its second completion. Offered there, it was a
           // rule that read as set and could not fire.
           ...(recurrenceType !== 'none' ? [{
-            key: 'followUpTask', label: 'Follow-up task', set: followUpTaskEveryN !== null,
-            keywords: ['every', 'nth', 'occasionally', 'periodic', 'follow-up', 'maintenance',
+            key: 'followUpTask', label: 'Follow-up task', set: followUpTaskEveryN !== null || followUpTaskAtEnd,
+            keywords: ['every', 'nth', 'occasionally', 'periodic', 'follow-up', 'maintenance', 'ends', 'last', 'finish', 'after',
               'one at a time', 'duplicate', 'pile up', 'vacation', 'away'],
             node: (
               <>
             <EditorRow
               icon="add-circle-outline"
               label="Follow-up task"
-              hint="Add a one-off task every few times you complete this one."
+              hint={recurrenceEndDate !== null || recurrenceCount !== null
+                ? 'Add a one-off task every few times you complete this one, or when the repeat ends.'
+                : 'Add a one-off task every few times you complete this one.'}
               // The count alone, not the count and the title: the pair
               // truncates at this width, and the title is right underneath
               // once the row is open. Same call Daily target makes.
-              value={followUpTaskSummary(followUpTaskEveryN)}
+              value={followUpTaskSummary(followUpTaskEveryN, followUpTaskAtEnd)}
               expanded={showFollowUpTask}
               onPress={() => { animateLayout(); setShowFollowUpTask(v => !v); }}
-              onClear={followUpTaskEveryN !== null
+              onClear={followUpTaskEveryN !== null || followUpTaskAtEnd
                 // The details go with the rule they detail, matching what the
                 // save writes — clearing the rule and setting a new one is a
                 // new follow-up task, not the old one with its name changed.
                 ? () => {
-                    setFollowUpTaskEveryN(null); setFollowUpTaskTitle('');
+                    setFollowUpTaskEveryN(null); setFollowUpTaskAtEnd(false); setFollowUpTaskTitle('');
                     setFollowUpTaskDraft(null); setShowFollowUpTask(false);
                   }
                 : undefined}
@@ -5527,6 +5541,28 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               // shape is how the two would drift apart. The one thing this adds
               // is the sentence around the stepper.
               <>
+                {/* Two triggers for one added task, so a closed pick-one. Only
+                    offered once the repeat has an end, since "when it ends" on
+                    a repeat that never does is a rule that cannot fire. The
+                    choice stays on screen after the end is removed so a saved
+                    rule isn't silently flipped here; the save drops it. */}
+                {(recurrenceEndDate !== null || recurrenceCount !== null || followUpTaskAtEnd) && (
+                  <View style={styles.followUpTaskTriggerRow}>
+                    <SegmentedControl
+                      label="When to add the task"
+                      value={followUpTaskAtEnd ? 'end' : 'every'}
+                      onChange={v => {
+                        if (v === 'end') { setFollowUpTaskAtEnd(true); setFollowUpTaskEveryN(null); }
+                        else setFollowUpTaskAtEnd(false);
+                      }}
+                      options={[
+                        { value: 'every', label: 'Every few times' },
+                        { value: 'end', label: 'When the repeat ends' },
+                      ]}
+                    />
+                  </View>
+                )}
+                {!followUpTaskAtEnd && (
                 <View style={styles.targetStepperRow}>
                   {/* The number's noun, said where the number is. On its own
                       the pill reads "4th" — 4th what? — and the answer used to
@@ -5566,12 +5602,13 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                     </Text>
                   )}
                 </View>
+                )}
                 {/* A line of its own rather than the rest of the stepper's row,
                     which is where Daily target's one-word unit sits: this holds
                     a whole task title, and half a row truncates one at 390pt.
                     Hidden until there's a count, since on its own a title names
                     a task nothing will ever create. */}
-                {followUpTaskEveryN !== null && (
+                {(followUpTaskEveryN !== null || followUpTaskAtEnd) && (
                   <TextField
                     style={[styles.fieldBox, styles.followUpTaskTitleInput]}
                     value={followUpTaskTitle}
@@ -5584,14 +5621,14 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   />
                 )}
                 <Text style={styles.targetStepperCaption}>
-                  {describeFollowUpTaskRule(followUpTaskEveryN, followUpTaskTitle)}
+                  {describeFollowUpTaskRule(followUpTaskEveryN, followUpTaskTitle, followUpTaskAtEnd)}
                 </Text>
                 {/* Everything past the title, in a sheet of its own — eight
                     pickers unfolded here would bury the task being edited
                     under a second task's worth of form. Offered only once the
                     rule can actually fire, since until then there is nothing
                     for the details to be about. */}
-                {followUpTaskEveryN !== null && followUpTaskTitle.trim() !== '' && (
+                {(followUpTaskEveryN !== null || followUpTaskAtEnd) && followUpTaskTitle.trim() !== '' && (
                   <View style={styles.followUpTaskDetailsIndent}>
                     <EditorRow
                       icon="options-outline"
@@ -5605,6 +5642,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                       onPress={() => setShowFollowUpTaskSheet(true)}
                       onClear={followUpTaskDraft ? () => setFollowUpTaskDraft(null) : undefined}
                     />
+                    {!followUpTaskAtEnd && (
                     <TouchableOpacity
                       style={[styles.optionRow, styles.followUpTaskOptionRow]}
                       onPress={() => { haptics.tap(); setFollowUpTaskOneAtATime(v => !v); }}
@@ -5626,6 +5664,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                         <View style={[styles.toggleKnob, followUpTaskOneAtATime && styles.toggleKnobOn]} />
                       </View>
                     </TouchableOpacity>
+                    )}
                   </View>
                 )}
               </>
@@ -6918,6 +6957,9 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
    * padding still lands the content at 32. Without the line the row floated in
    * the gap under the caption and read as the start of the next group.
    */
+  followUpTaskTriggerRow: {
+    paddingHorizontal: spacing.md, paddingTop: spacing.xs, paddingBottom: spacing.sm,
+  },
   followUpTaskDetailsIndent: {
     marginLeft: spacing.md,
     borderTopWidth: border.hairline, borderTopColor: colors.separator,

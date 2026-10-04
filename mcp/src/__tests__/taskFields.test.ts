@@ -153,6 +153,14 @@ describe('habit, window, follow-up, blockers', () => {
     expect(errorsOf({ repeat: { every: 'week' }, followUp: { everyN: 1, title: 'X' } })).toMatch(/2 to 99/);
   });
 
+  it('sets a follow-up for the end of a repeat, and only on a repeat that ends', () => {
+    const p = ok({ repeat: { every: 'week', count: 6 }, followUp: { atEnd: true, title: 'Sign up again' } });
+    expect(p).toMatchObject({ followUpTaskEveryN: null, followUpTaskAtEnd: true, followUpTaskTitle: 'Sign up again', followUpTaskOneAtATime: false });
+    expect(errorsOf({ repeat: { every: 'week' }, followUp: { atEnd: true, title: 'X' } })).toMatch(/repeat that ends/);
+    expect(errorsOf({ repeat: { every: 'week', count: 6 }, followUp: { atEnd: true, everyN: 3, title: 'X' } })).toMatch(/give one/);
+    expect(errorsOf({ repeat: { every: 'week', count: 6 }, followUp: { title: 'X' } })).toMatch(/atEnd/);
+  });
+
   it('hands blockers back for the replica to check, and refuses a task waiting on itself', () => {
     expect(patchOf({ waitsOn: ['a', 'a', 'b'] }).waitsOn).toEqual(['a', 'b']);
     expect(errorsOf({ waitsOn: ['t1'] }, existing())).toMatch(/itself/);

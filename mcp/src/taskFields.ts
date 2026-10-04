@@ -145,7 +145,10 @@ export interface WindowInput {
 }
 
 export interface FollowUpInput {
-  everyN: number;
+  /** Every Nth completion. Give this or `atEnd`. */
+  everyN?: number;
+  /** Add the task once, when the repeat ends. Needs `repeat.count` or `repeat.endDate`. */
+  atEnd?: boolean;
   title: string;
   notes?: string;
   estimatedMinutes?: number | null;
@@ -577,22 +580,33 @@ export function taskFieldsPatch(
   // ---- follow-up ("every 3rd time, add X") ---------------------------------
   if (input.followUp !== undefined) {
     if (input.followUp === null) {
-      Object.assign(patch, { followUpTaskEveryN: null, followUpTaskTitle: null, followUpTaskDraft: null, followUpTaskOneAtATime: false } satisfies Partial<Task>);
+      Object.assign(patch, { followUpTaskEveryN: null, followUpTaskAtEnd: false, followUpTaskTitle: null, followUpTaskDraft: null, followUpTaskOneAtATime: false } satisfies Partial<Task>);
     } else {
       const f = input.followUp;
+      const atEnd = f.atEnd === true;
       if (recurrence === 'none') errors.push('A follow-up counts completions, so it needs a repeating task.');
       if (context.isSubtask) errors.push('A subtask cannot carry a follow-up.');
-      if (!inRange(f.everyN, LIMITS.followUpEveryN)) errors.push(`followUp.everyN must be ${LIMITS.followUpEveryN[0]} to ${LIMITS.followUpEveryN[1]}. Every time is just another task.`);
+      if (atEnd && f.everyN !== undefined) errors.push('followUp.everyN and followUp.atEnd are two triggers; give one.');
+      else if (atEnd) {
+        const endDate = 'recurrenceEndDate' in patch ? patch.recurrenceEndDate : current?.recurrenceEndDate;
+        const count = 'recurrenceCount' in patch ? patch.recurrenceCount : current?.recurrenceCount;
+        if (recurrence !== 'none' && !endDate && (count === null || count === undefined)) {
+          errors.push('followUp.atEnd needs a repeat that ends: give repeat.count or repeat.endDate.');
+        }
+      } else if (f.everyN === undefined || !inRange(f.everyN, LIMITS.followUpEveryN)) {
+        errors.push(`followUp.everyN must be ${LIMITS.followUpEveryN[0]} to ${LIMITS.followUpEveryN[1]}, or use followUp.atEnd. Every time is just another task.`);
+      }
       if (!f.title?.trim()) errors.push('followUp.title cannot be blank.');
       Object.assign(patch, {
-        followUpTaskEveryN: f.everyN,
+        followUpTaskEveryN: atEnd ? null : f.everyN ?? null,
+        followUpTaskAtEnd: atEnd,
         followUpTaskTitle: f.title?.trim() ?? null,
         followUpTaskDraft: {
           ...deps.emptyFollowUpDraft(),
           ...(f.notes !== undefined ? { notes: f.notes } : {}),
           ...(f.estimatedMinutes !== undefined ? { estimatedMinutes: f.estimatedMinutes } : {}),
         },
-        followUpTaskOneAtATime: f.oneAtATime ?? false,
+        followUpTaskOneAtATime: atEnd ? false : f.oneAtATime ?? false,
       } satisfies Partial<Task>);
     }
   }

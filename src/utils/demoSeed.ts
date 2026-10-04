@@ -804,6 +804,21 @@ export function seedDemoData(): void {
     followUpTaskSourceId: violin.id,
   });
 
+  // The same added task on the other trigger: a counted repeat whose last
+  // occurrence adds a follow-up. Invisible until the last class is done, so
+  // the seed's job is the editor's "When the repeat ends" choice.
+  addTask({
+    title: 'Swim class',
+    notes: 'Six weekly classes. Finishing the last one adds a task to sign up for the next session.',
+    category: 'Health',
+    dueDate: today.toISOString(),
+    recurrenceType: 'weekly',
+    recurrenceInterval: 1,
+    recurrenceCount: 6,
+    followUpTaskAtEnd: true,
+    followUpTaskTitle: 'Sign up for the next swim session',
+  });
+
   // A decision task — one that completes by recording an answer rather than
   // just being ticked. Seeded live so its checkbox shows the "?" that says it
   // will ask; the answered half is in the history below, since an answer only
