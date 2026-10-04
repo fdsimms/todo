@@ -163,6 +163,7 @@ export function templateFromProject(
     recurrenceFromCompletion: task.recurrenceFromCompletion,
     vacationPause: task.vacationPause,
     excludeFromSuggestions: task.excludeFromSuggestions,
+    difficulty: task.difficulty ?? null,
     deliverableKind: task.deliverableKind,
     deliverableOptions: task.deliverableOptions ?? [],
     deliverableSetsAway: task.deliverableSetsAway ?? false,

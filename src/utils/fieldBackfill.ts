@@ -4,7 +4,7 @@ import { activeChainStep } from './chain';
 import { featureHidden, type SimpleFeatureId } from './simpleMode';
 
 /** A field this screen can walk the task list and fill in, one task at a time. */
-export type BackfillFieldId = 'estimate' | 'priority' | 'category' | 'streak' | 'vacation' | 'reminder' | 'suggestions';
+export type BackfillFieldId = 'estimate' | 'priority' | 'difficulty' | 'category' | 'streak' | 'vacation' | 'reminder' | 'suggestions';
 
 export interface BackfillFieldDef {
   id: BackfillFieldId;
@@ -24,6 +24,11 @@ export const BACKFILL_FIELDS: BackfillFieldDef[] = [
     id: 'priority',
     label: 'Priority',
     hint: 'How each task ranks against everything else on Today.',
+  },
+  {
+    id: 'difficulty',
+    label: 'Difficulty',
+    hint: 'How hard each task is to make yourself do, apart from how long it takes. Sets how many coins it earns.',
   },
   {
     id: 'category',
@@ -86,8 +91,12 @@ const FIELD_SIMPLE_FEATURE: Partial<Record<BackfillFieldId, SimpleFeatureId>> = 
  * off brings the field back with its queue exactly as it was — the same call
  * `aiFeaturesFor` makes for the AI switches.
  */
-export function backfillFieldsFor(simpleMode: boolean): BackfillFieldDef[] {
+export function backfillFieldsFor(simpleMode: boolean, rewardsEnabled = false): BackfillFieldDef[] {
   return BACKFILL_FIELDS.filter(f => {
+    // Only the coin rules read a difficulty, so with rewards off this field
+    // asks a question whose answer changes nothing: the editor hides its row
+    // on the same terms.
+    if (f.id === 'difficulty' && !rewardsEnabled) return false;
     const feature = FIELD_SIMPLE_FEATURE[f.id];
     return !feature || !featureHidden(feature, simpleMode);
   });
@@ -140,6 +149,11 @@ export function isFieldMissing(task: Task, fieldId: BackfillFieldId, categories?
       return (activeChainStep(task)?.estimatedMinutes ?? task.estimatedMinutes) == null;
     case 'priority':
       return task.priority === 0;
+    case 'difficulty':
+      // Null is "never rated"; an explicit 'normal' is an answer. An
+      // avoid-habit earns nothing, so its rating would change nothing (and
+      // the editor doesn't offer one).
+      return task.difficulty == null && task.polarity !== 'negative';
     case 'category':
       return task.category == null;
     case 'streak':
@@ -200,7 +214,7 @@ export function backfillCandidates(
 
 /** How many live tasks are missing each field, for the field-picker step's counts. */
 export function backfillFieldCounts(tasks: Task[], categories: Category[] = []): Record<BackfillFieldId, number> {
-  const counts = { estimate: 0, priority: 0, category: 0, streak: 0, vacation: 0, reminder: 0, suggestions: 0 } as Record<BackfillFieldId, number>;
+  const counts = { estimate: 0, priority: 0, difficulty: 0, category: 0, streak: 0, vacation: 0, reminder: 0, suggestions: 0 } as Record<BackfillFieldId, number>;
   for (const t of tasks) {
     if (t.parentId || t.completed || t.archived) continue;
     for (const field of BACKFILL_FIELDS) {

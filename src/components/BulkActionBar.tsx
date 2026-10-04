@@ -15,7 +15,8 @@ import { useTheme } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, border, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { useBulkBarEntrance } from '../hooks/useBulkBarEntrance';
-import { PRIORITY_LABELS, PRIORITY_COLORS, type Priority, type TimeOfDay } from '../types';
+import { PRIORITY_LABELS, PRIORITY_COLORS, type Difficulty, type Priority, type TimeOfDay } from '../types';
+import { DIFFICULTY_SEGMENTS } from '../utils/rewards';
 import { tagColor } from '../utils/tagColor';
 import { CategoryPickerSheet } from './CategoryPicker';
 import { TextField } from './TextField';
@@ -39,6 +40,10 @@ interface Props {
   onSetCategory: (category: string | null) => void;
   onAddTags: (tags: string[]) => void;
   onSetPriority: (priority: Priority) => void;
+  // Optional, and omitted by a caller while rewards are off: only the coin
+  // rules read a difficulty, so the row would set something that changes
+  // nothing. Null clears the rating.
+  onSetDifficulty?: (difficulty: Difficulty | null) => void;
   /** Marks every recurring task in the selection missed — a no-op for anything else, same guard as the per-row action. */
   onMarkMissed: () => void;
   // Optional: a screen that bulk-selects tasks but has no stack to file them
@@ -83,7 +88,7 @@ interface Props {
 // Category is absent on purpose: it opens `CategoryPickerSheet` rather than a
 // panel in the bar, which had the same problem the quick-add pill grid did —
 // four rows of chips over a floating bar is no room to find anything in.
-type Panel = 'actions' | 'more' | 'priority' | 'tags' | 'group' | 'project';
+type Panel = 'actions' | 'more' | 'priority' | 'difficulty' | 'tags' | 'group' | 'project';
 
 export function BulkActionBar({
   selectedCount,
@@ -96,6 +101,7 @@ export function BulkActionBar({
   onSetCategory,
   onAddTags,
   onSetPriority,
+  onSetDifficulty,
   onMarkMissed,
   onGroup,
   onRemoveFromProject,
@@ -145,6 +151,12 @@ export function BulkActionBar({
   const handleSetPriority = (p: Priority) => {
     haptics.tap();
     onSetPriority(p);
+    setPanel('actions');
+  };
+
+  const handleSetDifficulty = (d: Difficulty | null) => {
+    haptics.tap();
+    onSetDifficulty?.(d);
     setPanel('actions');
   };
 
@@ -264,6 +276,13 @@ export function BulkActionBar({
               <Text style={styles.moreRowText}>Priority</Text>
               <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
             </TouchableOpacity>
+            {onSetDifficulty && (
+              <TouchableOpacity style={styles.moreRow} onPress={() => setPanel('difficulty')}>
+                <Ionicons name="speedometer-outline" size={18} color={colors.textSecondary} />
+                <Text style={styles.moreRowText}>Difficulty</Text>
+                <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+              </TouchableOpacity>
+            )}
             {/* No chevron — this fires immediately instead of opening a sub-panel. */}
             <TouchableOpacity
               style={styles.moreRow}
@@ -362,6 +381,31 @@ export function BulkActionBar({
                     { color: p === 0 ? colors.textSecondary : PRIORITY_COLORS[p] },
                   ]}>
                     {PRIORITY_LABELS[p]}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        )}
+
+        {panel === 'difficulty' && (
+          <View style={styles.subPanel}>
+            <View style={styles.subHeader}>
+              <TouchableOpacity onPress={goBack} hitSlop={8} accessibilityRole="button" accessibilityLabel="Back to bulk actions">
+                <Ionicons name="chevron-back" size={20} color={colors.textSecondary} />
+              </TouchableOpacity>
+              <Text style={styles.subTitle}>Set difficulty</Text>
+              <View style={{ width: 28 }} />
+            </View>
+            <View style={styles.priorityRow}>
+              {[...DIFFICULTY_SEGMENTS, { value: null, label: 'Not set' }].map(d => (
+                <TouchableOpacity
+                  key={d.label}
+                  style={[styles.priorityBtn, { borderColor: colors.bgQuaternary }]}
+                  onPress={() => handleSetDifficulty(d.value)}
+                >
+                  <Text style={[styles.priorityLabel, { color: d.value === null ? colors.textSecondary : colors.text }]}>
+                    {d.label}
                   </Text>
                 </TouchableOpacity>
               ))}

@@ -159,7 +159,7 @@ describe('isSuggestibleBackfillField', () => {
   // list and the other four are preferences, so none of them has an answer in
   // the task to find.
   it('refuses the preference fields', () => {
-    for (const id of ['priority', 'streak', 'vacation', 'reminder', 'suggestions'] as const) {
+    for (const id of ['priority', 'difficulty', 'streak', 'vacation', 'reminder', 'suggestions'] as const) {
       expect(isSuggestibleBackfillField(id)).toBe(false);
     }
   });

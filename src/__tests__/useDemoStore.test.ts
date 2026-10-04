@@ -2021,6 +2021,10 @@ describe('demo seed — people', () => {
     expect(bounty?.title).toBe('Clear the gutters');
     expect(bounty?.bountyPushes).toBe(0);
     expect(bounty?.postponeCount).toBeGreaterThan(0);
+
+    // A quick task rated hard, which the time estimate alone would pay a coin.
+    const dreaded = useTaskStore.getState().tasks.find(t => t.title === 'Call the dentist about the crown');
+    expect(dreaded?.difficulty).toBe('hard');
   });
 
   it('seeds both halves of the medication log, so neither reads as missing', () => {

@@ -32,6 +32,12 @@ export type ReminderKind = 'notification' | 'alarm' | 'persistent';
 export type DeliverableKind = 'text' | 'date' | 'number' | 'yesno' | 'choice';
 
 /**
+ * How hard a task is to make yourself do, apart from how long it takes — see
+ * `Task.difficulty`.
+ */
+export type Difficulty = 'easy' | 'normal' | 'hard';
+
+/**
  * Which direction a task's success runs in — see `Task.polarity`.
  *
  * 'positive' is every task that has ever existed here: something to do, and
@@ -236,6 +242,9 @@ export interface FollowUpTaskDraft {
   tags: string[];
   priority: Priority;
   effort: Effort;
+  // Same field and meaning as `Task.difficulty`. Optional so a draft stored
+  // before it existed reads as unrated.
+  difficulty?: Difficulty | null;
   estimatedMinutes: number | null;
   timeSegments: TimeOfDay[];
   // Same field and meaning as `Task.vacationPause`, and the one field of the
@@ -2910,6 +2919,24 @@ export interface Task {
   polarity: Polarity;
 
   /**
+   * How hard this is to make yourself do, which the time estimate can't say:
+   * a two-minute phone call you dread and an hour of something you enjoy.
+   * Only the coin rules read it (`difficultyMultiplier` in `rewards.ts`); it
+   * scales the effort bucket's value and nothing else.
+   *
+   * - **Null is "never rated" and earns as 'normal' does**, so every task that
+   *   existed before the field earns exactly what it did. It is kept apart
+   *   from an explicit 'normal' because the backfill queue asks about the
+   *   unrated ones, and a rating someone gave is an answer. Absent is null.
+   * - **It is the person's own rating and nothing writes it on their behalf.**
+   *   Inferring it from `postponeCount` would pay more for a task that waited,
+   *   which is the one thing the bounty rules exist to refuse.
+   * - **It carries to the next occurrence** (a `CONTENT_FIELD`), unlike a
+   *   bounty: a call you dread this week is one you'll dread next week.
+   */
+  difficulty?: Difficulty | null;
+
+  /**
    * Slips logged against a negative task on the day named by `slipDate`, and 0
    * on any other day.
    *
@@ -3610,6 +3637,10 @@ export interface TemplateItem {
   // here. A "quit smoking" template that could only produce positive tasks
   // would be a template that can't express the one thing it's for.
   polarity: Polarity;
+  // Seeds Task.difficulty. Null (the default through normalizeTemplateItem,
+  // which is also what stored JSON from before the field reads as) seeds an
+  // unrated task.
+  difficulty?: Difficulty | null;
 
   recurrenceType: RecurrenceType;
   recurrenceInterval: number;

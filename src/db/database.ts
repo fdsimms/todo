@@ -1847,6 +1847,9 @@ export function initDatabase(): void {
     // NULL on every existing row: no task had a bounty before this. See
     // Task.bountyPushes.
     'ALTER TABLE tasks ADD COLUMN bounty_pushes INTEGER',
+    // NULL on every existing row: never rated, which earns exactly what every
+    // task did before the column. See Task.difficulty.
+    'ALTER TABLE tasks ADD COLUMN difficulty TEXT',
   ];
   // Asking SQLite for a table's columns once is cheaper than handing it every
   // ALTER for that table and catching the duplicate-column error, and by the
@@ -3294,6 +3297,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     excludeFromSuggestions: Boolean(row.exclude_from_suggestions),
     pinEachOccurrence: Boolean(row.pin_each_occurrence),
     bountyPushes: (row.bounty_pushes as number | null) ?? null,
+    difficulty: row.difficulty === 'easy' || row.difficulty === 'normal' || row.difficulty === 'hard' ? row.difficulty : null,
     timerStartedAt: (row.timer_started_at as string | null) ?? null,
     actualMinutes: (row.actual_minutes as number | null) ?? null,
     estimateBeforeTiming: (row.estimate_before_timing as number | null) ?? null,
@@ -3425,8 +3429,8 @@ export function dbInsertTask(task: Task): void {
       estimate_before_timing, waiting_on_person_since, waiting_follow_up_declined_at,
       reminder_tracks_visibility, recurrence_month,
       blocked_by_ids, deliverable_options, deliverable_sets_away, follow_up_on, extra_task_source_id,
-      pin_each_occurrence, bounty_pushes
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      pin_each_occurrence, bounty_pushes, difficulty
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -3542,6 +3546,7 @@ export function dbInsertTask(task: Task): void {
       task.followUpTaskSourceId ?? null,
       task.pinEachOccurrence ? 1 : 0,
       task.bountyPushes ?? null,
+      task.difficulty ?? null,
     ]
   );
 }
@@ -3578,7 +3583,7 @@ export function dbUpdateTask(task: Task): void {
       estimate_before_timing=?, waiting_on_person_since=?, waiting_follow_up_declined_at=?,
       reminder_tracks_visibility=?, recurrence_month=?,
       blocked_by_ids=?, deliverable_options=?, deliverable_sets_away=?, follow_up_on=?, extra_task_source_id=?,
-      pin_each_occurrence=?, bounty_pushes=?
+      pin_each_occurrence=?, bounty_pushes=?, difficulty=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -3695,6 +3700,7 @@ export function dbUpdateTask(task: Task): void {
       task.followUpTaskSourceId ?? null,
       task.pinEachOccurrence ? 1 : 0,
       task.bountyPushes ?? null,
+      task.difficulty ?? null,
       task.id,
     ]
   );
@@ -3892,6 +3898,15 @@ export function dbBulkSetPriority(ids: string[], priority: number): void {
   db.withTransactionSync(() => {
     for (const id of ids) {
       db.runSync('UPDATE tasks SET priority = ? WHERE id = ?', [priority, id]);
+    }
+  });
+}
+
+export function dbBulkSetDifficulty(ids: string[], difficulty: string | null): void {
+  if (ids.length === 0) return;
+  db.withTransactionSync(() => {
+    for (const id of ids) {
+      db.runSync('UPDATE tasks SET difficulty = ? WHERE id = ?', [difficulty, id]);
     }
   });
 }

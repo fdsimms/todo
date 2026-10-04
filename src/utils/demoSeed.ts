@@ -545,6 +545,9 @@ export function seedDemoData(): void {
     dueDate: today.toISOString(),
     phoneNumber: '(555) 123-4567',
     effort: 1,
+    // A five-minute call nobody wants to make: the case a time estimate can't
+    // price, and what puts a rating in the editor's Difficulty row.
+    difficulty: 'hard',
   });
 
   // A place on a task is what the Location row in the editor is for — same

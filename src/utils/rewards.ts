@@ -1,4 +1,4 @@
-import type { CoinEntry, Reward, Task } from '../types';
+import type { CoinEntry, Difficulty, Reward, Task } from '../types';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { estimatedMinutesFor, minutesToEffort, type EstimateSource } from './effort';
 
@@ -62,12 +62,57 @@ export const STREAK_BONUS_CAP = 5;
 export const MAX_REWARD_COST = 100_000;
 
 /**
- * A task's base value in coins: its effort bucket, read through
+ * What a task's difficulty does to its effort bucket's value. Time says how
+ * long something takes and nothing about how hard it is to start, so a
+ * two-minute call you dread would otherwise pay a coin. 'normal' is 1 so the
+ * column's default, and a task with no rating, earns exactly what it did.
+ */
+export const DIFFICULTY_MULTIPLIER: Readonly<Record<Difficulty, number>> = {
+  easy: 0.5,
+  normal: 1,
+  hard: 2,
+};
+
+/** The difficulty picker's options, shared by the task and template item editors. */
+export const DIFFICULTY_SEGMENTS: { value: Difficulty; label: string }[] = [
+  { value: 'easy', label: 'Easy' },
+  { value: 'normal', label: 'Normal' },
+  { value: 'hard', label: 'Hard' },
+];
+
+/**
+ * The same, led by "Not set" for the pickers that edit a rating already given
+ * (the editors, quick add): a segmented control can't be tapped off, so this
+ * is the one way back to unrated. The backfill card asks about unrated tasks
+ * only, so it offers the three ratings alone.
+ */
+export const DIFFICULTY_PICKER_SEGMENTS: { value: Difficulty | null; label: string }[] = [
+  { value: null, label: 'Not set' },
+  ...DIFFICULTY_SEGMENTS,
+];
+
+/** The editor's one-line hint, so the two editors can't describe it differently. */
+export const DIFFICULTY_HINT = 'How hard this is to make yourself do, apart from how long it takes. Hard tasks earn double coins and easy ones half.';
+
+/** What the coin rules read off a task: its estimate, and how hard it is. */
+export type CoinSource = EstimateSource & Partial<Pick<Task, 'difficulty'>>;
+
+/**
+ * The effort bucket's value alone, before difficulty. Read through
  * `estimatedMinutesFor` so a chain pays for the step being done rather than
  * the whole routine at every step.
  */
-export function baseCoinsFor(task: EstimateSource): number {
+function effortCoinsFor(task: EstimateSource): number {
   return COINS_BY_EFFORT[minutesToEffort(estimatedMinutesFor(task))] ?? COINS_BY_EFFORT[0];
+}
+
+/**
+ * A task's base value in coins: its effort bucket scaled by its difficulty,
+ * and never below 1, so an easy quick task still earns something.
+ */
+export function baseCoinsFor(task: CoinSource): number {
+  const multiplier = DIFFICULTY_MULTIPLIER[task.difficulty ?? 'normal'] ?? 1;
+  return Math.max(1, Math.round(effortCoinsFor(task) * multiplier));
 }
 
 /** The extra coins a streak of this length adds to a completion. */
@@ -82,7 +127,7 @@ export function streakBonusFor(streakCount: number): number {
  * the bonus.
  */
 export function coinsForCompletion(
-  task: EstimateSource & Partial<Pick<Task, 'bountyPushes'>>,
+  task: CoinSource & Partial<Pick<Task, 'bountyPushes'>>,
   streakCount: number,
 ): number {
   return baseCoinsFor(task) + streakBonusFor(streakCount) + bountyCoinsFor(task);
@@ -128,11 +173,11 @@ export const DEFAULT_BOUNTY_LIMIT = 1;
 export const MIN_BOUNTY_LIMIT = 1;
 export const MAX_BOUNTY_LIMIT = 5;
 
-type BountySource = EstimateSource & Partial<Pick<Task, 'bountyPushes'>>;
+type BountySource = CoinSource & Partial<Pick<Task, 'bountyPushes'>>;
 type BountyState = Pick<Task, 'bountyPushes' | 'completed' | 'archived'>;
 
 /** A bounty's value before any pushes: the task's base value, floored at `BOUNTY_MIN_COINS`. */
-export function fullBountyFor(task: EstimateSource): number {
+export function fullBountyFor(task: CoinSource): number {
   return Math.max(BOUNTY_MIN_COINS, baseCoinsFor(task));
 }
 
@@ -216,11 +261,17 @@ export function describeBounty(task: BountySource & BountyState): string | null 
 }
 
 /**
- * What marking an occurrence missed, or logging a slip, costs: the task's base
- * value. No streak term, because the miss is what ends the streak.
+ * What marking an occurrence missed, or logging a slip, costs: the effort
+ * bucket's value, or what doing it would have earned if that is less. No
+ * streak term, because the miss is what ends the streak.
+ *
+ * Difficulty can lower the cost but never raise it. A hard task that cost
+ * double to miss would be a bigger stake on trying the very tasks the rating
+ * is meant to get done, and an easy one that cost more to miss than to do
+ * would make the rating a penalty.
  */
-export function coinsForLoss(task: EstimateSource): number {
-  return baseCoinsFor(task);
+export function coinsForLoss(task: CoinSource): number {
+  return Math.min(effortCoinsFor(task), baseCoinsFor(task));
 }
 
 /**
@@ -322,7 +373,7 @@ export const REWARD_FREQUENCIES: readonly RewardFrequency[] = [
 ];
 
 /** What `earnRatePerDay` reads off a task row. */
-export type EarnHistoryTask = EstimateSource & {
+export type EarnHistoryTask = CoinSource & {
   parentId: string | null;
   completed: boolean;
   completedAt: string | null;

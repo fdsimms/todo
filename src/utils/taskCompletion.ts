@@ -790,6 +790,7 @@ export function buildCompletion(
       // An estimate edited on an earlier follow-up is written back into this
       // draft (writeEstimateToSource), which is how the next one starts with it.
       effort: spec?.effort,
+      difficulty: spec?.difficulty ?? null,
       estimatedMinutes: spec?.estimatedMinutes ?? null,
       timeSegments: spec?.timeSegments ?? [],
       // Written onto the row, not merely consulted at spawn time: a
