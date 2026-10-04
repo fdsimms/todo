@@ -48,3 +48,23 @@ export function unansweredCompletionCopy(count: number): { title: string; messag
         : 'You can answer them one at a time, or complete them with no answer recorded.',
   };
 }
+
+/**
+ * What a stack's complete-all finishes, out of its open members: the ones its
+ * header counts as today's work (`onlyIds`) when it names any, else all of
+ * them (an Inbox stack of undated tasks, where the whole roster is what's on
+ * show). `skip` is the rest, for `completeGroup`'s skip list, since that walks
+ * the whole roster. Completing everything finished members not due until later
+ * in the week too, each of which then jumped to its next date.
+ */
+export function stackCompletionScope(
+  open: readonly Task[],
+  onlyIds?: readonly string[],
+): { ids: string[]; skip: string[] } {
+  if (!onlyIds) return { ids: open.map(t => t.id), skip: [] };
+  const chosen = new Set(onlyIds);
+  return {
+    ids: open.filter(t => chosen.has(t.id)).map(t => t.id),
+    skip: open.filter(t => !chosen.has(t.id)).map(t => t.id),
+  };
+}

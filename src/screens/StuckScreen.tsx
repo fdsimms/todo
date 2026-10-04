@@ -3,7 +3,6 @@ import { View, Text, FlatList, TouchableOpacity, Alert, StyleSheet } from 'react
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useNavigation } from '@react-navigation/native';
 import { format } from 'date-fns/format';
 import { useShallow } from 'zustand/react/shallow';
 import { useTaskStore } from '../store/useTaskStore';
@@ -15,6 +14,8 @@ import { useCategoryStore } from '../store/useCategoryStore';
 import { TaskEditor } from '../components/TaskEditor';
 import { TaskBreakdownSheet } from '../components/TaskBreakdownSheet';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
+import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSettings';
 import { EmptyState } from '../components/EmptyState';
 import { TaskGroupTray } from '../components/TaskGroupTray';
 import { DeliverablePromptSheet } from '../components/DeliverablePromptSheet';
@@ -34,6 +35,7 @@ import { formatTaskDate, getCurrentDayStart, getDayStart } from '../utils/dateUt
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import type { DriftEntry } from '../utils/postpone';
 import type { Person, Task } from '../types';
+import { resetToPeople } from '../navigation/navigationRef';
 
 const CHECKBOX_SIZE = 22;
 
@@ -119,8 +121,9 @@ function labelForCategory(
 
 export function StuckScreen() {
   const insets = useSafeAreaInsets();
-  const navigation = useNavigation<any>();
   const tabBarHeight = useBottomTabBarHeight();
+  // This screen's own settings, from a gear in its header. See SCREEN_SETTINGS.
+  const screenSettings = useScreenSettings('Stuck', 'Stuck settings');
 
   const waitingTasks = useTaskStore(useShallow(s => s.waitingTasks()));
   // Selected as the raw, stable Task[] rather than s.driftingTasks()'s
@@ -367,7 +370,7 @@ export function StuckScreen() {
             </View>
             <TouchableOpacity
               style={styles.blockerBody}
-              onPress={() => navigation.navigate('People', { personId: section.person.id, openPerson: Date.now() })}
+              onPress={() => resetToPeople(section.person.id)}
               activeOpacity={interaction.activeOpacity}
               accessible
               accessibilityRole="button"
@@ -521,7 +524,8 @@ export function StuckScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      <ScreenHeader title="Stuck" subtitle={subtitle} />
+      <ScreenHeader title="Stuck" subtitle={subtitle} actions={withScreenSettings(undefined, screenSettings.action)} />
+      <ScreenSettingsSheet {...screenSettings.sheet} />
 
       <FlatList
         data={rows}

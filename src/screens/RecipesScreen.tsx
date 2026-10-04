@@ -21,6 +21,8 @@ import { useSyncStore } from '../store/useSyncStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useRowSelection } from '../hooks/useRowSelection';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
+import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSettings';
 import { HubPills } from '../components/HubPills';
 import { TipHost } from '../components/TipHost';
 import { ActiveTripBanner } from '../components/ActiveTripBanner';
@@ -187,6 +189,8 @@ export function RecipesScreen() {
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
   const colors = useColors();
+  // This screen's own settings, from a gear in its header. See SCREEN_SETTINGS.
+  const screenSettings = useScreenSettings('Recipes', 'Recipe settings');
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<any>();
 
@@ -729,7 +733,7 @@ export function RecipesScreen() {
           : filtering
             ? `${visible.length} of ${recipes.length} recipes`
             : `${recipes.length} ${recipes.length === 1 ? 'recipe' : 'recipes'}`}
-        actions={recipes.length > 0 ? [
+        actions={withScreenSettings(recipes.length > 0 ? [
           {
             icon: 'funnel',
             onPress: () => { haptics.tap(); setSortFilterVisible(true); },
@@ -743,8 +747,9 @@ export function RecipesScreen() {
             active: groupByMealType,
             accessibilityLabel: groupByMealType ? 'Ungroup recipes' : 'Group recipes by meal type',
           },
-        ] : undefined}
+        ] : undefined, screenSettings.action)}
       />
+      <ScreenSettingsSheet {...screenSettings.sheet} />
       <HubPills hub="kitchen" active="Recipes" />
       <TipHost screen="recipes" />
       <View style={styles.cookbookLinksRow}>

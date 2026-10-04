@@ -7,7 +7,7 @@
 //
 // Composition, sections, scaling and unit conversion are all written up in
 // docs/arch/recipes.md; read that before changing how a line is resolved.
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -22,7 +22,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
 import { useMeasuredTextWidth } from '../hooks/useMeasuredTextWidth';
@@ -121,7 +121,9 @@ import {
 } from '../utils/recipeNutrition';
 import { formatOffsetLabel } from '../utils/templateUtils';
 import { splitAlternativeNames, splitGroceryLines } from '../utils/groceryParse';
-import { dayKeyOf, getCurrentDayStart } from '../utils/dateUtils';
+import { dayKeyOf, getCurrentDayStart, getLogicalToday } from '../utils/dateUtils';
+import { plannedMealLabel } from '../utils/recipePlanned';
+import { resetToMealPlan } from '../navigation/navigationRef';
 import { TextField } from '../components/TextField';
 
 type RootStackParamList = {
@@ -156,6 +158,18 @@ export function RecipeDetailScreen() {
 
   const recipes = useRecipeStore(useShallow(s => s.recipes));
   const recipe = recipes.find(r => r.id === recipeId);
+  // The book this recipe is filed under, for the link under the summary.
+  const cookbook = useRecipeStore(s => (recipe?.cookbookId ? s.cookbookById(recipe.cookbookId) : undefined));
+  // When it's next on the meal plan. Read past Meal plan's loaded week (see
+  // upcomingMealsForRecipe), and re-read when the plan changes or the screen
+  // comes back into focus, since planning it from Meal plan happens elsewhere.
+  const mealPlanEntries = useMealPlanStore(s => s.entries);
+  const [plannedStamp, setPlannedStamp] = useState(0);
+  useFocusEffect(useCallback(() => setPlannedStamp(n => n + 1), []));
+  const plannedMeals = useMemo(
+    () => useMealPlanStore.getState().upcomingMealsForRecipe(recipeId),
+    [recipeId, mealPlanEntries, plannedStamp],
+  );
   const addIngredient = useRecipeStore(s => s.addIngredient);
   const updateIngredient = useRecipeStore(s => s.updateIngredient);
   const addIngredientsFromText = useRecipeStore(s => s.addIngredientsFromText);
@@ -1872,6 +1886,42 @@ export function RecipeDetailScreen() {
         )}
 
         <Text style={styles.summary}>{describeRecipe(recipe)}</Text>
+        {/* The book's own page, a tap away: its index, and the other recipes
+            filed under it. */}
+        {cookbook && (
+          <TouchableOpacity
+            style={styles.cookbookLink}
+            onPress={() => { haptics.tap(); (navigation as any).navigate('CookbookDetail', { cookbookId: cookbook.id }); }}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="button"
+            accessibilityLabel={`Open the cookbook ${cookbook.title}`}
+          >
+            <Ionicons name="library-outline" size={iconSize.sm} color={colors.accent} />
+            <Text style={styles.cookbookLinkText} numberOfLines={1}>In {cookbook.title}</Text>
+            <Ionicons name="chevron-forward" size={iconSize.xs} color={colors.textTertiary} />
+          </TouchableOpacity>
+        )}
+        {/* When it's next on the plan, each opening Meal plan on that day.
+            Wrapping chips rather than a sentence, for the reason the tags
+            below are chips. */}
+        {plannedMeals.length > 0 && (
+          <View style={styles.plannedRow}>
+            <Text style={styles.plannedLabel}>Planned</Text>
+            {plannedMeals.map(entry => (
+              <TouchableOpacity
+                key={entry.id}
+                style={styles.plannedChip}
+                onPress={() => { haptics.tap(); resetToMealPlan(entry.date); }}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel={`Planned for ${plannedMealLabel(entry, dayKeyOf(getLogicalToday()))}, open the meal plan`}
+              >
+                <Ionicons name="restaurant-outline" size={iconSize.xs} color={colors.accent} />
+                <Text style={styles.plannedChipText}>{plannedMealLabel(entry, dayKeyOf(getLogicalToday()))}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
         {/* Chips rather than another clause in the summary line above: tags are
             the cook's own words and there can be several, so they'd swamp a
             sentence whose other parts are all single facts. Not tappable —
@@ -2777,6 +2827,46 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   // Same tag chip as TaskEditor's and the recipe editor's, minus the remove
   // affordance — these are a read of the recipe, edited from the editor sheet.
+  cookbookLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: spacing.xsm,
+    marginTop: spacing.sm,
+  },
+  cookbookLinkText: {
+    color: colors.accent,
+    fontSize: font.md,
+    flexShrink: 1,
+  },
+  plannedRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: spacing.xsm,
+    marginTop: spacing.sm,
+  },
+  plannedLabel: {
+    color: colors.textSecondary,
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginRight: spacing.xxs,
+  },
+  plannedChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    backgroundColor: colors.accentSubtle,
+    borderRadius: radius.full,
+    paddingHorizontal: 10,
+    paddingVertical: spacing.xs,
+  },
+  plannedChipText: {
+    color: colors.accent,
+    fontSize: font.sm,
+  },
   tagRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',

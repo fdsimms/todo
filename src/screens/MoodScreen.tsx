@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
-import { navigationRef } from '../navigation/navigationRef';
+import { navigateToTab } from '../navigation/navigationRef';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { addDays } from 'date-fns/addDays';
 import { format } from 'date-fns/format';
@@ -53,6 +53,8 @@ import {
   MIN_PAIRED_DAYS,
 } from '../utils/moodInsights';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
+import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSettings';
 import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
 import { InlineAction } from '../components/InlineAction';
@@ -85,12 +87,13 @@ const BAR_HEIGHT = 90;
 export function MoodScreen() {
   const navigation = useNavigation<{ navigate: (screen: string, params?: object) => void }>();
   const colors = useColors();
+  // This screen's own settings, from a gear in its header. See SCREEN_SETTINGS.
+  const screenSettings = useScreenSettings('Mood', 'Mood settings');
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
 
   const logs = useMoodStore(s => s.logs);
-  const removeLog = useMoodStore(s => s.removeLog);
   const milestones = useMilestoneStore(s => s.milestones);
   const tasks = useTaskStore(s => s.tasks);
   // Apple Health's trailing window, read on demand rather than on the app's
@@ -397,24 +400,9 @@ export function MoodScreen() {
     setSheetOpen(false);
     setEditing(null);
     if (returnTo) {
-      navigationRef.navigate(returnTo);
+      navigateToTab(returnTo);
       setReturnTo(undefined);
     }
-  };
-
-  const confirmDelete = (log: MoodLog) => {
-    Alert.alert(
-      'Delete this entry?',
-      'It will be removed from your history and from every number on this screen.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => { haptics.warning(); removeLog(log.id); },
-        },
-      ],
-    );
   };
 
   const openNewMilestone = () => { haptics.tap(); setEditingMilestone(null); setMilestoneSheetOpen(true); };
@@ -434,7 +422,7 @@ export function MoodScreen() {
         subtitle={summary.loggedDays > 0
           ? `${summary.loggedDays} ${summary.loggedDays === 1 ? 'day' : 'days'} logged`
           : undefined}
-        actions={[
+        actions={withScreenSettings([
           ...(logs.length > 0 ? [{
             icon: 'share-outline' as const,
             onPress: () => { haptics.tap(); setExportOpen(true); },
@@ -445,8 +433,9 @@ export function MoodScreen() {
             onPress: openNew,
             accessibilityLabel: 'Log how you\'re feeling',
           },
-        ]}
+        ], screenSettings.action)}
       />
+      <ScreenSettingsSheet {...screenSettings.sheet} />
       <HubPills hub="health" active="Mood" />
 
       {logs.length === 0 ? (
@@ -899,7 +888,6 @@ export function MoodScreen() {
               key={log.id}
               log={log}
               onPress={() => openEdit(log)}
-              onLongPress={() => confirmDelete(log)}
             />
           ))}
           {logs.length > recent.length && (

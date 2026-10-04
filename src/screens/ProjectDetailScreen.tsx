@@ -15,6 +15,7 @@ import { SortableList } from '../components/SortableList';
 import { ProgressBar } from '../components/ProgressBar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import { navigateToTab } from '../navigation/navigationRef';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { useAnswerFirstCompletion } from '../hooks/useAnswerFirstCompletion';
@@ -358,6 +359,11 @@ function NewLineField({
 export function ProjectDetailScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
+  // A task row's category chip opens that category's page. Stable, because
+  // TaskItem is memoized.
+  const handleOpenCategory = useCallback((category: string) => {
+    (navigation as any).navigate('CategoryDetail', { category });
+  }, [navigation]);
   const route = useRoute<RouteProp<RootStackParamList, 'ProjectDetail'>>();
   const { projectId, addLine } = route.params;
   const colors = useColors();
@@ -1338,6 +1344,7 @@ export function ProjectDetailScreen() {
         // The same two a live row gets, so a list's finished lines don't grow
         // the chips its open ones leave out.
         showCategory={!isList}
+        onOpenCategory={handleOpenCategory}
         showDate={!isList || !!task.dueDate}
         // Under its own section heading the section chip would only repeat it.
         showGroup={!inSection}
@@ -1373,6 +1380,7 @@ export function ProjectDetailScreen() {
         onSwipeSelect={handleRowSwipeSelect}
         indented={opts.indented}
         showCategory={!isList}
+        onOpenCategory={handleOpenCategory}
         showGroup={!opts.indented}
         // A list's members are undated by construction, so the date affordance
         // is an empty control on every row. Turning it off is most of what
@@ -1896,10 +1904,7 @@ export function ProjectDetailScreen() {
                           variant="neutral"
                           onPress={() => {
                             haptics.tap();
-                            (navigation as any).navigate('MainTabs', {
-                              screen: 'Logbook',
-                              params: { projectId, openProjectHistory: Date.now() },
-                            });
+                            navigateToTab('Logbook', { projectId, openProjectHistory: Date.now() });
                           }}
                           accessibilityLabel="Open this project's history"
                         />

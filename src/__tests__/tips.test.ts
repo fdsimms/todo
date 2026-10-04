@@ -11,6 +11,7 @@ import {
   type TipSignals,
 } from '../utils/tips';
 import { SIMPLE_FEATURES, featureHidden } from '../utils/simpleMode';
+import { SETTINGS_ENTRIES } from '../utils/settingsIndex';
 
 const NO_SIGNALS: TipSignals = {
   taskCount: 0,
@@ -141,6 +142,7 @@ describe('the tip content itself', () => {
       'Today', 'Groceries', 'Projects', 'Search', 'Recipes', 'MealPlan', 'Kitchen',
       'Calendar', 'Categories', 'Tags', 'Stacks', 'Templates', 'Logbook', 'Stats',
       'Mood', 'People', 'Cookbooks', 'Backfill', 'Stuck', 'Archived', 'Tips', 'Settings',
+      'Automations',
     ]);
     for (const t of TIPS) {
       if (!t.link) continue;
@@ -148,6 +150,21 @@ describe('the tip content itself', () => {
         `${t.id}: ${routes.has(t.link.screen) ? t.link.screen : 'UNKNOWN ROUTE'}`
       );
     }
+  });
+
+  // A tip that names a Settings row opens that row, so the row has to exist
+  // and has to render whatever else is switched on (no parent toggle), or the
+  // link lands on a group with nothing highlighted.
+  it('points a Settings link only at a row that always renders', () => {
+    const byId = new Map(SETTINGS_ENTRIES.map(e => [e.id, e]));
+    for (const t of TIPS) {
+      const entryId = t.link?.entryId;
+      if (!entryId) continue;
+      expect(`${t.id}: ${t.link!.screen}`).toBe(`${t.id}: Settings`);
+      expect(`${t.id}: ${byId.has(entryId)}`).toBe(`${t.id}: true`);
+      expect(`${t.id}: ${byId.get(entryId)?.requires ?? 'none'}`).toBe(`${t.id}: none`);
+    }
+    expect(TIPS.filter(t => t.link?.entryId).length).toBeGreaterThan(10);
   });
 
   // Not a style point: a tip that can never fire is one written and then lost,

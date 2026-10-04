@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useMemo, useEffect, useRef } from 'react';
-import { Animated } from 'react-native';
+import React, { createContext, useCallback, useContext, useMemo, useEffect, useRef } from 'react';
+import { Animated, type ScrollView, type View } from 'react-native';
+import { settingsFocusScrollTarget } from '../../utils/settingsFocusScroll';
 import { useColors } from '../../theme/ThemeContext';
 import { animation } from '../../theme';
 
@@ -152,4 +153,68 @@ export function useSettingsFocusFlash(entryId?: string): {
 /** The raw focus context, for a section that has to decide what to mount from it. */
 export function useSettingsFocus(): SettingsFocusValue {
   return useContext(SettingsFocusContext);
+}
+
+/**
+ * The scrolling half of "search takes you to the row", for a screen that hosts
+ * settings rows: refs for the scroll view and its content, the layout callbacks
+ * the clamp needs, and the `reportRow` to hand `SettingsFocusProvider`.
+ *
+ * Shared by `SettingsGroupScreen` and `AutomationsScreen`, which host the same
+ * kind of rows and are both opened onto one of them by a search.
+ *
+ * `focusKey` re-arms the one-shot scroll. A pushed group screen is mounted
+ * fresh for every search and never needs it; a tab screen stays mounted, so a
+ * second search has to say it is a new request.
+ */
+export function useSettingsFocusScroll(focusKey?: unknown) {
+  const scrollRef = useRef<ScrollView>(null);
+  // measureLayout needs an ancestor to measure against, and the ScrollView's
+  // own ref is the wrong one — it measures the viewport, not the content. This
+  // wraps the content so a row's `y` comes back as a content-Y, which is the
+  // coordinate scrollTo speaks.
+  const contentRef = useRef<View>(null);
+  const contentHeight = useRef<number | undefined>(undefined);
+  const viewportHeight = useRef<number | undefined>(undefined);
+  const scrolledRef = useRef(false);
+  const lastKey = useRef(focusKey);
+  if (lastKey.current !== focusKey) {
+    lastKey.current = focusKey;
+    scrolledRef.current = false;
+  }
+
+  const reportRow = useCallback((_id: string, node: MeasurableRow | null) => {
+    // Once only: a row that re-lays out (its pills unfolding, a hint appearing)
+    // would otherwise drag the list back under a finger that had moved on.
+    if (!node || scrolledRef.current || typeof node.measureLayout !== 'function') return;
+    const container = contentRef.current;
+    if (!container) return;
+    scrolledRef.current = true;
+    try {
+      node.measureLayout(
+        container,
+        (_x, y) => {
+          scrollRef.current?.scrollTo({
+            y: settingsFocusScrollTarget(y, contentHeight.current, viewportHeight.current),
+            animated: true,
+          });
+        },
+        // A row that can't be measured keeps its highlight and simply doesn't
+        // scroll, which is the behaviour this whole feature replaces rather
+        // than a new failure.
+        () => {},
+      );
+    } catch {
+      // Same: measuring is the optimisation, the highlight is the answer.
+    }
+  }, []);
+
+  const scrollProps = useMemo(() => ({
+    onLayout: (e: { nativeEvent: { layout: { height: number } } }) => {
+      viewportHeight.current = e.nativeEvent.layout.height;
+    },
+    onContentSizeChange: (_w: number, h: number) => { contentHeight.current = h; },
+  }), []);
+
+  return { scrollRef, contentRef, reportRow, scrollProps };
 }

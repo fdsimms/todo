@@ -4,6 +4,8 @@ import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useShallow } from 'zustand/react/shallow';
 import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeader';
+import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
+import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSettings';
 import { SearchField } from '../components/SearchField';
 import { EmptyState } from '../components/EmptyState';
 import { TipCard } from '../components/TipHost';
@@ -37,6 +39,8 @@ type Row =
 
 export function TipsScreen() {
   const colors = useColors();
+  // This screen's own settings, from a gear in its header. See SCREEN_SETTINGS.
+  const screenSettings = useScreenSettings('Tips', 'Tip settings');
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const tabBarHeight = useBottomTabBarHeight();
   const insets = useSafeAreaInsets();
@@ -143,8 +147,9 @@ export function TipsScreen() {
             ? `${unreadCount} of ${TIPS.length} not read yet`
             : `All ${TIPS.length} read`
         }
-        actions={actions}
+        actions={withScreenSettings(actions, screenSettings.action)}
       />
+  const actions = useMemo<ScreenSettingsSheet {...screenSettings.sheet} />
 
       <SearchField
         field={searchFilter}

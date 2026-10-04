@@ -1,5 +1,5 @@
 /**
- * What the side menu contains, as data — thirteen rows, four of which are hubs.
+ * What the side menu contains, as data — fourteen rows, four of which are hubs.
  *
  * The menu used to be eighteen flat rows of equal weight, about twice what
  * fits on a phone, so half of it lived below a fold nothing announced. Reading
@@ -21,7 +21,8 @@
  * **Ordering is by what you came for, not by resemblance.** Tasks, Search,
  * Projects, Calendar, Stuck and Reminders are the questions about your own
  * tasks — what is on today, where is that one, what falls when, what is not
- * moving, what will ring. Groceries follows as the other working surface.
+ * moving, what will ring — and Automations, what the app adds to them on its
+ * own, follows from the last of those. Groceries follows as the other working surface.
  * Organize and History are the two shelves: things a task can belong to, and
  * things that already happened. Health comes right after — its own shelf, for
  * things logged about *you* rather than about a task — and Tips is last
@@ -142,7 +143,7 @@ const HISTORY_HUB: NavHub = {
     // What the app did unattended — the generators, the expiry sweep and the
     // completed-task purge. In History because it is a record of things that
     // happened, which is what the other three here are; the generators' own
-    // switches stay in Settings, and this says what they did. The keywords are
+    // switches are on Automations, and this says what they did. The keywords are
     // the feature, the same way the task editor's are: nobody looking for it
     // knows the word "unattended", they know "where did this task come from".
     {
@@ -238,6 +239,21 @@ export const NAV_MENU_ROWS: readonly NavMenuRow[] = [
       keywords: ['upcoming', 'alerts', 'notifications', 'alarm'],
     },
   },
+  // Every task the app writes without being asked, and the switch for each.
+  // Moved out of Settings because it is a feature you come back to (a new
+  // weather rule, birthday tasks for a new friend) rather than something set
+  // once. Next to Reminders: both answer "what will show up without me doing
+  // anything". Activity, in History, is the record of what these did.
+  {
+    kind: 'screen',
+    destination: {
+      route: 'Automations',
+      icon: 'sparkles-outline',
+      label: 'Automations',
+      keywords: ['automatic', 'automatic tasks', 'generated', 'rules', 'weather', 'health rules',
+        'screen time', 'calendar events', 'birthdays', 'leave by', 'use up', 'nudges'],
+    },
+  },
   // Goes through one field at a time and offers the items missing it — a
   // lens over tasks, categories, projects, people and grocery items that
   // already exist, so it's shown unconditionally in simplified mode the same
@@ -330,7 +346,7 @@ export interface NavSearchResult extends NavDestination {
  * Destinations the find field can reach that the menu deliberately does not
  * draw a row for.
  *
- * The menu is thirteen rows because that is about what fits on a phone, and the hubs
+ * The menu is fourteen rows because that is about what fits on a phone, and the hubs
  * exist to keep it there — so a surface that doesn't earn a row still needs
  * *some* way to be found by name, or it is reachable only from whichever
  * screen happens to link to it. Saved views is the first of these: it is
@@ -389,4 +405,164 @@ export function searchMenu(destinations: NavSearchResult[], terms: string[]): Na
     const haystacks = [d.label, ...(d.keywords ?? []), ...(d.hubLabel ? [d.hubLabel] : [])];
     return terms.every(term => haystacks.some(h => h.toLowerCase().includes(term)));
   });
+}
+
+/** How many screens get a button of their own in the bottom tab bar, beside More. */
+export const TAB_SLOT_COUNT = 3;
+
+/** The tabs a fresh install has, and what "Use the default tabs" goes back to. */
+export const DEFAULT_TAB_ROUTES: readonly string[] = ['Today', 'Groceries', 'Projects'];
+
+/** Every route the side menu can reach: a screen row's own, and every hub member. */
+export const MENU_ROUTES: readonly string[] = NAV_MENU_ROWS.flatMap(row =>
+  row.kind === 'screen' ? [row.destination.route] : row.hub.members.map(m => m.route));
+
+/**
+ * The chosen tabs, read back from storage: menu routes only, no repeats,
+ * exactly `TAB_SLOT_COUNT` of them. Anything short is filled from the default
+ * tabs not already chosen, so a damaged or older value still gives three
+ * buttons rather than a bar with a hole in it.
+ */
+export function normalizeTabRoutes(raw: unknown): string[] {
+  const chosen: string[] = [];
+  if (Array.isArray(raw)) {
+    for (const route of raw) {
+      if (typeof route !== 'string' || !MENU_ROUTES.includes(route) || chosen.includes(route)) continue;
+      chosen.push(route);
+      if (chosen.length === TAB_SLOT_COUNT) break;
+    }
+  }
+  for (const route of DEFAULT_TAB_ROUTES) {
+    if (chosen.length === TAB_SLOT_COUNT) break;
+    if (!chosen.includes(route)) chosen.push(route);
+  }
+  return chosen;
+}
+
+/** `normalizeTabRoutes` over the stored JSON. */
+export function parseTabRoutes(raw: string | null): string[] {
+  if (!raw) return [...DEFAULT_TAB_ROUTES];
+  try {
+    return normalizeTabRoutes(JSON.parse(raw));
+  } catch {
+    return [...DEFAULT_TAB_ROUTES];
+  }
+}
+
+/**
+ * Puts a screen in one tab slot. A screen that's already in another slot
+ * swaps with whatever this slot held, so the bar never shows one screen twice
+ * and never loses one without saying so.
+ */
+export function setTabSlot(current: readonly string[], slot: number, route: string): string[] {
+  const next = normalizeTabRoutes(current);
+  if (slot < 0 || slot >= TAB_SLOT_COUNT || !MENU_ROUTES.includes(route)) return next;
+  const existing = next.indexOf(route);
+  if (existing === slot) return next;
+  if (existing >= 0) next[existing] = next[slot];
+  next[slot] = route;
+  return next;
+}
+
+/**
+ * The chosen tabs the bar can actually show: one whose screen the kitchen
+ * switch or simplified mode has taken away drops out, the way Groceries always
+ * has with the kitchen off. Its slot isn't refilled behind your back; the bar
+ * just has one fewer button until the screen comes back.
+ */
+export function visibleTabRoutes(tabRoutes: readonly string[], options: NavMenuOptions): string[] {
+  const reachable = new Set(menuDestinations(options).map(d => d.route));
+  return normalizeTabRoutes(tabRoutes).filter(route => reachable.has(route));
+}
+
+export interface TabPickerGroup {
+  /** The hub's name, or null for the screens that stand alone in the menu. */
+  label: string | null;
+  destinations: NavDestination[];
+}
+
+/** What a tab slot can be set to, grouped the way the side menu groups it. */
+export function tabPickerGroups(options: NavMenuOptions): TabPickerGroup[] {
+  const groups: TabPickerGroup[] = [{ label: null, destinations: [] }];
+  for (const row of visibleMenuRows(options)) {
+    if (row.kind === 'screen') groups[0].destinations.push(row.destination);
+    else groups.push({ label: row.hub.label, destinations: row.hub.members });
+  }
+  return groups.filter(g => g.destinations.length > 0);
+}
+
+/**
+ * How many recently visited screens are kept. More than Recent shows, because
+ * the same list answers "which screen in this hub did I use last" (see
+ * `hubEntryRoute`), and a hub visited a dozen screens ago still has an answer.
+ */
+export const RECENT_SCREEN_LIMIT = 12;
+
+/** How many chips the menu's Recent row shows at most. */
+export const RECENT_MENU_LIMIT = 3;
+
+/**
+ * A visit pushed onto the front of the list: most recent first, no duplicates,
+ * capped. A visit to the screen already at the front returns the same array,
+ * so a caller can skip the write; navigation fires a state change for every
+ * param update, not just for a new screen.
+ */
+export function addRecentScreen(
+  list: readonly string[],
+  route: string,
+  limit: number = RECENT_SCREEN_LIMIT,
+): readonly string[] {
+  if (list[0] === route) return list;
+  return [route, ...list.filter(r => r !== route)].slice(0, limit);
+}
+
+/** Reads back the stored list, tolerant of anything an older build or a hand edit left there. */
+export function parseRecentScreens(raw: string | null, limit: number = RECENT_SCREEN_LIMIT): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((r): r is string => typeof r === 'string' && r.length > 0).slice(0, limit);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * The menu's Recent chips: screens visited lately that the menu can still
+ * reach, newest first, leaving out the screen you're on and the ones the tab
+ * bar already has a button for (a tab is one tap away from anywhere, so a chip
+ * for it spends one of three slots repeating the tab bar).
+ *
+ * Built from `menuDestinations`, so a screen simplified mode or the kitchen
+ * switch has since taken away drops out of Recent too, the same symmetry the
+ * find field keeps.
+ */
+export function recentMenuDestinations(
+  recent: readonly string[],
+  options: NavMenuOptions,
+  currentRoute: string | null,
+  tabRoutes: readonly string[] = DEFAULT_TAB_ROUTES,
+  limit: number = RECENT_MENU_LIMIT,
+): NavSearchResult[] {
+  const byRoute = new Map(menuDestinations(options).map(d => [d.route, d]));
+  const out: NavSearchResult[] = [];
+  for (const route of recent) {
+    if (out.length >= limit) break;
+    if (route === currentRoute || tabRoutes.includes(route)) continue;
+    const destination = byRoute.get(route);
+    if (destination) out.push(destination);
+  }
+  return out;
+}
+
+/**
+ * Where tapping a hub's name goes: the member you used most recently, or the
+ * first one if you haven't used any. Pass a hub from `visibleMenuRows`, whose
+ * members are only the ones still on show, so a member simplified mode has
+ * taken away can't be reopened through it.
+ */
+export function hubEntryRoute(hub: NavHub, recent: readonly string[]): string {
+  const visited = recent.find(route => hub.members.some(m => m.route === route));
+  return visited ?? hub.members[0].route;
 }

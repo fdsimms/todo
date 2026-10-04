@@ -4,7 +4,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useFocusEffect, useRoute } from '@react-navigation/native';
-import { navigationRef } from '../navigation/navigationRef';
+import { navigateToTab, navigationRef } from '../navigation/navigationRef';
 import { format } from 'date-fns/format';
 import { addDays } from 'date-fns/addDays';
 import { useShallow } from 'zustand/react/shallow';
@@ -15,7 +15,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { dayKeyOf, dayKeyToDate, getCurrentDayStart, getLogicalToday } from '../utils/dateUtils';
-import { navigateToSettingsEntry } from '../utils/settingsIndex';
+import { navigateToSettingsEntry } from '../navigation/openSettings';
 import { openHealthApp } from '../utils/healthBridge';
 import {
   formatWeight,
@@ -35,6 +35,8 @@ import {
   weightSinceGoalStart,
 } from '../utils/weightGoal';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
+import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSettings';
 import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
 import { WeightChart } from '../components/WeightChart';
@@ -99,6 +101,8 @@ export function WeightScreen() {
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
   const colors = useColors();
+  // This screen's own settings, from a gear in its header. See SCREEN_SETTINGS.
+  const screenSettings = useScreenSettings('Weight', 'Weight settings');
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const unit = useSettingsStore(s => s.weightUnit);
@@ -230,7 +234,7 @@ export function WeightScreen() {
   const closeLog = () => {
     setLogOpen(false);
     if (returnTo) {
-      navigationRef.navigate(returnTo);
+      navigateToTab(returnTo);
       setReturnTo(undefined);
     }
   };
@@ -250,7 +254,7 @@ export function WeightScreen() {
       <ScreenHeader
         title="Weight"
         subtitle={latest ? formatWeight(latest.kilograms, unit) : undefined}
-        actions={!healthReadEnabled || demoActive ? [] : [
+        actions={withScreenSettings(!healthReadEnabled || demoActive ? [] : [
           {
             icon: 'target' as const,
             onPress: openGoal,
@@ -264,8 +268,9 @@ export function WeightScreen() {
             onPress: openLog,
             accessibilityLabel: 'Record a weight',
           },
-        ]}
+        ], screenSettings.action)}
       />
+      <ScreenSettingsSheet {...screenSettings.sheet} />
       <HubPills hub="health" active="Weight" />
     </>
   );

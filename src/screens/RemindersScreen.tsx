@@ -10,6 +10,8 @@ import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { TaskEditor } from '../components/TaskEditor';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
+import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSettings';
 import { EmptyState } from '../components/EmptyState';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, font, lineHeight, fontWeight, iconSize, radius, interaction, type Colors } from '../theme';
@@ -34,6 +36,8 @@ import type { Task } from '../types';
 export function RemindersScreen() {
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
+  // This screen's own settings, from a gear in its header. See SCREEN_SETTINGS.
+  const screenSettings = useScreenSettings('Reminders', 'Reminder settings');
   const tasks = useTaskStore(useShallow(s => s.tasks));
   const getCategoryByName = useCategoryStore(s => s.getCategoryByName);
   const projects = useProjectStore(useShallow(s => s.projects));
@@ -65,7 +69,9 @@ export function RemindersScreen() {
             ? undefined
             : `${reminders.length} upcoming`
         }
+        actions={withScreenSettings(undefined, screenSettings.action)}
       />
+      <ScreenSettingsSheet {...screenSettings.sheet} />
 
       <FlatList
         data={reminders}

@@ -227,7 +227,7 @@ npx tsc --noEmit     # typecheck; ~4s warm, ~20s the first time in a fresh check
 npm test             # the whole suite, about a minute
 npm run test:watch   # watch mode
 npm run test:tz      # the suite in UTC+14, UTC-11 and Newfoundland (DST, half-hour offset);
-                     # CI runs in UTC, where a UTC/local date mix-up can't fail
+                     # CI runs UTC+14 only, and a local run is usually UTC
 npx jest src/__tests__/dateUtils.test.ts  # one file, for iterating on a change
 npm run docs         # regenerate all three generated docs, then commit them
 npm run verify       # the whole verification loop, below
@@ -697,7 +697,7 @@ All time comparisons use the configurable `dayResetTime` (default `"00:00"`) to 
 
 **In review**, look at any new date computation that lands a task on a day (`dueDate`, `deferUntil`, snooze suggestions, project pulls, use-up dates, deload destinations) for a bare `new Date()` or `addDays(new Date(), n)` standing in for "today", and for a default parameter of `new Date()` on a task-dating function. A bare `new Date()` is right for a timestamp, for display, and for expiry, which is about wall-clock time rather than logical days.
 
-**Never cut a day key out of `toISOString()`.** It is UTC, and every day key in the app (`dayKeyOf`, `getLogicalDayKey`, the `YYYY-MM-DD` columns) is local. The two agree only while the instant being keyed stays on the same calendar date in both, so the mismatch is invisible in CI (which runs in UTC) and across most of the Americas and Europe, and appears only far from Greenwich. `snoozeEngine` keyed its candidate days this way and, in UTC+13/+14, read each day's projected recurring load off the day before it (#2848). A behavioural test can't catch it, because Jest ignores a `process.env.TZ` written at runtime, so `noUtcDayKey.test.ts` bans the pattern in `src/` instead. Use `dayKeyOf` for a calendar date and `getLogicalDayKey` when `dayResetTime` matters. To see a date bug a UTC run hides, run `npm run test:tz`, which runs the suite in three zones chosen to expose one. Test fixtures follow from this: build a local time with `new Date(2026, 7, 12, 9)` or `new Date('2026-08-12T09:00')` (no `Z`), never a `...Z` literal the test then reads back as a local date, and don't switch zones mid-test by writing `process.env.TZ`, which Jest ignores.
+**Never cut a day key out of `toISOString()`.** It is UTC, and every day key in the app (`dayKeyOf`, `getLogicalDayKey`, the `YYYY-MM-DD` columns) is local. The two agree only while the instant being keyed stays on the same calendar date in both, so the mismatch is invisible in a UTC run (which is what an agent's sandbox does) and across most of the Americas and Europe, and appears only far from Greenwich. CI runs the suite in UTC+14 for this reason. `snoozeEngine` keyed its candidate days this way and, in UTC+13/+14, read each day's projected recurring load off the day before it (#2848). A behavioural test can't catch it, because Jest ignores a `process.env.TZ` written at runtime, so `noUtcDayKey.test.ts` bans the pattern in `src/` instead. Use `dayKeyOf` for a calendar date and `getLogicalDayKey` when `dayResetTime` matters. To see a date bug a UTC run hides before CI does, run `npm run test:tz`, which runs the suite in three zones chosen to expose one. Test fixtures follow from this: build a local time with `new Date(2026, 7, 12, 9)` or `new Date('2026-08-12T09:00')` (no `Z`), never a `...Z` literal the test then reads back as a local date, and don't switch zones mid-test by writing `process.env.TZ`, which Jest ignores.
 
 ### Pinning — a pinned task has two rows, and that's the feature
 
@@ -846,7 +846,7 @@ Cascades (`completeGroup`, `deferGroup`, `pinGroup`, `deleteGroup`) are roster-s
 
 ### Navigation
 
-`src/navigation/AppNavigator.tsx` uses a bottom tab bar with 4 visible tabs (Today, Groceries, Projects, More). Every other screen is registered as a hidden tab and reached via `SideMenuDrawer`, which overlays the full screen and is opened by tapping "More" or by edge-swipe from the left. The Groceries tab drops out (falling back to `tabBarButton: () => null`, same as any drawer-only tab) while `kitchenEnabled` is off in Settings, mirroring the drawer's own "Groceries & Meals" row.
+`src/navigation/AppNavigator.tsx` uses a bottom tab bar with three tabs the user picks (`tabRoutes`, default Today, Groceries, Projects; Settings › Feature areas › Tab bar) plus More. Every screen is a tab route in `TAB_SCREENS`; the ones without a button are hidden and reached via `SideMenuDrawer`, which overlays the full screen and is opened by tapping "More" or by edge-swipe from the left. A chosen tab whose screen is switched off (`kitchenEnabled`, simplified mode) drops out of the bar (`visibleTabRoutes`), mirroring the drawer. Jumping to a tab route from code goes through `navigateToTab` (`noBareTabNavigate.test.ts`).
 
 **What the menu contains is `src/utils/navHubs.ts`, not the drawer component.** Read it for the
 current rows: some are single destinations and some are **hubs**, one menu row standing in for
@@ -862,9 +862,9 @@ are worth not re-deriving:
   `menuDestinations` builds the index from the same rows the menu draws, so a screen the menu is
   hiding is not findable either: a result opening a feature you switched off is a way back into
   it that the switch didn't intend.
-- **Route sets are derived, not listed twice.** `DRAWER_TABS`, `RESTORABLE_SCREENS` and
+- **Route sets are derived, not listed twice.** `MENU_ROUTES`, `RESTORABLE_SCREENS` and
   `KITCHEN_SCREENS` all come off `NAV_MENU_ROWS`/`NAV_HUBS`. Adding a screen to the menu is one
-  edit.
+  edit, plus its line in `TAB_SCREENS`.
 - **A hub row drops out when every member is gone** (simplified mode, or `kitchenEnabled` off for
   Groceries & Meals). A member hidden by a feature says so as `screen:` on that feature in
   `simpleMode.ts`, so one gate answers for the menu row, the pill and the cold-launch restore.

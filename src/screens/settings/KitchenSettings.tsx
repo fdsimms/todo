@@ -84,7 +84,7 @@ export function KitchenSettings() {
     <>
       <SettingsSection
         label="Meals on Today"
-        footer="A planned meal that doesn't have one of the tasks from Automatic tasks shows as a plain row here instead, filed under the same category as meal tasks. It can't be checked off; tapping opens the meal plan."
+        footer="A planned meal that doesn't have a task from Automations shows as a plain row here instead, filed under the same category as meal tasks. It can't be checked off; tapping opens the meal plan."
       >
         {/* A toggle rather than a track of two: one bounded choice with two
             answers is what a switch is for, and the two shapes this used to
@@ -96,7 +96,7 @@ export function KitchenSettings() {
           iconColor={mealsOnToday === 'inline' ? colors.accent : undefined}
           label="Show the day's meals"
           hint={mealsOnToday === 'inline'
-            ? "As rows in the task list, for planned meals without a task from Automatic tasks"
+            ? "As rows in the task list, for planned meals without a task from Automations"
             : 'Nothing. Meals stay on the Meal plan screen'}
           toggle={mealsOnToday === 'inline'}
           onPress={() => setMealsOnToday(mealsOnToday === 'inline' ? 'off' : 'inline')}
@@ -105,7 +105,7 @@ export function KitchenSettings() {
         {/* No "needs using up" row here any more (#1689 retired): unlike a
             meal or an event, a perishable is either used up or it isn't, so an
             uncheckable, un-dismissible row about it was worse than the real
-            "Use up X" task the Automatic tasks section already offers a
+            "Use up X" task the Automations screen already offers a
             switch for. */}
         <SettingsRow
           entryId="nutritionTargets"

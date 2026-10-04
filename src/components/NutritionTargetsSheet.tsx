@@ -28,7 +28,7 @@ import { openHealthApp } from '../utils/healthBridge';
 import { dayKeyOf, getCurrentDayStart } from '../utils/dateUtils';
 import { isProfileComplete } from '../utils/energyBudget';
 import { haptics } from '../utils/haptics';
-import { navigateToSettingsEntry } from '../utils/settingsIndex';
+import { navigateToSettingsEntry } from '../navigation/openSettings';
 import { CountStepper } from './CountStepper';
 import { InlineAction } from './InlineAction';
 import { SheetHeaderButton } from './SheetHeaderButton';

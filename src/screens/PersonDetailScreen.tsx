@@ -9,6 +9,7 @@ import { useCalendarStore } from '../store/useCalendarStore';
 import { usePersonNoteStore } from '../store/usePersonNoteStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
+import { TaskEditor } from '../components/TaskEditor';
 import { useProjectStore } from '../store/useProjectStore';
 import { DetailHeader } from '../components/DetailHeader';
 import { EmptyState } from '../components/EmptyState';
@@ -140,6 +141,10 @@ export function PersonDetailScreen() {
   const [showAllSuggestions, setShowAllSuggestions] = useState(false);
   const allNotes = usePersonNoteStore(useShallow(s => s.notes));
   const [noteSheet, setNoteSheet] = useState<{ note: PersonNote | null; kind: PersonNoteKind } | null>(null);
+  // A coming-up task opened from its row. Its id, read live from the store,
+  // so an edit made in the editor shows straight away.
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const editingTask = useTaskStore(s => (editingTaskId ? s.tasks.find(t => t.id === editingTaskId) ?? null : null));
   // Two separate flags rather than one union: an in-progress add has no
   // `HistoryEntry` to carry (there's no task yet), so `entry: null` would be
   // ambiguous between "closed" and "adding".
@@ -164,10 +169,13 @@ export function PersonDetailScreen() {
    * appears once the window reaches it.
    */
   const comingUp = useMemo(() => {
-    type Row = { key: string; title: string; when: string; icon: 'calendar-outline' | 'people-outline'; day: string };
+    // `taskId` is set on a task's row, which opens that task. An event's row
+    // has none: nothing in the app opens an existing calendar event.
+    type Row = { key: string; title: string; when: string; icon: 'calendar-outline' | 'people-outline'; day: string; taskId?: string };
     const rows: Row[] =
       upcoming.map(entry => ({
         key: `task:${entry.taskId}`,
+        taskId: entry.taskId,
         title: entry.title,
         when: new Date(entry.on).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
         icon: 'calendar-outline' as const,
@@ -467,11 +475,26 @@ export function PersonDetailScreen() {
               {comingUp.map((item, i) => (
                 <View key={item.key}>
                   {i > 0 && <View style={styles.sep} />}
-                  <View style={styles.entryRow}>
-                    <Ionicons name={item.icon} size={14} color={colors.accent} />
-                    <Text style={styles.entryTitle} numberOfLines={1}>{item.title}</Text>
-                    <Text style={styles.entryDate}>{item.when}</Text>
-                  </View>
+                  {item.taskId ? (
+                    <TouchableOpacity
+                      style={styles.entryRow}
+                      onPress={() => { haptics.tap(); setEditingTaskId(item.taskId!); }}
+                      activeOpacity={interaction.activeOpacity}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Open ${item.title}, ${item.when}`}
+                    >
+                      <Ionicons name={item.icon} size={14} color={colors.accent} />
+                      <Text style={styles.entryTitle} numberOfLines={1}>{item.title}</Text>
+                      <Text style={styles.entryDate}>{item.when}</Text>
+                      <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+                    </TouchableOpacity>
+                  ) : (
+                    <View style={styles.entryRow}>
+                      <Ionicons name={item.icon} size={14} color={colors.accent} />
+                      <Text style={styles.entryTitle} numberOfLines={1}>{item.title}</Text>
+                      <Text style={styles.entryDate}>{item.when}</Text>
+                    </View>
+                  )}
                 </View>
               ))}
             </View>
@@ -634,6 +657,11 @@ export function PersonDetailScreen() {
         visible={planningEvent}
         onClose={() => setPlanningEvent(false)}
         seed={{ title: `With ${name}`, personIds: [person.id] }}
+      />
+      <TaskEditor
+        visible={editingTaskId !== null}
+        task={editingTask}
+        onClose={() => setEditingTaskId(null)}
       />
       <PersonNoteSheet
         visible={noteSheet !== null}

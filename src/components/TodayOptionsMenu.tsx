@@ -41,6 +41,12 @@ interface Props {
    */
   onPullFromProjects: () => void;
   /**
+   * Opens Today's own settings (`ScreenSettingsSheet`), with `settingsHint`
+   * naming them. Omitted when none are on show, and the row goes with it.
+   */
+  onOpenSettings?: () => void;
+  settingsHint?: string;
+  /**
    * Opens the focus session setup sheet, seeded from the people you have a
    * reach-out nudge for right now (#2091). Omitted rather than shown-and-
    * explained like `onPullFromProjects`, since a project going quiet is
@@ -92,6 +98,8 @@ export function TodayOptionsMenu({
   onManageEvents,
   eventCount,
   anchor,
+  onOpenSettings,
+  settingsHint,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -286,6 +294,30 @@ export function TodayOptionsMenu({
               <View style={[styles.toggleKnob, hideCategories && styles.toggleKnobOn]} />
             </View>
           </TouchableOpacity>
+          {/* Last, the way a settings entry sits at the foot of a menu: the
+              rows above act on today, this one changes how Today behaves. */}
+          {onOpenSettings && (
+            <>
+            <View style={styles.optionSep} />
+            <TouchableOpacity
+              style={styles.optionRow}
+              onPress={() => {
+                haptics.tap();
+                onOpenSettings();
+              }}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="button"
+              accessibilityLabel="Today settings"
+            >
+              <Ionicons name="settings-outline" size={18} color={colors.textSecondary} />
+              <View style={styles.optionContent}>
+                <Text style={styles.optionLabel}>Today settings</Text>
+                {!!settingsHint && <Text style={styles.optionHint}>{settingsHint}</Text>}
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+            </TouchableOpacity>
+            </>
+          )}
         </View>
       </ScrollView>
     </CardSheet>

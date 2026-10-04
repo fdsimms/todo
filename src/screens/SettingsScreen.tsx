@@ -8,6 +8,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useDemoStore } from '../store/useDemoStore';
+import { useShallow } from 'zustand/react/shallow';
+import { useSyncStore } from '../store/useSyncStore';
 import { getAppFontOption } from '../theme/fonts';
 import { retentionLabel } from '../utils/retention';
 import { useColors } from '../theme/ThemeContext';
@@ -16,12 +18,13 @@ import { DetailHeader } from '../components/DetailHeader';
 import { SearchField } from '../components/SearchField';
 import { HighlightedText } from '../components/HighlightedText';
 import {
-  visibleSettingsGroups, visibleSettingsEntries,
-  type SettingsGroup, type SettingsGroupId, type SettingsTint,
+  settingsIndexGroups,
+  type IndexedSettingsGroup, type SettingsGroupId, type SettingsTint,
 } from '../utils/settingsIndex';
+import { openSettingsGroup } from '../navigation/openSettings';
 import { searchSettings } from '../utils/settingsSearch';
 import { settingsSummaries } from '../utils/settingsSummary';
-import { generatedTaskCounts, generatorSwitchedOn, GENERATED_KIND_LIST } from '../utils/generatedTasks';
+import { searchableSettingsEntries } from '../utils/settingsActiveRows';
 import { useFilterField } from '../hooks/useFilterField';
 
 /**
@@ -58,90 +61,26 @@ export function SettingsScreen() {
   const query = searchFilter.query;
 
   const settings = useSettingsStore();
+  const sync = useSyncStore(useShallow(s => ({
+    supported: s.supported,
+    enabled: s.enabled,
+    serverUrl: s.serverUrl,
+    hasServerToken: s.hasServerToken,
+  })));
 
   const groups = useMemo(
-    () => visibleSettingsGroups(Platform.OS, settings.kitchenEnabled),
+    () => settingsIndexGroups(Platform.OS, settings.kitchenEnabled),
     [settings.kitchenEnabled]
   );
-  /**
-   * The gating rows currently switched on — see `SettingsEntry.requires`.
-   *
-   * Here rather than in the index because the index is pure data and this is
-   * live state: a predicate on the entry would have to read the settings store,
-   * which is the settings-as-config mistake that file's own header warns about.
-   * The screen holds the store, so it answers and the index looks up.
-   */
-  const activeEntryIds = useMemo(() => {
-    const on = new Set<string>();
-    if (settings.postponeCheckEnabled) on.add('postponeCheck');
-    if (settings.focusLongRestEvery !== null) on.add('focusLongRestEvery');
-    if (settings.focusShieldEnabled) on.add('focusShield');
-    if (settings.penaltyShieldEnabled) on.add('penaltyShield');
-    if (settings.gateShieldEnabled) on.add('gateShield');
-    if (settings.vacationMode) on.add('vacationMode');
-    if (settings.dailyAgendaEnabled) on.add('dailyAgenda');
-    // Both null is how quiet hours are off; the screen's own toggle is derived
-    // from exactly this.
-    if (settings.quietHoursStart !== null) on.add('quietHours');
-    if (settings.appLockEnabled) on.add('appLock');
-    if (settings.productLookupEnabled) on.add('productLookupEnabled');
-    if (settings.cookRecapEnabled) on.add('cookRecapEnabled');
-    if (settings.mealLogPrompt) on.add('mealLogPrompt');
-    if (settings.onDeviceAiEnabled) on.add('onDeviceAiEnabled');
-    // Through the same rule the rows themselves use, so a generator whose read
-    // is switched off takes its "File them under" row out of search too.
-    for (const spec of GENERATED_KIND_LIST) {
-      if (generatorSwitchedOn(spec.kind, settings)) on.add(`gen:${spec.kind}`);
-    }
-    return on;
-  }, [settings]);
-
-  // Search must not turn up a row that isn't rendered, so the kitchen entries
-  // leave the index with the area, the simplified-mode ones with theirs, the
-  // iOS-only rows with the platform, and a row nested under a switched-off
-  // toggle with that toggle — the four ways a row can be absent from the page.
+  // Search must not turn up a row that isn't rendered — see
+  // searchableSettingsEntries, which the app-wide search reads too.
   const entries = useMemo(
-    () => visibleSettingsEntries(
-      Platform.OS, settings.kitchenEnabled, settings.simpleMode, activeEntryIds),
-    [settings.kitchenEnabled, settings.simpleMode, activeEntryIds]
+    () => searchableSettingsEntries(Platform.OS, settings, sync),
+    [settings, sync]
   );
   const results = useMemo(() => searchSettings(entries, query.trim()), [entries, query]);
 
   const demoActive = useDemoStore(s => s.active);
-
-  // Counted from the same list the group's own rows render from, so "4 of 12
-  // on" can't disagree with what's behind the row.
-  const generatorCounts = useMemo(
-    () => generatedTaskCounts({
-      mealCookTasks: settings.mealCookTasks,
-      groceryUseUpTasks: settings.groceryUseUpTasks,
-      pantryCheckTasks: settings.pantryCheckTasks,
-      pantryReviewTasks: settings.pantryReviewTasks,
-      leftoverUseUpTasks: settings.leftoverUseUpTasks,
-      mealPlanNudgeEnabled: settings.mealPlanNudgeEnabled,
-      mealShortfallTasks: settings.mealShortfallTasks,
-      mealThawTasks: settings.mealThawTasks,
-      mealLogNudgeTasks: settings.mealLogNudgeTasks,
-      projectReviewTasks: settings.projectReviewTasks,
-      supplyReorderTasks: settings.supplyReorderTasks,
-      calendarReviewTasks: settings.calendarReviewTasks,
-      birthdayTasks: settings.birthdayTasks,
-      birthdayGiftTasks: settings.birthdayGiftTasks,
-      reachOutTasks: settings.reachOutTasks,
-      waitingFollowUpTasks: settings.waitingFollowUpTasks,
-      weatherTasks: settings.weatherTasks,
-      eventTasks: settings.eventTasks,
-      travelTasks: settings.travelTasks,
-      screenTimeTasks: settings.screenTimeTasks,
-    healthTasks: settings.healthTasks,
-      moodLogTasks: settings.moodLogTasks,
-      moodNudgeTasks: settings.moodNudgeTasks,
-      weekendNudgeTasks: settings.weekendNudgeTasks,
-      weighInTasks: settings.weighInTasks,
-      waterShortfallTasks: settings.waterShortfallTasks,
-    }, settings.kitchenEnabled),
-    [settings]
-  );
 
   const summaries = useMemo(() => settingsSummaries({
     themeMode: settings.themeMode,
@@ -158,8 +97,6 @@ export function SettingsScreen() {
     calendarIds: settings.calendarIds,
     healthReadEnabled: settings.healthReadEnabled,
     simpleMode: settings.simpleMode,
-    generatedOn: generatorCounts.on,
-    generatedTotal: generatorCounts.total,
     mealsOnToday: settings.mealsOnToday === 'inline',
     unitSystemLabel: UNIT_SYSTEM_SUMMARY[settings.unitSystem] ?? null,
     vacationMode: settings.vacationMode,
@@ -186,11 +123,13 @@ export function SettingsScreen() {
   // `entryId` is what makes a result open onto its row rather than onto the top
   // of the group holding it — the half of search that was never wired up. The
   // index rows below pass none, since browsing to a group means the group.
+  // Through openSettingsGroup rather than straight to SettingsGroup, because a
+  // result can name a row in a group that lives on its own menu screen
+  // (Automations) rather than behind a row here.
   const openGroup = (groupId: SettingsGroupId, entryId?: string) =>
-    (navigation as never as { navigate: (n: string, p: object) => void })
-      .navigate('SettingsGroup', { groupId, entryId });
+    openSettingsGroup(navigation, groupId, entryId);
 
-  const groupRow = (group: SettingsGroup) => {
+  const groupRow = (group: IndexedSettingsGroup) => {
     const tint = tintOf(group.tint);
     return (
       <TouchableOpacity

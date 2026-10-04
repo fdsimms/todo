@@ -13,7 +13,7 @@ import { dayKeyOf, getCurrentDayStart, getLogicalToday } from '../utils/dateUtil
 import { logWeightToHealth } from '../utils/healthWeightSync';
 import { openHealthApp } from '../utils/healthBridge';
 import { parseWeightInput } from '../utils/weightLog';
-import { navigateToSettingsEntry } from '../utils/settingsIndex';
+import { navigateToSettingsEntry } from '../navigation/openSettings';
 import { isDemoModeActive } from '../utils/demoState';
 import { EditorSheet } from './EditorSheet';
 import { EditorRow } from './EditorRow';

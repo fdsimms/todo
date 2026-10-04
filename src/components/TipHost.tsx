@@ -9,6 +9,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useTipSignals } from '../hooks/useTipSignals';
 import { useReduceMotion } from '../utils/useReduceMotion';
 import { haptics } from '../utils/haptics';
+import { navigateToSettingsEntry } from '../navigation/openSettings';
 import { getLogicalDayKey } from '../utils/dateUtils';
 import { chooseTip, tipsFor, unseenTipsForScreen, type Tip, type TipScreen } from '../utils/tips';
 
@@ -131,6 +132,7 @@ export function TipCard({
   const handleLink = () => {
     if (!tip.link) return;
     haptics.tap();
+    if (tip.link.entryId && navigateToSettingsEntry(navigation, tip.link.entryId)) return;
     navigation.navigate(tip.link.screen);
   };
 

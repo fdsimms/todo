@@ -71,6 +71,7 @@ import {
 import { countPlannedSlots } from '../utils/mealPlanNudge';
 import { mealSlotDrift, mealSlotSourceId, mealSlotTaskDraft, slotEntryForTask } from '../utils/mealSlotTasks';
 import { dayKeyOf, dayKeyToDate, getLogicalToday } from '../utils/dateUtils';
+import { upcomingRecipeMeals } from '../utils/recipePlanned';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { setHours } from 'date-fns/setHours';
 
@@ -245,6 +246,13 @@ interface MealPlanStore extends UndoHistoryActions {
    * caller, asking about six weeks at once.
    */
   entriesInRangeLive: (startKey: string, endKey: string) => MealPlanEntry[];
+
+  /**
+   * One recipe's planned meals from today on, soonest first (see
+   * upcomingRecipeMeals). Read straight from SQLite like the two above, since
+   * a recipe planned for next month is outside any window Meal Plan loaded.
+   */
+  upcomingMealsForRecipe: (recipeId: string) => MealPlanEntry[];
 
   /**
    * One entry by id, read through the loaded window and SQLite when it isn't
@@ -833,6 +841,10 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
       ? entries
       : dbGetMealPlanEntries(dayKey, dayKey);
     return entriesForDay(source, dayKey);
+  },
+
+  upcomingMealsForRecipe(recipeId) {
+    return upcomingRecipeMeals(dbGetMealPlanEntriesForRecipe(recipeId), dayKeyOf(getLogicalToday()));
   },
 
   entriesInRangeLive(startKey, endKey) {
