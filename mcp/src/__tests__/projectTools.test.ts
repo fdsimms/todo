@@ -44,13 +44,13 @@ describe('getProject', () => {
   });
 
   it('lists decisions from the replica, and carries an answer onto a recently done row', () => {
-    const answered = task({ id: 'q', title: 'Ceremony format?', completed: true, completedAt: '2026-10-02T09:00:00.000Z', deliverableValue: 'City Hall' } as Partial<Task> & { id: string; title: string });
+    const answered = task({ id: 'q', title: 'Ceremony format?', completed: true, completedAt: '2026-10-02T09:00:00.000Z', deliverableValue: 'City Hall', deliverableWhy: 'Under 20 guests' } as Partial<Task> & { id: string; title: string });
     const result = getProject(stub([...tasks, answered], {
       projectDecisions: () => [answered],
       deliverableKind: (t: Task) => (t.id === 'q' ? 'choice' : null),
     }), 'p1')!;
     expect(result.decisions).toEqual([
-      { id: 'q', question: 'Ceremony format?', kind: 'choice', answer: 'City Hall', decidedAt: '2026-10-02T09:00:00.000Z' },
+      { id: 'q', question: 'Ceremony format?', kind: 'choice', answer: 'City Hall', decidedAt: '2026-10-02T09:00:00.000Z', why: 'Under 20 guests' },
     ]);
     expect(result.recentlyDone[0]).toEqual({ id: 'q', title: 'Ceremony format?', completedAt: '2026-10-02T09:00:00.000Z', answer: 'City Hall' });
   });

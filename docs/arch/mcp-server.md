@@ -440,7 +440,9 @@ A project scoped with Claude is rarely written once. Four tools exist for coming
   remove. It is the app's own `archiveTask` / `unarchiveTask` (unpin; restoring breaks the streak).
 - **`get_project` lists `decisions`**: `projectDecisions`, the same read as the Decisions block
   on the project's page, so an answer given months ago can be read back without paging the
-  Logbook.
+  Logbook. Each carries `why` and `revisitIf` where they were recorded with the answer
+  (`Task.deliverableWhy` / `deliverableRevisitIf`): `complete_task` takes them, and
+  `update_answer` corrects an answer or its reasoning afterwards.
 - **`onlyIfAnswer`** (and `onlyIfAnswerTo` inside a plan) writes `Task.answerGate`, and
   **`dueDaysFromEvent`** (or `dueEndOfMonthAfterEvent`, for "by the end of the month after")
   dates a task from `Project.eventDate`. `create_template` items take a `key` and an

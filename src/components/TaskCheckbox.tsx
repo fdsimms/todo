@@ -3,6 +3,7 @@ import { Animated, Linking, StyleSheet, TouchableOpacity, View } from 'react-nat
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import type { Task } from '../types';
+import type { DeliverableReasoning } from '../utils/deliverables';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { confirmSlip } from '../utils/slipConfirm';
@@ -111,11 +112,11 @@ export function TaskCheckbox({ task, taskLabel, onTicked }: Props) {
   // plain tick does — including the heavier second pulse a whole chain finishing
   // is owed, which is easy to drop when the completion arrives from a sheet
   // rather than from the tap.
-  const runComplete = async (deliverableValue?: string | null) => {
+  const runComplete = async (deliverableValue?: string | null, deliverableReasoning?: DeliverableReasoning) => {
     await (isChainFinish(task) ? haptics.chainFinish() : haptics.success());
     onTicked?.(task.id);
     animateLayout();
-    completeTask(task.id, deliverableValue !== undefined ? { deliverableValue } : undefined);
+    completeTask(task.id, deliverableValue !== undefined ? { deliverableValue, deliverableReasoning } : undefined);
   };
 
   // Every branch below awaits its haptic before it writes anything, and the
@@ -300,9 +301,9 @@ export function TaskCheckbox({ task, taskLabel, onTicked }: Props) {
         <DeliverablePromptSheet
           visible={showPrompt}
           task={task}
-          onConfirm={value => {
+          onConfirm={(value, reasoning) => {
             setShowPrompt(false);
-            runComplete(value);
+            runComplete(value, reasoning);
           }}
           onCancel={() => setShowPrompt(false)}
         />

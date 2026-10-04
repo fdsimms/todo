@@ -55,7 +55,7 @@ import { useHealthStore } from '../store/useHealthStore';
 import { activeSegment, segmentPhase, segmentRemaining, timerSegments } from '../utils/timerSegments';
 import { isStreakAtRecord } from '../utils/streakRecord';
 import { isTaskWindowActive, isTaskExpired, effectiveWindowEnd, isRecurrenceNotYetDue, isMissableMealPlanTask, isTaskNew, isTaskVisible, isQuotaTask, isQuotaPartial, quotaRidesOutTheDay, isOnPaceQuota, quotaLeavesTodayAfterLog, quotaNextDueAt, formatQuotaNextDue, quotaFraction, quotaPaceFraction, quotaUnitsToPace, activeChainStepTitle, displayTitleFor, isTaskNotNeeded } from '../utils/visibilityUtils';
-import { asksOnCompletion, deliverableKindFor, isTentativeAnswer } from '../utils/deliverables';
+import { asksOnCompletion, deliverableKindFor, isTentativeAnswer, type DeliverableReasoning } from '../utils/deliverables';
 import { offersMealLogOnCompletion } from '../utils/completionTap';
 import { describeTaskRecurrence } from '../utils/recurrenceLabels';
 import { chainPreview, isChainFinish, chainStepAdvancesInPlace, nextChainStep } from '../utils/chain';
@@ -597,6 +597,8 @@ export const TaskItem = React.memo(function TaskItem({
   // commit below has to pass the same value on — a completion salvaged without
   // its answer would tick the task off and drop what the user typed.
   const pendingDeliverableRef = useRef<string | null | undefined>(undefined);
+  // The Why / Revisit if that came with it, held for the same reason.
+  const pendingReasoningRef = useRef<DeliverableReasoning | undefined>(undefined);
   // Set for the span of one completion that was confirmed through the
   // "log early" prompt below, so whichever runCompletion call eventually
   // fires it (the deliverable prompt and the completion-timer alert both
@@ -866,8 +868,10 @@ export const TaskItem = React.memo(function TaskItem({
     if (!completingRef.current) return;
     completingRef.current = false;
     const deliverableValue = pendingDeliverableRef.current;
+    const deliverableReasoning = pendingReasoningRef.current;
     pendingDeliverableRef.current = undefined;
-    completeTask(task.id, deliverableValue !== undefined ? { deliverableValue } : undefined);
+    pendingReasoningRef.current = undefined;
+    completeTask(task.id, deliverableValue !== undefined ? { deliverableValue, deliverableReasoning } : undefined);
   }, []);
 
   useEffect(() => {
@@ -1617,13 +1621,13 @@ export const TaskItem = React.memo(function TaskItem({
    * the store's completion is what stamps it onto the row, and a separate
    * write would leave a window where the task is answered but not done.
    */
-  const runCompletion = async (deliverableValue?: string | null) => {
+  const runCompletion = async (deliverableValue?: string | null, deliverableReasoning?: DeliverableReasoning) => {
     if (completingRef.current || pacingOutRef.current) return;
     // A "Maybe" leaves the task open (see completeTask), so it skips the
     // send-off: the row fading out would say it had gone when it hasn't.
     if (deliverableKindFor(task) === 'choice' && isTentativeAnswer(deliverableValue)) {
       haptics.tap();
-      completeTask(task.id, { deliverableValue });
+      completeTask(task.id, { deliverableValue, deliverableReasoning });
       return;
     }
     // Read and cleared here rather than taken as an argument: the deliverable
@@ -1655,6 +1659,7 @@ export const TaskItem = React.memo(function TaskItem({
     }
     completingRef.current = true;
     pendingDeliverableRef.current = deliverableValue;
+    pendingReasoningRef.current = deliverableReasoning;
     // Told up front, not at the end: the batched collapse holds for a row that
     // is still animating, so tapping the next task keeps the previous one's gap
     // open even though it finished a moment ago.
@@ -1719,6 +1724,7 @@ export const TaskItem = React.memo(function TaskItem({
       }
       completingRef.current = false;
       pendingDeliverableRef.current = undefined;
+      pendingReasoningRef.current = undefined;
       // Leaves the row checked and fully visible, holding its slot: the send-off
       // is the batched collapse (see the collapseSignal effect above), which
       // fades and closes every row of the burst at once. The completed look has
@@ -1728,7 +1734,7 @@ export const TaskItem = React.memo(function TaskItem({
       // withHeldCompletions) and the row would render as ordinary work again.
       setAwaitingCollapse(true);
       completeTask(task.id, {
-        ...(deliverableValue !== undefined ? { deliverableValue } : {}),
+        ...(deliverableValue !== undefined ? { deliverableValue, deliverableReasoning } : {}),
         ...(logEarly ? { logEarly: true } : {}),
       });
       endQuotaHold();
@@ -1786,9 +1792,11 @@ export const TaskItem = React.memo(function TaskItem({
       Animated.spring(chainStepAnim, { toValue: 1, ...animation.spring.bouncy, useNativeDriver: true }).start(() => resolve());
     });
     completingRef.current = false;
+    const deliverableReasoning = pendingReasoningRef.current;
     pendingDeliverableRef.current = undefined;
+    pendingReasoningRef.current = undefined;
     completeTask(task.id, {
-      ...(deliverableValue !== undefined ? { deliverableValue } : {}),
+      ...(deliverableValue !== undefined ? { deliverableValue, deliverableReasoning } : {}),
       ...(logEarly ? { logEarly: true } : {}),
       chainStepInPlace: true,
     });
@@ -2139,6 +2147,7 @@ export const TaskItem = React.memo(function TaskItem({
     completeAnimRef.current = null;
     completingRef.current = false;
     pendingDeliverableRef.current = undefined;
+    pendingReasoningRef.current = undefined;
     checkScale.setValue(0);
     circleScale.setValue(1);
     rowOpacity.setValue(1);
@@ -2166,6 +2175,7 @@ export const TaskItem = React.memo(function TaskItem({
     completeAnimRef.current = null;
     completingRef.current = false;
     pendingDeliverableRef.current = undefined;
+    pendingReasoningRef.current = undefined;
     // Nothing was completed, so the batch shouldn't keep waiting on this row.
     cancelCompletionAnimation(task.id);
     await haptics.tap();
@@ -4299,9 +4309,9 @@ export const TaskItem = React.memo(function TaskItem({
         <DeliverablePromptSheet
           visible={showDeliverablePrompt}
           task={task}
-          onConfirm={value => {
+          onConfirm={(value, reasoning) => {
             setShowDeliverablePrompt(false);
-            runCompletion(value);
+            runCompletion(value, reasoning);
           }}
           // Cancel leaves the task exactly as it was — the tap is taken back,
           // not turned into an unanswered completion.

@@ -62,9 +62,9 @@ export function DeliverablePromptQueue({ ids, onResolved }: Props) {
     <DeliverablePromptSheet
       visible={current !== null}
       task={shown}
-      onConfirm={value => {
+      onConfirm={(value, reasoning) => {
         animateLayout();
-        completeTask(shown.id, { deliverableValue: value });
+        completeTask(shown.id, { deliverableValue: value, deliverableReasoning: reasoning });
         onResolved(shown.id);
       }}
       onCancel={() => onResolved(shown.id)}

@@ -45,6 +45,32 @@ import { activeChainStep, nextChainStep, type ChainCarrier } from './chain';
 /** Longest answer a 'text' deliverable will keep — "The Anchor, 7pm", not an essay. */
 export const DELIVERABLE_TEXT_MAX_LENGTH = 200;
 
+/**
+ * What was recorded alongside an answer: why it was given, and what would
+ * reopen it (`Task.deliverableWhy`, `Task.deliverableRevisitIf`).
+ */
+export interface DeliverableReasoning {
+  why: string | null;
+  revisitIf: string | null;
+}
+
+/** Room for a sentence or two of reasoning, not an essay; an essay is notes. */
+export const DELIVERABLE_REASONING_MAX_LENGTH = 500;
+
+/** Trimmed and capped, with a blank field stored as null rather than "". */
+export function cleanDeliverableReasoning(r: DeliverableReasoning): DeliverableReasoning {
+  const clean = (v: string | null) => {
+    const t = (v ?? '').trim().slice(0, DELIVERABLE_REASONING_MAX_LENGTH);
+    return t ? t : null;
+  };
+  return { why: clean(r.why), revisitIf: clean(r.revisitIf) };
+}
+
+/** The reasoning a row holds, with an older row's missing fields read as none. */
+export function reasoningOf(task: { deliverableWhy?: string | null; deliverableRevisitIf?: string | null }): DeliverableReasoning {
+  return { why: task.deliverableWhy ?? null, revisitIf: task.deliverableRevisitIf ?? null };
+}
+
 /** Label, glyph, and what the answer is, in picker order. */
 export const DELIVERABLE_META: {
   key: DeliverableKind;

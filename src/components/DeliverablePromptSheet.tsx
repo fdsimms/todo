@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -27,7 +28,11 @@ import {
   deliverableDate,
   deliverableKindFor,
   deliverableOptionsFor,
+  reasoningOf,
+  DELIVERABLE_REASONING_MAX_LENGTH,
+  type DeliverableReasoning,
 } from '../utils/deliverables';
+import { InlineAction } from './InlineAction';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { WhenPicker } from './WhenPicker';
 import { useSheetMount } from '../hooks/useSheetMount';
@@ -56,8 +61,12 @@ interface Props {
    * task that is already done, where the same row clears it instead.
    */
   mode?: 'complete' | 'edit';
-  /** The normalized answer, or null for "no answer". Never called on cancel. */
-  onConfirm: (value: string | null) => void;
+  /**
+   * The normalized answer, or null for "no answer". Never called on cancel.
+   * `reasoning` is the Why / Revisit if pair (Task.deliverableWhy), passed
+   * only when that section was opened; undefined leaves the row's alone.
+   */
+  onConfirm: (value: string | null, reasoning?: DeliverableReasoning) => void;
   /** Backs out entirely — in 'complete' mode the task is left incomplete. */
   onCancel: () => void;
 }
@@ -101,6 +110,11 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
   const inputRef = useRef<TextInput>(null);
   const [draft, setDraft] = useState('');
   const [pickerOpen, setPickerOpen] = useState(false);
+  // Why this answer, and what would reopen it. Folded away until asked for,
+  // so answering stays one tap; opened already when the row has some.
+  const [reasoningOpen, setReasoningOpen] = useState(false);
+  const [why, setWhy] = useState('');
+  const [revisitIf, setRevisitIf] = useState('');
   // Mounted on first open and kept, so it closes through `visible` rather
   // than by leaving the tree. See useSheetMount.
   const mountPicker = useSheetMount(pickerOpen);
@@ -134,6 +148,10 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
     const packSeed = !stored ? supplyReorderPackSeed(task, useTaskStore.getState().tasks) : null;
     setDraft(staleForScheduling ? '' : (stored || packSeed || ''));
     setPickerOpen(false);
+    const held = reasoningOf(task);
+    setWhy(held.why ?? '');
+    setRevisitIf(held.revisitIf ?? '');
+    setReasoningOpen(!!(held.why || held.revisitIf));
   }, [visible, task.id]);
 
   // A date answers through the calendar and a choice through its buttons, so
@@ -150,7 +168,8 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
 
   const confirm = (value: string | null) => {
     haptics.success();
-    dismiss(() => onConfirm(value));
+    const reasoning = reasoningOpen ? { why, revisitIf } : undefined;
+    dismiss(() => onConfirm(value, reasoning));
   };
 
   const pickDate = (d: Date) => {
@@ -207,6 +226,9 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
           />
         </View>
 
+        {/* Scrolls once Why is open: the card is capped above the keyboard
+            (see CardSheet), and three fields can outgrow that. */}
+        <ScrollView style={styles.body} keyboardShouldPersistTaps="handled" bounces={false}>
         <Text style={styles.label}>Answer</Text>
 
         {options.length > 0 ? (
@@ -217,7 +239,14 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
                 <TouchableOpacity
                   key={option}
                   style={[styles.option, chosen && styles.optionChosen]}
-                  onPress={() => { setDraft(option); confirm(option); }}
+                  // One tap answers, as long as there's nothing else to say.
+                  // With Why open the tap only picks, and Save confirms, so
+                  // the reasoning isn't lost to the sheet closing under it.
+                  onPress={() => {
+                    setDraft(option);
+                    if (reasoningOpen) haptics.tap();
+                    else confirm(option);
+                  }}
                   activeOpacity={interaction.activeOpacity}
                   accessibilityRole="button"
                   accessibilityState={{ selected: chosen }}
@@ -291,6 +320,46 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
           </View>
         )}
 
+        {reasoningOpen ? (
+          <>
+            <Text style={styles.label}>Why</Text>
+            <View style={styles.field}>
+              <TextField
+                style={styles.input}
+                value={why}
+                onChangeText={setWhy}
+                placeholder="e.g. Under 20 guests, no deposit"
+                placeholderTextColor={colors.textTertiary}
+                maxLength={DELIVERABLE_REASONING_MAX_LENGTH}
+                returnKeyType="next"
+                accessibilityLabel="Why this answer"
+              />
+            </View>
+            <Text style={styles.label}>Revisit if</Text>
+            <View style={styles.field}>
+              <TextField
+                style={styles.input}
+                value={revisitIf}
+                onChangeText={setRevisitIf}
+                placeholder="e.g. The guest list goes over 25"
+                placeholderTextColor={colors.textTertiary}
+                maxLength={DELIVERABLE_REASONING_MAX_LENGTH}
+                returnKeyType="done"
+                accessibilityLabel="What would make you revisit this answer"
+              />
+            </View>
+          </>
+        ) : (
+          <InlineAction
+            icon="add"
+            label="Add why"
+            variant="neutral"
+            accessibilityLabel="Add why you chose this answer, and what would make you revisit it"
+            onPress={() => { haptics.tap(); setReasoningOpen(true); }}
+            style={styles.addWhy}
+          />
+        )}
+
         {/* The quiet way out, and it says exactly what it does. In 'edit'
             mode there is nothing to complete, so the same row clears the
             answer instead — and only when there is one to clear. */}
@@ -306,6 +375,7 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
             </Text>
           </TouchableOpacity>
         )}
+        </ScrollView>
       </View>
     </CardSheet>
   );
@@ -400,4 +470,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgTertiary,
   },
   skipText: { color: colors.textSecondary, fontSize: font.md },
+  body: { flexGrow: 0 },
+  addWhy: { alignSelf: 'flex-start', marginHorizontal: spacing.md, marginTop: spacing.md },
 });

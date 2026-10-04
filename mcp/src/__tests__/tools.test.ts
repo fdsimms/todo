@@ -103,6 +103,7 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     completeTask: () => { throw new Error('not stubbed'); },
     deferTask: () => { throw new Error('not stubbed'); },
     setTaskArchived: () => { throw new Error('not stubbed'); },
+    updateAnswer: () => { throw new Error('not stubbed'); },
     addGroceryItem: () => { throw new Error('not stubbed'); },
     setGroceryChecked: () => { throw new Error('not stubbed'); },
     removeFromGroceryList: () => { throw new Error('not stubbed'); },

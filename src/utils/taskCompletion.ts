@@ -56,7 +56,7 @@ import {
   type FollowUpTaskSuppression,
 } from './followUpTask';
 import { normalizeTitle } from './taskInstances';
-import { chainStepDatedByAnswer, deliverableDate } from './deliverables';
+import { chainStepDatedByAnswer, cleanDeliverableReasoning, deliverableDate, type DeliverableReasoning } from './deliverables';
 import { parseMealSlotSource, mealSlotStepTimeSegments } from './mealSlotTasks';
 import { derivedId, spawnSeed } from './syncIds';
 import { newTaskFromDraft, buildSeriesRow } from './taskDraft';
@@ -79,6 +79,13 @@ export interface CompletionOptions {
    */
   missChain?: boolean;
   deliverableValue?: string | null;
+  /**
+   * Why that answer, and what would reopen it, as the prompt recorded them.
+   * Omitted keeps what the row already holds, the way an omitted answer does.
+   * Ignored when the answer itself is declined (explicit null): reasoning for
+   * no answer has nothing to hang on.
+   */
+  deliverableReasoning?: DeliverableReasoning;
   neutral?: boolean;
   completedAt?: string;
   /**
@@ -376,6 +383,14 @@ export function buildCompletion(
     deliverableValue: options?.deliverableValue !== undefined
       ? options.deliverableValue
       : task.deliverableValue,
+    ...(options?.deliverableValue === null
+      ? { deliverableWhy: null, deliverableRevisitIf: null }
+      : options?.deliverableReasoning
+        ? (() => {
+            const r = cleanDeliverableReasoning(options.deliverableReasoning);
+            return { deliverableWhy: r.why, deliverableRevisitIf: r.revisitIf };
+          })()
+        : {}),
     followUpTaskTally: nextFollowUpTally,
     previousFollowUpTaskTally: task.followUpTaskTally,
   };
@@ -598,6 +613,8 @@ export function buildCompletion(
         // and it's what turns a recurring decision task's Logbook into the
         // log of its answers rather than one answer copied forward for ever.
         deliverableValue: null,
+        deliverableWhy: null,
+        deliverableRevisitIf: null,
         // A follow-up day belongs to the occurrence whose wait it named. The
         // wait itself carries, but last time's day has passed, and carried
         // forward it made the new occurrence ask for its follow-up at once.

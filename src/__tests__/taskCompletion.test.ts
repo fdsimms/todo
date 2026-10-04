@@ -277,6 +277,20 @@ describe('buildCompletion', () => {
       expect(nextTask!.deliverableValue).toBeNull();
     });
 
+    it('records the reasoning with the answer, never carries it, and drops it when the answer is declined', () => {
+      const task = makeTask({ recurrenceType: 'daily', dueDate: localIso('2026-03-10T12:00'), deliverableKind: 'text' });
+      const reasoning = { why: ' Cheapest that ships in time ', revisitIf: 'The price goes up' };
+      const { completed, nextTask } = build(task, { deliverableValue: 'Blue', deliverableReasoning: reasoning });
+      expect(completed).toMatchObject({ deliverableWhy: 'Cheapest that ships in time', deliverableRevisitIf: 'The price goes up' });
+      expect(nextTask).toMatchObject({ deliverableWhy: null, deliverableRevisitIf: null });
+
+      const declined = build({ ...task, deliverableWhy: 'old', deliverableRevisitIf: 'old' }, { deliverableValue: null, deliverableReasoning: reasoning });
+      expect(declined.completed).toMatchObject({ deliverableWhy: null, deliverableRevisitIf: null });
+      // Nobody asked (a bulk or unattended path): what the row held stays.
+      const unasked = build({ ...task, deliverableWhy: 'kept' }, {});
+      expect(unasked.completed.deliverableWhy).toBe('kept');
+    });
+
     it('carries subtasks over unchecked', () => {
       const task = makeTask({ id: 'parent', recurrenceType: 'daily', dueDate: localIso('2026-03-10T12:00') });
       const sub = makeTask({ id: 'sub', parentId: 'parent', completed: true });

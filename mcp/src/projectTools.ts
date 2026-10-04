@@ -69,6 +69,10 @@ export interface ProjectDecision {
   answer: string;
   /** When it was answered, which is when the task was completed. */
   decidedAt: string;
+  /** Why it was decided that way, where recorded. */
+  why?: string;
+  /** What would reopen it, where recorded. */
+  revisitIf?: string;
 }
 
 export const RECENT_DONE = 15;
@@ -132,6 +136,8 @@ export function getProject(replica: Replica, id: string): GetProjectResult | nul
       kind: replica.deliverableKind(t) ?? 'text',
       answer: t.deliverableValue!,
       decidedAt: t.completedAt ?? '',
+      ...(t.deliverableWhy ? { why: t.deliverableWhy } : {}),
+      ...(t.deliverableRevisitIf ? { revisitIf: t.deliverableRevisitIf } : {}),
     })),
   };
 }
