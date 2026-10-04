@@ -42,6 +42,7 @@ interface Props {
 export function ScreenTimeRulesSheet({ visible, onClose }: Props) {
   const colors = useColors();
   const rules = useSettingsStore(useShallow(s => s.screenTimeRules));
+  const fallbackCategory = useSettingsStore(s => s.screenTimeTaskCategory);
   const setRules = useSettingsStore(s => s.setScreenTimeRules);
 
   const [authorization, setAuthorization] = useState<ScreenTimeAuthorization | null>(null);
@@ -98,6 +99,7 @@ export function ScreenTimeRulesSheet({ visible, onClose }: Props) {
         + 'across the day. Each rule adds its task at most once a day.'
       }
       rules={rules}
+      categoryFallback={fallbackCategory}
       onChange={setRules}
       makeRule={() => ({
         id: generateId(),

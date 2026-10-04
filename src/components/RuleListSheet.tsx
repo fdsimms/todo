@@ -10,6 +10,7 @@ import { confirmDelete } from '../utils/confirmDelete';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
+import { CategoryPickerSheet } from './CategoryPicker';
 import { EmptyState } from './EmptyState';
 import { InlineAction } from './InlineAction';
 import { SheetHeader } from './SheetHeader';
@@ -106,6 +107,14 @@ interface Props<T extends EditableRule> {
    * passes its own, which it had before this component existed.
    */
   toggleOnColor?: string;
+  /**
+   * Turns on the "File it under" field in each rule's editor, for the rule
+   * kinds that carry a `category` (everything here but reminder captures,
+   * which have their own `filing`). The value is what a rule with no category
+   * of its own files under, i.e. the kind's "File them under" setting; null
+   * is that setting being empty. Omit it to leave the field out.
+   */
+  categoryFallback?: string | null;
 }
 
 export function RuleListSheet<T extends EditableRule>({
@@ -127,6 +136,7 @@ export function RuleListSheet<T extends EditableRule>({
   emptySubtitle,
   header,
   toggleOnColor,
+  categoryFallback,
 }: Props<T>) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -134,6 +144,9 @@ export function RuleListSheet<T extends EditableRule>({
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [categoryPickId, setCategoryPickId] = useState<string | null>(null);
+  const categoryOf = (rule: T) => (rule as T & { category?: string }).category;
+  const pickingRule = rules.find(r => r.id === categoryPickId) ?? null;
 
   // Closing forgets which row was open, so reopening the sheet doesn't hand
   // somebody a half-expanded form with no visible reason why — the same call
@@ -148,7 +161,10 @@ export function RuleListSheet<T extends EditableRule>({
     onClose();
   };
   useEffect(() => {
-    if (!visible) setExpandedId(null);
+    if (!visible) {
+      setExpandedId(null);
+      setCategoryPickId(null);
+    }
   }, [visible]);
 
   // No unsaved-changes guard, and none is needed: every edit below commits
@@ -309,6 +325,32 @@ export function RuleListSheet<T extends EditableRule>({
                           maxLength={titleMaxLength}
                           returnKeyType="done"
                         />
+                        {categoryFallback !== undefined && (
+                          <>
+                            <Text style={[styles.editorLabel, styles.editorLabelSpaced]}>File it under</Text>
+                            <TouchableOpacity
+                              style={styles.categoryRow}
+                              activeOpacity={interaction.activeOpacity}
+                              onPress={() => { haptics.tap(); setCategoryPickId(rule.id); }}
+                              accessibilityRole="button"
+                              accessibilityLabel={`File under: ${categoryOf(rule) ?? 'Same as other rules'}`}
+                            >
+                              <Text style={styles.categoryValue} numberOfLines={1}>
+                                {categoryOf(rule) ?? 'Same as other rules'}
+                              </Text>
+                              <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
+                            </TouchableOpacity>
+                            {!hideHelpText && (
+                              <Text style={styles.categoryHint}>
+                                {categoryOf(rule)
+                                  ? 'Only this rule files here.'
+                                  : categoryFallback
+                                    ? `Uses the "File them under" setting: ${categoryFallback}.`
+                                    : 'Uses the "File them under" setting, which is None.'}
+                              </Text>
+                            )}
+                          </>
+                        )}
                         <TouchableOpacity
                           style={styles.deleteRow}
                           activeOpacity={interaction.activeOpacity}
@@ -328,6 +370,20 @@ export function RuleListSheet<T extends EditableRule>({
           )}
           <InlineAction icon="add" label="New rule" onPress={addRule} style={styles.addBtn} />
         </ScrollView>
+        {/* Rendered inside this sheet's own Modal, not beside it: two sibling
+            Modals visible at once can't both present (see SheetModal). */}
+        {categoryFallback !== undefined && (
+          <CategoryPickerSheet
+            visible={pickingRule !== null}
+            onClose={() => setCategoryPickId(null)}
+            title="File it under"
+            value={pickingRule ? categoryOf(pickingRule) ?? null : null}
+            onSelect={name => {
+              if (pickingRule) update(pickingRule.id, { category: name ?? undefined } as unknown as Partial<T>);
+              setCategoryPickId(null);
+            }}
+          />
+        )}
       </View>
     </SheetModal>
   );
@@ -366,6 +422,17 @@ function makeStyles(colors: Colors) {
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.sm,
     },
+    categoryRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      backgroundColor: colors.bgTertiary,
+      borderRadius: radius.sm,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+    },
+    categoryValue: { flex: 1, color: colors.text, fontSize: font.md },
+    categoryHint: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.xs },
     deleteRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginTop: spacing.sm },
     deleteLabel: { color: colors.red, fontSize: font.sm },
     addBtn: { marginTop: spacing.md, alignSelf: 'flex-start' },

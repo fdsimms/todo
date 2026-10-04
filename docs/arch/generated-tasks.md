@@ -1424,3 +1424,14 @@ target rose at 5.
 - Ships off, pauses on vacation, and files under its own category setting like
   the rest. Rules are in `src/utils/waterShortfallTasks.ts` and the target
   arithmetic in `src/utils/waterTargetUnits.ts`.
+
+## A rule's own category
+
+The four rule kinds (weather, Screen Time, Health, calendar events) each have one
+"File them under" setting, and each rule can override it with `RuleTaskCategory.category`
+(`src/utils/ruleCategory.ts`). A rule with none uses the setting, so older rules read back
+unchanged. `ruleCategoryFor` is the one place that decides, and it is what each
+generator's draft calls. A rename follows through `renameInRuleCategories`, called from
+`renameCategory`. The three gated kinds (Screen Time, Health, events) still write nothing
+when neither the rule nor the setting names a category; weather has always written loose and
+still does.

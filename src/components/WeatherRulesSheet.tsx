@@ -41,6 +41,7 @@ const CONDITION_OPTIONS: SegmentOption<WeatherCondition>[] =
 export function WeatherRulesSheet({ visible, onClose }: Props) {
   const colors = useColors();
   const rules = useSettingsStore(useShallow(s => s.weatherRules));
+  const fallbackCategory = useSettingsStore(s => s.weatherTaskCategory);
   const setRules = useSettingsStore(s => s.setWeatherRules);
 
   const [permission, setPermission] = useState<LocationPermission | null>(null);
@@ -73,6 +74,7 @@ export function WeatherRulesSheet({ visible, onClose }: Props) {
         + "day that's already passed."
       }
       rules={rules}
+      categoryFallback={fallbackCategory}
       onChange={next => setRules(clearWeatherMarksOnEdit(rules, next))}
       makeRule={() => ({
         id: generateId(),
