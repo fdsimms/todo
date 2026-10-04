@@ -1,6 +1,7 @@
 import type { Task } from '../types';
 import type { ForecastDay } from '../services/weatherLookup';
-import { weatherWaitChipText, canWaitForWeather, dayMatchesCondition, decideWeatherWait, weatherWaitLabel } from '../utils/weatherWait';
+import { canWaitForWeather } from '../utils/weatherCondition';
+import { weatherWaitChipText, dayMatchesCondition, decideWeatherWait, weatherWaitLabel } from '../utils/weatherWait';
 
 // dateUtils reads the day-reset setting; nothing here depends on it.
 jest.mock('../store/useSettingsStore', () => ({

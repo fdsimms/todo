@@ -576,6 +576,14 @@ one. Those three rules and the reasoning behind them are in
       which is what stops the write it makes coming back through the task subscription forever.
     - **Cold and hot read the day's high**, since someone waiting on either is asking about the day
       rather than an instant.
+    - **Four ways in, one rule.** The task editor, a template item (seeds the field, and only on an
+      item that is a plain one-off), quick add's "on the next sunny day" tooltip
+      (`parseWeatherWaitInput`) and the MCP `weatherWait` field all write the same column. Each one
+      refuses or clears the wait on a repeat, chain, series or subtask through `canWaitForWeather`
+      (`weatherCondition.ts`, pure so the MCP package can import it), and quick add offers the phrase
+      only while the weather switch is on, since accepting it with nothing reading the forecast
+      would be a field dropped without saying so. The MCP write only records the want: the phone
+      holds the forecast, so the task leaves Today at its next sync.
   - **It ships off**, like `pantryCheck` and `pantryReview`, and for a reason of its own on top of
     theirs: it's the one generator that also wants a location fix, which is not something to start
     reading without being asked.

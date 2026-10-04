@@ -3786,6 +3786,12 @@ export interface TemplateItem {
   // start its instances out of the suggesters without a follow-up trip to
   // the task's own editor.
   excludeFromSuggestions: boolean;
+  // Seeds Task.weatherWait on the task this item creates: the task is held for
+  // the first day with this kind of forecast. Null (the default through
+  // normalizeTemplateItem, and what stored JSON from before the field reads as)
+  // seeds a task that is not waiting. Only a plain one-off may wait, so an item
+  // that repeats or is a chain seeds nothing (see canWaitForWeather).
+  weatherWait?: WeatherCondition | null;
   // Seeds Task.pinEachOccurrence on the task this item creates.
   pinEachOccurrence?: boolean;
   estimatedMinutes: number | null;

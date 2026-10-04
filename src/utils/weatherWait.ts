@@ -1,7 +1,7 @@
 import type { Task, WeatherCondition } from '../types';
 import type { ForecastDay } from '../services/weatherLookup';
 import { addDays } from 'date-fns/addDays';
-import { classifyWeather } from './weatherCondition';
+import { canWaitForWeather, classifyWeather } from './weatherCondition';
 import { dayKeyOf, dayKeyToDate } from './dateUtils';
 
 /**
@@ -37,17 +37,6 @@ export type WeatherWaitDecision =
   | { kind: 'release' }
   /** Hold until this day, which is `dayKey` (`matched`) or the end of the forecast (not matched). */
   | { kind: 'defer'; dayKey: string; matched: boolean };
-
-/**
- * Whether a task is one this feature may act on: a plain one-off. A repeating
- * task, a chain step or a member of a series has a schedule of its own, and a
- * second thing moving its date is the conflict the editor refuses to offer.
- */
-export function canWaitForWeather(
-  task: Pick<Task, 'recurrenceType' | 'chainEnabled' | 'seriesId' | 'parentId'>,
-): boolean {
-  return task.recurrenceType === 'none' && !task.chainEnabled && !task.seriesId && !task.parentId;
-}
 
 /**
  * Decides one task against a forecast.

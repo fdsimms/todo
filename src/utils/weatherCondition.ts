@@ -1,4 +1,4 @@
-import type { WeatherCondition } from '../types';
+import type { Task, WeatherCondition } from '../types';
 
 /**
  * Turning Open-Meteo's raw answer into the closed set of conditions a
@@ -97,4 +97,15 @@ export function weatherConditionNoun(weatherCode: number): string {
   if (RAINY_CODES.has(weatherCode)) return 'Rain';
   if (SUNNY_CODES.has(weatherCode)) return 'Sun';
   return 'Clouds';
+}
+
+/**
+ * Whether a task is one this feature may act on: a plain one-off. A repeating
+ * task, a chain step or a member of a series has a schedule of its own, and a
+ * second thing moving its date is the conflict the editor refuses to offer.
+ */
+export function canWaitForWeather(
+  task: Pick<Task, 'recurrenceType' | 'chainEnabled'> & Partial<Pick<Task, 'seriesId' | 'parentId'>>,
+): boolean {
+  return task.recurrenceType === 'none' && !task.chainEnabled && !task.seriesId && !task.parentId;
 }

@@ -333,3 +333,32 @@ describe('supply', () => {
   });
 
 });
+
+describe('weatherWait', () => {
+  it('records the want on a plain one-off', () => {
+    expect(ok({ weatherWait: 'sunny' })).toMatchObject({ weatherWait: 'sunny' });
+    expect(ok({ weatherWait: 'rainy' }, existing())).toMatchObject({ weatherWait: 'rainy' });
+  });
+
+  it('refuses anything that already schedules itself', () => {
+    expect(errorsOf({ weatherWait: 'sunny' }, existing({ recurrenceType: 'daily' }))).toMatch(/plain one-off/);
+    expect(errorsOf({ weatherWait: 'sunny' }, existing({ chainEnabled: true }))).toMatch(/plain one-off/);
+    expect(errorsOf({ weatherWait: 'sunny' }, existing({ seriesId: 's1' }))).toMatch(/plain one-off/);
+    expect(errorsOf({ weatherWait: 'sunny' }, existing({ parentId: 'p1' }))).toMatch(/plain one-off/);
+  });
+
+  it('judges the task as it will be, not as it is', () => {
+    expect(errorsOf({ weatherWait: 'sunny', repeat: { every: 'day' } })).toMatch(/plain one-off/);
+    expect(ok({ weatherWait: 'sunny', repeat: { every: 'never' } }, existing({ recurrenceType: 'daily' }))).toMatchObject({ weatherWait: 'sunny' });
+  });
+
+  it('refuses a condition that is not one of the five', () => {
+    expect(errorsOf({ weatherWait: 'foggy' as never })).toMatch(/weatherWait must be one of/);
+  });
+
+  it('lets a task go when the wait is cleared, unless the caller names a defer', () => {
+    expect(ok({ weatherWait: null }, existing({ weatherWait: 'sunny' }))).toMatchObject({ weatherWait: null, deferUntil: null });
+    expect(ok({ weatherWait: null, deferUntil: '2026-10-09' }, existing({ weatherWait: 'sunny' })).deferUntil).not.toBeNull();
+    expect(ok({ weatherWait: null }, existing())).toEqual({ weatherWait: null });
+  });
+});

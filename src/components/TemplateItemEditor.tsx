@@ -19,7 +19,7 @@ import {
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { PinIcon } from './PinIcon';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import type { Priority, Effort, TimeOfDay, TemplateAnchor, TemplateItem, TemplateItemCondition, TemplateAnswerGate, RecurrenceType, ChainItem, RotationItem, DeliverableKind, Polarity, Difficulty, MealSlot } from '../types';
+import type { Priority, Effort, TimeOfDay, TemplateAnchor, TemplateItem, TemplateItemCondition, TemplateAnswerGate, RecurrenceType, ChainItem, RotationItem, DeliverableKind, Polarity, Difficulty, MealSlot, WeatherCondition } from '../types';
 import { PRIORITY_LABELS, EFFORT_LABELS, EFFORT_HINTS, TITLE_MAX_LENGTH, MEAL_SLOTS, MEAL_SLOT_LABELS } from '../types';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, interaction, type Colors } from '../theme';
@@ -62,6 +62,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { DIFFICULTY_HINT, DIFFICULTY_PICKER_SEGMENTS, DIFFICULTY_SEGMENTS } from '../utils/rewards';
 import { RecurrencePicker } from './RecurrencePicker';
 import { SegmentedControl } from './SegmentedControl';
+import { WEATHER_CONDITIONS, weatherConditionLabel } from '../utils/weatherTasks';
 import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
 import { CollapsibleField } from './CollapsibleField';
 import { InlineAction } from './InlineAction';
@@ -96,7 +97,7 @@ const MEDICATION_NAME_MAX_LENGTH = 60;
 /** Matches TaskEditor's own cap on the completion timer's note. */
 const COMPLETION_TIMER_NOTE_MAX_LENGTH = 120;
 
-type FieldKey = 'blanks' | 'conditions' | 'answerGate' | 'category' | 'tags' | 'priority' | 'effort' | 'difficulty' | 'subtasks' | 'chainSteps' | 'rotationSet' | 'deliverable' | 'completionTimer' | 'penalty' | 'medication' | 'logMealSlot' | 'link' | 'location';
+type FieldKey = 'blanks' | 'conditions' | 'answerGate' | 'category' | 'tags' | 'priority' | 'effort' | 'difficulty' | 'subtasks' | 'chainSteps' | 'rotationSet' | 'deliverable' | 'completionTimer' | 'penalty' | 'medication' | 'logMealSlot' | 'link' | 'location' | 'weatherWait';
 
 interface Props {
   visible: boolean;
@@ -218,6 +219,8 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const [penaltyPickerDate, setPenaltyPickerDate] = useState(new Date());
   const [vacationPause, setVacationPause] = useState(false);
   const [excludeFromSuggestions, setExcludeFromSuggestions] = useState(false);
+  const [weatherWait, setWeatherWait] = useState<WeatherCondition | null>(null);
+  const weatherTasksOn = useSettingsStore(s => s.weatherTasks);
   const [difficulty, setDifficulty] = useState<Difficulty | null>(null);
   const [pinEachOccurrence, setPinEachOccurrence] = useState(false);
   const [polarity, setPolarity] = useState<Polarity>('positive');
@@ -302,6 +305,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setPenaltyCutoffTime(item?.penaltyCutoffTime ?? draft?.penaltyCutoffTime ?? null);
     setVacationPause(item?.vacationPause ?? draft?.vacationPause ?? false);
     setExcludeFromSuggestions(item?.excludeFromSuggestions ?? draft?.excludeFromSuggestions ?? false);
+    setWeatherWait(item?.weatherWait ?? draft?.weatherWait ?? null);
     setDifficulty(item?.difficulty ?? draft?.difficulty ?? null);
     setPinEachOccurrence(item?.pinEachOccurrence ?? draft?.pinEachOccurrence ?? false);
     setPolarity(item?.polarity ?? draft?.polarity ?? 'positive');
@@ -467,6 +471,9 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       penaltyCutoffTime: penaltyMinutes !== null && polarity !== 'negative' ? penaltyCutoffTime : null,
       vacationPause,
       excludeFromSuggestions,
+      // Cleared with the repeat or chain it conflicts with, the rule TaskEditor
+      // applies on save: only a plain one-off may wait for weather.
+      weatherWait: recurrenceType === 'none' && !chainEnabled ? weatherWait : null,
       difficulty,
       // Cleared with the schedule: it only means anything on a repeating task.
       pinEachOccurrence: recurrenceType !== 'none' ? pinEachOccurrence : false,
@@ -1077,6 +1084,28 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           </View>
         </TouchableOpacity>
         <View style={styles.sep} />
+        {recurrenceType === 'none' && !chainEnabled && (weatherTasksOn || weatherWait !== null) && (
+          <>
+            <CollapsibleField
+              label="Wait for weather"
+              summary={weatherWait ? weatherConditionLabel(weatherWait) : undefined}
+              emptySummary="Off"
+              hint={weatherTasksOn
+                ? 'Holds tasks made from this item until the first day in the next 14 with this forecast.'
+                : 'Turn on Weather-based tasks in Settings, with location access, so the app can read the forecast. Until then these tasks are not held.'}
+              expanded={fieldOpen('weatherWait')}
+              onToggle={() => toggleField('weatherWait')}
+            >
+              <SegmentedControl
+                label="Wait for a day that is"
+                value={weatherWait}
+                onChange={next => setWeatherWait(next === weatherWait ? null : next)}
+                options={WEATHER_CONDITIONS.map(c => ({ value: c, label: weatherConditionLabel(c) }))}
+              />
+            </CollapsibleField>
+            <View style={styles.sep} />
+          </>
+        )}
         <CollapsibleField
           label="Completion timer"
           summary={completionTimerMinutes !== null

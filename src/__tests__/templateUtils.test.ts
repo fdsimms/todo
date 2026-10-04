@@ -258,6 +258,21 @@ describe('buildDraftsFromTemplate', () => {
     expect(draft.difficulty).toBe('hard');
   });
 
+  it('seeds a weather wait on a one-off item, and an older item without one reads as none', () => {
+    const [draft] = buildDraftsFromTemplate([makeItem({ weatherWait: 'sunny' })], noAnchors);
+    expect(draft.weatherWait).toBe('sunny');
+    const [plain] = buildDraftsFromTemplate([makeItem()], noAnchors);
+    expect(plain.weatherWait).toBeNull();
+    expect(normalizeTemplateItem({}).weatherWait).toBeNull();
+  });
+
+  it('seeds no weather wait on an item that repeats or is a chain', () => {
+    const [repeating] = buildDraftsFromTemplate([makeItem({ weatherWait: 'sunny', recurrenceType: 'daily' })], noAnchors);
+    expect(repeating.weatherWait).toBeNull();
+    const [chain] = buildDraftsFromTemplate([makeItem({ weatherWait: 'rainy', chainEnabled: true })], noAnchors);
+    expect(chain.weatherWait).toBeNull();
+  });
+
   it('carries a link onto the draft, and an older item without one reads as none', () => {
     const [draft] = buildDraftsFromTemplate([makeItem({ linkUrl: 'https://example.com/book' })], noAnchors);
     expect(draft.linkUrl).toBe('https://example.com/book');

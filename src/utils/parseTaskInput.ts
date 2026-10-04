@@ -10,7 +10,7 @@ import { setHours } from 'date-fns/setHours';
 import { startOfDay } from 'date-fns/startOfDay';
 import { startOfMonth } from 'date-fns/startOfMonth';
 import type { Day } from 'date-fns';
-import type { Priority, QuotaPeriod, RecurrenceType, TimeOfDay } from '../types';
+import type { Priority, QuotaPeriod, RecurrenceType, TimeOfDay, WeatherCondition } from '../types';
 import { extractDayPart, extractTime, MONTHS, monthDay, NUMBER_WORD_ALT, NUMBER_WORDS, parseCount, parseDatePart, WEEKDAYS, type ClockTime } from './parseNaturalDate';
 import { looksLikePhoneNumber } from './phone';
 
@@ -1350,6 +1350,35 @@ export function parseEstimateInput(input: string): ParsedEstimate | null {
   if (!cleanTitle) return null;
 
   return { minutes, cleanTitle, matchStart, matchEnd };
+}
+
+export interface ParsedWeatherWait {
+  condition: WeatherCondition;
+  cleanTitle: string;
+  matchStart: number;
+  matchEnd: number;
+}
+
+// "leave books on the curb on the next sunny day". The words are the five
+// conditions a weather rule already speaks (`WeatherCondition`), and only as
+// "next <condition> day": a bare "sunny" in a title ("sunny side up eggs") is a
+// word in the task's name, and a guess here would hold a task back.
+const WEATHER_WAIT_PATTERN = /(?:\b(?:on|for|during)\s+)?\b(?:the\s+)?next\s+(sunny|rainy|snowy|cold|hot)\s+day\b/i;
+
+/**
+ * Pulls "on the next sunny day" out of a quick-add title, so the task waits for
+ * that kind of day (`Task.weatherWait`). Same shape as `parseEstimateInput`.
+ */
+export function parseWeatherWaitInput(input: string): ParsedWeatherWait | null {
+  const match = input.match(WEATHER_WAIT_PATTERN);
+  if (!match || match.index === undefined) return null;
+
+  const matchStart = match.index;
+  const matchEnd = matchStart + match[0].length;
+  const cleanTitle = (input.slice(0, matchStart) + input.slice(matchEnd)).replace(/\s+/g, ' ').trim();
+  if (!cleanTitle) return null;
+
+  return { condition: match[1].toLowerCase() as WeatherCondition, cleanTitle, matchStart, matchEnd };
 }
 
 // "remind me to call mom at 4pm" — the words asking for a reminder, which are
