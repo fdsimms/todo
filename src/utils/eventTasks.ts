@@ -318,6 +318,52 @@ export function eventTaskRuleIdOf(task: Pick<Task, 'generatedKind' | 'generatedS
 }
 
 /**
+ * The start instant out of an occurrence key, or null when it doesn't carry one.
+ * Split on the last `|` for `parseEventTaskSourceId`'s reason: the id half is
+ * EventKit's to shape and the start half is always an ISO string.
+ */
+function occurrenceStartOf(occurrenceKey: string): string | null {
+  const i = occurrenceKey.lastIndexOf('|');
+  if (i < 0) return null;
+  const start = occurrenceKey.slice(i + 1);
+  return Number.isFinite(Date.parse(start)) ? start : null;
+}
+
+/**
+ * The line a rule-written task shows so it reads as being about something:
+ * "Interview with Acme · Tomorrow 3:00 PM" under "Prep for interview".
+ *
+ * **Derived at render and never stored on the task**, the call `projectQuietDays`
+ * and the shortfall's missing-count chip make, and for their reason: the title is
+ * whatever the calendar says right now, so a renamed event reads true and nothing
+ * has to chase it. The cost is that the title is answerable only while the event
+ * is in `useCalendarStore`'s window. Once it has left (it happened, or it was
+ * deleted), the line falls back to the day the occurrence key still names, since
+ * a row that says nothing about its event is the confusion this exists to fix,
+ * and a row naming the wrong one would be worse. `formatDay` and `formatTime` are
+ * passed in so this stays free of the device clock and the 12/24-hour setting.
+ *
+ * Null for any task that isn't one of these, so a caller can gate on the result.
+ */
+export function eventTaskContextLabel(
+  task: Pick<Task, 'generatedKind' | 'generatedSourceId'>,
+  events: readonly BusyEvent[],
+  formatDay: (iso: string) => string,
+  formatTime: (iso: string) => string,
+): string | null {
+  const parsed = parseEventTaskSourceId(generatedSourceOf(task, 'eventTask'));
+  if (!parsed) return null;
+  const event = events.find(e => eventOccurrenceKey(e) === parsed.occurrenceKey);
+  const start = event?.start ?? occurrenceStartOf(parsed.occurrenceKey);
+  if (!start) return event?.title || null;
+  // Day only once the event is gone: an all-day event starts at midnight, and
+  // with no event left to say it was all-day, a time would read "12:00 AM".
+  if (!event) return `Event on ${formatDay(start)}`;
+  const when = event.allDay ? formatDay(start) : `${formatDay(start)} ${formatTime(start)}`;
+  return `${event.title || 'Event'} · ${when}`;
+}
+
+/**
  * What the app has already written a task for, or considered and answered.
  *
  * Keyed by `eventTaskSourceId`, valued by the event occurrence's own end
