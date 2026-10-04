@@ -45,8 +45,37 @@ function bindable(params: unknown[]): unknown[] {
   });
 }
 
+/**
+ * How many compiled statements a handle keeps. The SQL database.ts runs is
+ * built from a small set of shapes (one INSERT per table's column list, one
+ * keyed SELECT per table), so a few hundred holds every one a sync apply uses
+ * with room over.
+ */
+export const STATEMENT_CACHE_SIZE = 500;
+
 export function openShimDatabase(filePath: string): ShimDatabase {
   const raw = new BetterSqlite3(filePath);
+
+  // Prepared once per distinct SQL string and reused, never prepared per call.
+  // A better-sqlite3 statement holds native memory that V8 can't see (about
+  // 100 KB for an INSERT naming the tasks table's 150-odd columns), and it is
+  // only finalized when the JS object is collected, which a near-empty heap
+  // never gets round to. Preparing per call, a first sync of ~3,000 tasks
+  // held hundreds of MB of dead statements and wedged a 512 MB machine.
+  // Insertion-ordered Map as an LRU: a hit moves to the back, a miss past the
+  // cap drops the front.
+  const cache = new Map<string, BetterSqlite3.Statement>();
+  const prepare = (sql: string): BetterSqlite3.Statement => {
+    let stmt = cache.get(sql);
+    if (stmt) {
+      cache.delete(sql);
+    } else {
+      stmt = raw.prepare(sql);
+      if (cache.size >= STATEMENT_CACHE_SIZE) cache.delete(cache.keys().next().value!);
+    }
+    cache.set(sql, stmt);
+    return stmt;
+  };
 
   return {
     execSync(sql: string): void {
@@ -57,16 +86,16 @@ export function openShimDatabase(filePath: string): ShimDatabase {
     // the rowid differs. dbPurgeOldMealPlanEntries reads `changes` to say what
     // a purge took, so it has to survive the trip.
     runSync(sql: string, params: unknown[] = []) {
-      const result = raw.prepare(sql).run(...bindable(params));
+      const result = prepare(sql).run(...bindable(params));
       return { changes: result.changes, lastInsertRowId: Number(result.lastInsertRowid) };
     },
 
     getAllSync<T>(sql: string, params: unknown[] = []): T[] {
-      return raw.prepare(sql).all(...bindable(params)) as T[];
+      return prepare(sql).all(...bindable(params)) as T[];
     },
 
     getFirstSync<T>(sql: string, params: unknown[] = []): T | null {
-      return (raw.prepare(sql).get(...bindable(params)) as T | undefined) ?? null;
+      return (prepare(sql).get(...bindable(params)) as T | undefined) ?? null;
     },
 
     withTransactionSync(fn: () => void): void {
