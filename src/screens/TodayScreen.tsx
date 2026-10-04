@@ -190,7 +190,7 @@ import { PressableScale } from '../components/PressableScale';
 import { AddTaskFab, type AddTaskType } from '../components/AddTaskFab';
 import { type FabDragHandlers, FAB_SIZE } from '../components/Fab';
 import { useColors, useTheme } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, radius, interaction, iconSize, type Colors } from '../theme';
+import { spacing, font, fontWeight, radius, interaction, iconSize, textScale, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { openElsewhereResult } from '../navigation/openSearchResult';
 import type { ElsewhereResult } from '../utils/searchElsewhere';
@@ -635,6 +635,7 @@ function ViewModePills({
                     styles.viewModePillBadgeText,
                     mode !== 'inbox' && styles.viewModePillBadgeTextQuiet,
                   ]}
+                  maxFontSizeMultiplier={textScale.badge}
                 >
                   {badge}
                 </Text>
@@ -5120,7 +5121,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   viewModePillTextActive: { color: colors.onAccent, fontWeight: fontWeight.semibold },
   viewModePillBadge: {
     position: 'absolute', top: -4, right: -4,
-    minWidth: 16, height: 16, borderRadius: 8, paddingHorizontal: 3,
+    minWidth: 16, minHeight: 16, borderRadius: radius.full, paddingHorizontal: 3,
     backgroundColor: colors.red, alignItems: 'center', justifyContent: 'center',
   },
   viewModePillBadgeText: { color: colors.onAccent, fontSize: font.xxs, fontWeight: fontWeight.bold },

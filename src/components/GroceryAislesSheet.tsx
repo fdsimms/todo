@@ -991,7 +991,7 @@ function makeStyles(colors: Colors) {
       // A height rather than a lineHeight, so the row doesn't resize between
       // display and edit mode — RN maps lineHeight onto the iOS paragraph
       // style with no baseline compensation and the glyphs sit low.
-      height: 22,
+      minHeight: 22,
     },
     // SegmentedControl brings its own track — this only positions it.
     segments: {
@@ -1015,7 +1015,7 @@ function makeStyles(colors: Colors) {
       paddingHorizontal: spacing.md,
       fontSize: font.md,
       color: colors.text,
-      height: 44,
+      minHeight: 44,
     },
     // Both "Add" buttons sit directly on the sheet's root colors.bg, where
     // the default neutral tint (bgTertiary) is nearly indistinguishable

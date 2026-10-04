@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
+import { spacing, font, fontWeight, radius, interaction, textScale, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { listRemainingCount } from '../utils/groceryLists';
 import { useGroceryStore } from '../store/useGroceryStore';
@@ -134,7 +134,7 @@ export function HubPills({ hub, active }: Props) {
                   tab.route === 'MealPlan' && !isActive && { backgroundColor: freshnessColor(worstFreshness, colors) },
                 ]}
               >
-                <Text style={[styles.pillBadgeText, isActive && styles.pillBadgeTextActive]}>{badge}</Text>
+                <Text style={[styles.pillBadgeText, isActive && styles.pillBadgeTextActive]} maxFontSizeMultiplier={textScale.badge}>{badge}</Text>
               </View>
             )}
           </TouchableOpacity>
@@ -159,7 +159,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   pillTextActive: { color: colors.onAccent, fontWeight: fontWeight.semibold },
   pillBadge: {
     position: 'absolute', top: -4, right: -4,
-    minWidth: 16, height: 16, borderRadius: 8, paddingHorizontal: 3,
+    minWidth: 16, minHeight: 16, borderRadius: radius.full, paddingHorizontal: 3,
     // Accent, not red: the Groceries badge is a plain "N to buy" count, not
     // something urgent — the MealPlan pill overrides this per-row with
     // freshnessColor since that one *is* reporting something time-sensitive.

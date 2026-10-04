@@ -27,7 +27,8 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useScrollEdgeFade } from '../hooks/useScrollEdgeFade';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, animation, interaction, iconSize, border, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, animation, interaction, iconSize, border, type Colors, textScale } from '../theme';
+import { useTextScale } from '../hooks/useTextScale';
 import { haptics } from '../utils/haptics';
 import { useTitleSelection } from '../hooks/useTitleSelection';
 import { animateLayout } from '../utils/layoutAnimation';
@@ -365,7 +366,11 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   // space actually available and letting the rest scroll (below) keeps the
   // title in view no matter how tall the open panel is.
   const sheetMaxHeight = windowHeight - keyboardHeight - insets.top - insets.bottom - spacing.xl * 2;
-  const styles = useMemo(() => makeStyles(colors, sheetMaxHeight), [colors, sheetMaxHeight]);
+  const textScaleFactor = useTextScale();
+  const styles = useMemo(
+    () => makeStyles(colors, sheetMaxHeight, textScaleFactor),
+    [colors, sheetMaxHeight, textScaleFactor],
+  );
   const fade = useScrollEdgeFade();
 
   // `onDone` runs after `onClose`, once the sheet has actually faded out —
@@ -2606,7 +2611,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                   {chainItems.map((item, i) => (
                     <View key={item.id} style={styles.stepRow}>
                       <View style={styles.stepDot}>
-                        <Text style={styles.stepDotText}>{i + 1}</Text>
+                        <Text maxFontSizeMultiplier={textScale.badge} style={styles.stepDotText}>{i + 1}</Text>
                       </View>
                       <Text style={styles.stepTitle} numberOfLines={1}>{item.title}</Text>
                       <TouchableOpacity
@@ -2623,7 +2628,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
               )}
               <View style={styles.stepInputRow}>
                 <View style={styles.stepDot}>
-                  <Text style={styles.stepDotText}>{chainItems.length + 1}</Text>
+                  <Text maxFontSizeMultiplier={textScale.badge} style={styles.stepDotText}>{chainItems.length + 1}</Text>
                 </View>
                 <TextField
                   style={styles.stepInput}
@@ -3311,7 +3316,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   );
 });
 
-const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create({
+const makeStyles = (colors: Colors, sheetMaxHeight: number, textScaleFactor = 1) => StyleSheet.create({
   backdropDim: { backgroundColor: colors.backdrop },
   keyboardBacking: {
     position: 'absolute',
@@ -3475,7 +3480,7 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     paddingHorizontal: spacing.smd,
     // Matches presetChip's box so the custom field sits level with the pills.
     // Height rather than lineHeight — see the TextInput note in CLAUDE.md.
-    height: interaction.pillHeight,
+    minHeight: interaction.pillHeight,
     minWidth: 72,
     // Reserved so the active outline doesn't nudge the row.
     borderWidth: border.md,
@@ -3484,7 +3489,7 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
   // Room for roughly four steps before the list scrolls, so a long chain
   // can't push the sheet past the screen.
   stepList: {
-    maxHeight: 132,
+    maxHeight: Math.round(132 * textScaleFactor),
     marginBottom: spacing.xs,
   },
   stepRow: {
@@ -3744,7 +3749,7 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     paddingHorizontal: spacing.smd,
     // Matches inlineCustomInput / presetChip so it sits level with the stepper.
     // Height rather than lineHeight — see the TextInput note in CLAUDE.md.
-    height: interaction.pillHeight,
+    minHeight: interaction.pillHeight,
   },
   targetStepperCaption: {
     color: colors.textSecondary,

@@ -40,6 +40,11 @@ list needed no visibility code of its own. What the kind does change:
   The FAB leaves out Track replies (a task per person to chase is follow-up
   work, not a line on a list). The editor hides Deadline, Away and Nudges
   unless one is already set.
+- **The add field reads markers the way quick add does** (#2312), through
+  `src/utils/listLineParse.ts`: a `#category`/`#tag` and an `@person` apply on
+  their own, a pasted list included, and a date or `!priority` only from the
+  keyboard bar's Confirm. A line with none of them is added exactly as typed,
+  which is what keeps a list a list.
 - **Swipe right deletes.** The one destructive swipe in the app
   (`SwipeableRow`'s `deleteAction`, passed by `TaskItem`'s `swipeDeletes`), and
   only on a list item: a full swipe deletes, and the Undo bar takes it back.

@@ -15,7 +15,7 @@ import { SafeBlurView } from './SafeBlurView';
 import { EmojiPickerSheet } from './EmojiPickerSheet';
 import { SheetScrim } from './SheetScrim';
 import { useColors, useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, animation, interaction, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, animation, interaction, type Colors, textScale } from '../theme';
 import { haptics } from '../utils/haptics';
 import { TextField } from './TextField';
 
@@ -167,7 +167,7 @@ export function QuickAddNameSheet({
                 accessibilityHint="Opens the emoji picker"
               >
                 {emoji ? (
-                  <Text style={styles.emojiGlyph}>{emoji}</Text>
+                  <Text maxFontSizeMultiplier={textScale.badge} style={styles.emojiGlyph}>{emoji}</Text>
                 ) : (
                   <Ionicons name="happy-outline" size={18} color={colors.textTertiary} />
                 )}

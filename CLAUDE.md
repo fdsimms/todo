@@ -884,6 +884,11 @@ chevron aligned against a cap height, a border's width taken back out of a paddi
 number is the point. Radii are their own question: a `borderRadius` is usually geometry (half an
 element's size, for a circle) rather than a scale step.
 
+**Text grows with the system text size, so a box holding text never has a fixed `height`.** Use
+`minHeight`; a shape whose size is the point caps its text instead, and an alignment column or a row
+pinned for `getItemLayout` scales with `useTextScale()`. The cap and the reasoning are on `textScale`
+in `src/theme/index.ts`.
+
 **The font scale bottoms out at `xxs` (11), and nothing goes below it.** That is the caption size
 (a badge count, the weekday letter under a chart bar, the chips on a task row). **A container too
 small to hold 11pt is the container that's wrong** — grow the box with `minWidth` +

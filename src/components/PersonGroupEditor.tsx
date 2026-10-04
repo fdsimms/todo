@@ -274,7 +274,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: spacing.md,
     paddingHorizontal: spacing.md, paddingVertical: spacing.smd,
   },
-  newGroupInput: { flex: 1, color: colors.text, fontSize: font.md, height: 24 },
+  newGroupInput: { flex: 1, color: colors.text, fontSize: font.md, minHeight: 24 },
   createButton: {
     marginTop: spacing.md,
     paddingVertical: spacing.smd,

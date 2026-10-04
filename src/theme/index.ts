@@ -283,6 +283,35 @@ export const font = {
   xxl: 28,
 };
 
+/**
+ * How far text may grow with the system text size (Dynamic Type), as a
+ * multiple of the `font` size it was written at.
+ *
+ * React Native scales every `Text` and `TextInput` by the system setting unless
+ * told otherwise; `AppFont.tsx` applies `max` to all of them, so a call site
+ * never has to. 1.65 is iOS's first accessibility size: every standard size
+ * (up to 1.35) is honoured in full, and the accessibility sizes past it, which
+ * reach 3.1, stop there. Uncapped, at 2.35 a single task row fills a third of
+ * the screen and Today's pill row runs off the edge. Icons don't take part:
+ * the icon sets turn scaling off themselves.
+ *
+ * `badge` is for a count drawn in a small pill (a tab or header badge, the
+ * Later count). Those still grow, so a number doesn't read as tiny beside
+ * enlarged text, but less, since the badge sits on top of something else. A
+ * badge box that takes it uses `minHeight` rather than `height`, or the larger
+ * number is clipped. Text in a fixed shape with room to spare (a calendar day
+ * circle, a weekday letter, an emoji tile) takes it too.
+ *
+ * `fixed` is for text whose box is grid geometry with no room to grow at all:
+ * a calendar trip band, or a numbered dot in a column whose other dots are
+ * icons. It stays at the size it was drawn at.
+ */
+export const textScale = {
+  max: 1.65,
+  badge: 1.35,
+  fixed: 1,
+};
+
 export const fontWeight = {
   regular: '400' as const,
   medium: '500' as const,

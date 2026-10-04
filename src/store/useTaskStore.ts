@@ -5442,7 +5442,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       const task = get().addTask({
         title: day.title,
         // Every day shares the firing day's due date rather than taking its
-        // own — see mealPlanNudge.ts. Planning next week is work for today.
+        // own — see mealPlanNudge.ts. Planning the week is work for today.
         dueDate: due.dueDate.toISOString(),
         // The link opens the Meal Plan screen on this task's own day. It no
         // longer doubles as the marker saying who wrote the task — generatedKind

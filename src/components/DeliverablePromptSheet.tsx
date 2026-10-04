@@ -348,7 +348,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md,
     backgroundColor: colors.bgTertiary,
     borderRadius: radius.md,
-    height: 48,
+    minHeight: 48,
   },
   // No lineHeight on an input — RN maps it onto the iOS paragraph style with
   // no baseline compensation and the glyphs sit low in the box. See CLAUDE.md.
@@ -384,7 +384,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.md,
-    height: 48,
+    minHeight: 48,
     borderRadius: radius.md,
     backgroundColor: colors.bgTertiary,
   },

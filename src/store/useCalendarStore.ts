@@ -97,6 +97,15 @@ interface CalendarState {
    * genuinely current; `perCalendar` is where that partial failure shows up.
    */
   loaded: boolean;
+  /**
+   * The last whole read failed, as opposed to not having finished yet. Both
+   * leave `loaded` false, and Settings has to tell them apart (#1744):
+   * "Checking…" for ever is what a read that keeps failing used to look like.
+   * Cleared by the next read that gets through, and by turning the read off.
+   * When it's set, `events` and `perCalendar` are whatever an earlier read
+   * left, so nothing should present them as current.
+   */
+  readFailed: boolean;
   refresh: () => Promise<void>;
   /**
    * The past window, and it is a **separate window on purpose** rather than a
@@ -155,6 +164,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
   windowStart: null,
   windowEnd: null,
   loaded: false,
+  readFailed: false,
   pastEvents: [],
   pastLoaded: false,
   pastReadAt: null,
@@ -182,7 +192,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
       windowGuard.invalidate();
       set({
         events: [], perCalendar: {}, calendarsById: {},
-        windowStart: null, windowEnd: null, loaded: false,
+        windowStart: null, windowEnd: null, loaded: false, readFailed: false,
       });
       return;
     }
@@ -197,7 +207,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
       // A failed read leaves the previous window (and per-calendar status) in
       // place rather than blanking it: yesterday's answer is better than a
       // confident "nothing on", and `loaded` already says whether to trust it.
-      set({ loaded: false });
+      set({ loaded: false, readFailed: true });
       return;
     }
     set({
@@ -207,6 +217,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
       windowStart: start.toISOString(),
       windowEnd: end.toISOString(),
       loaded: true,
+      readFailed: false,
     });
   },
 
@@ -299,7 +310,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
     pastGuard.invalidate();
     aheadGuard.invalidate();
     set({
-      events: [], perCalendar: {}, calendarsById: {}, windowStart: null, windowEnd: null, loaded: false,
+      events: [], perCalendar: {}, calendarsById: {}, windowStart: null, windowEnd: null, loaded: false, readFailed: false,
       pastEvents: [], pastLoaded: false, pastReadAt: null,
       aheadEvents: [], aheadLoaded: false, aheadWindowEnd: null,
     });

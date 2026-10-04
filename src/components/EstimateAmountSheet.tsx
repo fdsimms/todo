@@ -325,13 +325,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.sm,
     paddingHorizontal: spacing.smd,
     // Height rather than lineHeight, see the TextInput note in CLAUDE.md.
-    height: 44,
+    minHeight: 44,
   },
   unitText: { color: colors.textSecondary, fontSize: font.md },
   shareRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xsm },
   share: {
     minWidth: 48,
-    height: 36,
+    minHeight: 36,
     paddingHorizontal: spacing.smd,
     borderRadius: radius.sm,
     backgroundColor: colors.bgTertiary,

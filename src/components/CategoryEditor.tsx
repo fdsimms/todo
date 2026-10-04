@@ -17,7 +17,7 @@ import { EmojiPickerSheet } from './EmojiPickerSheet';
 import { InlineAction } from './InlineAction';
 import { PressableScale } from './PressableScale';
 import { useColors, useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, border, interaction, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, border, interaction, type Colors, textScale } from '../theme';
 import { haptics } from '../utils/haptics';
 import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
@@ -288,7 +288,7 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
               accessibilityHint="Opens the emoji picker"
             >
               {emoji ? (
-                <Text style={styles.emojiDisplay}>{emoji}</Text>
+                <Text maxFontSizeMultiplier={textScale.badge} style={styles.emojiDisplay}>{emoji}</Text>
               ) : (
                 <Ionicons name="happy-outline" size={26} color={colors.textTertiary} />
               )}
@@ -334,7 +334,7 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
                         accessibilityState={{ checked: active }}
                         accessibilityLabel={FULL_DAY_NAMES[day]}
                       >
-                        <Text style={[styles.dayPillText, active && styles.dayPillTextActive]}>{label}</Text>
+                        <Text maxFontSizeMultiplier={textScale.badge} style={[styles.dayPillText, active && styles.dayPillTextActive]}>{label}</Text>
                       </TouchableOpacity>
                     );
                   })}

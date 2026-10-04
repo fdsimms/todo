@@ -39,7 +39,8 @@ import { mealPlanNudgeDayKey } from '../utils/mealPlanNudge';
 export function useMealPlanNudgeProgress(): void {
   const refresh = useMealPlanStore(s => s.refreshPlannedSlotCounts);
   // The window, purely as a change signal — the counts themselves come from the
-  // range read, since the window usually doesn't cover the week being nudged.
+  // range read, since the window is whichever week the meal plan screen last
+  // showed, which needn't be the one being nudged.
   const entries = useMealPlanStore(useShallow(s => s.entries));
   const tasks = useTaskStore(useShallow(s => s.tasks));
 

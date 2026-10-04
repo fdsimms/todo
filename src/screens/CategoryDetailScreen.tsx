@@ -30,7 +30,7 @@ import { DetailHeader } from '../components/DetailHeader';
 import { Fab } from '../components/Fab';
 import { QuickAddModal } from '../components/QuickAddModal';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, interaction, type Colors } from '../theme';
+import { spacing, interaction, type Colors, textScale } from '../theme';
 import { haptics } from '../utils/haptics';
 import { confirmBulkSetWhen } from '../utils/scheduleMovePrompt';
 import { animateLayout } from '../utils/layoutAnimation';
@@ -221,7 +221,7 @@ export function CategoryDetailScreen() {
           leading={
             <View style={[styles.catIconSm, { backgroundColor: colors.accentSubtle }]}>
               {catObj?.emoji ? (
-                <Text style={styles.catIconEmojiSm}>{catObj.emoji}</Text>
+                <Text maxFontSizeMultiplier={textScale.badge} style={styles.catIconEmojiSm}>{catObj.emoji}</Text>
               ) : (
                 <Ionicons name="folder" size={14} color={colors.accent} />
               )}

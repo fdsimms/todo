@@ -625,7 +625,9 @@ export function RecipesScreen() {
     if (recipe) {
       if (mealType !== null) setMealType(recipe.id, mealType);
       haptics.success();
-      navigation.navigate('RecipeDetail', { recipeId: recipe.id });
+      // Into the details sheet, since that's where everything but the
+      // ingredients and steps is set (#1754).
+      navigation.navigate('RecipeDetail', { recipeId: recipe.id, openDetails: Date.now() });
       return;
     }
     // The only way addRecipe refuses a non-empty name is one already filed
@@ -1337,7 +1339,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     // A box height rather than a lineHeight — RN maps lineHeight straight onto
     // the iOS paragraph style with no baseline compensation, which sits the
     // glyphs low in the field. See the note in CLAUDE.md.
-    height: 40,
+    minHeight: 40,
   },
   searchInput: {
     flex: 1,

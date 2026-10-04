@@ -2214,10 +2214,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgTertiary, borderRadius: radius.sm,
     paddingHorizontal: spacing.smd,
     // Height rather than lineHeight — see the TextInput note in CLAUDE.md.
-    height: 36,
+    minHeight: 36,
   },
   /** Sits between the medication's name and its unit row. */
   medicationAmountInput: { marginTop: spacing.sm, marginBottom: spacing.sm },
   choiceOptionsHint: { color: colors.textSecondary, fontSize: font.xs, marginHorizontal: spacing.md, marginTop: spacing.xs, marginBottom: spacing.sm },
-  deliverableOptionsInput: { marginHorizontal: spacing.md, marginVertical: spacing.sm, height: 40 },
+  deliverableOptionsInput: { marginHorizontal: spacing.md, marginVertical: spacing.sm, minHeight: 40 },
 });
