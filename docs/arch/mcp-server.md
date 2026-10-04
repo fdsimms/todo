@@ -772,6 +772,16 @@ opened the app. Three rules:
 A mood check-in cannot be edited down to nothing (delete it), and a dose recorded by completing a
 task does not reopen the task: `reopen_task` takes both back.
 
+### Changing the meal plan
+
+`update_meal` moves a planned meal (another day or slot), renames a free-text one, or sets a
+recipe's scale; `remove_meal` takes it off. A meal backed by a recipe or a leftover keeps its name,
+as in the app. Both write only the entry row, like `plan_meal`: the slot's cook task and the
+calendar event are device work that catches up on the phone. **Marking a meal cooked is not
+exposed**, because the app's `setCooked` also opens pantry items, raises the cook recap and ticks
+the cook task, none of which a Node process can do, and a half-done "cooked" is worse than none.
+A meal already marked cooked is not removable here, since it is history behind the cooking stats.
+
 ### The health logs have their own switch, and iCloud never gets them
 
 Decided, and built. `HEALTH_SYNC_TABLES` (`src/db/syncTracking.ts`) names the mood, medication and

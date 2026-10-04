@@ -789,6 +789,16 @@ export interface Replica {
    * are device work and catch up on the next launch there.
    */
   planMeal(draft: { date: string; slot: MealSlot; title?: string; recipeId?: string | null }): MealPlanEntry;
+  /**
+   * Move a planned meal to another day or slot, rename a free-text one, or set a
+   * recipe's scale. A recipe- or leftover-backed meal's title says what backs it
+   * and is not renamed, as in the app. Marking a meal cooked is not here: that
+   * also opens pantry items and ticks the cook task, which the phone does.
+   * The slot's task and calendar event catch up on the phone, as for `planMeal`.
+   */
+  updateMeal(id: string, patch: { date?: string; slot?: MealSlot; title?: string; scale?: number }): MealPlanEntry;
+  /** Remove a planned meal. A cooked meal is refused: it is history and feeds the cooking stats. */
+  removeMeal(id: string): MealPlanEntry;
 
   people(): Person[];
   personGroups(): PersonGroup[];
@@ -2388,6 +2398,45 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         },
       );
       db.dbInsertMealPlanEntry(entry);
+      return entry;
+    },
+
+    updateMeal(id: string, patch: { date?: string; slot?: MealSlot; title?: string; scale?: number }): MealPlanEntry {
+      const entry = db.dbGetMealPlanEntry(id);
+      if (!entry) throw new Error(`No planned meal with id ${id}.`);
+      let next: MealPlanEntry = { ...entry };
+
+      if (patch.title !== undefined) {
+        const gone = entry.recipeId ? !db.dbGetAllRecipes().some(r => r.id === entry.recipeId) : false;
+        if (entry.leftoverId || (entry.recipeId && !gone)) {
+          throw new Error('That meal\'s name comes from its recipe or leftover, so it is not renamed here. Move or remove it, or plan a new one.');
+        }
+        const cleaned = mealPlanUtils.cleanMealTitle(patch.title);
+        if (!cleaned) throw new Error('A meal needs a title.');
+        // A renamed meal whose recipe is gone is a different meal now, as in the app.
+        next = gone ? { ...next, title: cleaned, recipeId: null, recipeChoices: [], recipeScale: 1 } : { ...next, title: cleaned };
+      }
+
+      if (patch.scale !== undefined) {
+        if (!entry.recipeId) throw new Error('Only a meal with a recipe has a scale.');
+        if (!Number.isFinite(patch.scale) || patch.scale <= 0) throw new Error('scale must be above zero (0.5 halves a recipe, 2 doubles it).');
+        next = { ...next, recipeScale: patch.scale };
+      }
+
+      const date = patch.date ?? entry.date;
+      const slot = patch.slot ?? entry.slot;
+      if (date !== entry.date || slot !== entry.slot) {
+        next = { ...next, date, slot, sortOrder: mealPlanUtils.nextSortOrder(db.dbGetMealPlanEntries(date, date), date, slot) };
+      }
+      db.dbUpdateMealPlanEntry(next);
+      return next;
+    },
+
+    removeMeal(id: string): MealPlanEntry {
+      const entry = db.dbGetMealPlanEntry(id);
+      if (!entry) throw new Error(`No planned meal with id ${id}.`);
+      if (entry.cookedAt) throw new Error('That meal is marked cooked, so it is history and feeds the cooking stats. Remove it in the app if you are sure.');
+      db.dbDeleteMealPlanEntry(id);
       return entry;
     },
 

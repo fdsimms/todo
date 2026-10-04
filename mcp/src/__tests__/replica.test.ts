@@ -289,6 +289,34 @@ describe('the replica', () => {
     });
   });
 
+  describe('changing the meal plan', () => {
+    it('moves a meal to the end of another slot, and renames only a free-text one', () => {
+      const a = replica.planMeal({ date: '2026-09-20', slot: 'dinner', title: 'Takeout' });
+      replica.planMeal({ date: '2026-09-21', slot: 'lunch', title: 'Soup' });
+      const moved = replica.updateMeal(a.id, { date: '2026-09-21', slot: 'lunch', title: 'Pizza' });
+
+      expect(moved).toMatchObject({ date: '2026-09-21', slot: 'lunch', title: 'Pizza' });
+      expect(moved.sortOrder).toBeGreaterThan(replica.mealPlan('2026-09-21', '2026-09-21').find(e => e.title === 'Soup')!.sortOrder);
+
+      const recipe = replica.createRecipe({ name: 'Chili' });
+      const backed = replica.planMeal({ date: '2026-09-22', slot: 'dinner', recipeId: recipe.id });
+      expect(() => replica.updateMeal(backed.id, { title: 'Stew' })).toThrow(/recipe or leftover/);
+      expect(replica.updateMeal(backed.id, { scale: 2 }).recipeScale).toBe(2);
+      expect(() => replica.updateMeal(a.id, { scale: 2 })).toThrow(/recipe has a scale/);
+      expect(() => replica.updateMeal('nope', {})).toThrow(/No planned meal/);
+    });
+
+    it('removes a meal, but not one marked cooked', () => {
+      const a = replica.planMeal({ date: '2026-09-23', slot: 'dinner', title: 'Pasta' });
+      expect(replica.removeMeal(a.id).title).toBe('Pasta');
+      expect(replica.mealPlan('2026-09-23', '2026-09-23')).toEqual([]);
+
+      const b = replica.planMeal({ date: '2026-09-24', slot: 'dinner', title: 'Rice' });
+      mockRaw.runSync("UPDATE meal_plan_entries SET cooked_at = '2026-09-24T19:00:00.000Z' WHERE id = ?", [b.id]);
+      expect(() => replica.removeMeal(b.id)).toThrow(/marked cooked/);
+    });
+  });
+
   it('bounds a log range on the logical day rather than the calendar one', () => {
     // getLogicalToday honours dayResetTime, so a read at 1am under a 2am reset
     // asks about the day the user would name. Only the shape is asserted here;

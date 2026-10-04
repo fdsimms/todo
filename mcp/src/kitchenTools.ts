@@ -161,3 +161,21 @@ export function planMeal(
   const entry = replica.planMeal(input);
   return serializeMeal(entry, new Map(replica.recipes().map(r => [r.id, r.name])));
 }
+
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+export function updateMeal(
+  replica: Replica,
+  id: string,
+  patch: { date?: string; slot?: MealSlot; title?: string; scale?: number },
+): SerializedMeal {
+  if (patch.date !== undefined && !DATE.test(patch.date)) throw new Error('date must be YYYY-MM-DD.');
+  if (patch.slot !== undefined && !MEAL_SLOTS.includes(patch.slot)) throw new Error(`slot must be one of ${MEAL_SLOTS.join(', ')}.`);
+  const entry = replica.updateMeal(id, patch);
+  return serializeMeal(entry, new Map(replica.recipes().map(r => [r.id, r.name])));
+}
+
+export function removeMeal(replica: Replica, id: string): { removed: SerializedMeal } {
+  const entry = replica.removeMeal(id);
+  return { removed: serializeMeal(entry, new Map(replica.recipes().map(r => [r.id, r.name]))) };
+}

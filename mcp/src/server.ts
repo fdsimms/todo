@@ -78,7 +78,7 @@ import {
 import type { DeliverableKind, MealSlot, TimeOfDay } from '../../src/types';
 import { assignToStack, createStack, listStacks } from './stackTools';
 import { addProjectSteps, createProject, getProject, updateProject, type CreateProjectInput, type ProjectPlanStepInput } from './projectTools';
-import { DEFAULT_PLAN_DAYS, MAX_PLAN_DAYS, MEAL_SLOTS as KITCHEN_MEAL_SLOTS, getRecipe, listMealPlan, listRecipes, planMeal } from './kitchenTools';
+import { DEFAULT_PLAN_DAYS, MAX_PLAN_DAYS, MEAL_SLOTS as KITCHEN_MEAL_SLOTS, getRecipe, listMealPlan, listRecipes, planMeal, removeMeal, updateMeal } from './kitchenTools';
 import { DEFAULT_BIRTHDAY_DAYS, MAX_BIRTHDAY_DAYS, addPersonHistory, getPerson, listPeople, upcomingBirthdays } from './peopleTools';
 import { appLinks, appSiteAssociation, appUrlForOpenPath, openPage } from './appLinks';
 import { ANCHORS, CONTAINERS, QUESTION_KINDS, QUESTION_SOURCES, SCHEDULE_FREQUENCIES } from './templatePlan';
@@ -1519,6 +1519,39 @@ function registerWriteTools(
         return json(withLink(result, LINKS?.mealPlan(result.date)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not plan the meal.' });
+      }
+    }
+  );
+
+  server.tool(
+    'update_meal',
+    "Change a planned meal (ids from list_meal_plan): move it to another date or slot, rename a free-text one, or set a recipe's scale (0.5 halves it, 2 doubles it). A meal backed by a recipe or a leftover keeps that name. Marking a meal cooked is done in the app, since that also updates the pantry and the cook task. The phone catches up its cook task and calendar event for a moved meal the next time it opens.",
+    {
+      id: z.string().min(1),
+      date: dayKey.optional(),
+      slot: z.enum(KITCHEN_MEAL_SLOTS as unknown as [MealSlot, ...MealSlot[]]).optional(),
+      title: z.string().optional(),
+      scale: z.number().positive().optional(),
+    },
+    async ({ id, ...patch }) => {
+      try {
+        const result = await withWrite(() => updateMeal(replica, id, patch));
+        return json(withLink(result, LINKS?.mealPlan(result.date)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change the meal.' });
+      }
+    }
+  );
+
+  server.tool(
+    'remove_meal',
+    'Take a meal off the plan. Not undoable from here. A meal marked cooked is refused: it is history and feeds the cooking stats.',
+    { id: z.string().min(1) },
+    async ({ id }) => {
+      try {
+        return json(await withWrite(() => removeMeal(replica, id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not remove the meal.' });
       }
     }
   );

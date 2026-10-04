@@ -245,6 +245,22 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return entry;
     },
 
+    updateMeal(id, patch) {
+      const before = replica.mealPlan('0000-01-01', '9999-12-31').find(e => e.id === id);
+      const entry = replica.updateMeal(id, patch);
+      const where = before && (before.date !== entry.date || before.slot !== entry.slot)
+        ? `Move "${entry.title}" from ${before.slot} on ${before.date} to ${entry.slot} on ${entry.date}`
+        : `Change the planned meal "${entry.title}"`;
+      log({ action: 'moved', subject: 'meal', title: entry.title, taskId: null, note: where });
+      return entry;
+    },
+
+    removeMeal(id) {
+      const entry = replica.removeMeal(id);
+      log({ action: 'cleared', subject: 'meal', title: entry.title, taskId: null, note: `Remove "${entry.title}" from ${entry.date}'s ${entry.slot}` });
+      return entry;
+    },
+
     addGroceryItem(name, opts) {
       const outcome = replica.addGroceryItem(name, opts);
       if (!outcome.wasOnList) log({ action: 'created', subject: 'grocery', title: outcome.item.name, taskId: null });

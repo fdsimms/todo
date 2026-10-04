@@ -98,6 +98,8 @@ export const WRITE_TOOLS: Record<string, { title: string; destructive: boolean; 
   update_template: { title: 'Edit a template', destructive: true, idempotent: true },
   delete_template: { title: 'Delete a template', destructive: true, idempotent: true },
   reorder_templates: { title: 'Reorder templates', destructive: true, idempotent: true },
+  update_meal: { title: 'Change a planned meal', destructive: true, idempotent: true },
+  remove_meal: { title: 'Remove a planned meal', destructive: true, idempotent: true },
   plan_meal: { title: 'Plan a meal', destructive: false, idempotent: false },
   add_person_history: { title: 'Record time with someone', destructive: false, idempotent: false },
   add_grocery_item: { title: 'Add to the grocery list', destructive: false, idempotent: false },
