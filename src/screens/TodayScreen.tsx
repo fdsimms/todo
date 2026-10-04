@@ -4087,14 +4087,6 @@ export function TodayScreen() {
   const viewFilterCount = viewMode === 'today' ? activeFilterCount : (filterHasReminder ? 1 : 0);
 
   const headerActions: ScreenHeaderAction[] = [
-    // The same card the pull opens. A pull is invisible until somebody
-    // stumbles on it, and search reaches far past this screen now (settings,
-    // people, recipes, groceries), so it gets a button too.
-    {
-      icon: 'search' as const,
-      onPress: () => { haptics.tap(); setQuickSearchVisible(true); },
-      accessibilityLabel: 'Search everything',
-    },
     {
       icon: 'funnel' as const,
       onPress: () => setFilterVisible(true),
@@ -4157,7 +4149,7 @@ export function TodayScreen() {
             viewMode === 'today' && headerWeather ? (
               <View style={styles.headerWeather}>
                 <Ionicons name={headerWeather.icon} size={16} color={colors.textSecondary} />
-                <Text style={styles.headerWeatherText}>{headerWeather.label}</Text>
+                <Text style={styles.headerWeatherText} numberOfLines={1}>{headerWeather.label}</Text>
               </View>
             ) : undefined
           }
@@ -5086,7 +5078,7 @@ export function TodayScreen() {
 const makeStyles = (colors: Colors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   headerWeather: { flexDirection: 'row', alignItems: 'center', gap: spacing.xxs },
-  headerWeatherText: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.textSecondary },
+  headerWeatherText: { flexShrink: 1, fontSize: font.md, fontWeight: fontWeight.medium, color: colors.textSecondary },
   clearBtn: {
     paddingHorizontal: spacing.md, paddingVertical: 7,
     borderRadius: radius.full, backgroundColor: colors.bgSecondary,

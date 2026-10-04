@@ -1,0 +1,1 @@
+{ "message": "Fixed the Today title breaking onto two lines when the weather is showing. The weather now shortens instead, and the search button is gone from the Today header (pull down on the list to search).", "date": "2026-10-04" }
