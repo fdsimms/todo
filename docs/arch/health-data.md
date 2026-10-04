@@ -1091,6 +1091,12 @@ edit button.
   reaching it completes nothing.
 - **Still no "last night".** Every label names the day the sleep ended in, for
   the reason the Mood axis section gives.
+- **"With your days" is the Mood axis, not a second one.** It runs
+  `healthInsight` for sleep against finished tasks and mood, with the same
+  copy and the same `MIN_PAIRED_DAYS` floor, fed this screen's own nights
+  through `sleepReadings` so Health isn't read twice. It covers the whole read
+  window rather than the zoomed range, because a week can't hold enough paired
+  days.
 
 Bed and wake times needed nothing added to `readTypes`: they come from the same
 `sleepAnalysis` samples the total was already read from.

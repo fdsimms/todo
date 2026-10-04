@@ -11,6 +11,7 @@ import {
   parseSleepGoal,
   sleepNights,
   sleepPlot,
+  sleepReadings,
   sleepSummary,
   type SleepEpisode,
 } from '@/utils/sleepLog';
@@ -119,6 +120,16 @@ describe('sleepNights', () => {
       episode(at('2026-10-02', '23:00'), at('2026-10-03', '07:00')),
     ], '00:00');
     expect(nights.map(n => n.dayKey)).toEqual(['2026-10-03', '2026-10-05']);
+  });
+});
+
+describe('sleepReadings', () => {
+  it("hands the day's total to the mood comparison, and no steps", () => {
+    const nights = sleepNights([
+      episode(at('2026-10-03', '23:00'), at('2026-10-04', '06:00')),
+      episode(at('2026-10-04', '14:00'), at('2026-10-04', '15:00')),
+    ], '00:00');
+    expect(sleepReadings(nights)).toEqual([{ dayKey: '2026-10-04', steps: null, sleepHours: 8 }]);
   });
 });
 

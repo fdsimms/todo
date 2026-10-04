@@ -27,6 +27,7 @@ import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { addDays } from 'date-fns/addDays';
 import { format } from 'date-fns/format';
 import { formatHHMM, logicalDayStart } from './clockTime';
+import type { HealthDayInput } from './moodInsights';
 
 /** One unbroken stretch of sleep, as one app recorded it. */
 export interface SleepEpisode {
@@ -142,6 +143,17 @@ export function sleepNights(episodes: readonly SleepEpisode[], dayResetTime: str
     });
   }
   return nights.sort((a, b) => (a.dayKey < b.dayKey ? -1 : a.dayKey > b.dayKey ? 1 : 0));
+}
+
+/**
+ * Nights as the readings `buildMoodDays` takes, so the Sleep screen can line
+ * them up against mood and finished tasks without a second Health query. The
+ * hours are the day's total, which is the same figure `refreshHistory` would
+ * have read (see the file header), so the comparison says what the Mood
+ * screen's does. Steps stay null: this screen speaks about sleep only.
+ */
+export function sleepReadings(nights: readonly SleepNight[]): HealthDayInput[] {
+  return nights.map(n => ({ dayKey: n.dayKey, steps: null, sleepHours: n.minutes / 60 }));
 }
 
 /** The nights falling in the `days` logical days ending on `todayKey`. */

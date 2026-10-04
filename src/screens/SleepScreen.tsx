@@ -10,6 +10,10 @@ import { addDays } from 'date-fns/addDays';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useHealthStore, SLEEP_HISTORY_DAYS } from '../store/useHealthStore';
 import { useDemoStore } from '../store/useDemoStore';
+import { useMoodStore } from '../store/useMoodStore';
+import { useTaskStore } from '../store/useTaskStore';
+import { retentionCutoff } from '../utils/retention';
+import { MIN_PAIRED_DAYS, buildMoodDays, describeHealthInsight, healthInsight } from '../utils/moodInsights';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -20,6 +24,7 @@ import {
   formatClockMinutes,
   formatSleepDuration,
   nightsInWindow,
+  sleepReadings,
   sleepSummary,
   type SleepNight,
 } from '../utils/sleepLog';
@@ -71,6 +76,10 @@ export function SleepScreen() {
   const allNights = useHealthStore(s => s.sleepNights);
   const loadingSleep = useHealthStore(s => s.loadingSleep);
   const refreshSleep = useHealthStore(s => s.refreshSleep);
+  const moodLogs = useMoodStore(s => s.logs);
+  const tasks = useTaskStore(s => s.tasks);
+  const dayResetTime = useSettingsStore(s => s.dayResetTime);
+  const completedRetentionDays = useSettingsStore(s => s.completedRetentionDays);
 
   const [goalOpen, setGoalOpen] = useState(false);
   const [rangeDays, setRangeDays] = useState<SleepRangeDays>(DEFAULT_RANGE_DAYS);
@@ -94,6 +103,27 @@ export function SleepScreen() {
   const visible = useMemo(() => nightsInWindow(nights, rangeDays, todayKey), [nights, rangeDays, todayKey]);
   const summary = useMemo(() => sleepSummary(visible, goal), [visible, goal]);
   const latest: SleepNight | null = nights.length > 0 ? nights[nights.length - 1] : null;
+
+  // Sleep against what you got done and how you felt, over the whole read
+  // window rather than the zoomed range: the comparison needs MIN_PAIRED_DAYS
+  // days with both halves, which a week can't hold. The same pairing and copy
+  // the Mood screen's MOVEMENT AND SLEEP card uses (`healthInsight`), fed this
+  // screen's own nights so nothing reads Health twice. A pairing short of
+  // enough days drops out rather than rendering empty.
+  const completionsKnownFrom = useMemo(() => {
+    const cutoff = retentionCutoff(completedRetentionDays, new Date(), dayResetTime);
+    return cutoff === null ? null : dayKeyOf(cutoff);
+  }, [completedRetentionDays, dayResetTime]);
+  const findings = useMemo(() => {
+    if (nights.length === 0) return [];
+    const days = buildMoodDays(moodLogs, tasks, dayResetTime, sleepReadings(nights), completionsKnownFrom);
+    const rows: { key: string; text: string }[] = [];
+    for (const against of ['completed', 'mood'] as const) {
+      const text = describeHealthInsight(healthInsight(days, 'sleepHours', against));
+      if (text) rows.push({ key: against, text });
+    }
+    return rows;
+  }, [nights, moodLogs, tasks, dayResetTime, completionsKnownFrom]);
 
   const openGoal = () => { haptics.tap(); setGoalOpen(true); };
 
@@ -287,6 +317,21 @@ export function SleepScreen() {
             </View>
           </>
         )}
+
+        <Text style={styles.sectionTitle}>WITH YOUR DAYS</Text>
+        <View style={styles.card}>
+          {findings.length > 0 ? (
+            findings.map(f => <Text key={f.key} style={styles.finding}>{f.text}</Text>)
+          ) : (
+            <Text style={styles.finding}>
+              Shows up once {MIN_PAIRED_DAYS} days have both sleep recorded and a mood entry or a finished task.
+            </Text>
+          )}
+          <Text style={styles.chartCaption}>
+            Over the last {SLEEP_HISTORY_DAYS} days. Each day&apos;s sleep is the sleep that ended that day.
+            These are patterns between two numbers, not causes.
+          </Text>
+        </View>
 
         {/* Nothing here is kept, so there is nothing to edit or delete on this
             screen; correcting a night happens in Health, beside whatever
