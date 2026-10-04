@@ -97,8 +97,8 @@ export function ScreenHeader({ title, subtitle, overline, actions, right, onTitl
           </TouchableOpacity>
         ) : titleAdornment != null ? (
           <View style={styles.titleRow}>
-            <Text style={styles.title}>{title}</Text>
-            {titleAdornment}
+            <Text style={[styles.title, styles.titleHolds]}>{title}</Text>
+            <View style={styles.adornment}>{titleAdornment}</View>
           </View>
         ) : (
           <Text style={styles.title}>{title}</Text>
@@ -175,6 +175,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexShrink: 1,
   },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  // With an adornment beside it the title keeps its full width and the
+  // adornment is what gives way: the title is the thing the row exists to show,
+  // and five action buttons leave little room, so a shrinking title wrapped
+  // "Today" onto two lines ("Toda" / "y").
+  titleHolds: { flexShrink: 0 },
+  adornment: { flexShrink: 1, minWidth: 0 },
   // Optically centred against the cap height rather than the line box, which
   // the xxl line height makes noticeably taller than the glyphs.
   titleChevron: { marginTop: 3 },

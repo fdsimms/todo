@@ -4157,7 +4157,7 @@ export function TodayScreen() {
             viewMode === 'today' && headerWeather ? (
               <View style={styles.headerWeather}>
                 <Ionicons name={headerWeather.icon} size={16} color={colors.textSecondary} />
-                <Text style={styles.headerWeatherText}>{headerWeather.label}</Text>
+                <Text style={styles.headerWeatherText} numberOfLines={1}>{headerWeather.label}</Text>
               </View>
             ) : undefined
           }
@@ -5086,7 +5086,7 @@ export function TodayScreen() {
 const makeStyles = (colors: Colors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   headerWeather: { flexDirection: 'row', alignItems: 'center', gap: spacing.xxs },
-  headerWeatherText: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.textSecondary },
+  headerWeatherText: { flexShrink: 1, fontSize: font.md, fontWeight: fontWeight.medium, color: colors.textSecondary },
   clearBtn: {
     paddingHorizontal: spacing.md, paddingVertical: 7,
     borderRadius: radius.full, backgroundColor: colors.bgSecondary,
