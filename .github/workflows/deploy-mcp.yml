@@ -1,0 +1,64 @@
+name: Deploy MCP server
+
+# Deploys mcp/ to Fly.io (mcp/fly.toml) whenever something the server runs
+# changes on main. The image is built from the repo root and runs the app's own
+# src/ through the shim (mcp/Dockerfile), so a change to the db layer, a store or
+# a util changes the server too, not only a change under mcp/. Screens and
+# components are left out of the filter because the server never loads them.
+#
+# Gated on main only: a PR's own Tests run is what stands between a change and
+# here. Needs the FLY_API_TOKEN repository secret (a deploy token, see
+# mcp/DEPLOY.md); without it the job says so and stops green, so a fork or a
+# clone without the server set up doesn't go red on every merge.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mcp/**'
+      - 'src/db/**'
+      - 'src/utils/**'
+      - 'src/store/**'
+      - 'src/services/**'
+      - 'src/types/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.npmrc'
+      - '.dockerignore'
+      - '.github/workflows/deploy-mcp.yml'
+  # The "Run workflow" button, for redeploying by hand (a changed secret, a
+  # machine to restart onto a fresh image).
+  workflow_dispatch:
+
+concurrency:
+  # One deploy at a time, and never cancelled: two merges seconds apart queue
+  # rather than one killing the other halfway through a release.
+  group: deploy-mcp
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check for the deploy token
+        id: token
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          if [ -z "$FLY_API_TOKEN" ]; then
+            echo "::notice::FLY_API_TOKEN is not set, so nothing was deployed. See mcp/DEPLOY.md."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.token.outputs.present == 'true'
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+        if: steps.token.outputs.present == 'true'
+      # Built on Fly's own builders, so the runner needs no Docker and the job
+      # is mostly waiting.
+      - run: flyctl deploy . --config mcp/fly.toml --remote-only
+        if: steps.token.outputs.present == 'true'
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

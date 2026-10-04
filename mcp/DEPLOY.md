@@ -139,8 +139,20 @@ the repo. Decline it there: the `todo` server from step 6 already covers the lap
 ## Afterwards
 
 - **Logs:** `fly logs --config mcp/fly.toml`
-- **Updating the server:** pull `main` and run the deploy command in step 4 again. The data on the
-  volume survives a deploy.
+- **Updating the server:** it deploys itself (below). To do it by hand, pull `main` and run the
+  deploy command in step 4 again. The data on the volume survives a deploy either way.
+- **Deploying automatically:** `.github/workflows/deploy-mcp.yml` deploys whenever a merge to
+  `main` changes something the server runs (`mcp/`, or the app's `src/db`, `src/utils`,
+  `src/store`, `src/services` or `src/types`). It needs one repository secret. Make a deploy token
+  that can only deploy this app:
+
+  ```bash
+  fly tokens create deploy --config mcp/fly.toml
+  ```
+
+  Copy the whole output (it starts with `FlyV1`) into GitHub: the repo's **Settings → Secrets and
+  variables → Actions → New repository secret**, named `FLY_API_TOKEN`. To deploy without a
+  merge, open **Actions → Deploy MCP server → Run workflow**.
 - **Changing a token:** run `fly secrets set` with the new value (it restarts the machine), then
   update whichever device or Claude Code config uses it.
 - **Starting over:** `fly apps destroy dundundun-mcp` deletes the app, the volume and the copy
