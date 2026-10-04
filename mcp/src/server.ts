@@ -88,6 +88,7 @@ import { deleteRule, listAutomations, saveRule, setAutomation, RULE_TYPES } from
 import { NUTRIENT_KEY_LIST, logFood, logMedication, logMood, saveRecipe } from './logTools';
 import { DEFAULT_PATTERN_DAYS, habitPatterns, moodInsights } from './patternTools';
 import { MAX_BATCH, MAX_QUICK_ADD, batchUpdateTasks, planDay, quickAdd, rebalanceWeek, type BatchChange } from './agentTools';
+import { SERVER_ICONS } from './serverIcon';
 
 /** `YYYY-MM-DD`, the shape every day-keyed table stores and sorts on. */
 const dayKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected YYYY-MM-DD.');
@@ -213,7 +214,7 @@ function withLink<T extends object>(result: T, link: string | undefined): T | (T
 }
 
 export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): McpServer {
-  const server = new McpServer({ name: 'todo', version: '0.1.0' }, { instructions: SERVER_INSTRUCTIONS });
+  const server = new McpServer({ name: 'todo', version: '0.1.0', icons: SERVER_ICONS }, { instructions: SERVER_INSTRUCTIONS });
 
   // Every tool gets its title and read/write hints from one table
   // (toolAnnotations.ts) rather than an argument at each of thirty call sites.
