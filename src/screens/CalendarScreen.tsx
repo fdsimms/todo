@@ -14,6 +14,8 @@ import { MEAL_SLOT_LABELS, type MealPlanEntry, type Task } from '../types';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
+import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSettings';
 import { EmptyState } from '../components/EmptyState';
 import { TaskItem } from '../components/TaskItem';
 import { TaskEditor, type TaskDraft } from '../components/TaskEditor';
@@ -137,6 +139,8 @@ export function CalendarScreen() {
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
   const colors = useColors();
+  // This screen's own settings, from a gear in its header. See SCREEN_SETTINGS.
+  const screenSettings = useScreenSettings('Calendar', 'Calendar settings');
   const { shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -944,7 +948,7 @@ export function CalendarScreen() {
         subtitle={viewMode === 'week'
           ? (weekOutstanding > 0 ? `${weekOutstanding} outstanding${weekHasToday ? ' this week' : ''}` : undefined)
           : (monthOutstanding > 0 ? `${monthOutstanding} outstanding in ${format(displayMonth, 'MMMM')}` : undefined)}
-        actions={[
+        actions={withScreenSettings([
           {
             icon: 'repeat-outline',
             onPress: () => { haptics.tap(); setProjecting(p => !p); },
@@ -968,8 +972,9 @@ export function CalendarScreen() {
             },
             accessibilityLabel: `New event on ${format(dayKeyToDate(selectedKey), 'MMMM d')}`,
           }]),
-        ]}
+        ], screenSettings.action)}
       />
+      <ScreenSettingsSheet {...screenSettings.sheet} />
 
       {/* Same shape as Today's own lens pills. Deliberately not HubPills:
           these switch a sub-view rather than navigating. */}

@@ -21,6 +21,8 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeader';
 import { HubPills } from '../components/HubPills';
+import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
+import { useScreenSettings } from '../hooks/useScreenSettings';
 import { TipHost } from '../components/TipHost';
 import { EmptyState } from '../components/EmptyState';
 import { GroceryAddSheet } from '../components/GroceryAddSheet';
@@ -176,6 +178,8 @@ export function GroceryScreen() {
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
   const colors = useColors();
+  // The list's own settings, from an action at the foot of the list. See SCREEN_SETTINGS.
+  const screenSettings = useScreenSettings('Groceries', 'Grocery settings');
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
@@ -1718,6 +1722,19 @@ export function GroceryScreen() {
                 />
               </View>
             )}
+            {/* The list's own settings (`SCREEN_SETTINGS`), down here rather
+                than as a fifth header icon, for the reason the header comment
+                above gives for Clear. */}
+            {screenSettings.hasSettings && (
+              <View style={styles.clearWrap}>
+                <InlineAction
+                  label="Grocery settings"
+                  icon="settings-outline"
+                  variant="neutral"
+                  onPress={() => screenSettings.open(null)}
+                />
+              </View>
+            )}
             {listCount > 0 && (
               <View style={styles.clearWrap}>
                 <InlineAction
@@ -1802,6 +1819,7 @@ export function GroceryScreen() {
       />
       <GroceryCatalogSheet visible={catalogOpen} onClose={() => setCatalogOpen(false)} />
       <GroceryAislesSheet visible={aislesOpen} onClose={() => setAislesOpen(false)} />
+      <ScreenSettingsSheet {...screenSettings.sheet} />
       <GroceryListSheet visible={listSheetOpen} onClose={() => setListSheetOpen(false)} />
 
       <FinishShoppingSheet

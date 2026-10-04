@@ -34,6 +34,8 @@ import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useShallow } from 'zustand/react/shallow';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
+import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSettings';
 import { HubPills } from '../components/HubPills';
 import { SearchField } from '../components/SearchField';
 import { SegmentedControl, type SegmentOption } from '../components/SegmentedControl';
@@ -215,6 +217,8 @@ export function LogbookScreen() {
   );
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
   const colors = useColors();
+  // This screen's own settings, from a gear in its header. See SCREEN_SETTINGS.
+  const screenSettings = useScreenSettings('Logbook', 'Logbook settings');
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   // Read at the point of use rather than latched, like StatsScreen's cooking
@@ -517,15 +521,16 @@ export function LogbookScreen() {
         // so it belongs to that lens alone. There is no equivalent here and
         // there shouldn't be: the cooking rows are a read over the meal plan and
         // the fridge, and clearing them would mean deleting the plan.
-        actions={activeLens === 'tasks' && completedTasks.length > 0 ? [
+        actions={withScreenSettings(activeLens === 'tasks' && completedTasks.length > 0 ? [
           {
             icon: 'trash-outline',
             onPress: handleClearLogbook,
             disabled: selectionMode,
             accessibilityLabel: 'Clear logbook',
           },
-        ] : undefined}
+        ] : undefined, screenSettings.action)}
       />
+      <ScreenSettingsSheet {...screenSettings.sheet} />
       <HubPills hub="history" active="Logbook" />
 
       {kitchenEnabled && (

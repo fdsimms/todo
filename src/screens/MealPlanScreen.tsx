@@ -21,6 +21,8 @@ import { isSameWeek } from 'date-fns/isSameWeek';
 import { isBefore } from 'date-fns/isBefore';
 import { MEAL_SLOTS, type Leftover, type MealPlanEntry, type MealSlot, type Recipe } from '../types';
 import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeader';
+import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
+import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSettings';
 import { HubPills } from '../components/HubPills';
 import { TipHost } from '../components/TipHost';
 import { ActiveTripBanner } from '../components/ActiveTripBanner';
@@ -335,6 +337,8 @@ export function MealPlanScreen() {
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
   const colors = useColors();
+  // This screen's own settings, from a gear in its header. See SCREEN_SETTINGS.
+  const screenSettings = useScreenSettings('MealPlan', 'Meal plan settings');
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
@@ -2006,8 +2010,9 @@ export function MealPlanScreen() {
       <ScreenHeader
         title="Meal plan"
         subtitle={subtitle}
-        actions={headerActions}
+        actions={withScreenSettings(headerActions, screenSettings.action)}
       />
+  const headerActions = useMemo<ScreenSettingsSheet {...screenSettings.sheet} />
       <HubPills hub="kitchen" active="MealPlan" />
       <TipHost screen="mealPlan" />
       {!selectionMode && !!activeTripShop && (

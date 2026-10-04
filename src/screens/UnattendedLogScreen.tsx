@@ -7,6 +7,8 @@ import { useShallow } from 'zustand/react/shallow';
 import { useUnattendedStore } from '../store/useUnattendedStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
+import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSettings';
 import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
 import { PillGroup, type PillGroupOption } from '../components/PillGroup';
@@ -47,6 +49,8 @@ import type { GeneratedKind, UnattendedEntry } from '../types';
  */
 export function UnattendedLogScreen() {
   const tabBarHeight = useBottomTabBarHeight();
+  // This screen's own settings, from a gear in its header. See SCREEN_SETTINGS.
+  const screenSettings = useScreenSettings('UnattendedLog', 'Activity settings');
   const entries = useUnattendedStore(useShallow(s => s.entries));
   const clearAll = useUnattendedStore(s => s.clearAll);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
@@ -100,10 +104,11 @@ export function UnattendedLogScreen() {
       <ScreenHeader
         title="Activity"
         subtitle={entries.length === 0 ? undefined : unattendedSummary(filtered)}
-        actions={entries.length > 0 ? [
+        actions={withScreenSettings(entries.length > 0 ? [
           { icon: 'trash-outline', onPress: handleClear, accessibilityLabel: 'Clear activity' },
-        ] : undefined}
+        ] : undefined, screenSettings.action)}
       />
+      <ScreenSettingsSheet {...screenSettings.sheet} />
       <HubPills hub="history" active="UnattendedLog" />
 
       {kinds.length > 1 && (

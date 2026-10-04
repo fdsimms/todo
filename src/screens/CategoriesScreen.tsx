@@ -13,6 +13,8 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
+import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSettings';
 import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
 import { ReorderableList } from '../components/ReorderableList';
@@ -36,6 +38,8 @@ export function CategoriesScreen() {
   const reorderCategories = useCategoryStore(s => s.reorderCategories);
   const setCategoryEmoji = useCategoryStore(s => s.setCategoryEmoji);
   const colors = useColors();
+  // This screen's own settings, from a gear in its header. See SCREEN_SETTINGS.
+  const screenSettings = useScreenSettings('Categories', 'Category settings');
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const [editingCategory, setEditingCategory] = useState<string | null>(null);
@@ -56,7 +60,9 @@ export function CategoriesScreen() {
         subtitle={allCategories.length > 0
           ? `${allCategories.length} ${allCategories.length === 1 ? 'category' : 'categories'}`
           : undefined}
+        actions={withScreenSettings(undefined, screenSettings.action)}
       />
+      <ScreenSettingsSheet {...screenSettings.sheet} />
       <HubPills hub="organize" active="Categories" />
 
       {allCategories.length === 0 ? (

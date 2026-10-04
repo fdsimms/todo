@@ -51,6 +51,8 @@ import { useRowSelection } from '../hooks/useRowSelection';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, flattenOverlay, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
+import { useScreenSettings } from '../hooks/useScreenSettings';
 import { animateLayout } from '../utils/layoutAnimation';
 import {
   projectCardCaption,
@@ -92,6 +94,8 @@ export function ProjectsScreen() {
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
   const colors = useColors();
+  // The page's own settings, from the last row of its "…" menu. See SCREEN_SETTINGS.
+  const screenSettings = useScreenSettings('Projects', 'Project settings');
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const navigation = useNavigation();
@@ -712,7 +716,10 @@ export function ProjectsScreen() {
         sort={projectSort}
         onSortChange={setProjectSort}
         anchor={optionsMenuAnchor}
+        onOpenSettings={screenSettings.hasSettings ? () => screenSettings.open(optionsMenuAnchor) : undefined}
+        settingsHint={screenSettings.sheet.entries.map(e => e.label).join(', ')}
       />
+      <ScreenSettingsSheet {...screenSettings.sheet} />
 
       <ProjectCategoriesSheet
         visible={categoriesSheetVisible}

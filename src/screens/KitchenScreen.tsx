@@ -48,6 +48,8 @@ import {
 import { describeUseUpRecipe, useUpRecipes } from '../utils/useUpRecipes';
 import { groceryNameKey } from '../utils/groceryParse';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
+import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSettings';
 import { ReorderableList } from '../components/ReorderableList';
 import { HubPills } from '../components/HubPills';
 import { TipHost } from '../components/TipHost';
@@ -150,6 +152,8 @@ export function KitchenScreen() {
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
   const colors = useColors();
+  // This screen's own settings, from a gear in its header. See SCREEN_SETTINGS.
+  const screenSettings = useScreenSettings('Kitchen', 'Pantry settings');
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
@@ -782,7 +786,7 @@ export function KitchenScreen() {
       <ScreenHeader
         title="Pantry"
         subtitle={entries.length > 0 ? describeKitchen(entries) : undefined}
-        actions={[
+        actions={withScreenSettings([
           // Gated on a key for the reason the shopping list's own receipt
           // button is: the reading is the whole feature, and without one this
           // opens a sheet that can only apologise — which now means neither an
@@ -825,8 +829,9 @@ export function KitchenScreen() {
                 accessibilityLabel: 'What happened to past leftovers',
               }]
             : []),
-        ]}
+        ], screenSettings.action)}
       />
+      <ScreenSettingsSheet {...screenSettings.sheet} />
       <HubPills hub="kitchen" active="Kitchen" />
       {/* The recipe finder, opened on "What I have": the pantry is the other
           half of that question, so this is where it's asked from. The same

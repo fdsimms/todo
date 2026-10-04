@@ -14,6 +14,8 @@ import { useCategoryStore } from '../store/useCategoryStore';
 import { TaskEditor } from '../components/TaskEditor';
 import { TaskBreakdownSheet } from '../components/TaskBreakdownSheet';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
+import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSettings';
 import { EmptyState } from '../components/EmptyState';
 import { TaskGroupTray } from '../components/TaskGroupTray';
 import { DeliverablePromptSheet } from '../components/DeliverablePromptSheet';
@@ -120,6 +122,8 @@ function labelForCategory(
 export function StuckScreen() {
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
+  // This screen's own settings, from a gear in its header. See SCREEN_SETTINGS.
+  const screenSettings = useScreenSettings('Stuck', 'Stuck settings');
 
   const waitingTasks = useTaskStore(useShallow(s => s.waitingTasks()));
   // Selected as the raw, stable Task[] rather than s.driftingTasks()'s
@@ -520,7 +524,8 @@ export function StuckScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      <ScreenHeader title="Stuck" subtitle={subtitle} />
+      <ScreenHeader title="Stuck" subtitle={subtitle} actions={withScreenSettings(undefined, screenSettings.action)} />
+      <ScreenSettingsSheet {...screenSettings.sheet} />
 
       <FlatList
         data={rows}

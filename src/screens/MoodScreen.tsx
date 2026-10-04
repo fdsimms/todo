@@ -53,6 +53,8 @@ import {
   MIN_PAIRED_DAYS,
 } from '../utils/moodInsights';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
+import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSettings';
 import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
 import { InlineAction } from '../components/InlineAction';
@@ -85,6 +87,8 @@ const BAR_HEIGHT = 90;
 export function MoodScreen() {
   const navigation = useNavigation<{ navigate: (screen: string, params?: object) => void }>();
   const colors = useColors();
+  // This screen's own settings, from a gear in its header. See SCREEN_SETTINGS.
+  const screenSettings = useScreenSettings('Mood', 'Mood settings');
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
@@ -434,7 +438,7 @@ export function MoodScreen() {
         subtitle={summary.loggedDays > 0
           ? `${summary.loggedDays} ${summary.loggedDays === 1 ? 'day' : 'days'} logged`
           : undefined}
-        actions={[
+        actions={withScreenSettings([
           ...(logs.length > 0 ? [{
             icon: 'share-outline' as const,
             onPress: () => { haptics.tap(); setExportOpen(true); },
@@ -445,8 +449,9 @@ export function MoodScreen() {
             onPress: openNew,
             accessibilityLabel: 'Log how you\'re feeling',
           },
-        ]}
+        ], screenSettings.action)}
       />
+      <ScreenSettingsSheet {...screenSettings.sheet} />
       <HubPills hub="health" active="Mood" />
 
       {logs.length === 0 ? (
