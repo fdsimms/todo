@@ -1,13 +1,13 @@
-# Only mcp/Dockerfile builds from here, and it needs package*.json, src/ and mcp/.
-node_modules
+# An allowlist: only mcp/Dockerfile builds from here, and it needs exactly
+# package*.json, .npmrc, src/ and mcp/. Anything else in a working copy (an
+# EAS build's .ipa, a local replica) stays out without having to be named.
+*
+!package.json
+!package-lock.json
+!.npmrc
+!src
+!mcp
 **/node_modules
-.git
-ios
-android
-assets
-targets
-modules
-docs
 # A replica is a complete copy of someone's data.
 **/*.db
 **/*.db-wal
