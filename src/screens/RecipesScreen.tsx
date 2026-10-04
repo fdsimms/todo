@@ -1339,7 +1339,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     // A box height rather than a lineHeight — RN maps lineHeight straight onto
     // the iOS paragraph style with no baseline compensation, which sits the
     // glyphs low in the field. See the note in CLAUDE.md.
-    height: 40,
+    minHeight: 40,
   },
   searchInput: {
     flex: 1,

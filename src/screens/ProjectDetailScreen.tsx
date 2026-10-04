@@ -2671,7 +2671,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingRight: spacing.md,
   },
   // Height rather than lineHeight, per the TextInput note in CLAUDE.md.
-  newLineInput: { color: colors.text, fontSize: font.md, height: 44 },
+  newLineInput: { color: colors.text, fontSize: font.md, minHeight: 44 },
   // What Confirm set on the line being typed, under it until the line is added.
   newLinePending: {
     flexDirection: 'row',

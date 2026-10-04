@@ -327,7 +327,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     // A height rather than a lineHeight: RN maps lineHeight straight onto the
     // iOS paragraph style with no baseline compensation, so the glyphs sit low
     // in the box while the caret stays centred.
-    height: 44,
+    minHeight: 44,
   },
   card: { backgroundColor: colors.bgSecondary, borderRadius: radius.md, overflow: 'hidden' },
   row: {

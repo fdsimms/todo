@@ -18,6 +18,7 @@ import {
   border,
   iconSize,
   interaction,
+  textScale,
   type Colors,
 } from '../theme';
 import { InlineAction } from './InlineAction';
@@ -275,7 +276,7 @@ export function RecipeSourcePicker({
                   />
                   {photos.length > 1 && (
                     <View style={styles.thumbOrder} pointerEvents="none">
-                      <Text style={styles.thumbOrderText}>{i + 1}</Text>
+                      <Text maxFontSizeMultiplier={textScale.badge} style={styles.thumbOrderText}>{i + 1}</Text>
                     </View>
                   )}
                   <TouchableOpacity
@@ -409,7 +410,7 @@ function makeStyles(colors: Colors) {
       paddingHorizontal: spacing.md,
       // Height rather than lineHeight — see the note in CLAUDE.md on what
       // lineHeight does to a TextInput's glyph baseline on iOS.
-      height: 44,
+      minHeight: 44,
       fontSize: font.md,
       color: colors.text,
     },
@@ -489,9 +490,9 @@ function makeStyles(colors: Colors) {
       left: spacing.xs,
       bottom: spacing.xs,
       minWidth: 16,
-      height: 16,
+      minHeight: 16,
       paddingHorizontal: 4,
-      borderRadius: 8,
+      borderRadius: radius.full,
       backgroundColor: colors.backdrop,
       alignItems: 'center',
       justifyContent: 'center',

@@ -83,5 +83,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   // Height rather than lineHeight, per the TextInput note in CLAUDE.md.
-  input: { flex: 1, fontSize: font.md, height: 44 },
+  input: { flex: 1, fontSize: font.md, minHeight: 44 },
 });

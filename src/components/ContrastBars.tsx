@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, interaction, type Colors } from '../theme';
+import { useTextScale } from '../hooks/useTextScale';
 import { contrastBarPercent } from '../utils/moodInsights';
 
 /**
@@ -78,7 +79,8 @@ export function ContrastBars({
   onPress,
 }: ContrastBarsProps) {
   const colors = useColors();
-  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const textScaleFactor = useTextScale();
+  const styles = useMemo(() => makeStyles(colors, textScaleFactor), [colors, textScaleFactor]);
 
   const sides = [
     { key: withLabel, fraction: withFraction, text: withText, muted: false },
@@ -130,7 +132,7 @@ export function ContrastBars({
   );
 }
 
-const makeStyles = (colors: Colors) => StyleSheet.create({
+const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
   // 3px between the two lines, which belong together, against `spacing.md`
   // between one comparison and the next. Without that difference a card reads
   // as one block of eight bars rather than as four things being compared, and
@@ -143,15 +145,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // Fixed widths on both ends so every track starts and finishes on the same x.
   // That alignment is what lets one row's bars be compared against another's,
   // which is most of why this is a component rather than a per-card layout.
-  key: { width: 56, fontSize: font.xs, color: colors.textSecondary },
+  key: { width: Math.round(56 * textScaleFactor), fontSize: font.xs, color: colors.textSecondary },
   value: {
-    width: 34,
+    width: Math.round(34 * textScaleFactor),
     textAlign: 'right',
     fontSize: font.xs,
     color: colors.textSecondary,
     fontVariant: ['tabular-nums'],
   },
-  valueWide: { width: 88 },
+  valueWide: { width: Math.round(88 * textScaleFactor) },
   muted: { color: colors.textTertiary },
   track: {
     flex: 1,

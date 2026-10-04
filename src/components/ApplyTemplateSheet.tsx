@@ -16,6 +16,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, animation, interaction, type Colors } from '../theme';
+import { useTextScale } from '../hooks/useTextScale';
 import { haptics } from '../utils/haptics';
 import { useShallow } from 'zustand/react/shallow';
 import { useTemplateStore } from '../store/useTemplateStore';
@@ -129,7 +130,8 @@ function runNameHint(container: TemplateContainer, upgraded: boolean, hasPlaceho
 export function ApplyTemplateSheet({ visible, template, onClose, projectId, onApplied, initialAnchors, initialRunName, extraPersonIds }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
-  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const textScaleFactor = useTextScale();
+  const styles = useMemo(() => makeStyles(colors, textScaleFactor), [colors, textScaleFactor]);
   const templates = useTemplateStore(useShallow(s => s.templates));
   const applyTemplate = useTemplateStore(s => s.applyTemplate);
 
@@ -744,7 +746,7 @@ function AnchorRow({
 /** Room kept above the card while the keyboard has lifted it, same as `RecipePickerSheet`'s. */
 const KEYBOARD_TOP_INSET = 72;
 
-const makeStyles = (colors: Colors) => StyleSheet.create({
+const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
   backdropDim: {
     backgroundColor: colors.backdrop,
   },
@@ -793,7 +795,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   runInput: {
     color: colors.text,
     fontSize: font.md,
-    height: 42,
+    minHeight: 42,
     paddingHorizontal: 11,
     borderRadius: radius.sm,
     borderWidth: border.sm,
@@ -847,7 +849,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontWeight: fontWeight.semibold,
   },
   blankLabel: {
-    width: 76,
+    width: Math.round(76 * textScaleFactor),
     color: colors.textSecondary,
     fontSize: font.sm,
   },
@@ -855,7 +857,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flex: 1,
     color: colors.text,
     fontSize: font.md,
-    height: 38,
+    minHeight: 38,
     paddingHorizontal: 11,
     borderRadius: radius.sm,
     backgroundColor: colors.bgTertiary,

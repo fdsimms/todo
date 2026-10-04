@@ -172,7 +172,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.xl,
     color: colors.text,
     // Never lineHeight on a TextInput — see the note in CLAUDE.md.
-    height: 48,
+    minHeight: 48,
   },
   actions: {
     flexDirection: 'row',

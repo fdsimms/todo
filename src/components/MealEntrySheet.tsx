@@ -789,7 +789,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontWeight: fontWeight.semibold,
     paddingHorizontal: spacing.md,
     paddingTop: spacing.md,
-    height: 28,
+    minHeight: 28,
   },
   label: {
     color: colors.textSecondary,

@@ -830,7 +830,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.md,
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
-    height: 36,
+    minHeight: 36,
   },
   caption: {
     color: colors.textSecondary,

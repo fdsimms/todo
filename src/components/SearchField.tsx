@@ -102,7 +102,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.md,
     // No lineHeight — see the note on TaskItem.titleInput. It was equal to
     // `height` here, which pinned the glyphs to the very bottom of the box.
-    height: 20,
+    minHeight: 20,
     padding: 0,
     textAlignVertical: 'center',
   },

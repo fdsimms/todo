@@ -49,7 +49,8 @@ import type { Task, Priority, Effort, FollowUpTaskDraft, RecurrenceType, ChainIt
 import { PRIORITY_LABELS, EFFORT_LABELS, TITLE_MAX_LENGTH, NUTRIENT_KEYS, MEAL_SLOTS, MEAL_SLOT_LABELS } from '../types';
 import { NUTRIENT_LABEL, mlToFlOz, flOzToMl } from '../utils/foodNutrition';
 import { useColors, useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, border, interaction, animation, checkboxRadius, iconSize, type Colors } from '../theme';
+import { spacing, radius, font, border, interaction, animation, checkboxRadius, iconSize, type Colors, textScale } from '../theme';
+import { useTextScale } from '../hooks/useTextScale';
 import { haptics } from '../utils/haptics';
 import { BOUNTY_WITHDRAWN, bountyCoinsFor, canPostBounty, describeBounty, formatCoins, isBountyLive, liveBountyCount } from '../utils/rewards';
 import { DOSE_UNITS, medicationVocabulary, medicationKey } from '../utils/medicationLog';
@@ -396,7 +397,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const people = usePersonStore(useShallow(s => s.people.filter(p => !p.archived)));
   const colors = useColors();
   const { isDark } = useTheme();
-  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const textScaleFactor = useTextScale();
+  const styles = useMemo(() => makeStyles(colors, textScaleFactor), [colors, textScaleFactor]);
 
   // True while a subtask/chain row is mid-drag. The sheet's ScrollView has to
   // stand down for the drag to survive the first finger move — a JS responder
@@ -3724,7 +3726,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                               accessibilityLabel={`Set current step to ${item.title}`}
                             >
                               <View style={[styles.chainItemDot, isCurrentStep && styles.chainItemDotActive]}>
-                                <Text style={[styles.chainItemDotText, isCurrentStep && styles.chainItemDotTextActive]}>
+                                <Text maxFontSizeMultiplier={textScale.badge} style={[styles.chainItemDotText, isCurrentStep && styles.chainItemDotTextActive]}>
                                   {displayIndex + 1}
                                 </Text>
                               </View>
@@ -3810,7 +3812,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                     {addingChainItem ? (
                       <View style={styles.chainInputRow}>
                         <View style={styles.chainItemDot}>
-                          <Text style={styles.chainItemDotText}>{chainItems.length + 1}</Text>
+                          <Text maxFontSizeMultiplier={textScale.badge} style={styles.chainItemDotText}>{chainItems.length + 1}</Text>
                         </View>
                         <TextField
                           ref={chainInputRef}
@@ -6520,7 +6522,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
 }
 
 
-const makeStyles = (colors: Colors) => StyleSheet.create({
+const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
@@ -6712,8 +6714,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   pillCustomInner: { flexDirection: 'row', alignItems: 'center', gap: spacing.xxs },
   pillCustomText: { color: colors.accentText, fontSize: font.sm, fontWeight: '600' },
   // A track next to the number it labels, so it takes a width rather than
-  // stretching across the row the way one owning a line does.
-  unitToggle: { width: 104 },
+  // stretching across the row the way one owning a line does. Grown with the
+  // text it holds, or its two labels truncate at larger text sizes.
+  unitToggle: { width: Math.round(104 * textScaleFactor) },
   timePillRow: {
     flexDirection: 'row', gap: spacing.xs,
     paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.sm,
@@ -6800,7 +6803,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgTertiary, borderRadius: radius.sm,
     paddingHorizontal: spacing.smd,
     // Height rather than lineHeight — see the TextInput note in CLAUDE.md.
-    height: 36,
+    minHeight: 36,
   },
   /** Daily target's unit: one word, so it takes the rest of the stepper's line. */
   targetUnitInput: { flex: 1 },
@@ -6837,7 +6840,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   /** Follow-up task's title: a line of its own, and a touch taller for typing into. */
   followUpTaskTitleInput: {
-    marginHorizontal: spacing.md, marginTop: spacing.sm, height: 40,
+    marginHorizontal: spacing.md, marginTop: spacing.sm, minHeight: 40,
   },
   linkPickerRow: {
     flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs,
@@ -6921,7 +6924,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: 4,
   },
   splitIndex: {
-    width: 14,
+    width: Math.round(14 * textScaleFactor),
     color: colors.textTertiary, fontSize: font.xs,
     fontVariant: ['tabular-nums'],
   },

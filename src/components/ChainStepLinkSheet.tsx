@@ -213,7 +213,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgTertiary,
     borderRadius: radius.sm,
     paddingHorizontal: spacing.smd,
-    height: 36,
+    minHeight: 36,
   },
   customInput: { flex: 1, color: colors.text, fontSize: font.md },
 });

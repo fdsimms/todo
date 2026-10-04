@@ -2164,7 +2164,7 @@ function makeStyles(colors: Colors) {
       color: colors.text,
       // No lineHeight on a TextInput — RN maps it onto the iOS paragraph style
       // with no baseline compensation, so the glyphs sit low in the box.
-      height: 44,
+      minHeight: 44,
     },
     inputError: { borderColor: colors.red },
     // The same box as `input`, with the currency symbol living inside it so the
@@ -2176,7 +2176,7 @@ function makeStyles(colors: Colors) {
       backgroundColor: colors.bgSecondary,
       borderRadius: radius.md,
       paddingHorizontal: spacing.md,
-      height: 44,
+      minHeight: 44,
     },
     priceTargets: { marginBottom: spacing.sm },
     // Margin on both sides it needs, not just the one that happened to matter:
@@ -2204,7 +2204,7 @@ function makeStyles(colors: Colors) {
       fontSize: font.md,
       color: colors.text,
       // Same rule as `input` above — never lineHeight on a TextInput.
-      height: 40,
+      minHeight: 40,
     },
     priceSymbol: { color: colors.textSecondary, fontSize: font.md },
     // No lineHeight, same as `input` — see the note there.

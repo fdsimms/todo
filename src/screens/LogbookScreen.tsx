@@ -52,6 +52,7 @@ import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { useTaskSelection } from '../hooks/useTaskSelection';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { useSheetSubject } from '../hooks/useSheetSubject';
+import { useTextScale } from '../hooks/useTextScale';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, lineHeight, radius, iconSize, border, checkboxRadius, animation, interaction, flattenOverlay, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -177,8 +178,22 @@ const SEARCH_DEBOUNCE_MS = 180;
 // has several row heights and the average is never right. Every Text in a cell
 // therefore carries an explicit `lineHeight`, and the title is one line — a
 // wrapping title would put the height back out of reach of `getItemLayout`.
-const ROW_HEIGHT = spacing.sm * 2 + lineHeight.md + 2 + lineHeight.xs; // 56
-const DAY_HEADER_HEIGHT = spacing.lg + lineHeight.xs + spacing.xs; // 44
+//
+// Pinned, but not constant: those line heights grow with the system text size
+// (React Native scales a Text's `lineHeight` along with its font, up to the cap
+// in `textScale`), and the padding around them doesn't. So the two heights are
+// worked out from the scale (`useTextScale`), once, and the same numbers go to
+// both the styles and `getItemLayout`, which is what keeps them exact. At the
+// default text size they come out at 56 and 44, as they always were.
+function logbookMetrics(scale: number) {
+  const metaLine = Math.ceil(lineHeight.xs * scale);
+  const titleLine = Math.ceil(lineHeight.md * scale);
+  return {
+    metaLine,
+    rowHeight: spacing.sm * 2 + titleLine + 2 + metaLine,
+    dayHeaderHeight: spacing.lg + metaLine + spacing.xs,
+  };
+}
 
 /**
  * Takes the day *key* rather than the instant it came from, so both lenses can
@@ -219,7 +234,9 @@ export function LogbookScreen() {
   const colors = useColors();
   // This screen's own settings, from a gear in its header. See SCREEN_SETTINGS.
   const screenSettings = useScreenSettings('Logbook', 'Logbook settings');
-  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const textScaleFactor = useTextScale();
+  const metrics = useMemo(() => logbookMetrics(textScaleFactor), [textScaleFactor]);
+  const styles = useMemo(() => makeStyles(colors, metrics), [colors, metrics]);
 
   // Read at the point of use rather than latched, like StatsScreen's cooking
   // section: putting the kitchen away takes this lens with it, and turning it
@@ -472,17 +489,17 @@ export function LogbookScreen() {
   );
 
   // One layout for whichever list is on screen. A kitchen row is built to the
-  // same ROW_HEIGHT as a task row, on purpose — see the note on that constant;
+  // same row height as a task row, on purpose — see the note on that constant;
   // a second row height here would need a second set of pinned metrics and
   // would put the list back out of getItemLayout's reach at scroll depth.
   const cellLayout = useMemo(
     () =>
       sectionListCellLayout(
         (activeLens === 'cooking' ? kitchenSections : sections).map(s => s.data.length),
-        DAY_HEADER_HEIGHT,
-        ROW_HEIGHT
+        metrics.dayHeaderHeight,
+        metrics.rowHeight
       ),
-    [activeLens, sections, kitchenSections]
+    [activeLens, sections, kitchenSections, metrics]
   );
   const getItemLayout = useCallback(
     (_data: unknown, index: number) => cellLayout[index] ?? { length: 0, offset: 0, index },
@@ -893,10 +910,10 @@ interface RowProps {
 // register itself with the paint gesture — and memoized, since a selection
 // change re-renders the whole list.
 //
-// Every branch below keeps the row exactly ROW_HEIGHT tall: the leading
+// Every branch below keeps the row exactly its pinned height tall: the leading
 // control swaps its contents rather than its box, and the trailing slot only
 // ever swaps one short control for another. getItemLayout has no way to hear
-// about a row that grew (see the note on ROW_HEIGHT).
+// about a row that grew (see the note on logbookMetrics).
 const LogbookRow = React.memo(function LogbookRow({
   task,
   categoryLabel,
@@ -1067,7 +1084,7 @@ const LogbookRow = React.memo(function LogbookRow({
               <Text style={styles.taskTime}>· {formatDuration(task.actualMinutes)}</Text>
             )}
             {/* What was decided, in the row's own meta line rather than a line
-                of its own — these rows are a fixed ROW_HEIGHT for
+                of its own — these rows are a fixed height for
                 getItemLayout, which has no way to hear about a row that grew.
                 One step up from the rest of the line in colour and weight
                 (see styles.answer): it's the only thing here that isn't
@@ -1112,7 +1129,7 @@ const LogbookRow = React.memo(function LogbookRow({
         </TouchableOpacity>
         {selectionMode ? (
           // Straight into the slot the ⋯ button leaves, so the row's width
-          // budget is unchanged and its fixed height (see ROW_HEIGHT) can't be
+          // budget is unchanged and its fixed height (see logbookMetrics) can't be
           // disturbed by the swap.
           <SelectionDot selected={selected} onPress={() => onToggleSelect(task.id)} />
         ) : (
@@ -1146,7 +1163,7 @@ interface KitchenRowProps {
 /**
  * One thing that happened in the kitchen.
  *
- * Built to the same ROW_HEIGHT as `LogbookRow` — title on one line, one meta
+ * Built to the same pinned height as `LogbookRow` — title on one line, one meta
  * line under it — because both lenses share `getItemLayout` (see the note on
  * that constant, which this row is just as bound by).
  *
@@ -1256,7 +1273,7 @@ function ActiveFilterPill({
   );
 }
 
-const makeStyles = (colors: Colors) => StyleSheet.create({
+const makeStyles = (colors: Colors, metrics: ReturnType<typeof logbookMetrics>) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   searchBar: {
     marginHorizontal: spacing.md,
@@ -1310,7 +1327,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'baseline',
     justifyContent: 'space-between',
-    height: DAY_HEADER_HEIGHT,
+    height: metrics.dayHeaderHeight,
     paddingHorizontal: spacing.md,
     paddingTop: spacing.lg,
     paddingBottom: spacing.xs,
@@ -1339,7 +1356,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    height: ROW_HEIGHT,
+    height: metrics.rowHeight,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     gap: spacing.sm,
@@ -1400,15 +1417,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexShrink: 0,
   },
   // **Horizontal padding only, and a height pinned to the meta line.** Every
-  // row here is a fixed ROW_HEIGHT for getItemLayout, computed as
+  // row here is a fixed height for getItemLayout, computed as
   // title + 2 + lineHeight.xs — so a pill that padded itself vertically would
   // make its row taller than the list believes every row is, and the list
-  // becomes unstable at scroll depth (see the note on ROW_HEIGHT).
+  // becomes unstable at scroll depth (see the note on logbookMetrics).
   answerPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 3,
-    height: lineHeight.xs,
+    height: metrics.metaLine,
     paddingHorizontal: spacing.xsm,
     borderRadius: radius.full,
     backgroundColor: colors.accentSubtle,
@@ -1464,7 +1481,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexShrink: 0,
   },
   // The same 20pt box `checkCircle` occupies, so the two lenses' titles start at
-  // the same x and the row still lays out to exactly ROW_HEIGHT — but **bare,
+  // the same x and the row still lays out to exactly its pinned height — but **bare,
   // with no ring around it**. A bordered circle at that position is this app's
   // checkbox, and none of these rows can be ticked; drawing one would be the
   // same affordance lie `styles.row` avoids by staying flat instead of taking

@@ -3504,7 +3504,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md,
     // A height rather than a lineHeight — see the note in CLAUDE.md on what
     // lineHeight does to a TextInput's baseline on iOS.
-    height: 48,
+    minHeight: 48,
   },
 
   // The compact end-of-queue review — see SessionReview. flex: 1 the whole
