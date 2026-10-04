@@ -1,11 +1,11 @@
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import { NamedIcon, type IconName } from './CoinIcon';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, radius, iconSize, type Colors } from '../theme';
 
 interface Props {
-  icon: keyof typeof Ionicons.glyphMap;
+  icon: IconName;
   /** One or two sentences: what isn't there yet, and what fills it. */
   children: string;
 }
@@ -33,7 +33,7 @@ export function EmptyNote({ icon, children }: Props) {
 
   return (
     <View style={styles.note}>
-      <Ionicons name={icon} size={iconSize.md} color={colors.textSecondary} />
+      <NamedIcon name={icon} size={iconSize.md} color={colors.textSecondary} />
       <Text style={styles.text}>{children}</Text>
     </View>
   );

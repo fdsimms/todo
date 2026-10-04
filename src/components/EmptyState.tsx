@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo } from 'react';
 import { Text, StyleSheet } from 'react-native';
-import Ionicons from '@expo/vector-icons/Ionicons';
 import Reanimated, {
   useSharedValue,
   useAnimatedStyle,
@@ -11,10 +10,13 @@ import Reanimated, {
 import { useColors } from '../theme/ThemeContext';
 import { animation, font, fontWeight, lineHeight, spacing, radius, type Colors } from '../theme';
 import { PressableScale } from './PressableScale';
+import { CoinIcon, NamedIcon, type IconName } from './CoinIcon';
+import { COIN_ICON } from '../constants/coinIcon';
 import { useReduceMotion } from '../utils/useReduceMotion';
 
 interface Props {
-  icon: keyof typeof Ionicons.glyphMap;
+  /** `COIN_ICON` draws the gold coin the Rewards screen introduces itself with. */
+  icon: IconName;
   title: string;
   subtitle?: string;
   /** Optional call-to-action pill button below the text. */
@@ -103,7 +105,9 @@ export function EmptyState({ icon, title, subtitle, actionLabel, onAction, botto
       style={[styles.container, { paddingBottom: bottomOffset ?? 0 }, containerStyle]}
     >
       <Reanimated.View style={[styles.iconCircle, iconStyle]}>
-        <Ionicons name={icon} size={34} color={colors.textTertiary} />
+        {icon === COIN_ICON
+          ? <CoinIcon size={44} color={colors.warning} filled />
+          : <NamedIcon name={icon} size={34} color={colors.textTertiary} />}
       </Reanimated.View>
       <Text style={styles.title}>{title}</Text>
       {subtitle != null && <Text style={styles.subtitle}>{subtitle}</Text>}

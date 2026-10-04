@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { NamedIcon } from './CoinIcon';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SafeBlurView } from './SafeBlurView';
 import { HighlightedText } from './HighlightedText';
@@ -325,7 +326,7 @@ function QuickSearchElsewhereRow({ result, onSelect, styles, colors }: {
       accessibilityHint="Double tap to open"
     >
       <View style={styles.entityIcon}>
-        <Ionicons name={described.icon as React.ComponentProps<typeof Ionicons>['name']} size={iconSize.sm} color={colors.accent} />
+        <NamedIcon name={described.icon} size={iconSize.sm} color={colors.accent} />
       </View>
       <View style={styles.resultTap}>
         <HighlightedText

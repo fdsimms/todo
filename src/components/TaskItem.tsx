@@ -34,6 +34,7 @@ import Reanimated, {
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import { PinIcon } from './PinIcon';
+import { CoinIcon } from './CoinIcon';
 import type { Task, GroceryItem, ItemSubLink, ItemProduct, Recipe, ChainItem } from '../types';
 import { MEAL_SLOT_ICONS, MEAL_SLOT_LABELS, PRIORITY_COLORS, TITLE_MAX_LENGTH } from '../types';
 import { useColors } from '../theme/ThemeContext';
@@ -2724,7 +2725,7 @@ export const TaskItem = React.memo(function TaskItem({
                 style={styles.metaChip}
                 accessibilityLabel={`Bounty, ${formatCoins(bountyCoins)} extra when done`}
               >
-                <Ionicons name="trophy-outline" size={iconSize.xs} color={colors.textSecondary} />
+                <CoinIcon size={iconSize.xs} color={colors.textSecondary} />
                 <Text style={styles.blockingLabel} numberOfLines={1}>
                   +{bountyCoins} bounty
                 </Text>

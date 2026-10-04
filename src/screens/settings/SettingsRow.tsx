@@ -4,6 +4,8 @@ import {
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { TargetIcon, TARGET_ICON } from '../../components/TargetIcon';
+import { CoinIcon } from '../../components/CoinIcon';
+import { COIN_ICON } from '../../constants/coinIcon';
 import { useColors } from '../../theme/ThemeContext';
 import { interaction, spacing } from '../../theme';
 import { useSettingsStore } from '../../store/useSettingsStore';
@@ -95,9 +97,11 @@ export function SettingsRow({
 
   const body = (
     <>
-      {icon === TARGET_ICON ? (
+      {icon === TARGET_ICON || icon === COIN_ICON ? (
         <View style={children != null ? { marginTop: spacing.xxs } : undefined}>
-          <TargetIcon size={18} color={iconColor ?? colors.textSecondary} />
+          {icon === COIN_ICON
+            ? <CoinIcon size={18} color={iconColor ?? colors.textSecondary} />
+            : <TargetIcon size={18} color={iconColor ?? colors.textSecondary} />}
         </View>
       ) : (
         <Ionicons

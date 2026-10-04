@@ -16,6 +16,7 @@ import { ScrollEdgeFade } from './ScrollEdgeFade';
 import { SearchField } from './SearchField';
 import { SheetScrim } from './SheetScrim';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { NamedIcon } from './CoinIcon';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
 import { animation, font, fontWeight, iconSize, interaction, radius, spacing } from '../theme';
@@ -521,8 +522,8 @@ function MenuChip({
       accessibilityState={{ selected: active }}
       accessibilityLabel={count ? `${destination.label}, ${count}` : destination.label}
     >
-      <Ionicons
-        name={destination.icon as React.ComponentProps<typeof Ionicons>['name']}
+      <NamedIcon
+        name={destination.icon}
         size={size === 'recent' ? 13 : 12}
         color={active ? colors.accent : colors.textSecondary}
       />
