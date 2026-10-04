@@ -5031,6 +5031,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.accent,
     fontSize: font.xxs,
     fontWeight: fontWeight.semibold,
+    // Without this the label keeps its full width inside a chip that has
+    // shrunk, so a truncated "…" runs past the pill's right padding.
+    flexShrink: 1,
   },
   // Trails the countdown in the chip, so the number stays the thing the eye
   // lands on and a long subtask title truncates instead of pushing it out.
