@@ -106,7 +106,8 @@ export function useTitleSelection(text: string): TitleSelection {
     // land, never reading as a tag. Lead with a space whenever the caret isn't
     // already at the start of the text or just after whitespace.
     const { start } = clampSelection(selectionRef.current, textRef.current.length);
-    const needsLeadingSpace = start > 0 && !/\s/.test(textRef.current[start - 1]);
+    // A colon is the exception: it belongs to the word before it ("Pack: ").
+    const needsLeadingSpace = start > 0 && !/\s/.test(textRef.current[start - 1]) && token !== ': ';
     const toInsert = needsLeadingSpace ? ` ${token}` : token;
     const spliced = spliceAtSelection(textRef.current, selectionRef.current, toInsert);
     // The caller sets the text; keep the ref in step so a second token
