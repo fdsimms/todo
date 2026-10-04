@@ -1,4 +1,5 @@
 import { addDays } from 'date-fns/addDays';
+import { addMonths } from 'date-fns/addMonths';
 import { subDays } from 'date-fns/subDays';
 import { subHours } from 'date-fns/subHours';
 import { setHours } from 'date-fns/setHours';
@@ -2486,6 +2487,19 @@ function seedMoodLog(today: Date): void {
       at,
       day.contextTags ?? [],
     );
+  }
+
+  // Words from further back, so the Mood screen's "Looking back" card has
+  // something to show. Note-only (no mood), so they add no paired days and
+  // leave every insight above exactly as the 17-day seed made it.
+  const older: { monthsBack: number; note: string }[] = [
+    { monthsBack: 1, note: 'Finally cleared the backlog. Took a long walk after dinner.' },
+    { monthsBack: 12, note: 'First week at the new desk. Tired but glad I said yes.' },
+  ];
+  for (const { monthsBack, note } of older) {
+    const at = addMonths(today, -monthsBack);
+    at.setHours(20, 30, 0, 0);
+    addLog(null, [], note, at, []);
   }
 
   seedRepeatedHealthTask(today);

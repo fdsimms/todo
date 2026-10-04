@@ -23,6 +23,7 @@ import {
   withSymptom,
   withoutContextTag,
   withoutSymptom,
+  moodPromptAt,
 } from '../utils/moodLog';
 import { useMoodStore } from '../store/useMoodStore';
 import { dayKeyOf, getCurrentDayStart, getLogicalToday } from '../utils/dateUtils';
@@ -36,6 +37,7 @@ import { PillGroup } from './PillGroup';
 import { EditorRow } from './EditorRow';
 import { WhenPicker } from './WhenPicker';
 import { TextField } from './TextField';
+import { InlineAction } from './InlineAction';
 
 const NOTE_MAX_LENGTH = 500;
 
@@ -97,6 +99,9 @@ export function MoodLogSheet({ visible, editing = null, onClose }: Props) {
   const [symptoms, setSymptoms] = useState<LoggedSymptom[]>([]);
   const [contextTags, setContextTags] = useState<string[]>([]);
   const [note, setNote] = useState('');
+  // Which writing prompt is showing, or null for none. Only ever set by a tap:
+  // a prompt is offered, never put in front of you or written into the note.
+  const [promptIndex, setPromptIndex] = useState<number | null>(null);
   // Names typed into the pill grid this session. Held apart from the derived
   // vocabulary so a symptom you have just invented shows in the grid before it
   // has ever been saved — the vocabulary is read off saved entries, and
@@ -136,6 +141,7 @@ export function MoodLogSheet({ visible, editing = null, onClose }: Props) {
     seedRef.current = seed;
     setContextTags(editing?.contextTags ?? seed ?? []);
     setNote(editing?.note ?? '');
+    setPromptIndex(null);
     setDrafted([]);
     setDraftedContext([]);
     setDay(getLogicalToday());
@@ -366,6 +372,39 @@ export function MoodLogSheet({ visible, editing = null, onClose }: Props) {
         </View>
       )}
 
+      {/* The writing comes first: this is a diary page before it is a form, and
+          every other card below is optional. canSave already accepts a bare
+          note, so nothing here is required. */}
+      <View style={styles.card}>
+        <Text style={styles.groupLabel}>WHAT'S ON YOUR MIND</Text>
+        <TextField
+          style={styles.noteInput}
+          value={note}
+          onChangeText={setNote}
+          placeholder="e.g. How the day went, or anything you want to remember"
+          placeholderTextColor={colors.textTertiary}
+          maxLength={NOTE_MAX_LENGTH}
+          multiline
+          accessibilityLabel="Notes about how you're doing"
+        />
+        {promptIndex !== null && (
+          <Text style={styles.prompt}>{moodPromptAt(promptIndex)}</Text>
+        )}
+        {/* Only on a blank page: once there are words, a prompt is in the way. */}
+        {!editing && note.trim().length === 0 && (
+          <InlineAction
+            label={promptIndex === null ? 'Suggest a prompt' : 'Another prompt'}
+            icon="bulb-outline"
+            variant="neutral"
+            surface="card"
+            style={{ alignSelf: 'flex-start', marginTop: promptIndex === null ? spacing.sm : 0 }}
+            // Seeded from the day so the first prompt differs from one day to the
+            // next; tapping again steps through the rest in order.
+            onPress={() => setPromptIndex(i => (i === null ? Math.floor(day.getTime() / 86400000) : i + 1))}
+          />
+        )}
+      </View>
+
       <View style={styles.card}>
         <Text style={styles.groupLabel}>MOOD</Text>
         <SegmentedControl
@@ -431,20 +470,6 @@ export function MoodLogSheet({ visible, editing = null, onClose }: Props) {
             onLongPress: () => renameTag(name),
             accessibilityHint: 'Double tap to toggle. Long press to rename.',
           }))}
-        />
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.groupLabel}>NOTES</Text>
-        <TextField
-          style={styles.noteInput}
-          value={note}
-          onChangeText={setNote}
-          placeholder="e.g. Slept badly, busy afternoon"
-          placeholderTextColor={colors.textTertiary}
-          maxLength={NOTE_MAX_LENGTH}
-          multiline
-          accessibilityLabel="Notes about how you're doing"
         />
       </View>
 
@@ -536,10 +561,16 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.text,
     marginBottom: spacing.xs,
   },
+  prompt: {
+    fontSize: font.sm,
+    color: colors.textSecondary,
+    marginTop: spacing.sm,
+    marginBottom: spacing.sm,
+  },
   noteInput: {
     fontSize: font.md,
     color: colors.text,
-    minHeight: 80,
+    minHeight: 140,
     textAlignVertical: 'top',
   },
 });

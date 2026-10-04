@@ -26,6 +26,7 @@ import { useMedicationStore } from '../store/useMedicationStore';
 import { WeightScreen } from '../screens/WeightScreen';
 import { SleepScreen } from '../screens/SleepScreen';
 import { MoodHistoryScreen } from '../screens/MoodHistoryScreen';
+import { MoodDayScreen } from '../screens/MoodDayScreen';
 import { SymptomDetailScreen } from '../screens/SymptomDetailScreen';
 import { ArchivedScreen } from '../screens/ArchivedScreen';
 import { UnattendedLogScreen } from '../screens/UnattendedLogScreen';
@@ -188,7 +189,7 @@ const PUSHED_ROUTES = new Set([
   // which is a place you go *from* Mood rather than a destination of its own,
   // and neither would survive a cold-launch restore with nothing to say what
   // it was showing.
-  'MoodHistory', 'SymptomDetail',
+  'MoodHistory', 'MoodDay', 'SymptomDetail',
 ]);
 
 function MorePlaceholder() {
@@ -499,6 +500,11 @@ export default function AppNavigator() {
           <RootStack.Screen
             name="MoodHistory"
             component={MoodHistoryScreen}
+            options={{ presentation: 'card' }}
+          />
+          <RootStack.Screen
+            name="MoodDay"
+            component={MoodDayScreen}
             options={{ presentation: 'card' }}
           />
           <RootStack.Screen

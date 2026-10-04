@@ -8,6 +8,9 @@ import { useTextScale } from '../hooks/useTextScale';
 import { moodEmoji, moodLabel, severityLabel } from '../utils/moodLog';
 import { symptomOnLog } from '../utils/moodHistory';
 
+/** Enough for a few sentences; the sheet still holds the whole note. */
+const NOTE_LINES = 6;
+
 /**
  * One mood entry as a list row, wherever entries are listed.
  *
@@ -68,6 +71,7 @@ export function MoodEntryRow({ log, onPress, highlightSymptomKey, showDate = tru
           {log.mood === null ? 'Logged' : moodLabel(log.mood)}
         </Text>
         <Text style={styles.meta} numberOfLines={1}>{when}</Text>
+        {!!log.note && <Text style={styles.note} numberOfLines={NOTE_LINES}>{log.note}</Text>}
         {highlighted && (
           <Text style={styles.highlight} numberOfLines={1}>
             {highlighted.name}: {severityLabel(highlighted.severity).toLowerCase()}
@@ -81,7 +85,6 @@ export function MoodEntryRow({ log, onPress, highlightSymptomKey, showDate = tru
         {log.contextTags.length > 0 && (
           <Text style={styles.contextTags} numberOfLines={2}>{log.contextTags.join(', ')}</Text>
         )}
-        {!!log.note && <Text style={styles.note} numberOfLines={2}>{log.note}</Text>}
       </View>
     </TouchableOpacity>
   );
@@ -104,5 +107,7 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
   highlight: { fontSize: font.sm, color: colors.accent, fontWeight: fontWeight.medium, marginTop: spacing.xs },
   symptoms: { fontSize: font.sm, color: colors.textSecondary, marginTop: spacing.xs },
   contextTags: { fontSize: font.sm, color: colors.textTertiary, marginTop: spacing.xs },
-  note: { fontSize: font.sm, color: colors.textTertiary, marginTop: spacing.xs },
+  // What was written is the entry, so it reads in the primary text colour at body
+  // size, not as a dim footnote under the faces.
+  note: { fontSize: font.md, color: colors.text, marginTop: spacing.xs },
 });

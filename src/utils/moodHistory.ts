@@ -18,6 +18,8 @@
  * logged a headache twice is entitled to see both of them.
  */
 
+import { addMonths } from 'date-fns/addMonths';
+import { format } from 'date-fns/format';
 import type { LoggedSymptom, MoodLevel, MoodLog, SymptomSeverity } from '../types';
 import { contextTagKey, symptomKey } from './moodLog';
 
@@ -35,16 +37,24 @@ export interface MoodFilter {
   /** Match keys (see `contextTagKey`), not display names. */
   contextTagKeys: string[];
   moods: MoodLevel[];
+  /** Only entries with words in them. A switch rather than a set, so it ANDs with the rest. */
+  withNote: boolean;
 }
 
 export const EMPTY_MOOD_FILTER: MoodFilter = {
-  symptomKeys: [], contextTagKeys: [], moods: [],
+  symptomKeys: [], contextTagKeys: [], moods: [], withNote: false,
 };
 
 export function isMoodFilterActive(filter: MoodFilter): boolean {
   return filter.symptomKeys.length > 0
     || filter.contextTagKeys.length > 0
-    || filter.moods.length > 0;
+    || filter.moods.length > 0
+    || filter.withNote;
+}
+
+/** True when the entry has a note with something other than whitespace in it. */
+export function hasWrittenNote(log: MoodLog): boolean {
+  return !!log.note && log.note.trim().length > 0;
 }
 
 /** Add or remove one value from one of the filter's sets. */
@@ -66,6 +76,7 @@ export function toggleFilterValue<T>(values: readonly T[], value: T): T[] {
  */
 export function filterMoodLogs(logs: readonly MoodLog[], filter: MoodFilter): MoodLog[] {
   return logs.filter(log => {
+    if (filter.withNote && !hasWrittenNote(log)) return false;
     if (filter.moods.length > 0 && (log.mood === null || !filter.moods.includes(log.mood))) {
       return false;
     }
@@ -79,6 +90,46 @@ export function filterMoodLogs(logs: readonly MoodLog[], filter: MoodFilter): Mo
     }
     return true;
   });
+}
+
+/**
+ * The entries whose note contains every word of `query`, in any order, ignoring
+ * case. An empty query keeps everything.
+ *
+ * Notes only: symptoms and tags already have their own filter chips, and
+ * matching them here too would make a search for "head" answer with every
+ * headache whether or not you wrote the word. Plain substring matching, for the
+ * reason `symptomKey` refuses anything fuzzier: a search that quietly returns
+ * near-misses is an answer about words the person did not write.
+ */
+export function searchMoodLogs(logs: readonly MoodLog[], query: string): MoodLog[] {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return [...logs];
+  return logs.filter(log => {
+    if (!hasWrittenNote(log)) return false;
+    const text = log.note!.toLowerCase();
+    return words.every(w => text.includes(w));
+  });
+}
+
+/**
+ * The nearest days either side of `dayKey` that have an entry, for paging a
+ * diary one written day at a time. Days with nothing logged are skipped rather
+ * than shown as blank pages, which is rule 3 of `moodInsights.ts` as a layout
+ * rule again.
+ */
+export function adjacentLogDays(
+  logs: readonly MoodLog[],
+  dayKey: string,
+): { previous: string | null; next: string | null } {
+  let previous: string | null = null;
+  let next: string | null = null;
+  for (const log of logs) {
+    const k = log.dayKey;
+    if (k < dayKey && (previous === null || k > previous)) previous = k;
+    if (k > dayKey && (next === null || k < next)) next = k;
+  }
+  return { previous, next };
 }
 
 /** One day's worth of the history list. */
@@ -238,4 +289,54 @@ export function logsInDayRange(
   return logs.filter(log =>
     (fromDayKey === null || log.dayKey >= fromDayKey)
     && (toDayKey === null || log.dayKey <= toDayKey));
+}
+
+/** How far back "looking back" reaches, in months: a month, a season, then each year. */
+const LOOK_BACK_MONTHS = [1, 3, 6, 12, 24, 36, 48, 60];
+
+/** Most look-backs shown at once, so a long log doesn't turn the card into a feed. */
+const MAX_LOOK_BACKS = 3;
+
+export interface LookBack {
+  /** "A month ago", "A year ago"; the same wording on every device. */
+  label: string;
+  dayKey: string;
+  /** That day's entries that have words in them, oldest first. */
+  logs: MoodLog[];
+}
+
+function lookBackLabel(months: number): string {
+  if (months === 1) return 'A month ago';
+  if (months < 12) return `${months} months ago`;
+  const years = months / 12;
+  return years === 1 ? 'A year ago' : `${years} years ago`;
+}
+
+/**
+ * Days you wrote something on, one month, three, six and then each year back
+ * from `todayDayKey`, the diary's "on this day".
+ *
+ * **Only entries with a note count.** A mood with no words is a number, and a
+ * number from a year ago with nothing to say about it is not something to
+ * resurface. **A day with nothing to show is absent, never filled in** (rule 3
+ * of `moodInsights.ts`, here as a layout rule): no placeholder for the month
+ * you didn't write, and the card disappears when there is nothing at all.
+ *
+ * It reads and never interprets: no comparison with today's mood, no "you were
+ * happier then". That would be a claim, and this is the log itself, narrowed.
+ * Most recent first, capped at `MAX_LOOK_BACKS`.
+ */
+export function lookBacks(logs: readonly MoodLog[], todayDayKey: string): LookBack[] {
+  // Not `dateUtils`: that module pulls in the database, and this one stays pure.
+  const today = new Date(`${todayDayKey}T00:00:00`);
+  const found: LookBack[] = [];
+  for (const months of LOOK_BACK_MONTHS) {
+    const dayKey = format(addMonths(today, -months), 'yyyy-MM-dd');
+    const written = logs
+      .filter(l => l.dayKey === dayKey && hasWrittenNote(l))
+      .sort((a, b) => a.loggedAt.localeCompare(b.loggedAt));
+    if (written.length > 0) found.push({ label: lookBackLabel(months), dayKey, logs: written });
+    if (found.length === MAX_LOOK_BACKS) break;
+  }
+  return found;
 }
