@@ -70,7 +70,7 @@ import { WeekdaySelector } from './WeekdaySelector';
 import { PressableScale } from './PressableScale';
 import { CountStepper } from './CountStepper';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
-import { TitleTokenAccessory } from './TitleTokenAccessory';
+import { TitleTokenAccessory, QUICK_ADD_TITLE_TOKENS } from './TitleTokenAccessory';
 import { HighlightedText } from './HighlightedText';
 import { suggestTitles } from '../utils/titleSuggestions';
 import { findArchivedMatch } from '../utils/archiveMatch';
@@ -3299,6 +3299,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
       <NumberPadAccessory />
       <TitleTokenAccessory
         nativeID={TITLE_TOKEN_ACCESSORY_ID}
+        tokens={QUICK_ADD_TITLE_TOKENS}
         onInsert={insertTitleToken}
         onConfirm={applyActiveParse}
         confirmVisible={confirmVisible}

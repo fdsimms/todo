@@ -6,11 +6,39 @@ import { PressableScale } from './PressableScale';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, type Colors } from '../theme';
 
-const TOKENS: { char: string; label: string }[] = [
+interface TokenDef {
+  /** What `tokens` names it by. */
+  char: string;
+  label: string;
+  /** What lands in the field, when that isn't the key itself. */
+  insert?: string;
+  /** What the button shows, when that isn't the key itself. */
+  glyph?: string;
+  /** Lives behind the "more" button rather than in the main row. */
+  more?: boolean;
+}
+
+// "~" outranks "+" in use, so it takes the fourth slot and "+" goes behind
+// "more" with the two symbols that need a keyboard page change and a second
+// key ("->") or a trailing space ("subtasks: a, b").
+const TOKENS: TokenDef[] = [
   { char: '#', label: 'hash' },
   { char: '@', label: 'at' },
   { char: '!', label: 'exclamation' },
+  { char: '~', label: 'tilde, time estimate' },
+  { char: '+', label: 'plus, project', more: true },
+  { char: '->', label: 'arrow, next step', insert: '-> ', glyph: '→', more: true },
+  // The trailing space is part of the syntax: `parseSubtasksInput` needs a
+  // colon followed by a space. `useTitleSelection` also skips the leading
+  // space for this one so "Pack" becomes "Pack: ", not "Pack : ".
+  { char: ':', label: 'colon, subtask list', insert: ': ', more: true },
 ];
+
+/** The three a field offers unless it says otherwise. */
+export const DEFAULT_TITLE_TOKENS: readonly string[] = ['#', '@', '!'];
+
+/** Every symbol quick add's parser reads. */
+export const QUICK_ADD_TITLE_TOKENS: readonly string[] = ['#', '@', '!', '~', '+', '->', ':'];
 
 interface TitleTokenAccessoryProps {
   /** Required unless `floating` — a floating bar attaches to nothing by id. */
@@ -39,9 +67,11 @@ interface TitleTokenAccessoryProps {
   /** Only read when `floating`. */
   focused?: boolean;
   /**
-   * Which of "#", "@" and "!" to offer. Defaults to all three; a field where
-   * a sigil means nothing leaves it off (the event quick add reads "@" only,
-   * since an event has no category, tag or priority).
+   * Which symbols to offer, by key (see `TOKENS`). Defaults to "#", "@" and
+   * "!"; a field where a sigil means nothing leaves it off (the event quick
+   * add reads "@" only, since an event has no category, tag or priority).
+   * Anything marked `more` collapses behind one button, so a field offering
+   * them also gets the "⋯" toggle.
    */
   tokens?: readonly string[];
 }
@@ -73,8 +103,12 @@ interface TitleTokenAccessoryProps {
  * See the `floating` prop's own doc comment for the one field this can't
  * attach to as a real `InputAccessoryView` at all.
  */
-export function TitleTokenAccessory({ nativeID, onInsert, onConfirm, confirmVisible, floating, focused, tokens }: TitleTokenAccessoryProps) {
+export function TitleTokenAccessory({ nativeID, onInsert, onConfirm, confirmVisible, floating, focused, tokens = DEFAULT_TITLE_TOKENS }: TitleTokenAccessoryProps) {
   const colors = useColors();
+  // Shows the `more` symbols in place of the main row. A popover can't do
+  // this: an InputAccessoryView clips to its own bounds, and a Modal would
+  // take focus and drop the keyboard.
+  const [showMore, setShowMore] = useState(false);
   // Starts true so the button isn't disabled for a frame before the first
   // check resolves; a listener keeps it current while the bar stays mounted
   // (copying something in another app and switching back fires it too).
@@ -144,23 +178,53 @@ export function TitleTokenAccessory({ nativeID, onInsert, onConfirm, confirmVisi
     if (text) onInsert(text);
   };
 
+  const offered = TOKENS.filter(t => tokens.includes(t.char));
+  const mainTokens = offered.filter(t => !t.more);
+  const moreTokens = offered.filter(t => t.more);
+  // With the "more" button the row is six buttons plus confirm, which only
+  // fits the narrowest phones at the 44pt minimum width and a tighter gap.
+  const compact = moreTokens.length > 0;
   const styles = makeStyles(colors);
   const bar = (
     <View style={styles.bar}>
-      <View style={styles.tokenGroup}>
-        {TOKENS.filter(t => !tokens || tokens.includes(t.char)).map(({ char, label }) => (
+      <View style={[styles.tokenGroup, compact && styles.tokenGroupCompact]}>
+        {showMore && (
+          <PressableScale
+            style={[styles.tokenBtn, compact && styles.tokenBtnCompact]}
+            haptic
+            onPress={() => setShowMore(false)}
+            accessibilityLabel="Back to symbols"
+          >
+            <Ionicons name="chevron-back" size={iconSize.md} color={colors.text} />
+          </PressableScale>
+        )}
+        {(showMore ? moreTokens : mainTokens).map(({ char, label, insert, glyph }) => (
           <PressableScale
             key={char}
-            style={styles.tokenBtn}
+            style={[styles.tokenBtn, compact && styles.tokenBtnCompact]}
             haptic
-            onPress={() => onInsert(char)}
-            accessibilityLabel={`Insert ${label} symbol`}
+            onPress={() => {
+              onInsert(insert ?? char);
+              setShowMore(false);
+            }}
+            accessibilityLabel={`Insert ${label}`}
           >
-            <Text style={styles.tokenText}>{char}</Text>
+            <Text style={styles.tokenText}>{glyph ?? char}</Text>
           </PressableScale>
         ))}
+        {!showMore && moreTokens.length > 0 && (
+          <PressableScale
+            style={[styles.tokenBtn, compact && styles.tokenBtnCompact]}
+            haptic
+            onPress={() => setShowMore(true)}
+            accessibilityLabel="More symbols"
+          >
+            <Ionicons name="ellipsis-horizontal" size={iconSize.md} color={colors.text} />
+          </PressableScale>
+        )}
+        {!showMore && (
         <PressableScale
-          style={[styles.tokenBtn, !hasClipboardContent && styles.tokenBtnDisabled]}
+          style={[styles.tokenBtn, compact && styles.tokenBtnCompact, !hasClipboardContent && styles.tokenBtnDisabled]}
           haptic
           disabled={!hasClipboardContent}
           onPress={handlePaste}
@@ -173,10 +237,11 @@ export function TitleTokenAccessory({ nativeID, onInsert, onConfirm, confirmVisi
             color={hasClipboardContent ? colors.text : colors.textTertiary}
           />
         </PressableScale>
+        )}
       </View>
       {onConfirm && confirmVisible && (
         <PressableScale
-          style={styles.confirmBtn}
+          style={[styles.confirmBtn, compact && styles.tokenBtnCompact]}
           haptic
           onPress={onConfirm}
           accessibilityLabel="Confirm suggestion"
@@ -229,6 +294,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   tokenGroup: {
     flexDirection: 'row',
     gap: spacing.sm,
+  },
+  tokenGroupCompact: {
+    gap: spacing.xsm,
+  },
+  tokenBtnCompact: {
+    paddingHorizontal: spacing.smd,
   },
   tokenBtn: {
     minWidth: 44,
