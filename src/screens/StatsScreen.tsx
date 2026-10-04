@@ -18,6 +18,8 @@ import { startOfWeek } from 'date-fns/startOfWeek';
 import { isSameDay } from 'date-fns/isSameDay';
 import { useTaskStore } from '../store/useTaskStore';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
+import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSettings';
 import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
 import { SegmentedControl, type SegmentOption } from '../components/SegmentedControl';
@@ -159,6 +161,8 @@ export function StatsScreen() {
   const tabBarHeight = useBottomTabBarHeight();
   const tasks = useTaskStore(s => s.tasks);
   const colors = useColors();
+  // This screen's own settings, from a gear in its header. See SCREEN_SETTINGS.
+  const screenSettings = useScreenSettings('Stats', 'Stats settings');
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const reduceMotion = useReduceMotion();
@@ -473,7 +477,8 @@ export function StatsScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      <ScreenHeader title="Stats" subtitle={hasTaskData ? `${done.length} completed` : undefined} />
+      <ScreenHeader title="Stats" subtitle={hasTaskData ? `${done.length} completed` : undefined} actions={withScreenSettings(undefined, screenSettings.action)} />
+      <ScreenSettingsSheet {...screenSettings.sheet} />
       <HubPills hub="history" active="Stats" />
 
       {!hasTaskData && !hasCooking && !hasEating && !hasProjectData && !hasFocusData ? (

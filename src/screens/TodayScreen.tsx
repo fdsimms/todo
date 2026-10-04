@@ -192,6 +192,8 @@ import { type FabDragHandlers, FAB_SIZE } from '../components/Fab';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
+import { useScreenSettings } from '../hooks/useScreenSettings';
 import { animateLayout } from '../utils/layoutAnimation';
 import { emitNowTick } from '../utils/nowTick';
 import { sumEstimatedMinutes, formatDuration } from '../utils/effort';
@@ -758,6 +760,9 @@ export function TodayScreen() {
   const [saveViewClauses, setSaveViewClauses] = useState<SavedViewClause[] | null>(null);
   const [optionsMenuVisible, setOptionsMenuVisible] = useState(false);
   const [optionsMenuAnchor, setOptionsMenuAnchor] = useState<CardAnchor | null>(null);
+  // Today's own settings, from the last row of the "…" menu rather than a
+  // header icon: the header already holds up to four. See SCREEN_SETTINGS.
+  const screenSettings = useScreenSettings('Today', 'Today settings');
   const [focusSetupVisible, setFocusSetupVisible] = useState(false);
   // Which entry point opened the setup sheet — whether it should seed from
   // the pinned block instead of running the suggester. See FocusSetupSheet's
@@ -4881,7 +4886,13 @@ export function TodayScreen() {
           } : undefined}
           eventCount={todayCalendarEvents.length}
           anchor={optionsMenuAnchor}
+          onOpenSettings={screenSettings.hasSettings ? () => {
+            setOptionsMenuVisible(false);
+            screenSettings.open(optionsMenuAnchor);
+          } : undefined}
+          settingsHint={screenSettings.sheet.entries.map(e => e.label).join(', ')}
         />
+        <ScreenSettingsSheet {...screenSettings.sheet} />
 
         <CategoryOrderSheet
           visible={categoryOrderVisible}

@@ -35,6 +35,8 @@ import {
   weightSinceGoalStart,
 } from '../utils/weightGoal';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
+import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSettings';
 import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
 import { WeightChart } from '../components/WeightChart';
@@ -99,6 +101,8 @@ export function WeightScreen() {
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
   const colors = useColors();
+  // This screen's own settings, from a gear in its header. See SCREEN_SETTINGS.
+  const screenSettings = useScreenSettings('Weight', 'Weight settings');
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const unit = useSettingsStore(s => s.weightUnit);
@@ -250,7 +254,7 @@ export function WeightScreen() {
       <ScreenHeader
         title="Weight"
         subtitle={latest ? formatWeight(latest.kilograms, unit) : undefined}
-        actions={!healthReadEnabled || demoActive ? [] : [
+        actions={withScreenSettings(!healthReadEnabled || demoActive ? [] : [
           {
             icon: 'target' as const,
             onPress: openGoal,
@@ -264,8 +268,9 @@ export function WeightScreen() {
             onPress: openLog,
             accessibilityLabel: 'Record a weight',
           },
-        ]}
+        ], screenSettings.action)}
       />
+      <ScreenSettingsSheet {...screenSettings.sheet} />
       <HubPills hub="health" active="Weight" />
     </>
   );

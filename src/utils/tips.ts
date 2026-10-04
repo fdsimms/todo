@@ -123,8 +123,13 @@ export interface Tip {
    * A tab to open from the tip itself, for a tip whose whole problem is that
    * nobody can find the screen it's about (#1372). The name is a route in
    * `AppNavigator`; `'Settings'` is the one root-stack route allowed here.
+   *
+   * `entryId` (Settings links only) opens that row, highlighted, instead of
+   * the top of Settings: "Open Settings" on a tip about one switch otherwise
+   * leaves you to find it among thirteen groups. It names a row that always
+   * renders (no `requires`), which `tips.test.ts` checks.
    */
-  link?: { label: string; screen: string };
+  link?: { label: string; screen: string; entryId?: string };
   /**
    * Surfaces the banner only once this is true. Omitted means eligible from
    * the first launch, which is right for the handful of tips about the core
@@ -299,7 +304,7 @@ export const TIPS: Tip[] = [
     icon: 'phone-portrait-outline',
     title: 'Shake the phone to undo',
     body: 'Right after completing, deleting or rescheduling something, a shake takes it back. It covers the last action only, and it can be turned off in Settings.',
-    link: { label: 'Open Settings', screen: 'Settings' },
+    link: { label: 'Open Settings', screen: 'Settings', entryId: 'shakeToUndo' },
     keywords: ['undo', 'mistake', 'revert', 'shake'],
   },
   {
@@ -308,7 +313,7 @@ export const TIPS: Tip[] = [
     icon: 'moon-outline',
     title: 'Your day does not have to start at midnight',
     body: 'If you are usually up past midnight, set the day to turn over at 2am or 4am in Settings. A task finished at 1am then counts for the day you think it does.',
-    link: { label: 'Open Settings', screen: 'Settings' },
+    link: { label: 'Open Settings', screen: 'Settings', entryId: 'dayReset' },
     keywords: ['midnight', 'rollover', 'night owl', 'streak', 'day start'],
   },
 
@@ -761,7 +766,7 @@ export const TIPS: Tip[] = [
     icon: 'restaurant-outline',
     title: 'Meals can show up as tasks on Today',
     body: 'Turn this on and each planned meal writes itself onto your day as a task, so cooking sits alongside everything else you have to do rather than on a separate screen.',
-    link: { label: 'Open Settings', screen: 'Settings' },
+    link: { label: 'Open Settings', screen: 'Settings', entryId: 'gen:mealSlot' },
     when: s => s.plannedMealCount >= 3,
     keywords: ['today', 'tasks', 'cook task', 'breakfast', 'lunch', 'dinner'],
   },
@@ -808,7 +813,7 @@ export const TIPS: Tip[] = [
     icon: 'search-outline',
     title: 'Search a food database by name',
     body: 'Searching for a plain food like onion or rice uses USDA FoodData Central, which needs a free API key added in Settings. A food you find can be added to your grocery catalog so it is in the list next time.',
-    link: { label: 'Open Settings', screen: 'Settings' },
+    link: { label: 'Open Settings', screen: 'Settings', entryId: 'productLookupEnabled' },
     keywords: ['usda', 'fdc', 'fooddata central', 'lookup', 'database', 'api key'],
   },
   {
@@ -878,7 +883,7 @@ export const TIPS: Tip[] = [
     icon: 'lock-closed-outline',
     title: 'Lock the app behind Face ID',
     body: 'Turning the lock on means the app asks for Face ID when you open it, with a grace period so switching apps for a moment does not lock you out.',
-    link: { label: 'Open Settings', screen: 'Settings' },
+    link: { label: 'Open Settings', screen: 'Settings', entryId: 'appLock' },
     keywords: ['privacy', 'face id', 'touch id', 'passcode', 'security'],
   },
   {
@@ -888,7 +893,7 @@ export const TIPS: Tip[] = [
     icon: 'airplane-outline',
     title: 'Pause the whole list while you are away',
     body: 'Vacation mode hides everything you marked as pausable for a set stretch of days, so a week off does not come back as a wall of overdue tasks.',
-    link: { label: 'Open Settings', screen: 'Settings' },
+    link: { label: 'Open Settings', screen: 'Settings', entryId: 'vacationMode' },
     when: s => s.taskCount >= 15,
     keywords: ['holiday', 'away', 'pause', 'break', 'trip'],
   },
@@ -898,7 +903,7 @@ export const TIPS: Tip[] = [
     icon: 'download-outline',
     title: 'Everything is on this device only',
     body: 'There is no account and no server: your data lives in a file on the phone. Export a backup from Settings every so often, and keep it somewhere you would still have it if you lost the phone.',
-    link: { label: 'Open Settings', screen: 'Settings' },
+    link: { label: 'Open Settings', screen: 'Settings', entryId: 'exportBackup' },
     when: s => s.completedCount >= 30,
     keywords: ['export', 'backup', 'restore', 'privacy', 'offline', 'data'],
   },
@@ -908,7 +913,7 @@ export const TIPS: Tip[] = [
     icon: 'cloud-outline',
     title: 'Sync between your own devices',
     body: 'Sync moves your data between devices signed into the same iCloud account. It is off until you turn it on, and it never involves a server of ours.',
-    link: { label: 'Open Settings', screen: 'Settings' },
+    link: { label: 'Open Settings', screen: 'Settings', entryId: 'syncEnabled' },
     keywords: ['icloud', 'sync', 'ipad', 'devices', 'cloudkit'],
   },
   {
@@ -917,7 +922,7 @@ export const TIPS: Tip[] = [
     icon: 'sparkles-outline',
     title: 'The AI features need your own API key',
     body: 'Suggestions, recipe reading and receipt parsing are off until you paste an Anthropic API key into Settings. Nothing leaves the phone before you do, and you choose which features may use it.',
-    link: { label: 'Open Settings', screen: 'Settings' },
+    link: { label: 'Open Settings', screen: 'Settings', entryId: 'apiKey' },
     when: s => !s.hasApiKey && s.completedCount >= 15,
     keywords: ['ai', 'claude', 'anthropic', 'api key', 'suggestions'],
   },
@@ -927,7 +932,7 @@ export const TIPS: Tip[] = [
     icon: 'people-outline',
     title: 'Show someone the app without showing your list',
     body: 'Demo mode swaps your data for a made-up set for as long as it is on. Nothing you tap during a demo touches your real tasks, and turning it off puts everything back.',
-    link: { label: 'Open Settings', screen: 'Settings' },
+    link: { label: 'Open Settings', screen: 'Settings', entryId: 'demoMode' },
     keywords: ['demo', 'show', 'privacy', 'sample', 'screenshot'],
   },
   {
@@ -936,7 +941,7 @@ export const TIPS: Tip[] = [
     icon: 'mic-outline',
     title: 'Capture a task by talking to Siri',
     body: 'Point the app at an Apple Reminders list and anything that lands there gets pulled in, which makes "Hey Siri, remind me to..." a way into this app.',
-    link: { label: 'Open Settings', screen: 'Settings' },
+    link: { label: 'Open Settings', screen: 'Settings', entryId: 'remindersImport' },
     when: s => s.completedCount >= 20,
     keywords: ['siri', 'voice', 'apple reminders', 'import', 'capture'],
   },
@@ -955,7 +960,7 @@ export const TIPS: Tip[] = [
     icon: 'today-outline',
     title: 'The app can see how busy your day already is',
     body: 'Given read access to your calendar, the app counts your meetings as time already spent, so its idea of what fits in a day matches your actual one.',
-    link: { label: 'Open Settings', screen: 'Settings' },
+    link: { label: 'Open Settings', screen: 'Settings', entryId: 'calendarRead' },
     when: s => s.taskCount >= 12,
     keywords: ['calendar', 'events', 'meetings', 'busy', 'free time'],
   },
@@ -965,7 +970,7 @@ export const TIPS: Tip[] = [
     icon: 'trash-outline',
     title: 'Completed tasks are kept forever by default',
     body: 'Every completion leaves a row behind, which is what the Logbook and Stats are built from. If you would rather not keep them all, set a window in Settings and older ones are cleared automatically.',
-    link: { label: 'Open Settings', screen: 'Settings' },
+    link: { label: 'Open Settings', screen: 'Settings', entryId: 'retention' },
     when: s => s.completedCount >= 100,
     keywords: ['history', 'delete', 'cleanup', 'logbook', 'storage'],
   },

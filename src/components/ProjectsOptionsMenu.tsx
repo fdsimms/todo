@@ -30,6 +30,12 @@ interface Props {
   onSortChange: (sort: ProjectSortOption) => void;
   /** Where the "…" was tapped, so the menu opens from it. See `CardSheet`. */
   anchor?: CardAnchor | null;
+  /**
+   * Opens the Projects page's own settings (`ScreenSettingsSheet`), with
+   * `settingsHint` naming them. Omitted when none are on show.
+   */
+  onOpenSettings?: () => void;
+  settingsHint?: string;
 }
 
 /**
@@ -45,7 +51,7 @@ interface Props {
  */
 export function ProjectsOptionsMenu({
   visible, onClose, filter, onFilterChange, completedCount, archivedCount,
-  onManageCategories, categoryCount, sort, onSortChange, anchor,
+  onManageCategories, categoryCount, sort, onSortChange, anchor, onOpenSettings, settingsHint,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -195,6 +201,28 @@ export function ProjectsOptionsMenu({
             </View>
             <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
           </TouchableOpacity>
+          {onOpenSettings && (
+            <>
+              <View style={styles.optionSep} />
+              <TouchableOpacity
+                style={styles.optionRow}
+                onPress={() => {
+                  haptics.tap();
+                  dismissThen(onOpenSettings);
+                }}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel="Project settings"
+              >
+                <Ionicons name="settings-outline" size={18} color={colors.textSecondary} />
+                <View style={styles.optionContent}>
+                  <Text style={styles.optionLabel}>Project settings</Text>
+                  {!!settingsHint && <Text style={styles.optionHint}>{settingsHint}</Text>}
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+              </TouchableOpacity>
+            </>
+          )}
         </View>
       </ScrollView>
     </CardSheet>

@@ -9,6 +9,8 @@ import type { Person } from '../types';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
+import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSettings';
 import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
 import { ReorderableList } from '../components/ReorderableList';
@@ -58,6 +60,8 @@ export function PeopleScreen() {
   const route = useRoute<{ key: string; name: string; params?: { openPerson?: number; personId?: string } }>();
   const tabBarHeight = useBottomTabBarHeight();
   const colors = useColors();
+  // This screen's own settings, from a gear in its header. See SCREEN_SETTINGS.
+  const screenSettings = useScreenSettings('People', 'People settings');
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const people = usePersonStore(useShallow(s => s.people));
@@ -175,7 +179,7 @@ export function PeopleScreen() {
             ? `${visiblePeople.length} archived`
             : `${visiblePeople.length} ${visiblePeople.length === 1 ? 'person' : 'people'}`
           : undefined}
-        actions={selectionMode ? undefined : [
+        actions={selectionMode ? undefined : withScreenSettings([
           // A list-level way in, beside the FAB rather than inside it: filling
           // somebody in from Contacts replaces typing their name rather than
           // acting on what has been typed, so it doesn't belong in a card whose
@@ -208,8 +212,9 @@ export function PeopleScreen() {
           },
           // Selecting is reached by swiping a row now, same as every other
           // bulk-selecting list — no header button needed.
-        ]}
+        ], screenSettings.action)}
       />
+      <ScreenSettingsSheet {...screenSettings.sheet} />
       <HubPills hub="organize" active="People" />
 
       {visiblePeople.length === 0 ? (
