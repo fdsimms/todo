@@ -45,7 +45,7 @@ const NOT_EXPOSED: Record<string, string[]> = {
   // can restore it, a once-only stamp, a running timer's state, a rank.
   'machinery the app maintains': [
     'seenAt', 'sortOrder', 'pinnedOrder', 'backfillDismissedFields', 'recurrenceAnchorDay', 'recurrenceAnchorDate',
-    'quotaStartedAt', 'rotationLog', 'rotationPeriodStart', 'rotationLastDone', 'previousStreakCount',
+    'quotaStartedAt', 'rotationLog', 'rotationPeriodStart', 'previousStreakCount',
     'previousStreakDate', 'priorBestStreak', 'previousFollowUpTaskTally', 'followUpTaskSourceId',
     'followUpTaskSourceTitle', 'generatedSourceId', 'waitingFollowUpDeclinedAt', 'timerStartedAt',
     'timerElapsedSeconds', 'estimateBeforeTiming', 'seriesDefaults', 'pendingImport', 'reminderTimeAnchor',
@@ -63,7 +63,7 @@ const NOT_EXPOSED: Record<string, string[]> = {
   // reachable through a template or a rule the editor derives.
   'per-task settings with no MCP use yet': [
     'deadlineOffsetDays', 'deadlineMonthDay', 'reminderOffsetDays', 'reminderTracksVisibility',
-    'followWaterTarget', 'supplyGroceryItemId', 'deliverableSetsAway', 'gatesApps', 'streakRequiresWindow',
+    'followWaterTarget', 'supplyGroceryItemId', 'deliverableSetsAway', 'streakRequiresWindow',
     'seriesMonthDays', 'seriesRepeatMonths', 'vacationPause', 'excludeFromSuggestions',
   ],
 };

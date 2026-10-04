@@ -281,7 +281,7 @@ describe('getTask', () => {
       timedMinutes: 15, healthMetric: 'steps', healthTarget: 8000, actualMinutes: 12,
       postponeCount: 3, driftingSince: '2026-09-01', postponeMuted: true,
       supplyCount: 3, supplyUnit: 'filters', supplyReorderAt: 1, rotationEnabled: true,
-      rotationItems: [{ id: 'a', title: 'Portuguese' }],
+      rotationItems: [{ id: 'a', title: 'Portuguese' }, { id: 'b', title: 'Korean' }],
       penaltyMinutes: 30, penaltyCutoffTime: '21:00', penaltyFiredAt: '2026-10-03T21:00:00.000Z', slipCount: 2, slipDate: '2026-10-04', bountyPushes: 1, autoScheduledAt: '2026-10-01T09:00:00.000Z',
     });
     const result = getTask(withTasks([rich], { people: () => [{ id: 'per1', name: 'Gideon' } as never], describeBounty: () => '+5 extra when done.' }), 'rich-1')!;
@@ -299,8 +299,8 @@ describe('getTask', () => {
     expect(result.measuredMinutes).toBe(12);
     expect(result.postponed).toEqual({ count: 3, since: '2026-09-01', muted: true });
     expect(result.supply).toEqual({ count: 3, unit: 'filters', reorderAt: 1 });
-    expect(result.rotation).toEqual({ members: ['Portuguese'] });
-    expect(result.penalty).toEqual({ blocksAppsMinutes: 30, mustBeDoneBy: '21:00', chargedAt: '2026-10-03T21:00:00.000Z' });
+    expect(result.rotation).toEqual({ members: [{ title: 'Portuguese', doneThisWeek: false }, { title: 'Korean', doneThisWeek: false }] });
+    expect(result.penalty).toEqual({ minutes: 30, cutoffTime: '21:00', chargedAt: '2026-10-03T21:00:00.000Z' });
     expect(result.slips).toEqual({ count: 2, day: '2026-10-04' });
     expect(result.bounty).toEqual({ summary: '+5 extra when done.', pushes: 1 });
     expect(result.autoScheduledAt).toBe('2026-10-01T09:00:00.000Z');
