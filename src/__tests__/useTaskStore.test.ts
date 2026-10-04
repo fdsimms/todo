@@ -16560,6 +16560,19 @@ describe('setDeliverableValue', () => {
     expect(rowOf('budget').completed).toBe(true);
   });
 
+  it('edits the reasoning with the answer, undoes both, and clears it with the answer', () => {
+    useTaskStore.setState({ tasks: [decide({ deliverableValue: '2400', deliverableWhy: 'Quote from Dana' })] });
+
+    useTaskStore.getState().setDeliverableValue('budget', '2400', { why: 'Quote from Dana', revisitIf: 'The tile is backordered' });
+    expect(rowOf('budget')).toMatchObject({ deliverableValue: '2400', deliverableWhy: 'Quote from Dana', deliverableRevisitIf: 'The tile is backordered' });
+
+    useTaskStore.getState().lastAction!.undo();
+    expect(rowOf('budget')).toMatchObject({ deliverableWhy: 'Quote from Dana', deliverableRevisitIf: null });
+
+    useTaskStore.getState().setDeliverableValue('budget', null);
+    expect(rowOf('budget')).toMatchObject({ deliverableValue: null, deliverableWhy: null, deliverableRevisitIf: null });
+  });
+
   it('answers an entry that was completed without one', () => {
     useTaskStore.setState({ tasks: [decide({ deliverableValue: null })] });
 

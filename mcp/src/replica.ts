@@ -90,8 +90,15 @@ type BirthdayModule = typeof import('../../src/utils/birthdayTasks');
 /** What a caller may say about a completion. `CompletionOptions` without the miss. */
 export type CompletionOptions = Pick<
   import('../../src/utils/taskCompletion').CompletionOptions,
-  'deliverableValue' | 'completedAt'
+  'deliverableValue' | 'completedAt' | 'deliverableReasoning'
 >;
+
+/** A correction to a recorded answer. Omitted fields stay as they are; null clears one. */
+export interface AnswerEdit {
+  answer?: string | null;
+  why?: string | null;
+  revisitIf?: string | null;
+}
 
 /** What a caller may say about one grocery add, past the name. */
 export interface GroceryAddOptions {
@@ -350,6 +357,15 @@ export interface Replica {
    * deleting anything.
    */
   deferTask(id: string, date: Date | null): Task;
+
+  /**
+   * Correct a recorded answer, or the reasoning given with it, as the app's
+   * own `setDeliverableValue` does from the Logbook or a project's Decisions:
+   * one row written, nothing completed or reopened. A choice answer is
+   * matched against the question's options and stored in their spelling.
+   * Clearing the answer clears its reasoning.
+   */
+  updateAnswer(id: string, edit: AnswerEdit): Task;
 
   /**
    * Archive a task, or restore an archived one, as the app's own
@@ -1137,6 +1153,33 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       db.dbUpdateTask(moved);
       refresh();
       return moved;
+    },
+
+    updateAnswer(id: string, edit: AnswerEdit): Task {
+      const task = tasks().find(t => t.id === id);
+      if (!task) throw new Error(`No task with id ${id}.`);
+      if (deliverables.deliverableKindFor(task) === null) throw new Error('That task doesn\'t ask a question, so it has no answer to change.');
+      let answer = edit.answer === undefined ? task.deliverableValue : edit.answer;
+      const offered = deliverables.deliverableOptionsFor(task);
+      if (offered.length > 0 && typeof answer === 'string' && edit.answer !== undefined) {
+        const match = offered.find(o => o.toLowerCase() === answer!.trim().toLowerCase());
+        if (!match) throw new Error(`That task's answer is one of: ${offered.join(', ')}.`);
+        answer = match;
+      }
+      const held = deliverables.reasoningOf(task);
+      const reasoning = answer === null
+        ? { why: null, revisitIf: null }
+        : deliverables.cleanDeliverableReasoning({
+            why: edit.why === undefined ? held.why : edit.why,
+            revisitIf: edit.revisitIf === undefined ? held.revisitIf : edit.revisitIf,
+          });
+      if (answer === null && (edit.why || edit.revisitIf)) {
+        throw new Error('Reasoning goes with an answer, and this task has none. Give the answer too.');
+      }
+      const updated: Task = { ...task, deliverableValue: answer, deliverableWhy: reasoning.why, deliverableRevisitIf: reasoning.revisitIf };
+      db.dbUpdateTask(updated);
+      refresh();
+      return updated;
     },
 
     setTaskArchived(id: string, archived: boolean): Task {

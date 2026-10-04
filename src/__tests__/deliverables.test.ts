@@ -12,7 +12,21 @@ import {
   isTentativeAnswer,
   parseDeliverableOptions,
   DELIVERABLE_OPTIONS_MAX,
+  DELIVERABLE_REASONING_MAX_LENGTH,
+  cleanDeliverableReasoning,
+  reasoningOf,
 } from '../utils/deliverables';
+
+describe('cleanDeliverableReasoning / reasoningOf', () => {
+  it('trims, stores blank as null, and caps the length', () => {
+    expect(cleanDeliverableReasoning({ why: '  Under 20 guests ', revisitIf: '   ' })).toEqual({ why: 'Under 20 guests', revisitIf: null });
+    expect(cleanDeliverableReasoning({ why: 'x'.repeat(900), revisitIf: null }).why).toHaveLength(DELIVERABLE_REASONING_MAX_LENGTH);
+  });
+
+  it('reads an older row with neither field as no reasoning', () => {
+    expect(reasoningOf({})).toEqual({ why: null, revisitIf: null });
+  });
+});
 
 // "Book haircut" asks for the appointment date and hands it to "Get haircut";
 // the second step asks nothing of its own.

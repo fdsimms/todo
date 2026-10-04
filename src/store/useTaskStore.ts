@@ -173,7 +173,7 @@ import { applyMeasuredTime, draftHasEstimate } from '../utils/effort';
 import {
   ruleEstimateDraft, withRuleEstimate, withGeneratorEstimate, holdsKindEstimate,
 } from '../utils/ruleEstimate';
-import { chainStepDatedByAnswer, deliverableDate, deliverableKindFor, isTentativeAnswer } from '../utils/deliverables';
+import { chainStepDatedByAnswer, cleanDeliverableReasoning, deliverableDate, deliverableKindFor, isTentativeAnswer, reasoningOf, type DeliverableReasoning } from '../utils/deliverables';
 import { totalMinutes } from '../utils/recipeUtils';
 import { normalizeTargetUnit } from '../utils/quotaUnit';
 import {
@@ -1574,6 +1574,8 @@ interface TaskStore extends UndoHistoryActions {
     /** See CompletionOptions.missChain (taskCompletion.ts) — ends a mid-chain miss here rather than advancing to the next step. */
     missChain?: boolean;
     deliverableValue?: string | null;
+    /** Why that answer, and what would reopen it. See CompletionOptions.deliverableReasoning. */
+    deliverableReasoning?: DeliverableReasoning;
     neutral?: boolean;
     completedAt?: string;
     logEarly?: boolean;
@@ -1604,7 +1606,12 @@ interface TaskStore extends UndoHistoryActions {
    * "Edit answer". Separate from updateTask only in that it's the one write
    * that means "I'm correcting what I decided", so it registers its own undo.
    */
-  setDeliverableValue: (id: string, value: string | null) => void;
+  /**
+   * Change a recorded answer after the fact, and with it the reasoning given
+   * for it (Task.deliverableWhy / deliverableRevisitIf) when `reasoning` is
+   * passed. Clearing the answer clears the reasoning too.
+   */
+  setDeliverableValue: (id: string, value: string | null, reasoning?: DeliverableReasoning) => void;
   /**
    * Closes out a recurring occurrence as *not done* and moves to the next one.
    *
@@ -2925,6 +2932,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // Same split as actualMinutes above: the copy still asks the question,
       // it just hasn't been answered yet.
       deliverableValue: null,
+      deliverableWhy: null,
+      deliverableRevisitIf: null,
       previousOccurrenceId: null,
       seriesId: null,
       seriesMonthDays: [],
@@ -3342,7 +3351,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // every path that answers (the bulk queue, the focus session) agrees.
     if (!missed && deliverableKindFor(task) === 'choice' && isTentativeAnswer(options?.deliverableValue)) {
       const snapshot = { ...task };
-      get().updateTask(id, { deliverableValue: options!.deliverableValue!.trim() }, { skipPostponeCount: true });
+      const reasoning = options?.deliverableReasoning ? cleanDeliverableReasoning(options.deliverableReasoning) : null;
+      get().updateTask(id, {
+        deliverableValue: options!.deliverableValue!.trim(),
+        ...(reasoning ? { deliverableWhy: reasoning.why, deliverableRevisitIf: reasoning.revisitIf } : {}),
+      }, { skipPostponeCount: true });
       get().setLastAction({ label: `Answered ${options!.deliverableValue!.trim()}`, undo: () => get().updateTask(snapshot.id, snapshot) });
       return;
     }
@@ -4015,7 +4028,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     });
   },
 
-  setDeliverableValue(id, value) {
+  setDeliverableValue(id, value, reasoning) {
     const task = get().tasks.find(t => t.id === id);
     // Guarded on the kind, not on `completed`: the answer belongs to a task
     // that asks a question, and a row can be un-completed and re-completed
@@ -4024,14 +4037,21 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // completed row's chainIndex still points at the step that asked.
     if (!task || deliverableKindFor(task) === null) return;
     const previous = task.deliverableValue;
-    if (previous === value) return;
-    const updated = { ...task, deliverableValue: value };
+    const previousReasoning = reasoningOf(task);
+    // No answer, no reasoning: there is nothing left for it to be about.
+    const nextReasoning = value === null
+      ? { why: null, revisitIf: null }
+      : reasoning ? cleanDeliverableReasoning(reasoning) : previousReasoning;
+    if (previous === value
+      && nextReasoning.why === previousReasoning.why
+      && nextReasoning.revisitIf === previousReasoning.revisitIf) return;
+    const updated = { ...task, deliverableValue: value, deliverableWhy: nextReasoning.why, deliverableRevisitIf: nextReasoning.revisitIf };
     dbUpdateTask(updated);
     set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
     syncGatedReminders(id, get().tasks);
     get().setLastAction({
       label: value === null ? 'Answer cleared' : 'Answer saved',
-      undo: () => get().setDeliverableValue(id, previous),
+      undo: () => get().setDeliverableValue(id, previous, previousReasoning),
     });
     // An answered "Pick dates" edited later still speaks for the trip, the
     // same way completing it did: offered as a move, never written unasked.
@@ -4531,6 +4551,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         recurrenceCount: task.recurrenceCount !== null ? task.recurrenceCount - 1 : null,
         recurrenceAnchorDate: null,
         deliverableValue: null,
+        deliverableWhy: null,
+        deliverableRevisitIf: null,
         rotationLog: [],
         rotationPeriodStart: null,
         quotaStartedAt: null,
@@ -7759,6 +7781,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       waitingFollowUpDeclinedAt: null,
       deliverableKind: null,
       deliverableValue: null,
+      deliverableWhy: null,
+      deliverableRevisitIf: null,
       generatedKind: null,
       generatedSourceId: null,
       deadlineOnCalendar: false,
@@ -7979,6 +8003,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       waitingFollowUpDeclinedAt: null,
       deliverableKind: null,
       deliverableValue: null,
+      deliverableWhy: null,
+      deliverableRevisitIf: null,
       generatedKind: null,
       generatedSourceId: null,
       deadlineOnCalendar: false,

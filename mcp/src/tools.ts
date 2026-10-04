@@ -18,7 +18,7 @@
  * blocker, a `dayResetTime` that is not midnight.
  */
 import type { FoodLogEntry, GroceryItem, GroceryListEntry, MedicationLog, MoodLog, Project, Task } from '../../src/types';
-import type { Replica } from './replica';
+import type { AnswerEdit, Replica } from './replica';
 import type { TemplatePlan } from './templatePlan';
 import { describeRepeat, type RepeatInput, type TaskFieldsInput } from './taskFields';
 import { serializeTasks, type SerializedTask } from './serialize';
@@ -618,9 +618,17 @@ export interface CompleteTaskResult {
 export function completeTask(
   replica: Replica,
   id: string,
-  options?: { deliverableValue?: string | null; completedAt?: string },
+  options?: { deliverableValue?: string | null; completedAt?: string; why?: string; revisitIf?: string },
 ): CompleteTaskResult {
-  const result = replica.completeTask(id, options);
+  const { why, revisitIf, ...rest } = options ?? {};
+  // Reasoning only means something next to an answer; `in` keeps the
+  // "was an answer sent at all" test the refusal makes intact.
+  const result = replica.completeTask(id, options === undefined ? undefined : {
+    ...rest,
+    ...(why !== undefined || revisitIf !== undefined
+      ? { deliverableReasoning: { why: why ?? null, revisitIf: revisitIf ?? null } }
+      : {}),
+  });
   const spawned: string[] = [];
   if (result.nextTask) {
     const when = result.nextTask.dueDate
@@ -703,6 +711,15 @@ export function deferTask(replica: Replica, id: string, date: string | null): Se
     throw new Error(`"${date}" is not a date I can read. Use an ISO date like 2026-03-14.`);
   }
   return serializeTasks(replica, [replica.deferTask(id, parsed)])[0];
+}
+
+/** Correct an answer already recorded, or the reasoning given with it. The result is the task as get_task shows it. */
+export function updateAnswer(replica: Replica, id: string, edit: AnswerEdit): GetTaskResult {
+  if (edit.answer === undefined && edit.why === undefined && edit.revisitIf === undefined) {
+    throw new Error('Nothing to change: give answer, why or revisitIf.');
+  }
+  replica.updateAnswer(id, edit);
+  return getTask(replica, id)!;
 }
 
 export function archiveTask(replica: Replica, id: string, archived: boolean): SerializedTask & { archived: boolean } {

@@ -56,6 +56,10 @@ export interface SerializedTask {
    * forward.
    */
   answer?: string;
+  /** Why that answer was given, where it was recorded with it. */
+  why?: string;
+  /** What would reopen the decision, where it was recorded with it. */
+  revisitIf?: string;
   recurring?: boolean;
   pinned?: boolean;
   /**
@@ -109,6 +113,8 @@ export function serializeTask(replica: Replica, task: Task): SerializedTask {
       return offered.length > 0 ? offered : undefined;
     })(),
     answer: task.deliverableValue ?? undefined,
+    why: task.deliverableWhy ?? undefined,
+    revisitIf: task.deliverableRevisitIf ?? undefined,
     recurring: task.recurrenceType !== 'none' ? true : undefined,
     pinned: task.pinned ? true : undefined,
     blocked: replica.isBlocked(task) ? true : undefined,

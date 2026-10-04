@@ -944,6 +944,21 @@ describe('the replica', () => {
     expect(() => replica.createProjectPlan({ title: 'X', defaultTaskCategory: 'Nope', steps: [] })).toThrow(/defaultTaskCategory: "Nope"/);
   });
 
+  it('records why and revisit-if with an answer, and corrects them afterwards', () => {
+    const q = replica.createTask({ title: 'Ceremony format?', deliverableKind: 'choice', deliverableOptions: ['City Hall', 'Officiant'] });
+    replica.completeTask(q.id, { deliverableValue: 'City Hall', deliverableReasoning: { why: 'Under 20 guests', revisitIf: null } });
+    replica.refresh();
+    expect(replica.taskById(q.id)).toMatchObject({ deliverableWhy: 'Under 20 guests', deliverableRevisitIf: null });
+
+    const edited = replica.updateAnswer(q.id, { revisitIf: 'No slots before March' });
+    expect(edited).toMatchObject({ deliverableValue: 'City Hall', deliverableWhy: 'Under 20 guests', deliverableRevisitIf: 'No slots before March' });
+    expect(replica.updateAnswer(q.id, { answer: 'officiant' }).deliverableValue).toBe('Officiant');
+    expect(() => replica.updateAnswer(q.id, { answer: 'Beach' })).toThrow(/one of: City Hall, Officiant/);
+    expect(replica.updateAnswer(q.id, { answer: null })).toMatchObject({ deliverableWhy: null, deliverableRevisitIf: null });
+    const plain = replica.createTask({ title: 'No question' });
+    expect(() => replica.updateAnswer(plain.id, { why: 'x' })).toThrow(/doesn't ask a question/);
+  });
+
   it('refuses to reschedule a completed task', () => {
     const task = replica.createTask({ title: 'Done' });
     replica.completeTask(task.id, {});
