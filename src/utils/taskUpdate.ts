@@ -398,6 +398,7 @@ export function mergeTaskUpdate(t: Task, updates: Partial<Task>, ctx: TaskUpdate
           followUpTaskTitle: null,
           followUpTaskDraft: null,
           followUpTaskOneAtATime: false,
+          followUpTaskAtEnd: false,
         }
       : {}),
     // Same shape as the two rules above, and the same reasoning: a patch

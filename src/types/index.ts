@@ -3338,6 +3338,13 @@ export interface Task {
   // count you're meant to keep up with (one row per set of five runs) — so
   // this is asked rather than assumed.
   followUpTaskOneAtATime: boolean;
+  // The other trigger for the same rule: add the task once, when the repeat
+  // runs out (the last of a counted repeat, or the first past its end date),
+  // rather than every Nth completion. Exclusive with `followUpTaskEveryN`:
+  // the editor clears one when the other is chosen, and `followUpTaskEndRule()`
+  // is what the store asks, since it also needs an end to exist. Shares the
+  // title and draft, because it is the same added task on a different trigger.
+  followUpTaskAtEnd: boolean;
   followUpTaskTally: number;         // completions since the last one was added
   // Snapshot of followUpTaskTally from just before the current completion, so
   // uncompleting restores it — the same device previousStreakCount uses, and

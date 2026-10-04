@@ -51,6 +51,7 @@ import { isNegativeTask } from './negativeHabits';
 import { nextStreakRecord } from './streakRecord';
 import {
   followUpTaskRule,
+  followUpTaskEndRule,
   advanceFollowUpTaskTally,
   followUpTaskSuppressedBy,
   type FollowUpTaskSuppression,
@@ -787,13 +788,25 @@ export function buildCompletion(
   // owns its members' category and cascades over them, and this is a
   // different piece of work that happens to have been earned by one of
   // them.
+  //
+  // The other trigger is the repeat running out (Task.followUpTaskAtEnd): the
+  // schedule was consulted (`advancesBySchedule`, so never a mid-chain step)
+  // and found no next occurrence. A miss counts, since the repeat is over
+  // either way. It skips the vacation and one-at-a-time checks above: there is
+  // no tally for a suppressed spawn to preserve, so standing down would just
+  // lose the task, and the draft's own `vacationPause` already hides it.
+  const endRule = followUpTaskEndRule(task);
+  const endsHere = !!endRule && !neutral && recurs && advancesBySchedule && nextTask === null;
+  const followUpToAdd = followUpRule && followUpAdvance?.spawns && !followUpSuppression
+    ? followUpRule
+    : endsHere ? endRule : null;
   let followUpTask: Task | null = null;
   let followUpSubtasks: Task[] = [];
-  if (followUpRule && followUpAdvance?.spawns && !followUpSuppression) {
+  if (followUpToAdd) {
     const maxOrder = allTasks.reduce((m, t) => Math.max(m, t.sortOrder), 0);
-    const spec = followUpRule.draft;
+    const spec = followUpToAdd.draft;
     followUpTask = newTaskFromDraft({
-      title: followUpRule.title,
+      title: followUpToAdd.title,
       dueDate: nextTask?.dueDate ?? getCurrentDayStart().toISOString(),
       notes: spec?.notes ?? '',
       // Null on the draft means "the same as the task that spawned it", so

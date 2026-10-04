@@ -1598,6 +1598,9 @@ export function initDatabase(): void {
     // and backfilling it true would quietly stop rules firing for people who
     // never asked for that. See Task.followUpTaskOneAtATime.
     'ALTER TABLE tasks ADD COLUMN extra_task_one_at_a_time INTEGER NOT NULL DEFAULT 0',
+    // 0 on every existing row: no rule written before this fires at the end of
+    // a repeat. See Task.followUpTaskAtEnd.
+    'ALTER TABLE tasks ADD COLUMN extra_task_at_end INTEGER NOT NULL DEFAULT 0',
     // Null on every existing row — none of them were spawned by the rule.
     // See Task.followUpTaskSourceTitle.
     'ALTER TABLE tasks ADD COLUMN extra_task_source_title TEXT',
@@ -3307,6 +3310,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     followUpTaskTitle: (row.extra_task_title as string | null) ?? null,
     followUpTaskDraft: parseFollowUpTaskDraft(row.extra_task_draft as string | null),
     followUpTaskOneAtATime: row.extra_task_one_at_a_time === 1,
+    followUpTaskAtEnd: row.extra_task_at_end === 1,
     followUpTaskTally: (row.extra_task_tally as number) ?? 0,
     previousFollowUpTaskTally: (row.previous_extra_task_tally as number) ?? 0,
     followUpTaskSourceTitle: (row.extra_task_source_title as string | null) ?? null,
@@ -3450,8 +3454,8 @@ export function dbInsertTask(task: Task): void {
       estimate_before_timing, waiting_on_person_since, waiting_follow_up_declined_at,
       reminder_tracks_visibility, recurrence_month,
       blocked_by_ids, deliverable_options, deliverable_sets_away, follow_up_on, extra_task_source_id,
-      pin_each_occurrence, bounty_pushes, difficulty, answer_gate, deliverable_why, deliverable_revisit_if
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      pin_each_occurrence, bounty_pushes, difficulty, answer_gate, deliverable_why, deliverable_revisit_if, extra_task_at_end
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -3571,6 +3575,7 @@ export function dbInsertTask(task: Task): void {
       task.answerGate ? JSON.stringify(task.answerGate) : null,
       task.deliverableWhy ?? null,
       task.deliverableRevisitIf ?? null,
+      task.followUpTaskAtEnd ? 1 : 0,
     ]
   );
 }
@@ -3607,7 +3612,7 @@ export function dbUpdateTask(task: Task): void {
       estimate_before_timing=?, waiting_on_person_since=?, waiting_follow_up_declined_at=?,
       reminder_tracks_visibility=?, recurrence_month=?,
       blocked_by_ids=?, deliverable_options=?, deliverable_sets_away=?, follow_up_on=?, extra_task_source_id=?,
-      pin_each_occurrence=?, bounty_pushes=?, difficulty=?, answer_gate=?, deliverable_why=?, deliverable_revisit_if=?
+      pin_each_occurrence=?, bounty_pushes=?, difficulty=?, answer_gate=?, deliverable_why=?, deliverable_revisit_if=?, extra_task_at_end=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -3728,6 +3733,7 @@ export function dbUpdateTask(task: Task): void {
       task.answerGate ? JSON.stringify(task.answerGate) : null,
       task.deliverableWhy ?? null,
       task.deliverableRevisitIf ?? null,
+      task.followUpTaskAtEnd ? 1 : 0,
       task.id,
     ]
   );

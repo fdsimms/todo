@@ -75,7 +75,7 @@ import {
 } from '../utils/recipeUtils';
 import { taskKindOf } from '../utils/taskKinds';
 import { apportionedMinutes, timerSegments } from '../utils/timerSegments';
-import { followUpTaskDraftIsEmpty, followUpTaskRule } from '../utils/followUpTask';
+import { followUpTaskDraftIsEmpty, followUpTaskEndRule, followUpTaskRule } from '../utils/followUpTask';
 import { isDialable } from '../utils/phone';
 import { resolveTitleRules, titleRuleBacklog } from '../utils/titleRules';
 import { useRecipeStore } from '../store/useRecipeStore';
@@ -1259,6 +1259,13 @@ describe('demo mode', () => {
     const items = useTemplateStore.getState().templates.flatMap(t => t.items);
 
     expect(items.some(i => i.deliverableKind !== null)).toBe(true);
+  });
+
+  it('seeds a task that adds a follow-up task when its repeat ends', () => {
+    useDemoStore.getState().enterDemoMode();
+    const atEnd = useTaskStore.getState().tasks.filter(t => followUpTaskEndRule(t) !== null);
+    expect(atEnd.length).toBeGreaterThan(0);
+    expect(atEnd[0].followUpTaskEveryN).toBeNull();
   });
 
   // A rule nothing has a row for reads as a field that does nothing.

@@ -472,7 +472,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   followUpTaskEveryN: null,
   followUpTaskTitle: null,
   followUpTaskDraft: null,
-  followUpTaskOneAtATime: false,
+  followUpTaskOneAtATime: false, followUpTaskAtEnd: false,
   followUpTaskTally: 0,
   previousFollowUpTaskTally: 0,
   followUpTaskSourceTitle: null,
@@ -16225,7 +16225,7 @@ describe('completeTask: followUp task every Nth completion', () => {
           category: 'Music',
           projectId: 'p1',
           followUpTaskDraft: { ...emptyFollowUpTaskDraft(), notes: 'Just a note' },
-          followUpTaskOneAtATime: false,
+          followUpTaskOneAtATime: false, followUpTaskAtEnd: false,
         })],
       });
 

@@ -9,6 +9,7 @@ import {
   emptyFollowUpTaskDraft,
   followUpTaskDraftIsEmpty,
   followUpTaskRule,
+  followUpTaskEndRule,
   followUpTaskSummary,
   followUpTaskSuppressedBy,
   parseFollowUpTaskDraft,
@@ -354,5 +355,34 @@ describe('a suppressed spawn does not consume the tally', () => {
 
   it('reads as "1 completion until the next one" throughout the suppression', () => {
     expect(completionsUntilFollowUpTask(3, 4)).toBe(1);
+  });
+});
+
+describe('followUpTaskEndRule', () => {
+  const base = {
+    followUpTaskAtEnd: true,
+    followUpTaskTitle: 'Book the recital',
+    recurrenceType: 'daily' as const,
+    recurrenceEndDate: null,
+    recurrenceCount: 5,
+  };
+
+  it('is live with a title, a repeat and an end', () => {
+    expect(followUpTaskEndRule(base)).toEqual({ title: 'Book the recital', draft: null });
+    expect(followUpTaskEndRule({ ...base, recurrenceCount: null, recurrenceEndDate: '2026-12-01T00:00:00.000Z' }))
+      .not.toBeNull();
+  });
+
+  it('needs the switch, a title, a repeat and an end', () => {
+    expect(followUpTaskEndRule({ ...base, followUpTaskAtEnd: false })).toBeNull();
+    expect(followUpTaskEndRule({ ...base, followUpTaskTitle: '  ' })).toBeNull();
+    expect(followUpTaskEndRule({ ...base, recurrenceType: 'none' })).toBeNull();
+    expect(followUpTaskEndRule({ ...base, recurrenceCount: null })).toBeNull();
+  });
+
+  it('is described by its own summary and caption', () => {
+    expect(followUpTaskSummary(null, true)).toBe('When it ends');
+    expect(describeFollowUpTaskRule(null, 'Book the recital', true)).toBe('Added when the last repeat is done');
+    expect(describeFollowUpTaskRule(null, '', true)).toBe('Name the task to add');
   });
 });
