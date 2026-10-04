@@ -15,7 +15,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { dayKeyOf, dayKeyToDate, getCurrentDayStart, getLogicalToday } from '../utils/dateUtils';
-import { navigateToSettingsEntry } from '../utils/settingsIndex';
+import { navigateToSettingsEntry } from '../navigation/openSettings';
 import { openHealthApp } from '../utils/healthBridge';
 import {
   formatWeight,

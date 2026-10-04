@@ -5297,7 +5297,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   label="Follow up on"
                   hint={followUpOn
                     ? undefined
-                    : 'Adds a task to follow up with them on this day. Without one, the follow-up comes after a week if that is on in Settings'}
+                    : 'Adds a task to follow up with them on this day. Without one, the follow-up comes after a week if that is on in Automations'}
                   value={followUpOn ? formatDeadlineDate(followUpOn.toISOString()) : undefined}
                   onPress={() => setShowFollowUpPicker(true)}
                   onClear={followUpOn ? () => setFollowUpOn(null) : undefined}

@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useCallback } from 'react';
 import { View, Text, SectionList, StyleSheet } from 'react-native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+import { useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import { useShallow } from 'zustand/react/shallow';
@@ -39,8 +40,9 @@ import type { GeneratedKind, UnattendedEntry } from '../types';
  *
  * A History hub member rather than a Settings page, because it is a record of
  * things that happened, which is what that hub is. The generator *switches*
- * stay in Settings; this says what they did, and names each one in the same
- * words its switch uses so the two can be read against each other.
+ * are on Automations (the sparkles button, which links back here); this says
+ * what they did, and names each one in the same words its switch uses so the
+ * two can be read against each other.
  *
  * `src/utils/unattendedLedger.ts` decides how a row reads and
  * `UnattendedEntry` in types holds the three rules deciding what gets one.
@@ -86,6 +88,11 @@ export function UnattendedLogScreen() {
     })),
   ], [kinds, kind]);
 
+  const navigation = useNavigation();
+  const openAutomations = useCallback(() => {
+    navigation.navigate('Automations' as never);
+  }, [navigation]);
+
   const handleClear = useCallback(() => {
     confirmDelete({
       title: 'Clear activity?',
@@ -100,9 +107,12 @@ export function UnattendedLogScreen() {
       <ScreenHeader
         title="Activity"
         subtitle={entries.length === 0 ? undefined : unattendedSummary(filtered)}
-        actions={entries.length > 0 ? [
-          { icon: 'trash-outline', onPress: handleClear, accessibilityLabel: 'Clear activity' },
-        ] : undefined}
+        actions={[
+          ...(entries.length > 0
+            ? [{ icon: 'trash-outline' as const, onPress: handleClear, accessibilityLabel: 'Clear activity' }]
+            : []),
+          { icon: 'sparkles-outline', onPress: openAutomations, accessibilityLabel: 'Automations' },
+        ]}
       />
       <HubPills hub="history" active="UnattendedLog" />
 

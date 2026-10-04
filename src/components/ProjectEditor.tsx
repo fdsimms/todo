@@ -1176,7 +1176,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
             <Text style={styles.optionLabel}>Suggest for a free weekend</Text>
             <Text style={styles.optionHint}>
               {!weekendNudgeOn
-                ? 'Takes effect once "Nudge for an empty weekend" is on in Settings, under Automatic tasks'
+                ? 'Takes effect once "Nudge for an empty weekend" is on in Automations, in the menu'
                 : nudgeMode === 'never'
                   ? 'Takes effect once "Bring this up" is set to When I ask or Every…'
                   : weekendSource

@@ -1,5 +1,5 @@
 import { formatHHMM } from './clockTime';
-import type { SettingsGroupId } from './settingsIndex';
+import type { IndexedSettingsGroupId } from './settingsIndex';
 import { expiredTaskGraceLabel, type ExpiredTaskGraceDays } from './expiredTaskGrace';
 
 /**
@@ -43,14 +43,6 @@ export interface SettingsSummaryInput {
   calendarIds: string[];
   healthReadEnabled: boolean;
   simpleMode: boolean;
-  /**
-   * How many generators are switched on, and how many are on offer — from
-   * `generatedTaskCounts`, so this line and the rows behind it count the same
-   * list. Resolved by the caller for the reason `retentionLabel` is: it keeps
-   * this module clear of anything that reaches the settings store.
-   */
-  generatedOn: number;
-  generatedTotal: number;
   /** Whether the day's meals show as rows on Today. */
   mealsOnToday: boolean;
   /** Already-rendered, like `fontLabel` — null when amounts show as written. */
@@ -89,7 +81,7 @@ function line(...parts: (string | false | null | undefined)[]): string {
  * broken rather than as default. A group with nothing switched on says what it
  * covers instead.
  */
-export function settingsSummaries(s: SettingsSummaryInput): Record<SettingsGroupId, string> {
+export function settingsSummaries(s: SettingsSummaryInput): Record<IndexedSettingsGroupId, string> {
   return {
     featureAreas: line(
       !s.kitchenEnabled && 'Groceries & meals hidden',
@@ -130,14 +122,6 @@ export function settingsSummaries(s: SettingsSummaryInput): Record<SettingsGroup
       ),
       s.autoCompleteProjectsOnDone && 'Projects auto-complete',
     ) || 'Vacation, expiry, auto-complete',
-
-    // A count rather than a list of names: two dozen generators won't fit on a
-    // line, and "how much of this is the app writing for me" is the question
-    // the group exists to answer. Both halves come from `generatedTaskCounts`,
-    // so the total shrinks with the kitchen exactly as the rows behind it do.
-    generated: s.generatedOn === 0
-      ? `Nothing. ${s.generatedTotal} available`
-      : `${s.generatedOn} of ${s.generatedTotal} on`,
 
     // The switch alone, with no reading named beside it. The number this group
     // shows is a step count that changes by the minute and is often absent

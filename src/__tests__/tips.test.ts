@@ -141,6 +141,7 @@ describe('the tip content itself', () => {
       'Today', 'Groceries', 'Projects', 'Search', 'Recipes', 'MealPlan', 'Kitchen',
       'Calendar', 'Categories', 'Tags', 'Stacks', 'Templates', 'Logbook', 'Stats',
       'Mood', 'People', 'Cookbooks', 'Backfill', 'Stuck', 'Archived', 'Tips', 'Settings',
+      'Automations',
     ]);
     for (const t of TIPS) {
       if (!t.link) continue;

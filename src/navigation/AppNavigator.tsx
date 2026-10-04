@@ -26,6 +26,7 @@ import { MoodHistoryScreen } from '../screens/MoodHistoryScreen';
 import { SymptomDetailScreen } from '../screens/SymptomDetailScreen';
 import { ArchivedScreen } from '../screens/ArchivedScreen';
 import { UnattendedLogScreen } from '../screens/UnattendedLogScreen';
+import { AutomationsScreen } from '../screens/AutomationsScreen';
 import { BackfillScreen } from '../screens/BackfillScreen';
 import { StuckScreen } from '../screens/StuckScreen';
 import { RewardsScreen } from '../screens/RewardsScreen';
@@ -287,6 +288,7 @@ const MainTabs = React.memo(function MainTabs({
       <Tab.Screen name="Stuck" component={freezeWhenBlurred(StuckScreen)} options={HIDDEN} />
       <Tab.Screen name="Backfill" component={freezeWhenBlurred(BackfillScreen)} options={HIDDEN} />
       <Tab.Screen name="Reminders" component={freezeWhenBlurred(RemindersScreen)} options={HIDDEN} />
+      <Tab.Screen name="Automations" component={freezeWhenBlurred(AutomationsScreen)} options={HIDDEN} />
       <Tab.Screen name="Archived" component={freezeWhenBlurred(ArchivedScreen)} options={HIDDEN} />
       <Tab.Screen name="UnattendedLog" component={freezeWhenBlurred(UnattendedLogScreen)} options={HIDDEN} />
       <Tab.Screen name="Rewards" component={freezeWhenBlurred(RewardsScreen)} options={HIDDEN} />

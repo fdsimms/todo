@@ -1194,9 +1194,9 @@ export function GeneratedTasksSection() {
   return (
     <>
     <SettingsSection
-      // No label: this is the whole of its group, so the screen's own header is
-      // already saying "Automatic tasks" directly above it.
-      footer="These are the only things that put a task in your list without you typing it. Each one can be turned off here, and deleting a task the app added tells it not to add that one again: the grocery item or the leftover it came from remembers your answer, and a meal task stays gone for the rest of the day."
+      // No label: this is the whole of the screen, so its own header is
+      // already saying "Automations" directly above it.
+      footer="These are the only things that put a task in your list without you typing it. Each one can be turned off here, and deleting a task the app added tells it not to add that one again: the grocery item or the leftover it came from remembers your answer, and a meal task stays gone for the rest of the day. Activity shows what each one added."
     >
       {/* Above the generators rather than inside any one of them, because it
           applies to all of them at once: it changes when the whole list below

@@ -9,6 +9,7 @@ import {
   generatedTaskCountOf,
   generatorPausedForVacation,
   CALENDAR_READ_KINDS,
+  describeGeneratedCounts,
   generatorSwitchedOn,
   hasAnyGeneratedTask,
   isNoticeTask,
@@ -36,6 +37,16 @@ function task(overrides: Partial<TaskShape> = {}): TaskShape {
 
 const from = (kind: GeneratedKind, sourceId: string | null, rest: Partial<TaskShape> = {}) =>
   task({ generatedKind: kind, generatedSourceId: sourceId, ...rest });
+
+describe('describeGeneratedCounts', () => {
+  it('counts what is on out of what is offered', () => {
+    expect(describeGeneratedCounts({ on: 4, total: 26 })).toBe('4 of 26 on');
+  });
+
+  it('says what is available when nothing is on, rather than "0 of 26"', () => {
+    expect(describeGeneratedCounts({ on: 0, total: 26 })).toBe('None on. 26 available');
+  });
+});
 
 describe('wantsGeneratedTask', () => {
   it('defers to the setting when the source has no explicit answer', () => {

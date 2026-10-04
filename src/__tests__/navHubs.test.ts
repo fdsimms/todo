@@ -37,8 +37,8 @@ describe('the menu as data', () => {
     }
   });
 
-  it('fits on a phone: thirteen rows with everything switched on', () => {
-    expect(visibleMenuRows(FULL)).toHaveLength(13);
+  it('fits on a phone: fourteen rows with everything switched on', () => {
+    expect(visibleMenuRows(FULL)).toHaveLength(14);
   });
 
   it('opens a hub row on its first member', () => {
