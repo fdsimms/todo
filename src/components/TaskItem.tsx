@@ -100,7 +100,7 @@ import { usePlanMeal } from '../hooks/usePlanMeal';
 import { useSheetMount } from '../hooks/useSheetMount';
 import { RotationPickSheet } from './RotationPickSheet';
 import { RotationChecklist } from './RotationChecklist';
-import { isRotationTask, rotationMembers, rotationOverCommitted, rotationSummary } from '../utils/rotation';
+import { isRotationTask, rotationLastPickLabel, rotationMembers, rotationOverCommitted, rotationSummary } from '../utils/rotation';
 import {
   describeProjectQuiet,
   projectQuietDays,
@@ -1358,6 +1358,9 @@ export const TaskItem = React.memo(function TaskItem({
     ? rotationSummary(task, rotationDayStart, weekStartsOn)
     : null;
   const rotationTight = isRotation && rotationOverCommitted(task, rotationDayStart, weekStartsOn);
+  const rotationLast = isRotation
+    ? rotationLastPickLabel(task, rotationDayStart, weekStartsOn)
+    : null;
   // A daily target closed out short of its count (rollover, or an explicit
   // miss) is still `completed`, but a plain checkmark would read as the same
   // full finish an on-target row gets — same distinction Logbook's row draws
@@ -2819,6 +2822,14 @@ export const TaskItem = React.memo(function TaskItem({
                 >
                   {rotationLine}
                 </Text>
+              </View>
+            )}
+            {rotationLast !== null && (
+              // Its own chip, so a long member name truncates itself rather
+              // than the count beside it, and so it still shows once the set
+              // is covered and `rotationLine` has gone quiet.
+              <View style={styles.metaChip}>
+                <Text style={styles.quotaLabel} numberOfLines={1}>{rotationLast}</Text>
               </View>
             )}
             {supplyLabel !== null && (

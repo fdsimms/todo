@@ -5,7 +5,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { getCurrentDayStart } from '../utils/dateUtils';
-import { rotationMembers } from '../utils/rotation';
+import { rotationLastDoneLabel, rotationLastPick, rotationMembers } from '../utils/rotation';
 import { spacing, radius, font, fontWeight, border, checkboxRadius, type Colors } from '../theme';
 import type { Task } from '../types';
 
@@ -45,6 +45,9 @@ export function RotationChecklist({ task, label = 'This week', asOf }: Props) {
   const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
   const dayStart = asOf ?? getCurrentDayStart();
   const members = rotationMembers(task, dayStart, weekStartsOn);
+  // Both only for a live week. A finished week passes `asOf`, and a member's
+  // last-done today would say something about now on a row about then.
+  const lastId = asOf ? null : rotationLastPick(task, dayStart, weekStartsOn)?.item.id ?? null;
 
   return (
     <View style={styles.tray}>
@@ -62,13 +65,27 @@ export function RotationChecklist({ task, label = 'This week', asOf }: Props) {
           >
             {member.item.title}
           </Text>
-          {member.doneAt !== null && (
-            <Text style={styles.when}>{format(new Date(member.doneAt), 'EEE')}</Text>
-          )}
+          <Text style={[styles.when, member.item.id === lastId && styles.whenLast]}>
+            {whenText(member, lastId, asOf, dayStart)}
+          </Text>
         </View>
       ))}
     </View>
   );
+}
+
+/** The note at a row's right edge: the day it was done this week, else how long ago it was last done. */
+function whenText(
+  member: { item: { id: string }; doneAt: string | null; lastDoneAt: string | null },
+  lastId: string | null,
+  asOf: Date | undefined,
+  dayStart: Date,
+): string | null {
+  const when = member.doneAt !== null
+    ? format(new Date(member.doneAt), 'EEE')
+    : asOf ? null : rotationLastDoneLabel(member.lastDoneAt, dayStart);
+  if (when === null) return null;
+  return member.item.id === lastId ? `Last · ${when}` : when;
 }
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
@@ -103,4 +120,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   name: { flex: 1, color: colors.text, fontSize: font.sm },
   nameDone: { color: colors.textTertiary },
   when: { color: colors.textTertiary, fontSize: font.xxs },
+  // The one done most recently reads at the same size, a step darker, so it is
+  // found by its colour rather than by a second badge.
+  whenLast: { color: colors.textSecondary, fontWeight: fontWeight.semibold },
 });
