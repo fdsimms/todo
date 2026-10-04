@@ -2574,7 +2574,7 @@ export const TaskItem = React.memo(function TaskItem({
             )}
           </View>
         )}
-        {(isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || windowActive || windowExpired || showStreakChip || isDrifting || bountyCoins > 0 || waitingCount > 0 || !!blockerTitle || !!waitingPersonName || autoScheduled || scheduledIso !== null || reminderTimeLabel !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.notes.length > 0) && (
+        {(isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || windowActive || windowExpired || showStreakChip || isDrifting || bountyCoins > 0 || waitingCount > 0 || !!blockerTitle || !!waitingPersonName || autoScheduled || scheduledIso !== null || reminderTimeLabel !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || !!chainName || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.notes.length > 0) && (
           <View style={styles.metaRow}>
             {/* Leads the meta line: on the screens that ask for it, "when" is
                 what the row is being read for, and every other chip here
@@ -2986,6 +2986,15 @@ export const TaskItem = React.memo(function TaskItem({
               >
                 <Ionicons name="play-forward-outline" size={iconSize.xs} color={colors.accent} />
                 <Text style={styles.autoScheduledLabel} numberOfLines={1}>Scheduled for you</Text>
+              </View>
+            )}
+            {/* The chain's own name. The row's title is the current step, so
+                without this the task you typed ("Write Sam a postcard") only
+                showed up once the row was expanded. */}
+            {!!chainName && (
+              <View style={styles.metaChip} accessibilityLabel={`Chain: ${chainName}`}>
+                <Ionicons name="git-commit-outline" size={iconSize.xs} color={colors.textSecondary} />
+                <Text style={styles.projectLabel} numberOfLines={1}>{chainName}</Text>
               </View>
             )}
             {showProject && projectTitle && (
