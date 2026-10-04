@@ -6714,8 +6714,9 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
   pillCustomInner: { flexDirection: 'row', alignItems: 'center', gap: spacing.xxs },
   pillCustomText: { color: colors.accentText, fontSize: font.sm, fontWeight: '600' },
   // A track next to the number it labels, so it takes a width rather than
-  // stretching across the row the way one owning a line does.
-  unitToggle: { width: 104 },
+  // stretching across the row the way one owning a line does. Grown with the
+  // text it holds, or its two labels truncate at larger text sizes.
+  unitToggle: { width: Math.round(104 * textScaleFactor) },
   timePillRow: {
     flexDirection: 'row', gap: spacing.xs,
     paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.sm,
